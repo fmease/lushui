@@ -1,0 +1,15 @@
+;;; this is a note book containing various code snippets
+;;; that should work once we fully implement the first parser
+;;; like a "white book" because I might forget about it
+
+;;; import only module or only value
+'use Module.('data Option) ;;;  only value
+'use Module.(('data Option) ('module Option 'as OptionModule))
+
+;;; Question lexing: separate Identifier next to QualifiedIdentifier
+;;; or just a method QualifiedIdentifier::is_simple() -> bool
+
+;;; note on parsing export/import paths:
+;;; `Foo.(Bar Ban)` is lexed as:
+;;; QualifiedIdentifier[Foo.] OpeningRoundBracket
+;;; Identifier[Bar] Identifier[Ban] ClosingRoundBracket

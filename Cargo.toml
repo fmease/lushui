@@ -1,0 +1,8 @@
+[package]
+name = "lushuic"
+version = "0.1.0"
+authors = ["León Orell Valerian Liehr <liehr.exchange@gmx.net>"]
+edition = "2018"
+
+[dependencies]
+# colored = "1.8.0"
