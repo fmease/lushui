@@ -5,7 +5,6 @@ use std::str::FromStr;
 
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug, Clone)]
-// @Temp kind, span pub
 pub struct Token {
     pub kind: TokenKind,
     // @Task add pub data: Option<TokenData>,
@@ -37,10 +36,7 @@ pub enum TokenKind {
     Dedentation,
     LineBreak,
     Semicolon,
-    OpeningRoundBracket,
-    ClosingRoundBracket,
-    OpeningCurlyBracket,
-    ClosingCurlyBracket,
+    Bracket(Bracket),
 }
 
 impl TokenKind {
@@ -50,30 +46,29 @@ impl TokenKind {
             _ => false,
         }
     }
+}
 
-    pub fn invert_bracket(&self) -> TokenKind {
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum Bracket {
+    OpeningRound,
+    ClosingRound,
+    OpeningCurly,
+    ClosingCurly,
+}
+
+impl Bracket {
+    // @Question impl std::ops::Not?
+    pub fn invert(self) -> Self {
         match self {
-            Self::OpeningRoundBracket => Self::ClosingRoundBracket,
-            Self::ClosingRoundBracket => Self::OpeningRoundBracket,
-            Self::OpeningCurlyBracket => Self::ClosingCurlyBracket,
-            Self::ClosingCurlyBracket => Self::OpeningCurlyBracket,
-            _ => panic!(),
+            Self::OpeningRound => Self::ClosingRound,
+            Self::ClosingRound => Self::OpeningRound,
+            Self::OpeningCurly => Self::ClosingCurly,
+            Self::ClosingCurly => Self::OpeningCurly,
         }
-    }
-
-    pub fn is_round_bracket(&self) -> bool {
-        match self {
-            Self::OpeningRoundBracket | Self::ClosingRoundBracket => true,
-            Self::OpeningCurlyBracket | Self::ClosingCurlyBracket => false,
-            _ => panic!(),
-        }
-    }
-
-    pub fn is_curly_bracket(&self) -> bool {
-        !self.is_round_bracket()
     }
 }
 
+// @Task implement Copy
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Keyword {
     Alias,
@@ -325,10 +320,10 @@ pub fn lex(source: &str) -> Result<Vec<Token>, Error> {
 
             tokens.push(Token::new(
                 match character {
-                    '(' => TokenKind::OpeningRoundBracket,
-                    ')' => TokenKind::ClosingRoundBracket,
-                    '{' => TokenKind::OpeningCurlyBracket,
-                    '}' => TokenKind::ClosingCurlyBracket,
+                    '(' => TokenKind::Bracket(Bracket::OpeningRound),
+                    ')' => TokenKind::Bracket(Bracket::ClosingRound),
+                    '{' => TokenKind::Bracket(Bracket::OpeningCurly),
+                    '}' => TokenKind::Bracket(Bracket::ClosingCurly),
                     _ => {
                         return Err(Error {
                             kind: ErrorKind::IllegalCharacter(character),

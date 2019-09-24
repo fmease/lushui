@@ -1,4 +1,4 @@
-use crate::error::Span;
+use crate::error::{DisplayWithSource, Span};
 use crate::lexer;
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
@@ -149,18 +149,18 @@ pub fn parse_declaration(_context: &mut Context) -> Result<Declaration> {
     unimplemented!() // @Task
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expression {
     PiLiteral {
         binder: Option<Identifier>,
         parameter: Box<Expression>,
         expression: Box<Expression>,
-        implicit: bool,
+        explicitness: Explicitness,
     },
     Application {
         expression: Box<Expression>,
         argument: Box<Expression>,
-        implicit: bool,
+        explicitness: Explicitness,
     },
     TypeLiteral,
     Identifier(Identifier),
@@ -263,7 +263,7 @@ pub fn parse_expression(context: &mut Context) -> Result<Expression> {
                 binder: None,
                 parameter: Box::new(parameter),
                 expression: Box::new(expression),
-                implicit: false,
+                explicitness: Explicitness::Explicit,
             }
         } else {
             parameter
@@ -279,7 +279,7 @@ pub fn parse_expression(context: &mut Context) -> Result<Expression> {
             expression = Expression::Application {
                 expression: Box::new(expression),
                 argument: Box::new(argument),
-                implicit: false,
+                explicitness: Explicitness::Explicit,
             };
         }
         Ok(expression)
@@ -314,9 +314,9 @@ pub fn parse_expression(context: &mut Context) -> Result<Expression> {
 
     // Bracketed_Expression ::= "(" Expression ")"
     fn parse_bracketed_expression(context: &mut Context) -> Result<Expression> {
-        context.consume(lexer::TokenKind::OpeningRoundBracket)?;
+        context.consume(lexer::TokenKind::Bracket(lexer::Bracket::OpeningRound))?;
         let expression = context.reflect(parse_expression)?;
-        context.consume(lexer::TokenKind::ClosingRoundBracket)?;
+        context.consume(lexer::TokenKind::Bracket(lexer::Bracket::ClosingRound))?;
         Ok(expression)
     }
 
@@ -354,9 +354,9 @@ fn parse_constructor(context: &mut Context) -> Result<Constructor> {
 // @Task inline pattern-match
 #[derive(Debug)]
 pub struct AnnotatedParameterGroup {
-    parameters: Vec<Identifier>,
-    type_annotation: Expression,
-    implicit: bool,
+    pub parameters: Vec<Identifier>,
+    pub type_annotation: Expression,
+    pub explicitness: Explicitness,
 }
 
 // Annotated_Parameter_Group ::=
@@ -364,7 +364,12 @@ pub struct AnnotatedParameterGroup {
 //     "{" Unfenced_Annotated_Parameter_Group "}"
 // Unfenced_Annotated_Parameter_Group ::= Identifier+ Type_Annotation
 fn parse_annotated_parameter_group(context: &mut Context) -> Result<AnnotatedParameterGroup> {
-    let open_brace = parse_opening_bracket(context)?;
+    let openening_bracket = parse_opening_bracket(context)?;
+    // @Note boilerplate
+    let openening_bracket = match openening_bracket.kind {
+        lexer::TokenKind::Bracket(bracket) => bracket,
+        _ => unreachable!(),
+    };
     let mut parameters = Vec::new();
 
     parameters.push(context.consume_identifier()?);
@@ -376,12 +381,12 @@ fn parse_annotated_parameter_group(context: &mut Context) -> Result<AnnotatedPar
     }
 
     let type_annotation = context.reflect(parse_type_annotation)?;
-    context.consume(open_brace.kind.invert_bracket())?;
+    context.consume(lexer::TokenKind::Bracket(openening_bracket.invert()))?;
 
     Ok(AnnotatedParameterGroup {
         parameters,
         type_annotation,
-        implicit: open_brace.kind.is_curly_bracket(),
+        explicitness: openening_bracket.into(),
     })
 }
 
@@ -400,16 +405,21 @@ fn parse_annotated_parameters(context: &mut Context) -> Result<AnnotatedParamete
 }
 
 // @Task inline pattern-match
-#[derive(Debug)]
+#[derive(Debug, Clone)] // @Temp clone
 pub struct ParameterGroup {
-    parameters: Vec<Identifier>,
-    type_annotation: Option<Expression>,
-    implicit: bool,
+    pub parameters: Vec<Identifier>,
+    pub type_annotation: Option<Expression>,
+    pub explicitness: Explicitness,
 }
 
 fn parse_parameter_group(context: &mut Context) -> Result<ParameterGroup> {
     fn parse_optionally_annotated_parameter_group(context: &mut Context) -> Result<ParameterGroup> {
         let opening_bracket = parse_opening_bracket(context)?;
+        // @Note boilerplate
+        let opening_bracket = match opening_bracket.kind {
+            lexer::TokenKind::Bracket(bracket) => bracket,
+            _ => unreachable!(),
+        };
         let mut parameters = Vec::new();
 
         parameters.push(context.consume_identifier()?);
@@ -420,12 +430,12 @@ fn parse_parameter_group(context: &mut Context) -> Result<ParameterGroup> {
 
         let type_annotation = parse_type_annotation(context).ok();
 
-        context.consume(opening_bracket.kind.invert_bracket())?;
+        context.consume(lexer::TokenKind::Bracket(opening_bracket.invert()))?;
 
         Ok(ParameterGroup {
             parameters,
             type_annotation,
-            implicit: opening_bracket.kind.is_curly_bracket(),
+            explicitness: opening_bracket.into(),
         })
     }
 
@@ -434,7 +444,7 @@ fn parse_parameter_group(context: &mut Context) -> Result<ParameterGroup> {
         .map(|identifier| ParameterGroup {
             parameters: vec![identifier],
             type_annotation: None,
-            implicit: false,
+            explicitness: Explicitness::Explicit,
         })
         .or_else(|_| parse_optionally_annotated_parameter_group(context))
 }
@@ -466,8 +476,8 @@ fn _parse_indented<T>(_context: &mut Context, _inner: fn(&mut Context) -> Result
 
 fn parse_opening_bracket(context: &mut Context) -> Result<lexer::Token> {
     context
-        .consume(lexer::TokenKind::OpeningRoundBracket)
-        .or_else(|_| context.consume(lexer::TokenKind::OpeningCurlyBracket))
+        .consume(lexer::TokenKind::Bracket(lexer::Bracket::OpeningRound))
+        .or_else(|_| context.consume(lexer::TokenKind::Bracket(lexer::Bracket::OpeningCurly)))
 }
 
 /// expect either a line break or the end of input
@@ -485,9 +495,15 @@ fn expect_delimiter(context: &Context) -> Result<()> {
 
 // @Note is going to become more complex in the future (or is going to be replaced)
 // when we implement to dotted identifiers, blanks (`'_`) and symbols
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Identifier {
     span: Span,
+}
+
+impl DisplayWithSource for Identifier {
+    fn display_with_source(&self, source: &str) -> String {
+        self.span.display_with_source(source)
+    }
 }
 
 impl TryFrom<lexer::Token> for Identifier {
@@ -498,6 +514,31 @@ impl TryFrom<lexer::Token> for Identifier {
             Ok(Self { span: token.span })
         } else {
             Err(())
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Explicitness {
+    Implicit,
+    Explicit,
+}
+
+impl Explicitness {
+    pub fn brackets(self) -> (char, char) {
+        match self {
+            Self::Implicit => ('{', '}'),
+            Self::Explicit => ('(', ')'),
+        }
+    }
+}
+
+impl From<lexer::Bracket> for Explicitness {
+    fn from(bracket: lexer::Bracket) -> Self {
+        use lexer::Bracket;
+        match bracket {
+            Bracket::OpeningRound | Bracket::ClosingRound => Self::Explicit,
+            Bracket::OpeningCurly | Bracket::ClosingCurly => Self::Implicit,
         }
     }
 }

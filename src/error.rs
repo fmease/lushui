@@ -5,6 +5,16 @@ use std::fmt;
 
 pub type Span = std::ops::RangeInclusive<usize>;
 
+pub trait DisplayWithSource {
+    fn display_with_source(&self, source: &str) -> String;
+}
+
+impl DisplayWithSource for Span {
+    fn display_with_source(&self, source: &str) -> String {
+        source[self.clone()].into()
+    }
+}
+
 pub enum Error {
     Lex(lexer::Error),
     Parse(parser::Error),
@@ -34,17 +44,16 @@ impl Error {
              {space} | {underline_space}{underline}\n\
              {space} |\n\
              {space} = error: {message}\n\
-            ",
+             ",
             space = "",
             message = kind,
             path = filename.unwrap_or("<anonymous>"),
             location = start,
             source = &source[dbg!(line)],
             underline_space = " ".repeat(*rel.start()),
-            underline = "^".repeat(rel.end() + 1 - rel.start())
-            // @Beacon @Note for the carets, we need start and end index relative to the
-            // separate line!
-            // @Task carets below
+            underline = "^".repeat(rel.end() + 1 - rel.start()) // @Beacon @Note for the carets, we need start and end index relative to the
+                                                                // separate line!
+                                                                // @Task carets below
         )
     }
 }
@@ -141,5 +150,10 @@ fn locations_and_line_from_span(source: &str, span: &Span) -> (Location, Locatio
     }
 
     // @Bug we should not need to decr by 1
-    (start, end, index_line_start..=index_line_end - 1, relative_start..=relative_end)
+    (
+        start,
+        end,
+        index_line_start..=index_line_end - 1,
+        relative_start..=relative_end,
+    )
 }
