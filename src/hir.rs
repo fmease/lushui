@@ -210,7 +210,7 @@ impl DisplayWithSource for Expression {
                 type_annotation,
                 expression,
             } => format!(
-                "\\({}{}{}{}) => ({})",
+                "\\({}{}{}){} => ({})",
                 explicitness,
                 binder.display_with(source),
                 parameter
