@@ -5,12 +5,25 @@ use std::fmt;
 
 pub type Span = std::ops::RangeInclusive<usize>;
 
+// @Note the idea is that types with special treatment of indentation (having even further indented elements)
+// overwrite `display_indented_with` and implement `display_with` as `self.display_indented_with(0)`
+// of course, this is bad design and we sure can do better
+// next to the boilerplate-y impl of display_with, the code for display_indented_with needs to repeat the
+// `" ".repeat(indentation * lexer::INDENTATION_IN_SPACES)` logic which breaks abstraction!
+// @Note we could split this into `DisplayWithSource` and `DisplayIndentedWithSource` and use specialization to
+// implement each in terms of each other (where of course, one impl wins to make it unambiguous)
+// @Update removed the indent-logic *later*
+// @Task define indentation-logic (it is inherently connected to displaying, obviously)
 pub trait DisplayWithSource {
-    fn display_with_source(&self, source: &str) -> String;
+    fn display_with(&self, source: &str) -> String;
+    // @Note I still don't know if this API works (global indentation, reduction of manual padding in each impl)
+    // fn display_indented_with(&self, source: &str, indentation: usize) -> String {
+    //     format!("{}{}", " ".repeat(indentation * lexer::INDENTATION_IN_SPACES), self.display_with(source))
+    // }
 }
 
 impl DisplayWithSource for Span {
-    fn display_with_source(&self, source: &str) -> String {
+    fn display_with(&self, source: &str) -> String {
         source[self.clone()].into()
     }
 }
@@ -30,7 +43,8 @@ impl Error {
 
     // @Note once we have more error types, we'll get to the point where
     // it might not make sense to display code
-    // @Task don't print the whole line: set limit of 50~ characters (a window)
+    // @Task don't print the whole line: set limit of 50~ characters (a window) @Note actually, don't: it complicates everything
+    // and i am sure rustc doesn't do this either
     pub fn display(&self, source: &str, filename: Option<&str>) -> String {
         let kind = match self {
             Self::Lex(error) => error.kind.to_string(),
@@ -93,7 +107,7 @@ impl Default for Location {
 }
 
 impl fmt::Display for Location {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}:{}", self.line, self.column)
     }
 }

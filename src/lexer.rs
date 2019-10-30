@@ -27,6 +27,7 @@ pub enum TokenKind {
     Punctuation,
     TextLiteral(String),
 
+    Comma,
     Colon,
     Equals,
     Backslash,
@@ -36,9 +37,11 @@ pub enum TokenKind {
     Dedentation,
     LineBreak,
     Semicolon,
-    Bracket(Bracket),
+    OpeningRoundBracket,
+    ClosingRoundBracket,
 }
 
+// @Temporary
 impl TokenKind {
     pub fn is_text_literal(&self) -> bool {
         match self {
@@ -48,30 +51,9 @@ impl TokenKind {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum Bracket {
-    OpeningRound,
-    ClosingRound,
-    OpeningCurly,
-    ClosingCurly,
-}
-
-impl Bracket {
-    // @Question impl std::ops::Not?
-    pub fn invert(self) -> Self {
-        match self {
-            Self::OpeningRound => Self::ClosingRound,
-            Self::ClosingRound => Self::OpeningRound,
-            Self::OpeningCurly => Self::ClosingCurly,
-            Self::ClosingCurly => Self::OpeningCurly,
-        }
-    }
-}
-
 // @Task implement Copy
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Keyword {
-    Alias,
     As,
     Blank,
     Case,
@@ -85,7 +67,7 @@ pub enum Keyword {
     Parent,
     Root,
     Type,
-    Unsafe,
+    // Unsafe,
 }
 
 impl FromStr for Keyword {
@@ -93,7 +75,6 @@ impl FromStr for Keyword {
 
     fn from_str(source: &str) -> Result<Self, Self::Err> {
         Ok(match source {
-            "alias" => Self::Alias,
             "as" => Self::As,
             "_" => Self::Blank,
             "case" => Self::Case,
@@ -107,13 +88,13 @@ impl FromStr for Keyword {
             "Parent" => Self::Parent,
             "Root" => Self::Root,
             "Type" => Self::Type,
-            "unsafe" => Self::Unsafe,
+            // "unsafe" => Self::Unsafe,
             _ => return Err(()),
         })
     }
 }
 
-const INDENTATION_SIZE: usize = 4;
+pub const INDENTATION_IN_SPACES: usize = 4;
 
 const SIGIL: char = '\'';
 const WHITESPACE: char = ' ';
@@ -144,7 +125,7 @@ fn extend_with_dedentation(tokens: &mut Vec<Token>, start: usize, amount_of_spac
     }
     debug_assert_ne!(start, 0);
     let dedentation = Token::new(TokenKind::Dedentation, start..=start - 1);
-    tokens.extend(std::iter::repeat(dedentation).take(amount_of_spaces / INDENTATION_SIZE));
+    tokens.extend(std::iter::repeat(dedentation).take(amount_of_spaces / INDENTATION_IN_SPACES));
 }
 
 // @Task keep a bracket stack to report better error messages
@@ -204,7 +185,9 @@ pub fn lex(source: &str) -> Result<Vec<Token>, Error> {
             } else {
                 tokens.push(Token::new(TokenKind::Semicolon, start..=end))
             }
-        } else if character == SIGIL || is_identifier_head(character) {
+        }
+        // @Task dotted identifiers (need to be lexed, cannot be parsed bc whitespace matters)
+        else if character == SIGIL || is_identifier_head(character) {
             let keyword_candidate = character == SIGIL;
             let start = index;
             let mut end = start;
@@ -274,8 +257,8 @@ pub fn lex(source: &str) -> Result<Vec<Token>, Error> {
 
             let span = end - absolute_difference + 1..=end;
 
-            if absolute_difference % INDENTATION_SIZE != 0
-                || change == Ordering::Greater && absolute_difference > INDENTATION_SIZE
+            if absolute_difference % INDENTATION_IN_SPACES != 0
+                || change == Ordering::Greater && absolute_difference > INDENTATION_IN_SPACES
             {
                 return Err(Error {
                     kind: ErrorKind::InvalidIndentation(absolute_difference),
@@ -320,10 +303,9 @@ pub fn lex(source: &str) -> Result<Vec<Token>, Error> {
 
             tokens.push(Token::new(
                 match character {
-                    '(' => TokenKind::Bracket(Bracket::OpeningRound),
-                    ')' => TokenKind::Bracket(Bracket::ClosingRound),
-                    '{' => TokenKind::Bracket(Bracket::OpeningCurly),
-                    '}' => TokenKind::Bracket(Bracket::ClosingCurly),
+                    '(' => TokenKind::OpeningRoundBracket,
+                    ')' => TokenKind::ClosingRoundBracket,
+                    ',' => TokenKind::Comma,
                     _ => {
                         return Err(Error {
                             kind: ErrorKind::IllegalCharacter(character),
@@ -341,14 +323,14 @@ pub fn lex(source: &str) -> Result<Vec<Token>, Error> {
     Ok(tokens)
 }
 
-#[derive(Debug)] // @Temp
+#[derive(Debug)] // @Temporary
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Error {
     pub kind: ErrorKind,
     pub span: Span,
 }
 
-#[derive(Debug)] // @Temp
+#[derive(Debug)] // @Temporary
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub enum ErrorKind {
     IllegalCharacter(char),
@@ -357,7 +339,7 @@ pub enum ErrorKind {
 }
 
 impl fmt::Display for ErrorKind {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::IllegalCharacter(character) => write!(
                 f,
@@ -383,6 +365,7 @@ fn _documentation_comment_inner_span(span: &Span) -> Span {
 mod test {
     use super::{lex, Error, ErrorKind, Keyword, Token, TokenKind};
 
+    // @Bug failing due to overflow
     #[test]
     fn whitespace() {
         assert_eq!(lex(""), Ok(Vec::new()));
@@ -424,10 +407,12 @@ mod test {
         }
     }
 
+    // @Bug failing
     #[test]
     fn keyword() {
         assert_eq!(
             lex("'let"),
+            // @Note is now 0..=7 apparently
             Ok(vec![Token::new(TokenKind::Keyword(Keyword::Let), 0..=6)]),
         );
         assert_eq!(

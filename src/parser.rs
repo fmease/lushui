@@ -11,7 +11,7 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 
 // @Task pub parse_file_module
 
-// @Temp pub
+// @Temporary pub
 #[derive(Clone)]
 pub struct Context<'i> {
     tokens: &'i [lexer::Token],
@@ -23,7 +23,7 @@ impl<'i> Context<'i> {
         Self { tokens, index: 0 }
     }
 
-    fn reflect<T>(&mut self, parser: fn(&mut Context) -> Result<T>) -> Result<T> {
+    fn reflect<T>(&mut self, parser: fn(&mut Context<'i>) -> Result<T>) -> Result<T> {
         let mut context = self.clone();
         parser(&mut context).map(|value| {
             *self = context;
@@ -38,7 +38,7 @@ impl<'i> Context<'i> {
             Ok(token)
         } else {
             // @Task also add (list of) expected token(s)
-            // @Bug @Temp dummy span
+            // @Bug @Temporary dummy span
             Err(Error {
                 kind: ErrorKind::UnexpectedToken(token),
                 span: 0..=0,
@@ -62,7 +62,7 @@ impl<'i> Context<'i> {
     }
 
     fn token(&self) -> Result<lexer::Token> {
-        // @Bug @Temp dummy span
+        // @Bug @Temporary dummy span
         self.tokens.get(self.index).cloned().ok_or(Error {
             kind: ErrorKind::UnexpectedEndOfInput,
             span: 0..=0,
@@ -70,7 +70,7 @@ impl<'i> Context<'i> {
     }
 }
 
-#[derive(Debug)] // @Temp
+#[derive(Debug)] // @Temporary
 pub enum Declaration {
     Let {
         binder: Identifier,
@@ -89,8 +89,9 @@ pub enum Declaration {
     Foreign, // @Task
 }
 
-pub fn parse_declaration(_context: &mut Context) -> Result<Declaration> {
-    fn parse_data_declaration(context: &mut Context) -> Result<Declaration> {
+pub fn parse_declaration(_context: &mut Context<'_>) -> Result<Declaration> {
+    // @Beacon @Beacon @Task
+    fn parse_data_declaration(context: &mut Context<'_>) -> Result<Declaration> {
         eprintln!("parsing data declaration..");
         context.consume(lexer::TokenKind::Keyword(lexer::Keyword::Data))?;
         let binder = context.consume_identifier()?;
@@ -118,7 +119,7 @@ pub fn parse_declaration(_context: &mut Context) -> Result<Declaration> {
         })
     }
 
-    fn parse_let_declaration(context: &mut Context) -> Result<Declaration> {
+    fn parse_let_declaration(context: &mut Context<'_>) -> Result<Declaration> {
         context.consume(lexer::TokenKind::Keyword(lexer::Keyword::Let))?;
         let binder = context.consume_identifier()?;
         let parameters = context.reflect(parse_annotated_parameters)?;
@@ -184,10 +185,9 @@ pub enum Expression {
 
 // @Note @Bug indentation logic not implemented (e.g. indent+let-in)
 // Expression ::= Let_In | Lambda_Literal | Pi_Literal_Or_Lower
-pub fn parse_expression(context: &mut Context) -> Result<Expression> {
+pub fn parse_expression(context: &mut Context<'_>) -> Result<Expression> {
     // Let_In ::= "'let" Identifier Parameters Type_Annotation? "=" Expression "'in" Expression
-    fn parse_let_in(context: &mut Context) -> Result<Expression> {
-        dbg!();
+    fn parse_let_in(context: &mut Context<'_>) -> Result<Expression> {
         context.consume(lexer::TokenKind::Keyword(lexer::Keyword::Let))?;
         let binder = context.consume_identifier()?;
         let parameters = context.reflect(parse_parameters)?;
@@ -206,7 +206,7 @@ pub fn parse_expression(context: &mut Context) -> Result<Expression> {
     }
 
     // Lambda_Literal ::= "\" Parameters Type_Annotation? "=>" Expression
-    fn parse_lambda_literal(context: &mut Context) -> Result<Expression> {
+    fn parse_lambda_literal(context: &mut Context<'_>) -> Result<Expression> {
         context.consume(lexer::TokenKind::Backslash)?;
         let parameters = context.reflect(parse_parameters)?;
         let type_annotation = context.reflect(parse_type_annotation).ok().map(Box::new);
@@ -219,61 +219,44 @@ pub fn parse_expression(context: &mut Context) -> Result<Expression> {
         })
     }
 
-    // @Task integrate with expression logic
-    // pub fn parse_pi_literal(context: &mut Context) -> Result<Expression> {
-    //     eprintln!("@@@@@ pi type literal");
-    //     let (binder, parameter, implicit) = if let Ok(open_brace) = parse_opening_bracket(context) {
-    //         // @Note @Task does not need to be that strict: `(Int) -> Int` should be valid as well
-    //         // (rule: parenthesized expression)
-    //         (
-    //             Some(context.consume_identifier()?),
-    //             parse_type_annotation(context)?,
-    //             context
-    //                 .consume(open_brace.kind.invert_bracket())?
-    //                 .kind
-    //                 .is_curly_bracket(),
-    //         )
-    //     } else {
-    //         // @Bug @Temp replace with parse_expression1???
-    //         (None, parse_expression(context)?, false)
-    //     };
-    //     dbg!(&binder, &parameter, &implicit);
-
-    //     context.consume(lexer::TokenKind::ThinArrow)?;
-
-    //     // @Question parse_expression or parse_expression0?
-    //     let result = parse_expression(context)?;
-
-    //     Ok(Expression::PiLiteral {
-    //         binder,
-    //         parameter: Box::new(parameter),
-    //         implicit,
-    //         result: Box::new(result),
-    //     })
-    // }
-
-    // @Task with binder (implicit and explicit parameter)
+    // @Task update grammar
     // Pi_Literal_Or_Lower %right% ::= Application_Or_Lower (-> Pi_Literal_Or_Lower)*
-    fn parse_pi_literal_or_lower(context: &mut Context) -> Result<Expression> {
-        let parameter = context.reflect(parse_application_or_lower)?;
-        Ok(if context.expect(lexer::TokenKind::ThinArrow).is_ok() {
-            context.accept();
-            let expression = context.reflect(parse_pi_literal_or_lower)?;
-            Expression::PiLiteral {
-                binder: None,
+    fn parse_pi_literal_or_lower(context: &mut Context<'_>) -> Result<Expression> {
+        let (explicitness, binder, parameter) = context
+            .reflect(|context| {
+                context.consume(lexer::TokenKind::OpeningRoundBracket)?;
+
+                let explicitness = consume_explicitness_comma(context);
+                let binder = context.consume_identifier()?;
+                let parameter = parse_type_annotation(context)?;
+
+                context.consume(lexer::TokenKind::ClosingRoundBracket)?;
+
+                Ok((explicitness, Some(binder), parameter))
+            })
+            .or_else(|_| {
+                // @Question do we need reflect here?
+                context
+                    .reflect(parse_application_or_lower)
+                    .map(|parameter| (Explicitness::Explicit, None, parameter))
+            })?;
+
+        Ok(match context.consume(lexer::TokenKind::ThinArrow) {
+            Ok(_) => Expression::PiLiteral {
+                expression: Box::new(context.reflect(parse_pi_literal_or_lower)?),
+                binder,
                 parameter: Box::new(parameter),
-                expression: Box::new(expression),
-                explicitness: Explicitness::Explicit,
-            }
-        } else {
-            parameter
+                explicitness,
+            },
+            Err(_) if binder.is_none() => parameter,
+            Err(error) => return Err(error),
         })
     }
 
-    // @Task explicit implicit arguments
+    // @Task application with colon / explicit implicit arguments
     // @Task application with semicolon
     // Application_Or_Lower %left% ::= Lower_Expression*
-    fn parse_application_or_lower(context: &mut Context) -> Result<Expression> {
+    fn parse_application_or_lower(context: &mut Context<'_>) -> Result<Expression> {
         let mut expression = context.reflect(parse_lower_expression)?;
         while let Ok(argument) = context.reflect(parse_lower_expression) {
             expression = Expression::Application {
@@ -287,7 +270,7 @@ pub fn parse_expression(context: &mut Context) -> Result<Expression> {
 
     // Lower_Expression ::=
     //     Type_Literal | Identifier | Hole | Bracketed_Expression
-    fn parse_lower_expression(context: &mut Context) -> Result<Expression> {
+    fn parse_lower_expression(context: &mut Context<'_>) -> Result<Expression> {
         parse_type_literal(context)
             .or_else(|_| parse_identifier(context))
             .or_else(|_| context.reflect(parse_hole))
@@ -295,28 +278,28 @@ pub fn parse_expression(context: &mut Context) -> Result<Expression> {
     }
 
     // Type_Literal ::= %type literal%
-    fn parse_type_literal(context: &mut Context) -> Result<Expression> {
+    fn parse_type_literal(context: &mut Context<'_>) -> Result<Expression> {
         context
             .consume(lexer::TokenKind::Keyword(lexer::Keyword::Type))
             .map(|_| Expression::TypeLiteral)
     }
 
     // Identifier ::= %identifier%
-    fn parse_identifier(context: &mut Context) -> Result<Expression> {
+    fn parse_identifier(context: &mut Context<'_>) -> Result<Expression> {
         context.consume_identifier().map(Expression::Identifier)
     }
 
     // Hole ::= %hole%
-    fn parse_hole(context: &mut Context) -> Result<Expression> {
+    fn parse_hole(context: &mut Context<'_>) -> Result<Expression> {
         context.consume(lexer::TokenKind::Keyword(lexer::Keyword::Hole))?;
         Ok(Expression::Hole(context.consume_identifier()?))
     }
 
     // Bracketed_Expression ::= "(" Expression ")"
-    fn parse_bracketed_expression(context: &mut Context) -> Result<Expression> {
-        context.consume(lexer::TokenKind::Bracket(lexer::Bracket::OpeningRound))?;
+    fn parse_bracketed_expression(context: &mut Context<'_>) -> Result<Expression> {
+        context.consume(lexer::TokenKind::OpeningRoundBracket)?;
         let expression = context.reflect(parse_expression)?;
-        context.consume(lexer::TokenKind::Bracket(lexer::Bracket::ClosingRound))?;
+        context.consume(lexer::TokenKind::ClosingRoundBracket)?;
         Ok(expression)
     }
 
@@ -334,7 +317,7 @@ pub struct Constructor {
 }
 
 // @Task very future: unnameable constructor `'_`
-fn parse_constructor(context: &mut Context) -> Result<Constructor> {
+fn parse_constructor(context: &mut Context<'_>) -> Result<Constructor> {
     eprintln!(">>>> ctor");
     let binder = context.consume_identifier()?;
     let parameters = parse_annotated_parameters(context)?;
@@ -359,17 +342,11 @@ pub struct AnnotatedParameterGroup {
     pub explicitness: Explicitness,
 }
 
-// Annotated_Parameter_Group ::=
-//     "(" Unfenced_Annotated_Parameter_Group ")" |
-//     "{" Unfenced_Annotated_Parameter_Group "}"
+// Annotated_Parameter_Group ::= "(" ","? Unfenced_Annotated_Parameter_Group ")"
 // Unfenced_Annotated_Parameter_Group ::= Identifier+ Type_Annotation
-fn parse_annotated_parameter_group(context: &mut Context) -> Result<AnnotatedParameterGroup> {
-    let openening_bracket = parse_opening_bracket(context)?;
-    // @Note boilerplate
-    let openening_bracket = match openening_bracket.kind {
-        lexer::TokenKind::Bracket(bracket) => bracket,
-        _ => unreachable!(),
-    };
+fn parse_annotated_parameter_group(context: &mut Context<'_>) -> Result<AnnotatedParameterGroup> {
+    context.consume(lexer::TokenKind::OpeningRoundBracket)?;
+    let explicitness = consume_explicitness_comma(context);
     let mut parameters = Vec::new();
 
     parameters.push(context.consume_identifier()?);
@@ -381,19 +358,19 @@ fn parse_annotated_parameter_group(context: &mut Context) -> Result<AnnotatedPar
     }
 
     let type_annotation = context.reflect(parse_type_annotation)?;
-    context.consume(lexer::TokenKind::Bracket(openening_bracket.invert()))?;
+    context.consume(lexer::TokenKind::ClosingRoundBracket)?;
 
     Ok(AnnotatedParameterGroup {
         parameters,
         type_annotation,
-        explicitness: openening_bracket.into(),
+        explicitness,
     })
 }
 
 pub type AnnotatedParameters = Vec<AnnotatedParameterGroup>;
 
 // Annotated_Parameters ::= Annotated_Parameter_Group*
-fn parse_annotated_parameters(context: &mut Context) -> Result<AnnotatedParameters> {
+fn parse_annotated_parameters(context: &mut Context<'_>) -> Result<AnnotatedParameters> {
     let mut parameters = Vec::new();
 
     // @Bug drops errors @Note updated code, check for bug @Task
@@ -405,21 +382,20 @@ fn parse_annotated_parameters(context: &mut Context) -> Result<AnnotatedParamete
 }
 
 // @Task inline pattern-match
-#[derive(Debug, Clone)] // @Temp clone
+#[derive(Debug, Clone)] // @Temporary clone
 pub struct ParameterGroup {
     pub parameters: Vec<Identifier>,
     pub type_annotation: Option<Expression>,
     pub explicitness: Explicitness,
 }
 
-fn parse_parameter_group(context: &mut Context) -> Result<ParameterGroup> {
-    fn parse_optionally_annotated_parameter_group(context: &mut Context) -> Result<ParameterGroup> {
-        let opening_bracket = parse_opening_bracket(context)?;
-        // @Note boilerplate
-        let opening_bracket = match opening_bracket.kind {
-            lexer::TokenKind::Bracket(bracket) => bracket,
-            _ => unreachable!(),
-        };
+// @Task grammar snippet above function decl
+fn parse_parameter_group(context: &mut Context<'_>) -> Result<ParameterGroup> {
+    fn parse_optionally_annotated_parameter_group(
+        context: &mut Context<'_>,
+    ) -> Result<ParameterGroup> {
+        context.consume(lexer::TokenKind::OpeningRoundBracket)?;
+        let explicitness = consume_explicitness_comma(context);
         let mut parameters = Vec::new();
 
         parameters.push(context.consume_identifier()?);
@@ -430,12 +406,12 @@ fn parse_parameter_group(context: &mut Context) -> Result<ParameterGroup> {
 
         let type_annotation = parse_type_annotation(context).ok();
 
-        context.consume(lexer::TokenKind::Bracket(opening_bracket.invert()))?;
+        context.consume(lexer::TokenKind::ClosingRoundBracket)?;
 
         Ok(ParameterGroup {
             parameters,
             type_annotation,
-            explicitness: opening_bracket.into(),
+            explicitness,
         })
     }
 
@@ -452,7 +428,7 @@ fn parse_parameter_group(context: &mut Context) -> Result<ParameterGroup> {
 pub type Parameters = Vec<ParameterGroup>;
 
 // Parameters ::= Parameter_Group*
-fn parse_parameters(context: &mut Context) -> Result<Parameters> {
+fn parse_parameters(context: &mut Context<'_>) -> Result<Parameters> {
     let mut parameters = Vec::new();
 
     while let Ok(parameter_group) = context.reflect(parse_parameter_group) {
@@ -463,25 +439,29 @@ fn parse_parameters(context: &mut Context) -> Result<Parameters> {
 }
 
 // Type_Annotation ::= ":" Expression
-fn parse_type_annotation(context: &mut Context) -> Result<Expression> {
+fn parse_type_annotation(context: &mut Context<'_>) -> Result<Expression> {
     context.consume(lexer::TokenKind::Colon)?;
     context.reflect(parse_expression)
 }
 
 // fn parse_possibly_indented @Task
 
-fn _parse_indented<T>(_context: &mut Context, _inner: fn(&mut Context) -> Result<T>) -> Result<T> {
+fn _parse_indented<T>(
+    _context: &mut Context<'_>,
+    _inner: fn(&mut Context<'_>) -> Result<T>,
+) -> Result<T> {
     unimplemented!() // @Task
 }
 
-fn parse_opening_bracket(context: &mut Context) -> Result<lexer::Token> {
-    context
-        .consume(lexer::TokenKind::Bracket(lexer::Bracket::OpeningRound))
-        .or_else(|_| context.consume(lexer::TokenKind::Bracket(lexer::Bracket::OpeningCurly)))
+fn consume_explicitness_comma(context: &mut Context<'_>) -> Explicitness {
+    match context.consume(lexer::TokenKind::Comma) {
+        Ok(_) => Explicitness::Implicit,
+        Err(_) => Explicitness::Explicit,
+    }
 }
 
 /// expect either a line break or the end of input
-fn expect_delimiter(context: &Context) -> Result<()> {
+fn expect_delimiter(context: &Context<'_>) -> Result<()> {
     if let Ok(token) = context.token() {
         if token.kind != lexer::TokenKind::LineBreak {
             return Err(Error {
@@ -501,8 +481,8 @@ pub struct Identifier {
 }
 
 impl DisplayWithSource for Identifier {
-    fn display_with_source(&self, source: &str) -> String {
-        self.span.display_with_source(source)
+    fn display_with(&self, source: &str) -> String {
+        self.span.display_with(source)
     }
 }
 
@@ -524,43 +504,33 @@ pub enum Explicitness {
     Explicit,
 }
 
-impl Explicitness {
-    pub fn brackets(self) -> (char, char) {
+impl fmt::Display for Explicitness {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Implicit => ('{', '}'),
-            Self::Explicit => ('(', ')'),
-        }
-    }
-}
-
-impl From<lexer::Bracket> for Explicitness {
-    fn from(bracket: lexer::Bracket) -> Self {
-        use lexer::Bracket;
-        match bracket {
-            Bracket::OpeningRound | Bracket::ClosingRound => Self::Explicit,
-            Bracket::OpeningCurly | Bracket::ClosingCurly => Self::Implicit,
+            Self::Implicit => f.write_str(","),
+            Self::Explicit => f.write_str(""),
         }
     }
 }
 
 // @Task store span information
-#[derive(Debug)] // @Temp
+#[derive(Debug)] // @Temporary
 pub struct Error {
     pub kind: ErrorKind,
     pub span: Span,
 }
 
-#[derive(Debug)] // @Temp
+#[derive(Debug)] // @Temporary
 pub enum ErrorKind {
     UnexpectedEndOfInput,
     UnexpectedToken(lexer::Token),
 }
 
 impl fmt::Display for ErrorKind {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnexpectedEndOfInput => write!(f, "unexpected end of input"),
-            // @Temp
+            // @Temporary
             Self::UnexpectedToken(token) => write!(f, "unexpected token {:?}", token.kind),
         }
     }

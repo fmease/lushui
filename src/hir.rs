@@ -23,20 +23,40 @@ pub enum Declaration {
     Foreign, // @Task
 }
 
+// @Question should the line break be part of the result? I don't think so:
+// The parent context should decide (here: a module) (e.g. no line break on the end of output)
+// @Task reduce amount of (String) allocations
+// @Bug indentation not correctly handled (e.g. an indented data declaration doesn't have its constructors indented)
+// @Task implement indentation logic (@Note for now, it's not that relevant because we don*t have modules yet, so a data
+// declaration is never actually indented, also expressions which face the same issue when pretty-printing, are printed out in one single line!)
 impl DisplayWithSource for Declaration {
-    fn display_with_source(&self, source: &str) -> String {
+    fn display_with(&self, source: &str) -> String {
         match self {
             Self::Let {
                 binder,
                 type_annotation,
                 expression,
             } => format!(
-                "'let {}: {} = {}\n",
-                binder.display_with_source(source),
-                type_annotation.display_with_source(source),
-                expression.display_with_source(source)
+                "'let {}: {} = {}",
+                binder.display_with(source),
+                type_annotation.display_with(source),
+                expression.display_with(source)
             ),
-            _ => unimplemented!() // @Task @Beacon
+            Self::Data {
+                binder,
+                type_annotation,
+                constructors,
+            } => format!(
+                "'data {}: {}\n{}",
+                binder.display_with(source),
+                type_annotation.display_with(source),
+                constructors
+                    .into_iter()
+                    .map(|constructor| format!("    {}", constructor.display_with(source)))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            ),
+            _ => unimplemented!(),
         }
     }
 }
@@ -52,7 +72,7 @@ pub fn lower_declaration(declaration: &parser::Declaration) -> Declaration {
             // @Note type_annotation is currently lowered twice
             // @Task remove duplicate work
 
-            let mut expression = lower_expression(&expression); // @Temp
+            let mut expression = lower_expression(&expression); // @Temporary
 
             {
                 let mut type_annotation =
@@ -67,6 +87,7 @@ pub fn lower_declaration(declaration: &parser::Declaration) -> Declaration {
                             binder: binder.clone(),
                             // @Note expensive cloning
                             parameter: parameter.clone(),
+                            explicitness: parameter_group.explicitness,
                             type_annotation: type_annotation.next(),
                             expression: Box::new(expression),
                         };
@@ -99,6 +120,18 @@ pub struct Constructor {
     pub type_annotation: Expression,
 }
 
+// @Question should the line break/indentation be part of the result? I don't think so:
+// The parent context should decide (e.g. no line break on the end of output, further indentation)
+impl DisplayWithSource for Constructor {
+    fn display_with(&self, source: &str) -> String {
+        format!(
+            "{}: {}",
+            self.binder.display_with(source),
+            self.type_annotation.display_with(source)
+        )
+    }
+}
+
 fn lower_constructor(constructor: &parser::Constructor) -> Constructor {
     Constructor {
         binder: constructor.binder.clone(),
@@ -129,6 +162,7 @@ pub enum Expression {
     LambdaLiteral {
         binder: Identifier,
         parameter: Option<Box<Expression>>,
+        explicitness: Explicitness,
         type_annotation: Option<Box<Expression>>,
         expression: Box<Expression>,
     },
@@ -139,28 +173,57 @@ pub enum Expression {
 // @Task display fewer round brackets by making use of precedence
 // @Note many wasted allocations (intermediate Strings)
 impl DisplayWithSource for Expression {
-    fn display_with_source(&self, source: &str) -> String {
+    fn display_with(&self, source: &str) -> String {
         match self {
             Self::PiLiteral {
                 binder,
                 parameter,
                 expression,
                 explicitness,
-            } => {
-                let (left, right) = explicitness.brackets();
-                format!(
-                    "{}{}{}{} -> ({})",
-                    left,
-                    binder
-                        .as_ref()
-                        .map(|binder| format!("{}: ", binder.display_with_source(source)))
-                        .unwrap_or_default(),
-                    right,
-                    parameter.display_with_source(source),
-                    expression.display_with_source(source),
-                )
-            },
-            _ => unimplemented!() // @Beacon @Task
+            } => format!(
+                "({}{}{}) -> ({})",
+                explicitness,
+                binder
+                    .as_ref()
+                    .map(|binder| format!("{}: ", binder.display_with(source)))
+                    .unwrap_or_default(),
+                parameter.display_with(source),
+                expression.display_with(source),
+            ),
+            Self::Application {
+                expression,
+                argument,
+                explicitness,
+            } => format!(
+                "({}) ({}{})",
+                expression.display_with(source),
+                explicitness,
+                argument.display_with(source),
+            ),
+            Self::TypeLiteral => "'Type".into(),
+            Self::Identifier(identifier) => identifier.display_with(source),
+            Self::Hole(identifier) => format!("'hole {}", identifier.display_with(source)),
+            Self::LambdaLiteral {
+                binder,
+                parameter,
+                explicitness,
+                type_annotation,
+                expression,
+            } => format!(
+                "\\({}{}{}{}) => ({})",
+                explicitness,
+                binder.display_with(source),
+                parameter
+                    .as_ref()
+                    .map(|parameter| format!(": {}", parameter.display_with(source)))
+                    .unwrap_or_default(),
+                type_annotation
+                    .as_ref()
+                    .map(|type_annotation| format!(": {}", type_annotation.display_with(source)))
+                    .unwrap_or_default(),
+                expression.display_with(source)
+            ),
+            _ => unimplemented!(),
         }
     }
 }
@@ -214,6 +277,7 @@ pub fn lower_expression(expression: &parser::Expression) -> Expression {
                         binder: binder.clone(),
                         // @Note expensive clone
                         parameter: parameter.clone(),
+                        explicitness: parameter_group.explicitness,
                         type_annotation: type_annotation.next(),
                         expression: Box::new(expression),
                     };
@@ -222,6 +286,8 @@ pub fn lower_expression(expression: &parser::Expression) -> Expression {
             expression
         }
         // @Task @Beacon verify
+        // @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon
+        // @Note we did all this printing-logic to debug/"verify" the lowering of let/ins
         parser::Expression::LetIn {
             binder,
             parameters,
@@ -248,6 +314,7 @@ pub fn lower_expression(expression: &parser::Expression) -> Expression {
                         binder: binder.clone(),
                         // @Note expensive clone
                         parameter: parameter.clone(),
+                        explicitness: parameter_group.explicitness,
                         type_annotation: type_annotation.next(),
                         expression: Box::new(expression),
                     };
@@ -261,6 +328,7 @@ pub fn lower_expression(expression: &parser::Expression) -> Expression {
                     // in the chain (`->`) of parameters, there might always be one missing and
                     // we don't support partial type annotations yet (using `'_`)
                     parameter: None,
+                    explicitness: Explicitness::Explicit,
                     type_annotation: None,
                     expression: Box::new(lower_expression(scope)),
                 }),

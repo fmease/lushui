@@ -1,4 +1,4 @@
-#![forbid(bare_trait_objects, unused_must_use)]
+#![forbid(rust_2018_idioms, unused_must_use)]
 
 use lushuic::{error, lexer, parser};
 
