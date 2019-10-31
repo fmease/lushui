@@ -1,4 +1,4 @@
-//! HIR — hig-level immediate representation
+//! HIR — high-level intermediate representation
 
 use crate::error::DisplayWithSource;
 use crate::parser::{self, Explicitness, Identifier};
@@ -285,9 +285,6 @@ pub fn lower_expression(expression: &parser::Expression) -> Expression {
             }
             expression
         }
-        // @Task @Beacon verify
-        // @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon
-        // @Note we did all this printing-logic to debug/"verify" the lowering of let/ins
         parser::Expression::LetIn {
             binder,
             parameters,

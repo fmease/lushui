@@ -356,11 +356,6 @@ impl fmt::Display for ErrorKind {
     }
 }
 
-fn _documentation_comment_inner_span(span: &Span) -> Span {
-    const SHIFT: usize = ";;".len();
-    span.start() + SHIFT..=*span.end()
-}
-
 #[cfg(test)]
 mod test {
     use super::{lex, Error, ErrorKind, Keyword, Token, TokenKind};

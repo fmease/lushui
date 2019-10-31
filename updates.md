@@ -1,4 +1,19 @@
-# Language Updates
+# Language Updates/Proposals
+
+## 12019-10-13
+
+* Implicit parameters/arguments no longer embraced in `{` and `}` but in `(,` and `)`
+* Built-in types (text, int, ..) are keywords (`'Text`, `'Int`, ...) because they have
+  literals. The literals could not exist without the types
+
+## 12019-10-07
+
+* This is a proposal: Syntactically, we are able to allow **type annotation expressions**
+  which are notated with an infix colon. The thing is, it gets unintuitive with the syntax
+  of pi literals. We might accept this cost:
+  `(A: 'Type) -> Int` does **not** mean type annotation inside a pi literal.
+  To express the latter, you need to add extra parenthesis:
+  `((A: 'Type))`-> Int`. For now, the parsing order is kept different
 
 ## 12019-06-03
 

@@ -89,7 +89,7 @@ pub enum Declaration {
     Foreign, // @Task
 }
 
-pub fn parse_declaration(_context: &mut Context<'_>) -> Result<Declaration> {
+pub fn parse_declaration(context: &mut Context<'_>) -> Result<Declaration> {
     // @Beacon @Beacon @Task
     fn parse_data_declaration(context: &mut Context<'_>) -> Result<Declaration> {
         eprintln!("parsing data declaration..");
@@ -147,7 +147,12 @@ pub fn parse_declaration(_context: &mut Context<'_>) -> Result<Declaration> {
         unimplemented!()
     }
 
-    unimplemented!() // @Task
+    // @Temporary comment; parse_data_declaration not ready
+    // context.reflect(parse_data_declaration)
+    //     .or_else(|_| context.reflect(parse_let_declaration))
+
+    // @Temporary missing all other types of declarations
+    parse_let_declaration(context)
 }
 
 #[derive(Debug, Clone)]
@@ -253,16 +258,24 @@ pub fn parse_expression(context: &mut Context<'_>) -> Result<Expression> {
         })
     }
 
-    // @Task application with colon / explicit implicit arguments
     // @Task application with semicolon
-    // Application_Or_Lower %left% ::= Lower_Expression*
+    // Application_Or_Lower %left% ::= Lower_Expression (Lower_Expression | "(" "," Expression ")")*
     fn parse_application_or_lower(context: &mut Context<'_>) -> Result<Expression> {
         let mut expression = context.reflect(parse_lower_expression)?;
-        while let Ok(argument) = context.reflect(parse_lower_expression) {
+        while let Ok((argument, explicitness)) = context
+            .reflect(|context| Ok((parse_lower_expression(context)?, Explicitness::Explicit)))
+            .or_else(|_| -> Result<_> {
+                context.consume(lexer::TokenKind::OpeningRoundBracket)?;
+                context.consume(lexer::TokenKind::Comma)?;
+                let expression = parse_expression(context)?;
+                context.consume(lexer::TokenKind::ClosingRoundBracket)?;
+                Ok((expression, Explicitness::Implicit))
+            })
+        {
             expression = Expression::Application {
                 expression: Box::new(expression),
                 argument: Box::new(argument),
-                explicitness: Explicitness::Explicit,
+                explicitness,
             };
         }
         Ok(expression)
@@ -289,7 +302,7 @@ pub fn parse_expression(context: &mut Context<'_>) -> Result<Expression> {
         context.consume_identifier().map(Expression::Identifier)
     }
 
-    // Hole ::= %hole%
+    // Hole ::= "'hole" %identifier%
     fn parse_hole(context: &mut Context<'_>) -> Result<Expression> {
         context.consume(lexer::TokenKind::Keyword(lexer::Keyword::Hole))?;
         Ok(Expression::Hole(context.consume_identifier()?))
