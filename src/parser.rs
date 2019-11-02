@@ -1,5 +1,5 @@
 use crate::error::{DisplayWithSource, Span};
-use crate::lexer;
+use crate::lexer::{self, Atom};
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
 
@@ -14,12 +14,12 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 // @Temporary pub
 #[derive(Clone)]
 pub struct Context<'i> {
-    tokens: &'i [lexer::Token],
+    tokens: &'i [lexer::SourceToken],
     index: usize,
 }
 
 impl<'i> Context<'i> {
-    pub fn new(tokens: &'i [lexer::Token]) -> Self {
+    pub fn new(tokens: &'i [lexer::SourceToken]) -> Self {
         Self { tokens, index: 0 }
     }
 
@@ -32,9 +32,9 @@ impl<'i> Context<'i> {
     }
 
     // @Note unused exept in consume
-    fn expect(&self, token_kind: lexer::TokenKind) -> Result<lexer::Token> {
+    fn expect(&self, token_kind: lexer::TokenKind) -> Result<lexer::SourceToken> {
         let token = self.token()?;
-        if token.kind == token_kind {
+        if token.kind() == token_kind {
             Ok(token)
         } else {
             // @Task also add (list of) expected token(s)
@@ -46,7 +46,7 @@ impl<'i> Context<'i> {
         }
     }
 
-    fn consume(&mut self, token_kind: lexer::TokenKind) -> Result<lexer::Token> {
+    fn consume(&mut self, token_kind: lexer::TokenKind) -> Result<lexer::SourceToken> {
         let token = self.expect(token_kind)?;
         self.accept();
         Ok(token)
@@ -61,7 +61,7 @@ impl<'i> Context<'i> {
         self.index += 1;
     }
 
-    fn token(&self) -> Result<lexer::Token> {
+    fn token(&self) -> Result<lexer::SourceToken> {
         // @Bug @Temporary dummy span
         self.tokens.get(self.index).cloned().ok_or(Error {
             kind: ErrorKind::UnexpectedEndOfInput,
@@ -508,7 +508,7 @@ fn consume_explicitness_comma(context: &mut Context<'_>) -> Explicitness {
 /// expect either a line break or the end of input
 fn expect_delimiter(context: &Context<'_>) -> Result<()> {
     if let Ok(token) = context.token() {
-        if token.kind != lexer::TokenKind::LineBreak {
+        if token.kind() != lexer::TokenKind::LineBreak {
             return Err(Error {
                 kind: ErrorKind::UnexpectedToken(token),
                 span: 0..=0,
@@ -534,7 +534,8 @@ fn expect_delimiter(context: &Context<'_>) -> Result<()> {
 // @Note for effluvium
 #[derive(PartialEq, Eq, Hash)]
 pub struct Identifier {
-    span: Span,
+    pub atom: Atom,
+    pub span: Span,
 }
 
 impl DisplayWithSource for Identifier {
@@ -543,14 +544,16 @@ impl DisplayWithSource for Identifier {
     }
 }
 
-impl TryFrom<lexer::Token> for Identifier {
+impl TryFrom<lexer::SourceToken> for Identifier {
     type Error = ();
 
-    fn try_from(token: lexer::Token) -> Result<Self, Self::Error> {
-        if let lexer::TokenKind::Identifier = token.kind {
-            Ok(Self { span: token.span })
-        } else {
-            Err(())
+    fn try_from(token: lexer::SourceToken) -> Result<Self, Self::Error> {
+        match token.token {
+            lexer::Token::Identifier(atom) => Ok(Self {
+                atom,
+                span: token.span,
+            }),
+            _ => Err(()),
         }
     }
 }
@@ -580,7 +583,7 @@ pub struct Error {
 #[derive(Debug)] // @Temporary
 pub enum ErrorKind {
     UnexpectedEndOfInput,
-    UnexpectedToken(lexer::Token),
+    UnexpectedToken(lexer::SourceToken),
 }
 
 impl fmt::Display for ErrorKind {
@@ -588,7 +591,7 @@ impl fmt::Display for ErrorKind {
         match self {
             Self::UnexpectedEndOfInput => write!(f, "unexpected end of input"),
             // @Temporary
-            Self::UnexpectedToken(token) => write!(f, "unexpected token {:?}", token.kind),
+            Self::UnexpectedToken(token) => write!(f, "unexpected token {:?}", token.kind()),
         }
     }
 }

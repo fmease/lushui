@@ -5,6 +5,7 @@ use std::fmt;
 
 pub type Span = std::ops::RangeInclusive<usize>;
 
+// @Task @Beacon @Beacon @Beacon remove this trait and replace all impls with Display
 // @Note the idea is that types with special treatment of indentation (having even further indented elements)
 // overwrite `display_indented_with` and implement `display_with` as `self.display_indented_with(0)`
 // of course, this is bad design and we sure can do better
