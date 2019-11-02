@@ -7,6 +7,7 @@ use crate::parser::{self, Explicitness, Identifier};
 
 // @Task lower span information
 
+// @Beacon @Beacon @Task add span information!!!
 pub enum Declaration {
     Let {
         binder: Identifier,
@@ -142,6 +143,7 @@ fn lower_constructor(constructor: &parser::Constructor) -> Constructor {
     }
 }
 
+// @Beacon @Beacon @Task add span information!!!
 // @Task improve naming (binder, parameter, etcetera)
 #[derive(Clone)]
 pub enum Expression {

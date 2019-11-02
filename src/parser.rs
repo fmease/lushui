@@ -70,6 +70,7 @@ impl<'i> Context<'i> {
     }
 }
 
+// @Beacon @Beacon @Task add span information!!
 #[derive(Debug)] // @Temporary
 pub enum Declaration {
     Let {
@@ -155,6 +156,7 @@ pub fn parse_declaration(context: &mut Context<'_>) -> Result<Declaration> {
     parse_let_declaration(context)
 }
 
+// @Beacon @Beacon @Beacon @Task add span information!!!
 #[derive(Debug, Clone)]
 pub enum Expression {
     PiLiteral {
@@ -243,6 +245,7 @@ pub fn parse_expression(context: &mut Context<'_>) -> Result<Expression> {
                 // @Question do we need reflect here?
                 context
                     .reflect(parse_application_or_lower)
+                    // .reflect(parse_semicolon_application_or_lower)
                     .map(|parameter| (Explicitness::Explicit, None, parameter))
             })?;
 
@@ -257,6 +260,35 @@ pub fn parse_expression(context: &mut Context<'_>) -> Result<Expression> {
             Err(error) => return Err(error),
         })
     }
+
+    // @Beacon @Beacon @Beacon @Note semicolon application
+    // Is right-associative and apparently (Haskell) has the same precedence
+    // as `->` which is also right-assoc
+    // Interaction between application, `;` and `->` looks like:
+    // Alpha Beta -> Gamma Delta ;;; (Alpha Beta) -> (Gamma Delta)
+    // Alpha; Beta -> Gamma; Delta ;;; (Alpha) (Beta -> ((Gamma) (Delta)))
+    // @Task grammar
+    // fn parse_semicolon_application_or_lower(context: &mut Context<'_>) -> Result<Expression> {
+    //     let expression = parse_application_or_lower(context)?;
+
+    //     Ok(if context.consume(lexer::TokenKind::Semicolon).is_ok() {
+    //         Expression::Application {
+    //             expression: Box::new(expression),
+    //             argument: Box::new(context.reflect(parse_semicolon_application_or_lower)?),
+    //             explicitness: Explicitness::Explicit,
+    //         }
+    //     } else {
+    //         expression
+    //     })
+    // }
+
+    // @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon
+    // @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon
+    // @Task implement semicolon application
+    // @Note the logic should probably take place inside parse_application_or_lower
+    // @Note: The precedence of semicolon application and pi literals IS THE SAME
+    // we don't need the "or_lower"-logic here but simply an `or_else`
+    // @Question where exactly to impl??
 
     // @Task application with semicolon
     // Application_Or_Lower %left% ::= Lower_Expression (Lower_Expression | "(" "," Expression ")")*
@@ -488,7 +520,19 @@ fn expect_delimiter(context: &Context<'_>) -> Result<()> {
 
 // @Note is going to become more complex in the future (or is going to be replaced)
 // when we implement to dotted identifiers, blanks (`'_`) and symbols
+// @Note and possibly also generated identifiers (see effluvium::Variable) except if
+// we use a variation on debruijn-indeces
+// @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon
+// @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon
+// @Task add the field symbol: Symbol where Symbol is an index into the interned string
+// pool so we can actually *use* Identifier. Currently, it's only usable for error reporting
+// which we actually don't do anymore with span information (after lexing)
+// @Note it think all progress is halted until we implement string interning
+// (unless we resolve those spans into Strings when translating from HIR to effluvium IR)
+// This also removes the need for DisplayWithSource
 #[derive(Debug, Clone)]
+// @Note for effluvium
+#[derive(PartialEq, Eq, Hash)]
 pub struct Identifier {
     span: Span,
 }
