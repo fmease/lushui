@@ -113,6 +113,20 @@ pub enum Declaration {
     ExprStmt(Expr),
 }
 
+// @Temporary
+impl fmt::Display for Declaration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Let {
+                binder,
+                type_,
+                expr,
+            } => write!(f, "(LET {} : ({}) = ({}))", binder, type_, expr),
+            _ => unimplemented!(), // @Task
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Constructor {
     pub binder: Variable,
@@ -172,10 +186,6 @@ impl Declaration {
         // })
     }
 
-    // @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon 
-    // @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon 
-    // @Bug @Bug @Bug still has strange equality errors (e.g. `À` not found even though
-    // it should be in scope) @Question broken Eq/Hash implementations?
     // @Task make pure returning new Context
     // @Task change name to register2 b.c. we are a lazy lang, we should only do type_checking here
     pub fn evaluate(&self, context: MutCtx, state: State<'_>) -> Result<Option<(Expr, Expr)>> {
@@ -190,6 +200,7 @@ impl Declaration {
                     return Err(Error::AlreadyDefined);
                 }
                 // @Task @Beacon @Bug check equality infered and given type
+                // @Update @Question ^^^^^^ what did I mean by this message above?
                 let infered_type = expr.infer_type(context.clone(), state)?;
                 let value = expr.normalize(context.clone(), state)?;
                 context.insert_binding(binder.clone(), infered_type, value);
@@ -327,6 +338,7 @@ impl Expr {
                 )?;
                 Expr::Pi(Abstraction {
                     binder: binder.clone(),
+                    // @Note expensive
                     input: input.clone(),
                     output: Box::new(output),
                 })
@@ -473,7 +485,6 @@ fn equal(expr1: &Expr, expr2: &Expr, ctx: MutCtx, state: State<'_>) -> bool {
     }
 }
 
-// @Task
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -580,11 +591,11 @@ impl Hash for Variable {
             Self::Dummy => 0u64.hash(state),
             Self::Identifier(identifier) => {
                 1u64.hash(state);
-                identifier.hash(state);
+                identifier.atom.hash(state);
             }
             Self::GeneratedIdentifier(identifier, version) => {
                 2u64.hash(state);
-                identifier.hash(state);
+                identifier.atom.hash(state);
                 version.hash(state);
             }
         }
@@ -718,6 +729,7 @@ mod context {
                 .map(|entity| entity.retrieve_value().cloned())
         }
 
+        #[must_use]
         pub fn extend_with_binding(self, binding: Variable, type_: Expr, value: Expr) -> Self {
             let mut map = self.bindings.as_ref().borrow().clone();
             map.insert(binding, Entity::ResolvedExpression { type_, expr: value });
@@ -727,6 +739,7 @@ mod context {
             }
         }
 
+        #[must_use]
         pub fn extend_with_neutral_binding(self, binding: Variable, type_: Expr) -> Self {
             let mut map = self.bindings.as_ref().borrow().clone();
             map.insert(binding, Entity::NeutralExpression { type_ });

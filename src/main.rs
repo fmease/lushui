@@ -1,10 +1,6 @@
 #![forbid(rust_2018_idioms, unused_must_use)]
 
-use lushuic::{
-    effluvium,
-    error,
-    hir, lexer, parser,
-};
+use lushuic::{effluvium, error, hir, lexer, parser};
 
 fn main() {
     // let source = "'let x: Int -> Int -> Int = memoize (\\x y => f x y)\n";
@@ -18,6 +14,7 @@ fn main() {
     // let source = "alpha -> beta; gamma";
 
     let source = "'let the (A: 'Type) (x: A): A = x";
+    // let source = r"\(A: 'Type) (x: A): A => x";
 
     if let Err(error) = test(source) {
         eprintln!("{}", error.display(source, None));
@@ -52,14 +49,22 @@ fn test(source: &str) -> Result<(), error::Error> {
 
     // Effluvium
     let node = effluvium::Declaration::from_hir(node);
+    // let node = effluvium::Expr::from_hir(node);
     eprintln!("!!!! EFFLUVIUM NODE !!!!");
-    dbg!(&node);
+    // dbg!(&node);
+    eprintln!("{}", node);
     print_banner();
     let (context, mut state) = effluvium::initial();
     // node.register(context, &mut state).unwrap_or_else(|error| panic!("{}", error));
     node.evaluate(context.clone(), &mut state)
         .unwrap_or_else(|error| panic!("{}", error));
-    eprintln!("!!!! EFFLUVIUM CONTEXT !!!!");
+    // let infered_type = node
+    //     .infer_type(context.clone(), &mut state)
+    //     .unwrap_or_else(|error| panic!("{}", error));
+    // let value = node
+    //     .normalize(context.clone(), &mut state)
+    //     .unwrap_or_else(|error| panic!("{}", error));
+    eprintln!("!!!! EFFLUVIUM STUFF !!!!");
     dbg!(context);
 
     Ok(())
