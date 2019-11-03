@@ -15,19 +15,6 @@ pub type Span = std::ops::RangeInclusive<usize>;
 // implement each in terms of each other (where of course, one impl wins to make it unambiguous)
 // @Update removed the indent-logic *later*
 // @Task define indentation-logic (it is inherently connected to displaying, obviously)
-pub trait DisplayWithSource {
-    fn display_with(&self, source: &str) -> String;
-    // @Note I still don't know if this API works (global indentation, reduction of manual padding in each impl)
-    // fn display_indented_with(&self, source: &str, indentation: usize) -> String {
-    //     format!("{}{}", " ".repeat(indentation * lexer::INDENTATION_IN_SPACES), self.display_with(source))
-    // }
-}
-
-impl DisplayWithSource for Span {
-    fn display_with(&self, source: &str) -> String {
-        source[self.clone()].into()
-    }
-}
 
 pub enum Error {
     Lex(lexer::Error),

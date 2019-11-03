@@ -1,4 +1,4 @@
-use crate::error::{DisplayWithSource, Span};
+use crate::error::Span;
 use crate::lexer::{self, Atom};
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
@@ -522,25 +522,16 @@ fn expect_delimiter(context: &Context<'_>) -> Result<()> {
 // when we implement to dotted identifiers, blanks (`'_`) and symbols
 // @Note and possibly also generated identifiers (see effluvium::Variable) except if
 // we use a variation on debruijn-indeces
-// @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon
-// @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon
-// @Task add the field symbol: Symbol where Symbol is an index into the interned string
-// pool so we can actually *use* Identifier. Currently, it's only usable for error reporting
-// which we actually don't do anymore with span information (after lexing)
-// @Note it think all progress is halted until we implement string interning
-// (unless we resolve those spans into Strings when translating from HIR to effluvium IR)
-// This also removes the need for DisplayWithSource
 #[derive(Debug, Clone)]
-// @Note for effluvium
 #[derive(PartialEq, Eq, Hash)]
 pub struct Identifier {
     pub atom: Atom,
     pub span: Span,
 }
 
-impl DisplayWithSource for Identifier {
-    fn display_with(&self, source: &str) -> String {
-        self.span.display_with(source)
+impl fmt::Display for Identifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.atom)
     }
 }
 

@@ -1,7 +1,8 @@
 //! HIR — high-level intermediate representation
 
-use crate::error::DisplayWithSource;
 use crate::parser::{self, Explicitness, Identifier};
+
+use std::fmt;
 
 // @Task pub lower_module
 
@@ -30,30 +31,30 @@ pub enum Declaration {
 // @Bug indentation not correctly handled (e.g. an indented data declaration doesn't have its constructors indented)
 // @Task implement indentation logic (@Note for now, it's not that relevant because we don*t have modules yet, so a data
 // declaration is never actually indented, also expressions which face the same issue when pretty-printing, are printed out in one single line!)
-impl DisplayWithSource for Declaration {
-    fn display_with(&self, source: &str) -> String {
+impl fmt::Display for Declaration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Let {
                 binder,
                 type_annotation,
                 expression,
-            } => format!(
+            } => write!(f,
                 "'let {}: {} = {}",
-                binder.display_with(source),
-                type_annotation.display_with(source),
-                expression.display_with(source)
+                binder,
+                type_annotation,
+                expression
             ),
             Self::Data {
                 binder,
                 type_annotation,
                 constructors,
-            } => format!(
+            } => write!(f,
                 "'data {}: {}\n{}",
-                binder.display_with(source),
-                type_annotation.display_with(source),
+                binder,
+                type_annotation,
                 constructors
                     .into_iter()
-                    .map(|constructor| format!("    {}", constructor.display_with(source)))
+                    .map(|constructor| format!("    {}", constructor))
                     .collect::<Vec<_>>()
                     .join("\n")
             ),
@@ -123,12 +124,12 @@ pub struct Constructor {
 
 // @Question should the line break/indentation be part of the result? I don't think so:
 // The parent context should decide (e.g. no line break on the end of output, further indentation)
-impl DisplayWithSource for Constructor {
-    fn display_with(&self, source: &str) -> String {
-        format!(
+impl fmt::Display for Constructor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f,
             "{}: {}",
-            self.binder.display_with(source),
-            self.type_annotation.display_with(source)
+            self.binder,
+            self.type_annotation
         )
     }
 }
@@ -174,56 +175,56 @@ pub enum Expression {
 
 // @Task display fewer round brackets by making use of precedence
 // @Note many wasted allocations (intermediate Strings)
-impl DisplayWithSource for Expression {
-    fn display_with(&self, source: &str) -> String {
+impl fmt::Display for Expression {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::PiLiteral {
                 binder,
                 parameter,
                 expression,
                 explicitness,
-            } => format!(
+            } => write!(f,
                 "({}{}{}) -> ({})",
                 explicitness,
                 binder
                     .as_ref()
-                    .map(|binder| format!("{}: ", binder.display_with(source)))
+                    .map(|binder| format!("{}: ", binder))
                     .unwrap_or_default(),
-                parameter.display_with(source),
-                expression.display_with(source),
+                parameter,
+                expression,
             ),
             Self::Application {
                 expression,
                 argument,
                 explicitness,
-            } => format!(
+            } => write!(f,
                 "({}) ({}{})",
-                expression.display_with(source),
+                expression,
                 explicitness,
-                argument.display_with(source),
+                argument,
             ),
-            Self::TypeLiteral => "'Type".into(),
-            Self::Identifier(identifier) => identifier.display_with(source),
-            Self::Hole(identifier) => format!("'hole {}", identifier.display_with(source)),
+            Self::TypeLiteral => f.write_str("'Type"),
+            Self::Identifier(identifier) => write!(f, "{}", identifier),
+            Self::Hole(identifier) => write!(f, "'hole {}", identifier),
             Self::LambdaLiteral {
                 binder,
                 parameter,
                 explicitness,
                 type_annotation,
                 expression,
-            } => format!(
+            } => write!(f,
                 "\\({}{}{}){} => ({})",
                 explicitness,
-                binder.display_with(source),
+                binder,
                 parameter
                     .as_ref()
-                    .map(|parameter| format!(": {}", parameter.display_with(source)))
+                    .map(|parameter| format!(": {}", parameter))
                     .unwrap_or_default(),
                 type_annotation
                     .as_ref()
-                    .map(|type_annotation| format!(": {}", type_annotation.display_with(source)))
+                    .map(|type_annotation| format!(": {}", type_annotation))
                     .unwrap_or_default(),
-                expression.display_with(source)
+                expression
             ),
             _ => unimplemented!(),
         }

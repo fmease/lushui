@@ -4,7 +4,7 @@
 
 use std::{collections::HashMap, fmt, rc::Rc};
 
-use crate::{error::DisplayWithSource, hir};
+use crate::hir;
 
 pub struct Module {
     // pub name: Variable,
@@ -27,43 +27,43 @@ impl Module {
 
     // used for recursion
     // @Question move into constructor?
-    fn register_binders(&mut self) -> Result<()> {
-        #[cfg(debug_assertions)]
-        assert!(!self.registered_binders);
+    // fn register_binders(&mut self) -> Result<()> {
+    //     #[cfg(debug_assertions)]
+    //     assert!(!self.registered_binders);
 
-        for declaration in &self.declarations {
-            match declaration {
-                Declaration::Data {
-                    binder,
-                    constructors,
-                    ..
-                } => {
-                    let binder = binder.view_str().unwrap().to_string();
-                    Self::register_binder(&mut self.binders, binder)?;
-                    for constructor in constructors {
-                        Self::register_binder(
-                            &mut self.binders,
-                            constructor.binder.view_str().unwrap().to_string(),
-                        )?;
-                    }
-                }
-                Declaration::Let { binder, .. } => {
-                    Self::register_binder(
-                        &mut self.binders,
-                        binder.view_str().unwrap().to_string(),
-                    )?;
-                }
-                // is a temp on Declaration
-                Declaration::ExprStmt(..) => unreachable!(),
-            }
-        }
+    //     for declaration in &self.declarations {
+    //         match declaration {
+    //             Declaration::Data {
+    //                 binder,
+    //                 constructors,
+    //                 ..
+    //             } => {
+    //                 let binder = binder.view_str().unwrap().to_string();
+    //                 Self::register_binder(&mut self.binders, binder)?;
+    //                 for constructor in constructors {
+    //                     Self::register_binder(
+    //                         &mut self.binders,
+    //                         constructor.binder.view_str().unwrap().to_string(),
+    //                     )?;
+    //                 }
+    //             }
+    //             Declaration::Let { binder, .. } => {
+    //                 Self::register_binder(
+    //                     &mut self.binders,
+    //                     binder.view_str().unwrap().to_string(),
+    //                 )?;
+    //             }
+    //             // is a temp on Declaration
+    //             Declaration::ExprStmt(..) => unreachable!(),
+    //         }
+    //     }
 
-        #[cfg(debug_assertions)]
-        {
-            self.registered_binders = true;
-        }
-        Ok(())
-    }
+    //     #[cfg(debug_assertions)]
+    //     {
+    //         self.registered_binders = true;
+    //     }
+    //     Ok(())
+    // }
 
     fn register_binder(binders: &mut Vec<String>, binder: String) -> Result<()> {
         if binders.contains(&binder) {
@@ -172,6 +172,10 @@ impl Declaration {
         // })
     }
 
+    // @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon 
+    // @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon 
+    // @Bug @Bug @Bug still has strange equality errors (e.g. `À` not found even though
+    // it should be in scope) @Question broken Eq/Hash implementations?
     // @Task make pure returning new Context
     // @Task change name to register2 b.c. we are a lazy lang, we should only do type_checking here
     pub fn evaluate(&self, context: MutCtx, state: State<'_>) -> Result<Option<(Expr, Expr)>> {
@@ -470,18 +474,18 @@ fn equal(expr1: &Expr, expr2: &Expr, ctx: MutCtx, state: State<'_>) -> bool {
 }
 
 // @Task
-// impl DisplayWithSource for Expr {
-//     fn display_with(&self, source: &str) -> String {
-//         match self {
-//             Expr::Var(binding) => write!(f, "{}", binding),
-//             Expr::Type => f.write_str("#"),
-//             Expr::Pi(abstraction) => write!(f, "(-> {})", abstraction),
-//             Expr::Lambda(_) => f.write_str("\\"),
-//             // @Note should not be printable
-//             Expr::App(function, argument) => write!(f, "({} {})", function, argument),
-//         }
-//     }
-// }
+impl fmt::Display for Expr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Expr::Var(binding) => write!(f, "{}", binding),
+            Expr::Type => f.write_str("#"),
+            Expr::Pi(abstraction) => write!(f, "(-> {})", abstraction),
+            Expr::Lambda(_) => f.write_str("\\"),
+            // @Note should not be printable
+            Expr::App(function, argument) => write!(f, "({} {})", function, argument),
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct Abstraction {
@@ -537,62 +541,93 @@ impl Abstraction {
     }
 }
 
-// impl fmt::Display for Abstraction {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         write!(f, "{} {} {}", self.binder, self.input, self.output)
-//     }
-// }
+impl fmt::Display for Abstraction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {} {}", self.binder, self.input, self.output)
+    }
+}
 
-// @Task rework structure
-// @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon
-// @Bug @Bug @Bug Eq is wrong!!! it needs to check in respect to `source` (resolve spans)
-#[derive(PartialEq, Eq, Hash, Clone, Debug)]
+/// A variable.
+///
+/// Identifiers are equal if their atoms are equal no matter what their spans are.
+#[derive(Eq, Clone, Debug)]
 pub enum Variable {
-    // @Task remove String and Gensym. I don't think they will be used in
-    // lushuic
-    String(String),
-    Gensym(String, u32),
     Dummy,
-    // @Note extended variants for compability with the HIR
     Identifier(crate::parser::Identifier),
     GeneratedIdentifier(crate::parser::Identifier, u32),
+}
+
+impl PartialEq for Variable {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            // @Question should this be equal to itself or not?
+            (Self::Dummy, Self::Dummy) => true,
+            (Self::Identifier(left), Self::Identifier(right)) => left.atom == right.atom,
+            (
+                Self::GeneratedIdentifier(left_identifier, left_version),
+                Self::GeneratedIdentifier(right_identifier, right_version),
+            ) => left_identifier.atom == right_identifier.atom && left_version == right_version,
+            _ => false,
+        }
+    }
+}
+
+use std::hash::{Hash, Hasher};
+
+impl Hash for Variable {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            Self::Dummy => 0u64.hash(state),
+            Self::Identifier(identifier) => {
+                1u64.hash(state);
+                identifier.hash(state);
+            }
+            Self::GeneratedIdentifier(identifier, version) => {
+                2u64.hash(state);
+                identifier.hash(state);
+                version.hash(state);
+            }
+        }
+    }
 }
 
 impl Variable {
     fn refresh(&self, state: State<'_>) -> Self {
         // @Bug overflowable
         *state += 1;
-        let string = match self {
-            Variable::String(var) | Variable::Gensym(var, _) => var,
-            Variable::Dummy => "_",
+        match self {
+            // @Temporary use more abstractions
+            Variable::Dummy => Variable::GeneratedIdentifier(
+                crate::parser::Identifier {
+                    atom: crate::lexer::Atom::from(""),
+                    span: 0..=0,
+                },
+                *state,
+            ),
             Variable::Identifier(identifier) | Variable::GeneratedIdentifier(identifier, _) => {
                 return Variable::GeneratedIdentifier(identifier.clone(), *state);
             }
-        };
-        Variable::Gensym(string.into(), *state)
+        }
     }
 
     // @Temporary
-    fn view_str(&self) -> Option<&str> {
-        if let Variable::String(string) = self {
-            Some(string)
-        } else {
-            None
-        }
-    }
+    // fn view_str(&self) -> Option<&str> {
+    //     if let Variable::String(string) = self {
+    //         Some(string)
+    //     } else {
+    //         None
+    //     }
+    // }
 }
 
-impl crate::error::DisplayWithSource for Variable {
-    fn display_with(&self, source: &str) -> String {
+impl fmt::Display for Variable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Variable::Dummy => "$".to_owned(),
-            Variable::Identifier(identifier) => identifier.display_with(source),
+            Variable::Dummy => f.write_str("$"),
+            Variable::Identifier(identifier) => write!(f, "{}", identifier),
             Variable::GeneratedIdentifier(identifier, version) => {
-                format!("${}{}", identifier.display_with(source), version)
+                write!(f, "{}${}", identifier, version)
             }
-            // @Temporary
-            Variable::String(binding) => binding.clone(),
-            Variable::Gensym(binding, id) => format!("${}{}", binding, id),
         }
     }
 }
@@ -755,14 +790,13 @@ pub enum Error {
     AlreadyDefined,
 }
 
-// @Task use DisplayWithSource @Temporary uses Debug to print expressions
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::UndefinedBinding(binding) => write!(f, "undefined binding `{:?}`", binding),
-            Error::FunctionExpected(actual) => write!(f, "expected function, got `{:?}`", actual),
+            Error::UndefinedBinding(binding) => write!(f, "undefined binding `{}`", binding),
+            Error::FunctionExpected(actual) => write!(f, "expected function, got `{}`", actual),
             Error::ExpressionsNotEqual(expected, actual) => {
-                write!(f, "expected `{:?}` got `{:?}`", expected, actual)
+                write!(f, "expected `{}` got `{}`", expected, actual)
             }
             Error::AlreadyDefined => write!(f, "already defined"),
         }

@@ -2,7 +2,7 @@
 
 use lushuic::{
     effluvium,
-    error::{self, DisplayWithSource},
+    error,
     hir, lexer, parser,
 };
 
@@ -47,7 +47,7 @@ fn test(source: &str) -> Result<(), error::Error> {
     // let node = hir::lower_expression(&node);
     let node = hir::lower_declaration(&node);
     eprintln!("!!!! HIR NODE !!!!");
-    eprintln!("lowered: {}", node.display_with(source));
+    eprintln!("lowered: {}", node);
     print_banner();
 
     // Effluvium
