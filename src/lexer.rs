@@ -1,9 +1,13 @@
 pub use string_cache::DefaultAtom as Atom;
 
+mod error;
+
 use crate::error::Span;
 use std::cmp::Ordering;
-use std::fmt;
 use std::str::FromStr;
+
+pub use error::Error;
+use error::ErrorKind;
 
 /// A token with span information [`crate::error::Span`].
 ///
@@ -393,139 +397,4 @@ pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
     let last_index = tokens.len() - 1;
     extend_with_dedentation(&mut tokens, last_index, indentation_in_spaces);
     Ok(tokens)
-}
-
-#[derive(Debug)] // @Temporary
-#[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct Error {
-    pub kind: ErrorKind,
-    pub span: Span,
-}
-
-#[derive(Debug)] // @Temporary
-#[cfg_attr(test, derive(PartialEq, Eq))]
-pub enum ErrorKind {
-    IllegalCharacter(char),
-    UnknownKeyword(String),
-    InvalidIndentation(usize),
-}
-
-impl fmt::Display for ErrorKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::IllegalCharacter(character) => write!(
-                f,
-                "illegal character U+{:04X} `{}`",
-                *character as u32, character,
-            ),
-            Self::UnknownKeyword(source) => write!(f, "unknown keyword `{}`", source),
-            Self::InvalidIndentation(indentation) => write!(
-                f,
-                "invalid indentation consisting of {} spaces",
-                indentation
-            ),
-        }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::{lex, Error, ErrorKind, Keyword, SourceToken, Token};
-
-    // @Bug failing due to overflow
-    #[test]
-    fn whitespace() {
-        assert_eq!(lex(""), Ok(Vec::new()));
-        assert_eq!(lex("        "), Ok(Vec::new()));
-    }
-
-    // @Task rewrite tests to work with .kind()
-    // #[test]
-    // fn identifier() {
-    //     assert_eq!(
-    //         lex("foobar"),
-    //         Ok(vec![Token::new(Token::Identifier, 0..=5)])
-    //     );
-    //     assert_eq!(
-    //         lex("     Oddly_Beautiful "),
-    //         Ok(vec![Token::new(Token::Identifier, 5..=19)]),
-    //     );
-    //     assert_eq!(
-    //         lex("alpha beta' gamma'' delta'''"),
-    //         Ok(vec![
-    //             SourceToken::new(Token::Identifier, 0..=4),
-    //             SourceToken::new(Token::Identifier, 6..=10),
-    //             SourceToken::new(Token::Identifier, 12..=18),
-    //             SourceToken::new(Token::Identifier, 20..=27),
-    //         ]),
-    //     );
-    //     assert_eq!(
-    //         lex("_'_'_"),
-    //         Ok(vec![
-    //             SourceToken::new(Token::Identifier, 0..=1),
-    //             SourceToken::new(Token::Identifier, 2..=3),
-    //             SourceToken::new(Token::Identifier, 4..=4),
-    //         ]),
-    //     );
-    //     {
-    //         static SOURCE: &str = "       QUUX ";
-    //         let left =
-    //             lex(SOURCE).map(|tokens| tokens.get(0).map(|token| SOURCE.get(token.span.clone())));
-    //         assert_eq!(left, Ok(Some(Some("QUUX"))));
-    //     }
-    // }
-
-    // @Task rewrite to match new SourceToken/Token logic
-    // @Bug failing
-    // #[test]
-    // fn keyword() {
-    //     assert_eq!(
-    //         lex("'let"),
-    //         // @Note @Bug span is now 0..=7 apparently
-    //         Ok(vec![SourceToken::new(Token::Keyword(Keyword::Let), 0..=6)]),
-    //     );
-    //     assert_eq!(
-    //         lex("'let'let"),
-    //         Err(Error {
-    //             kind: ErrorKind::UnknownKeyword("let'".to_owned()),
-    //             span: 0..=7
-    //         }),
-    //     );
-    //     assert_eq!(
-    //         lex("   'Type Type "),
-    //         Ok(vec![
-    //             SourceToken::new(Token::Keyword(Keyword::Type), 3..=7),
-    //             SourceToken::new(Token::Identifier, 9..=12),
-    //         ]),
-    //     );
-    // }
-
-    #[test]
-    fn illegal_character() {
-        assert_eq!(
-            lex("§"),
-            Err(Error {
-                kind: ErrorKind::IllegalCharacter('§'),
-                span: 0..=0,
-            }),
-        );
-
-        assert_eq!(
-            lex("      [      @"),
-            Err(Error {
-                kind: ErrorKind::IllegalCharacter('['),
-                span: 6..=6,
-            }),
-        );
-    }
-
-    #[test]
-    fn indentation() {
-        // @Beacon @Task
-    }
-
-    #[test]
-    fn punctuation() {
-        // @Task
-    }
 }

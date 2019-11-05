@@ -1,13 +1,16 @@
+mod error;
+
 use crate::error::Span;
 use crate::lexer::{self, Atom};
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
 
+pub use error::Error;
+use error::{ErrorKind, Result};
+
 // @Task remove debug `pub` from some parsing functions (maybe)
 // @Task figure out which `Context::reflect`s are necessary and which
 // can be replaced by normal function calls
-
-type Result<T, E = Error> = std::result::Result<T, E>;
 
 // @Task pub parse_file_module
 
@@ -522,8 +525,7 @@ fn expect_delimiter(context: &Context<'_>) -> Result<()> {
 // when we implement to dotted identifiers, blanks (`'_`) and symbols
 // @Note and possibly also generated identifiers (see effluvium::Variable) except if
 // we use a variation on debruijn-indeces
-#[derive(Debug, Clone)]
-#[derive(PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Identifier {
     pub atom: Atom,
     pub span: Span,
@@ -560,29 +562,6 @@ impl fmt::Display for Explicitness {
         match self {
             Self::Implicit => f.write_str(","),
             Self::Explicit => f.write_str(""),
-        }
-    }
-}
-
-// @Task store span information
-#[derive(Debug)] // @Temporary
-pub struct Error {
-    pub kind: ErrorKind,
-    pub span: Span,
-}
-
-#[derive(Debug)] // @Temporary
-pub enum ErrorKind {
-    UnexpectedEndOfInput,
-    UnexpectedToken(lexer::SourceToken),
-}
-
-impl fmt::Display for ErrorKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::UnexpectedEndOfInput => write!(f, "unexpected end of input"),
-            // @Temporary
-            Self::UnexpectedToken(token) => write!(f, "unexpected token {:?}", token.kind()),
         }
     }
 }
