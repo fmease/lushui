@@ -5,12 +5,10 @@
 mod context;
 mod error;
 
-use std::{collections::HashMap, rc::Rc};
-
 use crate::hir::{self, Declaration, Expression, Identifier, RefreshState};
 use crate::parser::Explicitness;
 pub use context::initial;
-use context::{Environment, MutCtx};
+use context::MutCtx;
 use error::{Error, Result};
 
 // @Note module code (hir::Declaration::Module)
@@ -135,7 +133,7 @@ pub fn evaluate_declaration(
             if context.clone().contains(&adt_binder) {
                 return Err(Error::AlreadyDefined);
             }
-            check_is_type(type_annotation, context.clone(), state)?;
+            assert_expression_is_a_type(type_annotation, context.clone(), state)?;
             context
                 .clone()
                 .insert_adt(adt_binder.clone(), type_annotation.clone());
@@ -145,7 +143,7 @@ pub fn evaluate_declaration(
                 type_annotation,
             } in constructors
             {
-                check_is_type(type_annotation, context.clone(), state)?;
+                assert_expression_is_a_type(type_annotation, context.clone(), state)?;
                 // @Task instance check etc
                 // @Task check if constructor already exists
                 context.clone().insert_constructor(
@@ -169,46 +167,66 @@ pub fn evaluate_declaration(
 // //
 // }
 
-// @Task replace Environment with a single binding
 // @Task optimize body (abstraction_*-calls)
-fn substitute(expression: &Expression, env: Environment, state: RefreshState<'_>) -> Expression {
+// @Note bad naming
+fn substitute(
+    expression: &Expression,
+    substitution_binder: Identifier,
+    substitution: Expression,
+    state: RefreshState<'_>,
+) -> Expression {
     match expression {
-        Expression::Identifier(identifier) => env
-            .get(identifier)
-            .cloned()
-            .unwrap_or_else(|| expression.clone()),
+        Expression::Identifier(identifier) => {
+            if identifier == &substitution_binder {
+                substitution
+            } else {
+                expression.clone()
+            }
+        }
         Expression::TypeLiteral => Expression::TypeLiteral,
-        Expression::PiLiteral {
+        Expression::PiTypeLiteral {
             binder,
-            parameter,
-            expression,
+            domain,
+            codomain,
             explicitness: _,
         } => {
             // @Bug unchecked @Temporary unwrap
-            let (binder, parameter, expression) =
-                abstraction_substitute(binder.as_ref().unwrap(), parameter, expression, env, state);
-            Expression::PiLiteral {
+            let (binder, domain, codomain) = abstraction_substitute(
+                binder.as_ref().unwrap(),
+                domain,
+                codomain,
+                substitution_binder,
+                substitution,
+                state,
+            );
+            Expression::PiTypeLiteral {
                 binder: Some(binder),
-                parameter: Box::new(parameter),
-                expression: Box::new(expression),
+                domain: Box::new(domain),
+                codomain: Box::new(codomain),
                 explicitness: Explicitness::Explicit,
             }
         }
         Expression::LambdaLiteral {
             binder,
-            parameter,
-            expression,
-            type_annotation: _,
+            parameter_type_annotation,
+            body,
+            body_type_annotation: _,
             explicitness: _,
         } => {
             // @Bug unchecked @Temporary unwrap
-            let (binder, parameter, expression) =
-                abstraction_substitute(binder, parameter.as_ref().unwrap(), expression, env, state);
+            let (binder, parameter_type, body) = abstraction_substitute(
+                binder,
+                parameter_type_annotation.as_ref().unwrap(),
+                body,
+                substitution_binder,
+                substitution,
+                state,
+            );
             Expression::LambdaLiteral {
                 binder,
-                parameter: Some(Box::new(parameter)),
-                expression: Box::new(expression),
-                type_annotation: None,
+                parameter_type_annotation: Some(Box::new(parameter_type)),
+                body: Box::new(body),
+                body_type_annotation: None,
                 // @Temporary
                 explicitness: Explicitness::Explicit,
             }
@@ -218,8 +236,18 @@ fn substitute(expression: &Expression, env: Environment, state: RefreshState<'_>
             argument,
             explicitness: _,
         } => Expression::Application {
-            expression: Box::new(substitute(expression, env.clone(), state)),
-            argument: Box::new(substitute(argument, env, state)),
+            expression: Box::new(substitute(
+                expression,
+                substitution_binder.clone(),
+                substitution.clone(),
+                state,
+            )),
+            argument: Box::new(substitute(
+                argument,
+                substitution_binder,
+                substitution,
+                state,
+            )),
             // @Temporary
             explicitness: Explicitness::Explicit,
         },
@@ -239,77 +267,64 @@ pub fn infer_type(
             .lookup_type(identifier)
             .ok_or_else(|| Error::UndefinedBinding(identifier.clone()))?,
         Expression::TypeLiteral => Expression::TypeLiteral,
-        Expression::PiLiteral { .. } => Expression::TypeLiteral,
+        Expression::PiTypeLiteral { .. } => Expression::TypeLiteral,
         Expression::LambdaLiteral {
             binder,
-            parameter,
-            expression,
+            parameter_type_annotation,
+            body,
             // @Task
             explicitness: _,
-            type_annotation: _,
+            body_type_annotation: _,
         } => {
             // @Bug unhandled @Temporary unwrap
-            let parameter: &Expression = parameter.as_ref().unwrap();
-            check_is_type(&parameter, context.clone(), state)?;
-            let expression = infer_type(
-                expression,
-                context.extend_with_neutral_binding(binder.clone(), parameter.clone()),
+            let parameter_type: &Expression = parameter_type_annotation.as_ref().unwrap();
+            assert_expression_is_a_type(&parameter_type, context.clone(), state)?;
+            let body_type = infer_type(
+                body,
+                context.extend_with_neutral_binding(binder.clone(), parameter_type.clone()),
                 state,
             )?;
-            Expression::PiLiteral {
+            Expression::PiTypeLiteral {
                 binder: Some(binder.clone()),
-                parameter: Box::new(parameter.clone()),
-                expression: Box::new(expression),
+                domain: Box::new(parameter_type.clone()),
+                codomain: Box::new(body_type),
                 // @Task
                 explicitness: Explicitness::Explicit,
             }
         }
         Expression::Application {
-            expression: function,
+            expression,
             argument,
             // @Task
             explicitness: _,
         } => {
-            let (pi_binder, pi_parameter, pi_expression) =
-                infer_pi(function, context.clone(), state)?;
-            let argument_type = infer_type(argument, context.clone(), state)?;
-            check_equal(&pi_parameter, &argument_type, context, state)?;
-            substitute(
-                &pi_expression,
-                {
-                    let mut env = HashMap::new();
-                    env.insert(pi_binder, argument.as_ref().clone());
-                    Rc::new(env)
-                },
-                state,
-            )
+            // @Task verify type_of_expression is already normalized
+            // @Note maybe use dbg-macro?
+            let type_of_expression = infer_type(expression, context.clone(), state)?;
+            match normalize(&type_of_expression, context.clone(), state)? {
+                Expression::PiTypeLiteral {
+                    binder,
+                    domain,
+                    codomain,
+                    explicitness: _,
+                } => {
+                    let argument_type = infer_type(argument, context.clone(), state)?;
+                    assert_expressions_are_equal(&domain, &argument_type, context, state)?;
+                    substitute(
+                        &codomain,
+                        // @Bug unchecked @Temporary unwrap
+                        binder.unwrap(),
+                        argument.as_ref().clone(),
+                        state,
+                    )
+                }
+                expression => return Err(Error::FunctionExpected(expression)),
+            }
         }
         Expression::Hole(_) => unimplemented!(),
         Expression::UseIn => unimplemented!(),
         Expression::Case => unimplemented!(),
     })
-}
-
-// @Question better name available?
-// @Note @Bug we don't have a direct equivalent of Abstraction in hir
-// @Task translate Abstraction into hir (maybe we don't need this function anymore?)
-// @Temporary signature
-fn infer_pi(
-    expression: &Expression,
-    ctx: MutCtx,
-    state: RefreshState<'_>,
-) -> Result<(Identifier, Expression, Expression)> {
-    let ty = infer_type(expression, ctx.clone(), state)?;
-    match normalize(&ty, ctx, state)? {
-        // @Bug unchecked @Temporary unwrap
-        Expression::PiLiteral {
-            binder,
-            parameter,
-            expression,
-            explicitness: _,
-        } => Ok((binder.unwrap(), *parameter, *expression)),
-        expression => Err(Error::FunctionExpected(expression)),
-    }
 }
 
 // @Question take expression by value?
@@ -335,19 +350,11 @@ pub fn normalize(
             match normalize(expr1, context, state)? {
                 Expression::LambdaLiteral {
                     binder,
-                    parameter: _,
-                    expression,
-                    type_annotation: _,
+                    parameter_type_annotation: _,
+                    body,
+                    body_type_annotation: _,
                     explicitness: _,
-                } => substitute(
-                    &expression,
-                    {
-                        let mut env = HashMap::new();
-                        env.insert(binder, expr2);
-                        Rc::new(env)
-                    },
-                    state,
-                ),
+                } => substitute(&body, binder, expr2, state),
                 expr1 => Expression::Application {
                     expression: Box::new(expr1),
                     argument: Box::new(expr2),
@@ -357,48 +364,43 @@ pub fn normalize(
             }
         }
         Expression::TypeLiteral => Expression::TypeLiteral,
-        Expression::PiLiteral {
+        Expression::PiTypeLiteral {
             binder,
-            parameter,
-            expression,
+            domain,
+            codomain,
             explicitness: _,
         } => {
             // @Bug unchecked @Temporary unwrap
-            let (binder, parameter, expression) = abstraction_normalize(
-                binder.as_ref().unwrap(),
-                parameter,
-                expression,
-                context,
-                state,
-            )?;
-            Expression::PiLiteral {
-                binder: Some(binder),
-                parameter: Box::new(parameter),
-                expression: Box::new(expression),
+            let (domain, codomain) =
+                normalize_abstraction(binder.as_ref().unwrap(), domain, codomain, context, state)?;
+            Expression::PiTypeLiteral {
+                binder: binder.clone(),
+                domain: Box::new(domain),
+                codomain: Box::new(codomain),
                 // @Temporary
                 explicitness: Explicitness::Explicit,
             }
         }
         Expression::LambdaLiteral {
             binder,
-            parameter,
-            expression,
-            type_annotation: _,
+            parameter_type_annotation,
+            body,
+            body_type_annotation: _,
             explicitness: _,
         } => {
             // @Bug unchecked @Temporary unwrap
-            let (binder, parameter, expression) = abstraction_normalize(
+            let (parameter_type, body) = normalize_abstraction(
                 binder,
-                parameter.as_ref().unwrap(),
-                expression,
+                parameter_type_annotation.as_ref().unwrap(),
+                body,
                 context,
                 state,
             )?;
             Expression::LambdaLiteral {
-                binder,
-                parameter: Some(Box::new(parameter)),
-                expression: Box::new(expression),
-                type_annotation: None,
+                binder: binder.clone(),
+                parameter_type_annotation: Some(Box::new(parameter_type)),
+                body: Box::new(body),
+                body_type_annotation: None,
                 // @Temporary
                 explicitness: Explicitness::Explicit,
             }
@@ -409,17 +411,21 @@ pub fn normalize(
     })
 }
 
-pub fn check_is_type(
+pub fn assert_expression_is_a_type(
     expression: &Expression,
     context: MutCtx,
     state: RefreshState<'_>,
 ) -> Result<()> {
-    let type_ = infer_type(expression, context.clone(), state)?;
-    check_equal(&type_, &Expression::TypeLiteral, context, state)?;
-    Ok(())
+    let type_of_expression = infer_type(expression, context.clone(), state)?;
+    assert_expressions_are_equal(
+        &type_of_expression,
+        &Expression::TypeLiteral,
+        context,
+        state,
+    )
 }
 
-fn check_equal(
+fn assert_expressions_are_equal(
     left: &Expression,
     right: &Expression,
     context: MutCtx,
@@ -446,8 +452,8 @@ fn normalizing_equal(
     ))
 }
 
-fn equal(expr1: &Expression, expr2: &Expression, context: MutCtx, state: RefreshState<'_>) -> bool {
-    match (expr1, expr2) {
+fn equal(left: &Expression, right: &Expression, context: MutCtx, state: RefreshState<'_>) -> bool {
+    match (left, right) {
         (Expression::Identifier(left), Expression::Identifier(right)) => left == right,
         (
             Expression::Application {
@@ -466,16 +472,16 @@ fn equal(expr1: &Expression, expr2: &Expression, context: MutCtx, state: Refresh
         }
         (Expression::TypeLiteral, Expression::TypeLiteral) => true,
         (
-            Expression::PiLiteral {
+            Expression::PiTypeLiteral {
                 binder: binder1,
-                parameter: parameter1,
-                expression: expression1,
+                domain: parameter1,
+                codomain: expression1,
                 explicitness: _,
             },
-            Expression::PiLiteral {
+            Expression::PiTypeLiteral {
                 binder: binder2,
-                parameter: parameter2,
-                expression: expression2,
+                domain: parameter2,
+                codomain: expression2,
                 explicitness: _,
             },
         ) => {
@@ -494,16 +500,16 @@ fn equal(expr1: &Expression, expr2: &Expression, context: MutCtx, state: Refresh
         (
             Expression::LambdaLiteral {
                 binder: binder1,
-                parameter: parameter1,
-                expression: expression1,
-                type_annotation: _,
+                parameter_type_annotation: parameter1,
+                body: expression1,
+                body_type_annotation: _,
                 explicitness: _,
             },
             Expression::LambdaLiteral {
                 binder: binder2,
-                parameter: parameter2,
-                expression: expression2,
-                type_annotation: _,
+                parameter_type_annotation: parameter2,
+                body: expression2,
+                body_type_annotation: _,
                 explicitness: _,
             },
         ) => {
@@ -579,37 +585,34 @@ fn abstraction_substitute(
     binder: &Identifier,
     parameter: &Expression,
     expression: &Expression,
-    env: Environment,
+    substitution_binder: Identifier,
+    substitution: Expression,
     state: RefreshState<'_>,
 ) -> (Identifier, Expression, Expression) {
     let binder = binder.refresh(state);
     (
-        binder.clone(), // @Note redundant
-        substitute(parameter, env.clone(), state),
+        binder.clone(),
+        substitute(parameter, substitution_binder, substitution, state),
         substitute(
             expression,
-            {
-                let mut env = env.as_ref().clone();
-                env.insert(binder.clone(), Expression::Identifier(binder));
-                Rc::new(env)
-            },
+            binder.clone(),
+            Expression::Identifier(binder),
             state,
         ),
     )
 }
 
 // @Temporary signature
-fn abstraction_normalize(
+fn normalize_abstraction(
     binder: &Identifier,
     parameter: &Expression,
     expression: &Expression,
     context: MutCtx,
     state: RefreshState<'_>,
-) -> Result<(Identifier, Expression, Expression)> {
+) -> Result<(Expression, Expression)> {
     let parameter = normalize(parameter, context.clone(), state)?;
     Ok((
-        binder.clone(),    // @Note redundant
-        parameter.clone(), // @Note redundant
+        parameter.clone(),
         normalize(
             expression,
             context.extend_with_neutral_binding(binder.clone(), parameter),
@@ -634,11 +637,8 @@ fn abstraction_equal(
             &expression1,
             &substitute(
                 expression2,
-                {
-                    let mut env = HashMap::new();
-                    env.insert(binder2.clone(), Expression::Identifier(binder1.clone()));
-                    Rc::new(env)
-                },
+                binder2.clone(),
+                Expression::Identifier(binder1.clone()),
                 state,
             ),
             context,

@@ -1,4 +1,4 @@
-pub use string_cache::DefaultAtom as Atom;
+pub(crate) use string_cache::DefaultAtom as Atom;
 
 mod error;
 
@@ -125,24 +125,40 @@ pub enum TokenKind {
 }
 
 // @Task implement Copy
+/// Enumeration of all Lushui keywords.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Keyword {
+    /// The keyword `'as` renaming bindings in certain syntactic constructs.
     As,
+    /// The keyword `'_` standing for either an expression that should be infered or an
+    /// unnameable identifier.
     Blank,
+    /// The keyword `'case` prefixing cases analyses.
     Case,
+    /// The keyword `'data` introducing data declarations.
     Data,
+    /// The keyword `'foreign` signaling a FFA.
     Foreign,
+    /// The keyword `'hole` used for typed holes.
     Hole,
+    /// The keyword `'in` being part of let/in-expressions
     In,
+    /// The keyword `'let` introducing let-declarations which bind expressions.
     Let,
+    /// The keyword `'module` used for module declarations.
     Module,
+    /// The keyword `'of` found in case analyses.
     Of,
+    /// The keyword `'Parent` refering to a parent module.
     Parent,
+    /// The keyword `'Root` standing for the root module.
     Root,
+    /// The keyword `'Type` being the type of types.
     Type,
     // Unsafe,
 }
 
+/// Parsing keywords *without* the sigil `'`.
 impl FromStr for Keyword {
     type Err = ();
 
@@ -167,6 +183,7 @@ impl FromStr for Keyword {
     }
 }
 
+/// Amount of spaces making up one unit of indentation.
 pub const INDENTATION_IN_SPACES: usize = 4;
 
 const SIGIL: char = '\'';
@@ -201,6 +218,7 @@ fn extend_with_dedentation(tokens: &mut Vec<SourceToken>, start: usize, amount_o
     tokens.extend(std::iter::repeat(dedentation).take(amount_of_spaces / INDENTATION_IN_SPACES));
 }
 
+/// Lex source code into a vector of tokens.
 // @Task keep a bracket stack to report better error messages
 pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
     let mut indexed_characters = source.char_indices().peekable();

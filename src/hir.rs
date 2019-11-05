@@ -87,10 +87,10 @@ pub fn lower_declaration(declaration: &parser::Declaration) -> Declaration {
                         expression = Expression::LambdaLiteral {
                             binder: Identifier::Plain(binder.clone()),
                             // @Note expensive cloning
-                            parameter: parameter.clone(),
+                            parameter_type_annotation: parameter.clone(),
                             explicitness: parameter_group.explicitness,
-                            type_annotation: type_annotation.next(),
-                            expression: Box::new(expression),
+                            body_type_annotation: type_annotation.next(),
+                            body: Box::new(expression),
                         };
                     }
                 }
@@ -143,10 +143,11 @@ fn lower_constructor(constructor: &parser::Constructor) -> Constructor {
 // @Task improve naming (binder, parameter, etcetera)
 #[derive(Clone, Debug)]
 pub enum Expression {
-    PiLiteral {
+    PiTypeLiteral {
+        // @Task rename binder to parameter in the future
         binder: Option<Identifier>,
-        parameter: Box<Expression>,
-        expression: Box<Expression>,
+        domain: Box<Expression>,
+        codomain: Box<Expression>,
         explicitness: Explicitness,
     },
     Application {
@@ -158,11 +159,12 @@ pub enum Expression {
     Identifier(Identifier),
     Hole(Identifier),
     LambdaLiteral {
+        // @Task rename binder to parameter in the future
         binder: Identifier,
-        parameter: Option<Box<Expression>>,
+        parameter_type_annotation: Option<Box<Expression>>,
         explicitness: Explicitness,
-        type_annotation: Option<Box<Expression>>,
-        expression: Box<Expression>,
+        body_type_annotation: Option<Box<Expression>>,
+        body: Box<Expression>,
     },
     UseIn, // @Task
     Case,  // @Task
@@ -173,10 +175,10 @@ pub enum Expression {
 impl fmt::Display for Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::PiLiteral {
+            Self::PiTypeLiteral {
                 binder,
-                parameter,
-                expression,
+                domain,
+                codomain,
                 explicitness,
             } => write!(
                 f,
@@ -186,8 +188,8 @@ impl fmt::Display for Expression {
                     .as_ref()
                     .map(|binder| format!("{}: ", binder))
                     .unwrap_or_default(),
-                parameter,
-                expression,
+                domain,
+                codomain,
             ),
             Self::Application {
                 expression,
@@ -199,24 +201,24 @@ impl fmt::Display for Expression {
             Self::Hole(identifier) => write!(f, "'hole {}", identifier),
             Self::LambdaLiteral {
                 binder,
-                parameter,
+                parameter_type_annotation,
                 explicitness,
-                type_annotation,
-                expression,
+                body_type_annotation,
+                body,
             } => write!(
                 f,
                 "\\({}{}{}){} => ({})",
                 explicitness,
                 binder,
-                parameter
+                parameter_type_annotation
                     .as_ref()
                     .map(|parameter| format!(": {}", parameter))
                     .unwrap_or_default(),
-                type_annotation
+                body_type_annotation
                     .as_ref()
                     .map(|type_annotation| format!(": {}", type_annotation))
                     .unwrap_or_default(),
-                expression
+                body
             ),
             _ => unimplemented!(),
         }
@@ -230,10 +232,10 @@ pub fn lower_expression(expression: &parser::Expression) -> Expression {
             parameter,
             expression,
             explicitness,
-        } => Expression::PiLiteral {
+        } => Expression::PiTypeLiteral {
             binder: binder.clone().map(Identifier::Plain),
-            parameter: Box::new(lower_expression(parameter)),
-            expression: Box::new(lower_expression(expression)),
+            domain: Box::new(lower_expression(parameter)),
+            codomain: Box::new(lower_expression(expression)),
             explicitness: *explicitness,
         },
         parser::Expression::Application {
@@ -271,10 +273,10 @@ pub fn lower_expression(expression: &parser::Expression) -> Expression {
                     expression = Expression::LambdaLiteral {
                         binder: Identifier::Plain(binder.clone()),
                         // @Note expensive clone
-                        parameter: parameter.clone(),
+                        parameter_type_annotation: parameter.clone(),
                         explicitness: parameter_group.explicitness,
-                        type_annotation: type_annotation.next(),
-                        expression: Box::new(expression),
+                        body_type_annotation: type_annotation.next(),
+                        body: Box::new(expression),
                     };
                 }
             }
@@ -305,10 +307,10 @@ pub fn lower_expression(expression: &parser::Expression) -> Expression {
                     expression = Expression::LambdaLiteral {
                         binder: Identifier::Plain(binder.clone()),
                         // @Note expensive clone
-                        parameter: parameter.clone(),
+                        parameter_type_annotation: parameter.clone(),
                         explicitness: parameter_group.explicitness,
-                        type_annotation: type_annotation.next(),
-                        expression: Box::new(expression),
+                        body_type_annotation: type_annotation.next(),
+                        body: Box::new(expression),
                     };
                 }
             }
@@ -319,10 +321,10 @@ pub fn lower_expression(expression: &parser::Expression) -> Expression {
                     // @Note we cannot simply lower parameters and a type annotation because
                     // in the chain (`->`) of parameters, there might always be one missing and
                     // we don't support partial type annotations yet (using `'_`)
-                    parameter: None,
+                    parameter_type_annotation: None,
                     explicitness: Explicitness::Explicit,
-                    type_annotation: None,
-                    expression: Box::new(lower_expression(scope)),
+                    body_type_annotation: None,
+                    body: Box::new(lower_expression(scope)),
                 }),
                 argument: Box::new(expression),
                 explicitness: Explicitness::Explicit,
@@ -342,11 +344,11 @@ fn lower_annotated_parameters(
         let parameter = Box::new(lower_expression(&parameter_group.type_annotation));
 
         for binder in parameter_group.parameters.iter().rev() {
-            expression = Expression::PiLiteral {
+            expression = Expression::PiTypeLiteral {
                 binder: Some(Identifier::Plain(binder.clone())),
                 // @Note expensive clone
-                parameter: parameter.clone(),
-                expression: Box::new(expression),
+                domain: parameter.clone(),
+                codomain: Box::new(expression),
                 explicitness: parameter_group.explicitness,
             }
         }

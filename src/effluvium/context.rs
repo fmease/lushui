@@ -140,10 +140,6 @@ impl MutCtx {
     }
 }
 
-// @Note currently, the whole code base only constructs Environments with one entry
-// Possibly, a later blog post expands on this, otherwise @Task replace with tuple
-pub type Environment = Rc<HashMap<Identifier, Expression>>;
-
 pub fn initial() -> (MutCtx, u64) {
     (Default::default(), 0)
 }

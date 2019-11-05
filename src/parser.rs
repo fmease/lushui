@@ -162,6 +162,7 @@ pub fn parse_declaration(context: &mut Context<'_>) -> Result<Declaration> {
 // @Beacon @Beacon @Beacon @Task add span information!!!
 #[derive(Debug, Clone)]
 pub enum Expression {
+    // @Task rename to PiTypeLiteral { parameter, domain, codomain, explicitness }
     PiLiteral {
         binder: Option<Identifier>,
         parameter: Box<Expression>,
@@ -176,11 +177,13 @@ pub enum Expression {
     TypeLiteral,
     Identifier(Identifier),
     Hole(Identifier),
+    // @Task rename to LambdaLiteral { parameters, body_type_annotation, body }
     LambdaLiteral {
         parameters: Parameters,
         type_annotation: Option<Box<Expression>>,
         expression: Box<Expression>,
     },
+    // @Task rename the field expression to something more descriptive
     LetIn {
         binder: Identifier,
         parameters: Parameters,
