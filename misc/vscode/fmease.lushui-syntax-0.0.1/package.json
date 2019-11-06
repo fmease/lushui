@@ -1,0 +1,28 @@
+{
+    "name": "lushui-syntax",
+    "displayName": "Lushui Syntax",
+    "description": "Lushui syntax highlighting",
+    "publisher": "fmease",
+    "version": "0.0.1",
+    "engines": {
+        "vscode": "^1.22.0"
+    },
+    "contributes": {
+        "languages": [
+            {
+                "id": "lushui",
+                "extensions": [
+                    ".lushui"
+                ],
+                "configuration": "./language-configuration.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "lushui",
+                "scopeName": "source.lushui",
+                "path": "./syntaxes/lushui.tmLanguage.json"
+            }
+        ]
+    }
+}
