@@ -23,13 +23,13 @@ pub enum Declaration {
         type_annotation: Expression,
         constructors: Vec<Constructor>,
     },
-    Module,  // @Task,
+    Module {
+        declarations: Vec<Declaration>,
+    },
     Use,     // @Task
     Foreign, // @Task
 }
 
-// @Question should the line break be part of the result? I don't think so:
-// The parent context should decide (here: a module) (e.g. no line break on the end of output)
 // @Task reduce amount of (String) allocations
 // @Bug indentation not correctly handled (e.g. an indented data declaration doesn't have its constructors indented)
 // @Task implement indentation logic (@Note for now, it's not that relevant because we don*t have modules yet, so a data
@@ -57,6 +57,13 @@ impl fmt::Display for Declaration {
                     .collect::<Vec<_>>()
                     .join("\n")
             ),
+            Self::Module { declarations } => {
+                f.write_str("'module =\n")?;
+                for declaration in declarations {
+                    write!(f, "{}\n", declaration)?;
+                }
+                Ok(())
+            }
             _ => unimplemented!(),
         }
     }
@@ -111,6 +118,9 @@ pub fn lower_declaration(declaration: &parser::Declaration) -> Declaration {
             binder: Identifier::Plain(binder.clone()),
             type_annotation: lower_annotated_parameters(&parameters, &type_annotation),
             constructors: constructors.iter().map(lower_constructor).collect(),
+        },
+        parser::Declaration::Module { declarations } => Declaration::Module {
+            declarations: declarations.into_iter().map(lower_declaration).collect(),
         },
         _ => unimplemented!(),
     }
@@ -248,8 +258,12 @@ pub fn lower_expression(expression: &parser::Expression) -> Expression {
             explicitness: *explicitness,
         },
         parser::Expression::TypeLiteral => Expression::TypeLiteral,
-        parser::Expression::Identifier(identifier) => Expression::Identifier(Identifier::Plain(identifier.clone())),
-        parser::Expression::Hole(identifier) => Expression::Hole(Identifier::Plain(identifier.clone())),
+        parser::Expression::Identifier(identifier) => {
+            Expression::Identifier(Identifier::Plain(identifier.clone()))
+        }
+        parser::Expression::Hole(identifier) => {
+            Expression::Hole(Identifier::Plain(identifier.clone()))
+        }
         parser::Expression::LambdaLiteral {
             parameters,
             type_annotation,

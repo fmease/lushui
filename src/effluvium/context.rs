@@ -1,4 +1,5 @@
 use super::{Expression, Identifier};
+use std::fmt;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 // @Note expressions aren't the only entities: modules are too, gonna be added later
@@ -20,10 +21,10 @@ impl Entity {
     // in our current model
     fn retrieve_type(&self) -> &Expression {
         match self {
-            Entity::UnresolvedExpression { type_ } => type_,
-            Entity::NeutralExpression { type_ } => type_,
-            Entity::ResolvedExpression { type_, .. } => type_,
-            Entity::AlgebraicDataType { type_, .. } => type_,
+            Self::UnresolvedExpression { type_ } => type_,
+            Self::NeutralExpression { type_ } => type_,
+            Self::ResolvedExpression { type_, .. } => type_,
+            Self::AlgebraicDataType { type_, .. } => type_,
         }
     }
 
@@ -32,6 +33,20 @@ impl Entity {
             Some(expr)
         } else {
             None
+        }
+    }
+}
+
+// @Temporary
+impl fmt::Display for Entity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnresolvedExpression { type_ } => write!(f, "UNRESOLVED {{ {} }}", type_),
+            Self::NeutralExpression { type_ } => write!(f, "NEUTRAL {{ {} }}", type_),
+            Self::ResolvedExpression { type_, expr } => {
+                write!(f, "RESOLVED {{ {} }} {{ {} }}", type_, expr)
+            }
+            Self::AlgebraicDataType { type_ } => write!(f, "ADT {{ {} }}", type_),
         }
     }
 }
@@ -140,6 +155,31 @@ impl MutCtx {
     }
 }
 
+// @Temporary
+impl fmt::Display for MutCtx {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "[[BINDINGS]]")?;
+        for (binding, entity) in self.bindings.borrow().iter() {
+            writeln!(f, "{} ===> {}", binding, entity)?;
+        }
+        writeln!(f, "[[ADTS]]")?;
+        for (binding, constructor_bindings) in self.adts.borrow().iter() {
+            writeln!(
+                f,
+                "{} ===> {}",
+                binding,
+                constructor_bindings
+                    .into_iter()
+                    .map(|binding| format!("| {} ", binding))
+                    .collect::<String>()
+            )?;
+        }
+        Ok(())
+    }
+}
+
 pub fn initial() -> (MutCtx, u64) {
     (Default::default(), 0)
 }
+
+pub type Environment = Rc<HashMap<Identifier, Expression>>;

@@ -49,6 +49,18 @@ impl<'i> Context<'i> {
         }
     }
 
+    fn expect_end_of_input(&self) -> Result<()> {
+        if self.index < self.tokens.len() {
+            // @Temporary dummy span
+            Err(Error {
+                kind: ErrorKind::ExpectedEndOfInput,
+                span: 0..=0,
+            })
+        } else {
+            Ok(())
+        }
+    }
+
     fn consume(&mut self, token_kind: lexer::TokenKind) -> Result<lexer::SourceToken> {
         let token = self.expect(token_kind)?;
         self.accept();
@@ -88,27 +100,46 @@ pub enum Declaration {
         type_annotation: Expression,
         constructors: Vec<Constructor>,
     },
-    Module,  // @Task @Question file vs inline module
+    // @Temporary missing a lot of information
+    Module {
+        declarations: Vec<Declaration>,
+    },
     Use,     // @Task
     Foreign, // @Task
 }
 
+// @Temporary
+pub fn parse_file_module_no_header(context: &mut Context<'_>) -> Result<Declaration> {
+    let mut declarations = Vec::new();
+
+    while let Ok(declaration) = context
+        .consume(lexer::TokenKind::LineBreak)
+        .map(|_| None)
+        .or_else(|_| context.reflect(parse_declaration).map(Some))
+    {
+        if let Some(declaration) = declaration {
+            declarations.push(declaration);
+        }
+    }
+
+    context.expect_end_of_input()?;
+
+    Ok(Declaration::Module { declarations })
+}
+
 pub fn parse_declaration(context: &mut Context<'_>) -> Result<Declaration> {
-    // @Beacon @Beacon @Task
-    fn parse_data_declaration(context: &mut Context<'_>) -> Result<Declaration> {
-        eprintln!("parsing data declaration..");
+    pub fn parse_data_declaration(context: &mut Context<'_>) -> Result<Declaration> {
         context.consume(lexer::TokenKind::Keyword(lexer::Keyword::Data))?;
         let binder = context.consume_identifier()?;
         let parameters = parse_annotated_parameters(context)?;
-        dbg!(&parameters);
         let type_annotation = parse_type_annotation(context)?;
-        dbg!(&type_annotation);
+        context.consume(lexer::TokenKind::Equals)?;
         context.consume(lexer::TokenKind::LineBreak)?;
+
         let mut constructors = Vec::new();
 
-        // @Bug @Task use reflect
         if context.consume(lexer::TokenKind::Indentation).is_ok() {
-            while let Ok(constructor) = parse_constructor(context) {
+            while let Ok(constructor) = context.reflect(parse_constructor) {
                 constructors.push(constructor);
             }
             // @Question or EOI?
@@ -142,21 +173,24 @@ pub fn parse_declaration(context: &mut Context<'_>) -> Result<Declaration> {
     }
 
     // @Task
-    fn parse_use_declaration() -> Result<Declaration> {
+    fn _parse_use_declaration() -> Result<Declaration> {
         unimplemented!()
     }
 
     // @Task
-    fn parse_foreign_declaration() -> Result<Declaration> {
+    fn _parse_foreign_declaration() -> Result<Declaration> {
         unimplemented!()
     }
 
-    // @Temporary comment; parse_data_declaration not ready
-    // context.reflect(parse_data_declaration)
-    //     .or_else(|_| context.reflect(parse_let_declaration))
+    // @Task
+    fn _parse_module_declaration() -> Result<Declaration> {
+        unimplemented!()
+    }
 
-    // @Temporary missing all other types of declarations
-    parse_let_declaration(context)
+    // @Temporary missing use, module and foreign declarations
+    context
+        .reflect(parse_data_declaration)
+        .or_else(|_| parse_let_declaration(context))
 }
 
 // @Beacon @Beacon @Beacon @Task add span information!!!
@@ -369,13 +403,10 @@ pub struct Constructor {
 
 // @Task very future: unnameable constructor `'_`
 fn parse_constructor(context: &mut Context<'_>) -> Result<Constructor> {
-    eprintln!(">>>> ctor");
     let binder = context.consume_identifier()?;
     let parameters = parse_annotated_parameters(context)?;
-    dbg!(&binder, &parameters);
     let type_annotation = parse_type_annotation(context)?;
-    eprintln!("###");
-    dbg!(&type_annotation);
+    // @Question what about EOI?
     context.consume(lexer::TokenKind::LineBreak)?;
 
     Ok(Constructor {

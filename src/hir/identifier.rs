@@ -1,32 +1,49 @@
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
+use crate::parser;
+
 pub type RefreshState<'a> = &'a mut u64;
 
+// @Task update docs
 /// Either an identifier found in the source program or a synthetic one.
 ///
 /// Plain identifiers don't compare by their span only their (interned) contents.
 #[derive(Clone, Debug, Eq)]
 pub enum Identifier {
-    Plain(crate::parser::Identifier),
-    // @Question should we keep a base identifier for pretty-printing?
-    // like Generated(parser::Identifier, u64) preserving the source
-    // of the synthetic identifier
-    Generated(u64),
+    Stub,
+    Plain(parser::Identifier),
+    Generated(parser::Identifier, u64),
 }
 
 impl Identifier {
     pub fn refresh(&self, state: RefreshState<'_>) -> Self {
         *state += 1;
-        Self::Generated(*state)
+        Self::Generated(
+            match self {
+                Self::Stub => parser::Identifier {
+                    atom: crate::lexer::Atom::from(""),
+                    // @Note ugly
+                    span: 0..=0,
+                },
+                Self::Plain(identifier) => identifier.clone(),
+                Self::Generated(identifier, _) => identifier.clone(),
+            },
+            *state,
+        )
     }
 }
 
 impl PartialEq for Identifier {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
+            // @Question are two stubs equal?
+            (Self::Stub, Self::Stub) => true,
             (Self::Plain(left), Self::Plain(right)) => left.atom == right.atom,
-            (Self::Generated(left), Self::Generated(right)) => left == right,
+            (
+                Self::Generated(left_identifier, left_version),
+                Self::Generated(right_identifier, right_version),
+            ) => left_identifier.atom == right_identifier.atom && left_version == right_version,
             _ => false,
         }
     }
@@ -35,13 +52,15 @@ impl PartialEq for Identifier {
 impl Hash for Identifier {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
+            Self::Stub => 0u64.hash(state),
             Self::Plain(identifier) => {
                 1u64.hash(state);
                 identifier.atom.hash(state);
             }
-            Self::Generated(identifier) => {
+            Self::Generated(identifier, version) => {
                 2u64.hash(state);
-                identifier.hash(state);
+                identifier.atom.hash(state);
+                version.hash(state);
             }
         }
     }
@@ -52,7 +71,8 @@ impl fmt::Display for Identifier {
         match self {
             Self::Plain(identifier) => write!(f, "{}", identifier),
             // @Temporary
-            Self::Generated(identifier) => write!(f, "${}", identifier),
+            Self::Stub => f.write_str("$"),
+            Self::Generated(identifier, version) => write!(f, "{}${}", identifier, version),
         }
     }
 }

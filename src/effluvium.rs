@@ -8,104 +8,16 @@ mod error;
 use crate::hir::{self, Declaration, Expression, Identifier, RefreshState};
 use crate::parser::Explicitness;
 pub use context::initial;
-use context::MutCtx;
+use context::{Environment, MutCtx};
 use error::{Error, Result};
 
-// @Note module code (hir::Declaration::Module)
-// used for recursion
-// @Question move into constructor?
-// fn register_binders(&mut self) -> Result<()> {
-//     #[cfg(debug_assertions)]
-//     assert!(!self.registered_binders);
-
-//     for declaration in &self.declarations {
-//         match declaration {
-//             Declaration::Data {
-//                 binder,
-//                 constructors,
-//                 ..
-//             } => {
-//                 let binder = binder.view_str().unwrap().to_string();
-//                 Self::register_binder(&mut self.binders, binder)?;
-//                 for constructor in constructors {
-//                     Self::register_binder(
-//                         &mut self.binders,
-//                         constructor.binder.view_str().unwrap().to_string(),
-//                     )?;
-//                 }
-//             }
-//             Declaration::Let { binder, .. } => {
-//                 Self::register_binder(
-//                     &mut self.binders,
-//                     binder.view_str().unwrap().to_string(),
-//                 )?;
-//             }
-//             // is a temp on Declaration
-//             Declaration::ExprStmt(..) => unreachable!(),
-//         }
-//     }
-
-//     Ok(())
-// }
-
-//     fn register_binder(binders: &mut Vec<String>, binder: String) -> Result<()> {
-//         if binders.contains(&binder) {
-//             // @Task more information
-//             Err(Error::AlreadyDefined)
-//         } else {
-//             binders.push(binder);
-//             Ok(())
-//         }
-//     }
-
-// @Question good naming scheme?
-// @Note evaluate needs to take a reference to self.binders @Task to allow for recursion
-// @Note currently `evaluate` means registering bindings in the context and also if
-// we encounter the "declaration" expr_stmt, we evaluate it (a sort-of main function)
-// @Note in future, the repl might evaluate expressions as `'let '_: 'hole 'infer = expr`
-// or we just expose a better evaluate function
-// @Note once we implement D/E-modes into repl, the signature will change to
-// fn(&self, context: Context, state: State<'_>) -> Result<()> or
-// if we switch to immutable contexts (which includes State):
-// fn(&self, context: ImmContext) -> Result<ImmContext>
-//     pub fn evaluate(&self, context: MutCtx, state: State<'_>) -> Result<Option<(Expr, Expr)>> {
-//         Ok(self
-//             .declarations
-//             .iter()
-//             .map(|declaration| declaration.evaluate(context.clone(), state))
-//             .last()
-//             .transpose()?
-//             .flatten())
-//     }
-// }
-
-// used for recursion
-// @Note currently disallows declarations where the binding is recursive in its type signature
-// the only example that currently makes sense to me is `'let A: A = 'Type` but it's not useful
-// at all and only exist because of the special `the Type' Type'`.
-// Are there any expressions that a well-typed if they recurse in their type??
-// name: "recursion in type annotation"
-// @Bug unusable
-// pub fn register_declaration(&self, context: MutCtx, state: State<'_>) -> Result<()> {
-// Ok(match self {
-//     Declaration::Let { binder, type_, .. } => {
-//         // @Task verify type_
-//         context.insert_unresolved_binding(binder, type_)?;
-//     }
-//     Declaration::Data { binder, type_, constructors } => {
-//         // @Task verify type_
-//         context.insert_unresolved_binding(binder, type_)?;
-//         // @Question should we register those????
-//         // I think, we don't want to allow "recursion in type annotation"
-//         //for constructor in constructors {
-//         //    context.insert_unresolved_binding(constructor.binder, constructor);
-//         //}
-//     }
-//     Declaration::ExprStmt(..) => unreachable!(),
-// })
+use std::collections::HashMap;
+use std::rc::Rc;
 
 // @Task make pure returning new Context
-// @Task change name to register2 b.c. we are a lazy lang, we should only do type_checking here
+// @Question this is eager evaluation, right?
+// @Task handle out of order declarations and recursions (you need to go through declarations twice) and
+// only register the names plus types first (there is gonna be context.insert_unresolved_binding)
 pub fn evaluate_declaration(
     declaration: &Declaration,
     context: MutCtx,
@@ -153,36 +65,25 @@ pub fn evaluate_declaration(
                 );
             }
         }
+        Declaration::Module { declarations } => {
+            for declaration in declarations {
+                evaluate_declaration(declaration, context.clone(), state)?;
+            }
+        }
         _ => unimplemented!(),
     })
 }
 
-// @Task create Value type
-// pub enum _Value {
-//     // NeutralVariable(Variable)
-// // Type,
-// // Pi,
-// // Lambda, // NeutralTerm
-// // NeutralApplication(Abstraction)
-// //
-// }
-
-// @Task optimize body (abstraction_*-calls)
-// @Note bad naming
 fn substitute(
     expression: &Expression,
-    substitution_binder: Identifier,
-    substitution: Expression,
+    environment: Environment,
     state: RefreshState<'_>,
 ) -> Expression {
     match expression {
-        Expression::Identifier(identifier) => {
-            if identifier == &substitution_binder {
-                substitution
-            } else {
-                expression.clone()
-            }
-        }
+        Expression::Identifier(identifier) => environment
+            .get(identifier)
+            .cloned()
+            .unwrap_or_else(|| expression.clone()),
         Expression::TypeLiteral => Expression::TypeLiteral,
         Expression::PiTypeLiteral {
             binder,
@@ -195,8 +96,7 @@ fn substitute(
                 binder.as_ref().unwrap(),
                 domain,
                 codomain,
-                substitution_binder,
-                substitution,
+                environment,
                 state,
             );
             Expression::PiTypeLiteral {
@@ -218,8 +118,7 @@ fn substitute(
                 binder,
                 parameter_type_annotation.as_ref().unwrap(),
                 body,
-                substitution_binder,
-                substitution,
+                environment,
                 state,
             );
             Expression::LambdaLiteral {
@@ -236,18 +135,8 @@ fn substitute(
             argument,
             explicitness: _,
         } => Expression::Application {
-            expression: Box::new(substitute(
-                expression,
-                substitution_binder.clone(),
-                substitution.clone(),
-                state,
-            )),
-            argument: Box::new(substitute(
-                argument,
-                substitution_binder,
-                substitution,
-                state,
-            )),
+            expression: Box::new(substitute(expression, environment.clone(), state)),
+            argument: Box::new(substitute(argument, environment, state)),
             // @Temporary
             explicitness: Explicitness::Explicit,
         },
@@ -312,9 +201,12 @@ pub fn infer_type(
                     assert_expressions_are_equal(&domain, &argument_type, context, state)?;
                     substitute(
                         &codomain,
-                        // @Bug unchecked @Temporary unwrap
-                        binder.unwrap(),
-                        argument.as_ref().clone(),
+                        {
+                            let mut environment = HashMap::new();
+                            // @Bug unchecked @Temporary unwrap
+                            environment.insert(binder.unwrap(), argument.as_ref().clone());
+                            Rc::new(environment)
+                        },
                         state,
                     )
                 }
@@ -341,23 +233,31 @@ pub fn normalize(
             .map(|expression| normalize(&expression, context, state))
             .unwrap_or_else(|| Ok(expression.clone()))?,
         Expression::Application {
-            expression: expr1,
-            argument: expr2,
+            expression,
+            argument,
             // @Task
             explicitness: _,
         } => {
-            let expr2 = normalize(expr2, context.clone(), state)?;
-            match normalize(expr1, context, state)? {
+            let argument = normalize(argument, context.clone(), state)?;
+            match normalize(expression, context, state)? {
                 Expression::LambdaLiteral {
                     binder,
                     parameter_type_annotation: _,
                     body,
                     body_type_annotation: _,
                     explicitness: _,
-                } => substitute(&body, binder, expr2, state),
-                expr1 => Expression::Application {
-                    expression: Box::new(expr1),
-                    argument: Box::new(expr2),
+                } => substitute(
+                    &body,
+                    {
+                        let mut environment = HashMap::new();
+                        environment.insert(binder, argument);
+                        Rc::new(environment)
+                    },
+                    state,
+                ),
+                expression => Expression::Application {
+                    expression: Box::new(expression),
+                    argument: Box::new(argument),
                     // @Temporary
                     explicitness: Explicitness::Explicit,
                 },
@@ -474,25 +374,25 @@ fn equal(left: &Expression, right: &Expression, context: MutCtx, state: RefreshS
         (
             Expression::PiTypeLiteral {
                 binder: binder1,
-                domain: parameter1,
-                codomain: expression1,
+                domain: domain1,
+                codomain: codomain1,
                 explicitness: _,
             },
             Expression::PiTypeLiteral {
                 binder: binder2,
-                domain: parameter2,
-                codomain: expression2,
+                domain: domain2,
+                codomain: codomain2,
                 explicitness: _,
             },
         ) => {
             // @Bug unchecked @Temporary unwrap
             abstraction_equal(
                 binder1.as_ref().unwrap(),
-                parameter1,
-                expression1,
+                domain1,
+                codomain1,
                 binder2.as_ref().unwrap(),
-                parameter2,
-                expression2,
+                domain2,
+                codomain2,
                 context,
                 state,
             )
@@ -500,15 +400,15 @@ fn equal(left: &Expression, right: &Expression, context: MutCtx, state: RefreshS
         (
             Expression::LambdaLiteral {
                 binder: binder1,
-                parameter_type_annotation: parameter1,
-                body: expression1,
+                parameter_type_annotation: parameter_type_annotation1,
+                body: body1,
                 body_type_annotation: _,
                 explicitness: _,
             },
             Expression::LambdaLiteral {
                 binder: binder2,
-                parameter_type_annotation: parameter2,
-                body: expression2,
+                parameter_type_annotation: parameter_type_annotation2,
+                body: body2,
                 body_type_annotation: _,
                 explicitness: _,
             },
@@ -516,11 +416,11 @@ fn equal(left: &Expression, right: &Expression, context: MutCtx, state: RefreshS
             // @Bug unchecked @Temporary unwrap
             abstraction_equal(
                 binder1,
-                parameter1.as_ref().unwrap(),
-                expression1,
+                parameter_type_annotation1.as_ref().unwrap(),
+                body1,
                 binder2,
-                parameter2.as_ref().unwrap(),
-                expression2,
+                parameter_type_annotation2.as_ref().unwrap(),
+                body2,
                 context,
                 state,
             )
@@ -585,18 +485,20 @@ fn abstraction_substitute(
     binder: &Identifier,
     parameter: &Expression,
     expression: &Expression,
-    substitution_binder: Identifier,
-    substitution: Expression,
+    environment: Environment,
     state: RefreshState<'_>,
 ) -> (Identifier, Expression, Expression) {
-    let binder = binder.refresh(state);
+    let refreshed_binder = binder.refresh(state);
     (
-        binder.clone(),
-        substitute(parameter, substitution_binder, substitution, state),
+        refreshed_binder.clone(),
+        substitute(parameter, environment.clone(), state),
         substitute(
             expression,
-            binder.clone(),
-            Expression::Identifier(binder),
+            {
+                let mut environment = environment.as_ref().clone();
+                environment.insert(binder.clone(), Expression::Identifier(refreshed_binder));
+                Rc::new(environment)
+            },
             state,
         ),
     )
@@ -637,8 +539,11 @@ fn abstraction_equal(
             &expression1,
             &substitute(
                 expression2,
-                binder2.clone(),
-                Expression::Identifier(binder1.clone()),
+                {
+                    let mut environment = HashMap::new();
+                    environment.insert(binder2.clone(), Expression::Identifier(binder1.clone()));
+                    Rc::new(environment)
+                },
                 state,
             ),
             context,
