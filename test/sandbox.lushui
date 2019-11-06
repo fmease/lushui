@@ -1,0 +1,13 @@
+;;; Our sandbox
+'data Nat: 'Type =
+    Zero: Nat
+    ;;; sss
+    Succ: (n: Nat) -> Nat 
+
+'let the (,A: 'Type) (x: A): A = x
+'let the2: XX = the Nat
+
+'let two: Nat = Succ (Succ Zero)
+
+'let n: Nat = the Nat (Succ (Succ Zero))
+'let T: 'Type = 'Type
