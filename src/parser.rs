@@ -8,11 +8,8 @@ use std::fmt;
 pub use error::Error;
 use error::{ErrorKind, Result};
 
-// @Task remove debug `pub` from some parsing functions (maybe)
-// @Task figure out which `Context::reflect`s are necessary and which
-// can be replaced by normal function calls
-
-// @Task pub parse_file_module
+// @Beacon @Temporary
+const NOWHERE: Span = Span::new(0, 0);
 
 // @Temporary pub
 #[derive(Clone)]
@@ -41,20 +38,19 @@ impl<'i> Context<'i> {
             Ok(token)
         } else {
             // @Task also add (list of) expected token(s)
-            // @Bug @Temporary dummy span
             Err(Error {
                 kind: ErrorKind::UnexpectedToken(token),
-                span: Span::new(0, 0),
+                span: NOWHERE,
             })
         }
     }
 
+    // @Note ugly: special-casing??
     fn expect_end_of_input(&self) -> Result<()> {
         if self.index < self.tokens.len() {
-            // @Temporary dummy span
             Err(Error {
                 kind: ErrorKind::ExpectedEndOfInput,
-                span: Span::new(0, 0),
+                span: NOWHERE,
             })
         } else {
             Ok(())
@@ -67,6 +63,7 @@ impl<'i> Context<'i> {
         Ok(token)
     }
 
+    // @Note ugly: special-casing identifiers... need to generalize? via trait?
     fn consume_identifier(&mut self) -> Result<Identifier> {
         self.consume(lexer::TokenKind::Identifier)
             .map(|token| token.try_into().unwrap())
@@ -77,15 +74,13 @@ impl<'i> Context<'i> {
     }
 
     fn token(&self) -> Result<lexer::SourceToken> {
-        // @Bug @Temporary dummy span
         self.tokens.get(self.index).cloned().ok_or(Error {
             kind: ErrorKind::UnexpectedEndOfInput,
-            span: Span::new(0, 0),
+            span: NOWHERE,
         })
     }
 }
 
-// @Beacon @Beacon @Task add span information!!
 #[derive(Debug)] // @Temporary
 pub enum Declaration {
     Let {
@@ -93,19 +88,40 @@ pub enum Declaration {
         parameters: AnnotatedParameters,
         type_annotation: Expression,
         expression: Expression,
+        span: Span,
     },
     Data {
         binder: Identifier,
         parameters: AnnotatedParameters,
         type_annotation: Expression,
         constructors: Vec<Constructor>,
+        span: Span,
     },
     // @Temporary missing a lot of information
     Module {
         declarations: Vec<Declaration>,
+        span: Span,
     },
-    Use,     // @Task
-    Foreign, // @Task
+    // @Task
+    Use {
+        span: Span,
+    },
+    // @Task
+    Foreign {
+        span: Span,
+    },
+}
+
+impl Declaration {
+    pub fn span(&self) -> Span {
+        match self {
+            Self::Let { span, .. } => *span,
+            Self::Data { span, .. } => *span,
+            Self::Module { span, .. } => *span,
+            Self::Use { span, .. } => *span,
+            Self::Foreign { span, .. } => *span,
+        }
+    }
 }
 
 // @Temporary
@@ -124,7 +140,10 @@ pub fn parse_file_module_no_header(context: &mut Context<'_>) -> Result<Declarat
 
     context.expect_end_of_input()?;
 
-    Ok(Declaration::Module { declarations })
+    Ok(Declaration::Module {
+        declarations,
+        span: NOWHERE,
+    })
 }
 
 pub fn parse_declaration(context: &mut Context<'_>) -> Result<Declaration> {
@@ -151,6 +170,7 @@ pub fn parse_declaration(context: &mut Context<'_>) -> Result<Declaration> {
             parameters,
             type_annotation,
             constructors,
+            span: NOWHERE,
         })
     }
 
@@ -169,6 +189,7 @@ pub fn parse_declaration(context: &mut Context<'_>) -> Result<Declaration> {
             parameters,
             type_annotation,
             expression,
+            span: NOWHERE,
         })
     }
 
@@ -193,7 +214,6 @@ pub fn parse_declaration(context: &mut Context<'_>) -> Result<Declaration> {
         .or_else(|_| parse_let_declaration(context))
 }
 
-// @Beacon @Beacon @Beacon @Task add span information!!!
 #[derive(Debug, Clone)]
 pub enum Expression {
     // @Task rename to PiTypeLiteral { parameter, domain, codomain, explicitness }
@@ -202,20 +222,30 @@ pub enum Expression {
         parameter: Box<Expression>,
         expression: Box<Expression>,
         explicitness: Explicitness,
+        span: Span,
     },
     Application {
         expression: Box<Expression>,
         argument: Box<Expression>,
         explicitness: Explicitness,
+        span: Span,
     },
-    TypeLiteral,
-    Identifier(Identifier),
-    Hole(Identifier),
+    TypeLiteral {
+        span: Span,
+    },
+    Identifier {
+        inner: Identifier,
+    },
+    Hole {
+        tag: Identifier,
+        span: Span,
+    },
     // @Task rename to LambdaLiteral { parameters, body_type_annotation, body }
     LambdaLiteral {
         parameters: Parameters,
         type_annotation: Option<Box<Expression>>,
         expression: Box<Expression>,
+        span: Span,
     },
     // @Task rename the field expression to something more descriptive
     LetIn {
@@ -225,9 +255,32 @@ pub enum Expression {
         // @Task improve upon naming
         expression: Box<Expression>,
         scope: Box<Expression>,
+        span: Span,
     },
-    UseIn, // @Task
-    Case,  // @Task
+    // @Task
+    UseIn {
+        span: Span,
+    },
+    // @Task
+    Case {
+        span: Span,
+    },
+}
+
+impl Expression {
+    pub fn span(&self) -> Span {
+        match self {
+            Self::PiLiteral { span, .. } => *span,
+            Self::Application { span, .. } => *span,
+            Self::TypeLiteral { span } => *span,
+            Self::Identifier { inner } => inner.span,
+            Self::Hole { span, .. } => *span,
+            Self::LambdaLiteral { span, .. } => *span,
+            Self::LetIn { span, .. } => *span,
+            Self::UseIn { span, .. } => *span,
+            Self::Case { span, .. } => *span,
+        }
+    }
 }
 
 // @Note @Bug indentation logic not implemented (e.g. indent+let-in)
@@ -235,7 +288,7 @@ pub enum Expression {
 pub fn parse_expression(context: &mut Context<'_>) -> Result<Expression> {
     // Let_In ::= "'let" Identifier Parameters Type_Annotation? "=" Expression "'in" Expression
     fn parse_let_in(context: &mut Context<'_>) -> Result<Expression> {
-        context.consume(lexer::TokenKind::Keyword(lexer::Keyword::Let))?;
+        let let_keyword = context.consume(lexer::TokenKind::Keyword(lexer::Keyword::Let))?;
         let binder = context.consume_identifier()?;
         let parameters = context.reflect(parse_parameters)?;
         let type_annotation = context.reflect(parse_type_annotation).ok().map(Box::new);
@@ -248,21 +301,24 @@ pub fn parse_expression(context: &mut Context<'_>) -> Result<Expression> {
             parameters,
             type_annotation,
             expression,
+            span: let_keyword.span.merge(scope.span()),
             scope,
         })
     }
 
     // Lambda_Literal ::= "\" Parameters Type_Annotation? "=>" Expression
     fn parse_lambda_literal(context: &mut Context<'_>) -> Result<Expression> {
-        context.consume(lexer::TokenKind::Backslash)?;
+        let backslash = context.consume(lexer::TokenKind::Backslash)?;
         let parameters = context.reflect(parse_parameters)?;
         let type_annotation = context.reflect(parse_type_annotation).ok().map(Box::new);
         context.consume(lexer::TokenKind::WideArrow)?;
+        let expression = Box::new(context.reflect(parse_expression)?);
 
         Ok(Expression::LambdaLiteral {
             parameters,
             type_annotation,
-            expression: Box::new(context.reflect(parse_expression)?),
+            span: backslash.span.merge(expression.span()),
+            expression,
         })
     }
 
@@ -295,6 +351,7 @@ pub fn parse_expression(context: &mut Context<'_>) -> Result<Expression> {
                 binder,
                 parameter: Box::new(parameter),
                 explicitness,
+                span: NOWHERE,
             },
             Err(_) if binder.is_none() => parameter,
             Err(error) => return Err(error),
@@ -344,10 +401,12 @@ pub fn parse_expression(context: &mut Context<'_>) -> Result<Expression> {
                 Ok((expression, Explicitness::Implicit))
             })
         {
+            // @Bug @Temporary span
             expression = Expression::Application {
                 expression: Box::new(expression),
                 argument: Box::new(argument),
                 explicitness,
+                span: NOWHERE,
             };
         }
         Ok(expression)
@@ -366,18 +425,24 @@ pub fn parse_expression(context: &mut Context<'_>) -> Result<Expression> {
     fn parse_type_literal(context: &mut Context<'_>) -> Result<Expression> {
         context
             .consume(lexer::TokenKind::Keyword(lexer::Keyword::Type))
-            .map(|_| Expression::TypeLiteral)
+            .map(|token| Expression::TypeLiteral { span: token.span })
     }
 
     // Identifier ::= %identifier%
     fn parse_identifier(context: &mut Context<'_>) -> Result<Expression> {
-        context.consume_identifier().map(Expression::Identifier)
+        context
+            .consume_identifier()
+            .map(|inner| Expression::Identifier { inner })
     }
 
     // Hole ::= "'hole" %identifier%
     fn parse_hole(context: &mut Context<'_>) -> Result<Expression> {
-        context.consume(lexer::TokenKind::Keyword(lexer::Keyword::Hole))?;
-        Ok(Expression::Hole(context.consume_identifier()?))
+        let keyword_hole = context.consume(lexer::TokenKind::Keyword(lexer::Keyword::Hole))?;
+        let tag = context.consume_identifier()?;
+        Ok(Expression::Hole {
+            span: keyword_hole.span.merge(tag.span),
+            tag,
+        })
     }
 
     // Bracketed_Expression ::= "(" Expression ")"
@@ -416,6 +481,7 @@ fn parse_constructor(context: &mut Context<'_>) -> Result<Constructor> {
     })
 }
 
+// @Task add span information @Question or shouldn't we?
 // @Task inline pattern-match
 #[derive(Debug)]
 pub struct AnnotatedParameterGroup {
@@ -548,7 +614,7 @@ fn expect_delimiter(context: &Context<'_>) -> Result<()> {
         if token.kind() != lexer::TokenKind::LineBreak {
             return Err(Error {
                 kind: ErrorKind::UnexpectedToken(token),
-                span: Span::new(0, 0),
+                span: NOWHERE,
             });
         }
     }
@@ -571,11 +637,12 @@ impl fmt::Display for Identifier {
     }
 }
 
+// @Note only ever used in consume_identifier @Question over-engineered?
 impl TryFrom<lexer::SourceToken> for Identifier {
     type Error = ();
 
     fn try_from(token: lexer::SourceToken) -> Result<Self, Self::Error> {
-        match token.token {
+        match token.inner {
             lexer::Token::Identifier(atom) => Ok(Self {
                 atom,
                 span: token.span,

@@ -7,13 +7,13 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 #[derive(Clone, Debug)]
 enum Entity {
     // used for recursion
-    UnresolvedExpression { type_: Expression },
+    _UnresolvedExpression { type_: Expression },
     // @Note technically, an ADT is a neutral expression, too @Question better naming?
     // @Note formal parameters
     NeutralExpression { type_: Expression },
     ResolvedExpression { type_: Expression, expr: Expression },
     // @Question additional payload? constructors?
-    AlgebraicDataType { type_: Expression },
+    _AlgebraicDataType { type_: Expression },
 }
 
 impl Entity {
@@ -21,10 +21,10 @@ impl Entity {
     // in our current model
     fn retrieve_type(&self) -> &Expression {
         match self {
-            Self::UnresolvedExpression { type_ } => type_,
+            Self::_UnresolvedExpression { type_ } => type_,
             Self::NeutralExpression { type_ } => type_,
             Self::ResolvedExpression { type_, .. } => type_,
-            Self::AlgebraicDataType { type_, .. } => type_,
+            Self::_AlgebraicDataType { type_, .. } => type_,
         }
     }
 
@@ -41,12 +41,12 @@ impl Entity {
 impl fmt::Display for Entity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::UnresolvedExpression { type_ } => write!(f, "UNRESOLVED {{ {} }}", type_),
+            Self::_UnresolvedExpression { type_ } => write!(f, "UNRESOLVED {{ {} }}", type_),
             Self::NeutralExpression { type_ } => write!(f, "NEUTRAL {{ {} }}", type_),
             Self::ResolvedExpression { type_, expr } => {
                 write!(f, "RESOLVED {{ {} }} {{ {} }}", type_, expr)
             }
-            Self::AlgebraicDataType { type_ } => write!(f, "ADT {{ {} }}", type_),
+            Self::_AlgebraicDataType { type_ } => write!(f, "ADT {{ {} }}", type_),
         }
     }
 }

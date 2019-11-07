@@ -1,8 +1,8 @@
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
-use crate::parser;
 use crate::error::Span;
+use crate::parser;
 
 pub type RefreshState<'a> = &'a mut u64;
 
@@ -12,6 +12,7 @@ pub type RefreshState<'a> = &'a mut u64;
 /// Plain identifiers don't compare by their span only their (interned) contents.
 #[derive(Clone, Debug, Eq)]
 pub enum Identifier {
+    // @Question is Stub used??
     Stub,
     Plain(parser::Identifier),
     Generated(parser::Identifier, u64),

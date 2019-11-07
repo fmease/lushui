@@ -76,6 +76,7 @@ pub fn lower_declaration(declaration: &parser::Declaration) -> Declaration {
             parameters,
             type_annotation,
             expression,
+            span: _,
         } => {
             // @Note type_annotation is currently lowered twice
             // @Task remove duplicate work
@@ -114,12 +115,13 @@ pub fn lower_declaration(declaration: &parser::Declaration) -> Declaration {
             parameters,
             type_annotation,
             constructors,
+            span: _,
         } => Declaration::Data {
             binder: Identifier::Plain(binder.clone()),
             type_annotation: lower_annotated_parameters(&parameters, &type_annotation),
             constructors: constructors.iter().map(lower_constructor).collect(),
         },
-        parser::Declaration::Module { declarations } => Declaration::Module {
+        parser::Declaration::Module { declarations, span: _ } => Declaration::Module {
             declarations: declarations.into_iter().map(lower_declaration).collect(),
         },
         _ => unimplemented!(),
@@ -236,12 +238,13 @@ impl fmt::Display for Expression {
 }
 
 pub fn lower_expression(expression: &parser::Expression) -> Expression {
-    match expression {
+    match &expression {
         parser::Expression::PiLiteral {
             binder,
             parameter,
             expression,
             explicitness,
+            span: _,
         } => Expression::PiTypeLiteral {
             binder: binder.clone().map(Identifier::Plain),
             domain: Box::new(lower_expression(parameter)),
@@ -252,22 +255,24 @@ pub fn lower_expression(expression: &parser::Expression) -> Expression {
             expression,
             argument,
             explicitness,
+            span: _,
         } => Expression::Application {
             expression: Box::new(lower_expression(expression)),
             argument: Box::new(lower_expression(argument)),
             explicitness: *explicitness,
         },
-        parser::Expression::TypeLiteral => Expression::TypeLiteral,
-        parser::Expression::Identifier(identifier) => {
+        parser::Expression::TypeLiteral { span: _ } => Expression::TypeLiteral,
+        parser::Expression::Identifier { inner: identifier } => {
             Expression::Identifier(Identifier::Plain(identifier.clone()))
         }
-        parser::Expression::Hole(identifier) => {
+        parser::Expression::Hole { tag: identifier, span: _ } => {
             Expression::Hole(Identifier::Plain(identifier.clone()))
         }
         parser::Expression::LambdaLiteral {
             parameters,
             type_annotation,
             expression,
+            span: _,
         } => {
             let mut expression = lower_expression(expression);
 
@@ -302,6 +307,7 @@ pub fn lower_expression(expression: &parser::Expression) -> Expression {
             type_annotation,
             expression,
             scope,
+            span: _,
         } => {
             let mut expression = lower_expression(expression);
 

@@ -9,13 +9,16 @@ use std::str::FromStr;
 pub use error::Error;
 use error::ErrorKind;
 
+// @Task @Question rename SourceToken|Token to Token|PlainToken to mirror
+// Expression|PlainExpression
+
 /// A token with span information [`crate::error::Span`].
 ///
 /// There is no actual reference to the source, we are working with indeces.
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug, Clone)]
 pub struct SourceToken {
-    pub token: Token,
+    pub inner: Token,
     // pub kind: TokenKind,
     // @Task add pub data: Option<TokenData>,
     pub span: Span,
@@ -23,7 +26,7 @@ pub struct SourceToken {
 
 impl SourceToken {
     pub fn new(token: Token, span: Span) -> Self {
-        Self { token, span }
+        Self { inner: token, span }
     }
 }
 
@@ -31,7 +34,7 @@ impl std::ops::Deref for SourceToken {
     type Target = Token;
 
     fn deref(&self) -> &Self::Target {
-        &self.token
+        &self.inner
     }
 }
 
