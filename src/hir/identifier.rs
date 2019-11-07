@@ -2,6 +2,7 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 
 use crate::parser;
+use crate::error::Span;
 
 pub type RefreshState<'a> = &'a mut u64;
 
@@ -24,7 +25,7 @@ impl Identifier {
                 Self::Stub => parser::Identifier {
                     atom: crate::lexer::Atom::from(""),
                     // @Note ugly
-                    span: 0..=0,
+                    span: Span::new(0, 0),
                 },
                 Self::Plain(identifier) => identifier.clone(),
                 Self::Generated(identifier, _) => identifier.clone(),

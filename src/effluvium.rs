@@ -26,14 +26,14 @@ pub fn evaluate_declaration(
     Ok(match declaration {
         Declaration::Let {
             binder,
-            type_annotation: _,
+            type_annotation,
             expression,
         } => {
             if context.clone().contains(&binder) {
                 return Err(Error::AlreadyDefined);
             }
-            // @Task check against type_annotation
             let infered_type = infer_type(expression, context.clone(), state)?;
+            assert_expressions_are_equal(&infered_type, type_annotation, context.clone(), state)?;
             let value = normalize(expression, context.clone(), state)?;
             context.insert_binding(binder.clone(), infered_type, value);
         }
@@ -91,16 +91,10 @@ fn substitute(
             codomain,
             explicitness: _,
         } => {
-            // @Bug unchecked @Temporary unwrap
-            let (binder, domain, codomain) = abstraction_substitute(
-                binder.as_ref().unwrap(),
-                domain,
-                codomain,
-                environment,
-                state,
-            );
+            let (binder, domain, codomain) =
+                abstraction_substitute(binder.as_ref(), domain, codomain, environment, state);
             Expression::PiTypeLiteral {
-                binder: Some(binder),
+                binder,
                 domain: Box::new(domain),
                 codomain: Box::new(codomain),
                 explicitness: Explicitness::Explicit,
@@ -115,14 +109,15 @@ fn substitute(
         } => {
             // @Bug unchecked @Temporary unwrap
             let (binder, parameter_type, body) = abstraction_substitute(
-                binder,
+                Some(binder),
                 parameter_type_annotation.as_ref().unwrap(),
                 body,
                 environment,
                 state,
             );
+            // @Note this unwrap is safe, but the API of abstraction_substitute sucks
             Expression::LambdaLiteral {
-                binder,
+                binder: binder.unwrap(),
                 parameter_type_annotation: Some(Box::new(parameter_type)),
                 body: Box::new(body),
                 body_type_annotation: None,
@@ -161,22 +156,32 @@ pub fn infer_type(
             binder,
             parameter_type_annotation,
             body,
+            body_type_annotation,
             // @Task
             explicitness: _,
-            body_type_annotation: _,
         } => {
             // @Bug unhandled @Temporary unwrap
             let parameter_type: &Expression = parameter_type_annotation.as_ref().unwrap();
             assert_expression_is_a_type(&parameter_type, context.clone(), state)?;
-            let body_type = infer_type(
+            let infered_body_type = infer_type(
                 body,
-                context.extend_with_neutral_binding(binder.clone(), parameter_type.clone()),
+                context
+                    .clone()
+                    .extend_with_neutral_binding(binder.clone(), parameter_type.clone()),
                 state,
             )?;
+            if let Some(body_type_annotation) = body_type_annotation {
+                assert_expressions_are_equal(
+                    &infered_body_type,
+                    body_type_annotation,
+                    context,
+                    state,
+                )?;
+            }
             Expression::PiTypeLiteral {
                 binder: Some(binder.clone()),
                 domain: Box::new(parameter_type.clone()),
-                codomain: Box::new(body_type),
+                codomain: Box::new(infered_body_type),
                 // @Task
                 explicitness: Explicitness::Explicit,
             }
@@ -199,16 +204,18 @@ pub fn infer_type(
                 } => {
                     let argument_type = infer_type(argument, context.clone(), state)?;
                     assert_expressions_are_equal(&domain, &argument_type, context, state)?;
-                    substitute(
-                        &codomain,
-                        {
-                            let mut environment = HashMap::new();
-                            // @Bug unchecked @Temporary unwrap
-                            environment.insert(binder.unwrap(), argument.as_ref().clone());
-                            Rc::new(environment)
-                        },
-                        state,
-                    )
+                    match binder {
+                        Some(binder) => substitute(
+                            &codomain,
+                            {
+                                let mut environment = HashMap::new();
+                                environment.insert(binder, argument.as_ref().clone());
+                                Rc::new(environment)
+                            },
+                            state,
+                        ),
+                        None => *codomain,
+                    }
                 }
                 expression => return Err(Error::FunctionExpected(expression)),
             }
@@ -219,6 +226,11 @@ pub fn infer_type(
     })
 }
 
+// enum Normalized {}
+// type Value = Expression<Normalized>;
+
+// @Beacon @Task use type-tagging: tag the hir::Expression with a P: Phase type parameter which for now
+// differenciates between Initial and Normalized
 // @Question take expression by value?
 pub fn normalize(
     expression: &Expression,
@@ -239,22 +251,26 @@ pub fn normalize(
             explicitness: _,
         } => {
             let argument = normalize(argument, context.clone(), state)?;
-            match normalize(expression, context, state)? {
+            match normalize(expression, context.clone(), state)? {
                 Expression::LambdaLiteral {
                     binder,
                     parameter_type_annotation: _,
                     body,
                     body_type_annotation: _,
                     explicitness: _,
-                } => substitute(
-                    &body,
-                    {
-                        let mut environment = HashMap::new();
-                        environment.insert(binder, argument);
-                        Rc::new(environment)
-                    },
+                } => normalize(
+                    &substitute(
+                        &body,
+                        {
+                            let mut environment = HashMap::new();
+                            environment.insert(binder, argument);
+                            Rc::new(environment)
+                        },
+                        state,
+                    ),
+                    context,
                     state,
-                ),
+                )?,
                 expression => Expression::Application {
                     expression: Box::new(expression),
                     argument: Box::new(argument),
@@ -270,9 +286,8 @@ pub fn normalize(
             codomain,
             explicitness: _,
         } => {
-            // @Bug unchecked @Temporary unwrap
             let (domain, codomain) =
-                normalize_abstraction(binder.as_ref().unwrap(), domain, codomain, context, state)?;
+                normalize_abstraction(binder.as_ref(), domain, codomain, context, state)?;
             Expression::PiTypeLiteral {
                 binder: binder.clone(),
                 domain: Box::new(domain),
@@ -290,7 +305,7 @@ pub fn normalize(
         } => {
             // @Bug unchecked @Temporary unwrap
             let (parameter_type, body) = normalize_abstraction(
-                binder,
+                Some(binder),
                 parameter_type_annotation.as_ref().unwrap(),
                 body,
                 context,
@@ -384,19 +399,16 @@ fn equal(left: &Expression, right: &Expression, context: MutCtx, state: RefreshS
                 codomain: codomain2,
                 explicitness: _,
             },
-        ) => {
-            // @Bug unchecked @Temporary unwrap
-            abstraction_equal(
-                binder1.as_ref().unwrap(),
-                domain1,
-                codomain1,
-                binder2.as_ref().unwrap(),
-                domain2,
-                codomain2,
-                context,
-                state,
-            )
-        }
+        ) => abstraction_equal(
+            binder1.as_ref(),
+            domain1,
+            codomain1,
+            binder2.as_ref(),
+            domain2,
+            codomain2,
+            context,
+            state,
+        ),
         (
             Expression::LambdaLiteral {
                 binder: binder1,
@@ -415,10 +427,10 @@ fn equal(left: &Expression, right: &Expression, context: MutCtx, state: RefreshS
         ) => {
             // @Bug unchecked @Temporary unwrap
             abstraction_equal(
-                binder1,
+                Some(binder1),
                 parameter_type_annotation1.as_ref().unwrap(),
                 body1,
-                binder2,
+                Some(binder2),
                 parameter_type_annotation2.as_ref().unwrap(),
                 body2,
                 context,
@@ -481,32 +493,38 @@ fn equal(left: &Expression, right: &Expression, context: MutCtx, state: RefreshS
 // fn instance() {}
 
 // @Temporary signature
+// @Note bad signature (deviation between pi and lambda)
 fn abstraction_substitute(
-    binder: &Identifier,
+    binder: Option<&Identifier>,
     parameter: &Expression,
     expression: &Expression,
     environment: Environment,
     state: RefreshState<'_>,
-) -> (Identifier, Expression, Expression) {
-    let refreshed_binder = binder.refresh(state);
+) -> (Option<Identifier>, Expression, Expression) {
+    let parameter = substitute(parameter, environment.clone(), state);
+
+    let (refreshed_binder, environment) = match binder {
+        Some(binder) => {
+            let refreshed_binder = binder.refresh(state);
+            let mut environment = environment.as_ref().clone();
+            environment.insert(
+                binder.clone(),
+                Expression::Identifier(refreshed_binder.clone()),
+            );
+            (Some(refreshed_binder), Rc::new(environment))
+        }
+        None => (None, environment),
+    };
     (
-        refreshed_binder.clone(),
-        substitute(parameter, environment.clone(), state),
-        substitute(
-            expression,
-            {
-                let mut environment = environment.as_ref().clone();
-                environment.insert(binder.clone(), Expression::Identifier(refreshed_binder));
-                Rc::new(environment)
-            },
-            state,
-        ),
+        refreshed_binder,
+        parameter,
+        substitute(expression, environment, state),
     )
 }
 
 // @Temporary signature
 fn normalize_abstraction(
-    binder: &Identifier,
+    binder: Option<&Identifier>,
     parameter: &Expression,
     expression: &Expression,
     context: MutCtx,
@@ -515,38 +533,58 @@ fn normalize_abstraction(
     let parameter = normalize(parameter, context.clone(), state)?;
     Ok((
         parameter.clone(),
-        normalize(
-            expression,
-            context.extend_with_neutral_binding(binder.clone(), parameter),
-            state,
-        )?,
+        match binder {
+            Some(binder) => normalize(
+                expression,
+                context.extend_with_neutral_binding(binder.clone(), parameter),
+                state,
+            )?,
+            // @Temporary expensive
+            None => expression.clone(),
+        },
     ))
 }
 
 // @Temporary signature
 fn abstraction_equal(
-    binder1: &Identifier,
+    binder1: Option<&Identifier>,
     parameter1: &Expression,
     expression1: &Expression,
-    binder2: &Identifier,
+    binder2: Option<&Identifier>,
     parameter2: &Expression,
     expression2: &Expression,
     context: MutCtx,
     state: RefreshState<'_>,
 ) -> bool {
-    equal(parameter1, parameter2, context.clone(), state)
-        && equal(
-            &expression1,
-            &substitute(
-                expression2,
-                {
-                    let mut environment = HashMap::new();
-                    environment.insert(binder2.clone(), Expression::Identifier(binder1.clone()));
-                    Rc::new(environment)
-                },
+    return equal(parameter1, parameter2, context.clone(), state)
+        && match (binder1, binder2) {
+            (Some(binder1), Some(binder2)) => equal(
+                expression1,
+                &substitute(
+                    expression2,
+                    {
+                        let mut environment = HashMap::new();
+                        environment
+                            .insert(binder2.clone(), Expression::Identifier(binder1.clone()));
+                        Rc::new(environment)
+                    },
+                    state,
+                ),
+                context,
                 state,
             ),
-            context,
-            state,
-        )
+            (Some(binder1), None) => equal(
+                expression1,
+                expression2,
+                context.extend_with_neutral_binding(binder1.clone(), parameter1.clone()),
+                state,
+            ),
+            (None, Some(binder2)) => equal(
+                expression1,
+                expression2,
+                context.extend_with_neutral_binding(binder2.clone(), parameter2.clone()),
+                state,
+            ),
+            (None, None) => equal(expression1, expression2, context, state),
+        };
 }

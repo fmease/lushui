@@ -1,13 +1,30 @@
 ;;; Our sandbox
 'data Nat: 'Type =
     Zero: Nat
-    ;;; sss
-    Succ: (n: Nat) -> Nat 
+    Succ: Nat -> Nat 
 
-'let the (,A: 'Type) (x: A): A = x
-'let the2: XX = the Nat
+'let x: 'Type = 'Type
+
+'let the (A: 'Type) (x: A): A = x
 
 'let two: Nat = Succ (Succ Zero)
 
 'let n: Nat = the Nat (Succ (Succ Zero))
 'let T: 'Type = 'Type
+
+
+;;; we need more information when substituting!!!
+;;; look:
+
+;;; here, we can substitute the parameter with the argument
+'let function (parameter: Nat): Nat = parameter
+
+;;; but here, we 'lost' information:
+;;; 'let function': Nat -> Nat = function
+;;; we cannot substitute anymore
+
+;;; similar case but now f is a parameter
+'let apply (A: 'Type) (f: (A) -> A) (x: A): A = f x
+
+;;; @Bug not fully normalized to `Zero`????
+'let x': Nat = apply Nat function Zero

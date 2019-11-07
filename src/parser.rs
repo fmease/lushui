@@ -44,7 +44,7 @@ impl<'i> Context<'i> {
             // @Bug @Temporary dummy span
             Err(Error {
                 kind: ErrorKind::UnexpectedToken(token),
-                span: 0..=0,
+                span: Span::new(0, 0),
             })
         }
     }
@@ -54,7 +54,7 @@ impl<'i> Context<'i> {
             // @Temporary dummy span
             Err(Error {
                 kind: ErrorKind::ExpectedEndOfInput,
-                span: 0..=0,
+                span: Span::new(0, 0),
             })
         } else {
             Ok(())
@@ -80,7 +80,7 @@ impl<'i> Context<'i> {
         // @Bug @Temporary dummy span
         self.tokens.get(self.index).cloned().ok_or(Error {
             kind: ErrorKind::UnexpectedEndOfInput,
-            span: 0..=0,
+            span: Span::new(0, 0),
         })
     }
 }
@@ -548,7 +548,7 @@ fn expect_delimiter(context: &Context<'_>) -> Result<()> {
         if token.kind() != lexer::TokenKind::LineBreak {
             return Err(Error {
                 kind: ErrorKind::UnexpectedToken(token),
-                span: 0..=0,
+                span: Span::new(0, 0),
             });
         }
     }

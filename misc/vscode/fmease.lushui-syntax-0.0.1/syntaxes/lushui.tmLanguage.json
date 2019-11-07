@@ -38,7 +38,7 @@
                     "name": "keyword.other.lushui"
                 },
                 {
-                    "match": "'(foreign|module)\\b",
+                    "match": "'(foreign|module|use)\\b",
                     "name": "storage.modifier.lushui"
                 },
                 {

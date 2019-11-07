@@ -17,7 +17,11 @@ fn main() {
     let mut source = String::new();
     buf_reader.read_to_string(&mut source).unwrap();
 
-    test(&source).unwrap_or_else(|error| panic!("{}", error));
+    drop(buf_reader);
+
+    if let Err(error) = test(&source) {
+        eprintln!("{}", error);
+    }
 }
 
 fn test(source: &str) -> Result<(), String> {
@@ -32,6 +36,7 @@ fn test(source: &str) -> Result<(), String> {
 
     // HIR
     let node = hir::lower_declaration(&node);
+    eprintln!("{}", &node);
 
     // Effluvium
     let (context, mut state) = effluvium::initial();

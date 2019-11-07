@@ -155,6 +155,8 @@ pub enum Keyword {
     Root,
     /// The keyword `'Type` being the type of types.
     Type,
+    /// The keyword `'use` prefixing use declarations.
+    Use,
     // Unsafe,
 }
 
@@ -214,7 +216,7 @@ fn extend_with_dedentation(tokens: &mut Vec<SourceToken>, start: usize, amount_o
         return;
     }
     debug_assert_ne!(start, 0);
-    let dedentation = SourceToken::new(Token::Dedentation, start..=start - 1);
+    let dedentation = SourceToken::new(Token::Dedentation, Span::new(start, start - 1));
     tokens.extend(std::iter::repeat(dedentation).take(amount_of_spaces / INDENTATION_IN_SPACES));
 }
 
@@ -271,10 +273,10 @@ pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
                 }
 
                 if documentation_comment {
-                    tokens.push(SourceToken::new(Token::DocumentationComment, start..=end))
+                    tokens.push(SourceToken::new(Token::DocumentationComment, Span::new(start, end)))
                 }
             } else {
-                tokens.push(SourceToken::new(Token::Semicolon, start..=end))
+                tokens.push(SourceToken::new(Token::Semicolon, Span::new(start, end)))
             }
         }
         // @Task dotted identifiers (need to be lexed, cannot be parsed bc whitespace matters)
@@ -306,7 +308,7 @@ pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
                 }
             }
 
-            let span = start..=end;
+            let span = Span::new(start, end);
             if keyword_candidate {
                 if let Ok(keyword_kind) = source[start + 1..=end].parse() {
                     tokens.push(SourceToken::new(Token::Keyword(keyword_kind), span))
@@ -318,12 +320,12 @@ pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
                 }
             } else {
                 tokens.push(SourceToken::new(
-                    Token::Identifier(Atom::from(&source[span.clone()])),
+                    Token::Identifier(Atom::from(&source[span.range()])),
                     span,
                 ))
             }
         } else if character == '\n' {
-            tokens.push(SourceToken::new(Token::LineBreak, index..=index));
+            tokens.push(SourceToken::new(Token::LineBreak, Span::new(index, index)));
 
             indexed_characters.next();
 
@@ -349,7 +351,7 @@ pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
                 Ordering::Equal => continue,
             };
 
-            let span = end - absolute_difference + 1..=end;
+            let span = Span::new(end - absolute_difference + 1, end);
 
             if absolute_difference % INDENTATION_IN_SPACES != 0
                 || change == Ordering::Greater && absolute_difference > INDENTATION_IN_SPACES
@@ -390,7 +392,7 @@ pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
                     "=>" => Token::WideArrow,
                     _ => Token::Punctuation,
                 },
-                start..=end,
+                Span::new(start, end),
             ))
         } else {
             indexed_characters.next();
@@ -403,11 +405,11 @@ pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
                     _ => {
                         return Err(Error {
                             kind: ErrorKind::IllegalCharacter(character),
-                            span: index..=index,
+                            span: Span::new(index, index),
                         })
                     }
                 },
-                index..=index,
+                Span::new(index, index),
             ));
         }
     }

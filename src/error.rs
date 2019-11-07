@@ -3,7 +3,31 @@ use crate::parser;
 use std::fmt;
 // use colored::Color;
 
-pub type Span = std::ops::RangeInclusive<usize>;
+use std::ops::RangeInclusive;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Span {
+    pub start: usize,
+    pub end: usize,
+}
+
+impl Span {
+    pub fn new(start: usize, end: usize) -> Self {
+        Self { start, end }
+    }
+
+    pub fn merge(self, other: Self) -> Self {
+        Self {
+            start: self.start,
+            end: other.end,
+        }
+    }
+
+    // because From is too general and breaks inference
+    pub fn range(self) -> RangeInclusive<usize> {
+        self.start..=self.end
+    }
+}
 
 // @Task @Beacon @Beacon @Beacon remove this trait and replace all impls with Display
 // @Note the idea is that types with special treatment of indentation (having even further indented elements)
@@ -51,11 +75,12 @@ impl Error {
             message = kind,
             path = filename.unwrap_or("<anonymous>"),
             location = start,
-            source = &source[dbg!(line)],
-            underline_space = " ".repeat(*rel.start()),
-            underline = "^".repeat(rel.end() + 1 - rel.start()) // @Beacon @Note for the carets, we need start and end index relative to the
-                                                                // separate line!
-                                                                // @Task carets below
+            source = &source[dbg!(line).range()],
+            underline_space = " ".repeat(rel.start),
+            // @Beacon @Note for the carets, we need start and end index relative to the
+            // separate line!
+            // @Task carets below
+            underline = "^".repeat(rel.end + 1 - rel.start)
         )
     }
 }
@@ -114,10 +139,10 @@ fn locations_and_line_from_span(source: &str, span: &Span) -> (Location, Locatio
     let mut relative_end = 0;
 
     for (index, character) in source.char_indices() {
-        if index == *span.start() {
+        if index == span.start {
             found_start = true;
         }
-        if index == *span.end() {
+        if index == span.end {
             found_end = true;
         }
 
@@ -155,7 +180,7 @@ fn locations_and_line_from_span(source: &str, span: &Span) -> (Location, Locatio
     (
         start,
         end,
-        index_line_start..=index_line_end - 1,
-        relative_start..=relative_end,
+        Span::new(index_line_start, index_line_end - 1),
+        Span::new(relative_start, relative_end),
     )
 }
