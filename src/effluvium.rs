@@ -8,7 +8,7 @@ mod error;
 use crate::hir::{self, Declaration, Expression, Identifier};
 use crate::parser::Explicitness;
 use context::Environment;
-pub use context::{initial, ModuleContext};
+pub use context::ModuleContext;
 use error::{Error, Result};
 
 use std::collections::HashMap;

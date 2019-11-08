@@ -1,3 +1,26 @@
+// @Note this module is badly named.
+
+//! This module exposes an [`Environment`] and a [`ModuleContext`].
+//!
+//! What's the difference between those two? Well, apart from them not being
+//! perfectly named, the first one represents function scoping and the second
+//! one module scoping.
+//!
+//! As an aside, the [`ModuleContext`] contains a lot more information.
+//!
+//! The scoping rules are vastly different between those two kinds.
+//! Environments (lambdas and let/ins) can store neitherdata nor foreign nor module declarations,
+//! only let and use declarations.
+//! In function scopes, declarations shadow other ones with the same name.
+//! In module scope, declarations may appear out of order and cross-reference each other
+//! as long as there is no cyclic dependency. Recursion is allowed.
+//! Not so in function scopes! Since lambdas and let/ins are nested, they are ordered and
+//! most importantly, recursion only works explicitly via the fix-point-combinator.
+//!
+//! **Note**: This module needs a lot of love. Currently, it's a big hack with a bad API.
+//! Performance is bad I guess and a lot, a lot of memory is wasted! We need to refactor it
+//! several times until I will be happy.
+
 use super::{Expression, Identifier};
 use std::fmt;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
@@ -182,10 +205,6 @@ impl fmt::Display for ModuleContext {
         }
         Ok(())
     }
-}
-
-pub fn initial() -> (ModuleContext, u64) {
-    (Default::default(), 0)
 }
 
 pub type Environment = Rc<HashMap<Identifier, Expression>>;
