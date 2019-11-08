@@ -20,11 +20,13 @@
 'let function (parameter: Nat): Nat = parameter
 
 ;;; but here, we 'lost' information:
-;;; 'let function': Nat -> Nat = function
+'let function': Nat -> Nat = function
 ;;; we cannot substitute anymore
 
 ;;; similar case but now f is a parameter
-'let apply (A: 'Type) (f: (A) -> A) (x: A): A = f x
+'let apply (A: 'Type) (f: A -> A) (x: A): A = f x
 
-;;; @Bug not fully normalized to `Zero`????
-'let x': Nat = apply Nat function Zero
+;;; 'let x': Nat = apply Nat function Zero
+'let x': Nat = apply Nat function' Zero
+
+'let the_nat: Nat -> Nat = the Nat

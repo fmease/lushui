@@ -5,8 +5,6 @@ use lushuic::{effluvium, error, hir, lexer, parser};
 use std::fs::File;
 use std::io::{BufReader, Read};
 
-
-
 fn main() {
     // @Task improve error handling
     let mut arguments = std::env::args().skip(1);
@@ -39,9 +37,8 @@ fn test(source: &str) -> Result<(), String> {
     eprintln!("{}", &node);
 
     // Effluvium
-    let (context, mut state) = effluvium::initial();
-    effluvium::evaluate_declaration(&node, context.clone(), &mut state)
-        .map_err(|error| error.to_string())?;
+    let context = effluvium::ModuleContext::default();
+    effluvium::evaluate_declaration(&node, context.clone()).map_err(|error| error.to_string())?;
     eprintln!("{}", context);
 
     Ok(())

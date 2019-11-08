@@ -1,10 +1,11 @@
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
+use crate::effluvium::ModuleContext;
 use crate::error::Span;
 use crate::parser;
 
-pub type RefreshState<'a> = &'a mut u64;
+// pub type RefreshState<'a> = &'a mut u64;
 
 // @Task update docs
 /// Either an identifier found in the source program or a synthetic one.
@@ -19,8 +20,7 @@ pub enum Identifier {
 }
 
 impl Identifier {
-    pub fn refresh(&self, state: RefreshState<'_>) -> Self {
-        *state += 1;
+    pub fn refresh(&self, context: ModuleContext) -> Self {
         Self::Generated(
             match self {
                 Self::Stub => parser::Identifier {
@@ -31,7 +31,7 @@ impl Identifier {
                 Self::Plain(identifier) => identifier.clone(),
                 Self::Generated(identifier, _) => identifier.clone(),
             },
-            *state,
+            context.generate_numeric_identifier(),
         )
     }
 }

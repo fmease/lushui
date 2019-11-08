@@ -5,8 +5,7 @@ mod identifier;
 use std::fmt;
 
 use crate::parser::{self, Explicitness};
-pub use identifier::{Identifier, RefreshState};
-
+pub use identifier::Identifier;
 
 // @Task lower span information
 
@@ -362,7 +361,7 @@ pub fn lower_expression(expression: &parser::Expression) -> Expression {
                 argument: Box::new(expression),
                 explicitness: Explicitness::Explicit,
             }
-        },
+        }
         parser::Expression::UseIn { span: _ } => unimplemented!(),
         parser::Expression::Case { span: _ } => unimplemented!(),
     }

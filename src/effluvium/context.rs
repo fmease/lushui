@@ -3,7 +3,6 @@ use std::fmt;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 // @Note expressions aren't the only entities: modules are too, gonna be added later
-// @Note repr gonna change once we allow overloading (expression,module)
 #[derive(Clone, Debug)]
 enum Entity {
     // used for recursion
@@ -51,21 +50,23 @@ impl fmt::Display for Entity {
     }
 }
 
+// @Note needs refactoring
+// @Note ModuleContext has a really really really bad API, geezz!!!
 // @Note currently, ADTs and its constructors cannot be shadowed, but this will change.
 // Once this happens, the mutating methods on Context will be removed and the methods
 // immutably extending the Context also need to update ADTContext i.e. returning
 // (Context, ADTContext) or even better storing the latter inside the former.
 // But for now, variables refering to ADTs and constructors are global/globally unique.
-// @Note name-change from Context to MutCtx because we might want to transition to ImmCtx (later Context again)
 #[derive(Default, Clone, Debug)]
-pub struct MutCtx {
-    // @Note I know that should merge the two Rc'ed RcCells into one
+pub struct ModuleContext {
     // @Task @Question add binders: Vec<Variable>?
     bindings: Rc<RefCell<HashMap<Identifier, Entity>>>,
+    // @Question do we really need this??
     adts: Rc<RefCell<HashMap<Identifier, Vec<Identifier>>>>,
+    last_generated_numeric_identifier: Rc<RefCell<u64>>,
 }
 
-impl MutCtx {
+impl ModuleContext {
     pub fn contains(self, binding: &Identifier) -> bool {
         self.bindings.borrow().contains_key(binding)
     }
@@ -105,9 +106,9 @@ impl MutCtx {
     ) -> Self {
         let mut map = self.bindings.as_ref().borrow().clone();
         map.insert(binding, Entity::ResolvedExpression { type_, expr: value });
-        MutCtx {
+        ModuleContext {
             bindings: Rc::new(RefCell::new(map)),
-            adts: self.adts,
+            ..self
         }
     }
 
@@ -115,9 +116,9 @@ impl MutCtx {
     pub fn extend_with_neutral_binding(self, binding: Identifier, type_: Expression) -> Self {
         let mut map = self.bindings.as_ref().borrow().clone();
         map.insert(binding, Entity::NeutralExpression { type_ });
-        MutCtx {
+        ModuleContext {
             bindings: Rc::new(RefCell::new(map)),
-            adts: self.adts,
+            ..self
         }
     }
 
@@ -153,10 +154,15 @@ impl MutCtx {
         self.clone().insert_neutral_binding(binding.clone(), type_);
         self.adts.borrow_mut().get_mut(adt).unwrap().push(binding);
     }
+
+    pub fn generate_numeric_identifier(self) -> u64 {
+        *self.last_generated_numeric_identifier.borrow_mut() += 1;
+        *self.last_generated_numeric_identifier.borrow()
+    }
 }
 
 // @Temporary
-impl fmt::Display for MutCtx {
+impl fmt::Display for ModuleContext {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "[[BINDINGS]]")?;
         for (binding, entity) in self.bindings.borrow().iter() {
@@ -178,7 +184,7 @@ impl fmt::Display for MutCtx {
     }
 }
 
-pub fn initial() -> (MutCtx, u64) {
+pub fn initial() -> (ModuleContext, u64) {
     (Default::default(), 0)
 }
 

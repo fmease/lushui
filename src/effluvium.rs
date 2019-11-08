@@ -5,10 +5,10 @@
 mod context;
 mod error;
 
-use crate::hir::{self, Declaration, Expression, Identifier, RefreshState};
+use crate::hir::{self, Declaration, Expression, Identifier};
 use crate::parser::Explicitness;
-pub use context::initial;
-use context::{Environment, MutCtx};
+use context::Environment;
+pub use context::{initial, ModuleContext};
 use error::{Error, Result};
 
 use std::collections::HashMap;
@@ -18,11 +18,7 @@ use std::rc::Rc;
 // @Question this is eager evaluation, right?
 // @Task handle out of order declarations and recursions (you need to go through declarations twice) and
 // only register the names plus types first (there is gonna be context.insert_unresolved_binding)
-pub fn evaluate_declaration(
-    declaration: &Declaration,
-    context: MutCtx,
-    state: RefreshState<'_>,
-) -> Result<()> {
+pub fn evaluate_declaration(declaration: &Declaration, context: ModuleContext) -> Result<()> {
     Ok(match declaration {
         Declaration::Let {
             binder,
@@ -32,9 +28,9 @@ pub fn evaluate_declaration(
             if context.clone().contains(&binder) {
                 return Err(Error::AlreadyDefined);
             }
-            let infered_type = infer_type(expression, context.clone(), state)?;
-            assert_expressions_are_equal(&infered_type, type_annotation, context.clone(), state)?;
-            let value = normalize(expression, context.clone(), state)?;
+            let infered_type = infer_type(expression, context.clone())?;
+            assert_expressions_are_equal(&infered_type, type_annotation, context.clone())?;
+            let value = normalize(expression, context.clone())?;
             context.insert_binding(binder.clone(), infered_type, value);
         }
         Declaration::Data {
@@ -45,7 +41,7 @@ pub fn evaluate_declaration(
             if context.clone().contains(&adt_binder) {
                 return Err(Error::AlreadyDefined);
             }
-            assert_expression_is_a_type(type_annotation, context.clone(), state)?;
+            assert_expression_is_a_type(type_annotation, context.clone())?;
             context
                 .clone()
                 .insert_adt(adt_binder.clone(), type_annotation.clone());
@@ -55,7 +51,7 @@ pub fn evaluate_declaration(
                 type_annotation,
             } in constructors
             {
-                assert_expression_is_a_type(type_annotation, context.clone(), state)?;
+                assert_expression_is_a_type(type_annotation, context.clone())?;
                 // @Task instance check etc
                 // @Task check if constructor already exists
                 context.clone().insert_constructor(
@@ -67,7 +63,7 @@ pub fn evaluate_declaration(
         }
         Declaration::Module { declarations } => {
             for declaration in declarations {
-                evaluate_declaration(declaration, context.clone(), state)?;
+                evaluate_declaration(declaration, context.clone())?;
             }
         }
         Declaration::Use => unimplemented!(),
@@ -78,7 +74,7 @@ pub fn evaluate_declaration(
 fn substitute(
     expression: &Expression,
     environment: Environment,
-    state: RefreshState<'_>,
+    context: ModuleContext,
 ) -> Expression {
     match expression {
         Expression::Identifier(identifier) => environment
@@ -95,7 +91,7 @@ fn substitute(
             explicitness: _,
         } => {
             let (binder, domain, codomain) =
-                abstraction_substitute(binder.as_ref(), domain, codomain, environment, state);
+                abstraction_substitute(binder.as_ref(), domain, codomain, environment, context);
             Expression::PiTypeLiteral {
                 binder,
                 domain: Box::new(domain),
@@ -116,7 +112,7 @@ fn substitute(
                 parameter_type_annotation.as_ref().unwrap(),
                 body,
                 environment,
-                state,
+                context,
             );
             // @Note this unwrap is safe, but the API of abstraction_substitute sucks
             Expression::LambdaLiteral {
@@ -133,8 +129,8 @@ fn substitute(
             argument,
             explicitness: _,
         } => Expression::Application {
-            expression: Box::new(substitute(expression, environment.clone(), state)),
-            argument: Box::new(substitute(argument, environment, state)),
+            expression: Box::new(substitute(expression, environment.clone(), context.clone())),
+            argument: Box::new(substitute(argument, environment, context)),
             // @Temporary
             explicitness: Explicitness::Explicit,
         },
@@ -144,11 +140,7 @@ fn substitute(
     }
 }
 
-pub fn infer_type(
-    expression: &Expression,
-    context: MutCtx,
-    state: RefreshState<'_>,
-) -> Result<hir::Expression> {
+pub fn infer_type(expression: &Expression, context: ModuleContext) -> Result<hir::Expression> {
     Ok(match expression {
         Expression::Identifier(identifier) => context
             .lookup_type(identifier)
@@ -166,21 +158,15 @@ pub fn infer_type(
         } => {
             // @Bug unhandled @Temporary unwrap
             let parameter_type: &Expression = parameter_type_annotation.as_ref().unwrap();
-            assert_expression_is_a_type(&parameter_type, context.clone(), state)?;
+            assert_expression_is_a_type(&parameter_type, context.clone())?;
             let infered_body_type = infer_type(
                 body,
                 context
                     .clone()
                     .extend_with_neutral_binding(binder.clone(), parameter_type.clone()),
-                state,
             )?;
             if let Some(body_type_annotation) = body_type_annotation {
-                assert_expressions_are_equal(
-                    &infered_body_type,
-                    body_type_annotation,
-                    context,
-                    state,
-                )?;
+                assert_expressions_are_equal(&infered_body_type, body_type_annotation, context)?;
             }
             Expression::PiTypeLiteral {
                 binder: Some(binder.clone()),
@@ -198,16 +184,16 @@ pub fn infer_type(
         } => {
             // @Task verify type_of_expression is already normalized
             // @Note maybe use dbg-macro?
-            let type_of_expression = infer_type(expression, context.clone(), state)?;
-            match normalize(&type_of_expression, context.clone(), state)? {
+            let type_of_expression = infer_type(expression, context.clone())?;
+            match normalize(&type_of_expression, context.clone())? {
                 Expression::PiTypeLiteral {
                     binder,
                     domain,
                     codomain,
                     explicitness: _,
                 } => {
-                    let argument_type = infer_type(argument, context.clone(), state)?;
-                    assert_expressions_are_equal(&domain, &argument_type, context, state)?;
+                    let argument_type = infer_type(argument, context.clone())?;
+                    assert_expressions_are_equal(&domain, &argument_type, context.clone())?;
                     match binder {
                         Some(binder) => substitute(
                             &codomain,
@@ -216,7 +202,7 @@ pub fn infer_type(
                                 environment.insert(binder, argument.as_ref().clone());
                                 Rc::new(environment)
                             },
-                            state,
+                            context,
                         ),
                         None => *codomain,
                     }
@@ -236,17 +222,13 @@ pub fn infer_type(
 // @Beacon @Task use type-tagging: tag the hir::Expression with a P: Phase type parameter which for now
 // differenciates between Initial and Normalized
 // @Question take expression by value?
-pub fn normalize(
-    expression: &Expression,
-    context: MutCtx,
-    state: RefreshState<'_>,
-) -> Result<Expression> {
+pub fn normalize(expression: &Expression, context: ModuleContext) -> Result<Expression> {
     Ok(match expression {
         Expression::Identifier(identifier) => context
             .clone()
             .lookup_value(identifier)
             .ok_or_else(|| Error::UndefinedBinding(identifier.clone()))?
-            .map(|expression| normalize(&expression, context, state))
+            .map(|expression| normalize(&expression, context))
             .unwrap_or_else(|| Ok(expression.clone()))?,
         Expression::Application {
             expression,
@@ -254,8 +236,8 @@ pub fn normalize(
             // @Task
             explicitness: _,
         } => {
-            let argument = normalize(argument, context.clone(), state)?;
-            match normalize(expression, context.clone(), state)? {
+            let argument = normalize(argument, context.clone())?;
+            match normalize(expression, context.clone())? {
                 Expression::LambdaLiteral {
                     binder,
                     parameter_type_annotation: _,
@@ -270,10 +252,9 @@ pub fn normalize(
                             environment.insert(binder, argument);
                             Rc::new(environment)
                         },
-                        state,
+                        context.clone(),
                     ),
                     context,
-                    state,
                 )?,
                 expression => Expression::Application {
                     expression: Box::new(expression),
@@ -293,7 +274,7 @@ pub fn normalize(
             explicitness: _,
         } => {
             let (domain, codomain) =
-                normalize_abstraction(binder.as_ref(), domain, codomain, context, state)?;
+                normalize_abstraction(binder.as_ref(), domain, codomain, context)?;
             Expression::PiTypeLiteral {
                 binder: binder.clone(),
                 domain: Box::new(domain),
@@ -315,7 +296,6 @@ pub fn normalize(
                 parameter_type_annotation.as_ref().unwrap(),
                 body,
                 context,
-                state,
             )?;
             Expression::LambdaLiteral {
                 binder: binder.clone(),
@@ -332,27 +312,17 @@ pub fn normalize(
     })
 }
 
-pub fn assert_expression_is_a_type(
-    expression: &Expression,
-    context: MutCtx,
-    state: RefreshState<'_>,
-) -> Result<()> {
-    let type_of_expression = infer_type(expression, context.clone(), state)?;
-    assert_expressions_are_equal(
-        &type_of_expression,
-        &Expression::TypeLiteral,
-        context,
-        state,
-    )
+pub fn assert_expression_is_a_type(expression: &Expression, context: ModuleContext) -> Result<()> {
+    let type_of_expression = infer_type(expression, context.clone())?;
+    assert_expressions_are_equal(&type_of_expression, &Expression::TypeLiteral, context)
 }
 
 fn assert_expressions_are_equal(
     left: &Expression,
     right: &Expression,
-    context: MutCtx,
-    state: RefreshState<'_>,
+    context: ModuleContext,
 ) -> Result<()> {
-    if !normalizing_equal(left, right, context, state)? {
+    if !normalizing_equal(left, right, context)? {
         Err(Error::ExpressionsNotEqual(left.clone(), right.clone()))
     } else {
         Ok(())
@@ -362,18 +332,16 @@ fn assert_expressions_are_equal(
 fn normalizing_equal(
     left: &Expression,
     right: &Expression,
-    context: MutCtx,
-    state: RefreshState<'_>,
+    context: ModuleContext,
 ) -> Result<bool> {
     Ok(equal(
-        &normalize(left, context.clone(), state)?,
-        &normalize(right, context.clone(), state)?,
+        &normalize(left, context.clone())?,
+        &normalize(right, context.clone())?,
         context,
-        state,
     ))
 }
 
-fn equal(left: &Expression, right: &Expression, context: MutCtx, state: RefreshState<'_>) -> bool {
+fn equal(left: &Expression, right: &Expression, context: ModuleContext) -> bool {
     match (left, right) {
         (Expression::Identifier(left), Expression::Identifier(right)) => left == right,
         (
@@ -388,8 +356,8 @@ fn equal(left: &Expression, right: &Expression, context: MutCtx, state: RefreshS
                 explicitness: _,
             },
         ) => {
-            equal(left_expression, right_expression, context.clone(), state)
-                && equal(left_argument, right_argument, context, state)
+            equal(left_expression, right_expression, context.clone())
+                && equal(left_argument, right_argument, context)
         }
         (Expression::TypeLiteral, Expression::TypeLiteral) => true,
         (Expression::NatTypeLiteral, Expression::NatTypeLiteral) => true,
@@ -415,7 +383,6 @@ fn equal(left: &Expression, right: &Expression, context: MutCtx, state: RefreshS
             domain2,
             codomain2,
             context,
-            state,
         ),
         (
             Expression::LambdaLiteral {
@@ -442,7 +409,6 @@ fn equal(left: &Expression, right: &Expression, context: MutCtx, state: RefreshS
                 parameter_type_annotation2.as_ref().unwrap(),
                 body2,
                 context,
-                state,
             )
         }
         // @Note this is really bad when we decide to add new stuff! but there is no
@@ -509,13 +475,13 @@ fn abstraction_substitute(
     parameter: &Expression,
     expression: &Expression,
     environment: Environment,
-    state: RefreshState<'_>,
+    context: ModuleContext,
 ) -> (Option<Identifier>, Expression, Expression) {
-    let parameter = substitute(parameter, environment.clone(), state);
+    let parameter = substitute(parameter, environment.clone(), context.clone());
 
     let (refreshed_binder, environment) = match binder {
         Some(binder) => {
-            let refreshed_binder = binder.refresh(state);
+            let refreshed_binder = binder.refresh(context.clone());
             let mut environment = environment.as_ref().clone();
             environment.insert(
                 binder.clone(),
@@ -528,7 +494,7 @@ fn abstraction_substitute(
     (
         refreshed_binder,
         parameter,
-        substitute(expression, environment, state),
+        substitute(expression, environment, context),
     )
 }
 
@@ -537,17 +503,15 @@ fn normalize_abstraction(
     binder: Option<&Identifier>,
     parameter: &Expression,
     expression: &Expression,
-    context: MutCtx,
-    state: RefreshState<'_>,
+    context: ModuleContext,
 ) -> Result<(Expression, Expression)> {
-    let parameter = normalize(parameter, context.clone(), state)?;
+    let parameter = normalize(parameter, context.clone())?;
     Ok((
         parameter.clone(),
         match binder {
             Some(binder) => normalize(
                 expression,
                 context.extend_with_neutral_binding(binder.clone(), parameter),
-                state,
             )?,
             // @Temporary expensive
             None => expression.clone(),
@@ -563,10 +527,9 @@ fn abstraction_equal(
     binder2: Option<&Identifier>,
     parameter2: &Expression,
     expression2: &Expression,
-    context: MutCtx,
-    state: RefreshState<'_>,
+    context: ModuleContext,
 ) -> bool {
-    return equal(parameter1, parameter2, context.clone(), state)
+    return equal(parameter1, parameter2, context.clone())
         && match (binder1, binder2) {
             (Some(binder1), Some(binder2)) => equal(
                 expression1,
@@ -578,23 +541,20 @@ fn abstraction_equal(
                             .insert(binder2.clone(), Expression::Identifier(binder1.clone()));
                         Rc::new(environment)
                     },
-                    state,
+                    context.clone(),
                 ),
                 context,
-                state,
             ),
             (Some(binder1), None) => equal(
                 expression1,
                 expression2,
                 context.extend_with_neutral_binding(binder1.clone(), parameter1.clone()),
-                state,
             ),
             (None, Some(binder2)) => equal(
                 expression1,
                 expression2,
                 context.extend_with_neutral_binding(binder2.clone(), parameter2.clone()),
-                state,
             ),
-            (None, None) => equal(expression1, expression2, context, state),
+            (None, None) => equal(expression1, expression2, context),
         };
 }
