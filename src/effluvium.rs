@@ -70,7 +70,8 @@ pub fn evaluate_declaration(
                 evaluate_declaration(declaration, context.clone(), state)?;
             }
         }
-        _ => unimplemented!(),
+        Declaration::Use => unimplemented!(),
+        Declaration::Foreign => unimplemented!(),
     })
 }
 
@@ -84,7 +85,9 @@ fn substitute(
             .get(identifier)
             .cloned()
             .unwrap_or_else(|| expression.clone()),
-        Expression::TypeLiteral => Expression::TypeLiteral,
+        Expression::TypeLiteral | Expression::NatTypeLiteral | Expression::NatLiteral(_) => {
+            expression.clone()
+        }
         Expression::PiTypeLiteral {
             binder,
             domain,
@@ -150,7 +153,8 @@ pub fn infer_type(
         Expression::Identifier(identifier) => context
             .lookup_type(identifier)
             .ok_or_else(|| Error::UndefinedBinding(identifier.clone()))?,
-        Expression::TypeLiteral => Expression::TypeLiteral,
+        Expression::TypeLiteral | Expression::NatTypeLiteral => Expression::TypeLiteral,
+        Expression::NatLiteral(_) => Expression::NatTypeLiteral,
         Expression::PiTypeLiteral { .. } => Expression::TypeLiteral,
         Expression::LambdaLiteral {
             binder,
@@ -279,7 +283,9 @@ pub fn normalize(
                 },
             }
         }
-        Expression::TypeLiteral => Expression::TypeLiteral,
+        Expression::TypeLiteral | Expression::NatTypeLiteral | Expression::NatLiteral(_) => {
+            expression.clone()
+        }
         Expression::PiTypeLiteral {
             binder,
             domain,
@@ -386,6 +392,8 @@ fn equal(left: &Expression, right: &Expression, context: MutCtx, state: RefreshS
                 && equal(left_argument, right_argument, context, state)
         }
         (Expression::TypeLiteral, Expression::TypeLiteral) => true,
+        (Expression::NatTypeLiteral, Expression::NatTypeLiteral) => true,
+        (Expression::NatLiteral(left), Expression::NatLiteral(right)) => left == right,
         (
             Expression::PiTypeLiteral {
                 binder: binder1,
@@ -437,6 +445,8 @@ fn equal(left: &Expression, right: &Expression, context: MutCtx, state: RefreshS
                 state,
             )
         }
+        // @Note this is really bad when we decide to add new stuff! but there is no
+        // viable alternative really :/
         _ => false,
     }
 }

@@ -57,6 +57,8 @@ impl<'i> Context<'i> {
         }
     }
 
+    // @Question don't just accept tokens but anything of a certain trait which tokens implement,
+    // optional tokens, either this or that token (with special token EOI), parser::Identifier,...
     fn consume(&mut self, token_kind: lexer::TokenKind) -> Result<lexer::SourceToken> {
         let token = self.expect(token_kind)?;
         self.accept();
@@ -233,6 +235,13 @@ pub enum Expression {
     TypeLiteral {
         span: Span,
     },
+    NatTypeLiteral {
+        span: Span,
+    },
+    NatLiteral {
+        value: lexer::Nat,
+        span: Span,
+    },
     Identifier {
         inner: Identifier,
     },
@@ -273,6 +282,8 @@ impl Expression {
             Self::PiLiteral { span, .. } => *span,
             Self::Application { span, .. } => *span,
             Self::TypeLiteral { span } => *span,
+            Self::NatTypeLiteral { span } => *span,
+            Self::NatLiteral { span, .. } => *span,
             Self::Identifier { inner } => inner.span,
             Self::Hole { span, .. } => *span,
             Self::LambdaLiteral { span, .. } => *span,
@@ -413,9 +424,11 @@ pub fn parse_expression(context: &mut Context<'_>) -> Result<Expression> {
     }
 
     // Lower_Expression ::=
-    //     Type_Literal | Identifier | Hole | Bracketed_Expression
+    //     Type_Literal | Nat_Literal | Identifier | Hole | Bracketed_Expression
     fn parse_lower_expression(context: &mut Context<'_>) -> Result<Expression> {
         parse_type_literal(context)
+            .or_else(|_| parse_nat_type_literal(context))
+            .or_else(|_| parse_nat_literal(context))
             .or_else(|_| parse_identifier(context))
             .or_else(|_| context.reflect(parse_hole))
             .or_else(|_| parse_bracketed_expression(context))
@@ -426,6 +439,25 @@ pub fn parse_expression(context: &mut Context<'_>) -> Result<Expression> {
         context
             .consume(lexer::TokenKind::Keyword(lexer::Keyword::Type))
             .map(|token| Expression::TypeLiteral { span: token.span })
+    }
+
+    fn parse_nat_type_literal(context: &mut Context<'_>) -> Result<Expression> {
+        context
+            .consume(lexer::TokenKind::Keyword(lexer::Keyword::Nat))
+            .map(|token| Expression::NatTypeLiteral { span: token.span })
+    }
+
+    fn parse_nat_literal(context: &mut Context<'_>) -> Result<Expression> {
+        // @Note ugly match+unreachable, directly relates to consume/consume_identifier-issue mentioned above
+        context
+            .consume(lexer::TokenKind::NatLiteral)
+            .map(|token| Expression::NatLiteral {
+                value: match token.inner {
+                    lexer::Token::NatLiteral(value) => value,
+                    _ => unreachable!(),
+                },
+                span: token.span,
+            })
     }
 
     // Identifier ::= %identifier%
@@ -459,6 +491,8 @@ pub fn parse_expression(context: &mut Context<'_>) -> Result<Expression> {
         .or_else(|_| context.reflect(parse_lambda_literal))
         .or_else(|_| parse_pi_literal_or_lower(context))
 }
+
+// @Question add span information??
 #[derive(Debug)]
 pub struct Constructor {
     pub binder: Identifier,
@@ -529,6 +563,7 @@ fn parse_annotated_parameters(context: &mut Context<'_>) -> Result<AnnotatedPara
     Ok(parameters)
 }
 
+// @Question add span information?
 // @Task inline pattern-match
 #[derive(Debug, Clone)] // @Temporary clone
 pub struct ParameterGroup {

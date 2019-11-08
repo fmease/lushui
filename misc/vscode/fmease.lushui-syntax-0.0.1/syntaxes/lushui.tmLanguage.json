@@ -14,6 +14,14 @@
         },
         {
             "include": "#punctuation"
+        },
+        {
+            "patterns": [
+                {
+                    "name": "constant.numeric.integer.decimal.lushui",
+                    "match": "\\b[0-9]+\\b"
+                }
+            ]
         }
     ],
     "repository": {
@@ -50,7 +58,7 @@
                     "name": "keyword.control.lushui"
                 },
                 {
-                    "match": "'Type\\b",
+                    "match": "'(Type|Nat)\\b",
                     "name": "storage.type.lushui"
                 },
                 {

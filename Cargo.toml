@@ -7,3 +7,4 @@ edition = "2018"
 [dependencies]
 # colored = "1.8.0"
 string_cache = "0.8.0"
+num-bigint = "0.2.3"

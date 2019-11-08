@@ -2,12 +2,11 @@
 
 mod identifier;
 
+use std::fmt;
+
 use crate::parser::{self, Explicitness};
 pub use identifier::{Identifier, RefreshState};
 
-use std::fmt;
-
-// @Task pub lower_module
 
 // @Task lower span information
 
@@ -64,7 +63,8 @@ impl fmt::Display for Declaration {
                 }
                 Ok(())
             }
-            _ => unimplemented!(),
+            Self::Use => unimplemented!(),
+            Self::Foreign => unimplemented!(),
         }
     }
 }
@@ -121,10 +121,14 @@ pub fn lower_declaration(declaration: &parser::Declaration) -> Declaration {
             type_annotation: lower_annotated_parameters(&parameters, &type_annotation),
             constructors: constructors.iter().map(lower_constructor).collect(),
         },
-        parser::Declaration::Module { declarations, span: _ } => Declaration::Module {
+        parser::Declaration::Module {
+            declarations,
+            span: _,
+        } => Declaration::Module {
             declarations: declarations.into_iter().map(lower_declaration).collect(),
         },
-        _ => unimplemented!(),
+        parser::Declaration::Use { span: _ } => unimplemented!(),
+        parser::Declaration::Foreign { span: _ } => unimplemented!(),
     }
 }
 
@@ -151,7 +155,8 @@ fn lower_constructor(constructor: &parser::Constructor) -> Constructor {
     }
 }
 
-// @Beacon @Beacon @Task add span information!!!
+// @Beacon @Beacon @Task add span information!!! @Note @Beacon now, we are in the HIR,
+// there might not be any span information if synthesize HIR nodes (common thing probably)
 // @Task improve naming (binder, parameter, etcetera)
 #[derive(Clone, Debug)]
 pub enum Expression {
@@ -168,6 +173,8 @@ pub enum Expression {
         explicitness: Explicitness,
     },
     TypeLiteral,
+    NatTypeLiteral,
+    NatLiteral(crate::lexer::Nat),
     Identifier(Identifier),
     Hole(Identifier),
     LambdaLiteral {
@@ -209,6 +216,8 @@ impl fmt::Display for Expression {
                 explicitness,
             } => write!(f, "({}) ({}{})", expression, explicitness, argument,),
             Self::TypeLiteral => f.write_str("'Type"),
+            Self::NatTypeLiteral => f.write_str("'Nat"),
+            Self::NatLiteral(uint) => write!(f, "{}", uint),
             Self::Identifier(identifier) => write!(f, "{}", identifier),
             Self::Hole(identifier) => write!(f, "'hole {}", identifier),
             Self::LambdaLiteral {
@@ -232,7 +241,8 @@ impl fmt::Display for Expression {
                     .unwrap_or_default(),
                 body
             ),
-            _ => unimplemented!(),
+            Self::UseIn => unimplemented!(),
+            Self::Case => unimplemented!(),
         }
     }
 }
@@ -262,12 +272,15 @@ pub fn lower_expression(expression: &parser::Expression) -> Expression {
             explicitness: *explicitness,
         },
         parser::Expression::TypeLiteral { span: _ } => Expression::TypeLiteral,
+        parser::Expression::NatTypeLiteral { span: _ } => Expression::NatTypeLiteral,
+        parser::Expression::NatLiteral { value, span: _ } => Expression::NatLiteral(value.clone()),
         parser::Expression::Identifier { inner: identifier } => {
             Expression::Identifier(Identifier::Plain(identifier.clone()))
         }
-        parser::Expression::Hole { tag: identifier, span: _ } => {
-            Expression::Hole(Identifier::Plain(identifier.clone()))
-        }
+        parser::Expression::Hole {
+            tag: identifier,
+            span: _,
+        } => Expression::Hole(Identifier::Plain(identifier.clone())),
         parser::Expression::LambdaLiteral {
             parameters,
             type_annotation,
@@ -349,8 +362,9 @@ pub fn lower_expression(expression: &parser::Expression) -> Expression {
                 argument: Box::new(expression),
                 explicitness: Explicitness::Explicit,
             }
-        }
-        _ => unimplemented!(),
+        },
+        parser::Expression::UseIn { span: _ } => unimplemented!(),
+        parser::Expression::Case { span: _ } => unimplemented!(),
     }
 }
 

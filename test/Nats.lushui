@@ -1,0 +1,15 @@
+;;; Testing the recently implemented natural numbers!!!
+
+'let x: 'Nat = 6000232
+
+'let zero: 'Nat = 0
+'let one: 'Nat = 1
+
+'data Tuple (A B: 'Type): 'Type =
+    Tuple' (A B: 'Type): A -> B -> Tuple A B
+
+'let nice: Tuple 'Nat 'Nat = Tuple' 'Nat 'Nat 69 420
+
+'let the (A: 'Type) (x: A): A = x
+
+'let indirect: 'Nat = the 'Nat 123929292

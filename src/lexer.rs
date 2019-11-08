@@ -1,13 +1,18 @@
-pub(crate) use string_cache::DefaultAtom as Atom;
-
 mod error;
 
-use crate::error::Span;
+pub(crate) use string_cache::DefaultAtom as Atom;
+use num_bigint::BigUint;
+
 use std::cmp::Ordering;
 use std::str::FromStr;
+use std::rc::Rc;
 
+use crate::error::Span;
 pub use error::Error;
 use error::ErrorKind;
+
+// @Task move definition somewhere else
+pub type Nat = Rc<BigUint>;
 
 // @Task @Question rename SourceToken|Token to Token|PlainToken to mirror
 // Expression|PlainExpression
@@ -63,7 +68,7 @@ pub enum Token {
     Punctuation,
     // @Note unused, just for demonstration on how the API is gonna look like
     // TextLiteral(String),
-    // NumberLiteral,
+    NatLiteral(Nat),
     Comma,
     Colon,
     Equals,
@@ -85,6 +90,7 @@ impl Token {
             Self::Keyword(keyword) => TokenKind::Keyword(*keyword),
             Self::Identifier(_) => TokenKind::Identifier,
             Self::Punctuation => TokenKind::Punctuation,
+            Self::NatLiteral(_) => TokenKind::NatLiteral,
             Self::Comma => TokenKind::Comma,
             Self::Colon => TokenKind::Colon,
             Self::Equals => TokenKind::Equals,
@@ -112,7 +118,7 @@ pub enum TokenKind {
 
     // @Note unused
     // TextLiteral,
-    // NumberLiteral,
+    NatLiteral,
     Comma,
     Colon,
     Equals,
@@ -150,13 +156,15 @@ pub enum Keyword {
     Let,
     /// The keyword `'module` used for module declarations.
     Module,
+    /// The keyword `'Nat` naming the type of natural numbers.
+    Nat,
     /// The keyword `'of` found in case analyses.
     Of,
     /// The keyword `'Parent` refering to a parent module.
     Parent,
     /// The keyword `'Root` standing for the root module.
     Root,
-    /// The keyword `'Type` being the type of types.
+    /// The keyword `'Type` naming the type of types.
     Type,
     /// The keyword `'use` prefixing use declarations.
     Use,
@@ -178,10 +186,12 @@ impl FromStr for Keyword {
             "in" => Self::In,
             "let" => Self::Let,
             "module" => Self::Module,
+            "Nat" => Self::Nat,
             "of" => Self::Of,
             "Parent" => Self::Parent,
             "Root" => Self::Root,
             "Type" => Self::Type,
+            "use" => Self::Use,
             // "unsafe" => Self::Unsafe,
             _ => return Err(()),
         })
@@ -230,7 +240,7 @@ pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
     let mut tokens = Vec::new();
     let mut indentation_in_spaces = 0;
 
-    // @Task number literals, text literal
+    // @Task text literal
     // @Bug sometimes we get consecutive dedent&indent, they should be flattened/
     // filtered out
     while let Some(&(index, character)) = indexed_characters.peek() {
@@ -276,7 +286,10 @@ pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
                 }
 
                 if documentation_comment {
-                    tokens.push(SourceToken::new(Token::DocumentationComment, Span::new(start, end)))
+                    tokens.push(SourceToken::new(
+                        Token::DocumentationComment,
+                        Span::new(start, end),
+                    ))
                 }
             } else {
                 tokens.push(SourceToken::new(Token::Semicolon, Span::new(start, end)))
@@ -397,6 +410,23 @@ pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
                 },
                 Span::new(start, end),
             ))
+        }
+        // @Task verify that it ends with a space instead of any non-digit
+        else if character.is_ascii_digit() {
+            let start = index;
+            let mut end = start;
+            indexed_characters.next();
+
+            while let Some(&(index, character)) = indexed_characters.peek() {
+                if character.is_ascii_digit() {
+                    end = index;
+                    indexed_characters.next();
+                } else {
+                    break;
+                }
+            }
+
+            tokens.push(SourceToken::new(Token::NatLiteral(Rc::new(BigUint::from_str(&source[start..=end]).unwrap())), Span::new(start, end)));
         } else {
             indexed_characters.next();
 
