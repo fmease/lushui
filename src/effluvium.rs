@@ -205,12 +205,10 @@ pub fn infer_type(expression: &Expression, scope: ModuleScope) -> Result<hir::Ex
             // @Bug unhandled @Temporary unwrap
             let parameter_type: &Expression = parameter_type_annotation.as_ref().unwrap();
             assert_expression_is_a_type(&parameter_type, scope.clone())?;
-            let infered_body_type = infer_type(
-                body,
-                scope
-                    .clone()
-                    .extend_with_parameter(binder.clone(), parameter_type.clone()),
-            )?;
+            let scope = scope
+                .clone()
+                .extend_with_parameter(binder.clone(), parameter_type.clone());
+            let infered_body_type = infer_type(body, scope.clone())?;
             if let Some(body_type_annotation) = body_type_annotation {
                 // @Question should we assert_expression_is_type(body_type_annotation) before this?
                 assert_expressions_are_equal(body_type_annotation, &infered_body_type, scope)?;
