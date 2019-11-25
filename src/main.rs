@@ -10,27 +10,27 @@ fn main() {
     let mut arguments = std::env::args().skip(1);
     let source_path = arguments.next().expect("no source file path supplied");
 
-    let file = File::open(source_path).unwrap();
+    let file = File::open(&source_path).unwrap();
     let mut buf_reader = BufReader::new(file);
     let mut source = String::new();
     buf_reader.read_to_string(&mut source).unwrap();
 
     drop(buf_reader);
 
-    if let Err(error) = test(&source) {
+    if let Err(error) = test(&source, &source_path) {
         eprintln!("{}", error);
     }
 }
 
-fn test(source: &str) -> Result<(), String> {
+fn test(source: &str, filename: &str) -> Result<(), String> {
     // tokens
     let tokens =
-        lexer::lex(source).map_err(|error| error::Error::from(error).display(source, None))?;
+        lexer::lex(source).map_err(|error| error::Error::from(error).display(source, Some(filename)))?;
 
     // AST
     let mut context = parser::Context::new(&tokens);
     let node = parser::parse_file_module_no_header(&mut context)
-        .map_err(|error| error::Error::from(error).display(source, None))?;
+        .map_err(|error| error::Error::from(error).display(source, Some(filename)))?;
 
     // HIR
     let node = hir::lower_declaration(&node);

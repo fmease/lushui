@@ -15,6 +15,11 @@ use error::{Error, Result};
 use std::collections::HashMap;
 use std::rc::Rc;
 
+// @Temporary @Bug we don't do non-trivial type inference yet and thus, type parameters of lambda literals
+// must be annotated with a type. And since we don't have a dedicated Error::InternalCompilerError yet,
+// we use this constant for an error message:
+const MISSING_ANNOTATION: &str = "(compiler bug) currently lambda literal parameters must be type-annotated";
+
 // @Task make pure returning new Context
 // @Question this is eager evaluation, right?
 // @Task handle out of order declarations and recursions (you need to go through declarations twice) and
@@ -125,7 +130,7 @@ fn substitute(expression: &Expression, environment: Environment, scope: ModuleSc
             // @Bug unchecked @Temporary unwrap
             let (binder, parameter_type, body) = abstraction_substitute(
                 Some(binder),
-                parameter_type_annotation.as_ref().unwrap(),
+                parameter_type_annotation.as_ref().expect(MISSING_ANNOTATION),
                 body,
                 environment,
                 scope,
@@ -203,7 +208,7 @@ pub fn infer_type(expression: &Expression, scope: ModuleScope) -> Result<hir::Ex
             data: (),
         } => {
             // @Bug unhandled @Temporary unwrap
-            let parameter_type: &Expression = parameter_type_annotation.as_ref().unwrap();
+            let parameter_type: &Expression = parameter_type_annotation.as_ref().expect(MISSING_ANNOTATION);
             assert_expression_is_a_type(&parameter_type, scope.clone())?;
             let scope = scope
                 .clone()
@@ -356,7 +361,7 @@ pub fn normalize(expression: &Expression, scope: ModuleScope) -> Result<Expressi
             // @Bug unchecked @Temporary unwrap
             let (parameter_type, body) = normalize_abstraction(
                 Some(binder),
-                parameter_type_annotation.as_ref().unwrap(),
+                parameter_type_annotation.as_ref().expect(MISSING_ANNOTATION),
                 body,
                 scope,
             )?;
@@ -595,10 +600,10 @@ fn equal(left: &Expression, right: &Expression, scope: ModuleScope) -> bool {
             // @Bug unchecked @Temporary unwrap
             abstraction_equal(
                 Some(binder1),
-                parameter_type_annotation1.as_ref().unwrap(),
+                parameter_type_annotation1.as_ref().expect(MISSING_ANNOTATION),
                 body1,
                 Some(binder2),
-                parameter_type_annotation2.as_ref().unwrap(),
+                parameter_type_annotation2.as_ref().expect(MISSING_ANNOTATION),
                 body2,
                 scope,
             )

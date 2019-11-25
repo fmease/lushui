@@ -58,6 +58,7 @@ impl Error {
     // it might not make sense to display code
     // @Task don't print the whole line: set limit of 50~ characters (a window) @Note actually, don't: it complicates everything
     // and i am sure rustc doesn't do this either
+    // @Question filename or filepath?
     pub fn display(&self, source: &str, filename: Option<&str>) -> String {
         let kind = match self {
             Self::Lex(error) => error.kind.to_string(),
@@ -76,11 +77,8 @@ impl Error {
             message = kind,
             path = filename.unwrap_or("<anonymous>"),
             location = start,
-            source = &source[dbg!(line).range()],
+            source = &source[line.range()],
             underline_space = " ".repeat(rel.start),
-            // @Beacon @Note for the carets, we need start and end index relative to the
-            // separate line!
-            // @Task carets below
             underline = "^".repeat(rel.end + 1 - rel.start)
         )
     }
@@ -178,10 +176,11 @@ fn locations_and_line_from_span(source: &str, span: &Span) -> (Location, Locatio
     }
 
     // @Bug we should not need to decr by 1
+    // @Note the saturating_sub is just a hotfix, remove the whole thing nonetheless!
     (
         start,
         end,
-        Span::new(index_line_start, index_line_end - 1),
+        Span::new(index_line_start, index_line_end.saturating_sub(1)),
         Span::new(relative_start, relative_end),
     )
 }

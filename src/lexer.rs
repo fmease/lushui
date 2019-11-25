@@ -1,11 +1,12 @@
 mod error;
 
-pub(crate) use string_cache::DefaultAtom as Atom;
 use num_bigint::BigUint;
+pub(crate) use string_cache::DefaultAtom as Atom;
 
 use std::cmp::Ordering;
-use std::str::FromStr;
+use std::fmt;
 use std::rc::Rc;
+use std::str::FromStr;
 
 use crate::error::Span;
 pub use error::Error;
@@ -133,69 +134,91 @@ pub enum TokenKind {
     ClosingRoundBracket,
 }
 
-// @Task implement Copy
-/// Enumeration of all Lushui keywords.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum Keyword {
-    /// The keyword `'as` renaming bindings in certain syntactic constructs.
-    As,
-    /// The keyword `'_` standing for either an expression that should be infered or an
-    /// unnameable identifier.
-    Blank,
-    /// The keyword `'case` prefixing cases analyses.
-    Case,
-    /// The keyword `'data` introducing data declarations.
-    Data,
-    /// The keyword `'foreign` signaling a FFA.
-    Foreign,
-    /// The keyword `'hole` used for typed holes.
-    Hole,
-    /// The keyword `'in` being part of let/in-expressions
-    In,
-    /// The keyword `'let` introducing let-declarations which bind expressions.
-    Let,
-    /// The keyword `'module` used for module declarations.
-    Module,
-    /// The keyword `'Nat` naming the type of natural numbers.
-    Nat,
-    /// The keyword `'of` found in case analyses.
-    Of,
-    /// The keyword `'Parent` refering to a parent module.
-    Parent,
-    /// The keyword `'Root` standing for the root module.
-    Root,
-    /// The keyword `'Type` naming the type of types.
-    Type,
-    /// The keyword `'use` prefixing use declarations.
-    Use,
-    // Unsafe,
-}
-
-/// Parsing keywords *without* the sigil `'`.
-impl FromStr for Keyword {
-    type Err = ();
-
-    fn from_str(source: &str) -> Result<Self, Self::Err> {
-        Ok(match source {
-            "as" => Self::As,
-            "_" => Self::Blank,
-            "case" => Self::Case,
-            "data" => Self::Data,
-            "foreign" => Self::Foreign,
-            "hole" => Self::Hole,
-            "in" => Self::In,
-            "let" => Self::Let,
-            "module" => Self::Module,
-            "Nat" => Self::Nat,
-            "of" => Self::Of,
-            "Parent" => Self::Parent,
-            "Root" => Self::Root,
-            "Type" => Self::Type,
-            "use" => Self::Use,
-            // "unsafe" => Self::Unsafe,
-            _ => return Err(()),
+impl fmt::Display for TokenKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::DocumentationComment => "documentation comment",
+            Self::Keyword(keyword) => return write!(f, "keyword `{}`", keyword),
+            Self::Identifier => "identifier",
+            Self::Punctuation => "punctuation",
+            Self::NatLiteral => "natural number literal",
+            Self::Comma => "comma",
+            Self::Colon => "colon",
+            Self::Equals => "equals sign",
+            Self::Backslash => "backslash",
+            Self::ThinArrow => "thin arrow",
+            Self::WideArrow => "wide arrow",
+            Self::Indentation => "indentation",
+            Self::Dedentation => "dedentation",
+            Self::LineBreak => "line break",
+            Self::Semicolon => "semicolon",
+            Self::OpeningRoundBracket => "opening round bracket",
+            Self::ClosingRoundBracket => "closing round bracket",
         })
     }
+}
+
+// @Note in contexts like here, it's always without the sigil!
+macro_rules! keywords {
+    { $( $( #[$doc:meta] )+ $keyword:ident $representation:literal, )+ } => {
+        #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+        pub enum Keyword {
+            $( $( #[$doc] )+ $keyword, )+
+        }
+
+        impl fmt::Display for Keyword {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str(match self {
+                    $( Self::$keyword => $representation, )+
+                })
+            }
+        }
+
+        impl FromStr for Keyword {
+            type Err = ();
+
+            fn from_str(source: &str) -> Result<Self, Self::Err> {
+                Ok(match source {
+                    $( $representation => Self::$keyword, )+
+                    _ => return Err(()),
+                })
+            }
+        }
+    }
+}
+
+keywords! {
+    /// The keyword `'as` renaming bindings in certain syntactic constructs.
+    As "as",
+    /// The keyword `'_` standing for either an expression that should be infered or an unnameable identifier.
+    Blank "_",
+    /// The keyword `'case` prefixing cases analyses.
+    Case "case",
+    /// The keyword `'data` introducing data declarations.
+    Data "data",
+    /// The keyword `'foreign` signaling a FFA.
+    Foreign "foreign",
+    // @Note this is not up-to-date anymore: There exists bracket-syntax now!
+    /// The keyword `'hole` used for typed holes.
+    Hole "hole",
+    /// The keyword `'in` being part of let/in-expressions
+    In "in",
+    /// The keyword `'let` introducing let-declarations which bind expressions.
+    Let "let",
+    /// The keyword `'module` used for module declarations.
+    Module "module",
+    /// The keyword `'Nat` naming the type of natural numbers.
+    Nat "Nat",
+    /// The keyword `'of` found in case analyses.
+    Of "of",
+    /// The keyword `'root` standing for the root module.
+    Root "root",
+    /// The keyword `'Parent` refering to a parent module.
+    Super "super",
+    /// The keyword `'Type` naming the type of types.
+    Type "Type",
+    /// The keyword `'use` prefixing use declarations.
+    Use "use",
 }
 
 /// Amount of spaces making up one unit of indentation.
@@ -426,7 +449,10 @@ pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
                 }
             }
 
-            tokens.push(SourceToken::new(Token::NatLiteral(Rc::new(BigUint::from_str(&source[start..=end]).unwrap())), Span::new(start, end)));
+            tokens.push(SourceToken::new(
+                Token::NatLiteral(Rc::new(BigUint::from_str(&source[start..=end]).unwrap())),
+                Span::new(start, end),
+            ));
         } else {
             indexed_characters.next();
 

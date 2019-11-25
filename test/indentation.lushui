@@ -1,0 +1,6 @@
+;;; Messing with indentation
+
+'let identity (A: 'Type): A -> A = \(a: A): A => a
+
+'let number: 'Nat =
+    identity 'Nat 45

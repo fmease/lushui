@@ -14,7 +14,6 @@ pub struct Error {
 // @Task improve, missing information
 #[derive(Debug)] // @Temporary
 pub enum ErrorKind {
-    ExpectedEndOfInput,
     UnexpectedEndOfInput,
     UnexpectedToken(SourceToken),
 }
@@ -22,10 +21,9 @@ pub enum ErrorKind {
 impl fmt::Display for ErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ExpectedEndOfInput => f.write_str("expected end of input"),
             Self::UnexpectedEndOfInput => f.write_str("unexpected end of input"),
             // @Temporary
-            Self::UnexpectedToken(token) => write!(f, "unexpected token {:?}", token.kind()),
+            Self::UnexpectedToken(token) => write!(f, "unexpected {}", token.kind()),
         }
     }
 }

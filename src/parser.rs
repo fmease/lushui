@@ -1,3 +1,6 @@
+// @Beacon @Beacon @Beacon @Beacon @Beacon
+// @Task rewrite this whole parser with great(!) error messages in mind!
+
 mod error;
 
 use crate::error::Span;
@@ -8,10 +11,6 @@ use std::fmt;
 pub use error::Error;
 use error::{ErrorKind, Result};
 
-// @Beacon @Temporary
-const NOWHERE: Span = Span::new(0, 0);
-
-// @Temporary pub
 #[derive(Clone)]
 pub struct Context<'i> {
     tokens: &'i [lexer::SourceToken],
@@ -39,22 +38,14 @@ impl<'i> Context<'i> {
         } else {
             // @Task also add (list of) expected token(s)
             Err(Error {
+                span: token.span,
                 kind: ErrorKind::UnexpectedToken(token),
-                span: NOWHERE,
             })
         }
     }
 
-    // @Note ugly: special-casing??
-    fn expect_end_of_input(&self) -> Result<()> {
-        if self.index < self.tokens.len() {
-            Err(Error {
-                kind: ErrorKind::ExpectedEndOfInput,
-                span: NOWHERE,
-            })
-        } else {
-            Ok(())
-        }
+    fn at_end_of_input(&self) -> bool {
+        self.index >= self.tokens.len()
     }
 
     // @Question don't just accept tokens but anything of a certain trait which tokens implement,
@@ -76,13 +67,18 @@ impl<'i> Context<'i> {
     }
 
     fn token(&self) -> Result<lexer::SourceToken> {
-        self.tokens.get(self.index).cloned().ok_or(Error {
+        self.tokens.get(self.index).cloned().ok_or_else(|| Error {
             kind: ErrorKind::UnexpectedEndOfInput,
-            span: NOWHERE,
+            // @Bug should point to the "token after" (in the error.rs display)
+            // @Bug this might panic bc of underflow
+            span: self.tokens.get(self.index - 1).unwrap().span,
         })
     }
 }
 
+// @Question will the spans on them even get used (for error messages)
+// @Note in most cases, only the span of the binder or the type annotations contained within
+// will be used, I guess
 #[derive(Debug)] // @Temporary
 pub enum Declaration {
     Let {
@@ -128,33 +124,44 @@ impl Declaration {
 
 // @Temporary
 pub fn parse_file_module_no_header(context: &mut Context<'_>) -> Result<Declaration> {
-    let mut declarations = Vec::new();
+    let mut declarations = Vec::<Declaration>::new();
 
-    while let Ok(declaration) = context
-        .consume(lexer::TokenKind::LineBreak)
-        .map(|_| None)
-        .or_else(|_| context.reflect(parse_declaration).map(Some))
-    {
-        if let Some(declaration) = declaration {
-            declarations.push(declaration);
+    loop {
+        // empty line
+        if context.consume(lexer::TokenKind::LineBreak).is_ok() {
+            continue;
         }
+
+        if context.at_end_of_input() {
+            break Ok(Declaration::Module {
+                // @Temporary span handling because this function itself is temporary
+                // @Bug Span::new(0, 0)
+                span: (|| {
+                    Some(
+                        declarations
+                            .first()?
+                            .span()
+                            .merge(declarations.last()?.span()),
+                    )
+                })()
+                .unwrap_or(Span::new(0, 0)),
+                declarations,
+            });
+        }
+
+        declarations.push(parse_declaration(context)?);
     }
-
-    context.expect_end_of_input()?;
-
-    Ok(Declaration::Module {
-        declarations,
-        span: NOWHERE,
-    })
 }
 
 pub fn parse_declaration(context: &mut Context<'_>) -> Result<Declaration> {
     pub fn parse_data_declaration(context: &mut Context<'_>) -> Result<Declaration> {
-        context.consume(lexer::TokenKind::Keyword(lexer::Keyword::Data))?;
+        let span_of_data_keyword = context
+            .consume(lexer::TokenKind::Keyword(lexer::Keyword::Data))?
+            .span;
         let binder = context.consume_identifier()?;
         let parameters = parse_annotated_parameters(context)?;
         let type_annotation = parse_type_annotation(context)?;
-        context.consume(lexer::TokenKind::Equals)?;
+        let span_of_equals = context.consume(lexer::TokenKind::Equals)?.span;
         context.consume(lexer::TokenKind::LineBreak)?;
 
         let mut constructors = Vec::new();
@@ -168,30 +175,38 @@ pub fn parse_declaration(context: &mut Context<'_>) -> Result<Declaration> {
         }
 
         Ok(Declaration::Data {
+            span: span_of_data_keyword.merge(
+                constructors
+                    .last()
+                    .map(|constructor| constructor.span)
+                    .unwrap_or(span_of_equals),
+            ),
             binder,
             parameters,
             type_annotation,
             constructors,
-            span: NOWHERE,
         })
     }
 
     fn parse_let_declaration(context: &mut Context<'_>) -> Result<Declaration> {
-        context.consume(lexer::TokenKind::Keyword(lexer::Keyword::Let))?;
+        let span_of_let_keyword = context
+            .consume(lexer::TokenKind::Keyword(lexer::Keyword::Let))?
+            .span;
         let binder = context.consume_identifier()?;
         let parameters = context.reflect(parse_annotated_parameters)?;
 
         let type_annotation = context.reflect(parse_type_annotation)?;
         context.consume(lexer::TokenKind::Equals)?;
         let expression = context.reflect(parse_expression)?;
+        // @Note looks ugly
         expect_delimiter(context).map(|_| context.accept())?;
 
         Ok(Declaration::Let {
+            span: span_of_let_keyword.merge(expression.span()),
             binder,
             parameters,
             type_annotation,
             expression,
-            span: NOWHERE,
         })
     }
 
@@ -336,9 +351,10 @@ pub fn parse_expression(context: &mut Context<'_>) -> Result<Expression> {
     // @Task update grammar
     // Pi_Literal_Or_Lower %right% ::= Application_Or_Lower (-> Pi_Literal_Or_Lower)*
     fn parse_pi_literal_or_lower(context: &mut Context<'_>) -> Result<Expression> {
-        let (explicitness, binder, parameter) = context
+        let (span_at_the_beginning, explicitness, binder, parameter) = context
             .reflect(|context| {
-                context.consume(lexer::TokenKind::OpeningRoundBracket)?;
+                let span_of_opening_round_bracket =
+                    context.consume(lexer::TokenKind::OpeningRoundBracket)?.span;
 
                 let explicitness = consume_explicitness_comma(context);
                 let binder = context.consume_identifier()?;
@@ -346,24 +362,33 @@ pub fn parse_expression(context: &mut Context<'_>) -> Result<Expression> {
 
                 context.consume(lexer::TokenKind::ClosingRoundBracket)?;
 
-                Ok((explicitness, Some(binder), parameter))
+                Ok((
+                    span_of_opening_round_bracket,
+                    explicitness,
+                    Some(binder),
+                    parameter,
+                ))
             })
             .or_else(|_| {
                 // @Question do we need reflect here?
                 context
                     .reflect(parse_application_or_lower)
                     // .reflect(parse_semicolon_application_or_lower)
-                    .map(|parameter| (Explicitness::Explicit, None, parameter))
+                    .map(|parameter| (parameter.span(), Explicitness::Explicit, None, parameter))
             })?;
 
         Ok(match context.consume(lexer::TokenKind::ThinArrow) {
-            Ok(_) => Expression::PiLiteral {
-                expression: Box::new(context.reflect(parse_pi_literal_or_lower)?),
-                binder,
-                parameter: Box::new(parameter),
-                explicitness,
-                span: NOWHERE,
-            },
+            Ok(_) => {
+                let expression = Box::new(context.reflect(parse_pi_literal_or_lower)?);
+
+                Expression::PiLiteral {
+                    span: span_at_the_beginning.merge(expression.span()),
+                    expression,
+                    binder,
+                    parameter: Box::new(parameter),
+                    explicitness,
+                }
+            }
             Err(_) if binder.is_none() => parameter,
             Err(error) => return Err(error),
         })
@@ -412,12 +437,11 @@ pub fn parse_expression(context: &mut Context<'_>) -> Result<Expression> {
                 Ok((expression, Explicitness::Implicit))
             })
         {
-            // @Bug @Temporary span
             expression = Expression::Application {
+                span: expression.span().merge(argument.span()),
                 expression: Box::new(expression),
                 argument: Box::new(argument),
                 explicitness,
-                span: NOWHERE,
             };
         }
         Ok(expression)
@@ -498,6 +522,7 @@ pub struct Constructor {
     pub binder: Identifier,
     pub parameters: AnnotatedParameters,
     pub type_annotation: Expression,
+    pub span: Span,
 }
 
 // @Task very future: unnameable constructor `'_`
@@ -509,6 +534,7 @@ fn parse_constructor(context: &mut Context<'_>) -> Result<Constructor> {
     context.consume(lexer::TokenKind::LineBreak)?;
 
     Ok(Constructor {
+        span: binder.span.merge(type_annotation.span()),
         binder,
         parameters,
         type_annotation,
@@ -519,7 +545,7 @@ fn parse_constructor(context: &mut Context<'_>) -> Result<Constructor> {
 // @Task inline pattern-match
 #[derive(Debug)]
 pub struct AnnotatedParameterGroup {
-    pub parameters: Vec<Identifier>,
+    pub parameters: Vec<Identifier>, // @Task replace with OneOrMore
     pub type_annotation: Expression,
     pub explicitness: Explicitness,
 }
@@ -648,8 +674,8 @@ fn expect_delimiter(context: &Context<'_>) -> Result<()> {
     if let Ok(token) = context.token() {
         if token.kind() != lexer::TokenKind::LineBreak {
             return Err(Error {
+                span: token.span,
                 kind: ErrorKind::UnexpectedToken(token),
-                span: NOWHERE,
             });
         }
     }

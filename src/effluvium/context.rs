@@ -75,7 +75,7 @@ impl Entity {
 impl fmt::Display for Entity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Expression { r#type, expression } => write!(f, "{}: {}", r#type, expression),
+            Self::Expression { r#type, expression } => write!(f, "{}: {}", expression, r#type),
             Self::DataType {
                 r#type,
                 constructors,
@@ -226,7 +226,7 @@ impl fmt::Display for ModuleScope {
 }
 
 // @Task does it store a reference to it?
-pub struct FunctionScope {
+pub struct _FunctionScope {
     module: ModuleScope,
 }
 
