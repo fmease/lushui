@@ -4,3 +4,4 @@
 
 'let number: 'Nat =
     identity 'Nat 45
+'let next: 'Nat = 200

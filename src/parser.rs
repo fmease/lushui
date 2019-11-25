@@ -44,7 +44,7 @@ impl<'i> Context<'i> {
         }
     }
 
-    fn at_end_of_input(&self) -> bool {
+    fn at_the_end_of_input(&self) -> bool {
         self.index >= self.tokens.len()
     }
 
@@ -132,7 +132,7 @@ pub fn parse_file_module_no_header(context: &mut Context<'_>) -> Result<Declarat
             continue;
         }
 
-        if context.at_end_of_input() {
+        if context.at_the_end_of_input() {
             break Ok(Declaration::Module {
                 // @Temporary span handling because this function itself is temporary
                 // @Bug Span::new(0, 0)
@@ -193,13 +193,11 @@ pub fn parse_declaration(context: &mut Context<'_>) -> Result<Declaration> {
             .consume(lexer::TokenKind::Keyword(lexer::Keyword::Let))?
             .span;
         let binder = context.consume_identifier()?;
-        let parameters = context.reflect(parse_annotated_parameters)?;
+        let parameters = parse_annotated_parameters(context)?;
 
-        let type_annotation = context.reflect(parse_type_annotation)?;
+        let type_annotation = parse_type_annotation(context)?;
         context.consume(lexer::TokenKind::Equals)?;
-        let expression = context.reflect(parse_expression)?;
-        // @Note looks ugly
-        expect_delimiter(context).map(|_| context.accept())?;
+        let expression = parse_possibly_indented_expression_followed_by_line_break(context)?;
 
         Ok(Declaration::Let {
             span: span_of_let_keyword.merge(expression.span()),
@@ -653,13 +651,27 @@ fn parse_type_annotation(context: &mut Context<'_>) -> Result<Expression> {
     context.reflect(parse_expression)
 }
 
-// fn parse_possibly_indented @Task
+// @Task generalize, move somewhere else
+// @Note this is currently only used for let-declarations and I don't know if
+// it works in other contexts
+fn parse_possibly_indented_expression_followed_by_line_break(
+    context: &mut Context<'_>,
+) -> Result<Expression> {
+    if context.consume(lexer::TokenKind::LineBreak).is_ok() {
+        context.consume(lexer::TokenKind::Indentation)?;
+        let expression = parse_expression_followed_by_line_break(context)?;
+        context.consume(lexer::TokenKind::Dedentation)?;
+        Ok(expression)
+    } else {
+        parse_expression_followed_by_line_break(context)
+    }
+}
 
-fn _parse_indented<T>(
-    _context: &mut Context<'_>,
-    _inner: fn(&mut Context<'_>) -> Result<T>,
-) -> Result<T> {
-    unimplemented!() // @Task
+// @Note temporary generalize
+fn parse_expression_followed_by_line_break(context: &mut Context<'_>) -> Result<Expression> {
+    let expression = parse_expression(context)?;
+    context.consume(lexer::TokenKind::LineBreak)?;
+    Ok(expression)
 }
 
 fn consume_explicitness_comma(context: &mut Context<'_>) -> Explicitness {
@@ -670,17 +682,17 @@ fn consume_explicitness_comma(context: &mut Context<'_>) -> Explicitness {
 }
 
 /// expect either a line break or the end of input
-fn expect_delimiter(context: &Context<'_>) -> Result<()> {
-    if let Ok(token) = context.token() {
-        if token.kind() != lexer::TokenKind::LineBreak {
-            return Err(Error {
-                span: token.span,
-                kind: ErrorKind::UnexpectedToken(token),
-            });
-        }
-    }
-    Ok(())
-}
+// fn expect_delimiter(context: &Context<'_>) -> Result<()> {
+//     if let Ok(token) = context.token() {
+//         if token.kind() != lexer::TokenKind::LineBreak {
+//             return Err(Error {
+//                 span: token.span,
+//                 kind: ErrorKind::UnexpectedToken(token),
+//             });
+//         }
+//     }
+//     Ok(())
+// }
 
 // @Note is going to become more complex in the future (or is going to be replaced)
 // when we implement to dotted identifiers, blanks (`'_`) and symbols
