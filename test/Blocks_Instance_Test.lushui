@@ -1,0 +1,18 @@
+;;; This is bad!!!
+
+'data Foo: 'Type =
+    Bar: (n: 'Nat) -> if (n == 0) 'Nat Foo
+
+;;; So in this case, clearly `if (n == 0) 'Nat Foo` is *not* an instance
+;;; of `Foo` since there exists an `n` where it clearly isn't ('Nat /= Foo)
+;;;
+;;; How can we algorithmically check this? I mean the second example given
+;;; below *should* compile:
+
+'data Ban: 'Type =
+    Baz: (n: 'Nat) -> const 'Nat Foo
+
+;;; "Easy"! We just need to normalize the result type *under* the respective environment
+;;; (here, in both cases, it's `n: 'Nat`) and if does reduce to some set of expression
+;;; kinds, it's an error (e.g. no Case, Application only if the callee is non-redex and
+;;; not dependent on any constructor param, ...)

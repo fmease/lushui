@@ -98,6 +98,7 @@ pub fn lower_declaration(declaration: &parser::Declaration) -> Declaration {
                             explicitness: parameter_group.explicitness,
                             body_type_annotation: type_annotation.next(),
                             body: Box::new(expression),
+                            data: (),
                         };
                     }
                 }
@@ -158,24 +159,45 @@ fn lower_constructor(constructor: &parser::Constructor) -> Constructor {
 // there might not be any span information if synthesize HIR nodes (common thing probably)
 // @Task improve naming (binder, parameter, etcetera)
 #[derive(Clone, Debug)]
-pub enum Expression {
+// @Beacon @Beacon @Note rename P: Phase to D: Discrimant and have Raw, Normalized, Type (more to come)
+pub enum Expression<P: Phase = InitialPhase> {
     PiTypeLiteral {
         // @Task rename binder to parameter in the future
         binder: Option<Identifier>,
         domain: Box<Expression>,
         codomain: Box<Expression>,
         explicitness: Explicitness,
+        data: P::PiTypeLiteral,
     },
     Application {
         expression: Box<Expression>,
         argument: Box<Expression>,
         explicitness: Explicitness,
+        data: P::Application,
     },
-    TypeLiteral,
-    NatTypeLiteral,
-    NatLiteral(crate::lexer::Nat),
-    Identifier(Identifier),
-    Hole(Identifier),
+    // Substitution(Substitution, Box<Expression>),
+    TypeLiteral {
+        data: P::TypeLiteral,
+    },
+    NatTypeLiteral {
+        data: P::NatTypeLiteral,
+    },
+    NatLiteral {
+        value: crate::lexer::Nat,
+        data: P::NatLiteral,
+    },
+    Identifier {
+        identifier: Identifier,
+        data: P::Identifier,
+    },
+    // Identifier {
+    //     identifier: Identifier,
+    //     index: DebruijnIndex,
+    // },
+    Hole {
+        tag: Identifier,
+        data: P::Hole,
+    },
     LambdaLiteral {
         // @Task rename binder to parameter in the future
         binder: Identifier,
@@ -183,9 +205,16 @@ pub enum Expression {
         explicitness: Explicitness,
         body_type_annotation: Option<Box<Expression>>,
         body: Box<Expression>,
+        data: P::LambdaLiteral,
     },
-    UseIn, // @Task
-    Case,  // @Task
+    // @Task
+    UseIn {
+        data: P::UseIn,
+    },
+    // @Task
+    Case {
+        data: P::Case,
+    },
 }
 
 // @Task display fewer round brackets by making use of precedence
@@ -198,6 +227,7 @@ impl fmt::Display for Expression {
                 domain,
                 codomain,
                 explicitness,
+                data: (),
             } => write!(
                 f,
                 "({}{}{}) -> ({})",
@@ -213,18 +243,23 @@ impl fmt::Display for Expression {
                 expression,
                 argument,
                 explicitness,
+                data: (),
             } => write!(f, "({}) ({}{})", expression, explicitness, argument,),
-            Self::TypeLiteral => f.write_str("'Type"),
-            Self::NatTypeLiteral => f.write_str("'Nat"),
-            Self::NatLiteral(uint) => write!(f, "{}", uint),
-            Self::Identifier(identifier) => write!(f, "{}", identifier),
-            Self::Hole(identifier) => write!(f, "'hole {}", identifier),
+            Self::TypeLiteral { data: () } => f.write_str("'Type"),
+            Self::NatTypeLiteral { data: () } => f.write_str("'Nat"),
+            Self::NatLiteral { value, data: () } => write!(f, "{}", value),
+            Self::Identifier {
+                identifier,
+                data: (),
+            } => write!(f, "{}", identifier),
+            Self::Hole { tag, data: () } => write!(f, "'hole {}", tag),
             Self::LambdaLiteral {
                 binder,
                 parameter_type_annotation,
                 explicitness,
                 body_type_annotation,
                 body,
+                data: (),
             } => write!(
                 f,
                 "\\({}{}{}){} => ({})",
@@ -240,8 +275,8 @@ impl fmt::Display for Expression {
                     .unwrap_or_default(),
                 body
             ),
-            Self::UseIn => unimplemented!(),
-            Self::Case => unimplemented!(),
+            Self::UseIn { data: () } => unimplemented!(),
+            Self::Case { data: () } => unimplemented!(),
         }
     }
 }
@@ -259,6 +294,7 @@ pub fn lower_expression(expression: &parser::Expression) -> Expression {
             domain: Box::new(lower_expression(parameter)),
             codomain: Box::new(lower_expression(expression)),
             explicitness: *explicitness,
+            data: (),
         },
         parser::Expression::Application {
             expression,
@@ -269,17 +305,25 @@ pub fn lower_expression(expression: &parser::Expression) -> Expression {
             expression: Box::new(lower_expression(expression)),
             argument: Box::new(lower_expression(argument)),
             explicitness: *explicitness,
+            data: (),
         },
-        parser::Expression::TypeLiteral { span: _ } => Expression::TypeLiteral,
-        parser::Expression::NatTypeLiteral { span: _ } => Expression::NatTypeLiteral,
-        parser::Expression::NatLiteral { value, span: _ } => Expression::NatLiteral(value.clone()),
-        parser::Expression::Identifier { inner: identifier } => {
-            Expression::Identifier(Identifier::Plain(identifier.clone()))
-        }
+        parser::Expression::TypeLiteral { span: _ } => Expression::TypeLiteral { data: () },
+        parser::Expression::NatTypeLiteral { span: _ } => Expression::NatTypeLiteral { data: () },
+        parser::Expression::NatLiteral { value, span: _ } => Expression::NatLiteral {
+            value: value.clone(),
+            data: (),
+        },
+        parser::Expression::Identifier { inner: identifier } => Expression::Identifier {
+            identifier: Identifier::Plain(identifier.clone()),
+            data: (),
+        },
         parser::Expression::Hole {
             tag: identifier,
             span: _,
-        } => Expression::Hole(Identifier::Plain(identifier.clone())),
+        } => Expression::Hole {
+            tag: Identifier::Plain(identifier.clone()),
+            data: (),
+        },
         parser::Expression::LambdaLiteral {
             parameters,
             type_annotation,
@@ -308,6 +352,7 @@ pub fn lower_expression(expression: &parser::Expression) -> Expression {
                         explicitness: parameter_group.explicitness,
                         body_type_annotation: type_annotation.next(),
                         body: Box::new(expression),
+                        data: (),
                     };
                 }
             }
@@ -343,6 +388,7 @@ pub fn lower_expression(expression: &parser::Expression) -> Expression {
                         explicitness: parameter_group.explicitness,
                         body_type_annotation: type_annotation.next(),
                         body: Box::new(expression),
+                        data: (),
                     };
                 }
             }
@@ -357,9 +403,11 @@ pub fn lower_expression(expression: &parser::Expression) -> Expression {
                     explicitness: Explicitness::Explicit,
                     body_type_annotation: None,
                     body: Box::new(lower_expression(scope)),
+                    data: (),
                 }),
                 argument: Box::new(expression),
                 explicitness: Explicitness::Explicit,
+                data: (),
             }
         }
         parser::Expression::UseIn { span: _ } => unimplemented!(),
@@ -383,9 +431,75 @@ fn lower_annotated_parameters(
                 domain: parameter.clone(),
                 codomain: Box::new(expression),
                 explicitness: parameter_group.explicitness,
+                data: (),
             }
         }
     }
 
     expression
+}
+
+// pub type DebruijnIndex = u32;
+
+// // Boo, like a linked list!!! bad cache behavior!
+// #[derive(Clone, Debug)]
+// pub enum Substitution {
+//     Shift(u32),
+//     Composition(Box<Expression>, Box<Substitution>),
+// }
+
+// impl Substitution {
+//     pub fn compose(&self, other: &Self) -> Self {
+//         match (self, other) {
+//             // @Note bad clone
+//             (substitution, Self::Shift(0)) => substitution.clone(),
+//             // @Task alternative to recursion??
+//             (Self::Composition(expression, substitution), Self::Shift(amount)) => {
+//                 substitution.compose(&Self::Shift(amount - 1))
+//             }
+//             (Self::Shift(first_amount), Self::Shift(second_amount)) => {
+//                 Self::Shift(first_amount + second_amount)
+//             }
+//             // @Note very expensive clones!!
+//             (first_substitution, Self::Composition(expression, second_substitution)) => {
+//                 Self::Composition(
+//                     Box::new(Expression::Substitution(
+//                         first_substitution.clone(),
+//                         expression.clone(),
+//                     )),
+//                     Box::new(first_substitution.compose(second_substitution)),
+//                 )
+//             }
+//         }
+//     }
+// }
+
+// @Temporary
+#[derive(Clone, Debug)]
+pub enum InitialPhase {}
+
+pub trait Phase {
+    type PiTypeLiteral;
+    type Application;
+    type TypeLiteral;
+    type NatTypeLiteral;
+    type NatLiteral;
+    type Identifier;
+    type Hole;
+    type LambdaLiteral;
+    type UseIn;
+    type Case;
+}
+
+impl Phase for InitialPhase {
+    type PiTypeLiteral = ();
+    type Application = ();
+    type TypeLiteral = ();
+    type NatTypeLiteral = ();
+    type NatLiteral = ();
+    type Identifier = ();
+    type Hole = ();
+    type LambdaLiteral = ();
+    type UseIn = ();
+    type Case = ();
 }

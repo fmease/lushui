@@ -20,41 +20,53 @@
 //! **Note**: This module needs a lot of love. Currently, it's a big hack with a bad API.
 //! Performance is bad I guess and a lot, a lot of memory is wasted! We need to refactor it
 //! several times until I will be happy.
+//!
+//! **UPDATE**: I think what I said above does not hold! We use the ModuleContext for
+//! function scoping as well! Of course! Like adding typed parameters to the context
+//! with `extend_with_neutral_binding`! I think environment is solely for substitution.
 
 use super::{Expression, Identifier};
 use std::fmt;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-// @Note expressions aren't the only entities: modules are too, gonna be added later
+// @Question Rc<Expression>?
+// @Question Expression<Normalized>?
 #[derive(Clone, Debug)]
 enum Entity {
-    // used for recursion
-    _UnresolvedExpression { type_: Expression },
-    // @Note technically, an ADT is a neutral expression, too @Question better naming?
-    // @Note formal parameters
-    NeutralExpression { type_: Expression },
-    ResolvedExpression { type_: Expression, expr: Expression },
-    // @Question additional payload? constructors?
-    _AlgebraicDataType { type_: Expression },
+    // @Question is this a value or an expression?
+    Expression {
+        r#type: Expression,
+        expression: Expression,
+    },
+    // @Question should we store the constructors?
+    DataType {
+        r#type: Expression,
+        constructors: Vec<Identifier>,
+    },
+    Constructor {
+        r#type: Expression,
+    },
+    // @Temporary @Note move this kind of entity out of ModuleContext, it belongs to a not-yet-existing FunctionContext
+    // @Note will be replaced by Debruijn-indeces
+    Parameter {
+        r#type: Expression,
+    },
 }
 
 impl Entity {
-    // @Note returns Option because UnresolvedExpression does not have a known type_
-    // in our current model
-    fn retrieve_type(&self) -> &Expression {
+    fn r#type(&self) -> &Expression {
         match self {
-            Self::_UnresolvedExpression { type_ } => type_,
-            Self::NeutralExpression { type_ } => type_,
-            Self::ResolvedExpression { type_, .. } => type_,
-            Self::_AlgebraicDataType { type_, .. } => type_,
+            Self::Expression { r#type, .. } => r#type,
+            Self::DataType { r#type, .. } => r#type,
+            Self::Constructor { r#type, .. } => r#type,
+            Self::Parameter { r#type, .. } => r#type,
         }
     }
 
     fn retrieve_value(&self) -> Option<&Expression> {
-        if let Entity::ResolvedExpression { expr, .. } = self {
-            Some(expr)
-        } else {
-            None
+        match self {
+            Entity::Expression { expression, .. } => Some(expression),
+            _ => None,
         }
     }
 }
@@ -63,12 +75,21 @@ impl Entity {
 impl fmt::Display for Entity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::_UnresolvedExpression { type_ } => write!(f, "UNRESOLVED {{ {} }}", type_),
-            Self::NeutralExpression { type_ } => write!(f, "NEUTRAL {{ {} }}", type_),
-            Self::ResolvedExpression { type_, expr } => {
-                write!(f, "RESOLVED {{ {} }} {{ {} }}", type_, expr)
-            }
-            Self::_AlgebraicDataType { type_ } => write!(f, "ADT {{ {} }}", type_),
+            Self::Expression { r#type, expression } => write!(f, "{}: {}", r#type, expression),
+            Self::DataType {
+                r#type,
+                constructors,
+            } => write!(
+                f,
+                "'data: {} = {}",
+                r#type,
+                constructors
+                    .iter()
+                    .map(|constructor| format!("{} ", constructor))
+                    .collect::<String>()
+            ),
+            Self::Constructor { r#type } => write!(f, "'constructor: {}", r#type),
+            Self::Parameter { r#type } => write!(f, "'parameter: {}", r#type),
         }
     }
 }
@@ -80,36 +101,26 @@ impl fmt::Display for Entity {
 // immutably extending the Context also need to update ADTContext i.e. returning
 // (Context, ADTContext) or even better storing the latter inside the former.
 // But for now, variables refering to ADTs and constructors are global/globally unique.
+// @Task rename to ModuleScope
+// @Update @Beacon @Note once we separate ModuleScope and FunctionScope, this
+// does not need to be reference counted anymore, right? we can just use plain old references
 #[derive(Default, Clone, Debug)]
-pub struct ModuleContext {
-    // @Task @Question add binders: Vec<Variable>?
+pub struct ModuleScope {
     bindings: Rc<RefCell<HashMap<Identifier, Entity>>>,
-    // @Question do we really need this??
-    adts: Rc<RefCell<HashMap<Identifier, Vec<Identifier>>>>,
+    // @Note only used for substitution, should be moved to future FunctionContext/FunctionScope
     last_generated_numeric_identifier: Rc<RefCell<u64>>,
 }
 
-impl ModuleContext {
+impl ModuleScope {
     pub fn contains(self, binding: &Identifier) -> bool {
         self.bindings.borrow().contains_key(binding)
-    }
-
-    pub fn adt(self, binding: &Identifier) -> bool {
-        self.adts.borrow().contains_key(binding)
-    }
-
-    // @Note assumes binding is indeed an ADT @Note panics
-    // @Note ugly: clones ... I just want to introspect the value
-    // ... CPS would work here
-    pub fn constructors(self, binding: &Identifier) -> Vec<Identifier> {
-        self.adts.borrow()[binding].clone()
     }
 
     pub fn lookup_type(self, binding: &Identifier) -> Option<Expression> {
         self.bindings
             .borrow()
             .get(binding)
-            .map(Entity::retrieve_type)
+            .map(Entity::r#type)
             .cloned()
     }
 
@@ -120,62 +131,82 @@ impl ModuleContext {
             .map(|entity| entity.retrieve_value().cloned())
     }
 
-    #[must_use]
+    // @Beacon @Beacon @Beacon @Bug @Bug this deeply clones the *whole* HashMap (set of declarations!!)
+    // every time we add a binding into the scope!!!! HORRIBLE!!!
     pub fn extend_with_binding(
         self,
         binding: Identifier,
-        type_: Expression,
+        r#type: Expression,
         value: Expression,
     ) -> Self {
         let mut map = self.bindings.as_ref().borrow().clone();
-        map.insert(binding, Entity::ResolvedExpression { type_, expr: value });
-        ModuleContext {
+        map.insert(
+            binding,
+            Entity::Expression {
+                r#type,
+                expression: value,
+            },
+        );
+        Self {
             bindings: Rc::new(RefCell::new(map)),
             ..self
         }
     }
 
-    #[must_use]
-    pub fn extend_with_neutral_binding(self, binding: Identifier, type_: Expression) -> Self {
+    // @Beacon @Beacon @Beacon @Bug @Bug this deeply clones the *whole* HashMap (set of declarations!!)
+    // every time we add a parameter into the scope!!!! HORRIBLE!!!!
+    pub fn extend_with_parameter(self, binding: Identifier, r#type: Expression) -> Self {
         let mut map = self.bindings.as_ref().borrow().clone();
-        map.insert(binding, Entity::NeutralExpression { type_ });
-        ModuleContext {
+        map.insert(binding, Entity::Parameter { r#type });
+        Self {
             bindings: Rc::new(RefCell::new(map)),
             ..self
         }
     }
 
-    /*
-    // @Note important: see note above Context before impl'ing this
-    pub fn extend_with_adt(self, binder: Variable: type_: Expr, xxx) -> Self {
+    pub fn insert_binding(self, binding: Identifier, r#type: Expression, value: Expression) {
+        self.bindings.borrow_mut().insert(
+            binding,
+            Entity::Expression {
+                r#type,
+                expression: value,
+            },
+        );
+    }
 
-    }*/
-
-    // @Task remove: We should only use extend_with_bindings even in the REPL
-    pub fn insert_binding(self, binding: Identifier, type_: Expression, value: Expression) {
+    pub fn insert_parameter(self, binding: Identifier, r#type: Expression) {
         self.bindings
             .borrow_mut()
-            .insert(binding, Entity::ResolvedExpression { type_, expr: value });
+            .insert(binding, Entity::Parameter { r#type });
     }
 
-    // @Task remove
-    pub fn insert_neutral_binding(self, binding: Identifier, type_: Expression) {
-        self.bindings
-            .borrow_mut()
-            .insert(binding, Entity::NeutralExpression { type_ });
+    pub fn insert_data_type(self, binding: Identifier, r#type: Expression) {
+        self.bindings.borrow_mut().insert(
+            binding,
+            Entity::DataType {
+                r#type,
+                constructors: Vec::new(),
+            },
+        );
     }
 
-    // @Task remove
-    pub fn insert_adt(self, binding: Identifier, type_: Expression) {
-        self.clone().insert_neutral_binding(binding.clone(), type_);
-        self.adts.borrow_mut().insert(binding, Vec::new());
-    }
+    /// Panics if given data type does not exist or is not a data type
+    pub fn insert_constructor(
+        self,
+        binding: Identifier,
+        r#type: Expression,
+        data_type: &Identifier,
+    ) {
+        let mut bindings = self.bindings.borrow_mut();
 
-    // @Task remove
-    // @Note panics if adt does not exist
-    pub fn insert_constructor(self, binding: Identifier, type_: Expression, adt: &Identifier) {
-        self.clone().insert_neutral_binding(binding.clone(), type_);
-        self.adts.borrow_mut().get_mut(adt).unwrap().push(binding);
+        bindings.insert(binding.clone(), Entity::Constructor { r#type });
+        match bindings.get_mut(data_type).unwrap() {
+            Entity::DataType {
+                ref mut constructors,
+                ..
+            } => constructors.push(binding),
+            _ => unreachable!(),
+        }
     }
 
     pub fn generate_numeric_identifier(self) -> u64 {
@@ -185,26 +216,22 @@ impl ModuleContext {
 }
 
 // @Temporary
-impl fmt::Display for ModuleContext {
+impl fmt::Display for ModuleScope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "[[BINDINGS]]")?;
-        for (binding, entity) in self.bindings.borrow().iter() {
-            writeln!(f, "{} ===> {}", binding, entity)?;
-        }
-        writeln!(f, "[[ADTS]]")?;
-        for (binding, constructor_bindings) in self.adts.borrow().iter() {
-            writeln!(
-                f,
-                "{} ===> {}",
-                binding,
-                constructor_bindings
-                    .into_iter()
-                    .map(|binding| format!("| {} ", binding))
-                    .collect::<String>()
-            )?;
+        for (binder, entity) in self.bindings.borrow().iter() {
+            writeln!(f, "{} ===> {}", binder, entity)?;
         }
         Ok(())
     }
 }
 
+// @Task does it store a reference to it?
+pub struct FunctionScope {
+    module: ModuleScope,
+}
+
+// @Beacon @Task make this its own type with helpful methods so we don't
+// need to write that much boilerplate in crate::effluvium anymore!
+// @Question why do we need to own Expression? that results in a lot of cloning!!
+// what about a Cow<'a, Expression>?? or are gonna get lifetime issues?
 pub type Environment = Rc<HashMap<Identifier, Expression>>;

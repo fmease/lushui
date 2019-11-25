@@ -1,0 +1,23 @@
+;;; @Task verify Bar reduces/fix it to reduce:
+
+'let constant (A B: 'Type) (a: A) (b: B): A = a
+
+'data Foo: 'Type =
+    Bar (A: 'Type): constant 'Type 'Type Foo A
+
+;;; ^ sig should reduce to `(A: 'Type) -> Foo`
+
+;;; @Question should it though?????? no! it's parametrized!!!
+;;; what this suggests is a different reduction strategy (gamma-reduction??? maybe)
+
+;;; @Note the thing is, we kinda need to evaluate it
+;;; for the instance check
+
+;;; @Task research what idris does
+;;; @Update @Beacon Idris does full reduction (??):
+;;; `\A:Type => const Int A` evaluates to `\A:Type => Int`
+;;; even `\b:Bool => const False b` => `\b:Bool => False` (@Update only in the REPL??)
+
+;;; @Update interesting, Idris rejects some things like case of a parameter, but
+;;; still, some cases worked, e.g. `(A : Type) -> const Dummy A` or `(b : Bool) -> const Dummy b`
+;;; but others like `(n : Nat) -> if n == 0 then Dummy else Dummy`

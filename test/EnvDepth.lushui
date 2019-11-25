@@ -1,0 +1,10 @@
+
+'data Bool: 'Type =
+    False: Bool
+    True: Bool
+
+'data Tuple (A B: 'Type): 'Type =
+    Tuple' (A B: 'Type): A -> B -> Tuple A B
+
+
+'let xoo (A B C: 'Type) (alpha: A) (beta: B) (x y: 'Nat) (b: Bool) (f: (X: 'Type) -> (Y: 'Type) -> Y -> X -> X): Tuple (Tuple A B) 'Nat = Tuple' (Tuple A B) 'Nat (Tuple' A B alpha beta) 0

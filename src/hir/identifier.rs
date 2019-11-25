@@ -1,7 +1,7 @@
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
-use crate::effluvium::ModuleContext;
+use crate::effluvium::ModuleScope;
 use crate::error::Span;
 use crate::parser;
 
@@ -20,7 +20,7 @@ pub enum Identifier {
 }
 
 impl Identifier {
-    pub fn refresh(&self, context: ModuleContext) -> Self {
+    pub fn refresh(&self, scope: ModuleScope) -> Self {
         Self::Generated(
             match self {
                 Self::Stub => parser::Identifier {
@@ -31,7 +31,7 @@ impl Identifier {
                 Self::Plain(identifier) => identifier.clone(),
                 Self::Generated(identifier, _) => identifier.clone(),
             },
-            context.generate_numeric_identifier(),
+            scope.generate_numeric_identifier(),
         )
     }
 }

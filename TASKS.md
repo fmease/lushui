@@ -1,5 +1,11 @@
 # TASKS
 
+## IMPORTANT
+
+* drastically improve scopes, how we store bindings. we cannot just deep-copy hashmaps and expressions around!!!
+  that's soooooooo expensive!!
+* complete instance checking
+
 ## Lexer
 
 * keep a bracket stack for early error reporting

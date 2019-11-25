@@ -1,25 +1,36 @@
 use std::fmt;
 
-use crate::hir::{Identifier, Expression};
+use crate::hir::{Expression, Identifier};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub enum Error {
     UndefinedBinding(Identifier),
-    FunctionExpected(Expression),
-    ExpressionsNotEqual(Expression, Expression),
-    AlreadyDefined,
+    FunctionExpected {
+        actual: Expression,
+        argument: Expression,
+    },
+    ExpressionsNotEqual {
+        expected: Expression,
+        actual: Expression,
+    },
+    // @Task replace with InvalidInstance and also reference said instance
+    InvalidConstructor { name: Identifier },
+    AlreadyDefined(Identifier),
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Error::UndefinedBinding(binding) => write!(f, "undefined binding `{}`", binding),
-            Error::FunctionExpected(actual) => write!(f, "expected function, got `{}`", actual),
-            Error::ExpressionsNotEqual(expected, actual) => {
-                write!(f, "expected `{}` got `{}`", expected, actual)
+            Error::FunctionExpected { actual, argument } => {
+                write!(f, "cannot apply `{}` to a `{}`", argument, actual)
             }
-            Error::AlreadyDefined => write!(f, "already defined"),
+            Error::ExpressionsNotEqual { expected, actual } => {
+                write!(f, "expected `{}` got `{}`", expected, actual)
+            },
+            Error::InvalidConstructor { name } => write!(f, "invalid constructor `{}`", name),
+            Error::AlreadyDefined(binder) => write!(f, "`{}` is already defined", binder),
         }
     }
 }

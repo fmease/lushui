@@ -3,6 +3,8 @@
 
 'data List (A: 'Type): 'Type =
     Nil (A: 'Type): List A
+    ;;; @Bug List A 'Nat does not throw an error?
+    ;;; Cons (A: 'Type): A -> List A -> List A 'Nat
     Cons (A: 'Type): A -> List A -> List A
 
 'data Unit: 'Type =

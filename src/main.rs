@@ -34,10 +34,10 @@ fn test(source: &str) -> Result<(), String> {
 
     // HIR
     let node = hir::lower_declaration(&node);
-    eprintln!("{}", &node);
+    // eprintln!("{}", &node);
 
     // Effluvium
-    let context = effluvium::ModuleContext::default();
+    let context = effluvium::ModuleScope::default();
     effluvium::evaluate_declaration(&node, context.clone()).map_err(|error| error.to_string())?;
     eprintln!("{}", context);
 
