@@ -6,7 +6,7 @@
 mod context;
 mod error;
 
-use crate::hir::{self, Declaration, Expression, Identifier};
+use crate::hir::{self, expression, Declaration, Expression, Identifier};
 use crate::parser::Explicitness;
 use context::Environment;
 pub use context::ModuleScope;
@@ -18,7 +18,8 @@ use std::rc::Rc;
 // @Temporary @Bug we don't do non-trivial type inference yet and thus, type parameters of lambda literals
 // must be annotated with a type. And since we don't have a dedicated Error::InternalCompilerError yet,
 // we use this constant for an error message:
-const MISSING_ANNOTATION: &str = "(compiler bug) currently lambda literal parameters must be type-annotated";
+const MISSING_ANNOTATION: &str =
+    "(compiler bug) currently lambda literal parameters must be type-annotated";
 
 // @Task make pure returning new Context
 // @Question this is eager evaluation, right?
@@ -34,9 +35,13 @@ pub fn evaluate_declaration(declaration: &Declaration, scope: ModuleScope) -> Re
             if scope.clone().contains(&binder) {
                 return Err(Error::AlreadyDefined(binder.clone()));
             }
-            let infered_type = infer_type(expression, scope.clone())?;
-            assert_expressions_are_equal(type_annotation, &infered_type, scope.clone())?;
-            let value = normalize(expression, scope.clone())?;
+            let infered_type = infer_type(expression.clone(), scope.clone())?;
+            assert_expressions_are_equal(
+                type_annotation.clone(),
+                infered_type.clone(),
+                scope.clone(),
+            )?;
+            let value = normalize(expression.clone(), scope.clone())?;
             scope.insert_binding(binder.clone(), infered_type, value);
         }
         Declaration::Data {
@@ -48,24 +53,24 @@ pub fn evaluate_declaration(declaration: &Declaration, scope: ModuleScope) -> Re
             if scope.clone().contains(&data_type_binder) {
                 return Err(Error::AlreadyDefined(data_type_binder.clone()));
             }
-            let r#type = normalize(type_annotation, scope.clone())?;
-            assert_expression_is_a_type(&r#type, scope.clone())?;
+            let r#type = normalize(type_annotation.clone(), scope.clone())?;
+            assert_expression_is_a_type(r#type.clone(), scope.clone())?;
 
             scope
                 .clone()
-                .insert_data_type(data_type_binder.clone(), r#type.clone());
+                .insert_data_type(data_type_binder.clone(), r#type);
 
             for hir::Constructor {
                 binder,
                 type_annotation,
             } in constructors
             {
-                let r#type = normalize(type_annotation, scope.clone())?;
-                assert_expression_is_a_type(&r#type, scope.clone())?;
+                let r#type = normalize(type_annotation.clone(), scope.clone())?;
+                assert_expression_is_a_type(r#type.clone(), scope.clone())?;
 
                 assert_constructor_is_instance_of_type(
                     binder.clone(),
-                    type_annotation,
+                    type_annotation.clone(),
                     data_type_binder.clone(),
                     scope.clone(),
                 )?;
@@ -90,316 +95,269 @@ pub fn evaluate_declaration(declaration: &Declaration, scope: ModuleScope) -> Re
     })
 }
 
-fn substitute(expression: &Expression, environment: Environment, scope: ModuleScope) -> Expression {
+fn substitute(expression: Expression, environment: Environment, scope: ModuleScope) -> Expression {
     match expression {
-        Expression::Identifier {
-            identifier,
-            data: (),
-        } => environment
-            .get(identifier)
+        Expression::Path(ref path, _) => environment
+            .get(&path.identifier)
             .cloned()
-            .unwrap_or_else(|| expression.clone()),
-        Expression::TypeLiteral { data: () }
-        | Expression::NatTypeLiteral { data: () }
-        | Expression::NatLiteral { value: _, data: () } => expression.clone(),
-        Expression::PiTypeLiteral {
-            binder,
-            domain,
-            codomain,
-            explicitness: _,
-            data: (),
-        } => {
-            let (binder, domain, codomain) =
-                abstraction_substitute(binder.as_ref(), domain, codomain, environment, scope);
-            Expression::PiTypeLiteral {
-                binder,
-                domain: Box::new(domain),
-                codomain: Box::new(codomain),
-                explicitness: Explicitness::Explicit,
-                data: (),
-            }
+            .unwrap_or(expression),
+        Expression::TypeLiteral(_, _)
+        | Expression::NatTypeLiteral(_, _)
+        | Expression::NatLiteral(_, _) => expression,
+        Expression::PiTypeLiteral(literal, _) => {
+            let (parameter, domain, codomain) = abstraction_substitute(
+                literal.parameter.clone(),
+                literal.domain.clone(),
+                literal.codomain.clone(),
+                environment,
+                scope,
+            );
+            Expression::PiTypeLiteral(
+                Rc::new(expression::PiTypeLiteral {
+                    parameter,
+                    domain,
+                    codomain,
+                    explicitness: Explicitness::Explicit,
+                }),
+                (),
+            )
         }
-        Expression::LambdaLiteral {
-            binder,
-            parameter_type_annotation,
-            body,
-            body_type_annotation: _,
-            explicitness: _,
-            data: (),
-        } => {
-            // @Bug unchecked @Temporary unwrap
+        Expression::LambdaLiteral(literal, _) => {
             let (binder, parameter_type, body) = abstraction_substitute(
-                Some(binder),
-                parameter_type_annotation.as_ref().expect(MISSING_ANNOTATION),
-                body,
+                Some(literal.parameter.clone()),
+                literal
+                    .parameter_type_annotation
+                    .clone()
+                    .expect(MISSING_ANNOTATION),
+                literal.body.clone(),
                 environment,
                 scope,
             );
             // @Note this unwrap is safe, but the API of abstraction_substitute sucks
-            Expression::LambdaLiteral {
-                binder: binder.unwrap(),
-                parameter_type_annotation: Some(Box::new(parameter_type)),
-                body: Box::new(body),
-                body_type_annotation: None,
-                // @Temporary
-                explicitness: Explicitness::Explicit,
-                data: (),
-            }
+            Expression::LambdaLiteral(
+                Rc::new(expression::LambdaLiteral {
+                    parameter: binder.unwrap(),
+                    parameter_type_annotation: Some(parameter_type),
+                    body,
+                    body_type_annotation: None,
+                    explicitness: Explicitness::Explicit,
+                }),
+                (),
+            )
         }
-        Expression::Application {
-            expression,
-            argument,
-            explicitness: _,
-            data: (),
-        } => Expression::Application {
-            expression: Box::new(substitute(expression, environment.clone(), scope.clone())),
-            argument: Box::new(substitute(argument, environment, scope)),
-            // @Temporary
-            explicitness: Explicitness::Explicit,
-            data: (),
-        },
-        Expression::Hole { tag: _, data: () } => unimplemented!(),
-        Expression::UseIn { data: () } => unimplemented!(),
-        Expression::Case { data: () } => unimplemented!(),
+        Expression::Application(application, _) => Expression::Application(
+            Rc::new(expression::Application {
+                expression: substitute(
+                    application.expression.clone(),
+                    environment.clone(),
+                    scope.clone(),
+                ),
+                argument: substitute(application.argument.clone(), environment, scope),
+                explicitness: Explicitness::Explicit,
+            }),
+            (),
+        ),
+        Expression::Hole(_, _) => unimplemented!(),
+        Expression::UseIn(_, _) => unimplemented!(),
+        Expression::CaseAnalysis(_, _) => unimplemented!(),
     }
 }
 
-pub fn infer_type(expression: &Expression, scope: ModuleScope) -> Result<hir::Expression> {
+pub fn infer_type(expression: Expression, scope: ModuleScope) -> Result<hir::Expression> {
     Ok(match expression {
-        Expression::Identifier {
-            identifier,
-            data: (),
-        } => scope
-            .lookup_type(identifier)
-            .ok_or_else(|| Error::UndefinedBinding(identifier.clone()))?,
-        Expression::TypeLiteral { data: () } | Expression::NatTypeLiteral { data: () } => {
-            Expression::TypeLiteral { data: () }
+        Expression::Path(path, _) => scope
+            .lookup_type(&path.identifier)
+            .ok_or_else(|| Error::UndefinedBinding(path.identifier))?,
+        Expression::TypeLiteral(_, _) | Expression::NatTypeLiteral(_, _) => {
+            Expression::TypeLiteral(expression::TypeLiteral {}, ())
         }
-        Expression::NatLiteral { value: _, data: () } => Expression::NatTypeLiteral { data: () },
-        Expression::PiTypeLiteral {
-            binder,
-            domain,
-            codomain,
-            ..
-        } => {
+        Expression::NatLiteral(_, _) => {
+            Expression::NatTypeLiteral(expression::NatTypeLiteral {}, ())
+        }
+        Expression::PiTypeLiteral(literal, _) => {
             // ensure domain and codomain are are well-typed
             // @Question why do we need to this? shouldn't this be already handled if
             // `expression` (parameter of `infer_type`) has been normalized?
-            assert_expression_is_a_type(domain, scope.clone())?;
-            // @Note expensive clones
+            assert_expression_is_a_type(literal.domain.clone(), scope.clone())?;
             assert_expression_is_a_type(
-                codomain,
-                if let Some(binder) = binder {
-                    scope.extend_with_parameter(binder.clone(), domain.as_ref().clone())
+                literal.codomain.clone(),
+                if let Some(parameter) = literal.parameter.clone() {
+                    scope.extend_with_parameter(parameter, literal.domain.clone())
                 } else {
                     scope
                 },
             )?;
 
-            Expression::TypeLiteral { data: () }
+            Expression::TypeLiteral(expression::TypeLiteral {}, ())
         }
-        Expression::LambdaLiteral {
-            binder,
-            parameter_type_annotation,
-            body,
-            body_type_annotation,
-            // @Task
-            explicitness: _,
-            data: (),
-        } => {
-            // @Bug unhandled @Temporary unwrap
-            let parameter_type: &Expression = parameter_type_annotation.as_ref().expect(MISSING_ANNOTATION);
-            assert_expression_is_a_type(&parameter_type, scope.clone())?;
+        Expression::LambdaLiteral(literal, _) => {
+            let parameter_type: Expression = literal
+                .parameter_type_annotation
+                .clone()
+                .expect(MISSING_ANNOTATION);
+            assert_expression_is_a_type(parameter_type.clone(), scope.clone())?;
             let scope = scope
                 .clone()
-                .extend_with_parameter(binder.clone(), parameter_type.clone());
-            let infered_body_type = infer_type(body, scope.clone())?;
-            if let Some(body_type_annotation) = body_type_annotation {
+                .extend_with_parameter(literal.parameter.clone(), parameter_type.clone());
+            let infered_body_type = infer_type(literal.body.clone(), scope.clone())?;
+            if let Some(body_type_annotation) = literal.body_type_annotation.clone() {
                 // @Question should we assert_expression_is_type(body_type_annotation) before this?
-                assert_expressions_are_equal(body_type_annotation, &infered_body_type, scope)?;
+                assert_expressions_are_equal(
+                    body_type_annotation,
+                    infered_body_type.clone(),
+                    scope,
+                )?;
             }
-            Expression::PiTypeLiteral {
-                binder: Some(binder.clone()),
-                domain: Box::new(parameter_type.clone()),
-                codomain: Box::new(infered_body_type),
-                // @Task
-                explicitness: Explicitness::Explicit,
-                data: (),
-            }
+            Expression::PiTypeLiteral(
+                Rc::new(expression::PiTypeLiteral {
+                    parameter: Some(literal.parameter.clone()),
+                    domain: parameter_type,
+                    codomain: infered_body_type,
+                    explicitness: Explicitness::Explicit,
+                }),
+                (),
+            )
         }
-        Expression::Application {
-            expression,
-            argument,
-            // @Task
-            explicitness: _,
-            data: (),
-        } => {
+        Expression::Application(application, _) => {
             // @Task verify type_of_expression is already normalized
             // @Note maybe use dbg-macro?
-            let type_of_expression = infer_type(expression, scope.clone())?;
-            match normalize(&type_of_expression, scope.clone())? {
-                Expression::PiTypeLiteral {
-                    binder,
-                    domain,
-                    codomain,
-                    explicitness: _,
-                    data: (),
-                } => {
-                    let argument_type = infer_type(argument, scope.clone())?;
-                    assert_expressions_are_equal(&domain, &argument_type, scope.clone())?;
-                    match binder {
-                        Some(binder) => substitute(
-                            &codomain,
+            let type_of_expression = infer_type(application.expression.clone(), scope.clone())?;
+            match normalize(type_of_expression, scope.clone())? {
+                Expression::PiTypeLiteral(literal, _) => {
+                    let argument_type = infer_type(application.argument.clone(), scope.clone())?;
+                    assert_expressions_are_equal(
+                        literal.domain.clone(),
+                        argument_type,
+                        scope.clone(),
+                    )?;
+                    match literal.parameter.clone() {
+                        Some(parameter) => substitute(
+                            literal.codomain.clone(),
                             {
                                 let mut environment = HashMap::new();
-                                environment.insert(binder, argument.as_ref().clone());
+                                environment.insert(parameter, application.argument.clone());
                                 Rc::new(environment)
                             },
                             scope,
                         ),
-                        None => *codomain,
+                        None => literal.codomain.clone(),
                     }
                 }
                 expression => {
                     return Err(Error::FunctionExpected {
                         actual: expression,
-                        // @Note expensive clone
-                        argument: argument.as_ref().clone(),
+                        argument: application.argument.clone(),
                     });
                 }
             }
         }
-        Expression::Hole { tag: _, data: () } => unimplemented!(),
-        Expression::UseIn { data: () } => unimplemented!(),
-        Expression::Case { data: () } => unimplemented!(),
+        Expression::Hole(_, _) => unimplemented!(),
+        Expression::UseIn(_, _) => unimplemented!(),
+        Expression::CaseAnalysis(_, _) => unimplemented!(),
     })
 }
 
-// enum Normalized {}
-// type Value = Expression<Normalized>;
-
 // @Beacon @Task use type-tagging: tag the hir::Expression with a P: Phase type parameter which for now
 // differenciates between Initial and Normalized
-// @Question take expression by value?
-pub fn normalize(expression: &Expression, scope: ModuleScope) -> Result<Expression> {
+pub fn normalize(expression: Expression, scope: ModuleScope) -> Result<Expression> {
     Ok(match expression {
-        Expression::Identifier {
-            identifier,
-            data: (),
-        } => scope
+        Expression::Path(ref path, _) => scope
             .clone()
-            .lookup_value(identifier)
-            .ok_or_else(|| Error::UndefinedBinding(identifier.clone()))?
-            .map(|expression| normalize(&expression, scope))
-            .unwrap_or_else(|| Ok(expression.clone()))?,
-        Expression::Application {
-            expression,
-            argument,
-            // @Task
-            explicitness: _,
-            data: (),
-        } => {
-            let argument = normalize(argument, scope.clone())?;
-            match normalize(expression, scope.clone())? {
-                Expression::LambdaLiteral {
-                    binder,
-                    parameter_type_annotation: _,
-                    body,
-                    body_type_annotation: _,
-                    explicitness: _,
-                    data: (),
-                } => normalize(
-                    &substitute(
-                        &body,
+            .lookup_value(&path.identifier)
+            .ok_or_else(|| Error::UndefinedBinding(path.identifier.clone()))?
+            .map(|expression| normalize(expression, scope))
+            .unwrap_or(Ok(expression))?,
+        Expression::Application(application, _) => {
+            let argument = normalize(application.argument.clone(), scope.clone())?;
+            match normalize(application.expression.clone(), scope.clone())? {
+                Expression::LambdaLiteral(literal, _) => normalize(
+                    substitute(
+                        literal.body.clone(),
                         {
                             let mut environment = HashMap::new();
-                            environment.insert(binder, argument);
+                            environment.insert(literal.parameter.clone(), argument);
                             Rc::new(environment)
                         },
                         scope.clone(),
                     ),
                     scope,
                 )?,
-                expression => Expression::Application {
-                    expression: Box::new(expression),
-                    argument: Box::new(argument),
-                    // @Temporary
-                    explicitness: Explicitness::Explicit,
-                    data: (),
-                },
+                expression => Expression::Application(
+                    Rc::new(expression::Application {
+                        expression,
+                        argument,
+                        explicitness: Explicitness::Explicit,
+                    }),
+                    (),
+                ),
             }
         }
-        Expression::TypeLiteral { data: () }
-        | Expression::NatTypeLiteral { data: () }
-        | Expression::NatLiteral { value: _, data: () } => expression.clone(),
-        Expression::PiTypeLiteral {
-            binder,
-            domain,
-            codomain,
-            explicitness: _,
-            data: (),
-        } => {
-            let (domain, codomain) =
-                normalize_abstraction(binder.as_ref(), domain, codomain, scope)?;
-            Expression::PiTypeLiteral {
-                binder: binder.clone(),
-                domain: Box::new(domain),
-                codomain: Box::new(codomain),
-                // @Temporary
-                explicitness: Explicitness::Explicit,
-                data: (),
-            }
-        }
-        Expression::LambdaLiteral {
-            binder,
-            parameter_type_annotation,
-            body,
-            body_type_annotation: _,
-            explicitness: _,
-            data: (),
-        } => {
-            // @Bug unchecked @Temporary unwrap
-            let (parameter_type, body) = normalize_abstraction(
-                Some(binder),
-                parameter_type_annotation.as_ref().expect(MISSING_ANNOTATION),
-                body,
+        Expression::TypeLiteral(_, _)
+        | Expression::NatTypeLiteral(_, _)
+        | Expression::NatLiteral(_, _) => expression,
+        Expression::PiTypeLiteral(literal, _) => {
+            let (domain, codomain) = normalize_abstraction(
+                literal.parameter.clone(),
+                literal.domain.clone(),
+                literal.codomain.clone(),
                 scope,
             )?;
-            Expression::LambdaLiteral {
-                binder: binder.clone(),
-                parameter_type_annotation: Some(Box::new(parameter_type)),
-                body: Box::new(body),
-                body_type_annotation: None,
-                // @Temporary
-                explicitness: Explicitness::Explicit,
-                data: (),
-            }
+            Expression::PiTypeLiteral(
+                Rc::new(expression::PiTypeLiteral {
+                    parameter: literal.parameter.clone(),
+                    domain,
+                    codomain,
+                    explicitness: Explicitness::Explicit,
+                }),
+                (),
+            )
         }
-        Expression::Hole { tag: _, data: () } => unimplemented!(),
-        Expression::UseIn { data: () } => unimplemented!(),
-        Expression::Case { data: () } => unimplemented!(),
+        Expression::LambdaLiteral(literal, _) => {
+            let (parameter_type, body) = normalize_abstraction(
+                Some(literal.parameter.clone()),
+                literal
+                    .parameter_type_annotation
+                    .clone()
+                    .expect(MISSING_ANNOTATION),
+                literal.body.clone(),
+                scope,
+            )?;
+            Expression::LambdaLiteral(
+                Rc::new(expression::LambdaLiteral {
+                    parameter: literal.parameter.clone(),
+                    parameter_type_annotation: Some(parameter_type),
+                    body,
+                    body_type_annotation: None,
+                    explicitness: Explicitness::Explicit,
+                }),
+                (),
+            )
+        }
+        Expression::Hole(_, _) => unimplemented!(),
+        Expression::UseIn(_, _) => unimplemented!(),
+        Expression::CaseAnalysis(_, _) => unimplemented!(),
     })
 }
 
-fn assert_expression_is_a_type(expression: &Expression, scope: ModuleScope) -> Result<()> {
+fn assert_expression_is_a_type(expression: Expression, scope: ModuleScope) -> Result<()> {
     let type_of_expression = infer_type(expression, scope.clone())?;
     assert_expressions_are_equal(
-        &Expression::TypeLiteral { data: () },
-        &type_of_expression,
+        Expression::TypeLiteral(expression::TypeLiteral {}, ()),
+        type_of_expression,
         scope,
     )
 }
 
 /// left is expected, right is actual
 fn assert_expressions_are_equal(
-    left: &Expression,
-    right: &Expression,
+    left: Expression,
+    right: Expression,
     scope: ModuleScope,
 ) -> Result<()> {
-    if !normalizing_equal(left, right, scope)? {
+    if !normalizing_equal(left.clone(), right.clone(), scope)? {
         Err(Error::ExpressionsNotEqual {
-            expected: left.clone(),
-            actual: right.clone(),
+            expected: left,
+            actual: right,
         })
     } else {
         Ok(())
@@ -415,7 +373,7 @@ fn assert_expressions_are_equal(
 //   type params of the respective type
 fn assert_constructor_is_instance_of_type(
     constructor_name: Identifier,
-    constructor: &Expression,
+    constructor: Expression,
     type_name: Identifier,
     scope: ModuleScope,
 ) -> Result<()> {
@@ -432,7 +390,7 @@ fn assert_constructor_is_instance_of_type(
 // we might not want to allow them at first (implementation difficulty of case analysis)
 // @Question do we need access to the module scope?
 fn constructor_is_instance_of_type(
-    constructor: &Expression,
+    constructor: Expression,
     type_name: Identifier,
     scope: ModuleScope,
 ) -> bool {
@@ -440,10 +398,12 @@ fn constructor_is_instance_of_type(
     let callee = callee(result_type);
 
     equal(
-        &Expression::Identifier {
-            identifier: type_name,
-            data: (),
-        },
+        Expression::Path(
+            expression::Path {
+                identifier: type_name,
+            },
+            (),
+        ),
         callee,
         scope,
     )
@@ -457,154 +417,96 @@ fn constructor_is_instance_of_type(
 // for a default value, we should return Option<...>
 // gets R in A -> B -> C -> R plus an environment b.c. R could depend on outer stuff
 // @Note this function assumes that the expression has already been normalized!
-fn result_type(mut expression: &Expression, scope: ModuleScope) -> &Expression {
+fn result_type(mut expression: Expression, scope: ModuleScope) -> Expression {
     loop {
         expression = match expression {
-            Expression::PiTypeLiteral {
-                binder,
-                domain,
-                codomain,
-                explicitness: _,
-                data: (),
-            } => {
-                if let Some(binder) = binder {
+            Expression::PiTypeLiteral(literal, _) => {
+                if let Some(parameter) = literal.parameter.clone() {
                     scope
                         .clone()
-                        .insert_parameter(binder.clone(), domain.as_ref().clone());
+                        .insert_parameter(parameter, literal.domain.clone());
                 }
-                codomain
+                literal.codomain.clone()
             }
-            // @Question Identifier is reachable, right??
-            // @Note application is neutral
-            Expression::Application { .. }
-            | Expression::TypeLiteral { data: () }
-            | Expression::NatTypeLiteral { data: () }
-            | Expression::Identifier {
-                identifier: _,
-                data: (),
-            } => {
+            Expression::Application(_, _)
+            | Expression::TypeLiteral(_, _)
+            | Expression::NatTypeLiteral(_, _)
+            | Expression::Path(_, _) => {
                 return expression;
             }
-            Expression::Hole { tag: _, data: () } => unimplemented!(),
-            Expression::LambdaLiteral { .. }
-            | Expression::NatLiteral { value: _, data: () }
-            | Expression::UseIn { data: () }
-            | Expression::Case { data: () } => unreachable!(),
+            Expression::Hole(_, _) => unimplemented!(),
+            Expression::LambdaLiteral(_, _)
+            | Expression::NatLiteral(_, _)
+            | Expression::UseIn(_, _)
+            | Expression::CaseAnalysis(_, _) => unreachable!(),
         }
     }
 }
 
 // returns the `f` in `f a b c`
-fn callee(mut expression: &Expression) -> &Expression {
+fn callee(mut expression: Expression) -> Expression {
     loop {
         expression = match expression {
-            Expression::Application {
-                expression: callee, ..
-            } => callee,
+            Expression::Application(application, _) => application.expression.clone(),
             expression => return expression,
         }
     }
 }
 
-fn normalizing_equal(left: &Expression, right: &Expression, scope: ModuleScope) -> Result<bool> {
+fn normalizing_equal(left: Expression, right: Expression, scope: ModuleScope) -> Result<bool> {
     Ok(equal(
-        &normalize(left, scope.clone())?,
-        &normalize(right, scope.clone())?,
+        normalize(left, scope.clone())?,
+        normalize(right, scope.clone())?,
         scope,
     ))
 }
 
-fn equal(left: &Expression, right: &Expression, scope: ModuleScope) -> bool {
+fn equal(left: Expression, right: Expression, scope: ModuleScope) -> bool {
     match (left, right) {
-        (
-            Expression::Identifier {
-                identifier: left,
-                data: (),
-            },
-            Expression::Identifier {
-                identifier: right,
-                data: (),
-            },
-        ) => left == right,
-        (
-            Expression::Application {
-                expression: left_expression,
-                argument: left_argument,
-                explicitness: _,
-                data: (),
-            },
-            Expression::Application {
-                expression: right_expression,
-                argument: right_argument,
-                explicitness: _,
-                data: (),
-            },
-        ) => {
-            equal(left_expression, right_expression, scope.clone())
-                && equal(left_argument, right_argument, scope)
+        (Expression::Path(path0, _), Expression::Path(path1, _)) => {
+            path0.identifier == path1.identifier
         }
-        (Expression::TypeLiteral { data: () }, Expression::TypeLiteral { data: () }) => true,
-        (Expression::NatTypeLiteral { data: () }, Expression::NatTypeLiteral { data: () }) => true,
-        (
-            Expression::NatLiteral {
-                value: left,
-                data: (),
-            },
-            Expression::NatLiteral {
-                value: right,
-                data: (),
-            },
-        ) => left == right,
-        (
-            Expression::PiTypeLiteral {
-                binder: binder1,
-                domain: domain1,
-                codomain: codomain1,
-                explicitness: _,
-                data: (),
-            },
-            Expression::PiTypeLiteral {
-                binder: binder2,
-                domain: domain2,
-                codomain: codomain2,
-                explicitness: _,
-                data: (),
-            },
-        ) => abstraction_equal(
-            binder1.as_ref(),
-            domain1,
-            codomain1,
-            binder2.as_ref(),
-            domain2,
-            codomain2,
-            scope,
-        ),
-        (
-            Expression::LambdaLiteral {
-                binder: binder1,
-                parameter_type_annotation: parameter_type_annotation1,
-                body: body1,
-                body_type_annotation: _,
-                explicitness: _,
-                data: (),
-            },
-            Expression::LambdaLiteral {
-                binder: binder2,
-                parameter_type_annotation: parameter_type_annotation2,
-                body: body2,
-                body_type_annotation: _,
-                explicitness: _,
-                data: (),
-            },
-        ) => {
-            // @Bug unchecked @Temporary unwrap
+        (Expression::Application(application0, _), Expression::Application(application1, _)) => {
+            equal(
+                application0.expression.clone(),
+                application1.expression.clone(),
+                scope.clone(),
+            ) && equal(
+                application0.argument.clone(),
+                application1.argument.clone(),
+                scope,
+            )
+        }
+        (Expression::TypeLiteral(_, _), Expression::TypeLiteral(_, _))
+        | (Expression::NatTypeLiteral(_, _), Expression::NatTypeLiteral(_, _)) => true,
+        (Expression::NatLiteral(literal0, _), Expression::NatLiteral(literal1, _)) => {
+            literal0.value == literal1.value
+        }
+        (Expression::PiTypeLiteral(literal0, _), Expression::PiTypeLiteral(literal1, _)) => {
             abstraction_equal(
-                Some(binder1),
-                parameter_type_annotation1.as_ref().expect(MISSING_ANNOTATION),
-                body1,
-                Some(binder2),
-                parameter_type_annotation2.as_ref().expect(MISSING_ANNOTATION),
-                body2,
+                literal0.parameter.clone(),
+                literal0.domain.clone(),
+                literal0.codomain.clone(),
+                literal1.parameter.clone(),
+                literal1.domain.clone(),
+                literal1.codomain.clone(),
+                scope,
+            )
+        }
+        (Expression::LambdaLiteral(literal0, _), Expression::LambdaLiteral(literal1, _)) => {
+            abstraction_equal(
+                Some(literal0.parameter.clone()),
+                literal0
+                    .parameter_type_annotation
+                    .clone()
+                    .expect(MISSING_ANNOTATION),
+                literal0.body.clone(),
+                Some(literal1.parameter.clone()),
+                literal1
+                    .parameter_type_annotation
+                    .clone()
+                    .expect(MISSING_ANNOTATION),
+                literal1.body.clone(),
                 scope,
             )
         }
@@ -614,60 +516,12 @@ fn equal(left: &Expression, right: &Expression, scope: ModuleScope) -> bool {
     }
 }
 
-// @Task impl; move it to future Value
-// @Note @Temporary panics if self not a type
-// @Note panics if a binder does not exist
-// fn inhabited(&self, scope: MutCtx) -> Result<bool> {
-//     Ok(match self {
-//         Expr::Type => true,
-//         Expr::Pi(Abstraction { input, output, .. }) => {
-//             // @Bug crashes on e.g. `(-> A # A)` because we need to extend
-//             // scope
-//             output.inhabited(scope.clone())? || !input.inhabited(scope)?
-//         }
-//         // @Note because we treat Self=Expr as Self=Value, this is a neutral Var
-//         // so its value (repr) is None. It cannot be a parameter, so ist must be
-//         // an ADT i think
-//         Expr::Var(binding) => {
-//             if scope.clone().adt(binding) {
-//                 let constructors = scope.clone().constructors(binding);
-//                 // @Note sad: bc of error handling, we cannot use `all` but
-//                 // only `try_fold`
-//                 !constructors.is_empty()
-//                     && constructors
-//                         .into_iter()
-//                         .try_fold(true, |acc, constructor| {
-//                             Ok(acc
-//                                 && scope
-//                                     .clone()
-//                                     .lookup_type(&constructor)
-//                                     .unwrap()
-//                                     .inhabited(scope.clone())?)
-//                         })?
-//             } else {
-//                 // constructor @Bug not always a constructor but also neutral variable
-//                 // @Note not extensible, hacky
-//                 return Err(Error::ExpressionsNotEqual(
-//                     Expr::Type,
-//                     scope.lookup_type(binding).unwrap(),
-//                 ));
-//             }
-//         }
-//         // @Bug hit: neutral application, e.g. `Maybe` (after lookup)
-//         x => {
-//             // @Temporary
-//             eprintln!("{:?}", x);
-//             unreachable!()
-//         }
-//     })
-// }
-
 // @Temporary signature
 // @Note bad signature (deviation between pi and lambda)
 fn abstraction_substitute(
-    binder: Option<&Identifier>,
-    parameter: &Expression,
-    expression: &Expression,
+    binder: Option<Identifier>,
+    parameter: Expression,
+    expression: Expression,
     environment: Environment,
     scope: ModuleScope,
 ) -> (Option<Identifier>, Expression, Expression) {
@@ -679,10 +533,12 @@ fn abstraction_substitute(
             let mut environment = environment.as_ref().clone();
             environment.insert(
                 binder.clone(),
-                Expression::Identifier {
-                    identifier: refreshed_binder.clone(),
-                    data: (),
-                },
+                Expression::Path(
+                    expression::Path {
+                        identifier: refreshed_binder.clone(),
+                    },
+                    (),
+                ),
             );
             (Some(refreshed_binder), Rc::new(environment))
         }
@@ -697,9 +553,9 @@ fn abstraction_substitute(
 
 // @Temporary signature
 fn normalize_abstraction(
-    binder: Option<&Identifier>,
-    parameter: &Expression,
-    expression: &Expression,
+    binder: Option<Identifier>,
+    parameter: Expression,
+    expression: Expression,
     scope: ModuleScope,
 ) -> Result<(Expression, Expression)> {
     let parameter = normalize(parameter, scope.clone())?;
@@ -718,28 +574,30 @@ fn normalize_abstraction(
 
 // @Temporary signature
 fn abstraction_equal(
-    binder1: Option<&Identifier>,
-    parameter1: &Expression,
-    expression1: &Expression,
-    binder2: Option<&Identifier>,
-    parameter2: &Expression,
-    expression2: &Expression,
+    binder1: Option<Identifier>,
+    parameter1: Expression,
+    expression1: Expression,
+    binder2: Option<Identifier>,
+    parameter2: Expression,
+    expression2: Expression,
     scope: ModuleScope,
 ) -> bool {
-    return equal(parameter1, parameter2, scope.clone())
+    return equal(parameter1.clone(), parameter2.clone(), scope.clone())
         && match (binder1, binder2) {
             (Some(binder1), Some(binder2)) => equal(
                 expression1,
-                &substitute(
+                substitute(
                     expression2,
                     {
                         let mut environment = HashMap::new();
                         environment.insert(
                             binder2.clone(),
-                            Expression::Identifier {
-                                identifier: binder1.clone(),
-                                data: (),
-                            },
+                            Expression::Path(
+                                expression::Path {
+                                    identifier: binder1.clone(),
+                                },
+                                (),
+                            ),
                         );
                         Rc::new(environment)
                     },
@@ -750,12 +608,12 @@ fn abstraction_equal(
             (Some(binder1), None) => equal(
                 expression1,
                 expression2,
-                scope.extend_with_parameter(binder1.clone(), parameter1.clone()),
+                scope.extend_with_parameter(binder1.clone(), parameter1),
             ),
             (None, Some(binder2)) => equal(
                 expression1,
                 expression2,
-                scope.extend_with_parameter(binder2.clone(), parameter2.clone()),
+                scope.extend_with_parameter(binder2.clone(), parameter2),
             ),
             (None, None) => equal(expression1, expression2, scope),
         };

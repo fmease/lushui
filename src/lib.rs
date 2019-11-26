@@ -1,4 +1,3 @@
-#![feature(box_patterns)]
 #![forbid(rust_2018_idioms, unused_must_use)]
 
 pub mod lexer;

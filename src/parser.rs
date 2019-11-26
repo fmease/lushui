@@ -36,11 +36,11 @@ pub mod declaration {
     impl Declaration {
         pub fn span(&self) -> Span {
             match self {
-                Self::Let(box Let { span, .. }) => *span,
-                Self::Data(box Data { span, .. }) => *span,
-                Self::Module(box Module { span, .. }) => *span,
-                Self::Use(box Use { span, .. }) => *span,
-                Self::Foreign(box Foreign { span, .. }) => *span,
+                Self::Let(r#let) => r#let.span,
+                Self::Data(data) => data.span,
+                Self::Module(module) => module.span,
+                Self::Use(r#use) => r#use.span,
+                Self::Foreign(foreign) => foreign.span,
             }
         }
     }
@@ -292,33 +292,33 @@ pub mod expression {
     impl Expression {
         pub fn span(&self) -> Span {
             match self {
-                Self::PiTypeLiteral(box PiTypeLiteral { span, .. }) => *span,
-                Self::Application(box Application { span, .. }) => *span,
-                Self::TypeLiteral(box TypeLiteral { span }) => *span,
-                Self::NatTypeLiteral(box NatTypeLiteral { span }) => *span,
-                Self::NatLiteral(box NatLiteral { span, .. }) => *span,
-                Self::Path(box Path { inner }) => inner.span,
-                Self::Hole(box Hole { span, .. }) => *span,
-                Self::LambdaLiteral(box LambdaLiteral { span, .. }) => *span,
-                Self::LetIn(box LetIn { span, .. }) => *span,
-                Self::UseIn(box UseIn { span, .. }) => *span,
-                Self::CaseAnalysis(box CaseAnalysis { span, .. }) => *span,
+                Self::PiTypeLiteral(literal) => literal.span,
+                Self::Application(application) => application.span,
+                Self::TypeLiteral(literal) => literal.span,
+                Self::NatTypeLiteral(literal) => literal.span,
+                Self::NatLiteral(literal) => literal.span,
+                Self::Path(path) => path.inner.span,
+                Self::Hole(hole) => hole.span,
+                Self::LambdaLiteral(literal) => literal.span,
+                Self::LetIn(let_in) => let_in.span,
+                Self::UseIn(use_in) => use_in.span,
+                Self::CaseAnalysis(case_analysis) => case_analysis.span,
             }
         }
 
         pub fn span_mut(&mut self) -> &mut Span {
             match self {
-                Self::PiTypeLiteral(box PiTypeLiteral { span, .. }) => span,
-                Self::Application(box Application { span, .. }) => span,
-                Self::TypeLiteral(box TypeLiteral { span }) => span,
-                Self::NatTypeLiteral(box NatTypeLiteral { span }) => span,
-                Self::NatLiteral(box NatLiteral { span, .. }) => span,
-                Self::Path(box Path { inner }) => &mut inner.span,
-                Self::Hole(box Hole { span, .. }) => span,
-                Self::LambdaLiteral(box LambdaLiteral { span, .. }) => span,
-                Self::LetIn(box LetIn { span, .. }) => span,
-                Self::UseIn(box UseIn { span, .. }) => span,
-                Self::CaseAnalysis(box CaseAnalysis { span, .. }) => span,
+                Self::PiTypeLiteral(literal) => &mut literal.span,
+                Self::Application(application) => &mut application.span,
+                Self::TypeLiteral(literal) => &mut literal.span,
+                Self::NatTypeLiteral(literal) => &mut literal.span,
+                Self::NatLiteral(literal) => &mut literal.span,
+                Self::Path(path) => &mut path.inner.span,
+                Self::Hole(hole) => &mut hole.span,
+                Self::LambdaLiteral(literal) => &mut literal.span,
+                Self::LetIn(let_in) => &mut let_in.span,
+                Self::UseIn(use_in) => &mut use_in.span,
+                Self::CaseAnalysis(case_analysis) => &mut case_analysis.span,
             }
         }
     }

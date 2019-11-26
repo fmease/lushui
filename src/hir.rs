@@ -3,6 +3,7 @@
 mod identifier;
 
 use std::fmt;
+use std::rc::Rc;
 
 use crate::parser::{self, Explicitness};
 pub use identifier::Identifier;
@@ -68,67 +69,63 @@ impl fmt::Display for Declaration {
     }
 }
 
-pub fn lower_declaration(declaration: &parser::Declaration) -> Declaration {
+pub fn lower_declaration(declaration: parser::Declaration) -> Declaration {
     match declaration {
-        parser::Declaration::Let(box parser::declaration::Let {
-            binder,
-            parameters,
-            type_annotation,
-            expression,
-            span: _,
-        }) => {
+        parser::Declaration::Let(r#let) => {
             // @Note type_annotation is currently lowered twice
             // @Task remove duplicate work
-
-            let mut expression = lower_expression(&expression); // @Temporary
+            // @Temporary
+            let mut expression = lower_expression(r#let.expression);
 
             {
                 let mut type_annotation =
-                    std::iter::once(Box::new(lower_expression(&type_annotation)));
+                    std::iter::once(lower_expression(r#let.type_annotation.clone()));
 
-                for parameter_group in parameters.into_iter().rev() {
-                    let parameter =
-                        Some(Box::new(lower_expression(&parameter_group.type_annotation)));
+                for parameter_group in r#let.parameters.iter().rev() {
+                    let parameter = Some(lower_expression(parameter_group.type_annotation.clone()));
 
                     for binder in parameter_group.parameters.iter().rev() {
-                        expression = Expression::LambdaLiteral {
-                            binder: Identifier::Plain(binder.clone()),
-                            // @Note expensive cloning
-                            parameter_type_annotation: parameter.clone(),
-                            explicitness: parameter_group.explicitness,
-                            body_type_annotation: type_annotation.next(),
-                            body: Box::new(expression),
-                            data: (),
-                        };
+                        expression = Expression::LambdaLiteral(
+                            Rc::new(expression::LambdaLiteral {
+                                parameter: Identifier::Plain(binder.clone()),
+                                parameter_type_annotation: parameter.clone(),
+                                explicitness: parameter_group.explicitness,
+                                body_type_annotation: type_annotation.next(),
+                                body: expression,
+                            }),
+                            (),
+                        );
                     }
                 }
             }
 
             Declaration::Let {
-                binder: Identifier::Plain(binder.clone()),
-                type_annotation: lower_annotated_parameters(&parameters, &type_annotation),
+                binder: Identifier::Plain(r#let.binder.clone()),
+                type_annotation: lower_annotated_parameters(
+                    r#let.parameters,
+                    r#let.type_annotation,
+                ),
                 expression,
             }
         }
-        parser::Declaration::Data(box parser::declaration::Data {
-            binder,
-            parameters,
-            type_annotation,
-            constructors,
-            span: _,
-        }) => Declaration::Data {
-            binder: Identifier::Plain(binder.clone()),
-            type_annotation: lower_annotated_parameters(&parameters, &type_annotation),
-            constructors: constructors.iter().map(lower_constructor).collect(),
+        parser::Declaration::Data(data) => Declaration::Data {
+            binder: Identifier::Plain(data.binder.clone()),
+            type_annotation: lower_annotated_parameters(data.parameters, data.type_annotation),
+            constructors: data
+                .constructors
+                .into_iter()
+                .map(lower_constructor)
+                .collect(),
         },
-        parser::Declaration::Module(box parser::declaration::Module {
-            declarations,
-            span: _,
-        }) => Declaration::Module {
-            declarations: declarations.into_iter().map(lower_declaration).collect(),
+        parser::Declaration::Module(module) => Declaration::Module {
+            declarations: module
+                .declarations
+                .into_iter()
+                .map(lower_declaration)
+                .collect(),
         },
-        parser::Declaration::Use(box parser::declaration::Use { span: _ }) => unimplemented!(),
-        parser::Declaration::Foreign(box parser::declaration::Foreign { span: _ }) => unimplemented!(),
+        parser::Declaration::Use(_use) => unimplemented!(),
+        parser::Declaration::Foreign(_foreign) => unimplemented!(),
     }
 }
 
@@ -145,340 +142,300 @@ impl fmt::Display for Constructor {
     }
 }
 
-fn lower_constructor(constructor: &parser::declaration::Constructor) -> Constructor {
+fn lower_constructor(constructor: parser::declaration::Constructor) -> Constructor {
     Constructor {
         binder: Identifier::Plain(constructor.binder.clone()),
         type_annotation: lower_annotated_parameters(
-            &constructor.parameters,
-            &constructor.type_annotation,
+            constructor.parameters,
+            constructor.type_annotation,
         ),
     }
 }
 
-// @Beacon @Beacon @Task add span information!!! @Note @Beacon now, we are in the HIR,
-// there might not be any span information if synthesize HIR nodes (common thing probably)
-// @Task improve naming (binder, parameter, etcetera)
-// @Beacon @Beacon Use Rc<Expression> instead of Box<Expression> because we clone sooo
-// often in effluvium and I cannot avoid it...
-// and also @Beacon: When lowering, we clone really expensively: those annotated parameter
-// groups we resolve and later in case analysis match arms with the same body
-// @Note we can also think about **interning** Expressions but not sure if a good idea
-#[derive(Clone, Debug)]
-// @Beacon @Beacon @Note rename P: Phase to D: Discrimant and have Raw, Normalized, Type (more to come)
-pub enum Expression<P: Phase = InitialPhase> {
-    PiTypeLiteral {
-        // @Task rename binder to parameter in the future
-        binder: Option<Identifier>,
-        domain: Box<Expression>,
-        codomain: Box<Expression>,
-        explicitness: Explicitness,
-        data: P::PiTypeLiteral,
-    },
-    Application {
-        expression: Box<Expression>,
-        argument: Box<Expression>,
-        explicitness: Explicitness,
-        data: P::Application,
-    },
-    // Substitution(Substitution, Box<Expression>),
-    TypeLiteral {
-        data: P::TypeLiteral,
-    },
-    NatTypeLiteral {
-        data: P::NatTypeLiteral,
-    },
-    NatLiteral {
-        value: crate::lexer::Nat,
-        data: P::NatLiteral,
-    },
-    Identifier {
-        identifier: Identifier,
-        data: P::Identifier,
-    },
-    // Identifier {
-    //     identifier: Identifier,
-    //     index: DebruijnIndex,
-    // },
-    Hole {
-        tag: Identifier,
-        data: P::Hole,
-    },
-    LambdaLiteral {
-        // @Task rename binder to parameter in the future
-        binder: Identifier,
-        parameter_type_annotation: Option<Box<Expression>>,
-        explicitness: Explicitness,
-        body_type_annotation: Option<Box<Expression>>,
-        body: Box<Expression>,
-        data: P::LambdaLiteral,
-    },
-    // @Task
-    UseIn {
-        data: P::UseIn,
-    },
-    // @Task
-    Case {
-        data: P::Case,
-    },
-}
+pub use expression::{lower_expression, Expression};
 
-// @Task display fewer round brackets by making use of precedence
-// @Note many wasted allocations (intermediate Strings)
-impl fmt::Display for Expression {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::PiTypeLiteral {
-                binder,
-                domain,
-                codomain,
-                explicitness,
-                data: (),
-            } => write!(
-                f,
-                "({}{}{}) -> ({})",
-                explicitness,
-                binder
-                    .as_ref()
-                    .map(|binder| format!("{}: ", binder))
-                    .unwrap_or_default(),
-                domain,
-                codomain,
-            ),
-            Self::Application {
-                expression,
-                argument,
-                explicitness,
-                data: (),
-            } => write!(f, "({}) ({}{})", expression, explicitness, argument,),
-            Self::TypeLiteral { data: () } => f.write_str("'Type"),
-            Self::NatTypeLiteral { data: () } => f.write_str("'Nat"),
-            Self::NatLiteral { value, data: () } => write!(f, "{}", value),
-            Self::Identifier {
-                identifier,
-                data: (),
-            } => write!(f, "{}", identifier),
-            Self::Hole { tag, data: () } => write!(f, "'hole {}", tag),
-            Self::LambdaLiteral {
-                binder,
-                parameter_type_annotation,
-                explicitness,
-                body_type_annotation,
-                body,
-                data: (),
-            } => write!(
-                f,
-                "\\({}{}{}){} => ({})",
-                explicitness,
-                binder,
-                parameter_type_annotation
-                    .as_ref()
-                    .map(|parameter| format!(": {}", parameter))
-                    .unwrap_or_default(),
-                body_type_annotation
-                    .as_ref()
-                    .map(|type_annotation| format!(": {}", type_annotation))
-                    .unwrap_or_default(),
-                body
-            ),
-            Self::UseIn { data: () } => unimplemented!(),
-            Self::Case { data: () } => unimplemented!(),
+pub mod expression {
+    use super::*;
+
+    // @Beacon @Beacon @Task add span information!!! @Note @Beacon now, we are in the HIR,
+    // there might not be any span information if synthesize HIR nodes (common thing probably)
+    // @Note we can also think about **interning** Expressions but not sure if a good idea
+    // @Beacon @Beacon @Note rename P: Phase to D: Discrimant and have Raw, Normalized, Type (more to come)
+    // @Note currently waste memory at nattypeliterl, typeliteral,usein (Rc::new's on ~unit)
+    #[derive(Clone, Debug)]
+    pub enum Expression<P: Phase = InitialPhase> {
+        PiTypeLiteral(Rc<PiTypeLiteral>, P::PiTypeLiteral),
+        Application(Rc<Application>, P::Application),
+        // TypeLiteral(Rc<TypeLiteral>, P::TypeLiteral),
+        TypeLiteral(TypeLiteral, P::TypeLiteral),
+        // NatTypeLiteral(Rc<NatTypeLiteral>, P::NatTypeLiteral),
+        NatTypeLiteral(NatTypeLiteral, P::NatTypeLiteral),
+        NatLiteral(Rc<NatLiteral>, P::NatLiteral),
+        // Path(Rc<Path>, P::Path),
+        Path(Path, P::Path),
+        // Hole(Rc<Hole>, P::Hole),
+        Hole(Hole, P::Hole),
+        LambdaLiteral(Rc<LambdaLiteral>, P::LambdaLiteral),
+        UseIn(Rc<UseIn>, P::UseIn),
+        CaseAnalysis(Rc<CaseAnalysis>, P::CaseAnalysis),
+    }
+
+    // @Task display fewer round brackets by making use of precedence
+    // @Note many wasted allocations (intermediate Strings)
+    impl fmt::Display for Expression {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                Self::PiTypeLiteral(literal, _) => write!(
+                    f,
+                    "({}{}{}) -> ({})",
+                    literal.explicitness,
+                    literal
+                        .parameter
+                        .as_ref()
+                        .map(|binder| format!("{}: ", binder))
+                        .unwrap_or_default(),
+                    literal.domain,
+                    literal.codomain,
+                ),
+                Self::Application(application, _) => write!(
+                    f,
+                    "({}) ({}{})",
+                    application.expression, application.explicitness, application.argument,
+                ),
+                Self::TypeLiteral(_, _) => f.write_str("'Type"),
+                Self::NatTypeLiteral(_, _) => f.write_str("'Nat"),
+                Self::NatLiteral(literal, _) => write!(f, "{}", literal.value),
+                Self::Path(path, _) => write!(f, "{}", path.identifier),
+                Self::Hole(hole, _) => write!(f, "'hole {}", hole.tag),
+                Self::LambdaLiteral(literal, _) => write!(
+                    f,
+                    "\\({}{}{}){} => ({})",
+                    literal.explicitness,
+                    literal.parameter,
+                    literal
+                        .parameter_type_annotation
+                        .as_ref()
+                        .map(|parameter| format!(": {}", parameter))
+                        .unwrap_or_default(),
+                    literal
+                        .body_type_annotation
+                        .as_ref()
+                        .map(|type_annotation| format!(": {}", type_annotation))
+                        .unwrap_or_default(),
+                    literal.body
+                ),
+                Self::UseIn(_, _) => unimplemented!(),
+                Self::CaseAnalysis(_, _) => unimplemented!(),
+            }
         }
     }
-}
 
-pub fn lower_expression(expression: &parser::Expression) -> Expression {
-    match &expression {
-        parser::Expression::PiTypeLiteral(box parser::expression::PiTypeLiteral { 
-            binder,
-            parameter,
-            expression,
-            explicitness,
-            span: _,
-         }) => Expression::PiTypeLiteral { 
-            binder: binder.clone().map(Identifier::Plain),
-            domain: Box::new(lower_expression(parameter)),
-            codomain: Box::new(lower_expression(expression)),
-            explicitness: *explicitness,
-            data: (),
-         },
-        parser::Expression::Application(box parser::expression::Application { 
-            expression,
-            argument,
-            explicitness,
-            span: _,
-         }) => Expression::Application {
-            expression: Box::new(lower_expression(expression)),
-            argument: Box::new(lower_expression(argument)),
-            explicitness: *explicitness,
-            data: (),
-        },
-        parser::Expression::TypeLiteral(box parser::expression::TypeLiteral {  span: _  }) => Expression::TypeLiteral { data: () },
-        parser::Expression::NatTypeLiteral(box parser::expression::NatTypeLiteral {  span: _  }) => Expression::NatTypeLiteral { data: () },
-        parser::Expression::NatLiteral(box parser::expression::NatLiteral {  value, span: _  }) => Expression::NatLiteral {
-            value: value.clone(),
-            data: (),
-        },
-        parser::Expression::Path(box parser::expression::Path {  inner: identifier  }) => Expression::Identifier {
-            identifier: Identifier::Plain(identifier.clone()),
-            data: (),
-        },
-        parser::Expression::Hole(box parser::expression::Hole { 
-            tag: identifier,
-            span: _,
-         }) => Expression::Hole {
-            tag: Identifier::Plain(identifier.clone()),
-            data: (),
-        },
-        parser::Expression::LambdaLiteral(box parser::expression::LambdaLiteral { 
-            parameters,
-            type_annotation,
-            expression,
-            span: _,
-         }) => {
-            let mut expression = lower_expression(expression);
-
-            let mut type_annotation = type_annotation
-                .as_ref()
-                .map(|expression| Box::new(lower_expression(expression)))
-                .into_iter();
-
-            for parameter_group in parameters.into_iter().rev() {
-                let parameter = parameter_group
-                    .type_annotation
-                    .as_ref()
-                    .map(lower_expression)
-                    .map(Box::new);
-
-                for binder in parameter_group.parameters.iter().rev() {
-                    expression = Expression::LambdaLiteral {
-                        binder: Identifier::Plain(binder.clone()),
-                        // @Note expensive clone
-                        parameter_type_annotation: parameter.clone(),
-                        explicitness: parameter_group.explicitness,
-                        body_type_annotation: type_annotation.next(),
-                        body: Box::new(expression),
-                        data: (),
-                    };
-                }
-            }
-            expression
-        }
-        parser::Expression::LetIn(box parser::expression::LetIn { 
-            binder,
-            parameters,
-            type_annotation,
-            expression,
-            scope,
-            span: _,
-         }) => {
-            let mut expression = lower_expression(expression);
-
-            let mut type_annotation = type_annotation
-                .as_ref()
-                .map(|expression| Box::new(lower_expression(expression)))
-                .into_iter();
-
-            for parameter_group in parameters.into_iter().rev() {
-                let parameter = parameter_group
-                    .type_annotation
-                    .as_ref()
-                    .map(lower_expression)
-                    .map(Box::new);
-
-                for binder in parameter_group.parameters.iter().rev() {
-                    expression = Expression::LambdaLiteral {
-                        binder: Identifier::Plain(binder.clone()),
-                        // @Note expensive clone
-                        parameter_type_annotation: parameter.clone(),
-                        explicitness: parameter_group.explicitness,
-                        body_type_annotation: type_annotation.next(),
-                        body: Box::new(expression),
-                        data: (),
-                    };
-                }
-            }
-
-            Expression::Application {
-                expression: Box::new(Expression::LambdaLiteral {
-                    binder: Identifier::Plain(binder.clone()),
-                    // @Note we cannot simply lower parameters and a type annotation because
-                    // in the chain (`->`) of parameters, there might always be one missing and
-                    // we don't support partial type annotations yet (using `'_`)
-                    parameter_type_annotation: None,
-                    explicitness: Explicitness::Explicit,
-                    body_type_annotation: None,
-                    body: Box::new(lower_expression(scope)),
-                    data: (),
+    pub fn lower_expression(expression: parser::Expression) -> Expression {
+        match expression {
+            parser::Expression::PiTypeLiteral(literal) => Expression::PiTypeLiteral(
+                Rc::new(PiTypeLiteral {
+                    parameter: literal.binder.clone().map(Identifier::Plain),
+                    domain: lower_expression(literal.parameter),
+                    codomain: lower_expression(literal.expression),
+                    explicitness: literal.explicitness,
                 }),
-                argument: Box::new(expression),
-                explicitness: Explicitness::Explicit,
-                data: (),
+                (),
+            ),
+            parser::Expression::Application(application) => Expression::Application(
+                Rc::new(Application {
+                    expression: lower_expression(application.expression),
+                    argument: lower_expression(application.argument),
+                    explicitness: application.explicitness,
+                }),
+                (),
+            ),
+            parser::Expression::TypeLiteral(_literal) => {
+                Expression::TypeLiteral(TypeLiteral {}, ())
             }
+            parser::Expression::NatTypeLiteral(_literal) => {
+                Expression::NatTypeLiteral(NatTypeLiteral {}, ())
+            }
+            parser::Expression::NatLiteral(literal) => Expression::NatLiteral(
+                Rc::new(NatLiteral {
+                    value: literal.value,
+                }),
+                (),
+            ),
+            parser::Expression::Path(path) => Expression::Path(
+                Path {
+                    identifier: Identifier::Plain(path.inner),
+                },
+                (),
+            ),
+            parser::Expression::Hole(hole) => Expression::Hole(
+                Hole {
+                    tag: Identifier::Plain(hole.tag),
+                },
+                (),
+            ),
+            parser::Expression::LambdaLiteral(literal) => {
+                let mut expression = lower_expression(literal.expression);
+
+                let mut type_annotation = literal
+                    .type_annotation
+                    .map(|expression| lower_expression(expression))
+                    .into_iter();
+
+                for parameter_group in literal.parameters.iter().rev() {
+                    let parameter = parameter_group
+                        .type_annotation
+                        .clone()
+                        .map(lower_expression);
+
+                    for binder in parameter_group.parameters.iter().rev() {
+                        expression = Expression::LambdaLiteral(
+                            Rc::new(LambdaLiteral {
+                                parameter: Identifier::Plain(binder.clone()),
+                                parameter_type_annotation: parameter.clone(),
+                                explicitness: parameter_group.explicitness,
+                                body_type_annotation: type_annotation.next(),
+                                body: expression,
+                            }),
+                            (),
+                        );
+                    }
+                }
+                expression
+            }
+            parser::Expression::LetIn(let_in) => {
+                let mut expression = lower_expression(let_in.expression);
+
+                let mut type_annotation = let_in
+                    .type_annotation
+                    .map(|expression| lower_expression(expression))
+                    .into_iter();
+
+                for parameter_group in let_in.parameters.iter().rev() {
+                    let parameter = parameter_group
+                        .type_annotation
+                        .clone()
+                        .map(lower_expression);
+                    for binder in parameter_group.parameters.iter().rev() {
+                        expression = Expression::LambdaLiteral(
+                            Rc::new(LambdaLiteral {
+                                parameter: Identifier::Plain(binder.clone()),
+                                parameter_type_annotation: parameter.clone(),
+                                explicitness: parameter_group.explicitness,
+                                body_type_annotation: type_annotation.next(),
+                                body: expression,
+                            }),
+                            (),
+                        );
+                    }
+                }
+
+                Expression::Application(
+                    Rc::new(Application {
+                        expression: Expression::LambdaLiteral(
+                            Rc::new(LambdaLiteral {
+                                parameter: Identifier::Plain(let_in.binder),
+                                // @Note we cannot simply lower parameters and a type annotation because
+                                // in the chain (`->`) of parameters, there might always be one missing and
+                                // we don't support partial type annotations yet (using `'_`)
+                                parameter_type_annotation: None,
+                                explicitness: Explicitness::Explicit,
+                                body_type_annotation: None,
+                                body: lower_expression(let_in.scope),
+                            }),
+                            (),
+                        ),
+                        argument: expression,
+                        explicitness: Explicitness::Explicit,
+                    }),
+                    (),
+                )
+            }
+            parser::Expression::UseIn(_use_in) => unimplemented!(),
+            // @Task
+            parser::Expression::CaseAnalysis(_case_analysis) => unimplemented!(),
         }
-        parser::Expression::UseIn(box parser::expression::UseIn {  span: _  }) => unimplemented!(),
-        // @Task
-        parser::Expression::CaseAnalysis(box parser::expression::CaseAnalysis {  span: _, cases: _, expression: _  }) => unimplemented!(),
     }
+
+    #[derive(Clone, Debug)]
+    pub struct PiTypeLiteral {
+        pub parameter: Option<Identifier>,
+        pub domain: Expression,
+        pub codomain: Expression,
+        pub explicitness: Explicitness,
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct Application {
+        pub expression: Expression,
+        pub argument: Expression,
+        pub explicitness: Explicitness,
+    }
+
+    // @Note don't rc
+    #[derive(Clone, Debug)]
+    pub struct TypeLiteral {}
+
+    // @Note don't rc
+    #[derive(Clone, Debug)]
+    pub struct NatTypeLiteral {}
+
+    #[derive(Clone, Debug)]
+    pub struct NatLiteral {
+        pub value: crate::lexer::Nat,
+    }
+
+    // @Note don't reference-count because it already uses interning
+    #[derive(Clone, Debug)]
+    pub struct Path {
+        pub identifier: Identifier,
+    }
+
+    // @Note don't reference-count because it already uses interning
+    #[derive(Clone, Debug)]
+    pub struct Hole {
+        pub tag: Identifier,
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct LambdaLiteral {
+        pub parameter: Identifier,
+        pub parameter_type_annotation: Option<Expression>,
+        pub explicitness: Explicitness,
+        pub body_type_annotation: Option<Expression>,
+        pub body: Expression,
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct UseIn {}
+
+    #[derive(Clone, Debug)]
+    pub struct CaseAnalysis {}
 }
 
 fn lower_annotated_parameters(
-    parameters: &parser::declaration::AnnotatedParameters,
-    type_annotation: &parser::Expression,
+    parameters: parser::declaration::AnnotatedParameters,
+    type_annotation: parser::Expression,
 ) -> Expression {
     let mut expression = lower_expression(type_annotation);
 
     for parameter_group in parameters.into_iter().rev() {
-        let parameter = Box::new(lower_expression(&parameter_group.type_annotation));
+        let parameter = lower_expression(parameter_group.type_annotation);
 
         for binder in parameter_group.parameters.iter().rev() {
-            expression = Expression::PiTypeLiteral {
-                binder: Some(Identifier::Plain(binder.clone())),
-                // @Note expensive clone
-                domain: parameter.clone(),
-                codomain: Box::new(expression),
-                explicitness: parameter_group.explicitness,
-                data: (),
-            }
+            expression = Expression::PiTypeLiteral(
+                Rc::new(expression::PiTypeLiteral {
+                    parameter: Some(Identifier::Plain(binder.clone())),
+                    domain: parameter.clone(),
+                    codomain: expression,
+                    explicitness: parameter_group.explicitness,
+                }),
+                (),
+            )
         }
     }
 
     expression
 }
-
-// pub type DebruijnIndex = u32;
-
-// // Boo, like a linked list!!! bad cache behavior!
-// #[derive(Clone, Debug)]
-// pub enum Substitution {
-//     Shift(u32),
-//     Composition(Box<Expression>, Box<Substitution>),
-// }
-
-// impl Substitution {
-//     pub fn compose(&self, other: &Self) -> Self {
-//         match (self, other) {
-//             // @Note bad clone
-//             (substitution, Self::Shift(0)) => substitution.clone(),
-//             // @Task alternative to recursion??
-//             (Self::Composition(expression, substitution), Self::Shift(amount)) => {
-//                 substitution.compose(&Self::Shift(amount - 1))
-//             }
-//             (Self::Shift(first_amount), Self::Shift(second_amount)) => {
-//                 Self::Shift(first_amount + second_amount)
-//             }
-//             // @Note very expensive clones!!
-//             (first_substitution, Self::Composition(expression, second_substitution)) => {
-//                 Self::Composition(
-//                     Box::new(Expression::Substitution(
-//                         first_substitution.clone(),
-//                         expression.clone(),
-//                     )),
-//                     Box::new(first_substitution.compose(second_substitution)),
-//                 )
-//             }
-//         }
-//     }
-// }
 
 // @Temporary
 #[derive(Clone, Debug)]
@@ -490,11 +447,11 @@ pub trait Phase {
     type TypeLiteral;
     type NatTypeLiteral;
     type NatLiteral;
-    type Identifier;
+    type Path;
     type Hole;
     type LambdaLiteral;
     type UseIn;
-    type Case;
+    type CaseAnalysis;
 }
 
 impl Phase for InitialPhase {
@@ -503,9 +460,9 @@ impl Phase for InitialPhase {
     type TypeLiteral = ();
     type NatTypeLiteral = ();
     type NatLiteral = ();
-    type Identifier = ();
+    type Path = ();
     type Hole = ();
     type LambdaLiteral = ();
     type UseIn = ();
-    type Case = ();
+    type CaseAnalysis = ();
 }
