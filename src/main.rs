@@ -36,6 +36,7 @@ fn test(source: &str, filename: &str) -> Result<(), String> {
     let mut context = parser::Context::new(&tokens);
     let node = parser::Declaration::Module(Box::new(parser::declaration::parse_file_module_no_header(&mut context)
         .map_err(|error| error::Error::from(error).display(source, Some(filename)))?));
+    eprintln!("{:#?}", &node);
 
     // HIR
     let node = hir::lower_declaration(&node);

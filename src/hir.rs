@@ -158,6 +158,11 @@ fn lower_constructor(constructor: &parser::declaration::Constructor) -> Construc
 // @Beacon @Beacon @Task add span information!!! @Note @Beacon now, we are in the HIR,
 // there might not be any span information if synthesize HIR nodes (common thing probably)
 // @Task improve naming (binder, parameter, etcetera)
+// @Beacon @Beacon Use Rc<Expression> instead of Box<Expression> because we clone sooo
+// often in effluvium and I cannot avoid it...
+// and also @Beacon: When lowering, we clone really expensively: those annotated parameter
+// groups we resolve and later in case analysis match arms with the same body
+// @Note we can also think about **interning** Expressions but not sure if a good idea
 #[derive(Clone, Debug)]
 // @Beacon @Beacon @Note rename P: Phase to D: Discrimant and have Raw, Normalized, Type (more to come)
 pub enum Expression<P: Phase = InitialPhase> {
@@ -313,7 +318,7 @@ pub fn lower_expression(expression: &parser::Expression) -> Expression {
             value: value.clone(),
             data: (),
         },
-        parser::Expression::Identifier(box parser::expression::Path {  inner: identifier  }) => Expression::Identifier {
+        parser::Expression::Path(box parser::expression::Path {  inner: identifier  }) => Expression::Identifier {
             identifier: Identifier::Plain(identifier.clone()),
             data: (),
         },

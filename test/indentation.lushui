@@ -5,3 +5,9 @@
 'let number: 'Nat =
     identity 'Nat 45
 'let next: 'Nat = 200
+
+;;; @Bug apparently unexpected dedentation
+'let foo (x: 'Nat): 'Nat =
+    'case x
+    'of 0 'of 1 => 10
+    'of x => x

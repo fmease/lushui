@@ -66,7 +66,7 @@ pub mod declaration {
     }
 
     fn parse_let_declaration(context: &mut Context<'_>) -> Result<Let> {
-        let span_of_let_keyword = context
+        let span_of_keyword_let = context
             .consume(lexer::TokenKind::Keyword(lexer::Keyword::Let))?
             .span;
         let binder = context.consume_identifier()?;
@@ -77,7 +77,7 @@ pub mod declaration {
         let expression = parse_possibly_indented_expression_followed_by_line_break(context)?;
 
         Ok(Let {
-            span: span_of_let_keyword.merge(expression.span()),
+            span: span_of_keyword_let.merge(expression.span()),
             binder,
             parameters,
             type_annotation,
@@ -95,7 +95,7 @@ pub mod declaration {
     }
 
     pub fn parse_data_declaration(context: &mut Context<'_>) -> Result<Data> {
-        let span_of_data_keyword = context
+        let span_of_keyword_data = context
             .consume(lexer::TokenKind::Keyword(lexer::Keyword::Data))?
             .span;
         let binder = context.consume_identifier()?;
@@ -107,6 +107,7 @@ pub mod declaration {
         let mut constructors = Vec::new();
 
         if context.consume(lexer::TokenKind::Indentation).is_ok() {
+            // @Bug produces bad error messages
             while let Ok(constructor) = context.reflect(parse_constructor) {
                 constructors.push(constructor);
             }
@@ -115,7 +116,7 @@ pub mod declaration {
         }
 
         Ok(Data {
-            span: span_of_data_keyword.merge(
+            span: span_of_keyword_data.merge(
                 constructors
                     .last()
                     .map(|constructor| constructor.span)
@@ -224,6 +225,7 @@ pub mod declaration {
         let mut parameters = Vec::new();
 
         // @Bug drops errors @Note updated code, check for bug @Task
+        // @Bug produces bad error messages
         while let Ok(parameter_group) = context.reflect(parse_annotated_parameter_group) {
             parameters.push(parameter_group)
         }
@@ -253,6 +255,7 @@ pub mod declaration {
 
         // @Note @Bug probably drops errors as well @Note shouldn't: consume
         // reflects by itself @Task verify
+        // @Bug produces bad error messages
         while let Ok(parameter) = context.consume_identifier() {
             parameters.push(parameter);
         }
@@ -278,7 +281,7 @@ pub mod expression {
         TypeLiteral(Box<TypeLiteral>),
         NatTypeLiteral(Box<NatTypeLiteral>),
         NatLiteral(Box<NatLiteral>),
-        Identifier(Box<Path>),
+        Path(Box<Path>),
         Hole(Box<Hole>),
         LambdaLiteral(Box<LambdaLiteral>),
         LetIn(Box<LetIn>),
@@ -294,7 +297,7 @@ pub mod expression {
                 Self::TypeLiteral(box TypeLiteral { span }) => *span,
                 Self::NatTypeLiteral(box NatTypeLiteral { span }) => *span,
                 Self::NatLiteral(box NatLiteral { span, .. }) => *span,
-                Self::Identifier(box Path { inner }) => inner.span,
+                Self::Path(box Path { inner }) => inner.span,
                 Self::Hole(box Hole { span, .. }) => *span,
                 Self::LambdaLiteral(box LambdaLiteral { span, .. }) => *span,
                 Self::LetIn(box LetIn { span, .. }) => *span,
@@ -310,7 +313,16 @@ pub mod expression {
     pub fn parse_expression(context: &mut Context<'_>) -> Result<Expression> {
         context
             .reflect(|context| Ok(Expression::LetIn(Box::new(parse_let_in(context)?))))
-            .or_else(|_| Ok(Expression::LambdaLiteral(Box::new(context.reflect(parse_lambda_literal)?))))
+            .or_else(|_| {
+                Ok(Expression::LambdaLiteral(Box::new(
+                    context.reflect(parse_lambda_literal)?,
+                )))
+            })
+            .or_else(|_: Error| {
+                Ok(Expression::CaseAnalysis(Box::new(
+                    context.reflect(parse_case_analysis)?,
+                )))
+            })
             .or_else(|_: Error| parse_pi_literal_or_lower(context))
     }
 
@@ -434,9 +446,17 @@ pub mod expression {
     fn parse_lower_expression(context: &mut Context<'_>) -> Result<Expression> {
         parse_type_literal(context)
             .map(|type_literal| Expression::TypeLiteral(Box::new(type_literal)))
-            .or_else(|_| Ok(Expression::NatTypeLiteral(Box::new(parse_nat_type_literal(context)?))))
-            .or_else(|_: Error| Ok(Expression::NatLiteral(Box::new(parse_nat_literal(context)?))))
-            .or_else(|_: Error| Ok(Expression::Identifier(Box::new(parse_path(context)?))))
+            .or_else(|_| {
+                Ok(Expression::NatTypeLiteral(Box::new(
+                    parse_nat_type_literal(context)?,
+                )))
+            })
+            .or_else(|_: Error| {
+                Ok(Expression::NatLiteral(Box::new(parse_nat_literal(
+                    context,
+                )?)))
+            })
+            .or_else(|_: Error| Ok(Expression::Path(Box::new(parse_path(context)?))))
             .or_else(|_: Error| Ok(Expression::Hole(Box::new(context.reflect(parse_hole)?))))
             .or_else(|_: Error| parse_bracketed_expression(context))
     }
@@ -581,7 +601,6 @@ pub mod expression {
         pub span: Span,
     }
 
-    // @Task
     #[derive(Debug, Clone)]
     pub struct CaseAnalysis {
         pub expression: Expression,
@@ -589,8 +608,30 @@ pub mod expression {
         pub span: Span,
     }
 
+    // Case_Analysis ::= "'case" Expression Line_Break Case_Analysis_Case_Group*
     fn parse_case_analysis(context: &mut Context<'_>) -> Result<CaseAnalysis> {
-        unimplemented!() // @Task @Beacon @Beacon @Beacon @Beacon
+        let span_of_keyword_case = context
+            .consume(lexer::TokenKind::Keyword(lexer::Keyword::Case))?
+            .span;
+        let expression = parse_expression_followed_by_line_break(context)?;
+
+        let mut cases = Vec::new();
+
+        // @Bug this produces bad error messages!
+        while let Ok(case_group) = context.reflect(parse_case_analysis_case_group) {
+            cases.push(case_group);
+        }
+
+        Ok(CaseAnalysis {
+            span: span_of_keyword_case.merge(
+                cases
+                    .last()
+                    .map(|case_group| case_group.expression.span())
+                    .unwrap_or_else(|| expression.span()),
+            ),
+            expression,
+            cases,
+        })
     }
 
     #[derive(Debug, Clone)]
@@ -599,25 +640,94 @@ pub mod expression {
         expression: Expression,
     }
 
+    // Case_Analyis_Case_Group ::= ("'of" Pattern) "=>" Expression Line_Break
     fn parse_case_analysis_case_group(context: &mut Context<'_>) -> Result<CaseAnalysisCaseGroup> {
-        unimplemented!()
+        let mut patterns = Vec::new();
+
+        context.consume(lexer::TokenKind::Keyword(lexer::Keyword::Of))?;
+        patterns.push(parse_pattern(context)?);
+
+        loop {
+            // @Beacon @Note
+            // loop until you find "=>" @Note this is a better break condition than `while let Ok`
+            // fyi for all those in this module!!
+            if context.consume(lexer::TokenKind::WideArrow).is_ok() {
+                break;
+            }
+
+            context.consume(lexer::TokenKind::Keyword(lexer::Keyword::Of))?;
+            patterns.push(parse_pattern(context)?);
+        }
+
+        Ok(CaseAnalysisCaseGroup {
+            patterns,
+            expression: parse_expression_followed_by_line_break(context)?,
+        })
     }
 
     #[derive(Debug, Clone)]
     pub enum Pattern {
-        NatLiteral {
-            value: lexer::Nat,
-            span: Span,
-        },
+        NatLiteral(NatLiteral),
         Deconstruction {
-            constructor: Identifier,
+            constructor: Path,
             patterns: Vec<Pattern>,
             span: Span,
         },
     }
 
+    impl Pattern {
+        fn span(&self) -> Span {
+            match self {
+                Self::NatLiteral(literal) => literal.span,
+                Self::Deconstruction { span, .. } => *span,
+            }
+        }
+
+        fn span_mut(&mut self) -> &mut Span {
+            match self {
+                Self::NatLiteral(literal) => &mut literal.span,
+                Self::Deconstruction { span, .. } => span,
+            }
+        }
+    }
+
+    // Pattern ::= Nat_Literal | Path Patterns* | "(" Pattern ")"
+    // @Task verify
     fn parse_pattern(context: &mut Context<'_>) -> Result<Pattern> {
-        unimplemented!()
+        parse_nat_literal(context)
+            .map(Pattern::NatLiteral)
+            .or_else(|_| {
+                let constructor = parse_path(context)?;
+                let mut patterns = Vec::new();
+
+                // @Bug produces bad error messages
+                while let Ok(pattern) = context.reflect(parse_pattern) {
+                    patterns.push(pattern);
+                }
+
+                Ok(Pattern::Deconstruction {
+                    span: constructor.inner.span.merge(
+                        patterns
+                            .last()
+                            .map(|pattern| pattern.span())
+                            .unwrap_or(constructor.inner.span),
+                    ),
+                    constructor,
+                    patterns,
+                })
+            })
+            // @Bug or_else(_) produces bad error messages
+            .or_else(|_: Error| {
+                let span_of_opening_bracket =
+                    context.consume(lexer::TokenKind::OpeningRoundBracket)?.span;
+                let mut pattern = parse_pattern(context)?;
+                let span_of_closing_bracket =
+                    context.consume(lexer::TokenKind::ClosingRoundBracket)?.span;
+
+                *pattern.span_mut() = span_of_closing_bracket.merge(span_of_opening_bracket);
+
+                Ok(pattern)
+            })
     }
 
     pub type Parameters = Vec<ParameterGroup>;
@@ -626,6 +736,7 @@ pub mod expression {
     fn parse_parameters(context: &mut Context<'_>) -> Result<Parameters> {
         let mut parameters = Vec::new();
 
+        // @Bug produces bad error messages
         while let Ok(parameter_group) = context.reflect(parse_parameter_group) {
             parameters.push(parameter_group)
         }
@@ -653,6 +764,7 @@ pub mod expression {
 
             parameters.push(context.consume_identifier()?);
 
+            // @Bug produces bad error messages
             while let Ok(parameter) = context.consume_identifier() {
                 parameters.push(parameter);
             }

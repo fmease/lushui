@@ -1,0 +1,4 @@
+'let foo (x: 'Nat): 'Nat = 'case x
+'of 0 'of 1 => 10
+'of x => x
+
