@@ -4,11 +4,16 @@ Meta note: This file is not really used and up to date with my current ever-chan
 
 ## Roadmap (One of Many I Made)
 
-* parse optional indentation in let-declarations, more specifically, right after `=`
-* parse case/of (or a temporary version of it)
-* implement some basic form of case/of (goal: be able to write `not: Bool -> Bool` in Lushui!)
-* implement basic recursion (and out-of-order declarations if it goes hand-in-hand) (goal: be able to write: `length: (A: 'Type) -> List A -> 'Nat` in Lushui!)
-* if not implemented when implementing recursion, implement out-of-order (module local) declarations now!
+1. parse optional indentation in let-declarations, more specifically, right after `=`
+2. implement some basic form of case/of (goal: be able to write `not: Bool -> Bool` in Lushui!)
+3. implement basic recursion (and out-of-order declarations if it goes hand-in-hand) (goal: be able to write: `length: (A: 'Type) -> List A -> 'Nat` in Lushui!)
+4. if not implemented when implementing recursion, implement out-of-order (module local) declarations now!
+5. implement FFI: bindings marked `'foreign` and add stuff like `nat::equals`, `nat::add`
+6. implement parsing of paths (using `::`)
+7. implement parsing of modules and a gross version of use declarations
+8. implement module/use
+9. implement file modules (header parsing) and finally referencing modules located in another file!
+
 * (**can be done anytime**) improve how we store scopes/environments and how we substitute (use debruijn-indeces or so)
 
 ## IMPORTANT

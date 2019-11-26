@@ -234,10 +234,10 @@ pub fn infer_type(expression: &Expression, scope: ModuleScope) -> Result<hir::Ex
             explicitness: _,
             data: (),
         } => {
-            // @Task verify r#typeof_expression is already normalized
+            // @Task verify type_of_expression is already normalized
             // @Note maybe use dbg-macro?
-            let r#typeof_expression = infer_type(expression, scope.clone())?;
-            match normalize(&r#typeof_expression, scope.clone())? {
+            let type_of_expression = infer_type(expression, scope.clone())?;
+            match normalize(&type_of_expression, scope.clone())? {
                 Expression::PiTypeLiteral {
                     binder,
                     domain,
@@ -382,10 +382,10 @@ pub fn normalize(expression: &Expression, scope: ModuleScope) -> Result<Expressi
 }
 
 fn assert_expression_is_a_type(expression: &Expression, scope: ModuleScope) -> Result<()> {
-    let r#typeof_expression = infer_type(expression, scope.clone())?;
+    let type_of_expression = infer_type(expression, scope.clone())?;
     assert_expressions_are_equal(
         &Expression::TypeLiteral { data: () },
-        &r#typeof_expression,
+        &type_of_expression,
         scope,
     )
 }

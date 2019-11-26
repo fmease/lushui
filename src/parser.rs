@@ -305,6 +305,22 @@ pub mod expression {
                 Self::CaseAnalysis(box CaseAnalysis { span, .. }) => *span,
             }
         }
+
+        pub fn span_mut(&mut self) -> &mut Span {
+            match self {
+                Self::PiTypeLiteral(box PiTypeLiteral { span, .. }) => span,
+                Self::Application(box Application { span, .. }) => span,
+                Self::TypeLiteral(box TypeLiteral { span }) => span,
+                Self::NatTypeLiteral(box NatTypeLiteral { span }) => span,
+                Self::NatLiteral(box NatLiteral { span, .. }) => span,
+                Self::Path(box Path { inner }) => &mut inner.span,
+                Self::Hole(box Hole { span, .. }) => span,
+                Self::LambdaLiteral(box LambdaLiteral { span, .. }) => span,
+                Self::LetIn(box LetIn { span, .. }) => span,
+                Self::UseIn(box UseIn { span, .. }) => span,
+                Self::CaseAnalysis(box CaseAnalysis { span, .. }) => span,
+            }
+        }
     }
 
     // @Bug @Beacon error messages are really bad, @Task you need to do prefix-parsing instead of or_else's
@@ -463,9 +479,10 @@ pub mod expression {
 
     // Bracketed_Expression ::= "(" Expression ")"
     fn parse_bracketed_expression(context: &mut Context<'_>) -> Result<Expression> {
-        context.consume(lexer::TokenKind::OpeningRoundBracket)?;
-        let expression = context.reflect(parse_expression)?;
-        context.consume(lexer::TokenKind::ClosingRoundBracket)?;
+        let span_of_opening_bracket = context.consume(lexer::TokenKind::OpeningRoundBracket)?.span;
+        let mut expression = context.reflect(parse_expression)?;
+        let span_of_closing_bracket = context.consume(lexer::TokenKind::ClosingRoundBracket)?.span;
+        *expression.span_mut() = span_of_opening_bracket.merge(span_of_closing_bracket);
         Ok(expression)
     }
 
@@ -640,7 +657,7 @@ pub mod expression {
         expression: Expression,
     }
 
-    // Case_Analyis_Case_Group ::= ("'of" Pattern) "=>" Expression Line_Break
+    // Case_Analyis_Case_Group ::= ("'of" Pattern)+ "=>" Expression Line_Break
     fn parse_case_analysis_case_group(context: &mut Context<'_>) -> Result<CaseAnalysisCaseGroup> {
         let mut patterns = Vec::new();
 
