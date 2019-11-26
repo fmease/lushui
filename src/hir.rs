@@ -70,13 +70,13 @@ impl fmt::Display for Declaration {
 
 pub fn lower_declaration(declaration: &parser::Declaration) -> Declaration {
     match declaration {
-        parser::Declaration::Let {
+        parser::Declaration::Let(box parser::declaration::Let {
             binder,
             parameters,
             type_annotation,
             expression,
             span: _,
-        } => {
+        }) => {
             // @Note type_annotation is currently lowered twice
             // @Task remove duplicate work
 
@@ -110,25 +110,25 @@ pub fn lower_declaration(declaration: &parser::Declaration) -> Declaration {
                 expression,
             }
         }
-        parser::Declaration::Data {
+        parser::Declaration::Data(box parser::declaration::Data {
             binder,
             parameters,
             type_annotation,
             constructors,
             span: _,
-        } => Declaration::Data {
+        }) => Declaration::Data {
             binder: Identifier::Plain(binder.clone()),
             type_annotation: lower_annotated_parameters(&parameters, &type_annotation),
             constructors: constructors.iter().map(lower_constructor).collect(),
         },
-        parser::Declaration::Module {
+        parser::Declaration::Module(box parser::declaration::Module {
             declarations,
             span: _,
-        } => Declaration::Module {
+        }) => Declaration::Module {
             declarations: declarations.into_iter().map(lower_declaration).collect(),
         },
-        parser::Declaration::Use { span: _ } => unimplemented!(),
-        parser::Declaration::Foreign { span: _ } => unimplemented!(),
+        parser::Declaration::Use(box parser::declaration::Use { span: _ }) => unimplemented!(),
+        parser::Declaration::Foreign(box parser::declaration::Foreign { span: _ }) => unimplemented!(),
     }
 }
 
@@ -145,7 +145,7 @@ impl fmt::Display for Constructor {
     }
 }
 
-fn lower_constructor(constructor: &parser::Constructor) -> Constructor {
+fn lower_constructor(constructor: &parser::declaration::Constructor) -> Constructor {
     Constructor {
         binder: Identifier::Plain(constructor.binder.clone()),
         type_annotation: lower_annotated_parameters(
@@ -283,53 +283,53 @@ impl fmt::Display for Expression {
 
 pub fn lower_expression(expression: &parser::Expression) -> Expression {
     match &expression {
-        parser::Expression::PiLiteral {
+        parser::Expression::PiTypeLiteral(box parser::expression::PiTypeLiteral { 
             binder,
             parameter,
             expression,
             explicitness,
             span: _,
-        } => Expression::PiTypeLiteral {
+         }) => Expression::PiTypeLiteral { 
             binder: binder.clone().map(Identifier::Plain),
             domain: Box::new(lower_expression(parameter)),
             codomain: Box::new(lower_expression(expression)),
             explicitness: *explicitness,
             data: (),
-        },
-        parser::Expression::Application {
+         },
+        parser::Expression::Application(box parser::expression::Application { 
             expression,
             argument,
             explicitness,
             span: _,
-        } => Expression::Application {
+         }) => Expression::Application {
             expression: Box::new(lower_expression(expression)),
             argument: Box::new(lower_expression(argument)),
             explicitness: *explicitness,
             data: (),
         },
-        parser::Expression::TypeLiteral { span: _ } => Expression::TypeLiteral { data: () },
-        parser::Expression::NatTypeLiteral { span: _ } => Expression::NatTypeLiteral { data: () },
-        parser::Expression::NatLiteral { value, span: _ } => Expression::NatLiteral {
+        parser::Expression::TypeLiteral(box parser::expression::TypeLiteral {  span: _  }) => Expression::TypeLiteral { data: () },
+        parser::Expression::NatTypeLiteral(box parser::expression::NatTypeLiteral {  span: _  }) => Expression::NatTypeLiteral { data: () },
+        parser::Expression::NatLiteral(box parser::expression::NatLiteral {  value, span: _  }) => Expression::NatLiteral {
             value: value.clone(),
             data: (),
         },
-        parser::Expression::Identifier { inner: identifier } => Expression::Identifier {
+        parser::Expression::Identifier(box parser::expression::Path {  inner: identifier  }) => Expression::Identifier {
             identifier: Identifier::Plain(identifier.clone()),
             data: (),
         },
-        parser::Expression::Hole {
+        parser::Expression::Hole(box parser::expression::Hole { 
             tag: identifier,
             span: _,
-        } => Expression::Hole {
+         }) => Expression::Hole {
             tag: Identifier::Plain(identifier.clone()),
             data: (),
         },
-        parser::Expression::LambdaLiteral {
+        parser::Expression::LambdaLiteral(box parser::expression::LambdaLiteral { 
             parameters,
             type_annotation,
             expression,
             span: _,
-        } => {
+         }) => {
             let mut expression = lower_expression(expression);
 
             let mut type_annotation = type_annotation
@@ -358,14 +358,14 @@ pub fn lower_expression(expression: &parser::Expression) -> Expression {
             }
             expression
         }
-        parser::Expression::LetIn {
+        parser::Expression::LetIn(box parser::expression::LetIn { 
             binder,
             parameters,
             type_annotation,
             expression,
             scope,
             span: _,
-        } => {
+         }) => {
             let mut expression = lower_expression(expression);
 
             let mut type_annotation = type_annotation
@@ -410,13 +410,14 @@ pub fn lower_expression(expression: &parser::Expression) -> Expression {
                 data: (),
             }
         }
-        parser::Expression::UseIn { span: _ } => unimplemented!(),
-        parser::Expression::Case { span: _ } => unimplemented!(),
+        parser::Expression::UseIn(box parser::expression::UseIn {  span: _  }) => unimplemented!(),
+        // @Task
+        parser::Expression::CaseAnalysis(box parser::expression::CaseAnalysis {  span: _, cases: _, expression: _  }) => unimplemented!(),
     }
 }
 
 fn lower_annotated_parameters(
-    parameters: &parser::AnnotatedParameters,
+    parameters: &parser::declaration::AnnotatedParameters,
     type_annotation: &parser::Expression,
 ) -> Expression {
     let mut expression = lower_expression(type_annotation);

@@ -6,6 +6,11 @@ use std::fs::File;
 use std::io::{BufReader, Read};
 
 fn main() {
+    // dbg!(std::mem::size_of::<parser::Expression>(), 96);
+    // dbg!(std::mem::size_of::<parser::Declaration>(), 264);
+    // dbg!(std::mem::size_of::<hir::Expression>(), 72);
+    // dbg!(std::mem::size_of::<hir::Declaration>(), 192);
+
     // @Task improve error handling
     let mut arguments = std::env::args().skip(1);
     let source_path = arguments.next().expect("no source file path supplied");
@@ -29,8 +34,8 @@ fn test(source: &str, filename: &str) -> Result<(), String> {
 
     // AST
     let mut context = parser::Context::new(&tokens);
-    let node = parser::parse_file_module_no_header(&mut context)
-        .map_err(|error| error::Error::from(error).display(source, Some(filename)))?;
+    let node = parser::Declaration::Module(Box::new(parser::declaration::parse_file_module_no_header(&mut context)
+        .map_err(|error| error::Error::from(error).display(source, Some(filename)))?));
 
     // HIR
     let node = hir::lower_declaration(&node);
