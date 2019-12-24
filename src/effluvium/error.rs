@@ -15,8 +15,11 @@ pub enum Error {
         actual: Expression,
     },
     // @Task replace with InvalidInstance and also reference said instance
-    InvalidConstructor { name: Identifier },
+    InvalidConstructor {
+        name: Identifier,
+    },
     AlreadyDefined(Identifier),
+    NotAllConstructorsCovered,
 }
 
 impl fmt::Display for Error {
@@ -28,9 +31,10 @@ impl fmt::Display for Error {
             }
             Error::ExpressionsNotEqual { expected, actual } => {
                 write!(f, "expected `{}` got `{}`", expected, actual)
-            },
+            }
             Error::InvalidConstructor { name } => write!(f, "invalid constructor `{}`", name),
             Error::AlreadyDefined(binder) => write!(f, "`{}` is already defined", binder),
+            Error::NotAllConstructorsCovered => write!(f, "not all constructors covered"),
         }
     }
 }

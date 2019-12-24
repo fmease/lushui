@@ -33,6 +33,8 @@ pub mod declaration {
         Foreign(Box<Foreign>),
     }
 
+    const _: () = assert!(std::mem::size_of::<Declaration>() == 16);
+
     impl Declaration {
         pub fn span(&self) -> Span {
             match self {
@@ -289,6 +291,8 @@ pub mod expression {
         CaseAnalysis(Box<CaseAnalysis>),
     }
 
+    const _: () = assert!(std::mem::size_of::<Expression>() == 16);
+
     impl Expression {
         pub fn span(&self) -> Span {
             match self {
@@ -398,6 +402,7 @@ pub mod expression {
         })
     }
 
+    // @Task rename `expression` to `callee`
     #[derive(Debug, Clone)]
     pub struct Application {
         pub expression: Expression,
@@ -449,8 +454,8 @@ pub mod expression {
         {
             expression = Expression::Application(Box::new(expression::Application {
                 span: expression.span().merge(argument.span()),
-                expression: expression,
-                argument: argument,
+                expression,
+                argument,
                 explicitness,
             }));
         }
@@ -653,8 +658,8 @@ pub mod expression {
 
     #[derive(Debug, Clone)]
     pub struct CaseAnalysisCaseGroup {
-        patterns: Vec<Pattern>,
-        expression: Expression,
+        pub patterns: Vec<Pattern>,
+        pub expression: Expression,
     }
 
     // Case_Analyis_Case_Group ::= ("'of" Pattern)+ "=>" Expression Line_Break
@@ -682,12 +687,18 @@ pub mod expression {
         })
     }
 
+    // @Task box variants to reduce size of nat patterns
     #[derive(Debug, Clone)]
     pub enum Pattern {
         NatLiteral(NatLiteral),
-        Deconstruction {
-            constructor: Path,
-            patterns: Vec<Pattern>,
+        Path {
+            path: Path,
+            type_annotation: Option<Expression>,
+            span: Span,
+        },
+        Application {
+            callee: Box<Pattern>,
+            argument: Box<Pattern>,
             span: Span,
         },
     }
@@ -696,41 +707,63 @@ pub mod expression {
         fn span(&self) -> Span {
             match self {
                 Self::NatLiteral(literal) => literal.span,
-                Self::Deconstruction { span, .. } => *span,
+                Self::Path { path, .. } => path.inner.span,
+                Self::Application { span, .. } => *span,
             }
         }
 
         fn span_mut(&mut self) -> &mut Span {
             match self {
                 Self::NatLiteral(literal) => &mut literal.span,
-                Self::Deconstruction { span, .. } => span,
+                Self::Path { path, .. } => &mut path.inner.span,
+                Self::Application { ref mut span, .. } => span,
             }
         }
     }
 
-    // Pattern ::= Nat_Literal | Path Patterns* | "(" Pattern ")"
-    // @Task verify
+    // Pattern ::= Lower_Pattern+
+    // @Task verfiy
     fn parse_pattern(context: &mut Context<'_>) -> Result<Pattern> {
+        let mut callee = context.reflect(parse_lower_pattern)?;
+
+        while let Ok(argument) = context.reflect(parse_lower_pattern) {
+            callee = Pattern::Application {
+                span: callee.span().merge(argument.span()),
+                callee: Box::new(callee),
+                argument: Box::new(argument),
+            };
+        }
+        Ok(callee)
+    }
+
+    // @Task Lower_Pattern ::= Nat_Literal | "(" Path Type_Annotation? ")" | Path | "(" Pattern ")"
+    // @Task verify
+    fn parse_lower_pattern(context: &mut Context<'_>) -> Result<Pattern> {
         parse_nat_literal(context)
-            .map(Pattern::NatLiteral)
+            .map(|literal| Pattern::NatLiteral(literal))
             .or_else(|_| {
-                let constructor = parse_path(context)?;
-                let mut patterns = Vec::new();
+                let (span, path, type_annotation) = if let Ok(opening_bracket) =
+                    context.consume(lexer::TokenKind::OpeningRoundBracket)
+                {
+                    let path = context.reflect(parse_path)?;
+                    let type_annotation = context.reflect(parse_type_annotation)?;
+                    let span_of_closing_bracket =
+                        context.consume(lexer::TokenKind::ClosingRoundBracket)?.span;
 
-                // @Bug produces bad error messages
-                while let Ok(pattern) = context.reflect(parse_pattern) {
-                    patterns.push(pattern);
-                }
+                    (
+                        opening_bracket.span.merge(span_of_closing_bracket),
+                        path,
+                        Some(type_annotation),
+                    )
+                } else {
+                    let path = context.reflect(parse_path)?;
+                    (path.inner.span, path, None)
+                };
 
-                Ok(Pattern::Deconstruction {
-                    span: constructor.inner.span.merge(
-                        patterns
-                            .last()
-                            .map(|pattern| pattern.span())
-                            .unwrap_or(constructor.inner.span),
-                    ),
-                    constructor,
-                    patterns,
+                Ok(Pattern::Path {
+                    path,
+                    span,
+                    type_annotation,
                 })
             })
             // @Bug or_else(_) produces bad error messages
@@ -738,6 +771,7 @@ pub mod expression {
                 let span_of_opening_bracket =
                     context.consume(lexer::TokenKind::OpeningRoundBracket)?.span;
                 let mut pattern = parse_pattern(context)?;
+
                 let span_of_closing_bracket =
                     context.consume(lexer::TokenKind::ClosingRoundBracket)?.span;
 

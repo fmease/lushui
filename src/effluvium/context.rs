@@ -54,18 +54,18 @@ enum Entity {
 }
 
 impl Entity {
-    fn r#type(&self) -> &Expression {
+    fn r#type(&self) -> Expression {
         match self {
-            Self::Expression { r#type, .. } => r#type,
-            Self::DataType { r#type, .. } => r#type,
-            Self::Constructor { r#type, .. } => r#type,
-            Self::Parameter { r#type, .. } => r#type,
+            Self::Expression { r#type, .. } => r#type.clone(),
+            Self::DataType { r#type, .. } => r#type.clone(),
+            Self::Constructor { r#type, .. } => r#type.clone(),
+            Self::Parameter { r#type, .. } => r#type.clone(),
         }
     }
 
-    fn retrieve_value(&self) -> Option<&Expression> {
+    fn retrieve_value(&self) -> Option<Expression> {
         match self {
-            Entity::Expression { expression, .. } => Some(expression),
+            Entity::Expression { expression, .. } => Some(expression.clone()),
             _ => None,
         }
     }
@@ -112,23 +112,41 @@ pub struct ModuleScope {
 }
 
 impl ModuleScope {
-    pub fn contains(self, binding: &Identifier) -> bool {
-        self.bindings.borrow().contains_key(binding)
+    // @Task remove this function and move duplicate def logic into the lookup functions
+    pub fn contains(self, binder: &Identifier) -> bool {
+        self.bindings.borrow().contains_key(binder)
     }
 
-    pub fn lookup_type(self, binding: &Identifier) -> Option<Expression> {
-        self.bindings
-            .borrow()
-            .get(binding)
-            .map(Entity::r#type)
-            .cloned()
+    pub fn lookup_type(self, binder: &Identifier) -> Option<Expression> {
+        self.bindings.borrow().get(binder).map(Entity::r#type)
     }
 
-    pub fn lookup_value(self, binding: &Identifier) -> Option<Option<Expression>> {
+    pub fn lookup_value(self, binder: &Identifier) -> Option<Option<Expression>> {
         self.bindings
             .borrow()
-            .get(binding)
-            .map(|entity| entity.retrieve_value().cloned())
+            .get(binder)
+            .map(|entity| entity.retrieve_value())
+    }
+
+    pub fn is_constructor(self, binder: &Identifier) -> bool {
+        self.bindings
+            .borrow()
+            .get(binder)
+            .map(|entity| matches!(entity, Entity::Constructor { .. }))
+            .unwrap_or(false)
+    }
+
+    // @Temporary 
+    pub fn values_of_type_can_be_case_differenciated(self, binder: &Identifier) -> bool {
+        unimplemented!()
+    }
+
+    // @Task better API, ah ugly: we need to clone the whole vector because Scope is Rc'd
+    pub fn constructors(self, binder: &Identifier) -> Result<Vec<Identifier>, ()> {
+        match self.bindings.borrow().get(binder).ok_or(())? {
+            Entity::DataType { constructors, .. } => Ok(constructors.clone()),
+            _ => Err(()),
+        }
     }
 
     // @Beacon @Beacon @Beacon @Bug @Bug this deeply clones the *whole* HashMap (set of declarations!!)

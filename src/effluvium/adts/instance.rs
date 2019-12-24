@@ -9,6 +9,8 @@
 //! existentials and specialized instances but we first might want to
 //! feature-gate them.
 
+use std::rc::Rc;
+
 use crate::hir::{expression, Expression, Identifier};
 use crate::effluvium::{Result, ModuleScope, Error, equal};
 
@@ -47,9 +49,9 @@ pub(in crate::effluvium) fn constructor_is_instance_of_type(
 
     equal(
         Expression::Path(
-            expression::Path {
+            Rc::new(expression::Path {
                 identifier: type_name,
-            },
+            }),
             (),
         ),
         callee,

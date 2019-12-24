@@ -113,7 +113,6 @@ pub mod expression {
     // there might not be any span information if synthesize HIR nodes (common thing probably)
     // @Note we can also think about **interning** Expressions but not sure if a good idea
     // @Beacon @Beacon @Note rename P: Phase to D: Discrimant and have Raw, Normalized, Type (more to come)
-    // @Note currently waste memory at nattypeliterl, typeliteral,usein (Rc::new's on ~unit)
     #[derive(Clone, Debug)]
     pub enum Expression<P: Phase = InitialPhase> {
         PiTypeLiteral(Rc<PiTypeLiteral>, P::PiTypeLiteral),
@@ -123,14 +122,14 @@ pub mod expression {
         // NatTypeLiteral(Rc<NatTypeLiteral>, P::NatTypeLiteral),
         NatTypeLiteral(NatTypeLiteral, P::NatTypeLiteral),
         NatLiteral(Rc<NatLiteral>, P::NatLiteral),
-        // Path(Rc<Path>, P::Path),
-        Path(Path, P::Path),
-        // Hole(Rc<Hole>, P::Hole),
-        Hole(Hole, P::Hole),
+        Path(Rc<Path>, P::Path),
+        Hole(Rc<Hole>, P::Hole),
         LambdaLiteral(Rc<LambdaLiteral>, P::LambdaLiteral),
         UseIn(Rc<UseIn>, P::UseIn),
         CaseAnalysis(Rc<CaseAnalysis>, P::CaseAnalysis),
     }
+
+    const _: () = assert!(std::mem::size_of::<Expression>() == 16);
 
     pub fn lower_expression(expression: parser::Expression) -> Expression {
         match expression {
@@ -164,15 +163,15 @@ pub mod expression {
                 (),
             ),
             parser::Expression::Path(path) => Expression::Path(
-                Path {
+                Rc::new(Path {
                     identifier: Identifier::Plain(path.inner),
-                },
+                }),
                 (),
             ),
             parser::Expression::Hole(hole) => Expression::Hole(
-                Hole {
+                Rc::new(Hole {
                     tag: Identifier::Plain(hole.tag),
-                },
+                }),
                 (),
             ),
             parser::Expression::LambdaLiteral(literal) => {
@@ -253,8 +252,33 @@ pub mod expression {
                 )
             }
             parser::Expression::UseIn(_use_in) => unimplemented!(),
-            // @Task
-            parser::Expression::CaseAnalysis(_case_analysis) => unimplemented!(),
+            parser::Expression::CaseAnalysis(case_analysis) => {
+                let mut cases = Vec::new();
+
+                for case_group in case_analysis.cases {
+                    // @Task naïvely lowering this, results is worse error messages if the patterns don't introduce the
+                    // same bindings, example: `'of Foo 'of Bar x` gives the error `x not defined` which is not *that*
+                    // bad but we can do better (like Rust does) and error with `x` not defined in both arms/cases
+                    if case_group.patterns.len() > 1 {
+                        eprintln!("(compiler bug warning) contracted cases not thoroughly supported yet");
+                    }
+
+                    for pattern in case_group.patterns {
+                        cases.push(CaseAnalysisCase {
+                            pattern: lower_pattern(pattern),
+                            expression: lower_expression(case_group.expression.clone()),
+                        });
+                    }
+                }
+
+                Expression::CaseAnalysis(
+                    Rc::new(CaseAnalysis {
+                        expression: lower_expression(case_analysis.expression),
+                        cases,
+                    }),
+                    (),
+                )
+            }
         }
     }
 
@@ -292,6 +316,15 @@ pub mod expression {
         pub identifier: Identifier,
     }
 
+    impl Path {
+        // currently always returns true because we don't support paths yet
+        // with more than one segment in it
+        /// Amount of path segments is one.
+        pub fn is_simple(&self) -> bool {
+            true
+        }
+    }
+
     // @Note don't reference-count because it already uses interning
     #[derive(Clone, Debug)]
     pub struct Hole {
@@ -311,7 +344,58 @@ pub mod expression {
     pub struct UseIn {}
 
     #[derive(Clone, Debug)]
-    pub struct CaseAnalysis {}
+    pub struct CaseAnalysis {
+        pub expression: Expression,
+        pub cases: Vec<CaseAnalysisCase>,
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct CaseAnalysisCase {
+        pub pattern: Pattern,
+        pub expression: Expression,
+    }
+
+    // @Task reference-count variants to reduce size of nat patterns
+    // (get size of Pattern first)
+    #[derive(Debug, Clone)]
+    pub enum Pattern {
+        NatLiteral(NatLiteral),
+        Path {
+            path: Path,
+            type_annotation: Option<Expression>,
+        },
+        Application {
+            callee: Rc<Pattern>,
+            argument: Rc<Pattern>,
+        },
+    }
+
+    // @Note currently, parser::expression::Pattern and Pattern are identical!
+    // (apart from forgetting span information)
+    // this means this function costs a lot of memory and time but is currently useless
+    fn lower_pattern(pattern: parser::expression::Pattern) -> Pattern {
+        match pattern {
+            parser::expression::Pattern::NatLiteral(literal) => Pattern::NatLiteral(NatLiteral {
+                value: literal.value,
+            }),
+            parser::expression::Pattern::Path {
+                path,
+                type_annotation,
+                ..
+            } => Pattern::Path {
+                path: Path {
+                    identifier: Identifier::Plain(path.inner),
+                },
+                type_annotation: type_annotation.map(lower_expression),
+            },
+            parser::expression::Pattern::Application {
+                callee, argument, ..
+            } => Pattern::Application {
+                callee: Rc::new(lower_pattern(*callee)),
+                argument: Rc::new(lower_pattern(*argument)),
+            },
+        }
+    }
 }
 
 fn lower_annotated_parameters(

@@ -6,10 +6,10 @@ use std::fs::File;
 use std::io::{BufReader, Read};
 
 fn main() {
-    // dbg!(std::mem::size_of::<parser::Expression>(), 96);
-    // dbg!(std::mem::size_of::<parser::Declaration>(), 264);
-    // dbg!(std::mem::size_of::<hir::Expression>(), 72);
-    // dbg!(std::mem::size_of::<hir::Declaration>(), 192);
+    dbg!(std::mem::size_of::<parser::Expression>(), 96);
+    dbg!(std::mem::size_of::<parser::Declaration>(), 264);
+    dbg!(std::mem::size_of::<hir::Expression>(), 72);
+    dbg!(std::mem::size_of::<hir::Declaration>(), 192);
 
     // @Task improve error handling
     let mut arguments = std::env::args().skip(1);

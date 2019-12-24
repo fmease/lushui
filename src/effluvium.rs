@@ -1,11 +1,12 @@
 //! First type-checker plus backend (tree-walk interpreter).
 //!
 //! The code in here is all temporary and needs to be reworked quite a bit!
+//! Especially substitution! We should use Debruijn-indices, for real!
 
 // @Task rename to scope
+mod adts;
 mod context;
 mod error;
-mod adts;
 
 use crate::hir::{self, expression, Declaration, Expression, Identifier};
 use crate::parser::Explicitness;
@@ -20,7 +21,7 @@ use std::rc::Rc;
 // must be annotated with a type. And since we don't have a dedicated Error::InternalCompilerError yet,
 // we use this constant for an error message:
 const MISSING_ANNOTATION: &str =
-    "(compiler bug) currently lambda literal parameters must be type-annotated";
+    "(compiler bug) currently lambda literal parameters and patterns must be type-annotated";
 
 // @Task make pure returning new Context
 // @Question this is eager evaluation, right?
@@ -124,6 +125,9 @@ fn substitute(expression: Expression, environment: Environment, scope: ModuleSco
             )
         }
         Expression::LambdaLiteral(literal, _) => {
+            // potential @Bug we totally ignore literal.body_type_annotation here. There should be substitutions
+            // as well, right? Also, we set the body_type_annotation to None which means we drop the information
+            // @Task incorporate literal.body_type_annotation in the substitution process!
             let (binder, parameter_type, body) = abstraction_substitute(
                 Some(literal.parameter.clone()),
                 literal
@@ -160,15 +164,144 @@ fn substitute(expression: Expression, environment: Environment, scope: ModuleSco
         ),
         Expression::Hole(_, _) => unimplemented!(),
         Expression::UseIn(_, _) => unimplemented!(),
-        Expression::CaseAnalysis(_, _) => unimplemented!(),
+        Expression::CaseAnalysis(case_analysis, _) => Expression::CaseAnalysis(
+            Rc::new(expression::CaseAnalysis {
+                expression: substitute(
+                    case_analysis.expression.clone(),
+                    environment.clone(),
+                    scope.clone(),
+                ),
+                cases: case_analysis
+                    .cases
+                    .iter()
+                    .map(|case| {
+                        case_analysis_case_substitute(
+                            case.clone(),
+                            environment.clone(),
+                            scope.clone(),
+                        )
+                    })
+                    .collect(),
+            }),
+            (),
+        ),
     }
+}
+
+fn case_analysis_case_substitute(
+    case: expression::CaseAnalysisCase,
+    environment: Environment,
+    scope: ModuleScope,
+) -> expression::CaseAnalysisCase {
+    let (pattern, environment) = pattern_substitute(case.pattern, environment, scope.clone());
+
+    expression::CaseAnalysisCase {
+        pattern,
+        expression: substitute(case.expression.clone(), environment, scope),
+    }
+}
+
+fn pattern_substitute(
+    pattern: expression::Pattern,
+    environment: Environment,
+    scope: ModuleScope,
+) -> (expression::Pattern, Environment) {
+    match pattern {
+        expression::Pattern::NatLiteral(_) => (pattern, environment),
+        expression::Pattern::Path {
+            path,
+            type_annotation,
+        } => {
+            let type_annotation = type_annotation
+                .map(|annotation| substitute(annotation, environment.clone(), scope.clone()));
+
+            if is_matchable(&path, scope.clone()) {
+                return (
+                    expression::Pattern::Path {
+                        path,
+                        type_annotation,
+                    },
+                    environment,
+                );
+            }
+
+            let refreshed_binder = path.identifier.refresh(scope.clone());
+            // @Bug geez deep copy, fix this, use a better data structure
+            let mut environment = environment.as_ref().clone();
+            environment.insert(
+                path.identifier.clone(),
+                Expression::Path(
+                    Rc::new(expression::Path {
+                        identifier: refreshed_binder.clone(),
+                    }),
+                    (),
+                ),
+            );
+            (
+                expression::Pattern::Path {
+                    path: expression::Path {
+                        identifier: refreshed_binder,
+                    },
+                    type_annotation,
+                },
+                Rc::new(environment),
+            )
+        }
+        expression::Pattern::Application { callee, argument } => {
+            // @Bug disallow `n m` where n is a path which is not matchable
+            // @Note `(N m) o` is still legal obviously, N matchable, m not
+            // @Question is there a better place than here?
+
+            // @Note bad (memory): we deep-copy an Rc!
+            let (callee, environment) =
+                pattern_substitute(callee.as_ref().clone(), environment, scope.clone());
+            let (argument, environment) =
+                pattern_substitute(argument.as_ref().clone(), environment, scope);
+
+            (
+                expression::Pattern::Application {
+                    callee: Rc::new(callee),
+                    argument: Rc::new(argument),
+                },
+                environment,
+            )
+        }
+    }
+}
+
+// @Beacon @Note this is used in normalize, *not* substitute
+fn insert_matchables_from_pattern(pattern: &expression::Pattern, scope: ModuleScope) {
+    match &pattern {
+        expression::Pattern::NatLiteral(_) => {}
+        expression::Pattern::Path {
+            path,
+            type_annotation,
+        } => {
+            if !is_matchable(path, scope.clone()) {
+                scope.insert_parameter(
+                    path.identifier.clone(),
+                    type_annotation.as_ref().expect(MISSING_ANNOTATION).clone(),
+                );
+            }
+        }
+        expression::Pattern::Application { callee, argument } => {
+            insert_matchables_from_pattern(callee, scope.clone());
+            insert_matchables_from_pattern(argument, scope.clone());
+        }
+    }
+}
+
+// @Task move somewhere more appropriate
+// @Task verify (esp. b/c shadowing)
+fn is_matchable(path: &expression::Path, scope: ModuleScope) -> bool {
+    path.is_simple() && scope.is_constructor(&path.identifier)
 }
 
 pub fn infer_type(expression: Expression, scope: ModuleScope) -> Result<hir::Expression> {
     Ok(match expression {
         Expression::Path(path, _) => scope
             .lookup_type(&path.identifier)
-            .ok_or_else(|| Error::UndefinedBinding(path.identifier))?,
+            .ok_or_else(|| Error::UndefinedBinding(path.identifier.clone()))?,
         Expression::TypeLiteral(_, _) | Expression::NatTypeLiteral(_, _) => {
             Expression::TypeLiteral(expression::TypeLiteral {}, ())
         }
@@ -223,6 +356,8 @@ pub fn infer_type(expression: Expression, scope: ModuleScope) -> Result<hir::Exp
             // @Task verify type_of_expression is already normalized
             // @Note maybe use dbg-macro?
             let type_of_expression = infer_type(application.expression.clone(), scope.clone())?;
+            // @Note this is an example where we normalize after an infer_type which means infer_type
+            // returns possibly non-normalized expressions, can we do better?
             match normalize(type_of_expression, scope.clone())? {
                 Expression::PiTypeLiteral(literal, _) => {
                     let argument_type = infer_type(application.argument.clone(), scope.clone())?;
@@ -254,12 +389,69 @@ pub fn infer_type(expression: Expression, scope: ModuleScope) -> Result<hir::Exp
         }
         Expression::Hole(_, _) => unimplemented!(),
         Expression::UseIn(_, _) => unimplemented!(),
-        Expression::CaseAnalysis(_, _) => unimplemented!(),
+        Expression::CaseAnalysis(case_analysis, _) => {
+            let r#type = infer_type(case_analysis.expression.clone(), scope.clone())?;
+            
+            // @Task generalize this (because then, we don't need to check whether we supplied too
+            // many constructors (would be a type error on its own, but...)/binders separately, or whatever)
+            if case_analysis.cases.is_empty() {
+                return if is_uninhabited(r#type, scope) {
+                    // (A: 'Type) -> A
+                    Ok(Expression::PiTypeLiteral(Rc::new(expression::PiTypeLiteral {
+                        // @Question is Identifier::Stub error-prone (in respect to substitution/name clashes)?
+                        parameter: Some(Identifier::Stub),
+                        domain: Expression::TypeLiteral(expression::TypeLiteral {}, ()),
+                        codomain: Expression::Path(Rc::new(expression::Path { identifier: Identifier::Stub }), ()),
+                        // @Temporary explicitness
+                        explicitness: Explicitness::Explicit,
+                    }), ()))
+                } else {
+                    // @Task supply more information
+                    Err(Error::NotAllConstructorsCovered)
+                }
+            }
+
+
+            // @Task verify that
+            // * patterns are of correct type (i.e. r#type is an ADT and the constructors are the valid ones)
+            // * all constructors are covered
+            // * all case_analysis.cases>>.expressions are of the same type
+            unimplemented!()
+        }
     })
 }
 
-// @Beacon @Task use type-tagging: tag the hir::Expression with a P: Phase type parameter which for now
-// differenciates between Initial and Normalized
+// @Note assumes expression_is_type(r#type, ..) holds
+// @Task we need to consider polymorphic types like `Identity` (with `Identity'`) where
+// `Identity Uninhabited` is uninhabited but `Identity Inhabited` is inhabited
+// @Note becomes important when we handle Expression::Application
+fn is_uninhabited(r#type: Expression, scope: ModuleScope) -> bool {
+    match r#type {
+        Expression::PiTypeLiteral(literal, _) => {
+            // return |codomain|^|domain| (consider dependent types|parameters)
+            unimplemented!()
+        },
+        // @Note we need to be able pass type arguments to is_uninhabited!
+        Expression::Application(application, _) => unimplemented!(),
+        Expression::TypeLiteral(_, _) |
+        Expression::NatTypeLiteral(_, _) => true,
+        Expression::Path(_path, _) => {
+            // @Task look up path in context and decide upon returned information
+            // if is an ADT, go through every constructor and for each one check
+            // @Beacon `is_applicable` which checks whether the domain (only!) of the type
+            // is uninhabited
+            unimplemented!()
+        },
+        Expression::Hole(_hole, _) => unimplemented!(),
+        // @Question unreachable??
+        Expression::LambdaLiteral(literal, _) => unreachable!(),
+        Expression::UseIn(_, _) => unimplemented!(),
+        Expression::CaseAnalysis(case_analysis, _) => unimplemented!(),
+        Expression::NatLiteral(_, _) => unreachable!(),
+    }
+}
+
+// @Task differenciate between Expression<InitialPhase> and Expression<Normalized>
 pub fn normalize(expression: Expression, scope: ModuleScope) -> Result<Expression> {
     Ok(match expression {
         Expression::Path(ref path, _) => scope
@@ -431,54 +623,54 @@ fn equal(left: Expression, right: Expression, scope: ModuleScope) -> bool {
 // @Temporary signature
 // @Note bad signature (deviation between pi and lambda)
 fn abstraction_substitute(
-    binder: Option<Identifier>,
-    parameter: Expression,
+    parameter: Option<Identifier>,
+    parameter_type: Expression,
     expression: Expression,
     environment: Environment,
     scope: ModuleScope,
 ) -> (Option<Identifier>, Expression, Expression) {
-    let parameter = substitute(parameter, environment.clone(), scope.clone());
+    let parameter_type = substitute(parameter_type, environment.clone(), scope.clone());
 
-    let (refreshed_binder, environment) = match binder {
-        Some(binder) => {
-            let refreshed_binder = binder.refresh(scope.clone());
+    let (refreshed_parameter, environment) = match parameter {
+        Some(parameter) => {
+            let refreshed_parameter = parameter.refresh(scope.clone());
+            // @Bug geez deep copy, fix this, use a better data structure
             let mut environment = environment.as_ref().clone();
             environment.insert(
-                binder.clone(),
+                parameter.clone(),
                 Expression::Path(
-                    expression::Path {
-                        identifier: refreshed_binder.clone(),
-                    },
+                    Rc::new(expression::Path {
+                        identifier: refreshed_parameter.clone(),
+                    }),
                     (),
                 ),
             );
-            (Some(refreshed_binder), Rc::new(environment))
+            (Some(refreshed_parameter), Rc::new(environment))
         }
         None => (None, environment),
     };
     (
-        refreshed_binder,
-        parameter,
+        refreshed_parameter,
+        parameter_type,
         substitute(expression, environment, scope),
     )
 }
 
 // @Temporary signature
 fn normalize_abstraction(
-    binder: Option<Identifier>,
-    parameter: Expression,
+    parameter: Option<Identifier>,
+    parameter_type: Expression,
     expression: Expression,
     scope: ModuleScope,
 ) -> Result<(Expression, Expression)> {
-    let parameter = normalize(parameter, scope.clone())?;
+    let parameter_type = normalize(parameter_type, scope.clone())?;
     Ok((
-        parameter.clone(),
-        match binder {
-            Some(binder) => normalize(
+        parameter_type.clone(),
+        match parameter {
+            Some(parameter) => normalize(
                 expression,
-                scope.extend_with_parameter(binder.clone(), parameter),
+                scope.extend_with_parameter(parameter.clone(), parameter_type),
             )?,
-            // @Temporary expensive
             None => expression.clone(),
         },
     ))
@@ -505,9 +697,9 @@ fn abstraction_equal(
                         environment.insert(
                             binder2.clone(),
                             Expression::Path(
-                                expression::Path {
+                                Rc::new(expression::Path {
                                     identifier: binder1.clone(),
-                                },
+                                }),
                                 (),
                             ),
                         );
