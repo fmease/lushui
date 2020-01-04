@@ -2,7 +2,7 @@
 ;;; 'of 0 'of 1 => 10
 ;;; 'of x => x
 
-'data Bool: 'Type =#
+'data Bool: 'Type =
     False: Bool
     True: Bool
 

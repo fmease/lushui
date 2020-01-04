@@ -5,13 +5,13 @@
 
 // @Task rename to scope
 mod adts;
-mod context;
+mod scope;
 mod error;
 
 use crate::hir::{self, expression, Declaration, Expression, Identifier};
 use crate::parser::Explicitness;
-use context::Environment;
-pub use context::ModuleScope;
+use scope::Environment;
+pub use scope::ModuleScope;
 use error::{Error, Result};
 
 use std::collections::HashMap;
@@ -92,8 +92,8 @@ pub fn evaluate_declaration(declaration: &Declaration, scope: ModuleScope) -> Re
                 evaluate_declaration(declaration, scope.clone())?;
             }
         }
-        Declaration::Use => unimplemented!(),
-        Declaration::Foreign => unimplemented!(),
+        Declaration::Use => todo!(),
+        Declaration::Foreign => todo!(),
     })
 }
 
@@ -162,8 +162,8 @@ fn substitute(expression: Expression, environment: Environment, scope: ModuleSco
             }),
             (),
         ),
-        Expression::Hole(_, _) => unimplemented!(),
-        Expression::UseIn(_, _) => unimplemented!(),
+        Expression::Hole(_, _) => todo!(),
+        Expression::UseIn(_, _) => todo!(),
         Expression::CaseAnalysis(case_analysis, _) => Expression::CaseAnalysis(
             Rc::new(expression::CaseAnalysis {
                 expression: substitute(
@@ -387,36 +387,50 @@ pub fn infer_type(expression: Expression, scope: ModuleScope) -> Result<hir::Exp
                 }
             }
         }
-        Expression::Hole(_, _) => unimplemented!(),
-        Expression::UseIn(_, _) => unimplemented!(),
+        Expression::Hole(_, _) => todo!(),
+        Expression::UseIn(_, _) => todo!(),
         Expression::CaseAnalysis(case_analysis, _) => {
             let r#type = infer_type(case_analysis.expression.clone(), scope.clone())?;
             
             // @Task generalize this (because then, we don't need to check whether we supplied too
             // many constructors (would be a type error on its own, but...)/binders separately, or whatever)
-            if case_analysis.cases.is_empty() {
-                return if is_uninhabited(r#type, scope) {
-                    // (A: 'Type) -> A
-                    Ok(Expression::PiTypeLiteral(Rc::new(expression::PiTypeLiteral {
-                        // @Question is Identifier::Stub error-prone (in respect to substitution/name clashes)?
-                        parameter: Some(Identifier::Stub),
-                        domain: Expression::TypeLiteral(expression::TypeLiteral {}, ()),
-                        codomain: Expression::Path(Rc::new(expression::Path { identifier: Identifier::Stub }), ()),
-                        // @Temporary explicitness
-                        explicitness: Explicitness::Explicit,
-                    }), ()))
-                } else {
-                    // @Task supply more information
-                    Err(Error::NotAllConstructorsCovered)
-                }
-            }
-
+            // if case_analysis.cases.is_empty() {
+            //     // @Note let's do the important stuff first before going down the rabbit hole of
+            //     // checking whether a type is inhabited or not
+            //     todo!()
+            //     // return if is_uninhabited(r#type, scope) {
+            //     //     // (A: 'Type) -> A
+            //     //     Ok(Expression::PiTypeLiteral(Rc::new(expression::PiTypeLiteral {
+            //     //         // @Question is Identifier::Stub error-prone (in respect to substitution/name clashes)?
+            //     //         parameter: Some(Identifier::Stub),
+            //     //         domain: Expression::TypeLiteral(expression::TypeLiteral {}, ()),
+            //     //         codomain: Expression::Path(Rc::new(expression::Path { identifier: Identifier::Stub }), ()),
+            //     //         // @Temporary explicitness
+            //     //         explicitness: Explicitness::Explicit,
+            //     //     }), ()))
+            //     // } else {
+            //     //     // @Task supply more information
+            //     //     Err(Error::NotAllConstructorsCovered)
+            //     // }
+            // }
 
             // @Task verify that
             // * patterns are of correct type (i.e. r#type is an ADT and the constructors are the valid ones)
             // * all constructors are covered
             // * all case_analysis.cases>>.expressions are of the same type
-            unimplemented!()
+
+            let type_path = match r#type {
+                Expression::Path(path, _) => path.identifier.clone(),
+                // @Note support Expression::Application to allow analysing polymorphic types
+                // @Task
+                _ => panic!("encountered unsupported type to be case-analysed"),
+            };
+
+            let constructors = scope.constructors(&type_path);
+
+            dbg!(&constructors);
+
+            todo!()
         }
     })
 }
@@ -429,24 +443,23 @@ fn is_uninhabited(r#type: Expression, scope: ModuleScope) -> bool {
     match r#type {
         Expression::PiTypeLiteral(literal, _) => {
             // return |codomain|^|domain| (consider dependent types|parameters)
-            unimplemented!()
-        },
+            todo!()
+        }
         // @Note we need to be able pass type arguments to is_uninhabited!
-        Expression::Application(application, _) => unimplemented!(),
-        Expression::TypeLiteral(_, _) |
-        Expression::NatTypeLiteral(_, _) => true,
+        Expression::Application(application, _) => todo!(),
+        Expression::TypeLiteral(_, _) | Expression::NatTypeLiteral(_, _) => true,
         Expression::Path(_path, _) => {
             // @Task look up path in context and decide upon returned information
             // if is an ADT, go through every constructor and for each one check
             // @Beacon `is_applicable` which checks whether the domain (only!) of the type
             // is uninhabited
-            unimplemented!()
-        },
-        Expression::Hole(_hole, _) => unimplemented!(),
+            todo!()
+        }
+        Expression::Hole(_hole, _) => todo!(),
         // @Question unreachable??
         Expression::LambdaLiteral(literal, _) => unreachable!(),
-        Expression::UseIn(_, _) => unimplemented!(),
-        Expression::CaseAnalysis(case_analysis, _) => unimplemented!(),
+        Expression::UseIn(_, _) => todo!(),
+        Expression::CaseAnalysis(case_analysis, _) => todo!(),
         Expression::NatLiteral(_, _) => unreachable!(),
     }
 }
@@ -526,9 +539,9 @@ pub fn normalize(expression: Expression, scope: ModuleScope) -> Result<Expressio
                 (),
             )
         }
-        Expression::Hole(_, _) => unimplemented!(),
-        Expression::UseIn(_, _) => unimplemented!(),
-        Expression::CaseAnalysis(_, _) => unimplemented!(),
+        Expression::Hole(_, _) => todo!(),
+        Expression::UseIn(_, _) => todo!(),
+        Expression::CaseAnalysis(_, _) => todo!(),
     })
 }
 
