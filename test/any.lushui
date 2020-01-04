@@ -1,0 +1,22 @@
+data Any: Type =
+    Any': (A: Type) -> A -> Any
+
+data List (A: Type): Type =
+    Nil (A: Type): List A
+    ;;; @Bug List A Nat does not throw an error?
+    ;;; Cons (A: Type): A -> List A -> List A Nat
+    Cons (A: Type): A -> List A -> List A
+
+data Unit: Type =
+    Unit': Unit
+
+data Bool: Type =
+    False: Bool
+    True: Bool
+
+foo: List Bool =
+    Cons Bool False (Cons Bool True (Nil Bool))
+
+bar: List Any =
+    Cons Any (Any' Unit Unit') (Cons Any (Any' Bool False) (Nil Any))
+

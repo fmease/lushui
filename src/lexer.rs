@@ -70,7 +70,7 @@ pub enum Token {
     // @Note unused, just for demonstration on how the API is gonna look like
     // TextLiteral(String),
     NatLiteral(Nat),
-    Comma,
+    VerticalBar,
     Colon,
     Equals,
     Backslash,
@@ -92,7 +92,7 @@ impl Token {
             Self::Identifier(_) => TokenKind::Identifier,
             Self::Punctuation => TokenKind::Punctuation,
             Self::NatLiteral(_) => TokenKind::NatLiteral,
-            Self::Comma => TokenKind::Comma,
+            Self::VerticalBar => TokenKind::VerticalBar,
             Self::Colon => TokenKind::Colon,
             Self::Equals => TokenKind::Equals,
             Self::Backslash => TokenKind::Backslash,
@@ -120,7 +120,7 @@ pub enum TokenKind {
     // @Note unused
     // TextLiteral,
     NatLiteral,
-    Comma,
+    VerticalBar,
     Colon,
     Equals,
     Backslash,
@@ -134,6 +134,7 @@ pub enum TokenKind {
     ClosingRoundBracket,
 }
 
+// used for error reporting
 impl fmt::Display for TokenKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
@@ -142,7 +143,7 @@ impl fmt::Display for TokenKind {
             Self::Identifier => "identifier",
             Self::Punctuation => "punctuation",
             Self::NatLiteral => "natural number literal",
-            Self::Comma => "comma",
+            Self::VerticalBar => "vertical bar",
             Self::Colon => "colon",
             Self::Equals => "equals sign",
             Self::Backslash => "backslash",
@@ -158,7 +159,6 @@ impl fmt::Display for TokenKind {
     }
 }
 
-// @Note in contexts like here, it's always without the sigil!
 macro_rules! keywords {
     { $( $( #[$doc:meta] )+ $keyword:ident $representation:literal, )+ } => {
         #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -188,7 +188,7 @@ macro_rules! keywords {
 }
 
 keywords! {
-    /// The keyword `'as` renaming bindings in certain syntactic constructs.
+    /// The keyword `as` renaming bindings in certain syntactic constructs.
     As "as",
     /// The keyword `'_` standing for either an expression that should be infered or an unnameable identifier.
     Blank "_",
@@ -198,7 +198,7 @@ keywords! {
     Data "data",
     /// The keyword `'foreign` signaling a FFA.
     Foreign "foreign",
-    // @Note this is not up-to-date anymore: There exists bracket-syntax now!
+    // @Task update to `?`-syntax
     /// The keyword `'hole` used for typed holes.
     Hole "hole",
     /// The keyword `'in` being part of let/in-expressions
@@ -211,8 +211,8 @@ keywords! {
     Nat "Nat",
     /// The keyword `'of` found in case analyses.
     Of "of",
-    /// The keyword `'root` standing for the root module.
-    Root "root",
+    // /// The keyword `'root` standing for the root module.
+    // Root "root",
     /// The keyword `'Parent` refering to a parent module.
     Super "super",
     /// The keyword `'Type` naming the type of types.
@@ -224,7 +224,6 @@ keywords! {
 /// Amount of spaces making up one unit of indentation.
 pub const INDENTATION_IN_SPACES: usize = 4;
 
-const SIGIL: char = '\'';
 const WHITESPACE: char = ' ';
 
 fn is_punctuation(character: char) -> bool {
@@ -317,16 +316,9 @@ pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
             } else {
                 tokens.push(SourceToken::new(Token::Semicolon, Span::new(start, end)))
             }
-        }
-        // @Task dotted identifiers (need to be lexed, cannot be parsed bc whitespace matters)
-        else if character == SIGIL || is_identifier_head(character) {
-            let keyword_candidate = character == SIGIL;
+        } else if is_identifier_head(character) {
             let start = index;
             let mut end = start;
-
-            if keyword_candidate {
-                indexed_characters.next();
-            }
 
             while let Some(&(index, character)) = indexed_characters.peek() {
                 if is_identifier_body(character) {
@@ -348,21 +340,15 @@ pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
             }
 
             let span = Span::new(start, end);
-            if keyword_candidate {
-                if let Ok(keyword_kind) = source[start + 1..=end].parse() {
-                    tokens.push(SourceToken::new(Token::Keyword(keyword_kind), span))
+
+            tokens.push(SourceToken::new(
+                if let Ok(keyword) = source[start..=end].parse() {
+                    Token::Keyword(keyword)
                 } else {
-                    return Err(Error {
-                        kind: ErrorKind::UnknownKeyword(source[start + 1..=end].to_owned()),
-                        span,
-                    });
-                }
-            } else {
-                tokens.push(SourceToken::new(
-                    Token::Identifier(Atom::from(&source[span.range()])),
-                    span,
-                ))
-            }
+                    Token::Identifier(Atom::from(&source[span.range()]))
+                },
+                span,
+            ));
         } else if character == '\n' {
             tokens.push(SourceToken::new(Token::LineBreak, Span::new(index, index)));
 
@@ -426,6 +412,7 @@ pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
                 match &source[start..=end] {
                     ":" => Token::Colon,
                     "=" => Token::Equals,
+                    "|" => Token::VerticalBar,
                     "\\" => Token::Backslash,
                     "->" => Token::ThinArrow,
                     "=>" => Token::WideArrow,
@@ -460,7 +447,6 @@ pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
                 match character {
                     '(' => Token::OpeningRoundBracket,
                     ')' => Token::ClosingRoundBracket,
-                    ',' => Token::Comma,
                     _ => {
                         return Err(Error {
                             kind: ErrorKind::IllegalCharacter(character),

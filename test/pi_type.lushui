@@ -1,0 +1,27 @@
+;;; Testing out pi-type-related bugs
+
+identity (A: Type) (a: A): A = a
+
+data Void: identity Type Type =
+
+;;; @Bug parse error
+;;; data Bar: Type =
+;;;     ;;; Crazy (A: Type): A
+;;;     Foo: Bar
+;;;     ;;; @Bug fails the instance check even though it should pass
+;;;     ;;; Ban: identity Type Bar
+
+;;; @Note no syntax error here. Above, there might be a stray indentation/dendentation or
+;;; might "miss"
+data Bar: Type =
+    ;;; Crazy (A: Type): A
+    Foo: Bar
+
+data List (A: Type): Type =
+    Nil (A: Type): List A
+    Cons (A: Type): A -> List A
+
+data Ouw: Type =
+    Ouw': Ouw
+    One: Ouw
+    Two: Nat -> Ouw

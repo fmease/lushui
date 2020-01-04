@@ -31,7 +31,7 @@ pub enum Declaration {
 
 pub fn lower_declaration(declaration: parser::Declaration) -> Declaration {
     match declaration {
-        parser::Declaration::Let(r#let) => {
+        parser::Declaration::Value(r#let) => {
             // @Note type_annotation is currently lowered twice
             // @Task remove duplicate work
             // @Temporary

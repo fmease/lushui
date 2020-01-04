@@ -1,11 +1,12 @@
 ;;; @Task verify Bar reduces/fix it to reduce:
 
-'let constant (A B: 'Type) (a: A) (b: B): A = a
+constant (A B: Type) (a: A) (b: B): A = a
 
-'data Foo: 'Type =
-    Bar (A: 'Type): constant 'Type 'Type Foo A
+data Foo: Type =
+    ;;; @Bug fails instance check even though it should pass
+    Bar (A: Type): constant Type Type Foo A
 
-;;; ^ sig should reduce to `(A: 'Type) -> Foo`
+;;; ^ sig should reduce to `(A: Type) -> Foo`
 
 ;;; @Question should it though?????? no! it's parametrized!!!
 ;;; what this suggests is a different reduction strategy (gamma-reduction??? maybe)

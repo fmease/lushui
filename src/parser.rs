@@ -26,7 +26,7 @@ pub mod declaration {
     // will be used, I guess
     #[derive(Debug)] // @Temporary
     pub enum Declaration {
-        Let(Box<Let>),
+        Value(Box<Value>),
         Data(Box<Data>),
         Module(Box<Module>),
         Use(Box<Use>),
@@ -38,7 +38,7 @@ pub mod declaration {
     impl Declaration {
         pub fn span(&self) -> Span {
             match self {
-                Self::Let(r#let) => r#let.span,
+                Self::Value(r#let) => r#let.span,
                 Self::Data(data) => data.span,
                 Self::Module(module) => module.span,
                 Self::Use(r#use) => r#use.span,
@@ -55,11 +55,12 @@ pub mod declaration {
                     context,
                 )?)))
             })
-            .or_else(|_| Ok(Declaration::Let(Box::new(parse_let_declaration(context)?))))
+            .or_else(|_| Ok(Declaration::Value(Box::new(parse_value_declaration(context)?))))
     }
 
+    /// The syntax node of value declarations.
     #[derive(Debug)]
-    pub struct Let {
+    pub struct Value {
         pub binder: Identifier,
         pub parameters: AnnotatedParameters,
         pub type_annotation: Expression,
@@ -67,10 +68,7 @@ pub mod declaration {
         pub span: Span,
     }
 
-    fn parse_let_declaration(context: &mut Context<'_>) -> Result<Let> {
-        let span_of_keyword_let = context
-            .consume(lexer::TokenKind::Keyword(lexer::Keyword::Let))?
-            .span;
+    fn parse_value_declaration(context: &mut Context<'_>) -> Result<Value> {
         let binder = context.consume_identifier()?;
         let parameters = parse_annotated_parameters(context)?;
 
@@ -78,8 +76,8 @@ pub mod declaration {
         context.consume(lexer::TokenKind::Equals)?;
         let expression = parse_possibly_indented_expression_followed_by_line_break(context)?;
 
-        Ok(Let {
-            span: span_of_keyword_let.merge(expression.span()),
+        Ok(Value {
+            span: binder.span.merge(expression.span()),
             binder,
             parameters,
             type_annotation,
@@ -87,6 +85,7 @@ pub mod declaration {
         })
     }
 
+    /// The syntax node of data declarations.
     #[derive(Debug)]
     pub struct Data {
         pub binder: Identifier,
@@ -250,7 +249,7 @@ pub mod declaration {
         context: &mut Context<'_>,
     ) -> Result<AnnotatedParameterGroup> {
         context.consume(lexer::TokenKind::OpeningRoundBracket)?;
-        let explicitness = consume_explicitness_comma(context);
+        let explicitness = consume_explicitness_symbol(context);
         let mut parameters = Vec::new();
 
         parameters.push(context.consume_identifier()?);
@@ -364,7 +363,7 @@ pub mod expression {
                 let span_of_opening_round_bracket =
                     context.consume(lexer::TokenKind::OpeningRoundBracket)?.span;
 
-                let explicitness = consume_explicitness_comma(context);
+                let explicitness = consume_explicitness_symbol(context);
                 let binder = context.consume_identifier()?;
                 let parameter = parse_type_annotation(context)?;
 
@@ -439,14 +438,14 @@ pub mod expression {
     // }
 
     // @Task application with semicolon
-    // Application_Or_Lower %left% ::= Lower_Expression (Lower_Expression | "(" "," Expression ")")*
+    // Application_Or_Lower %left% ::= Lower_Expression (Lower_Expression | "(" "|" Expression ")")*
     fn parse_application_or_lower(context: &mut Context<'_>) -> Result<Expression> {
         let mut expression = context.reflect(parse_lower_expression)?;
         while let Ok((argument, explicitness)) = context
             .reflect(|context| Ok((parse_lower_expression(context)?, Explicitness::Explicit)))
             .or_else(|_| -> Result<_> {
                 context.consume(lexer::TokenKind::OpeningRoundBracket)?;
-                context.consume(lexer::TokenKind::Comma)?;
+                context.consume(lexer::TokenKind::VerticalBar)?;
                 let expression = parse_expression(context)?;
                 context.consume(lexer::TokenKind::ClosingRoundBracket)?;
                 Ok((expression, Explicitness::Implicit))
@@ -810,7 +809,7 @@ pub mod expression {
             context: &mut Context<'_>,
         ) -> Result<ParameterGroup> {
             context.consume(lexer::TokenKind::OpeningRoundBracket)?;
-            let explicitness = consume_explicitness_comma(context);
+            let explicitness = consume_explicitness_symbol(context);
             let mut parameters = Vec::new();
 
             parameters.push(context.consume_identifier()?);
@@ -871,8 +870,8 @@ fn parse_expression_followed_by_line_break(context: &mut Context<'_>) -> Result<
     Ok(expression)
 }
 
-fn consume_explicitness_comma(context: &mut Context<'_>) -> Explicitness {
-    match context.consume(lexer::TokenKind::Comma) {
+fn consume_explicitness_symbol(context: &mut Context<'_>) -> Explicitness {
+    match context.consume(lexer::TokenKind::VerticalBar) {
         Ok(_) => Explicitness::Implicit,
         Err(_) => Explicitness::Explicit,
     }
