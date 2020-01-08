@@ -1,4 +1,4 @@
-#![feature(matches_macro, const_if_match, const_panic)]
+#![feature(matches_macro, const_if_match, const_panic, decl_macro)]
 #![forbid(rust_2018_idioms, unused_must_use)]
 
 pub mod lexer;

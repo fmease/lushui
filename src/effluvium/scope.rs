@@ -137,7 +137,7 @@ impl ModuleScope {
     }
 
     // @Temporary 
-    pub fn values_of_type_can_be_case_differenciated(self, binder: &Identifier) -> bool {
+    pub fn values_of_type_can_be_case_differenciated(self, _binder: &Identifier) -> bool {
         unimplemented!()
     }
 

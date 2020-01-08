@@ -13,14 +13,14 @@ impl Display for Declaration {
                 binder,
                 type_annotation,
                 expression,
-            } => write!(f, "'let {}: {} = {}", binder, type_annotation, expression),
+            } => write!(f, "{}: {} = {}", binder, type_annotation, expression),
             Self::Data {
                 binder,
                 type_annotation,
                 constructors,
             } => write!(
                 f,
-                "'data {}: {} =\n{}",
+                "data {}: {} =\n{}",
                 binder,
                 type_annotation,
                 constructors
@@ -30,7 +30,7 @@ impl Display for Declaration {
                     .join("\n")
             ),
             Self::Module { declarations } => {
-                f.write_str("'module =\n")?;
+                f.write_str("module =\n")?;
                 for declaration in declarations {
                     write!(f, "{}\n", declaration)?;
                 }
@@ -53,7 +53,7 @@ impl Display for Constructor {
 impl Display for Expression {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            Self::PiTypeLiteral(literal, _) => write!(
+            Self::PiTypeLiteral(literal) => write!(
                 f,
                 "({}{}{}) -> ({})",
                 literal.explicitness,
@@ -65,17 +65,17 @@ impl Display for Expression {
                 literal.domain,
                 literal.codomain,
             ),
-            Self::Application(application, _) => write!(
+            Self::Application(application) => write!(
                 f,
                 "({}) ({}{})",
                 application.expression, application.explicitness, application.argument,
             ),
-            Self::TypeLiteral(_, _) => f.write_str("'Type"),
-            Self::NatTypeLiteral(_, _) => f.write_str("'Nat"),
-            Self::NatLiteral(literal, _) => write!(f, "{}", literal.value),
-            Self::Path(path, _) => write!(f, "{}", path.identifier),
-            Self::Hole(hole, _) => write!(f, "'hole {}", hole.tag),
-            Self::LambdaLiteral(literal, _) => write!(
+            Self::TypeLiteral => f.write_str("Type"),
+            Self::NatTypeLiteral => f.write_str("Nat"),
+            Self::NatLiteral(literal) => write!(f, "{}", literal.value),
+            Self::Path(path) => write!(f, "{}", path.identifier),
+            Self::Hole(hole) => write!(f, "hole {}", hole.tag),
+            Self::LambdaLiteral(literal) => write!(
                 f,
                 "\\({}{}{}){} => ({})",
                 literal.explicitness,
@@ -92,10 +92,10 @@ impl Display for Expression {
                     .unwrap_or_default(),
                 literal.body
             ),
-            Self::UseIn(_, _) => unimplemented!(),
-            Self::CaseAnalysis(case_analysis, _) => write!(
+            Self::UseIn(_) => unimplemented!(),
+            Self::CaseAnalysis(case_analysis) => write!(
                 f,
-                "'case ({}){}",
+                "case ({}){}",
                 case_analysis.expression,
                 case_analysis
                     .cases
@@ -109,7 +109,7 @@ impl Display for Expression {
 
 impl Display for expression::CaseAnalysisCase {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "'of {} => ({})", self.pattern, self.expression)
+        write!(f, "of {} => ({})", self.pattern, self.expression)
     }
 }
 

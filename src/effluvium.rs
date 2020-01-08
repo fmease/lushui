@@ -5,14 +5,14 @@
 
 // @Task rename to scope
 mod adts;
-mod scope;
 mod error;
+mod scope;
 
-use crate::hir::{self, expression, Declaration, Expression, Identifier};
+use crate::hir::{self, expr, expression, Declaration, Expression, Identifier};
 use crate::parser::Explicitness;
+use error::{Error, Result};
 use scope::Environment;
 pub use scope::ModuleScope;
-use error::{Error, Result};
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -99,14 +99,14 @@ pub fn evaluate_declaration(declaration: &Declaration, scope: ModuleScope) -> Re
 
 fn substitute(expression: Expression, environment: Environment, scope: ModuleScope) -> Expression {
     match expression {
-        Expression::Path(ref path, _) => environment
+        Expression::Path(ref path) => environment
             .get(&path.identifier)
             .cloned()
             .unwrap_or(expression),
-        Expression::TypeLiteral(_, _)
-        | Expression::NatTypeLiteral(_, _)
-        | Expression::NatLiteral(_, _) => expression,
-        Expression::PiTypeLiteral(literal, _) => {
+        Expression::TypeLiteral | Expression::NatTypeLiteral | Expression::NatLiteral(_) => {
+            expression
+        }
+        Expression::PiTypeLiteral(literal) => {
             let (parameter, domain, codomain) = abstraction_substitute(
                 literal.parameter.clone(),
                 literal.domain.clone(),
@@ -114,17 +114,16 @@ fn substitute(expression: Expression, environment: Environment, scope: ModuleSco
                 environment,
                 scope,
             );
-            Expression::PiTypeLiteral(
-                Rc::new(expression::PiTypeLiteral {
+            expr! {
+                PiTypeLiteral {
                     parameter,
                     domain,
                     codomain,
                     explicitness: Explicitness::Explicit,
-                }),
-                (),
-            )
+                }
+            }
         }
-        Expression::LambdaLiteral(literal, _) => {
+        Expression::LambdaLiteral(literal) => {
             // potential @Bug we totally ignore literal.body_type_annotation here. There should be substitutions
             // as well, right? Also, we set the body_type_annotation to None which means we drop the information
             // @Task incorporate literal.body_type_annotation in the substitution process!
@@ -139,19 +138,18 @@ fn substitute(expression: Expression, environment: Environment, scope: ModuleSco
                 scope,
             );
             // @Note this unwrap is safe, but the API of abstraction_substitute sucks
-            Expression::LambdaLiteral(
-                Rc::new(expression::LambdaLiteral {
+            expr! {
+                LambdaLiteral {
                     parameter: binder.unwrap(),
                     parameter_type_annotation: Some(parameter_type),
                     body,
                     body_type_annotation: None,
                     explicitness: Explicitness::Explicit,
-                }),
-                (),
-            )
+                }
+            }
         }
-        Expression::Application(application, _) => Expression::Application(
-            Rc::new(expression::Application {
+        Expression::Application(application) => expr! {
+            Application {
                 expression: substitute(
                     application.expression.clone(),
                     environment.clone(),
@@ -159,13 +157,12 @@ fn substitute(expression: Expression, environment: Environment, scope: ModuleSco
                 ),
                 argument: substitute(application.argument.clone(), environment, scope),
                 explicitness: Explicitness::Explicit,
-            }),
-            (),
-        ),
-        Expression::Hole(_, _) => todo!(),
-        Expression::UseIn(_, _) => todo!(),
-        Expression::CaseAnalysis(case_analysis, _) => Expression::CaseAnalysis(
-            Rc::new(expression::CaseAnalysis {
+            }
+        },
+        Expression::Hole(_) => todo!(),
+        Expression::UseIn(_) => todo!(),
+        Expression::CaseAnalysis(case_analysis) => expr! {
+            CaseAnalysis {
                 expression: substitute(
                     case_analysis.expression.clone(),
                     environment.clone(),
@@ -182,9 +179,8 @@ fn substitute(expression: Expression, environment: Environment, scope: ModuleSco
                         )
                     })
                     .collect(),
-            }),
-            (),
-        ),
+            }
+        },
     }
 }
 
@@ -230,12 +226,9 @@ fn pattern_substitute(
             let mut environment = environment.as_ref().clone();
             environment.insert(
                 path.identifier.clone(),
-                Expression::Path(
-                    Rc::new(expression::Path {
-                        identifier: refreshed_binder.clone(),
-                    }),
-                    (),
-                ),
+                Expression::Path(Rc::new(expression::Path {
+                    identifier: refreshed_binder.clone(),
+                })),
             );
             (
                 expression::Pattern::Path {
@@ -270,7 +263,7 @@ fn pattern_substitute(
 }
 
 // @Beacon @Note this is used in normalize, *not* substitute
-fn insert_matchables_from_pattern(pattern: &expression::Pattern, scope: ModuleScope) {
+fn _insert_matchables_from_pattern(pattern: &expression::Pattern, scope: ModuleScope) {
     match &pattern {
         expression::Pattern::NatLiteral(_) => {}
         expression::Pattern::Path {
@@ -285,8 +278,8 @@ fn insert_matchables_from_pattern(pattern: &expression::Pattern, scope: ModuleSc
             }
         }
         expression::Pattern::Application { callee, argument } => {
-            insert_matchables_from_pattern(callee, scope.clone());
-            insert_matchables_from_pattern(argument, scope.clone());
+            _insert_matchables_from_pattern(callee, scope.clone());
+            _insert_matchables_from_pattern(argument, scope.clone());
         }
     }
 }
@@ -299,16 +292,12 @@ fn is_matchable(path: &expression::Path, scope: ModuleScope) -> bool {
 
 pub fn infer_type(expression: Expression, scope: ModuleScope) -> Result<hir::Expression> {
     Ok(match expression {
-        Expression::Path(path, _) => scope
+        Expression::Path(path) => scope
             .lookup_type(&path.identifier)
             .ok_or_else(|| Error::UndefinedBinding(path.identifier.clone()))?,
-        Expression::TypeLiteral(_, _) | Expression::NatTypeLiteral(_, _) => {
-            Expression::TypeLiteral(expression::TypeLiteral {}, ())
-        }
-        Expression::NatLiteral(_, _) => {
-            Expression::NatTypeLiteral(expression::NatTypeLiteral {}, ())
-        }
-        Expression::PiTypeLiteral(literal, _) => {
+        Expression::TypeLiteral | Expression::NatTypeLiteral => Expression::TypeLiteral,
+        Expression::NatLiteral(_) => Expression::NatTypeLiteral,
+        Expression::PiTypeLiteral(literal) => {
             // ensure domain and codomain are are well-typed
             // @Question why do we need to this? shouldn't this be already handled if
             // `expression` (parameter of `infer_type`) has been normalized?
@@ -322,9 +311,9 @@ pub fn infer_type(expression: Expression, scope: ModuleScope) -> Result<hir::Exp
                 },
             )?;
 
-            Expression::TypeLiteral(expression::TypeLiteral {}, ())
+            Expression::TypeLiteral
         }
-        Expression::LambdaLiteral(literal, _) => {
+        Expression::LambdaLiteral(literal) => {
             let parameter_type: Expression = literal
                 .parameter_type_annotation
                 .clone()
@@ -342,24 +331,23 @@ pub fn infer_type(expression: Expression, scope: ModuleScope) -> Result<hir::Exp
                     scope,
                 )?;
             }
-            Expression::PiTypeLiteral(
-                Rc::new(expression::PiTypeLiteral {
+            expr! {
+                PiTypeLiteral {
                     parameter: Some(literal.parameter.clone()),
                     domain: parameter_type,
                     codomain: infered_body_type,
                     explicitness: Explicitness::Explicit,
-                }),
-                (),
-            )
+                }
+            }
         }
-        Expression::Application(application, _) => {
+        Expression::Application(application) => {
             // @Task verify type_of_expression is already normalized
             // @Note maybe use dbg-macro?
             let type_of_expression = infer_type(application.expression.clone(), scope.clone())?;
             // @Note this is an example where we normalize after an infer_type which means infer_type
             // returns possibly non-normalized expressions, can we do better?
             match normalize(type_of_expression, scope.clone())? {
-                Expression::PiTypeLiteral(literal, _) => {
+                Expression::PiTypeLiteral(literal) => {
                     let argument_type = infer_type(application.argument.clone(), scope.clone())?;
                     assert_expressions_are_equal(
                         literal.domain.clone(),
@@ -387,11 +375,10 @@ pub fn infer_type(expression: Expression, scope: ModuleScope) -> Result<hir::Exp
                 }
             }
         }
-        Expression::Hole(_, _) => todo!(),
-        Expression::UseIn(_, _) => todo!(),
-        Expression::CaseAnalysis(case_analysis, _) => {
+        Expression::Hole(_) => todo!(),
+        Expression::UseIn(_) => todo!(),
+        Expression::CaseAnalysis(case_analysis) => {
             let r#type = infer_type(case_analysis.expression.clone(), scope.clone())?;
-            
             // @Task generalize this (because then, we don't need to check whether we supplied too
             // many constructors (would be a type error on its own, but...)/binders separately, or whatever)
             // if case_analysis.cases.is_empty() {
@@ -403,11 +390,11 @@ pub fn infer_type(expression: Expression, scope: ModuleScope) -> Result<hir::Exp
             //     //     Ok(Expression::PiTypeLiteral(Rc::new(expression::PiTypeLiteral {
             //     //         // @Question is Identifier::Stub error-prone (in respect to substitution/name clashes)?
             //     //         parameter: Some(Identifier::Stub),
-            //     //         domain: Expression::TypeLiteral(expression::TypeLiteral {}, ()),
-            //     //         codomain: Expression::Path(Rc::new(expression::Path { identifier: Identifier::Stub }), ()),
+            //     //         domain: Expression::TypeLiteral,
+            //     //         codomain: Expression::Path(Rc::new(expression::Path { identifier: Identifier::Stub })),
             //     //         // @Temporary explicitness
             //     //         explicitness: Explicitness::Explicit,
-            //     //     }), ()))
+            //     //     })))
             //     // } else {
             //     //     // @Task supply more information
             //     //     Err(Error::NotAllConstructorsCovered)
@@ -420,7 +407,7 @@ pub fn infer_type(expression: Expression, scope: ModuleScope) -> Result<hir::Exp
             // * all case_analysis.cases>>.expressions are of the same type
 
             let type_path = match r#type {
-                Expression::Path(path, _) => path.identifier.clone(),
+                Expression::Path(path) => path.identifier.clone(),
                 // @Note support Expression::Application to allow analysing polymorphic types
                 // @Task
                 _ => panic!("encountered unsupported type to be case-analysed"),
@@ -439,44 +426,44 @@ pub fn infer_type(expression: Expression, scope: ModuleScope) -> Result<hir::Exp
 // @Task we need to consider polymorphic types like `Identity` (with `Identity'`) where
 // `Identity Uninhabited` is uninhabited but `Identity Inhabited` is inhabited
 // @Note becomes important when we handle Expression::Application
-fn is_uninhabited(r#type: Expression, scope: ModuleScope) -> bool {
+fn _is_uninhabited(r#type: Expression, _scope: ModuleScope) -> bool {
     match r#type {
-        Expression::PiTypeLiteral(literal, _) => {
+        Expression::PiTypeLiteral(_literal) => {
             // return |codomain|^|domain| (consider dependent types|parameters)
             todo!()
         }
         // @Note we need to be able pass type arguments to is_uninhabited!
-        Expression::Application(application, _) => todo!(),
-        Expression::TypeLiteral(_, _) | Expression::NatTypeLiteral(_, _) => true,
-        Expression::Path(_path, _) => {
+        Expression::Application(_application) => todo!(),
+        Expression::TypeLiteral | Expression::NatTypeLiteral => true,
+        Expression::Path(_path) => {
             // @Task look up path in context and decide upon returned information
             // if is an ADT, go through every constructor and for each one check
             // @Beacon `is_applicable` which checks whether the domain (only!) of the type
             // is uninhabited
             todo!()
         }
-        Expression::Hole(_hole, _) => todo!(),
+        Expression::Hole(_hole) => todo!(),
         // @Question unreachable??
-        Expression::LambdaLiteral(literal, _) => unreachable!(),
-        Expression::UseIn(_, _) => todo!(),
-        Expression::CaseAnalysis(case_analysis, _) => todo!(),
-        Expression::NatLiteral(_, _) => unreachable!(),
+        Expression::LambdaLiteral(_literal) => unreachable!(),
+        Expression::UseIn(_) => todo!(),
+        Expression::CaseAnalysis(_case_analysis) => todo!(),
+        Expression::NatLiteral(_) => unreachable!(),
     }
 }
 
 // @Task differenciate between Expression<InitialPhase> and Expression<Normalized>
 pub fn normalize(expression: Expression, scope: ModuleScope) -> Result<Expression> {
     Ok(match expression {
-        Expression::Path(ref path, _) => scope
+        Expression::Path(ref path) => scope
             .clone()
             .lookup_value(&path.identifier)
             .ok_or_else(|| Error::UndefinedBinding(path.identifier.clone()))?
             .map(|expression| normalize(expression, scope))
             .unwrap_or(Ok(expression))?,
-        Expression::Application(application, _) => {
+        Expression::Application(application) => {
             let argument = normalize(application.argument.clone(), scope.clone())?;
             match normalize(application.expression.clone(), scope.clone())? {
-                Expression::LambdaLiteral(literal, _) => normalize(
+                Expression::LambdaLiteral(literal) => normalize(
                     substitute(
                         literal.body.clone(),
                         {
@@ -488,37 +475,35 @@ pub fn normalize(expression: Expression, scope: ModuleScope) -> Result<Expressio
                     ),
                     scope,
                 )?,
-                expression => Expression::Application(
-                    Rc::new(expression::Application {
+                expression => expr! {
+                    Application {
                         expression,
                         argument,
                         explicitness: Explicitness::Explicit,
-                    }),
-                    (),
-                ),
+                    }
+                },
             }
         }
-        Expression::TypeLiteral(_, _)
-        | Expression::NatTypeLiteral(_, _)
-        | Expression::NatLiteral(_, _) => expression,
-        Expression::PiTypeLiteral(literal, _) => {
+        Expression::TypeLiteral | Expression::NatTypeLiteral | Expression::NatLiteral(_) => {
+            expression
+        }
+        Expression::PiTypeLiteral(literal) => {
             let (domain, codomain) = normalize_abstraction(
                 literal.parameter.clone(),
                 literal.domain.clone(),
                 literal.codomain.clone(),
                 scope,
             )?;
-            Expression::PiTypeLiteral(
-                Rc::new(expression::PiTypeLiteral {
+            expr! {
+                PiTypeLiteral {
                     parameter: literal.parameter.clone(),
                     domain,
                     codomain,
                     explicitness: Explicitness::Explicit,
-                }),
-                (),
-            )
+                }
+            }
         }
-        Expression::LambdaLiteral(literal, _) => {
+        Expression::LambdaLiteral(literal) => {
             let (parameter_type, body) = normalize_abstraction(
                 Some(literal.parameter.clone()),
                 literal
@@ -528,30 +513,25 @@ pub fn normalize(expression: Expression, scope: ModuleScope) -> Result<Expressio
                 literal.body.clone(),
                 scope,
             )?;
-            Expression::LambdaLiteral(
-                Rc::new(expression::LambdaLiteral {
+            expr! {
+                LambdaLiteral {
                     parameter: literal.parameter.clone(),
                     parameter_type_annotation: Some(parameter_type),
                     body,
                     body_type_annotation: None,
                     explicitness: Explicitness::Explicit,
-                }),
-                (),
-            )
+                }
+            }
         }
-        Expression::Hole(_, _) => todo!(),
-        Expression::UseIn(_, _) => todo!(),
-        Expression::CaseAnalysis(_, _) => todo!(),
+        Expression::Hole(_) => todo!(),
+        Expression::UseIn(_) => todo!(),
+        Expression::CaseAnalysis(_) => todo!(),
     })
 }
 
 fn assert_expression_is_a_type(expression: Expression, scope: ModuleScope) -> Result<()> {
     let type_of_expression = infer_type(expression, scope.clone())?;
-    assert_expressions_are_equal(
-        Expression::TypeLiteral(expression::TypeLiteral {}, ()),
-        type_of_expression,
-        scope,
-    )
+    assert_expressions_are_equal(Expression::TypeLiteral, type_of_expression, scope)
 }
 
 /// left is expected, right is actual
@@ -580,10 +560,8 @@ fn normalizing_equal(left: Expression, right: Expression, scope: ModuleScope) ->
 
 fn equal(left: Expression, right: Expression, scope: ModuleScope) -> bool {
     match (left, right) {
-        (Expression::Path(path0, _), Expression::Path(path1, _)) => {
-            path0.identifier == path1.identifier
-        }
-        (Expression::Application(application0, _), Expression::Application(application1, _)) => {
+        (Expression::Path(path0), Expression::Path(path1)) => path0.identifier == path1.identifier,
+        (Expression::Application(application0), Expression::Application(application1)) => {
             equal(
                 application0.expression.clone(),
                 application1.expression.clone(),
@@ -594,12 +572,12 @@ fn equal(left: Expression, right: Expression, scope: ModuleScope) -> bool {
                 scope,
             )
         }
-        (Expression::TypeLiteral(_, _), Expression::TypeLiteral(_, _))
-        | (Expression::NatTypeLiteral(_, _), Expression::NatTypeLiteral(_, _)) => true,
-        (Expression::NatLiteral(literal0, _), Expression::NatLiteral(literal1, _)) => {
+        (Expression::TypeLiteral, Expression::TypeLiteral)
+        | (Expression::NatTypeLiteral, Expression::NatTypeLiteral) => true,
+        (Expression::NatLiteral(literal0), Expression::NatLiteral(literal1)) => {
             literal0.value == literal1.value
         }
-        (Expression::PiTypeLiteral(literal0, _), Expression::PiTypeLiteral(literal1, _)) => {
+        (Expression::PiTypeLiteral(literal0), Expression::PiTypeLiteral(literal1)) => {
             abstraction_equal(
                 literal0.parameter.clone(),
                 literal0.domain.clone(),
@@ -610,7 +588,7 @@ fn equal(left: Expression, right: Expression, scope: ModuleScope) -> bool {
                 scope,
             )
         }
-        (Expression::LambdaLiteral(literal0, _), Expression::LambdaLiteral(literal1, _)) => {
+        (Expression::LambdaLiteral(literal0), Expression::LambdaLiteral(literal1)) => {
             abstraction_equal(
                 Some(literal0.parameter.clone()),
                 literal0
@@ -651,12 +629,9 @@ fn abstraction_substitute(
             let mut environment = environment.as_ref().clone();
             environment.insert(
                 parameter.clone(),
-                Expression::Path(
-                    Rc::new(expression::Path {
-                        identifier: refreshed_parameter.clone(),
-                    }),
-                    (),
-                ),
+                Expression::Path(Rc::new(expression::Path {
+                    identifier: refreshed_parameter.clone(),
+                })),
             );
             (Some(refreshed_parameter), Rc::new(environment))
         }
@@ -709,12 +684,9 @@ fn abstraction_equal(
                         let mut environment = HashMap::new();
                         environment.insert(
                             binder2.clone(),
-                            Expression::Path(
-                                Rc::new(expression::Path {
-                                    identifier: binder1.clone(),
-                                }),
-                                (),
-                            ),
+                            Expression::Path(Rc::new(expression::Path {
+                                identifier: binder1.clone(),
+                            })),
                         );
                         Rc::new(environment)
                     },

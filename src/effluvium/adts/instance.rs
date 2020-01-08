@@ -52,7 +52,6 @@ pub(in crate::effluvium) fn constructor_is_instance_of_type(
             Rc::new(expression::Path {
                 identifier: type_name,
             }),
-            (),
         ),
         callee,
         scope,
@@ -70,7 +69,7 @@ pub(in crate::effluvium) fn constructor_is_instance_of_type(
 fn result_type(mut expression: Expression, scope: ModuleScope) -> Expression {
     loop {
         expression = match expression {
-            Expression::PiTypeLiteral(literal, _) => {
+            Expression::PiTypeLiteral(literal) => {
                 if let Some(parameter) = literal.parameter.clone() {
                     scope
                         .clone()
@@ -78,17 +77,17 @@ fn result_type(mut expression: Expression, scope: ModuleScope) -> Expression {
                 }
                 literal.codomain.clone()
             }
-            Expression::Application(_, _)
-            | Expression::TypeLiteral(_, _)
-            | Expression::NatTypeLiteral(_, _)
-            | Expression::Path(_, _) => {
+            Expression::Application(_)
+            | Expression::TypeLiteral
+            | Expression::NatTypeLiteral
+            | Expression::Path(_) => {
                 return expression;
             }
-            Expression::Hole(_, _) => unimplemented!(),
-            Expression::LambdaLiteral(_, _)
-            | Expression::NatLiteral(_, _)
-            | Expression::UseIn(_, _)
-            | Expression::CaseAnalysis(_, _) => unreachable!(),
+            Expression::Hole(_) => unimplemented!(),
+            Expression::LambdaLiteral(_)
+            | Expression::NatLiteral(_)
+            | Expression::UseIn(_)
+            | Expression::CaseAnalysis(_) => unreachable!(),
         }
     }
 }
@@ -97,7 +96,7 @@ fn result_type(mut expression: Expression, scope: ModuleScope) -> Expression {
 fn callee(mut expression: Expression) -> Expression {
     loop {
         expression = match expression {
-            Expression::Application(application, _) => application.expression.clone(),
+            Expression::Application(application) => application.expression.clone(),
             expression => return expression,
         }
     }

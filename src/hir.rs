@@ -45,16 +45,14 @@ pub fn lower_declaration(declaration: parser::Declaration) -> Declaration {
                     let parameter = Some(lower_expression(parameter_group.type_annotation.clone()));
 
                     for binder in parameter_group.parameters.iter().rev() {
-                        expression = Expression::LambdaLiteral(
-                            Rc::new(expression::LambdaLiteral {
+                        expression =
+                            Expression::LambdaLiteral(Rc::new(expression::LambdaLiteral {
                                 parameter: Identifier::Plain(binder.clone()),
                                 parameter_type_annotation: parameter.clone(),
                                 explicitness: parameter_group.explicitness,
                                 body_type_annotation: type_annotation.next(),
                                 body: expression,
-                            }),
-                            (),
-                        );
+                            }));
                     }
                 }
             }
@@ -112,69 +110,59 @@ pub mod expression {
     // @Beacon @Beacon @Task add span information!!! @Note @Beacon now, we are in the HIR,
     // there might not be any span information if synthesize HIR nodes (common thing probably)
     // @Note we can also think about **interning** Expressions but not sure if a good idea
-    // @Beacon @Beacon @Note rename P: Phase to D: Discrimant and have Raw, Normalized, Type (more to come)
     #[derive(Clone, Debug)]
-    pub enum Expression<P: Phase = InitialPhase> {
-        PiTypeLiteral(Rc<PiTypeLiteral>, P::PiTypeLiteral),
-        Application(Rc<Application>, P::Application),
-        // TypeLiteral(Rc<TypeLiteral>, P::TypeLiteral),
-        TypeLiteral(TypeLiteral, P::TypeLiteral),
-        // NatTypeLiteral(Rc<NatTypeLiteral>, P::NatTypeLiteral),
-        NatTypeLiteral(NatTypeLiteral, P::NatTypeLiteral),
-        NatLiteral(Rc<NatLiteral>, P::NatLiteral),
-        Path(Rc<Path>, P::Path),
-        Hole(Rc<Hole>, P::Hole),
-        LambdaLiteral(Rc<LambdaLiteral>, P::LambdaLiteral),
-        UseIn(Rc<UseIn>, P::UseIn),
-        CaseAnalysis(Rc<CaseAnalysis>, P::CaseAnalysis),
+    pub enum Expression {
+        PiTypeLiteral(Rc<PiTypeLiteral>),
+        Application(Rc<Application>),
+        TypeLiteral,
+        NatTypeLiteral,
+        NatLiteral(Rc<NatLiteral>),
+        Path(Rc<Path>),
+        Hole(Rc<Hole>),
+        LambdaLiteral(Rc<LambdaLiteral>),
+        UseIn(Rc<UseIn>),
+        CaseAnalysis(Rc<CaseAnalysis>),
     }
 
     const _: () = assert!(std::mem::size_of::<Expression>() == 16);
 
     pub fn lower_expression(expression: parser::Expression) -> Expression {
+        use parser::Expression::*;
+
         match expression {
-            parser::Expression::PiTypeLiteral(literal) => Expression::PiTypeLiteral(
-                Rc::new(PiTypeLiteral {
+            PiTypeLiteral(literal) => expr! {
+                PiTypeLiteral {
                     parameter: literal.binder.clone().map(Identifier::Plain),
                     domain: lower_expression(literal.parameter),
                     codomain: lower_expression(literal.expression),
                     explicitness: literal.explicitness,
-                }),
-                (),
-            ),
-            parser::Expression::Application(application) => Expression::Application(
-                Rc::new(Application {
+                }
+            },
+            Application(application) => expr! {
+                Application {
                     expression: lower_expression(application.expression),
                     argument: lower_expression(application.argument),
                     explicitness: application.explicitness,
-                }),
-                (),
-            ),
-            parser::Expression::TypeLiteral(_literal) => {
-                Expression::TypeLiteral(TypeLiteral {}, ())
-            }
-            parser::Expression::NatTypeLiteral(_literal) => {
-                Expression::NatTypeLiteral(NatTypeLiteral {}, ())
-            }
-            parser::Expression::NatLiteral(literal) => Expression::NatLiteral(
-                Rc::new(NatLiteral {
+                }
+            },
+            TypeLiteral(_literal) => Expression::TypeLiteral,
+            NatTypeLiteral(_literal) => Expression::NatTypeLiteral,
+            NatLiteral(literal) => expr! {
+                NatLiteral {
                     value: literal.value,
-                }),
-                (),
-            ),
-            parser::Expression::Path(path) => Expression::Path(
-                Rc::new(Path {
+                }
+            },
+            Path(path) => expr! {
+                Path {
                     identifier: Identifier::Plain(path.inner),
-                }),
-                (),
-            ),
-            parser::Expression::Hole(hole) => Expression::Hole(
-                Rc::new(Hole {
+                }
+            },
+            Hole(hole) => expr! {
+                Hole {
                     tag: Identifier::Plain(hole.tag),
-                }),
-                (),
-            ),
-            parser::Expression::LambdaLiteral(literal) => {
+                }
+            },
+            LambdaLiteral(literal) => {
                 let mut expression = lower_expression(literal.expression);
 
                 let mut type_annotation = literal
@@ -189,21 +177,20 @@ pub mod expression {
                         .map(lower_expression);
 
                     for binder in parameter_group.parameters.iter().rev() {
-                        expression = Expression::LambdaLiteral(
-                            Rc::new(LambdaLiteral {
+                        expression = expr! {
+                            LambdaLiteral {
                                 parameter: Identifier::Plain(binder.clone()),
                                 parameter_type_annotation: parameter.clone(),
                                 explicitness: parameter_group.explicitness,
                                 body_type_annotation: type_annotation.next(),
                                 body: expression,
-                            }),
-                            (),
-                        );
+                            }
+                        };
                     }
                 }
                 expression
             }
-            parser::Expression::LetIn(let_in) => {
+            LetIn(let_in) => {
                 let mut expression = lower_expression(let_in.expression);
 
                 let mut type_annotation = let_in
@@ -217,23 +204,22 @@ pub mod expression {
                         .clone()
                         .map(lower_expression);
                     for binder in parameter_group.parameters.iter().rev() {
-                        expression = Expression::LambdaLiteral(
-                            Rc::new(LambdaLiteral {
+                        expression = expr! {
+                            LambdaLiteral {
                                 parameter: Identifier::Plain(binder.clone()),
                                 parameter_type_annotation: parameter.clone(),
                                 explicitness: parameter_group.explicitness,
                                 body_type_annotation: type_annotation.next(),
                                 body: expression,
-                            }),
-                            (),
-                        );
+                            }
+                        };
                     }
                 }
 
-                Expression::Application(
-                    Rc::new(Application {
-                        expression: Expression::LambdaLiteral(
-                            Rc::new(LambdaLiteral {
+                expr! {
+                    Application {
+                        expression: expr! {
+                            LambdaLiteral {
                                 parameter: Identifier::Plain(let_in.binder),
                                 // @Note we cannot simply lower parameters and a type annotation because
                                 // in the chain (`->`) of parameters, there might always be one missing and
@@ -242,17 +228,15 @@ pub mod expression {
                                 explicitness: Explicitness::Explicit,
                                 body_type_annotation: None,
                                 body: lower_expression(let_in.scope),
-                            }),
-                            (),
-                        ),
+                            }
+                        },
                         argument: expression,
                         explicitness: Explicitness::Explicit,
-                    }),
-                    (),
-                )
+                    }
+                }
             }
-            parser::Expression::UseIn(_use_in) => unimplemented!(),
-            parser::Expression::CaseAnalysis(case_analysis) => {
+            UseIn(_use_in) => unimplemented!(),
+            CaseAnalysis(case_analysis) => {
                 let mut cases = Vec::new();
 
                 for case_group in case_analysis.cases {
@@ -260,7 +244,9 @@ pub mod expression {
                     // same bindings, example: `'of Foo 'of Bar x` gives the error `x not defined` which is not *that*
                     // bad but we can do better (like Rust does) and error with `x` not defined in both arms/cases
                     if case_group.patterns.len() > 1 {
-                        eprintln!("(compiler bug warning) contracted cases not thoroughly supported yet");
+                        eprintln!(
+                            "(compiler bug warning) contracted cases not thoroughly supported yet"
+                        );
                     }
 
                     for pattern in case_group.patterns {
@@ -271,13 +257,12 @@ pub mod expression {
                     }
                 }
 
-                Expression::CaseAnalysis(
-                    Rc::new(CaseAnalysis {
+                expr! {
+                    CaseAnalysis {
                         expression: lower_expression(case_analysis.expression),
                         cases,
-                    }),
-                    (),
-                )
+                    }
+                }
             }
         }
     }
@@ -296,14 +281,6 @@ pub mod expression {
         pub argument: Expression,
         pub explicitness: Explicitness,
     }
-
-    // @Note don't rc
-    #[derive(Clone, Debug)]
-    pub struct TypeLiteral {}
-
-    // @Note don't rc
-    #[derive(Clone, Debug)]
-    pub struct NatTypeLiteral {}
 
     #[derive(Clone, Debug)]
     pub struct NatLiteral {
@@ -408,47 +385,22 @@ fn lower_annotated_parameters(
         let parameter = lower_expression(parameter_group.type_annotation);
 
         for binder in parameter_group.parameters.iter().rev() {
-            expression = Expression::PiTypeLiteral(
-                Rc::new(expression::PiTypeLiteral {
+            expression = expr! {
+                PiTypeLiteral {
                     parameter: Some(Identifier::Plain(binder.clone())),
                     domain: parameter.clone(),
                     codomain: expression,
                     explicitness: parameter_group.explicitness,
-                }),
-                (),
-            )
+                }
+            };
         }
     }
 
     expression
 }
 
-// @Temporary
-#[derive(Clone, Debug)]
-pub enum InitialPhase {}
-
-pub trait Phase {
-    type PiTypeLiteral;
-    type Application;
-    type TypeLiteral;
-    type NatTypeLiteral;
-    type NatLiteral;
-    type Path;
-    type Hole;
-    type LambdaLiteral;
-    type UseIn;
-    type CaseAnalysis;
-}
-
-impl Phase for InitialPhase {
-    type PiTypeLiteral = ();
-    type Application = ();
-    type TypeLiteral = ();
-    type NatTypeLiteral = ();
-    type NatLiteral = ();
-    type Path = ();
-    type Hole = ();
-    type LambdaLiteral = ();
-    type UseIn = ();
-    type CaseAnalysis = ();
+pub(crate) macro expr($kind:ident { $( $body:tt )+ }) {
+    Expression::$kind(Rc::new(expression::$kind {
+        $( $body )+
+    }))
 }
