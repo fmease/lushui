@@ -9,7 +9,7 @@ use super::{expression, Constructor, Declaration, Expression};
 impl Display for Declaration {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            Self::Let {
+            Self::Value {
                 binder,
                 type_annotation,
                 expression,
@@ -36,8 +36,12 @@ impl Display for Declaration {
                 }
                 Ok(())
             }
-            Self::Use => unimplemented!(),
-            Self::Foreign => unimplemented!(),
+            Self::Use => todo!(),
+            // @Task @Beacon
+            Self::Foreign {
+                binder: _,
+                type_annotation: _,
+            } => todo!(),
         }
     }
 }
@@ -68,7 +72,7 @@ impl Display for Expression {
             Self::Application(application) => write!(
                 f,
                 "({}) ({}{})",
-                application.expression, application.explicitness, application.argument,
+                application.callee, application.explicitness, application.argument,
             ),
             Self::TypeLiteral => f.write_str("Type"),
             Self::NatTypeLiteral => f.write_str("Nat"),
@@ -92,7 +96,7 @@ impl Display for Expression {
                     .unwrap_or_default(),
                 literal.body
             ),
-            Self::UseIn(_) => unimplemented!(),
+            Self::UseIn(_) => todo!(),
             Self::CaseAnalysis(case_analysis) => write!(
                 f,
                 "case ({}){}",
@@ -101,6 +105,16 @@ impl Display for Expression {
                     .cases
                     .iter()
                     .map(|case| format!(" {}", case))
+                    .collect::<String>()
+            ),
+            Self::UnsaturatedForeignApplication(application) => write!(
+                f,
+                "{}[{}]",
+                application.callee,
+                application
+                    .arguments
+                    .iter()
+                    .map(|argument| format!("{},", argument))
                     .collect::<String>()
             ),
         }

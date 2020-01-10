@@ -12,7 +12,7 @@ pub use identifier::Identifier;
 
 // @Beacon @Beacon @Task add span information!!!
 pub enum Declaration {
-    Let {
+    Value {
         binder: Identifier,
         type_annotation: Expression,
         expression: Expression,
@@ -25,23 +25,27 @@ pub enum Declaration {
     Module {
         declarations: Vec<Declaration>,
     },
-    Use,     // @Task
-    Foreign, // @Task
+    // @Task
+    Use,
+    Foreign {
+        binder: Identifier,
+        type_annotation: Expression,
+    },
 }
 
 pub fn lower_declaration(declaration: parser::Declaration) -> Declaration {
     match declaration {
-        parser::Declaration::Value(r#let) => {
+        parser::Declaration::Value(declaration) => {
             // @Note type_annotation is currently lowered twice
             // @Task remove duplicate work
             // @Temporary
-            let mut expression = lower_expression(r#let.expression);
+            let mut expression = lower_expression(declaration.expression);
 
             {
                 let mut type_annotation =
-                    std::iter::once(lower_expression(r#let.type_annotation.clone()));
+                    std::iter::once(lower_expression(declaration.type_annotation.clone()));
 
-                for parameter_group in r#let.parameters.iter().rev() {
+                for parameter_group in declaration.parameters.iter().rev() {
                     let parameter = Some(lower_expression(parameter_group.type_annotation.clone()));
 
                     for binder in parameter_group.parameters.iter().rev() {
@@ -57,11 +61,11 @@ pub fn lower_declaration(declaration: parser::Declaration) -> Declaration {
                 }
             }
 
-            Declaration::Let {
-                binder: Identifier::Plain(r#let.binder.clone()),
+            Declaration::Value {
+                binder: Identifier::Plain(declaration.binder.clone()),
                 type_annotation: lower_annotated_parameters(
-                    r#let.parameters,
-                    r#let.type_annotation,
+                    declaration.parameters,
+                    declaration.type_annotation,
                 ),
                 expression,
             }
@@ -82,8 +86,14 @@ pub fn lower_declaration(declaration: parser::Declaration) -> Declaration {
                 .map(lower_declaration)
                 .collect(),
         },
-        parser::Declaration::Use(_use) => unimplemented!(),
-        parser::Declaration::Foreign(_foreign) => unimplemented!(),
+        parser::Declaration::Use(_use) => todo!(),
+        parser::Declaration::Foreign(declaration) => Declaration::Foreign {
+            binder: Identifier::Plain(declaration.binder.clone()),
+            type_annotation: lower_annotated_parameters(
+                declaration.parameters,
+                declaration.type_annotation,
+            ),
+        },
     }
 }
 
@@ -122,6 +132,7 @@ pub mod expression {
         LambdaLiteral(Rc<LambdaLiteral>),
         UseIn(Rc<UseIn>),
         CaseAnalysis(Rc<CaseAnalysis>),
+        UnsaturatedForeignApplication(Rc<UnsaturatedForeignApplication>),
     }
 
     const _: () = assert!(std::mem::size_of::<Expression>() == 16);
@@ -140,7 +151,7 @@ pub mod expression {
             },
             Application(application) => expr! {
                 Application {
-                    expression: lower_expression(application.expression),
+                    callee: lower_expression(application.callee),
                     argument: lower_expression(application.argument),
                     explicitness: application.explicitness,
                 }
@@ -163,10 +174,10 @@ pub mod expression {
                 }
             },
             LambdaLiteral(literal) => {
-                let mut expression = lower_expression(literal.expression);
+                let mut expression = lower_expression(literal.body);
 
                 let mut type_annotation = literal
-                    .type_annotation
+                    .body_type_annotation
                     .map(|expression| lower_expression(expression))
                     .into_iter();
 
@@ -218,7 +229,7 @@ pub mod expression {
 
                 expr! {
                     Application {
-                        expression: expr! {
+                        callee: expr! {
                             LambdaLiteral {
                                 parameter: Identifier::Plain(let_in.binder),
                                 // @Note we cannot simply lower parameters and a type annotation because
@@ -235,7 +246,7 @@ pub mod expression {
                     }
                 }
             }
-            UseIn(_use_in) => unimplemented!(),
+            UseIn(_use_in) => todo!(),
             CaseAnalysis(case_analysis) => {
                 let mut cases = Vec::new();
 
@@ -277,7 +288,7 @@ pub mod expression {
 
     #[derive(Clone, Debug)]
     pub struct Application {
-        pub expression: Expression,
+        pub callee: Expression,
         pub argument: Expression,
         pub explicitness: Explicitness,
     }
@@ -330,6 +341,12 @@ pub mod expression {
     pub struct CaseAnalysisCase {
         pub pattern: Pattern,
         pub expression: Expression,
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct UnsaturatedForeignApplication {
+        pub callee: Identifier,
+        pub arguments: Vec<Expression>,
     }
 
     // @Task reference-count variants to reduce size of nat patterns

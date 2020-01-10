@@ -40,9 +40,9 @@ fn test(source: &str, filename: &str) -> Result<(), String> {
     // eprintln!("{}", &node);
 
     // Effluvium
-    let context = effluvium::ModuleScope::default();
-    effluvium::evaluate_declaration(&node, context.clone()).map_err(|error| error.to_string())?;
-    eprintln!("{}", context);
+    let scope = effluvium::ModuleScope::new();
+    effluvium::evaluate_declaration(&node, scope.clone()).map_err(|error| error.to_string())?;
+    eprintln!("{}", scope);
 
     Ok(())
 }

@@ -20,14 +20,24 @@ pub enum Identifier {
 }
 
 impl Identifier {
+    // @Temporary
+    pub fn from(identifier: &str) -> Self {
+        Identifier::Plain(Self::plain(identifier))
+    }
+
+    // @Temporary
+    fn plain(identifier: &str) -> parser::Identifier {
+        parser::Identifier {
+            atom: crate::lexer::Atom::from(identifier),
+            // @Note hacky, ugly
+            span: Span::new(0, 0),
+        }
+    }
+
     pub fn refresh(&self, scope: ModuleScope) -> Self {
         Self::Generated(
             match self {
-                Self::Stub => parser::Identifier {
-                    atom: crate::lexer::Atom::from(""),
-                    // @Note ugly
-                    span: Span::new(0, 0),
-                },
+                Self::Stub => Identifier::plain(""),
                 Self::Plain(identifier) => identifier.clone(),
                 Self::Generated(identifier, _) => identifier.clone(),
             },

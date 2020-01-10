@@ -1,8 +1,8 @@
 //! This module concerns itself with instance checking.
-//! 
+//!
 //! I.e. does a constructor of an algebraïc data type return a valid
 //! instance of the respective type?
-//! 
+//!
 //! Note: Currently, the checker does allow existential type parameters
 //! and specialized instances. This will complicate the implementation
 //! of case analysis. Of course, feature-complete Lushui shall support
@@ -11,8 +11,8 @@
 
 use std::rc::Rc;
 
+use crate::effluvium::{equal, Error, ModuleScope, Result};
 use crate::hir::{expression, Expression, Identifier};
-use crate::effluvium::{Result, ModuleScope, Error, equal};
 
 // @Update
 // @Task @Beacon
@@ -48,11 +48,9 @@ pub(in crate::effluvium) fn constructor_is_instance_of_type(
     let callee = callee(result_type);
 
     equal(
-        Expression::Path(
-            Rc::new(expression::Path {
-                identifier: type_name,
-            }),
-        ),
+        Expression::Path(Rc::new(expression::Path {
+            identifier: type_name,
+        })),
         callee,
         scope,
     )
@@ -73,7 +71,7 @@ fn result_type(mut expression: Expression, scope: ModuleScope) -> Expression {
                 if let Some(parameter) = literal.parameter.clone() {
                     scope
                         .clone()
-                        .insert_parameter(parameter, literal.domain.clone());
+                        .insert_parameter_binding(parameter, literal.domain.clone());
                 }
                 literal.codomain.clone()
             }
@@ -83,20 +81,21 @@ fn result_type(mut expression: Expression, scope: ModuleScope) -> Expression {
             | Expression::Path(_) => {
                 return expression;
             }
-            Expression::Hole(_) => unimplemented!(),
+            Expression::Hole(_) => todo!(),
             Expression::LambdaLiteral(_)
             | Expression::NatLiteral(_)
             | Expression::UseIn(_)
-            | Expression::CaseAnalysis(_) => unreachable!(),
+            | Expression::CaseAnalysis(_)
+            | Expression::UnsaturatedForeignApplication(_) => unreachable!(),
         }
     }
 }
 
-// returns the `f` in `f a b c`
+/// Returns the `f` in `f a b c`
 fn callee(mut expression: Expression) -> Expression {
     loop {
         expression = match expression {
-            Expression::Application(application) => application.expression.clone(),
+            Expression::Application(application) => application.callee.clone(),
             expression => return expression,
         }
     }

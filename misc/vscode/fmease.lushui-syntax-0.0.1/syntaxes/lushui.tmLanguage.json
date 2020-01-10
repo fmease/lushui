@@ -42,23 +42,23 @@
             "__bug__": "`Nat'` still hightlighted as a keyword. Appending `[^']` does not work because of the overlay check (?)",
             "patterns": [
                 {
-                    "match": "(_|in|of|super)\\b",
+                    "match": "\\b(_|in|of|super)\\b",
                     "name": "keyword.other.lushui"
                 },
                 {
-                    "match": "(data|use|module|foreign)\\b",
+                    "match": "\\b(data|use|module|foreign)\\b",
                     "name": "storage.modifier.lushui"
                 },
                 {
-                    "match": "as\\b",
+                    "match": "\\bas\\b",
                     "name": "keyword.operator.lushui"
                 },
                 {
-                    "match": "case\\b",
+                    "match": "\\base\\b",
                     "name": "keyword.control.lushui"
                 },
                 {
-                    "match": "(Type|Nat)\\b",
+                    "match": "\\b(Type|Nat)\\b",
                     "name": "storage.type.lushui"
                 },
                 {

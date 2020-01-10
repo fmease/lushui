@@ -1,0 +1,10 @@
+foreign add: Nat -> Nat -> Nat
+
+combine: Nat -> Nat -> Nat = add
+
+successor: Nat -> Nat = combine 1
+
+data Pair (A B: Type): Type =
+    MakePair (A B: Type): A -> B -> Pair A B
+
+main: Pair Nat Nat = MakePair Nat Nat (add 3 6) (successor 338389220489284293)
