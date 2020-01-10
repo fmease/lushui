@@ -12,8 +12,7 @@ pub struct Span {
 }
 
 impl Span {
-    // @Temporary constness
-    pub const fn new(start: usize, end: usize) -> Self {
+    pub fn new(start: usize, end: usize) -> Self {
         Self { start, end }
     }
 

@@ -98,6 +98,7 @@ pub fn evaluate_declaration(declaration: &Declaration, scope: ModuleScope) -> Re
             // accompanying declaration on the Lushui side. A missing declaration might
             // lead to a panic though @Bug
             // scope.clone().assert_is_not_yet_defined(binder.clone())?;
+            // @Update does not panic
 
             let r#type = normalize(type_annotation.clone(), scope.clone())?;
             assert_expression_is_a_type(r#type.clone(), scope.clone())?;
@@ -276,19 +277,22 @@ fn pattern_substitute(
     }
 }
 
+// @Bug insert_parameter_binding is porbably not what we want as it leads to buggy code
+// as it mutates the scope... we should propably return a new scope and use extend_with_parameter
 // @Beacon @Note this is used in normalize, *not* substitute
 fn _insert_matchables_from_pattern(pattern: &expression::Pattern, scope: ModuleScope) {
     match &pattern {
         expression::Pattern::NatLiteral(_) => {}
         expression::Pattern::Path {
             path,
-            type_annotation,
+            type_annotation: _type_annotation,
         } => {
             if !is_matchable(path, scope.clone()) {
-                scope.insert_parameter_binding(
-                    path.identifier.clone(),
-                    type_annotation.as_ref().expect(MISSING_ANNOTATION).clone(),
-                );
+                // @Temporary comment, first replace with pure version
+                // scope.insert_parameter_binding(
+                //     path.identifier.clone(),
+                //     type_annotation.as_ref().expect(MISSING_ANNOTATION).clone(),
+                // );
             }
         }
         expression::Pattern::Application { callee, argument } => {
@@ -500,14 +504,14 @@ pub fn normalize(expression: Expression, scope: ModuleScope) -> Result<Expressio
                     scope,
                 )?,
                 Expression::Path(path) if scope.clone().is_foreign(&path.identifier) => {
-                    scope.try_applying_foreign_binding(&path.identifier, vec![argument])
+                    scope.try_applying_foreign_binding(&path.identifier, vec![argument])?
                 }
                 Expression::UnsaturatedForeignApplication(application) => scope
                     .try_applying_foreign_binding(&application.callee, {
                         let mut arguments = application.arguments.clone();
                         arguments.push(argument);
                         arguments
-                    }),
+                    })?,
                 expression => expr! {
                     Application {
                         callee: expression,

@@ -181,20 +181,23 @@ impl ModuleScope {
         self,
         binder: &Identifier,
         arguments: Vec<Expression>,
-    ) -> Expression {
-        match self.bindings.borrow()[binder] {
+    ) -> Result<Expression> {
+        match self.clone().bindings.borrow()[binder] {
             Entity::Foreign {
                 arity, function, ..
             } => {
                 if arguments.len() == arity {
-                    function(&arguments)
+                    // We normalize the result of the foreign binding to prevent the injection of some kinds of garbage values.
+                    // @Question should we run `infer_type` over it as well? I think so
+                    // @Task match_with_annotated_type 
+                    super::normalize(function(&arguments), self)
                 } else {
-                    super::expr! {
+                    Ok(super::expr! {
                         UnsaturatedForeignApplication {
                             callee: binder.clone(),
                             arguments,
                         }
-                    }
+                    })
                 }
             }
             _ => unreachable!(),
@@ -263,12 +266,6 @@ impl ModuleScope {
                 expression: value,
             },
         );
-    }
-
-    pub fn insert_parameter_binding(self, binder: Identifier, r#type: Expression) {
-        self.bindings
-            .borrow_mut()
-            .insert(binder, Entity::Parameter { r#type });
     }
 
     pub fn insert_data_binding(self, binder: Identifier, r#type: Expression) {

@@ -1,6 +1,6 @@
 //! The parser.
-//! 
-//! I *think* it can be specified as a top-down recursive-descent parser with arbitrary look-ahead.
+//!
+//! I *think* it can be classified as a top-down recursive-descent parser with arbitrary look-ahead.
 
 mod context;
 mod error;
@@ -296,7 +296,7 @@ pub mod declaration {
     ///
     /// Grammar rule:
     /// ```text
-    /// Annotated_Parameter_Group ::= "(" ","? Unfenced_Annotated_Parameter_Group ")"
+    /// Annotated_Parameter_Group ::= "(" "|"? Unfenced_Annotated_Parameter_Group ")"
     /// Unfenced_Annotated_Parameter_Group ::= Identifier+ Type_Annotation
     /// ```
     fn parse_annotated_parameter_group(
@@ -349,7 +349,7 @@ pub mod expression {
     }
 
     /// Assertion that the size of [Expression] does not exceed 16 bytes.
-    /// 
+    ///
     /// This type is used *very* often and the size of the different variants varies *greatly*.
     /// Thus, everyone of them is boxed.
     const _: () = assert!(std::mem::size_of::<Expression>() == 16);
@@ -510,7 +510,7 @@ pub mod expression {
     // }
 
     /// Parse an application or a lower expression.
-    /// 
+    ///
     /// Grammar rule:
     /// ```text
     /// Application_Or_Lower %left% ::= Lower_Expression (Lower_Expression | "(" "|" Expression ")")*
@@ -658,7 +658,7 @@ pub mod expression {
     /// Lambda_Literal ::= "\" Parameters Type_Annotation? "=>" Expression
     /// ```
     fn parse_lambda_literal(context: &mut Context<'_>) -> Result<LambdaLiteral> {
-        let backslash = context.consume(TokenKind::Backslash)?;
+        let span_of_backslash = context.consume(TokenKind::Backslash)?.span;
         let parameters = context.reflect(parse_parameters)?;
         let body_type_annotation = context.reflect(parse_type_annotation).ok();
         context.consume(TokenKind::WideArrow)?;
@@ -667,7 +667,7 @@ pub mod expression {
         Ok(LambdaLiteral {
             parameters,
             body_type_annotation,
-            span: backslash.span.merge(body.span()),
+            span: span_of_backslash.merge(body.span()),
             body,
         })
     }
@@ -933,7 +933,7 @@ pub mod expression {
 }
 
 /// Parse a type annotation.
-/// 
+///
 /// Grammar rule:
 /// ```text
 /// Type_Annotation ::= ":" Expression
@@ -974,10 +974,10 @@ fn consume_explicitness_symbol(context: &mut Context<'_>) -> Explicitness {
 }
 
 /// The explicitness of a parameter or argument.
-/// 
+///
 /// In the context of parameters, this specifies whether in an application, the corresponding argument has
 /// to be passed explicitly or should be infered, i.e. the parameter is [Explicitness::Implicit].
-/// 
+///
 /// In the context of applications, [Explicitness::Implicit] means that the argument is passed explicitly
 /// even though the parameter is marked implicit.
 #[derive(Clone, Copy, Debug)]

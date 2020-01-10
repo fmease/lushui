@@ -65,13 +65,13 @@ pub(in crate::effluvium) fn constructor_is_instance_of_type(
 // gets R in A -> B -> C -> R plus an environment b.c. R could depend on outer stuff
 // @Note this function assumes that the expression has already been normalized!
 fn result_type(mut expression: Expression, scope: ModuleScope) -> Expression {
+    let mut scope = scope;
     loop {
         expression = match expression {
             Expression::PiTypeLiteral(literal) => {
                 if let Some(parameter) = literal.parameter.clone() {
-                    scope
-                        .clone()
-                        .insert_parameter_binding(parameter, literal.domain.clone());
+                    // @Note very expensive right now :/
+                    scope = scope.extend_with_parameter(parameter, literal.domain.clone());
                 }
                 literal.codomain.clone()
             }
