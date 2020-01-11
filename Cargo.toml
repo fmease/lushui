@@ -5,6 +5,6 @@ authors = ["León Orell Valerian Liehr <liehr.exchange@gmx.net>"]
 edition = "2018"
 
 [dependencies]
-# colored = "1.8.0"
+colored = "1.9.1"
 string_cache = "0.8.0"
-num-bigint = "0.2.3"
+num-bigint = "0.2.5"

@@ -25,13 +25,13 @@ fn main() {
 fn test(source: &str, filename: &str) -> Result<(), String> {
     // tokens
     let tokens = lexer::lex(source)
-        .map_err(|error| error::Error::from(error).display(source, Some(filename)))?;
+        .map_err(|error| error::display(&error.kind.to_string(), error.span, source, Some(filename)))?;
 
     // AST
     let mut context = parser::Context::new(&tokens);
     let node = parser::Declaration::Module(Box::new(
         parser::declaration::parse_file_module_no_header(&mut context)
-            .map_err(|error| error::Error::from(error).display(source, Some(filename)))?,
+            .map_err(|error| error::display(&error.kind.to_string(), error.span, source, Some(filename)))?,
     ));
     // eprintln!("{:#?}", &node);
 

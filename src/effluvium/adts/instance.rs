@@ -64,8 +64,7 @@ pub(in crate::effluvium) fn constructor_is_instance_of_type(
 // for a default value, we should return Option<...>
 // gets R in A -> B -> C -> R plus an environment b.c. R could depend on outer stuff
 // @Note this function assumes that the expression has already been normalized!
-fn result_type(mut expression: Expression, scope: ModuleScope) -> Expression {
-    let mut scope = scope;
+fn result_type(mut expression: Expression, mut scope: ModuleScope) -> Expression {
     loop {
         expression = match expression {
             Expression::PiTypeLiteral(literal) => {

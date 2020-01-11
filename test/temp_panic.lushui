@@ -1,0 +1,6 @@
+foreign panic (A: Type) (message: Nat): A
+
+data Unit: Type =
+    Unit': Unit
+
+main: Unit = panic Unit 73111222

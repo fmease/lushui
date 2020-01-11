@@ -1,7 +1,5 @@
-use crate::lexer;
-use crate::parser;
+// use colored::Colorize;
 use std::fmt;
-// use colored::Color;
 
 use std::ops::RangeInclusive;
 
@@ -40,59 +38,24 @@ impl Span {
 // @Update removed the indent-logic *later*
 // @Task define indentation-logic (it is inherently connected to displaying, obviously)
 
-pub enum Error {
-    Lex(lexer::Error),
-    Parse(parser::Error),
-}
-
-impl Error {
-    fn span(&self) -> &Span {
-        match self {
-            Self::Lex(error) => &error.span,
-            Self::Parse(error) => &error.span,
-        }
-    }
-
-    // @Note once we have more error types, we'll get to the point where
-    // it might not make sense to display code
-    // @Task don't print the whole line: set limit of 50~ characters (a window) @Note actually, don't: it complicates everything
-    // and i am sure rustc doesn't do this either
-    // @Question filename or filepath?
-    pub fn display(&self, source: &str, filename: Option<&str>) -> String {
-        let kind = match self {
-            Self::Lex(error) => error.kind.to_string(),
-            Self::Parse(error) => error.kind.to_string(),
-        };
-        let (start, _end, line, rel) = locations_and_line_from_span(source, self.span());
-        format!(
-            "{space} > {path}:{location}\n\
-             {space} |\n\
-             {space} | {source}\n\
-             {space} | {underline_space}{underline}\n\
-             {space} |\n\
-             {space} = error: {message}\n\
-             ",
-            space = "",
-            message = kind,
-            path = filename.unwrap_or("<anonymous>"),
-            location = start,
-            source = &source[line.range()],
-            underline_space = " ".repeat(rel.start),
-            underline = "^".repeat(rel.end + 1 - rel.start)
-        )
-    }
-}
-
-impl From<lexer::Error> for Error {
-    fn from(error: lexer::Error) -> Self {
-        Self::Lex(error)
-    }
-}
-
-impl From<parser::Error> for Error {
-    fn from(error: parser::Error) -> Self {
-        Self::Parse(error)
-    }
+// @Temporary signature
+pub fn display(kind: &str, span: Span, source: &str, filename: Option<&str>) -> String {
+    let (start, _end, line, rel) = locations_and_line_from_span(source, span);
+    format!(
+        " > {path}:{location}\n\
+          |\n\
+          | {source}\n\
+          | {underline_space}{underline}\n\
+          |\n\
+          = error: {message}\n\
+         ",
+        message = kind,
+        path = filename.unwrap_or("<anonymous>"),
+        location = start,
+        source = &source[line.range()],
+        underline_space = " ".repeat(rel.start),
+        underline = "^".repeat(rel.end + 1 - rel.start)
+    )
 }
 
 struct Location {
@@ -126,7 +89,7 @@ impl fmt::Display for Location {
 // @Bug does not handle multiline spans
 // @Question what concrete information returned to we really need?
 // the `end` location is useless i think
-fn locations_and_line_from_span(source: &str, span: &Span) -> (Location, Location, Span, Span) {
+fn locations_and_line_from_span(source: &str, span: Span) -> (Location, Location, Span, Span) {
     let mut start = Location::default();
     let mut end = Location::default();
     let mut found_start = false;

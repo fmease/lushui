@@ -9,10 +9,10 @@ mod identifier;
 use std::fmt;
 
 use crate::error::Span;
-use crate::lexer::{self, TokenKind};
+use crate::lexer::{self, Keyword, TokenKind};
 
 pub use context::Context;
-pub use error::Error;
+pub use error::{Error, ErrorKind};
 pub use identifier::Identifier;
 
 use error::Result;
@@ -52,23 +52,25 @@ pub mod declaration {
 
     // @Task grammar rule
     pub fn parse_declaration(context: &mut Context<'_>) -> Result<Declaration> {
-        // @Temporary missing use, module and foreign declarations
-        context
-            .reflect(|context| {
-                Ok(Declaration::Data(Box::new(parse_data_declaration(
-                    context,
-                )?)))
-            })
-            .or_else(|_| -> Result<_> {
-                Ok(Declaration::Value(Box::new(
-                    context.reflect(parse_value_declaration)?,
-                )))
-            })
-            .or_else(|_| {
-                Ok(Declaration::Foreign(Box::new(parse_foreign_declaration(
-                    context,
-                )?)))
-            })
+        let token = context.current_token()?;
+
+        Ok(match token.kind() {
+            TokenKind::Identifier => {
+                Declaration::Value(Box::new(parse_value_declaration(context)?))
+            }
+            TokenKind::Keyword(Keyword::Data) => {
+                Declaration::Data(Box::new(parse_data_declaration(context)?))
+            }
+            TokenKind::Keyword(Keyword::Foreign) => {
+                Declaration::Foreign(Box::new(parse_foreign_declaration(context)?))
+            }
+            kind => {
+                return Err(Error {
+                    span: token.span,
+                    kind: ErrorKind::ExpectedDeclaration(kind),
+                })
+            }
+        })
     }
 
     /// The syntax node of a value declaration.
@@ -117,9 +119,7 @@ pub mod declaration {
 
     // @Task grammar rule
     pub fn parse_data_declaration(context: &mut Context<'_>) -> Result<Data> {
-        let span_of_keyword = context
-            .consume(TokenKind::Keyword(lexer::Keyword::Data))?
-            .span;
+        let span_of_keyword = context.consume(TokenKind::Keyword(Keyword::Data))?.span;
         let binder = context.consume_identifier()?;
         let parameters = parse_annotated_parameters(context)?;
         let type_annotation = parse_type_annotation(context)?;
@@ -221,9 +221,7 @@ pub mod declaration {
     /// Foreign_Declaration ::= "foreign" Identifier Annotated_Parameters Type_Annotation Line_Break
     /// ```
     fn parse_foreign_declaration(context: &mut Context<'_>) -> Result<Foreign> {
-        let span_of_keyword = context
-            .consume(TokenKind::Keyword(lexer::Keyword::Foreign))?
-            .span;
+        let span_of_keyword = context.consume(TokenKind::Keyword(Keyword::Foreign))?.span;
         let binder = context.consume_identifier()?;
         let parameters = parse_annotated_parameters(context)?;
         let type_annotation = parse_type_annotation(context)?;
@@ -274,10 +272,8 @@ pub mod declaration {
     fn parse_annotated_parameters(context: &mut Context<'_>) -> Result<AnnotatedParameters> {
         let mut parameters = Vec::new();
 
-        // @Bug drops errors @Note updated code, check for bug @Task
-        // @Bug produces bad error messages
-        while let Ok(parameter_group) = context.reflect(parse_annotated_parameter_group) {
-            parameters.push(parameter_group)
+        while context.expect(TokenKind::OpeningRoundBracket).is_ok() {
+            parameters.push(context.reflect(parse_annotated_parameter_group)?);
         }
 
         Ok(parameters)
@@ -580,7 +576,7 @@ pub mod expression {
     // Type_Literal ::= %type literal%
     fn parse_type_literal(context: &mut Context<'_>) -> Result<TypeLiteral> {
         context
-            .consume(TokenKind::Keyword(lexer::Keyword::Type))
+            .consume(TokenKind::Keyword(Keyword::Type))
             .map(|token| TypeLiteral { span: token.span })
     }
 
@@ -591,7 +587,7 @@ pub mod expression {
 
     fn parse_nat_type_literal(context: &mut Context<'_>) -> Result<NatTypeLiteral> {
         context
-            .consume(TokenKind::Keyword(lexer::Keyword::Nat))
+            .consume(TokenKind::Keyword(Keyword::Nat))
             .map(|token| NatTypeLiteral { span: token.span })
     }
 
@@ -634,7 +630,7 @@ pub mod expression {
     // @Task change syntax to `"?" Identifier`
     // Hole ::= "'hole" %identifier%
     fn parse_hole(context: &mut Context<'_>) -> Result<Hole> {
-        let keyword_hole = context.consume(TokenKind::Keyword(lexer::Keyword::Hole))?;
+        let keyword_hole = context.consume(TokenKind::Keyword(Keyword::Hole))?;
         let tag = context.consume_identifier()?;
         Ok(Hole {
             span: keyword_hole.span.merge(tag.span),
@@ -692,13 +688,13 @@ pub mod expression {
     /// Let_In ::= "'let" Identifier Parameters Type_Annotation? "=" Expression "'in" Expression
     /// ```
     fn parse_let_in(context: &mut Context<'_>) -> Result<LetIn> {
-        let let_keyword = context.consume(TokenKind::Keyword(lexer::Keyword::Let))?;
+        let let_keyword = context.consume(TokenKind::Keyword(Keyword::Let))?;
         let binder = context.consume_identifier()?;
         let parameters = context.reflect(parse_parameters)?;
         let type_annotation = context.reflect(parse_type_annotation).ok();
         context.consume(TokenKind::Equals)?;
         let expression = context.reflect(parse_expression)?;
-        context.consume(TokenKind::Keyword(lexer::Keyword::In))?;
+        context.consume(TokenKind::Keyword(Keyword::In))?;
         let scope = context.reflect(parse_expression)?;
         Ok(LetIn {
             binder,
@@ -725,9 +721,7 @@ pub mod expression {
 
     // Case_Analysis ::= "'case" Expression Line_Break Case_Analysis_Case_Group*
     fn parse_case_analysis(context: &mut Context<'_>) -> Result<CaseAnalysis> {
-        let span_of_keyword = context
-            .consume(TokenKind::Keyword(lexer::Keyword::Case))?
-            .span;
+        let span_of_keyword = context.consume(TokenKind::Keyword(Keyword::Case))?.span;
         let expression = parse_expression_followed_by_line_break(context)?;
 
         let mut cases = Vec::new();
@@ -759,7 +753,7 @@ pub mod expression {
     fn parse_case_analysis_case_group(context: &mut Context<'_>) -> Result<CaseAnalysisCaseGroup> {
         let mut patterns = Vec::new();
 
-        context.consume(TokenKind::Keyword(lexer::Keyword::Of))?;
+        context.consume(TokenKind::Keyword(Keyword::Of))?;
         patterns.push(parse_pattern(context)?);
 
         loop {
@@ -770,7 +764,7 @@ pub mod expression {
                 break;
             }
 
-            context.consume(TokenKind::Keyword(lexer::Keyword::Of))?;
+            context.consume(TokenKind::Keyword(Keyword::Of))?;
             patterns.push(parse_pattern(context)?);
         }
 

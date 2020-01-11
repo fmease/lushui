@@ -1,0 +1,16 @@
+
+
+;;; identity (A Type) (a: A): A = a
+
+;;; @Task currently: unexpected closing bracket, should: expected type signature
+;;; identity (A X) (a: A): A = a
+
+;;; @Task bracket balance check inside the lexer
+;;; identity (A: Type (a: A): A a
+
+;;; identity (A: Type) (a: A): A a
+
+;;; @Bug bad span
+identity (A: Type) (a: A): A =
+
+

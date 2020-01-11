@@ -99,6 +99,8 @@ pub fn evaluate_declaration(declaration: &Declaration, scope: ModuleScope) -> Re
             // lead to a panic though @Bug
             // scope.clone().assert_is_not_yet_defined(binder.clone())?;
             // @Update does not panic
+            // @Bug @Bug @Update obviously, overwrites a previous declaration because the check is
+            // too vague
 
             let r#type = normalize(type_annotation.clone(), scope.clone())?;
             assert_expression_is_a_type(r#type.clone(), scope.clone())?;
@@ -662,6 +664,8 @@ fn equal(left: Expression, right: Expression, scope: ModuleScope) -> bool {
                 scope,
             )
         }
+        // @Task case analysis
+        // @Task foreign bindings
         // @Note this is really bad when we decide to add new stuff! but there is no
         // viable alternative really :/
         _ => false,

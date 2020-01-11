@@ -24,15 +24,15 @@ impl<'i> Context<'i> {
     }
 
     // @Note unused exept in consume
-    pub(super) fn expect(&self, token_kind: lexer::TokenKind) -> Result<lexer::SourceToken> {
-        let token = self.token()?;
-        if token.kind() == token_kind {
+    pub(super) fn expect(&self, expected_token_kind: lexer::TokenKind) -> Result<lexer::SourceToken> {
+        let token = self.current_token()?;
+        let actual_token_kind = token.kind();
+        if actual_token_kind == expected_token_kind {
             Ok(token)
         } else {
-            // @Task also add (list of) expected token(s)
             Err(Error {
                 span: token.span,
-                kind: ErrorKind::UnexpectedToken(token),
+                kind: ErrorKind::UnexpectedToken(actual_token_kind),
             })
         }
     }
@@ -59,7 +59,7 @@ impl<'i> Context<'i> {
         self.index += 1;
     }
 
-    pub(super) fn token(&self) -> Result<lexer::SourceToken> {
+    pub(super) fn current_token(&self) -> Result<lexer::SourceToken> {
         self.tokens.get(self.index).cloned().ok_or_else(|| Error {
             kind: ErrorKind::UnexpectedEndOfInput,
             // @Bug should point to the "token after" (in the error.rs display)

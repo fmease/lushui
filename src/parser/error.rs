@@ -1,5 +1,8 @@
+// @Task restructure this, can't we just use Strings as errors and maybe
+// nullary variants for ErrorKind if at all??
+
 use crate::error::Span;
-use crate::lexer::SourceToken;
+use crate::lexer::TokenKind;
 
 use std::fmt;
 
@@ -15,7 +18,8 @@ pub struct Error {
 #[derive(Debug)] // @Temporary
 pub enum ErrorKind {
     UnexpectedEndOfInput,
-    UnexpectedToken(SourceToken),
+    UnexpectedToken(TokenKind),
+    ExpectedDeclaration(TokenKind),
 }
 
 impl fmt::Display for ErrorKind {
@@ -23,7 +27,10 @@ impl fmt::Display for ErrorKind {
         match self {
             Self::UnexpectedEndOfInput => f.write_str("unexpected end of input"),
             // @Temporary
-            Self::UnexpectedToken(token) => write!(f, "unexpected {}", token.kind()),
+            Self::UnexpectedToken(token_kind) => write!(f, "unexpected {}", token_kind),
+            Self::ExpectedDeclaration(token_kind) => {
+                write!(f, "expected start of declaration, found {}", token_kind)
+            }
         }
     }
 }
