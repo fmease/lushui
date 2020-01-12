@@ -3,6 +3,7 @@
 mod fmt;
 mod identifier;
 
+use freestanding::freestanding;
 use std::rc::Rc;
 
 use crate::parser::{self, Explicitness};
@@ -117,23 +118,51 @@ pub use expression::{lower_expression, Expression};
 pub mod expression {
     use super::*;
 
-    // @Task @Beacon @Beacon use freestanding
     // @Beacon @Beacon @Task add span information!!! @Note @Beacon now, we are in the HIR,
     // there might not be any span information if synthesize HIR nodes (common thing probably)
     // @Note we can also think about **interning** Expressions but not sure if a good idea
+    #[freestanding]
+    #[streamline(Rc)]
     #[derive(Clone, Debug)]
     pub enum Expression {
-        PiTypeLiteral(Rc<PiTypeLiteral>),
-        Application(Rc<Application>),
+        PiTypeLiteral {
+            parameter: Option<Identifier>,
+            domain: Expression,
+            codomain: Expression,
+            explicitness: Explicitness,
+        },
+        Application {
+            callee: Expression,
+            argument: Expression,
+            explicitness: Explicitness,
+        },
         TypeLiteral,
         NatTypeLiteral,
-        NatLiteral(Rc<NatLiteral>),
-        Path(Rc<Path>),
-        Hole(Rc<Hole>),
-        LambdaLiteral(Rc<LambdaLiteral>),
-        UseIn(Rc<UseIn>),
-        CaseAnalysis(Rc<CaseAnalysis>),
-        UnsaturatedForeignApplication(Rc<UnsaturatedForeignApplication>),
+        NatLiteral {
+            value: crate::lexer::Nat,
+        },
+        Path {
+            identifier: Identifier,
+        },
+        Hole {
+            tag: Identifier,
+        },
+        LambdaLiteral {
+            parameter: Identifier,
+            parameter_type_annotation: Option<Expression>,
+            explicitness: Explicitness,
+            body_type_annotation: Option<Expression>,
+            body: Expression,
+        },
+        UseIn {},
+        CaseAnalysis {
+            expression: Expression,
+            cases: Vec<CaseAnalysisCase>,
+        },
+        UnsaturatedForeignApplication {
+            callee: Identifier,
+            arguments: Vec<Expression>,
+        },
     }
 
     const _: () = assert!(std::mem::size_of::<Expression>() == 16);
@@ -279,32 +308,6 @@ pub mod expression {
         }
     }
 
-    #[derive(Clone, Debug)]
-    pub struct PiTypeLiteral {
-        pub parameter: Option<Identifier>,
-        pub domain: Expression,
-        pub codomain: Expression,
-        pub explicitness: Explicitness,
-    }
-
-    #[derive(Clone, Debug)]
-    pub struct Application {
-        pub callee: Expression,
-        pub argument: Expression,
-        pub explicitness: Explicitness,
-    }
-
-    #[derive(Clone, Debug)]
-    pub struct NatLiteral {
-        pub value: crate::lexer::Nat,
-    }
-
-    // @Note don't reference-count because it already uses interning
-    #[derive(Clone, Debug)]
-    pub struct Path {
-        pub identifier: Identifier,
-    }
-
     impl Path {
         // currently always returns true because we don't support paths yet
         // with more than one segment in it
@@ -314,40 +317,10 @@ pub mod expression {
         }
     }
 
-    // @Note don't reference-count because it already uses interning
-    #[derive(Clone, Debug)]
-    pub struct Hole {
-        pub tag: Identifier,
-    }
-
-    #[derive(Clone, Debug)]
-    pub struct LambdaLiteral {
-        pub parameter: Identifier,
-        pub parameter_type_annotation: Option<Expression>,
-        pub explicitness: Explicitness,
-        pub body_type_annotation: Option<Expression>,
-        pub body: Expression,
-    }
-
-    #[derive(Clone, Debug)]
-    pub struct UseIn {}
-
-    #[derive(Clone, Debug)]
-    pub struct CaseAnalysis {
-        pub expression: Expression,
-        pub cases: Vec<CaseAnalysisCase>,
-    }
-
     #[derive(Clone, Debug)]
     pub struct CaseAnalysisCase {
         pub pattern: Pattern,
         pub expression: Expression,
-    }
-
-    #[derive(Clone, Debug)]
-    pub struct UnsaturatedForeignApplication {
-        pub callee: Identifier,
-        pub arguments: Vec<Expression>,
     }
 
     // @Task reference-count variants to reduce size of nat patterns

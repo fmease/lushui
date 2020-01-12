@@ -6,6 +6,7 @@ mod context;
 mod error;
 mod identifier;
 
+use freestanding::freestanding;
 use std::fmt;
 
 use crate::error::Span;
@@ -22,7 +23,6 @@ pub use declaration::{parse_declaration, Declaration};
 /// The part of the parser concerned with declarations.
 pub mod declaration {
     use super::*;
-    use freestanding::freestanding;
 
     /// The syntax node of a declaration.
     // @Question will the spans on them even get used (for error messages)
@@ -316,21 +316,71 @@ pub use expression::{parse_expression, Expression};
 pub mod expression {
     use super::*;
 
-    // @Task @Beacon @Beacon use freestanding
     /// The syntax node of an expression.
+    #[freestanding]
+    #[streamline(Box)]
     #[derive(Debug, Clone)]
     pub enum Expression {
-        PiTypeLiteral(Box<PiTypeLiteral>),
-        Application(Box<Application>),
-        TypeLiteral(Box<TypeLiteral>),
-        NatTypeLiteral(Box<NatTypeLiteral>),
-        NatLiteral(Box<NatLiteral>),
-        Path(Box<Path>),
-        Hole(Box<Hole>),
-        LambdaLiteral(Box<LambdaLiteral>),
-        LetIn(Box<LetIn>),
-        UseIn(Box<UseIn>),
-        CaseAnalysis(Box<CaseAnalysis>),
+        /// The syntax node of pi-type literals.
+        PiTypeLiteral {
+            binder: Option<Identifier>,
+            parameter: Expression,
+            expression: Expression,
+            explicitness: Explicitness,
+            span: Span,
+        },
+        /// The syntax node of function application.
+        Application {
+            callee: Expression,
+            argument: Expression,
+            explicitness: Explicitness,
+            span: Span,
+        },
+        TypeLiteral {
+            span: Span,
+        },
+        NatTypeLiteral {
+            span: Span,
+        },
+        NatLiteral {
+            value: lexer::Nat,
+            span: Span,
+        },
+        // @Task make it able to parse complex paths
+        Path {
+            inner: Identifier,
+        },
+        Hole {
+            tag: Identifier,
+            span: Span,
+        },
+        /// The syntax node of a lambda literal expression.
+        LambdaLiteral {
+            parameters: Parameters,
+            body_type_annotation: Option<Expression>,
+            body: Expression,
+            span: Span,
+        },
+        /// The syntax-node of a let-in expression.
+        // @Task rename the field `expression` to something more descriptive
+        LetIn {
+            binder: Identifier,
+            parameters: Parameters,
+            type_annotation: Option<Expression>,
+            // @Task improve upon naming
+            expression: Expression,
+            scope: Expression,
+            span: Span,
+        },
+        // @Task
+        UseIn {
+            span: Span,
+        },
+        CaseAnalysis {
+            expression: Expression,
+            cases: Vec<CaseAnalysisCaseGroup>,
+            span: Span,
+        },
     }
 
     /// Assertion that the size of [Expression] does not exceed 16 bytes.
@@ -401,16 +451,6 @@ pub mod expression {
             .or_else(|_: Error| parse_pi_type_literal_or_lower(context))
     }
 
-    /// The syntax node of pi-type literals.
-    #[derive(Debug, Clone)]
-    pub struct PiTypeLiteral {
-        pub binder: Option<Identifier>,
-        pub parameter: Expression,
-        pub expression: Expression,
-        pub explicitness: Explicitness,
-        pub span: Span,
-    }
-
     /// Parse a pi-type literal or a lower expression.
     // @Task update grammar
     // Pi_Literal_Or_Lower %right% ::= Application_Or_Lower (-> Pi_Literal_Or_Lower)*
@@ -456,15 +496,6 @@ pub mod expression {
             Err(_) if binder.is_none() => parameter,
             Err(error) => return Err(error),
         })
-    }
-
-    /// The syntax node of function application.
-    #[derive(Debug, Clone)]
-    pub struct Application {
-        pub callee: Expression,
-        pub argument: Expression,
-        pub explicitness: Explicitness,
-        pub span: Span,
     }
 
     // @Task implement semicolon application
@@ -557,11 +588,6 @@ pub mod expression {
         Ok(expression)
     }
 
-    #[derive(Debug, Clone)]
-    pub struct TypeLiteral {
-        pub span: Span,
-    }
-
     // Type_Literal ::= %type literal%
     fn parse_type_literal(context: &mut Context<'_>) -> Result<TypeLiteral> {
         context
@@ -569,21 +595,10 @@ pub mod expression {
             .map(|token| TypeLiteral { span: token.span })
     }
 
-    #[derive(Debug, Clone)]
-    pub struct NatTypeLiteral {
-        pub span: Span,
-    }
-
     fn parse_nat_type_literal(context: &mut Context<'_>) -> Result<NatTypeLiteral> {
         context
             .consume(TokenKind::Keyword(Keyword::Nat))
             .map(|token| NatTypeLiteral { span: token.span })
-    }
-
-    #[derive(Debug, Clone)]
-    pub struct NatLiteral {
-        pub value: lexer::Nat,
-        pub span: Span,
     }
 
     fn parse_nat_literal(context: &mut Context<'_>) -> Result<NatLiteral> {
@@ -599,21 +614,9 @@ pub mod expression {
             })
     }
 
-    // @Task make it able to parse complex paths
-    #[derive(Debug, Clone)]
-    pub struct Path {
-        pub inner: Identifier,
-    }
-
     // Identifier ::= %identifier%
     fn parse_path(context: &mut Context<'_>) -> Result<Path> {
         context.consume_identifier().map(|inner| Path { inner })
-    }
-
-    #[derive(Debug, Clone)]
-    pub struct Hole {
-        pub tag: Identifier,
-        pub span: Span,
     }
 
     // @Task change syntax to `"?" Identifier`
@@ -625,15 +628,6 @@ pub mod expression {
             span: keyword_hole.span.merge(tag.span),
             tag,
         })
-    }
-
-    /// The syntax node of a lambda literal expression.
-    #[derive(Debug, Clone)]
-    pub struct LambdaLiteral {
-        pub parameters: Parameters,
-        pub body_type_annotation: Option<Expression>,
-        pub body: Expression,
-        pub span: Span,
     }
 
     /// Parse a lambda literal expression.
@@ -655,19 +649,6 @@ pub mod expression {
             span: span_of_backslash.merge(body.span()),
             body,
         })
-    }
-
-    /// The syntax-node of a let-in expression.
-    // @Task rename the field `expression` to something more descriptive
-    #[derive(Debug, Clone)]
-    pub struct LetIn {
-        pub binder: Identifier,
-        pub parameters: Parameters,
-        pub type_annotation: Option<Expression>,
-        // @Task improve upon naming
-        pub expression: Expression,
-        pub scope: Expression,
-        pub span: Span,
     }
 
     /// Parse an let-in expression.
@@ -693,19 +674,6 @@ pub mod expression {
             span: let_keyword.span.merge(scope.span()),
             scope,
         })
-    }
-
-    // @Task
-    #[derive(Debug, Clone)]
-    pub struct UseIn {
-        pub span: Span,
-    }
-
-    #[derive(Debug, Clone)]
-    pub struct CaseAnalysis {
-        pub expression: Expression,
-        pub cases: Vec<CaseAnalysisCaseGroup>,
-        pub span: Span,
     }
 
     // Case_Analysis ::= "'case" Expression Line_Break Case_Analysis_Case_Group*
