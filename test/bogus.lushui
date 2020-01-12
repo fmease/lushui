@@ -1,4 +1,5 @@
-
+;;; errors like a charm:
+;;; let x: Nat = 2
 
 ;;; identity (A Type) (a: A): A = a
 

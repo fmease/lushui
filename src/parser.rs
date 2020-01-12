@@ -22,18 +22,48 @@ pub use declaration::{parse_declaration, Declaration};
 /// The part of the parser concerned with declarations.
 pub mod declaration {
     use super::*;
+    use freestanding::freestanding;
 
+    /// The syntax node of a declaration.
     // @Question will the spans on them even get used (for error messages)
     // @Note in most cases, only the span of the binder or the type annotations contained within
     // will be used, I guess
-    /// The syntax node of a declaration.
+    // @Task use #[common { span: Span }] once defined
+    #[freestanding]
+    #[streamline(Box)]
     #[derive(Debug)] // @Temporary
     pub enum Declaration {
-        Value(Box<Value>),
-        Data(Box<Data>),
-        Module(Box<Module>),
-        Use(Box<Use>),
-        Foreign(Box<Foreign>),
+        /// The syntax node of a value declaration.
+        Value {
+            binder: Identifier,
+            parameters: AnnotatedParameters,
+            type_annotation: Expression,
+            expression: Expression,
+            span: Span,
+        },
+        /// The syntax node of a data declaration.
+        Data {
+            binder: Identifier,
+            parameters: AnnotatedParameters,
+            type_annotation: Expression,
+            constructors: Vec<Constructor>,
+            span: Span,
+        },
+        /// The syntax node of a module declaration.
+        Module {
+            declarations: Vec<Declaration>,
+            span: Span,
+        },
+        /// The syntax node of a use declaration.
+        // @Task
+        Use { span: Span },
+        /// The syntax node of a foreign declaration.
+        Foreign {
+            binder: Identifier,
+            parameters: AnnotatedParameters,
+            type_annotation: Expression,
+            span: Span,
+        },
     }
 
     const _: () = assert!(std::mem::size_of::<Declaration>() == 16);
@@ -73,16 +103,6 @@ pub mod declaration {
         })
     }
 
-    /// The syntax node of a value declaration.
-    #[derive(Debug)]
-    pub struct Value {
-        pub binder: Identifier,
-        pub parameters: AnnotatedParameters,
-        pub type_annotation: Expression,
-        pub expression: Expression,
-        pub span: Span,
-    }
-
     /// Parse a value declaration.
     ///
     /// Grammar rule:
@@ -105,16 +125,6 @@ pub mod declaration {
             type_annotation,
             expression,
         })
-    }
-
-    /// The syntax node of a data declaration.
-    #[derive(Debug)]
-    pub struct Data {
-        pub binder: Identifier,
-        pub parameters: AnnotatedParameters,
-        pub type_annotation: Expression,
-        pub constructors: Vec<Constructor>,
-        pub span: Span,
     }
 
     // @Task grammar rule
@@ -149,13 +159,6 @@ pub mod declaration {
             type_annotation,
             constructors,
         })
-    }
-
-    // @Temporary missing a lot of information
-    #[derive(Debug)]
-    pub struct Module {
-        pub declarations: Vec<Declaration>,
-        pub span: Span,
     }
 
     // @Task
@@ -195,23 +198,8 @@ pub mod declaration {
     }
 
     // @Task
-    #[derive(Debug)]
-    pub struct Use {
-        pub span: Span,
-    }
-
-    // @Task
     fn _parse_use_declaration() -> Result<Use> {
         unimplemented!()
-    }
-
-    /// The syntax node of a foreign declaration.
-    #[derive(Debug)]
-    pub struct Foreign {
-        pub binder: Identifier,
-        pub parameters: AnnotatedParameters,
-        pub type_annotation: Expression,
-        pub span: Span,
     }
 
     /// Parse a foreign declaration.
@@ -328,6 +316,7 @@ pub use expression::{parse_expression, Expression};
 pub mod expression {
     use super::*;
 
+    // @Task @Beacon @Beacon use freestanding
     /// The syntax node of an expression.
     #[derive(Debug, Clone)]
     pub enum Expression {

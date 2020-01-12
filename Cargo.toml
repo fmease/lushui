@@ -8,3 +8,4 @@ edition = "2018"
 colored = "1.9.1"
 string_cache = "0.8.0"
 num-bigint = "0.2.5"
+freestanding = { path = "src/freestanding" }

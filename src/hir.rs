@@ -117,6 +117,7 @@ pub use expression::{lower_expression, Expression};
 pub mod expression {
     use super::*;
 
+    // @Task @Beacon @Beacon use freestanding
     // @Beacon @Beacon @Task add span information!!! @Note @Beacon now, we are in the HIR,
     // there might not be any span information if synthesize HIR nodes (common thing probably)
     // @Note we can also think about **interning** Expressions but not sure if a good idea
