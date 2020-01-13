@@ -22,8 +22,6 @@ use std::rc::Rc;
 const MISSING_ANNOTATION: &str =
     "(compiler bug) currently lambda literal parameters and patterns must be type-annotated";
 
-// @Task make pure returning new Context
-// @Question this is eager evaluation, right?
 // @Task handle out of order declarations and recursions (you need to go through declarations twice) and
 // only register the names plus types first (there is gonna be scope.insert_unresolved_binding)
 pub fn evaluate_declaration(declaration: &Declaration, scope: ModuleScope) -> Result<()> {
@@ -92,15 +90,7 @@ pub fn evaluate_declaration(declaration: &Declaration, scope: ModuleScope) -> Re
             binder,
             type_annotation,
         } => {
-            // @Task document that even if we don't have a foreign declaration `foo` in
-            // our module, `foo` has already been defined (but is untyped) which means
-            // there will never be foreign bindings defined on the Rust side without an
-            // accompanying declaration on the Lushui side. A missing declaration might
-            // lead to a panic though @Bug
-            // scope.clone().assert_is_not_yet_defined(binder.clone())?;
-            // @Update does not panic
-            // @Bug @Bug @Update obviously, overwrites a previous declaration because the check is
-            // too vague
+            scope.clone().assert_is_not_yet_defined(binder.clone())?;
 
             let r#type = normalize(type_annotation.clone(), scope.clone())?;
             assert_expression_is_a_type(r#type.clone(), scope.clone())?;
@@ -527,12 +517,14 @@ pub fn normalize(expression: Expression, scope: ModuleScope) -> Result<Expressio
             expression
         }
         Expression::PiTypeLiteral(literal) => {
-            let (domain, codomain) = normalize_abstraction(
-                literal.parameter.clone(),
-                literal.domain.clone(),
-                literal.codomain.clone(),
-                scope,
-            )?;
+            let domain = normalize(literal.domain.clone(), scope.clone())?;
+            let codomain = match literal.parameter.clone() {
+                Some(parameter) => normalize(
+                    literal.codomain.clone(),
+                    scope.extend_with_parameter(parameter.clone(), domain.clone()),
+                )?,
+                None => literal.codomain.clone(),
+            };
             expr! {
                 PiTypeLiteral {
                     parameter: literal.parameter.clone(),
@@ -543,14 +535,16 @@ pub fn normalize(expression: Expression, scope: ModuleScope) -> Result<Expressio
             }
         }
         Expression::LambdaLiteral(literal) => {
-            let (parameter_type, body) = normalize_abstraction(
-                Some(literal.parameter.clone()),
+            let parameter_type = normalize(
                 literal
                     .parameter_type_annotation
                     .clone()
                     .expect(MISSING_ANNOTATION),
+                scope.clone(),
+            )?;
+            let body = normalize(
                 literal.body.clone(),
-                scope,
+                scope.extend_with_parameter(literal.parameter.clone(), parameter_type.clone()),
             )?;
             expr! {
                 LambdaLiteral {
@@ -584,9 +578,7 @@ fn match_with_type_annotation(
     scope: ModuleScope,
 ) -> Result<Expression> {
     assert_expression_is_a_type(type_annotation.clone(), scope.clone())?;
-
     let infered_type = infer_type(expression.clone(), scope.clone())?;
-
     assert_expressions_are_equal(type_annotation, infered_type.clone(), scope)?;
 
     Ok(infered_type)
@@ -705,26 +697,6 @@ fn abstraction_substitute(
         parameter_type,
         substitute(expression, environment, scope),
     )
-}
-
-// @Temporary signature
-fn normalize_abstraction(
-    parameter: Option<Identifier>,
-    parameter_type: Expression,
-    expression: Expression,
-    scope: ModuleScope,
-) -> Result<(Expression, Expression)> {
-    let parameter_type = normalize(parameter_type, scope.clone())?;
-    Ok((
-        parameter_type.clone(),
-        match parameter {
-            Some(parameter) => normalize(
-                expression,
-                scope.extend_with_parameter(parameter.clone(), parameter_type),
-            )?,
-            None => expression.clone(),
-        },
-    ))
 }
 
 // @Temporary signature

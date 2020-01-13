@@ -189,7 +189,7 @@ impl ModuleScope {
                 if arguments.len() == arity {
                     // We normalize the result of the foreign binding to prevent the injection of some kinds of garbage values.
                     // @Question should we run `infer_type` over it as well? I think so
-                    // @Task match_with_annotated_type 
+                    // @Task match_with_annotated_type
                     super::normalize(function(&arguments), self)
                 } else {
                     Ok(super::expr! {
@@ -205,11 +205,12 @@ impl ModuleScope {
     }
 
     pub fn assert_is_not_yet_defined(self, binder: Identifier) -> Result<()> {
-        if self.contains(&binder) {
-            Err(Error::AlreadyDefined(binder))
-        } else {
-            Ok(())
+        if let Some(entity) = self.bindings.borrow().get(&binder) {
+            if !matches!(entity, Entity::UntypedForeign { .. }) {
+                return Err(Error::AlreadyDefined(binder));
+            }
         }
+        Ok(())
     }
 
     // @Temporary
