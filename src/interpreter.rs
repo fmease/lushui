@@ -29,9 +29,8 @@ use crate::hir::{self, expr, expression, Declaration, Expression, Identifier};
 use crate::parser::Explicitness;
 use error::{Error, Result};
 pub use scope::ModuleScope;
-use scope::{Environment, FunctionScope};
+use scope::{FunctionScope, Substitutions};
 
-use std::collections::HashMap;
 use std::rc::Rc;
 
 // @Temporary @Bug we don't do non-trivial type inference yet and thus, type parameters of lambda literals
@@ -127,29 +126,28 @@ pub fn evaluate_declaration(declaration: &Declaration, module_scope: ModuleScope
     })
 }
 
-/// Substitute inside an expression using an environment.
+/// Substitute inside an expression using an substitutions.
 ///
 /// Replace occurences of those identifiers inside the expression which are
-/// member of the subsitution list known as the environment with the expression
+/// member of the subsitution list known as the substitutions with the expression
 /// which it maps to.
 ///
 /// This procedure should be replaced with locally nameless.
 fn substitute(
     expression: Expression,
-    environment: Environment,
+    substitutions: &Substitutions<'_>,
     scope: &FunctionScope<'_>,
 ) -> Expression {
     match expression {
-        Expression::Path(ref path) => environment
-            .get(&path.identifier)
-            .cloned()
+        Expression::Path(ref path) => substitutions
+            .retrieve(&path.identifier)
             .unwrap_or(expression),
         Expression::PiTypeLiteral(literal) => {
             let (parameter, domain, codomain) = abstraction_substitute(
                 literal.parameter.clone(),
                 literal.domain.clone(),
                 literal.codomain.clone(),
-                environment,
+                substitutions,
                 scope,
             );
             expr! {
@@ -172,7 +170,7 @@ fn substitute(
                     .clone()
                     .expect(MISSING_ANNOTATION),
                 literal.body.clone(),
-                environment,
+                substitutions,
                 scope,
             );
             expr! {
@@ -190,10 +188,10 @@ fn substitute(
             Application {
                 callee: substitute(
                     application.callee.clone(),
-                    environment.clone(),
+                    substitutions.clone(),
                     scope,
                 ),
-                argument: substitute(application.argument.clone(), environment, scope),
+                argument: substitute(application.argument.clone(), substitutions, scope),
                 explicitness: Explicitness::Explicit,
             }
         },
@@ -203,7 +201,7 @@ fn substitute(
             CaseAnalysis {
                 expression: substitute(
                     case_analysis.expression.clone(),
-                    environment.clone(),
+                    substitutions.clone(),
                     scope,
                 ),
                 cases: case_analysis
@@ -212,7 +210,7 @@ fn substitute(
                     .map(|case| {
                         case_analysis_case_substitute(
                             case.clone(),
-                            environment.clone(),
+                            substitutions,
                             scope,
                         )
                     })
@@ -230,81 +228,73 @@ fn substitute(
 /// Substitute inside the case of a case analysis.
 fn case_analysis_case_substitute(
     case: expression::CaseAnalysisCase,
-    environment: Environment,
+    substitutions: &Substitutions<'_>,
     scope: &FunctionScope<'_>,
 ) -> expression::CaseAnalysisCase {
-    let (pattern, environment) = pattern_substitute(case.pattern, environment, scope);
+    // @Note does not return a new substitutions anymore
+    let pattern = pattern_substitute(case.pattern, substitutions, scope);
 
     expression::CaseAnalysisCase {
         pattern,
-        expression: substitute(case.expression.clone(), environment, scope),
+        expression: substitute(case.expression.clone(), substitutions, scope),
     }
 }
 
 /// Substitute inside of a pattern.
-fn pattern_substitute(
+// @Bug does not work at all anymore!!!
+fn pattern_substitute<'p>(
     pattern: expression::Pattern,
-    environment: Environment,
+    substitutions: &'p Substitutions<'p>,
     scope: &FunctionScope<'_>,
-) -> (expression::Pattern, Environment) {
+) -> expression::Pattern {
     match pattern {
-        expression::Pattern::NatLiteral(_) => (pattern, environment),
+        expression::Pattern::NatLiteral(_) => pattern,
         expression::Pattern::Path {
             path,
             type_annotation,
         } => {
             let type_annotation = type_annotation
-                .map(|annotation| substitute(annotation, environment.clone(), scope));
+                .map(|annotation| substitute(annotation, substitutions.clone(), scope));
 
             if is_matchable(&path, scope) {
-                return (
-                    expression::Pattern::Path {
-                        path,
-                        type_annotation,
-                    },
-                    environment,
-                );
+                return expression::Pattern::Path {
+                    path,
+                    type_annotation,
+                };
             }
 
             let refreshed_binder = path.identifier.refresh();
-            // @Bug geez deep copy, fix this, use a better data structure
-            let mut environment = environment.as_ref().clone();
-            environment.insert(
-                path.identifier.clone(),
-                expr! {
-                    Path {
-                        identifier: refreshed_binder.clone(),
-                    }
+
+            expression::Pattern::Path {
+                path: expression::Path {
+                    identifier: refreshed_binder.clone(),
                 },
-            );
-            (
-                expression::Pattern::Path {
-                    path: expression::Path {
-                        identifier: refreshed_binder,
-                    },
-                    type_annotation,
-                },
-                Rc::new(environment),
-            )
+                type_annotation,
+            }
+
+            // substitutions.extend_with_substitution(
+            //     path.identifier.clone(),
+            //     expr! {
+            //         Path {
+            //             identifier: refreshed_binder,
+            //         }
+            //     },
+            // )
         }
         expression::Pattern::Application { callee, argument } => {
             // @Bug disallow `n m` where n is a path which is not matchable
             // @Note `(N m) o` is still legal obviously, N matchable, m not
             // @Question is there a better place than here?
 
-            // @Note bad (memory): we deep-copy an Rc!
-            let (callee, environment) =
-                pattern_substitute(callee.as_ref().clone(), environment, scope);
-            let (argument, environment) =
-                pattern_substitute(argument.as_ref().clone(), environment, scope);
+            // @Note does not return a new substitutions anymore
+            let callee = pattern_substitute(callee.as_ref().clone(), substitutions, scope);
+            // @Note does not return a new substitutions anymore
+            let argument = pattern_substitute(argument.as_ref().clone(), substitutions, scope);
 
-            (
-                expression::Pattern::Application {
-                    callee: Rc::new(callee),
-                    argument: Rc::new(argument),
-                },
-                environment,
-            )
+            expression::Pattern::Application {
+                callee: Rc::new(callee),
+                argument: Rc::new(argument),
+            }
         }
     }
 }
@@ -402,11 +392,8 @@ pub fn infer_type(expression: Expression, scope: &FunctionScope<'_>) -> Result<h
                     match literal.parameter.clone() {
                         Some(parameter) => substitute(
                             literal.codomain.clone(),
-                            {
-                                let mut environment = HashMap::new();
-                                environment.insert(parameter, application.argument.clone());
-                                Rc::new(environment)
-                            },
+                            &Substitutions::new()
+                                .extend_with(parameter, application.argument.clone()),
                             scope,
                         ),
                         None => literal.codomain.clone(),
@@ -522,11 +509,7 @@ pub fn normalize(expression: Expression, scope: &FunctionScope<'_>) -> Result<Ex
                 Expression::LambdaLiteral(literal) => normalize(
                     substitute(
                         literal.body.clone(),
-                        {
-                            let mut environment = HashMap::new();
-                            environment.insert(literal.parameter.clone(), argument);
-                            Rc::new(environment)
-                        },
+                        &Substitutions::new().extend_with(literal.parameter.clone(), argument),
                         scope,
                     ),
                     scope,
@@ -713,17 +696,15 @@ fn abstraction_substitute(
     parameter: Option<Identifier>,
     parameter_type: Expression,
     expression: Expression,
-    environment: Environment,
+    substitutions: &Substitutions<'_>,
     scope: &FunctionScope<'_>,
 ) -> (Option<Identifier>, Expression, Expression) {
-    let parameter_type = substitute(parameter_type, environment.clone(), scope);
+    let parameter_type = substitute(parameter_type, &substitutions, scope);
 
-    let (refreshed_parameter, environment) = match parameter {
+    match parameter {
         Some(parameter) => {
             let refreshed_parameter = parameter.refresh();
-            // @Bug geez deep copy, fix this, use a better data structure
-            let mut environment = environment.as_ref().clone();
-            environment.insert(
+            let substitutions = substitutions.extend_with(
                 parameter.clone(),
                 expr! {
                     Path {
@@ -731,15 +712,19 @@ fn abstraction_substitute(
                     }
                 },
             );
-            (Some(refreshed_parameter), Rc::new(environment))
+
+            (
+                Some(refreshed_parameter),
+                parameter_type,
+                substitute(expression, &substitutions, scope),
+            )
         }
-        None => (None, environment),
-    };
-    (
-        refreshed_parameter,
-        parameter_type,
-        substitute(expression, environment, scope),
-    )
+        None => (
+            None,
+            parameter_type,
+            substitute(expression, substitutions, scope),
+        ),
+    }
 }
 
 /// Indicate whether two pi-types or lambda literals are syntactically equal.
@@ -759,19 +744,15 @@ fn abstraction_equal(
                 expression1,
                 substitute(
                     expression2,
-                    {
-                        let mut environment = HashMap::new();
-                        environment.insert(
-                            binder2.clone(),
-                            expr! {
-                                Path {
-                                    identifier: binder1.clone(),
+                    &Substitutions::new().extend_with(
+                        binder2.clone(),
+                        expr! {
+                            Path {
+                                identifier: binder1.clone(),
 
-                                }
-                            },
-                        );
-                        Rc::new(environment)
-                    },
+                            }
+                        },
+                    ),
                     scope,
                 ),
                 scope,

@@ -1,7 +1,7 @@
 //! Binding and scope handler.
-//! 
+//!
 //! Exposes two types of scopes:
-//! 
+//!
 //! * [ModuleScope]
 //! * [FunctionScope]
 
@@ -15,8 +15,8 @@ mod module {
     use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
 
     use super::{ffi, Error, FunctionScope, Result};
-    use crate::interpreter::normalize;
     use crate::hir::{expr, Expression, Identifier};
+    use crate::interpreter::normalize;
 
     /// An entity found inside a module scope.
     // @Question Expression<Normalized>?
@@ -63,7 +63,7 @@ mod module {
         }
 
         /// Retrieve the value of an entity
-        /// 
+        ///
         /// Returns `None` if the entity is **neutral** (non-reducible)
         fn value(&self) -> Option<Expression> {
             match self {
@@ -97,15 +97,15 @@ mod module {
     }
 
     /// The scope of bindings inside of a module.
-    /// 
+    ///
     /// Can store all kinds of bindings:
-    /// 
+    ///
     /// * typed values
     /// * data types with its constructors
     /// * constructors
     /// * partially and fully registered (untyped and typed respectively)
     ///   foreign bindings
-    /// 
+    ///
     /// Difference to [FunctionScope]: The module scopes is designed for declarations which may appear out of order and
     /// cross-reference each other (as long as there is no cyclic dependency) and for recursive bindings. It's flat.
     /// The API offers mutating functions.
@@ -130,7 +130,7 @@ mod module {
         }
 
         /// Look up the value of a binding.
-        /// 
+        ///
         /// * returns `None` if the `binder` is not bound.
         /// * returns `Some(None)` if the binding is **neutral** (non-reducible)
         pub fn lookup_value(self, binder: &Identifier) -> Option<Option<Expression>> {
@@ -156,17 +156,14 @@ mod module {
         }
 
         pub fn is_foreign(self, binder: &Identifier) -> bool {
-            self.is(
-                binder,
-                |entity| matches!(entity, Entity::Foreign { .. }),
-            )
+            self.is(binder, |entity| matches!(entity, Entity::Foreign { .. }))
         }
 
         /// Try applying foreign binding.
         ///
         /// ## Panics
         ///
-        /// Panics if `binder` either not bound or not foreign.
+        /// Panics if `binder` is either not bound or not foreign.
         pub fn try_applying_foreign_binding(
             self,
             binder: &Identifier,
@@ -218,9 +215,9 @@ mod module {
         }
 
         /// Insert a value binding into the scope.
-        /// 
+        ///
         /// ## Panics
-        /// 
+        ///
         /// Panics under `cfg(debug_assertions)` if `binder` is already bound.
         pub fn insert_value_binding(
             self,
@@ -228,28 +225,36 @@ mod module {
             r#type: Expression,
             value: Expression,
         ) {
-            debug_assert!(self.bindings.borrow_mut().insert(
-                binder,
-                Entity::Expression {
-                    r#type,
-                    expression: value,
-                },
-            ).is_none());
+            debug_assert!(self
+                .bindings
+                .borrow_mut()
+                .insert(
+                    binder,
+                    Entity::Expression {
+                        r#type,
+                        expression: value,
+                    },
+                )
+                .is_none());
         }
 
         /// Insert a data type binding into the scope.
-        /// 
+        ///
         /// ## Panics
-        /// 
+        ///
         /// Panics under `cfg(debug_assertions)` if the `binder` is already bound.
         pub fn insert_data_binding(self, binder: Identifier, r#type: Expression) {
-            debug_assert!(self.bindings.borrow_mut().insert(
-                binder,
-                Entity::DataType {
-                    r#type,
-                    constructors: Vec::new(),
-                },
-            ).is_none());
+            debug_assert!(self
+                .bindings
+                .borrow_mut()
+                .insert(
+                    binder,
+                    Entity::DataType {
+                        r#type,
+                        constructors: Vec::new(),
+                    },
+                )
+                .is_none());
         }
 
         /// Insert constructor binding into the scope.
@@ -266,8 +271,9 @@ mod module {
         ) {
             let mut bindings = self.bindings.borrow_mut();
 
-            debug_assert!(bindings.insert(binder.clone(), Entity::Constructor { r#type }).is_none());
-            
+            debug_assert!(bindings
+                .insert(binder.clone(), Entity::Constructor { r#type })
+                .is_none());
             match bindings.get_mut(data_type).unwrap() {
                 Entity::DataType {
                     ref mut constructors,
@@ -278,9 +284,9 @@ mod module {
         }
 
         /// Complete the registration of a foreign binding by typing it.
-        /// 
+        ///
         /// ## Panics
-        /// 
+        ///
         /// Panics if the `binder` is not bound or the binding is not a partially
         /// registered one.
         pub fn insert_type_for_foreign_binding(self, binder: Identifier, r#type: Expression) {
@@ -296,9 +302,9 @@ mod module {
         }
 
         /// Partially register a foreign binding letting it untyped.
-        /// 
+        ///
         /// ## Panics
-        /// 
+        ///
         /// Panics under `cfg(debug_assertions)` if the `binder` is already bound.
         pub fn insert_untyped_foreign_binding(
             self,
@@ -334,7 +340,7 @@ mod function {
     use crate::hir::{Expression, Identifier};
 
     /// And entity found in a function scope.
-    /// 
+    ///
     /// Right now, that's solely parameters but this might be extended to have the two variants
     /// `Parameter` and `Expression` once we feature `LetIn` in the HIR because of locally nameless.
     enum Entity {
@@ -350,9 +356,9 @@ mod function {
     }
 
     /// The scope of bindings inside of a function.
-    /// 
+    ///
     /// Can only store function parameters at the moment.
-    /// 
+    ///
     /// Comparison to [ModuleScope]: In function scopes, declarations shadow other ones with the same name.
     /// And since lambdas and let/ins are nested, they are ordered and
     /// most importantly, recursion only works explicitly via the fix-point-combinator.
@@ -440,7 +446,11 @@ mod function {
             self.proxy(queried_binder, |_| Err(()), ModuleScope::constructors)
         }
 
-        // @Task document, may panic
+        /// Try applying foreign binding.
+        ///
+        /// ## Panics
+        ///
+        /// Panics if `binder` is either not bound or not foreign.
         pub fn try_applying_foreign_binding(
             &self,
             binder: &Identifier,
@@ -456,12 +466,63 @@ mod function {
     }
 }
 
-// @Beacon @Task make this its own type with helpful methods so we don't
-// need to write that much boilerplate in crate::effluvium anymore!
-// @Question why do we need to own Expression? that results in a lot of cloning!!
-// what about a Cow<'a, Expression>?? or are gonna get lifetime issues?
-/// Environment used for substitions.
-///
-/// Will be obsolete once we use locally nameless/Debruijn-indexing
-pub type Environment =
-    std::rc::Rc<std::collections::HashMap<crate::hir::Identifier, crate::hir::Expression>>;
+pub use substitutions::Substitutions;
+
+mod substitutions {
+    use crate::hir::{Expression, Identifier};
+
+    /// List of substitions.
+    ///
+    /// Probably bad cache behavior but it will be obsolete anyways once we are locally nameless.
+    pub struct Substitutions<'parent> {
+        inner: Inner<'parent>,
+    }
+
+    enum Inner<'parent> {
+        Empty,
+        Substitution {
+            parent: &'parent Substitutions<'parent>,
+            binder: Identifier,
+            expression: Expression,
+        },
+    }
+
+    impl Substitutions<'static> {
+        /// Create a new empty substitution environment.
+        pub fn new() -> Self {
+            Substitutions {
+                inner: Inner::Empty,
+            }
+        }
+    }
+
+    impl<'parent> Substitutions<'parent> {
+        /// Extend the list of substitutions.
+        pub fn extend_with(&'parent self, binder: Identifier, expression: Expression) -> Self {
+            Substitutions {
+                inner: Inner::Substitution {
+                    parent: self,
+                    binder,
+                    expression,
+                },
+            }
+        }
+
+        pub fn retrieve(&self, queried_binder: &Identifier) -> Option<Expression> {
+            match &self.inner {
+                Inner::Empty => None,
+                Inner::Substitution {
+                    parent,
+                    binder,
+                    expression,
+                } => {
+                    if queried_binder == binder {
+                        Some(expression.clone())
+                    } else {
+                        parent.retrieve(queried_binder)
+                    }
+                }
+            }
+        }
+    }
+}
