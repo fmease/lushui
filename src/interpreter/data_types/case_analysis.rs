@@ -7,16 +7,16 @@ use crate::interpreter::{substitute, FunctionScope, Substitutions};
 
 /// Substitute inside the case of a case analysis.
 pub fn case_analysis_case_substitute(
-    case: expression::CaseAnalysisCase,
+    case: expression::Case,
     substitutions: &Substitutions<'_>,
     scope: &FunctionScope<'_>,
-) -> expression::CaseAnalysisCase {
+) -> expression::Case {
     // @Note does not return a new substitutions anymore
     let pattern = pattern_substitute(case.pattern, substitutions, scope);
 
-    expression::CaseAnalysisCase {
+    expression::Case {
         pattern,
-        expression: substitute(case.expression.clone(), substitutions, scope),
+        body: substitute(case.body.clone(), substitutions, scope),
     }
 }
 

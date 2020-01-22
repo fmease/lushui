@@ -101,7 +101,7 @@ impl Display for Expression {
             Self::CaseAnalysis(case_analysis) => write!(
                 f,
                 "case ({}){}",
-                case_analysis.expression,
+                case_analysis.subject,
                 case_analysis
                     .cases
                     .iter()
@@ -122,9 +122,9 @@ impl Display for Expression {
     }
 }
 
-impl Display for expression::CaseAnalysisCase {
+impl Display for expression::Case {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "of {} => ({})", self.pattern, self.expression)
+        write!(f, "of {} => ({})", self.pattern, self.body)
     }
 }
 

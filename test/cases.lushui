@@ -1,3 +1,10 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;     CASE ANALYSIS BELOW ALREADY WORKS AS WISHED     ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+identity (|A: Type) (a: A): A = a
+
 data Ordering: Type =
     Less: Ordering
     Equal: Ordering
@@ -8,3 +15,22 @@ invert (ordering: Ordering): Ordering =
     of Less => Greater
     of Equal => Equal
     of Greater => Less
+
+data Tuple (A B: Type): Type =
+    Tuple' (|A B: Type): A -> B -> Tuple A B
+
+alpha: Tuple Ordering Ordering =
+    Tuple' (|Ordering) (|Ordering) (invert (identity (|Ordering) Equal)) (invert Greater)
+
+beta: Ordering = invert (invert Less)
+
+gamma: Ordering = invert Greater
+gamma': Ordering = invert Equal
+gamma'': Ordering = invert Less
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; now we need to extend it to constructors with
+;;; parameters, natural numbers, parametric types and so
+;;; on.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+

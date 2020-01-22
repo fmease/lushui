@@ -224,8 +224,8 @@ fn substitute(
         Expression::UseIn(_) => todo!(),
         Expression::CaseAnalysis(case_analysis) => expr! {
             CaseAnalysis {
-                expression: substitute(
-                    case_analysis.expression.clone(),
+                subject: substitute(
+                    case_analysis.subject.clone(),
                     substitutions.clone(),
                     scope,
                 ),
@@ -333,32 +333,10 @@ pub fn infer_type(expression: Expression, scope: &FunctionScope<'_>) -> Result<h
             }
         }
         Expression::UseIn(_) => todo!(),
+        // @Beacon @Beacon @Beacon @Temporary @Task
+        // first: fiddeling, then: building abstractions
         Expression::CaseAnalysis(case_analysis) => {
-            let r#type = infer_type(case_analysis.expression.clone(), scope)?;
-            // @Task generalize this (because then, we don't need to check whether we supplied too
-            // many constructors (would be a type error on its own, but...)/binders separately, or whatever)
-            // if case_analysis.cases.is_empty() {
-            // // @Note let's do the important stuff first before going down the rabbit hole of
-            // // checking whether a type is inhabited or not
-            // todo!()
-            // return if is_uninhabited(r#type, scope) {
-            //     // (A: 'Type) -> A
-            // Ok(expr! {
-            //     PiTypeLiteral {
-            //         // @Question is Identifier::Stub error-prone (in respect to substitution/name clashes)?
-            //         parameter: Some(Identifier::Stub),
-            //         domain: Expression::TypeLiteral,
-            //         codomain: expr! { Path { identifier: Identifier::Stub } },
-            //         // @Temporary explicitness
-            //         explicitness: Explicitness::Explicit,
-            //     }
-            // })
-            // } else {
-            //     // @Task supply more information
-            //     Err(Error::NotAllConstructorsCovered)
-            // }
-            // }
-
+            let r#type = infer_type(case_analysis.subject.clone(), scope)?;
             // @Task verify that
             // * patterns are of correct type (i.e. r#type is an ADT and the constructors are the valid ones)
             // * all constructors are covered
@@ -366,16 +344,56 @@ pub fn infer_type(expression: Expression, scope: &FunctionScope<'_>) -> Result<h
 
             let type_path = match r#type {
                 Expression::Path(path) => path.identifier.clone(),
-                // @Note support Expression::Application to allow analysing polymorphic types
-                // @Task
-                _ => panic!("encountered unsupported type to be case-analysed"),
+                // @Task support Expression::Application to allow analysing polymorphic types
+                _ => todo!("encountered unsupported type to be case-analysed"),
             };
 
-            let constructors = scope.constructors(&type_path);
+            use hir::expression::Pattern;
 
-            dbg!(&constructors);
+            let mut type_of_previous_body = None::<Expression>;
 
-            todo!()
+            for case in case_analysis.cases.iter() {
+                match &case.pattern {
+                    Pattern::NatLiteral(_) => todo!("nat literal patterns"),
+                    Pattern::Path {
+                        path,
+                        type_annotation,
+                    } => {
+                        // todo!() // @Beacon @Beacon @Beacon @Task
+                    }
+                    Pattern::Application {
+                        callee: _,
+                        argument: _,
+                    } => todo!("application patterns"),
+                }
+                // @Task @Beacon insert bindings from pattern when type checking body
+                let r#type = infer_type(case.body.clone(), scope)?;
+
+                match type_of_previous_body {
+                    Some(ref previous_type) => {
+                        assert_expected_expression_equals_actual(
+                            previous_type.clone(),
+                            r#type,
+                            scope,
+                        )?;
+                    }
+                    None => {
+                        type_of_previous_body = Some(r#type);
+                    }
+                }
+            }
+
+            type_of_previous_body.unwrap_or_else(|| {
+                expr! {
+                    PiTypeLiteral {
+                        // @Question is Identifier::Stub error-prone in respect to substitution?
+                        parameter: Some(hir::Identifier::Stub),
+                        domain: Expression::TypeLiteral,
+                        codomain: expr! { Path { identifier: hir::Identifier::Stub } },
+                        explicitness: Explicitness::Implicit,
+                    }
+                }
+            })
         }
         Expression::UnsaturatedForeignApplication(_) => todo!(),
     })
@@ -386,7 +404,7 @@ pub fn infer_type(expression: Expression, scope: &FunctionScope<'_>) -> Result<h
 /// This is beta-reduction I think.
 // @Task differenciate between Expression<InitialPhase> and Expression<Normalized>
 pub fn evaluate(expression: Expression, scope: &FunctionScope<'_>) -> Result<Expression> {
-    Ok(match expression {
+    Ok(match expression.clone() {
         // @Task if path refers to a foreign binding AND arity == 0, then resolve the foreign
         // binding
         Expression::Path(ref path) => scope
@@ -471,7 +489,50 @@ pub fn evaluate(expression: Expression, scope: &FunctionScope<'_>) -> Result<Exp
             }
         }
         Expression::UseIn(_) => todo!(),
-        Expression::CaseAnalysis(_) => todo!(),
+        // @Note @Beacon, now, meta information would be nice, so we don't need to do
+        // double work (the work of `infer_type` again)
+        // @Beacon @Beacon @Beacon @Note this code is @Temporary as hell.
+        // I just need to implement enough of it till I start building good
+        // abstractions
+        Expression::CaseAnalysis(case_analysis) => {
+            use hir::expression::Pattern;
+
+            let subject = evaluate(case_analysis.subject.clone(), scope)?;
+
+            // @Note we assume, subject is composed of only applications, paths
+            // and natural number literals corresponding to the pattern types we
+            // want to support right now
+            // everything else should be impossible because of type checking
+            // but I might be wrong. possible counter examples: unevaluated case
+            // analysis expressions etc
+            match subject.clone() {
+                Expression::Path(subject_path) => {
+                    // @Beacon @Beacon @Task
+                    if scope.is_constructor(&subject_path.identifier) {
+                        for case in case_analysis.cases.iter() {
+                            match &case.pattern {
+                                Pattern::NatLiteral(_) => todo!(),
+                                Pattern::Path { path, .. } => {
+                                    if path.identifier == subject_path.identifier {
+                                        // @Task @Beacon extend with parameters when evaluating
+                                        return evaluate(case.body.clone(), scope);
+                                    }
+                                }
+                                Pattern::Application { .. } => todo!(),
+                            }
+                        }
+                        // we should not be here
+                        unreachable!()
+                    } else {
+                        expression
+                    }
+                }
+                Expression::Application(_application) => todo!(),
+                Expression::NatLiteral(_literal) => todo!(),
+                // @Note reachable if they contain neutrals, right??
+                _ => unreachable!(),
+            }
+        }
         // @Question or should the argument be normalized *again*? (under a possibly new scope?)
         Expression::UnsaturatedForeignApplication(_) => expression,
     })

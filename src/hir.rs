@@ -164,8 +164,8 @@ pub mod expression {
         },
         UseIn {},
         CaseAnalysis {
-            expression: Expression,
-            cases: Vec<CaseAnalysisCase>,
+            subject: Expression,
+            cases: Vec<Case>,
         },
         UnsaturatedForeignApplication {
             callee: Identifier,
@@ -295,16 +295,16 @@ pub mod expression {
                     }
 
                     for pattern in case_group.patterns {
-                        cases.push(CaseAnalysisCase {
+                        cases.push(Case {
                             pattern: lower_pattern(pattern),
-                            expression: lower_expression(case_group.expression.clone()),
+                            body: lower_expression(case_group.expression.clone()),
                         });
                     }
                 }
 
                 expr! {
                     CaseAnalysis {
-                        expression: lower_expression(case_analysis.expression),
+                        subject: lower_expression(case_analysis.expression),
                         cases,
                     }
                 }
@@ -322,9 +322,9 @@ pub mod expression {
     }
 
     #[derive(Clone, Debug)]
-    pub struct CaseAnalysisCase {
+    pub struct Case {
         pub pattern: Pattern,
-        pub expression: Expression,
+        pub body: Expression,
     }
 
     // @Task reference-count variants to reduce size of nat patterns
