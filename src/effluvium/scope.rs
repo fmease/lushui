@@ -1,3 +1,4 @@
+// @Task update docs
 //! This module exposes an [`Environment`] and a [`ModuleScope`].
 //!
 //! What's the difference between those two? Well, apart from them not being
@@ -25,336 +26,407 @@
 
 mod ffi;
 
-use super::{Error, Expression, Identifier, Result};
-use std::fmt;
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use super::{Error, Result};
 
-// @Question Expression<Normalized>?
-#[derive(Clone)]
-enum Entity {
-    // @Question is this a value or an expression?
-    Expression {
-        r#type: Expression,
-        expression: Expression,
-    },
-    // @Question should we store the constructors?
-    DataType {
-        r#type: Expression,
-        constructors: Vec<Identifier>,
-    },
-    Constructor {
-        r#type: Expression,
-    },
-    // @Temporary @Note move this kind of entity out of ModuleContext, it belongs to a not-yet-existing FunctionContext
-    // @Note will be replaced by Debruijn-indeces
-    Parameter {
-        r#type: Expression,
-    },
-    UntypedForeign {
-        arity: usize,
-        function: ffi::ForeignFunction,
-    },
-    Foreign {
-        r#type: Expression,
-        arity: usize,
-        function: ffi::ForeignFunction,
-    },
-}
+pub use module::ModuleScope;
 
-impl Entity {
-    // @Note this method can be made obsolete if we decomposed Entity into
-    // a struct Entity { r#type: Expression, kind: EntityKind } with enum EntityKind
-    // might not be forward-compatible though (adding entities which are not typed)
-    /// Retrieve the type of an entity.
-    ///
-    /// # Panics
-    ///
-    /// Panics if called on an [Entity::UntypedForeign].
-    fn r#type(&self) -> Expression {
-        match self {
-            Self::Expression { r#type, .. } => r#type.clone(),
-            Self::DataType { r#type, .. } => r#type.clone(),
-            Self::Constructor { r#type, .. } => r#type.clone(),
-            Self::Parameter { r#type, .. } => r#type.clone(),
-            Self::UntypedForeign { .. } => unreachable!(),
-            Self::Foreign { r#type, .. } => r#type.clone(),
+mod module {
+    use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
+
+    use super::{ffi, Error, FunctionScope, Result};
+    use crate::effluvium::normalize;
+    use crate::hir::{expr, Expression, Identifier};
+
+    // @Question Expression<Normalized>?
+    #[derive(Clone)]
+    enum ModuleEntity {
+        // @Question is this a value or an expression?
+        Expression {
+            r#type: Expression,
+            expression: Expression,
+        },
+        // @Question should we store the constructors?
+        DataType {
+            r#type: Expression,
+            constructors: Vec<Identifier>,
+        },
+        Constructor {
+            r#type: Expression,
+        },
+        UntypedForeign {
+            arity: usize,
+            function: ffi::ForeignFunction,
+        },
+        Foreign {
+            r#type: Expression,
+            arity: usize,
+            function: ffi::ForeignFunction,
+        },
+    }
+
+    impl ModuleEntity {
+        /// Retrieve the type of an entity.
+        ///
+        /// # Panics
+        ///
+        /// Panics if called on an [ModuleEntity::UntypedForeign].
+        fn r#type(&self) -> Expression {
+            match self {
+                Self::Expression { r#type, .. } => r#type.clone(),
+                Self::DataType { r#type, .. } => r#type.clone(),
+                Self::Constructor { r#type, .. } => r#type.clone(),
+                Self::UntypedForeign { .. } => unreachable!(),
+                Self::Foreign { r#type, .. } => r#type.clone(),
+            }
+        }
+
+        // None means the entity was neutral/non-reducible
+        fn value(&self) -> Option<Expression> {
+            match self {
+                ModuleEntity::Expression { expression, .. } => Some(expression.clone()),
+                _ => None,
+            }
         }
     }
 
-    fn retrieve_value(&self) -> Option<Expression> {
-        match self {
-            Entity::Expression { expression, .. } => Some(expression.clone()),
-            _ => None,
+    impl fmt::Debug for ModuleEntity {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                Self::Expression { r#type, expression } => write!(f, "{}: {}", expression, r#type),
+                Self::DataType {
+                    r#type,
+                    constructors,
+                } => write!(
+                    f,
+                    "data: {} = {}",
+                    r#type,
+                    constructors
+                        .iter()
+                        .map(|constructor| format!("{} ", constructor))
+                        .collect::<String>()
+                ),
+                Self::Constructor { r#type } => write!(f, "constructor: {}", r#type),
+                Self::UntypedForeign { .. } => f.write_str("untyped foreign"),
+                Self::Foreign { r#type, .. } => write!(f, "foreign: {}", r#type),
+            }
         }
     }
-}
 
-// @Temporary
-impl fmt::Display for Entity {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Expression { r#type, expression } => write!(f, "{}: {}", expression, r#type),
-            Self::DataType {
-                r#type,
-                constructors,
-            } => write!(
-                f,
-                "data: {} = {}",
-                r#type,
-                constructors
-                    .iter()
-                    .map(|constructor| format!("{} ", constructor))
-                    .collect::<String>()
-            ),
-            Self::Constructor { r#type } => write!(f, "constructor: {}", r#type),
-            Self::Parameter { r#type } => write!(f, "parameter: {}", r#type),
-            Self::UntypedForeign { .. } => f.write_str("untyped foreign"),
-            Self::Foreign { r#type, .. } => write!(f, "foreign: {}", r#type),
+    #[derive(Default, Clone)]
+    pub struct ModuleScope {
+        bindings: Rc<RefCell<HashMap<Identifier, ModuleEntity>>>,
+    }
+
+    impl ModuleScope {
+        pub fn new() -> Self {
+            let scope = Self::default();
+            ffi::register_foreign_bindings(scope.clone());
+            scope
         }
-    }
-}
 
-// @Note needs refactoring
-// @Note ModuleContext has a really really really bad API, geezz!!!
-// @Note currently, ADTs and its constructors cannot be shadowed, but this will change.
-// Once this happens, the mutating methods on Context will be removed and the methods
-// immutably extending the Context also need to update ADTContext i.e. returning
-// (Context, ADTContext) or even better storing the latter inside the former.
-// But for now, variables refering to ADTs and constructors are global/globally unique.
-// @Update @Beacon @Note once we separate ModuleScope and FunctionScope, this
-// does not need to be reference counted anymore, right? we can just use plain old references
-#[derive(Default, Clone)]
-pub struct ModuleScope {
-    bindings: Rc<RefCell<HashMap<Identifier, Entity>>>,
-    // @Note only used for substitution, should be moved to future FunctionContext/FunctionScope
-    last_generated_numeric_identifier: Rc<RefCell<u64>>,
-}
+        pub fn lookup_type(self, binder: &Identifier) -> Option<Expression> {
+            self.bindings.borrow().get(binder).map(ModuleEntity::r#type)
+        }
 
-impl ModuleScope {
-    pub fn new() -> Self {
-        let scope = Self::default();
-        ffi::register_foreign_bindings(scope.clone());
-        scope
-    }
+        // @Task document
+        pub fn lookup_value(self, binder: &Identifier) -> Option<Option<Expression>> {
+            self.bindings
+                .borrow()
+                .get(binder)
+                .map(|entity| entity.value())
+        }
 
-    fn contains(self, binder: &Identifier) -> bool {
-        self.bindings.borrow().contains_key(binder)
-    }
+        fn is(self, binder: &Identifier, predicate: fn(&ModuleEntity) -> bool) -> bool {
+            self.bindings
+                .borrow()
+                .get(binder)
+                .map(predicate)
+                .unwrap_or(false)
+        }
 
-    pub fn lookup_type(self, binder: &Identifier) -> Option<Expression> {
-        self.bindings.borrow().get(binder).map(Entity::r#type)
-    }
+        pub fn is_constructor(self, binder: &Identifier) -> bool {
+            self.is(
+                binder,
+                |entity| matches!(entity, ModuleEntity::Constructor { .. }),
+            )
+        }
 
-    // @Task document
-    pub fn lookup_value(self, binder: &Identifier) -> Option<Option<Expression>> {
-        self.bindings
-            .borrow()
-            .get(binder)
-            .map(|entity| entity.retrieve_value())
-    }
+        pub fn is_foreign(self, binder: &Identifier) -> bool {
+            self.is(
+                binder,
+                |entity| matches!(entity, ModuleEntity::Foreign { .. }),
+            )
+        }
 
-    fn is(self, binder: &Identifier, predicate: fn(&Entity) -> bool) -> bool {
-        self.bindings
-            .borrow()
-            .get(binder)
-            .map(predicate)
-            .unwrap_or(false)
-    }
+        /// Try applying foreign binding.
+        ///
+        /// # Panics
+        ///
+        /// Panics if `binder` is unmapped or not foreign.
+        pub fn try_applying_foreign_binding(
+            self,
+            binder: &Identifier,
+            arguments: Vec<Expression>,
+        ) -> Result<Expression> {
+            match self.clone().bindings.borrow()[binder] {
+                ModuleEntity::Foreign {
+                    arity, function, ..
+                } => {
+                    if arguments.len() == arity {
+                        // We normalize the result of the foreign binding to prevent the injection of some kinds of garbage values.
+                        // @Question should we run `infer_type` over it as well? I think so
+                        // @Task match_with_annotated_type
+                        let function_scope = FunctionScope::new(self);
+                        normalize(function(&arguments), &function_scope)
+                    } else {
+                        Ok(expr! {
+                            UnsaturatedForeignApplication {
+                                callee: binder.clone(),
+                                arguments,
+                            }
+                        })
+                    }
+                }
+                _ => unreachable!(),
+            }
+        }
 
-    pub fn is_constructor(self, binder: &Identifier) -> bool {
-        self.is(
-            binder,
-            |entity| matches!(entity, Entity::Constructor { .. }),
-        )
-    }
-
-    pub fn is_foreign(self, binder: &Identifier) -> bool {
-        self.is(binder, |entity| matches!(entity, Entity::Foreign { .. }))
-    }
-
-    /// Try applying foreign binding.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `binder` is unmapped or not foreign.
-    pub fn try_applying_foreign_binding(
-        self,
-        binder: &Identifier,
-        arguments: Vec<Expression>,
-    ) -> Result<Expression> {
-        match self.clone().bindings.borrow()[binder] {
-            Entity::Foreign {
-                arity, function, ..
-            } => {
-                if arguments.len() == arity {
-                    // We normalize the result of the foreign binding to prevent the injection of some kinds of garbage values.
-                    // @Question should we run `infer_type` over it as well? I think so
-                    // @Task match_with_annotated_type
-                    super::normalize(function(&arguments), self)
-                } else {
-                    Ok(super::expr! {
-                        UnsaturatedForeignApplication {
-                            callee: binder.clone(),
-                            arguments,
-                        }
-                    })
+        pub fn assert_is_not_yet_defined(self, binder: Identifier) -> Result<()> {
+            if let Some(entity) = self.bindings.borrow().get(&binder) {
+                if !matches!(entity, ModuleEntity::UntypedForeign { .. }) {
+                    return Err(Error::AlreadyDefined(binder));
                 }
             }
-            _ => unreachable!(),
+            Ok(())
         }
-    }
 
-    pub fn assert_is_not_yet_defined(self, binder: Identifier) -> Result<()> {
-        if let Some(entity) = self.bindings.borrow().get(&binder) {
-            if !matches!(entity, Entity::UntypedForeign { .. }) {
-                return Err(Error::AlreadyDefined(binder));
+        // @Temporary
+        pub fn values_of_type_can_be_case_differenciated(self, _binder: &Identifier) -> bool {
+            todo!()
+        }
+
+        // @Task better API, ah ugly: we need to clone the whole vector because Scope is Rc'd
+        pub fn constructors(self, binder: &Identifier) -> Result<Vec<Identifier>, ()> {
+            match self.bindings.borrow().get(binder).ok_or(())? {
+                ModuleEntity::DataType { constructors, .. } => Ok(constructors.clone()),
+                _ => Err(()),
             }
         }
-        Ok(())
-    }
 
-    // @Temporary
-    pub fn values_of_type_can_be_case_differenciated(self, _binder: &Identifier) -> bool {
-        todo!()
-    }
+        pub fn insert_value_binding(
+            self,
+            binder: Identifier,
+            r#type: Expression,
+            value: Expression,
+        ) {
+            self.bindings.borrow_mut().insert(
+                binder,
+                ModuleEntity::Expression {
+                    r#type,
+                    expression: value,
+                },
+            );
+        }
 
-    // @Task better API, ah ugly: we need to clone the whole vector because Scope is Rc'd
-    pub fn constructors(self, binder: &Identifier) -> Result<Vec<Identifier>, ()> {
-        match self.bindings.borrow().get(binder).ok_or(())? {
-            Entity::DataType { constructors, .. } => Ok(constructors.clone()),
-            _ => Err(()),
+        pub fn insert_data_binding(self, binder: Identifier, r#type: Expression) {
+            self.bindings.borrow_mut().insert(
+                binder,
+                ModuleEntity::DataType {
+                    r#type,
+                    constructors: Vec::new(),
+                },
+            );
+        }
+
+        /// Insert constructor binding into the scope.
+        ///
+        /// # Panics
+        ///
+        /// Panics if given data type does not exist or is not a data type
+        pub fn insert_constructor_binding(
+            self,
+            binder: Identifier,
+            r#type: Expression,
+            data_type: &Identifier,
+        ) {
+            let mut bindings = self.bindings.borrow_mut();
+
+            bindings.insert(binder.clone(), ModuleEntity::Constructor { r#type });
+            match bindings.get_mut(data_type).unwrap() {
+                ModuleEntity::DataType {
+                    ref mut constructors,
+                    ..
+                } => constructors.push(binder),
+                _ => unreachable!(),
+            }
+        }
+
+        // @Task docs, panics
+        pub fn insert_type_for_foreign_binding(self, binder: Identifier, r#type: Expression) {
+            let entity = match self.bindings.borrow()[&binder] {
+                ModuleEntity::UntypedForeign { arity, function } => ModuleEntity::Foreign {
+                    r#type,
+                    arity,
+                    function,
+                },
+                _ => unreachable!(),
+            };
+            self.bindings.borrow_mut().insert(binder, entity);
+        }
+
+        // @Task docs, panics
+        pub fn insert_untyped_foreign_binding(
+            self,
+            binder: &str,
+            arity: usize,
+            function: ffi::ForeignFunction,
+        ) {
+            assert!(self
+                .bindings
+                .borrow_mut()
+                .insert(
+                    Identifier::from(binder),
+                    ModuleEntity::UntypedForeign { arity, function }
+                )
+                .is_none());
         }
     }
 
-    // @Beacon @Beacon @Beacon @Bug @Bug this deeply clones the *whole* HashMap (set of declarations!!)
-    // every time we add a binding into the scope!!!! HORRIBLE!!!
-    pub fn extend_with_binding(
-        self,
-        binder: Identifier,
-        r#type: Expression,
-        value: Expression,
-    ) -> Self {
-        let mut map = self.bindings.as_ref().borrow().clone();
-        map.insert(
-            binder,
-            Entity::Expression {
-                r#type,
-                expression: value,
-            },
-        );
-        Self {
-            bindings: Rc::new(RefCell::new(map)),
-            ..self
+    impl fmt::Debug for ModuleScope {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            for (binder, entity) in self.bindings.borrow().iter() {
+                writeln!(f, "{} ===> {:?}", binder, entity)?;
+            }
+            Ok(())
+        }
+    }
+}
+
+pub use function::FunctionScope;
+
+mod function {
+    use super::{ModuleScope, Result};
+    use crate::hir::{Expression, Identifier};
+
+    // @Note this might be extended to have two variants `Parameter` and `Expression`
+    // once we feature `LetIn` in the HIR because of locally nameless/debruijn-indexing
+    enum Entity {
+        Parameter { r#type: Expression },
+    }
+
+    impl Entity {
+        fn r#type(&self) -> Expression {
+            match self {
+                Self::Parameter { r#type } => r#type.clone(),
+            }
+        }
+    }
+    pub struct FunctionScope<'parent> {
+        inner: Inner<'parent>,
+    }
+
+    // @Note probably bad cache behavior as this is just a linked list. but I honestly cannot think
+    // of a better data structure right now that does not involve deep-cloning an association list or the like
+    enum Inner<'parent> {
+        Module(ModuleScope),
+        Function {
+            parent: &'parent FunctionScope<'parent>,
+            binder: Identifier,
+            entity: Entity,
+        },
+    }
+
+    impl FunctionScope<'static> {
+        pub fn new(module: ModuleScope) -> Self {
+            Self {
+                inner: Inner::Module(module),
+            }
         }
     }
 
-    // @Beacon @Beacon @Beacon @Bug @Bug this deeply clones the *whole* HashMap (set of declarations!!)
-    // every time we add a parameter into the scope!!!! HORRIBLE!!!!
-    pub fn extend_with_parameter(self, binder: Identifier, r#type: Expression) -> Self {
-        let mut map = self.bindings.as_ref().borrow().clone();
-        map.insert(binder, Entity::Parameter { r#type });
-        Self {
-            bindings: Rc::new(RefCell::new(map)),
-            ..self
+    impl<'parent> FunctionScope<'parent> {
+        pub fn extend_with_parameter(
+            &'parent self,
+            binder: Identifier,
+            r#type: Expression,
+        ) -> Self {
+            Self {
+                inner: Inner::Function {
+                    parent: self,
+                    binder,
+                    entity: Entity::Parameter { r#type },
+                },
+            }
         }
-    }
 
-    pub fn insert_value_binding(self, binder: Identifier, r#type: Expression, value: Expression) {
-        self.bindings.borrow_mut().insert(
-            binder,
-            Entity::Expression {
-                r#type,
-                expression: value,
-            },
-        );
-    }
-
-    pub fn insert_data_binding(self, binder: Identifier, r#type: Expression) {
-        self.bindings.borrow_mut().insert(
-            binder,
-            Entity::DataType {
-                r#type,
-                constructors: Vec::new(),
-            },
-        );
-    }
-
-    /// Insert constructor binding into the scope.
-    ///
-    /// # Panics
-    ///
-    /// Panics if given data type does not exist or is not a data type
-    pub fn insert_constructor_binding(
-        self,
-        binder: Identifier,
-        r#type: Expression,
-        data_type: &Identifier,
-    ) {
-        let mut bindings = self.bindings.borrow_mut();
-
-        bindings.insert(binder.clone(), Entity::Constructor { r#type });
-        match bindings.get_mut(data_type).unwrap() {
-            Entity::DataType {
-                ref mut constructors,
-                ..
-            } => constructors.push(binder),
-            _ => unreachable!(),
+        fn proxy<T>(
+            &self,
+            queried_binder: &Identifier,
+            handler: fn(&Entity) -> T,
+            actual: fn(ModuleScope, &Identifier) -> T,
+        ) -> T {
+            match &self.inner {
+                Inner::Module(module) => actual(module.clone(), queried_binder),
+                Inner::Function {
+                    parent,
+                    binder,
+                    entity,
+                } => {
+                    if queried_binder == binder {
+                        handler(entity)
+                    } else {
+                        parent.proxy(queried_binder, handler, actual)
+                    }
+                }
+            }
         }
-    }
 
-    // @Task docs, panics
-    pub fn insert_type_for_foreign_binding(self, binder: Identifier, r#type: Expression) {
-        let entity = match self.bindings.borrow()[&binder] {
-            Entity::UntypedForeign { arity, function } => Entity::Foreign {
-                r#type,
-                arity,
-                function,
-            },
-            _ => unreachable!(),
-        };
-        self.bindings.borrow_mut().insert(binder, entity);
-    }
-
-    // @Task docs, panics
-    pub fn insert_untyped_foreign_binding(
-        self,
-        binder: &str,
-        arity: usize,
-        function: ffi::ForeignFunction,
-    ) {
-        assert!(self
-            .bindings
-            .borrow_mut()
-            .insert(
-                Identifier::from(binder),
-                Entity::UntypedForeign { arity, function }
+        pub fn lookup_type(&self, queried_binder: &Identifier) -> Option<Expression> {
+            self.proxy(
+                queried_binder,
+                |entity| Some(entity.r#type()),
+                ModuleScope::lookup_type,
             )
-            .is_none());
-    }
-
-    pub fn generate_numeric_identifier(self) -> u64 {
-        *self.last_generated_numeric_identifier.borrow_mut() += 1;
-        *self.last_generated_numeric_identifier.borrow()
-    }
-}
-
-// @Temporary
-impl fmt::Display for ModuleScope {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (binder, entity) in self.bindings.borrow().iter() {
-            writeln!(f, "{} ===> {}", binder, entity)?;
         }
-        Ok(())
-    }
-}
 
-// @Task does it store a reference to it?
-pub struct _FunctionScope {
-    module: ModuleScope,
+        pub fn lookup_value(&self, queried_binder: &Identifier) -> Option<Option<Expression>> {
+            self.proxy(queried_binder, |_| Some(None), ModuleScope::lookup_value)
+        }
+
+        pub fn is_constructor(&self, queried_binder: &Identifier) -> bool {
+            self.proxy(queried_binder, |_| false, ModuleScope::is_constructor)
+        }
+
+        pub fn is_foreign(&self, queried_binder: &Identifier) -> bool {
+            self.proxy(queried_binder, |_| false, ModuleScope::is_foreign)
+        }
+
+        pub fn constructors(&self, queried_binder: &Identifier) -> Result<Vec<Identifier>, ()> {
+            self.proxy(queried_binder, |_| Err(()), ModuleScope::constructors)
+        }
+
+        // @Task document, may panic
+        pub fn try_applying_foreign_binding(
+            &self,
+            binder: &Identifier,
+            arguments: Vec<Expression>,
+        ) -> Result<Expression> {
+            match &self.inner {
+                Inner::Module(module) => module
+                    .clone()
+                    .try_applying_foreign_binding(binder, arguments),
+                Inner::Function { .. } => unreachable!(),
+            }
+        }
+    }
 }
 
 // @Beacon @Task make this its own type with helpful methods so we don't
 // need to write that much boilerplate in crate::effluvium anymore!
 // @Question why do we need to own Expression? that results in a lot of cloning!!
 // what about a Cow<'a, Expression>?? or are gonna get lifetime issues?
-pub type Environment = Rc<HashMap<Identifier, Expression>>;
+/// Environment used for substitions.
+///
+/// Will be obsolete once we use locally nameless/Debruijn-indexing
+pub type Environment =
+    std::rc::Rc<std::collections::HashMap<crate::hir::Identifier, crate::hir::Expression>>;

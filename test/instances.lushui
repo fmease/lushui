@@ -1,0 +1,10 @@
+identity (A: Type) (a: A): A = a
+
+;;; data Bool: Type =
+;;;    ;;; @Bug should work
+;;;    ;;; False: identity Type Bool
+
+data List (A: Type): Type =
+    Nil (|A: Type): List A
+    Foo: List Nat
+    ;;; Bar: Nat

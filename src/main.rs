@@ -42,7 +42,7 @@ fn test(source: &str, filename: &str) -> Result<(), String> {
     // Effluvium
     let scope = effluvium::ModuleScope::new();
     effluvium::evaluate_declaration(&node, scope.clone()).map_err(|error| error.to_string())?;
-    eprintln!("{}", scope);
+    eprintln!("{:?}", scope);
 
     Ok(())
 }

@@ -1,11 +1,11 @@
 use std::fmt;
 use std::hash::{Hash, Hasher};
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 
-use crate::effluvium::ModuleScope;
 use crate::error::Span;
 use crate::parser;
 
-// pub type RefreshState<'a> = &'a mut u64;
+static LAST_GENERATED_NUMERIC_IDENTIFIER: AtomicU64 = AtomicU64::new(0);
 
 // @Task update docs
 /// Either an identifier found in the source program or a synthetic one.
@@ -34,14 +34,14 @@ impl Identifier {
         }
     }
 
-    pub fn refresh(&self, scope: ModuleScope) -> Self {
+    pub fn refresh(&self) -> Self {
         Self::Generated(
             match self {
                 Self::Stub => Identifier::plain(""),
                 Self::Plain(identifier) => identifier.clone(),
                 Self::Generated(identifier, _) => identifier.clone(),
             },
-            scope.generate_numeric_identifier(),
+            LAST_GENERATED_NUMERIC_IDENTIFIER.fetch_add(1, AtomicOrdering::SeqCst),
         )
     }
 }
