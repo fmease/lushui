@@ -44,6 +44,7 @@ pub enum Declaration {
     },
 }
 
+/// Lower a declaration from AST to HIR.
 pub fn lower_declaration(declaration: parser::Declaration) -> Declaration {
     match declaration {
         parser::Declaration::Value(declaration) => {
@@ -113,6 +114,7 @@ pub struct Constructor {
     pub type_annotation: Expression,
 }
 
+/// Lower a constructor from AST to HIR.
 fn lower_constructor(constructor: parser::declaration::Constructor) -> Constructor {
     Constructor {
         binder: Identifier::Plain(constructor.binder.clone()),
@@ -177,6 +179,7 @@ pub mod expression {
 
     const _: () = assert!(std::mem::size_of::<Expression>() == 16);
 
+    /// Lower an expression from AST to HIR.
     pub fn lower_expression(expression: parser::Expression) -> Expression {
         use parser::Expression::*;
 
@@ -348,9 +351,9 @@ pub mod expression {
         },
     }
 
-    // @Note currently, parser::expression::Pattern and Pattern are identical!
-    // (apart from forgetting span information)
-    // this means this function costs a lot of memory and time but is currently useless
+    /// Lower a pattern from AST to HIR.
+    /// 
+    /// Currently, [parser::expression::Pattern] and [Pattern] are identical (apart from forgetting span information)!
     fn lower_pattern(pattern: parser::expression::Pattern) -> Pattern {
         match pattern {
             parser::expression::Pattern::NatLiteral(literal) => Pattern::NatLiteral(NatLiteral {
@@ -376,6 +379,7 @@ pub mod expression {
     }
 }
 
+/// Lower annotated parameters from AST to HIR.
 fn lower_annotated_parameters(
     parameters: parser::declaration::AnnotatedParameters,
     type_annotation: parser::Expression,

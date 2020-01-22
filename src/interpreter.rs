@@ -25,7 +25,7 @@ mod algebraic_data_types;
 mod error;
 mod scope;
 
-use crate::hir::{self, expr, expression, Declaration, Expression, Identifier};
+use crate::hir::{self, expr, expression, Declaration, Expression};
 use crate::parser::Explicitness;
 use error::{Error, Result};
 pub use scope::ModuleScope;
@@ -39,7 +39,7 @@ use std::rc::Rc;
 const MISSING_ANNOTATION: &str =
     "(compiler bug) currently lambda literal parameters and patterns must be type-annotated";
 
-/// Try to valuate a declaration modifying the given scope.
+/// Try to evaluate a declaration modifying the given scope.
 // @Task support order-independence, recursion and proper modules
 pub fn evaluate_declaration(declaration: &Declaration, module_scope: ModuleScope) -> Result<()> {
     Ok(match declaration {
@@ -52,12 +52,12 @@ pub fn evaluate_declaration(declaration: &Declaration, module_scope: ModuleScope
                 .clone()
                 .assert_is_not_yet_defined(binder.clone())?;
             let function_scope = FunctionScope::new(module_scope.clone());
-            let infered_type = match_with_type_annotation(
+            let infered_type = match_expression_with_type_annotation(
                 expression.clone(),
                 type_annotation.clone(),
                 &function_scope,
             )?;
-            let value = normalize(expression.clone(), &function_scope)?;
+            let value = evaluate(expression.clone(), &function_scope)?;
             module_scope.insert_value_binding(binder.clone(), infered_type, value);
         }
         Declaration::Data {
@@ -70,7 +70,7 @@ pub fn evaluate_declaration(declaration: &Declaration, module_scope: ModuleScope
                 .assert_is_not_yet_defined(data_type_binder.clone())?;
 
             let function_scope = FunctionScope::new(module_scope.clone());
-            let r#type = normalize(type_annotation.clone(), &function_scope)?;
+            let r#type = evaluate(type_annotation.clone(), &function_scope)?;
             assert_expression_is_a_type(r#type.clone(), &function_scope)?;
 
             module_scope
@@ -82,7 +82,7 @@ pub fn evaluate_declaration(declaration: &Declaration, module_scope: ModuleScope
                 type_annotation,
             } in constructors
             {
-                let r#type = normalize(type_annotation.clone(), &function_scope)?;
+                let r#type = evaluate(type_annotation.clone(), &function_scope)?;
                 assert_expression_is_a_type(r#type.clone(), &function_scope)?;
 
                 algebraic_data_types::instance::assert_constructor_is_instance_of_type(
@@ -118,7 +118,7 @@ pub fn evaluate_declaration(declaration: &Declaration, module_scope: ModuleScope
                 .assert_is_not_yet_defined(binder.clone())?;
 
             let function_scope = FunctionScope::new(module_scope.clone());
-            let r#type = normalize(type_annotation.clone(), &function_scope)?;
+            let r#type = evaluate(type_annotation.clone(), &function_scope)?;
             assert_expression_is_a_type(r#type.clone(), &function_scope)?;
 
             module_scope.insert_type_for_foreign_binding(binder.clone(), r#type);
@@ -143,13 +143,29 @@ fn substitute(
             .retrieve(&path.identifier)
             .unwrap_or(expression),
         Expression::PiTypeLiteral(literal) => {
-            let (parameter, domain, codomain) = abstraction_substitute(
-                literal.parameter.clone(),
-                literal.domain.clone(),
-                literal.codomain.clone(),
-                substitutions,
-                scope,
-            );
+            let domain = substitute(literal.domain.clone(), &substitutions, scope);
+
+            let (parameter, codomain) = match literal.parameter.clone() {
+                Some(parameter) => {
+                    let refreshed_parameter = parameter.refresh();
+                    let substitutions = substitutions.extend_with(
+                        parameter,
+                        expr! {
+                            Path {
+                                identifier: refreshed_parameter.clone(),
+                            }
+                        },
+                    );
+                    (
+                        Some(refreshed_parameter),
+                        substitute(literal.codomain.clone(), &substitutions, scope),
+                    )
+                }
+                None => (
+                    None,
+                    substitute(literal.codomain.clone(), substitutions, scope),
+                ),
+            };
             expr! {
                 PiTypeLiteral {
                     parameter,
@@ -160,26 +176,35 @@ fn substitute(
             }
         }
         Expression::LambdaLiteral(literal) => {
-            // potential @Bug we totally ignore literal.body_type_annotation here. There should be substitutions
-            // as well, right? Also, we set the body_type_annotation to None which means we drop the information
-            // @Task @Beacon @Beacon @Beacon incorporate literal.body_type_annotation in the substitution process!
-            let (binder, parameter_type, body) = abstraction_substitute(
-                Some(literal.parameter.clone()),
+            let parameter_type_annotation = substitute(
                 literal
                     .parameter_type_annotation
                     .clone()
                     .expect(MISSING_ANNOTATION),
-                literal.body.clone(),
                 substitutions,
                 scope,
             );
+            let parameter = literal.parameter.refresh();
+            let substitutions = substitutions.extend_with(
+                literal.parameter.clone(),
+                expr! {
+                    Path {
+                        identifier: parameter.clone(),
+                    }
+                },
+            );
+            let body_type_annotation = literal
+                .body_type_annotation
+                .as_ref()
+                .map(|type_annotation| substitute(type_annotation.clone(), &substitutions, scope));
+            let body = substitute(literal.body.clone(), &substitutions, scope);
+
             expr! {
                 LambdaLiteral {
-                    // @Note this unwrap is safe, but the API of abstraction_substitute sucks
-                    parameter: binder.unwrap(),
-                    parameter_type_annotation: Some(parameter_type),
+                    parameter,
+                    parameter_type_annotation: Some(parameter_type_annotation),
                     body,
-                    body_type_annotation: None,
+                    body_type_annotation,
                     explicitness: Explicitness::Explicit,
                 }
             }
@@ -363,7 +388,7 @@ pub fn infer_type(expression: Expression, scope: &FunctionScope<'_>) -> Result<h
                 scope.extend_with_parameter(literal.parameter.clone(), parameter_type.clone());
             let infered_body_type = infer_type(literal.body.clone(), &scope)?;
             if let Some(body_type_annotation) = literal.body_type_annotation.clone() {
-                // @Question should we assert_expression_is_type(body_type_annotation) before this?
+                assert_expression_is_a_type(body_type_annotation.clone(), &scope)?;
                 assert_expressions_are_equal(
                     body_type_annotation,
                     infered_body_type.clone(),
@@ -385,7 +410,7 @@ pub fn infer_type(expression: Expression, scope: &FunctionScope<'_>) -> Result<h
             let type_of_callee = infer_type(application.callee.clone(), scope)?;
             // @Note this is an example where we normalize after an infer_type which means infer_type
             // returns possibly non-normalized expressions, can we do better?
-            match normalize(type_of_callee, scope)? {
+            match evaluate(type_of_callee, scope)? {
                 Expression::PiTypeLiteral(literal) => {
                     let argument_type = infer_type(application.argument.clone(), scope)?;
                     assert_expressions_are_equal(literal.domain.clone(), argument_type, scope)?;
@@ -488,9 +513,11 @@ fn _is_uninhabited(r#type: Expression, _scope: ModuleScope) -> bool {
     }
 }
 
-/// Try to normalize or "evaluate" an expression.
+/// Try to evaluate an expression.
+///
+/// This is beta-reduction I think.
 // @Task differenciate between Expression<InitialPhase> and Expression<Normalized>
-pub fn normalize(expression: Expression, scope: &FunctionScope<'_>) -> Result<Expression> {
+pub fn evaluate(expression: Expression, scope: &FunctionScope<'_>) -> Result<Expression> {
     Ok(match expression {
         // @Task if path refers to a foreign binding AND arity == 0, then resolve the foreign
         // binding
@@ -501,12 +528,12 @@ pub fn normalize(expression: Expression, scope: &FunctionScope<'_>) -> Result<Ex
             // but the thing in the previous was already normalized (well, it should have been
             // at least). I guess it is necessary because it can contain parameters which could not
             // be resolved yet but potentially can be now.
-            .map(|expression| normalize(expression, scope))
+            .map(|expression| evaluate(expression, scope))
             .unwrap_or(Ok(expression))?,
         Expression::Application(application) => {
-            let argument = normalize(application.argument.clone(), scope)?;
-            match normalize(application.callee.clone(), scope)? {
-                Expression::LambdaLiteral(literal) => normalize(
+            let argument = evaluate(application.argument.clone(), scope)?;
+            match evaluate(application.callee.clone(), scope)? {
+                Expression::LambdaLiteral(literal) => evaluate(
                     substitute(
                         literal.body.clone(),
                         &Substitutions::new().extend_with(literal.parameter.clone(), argument),
@@ -536,9 +563,9 @@ pub fn normalize(expression: Expression, scope: &FunctionScope<'_>) -> Result<Ex
             expression
         }
         Expression::PiTypeLiteral(literal) => {
-            let domain = normalize(literal.domain.clone(), scope)?;
+            let domain = evaluate(literal.domain.clone(), scope)?;
             let codomain = match literal.parameter.clone() {
-                Some(parameter) => normalize(
+                Some(parameter) => evaluate(
                     literal.codomain.clone(),
                     &scope.extend_with_parameter(parameter.clone(), domain.clone()),
                 )?,
@@ -554,14 +581,14 @@ pub fn normalize(expression: Expression, scope: &FunctionScope<'_>) -> Result<Ex
             }
         }
         Expression::LambdaLiteral(literal) => {
-            let parameter_type = normalize(
+            let parameter_type = evaluate(
                 literal
                     .parameter_type_annotation
                     .clone()
                     .expect(MISSING_ANNOTATION),
                 scope,
             )?;
-            let body = normalize(
+            let body = evaluate(
                 literal.body.clone(),
                 &scope.extend_with_parameter(literal.parameter.clone(), parameter_type.clone()),
             )?;
@@ -591,8 +618,8 @@ fn assert_expression_is_a_type(expression: Expression, scope: &FunctionScope<'_>
 
 /// Infer type of expression and match it with the type annotation.
 ///
-/// Returns infered type and also checks if supplied type annotation is actually a type for convenience.
-fn match_with_type_annotation(
+/// Returns infered type and for convenience also checks if the supplied type annotation is actually a type.
+fn match_expression_with_type_annotation(
     expression: Expression,
     type_annotation: Expression,
     scope: &FunctionScope<'_>,
@@ -604,7 +631,7 @@ fn match_with_type_annotation(
     Ok(infered_type)
 }
 
-/// Assert that two expression are equal under normalization.
+/// Assert that two expression are equal under evaluation/normalization.
 ///
 /// `expected` is the "expected" expression, `actual` is the "actual" expression.
 // @Task improve API!
@@ -613,22 +640,22 @@ fn assert_expressions_are_equal(
     actual: Expression,
     scope: &FunctionScope<'_>,
 ) -> Result<()> {
-    if !normalizing_equal(expected.clone(), actual.clone(), scope)? {
+    if !evaluating_equal(expected.clone(), actual.clone(), scope)? {
         Err(Error::ExpressionsNotEqual { expected, actual })
     } else {
         Ok(())
     }
 }
 
-/// Shows if two expressions are equal under normalization.
-fn normalizing_equal(
+/// Shows if two expressions are equal under evaluation/normalization.
+fn evaluating_equal(
     left: Expression,
     right: Expression,
     scope: &FunctionScope<'_>,
 ) -> Result<bool> {
     Ok(equal(
-        normalize(left, scope)?,
-        normalize(right, scope)?,
+        evaluate(left, scope)?,
+        evaluate(right, scope)?,
         scope,
     ))
 }
@@ -636,48 +663,77 @@ fn normalizing_equal(
 /// Shows if two expressions are syntactically equal.
 fn equal(left: Expression, right: Expression, scope: &FunctionScope<'_>) -> bool {
     match (left, right) {
-        (Expression::Path(path0), Expression::Path(path1)) => path0.identifier == path1.identifier,
-        (Expression::Application(application0), Expression::Application(application1)) => {
-            equal(
-                application0.callee.clone(),
-                application1.callee.clone(),
-                scope,
-            ) && equal(
-                application0.argument.clone(),
-                application1.argument.clone(),
-                scope,
-            )
+        (Expression::Path(left), Expression::Path(right)) => left.identifier == right.identifier,
+        (Expression::Application(left), Expression::Application(right)) => {
+            equal(left.callee.clone(), right.callee.clone(), scope)
+                && equal(left.argument.clone(), right.argument.clone(), scope)
         }
         (Expression::TypeLiteral, Expression::TypeLiteral)
         | (Expression::NatTypeLiteral, Expression::NatTypeLiteral) => true,
-        (Expression::NatLiteral(literal0), Expression::NatLiteral(literal1)) => {
-            literal0.value == literal1.value
-        }
-        (Expression::PiTypeLiteral(literal0), Expression::PiTypeLiteral(literal1)) => {
-            abstraction_equal(
-                literal0.parameter.clone(),
-                literal0.domain.clone(),
-                literal0.codomain.clone(),
-                literal1.parameter.clone(),
-                literal1.domain.clone(),
-                literal1.codomain.clone(),
+        (Expression::NatLiteral(left), Expression::NatLiteral(right)) => left.value == right.value,
+        (Expression::PiTypeLiteral(left), Expression::PiTypeLiteral(right)) => {
+            equal(
+                left.domain.clone().clone(),
+                right.domain.clone().clone(),
                 scope,
-            )
+            ) && match (left.parameter.clone(), right.parameter.clone()) {
+                (Some(left_parameter), Some(right_parameter)) => equal(
+                    left.codomain.clone(),
+                    substitute(
+                        right.codomain.clone(),
+                        &Substitutions::new().extend_with(
+                            right_parameter.clone(),
+                            expr! {
+                                Path {
+                                    identifier: left_parameter.clone(),
+
+                                }
+                            },
+                        ),
+                        scope,
+                    ),
+                    scope,
+                ),
+                (Some(left_parameter), None) => equal(
+                    left.codomain.clone(),
+                    right.codomain.clone(),
+                    &scope.extend_with_parameter(left_parameter.clone(), left.domain.clone()),
+                ),
+                (None, Some(right_parameter)) => equal(
+                    left.codomain.clone(),
+                    right.codomain.clone(),
+                    &scope.extend_with_parameter(right_parameter.clone(), right.domain.clone()),
+                ),
+                (None, None) => equal(left.codomain.clone(), right.codomain.clone(), scope),
+            }
         }
-        (Expression::LambdaLiteral(literal0), Expression::LambdaLiteral(literal1)) => {
-            abstraction_equal(
-                Some(literal0.parameter.clone()),
-                literal0
+        (Expression::LambdaLiteral(left), Expression::LambdaLiteral(right)) => {
+            equal(
+                left.parameter_type_annotation
+                    .clone()
+                    .expect(MISSING_ANNOTATION)
+                    .clone(),
+                right
                     .parameter_type_annotation
                     .clone()
-                    .expect(MISSING_ANNOTATION),
-                literal0.body.clone(),
-                Some(literal1.parameter.clone()),
-                literal1
-                    .parameter_type_annotation
-                    .clone()
-                    .expect(MISSING_ANNOTATION),
-                literal1.body.clone(),
+                    .expect(MISSING_ANNOTATION)
+                    .clone(),
+                scope,
+            ) && equal(
+                left.body.clone(),
+                substitute(
+                    right.body.clone(),
+                    &Substitutions::new().extend_with(
+                        right.parameter.clone().clone(),
+                        expr! {
+                            Path {
+                                identifier: left.parameter.clone().clone(),
+
+                            }
+                        },
+                    ),
+                    scope,
+                ),
                 scope,
             )
         }
@@ -687,86 +743,4 @@ fn equal(left: Expression, right: Expression, scope: &FunctionScope<'_>) -> bool
         // viable alternative really :/
         _ => false,
     }
-}
-
-/// Substitute inside of a pi-type or lambda literal.
-// @Temporary signature
-// @Note bad signature (deviation between pi and lambda)
-fn abstraction_substitute(
-    parameter: Option<Identifier>,
-    parameter_type: Expression,
-    expression: Expression,
-    substitutions: &Substitutions<'_>,
-    scope: &FunctionScope<'_>,
-) -> (Option<Identifier>, Expression, Expression) {
-    let parameter_type = substitute(parameter_type, &substitutions, scope);
-
-    match parameter {
-        Some(parameter) => {
-            let refreshed_parameter = parameter.refresh();
-            let substitutions = substitutions.extend_with(
-                parameter.clone(),
-                expr! {
-                    Path {
-                        identifier: refreshed_parameter.clone(),
-                    }
-                },
-            );
-
-            (
-                Some(refreshed_parameter),
-                parameter_type,
-                substitute(expression, &substitutions, scope),
-            )
-        }
-        None => (
-            None,
-            parameter_type,
-            substitute(expression, substitutions, scope),
-        ),
-    }
-}
-
-/// Indicate whether two pi-types or lambda literals are syntactically equal.
-// @Temporary signature
-fn abstraction_equal(
-    binder1: Option<Identifier>,
-    parameter1: Expression,
-    expression1: Expression,
-    binder2: Option<Identifier>,
-    parameter2: Expression,
-    expression2: Expression,
-    scope: &FunctionScope<'_>,
-) -> bool {
-    return equal(parameter1.clone(), parameter2.clone(), scope)
-        && match (binder1, binder2) {
-            (Some(binder1), Some(binder2)) => equal(
-                expression1,
-                substitute(
-                    expression2,
-                    &Substitutions::new().extend_with(
-                        binder2.clone(),
-                        expr! {
-                            Path {
-                                identifier: binder1.clone(),
-
-                            }
-                        },
-                    ),
-                    scope,
-                ),
-                scope,
-            ),
-            (Some(binder1), None) => equal(
-                expression1,
-                expression2,
-                &scope.extend_with_parameter(binder1.clone(), parameter1),
-            ),
-            (None, Some(binder2)) => equal(
-                expression1,
-                expression2,
-                &scope.extend_with_parameter(binder2.clone(), parameter2),
-            ),
-            (None, None) => equal(expression1, expression2, scope),
-        };
 }

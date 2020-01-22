@@ -16,7 +16,7 @@ mod module {
 
     use super::{ffi, Error, FunctionScope, Result};
     use crate::hir::{expr, Expression, Identifier};
-    use crate::interpreter::normalize;
+    use crate::interpreter::evaluate;
 
     /// An entity found inside a module scope.
     // @Question Expression<Normalized>?
@@ -178,7 +178,7 @@ mod module {
                         // @Question should we run `infer_type` over it as well? I think so
                         // @Task match_with_annotated_type
                         let function_scope = FunctionScope::new(self);
-                        normalize(function(&arguments), &function_scope)
+                        evaluate(function(&arguments), &function_scope)
                     } else {
                         Ok(expr! {
                             UnsaturatedForeignApplication {
