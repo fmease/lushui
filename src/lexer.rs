@@ -2,7 +2,7 @@
 //!
 //! It parses indentation and dedentation intwo two pseudo tokens:
 //! [TokenKind::Indentation] and [TokenKind::Dedentation] respectively.
-//! 
+//!
 //! Natural number literals are directly converted into [num_bigint::BigUint]
 //! and identifiers are interned.
 
@@ -199,8 +199,6 @@ keywords! {
     Case "case",
     Data "data",
     Foreign "foreign",
-    // @Task update to `?`-syntax
-    Hole "hole",
     In "in",
     Let "let",
     Module "module",

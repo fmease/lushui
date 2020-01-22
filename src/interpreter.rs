@@ -21,21 +21,22 @@
 //! * bad API/project structure could be better
 //! * integration and regression tests missing
 
-mod algebraic_data_types;
+mod data_types;
 mod error;
 mod scope;
 
-use crate::hir::{self, expr, expression, Declaration, Expression};
+use crate::hir::{self, expr, Declaration, Expression};
 use crate::parser::Explicitness;
 use error::{Error, Result};
 pub use scope::ModuleScope;
 use scope::{FunctionScope, Substitutions};
 
-use std::rc::Rc;
-
-// @Temporary @Bug we don't do non-trivial type inference yet and thus, type parameters of lambda literals
-// must be annotated with a type. And since we don't have a dedicated Error::InternalCompilerError yet,
-// we use this constant for an error message:
+/// An internal compiler bug message.
+///
+/// We don't do non-trivial type inference yet and thus, type parameters of lambda literals
+/// must be annotated with a type. And since we don't have a dedicated `Error::InternalCompilerError` yet,
+/// we use this constant for an error message.
+// @Bug
 const MISSING_ANNOTATION: &str =
     "(compiler bug) currently lambda literal parameters and patterns must be type-annotated";
 
@@ -85,7 +86,7 @@ pub fn evaluate_declaration(declaration: &Declaration, module_scope: ModuleScope
                 let r#type = evaluate(type_annotation.clone(), &function_scope)?;
                 assert_expression_is_a_type(r#type.clone(), &function_scope)?;
 
-                algebraic_data_types::instance::assert_constructor_is_instance_of_type(
+                data_types::instance::assert_constructor_is_instance_of_type(
                     binder.clone(),
                     type_annotation.clone(),
                     data_type_binder.clone(),
@@ -220,7 +221,6 @@ fn substitute(
                 explicitness: Explicitness::Explicit,
             }
         },
-        Expression::Hole(_) => todo!(),
         Expression::UseIn(_) => todo!(),
         Expression::CaseAnalysis(case_analysis) => expr! {
             CaseAnalysis {
@@ -233,7 +233,7 @@ fn substitute(
                     .cases
                     .iter()
                     .map(|case| {
-                        case_analysis_case_substitute(
+                        data_types::case_analysis::case_analysis_case_substitute(
                             case.clone(),
                             substitutions,
                             scope,
@@ -248,110 +248,6 @@ fn substitute(
         // @Note I think
         Expression::UnsaturatedForeignApplication(_) => unreachable!(),
     }
-}
-
-/// Substitute inside the case of a case analysis.
-fn case_analysis_case_substitute(
-    case: expression::CaseAnalysisCase,
-    substitutions: &Substitutions<'_>,
-    scope: &FunctionScope<'_>,
-) -> expression::CaseAnalysisCase {
-    // @Note does not return a new substitutions anymore
-    let pattern = pattern_substitute(case.pattern, substitutions, scope);
-
-    expression::CaseAnalysisCase {
-        pattern,
-        expression: substitute(case.expression.clone(), substitutions, scope),
-    }
-}
-
-/// Substitute inside of a pattern.
-// @Bug does not work at all anymore!!!
-fn pattern_substitute<'p>(
-    pattern: expression::Pattern,
-    substitutions: &'p Substitutions<'p>,
-    scope: &FunctionScope<'_>,
-) -> expression::Pattern {
-    match pattern {
-        expression::Pattern::NatLiteral(_) => pattern,
-        expression::Pattern::Path {
-            path,
-            type_annotation,
-        } => {
-            let type_annotation = type_annotation
-                .map(|annotation| substitute(annotation, substitutions.clone(), scope));
-
-            if is_matchable(&path, scope) {
-                return expression::Pattern::Path {
-                    path,
-                    type_annotation,
-                };
-            }
-
-            let refreshed_binder = path.identifier.refresh();
-
-            expression::Pattern::Path {
-                path: expression::Path {
-                    identifier: refreshed_binder.clone(),
-                },
-                type_annotation,
-            }
-
-            // substitutions.extend_with_substitution(
-            //     path.identifier.clone(),
-            //     expr! {
-            //         Path {
-            //             identifier: refreshed_binder,
-            //         }
-            //     },
-            // )
-        }
-        expression::Pattern::Application { callee, argument } => {
-            // @Bug disallow `n m` where n is a path which is not matchable
-            // @Note `(N m) o` is still legal obviously, N matchable, m not
-            // @Question is there a better place than here?
-
-            // @Note does not return a new substitutions anymore
-            let callee = pattern_substitute(callee.as_ref().clone(), substitutions, scope);
-            // @Note does not return a new substitutions anymore
-            let argument = pattern_substitute(argument.as_ref().clone(), substitutions, scope);
-
-            expression::Pattern::Application {
-                callee: Rc::new(callee),
-                argument: Rc::new(argument),
-            }
-        }
-    }
-}
-
-// @Beacon @Note this is used in normalize, *not* substitute
-fn _insert_matchables_from_pattern(pattern: &expression::Pattern, scope: &FunctionScope<'_>) {
-    match &pattern {
-        expression::Pattern::NatLiteral(_) => {}
-        expression::Pattern::Path {
-            path,
-            type_annotation: _type_annotation,
-        } => {
-            if !is_matchable(path, scope) {
-                // @Temporary comment, first replace with pure version
-                // scope.insert_parameter_binding(
-                //     path.identifier.clone(),
-                //     type_annotation.as_ref().expect(MISSING_ANNOTATION).clone(),
-                // );
-            }
-        }
-        expression::Pattern::Application { callee, argument } => {
-            _insert_matchables_from_pattern(callee, scope);
-            _insert_matchables_from_pattern(argument, scope);
-        }
-    }
-}
-
-/// Indicate if a path refers to a constructor or not.
-// @Task move somewhere more appropriate
-// @Task verify (esp. b/c shadowing)
-fn is_matchable(path: &expression::Path, scope: &FunctionScope<'_>) -> bool {
-    path.is_simple() && scope.is_constructor(&path.identifier)
 }
 
 /// Try to infer the type of an expression.
@@ -389,7 +285,7 @@ pub fn infer_type(expression: Expression, scope: &FunctionScope<'_>) -> Result<h
             let infered_body_type = infer_type(literal.body.clone(), &scope)?;
             if let Some(body_type_annotation) = literal.body_type_annotation.clone() {
                 assert_expression_is_a_type(body_type_annotation.clone(), &scope)?;
-                assert_expressions_are_equal(
+                assert_expected_expression_equals_actual(
                     body_type_annotation,
                     infered_body_type.clone(),
                     &scope,
@@ -413,7 +309,11 @@ pub fn infer_type(expression: Expression, scope: &FunctionScope<'_>) -> Result<h
             match evaluate(type_of_callee, scope)? {
                 Expression::PiTypeLiteral(literal) => {
                     let argument_type = infer_type(application.argument.clone(), scope)?;
-                    assert_expressions_are_equal(literal.domain.clone(), argument_type, scope)?;
+                    assert_expected_expression_equals_actual(
+                        literal.domain.clone(),
+                        argument_type,
+                        scope,
+                    )?;
                     match literal.parameter.clone() {
                         Some(parameter) => substitute(
                             literal.codomain.clone(),
@@ -432,7 +332,6 @@ pub fn infer_type(expression: Expression, scope: &FunctionScope<'_>) -> Result<h
                 }
             }
         }
-        Expression::Hole(_) => todo!(),
         Expression::UseIn(_) => todo!(),
         Expression::CaseAnalysis(case_analysis) => {
             let r#type = infer_type(case_analysis.expression.clone(), scope)?;
@@ -480,37 +379,6 @@ pub fn infer_type(expression: Expression, scope: &FunctionScope<'_>) -> Result<h
         }
         Expression::UnsaturatedForeignApplication(_) => todo!(),
     })
-}
-
-/// Indicate whether a type is uninhabited.
-// @Note assumes expression_is_type(r#type, ..) holds
-// @Task we need to consider polymorphic types like `Identity` (with `Identity'`) where
-// `Identity Uninhabited` is uninhabited but `Identity Inhabited` is inhabited
-// @Note becomes important when we handle Expression::Application
-fn _is_uninhabited(r#type: Expression, _scope: ModuleScope) -> bool {
-    match r#type {
-        Expression::PiTypeLiteral(_literal) => {
-            // return |codomain|^|domain| (consider dependent types|parameters)
-            todo!()
-        }
-        // @Note we need to be able pass type arguments to is_uninhabited!
-        Expression::Application(_application) => todo!(),
-        Expression::TypeLiteral | Expression::NatTypeLiteral => true,
-        Expression::Path(_path) => {
-            // @Task look up path in context and decide upon returned information
-            // if is an ADT, go through every constructor and for each one check
-            // @Beacon `is_applicable` which checks whether the domain (only!) of the type
-            // is uninhabited
-            todo!()
-        }
-        Expression::Hole(_hole) => todo!(),
-        // @Question unreachable??
-        Expression::LambdaLiteral(_literal) => unreachable!(),
-        Expression::UseIn(_) => todo!(),
-        Expression::CaseAnalysis(_case_analysis) => todo!(),
-        Expression::NatLiteral(_) => unreachable!(),
-        Expression::UnsaturatedForeignApplication(_) => todo!(),
-    }
 }
 
 /// Try to evaluate an expression.
@@ -602,7 +470,6 @@ pub fn evaluate(expression: Expression, scope: &FunctionScope<'_>) -> Result<Exp
                 }
             }
         }
-        Expression::Hole(_) => todo!(),
         Expression::UseIn(_) => todo!(),
         Expression::CaseAnalysis(_) => todo!(),
         // @Question or should the argument be normalized *again*? (under a possibly new scope?)
@@ -613,7 +480,7 @@ pub fn evaluate(expression: Expression, scope: &FunctionScope<'_>) -> Result<Exp
 /// Assert that an expression is of type `Type`.
 fn assert_expression_is_a_type(expression: Expression, scope: &FunctionScope<'_>) -> Result<()> {
     let type_of_expression = infer_type(expression, scope)?;
-    assert_expressions_are_equal(Expression::TypeLiteral, type_of_expression, scope)
+    assert_expected_expression_equals_actual(Expression::TypeLiteral, type_of_expression, scope)
 }
 
 /// Infer type of expression and match it with the type annotation.
@@ -626,16 +493,13 @@ fn match_expression_with_type_annotation(
 ) -> Result<Expression> {
     assert_expression_is_a_type(type_annotation.clone(), scope)?;
     let infered_type = infer_type(expression.clone(), scope)?;
-    assert_expressions_are_equal(type_annotation, infered_type.clone(), scope)?;
+    assert_expected_expression_equals_actual(type_annotation, infered_type.clone(), scope)?;
 
     Ok(infered_type)
 }
 
 /// Assert that two expression are equal under evaluation/normalization.
-///
-/// `expected` is the "expected" expression, `actual` is the "actual" expression.
-// @Task improve API!
-fn assert_expressions_are_equal(
+fn assert_expected_expression_equals_actual(
     expected: Expression,
     actual: Expression,
     scope: &FunctionScope<'_>,

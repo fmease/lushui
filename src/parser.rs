@@ -1,9 +1,9 @@
 //! The parser.
 //!
 //! I *think* it can be classified as a top-down recursive-descent parser with arbitrary look-ahead.
-//! 
+//!
 //! ## Issues
-//! 
+//!
 //! * crude error locations
 //! * cannot really handle optional indentation and some legal EOIs
 
@@ -355,10 +355,6 @@ pub mod expression {
         Path {
             inner: Identifier,
         },
-        Hole {
-            tag: Identifier,
-            span: Span,
-        },
         /// The syntax node of a lambda literal expression.
         LambdaLiteral {
             parameters: Parameters,
@@ -404,7 +400,6 @@ pub mod expression {
                 Self::NatTypeLiteral(literal) => literal.span,
                 Self::NatLiteral(literal) => literal.span,
                 Self::Path(path) => path.inner.span,
-                Self::Hole(hole) => hole.span,
                 Self::LambdaLiteral(literal) => literal.span,
                 Self::LetIn(let_in) => let_in.span,
                 Self::UseIn(use_in) => use_in.span,
@@ -423,7 +418,6 @@ pub mod expression {
                 Self::NatTypeLiteral(literal) => &mut literal.span,
                 Self::NatLiteral(literal) => &mut literal.span,
                 Self::Path(path) => &mut path.inner.span,
-                Self::Hole(hole) => &mut hole.span,
                 Self::LambdaLiteral(literal) => &mut literal.span,
                 Self::LetIn(let_in) => &mut let_in.span,
                 Self::UseIn(use_in) => &mut use_in.span,
@@ -580,7 +574,6 @@ pub mod expression {
                 )?)))
             })
             .or_else(|_: Error| Ok(Expression::Path(Box::new(parse_path(context)?))))
-            .or_else(|_: Error| Ok(Expression::Hole(Box::new(context.reflect(parse_hole)?))))
             .or_else(|_: Error| parse_bracketed_expression(context))
     }
 
@@ -622,17 +615,6 @@ pub mod expression {
     // Identifier ::= %identifier%
     fn parse_path(context: &mut Context<'_>) -> Result<Path> {
         context.consume_identifier().map(|inner| Path { inner })
-    }
-
-    // @Task change syntax to `"?" Identifier`
-    // Hole ::= "'hole" %identifier%
-    fn parse_hole(context: &mut Context<'_>) -> Result<Hole> {
-        let keyword_hole = context.consume(TokenKind::Keyword(Keyword::Hole))?;
-        let tag = context.consume_identifier()?;
-        Ok(Hole {
-            span: keyword_hole.span.merge(tag.span),
-            tag,
-        })
     }
 
     /// Parse a lambda literal expression.

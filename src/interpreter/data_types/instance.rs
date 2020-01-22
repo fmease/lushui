@@ -1,4 +1,4 @@
-//! This module concerns itself with instance checking.
+//! Instance checking.
 //!
 //! I.e. does a constructor of an algebraïc data type return a valid
 //! instance of the respective type?
@@ -9,8 +9,8 @@
 //! existentials and specialized instances but we first might want to
 //! feature-gate them.
 
-use crate::interpreter::{equal, Error, FunctionScope, ModuleScope, Result};
 use crate::hir::{expr, Expression, Identifier};
+use crate::interpreter::{equal, Error, FunctionScope, ModuleScope, Result};
 
 pub(in crate::interpreter) fn assert_constructor_is_instance_of_type(
     constructor_name: Identifier,
@@ -48,6 +48,7 @@ pub(in crate::interpreter) fn constructor_is_instance_of_type(
     )
 }
 
+// @Question @Bug returns are type that might depend on parameters which we don't supply!!
 // gets R in A -> B -> C -> R plus an environment b.c. R could depend on outer stuff
 // @Note this function assumes that the expression has already been normalized!
 fn result_type(expression: Expression, scope: &FunctionScope<'_>) -> Expression {
@@ -64,7 +65,6 @@ fn result_type(expression: Expression, scope: &FunctionScope<'_>) -> Expression 
         | Expression::TypeLiteral
         | Expression::NatTypeLiteral
         | Expression::Path(_) => expression,
-        Expression::Hole(_) => todo!(),
         Expression::LambdaLiteral(_)
         | Expression::NatLiteral(_)
         | Expression::UseIn(_)
@@ -73,7 +73,9 @@ fn result_type(expression: Expression, scope: &FunctionScope<'_>) -> Expression 
     }
 }
 
-/// Returns the `f` in `f a b c`
+/// Returns the callee of an expression.
+///
+/// Example: Returns the `f` in `f a b c`.
 fn callee(mut expression: Expression) -> Expression {
     loop {
         expression = match expression {

@@ -80,7 +80,6 @@ impl Display for Expression {
             Self::NatTypeLiteral => f.write_str("Nat"),
             Self::NatLiteral(literal) => write!(f, "{}", literal.value),
             Self::Path(path) => write!(f, "{}", path.identifier),
-            Self::Hole(hole) => write!(f, "hole {}", hole.tag),
             Self::LambdaLiteral(literal) => write!(
                 f,
                 "\\({}{}{}){} => ({})",

@@ -1,13 +1,12 @@
 //! The high-level intermediate representation (HIR).
-//! 
+//!
 //! This module defines the IR and the lowering from the AST emitted by the parser.
-//! 
+//!
 //! ## Issues
-//! 
+//!
 //! * lacks span information
 //! * and information concerning modules
 //! * paths are always simple (inherited by parser)
-//! * holes should be removed, they will be implemented later
 //! * it should be parametrized, maybe? by phase
 
 mod fmt;
@@ -156,9 +155,6 @@ pub mod expression {
         Path {
             identifier: Identifier,
         },
-        Hole {
-            tag: Identifier,
-        },
         LambdaLiteral {
             parameter: Identifier,
             parameter_type_annotation: Option<Expression>,
@@ -209,11 +205,6 @@ pub mod expression {
             Path(path) => expr! {
                 Path {
                     identifier: Identifier::Plain(path.inner),
-                }
-            },
-            Hole(hole) => expr! {
-                Hole {
-                    tag: Identifier::Plain(hole.tag),
                 }
             },
             LambdaLiteral(literal) => {
@@ -352,7 +343,7 @@ pub mod expression {
     }
 
     /// Lower a pattern from AST to HIR.
-    /// 
+    ///
     /// Currently, [parser::expression::Pattern] and [Pattern] are identical (apart from forgetting span information)!
     fn lower_pattern(pattern: parser::expression::Pattern) -> Pattern {
         match pattern {
