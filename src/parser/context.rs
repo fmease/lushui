@@ -1,3 +1,7 @@
+//! The context of the parser.
+//! 
+//! Stores a reference to the source code of one file and a cursor.
+
 use std::convert::TryInto;
 
 use crate::lexer;
@@ -11,10 +15,14 @@ pub struct Context<'i> {
 }
 
 impl<'i> Context<'i> {
+    /// Construct a new context with the pointer at the beginning.
     pub fn new(tokens: &'i [lexer::SourceToken]) -> Self {
         Self { tokens, index: 0 }
     }
 
+    /// Parse the source in a sandboxed context.
+    /// 
+    /// Used for arbitrary look-ahead.
     pub(super) fn reflect<T>(&mut self, parser: fn(&mut Context<'i>) -> Result<T>) -> Result<T> {
         let mut context = self.clone();
         parser(&mut context).map(|value| {

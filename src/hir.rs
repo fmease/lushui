@@ -1,4 +1,14 @@
-//! HIR — high-level intermediate representation
+//! The high-level intermediate representation (HIR).
+//! 
+//! This module defines the IR and the lowering from the AST emitted by the parser.
+//! 
+//! ## Issues
+//! 
+//! * lacks span information
+//! * and information concerning modules
+//! * paths are always simple (inherited by parser)
+//! * holes should be removed, they will be implemented later
+//! * it should be parametrized, maybe? by phase
 
 mod fmt;
 mod identifier;

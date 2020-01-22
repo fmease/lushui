@@ -1,3 +1,11 @@
+//! Errors happening during type-checking and interpreting.
+//! 
+//! ## Issues:
+//! 
+//! * still missing span information
+//! * enum best solution? rustc's structured diagnostics system with text messages
+//!   seems way better
+
 use std::fmt;
 
 use crate::hir::{Expression, Identifier};

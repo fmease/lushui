@@ -1,3 +1,11 @@
+//! The lexer.
+//!
+//! It parses indentation and dedentation intwo two pseudo tokens:
+//! [TokenKind::Indentation] and [TokenKind::Dedentation] respectively.
+//! 
+//! Natural number literals are directly converted into [num_bigint::BigUint]
+//! and identifiers are interned.
+
 mod error;
 
 use num_bigint::BigUint;
@@ -21,7 +29,6 @@ pub type Nat = Rc<BigUint>;
 /// A token with span information [`crate::error::Span`].
 ///
 /// There is no actual reference to the source, we are working with indeces.
-#[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug, Clone)]
 pub struct SourceToken {
     pub inner: Token,
@@ -60,7 +67,6 @@ impl std::ops::Deref for SourceToken {
 ///
 /// Note: Maybe, this design is over-engineered but I don't know where to elegantly store
 /// interned strings.
-#[cfg_attr(test, derive(PartialEq, Eq))]
 #[derive(Debug, Clone)]
 pub enum Token {
     DocumentationComment,
@@ -160,10 +166,10 @@ impl fmt::Display for TokenKind {
 }
 
 macro_rules! keywords {
-    { $( $( #[$doc:meta] )+ $keyword:ident $representation:literal, )+ } => {
+    { $( $keyword:ident $representation:literal, )+ } => {
         #[derive(Debug, PartialEq, Eq, Clone, Copy)]
         pub enum Keyword {
-            $( $( #[$doc] )+ $keyword, )+
+            $( $keyword, )+
         }
 
         impl fmt::Display for Keyword {
@@ -188,36 +194,20 @@ macro_rules! keywords {
 }
 
 keywords! {
-    /// The keyword `as` renaming bindings in certain syntactic constructs.
     As "as",
-    /// The keyword `'_` standing for either an expression that should be infered or an unnameable identifier.
     Blank "_",
-    /// The keyword `'case` prefixing cases analyses.
     Case "case",
-    /// The keyword `'data` introducing data declarations.
     Data "data",
-    /// The keyword `'foreign` signaling a FFA.
     Foreign "foreign",
     // @Task update to `?`-syntax
-    /// The keyword `'hole` used for typed holes.
     Hole "hole",
-    /// The keyword `'in` being part of let/in-expressions
     In "in",
-    /// The keyword `'let` introducing let-declarations which bind expressions.
     Let "let",
-    /// The keyword `'module` used for module declarations.
     Module "module",
-    /// The keyword `'Nat` naming the type of natural numbers.
     Nat "Nat",
-    /// The keyword `'of` found in case analyses.
     Of "of",
-    // /// The keyword `'root` standing for the root module.
-    // Root "root",
-    /// The keyword `'Parent` refering to a parent module.
     Super "super",
-    /// The keyword `'Type` naming the type of types.
     Type "Type",
-    /// The keyword `'use` prefixing use declarations.
     Use "use",
 }
 
@@ -255,7 +245,7 @@ fn extend_with_dedentation(tokens: &mut Vec<SourceToken>, start: usize, amount_o
     tokens.extend(std::iter::repeat(dedentation).take(amount_of_spaces / INDENTATION_IN_SPACES));
 }
 
-/// Lex source code into a vector of tokens.
+/// Lex source code into an array of tokens.
 // @Task keep a bracket stack to report better error messages
 pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
     let mut indexed_characters = source.char_indices().peekable();

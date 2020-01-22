@@ -13,19 +13,16 @@ static LAST_GENERATED_NUMERIC_IDENTIFIER: AtomicU64 = AtomicU64::new(0);
 /// Plain identifiers don't compare by their span only their (interned) contents.
 #[derive(Clone, Debug, Eq)]
 pub enum Identifier {
-    // @Question is Stub used??
     Stub,
     Plain(parser::Identifier),
     Generated(parser::Identifier, u64),
 }
 
 impl Identifier {
-    // @Temporary
     pub fn from(identifier: &str) -> Self {
         Identifier::Plain(Self::plain(identifier))
     }
 
-    // @Temporary
     fn plain(identifier: &str) -> parser::Identifier {
         parser::Identifier {
             atom: crate::lexer::Atom::from(identifier),

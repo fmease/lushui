@@ -1,8 +1,21 @@
+//! The main error handler.
+//!
+//! Currently, it defines the byte span of code snippets and a procedure to pretty-print
+//! a given code section.
+//!
+//! This is a really old part of this project and needs a huge re-do.
+//! It's neither general nor modular, the API sucks and the code is untested,
+//! unstructured and fragile.
+//!
+//! The plan is to move to a diagnostic system similar (but of course simpler) to the one
+//! of rustc.
+
 // use colored::Colorize;
 use std::fmt;
 
 use std::ops::RangeInclusive;
 
+/// The byte span of a source snippet.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Span {
     pub start: usize,

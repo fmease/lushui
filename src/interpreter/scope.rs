@@ -1,28 +1,9 @@
-// @Task update docs
-//! This module exposes an [`Environment`] and a [`ModuleScope`].
-//!
-//! What's the difference between those two? Well, apart from them not being
-//! perfectly named, the first one represents function scoping and the second
-//! one module scoping.
-//!
-//! As an aside, the [`ModuleScope`] contains a lot more information.
-//!
-//! The scoping rules are vastly different between those two kinds.
-//! Environments (lambdas and let/ins) can store neitherdata nor foreign nor module declarations,
-//! only let and use declarations.
-//! In function scopes, declarations shadow other ones with the same name.
-//! In module scope, declarations may appear out of order and cross-reference each other
-//! as long as there is no cyclic dependency. Recursion is allowed.
-//! Not so in function scopes! Since lambdas and let/ins are nested, they are ordered and
-//! most importantly, recursion only works explicitly via the fix-point-combinator.
-//!
-//! **Note**: This module needs a lot of love. Currently, it's a big hack with a bad API.
-//! Performance is bad I guess and a lot, a lot of memory is wasted! We need to refactor it
-//! several times until I will be happy.
-//!
-//! **UPDATE**: I think what I said above does not hold! We use the ModuleContext for
-//! function scoping as well! Of course! Like adding typed parameters to the context
-//! with `extend_with_neutral_binding`! I think environment is solely for substitution.
+//! Binding and scope handler.
+//! 
+//! Exposes two types of scopes:
+//! 
+//! * [ModuleScope]
+//! * [FunctionScope]
 
 mod ffi;
 
@@ -34,12 +15,13 @@ mod module {
     use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
 
     use super::{ffi, Error, FunctionScope, Result};
-    use crate::effluvium::normalize;
+    use crate::interpreter::normalize;
     use crate::hir::{expr, Expression, Identifier};
 
+    /// An entity found inside a module scope.
     // @Question Expression<Normalized>?
     #[derive(Clone)]
-    enum ModuleEntity {
+    enum Entity {
         // @Question is this a value or an expression?
         Expression {
             r#type: Expression,
@@ -64,12 +46,12 @@ mod module {
         },
     }
 
-    impl ModuleEntity {
+    impl Entity {
         /// Retrieve the type of an entity.
         ///
-        /// # Panics
+        /// ## Panics
         ///
-        /// Panics if called on an [ModuleEntity::UntypedForeign].
+        /// Panics if called on an [Entity::UntypedForeign].
         fn r#type(&self) -> Expression {
             match self {
                 Self::Expression { r#type, .. } => r#type.clone(),
@@ -80,16 +62,18 @@ mod module {
             }
         }
 
-        // None means the entity was neutral/non-reducible
+        /// Retrieve the value of an entity
+        /// 
+        /// Returns `None` if the entity is **neutral** (non-reducible)
         fn value(&self) -> Option<Expression> {
             match self {
-                ModuleEntity::Expression { expression, .. } => Some(expression.clone()),
+                Entity::Expression { expression, .. } => Some(expression.clone()),
                 _ => None,
             }
         }
     }
 
-    impl fmt::Debug for ModuleEntity {
+    impl fmt::Debug for Entity {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {
                 Self::Expression { r#type, expression } => write!(f, "{}: {}", expression, r#type),
@@ -112,12 +96,29 @@ mod module {
         }
     }
 
+    /// The scope of bindings inside of a module.
+    /// 
+    /// Can store all kinds of bindings:
+    /// 
+    /// * typed values
+    /// * data types with its constructors
+    /// * constructors
+    /// * partially and fully registered (untyped and typed respectively)
+    ///   foreign bindings
+    /// 
+    /// Difference to [FunctionScope]: The module scopes is designed for declarations which may appear out of order and
+    /// cross-reference each other (as long as there is no cyclic dependency) and for recursive bindings. It's flat.
+    /// The API offers mutating functions.
     #[derive(Default, Clone)]
     pub struct ModuleScope {
-        bindings: Rc<RefCell<HashMap<Identifier, ModuleEntity>>>,
+        bindings: Rc<RefCell<HashMap<Identifier, Entity>>>,
     }
 
+    /// Many methods of module scope panic instead of returning a `Result` because
+    /// the invariants are expected to be checked beforehand by using the predicate
+    /// methods also found here. This design is most flexible for the caller I think.
     impl ModuleScope {
+        /// Create a new scope with foreign bindings partially registered.
         pub fn new() -> Self {
             let scope = Self::default();
             ffi::register_foreign_bindings(scope.clone());
@@ -125,10 +126,13 @@ mod module {
         }
 
         pub fn lookup_type(self, binder: &Identifier) -> Option<Expression> {
-            self.bindings.borrow().get(binder).map(ModuleEntity::r#type)
+            self.bindings.borrow().get(binder).map(Entity::r#type)
         }
 
-        // @Task document
+        /// Look up the value of a binding.
+        /// 
+        /// * returns `None` if the `binder` is not bound.
+        /// * returns `Some(None)` if the binding is **neutral** (non-reducible)
         pub fn lookup_value(self, binder: &Identifier) -> Option<Option<Expression>> {
             self.bindings
                 .borrow()
@@ -136,7 +140,7 @@ mod module {
                 .map(|entity| entity.value())
         }
 
-        fn is(self, binder: &Identifier, predicate: fn(&ModuleEntity) -> bool) -> bool {
+        fn is(self, binder: &Identifier, predicate: fn(&Entity) -> bool) -> bool {
             self.bindings
                 .borrow()
                 .get(binder)
@@ -147,29 +151,29 @@ mod module {
         pub fn is_constructor(self, binder: &Identifier) -> bool {
             self.is(
                 binder,
-                |entity| matches!(entity, ModuleEntity::Constructor { .. }),
+                |entity| matches!(entity, Entity::Constructor { .. }),
             )
         }
 
         pub fn is_foreign(self, binder: &Identifier) -> bool {
             self.is(
                 binder,
-                |entity| matches!(entity, ModuleEntity::Foreign { .. }),
+                |entity| matches!(entity, Entity::Foreign { .. }),
             )
         }
 
         /// Try applying foreign binding.
         ///
-        /// # Panics
+        /// ## Panics
         ///
-        /// Panics if `binder` is unmapped or not foreign.
+        /// Panics if `binder` either not bound or not foreign.
         pub fn try_applying_foreign_binding(
             self,
             binder: &Identifier,
             arguments: Vec<Expression>,
         ) -> Result<Expression> {
             match self.clone().bindings.borrow()[binder] {
-                ModuleEntity::Foreign {
+                Entity::Foreign {
                     arity, function, ..
                 } => {
                     if arguments.len() == arity {
@@ -193,7 +197,7 @@ mod module {
 
         pub fn assert_is_not_yet_defined(self, binder: Identifier) -> Result<()> {
             if let Some(entity) = self.bindings.borrow().get(&binder) {
-                if !matches!(entity, ModuleEntity::UntypedForeign { .. }) {
+                if !matches!(entity, Entity::UntypedForeign { .. }) {
                     return Err(Error::AlreadyDefined(binder));
                 }
             }
@@ -208,41 +212,52 @@ mod module {
         // @Task better API, ah ugly: we need to clone the whole vector because Scope is Rc'd
         pub fn constructors(self, binder: &Identifier) -> Result<Vec<Identifier>, ()> {
             match self.bindings.borrow().get(binder).ok_or(())? {
-                ModuleEntity::DataType { constructors, .. } => Ok(constructors.clone()),
+                Entity::DataType { constructors, .. } => Ok(constructors.clone()),
                 _ => Err(()),
             }
         }
 
+        /// Insert a value binding into the scope.
+        /// 
+        /// ## Panics
+        /// 
+        /// Panics under `cfg(debug_assertions)` if `binder` is already bound.
         pub fn insert_value_binding(
             self,
             binder: Identifier,
             r#type: Expression,
             value: Expression,
         ) {
-            self.bindings.borrow_mut().insert(
+            debug_assert!(self.bindings.borrow_mut().insert(
                 binder,
-                ModuleEntity::Expression {
+                Entity::Expression {
                     r#type,
                     expression: value,
                 },
-            );
+            ).is_none());
         }
 
+        /// Insert a data type binding into the scope.
+        /// 
+        /// ## Panics
+        /// 
+        /// Panics under `cfg(debug_assertions)` if the `binder` is already bound.
         pub fn insert_data_binding(self, binder: Identifier, r#type: Expression) {
-            self.bindings.borrow_mut().insert(
+            debug_assert!(self.bindings.borrow_mut().insert(
                 binder,
-                ModuleEntity::DataType {
+                Entity::DataType {
                     r#type,
                     constructors: Vec::new(),
                 },
-            );
+            ).is_none());
         }
 
         /// Insert constructor binding into the scope.
         ///
         /// # Panics
         ///
-        /// Panics if given data type does not exist or is not a data type
+        /// Panics under `cfg(debug_assertions)` if `binder` is already bound and does so
+        /// in every case if given data type does not exist or is not a data type.
         pub fn insert_constructor_binding(
             self,
             binder: Identifier,
@@ -251,9 +266,10 @@ mod module {
         ) {
             let mut bindings = self.bindings.borrow_mut();
 
-            bindings.insert(binder.clone(), ModuleEntity::Constructor { r#type });
+            debug_assert!(bindings.insert(binder.clone(), Entity::Constructor { r#type }).is_none());
+            
             match bindings.get_mut(data_type).unwrap() {
-                ModuleEntity::DataType {
+                Entity::DataType {
                     ref mut constructors,
                     ..
                 } => constructors.push(binder),
@@ -261,10 +277,15 @@ mod module {
             }
         }
 
-        // @Task docs, panics
+        /// Complete the registration of a foreign binding by typing it.
+        /// 
+        /// ## Panics
+        /// 
+        /// Panics if the `binder` is not bound or the binding is not a partially
+        /// registered one.
         pub fn insert_type_for_foreign_binding(self, binder: Identifier, r#type: Expression) {
             let entity = match self.bindings.borrow()[&binder] {
-                ModuleEntity::UntypedForeign { arity, function } => ModuleEntity::Foreign {
+                Entity::UntypedForeign { arity, function } => Entity::Foreign {
                     r#type,
                     arity,
                     function,
@@ -274,19 +295,23 @@ mod module {
             self.bindings.borrow_mut().insert(binder, entity);
         }
 
-        // @Task docs, panics
+        /// Partially register a foreign binding letting it untyped.
+        /// 
+        /// ## Panics
+        /// 
+        /// Panics under `cfg(debug_assertions)` if the `binder` is already bound.
         pub fn insert_untyped_foreign_binding(
             self,
             binder: &str,
             arity: usize,
             function: ffi::ForeignFunction,
         ) {
-            assert!(self
+            debug_assert!(self
                 .bindings
                 .borrow_mut()
                 .insert(
                     Identifier::from(binder),
-                    ModuleEntity::UntypedForeign { arity, function }
+                    Entity::UntypedForeign { arity, function }
                 )
                 .is_none());
         }
@@ -308,8 +333,10 @@ mod function {
     use super::{ModuleScope, Result};
     use crate::hir::{Expression, Identifier};
 
-    // @Note this might be extended to have two variants `Parameter` and `Expression`
-    // once we feature `LetIn` in the HIR because of locally nameless/debruijn-indexing
+    /// And entity found in a function scope.
+    /// 
+    /// Right now, that's solely parameters but this might be extended to have the two variants
+    /// `Parameter` and `Expression` once we feature `LetIn` in the HIR because of locally nameless.
     enum Entity {
         Parameter { r#type: Expression },
     }
@@ -321,6 +348,14 @@ mod function {
             }
         }
     }
+
+    /// The scope of bindings inside of a function.
+    /// 
+    /// Can only store function parameters at the moment.
+    /// 
+    /// Comparison to [ModuleScope]: In function scopes, declarations shadow other ones with the same name.
+    /// And since lambdas and let/ins are nested, they are ordered and
+    /// most importantly, recursion only works explicitly via the fix-point-combinator.
     pub struct FunctionScope<'parent> {
         inner: Inner<'parent>,
     }

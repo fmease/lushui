@@ -1,6 +1,6 @@
 #![forbid(rust_2018_idioms, unused_must_use)]
 
-use lushuic::{effluvium, error, hir, lexer, parser};
+use lushuic::{interpreter, error, hir, lexer, parser};
 
 use std::fs::File;
 use std::io::{BufReader, Read};
@@ -23,11 +23,11 @@ fn main() {
 }
 
 fn test(source: &str, filename: &str) -> Result<(), String> {
-    // tokens
+    // lexing
     let tokens = lexer::lex(source)
         .map_err(|error| error::display(&error.kind.to_string(), error.span, source, Some(filename)))?;
 
-    // AST
+    // parsing
     let mut context = parser::Context::new(&tokens);
     let node = parser::Declaration::Module(Box::new(
         parser::declaration::parse_file_module_no_header(&mut context)
@@ -35,13 +35,13 @@ fn test(source: &str, filename: &str) -> Result<(), String> {
     ));
     // eprintln!("{:#?}", &node);
 
-    // HIR
+    // lowering to intermediate representation
     let node = hir::lower_declaration(node);
     // eprintln!("{}", &node);
 
-    // Effluvium
-    let scope = effluvium::ModuleScope::new();
-    effluvium::evaluate_declaration(&node, scope.clone()).map_err(|error| error.to_string())?;
+    // type checking and interpreting
+    let scope = interpreter::ModuleScope::new();
+    interpreter::evaluate_declaration(&node, scope.clone()).map_err(|error| error.to_string())?;
     eprintln!("{:?}", scope);
 
     Ok(())

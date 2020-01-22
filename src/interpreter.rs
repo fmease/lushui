@@ -1,17 +1,35 @@
-//! First type-checker plus backend (tree-walk interpreter).
+//! The type checker and tree-walk interpreter.
 //!
-//! The code in here is all temporary and needs to be reworked quite a bit!
-//! Especially substitution! We should use Debruijn-indices, for real!
+//! The first backend of lushuic. Later, we are going to add a bytecode interpreter for
+//! evaluation. Still, this interpreter will stay because it is necessary for type-checking.
+//!
+//! The plan is to somehow split this file into `typing.rs` and `backend/tree_walk_interpreter.rs`
+//! with the module `typing` referencing the moved interpreter.
+//!
+//! This module is **heavily** under construction!
+//!
+//! ## Issues
+//!
+//! * too many bugs
+//! * using substitution environments instead of locally nameless/Debruijn-indeces
+//! * case analysis not implemented
+//! * order-independent declarations and recursion not implemented
+//! * modules not implemented
+//! * non-trivial type inference not done
+//! * untyped/unkinded AST-transformations
+//! * bad unstructured error reporting without span information
+//! * bad API/project structure could be better
+//! * integration and regression tests missing
 
-mod adts;
+mod algebraic_data_types;
 mod error;
 mod scope;
 
 use crate::hir::{self, expr, expression, Declaration, Expression, Identifier};
 use crate::parser::Explicitness;
 use error::{Error, Result};
-use scope::Environment;
-pub use scope::{FunctionScope, ModuleScope};
+pub use scope::ModuleScope;
+use scope::{Environment, FunctionScope};
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -22,8 +40,8 @@ use std::rc::Rc;
 const MISSING_ANNOTATION: &str =
     "(compiler bug) currently lambda literal parameters and patterns must be type-annotated";
 
-// @Task handle out of order declarations and recursions (you need to go through declarations twice) and
-// only register the names plus types first (there is gonna be scope.insert_unresolved_binding)
+/// Try to valuate a declaration modifying the given scope.
+// @Task support order-independence, recursion and proper modules
 pub fn evaluate_declaration(declaration: &Declaration, module_scope: ModuleScope) -> Result<()> {
     Ok(match declaration {
         Declaration::Value {
@@ -68,7 +86,7 @@ pub fn evaluate_declaration(declaration: &Declaration, module_scope: ModuleScope
                 let r#type = normalize(type_annotation.clone(), &function_scope)?;
                 assert_expression_is_a_type(r#type.clone(), &function_scope)?;
 
-                adts::instance::assert_constructor_is_instance_of_type(
+                algebraic_data_types::instance::assert_constructor_is_instance_of_type(
                     binder.clone(),
                     type_annotation.clone(),
                     data_type_binder.clone(),
@@ -109,6 +127,13 @@ pub fn evaluate_declaration(declaration: &Declaration, module_scope: ModuleScope
     })
 }
 
+/// Substitute inside an expression using an environment.
+///
+/// Replace occurences of those identifiers inside the expression which are
+/// member of the subsitution list known as the environment with the expression
+/// which it maps to.
+///
+/// This procedure should be replaced with locally nameless.
 fn substitute(
     expression: Expression,
     environment: Environment,
@@ -202,6 +227,7 @@ fn substitute(
     }
 }
 
+/// Substitute inside the case of a case analysis.
 fn case_analysis_case_substitute(
     case: expression::CaseAnalysisCase,
     environment: Environment,
@@ -215,6 +241,7 @@ fn case_analysis_case_substitute(
     }
 }
 
+/// Substitute inside of a pattern.
 fn pattern_substitute(
     pattern: expression::Pattern,
     environment: Environment,
@@ -305,12 +332,14 @@ fn _insert_matchables_from_pattern(pattern: &expression::Pattern, scope: &Functi
     }
 }
 
+/// Indicate if a path refers to a constructor or not.
 // @Task move somewhere more appropriate
 // @Task verify (esp. b/c shadowing)
 fn is_matchable(path: &expression::Path, scope: &FunctionScope<'_>) -> bool {
     path.is_simple() && scope.is_constructor(&path.identifier)
 }
 
+/// Try to infer the type of an expression.
 pub fn infer_type(expression: Expression, scope: &FunctionScope<'_>) -> Result<hir::Expression> {
     Ok(match expression {
         Expression::Path(path) => scope
@@ -441,6 +470,7 @@ pub fn infer_type(expression: Expression, scope: &FunctionScope<'_>) -> Result<h
     })
 }
 
+/// Indicate whether a type is uninhabited.
 // @Note assumes expression_is_type(r#type, ..) holds
 // @Task we need to consider polymorphic types like `Identity` (with `Identity'`) where
 // `Identity Uninhabited` is uninhabited but `Identity Inhabited` is inhabited
@@ -471,6 +501,7 @@ fn _is_uninhabited(r#type: Expression, _scope: ModuleScope) -> bool {
     }
 }
 
+/// Try to normalize or "evaluate" an expression.
 // @Task differenciate between Expression<InitialPhase> and Expression<Normalized>
 pub fn normalize(expression: Expression, scope: &FunctionScope<'_>) -> Result<Expression> {
     Ok(match expression {
@@ -569,6 +600,7 @@ pub fn normalize(expression: Expression, scope: &FunctionScope<'_>) -> Result<Ex
     })
 }
 
+/// Assert that an expression is of type `Type`.
 fn assert_expression_is_a_type(expression: Expression, scope: &FunctionScope<'_>) -> Result<()> {
     let type_of_expression = infer_type(expression, scope)?;
     assert_expressions_are_equal(Expression::TypeLiteral, type_of_expression, scope)
@@ -589,23 +621,23 @@ fn match_with_type_annotation(
     Ok(infered_type)
 }
 
-/// left is expected, right is actual
+/// Assert that two expression are equal under normalization.
+///
+/// `expected` is the "expected" expression, `actual` is the "actual" expression.
 // @Task improve API!
 fn assert_expressions_are_equal(
-    left: Expression,
-    right: Expression,
+    expected: Expression,
+    actual: Expression,
     scope: &FunctionScope<'_>,
 ) -> Result<()> {
-    if !normalizing_equal(left.clone(), right.clone(), scope)? {
-        Err(Error::ExpressionsNotEqual {
-            expected: left,
-            actual: right,
-        })
+    if !normalizing_equal(expected.clone(), actual.clone(), scope)? {
+        Err(Error::ExpressionsNotEqual { expected, actual })
     } else {
         Ok(())
     }
 }
 
+/// Shows if two expressions are equal under normalization.
 fn normalizing_equal(
     left: Expression,
     right: Expression,
@@ -618,6 +650,7 @@ fn normalizing_equal(
     ))
 }
 
+/// Shows if two expressions are syntactically equal.
 fn equal(left: Expression, right: Expression, scope: &FunctionScope<'_>) -> bool {
     match (left, right) {
         (Expression::Path(path0), Expression::Path(path1)) => path0.identifier == path1.identifier,
@@ -665,14 +698,15 @@ fn equal(left: Expression, right: Expression, scope: &FunctionScope<'_>) -> bool
                 scope,
             )
         }
-        // @Task case analysis
-        // @Task foreign bindings
+        // @Temporary
+        (Expression::CaseAnalysis(_), Expression::CaseAnalysis(_)) => unreachable!(),
         // @Note this is really bad when we decide to add new stuff! but there is no
         // viable alternative really :/
         _ => false,
     }
 }
 
+/// Substitute inside of a pi-type or lambda literal.
 // @Temporary signature
 // @Note bad signature (deviation between pi and lambda)
 fn abstraction_substitute(
@@ -708,6 +742,7 @@ fn abstraction_substitute(
     )
 }
 
+/// Indicate whether two pi-types or lambda literals are syntactically equal.
 // @Temporary signature
 fn abstraction_equal(
     binder1: Option<Identifier>,

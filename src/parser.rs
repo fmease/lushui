@@ -1,6 +1,11 @@
 //! The parser.
 //!
 //! I *think* it can be classified as a top-down recursive-descent parser with arbitrary look-ahead.
+//! 
+//! ## Issues
+//! 
+//! * crude error locations
+//! * cannot really handle optional indentation and some legal EOIs
 
 mod context;
 mod error;

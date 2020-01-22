@@ -9,10 +9,10 @@
 //! existentials and specialized instances but we first might want to
 //! feature-gate them.
 
-use crate::effluvium::{equal, Error, FunctionScope, ModuleScope, Result};
+use crate::interpreter::{equal, Error, FunctionScope, ModuleScope, Result};
 use crate::hir::{expr, Expression, Identifier};
 
-pub(in crate::effluvium) fn assert_constructor_is_instance_of_type(
+pub(in crate::interpreter) fn assert_constructor_is_instance_of_type(
     constructor_name: Identifier,
     constructor: Expression,
     type_name: Identifier,
@@ -28,7 +28,7 @@ pub(in crate::effluvium) fn assert_constructor_is_instance_of_type(
 }
 
 // @Note currently allows existential quantification and specialized instances
-pub(in crate::effluvium) fn constructor_is_instance_of_type(
+pub(in crate::interpreter) fn constructor_is_instance_of_type(
     constructor: Expression,
     type_name: Identifier,
     module_scope: ModuleScope,

@@ -1,3 +1,5 @@
+//! Formatted printing of the HIR.
+
 use std::fmt::{Display, Formatter, Result};
 
 use super::{expression, Constructor, Declaration, Expression};
