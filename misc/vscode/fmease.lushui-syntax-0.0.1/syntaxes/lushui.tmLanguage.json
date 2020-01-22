@@ -54,7 +54,7 @@
                     "name": "keyword.operator.lushui"
                 },
                 {
-                    "match": "\\base\\b",
+                    "match": "\\bcase\\b",
                     "name": "keyword.control.lushui"
                 },
                 {

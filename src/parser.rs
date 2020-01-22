@@ -6,6 +6,10 @@
 //!
 //! * crude error locations
 //! * cannot really handle optional indentation and some legal EOIs
+//! * when prefix-parsing, we check twice e.g. in:
+//!   * [parse_declaration]
+//!   * [parse_expression]
+//!   * [expression::parse_case_analysis]
 
 mod context;
 mod error;
@@ -15,7 +19,7 @@ use freestanding::freestanding;
 use std::fmt;
 
 use crate::error::Span;
-use crate::lexer::{self, Keyword, TokenKind};
+use crate::lexer::{self, Token, TokenKind};
 
 pub use context::Context;
 pub use error::{Error, ErrorKind};
@@ -85,7 +89,13 @@ pub mod declaration {
         }
     }
 
-    // @Task grammar rule
+    /// Parse a declaration.
+    ///
+    /// ## Grammar
+    ///
+    /// ```text
+    /// Declaration ::= Value_Declaration | Data_Declaration | Foreign_Declaration
+    /// ```
     pub fn parse_declaration(context: &mut Context<'_>) -> Result<Declaration> {
         let token = context.current_token()?;
 
@@ -93,16 +103,12 @@ pub mod declaration {
             TokenKind::Identifier => {
                 Declaration::Value(Box::new(parse_value_declaration(context)?))
             }
-            TokenKind::Keyword(Keyword::Data) => {
-                Declaration::Data(Box::new(parse_data_declaration(context)?))
-            }
-            TokenKind::Keyword(Keyword::Foreign) => {
-                Declaration::Foreign(Box::new(parse_foreign_declaration(context)?))
-            }
+            Token![data] => Declaration::Data(Box::new(parse_data_declaration(context)?)),
+            Token![foreign] => Declaration::Foreign(Box::new(parse_foreign_declaration(context)?)),
             kind => {
                 return Err(Error {
                     span: token.span,
-                    kind: ErrorKind::ExpectedDeclaration(kind),
+                    kind: ErrorKind::ExpectedDeclaration { actual: kind },
                 })
             }
         })
@@ -110,7 +116,8 @@ pub mod declaration {
 
     /// Parse a value declaration.
     ///
-    /// Grammar rule:
+    /// ## Grammar
+    ///
     /// ```text
     /// Value_Declaration ::= Identifier Annotated_Parameters Type_Annotation "="
     ///     Possibly_Indented_Expression_Followed_By_Line_Break
@@ -120,7 +127,7 @@ pub mod declaration {
         let parameters = parse_annotated_parameters(context)?;
 
         let type_annotation = parse_type_annotation(context)?;
-        context.consume(TokenKind::Equals)?;
+        context.consume(Token![=])?;
         let expression = parse_possibly_indented_expression_followed_by_line_break(context)?;
 
         Ok(Value {
@@ -134,16 +141,16 @@ pub mod declaration {
 
     // @Task grammar rule
     pub fn parse_data_declaration(context: &mut Context<'_>) -> Result<Data> {
-        let span_of_keyword = context.consume(TokenKind::Keyword(Keyword::Data))?.span;
+        let span_of_keyword = context.consume(Token![data])?.span;
         let binder = context.consume_identifier()?;
         let parameters = parse_annotated_parameters(context)?;
         let type_annotation = parse_type_annotation(context)?;
-        let span_of_equals = context.consume(TokenKind::Equals)?.span;
+        let span_of_equals = context.consume(Token![=])?.span;
         context.consume(TokenKind::LineBreak)?;
 
         let mut constructors = Vec::new();
 
-        if context.consume(TokenKind::Indentation).is_ok() {
+        if context.consumed(TokenKind::Indentation) {
             // @Bug produces bad error messages
             while let Ok(constructor) = context.reflect(parse_constructor) {
                 constructors.push(constructor);
@@ -177,7 +184,7 @@ pub mod declaration {
 
         loop {
             // skip empty lines
-            if context.consume(TokenKind::LineBreak).is_ok() {
+            if context.consumed(TokenKind::LineBreak) {
                 continue;
             }
 
@@ -209,12 +216,13 @@ pub mod declaration {
 
     /// Parse a foreign declaration.
     ///
-    /// Grammar rule:
+    /// ## Grammar
+    ///
     /// ```text
     /// Foreign_Declaration ::= "foreign" Identifier Annotated_Parameters Type_Annotation Line_Break
     /// ```
     fn parse_foreign_declaration(context: &mut Context<'_>) -> Result<Foreign> {
-        let span_of_keyword = context.consume(TokenKind::Keyword(Keyword::Foreign))?.span;
+        let span_of_keyword = context.consume(Token![foreign])?.span;
         let binder = context.consume_identifier()?;
         let parameters = parse_annotated_parameters(context)?;
         let type_annotation = parse_type_annotation(context)?;
@@ -258,14 +266,15 @@ pub mod declaration {
 
     /// Parse type-annotated parameters.
     ///
-    /// Grammar rule:
+    /// ## Grammar
+    ///
     /// ```text
     /// Annotated_Parameters ::= Annotated_Parameter_Group*
     /// ```
     fn parse_annotated_parameters(context: &mut Context<'_>) -> Result<AnnotatedParameters> {
         let mut parameters = Vec::new();
 
-        while context.expect(TokenKind::OpeningRoundBracket).is_ok() {
+        while context.current(TokenKind::OpeningRoundBracket) {
             parameters.push(context.reflect(parse_annotated_parameter_group)?);
         }
 
@@ -283,7 +292,8 @@ pub mod declaration {
 
     /// Parse a type-annotated parameter group.
     ///
-    /// Grammar rule:
+    /// ## Grammar
+    ///
     /// ```text
     /// Annotated_Parameter_Group ::= "(" "|"? Unfenced_Annotated_Parameter_Group ")"
     /// Unfenced_Annotated_Parameter_Group ::= Identifier+ Type_Annotation
@@ -428,26 +438,22 @@ pub mod expression {
 
     /// Parse an expression.
     ///
-    /// Grammar rule:
+    /// ## Grammar
+    ///
     /// ```text
     /// Expression ::= Let_In | Lambda_Literal | Case_Analysis | Pi_Literal_Or_Lower
     /// ```
-    // @Bug @Beacon error messages are really bad, @Task you need to do prefix-parsing instead of or_else's
-    // @Note @Bug indentation logic not implemented (e.g. indent+let-in)
     pub fn parse_expression(context: &mut Context<'_>) -> Result<Expression> {
-        context
-            .reflect(|context| Ok(Expression::LetIn(Box::new(parse_let_in(context)?))))
-            .or_else(|_| {
-                Ok(Expression::LambdaLiteral(Box::new(
-                    context.reflect(parse_lambda_literal)?,
-                )))
-            })
-            .or_else(|_: Error| {
-                Ok(Expression::CaseAnalysis(Box::new(
-                    context.reflect(parse_case_analysis)?,
-                )))
-            })
-            .or_else(|_: Error| parse_pi_type_literal_or_lower(context))
+        let token = context.current_token()?;
+
+        Ok(match token.kind() {
+            Token![let] => Expression::LetIn(Box::new(parse_let_in(context)?)),
+            TokenKind::Backslash => {
+                Expression::LambdaLiteral(Box::new(parse_lambda_literal(context)?))
+            }
+            Token![case] => Expression::CaseAnalysis(Box::new(parse_case_analysis(context)?)),
+            _ => return parse_pi_type_literal_or_lower(context),
+        })
     }
 
     /// Parse a pi-type literal or a lower expression.
@@ -480,7 +486,7 @@ pub mod expression {
                     .map(|parameter| (parameter.span(), Explicitness::Explicit, None, parameter))
             })?;
 
-        Ok(match context.consume(TokenKind::ThinArrow) {
+        Ok(match context.consume(Token![->]) {
             Ok(_) => {
                 let expression = context.reflect(parse_pi_type_literal_or_lower)?;
 
@@ -513,7 +519,7 @@ pub mod expression {
     // fn parse_semicolon_application_or_lower(context: &mut Context<'_>) -> Result<Expression> {
     //     let expression = parse_application_or_lower(context)?;
 
-    //     Ok(if context.consume(TokenKind::Semicolon).is_ok() {
+    //     Ok(if context.consumed(TokenKind::Semicolon) {
     //         Expression::Application(Box::new(expression::Application {
     //             expression: Box::new(expression),
     //             argument: Box::new(context.reflect(parse_semicolon_application_or_lower)?),
@@ -526,7 +532,8 @@ pub mod expression {
 
     /// Parse an application or a lower expression.
     ///
-    /// Grammar rule:
+    /// ## Grammar
+    ///
     /// ```text
     /// Application_Or_Lower %left% ::= Lower_Expression (Lower_Expression | "(" "|" Expression ")")*
     /// ```
@@ -537,7 +544,7 @@ pub mod expression {
             .reflect(|context| Ok((parse_lower_expression(context)?, Explicitness::Explicit)))
             .or_else(|_| -> Result<_> {
                 context.consume(TokenKind::OpeningRoundBracket)?;
-                context.consume(TokenKind::VerticalBar)?;
+                context.consume(Token![|])?;
                 let expression = parse_expression(context)?;
                 context.consume(TokenKind::ClosingRoundBracket)?;
                 Ok((expression, Explicitness::Implicit))
@@ -555,7 +562,8 @@ pub mod expression {
 
     /// Parse a lower expression.
     ///
-    /// Grammar rule:
+    /// ## Grammar
+    ///
     /// ```text
     /// Lower_Expression ::=
     ///     Type_Literal | Nat_Literal | Identifier | Hole | Bracketed_Expression
@@ -589,13 +597,13 @@ pub mod expression {
     // Type_Literal ::= %type literal%
     fn parse_type_literal(context: &mut Context<'_>) -> Result<TypeLiteral> {
         context
-            .consume(TokenKind::Keyword(Keyword::Type))
+            .consume(Token![Type])
             .map(|token| TypeLiteral { span: token.span })
     }
 
     fn parse_nat_type_literal(context: &mut Context<'_>) -> Result<NatTypeLiteral> {
         context
-            .consume(TokenKind::Keyword(Keyword::Nat))
+            .consume(Token![Nat])
             .map(|token| NatTypeLiteral { span: token.span })
     }
 
@@ -619,7 +627,8 @@ pub mod expression {
 
     /// Parse a lambda literal expression.
     ///
-    /// Grammar rule:
+    /// ## Grammar
+    ///
     /// ```text
     /// Lambda_Literal ::= "\" Parameters Type_Annotation? "=>" Expression
     /// ```
@@ -627,7 +636,7 @@ pub mod expression {
         let span_of_backslash = context.consume(TokenKind::Backslash)?.span;
         let parameters = context.reflect(parse_parameters)?;
         let body_type_annotation = context.reflect(parse_type_annotation).ok();
-        context.consume(TokenKind::WideArrow)?;
+        context.consume(Token![=>])?;
         let body = context.reflect(parse_expression)?;
 
         Ok(LambdaLiteral {
@@ -640,18 +649,19 @@ pub mod expression {
 
     /// Parse an let-in expression.
     ///
-    /// Grammar rule:
+    /// ## Grammar
+    ///
     /// ```text
     /// Let_In ::= "'let" Identifier Parameters Type_Annotation? "=" Expression "'in" Expression
     /// ```
     fn parse_let_in(context: &mut Context<'_>) -> Result<LetIn> {
-        let let_keyword = context.consume(TokenKind::Keyword(Keyword::Let))?;
+        let let_keyword = context.consume(Token![let])?;
         let binder = context.consume_identifier()?;
         let parameters = context.reflect(parse_parameters)?;
         let type_annotation = context.reflect(parse_type_annotation).ok();
-        context.consume(TokenKind::Equals)?;
+        context.consume(Token![=])?;
         let expression = context.reflect(parse_expression)?;
-        context.consume(TokenKind::Keyword(Keyword::In))?;
+        context.consume(Token![in])?;
         let scope = context.reflect(parse_expression)?;
         Ok(LetIn {
             binder,
@@ -663,16 +673,22 @@ pub mod expression {
         })
     }
 
+    // @Note grammar is out-of-sync in respect to line breaks
     // Case_Analysis ::= "'case" Expression Line_Break Case_Analysis_Case_Group*
     fn parse_case_analysis(context: &mut Context<'_>) -> Result<CaseAnalysis> {
-        let span_of_keyword = context.consume(TokenKind::Keyword(Keyword::Case))?.span;
+        let span_of_keyword = context.consume(Token![case])?.span;
         let expression = parse_expression_followed_by_line_break(context)?;
 
         let mut cases = Vec::new();
 
-        // @Bug this produces bad error messages!
-        while let Ok(case_group) = context.reflect(parse_case_analysis_case_group) {
-            cases.push(case_group);
+        while context.current(Token![of]) {
+            cases.push(parse_case_analysis_case_group(context)?);
+
+            // only consume a line break if the token after the line break is the keyword "of" to
+            // achieve parsing line breaks as joins/separators between each case group
+            if context.current(TokenKind::LineBreak) && context.succeeding(Token![of]) {
+                context.advance();
+            }
         }
 
         Ok(CaseAnalysis {
@@ -693,28 +709,25 @@ pub mod expression {
         pub expression: Expression,
     }
 
-    // Case_Analyis_Case_Group ::= ("'of" Pattern)+ "=>" Expression Line_Break
+    // Case_Analyis_Case_Group ::= ("of" Pattern)+ "=>" Expression
     fn parse_case_analysis_case_group(context: &mut Context<'_>) -> Result<CaseAnalysisCaseGroup> {
         let mut patterns = Vec::new();
 
-        context.consume(TokenKind::Keyword(Keyword::Of))?;
+        context.consume(Token![of])?;
         patterns.push(parse_pattern(context)?);
 
         loop {
-            // @Beacon @Note
-            // loop until you find "=>" @Note this is a better break condition than `while let Ok`
-            // fyi for all those in this module!!
-            if context.consume(TokenKind::WideArrow).is_ok() {
+            if context.consumed(Token![=>]) {
                 break;
             }
 
-            context.consume(TokenKind::Keyword(Keyword::Of))?;
+            context.consume(Token![of])?;
             patterns.push(parse_pattern(context)?);
         }
 
         Ok(CaseAnalysisCaseGroup {
             patterns,
-            expression: parse_expression_followed_by_line_break(context)?,
+            expression: parse_expression(context)?,
         })
     }
 
@@ -872,12 +885,13 @@ pub mod expression {
 
 /// Parse a type annotation.
 ///
-/// Grammar rule:
+/// ## Grammar
+///
 /// ```text
 /// Type_Annotation ::= ":" Expression
 /// ```
 fn parse_type_annotation(context: &mut Context<'_>) -> Result<Expression> {
-    context.consume(TokenKind::Colon)?;
+    context.consume(Token![:])?;
     context.reflect(parse_expression)
 }
 
@@ -887,7 +901,7 @@ fn parse_type_annotation(context: &mut Context<'_>) -> Result<Expression> {
 fn parse_possibly_indented_expression_followed_by_line_break(
     context: &mut Context<'_>,
 ) -> Result<Expression> {
-    if context.consume(TokenKind::LineBreak).is_ok() {
+    if context.consumed(TokenKind::LineBreak) {
         context.consume(TokenKind::Indentation)?;
         let expression = parse_expression_followed_by_line_break(context)?;
         context.consume(TokenKind::Dedentation)?;
@@ -905,7 +919,7 @@ fn parse_expression_followed_by_line_break(context: &mut Context<'_>) -> Result<
 }
 
 fn consume_explicitness_symbol(context: &mut Context<'_>) -> Explicitness {
-    match context.consume(TokenKind::VerticalBar) {
+    match context.consume(Token![|]) {
         Ok(_) => Explicitness::Implicit,
         Err(_) => Explicitness::Explicit,
     }

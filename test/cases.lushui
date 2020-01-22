@@ -1,0 +1,10 @@
+data Ordering: Type =
+    Less: Ordering
+    Equal: Ordering
+    Greater: Ordering
+
+invert (ordering: Ordering): Ordering =
+    case ordering
+    of Less => Greater
+    of Equal => Equal
+    of Greater => Less

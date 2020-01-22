@@ -1,12 +1,12 @@
 //! The context of the parser.
-//! 
+//!
 //! Stores a reference to the source code of one file and a cursor.
 
 use std::convert::TryInto;
 
-use crate::lexer;
 use super::error::{Error, ErrorKind, Result};
 use super::Identifier;
+use crate::lexer;
 
 #[derive(Clone)]
 pub struct Context<'i> {
@@ -14,16 +14,17 @@ pub struct Context<'i> {
     index: usize,
 }
 
-impl<'i> Context<'i> {
+// @Note this API is **horrible**!!
+impl<'input> Context<'input> {
     /// Construct a new context with the pointer at the beginning.
-    pub fn new(tokens: &'i [lexer::SourceToken]) -> Self {
+    pub fn new(tokens: &'input [lexer::SourceToken]) -> Self {
         Self { tokens, index: 0 }
     }
 
     /// Parse the source in a sandboxed context.
-    /// 
+    ///
     /// Used for arbitrary look-ahead.
-    pub(super) fn reflect<T>(&mut self, parser: fn(&mut Context<'i>) -> Result<T>) -> Result<T> {
+    pub fn reflect<T>(&mut self, parser: fn(&mut Context<'input>) -> Result<T>) -> Result<T> {
         let mut context = self.clone();
         parser(&mut context).map(|value| {
             *self = context;
@@ -31,8 +32,7 @@ impl<'i> Context<'i> {
         })
     }
 
-    // @Note unused exept in consume
-    pub(super) fn expect(&self, expected_token_kind: lexer::TokenKind) -> Result<lexer::SourceToken> {
+    pub fn expect(&self, expected_token_kind: lexer::TokenKind) -> Result<lexer::SourceToken> {
         let token = self.current_token()?;
         let actual_token_kind = token.kind();
         if actual_token_kind == expected_token_kind {
@@ -40,39 +40,68 @@ impl<'i> Context<'i> {
         } else {
             Err(Error {
                 span: token.span,
-                kind: ErrorKind::UnexpectedToken(actual_token_kind),
+                kind: ErrorKind::UnexpectedToken {
+                    expected: expected_token_kind,
+                    actual: actual_token_kind,
+                },
             })
         }
     }
 
-    pub(super) fn at_the_end_of_input(&self) -> bool {
+    pub fn at_the_end_of_input(&self) -> bool {
         self.index >= self.tokens.len()
     }
 
     // @Question don't just accept tokens but anything of a certain trait which tokens implement,
     // optional tokens, either this or that token (with special token EOI), parser::Identifier,...
-    pub(super) fn consume(&mut self, token_kind: lexer::TokenKind) -> Result<lexer::SourceToken> {
+    pub fn consume(&mut self, token_kind: lexer::TokenKind) -> Result<lexer::SourceToken> {
         let token = self.expect(token_kind)?;
-        self.accept();
+        self.advance();
         Ok(token)
     }
 
     // @Note ugly: special-casing identifiers... need to generalize? via trait?
-    pub(super) fn consume_identifier(&mut self) -> Result<Identifier> {
+    pub fn consume_identifier(&mut self) -> Result<Identifier> {
         self.consume(lexer::TokenKind::Identifier)
             .map(|token| token.try_into().unwrap())
     }
 
-    pub(super) fn accept(&mut self) {
+    pub fn advance(&mut self) {
         self.index += 1;
     }
 
-    pub(super) fn current_token(&self) -> Result<lexer::SourceToken> {
+    pub fn current_token(&self) -> Result<lexer::SourceToken> {
         self.tokens.get(self.index).cloned().ok_or_else(|| Error {
             kind: ErrorKind::UnexpectedEndOfInput,
             // @Bug should point to the "token after" (in the error.rs display)
             // @Bug this might panic bc of underflow
             span: self.tokens.get(self.index - 1).unwrap().span,
         })
+    }
+}
+
+/// The modern API.
+impl Context<'_> {
+    pub fn current(&self, kind: lexer::TokenKind) -> bool {
+        self.tokens
+            .get(self.index)
+            .map(|token| token.kind() == kind)
+            .unwrap_or(false)
+    }
+
+    pub fn succeeding(&self, kind: lexer::TokenKind) -> bool {
+        self.tokens
+            .get(self.index + 1)
+            .map(|token| token.kind() == kind)
+            .unwrap_or(false)
+    }
+
+    pub fn consumed(&mut self, kind: lexer::TokenKind) -> bool {
+        if self.current(kind) {
+            self.advance();
+            true
+        } else {
+            false
+        }
     }
 }

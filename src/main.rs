@@ -1,6 +1,6 @@
 #![forbid(rust_2018_idioms, unused_must_use)]
 
-use lushuic::{interpreter, error, hir, lexer, parser};
+use lushuic::{error, hir, interpreter, lexer, parser};
 
 use std::fs::File;
 use std::io::{BufReader, Read};
@@ -24,14 +24,16 @@ fn main() {
 
 fn test(source: &str, filename: &str) -> Result<(), String> {
     // lexing
-    let tokens = lexer::lex(source)
-        .map_err(|error| error::display(&error.kind.to_string(), error.span, source, Some(filename)))?;
+    let tokens = lexer::lex(source).map_err(|error| {
+        error::display(&error.kind.to_string(), error.span, source, Some(filename))
+    })?;
 
     // parsing
     let mut context = parser::Context::new(&tokens);
     let node = parser::Declaration::Module(Box::new(
-        parser::declaration::parse_file_module_no_header(&mut context)
-            .map_err(|error| error::display(&error.kind.to_string(), error.span, source, Some(filename)))?,
+        parser::declaration::parse_file_module_no_header(&mut context).map_err(|error| {
+            error::display(&error.kind.to_string(), error.span, source, Some(filename))
+        })?,
     ));
     // eprintln!("{:#?}", &node);
 

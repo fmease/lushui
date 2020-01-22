@@ -195,7 +195,6 @@ macro_rules! keywords {
 
 keywords! {
     As "as",
-    Blank "_",
     Case "case",
     Data "data",
     Foreign "foreign",
@@ -449,5 +448,27 @@ pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
 
     let last_index = tokens.len() - 1;
     extend_with_dedentation(&mut tokens, last_index, indentation_in_spaces);
+    // @Question maybe also add a artificial line break to simplify parsing or would we still need to
+    // handle EOI special?
     Ok(tokens)
+}
+
+pub macro Token {
+    (|) => { TokenKind::VerticalBar },
+    (:) => { TokenKind::Colon },
+    (=) => { TokenKind::Equals },
+    (->) => { TokenKind::ThinArrow },
+    (=>) => { TokenKind::WideArrow },
+    (as) => { TokenKind::Keyword(Keyword::As) },
+    (case) => { TokenKind::Keyword(Keyword::Case) },
+    (data) => { TokenKind::Keyword(Keyword::Data) },
+    (foreign) => { TokenKind::Keyword(Keyword::Foreign) },
+    (in) => { TokenKind::Keyword(Keyword::In) },
+    (let) => { TokenKind::Keyword(Keyword::Let) },
+    (module) => { TokenKind::Keyword(Keyword::Module) },
+    (Nat) => { TokenKind::Keyword(Keyword::Nat) },
+    (of) => { TokenKind::Keyword(Keyword::Of) },
+    (super) => { TokenKind::Keyword(Keyword::Super) },
+    (Type) => { TokenKind::Keyword(Keyword::Type) },
+    (use) => { TokenKind::Keyword(Keyword::Use) },
 }
