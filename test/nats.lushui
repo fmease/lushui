@@ -1,4 +1,4 @@
-;;; Testing the recently implemented natural numbers!!!
+;; Testing the recently implemented natural numbers!!!
 
 x: Nat = 6000232
 

@@ -27,6 +27,7 @@ fn test(source: &str, filename: &str) -> Result<(), String> {
     let tokens = lexer::lex(source).map_err(|error| {
         error::display(&error.kind.to_string(), error.span, source, Some(filename))
     })?;
+    dbg!("{:#?}", &tokens);
 
     // parsing
     let mut context = parser::Context::new(&tokens);

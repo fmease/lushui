@@ -11,20 +11,13 @@ mod error;
 use num_bigint::BigUint;
 pub(crate) use string_cache::DefaultAtom as Atom;
 
-use std::cmp::Ordering;
-use std::fmt;
-use std::rc::Rc;
-use std::str::FromStr;
+use std::{cmp::Ordering, fmt, rc::Rc, str::FromStr};
 
 use crate::error::Span;
 pub use error::Error;
 use error::ErrorKind;
 
-// @Task move definition somewhere else
 pub type Nat = Rc<BigUint>;
-
-// @Task @Question rename SourceToken|Token to Token|PlainToken to mirror
-// Expression|PlainExpression
 
 /// A token with span information [`crate::error::Span`].
 ///
@@ -32,8 +25,6 @@ pub type Nat = Rc<BigUint>;
 #[derive(Debug, Clone)]
 pub struct SourceToken {
     pub inner: Token,
-    // pub kind: TokenKind,
-    // @Task add pub data: Option<TokenData>,
     pub span: Span,
 }
 
@@ -51,161 +42,52 @@ impl std::ops::Deref for SourceToken {
     }
 }
 
-/// A token *without* span information.
-///
-/// The payload contains processed (in constrast to raw source) data.
-/// Currently, only identifiers (`self::Token::Identifier`) make use of this extra payload
-/// as they get interned.
-/// In the future, the lexer may want to store processed string literals as the work of
-/// decoding escape characters (and what not) has already been done to check for lexical errors.
-/// I don't know about number literals though. They shouldn't be interpreted for as long as possible
-/// because they are of arbitrary precision anyways.
-///
-/// We could think about interning (non-reserved) punctuation.
-///
-/// The variant `Keyword` should not be understood as token kind on its own but a token class.
-///
-/// Note: Maybe, this design is over-engineered but I don't know where to elegantly store
-/// interned strings.
-#[derive(Debug, Clone)]
-pub enum Token {
-    DocumentationComment,
-    Keyword(Keyword),
-    Identifier(Atom),
-    Punctuation,
-    // @Note unused, just for demonstration on how the API is gonna look like
-    // TextLiteral(String),
-    NatLiteral(Nat),
-    VerticalBar,
-    Colon,
-    Equals,
-    Backslash,
-    ThinArrow,
-    WideArrow,
-    Indentation,
-    Dedentation,
-    LineBreak,
-    Semicolon,
-    OpeningRoundBracket,
-    ClosingRoundBracket,
-}
-
-impl Token {
-    pub fn kind(&self) -> TokenKind {
-        match self {
-            Self::DocumentationComment => TokenKind::DocumentationComment,
-            Self::Keyword(keyword) => TokenKind::Keyword(*keyword),
-            Self::Identifier(_) => TokenKind::Identifier,
-            Self::Punctuation => TokenKind::Punctuation,
-            Self::NatLiteral(_) => TokenKind::NatLiteral,
-            Self::VerticalBar => TokenKind::VerticalBar,
-            Self::Colon => TokenKind::Colon,
-            Self::Equals => TokenKind::Equals,
-            Self::Backslash => TokenKind::Backslash,
-            Self::ThinArrow => TokenKind::ThinArrow,
-            Self::WideArrow => TokenKind::WideArrow,
-            Self::Indentation => TokenKind::Indentation,
-            Self::Dedentation => TokenKind::Dedentation,
-            Self::LineBreak => TokenKind::LineBreak,
-            Self::Semicolon => TokenKind::Semicolon,
-            Self::OpeningRoundBracket => TokenKind::OpeningRoundBracket,
-            Self::ClosingRoundBracket => TokenKind::ClosingRoundBracket,
-        }
+tokens! {
+    /// A token *without* span information.
+    ///
+    /// The payload contains processed (in constrast to raw source) data.
+    /// Currently, only identifiers (`self::Token::Identifier`) make use of this extra payload
+    /// as they get interned.
+    /// In the future, the lexer may want to store processed string literals as the work of
+    /// decoding escape characters (and what not) has already been done to check for lexical errors.
+    /// I don't know about number literals though. They shouldn't be interpreted for as long as possible
+    /// because they are of arbitrary precision anyways.
+    ///
+    /// We could think about interning (non-reserved) punctuation.
+    ///
+    /// The variant `Keyword` should not be understood as token kind on its own but a token class.
+    ///
+    /// Note: Maybe, this design is over-engineered but I don't know where to elegantly store
+    /// interned strings.
+    Token, ::kind, TokenKind {
+        DocumentationComment "documentation comment",
+        Identifier(Atom) "identifier",
+        Punctuation "punctuation",
+        NatLiteral(Nat) "natural number literal",
+        VerticalBar "vertical bar",
+        Colon "colon",
+        Equals "equals sign",
+        Backslash "backslash",
+        ThinArrow "thin arrow",
+        WideArrow "wide arrow",
+        Indentation "indentation",
+        Dedentation "dedentation",
+        LineBreak "line break",
+        OpeningRoundBracket "opening round bracket",
+        ClosingRoundBracket "closing round bracket",
+        As "keyword `as`",
+        Case "keyword `case`",
+        Data "keyword `data`",
+        Foreign "keyword `foreign`",
+        In "keyword `in`",
+        Let "keyword `let`",
+        Module "keyword `module`",
+        Nat "keyword `Nat`",
+        Of "keyword `of`",
+        Super "keyword `super`",
+        Type "keyword `Type`",
+        Use "keyword `use`",
     }
-}
-
-// @Note quite a lot of code duplication with `Token`. This is a common pitfall though
-// known to the Rust community (enum with payloads plus separate enum tags enum)
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum TokenKind {
-    DocumentationComment,
-    Keyword(Keyword),
-    Identifier,
-    Punctuation,
-
-    // @Note unused
-    // TextLiteral,
-    NatLiteral,
-    VerticalBar,
-    Colon,
-    Equals,
-    Backslash,
-    ThinArrow,
-    WideArrow,
-    Indentation,
-    Dedentation,
-    LineBreak,
-    Semicolon,
-    OpeningRoundBracket,
-    ClosingRoundBracket,
-}
-
-// used for error reporting
-impl fmt::Display for TokenKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::DocumentationComment => "documentation comment",
-            Self::Keyword(keyword) => return write!(f, "keyword `{}`", keyword),
-            Self::Identifier => "identifier",
-            Self::Punctuation => "punctuation",
-            Self::NatLiteral => "natural number literal",
-            Self::VerticalBar => "vertical bar",
-            Self::Colon => "colon",
-            Self::Equals => "equals sign",
-            Self::Backslash => "backslash",
-            Self::ThinArrow => "thin arrow",
-            Self::WideArrow => "wide arrow",
-            Self::Indentation => "indentation",
-            Self::Dedentation => "dedentation",
-            Self::LineBreak => "line break",
-            Self::Semicolon => "semicolon",
-            Self::OpeningRoundBracket => "opening round bracket",
-            Self::ClosingRoundBracket => "closing round bracket",
-        })
-    }
-}
-
-macro_rules! keywords {
-    { $( $keyword:ident $representation:literal, )+ } => {
-        #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-        pub enum Keyword {
-            $( $keyword, )+
-        }
-
-        impl fmt::Display for Keyword {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str(match self {
-                    $( Self::$keyword => $representation, )+
-                })
-            }
-        }
-
-        impl FromStr for Keyword {
-            type Err = ();
-
-            fn from_str(source: &str) -> Result<Self, Self::Err> {
-                Ok(match source {
-                    $( $representation => Self::$keyword, )+
-                    _ => return Err(()),
-                })
-            }
-        }
-    }
-}
-
-keywords! {
-    As "as",
-    Case "case",
-    Data "data",
-    Foreign "foreign",
-    In "in",
-    Let "let",
-    Module "module",
-    Nat "Nat",
-    Of "of",
-    Super "super",
-    Type "Type",
-    Use "use",
 }
 
 /// Amount of spaces making up one unit of indentation.
@@ -233,6 +115,36 @@ fn is_identifier_tail(character: char) -> bool {
     character == '\''
 }
 
+fn parse_keyword(source: &str) -> Option<Token> {
+    Some(match source {
+        "as" => Token::As,
+        "case" => Token::Case,
+        "data" => Token::Data,
+        "foreign" => Token::Foreign,
+        "in" => Token::In,
+        "let" => Token::Let,
+        "module" => Token::Module,
+        "Nat" => Token::Nat,
+        "of" => Token::Of,
+        "super" => Token::Super,
+        "Type" => Token::Type,
+        "Use" => Token::Use,
+        _ => return None,
+    })
+}
+
+fn parse_reserved_punctuation(source: &str) -> Option<Token> {
+    Some(match source {
+        ":" => Token::Colon,
+        "=" => Token::Equals,
+        "|" => Token::VerticalBar,
+        "\\" => Token::Backslash,
+        "->" => Token::ThinArrow,
+        "=>" => Token::WideArrow,
+        _ => return None,
+    })
+}
+
 fn extend_with_dedentation(tokens: &mut Vec<SourceToken>, start: usize, amount_of_spaces: usize) {
     if amount_of_spaces == 0 {
         return;
@@ -249,9 +161,7 @@ pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
     let mut tokens = Vec::new();
     let mut indentation_in_spaces = 0;
 
-    // @Task text literal
-    // @Bug sometimes we get consecutive dedent&indent, they should be flattened/
-    // filtered out
+    // @Bug sometimes we get consecutive dedent&indent, they should be flattened/filtered out
     while let Some(&(index, character)) = indexed_characters.peek() {
         if character == WHITESPACE {
             indexed_characters.next();
@@ -262,46 +172,38 @@ pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
                     break;
                 }
             }
-        } else if character == ';' {
+        }
+        // @Task merge consecutive documentation comments to save on memory
+        else if character == ';' {
             let start = index;
             let mut end = start;
+            let mut documentation = true;
 
             indexed_characters.next();
 
             if let Some(&(index, ';')) = indexed_characters.peek() {
-                let mut documentation_comment = true;
+                documentation = false;
                 end = index;
                 indexed_characters.next();
+            }
 
-                if let Some(&(index, character)) = indexed_characters.peek() {
-                    indexed_characters.next();
+            while let Some(&(index, character)) = indexed_characters.peek() {
+                indexed_characters.next();
 
-                    if character == ';' {
+                if character != '\n' {
+                    if documentation {
                         end = index;
-                        documentation_comment = false;
                     }
+                } else {
+                    break;
                 }
+            }
 
-                while let Some(&(index, character)) = indexed_characters.peek() {
-                    indexed_characters.next();
-
-                    if character != '\n' {
-                        if documentation_comment {
-                            end = index;
-                        }
-                    } else {
-                        break;
-                    }
-                }
-
-                if documentation_comment {
-                    tokens.push(SourceToken::new(
-                        Token::DocumentationComment,
-                        Span::new(start, end),
-                    ))
-                }
-            } else {
-                tokens.push(SourceToken::new(Token::Semicolon, Span::new(start, end)))
+            if documentation {
+                tokens.push(SourceToken::new(
+                    Token::DocumentationComment,
+                    Span::new(start, end),
+                ))
             }
         } else if is_identifier_head(character) {
             let start = index;
@@ -329,10 +231,9 @@ pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
             let span = Span::new(start, end);
 
             tokens.push(SourceToken::new(
-                if let Ok(keyword) = source[start..=end].parse() {
-                    Token::Keyword(keyword)
-                } else {
-                    Token::Identifier(Atom::from(&source[span.range()]))
+                match parse_keyword(&source[start..=end]) {
+                    Some(keyword) => keyword,
+                    None => Token::Identifier(Atom::from(&source[span.range()])),
                 },
                 span,
             ));
@@ -396,15 +297,7 @@ pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
             }
 
             tokens.push(SourceToken::new(
-                match &source[start..=end] {
-                    ":" => Token::Colon,
-                    "=" => Token::Equals,
-                    "|" => Token::VerticalBar,
-                    "\\" => Token::Backslash,
-                    "->" => Token::ThinArrow,
-                    "=>" => Token::WideArrow,
-                    _ => Token::Punctuation,
-                },
+                parse_reserved_punctuation(&source[start..=end]).unwrap_or(Token::Punctuation),
                 Span::new(start, end),
             ))
         }
@@ -448,27 +341,44 @@ pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
 
     let last_index = tokens.len() - 1;
     extend_with_dedentation(&mut tokens, last_index, indentation_in_spaces);
-    // @Question maybe also add a artificial line break to simplify parsing or would we still need to
-    // handle EOI special?
+    // @Question maybe also add a artificial line break to simplify parsing or would we still need to handle EOI special?
     Ok(tokens)
 }
 
-pub macro Token {
-    (|) => { TokenKind::VerticalBar },
-    (:) => { TokenKind::Colon },
-    (=) => { TokenKind::Equals },
-    (->) => { TokenKind::ThinArrow },
-    (=>) => { TokenKind::WideArrow },
-    (as) => { TokenKind::Keyword(Keyword::As) },
-    (case) => { TokenKind::Keyword(Keyword::Case) },
-    (data) => { TokenKind::Keyword(Keyword::Data) },
-    (foreign) => { TokenKind::Keyword(Keyword::Foreign) },
-    (in) => { TokenKind::Keyword(Keyword::In) },
-    (let) => { TokenKind::Keyword(Keyword::Let) },
-    (module) => { TokenKind::Keyword(Keyword::Module) },
-    (Nat) => { TokenKind::Keyword(Keyword::Nat) },
-    (of) => { TokenKind::Keyword(Keyword::Of) },
-    (super) => { TokenKind::Keyword(Keyword::Super) },
-    (Type) => { TokenKind::Keyword(Keyword::Type) },
-    (use) => { TokenKind::Keyword(Keyword::Use) },
+macro tokens($( #[$attr:meta] )+ $Token:ident, ::$kind:ident, $TokenKind:ident { $( $token:ident $( ($payload:ident) )? $name:literal, )+ }) {
+    $( #[$attr] )+
+    #[derive(Debug, Clone)]
+    pub enum $Token {
+        $( $token $( ($payload) )?, )+
+    }
+
+    // @Note quite a lot of code duplication with `Token`. This is a common pitfall though
+    // known to the Rust community (enum with payloads plus separate enum tags enum)
+    // @Note we could instead define Token like
+    // `struct Token { kind: TokenKind, data: TokenData, span: Span }` with
+    // `union TokenData { identifier: Atom, nat_literal: Nat, none: () }`
+    // Using a union to save 8 bytes over the safe version where `TokenData` is an enum
+    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+    pub enum $TokenKind {
+        $( $token, )+
+    }
+
+    impl $Token {
+        pub fn $kind(&self) -> $TokenKind {
+            match self {
+                $( Self::$token $( (discard!($payload)) )? => $TokenKind::$token, )+
+            }
+        }
+    }
+
+    // used for error reporting
+    impl fmt::Display for $TokenKind {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str(match self {
+                $( Self::$token => $name, )+
+            })
+        }
+    }
 }
+
+macro discard($id:ident) { _ }

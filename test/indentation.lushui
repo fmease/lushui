@@ -1,4 +1,4 @@
-;;; Messing with indentation
+;; Messing with indentation
 
 identity (A: Type): A -> A = \(a: A): A => a
 
@@ -6,7 +6,7 @@ number: Nat =
     identity Nat 45
 next: Nat = 200
 
-;;; @Bug apparently unexpected dedentation
+;; @Bug apparently unexpected dedentation
 foo (x: Nat): Nat =
     case x
     of 0 of 1 => 10

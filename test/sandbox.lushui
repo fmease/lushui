@@ -1,4 +1,4 @@
-;;; Our sandbox
+;; Our sandbox
 data Nat': Type =
     Zero: Nat'
     Succ: Nat' -> Nat'
@@ -19,12 +19,12 @@ function': Nat' -> Nat' = function
 
 apply (A: Type) (f: A -> A) (x: A): A = f x
 
-;;; x': Nat' = apply Nat' function Zero
+;; x': Nat' = apply Nat' function Zero
 x': Nat' = apply Nat' function' Zero
 
 the_nat: Nat' -> Nat' = the Nat'
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 data Bool: Type =
     False: Bool

@@ -28,13 +28,13 @@
         "comments": {
             "patterns": [
                 {
-                    "name": "comment.line.triple-semicolon.lushui",
-                    "match": ";;;.*"
+                    "name": "comment.line.double-semicolon.lushui",
+                    "match": ";;.*"
                 },
                 {
-                    "__comment__": "Also works: ;;(?!;).*",
+                    "__comment__": "Also works: ;(?!;).*",
                     "name": "comment.block.documentation.lushui",
-                    "match": ";;.*"
+                    "match": ";.*"
                 }
             ]
         },

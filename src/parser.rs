@@ -19,7 +19,7 @@ use freestanding::freestanding;
 use std::fmt;
 
 use crate::error::Span;
-use crate::lexer::{self, Token, TokenKind};
+use crate::lexer::{self, TokenKind};
 
 pub use context::Context;
 pub use error::{Error, ErrorKind};
@@ -103,8 +103,8 @@ pub mod declaration {
             TokenKind::Identifier => {
                 Declaration::Value(Box::new(parse_value_declaration(context)?))
             }
-            Token![data] => Declaration::Data(Box::new(parse_data_declaration(context)?)),
-            Token![foreign] => Declaration::Foreign(Box::new(parse_foreign_declaration(context)?)),
+            TokenKind::Data => Declaration::Data(Box::new(parse_data_declaration(context)?)),
+            TokenKind::Foreign => Declaration::Foreign(Box::new(parse_foreign_declaration(context)?)),
             kind => {
                 return Err(Error {
                     span: token.span,
@@ -127,7 +127,7 @@ pub mod declaration {
         let parameters = parse_annotated_parameters(context)?;
 
         let type_annotation = parse_type_annotation(context)?;
-        context.consume(Token![=])?;
+        context.consume(TokenKind::Equals)?;
         let expression = parse_possibly_indented_expression_followed_by_line_break(context)?;
 
         Ok(Value {
@@ -141,11 +141,11 @@ pub mod declaration {
 
     // @Task grammar rule
     pub fn parse_data_declaration(context: &mut Context<'_>) -> Result<Data> {
-        let span_of_keyword = context.consume(Token![data])?.span;
+        let span_of_keyword = context.consume(TokenKind::Data)?.span;
         let binder = context.consume_identifier()?;
         let parameters = parse_annotated_parameters(context)?;
         let type_annotation = parse_type_annotation(context)?;
-        let span_of_equals = context.consume(Token![=])?.span;
+        let span_of_equals = context.consume(TokenKind::Equals)?.span;
         context.consume(TokenKind::LineBreak)?;
 
         let mut constructors = Vec::new();
@@ -222,7 +222,7 @@ pub mod declaration {
     /// Foreign_Declaration ::= "foreign" Identifier Annotated_Parameters Type_Annotation Line_Break
     /// ```
     fn parse_foreign_declaration(context: &mut Context<'_>) -> Result<Foreign> {
-        let span_of_keyword = context.consume(Token![foreign])?.span;
+        let span_of_keyword = context.consume(TokenKind::Foreign)?.span;
         let binder = context.consume_identifier()?;
         let parameters = parse_annotated_parameters(context)?;
         let type_annotation = parse_type_annotation(context)?;
@@ -447,11 +447,11 @@ pub mod expression {
         let token = context.current_token()?;
 
         Ok(match token.kind() {
-            Token![let] => Expression::LetIn(Box::new(parse_let_in(context)?)),
+            TokenKind::Let => Expression::LetIn(Box::new(parse_let_in(context)?)),
             TokenKind::Backslash => {
                 Expression::LambdaLiteral(Box::new(parse_lambda_literal(context)?))
             }
-            Token![case] => Expression::CaseAnalysis(Box::new(parse_case_analysis(context)?)),
+            TokenKind::Case => Expression::CaseAnalysis(Box::new(parse_case_analysis(context)?)),
             _ => return parse_pi_type_literal_or_lower(context),
         })
     }
@@ -482,11 +482,10 @@ pub mod expression {
                 // @Question do we need reflect here?
                 context
                     .reflect(parse_application_or_lower)
-                    // .reflect(parse_semicolon_application_or_lower)
                     .map(|parameter| (parameter.span(), Explicitness::Explicit, None, parameter))
             })?;
 
-        Ok(match context.consume(Token![->]) {
+        Ok(match context.consume(TokenKind::ThinArrow) {
             Ok(_) => {
                 let expression = context.reflect(parse_pi_type_literal_or_lower)?;
 
@@ -503,33 +502,6 @@ pub mod expression {
         })
     }
 
-    // @Task implement semicolon application
-    // @Note the logic should probably take place inside parse_application_or_lower
-    // @Note: The precedence of semicolon application and pi literals IS THE SAME
-    // we don't need the "or_lower"-logic here but simply an `or_else`
-    // @Question where exactly to impl??
-
-    // @Beacon @@Note semicolon application
-    // Is right-associative and apparently (Haskell) has the same precedence
-    // as `->` which is also right-assoc
-    // Interaction between application, `;` and `->` looks like:
-    // Alpha Beta -> Gamma Delta ;;; (Alpha Beta) -> (Gamma Delta)
-    // Alpha; Beta -> Gamma; Delta ;;; (Alpha) (Beta -> ((Gamma) (Delta)))
-    // @Task grammar
-    // fn parse_semicolon_application_or_lower(context: &mut Context<'_>) -> Result<Expression> {
-    //     let expression = parse_application_or_lower(context)?;
-
-    //     Ok(if context.consumed(TokenKind::Semicolon) {
-    //         Expression::Application(Box::new(expression::Application {
-    //             expression: Box::new(expression),
-    //             argument: Box::new(context.reflect(parse_semicolon_application_or_lower)?),
-    //             explicitness: Explicitness::Explicit,
-    //         }))
-    //     } else {
-    //         expression
-    //     })
-    // }
-
     /// Parse an application or a lower expression.
     ///
     /// ## Grammar
@@ -537,14 +509,13 @@ pub mod expression {
     /// ```text
     /// Application_Or_Lower %left% ::= Lower_Expression (Lower_Expression | "(" "|" Expression ")")*
     /// ```
-    // @Task application with semicolon
     fn parse_application_or_lower(context: &mut Context<'_>) -> Result<Expression> {
         let mut expression = context.reflect(parse_lower_expression)?;
         while let Ok((argument, explicitness)) = context
             .reflect(|context| Ok((parse_lower_expression(context)?, Explicitness::Explicit)))
             .or_else(|_| -> Result<_> {
                 context.consume(TokenKind::OpeningRoundBracket)?;
-                context.consume(Token![|])?;
+                context.consume(TokenKind::VerticalBar)?;
                 let expression = parse_expression(context)?;
                 context.consume(TokenKind::ClosingRoundBracket)?;
                 Ok((expression, Explicitness::Implicit))
@@ -597,13 +568,13 @@ pub mod expression {
     // Type_Literal ::= %type literal%
     fn parse_type_literal(context: &mut Context<'_>) -> Result<TypeLiteral> {
         context
-            .consume(Token![Type])
+            .consume(TokenKind::Type)
             .map(|token| TypeLiteral { span: token.span })
     }
 
     fn parse_nat_type_literal(context: &mut Context<'_>) -> Result<NatTypeLiteral> {
         context
-            .consume(Token![Nat])
+            .consume(TokenKind::Nat)
             .map(|token| NatTypeLiteral { span: token.span })
     }
 
@@ -636,7 +607,7 @@ pub mod expression {
         let span_of_backslash = context.consume(TokenKind::Backslash)?.span;
         let parameters = context.reflect(parse_parameters)?;
         let body_type_annotation = context.reflect(parse_type_annotation).ok();
-        context.consume(Token![=>])?;
+        context.consume(TokenKind::WideArrow)?;
         let body = context.reflect(parse_expression)?;
 
         Ok(LambdaLiteral {
@@ -655,13 +626,13 @@ pub mod expression {
     /// Let_In ::= "'let" Identifier Parameters Type_Annotation? "=" Expression "'in" Expression
     /// ```
     fn parse_let_in(context: &mut Context<'_>) -> Result<LetIn> {
-        let let_keyword = context.consume(Token![let])?;
+        let let_keyword = context.consume(TokenKind::Let)?;
         let binder = context.consume_identifier()?;
         let parameters = context.reflect(parse_parameters)?;
         let type_annotation = context.reflect(parse_type_annotation).ok();
-        context.consume(Token![=])?;
+        context.consume(TokenKind::Equals)?;
         let expression = context.reflect(parse_expression)?;
-        context.consume(Token![in])?;
+        context.consume(TokenKind::In)?;
         let scope = context.reflect(parse_expression)?;
         Ok(LetIn {
             binder,
@@ -676,17 +647,17 @@ pub mod expression {
     // @Note grammar is out-of-sync in respect to line breaks
     // Case_Analysis ::= "'case" Expression Line_Break Case_Analysis_Case_Group*
     fn parse_case_analysis(context: &mut Context<'_>) -> Result<CaseAnalysis> {
-        let span_of_keyword = context.consume(Token![case])?.span;
+        let span_of_keyword = context.consume(TokenKind::Case)?.span;
         let expression = parse_expression_followed_by_line_break(context)?;
 
         let mut cases = Vec::new();
 
-        while context.current(Token![of]) {
+        while context.current(TokenKind::Of) {
             cases.push(parse_case_analysis_case_group(context)?);
 
             // only consume a line break if the token after the line break is the keyword "of" to
             // achieve parsing line breaks as joins/separators between each case group
-            if context.current(TokenKind::LineBreak) && context.succeeding(Token![of]) {
+            if context.current(TokenKind::LineBreak) && context.succeeding(TokenKind::Of) {
                 context.advance();
             }
         }
@@ -713,15 +684,15 @@ pub mod expression {
     fn parse_case_analysis_case_group(context: &mut Context<'_>) -> Result<CaseAnalysisCaseGroup> {
         let mut patterns = Vec::new();
 
-        context.consume(Token![of])?;
+        context.consume(TokenKind::Of)?;
         patterns.push(parse_pattern(context)?);
 
         loop {
-            if context.consumed(Token![=>]) {
+            if context.consumed(TokenKind::Equals) {
                 break;
             }
 
-            context.consume(Token![of])?;
+            context.consume(TokenKind::Of)?;
             patterns.push(parse_pattern(context)?);
         }
 
@@ -891,7 +862,7 @@ pub mod expression {
 /// Type_Annotation ::= ":" Expression
 /// ```
 fn parse_type_annotation(context: &mut Context<'_>) -> Result<Expression> {
-    context.consume(Token![:])?;
+    context.consume(TokenKind::Colon)?;
     context.reflect(parse_expression)
 }
 
@@ -919,7 +890,7 @@ fn parse_expression_followed_by_line_break(context: &mut Context<'_>) -> Result<
 }
 
 fn consume_explicitness_symbol(context: &mut Context<'_>) -> Explicitness {
-    match context.consume(Token![|]) {
+    match context.consume(TokenKind::VerticalBar) {
         Ok(_) => Explicitness::Implicit,
         Err(_) => Explicitness::Explicit,
     }
