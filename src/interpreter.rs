@@ -40,7 +40,7 @@ use scope::{FunctionScope, Substitutions};
 const MISSING_ANNOTATION: &str =
     "(compiler bug) currently lambda literal parameters and patterns must be type-annotated";
 
-/// Try to evaluate a declaration modifying the given scope.
+/// Try to type check and evaluate a declaration modifying the given scope.
 // @Task support order-independence, recursion and proper modules
 pub fn evaluate_declaration(declaration: &Declaration, module_scope: ModuleScope) -> Result<()> {
     Ok(match declaration {
@@ -335,6 +335,7 @@ pub fn infer_type(expression: Expression, scope: &FunctionScope<'_>) -> Result<h
         Expression::UseIn(_) => todo!(),
         // @Beacon @Beacon @Beacon @Temporary @Task
         // first: fiddeling, then: building abstractions
+        // @Bug this is *not* principled design
         Expression::CaseAnalysis(case_analysis) => {
             let r#type = infer_type(case_analysis.subject.clone(), scope)?;
             // @Task verify that
@@ -342,9 +343,9 @@ pub fn infer_type(expression: Expression, scope: &FunctionScope<'_>) -> Result<h
             // * all constructors are covered
             // * all case_analysis.cases>>.expressions are of the same type
 
-            let type_path = match r#type {
-                Expression::Path(path) => path.identifier.clone(),
-                // @Task support Expression::Application to allow analysing polymorphic types
+            match &r#type {
+                Expression::Path(_) => {}
+                Expression::Application(_application) => todo!("polymorphic types in patterns"),
                 _ => todo!("encountered unsupported type to be case-analysed"),
             };
 
@@ -359,6 +360,25 @@ pub fn infer_type(expression: Expression, scope: &FunctionScope<'_>) -> Result<h
                         path,
                         type_annotation,
                     } => {
+                        if scope.is_constructor(&path.identifier) {
+                            let type_of_constructor = scope.lookup_type(&path.identifier).unwrap();
+                            if let Some(annotation) = type_annotation {
+                                assert_expected_expression_equals_actual(
+                                    annotation.clone(),
+                                    type_of_constructor.clone(),
+                                    scope,
+                                )?;
+                            }
+                            // @Note error message very general, could be specialized to constructors
+                            // once our diagnostic system is in place
+                            assert_expected_expression_equals_actual(
+                                r#type.clone(),
+                                type_of_constructor.clone(),
+                                scope,
+                            )?;
+                        } else {
+                            todo!("bindings inside of patterns");
+                        }
                         // todo!() // @Beacon @Beacon @Beacon @Task
                     }
                     Pattern::Application {
@@ -494,6 +514,11 @@ pub fn evaluate(expression: Expression, scope: &FunctionScope<'_>) -> Result<Exp
         // @Beacon @Beacon @Beacon @Note this code is @Temporary as hell.
         // I just need to implement enough of it till I start building good
         // abstractions
+        // @Note partially applied constructors differ from normal values
+        // I guess it's very likely that the first code we write will handle them incorrectly
+        // because the code will not check for the arity of the neutral application
+        // @Note how to handle them: just like functions: case analysis only wotks with a binder-case
+        // (default case)
         Expression::CaseAnalysis(case_analysis) => {
             use hir::expression::Pattern;
 
@@ -522,6 +547,8 @@ pub fn evaluate(expression: Expression, scope: &FunctionScope<'_>) -> Result<Exp
                             }
                         }
                         // we should not be here
+                        // @Note this is currently reachable because we don't do a check for
+                        // exhaustiveness in `infer_type`, just fyi
                         unreachable!()
                     } else {
                         expression

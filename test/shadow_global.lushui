@@ -1,3 +1,0 @@
-data Void: Type =
-
-foo (Void: Nat): Nat = Void

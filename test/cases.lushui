@@ -2,7 +2,6 @@
 ;;     CASE ANALYSIS BELOW ALREADY WORKS AS WISHED     ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-
 identity (|A: Type) (a: A): A = a
 
 data Ordering: Type =
@@ -34,3 +33,15 @@ gamma'': Ordering = invert Less
 ;; on.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+data Bool: Type =
+    False: Bool
+    True: Bool
+
+data List (A: Type): Type =
+    Empty (|A: Type): List A
+    Item (|A: Type): A -> List A -> List A
+
+is_empty (|A: Type) (list: List A): Bool =
+    case list
+    of Empty A => True
+    of Item A a => False

@@ -70,11 +70,6 @@
                     "match": "[\\.:+\\-~=<>*^!?|/\\\\&#%$@]+",
                     "name": "keyword.operator.lushui"
                 },
-                {
-                    "__comment__": "Also possible: ;(?!;)",
-                    "match": ";",
-                    "name": "keyword.operator.lushui"
-                }
             ]
         },
         "punctuation": {

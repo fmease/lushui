@@ -8,4 +8,56 @@ identity (A: Type) (a: A): A = a
 data List (A: Type): Type =
     Nil (|A: Type): List A
     Foo: List Nat
+<<<<<<< Updated upstream
     ;; Bar: Nat
+=======
+<<<<<<< Updated upstream
+    ;;; Bar: Nat
+=======
+    ;; Bar: Nat
+
+;; This is bad!!!
+
+data Foo: Type =
+    Bar: (n: Nat) -> if (n == 0) Nat Foo
+
+;; So in this case, clearly `if (n == 0) 'Nat Foo` is *not* an instance
+;; of `Foo` since there exists an `n` where it clearly isn't ('Nat /= Foo)
+;;
+;; How can we algorithmically check this? I mean the second example given
+;; below *should* compile:
+
+data Ban: Type =
+    Baz: (n: Nat) -> const Nat Foo
+
+;; "Easy"! We just need to normalize the result type *under* the respective environment
+;; (here, in both cases, it's `n: 'Nat`) and if does reduce to some set of expression
+;; kinds, it's an error (e.g. no Case, Application only if the callee is non-redex and
+;; not dependent on any constructor param, ...)
+
+;; @Task verify Bar reduces/fix it to reduce:
+
+constant (A B: Type) (a: A) (b: B): A = a
+
+data Foo2: Type =
+    ;; @Bug fails instance check even though it should pass
+    Bar2 (A: Type): constant Type Type Foo2 A
+
+;; ^ sig should reduce to `(A: Type) -> Foo2`
+
+;; @Question should it though?????? no! it's parametrized!!!
+;; what this suggests is a different reduction strategy (gamma-reduction??? maybe)
+
+;; @Note the thing is, we kinda need to evaluate it
+;; for the instance check
+
+;; @Task research what idris does
+;; @Update @Beacon Idris does full reduction (??):
+;; `\A:Type => const Int A` evaluates to `\A:Type => Int`
+;; even `\b:Bool => const False b` => `\b:Bool => False` (@Update only in the REPL??)
+
+;; @Update interesting, Idris rejects some things like case of a parameter, but
+;; still, some cases worked, e.g. `(A : Type) -> const Dummy A` or `(b : Bool) -> const Dummy b`
+;; but others like `(n : Nat) -> if n == 0 then Dummy else Dummy`
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes

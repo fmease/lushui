@@ -3,8 +3,16 @@ data Any: Type =
 
 data List (A: Type): Type =
     Nil (A: Type): List A
+<<<<<<< Updated upstream
     ;; @Bug List A Nat does not throw an error?
     ;; Cons (A: Type): A -> List A -> List A Nat
+=======
+<<<<<<< Updated upstream
+    ;;; @Bug List A Nat does not throw an error?
+    ;;; Cons (A: Type): A -> List A -> List A Nat
+=======
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
     Cons (A: Type): A -> List A -> List A
 
 data Unit: Type =

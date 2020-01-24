@@ -688,7 +688,7 @@ pub mod expression {
         patterns.push(parse_pattern(context)?);
 
         loop {
-            if context.consumed(TokenKind::Equals) {
+            if context.consumed(TokenKind::WideArrow) {
                 break;
             }
 
