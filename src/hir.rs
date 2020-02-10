@@ -152,6 +152,10 @@ pub mod expression {
         NatLiteral {
             value: crate::lexer::Nat,
         },
+        TextTypeLiteral,
+        TextLiteral {
+            value: String,
+        },
         Path {
             identifier: Identifier,
         },
@@ -202,9 +206,15 @@ pub mod expression {
                     value: literal.value,
                 }
             },
+            TextTypeLiteral(_literal) => Expression::TextTypeLiteral,
+            TextLiteral(literal) => expr! {
+                TextLiteral {
+                    value: literal.value,
+                }
+            },
             Path(path) => expr! {
                 Path {
-                    identifier: Identifier::Plain(path.inner),
+                    identifier: Identifier::Plain(path.segments),
                 }
             },
             LambdaLiteral(literal) => {
@@ -212,7 +222,7 @@ pub mod expression {
 
                 let mut type_annotation = literal
                     .body_type_annotation
-                    .map(|expression| lower_expression(expression))
+                    .map(lower_expression)
                     .into_iter();
 
                 for parameter_group in literal.parameters.iter().rev() {
@@ -356,7 +366,7 @@ pub mod expression {
                 ..
             } => Pattern::Path {
                 path: Path {
-                    identifier: Identifier::Plain(path.inner),
+                    identifier: Identifier::Plain(path.segments),
                 },
                 type_annotation: type_annotation.map(lower_expression),
             },

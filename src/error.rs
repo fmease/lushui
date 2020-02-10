@@ -1,3 +1,5 @@
+// @Task replace with `span.rs` @Beacon
+
 //! The main error handler.
 //!
 //! Currently, it defines the byte span of code snippets and a procedure to pretty-print
@@ -39,17 +41,6 @@ impl Span {
         self.start..=self.end
     }
 }
-
-// @Task @Beacon @Beacon @Beacon remove this trait and replace all impls with Display
-// @Note the idea is that types with special treatment of indentation (having even further indented elements)
-// overwrite `display_indented_with` and implement `display_with` as `self.display_indented_with(0)`
-// of course, this is bad design and we sure can do better
-// next to the boilerplate-y impl of display_with, the code for display_indented_with needs to repeat the
-// `" ".repeat(indentation * lexer::INDENTATION_IN_SPACES)` logic which breaks abstraction!
-// @Note we could split this into `DisplayWithSource` and `DisplayIndentedWithSource` and use specialization to
-// implement each in terms of each other (where of course, one impl wins to make it unambiguous)
-// @Update removed the indent-logic *later*
-// @Task define indentation-logic (it is inherently connected to displaying, obviously)
 
 // @Temporary signature
 pub fn display(kind: &str, span: Span, source: &str, filename: Option<&str>) -> String {

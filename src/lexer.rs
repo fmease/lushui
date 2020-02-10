@@ -6,22 +6,17 @@
 //! Natural number literals are directly converted into [num_bigint::BigUint]
 //! and identifiers are interned.
 
-mod error;
-
 use num_bigint::BigUint;
 pub(crate) use string_cache::DefaultAtom as Atom;
 
-use std::{cmp::Ordering, fmt, rc::Rc, str::FromStr};
+use std::{cmp::Ordering, fmt, path::Path, rc::Rc, str::FromStr};
 
-use crate::error::Span;
-pub use error::Error;
-use error::ErrorKind;
+use crate::diagnostic::{self, Diagnostic};
+use crate::span::{LocalByteIndex, SourceFile, SourceMap, Span};
 
 pub type Nat = Rc<BigUint>;
 
-/// A token with span information [`crate::error::Span`].
-///
-/// There is no actual reference to the source, we are working with indeces.
+/// A token with span information.
 #[derive(Debug, Clone)]
 pub struct SourceToken {
     pub inner: Token,
@@ -64,8 +59,11 @@ tokens! {
         Identifier(Atom) "identifier",
         Punctuation "punctuation",
         NatLiteral(Nat) "natural number literal",
+        TextLiteral(String) "text literal",
         VerticalBar "vertical bar",
         Colon "colon",
+        // @Note better: "path separator" but now we are mixing different semantic levels
+        DoubleColon "double colon",
         Equals "equals sign",
         Backslash "backslash",
         ThinArrow "thin arrow",
@@ -83,10 +81,13 @@ tokens! {
         Let "keyword `let`",
         Module "keyword `module`",
         Nat "keyword `Nat`",
+        Text "keyword `Text`",
         Of "keyword `of`",
         Super "keyword `super`",
         Type "keyword `Type`",
         Use "keyword `use`",
+        // @Task use EOI in the parser instead of the len()-business
+        EndOfInput "end of input",
     }
 }
 
@@ -127,6 +128,7 @@ fn parse_keyword(source: &str) -> Option<Token> {
         "Nat" => Token::Nat,
         "of" => Token::Of,
         "super" => Token::Super,
+        "Text" => Token::Text,
         "Type" => Token::Type,
         "Use" => Token::Use,
         _ => return None,
@@ -136,6 +138,7 @@ fn parse_keyword(source: &str) -> Option<Token> {
 fn parse_reserved_punctuation(source: &str) -> Option<Token> {
     Some(match source {
         ":" => Token::Colon,
+        "::" => Token::DoubleColon,
         "=" => Token::Equals,
         "|" => Token::VerticalBar,
         "\\" => Token::Backslash,
@@ -145,50 +148,94 @@ fn parse_reserved_punctuation(source: &str) -> Option<Token> {
     })
 }
 
-fn extend_with_dedentation(tokens: &mut Vec<SourceToken>, start: usize, amount_of_spaces: usize) {
+// @Bug implementation seems hacky with illegal case start == 0, @Note this is one ugly function
+fn extend_with_dedentation(
+    source: &SourceFile,
+    tokens: &mut Vec<SourceToken>,
+    start: LocalByteIndex,
+    amount_of_spaces: usize,
+) {
     if amount_of_spaces == 0 {
         return;
     }
-    debug_assert_ne!(start, 0);
-    let dedentation = SourceToken::new(Token::Dedentation, Span::new(start, start - 1));
+
+    debug_assert_ne!(start, LocalByteIndex::new(0));
+
+    let dedentation = SourceToken::new(
+        Token::Dedentation,
+        Span::from_local(source, start, start - 1),
+    );
     tokens.extend(std::iter::repeat(dedentation).take(amount_of_spaces / INDENTATION_IN_SPACES));
 }
 
-/// Lex source code into an array of tokens.
+pub struct Lexer {
+    // map: &'m mut SourceMap,
+    source: Rc<SourceFile>,
+    tokens: Vec<SourceToken>,
+}
+
+impl Lexer {
+    pub fn load(map: &mut SourceMap, path: &Path) -> Result<Self, crate::span::Error> {
+        Ok(Self {
+            source: map.load(path)?,
+            // map,
+            tokens: Vec::new(),
+        })
+    }
+
+    // @Note bad naming scheme
+    pub fn lex(&mut self) -> Result<(), Diagnostic> {
+        // @Temporary
+        lex(self)
+    }
+
+    // @Note the whole Lexer business is bad API-design right now
+    pub fn into_tokens(self) -> Vec<SourceToken> {
+        self.tokens
+    }
+}
+
+/// Lex source code into an array of lexer.tokens.
 // @Task keep a bracket stack to report better error messages
-pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
-    let mut indexed_characters = source.char_indices().peekable();
-    let mut tokens = Vec::new();
+// @Task refactor this monstrosity of a function into smaller parts! cognitive complexity = 32/25
+// @Task move this function (but simplify it first)
+fn lex(lexer: &mut Lexer) -> Result<(), Diagnostic> {
+    let mut characters = lexer.source.content().chars().peekable();
+    let mut index = LocalByteIndex::new(0);
+    // @Temporary make it a method, can not even be a closure because of borrowing issues (compound issue)
+    // hence it is macro
+    macro advance() {
+        characters.next();
+        index = index + 1;
+    };
     let mut indentation_in_spaces = 0;
 
     // @Bug sometimes we get consecutive dedent&indent, they should be flattened/filtered out
-    while let Some(&(index, character)) = indexed_characters.peek() {
+    while let Some(&character) = characters.peek() {
         if character == WHITESPACE {
-            indexed_characters.next();
-            while let Some(&(_, character)) = indexed_characters.peek() {
+            advance!();
+            while let Some(&character) = characters.peek() {
                 if character == WHITESPACE {
-                    indexed_characters.next();
+                    advance!();
                 } else {
                     break;
                 }
             }
-        }
-        // @Task merge consecutive documentation comments to save on memory
-        else if character == ';' {
+        } else if character == ';' {
             let start = index;
             let mut end = start;
             let mut documentation = true;
 
-            indexed_characters.next();
+            advance!();
 
-            if let Some(&(index, ';')) = indexed_characters.peek() {
+            if let Some(';') = characters.peek() {
                 documentation = false;
                 end = index;
-                indexed_characters.next();
+                advance!();
             }
 
-            while let Some(&(index, character)) = indexed_characters.peek() {
-                indexed_characters.next();
+            while let Some(&character) = characters.peek() {
+                advance!();
 
                 if character != '\n' {
                     if documentation {
@@ -200,25 +247,25 @@ pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
             }
 
             if documentation {
-                tokens.push(SourceToken::new(
+                lexer.tokens.push(SourceToken::new(
                     Token::DocumentationComment,
-                    Span::new(start, end),
+                    Span::from_local(lexer.source.as_ref(), start, end),
                 ))
             }
         } else if is_identifier_head(character) {
             let start = index;
             let mut end = start;
 
-            while let Some(&(index, character)) = indexed_characters.peek() {
+            while let Some(&character) = characters.peek() {
                 if is_identifier_body(character) {
                     end = index;
-                    indexed_characters.next();
+                    advance!();
                 } else {
                     if is_identifier_tail(character) {
-                        while let Some(&(index, character)) = indexed_characters.peek() {
+                        while let Some(&character) = characters.peek() {
                             if is_identifier_tail(character) {
                                 end = index;
-                                indexed_characters.next();
+                                advance!();
                             } else {
                                 break;
                             }
@@ -228,29 +275,32 @@ pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
                 }
             }
 
-            let span = Span::new(start, end);
+            let span = Span::from_local(lexer.source.as_ref(), start, end);
 
-            tokens.push(SourceToken::new(
-                match parse_keyword(&source[start..=end]) {
+            lexer.tokens.push(SourceToken::new(
+                match parse_keyword(&lexer.source[start..=end]) {
                     Some(keyword) => keyword,
-                    None => Token::Identifier(Atom::from(&source[span.range()])),
+                    None => Token::Identifier(Atom::from(&lexer.source[start..=end])),
                 },
                 span,
             ));
         } else if character == '\n' {
-            tokens.push(SourceToken::new(Token::LineBreak, Span::new(index, index)));
+            lexer.tokens.push(SourceToken::new(
+                Token::LineBreak,
+                Span::from_local(lexer.source.as_ref(), index, index),
+            ));
 
-            indexed_characters.next();
+            advance!();
 
             let mut spaces = 0;
             let start = index + 1;
             let mut end = start;
 
-            while let Some(&(index, character)) = indexed_characters.peek() {
+            while let Some(&character) = characters.peek() {
                 if character == WHITESPACE {
                     end = index;
                     spaces += 1;
-                    indexed_characters.next();
+                    advance!();
                 } else {
                     break;
                 }
@@ -264,20 +314,32 @@ pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
                 Ordering::Equal => continue,
             };
 
-            let span = Span::new(end - absolute_difference + 1, end);
+            let span = Span::from_local(lexer.source.as_ref(), end - absolute_difference + 1, end);
 
             if absolute_difference % INDENTATION_IN_SPACES != 0
                 || change == Ordering::Greater && absolute_difference > INDENTATION_IN_SPACES
             {
-                return Err(Error {
-                    kind: ErrorKind::InvalidIndentation(absolute_difference),
+                return Err(Diagnostic {
+                    level: diagnostic::Level::Fatal,
+                    message: format!(
+                        "invalid indentation consisting of {} spaces",
+                        absolute_difference
+                    ),
+                    sub: Vec::new(),
                     span,
                 });
             }
 
             match change {
-                Ordering::Greater => tokens.push(SourceToken::new(Token::Indentation, span)),
-                Ordering::Less => extend_with_dedentation(&mut tokens, start, absolute_difference),
+                Ordering::Greater => lexer
+                    .tokens
+                    .push(SourceToken::new(Token::Indentation, span)),
+                Ordering::Less => extend_with_dedentation(
+                    lexer.source.as_ref(),
+                    &mut lexer.tokens,
+                    start,
+                    absolute_difference,
+                ),
                 Ordering::Equal => unreachable!(),
             }
 
@@ -285,64 +347,110 @@ pub fn lex(source: &str) -> Result<Vec<SourceToken>, Error> {
         } else if is_punctuation(character) {
             let start = index;
             let mut end = start;
-            indexed_characters.next();
+            advance!();
 
-            while let Some(&(index, character)) = indexed_characters.peek() {
+            while let Some(&character) = characters.peek() {
                 if is_punctuation(character) {
                     end = index;
-                    indexed_characters.next();
+                    advance!();
                 } else {
                     break;
                 }
             }
 
-            tokens.push(SourceToken::new(
-                parse_reserved_punctuation(&source[start..=end]).unwrap_or(Token::Punctuation),
-                Span::new(start, end),
+            lexer.tokens.push(SourceToken::new(
+                parse_reserved_punctuation(&lexer.source[start..=end])
+                    .unwrap_or(Token::Punctuation),
+                Span::from_local(lexer.source.as_ref(), start, end),
             ))
-        }
-        // @Task verify that it ends with a space instead of any non-digit
-        else if character.is_ascii_digit() {
+        } else if character.is_ascii_digit() {
             let start = index;
             let mut end = start;
-            indexed_characters.next();
+            advance!();
 
-            while let Some(&(index, character)) = indexed_characters.peek() {
+            while let Some(&character) = characters.peek() {
                 if character.is_ascii_digit() {
                     end = index;
-                    indexed_characters.next();
+                    advance!();
                 } else {
                     break;
                 }
             }
 
-            tokens.push(SourceToken::new(
-                Token::NatLiteral(Rc::new(BigUint::from_str(&source[start..=end]).unwrap())),
-                Span::new(start, end),
-            ));
-        } else {
-            indexed_characters.next();
+            // @Task verify that it ends with a space instead of any non-digit
 
-            tokens.push(SourceToken::new(
+            lexer.tokens.push(SourceToken::new(
+                Token::NatLiteral(Rc::new(
+                    BigUint::from_str(&lexer.source[start..=end]).unwrap(),
+                )),
+                Span::from_local(lexer.source.as_ref(), start, end),
+            ));
+        } else if character == '"' {
+            let start = index;
+            let mut end = start;
+            let mut terminated = false;
+            advance!();
+
+            while let Some(&character) = characters.peek() {
+                // @Task move this into while let part
+                // @Task escaping
+                advance!();
+                end = end + character.len_utf8();
+
+                if character != '"' {
+                } else {
+                    terminated = true;
+                    break;
+                }
+            }
+
+            if !terminated {
+                return Err(Diagnostic {
+                    level: diagnostic::Level::Fatal,
+                    message: "unterminated text literal".to_owned(),
+                    sub: Vec::new(),
+                    span: Span::from_local(lexer.source.as_ref(), start, end),
+                });
+            }
+
+            lexer.tokens.push(SourceToken::new(
+                // @Note once we implement escaping, this won't cut it and we need to build our own string
+                Token::TextLiteral(lexer.source[start + 1..=end - 1].to_owned()),
+                Span::from_local(lexer.source.as_ref(), start, end),
+            ))
+        } else {
+            lexer.tokens.push(SourceToken::new(
                 match character {
                     '(' => Token::OpeningRoundBracket,
                     ')' => Token::ClosingRoundBracket,
                     _ => {
-                        return Err(Error {
-                            kind: ErrorKind::IllegalCharacter(character),
-                            span: Span::new(index, index),
+                        return Err(Diagnostic {
+                            level: diagnostic::Level::Fatal,
+                            message: format!(
+                                "illegal character U+{:04X} `{}`",
+                                character as u32, character
+                            ),
+                            sub: Vec::new(),
+                            span: Span::from_local(lexer.source.as_ref(), index, index),
                         })
                     }
                 },
-                Span::new(index, index),
+                Span::from_local(lexer.source.as_ref(), index, index),
             ));
+
+            advance!();
         }
     }
 
-    let last_index = tokens.len() - 1;
-    extend_with_dedentation(&mut tokens, last_index, indentation_in_spaces);
+    let last_index = LocalByteIndex::new(lexer.tokens.len() - 1);
+    extend_with_dedentation(
+        lexer.source.as_ref(),
+        &mut lexer.tokens,
+        last_index,
+        indentation_in_spaces,
+    );
     // @Question maybe also add a artificial line break to simplify parsing or would we still need to handle EOI special?
-    Ok(tokens)
+    Ok(())
 }
 
 macro tokens($( #[$attr:meta] )+ $Token:ident, ::$kind:ident, $TokenKind:ident { $( $token:ident $( ($payload:ident) )? $name:literal, )+ }) {

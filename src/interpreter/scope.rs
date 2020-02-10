@@ -271,9 +271,10 @@ mod module {
         ) {
             let mut bindings = self.bindings.borrow_mut();
 
-            debug_assert!(bindings
-                .insert(binder.clone(), Entity::Constructor { r#type })
-                .is_none());
+            let old = bindings.insert(binder.clone(), Entity::Constructor { r#type });
+
+            debug_assert!(old.is_none());
+
             match bindings.get_mut(data_type).unwrap() {
                 Entity::DataType {
                     ref mut constructors,
@@ -326,6 +327,10 @@ mod module {
     impl fmt::Debug for ModuleScope {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             for (binder, entity) in self.bindings.borrow().iter() {
+                if let Entity::UntypedForeign { .. } = &entity {
+                    continue;
+                }
+
                 writeln!(f, "{} ===> {:?}", binder, entity)?;
             }
             Ok(())

@@ -16,7 +16,7 @@ pub fn _is_uninhabited(r#type: Expression, _scope: ModuleScope) -> bool {
         }
         // @Note we need to be able pass type arguments to is_uninhabited!
         Expression::Application(_application) => todo!(),
-        Expression::TypeLiteral | Expression::NatTypeLiteral => true,
+        Expression::TypeLiteral | Expression::NatTypeLiteral | Expression::TextTypeLiteral => false,
         Expression::Path(_path) => {
             // @Task look up path in context and decide upon returned information
             // if is an ADT, go through every constructor and for each one check
@@ -28,7 +28,7 @@ pub fn _is_uninhabited(r#type: Expression, _scope: ModuleScope) -> bool {
         Expression::LambdaLiteral(_literal) => unreachable!(),
         Expression::UseIn(_) => todo!(),
         Expression::CaseAnalysis(_case_analysis) => todo!(),
-        Expression::NatLiteral(_) => unreachable!(),
+        Expression::NatLiteral(_) | Expression::TextLiteral(_) => unreachable!(),
         Expression::UnsaturatedForeignApplication(_) => todo!(),
     }
 }

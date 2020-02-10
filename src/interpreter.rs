@@ -43,7 +43,7 @@ const MISSING_ANNOTATION: &str =
 /// Try to type check and evaluate a declaration modifying the given scope.
 // @Task support order-independence, recursion and proper modules
 pub fn evaluate_declaration(declaration: &Declaration, module_scope: ModuleScope) -> Result<()> {
-    Ok(match declaration {
+    match declaration {
         Declaration::Value {
             binder,
             type_annotation,
@@ -74,6 +74,15 @@ pub fn evaluate_declaration(declaration: &Declaration, module_scope: ModuleScope
             let r#type = evaluate(type_annotation.clone(), &function_scope)?;
             assert_expression_is_a_type(r#type.clone(), &function_scope)?;
 
+            // @Task diagnostic note: only `Type` can be extended
+            // @Note currently is: invalid constructor X
+            data_types::instance::assert_constructor_is_instance_of_type(
+                data_type_binder.clone(),
+                r#type.clone(),
+                Expression::TypeLiteral,
+                module_scope.clone(),
+            )?;
+
             module_scope
                 .clone()
                 .insert_data_binding(data_type_binder.clone(), r#type);
@@ -88,8 +97,8 @@ pub fn evaluate_declaration(declaration: &Declaration, module_scope: ModuleScope
 
                 data_types::instance::assert_constructor_is_instance_of_type(
                     binder.clone(),
-                    type_annotation.clone(),
-                    data_type_binder.clone(),
+                    r#type.clone(),
+                    expr! { Path { identifier: data_type_binder.clone() } },
                     module_scope.clone(),
                 )?;
 
@@ -124,7 +133,9 @@ pub fn evaluate_declaration(declaration: &Declaration, module_scope: ModuleScope
 
             module_scope.insert_type_for_foreign_binding(binder.clone(), r#type);
         }
-    })
+    }
+
+    Ok(())
 }
 
 /// Substitute inside an expression using an substitutions.
@@ -214,7 +225,7 @@ fn substitute(
             Application {
                 callee: substitute(
                     application.callee.clone(),
-                    substitutions.clone(),
+                    substitutions,
                     scope,
                 ),
                 argument: substitute(application.argument.clone(), substitutions, scope),
@@ -226,7 +237,7 @@ fn substitute(
             CaseAnalysis {
                 subject: substitute(
                     case_analysis.subject.clone(),
-                    substitutions.clone(),
+                    substitutions,
                     scope,
                 ),
                 cases: case_analysis
@@ -242,9 +253,11 @@ fn substitute(
                     .collect(),
             }
         },
-        Expression::TypeLiteral | Expression::NatTypeLiteral | Expression::NatLiteral(_) => {
-            expression
-        }
+        Expression::TypeLiteral
+        | Expression::NatTypeLiteral
+        | Expression::NatLiteral(_)
+        | Expression::TextTypeLiteral
+        | Expression::TextLiteral(_) => expression,
         // @Note I think
         Expression::UnsaturatedForeignApplication(_) => unreachable!(),
     }
@@ -256,8 +269,11 @@ pub fn infer_type(expression: Expression, scope: &FunctionScope<'_>) -> Result<h
         Expression::Path(path) => scope
             .lookup_type(&path.identifier)
             .ok_or_else(|| Error::UndefinedBinding(path.identifier.clone()))?,
-        Expression::TypeLiteral | Expression::NatTypeLiteral => Expression::TypeLiteral,
+        Expression::TypeLiteral | Expression::NatTypeLiteral | Expression::TextTypeLiteral => {
+            Expression::TypeLiteral
+        }
         Expression::NatLiteral(_) => Expression::NatTypeLiteral,
+        Expression::TextLiteral(_) => Expression::TextTypeLiteral,
         Expression::PiTypeLiteral(literal) => {
             // ensure domain and codomain are are well-typed
             // @Question why do we need to this? shouldn't this be already handled if
@@ -465,15 +481,17 @@ pub fn evaluate(expression: Expression, scope: &FunctionScope<'_>) -> Result<Exp
                 },
             }
         }
-        Expression::TypeLiteral | Expression::NatTypeLiteral | Expression::NatLiteral(_) => {
-            expression
-        }
+        Expression::TypeLiteral
+        | Expression::NatTypeLiteral
+        | Expression::NatLiteral(_)
+        | Expression::TextTypeLiteral
+        | Expression::TextLiteral(_) => expression,
         Expression::PiTypeLiteral(literal) => {
             let domain = evaluate(literal.domain.clone(), scope)?;
             let codomain = match literal.parameter.clone() {
                 Some(parameter) => evaluate(
                     literal.codomain.clone(),
-                    &scope.extend_with_parameter(parameter.clone(), domain.clone()),
+                    &scope.extend_with_parameter(parameter, domain.clone()),
                 )?,
                 None => literal.codomain.clone(),
             };
@@ -530,7 +548,7 @@ pub fn evaluate(expression: Expression, scope: &FunctionScope<'_>) -> Result<Exp
             // everything else should be impossible because of type checking
             // but I might be wrong. possible counter examples: unevaluated case
             // analysis expressions etc
-            match subject.clone() {
+            match subject {
                 Expression::Path(subject_path) => {
                     // @Beacon @Beacon @Task
                     if scope.is_constructor(&subject_path.identifier) {
@@ -580,7 +598,7 @@ fn match_expression_with_type_annotation(
     scope: &FunctionScope<'_>,
 ) -> Result<Expression> {
     assert_expression_is_a_type(type_annotation.clone(), scope)?;
-    let infered_type = infer_type(expression.clone(), scope)?;
+    let infered_type = infer_type(expression, scope)?;
     assert_expected_expression_equals_actual(type_annotation, infered_type.clone(), scope)?;
 
     Ok(infered_type)
@@ -612,7 +630,7 @@ fn evaluating_equal(
     ))
 }
 
-/// Shows if two expressions are syntactically equal.
+/// Dictates if two expressions are syntactically alpha-equivalent.
 fn equal(left: Expression, right: Expression, scope: &FunctionScope<'_>) -> bool {
     match (left, right) {
         (Expression::Path(left), Expression::Path(right)) => left.identifier == right.identifier,
@@ -621,65 +639,64 @@ fn equal(left: Expression, right: Expression, scope: &FunctionScope<'_>) -> bool
                 && equal(left.argument.clone(), right.argument.clone(), scope)
         }
         (Expression::TypeLiteral, Expression::TypeLiteral)
-        | (Expression::NatTypeLiteral, Expression::NatTypeLiteral) => true,
+        | (Expression::NatTypeLiteral, Expression::NatTypeLiteral)
+        | (Expression::TextTypeLiteral, Expression::TextTypeLiteral) => true,
         (Expression::NatLiteral(left), Expression::NatLiteral(right)) => left.value == right.value,
+        (Expression::TextLiteral(left), Expression::TextLiteral(right)) => {
+            left.value == right.value
+        }
         (Expression::PiTypeLiteral(left), Expression::PiTypeLiteral(right)) => {
-            equal(
-                left.domain.clone().clone(),
-                right.domain.clone().clone(),
-                scope,
-            ) && match (left.parameter.clone(), right.parameter.clone()) {
-                (Some(left_parameter), Some(right_parameter)) => equal(
-                    left.codomain.clone(),
-                    substitute(
-                        right.codomain.clone(),
-                        &Substitutions::new().extend_with(
-                            right_parameter.clone(),
-                            expr! {
-                                Path {
-                                    identifier: left_parameter.clone(),
+            equal(left.domain.clone(), right.domain.clone(), scope)
+                && match (left.parameter.clone(), right.parameter.clone()) {
+                    (Some(left_parameter), Some(right_parameter)) => equal(
+                        left.codomain.clone(),
+                        substitute(
+                            right.codomain.clone(),
+                            &Substitutions::new().extend_with(
+                                right_parameter,
+                                expr! {
+                                    Path {
+                                        identifier: left_parameter,
 
-                                }
-                            },
+                                    }
+                                },
+                            ),
+                            scope,
                         ),
                         scope,
                     ),
-                    scope,
-                ),
-                (Some(left_parameter), None) => equal(
-                    left.codomain.clone(),
-                    right.codomain.clone(),
-                    &scope.extend_with_parameter(left_parameter.clone(), left.domain.clone()),
-                ),
-                (None, Some(right_parameter)) => equal(
-                    left.codomain.clone(),
-                    right.codomain.clone(),
-                    &scope.extend_with_parameter(right_parameter.clone(), right.domain.clone()),
-                ),
-                (None, None) => equal(left.codomain.clone(), right.codomain.clone(), scope),
-            }
+                    (Some(left_parameter), None) => equal(
+                        left.codomain.clone(),
+                        right.codomain.clone(),
+                        &scope.extend_with_parameter(left_parameter, left.domain.clone()),
+                    ),
+                    (None, Some(right_parameter)) => equal(
+                        left.codomain.clone(),
+                        right.codomain.clone(),
+                        &scope.extend_with_parameter(right_parameter, right.domain.clone()),
+                    ),
+                    (None, None) => equal(left.codomain.clone(), right.codomain.clone(), scope),
+                }
         }
         (Expression::LambdaLiteral(left), Expression::LambdaLiteral(right)) => {
             equal(
                 left.parameter_type_annotation
                     .clone()
-                    .expect(MISSING_ANNOTATION)
-                    .clone(),
+                    .expect(MISSING_ANNOTATION),
                 right
                     .parameter_type_annotation
                     .clone()
-                    .expect(MISSING_ANNOTATION)
-                    .clone(),
+                    .expect(MISSING_ANNOTATION),
                 scope,
             ) && equal(
                 left.body.clone(),
                 substitute(
                     right.body.clone(),
                     &Substitutions::new().extend_with(
-                        right.parameter.clone().clone(),
+                        right.parameter.clone(),
                         expr! {
                             Path {
-                                identifier: left.parameter.clone().clone(),
+                                identifier: left.parameter.clone(),
 
                             }
                         },

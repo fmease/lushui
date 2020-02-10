@@ -69,7 +69,7 @@
                 {
                     "match": "[\\.:+\\-~=<>*^!?|/\\\\&#%$@]+",
                     "name": "keyword.operator.lushui"
-                },
+                }
             ]
         },
         "punctuation": {

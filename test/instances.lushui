@@ -8,12 +8,6 @@ identity (A: Type) (a: A): A = a
 data List (A: Type): Type =
     Nil (|A: Type): List A
     Foo: List Nat
-<<<<<<< Updated upstream
-    ;; Bar: Nat
-=======
-<<<<<<< Updated upstream
-    ;;; Bar: Nat
-=======
     ;; Bar: Nat
 
 ;; This is bad!!!
@@ -59,5 +53,3 @@ data Foo2: Type =
 ;; @Update interesting, Idris rejects some things like case of a parameter, but
 ;; still, some cases worked, e.g. `(A : Type) -> const Dummy A` or `(b : Bool) -> const Dummy b`
 ;; but others like `(n : Nat) -> if n == 0 then Dummy else Dummy`
->>>>>>> Stashed changes
->>>>>>> Stashed changes

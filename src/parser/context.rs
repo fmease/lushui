@@ -8,14 +8,16 @@ use super::error::{Error, ErrorKind, Result};
 use super::Identifier;
 use crate::lexer;
 
-#[derive(Clone)]
-pub struct Context<'i> {
+// @Task use SourceFiles
+pub struct Parser<'i> {
     tokens: &'i [lexer::SourceToken],
     index: usize,
 }
 
 // @Note this API is **horrible**!!
-impl<'input> Context<'input> {
+// @Task move back into main module and make all the parse_*-functions methods
+// @Task make use of the new TokenKind::EndOfLine to simplify the logic tremendously
+impl<'input> Parser<'input> {
     /// Construct a new context with the pointer at the beginning.
     pub fn new(tokens: &'input [lexer::SourceToken]) -> Self {
         Self { tokens, index: 0 }
@@ -23,13 +25,16 @@ impl<'input> Context<'input> {
 
     /// Parse the source in a sandboxed context.
     ///
-    /// Used for arbitrary look-ahead.
-    pub fn reflect<T>(&mut self, parser: fn(&mut Context<'input>) -> Result<T>) -> Result<T> {
-        let mut context = self.clone();
-        parser(&mut context).map(|value| {
-            *self = context;
-            value
-        })
+    /// Used for arbitrary look-ahead. Restores the old cursor on failure.
+    pub fn reflect<T>(&mut self, parser: fn(&mut Self) -> Result<T>) -> Result<T> {
+        let saved_index = self.index;
+        let result = parser(self);
+
+        if result.is_err() {
+            self.index = saved_index;
+        }
+
+        result
     }
 
     pub fn expect(&self, expected_token_kind: lexer::TokenKind) -> Result<lexer::SourceToken> {
@@ -81,7 +86,7 @@ impl<'input> Context<'input> {
 }
 
 /// The modern API.
-impl Context<'_> {
+impl Parser<'_> {
     pub fn current(&self, kind: lexer::TokenKind) -> bool {
         self.tokens
             .get(self.index)

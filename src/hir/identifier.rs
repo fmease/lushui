@@ -2,8 +2,8 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 
-use crate::error::Span;
 use crate::parser;
+use crate::span::Span;
 
 static LAST_GENERATED_NUMERIC_IDENTIFIER: AtomicU64 = AtomicU64::new(0);
 
@@ -26,8 +26,8 @@ impl Identifier {
     fn plain(identifier: &str) -> parser::Identifier {
         parser::Identifier {
             atom: crate::lexer::Atom::from(identifier),
-            // @Note hacky, ugly
-            span: Span::new(0, 0),
+            // @Bug ugly, error-prone
+            span: Span::dummy(),
         }
     }
 

@@ -1,1 +1,4 @@
-target/debug/lushuic
+#!/usr/bin/sh
+
+cargo r -q -- "$*"
+

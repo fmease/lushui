@@ -9,16 +9,16 @@
 //! existentials and specialized instances but we first might want to
 //! feature-gate them.
 
-use crate::hir::{expr, Expression, Identifier};
+use crate::hir::{Expression, Identifier};
 use crate::interpreter::{equal, Error, FunctionScope, ModuleScope, Result};
 
 pub(in crate::interpreter) fn assert_constructor_is_instance_of_type(
     constructor_name: Identifier,
     constructor: Expression,
-    type_name: Identifier,
+    r#type: Expression,
     scope: ModuleScope,
 ) -> Result<()> {
-    if !constructor_is_instance_of_type(constructor, type_name, scope) {
+    if !constructor_is_instance_of_type(constructor, r#type, scope) {
         Err(Error::InvalidConstructor {
             name: constructor_name,
         })
@@ -30,22 +30,15 @@ pub(in crate::interpreter) fn assert_constructor_is_instance_of_type(
 // @Note currently allows existential quantification and specialized instances
 pub(in crate::interpreter) fn constructor_is_instance_of_type(
     constructor: Expression,
-    type_name: Identifier,
+    r#type: Expression,
     module_scope: ModuleScope,
 ) -> bool {
     let function_scope = FunctionScope::new(module_scope);
     let result_type = result_type(constructor, &function_scope);
     let callee = callee(result_type);
 
-    equal(
-        expr! {
-            Path {
-                identifier: type_name
-            }
-        },
-        callee,
-        &function_scope,
-    )
+    // @Question evaluation_equal instead?
+    equal(r#type, callee, &function_scope)
 }
 
 // @Question @Bug returns are type that might depend on parameters which we don't supply!!
@@ -64,9 +57,11 @@ fn result_type(expression: Expression, scope: &FunctionScope<'_>) -> Expression 
         Expression::Application(_)
         | Expression::TypeLiteral
         | Expression::NatTypeLiteral
+        | Expression::TextTypeLiteral
         | Expression::Path(_) => expression,
         Expression::LambdaLiteral(_)
         | Expression::NatLiteral(_)
+        | Expression::TextLiteral(_)
         | Expression::UseIn(_)
         | Expression::CaseAnalysis(_)
         | Expression::UnsaturatedForeignApplication(_) => unreachable!(),

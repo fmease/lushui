@@ -34,7 +34,7 @@ impl Display for Declaration {
             Self::Module { declarations } => {
                 f.write_str("module =\n")?;
                 for declaration in declarations {
-                    write!(f, "{}\n", declaration)?;
+                    writeln!(f, "{}", declaration)?;
                 }
                 Ok(())
             }
@@ -79,6 +79,8 @@ impl Display for Expression {
             Self::TypeLiteral => f.write_str("Type"),
             Self::NatTypeLiteral => f.write_str("Nat"),
             Self::NatLiteral(literal) => write!(f, "{}", literal.value),
+            Self::TextTypeLiteral => f.write_str("Text"),
+            Self::TextLiteral(literal) => write!(f, "{:?}", literal.value),
             Self::Path(path) => write!(f, "{}", path.identifier),
             Self::LambdaLiteral(literal) => write!(
                 f,
