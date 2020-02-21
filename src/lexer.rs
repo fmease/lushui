@@ -6,15 +6,13 @@
 //! Natural number literals are directly converted into [num_bigint::BigUint]
 //! and identifiers are interned.
 
-use num_bigint::BigUint;
-pub(crate) use string_cache::DefaultAtom as Atom;
+use std::{cmp::Ordering, fmt, rc::Rc, str::FromStr};
 
-use std::{cmp::Ordering, fmt, path::Path, rc::Rc, str::FromStr};
-
-use crate::diagnostic::{self, Diagnostic};
-use crate::span::{LocalByteIndex, SourceFile, SourceMap, Span};
-
-pub type Nat = Rc<BigUint>;
+use crate::{
+    diagnostic::Diagnostic,
+    span::{LocalByteIndex, LocalSpan, SourceFile, SourceMap, Span},
+    Atom, Nat,
+};
 
 /// A token with span information.
 #[derive(Debug, Clone)]
@@ -62,7 +60,6 @@ tokens! {
         TextLiteral(String) "text literal",
         VerticalBar "vertical bar",
         Colon "colon",
-        // @Note better: "path separator" but now we are mixing different semantic levels
         DoubleColon "double colon",
         Equals "equals sign",
         Backslash "backslash",
@@ -86,7 +83,6 @@ tokens! {
         Super "keyword `super`",
         Type "keyword `Type`",
         Use "keyword `use`",
-        // @Task use EOI in the parser instead of the len()-business
         EndOfInput "end of input",
     }
 }
@@ -130,7 +126,7 @@ fn parse_keyword(source: &str) -> Option<Token> {
         "super" => Token::Super,
         "Text" => Token::Text,
         "Type" => Token::Type,
-        "Use" => Token::Use,
+        "use" => Token::Use,
         _ => return None,
     })
 }
@@ -161,9 +157,10 @@ fn extend_with_dedentation(
 
     debug_assert_ne!(start, LocalByteIndex::new(0));
 
+    // @Task use better span (it should span 4 spaces if possible) @Note you need to go backwards
     let dedentation = SourceToken::new(
         Token::Dedentation,
-        Span::from_local(source, start, start - 1),
+        Span::from_local(source, LocalSpan::from(start)),
     );
     tokens.extend(std::iter::repeat(dedentation).take(amount_of_spaces / INDENTATION_IN_SPACES));
 }
@@ -175,7 +172,7 @@ pub struct Lexer {
 }
 
 impl Lexer {
-    pub fn load(map: &mut SourceMap, path: &Path) -> Result<Self, crate::span::Error> {
+    pub fn load(map: &mut SourceMap, path: std::path::PathBuf) -> Result<Self, crate::span::Error> {
         Ok(Self {
             source: map.load(path)?,
             // map,
@@ -222,15 +219,14 @@ fn lex(lexer: &mut Lexer) -> Result<(), Diagnostic> {
                 }
             }
         } else if character == ';' {
-            let start = index;
-            let mut end = start;
+            let mut span = LocalSpan::from(index);
             let mut documentation = true;
 
             advance!();
 
             if let Some(';') = characters.peek() {
                 documentation = false;
-                end = index;
+                span.end = index;
                 advance!();
             }
 
@@ -239,7 +235,7 @@ fn lex(lexer: &mut Lexer) -> Result<(), Diagnostic> {
 
                 if character != '\n' {
                     if documentation {
-                        end = index;
+                        span.end = index;
                     }
                 } else {
                     break;
@@ -249,22 +245,21 @@ fn lex(lexer: &mut Lexer) -> Result<(), Diagnostic> {
             if documentation {
                 lexer.tokens.push(SourceToken::new(
                     Token::DocumentationComment,
-                    Span::from_local(lexer.source.as_ref(), start, end),
+                    Span::from_local(lexer.source.as_ref(), span),
                 ))
             }
         } else if is_identifier_head(character) {
-            let start = index;
-            let mut end = start;
+            let mut span = LocalSpan::from(index);
 
             while let Some(&character) = characters.peek() {
                 if is_identifier_body(character) {
-                    end = index;
+                    span.end = index;
                     advance!();
                 } else {
                     if is_identifier_tail(character) {
                         while let Some(&character) = characters.peek() {
                             if is_identifier_tail(character) {
-                                end = index;
+                                span.end = index;
                                 advance!();
                             } else {
                                 break;
@@ -275,30 +270,27 @@ fn lex(lexer: &mut Lexer) -> Result<(), Diagnostic> {
                 }
             }
 
-            let span = Span::from_local(lexer.source.as_ref(), start, end);
-
             lexer.tokens.push(SourceToken::new(
-                match parse_keyword(&lexer.source[start..=end]) {
+                match parse_keyword(&lexer.source[span]) {
                     Some(keyword) => keyword,
-                    None => Token::Identifier(Atom::from(&lexer.source[start..=end])),
+                    None => Token::Identifier(Atom::from(&lexer.source[span])),
                 },
-                span,
+                Span::from_local(lexer.source.as_ref(), span),
             ));
         } else if character == '\n' {
             lexer.tokens.push(SourceToken::new(
                 Token::LineBreak,
-                Span::from_local(lexer.source.as_ref(), index, index),
+                Span::from_local(lexer.source.as_ref(), LocalSpan::from(index)),
             ));
 
             advance!();
 
             let mut spaces = 0;
-            let start = index + 1;
-            let mut end = start;
+            let mut span = LocalSpan::from(index);
 
             while let Some(&character) = characters.peek() {
                 if character == WHITESPACE {
-                    end = index;
+                    span.end = index;
                     spaces += 1;
                     advance!();
                 } else {
@@ -314,30 +306,31 @@ fn lex(lexer: &mut Lexer) -> Result<(), Diagnostic> {
                 Ordering::Equal => continue,
             };
 
-            let span = Span::from_local(lexer.source.as_ref(), end - absolute_difference + 1, end);
+            let global_span = Span::from_local(
+                lexer.source.as_ref(),
+                LocalSpan::new(span.end - absolute_difference + 1, span.end),
+            );
 
             if absolute_difference % INDENTATION_IN_SPACES != 0
                 || change == Ordering::Greater && absolute_difference > INDENTATION_IN_SPACES
             {
-                return Err(Diagnostic {
-                    level: diagnostic::Level::Fatal,
-                    message: format!(
+                return Err(Diagnostic::fatal(
+                    format!(
                         "invalid indentation consisting of {} spaces",
                         absolute_difference
                     ),
-                    sub: Vec::new(),
-                    span,
-                });
+                    global_span,
+                ));
             }
 
             match change {
                 Ordering::Greater => lexer
                     .tokens
-                    .push(SourceToken::new(Token::Indentation, span)),
+                    .push(SourceToken::new(Token::Indentation, global_span)),
                 Ordering::Less => extend_with_dedentation(
                     lexer.source.as_ref(),
                     &mut lexer.tokens,
-                    start,
+                    span.start,
                     absolute_difference,
                 ),
                 Ordering::Equal => unreachable!(),
@@ -345,13 +338,12 @@ fn lex(lexer: &mut Lexer) -> Result<(), Diagnostic> {
 
             indentation_in_spaces = spaces;
         } else if is_punctuation(character) {
-            let start = index;
-            let mut end = start;
+            let mut span = LocalSpan::from(index);
             advance!();
 
             while let Some(&character) = characters.peek() {
                 if is_punctuation(character) {
-                    end = index;
+                    span.end = index;
                     advance!();
                 } else {
                     break;
@@ -359,18 +351,16 @@ fn lex(lexer: &mut Lexer) -> Result<(), Diagnostic> {
             }
 
             lexer.tokens.push(SourceToken::new(
-                parse_reserved_punctuation(&lexer.source[start..=end])
-                    .unwrap_or(Token::Punctuation),
-                Span::from_local(lexer.source.as_ref(), start, end),
+                parse_reserved_punctuation(&lexer.source[span]).unwrap_or(Token::Punctuation),
+                Span::from_local(lexer.source.as_ref(), span),
             ))
         } else if character.is_ascii_digit() {
-            let start = index;
-            let mut end = start;
+            let mut span = LocalSpan::from(index);
             advance!();
 
             while let Some(&character) = characters.peek() {
                 if character.is_ascii_digit() {
-                    end = index;
+                    span.end = index;
                     advance!();
                 } else {
                     break;
@@ -380,14 +370,11 @@ fn lex(lexer: &mut Lexer) -> Result<(), Diagnostic> {
             // @Task verify that it ends with a space instead of any non-digit
 
             lexer.tokens.push(SourceToken::new(
-                Token::NatLiteral(Rc::new(
-                    BigUint::from_str(&lexer.source[start..=end]).unwrap(),
-                )),
-                Span::from_local(lexer.source.as_ref(), start, end),
+                Token::NatLiteral(Nat::from_str(&lexer.source[span]).unwrap()),
+                Span::from_local(lexer.source.as_ref(), span),
             ));
         } else if character == '"' {
-            let start = index;
-            let mut end = start;
+            let mut span = LocalSpan::from(index);
             let mut terminated = false;
             advance!();
 
@@ -395,7 +382,7 @@ fn lex(lexer: &mut Lexer) -> Result<(), Diagnostic> {
                 // @Task move this into while let part
                 // @Task escaping
                 advance!();
-                end = end + character.len_utf8();
+                span.end = span.end + character.len_utf8();
 
                 if character != '"' {
                 } else {
@@ -404,52 +391,57 @@ fn lex(lexer: &mut Lexer) -> Result<(), Diagnostic> {
                 }
             }
 
+            let global_span = Span::from_local(lexer.source.as_ref(), span);
+
             if !terminated {
-                return Err(Diagnostic {
-                    level: diagnostic::Level::Fatal,
-                    message: "unterminated text literal".to_owned(),
-                    sub: Vec::new(),
-                    span: Span::from_local(lexer.source.as_ref(), start, end),
-                });
+                return Err(Diagnostic::fatal(
+                    "unterminated text literal".to_owned(),
+                    global_span,
+                ));
             }
 
             lexer.tokens.push(SourceToken::new(
                 // @Note once we implement escaping, this won't cut it and we need to build our own string
-                Token::TextLiteral(lexer.source[start + 1..=end - 1].to_owned()),
-                Span::from_local(lexer.source.as_ref(), start, end),
+                Token::TextLiteral(
+                    lexer.source[LocalSpan::new(span.start + 1, span.end - 1)].to_owned(),
+                ),
+                global_span,
             ))
         } else {
+            let global_span = Span::from_local(lexer.source.as_ref(), LocalSpan::from(index));
+
             lexer.tokens.push(SourceToken::new(
                 match character {
                     '(' => Token::OpeningRoundBracket,
                     ')' => Token::ClosingRoundBracket,
                     _ => {
-                        return Err(Diagnostic {
-                            level: diagnostic::Level::Fatal,
-                            message: format!(
+                        return Err(Diagnostic::fatal(
+                            format!(
                                 "illegal character U+{:04X} `{}`",
                                 character as u32, character
                             ),
-                            sub: Vec::new(),
-                            span: Span::from_local(lexer.source.as_ref(), index, index),
-                        })
+                            global_span,
+                        ))
                     }
                 },
-                Span::from_local(lexer.source.as_ref(), index, index),
+                global_span,
             ));
 
             advance!();
         }
     }
 
-    let last_index = LocalByteIndex::new(lexer.tokens.len() - 1);
+    let last_index = LocalByteIndex::from_usize(lexer.tokens.len() - 1);
     extend_with_dedentation(
         lexer.source.as_ref(),
         &mut lexer.tokens,
         last_index,
         indentation_in_spaces,
     );
-    // @Question maybe also add a artificial line break to simplify parsing or would we still need to handle EOI special?
+    // @Question maybe also add a artificial line break to simplify parsing? @Bug bad span
+    lexer
+        .tokens
+        .push(SourceToken::new(Token::EndOfInput, Span::dummy()));
     Ok(())
 }
 

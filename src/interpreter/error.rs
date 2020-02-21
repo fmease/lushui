@@ -23,6 +23,7 @@ pub enum Error {
         actual: Expression,
     },
     // @Task replace with InvalidInstance and also reference said instance
+    // @Update use multispan/subdiagnostics (once we hook everything up correctly)
     InvalidConstructor {
         name: Identifier,
     },

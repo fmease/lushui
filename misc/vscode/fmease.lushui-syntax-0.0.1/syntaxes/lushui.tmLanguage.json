@@ -46,7 +46,7 @@
                     "name": "keyword.other.lushui"
                 },
                 {
-                    "match": "\\b(data|use|module|foreign)\\b",
+                    "match": "\\b(data|use|module|foreign|let)\\b",
                     "name": "storage.modifier.lushui"
                 },
                 {
@@ -58,7 +58,7 @@
                     "name": "keyword.control.lushui"
                 },
                 {
-                    "match": "\\b(Type|Nat)\\b",
+                    "match": "\\b(Type|Nat|Text)\\b",
                     "name": "storage.type.lushui"
                 },
                 {

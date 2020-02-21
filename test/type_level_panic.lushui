@@ -1,0 +1,3 @@
+foreign panic (|A: Type) (message: Text): A
+
+Natural: panic Type "crazy things happening here" = Nat

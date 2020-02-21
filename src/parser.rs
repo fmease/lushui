@@ -6,26 +6,101 @@
 //!
 //! * crude error locations
 //! * cannot really handle optional indentation and some legal EOIs
-//! * when prefix-parsing, we check twice e.g. in:
-//!   * [parse_declaration]
-//!   * [parse_expression]
-//!   * [expression::parse_case_analysis]
 
-mod context;
-mod error;
+// @Task @Beacon make parse_* methods of Parser
+
 mod identifier;
 
 use freestanding::freestanding;
 use std::fmt;
 
+use crate::diagnostic::Diagnostic;
 use crate::lexer::{self, TokenKind};
 use crate::span::Span;
 
-pub use context::Parser;
-pub use error::{Error, ErrorKind};
 pub use identifier::Identifier;
 
-use error::Result;
+// @Task use SourceFiles
+pub struct Parser<'i> {
+    tokens: &'i [lexer::SourceToken],
+    index: usize,
+}
+
+impl<'input> Parser<'input> {
+    /// Construct a new context with the pointer at the beginning.
+    pub fn new(tokens: &'input [lexer::SourceToken]) -> Self {
+        Self { tokens, index: 0 }
+    }
+}
+
+use std::convert::TryInto;
+
+// @Task document that they may panic if EndOfInput not correctly handled (bug)
+impl Parser<'_> {
+    /// Parse the source in a sandboxed context.
+    ///
+    /// Used for arbitrary look-ahead. Restores the old cursor on failure.
+    pub fn reflect<T>(&mut self, parser: fn(&mut Self) -> Result<T>) -> Result<T> {
+        let saved_index = self.index;
+        let result = parser(self);
+
+        if result.is_err() {
+            self.index = saved_index;
+        }
+
+        result
+    }
+
+    pub fn expect(&self, expected: lexer::TokenKind) -> Result<lexer::SourceToken> {
+        let token = self.token();
+        let actual = token.kind();
+        if actual == expected {
+            Ok(token)
+        } else {
+            Err(Diagnostic::fatal(
+                format!("expected {}, found {}", expected, actual),
+                token.span,
+            ))
+        }
+    }
+
+    pub fn consume(&mut self, token_kind: lexer::TokenKind) -> Result<lexer::SourceToken> {
+        let token = self.expect(token_kind)?;
+        self.advance();
+        Ok(token)
+    }
+
+    // @Task generalize
+    pub fn consume_identifier(&mut self) -> Result<Identifier> {
+        self.consume(lexer::TokenKind::Identifier)
+            .map(|token| token.try_into().unwrap())
+    }
+
+    pub fn advance(&mut self) {
+        self.index += 1;
+    }
+
+    pub fn token(&self) -> lexer::SourceToken {
+        self.tokens[self.index].clone()
+    }
+
+    pub fn current(&self, kind: lexer::TokenKind) -> bool {
+        self.tokens[self.index].kind() == kind
+    }
+
+    pub fn succeeding(&self, kind: lexer::TokenKind) -> bool {
+        self.tokens[self.index + 1].kind() == kind
+    }
+
+    pub fn consumed(&mut self, kind: lexer::TokenKind) -> bool {
+        if self.current(kind) {
+            self.advance();
+            true
+        } else {
+            false
+        }
+    }
+}
 
 pub use declaration::{parse_declaration, Declaration};
 
@@ -34,10 +109,7 @@ pub mod declaration {
     use super::*;
 
     /// The syntax node of a declaration.
-    // @Question will the spans on them even get used (for error messages)
-    // @Note in most cases, only the span of the binder or the type annotations contained within
-    // will be used, I guess
-    // @Task use #[common { span: Span }] once defined
+    //  @Task split into Declaration/DeclarationKind for improved Span-handling
     #[freestanding]
     #[streamline(Box)]
     #[derive(Debug)] // @Temporary
@@ -97,7 +169,7 @@ pub mod declaration {
     /// Declaration ::= Value_Declaration | Data_Declaration | Foreign_Declaration
     /// ```
     pub fn parse_declaration(parser: &mut Parser<'_>) -> Result<Declaration> {
-        let token = parser.current_token()?;
+        let token = parser.token();
 
         Ok(match token.kind() {
             TokenKind::Identifier => Declaration::Value(Box::new(parse_value_declaration(parser)?)),
@@ -106,10 +178,10 @@ pub mod declaration {
                 Declaration::Foreign(Box::new(parse_foreign_declaration(parser)?))
             }
             kind => {
-                return Err(Error {
-                    span: token.span,
-                    kind: ErrorKind::ExpectedDeclaration { actual: kind },
-                })
+                return Err(Diagnostic::fatal(
+                    format!("expected start of declaration, found {}", kind),
+                    token.span,
+                ))
             }
         })
     }
@@ -131,7 +203,7 @@ pub mod declaration {
         let expression = parse_possibly_indented_expression_followed_by_line_break(parser)?;
 
         Ok(Value {
-            span: binder.span.merge(expression.span()),
+            span: binder.span.merge(expression.span),
             binder,
             parameters,
             type_annotation,
@@ -173,11 +245,6 @@ pub mod declaration {
         })
     }
 
-    // @Task
-    fn _parse_module_declaration() -> Result<Module> {
-        unimplemented!()
-    }
-
     // @Temporary
     pub fn parse_file_module_no_header(parser: &mut Parser<'_>) -> Result<Module> {
         let mut declarations = Vec::<Declaration>::new();
@@ -188,7 +255,7 @@ pub mod declaration {
                 continue;
             }
 
-            if parser.at_the_end_of_input() {
+            if parser.consumed(TokenKind::EndOfInput) {
                 break Ok(Module {
                     // @Temporary span handling because this function itself is temporary @Bug Span::dummy()
                     span: (|| {
@@ -208,11 +275,6 @@ pub mod declaration {
         }
     }
 
-    // @Task
-    fn _parse_use_declaration() -> Result<Use> {
-        unimplemented!()
-    }
-
     /// Parse a foreign declaration.
     ///
     /// ## Grammar
@@ -229,7 +291,7 @@ pub mod declaration {
         parser.consume(TokenKind::LineBreak)?;
 
         Ok(Foreign {
-            span: span_of_keyword.merge(type_annotation.span()),
+            span: span_of_keyword.merge(type_annotation.span),
             binder,
             parameters,
             type_annotation,
@@ -254,7 +316,7 @@ pub mod declaration {
         parser.consume(TokenKind::LineBreak)?;
 
         Ok(Constructor {
-            span: binder.span.merge(type_annotation.span()),
+            span: binder.span.merge(type_annotation.span),
             binder,
             parameters,
             type_annotation,
@@ -322,66 +384,57 @@ pub mod declaration {
     }
 }
 
-pub use expression::{parse_expression, Expression, Path};
+pub use expression::{parse_expression, Expression, ExpressionKind, Path};
 
 /// The part of the parser concerned with expressions.
 pub mod expression {
     use super::*;
 
+    #[derive(Debug, Clone)]
+    pub struct Expression {
+        pub kind: ExpressionKind,
+        pub span: Span,
+    }
+
     /// The syntax node of an expression.
     #[freestanding]
     #[streamline(Box)]
-    // #[common { span: Span }]
     #[derive(Debug, Clone)]
-    pub enum Expression {
+    pub enum ExpressionKind {
         /// The syntax node of pi-type literals.
         PiTypeLiteral {
             binder: Option<Identifier>,
             parameter: Expression,
             expression: Expression,
             explicitness: Explicitness,
-            span: Span,
         },
         /// The syntax node of function application.
         Application {
             callee: Expression,
             argument: Expression,
             explicitness: Explicitness,
-            span: Span,
         },
-        TypeLiteral {
-            span: Span,
-        },
-        NatTypeLiteral {
-            span: Span,
-        },
+        TypeLiteral,
+        NatTypeLiteral,
         NatLiteral {
-            value: lexer::Nat,
-            span: Span,
+            value: crate::Nat,
         },
-        TextTypeLiteral {
-            span: Span,
-        },
+        TextTypeLiteral,
         TextLiteral {
             value: String,
-            span: Span,
         },
         // @Task make it able to parse complex paths
-        // @Update @Task replace Identifier, have the span at top-level, use atom instead
         Path {
             // @Task in the future: segments: Vec<Identifier>,
             segments: Identifier,
-            span: Span,
         },
         /// The syntax node of a lambda literal expression.
         LambdaLiteral {
             parameters: Parameters,
             body_type_annotation: Option<Expression>,
             body: Expression,
-            span: Span,
         },
         /// The syntax-node of a let-in expression.
-        // @Task rename the field `expression` to something more descriptive
         LetIn {
             binder: Identifier,
             parameters: Parameters,
@@ -389,64 +442,12 @@ pub mod expression {
             // @Task improve upon naming
             expression: Expression,
             scope: Expression,
-            span: Span,
         },
-        // @Task
-        UseIn {
-            span: Span,
-        },
+        UseIn,
         CaseAnalysis {
             expression: Expression,
             cases: Vec<CaseAnalysisCaseGroup>,
-            span: Span,
         },
-    }
-
-    /// Assertion that the size of [Expression] does not exceed 16 bytes.
-    ///
-    /// This type is used *very* often and the size of the different variants varies *greatly*.
-    /// Thus, everyone of them is boxed.
-    const _: () = assert!(std::mem::size_of::<Expression>() == 16);
-
-    // @Note should be generated automatically (by freestanding in the future)
-    impl Spanning for Expression {
-        /// Returns the span of an expression.
-        fn span(&self) -> Span {
-            match self {
-                Self::PiTypeLiteral(literal) => literal.span,
-                Self::Application(application) => application.span,
-                Self::TypeLiteral(literal) => literal.span,
-                Self::NatTypeLiteral(literal) => literal.span,
-                Self::NatLiteral(literal) => literal.span,
-                Self::TextTypeLiteral(literal) => literal.span,
-                Self::TextLiteral(literal) => literal.span,
-                Self::Path(path) => path.span,
-                Self::LambdaLiteral(literal) => literal.span,
-                Self::LetIn(let_in) => let_in.span,
-                Self::UseIn(use_in) => use_in.span,
-                Self::CaseAnalysis(case_analysis) => case_analysis.span,
-            }
-        }
-
-        /// Returns a unique reference to the span of a node.
-        ///
-        /// Allows adjusting the span of a node after the fact which is quite handy in certain situations.
-        fn span_mut(&mut self) -> &mut Span {
-            match self {
-                Self::PiTypeLiteral(literal) => &mut literal.span,
-                Self::Application(application) => &mut application.span,
-                Self::TypeLiteral(literal) => &mut literal.span,
-                Self::NatTypeLiteral(literal) => &mut literal.span,
-                Self::NatLiteral(literal) => &mut literal.span,
-                Self::TextTypeLiteral(literal) => &mut literal.span,
-                Self::TextLiteral(literal) => &mut literal.span,
-                Self::Path(path) => &mut path.span,
-                Self::LambdaLiteral(literal) => &mut literal.span,
-                Self::LetIn(let_in) => &mut let_in.span,
-                Self::UseIn(use_in) => &mut use_in.span,
-                Self::CaseAnalysis(case_analysis) => &mut case_analysis.span,
-            }
-        }
     }
 
     /// Parse an expression.
@@ -457,14 +458,12 @@ pub mod expression {
     /// Expression ::= Let_In | Lambda_Literal | Case_Analysis | Pi_Literal_Or_Lower
     /// ```
     pub fn parse_expression(parser: &mut Parser<'_>) -> Result<Expression> {
-        let token = parser.current_token()?;
+        let token = parser.token();
 
         Ok(match token.kind() {
-            TokenKind::Let => Expression::LetIn(Box::new(parse_let_in(parser)?)),
-            TokenKind::Backslash => {
-                Expression::LambdaLiteral(Box::new(parse_lambda_literal(parser)?))
-            }
-            TokenKind::Case => Expression::CaseAnalysis(Box::new(parse_case_analysis(parser)?)),
+            TokenKind::Let => finish_parse_let_in(parser, token.span)?,
+            TokenKind::Backslash => finish_parse_lambda_literal(parser, token.span)?,
+            TokenKind::Case => finish_parse_case_analysis(parser, token.span)?,
             _ => return parse_pi_type_literal_or_lower(parser),
         })
     }
@@ -495,20 +494,21 @@ pub mod expression {
                 // @Question do we need reflect here?
                 parser
                     .reflect(parse_application_or_lower)
-                    .map(|parameter| (parameter.span(), Explicitness::Explicit, None, parameter))
+                    .map(|parameter| (parameter.span, Explicitness::Explicit, None, parameter))
             })?;
 
         Ok(match parser.consume(TokenKind::ThinArrow) {
             Ok(_) => {
                 let expression = parser.reflect(parse_pi_type_literal_or_lower)?;
 
-                Expression::PiTypeLiteral(Box::new(expression::PiTypeLiteral {
-                    span: span_at_the_beginning.merge(expression.span()),
-                    expression,
-                    binder,
-                    parameter,
-                    explicitness,
-                }))
+                expr! {
+                    PiTypeLiteral[span_at_the_beginning.merge(expression.span)] {
+                        expression,
+                        binder,
+                        parameter,
+                        explicitness,
+                    }
+                }
             }
             Err(_) if binder.is_none() => parameter,
             Err(error) => return Err(error),
@@ -534,12 +534,13 @@ pub mod expression {
                 Ok((expression, Explicitness::Implicit))
             })
         {
-            expression = Expression::Application(Box::new(expression::Application {
-                span: expression.span().merge(argument.span()),
-                callee: expression,
-                argument,
-                explicitness,
-            }));
+            expression = expr! {
+                Application[expression.span.merge(argument.span)] {
+                    callee: expression,
+                    argument,
+                    explicitness,
+                }
+            };
         }
         Ok(expression)
     }
@@ -557,136 +558,139 @@ pub mod expression {
     fn parse_lower_expression(parser: &mut Parser<'_>) -> Result<Expression> {
         parser
             .reflect(parse_path)
-            .map(|path| Expression::Path(Box::new(path)))
-            .or_else(|_: Error| {
-                Ok(Expression::TypeLiteral(Box::new(parse_type_literal(
-                    parser,
-                )?)))
-            })
-            .or_else(|_: Error| {
-                Ok(Expression::NatTypeLiteral(Box::new(
-                    parse_nat_type_literal(parser)?,
-                )))
-            })
-            .or_else(|_: Error| Ok(Expression::NatLiteral(Box::new(parse_nat_literal(parser)?))))
-            .or_else(|_: Error| {
-                Ok(Expression::TextTypeLiteral(Box::new(
-                    parse_text_type_literal(parser)?,
-                )))
-            })
-            .or_else(|_: Error| {
-                Ok(Expression::TextLiteral(Box::new(parse_text_literal(
-                    parser,
-                )?)))
-            })
-            .or_else(|_: Error| parse_bracketed(parser, parse_expression))
+            .or_else(|_| parse_type_literal(parser))
+            .or_else(|_| parse_nat_type_literal(parser))
+            .or_else(|_| parse_nat_literal(parser))
+            .or_else(|_| parse_text_type_literal(parser))
+            .or_else(|_| parse_text_literal(parser))
+            .or_else(|_| parse_bracketed(parser, parse_expression))
     }
 
     // Type_Literal ::= %type literal%
-    fn parse_type_literal(parser: &mut Parser<'_>) -> Result<TypeLiteral> {
+    fn parse_type_literal(parser: &mut Parser<'_>) -> Result<Expression> {
         parser
             .consume(TokenKind::Type)
-            .map(|token| TypeLiteral { span: token.span })
+            .map(|token| expr! { TypeLiteral[token.span] })
     }
 
-    fn parse_nat_type_literal(parser: &mut Parser<'_>) -> Result<NatTypeLiteral> {
+    fn parse_nat_type_literal(parser: &mut Parser<'_>) -> Result<Expression> {
         parser
             .consume(TokenKind::Nat)
-            .map(|token| NatTypeLiteral { span: token.span })
+            .map(|token| expr! { NatTypeLiteral[token.span] })
     }
 
-    fn parse_nat_literal(parser: &mut Parser<'_>) -> Result<NatLiteral> {
+    pub fn parse_nat_literal(parser: &mut Parser<'_>) -> Result<Expression> {
         // @Note ugly match+unreachable, directly relates to consume/consume_identifier-issue mentioned above
-        parser
-            .consume(TokenKind::NatLiteral)
-            .map(|token| NatLiteral {
-                value: match token.inner {
-                    lexer::Token::NatLiteral(value) => value,
-                    _ => unreachable!(),
-                },
-                span: token.span,
-            })
-    }
-
-    fn parse_text_type_literal(parser: &mut Parser<'_>) -> Result<TextTypeLiteral> {
-        parser
-            .consume(TokenKind::Text)
-            .map(|token| TextTypeLiteral { span: token.span })
-    }
-
-    fn parse_text_literal(parser: &mut Parser<'_>) -> Result<TextLiteral> {
-        // @Note ugly match+unreachable, directly relates to consume/consume_identifier-issue mentioned above
-        parser
-            .consume(TokenKind::TextLiteral)
-            .map(|token| TextLiteral {
-                value: match token.inner {
-                    lexer::Token::TextLiteral(value) => value,
-                    _ => unreachable!(),
-                },
-                span: token.span,
-            })
-    }
-
-    // Path ::= %identifier%
-    fn parse_path(parser: &mut Parser<'_>) -> Result<Path> {
-        parser.consume_identifier().map(|identifier| Path {
-            span: identifier.span,
-            segments: identifier,
+        parser.consume(TokenKind::NatLiteral).map(|token| {
+            expr! {
+                NatLiteral[token.span] {
+                    value: match token.inner {
+                        lexer::Token::NatLiteral(value) => value,
+                        _ => unreachable!(),
+                    },
+                }
+            }
         })
     }
 
-    /// Parse a lambda literal expression.a
+    fn parse_text_type_literal(parser: &mut Parser<'_>) -> Result<Expression> {
+        parser
+            .consume(TokenKind::Text)
+            .map(|token| expr! { TextTypeLiteral[token.span] })
+    }
+
+    fn parse_text_literal(parser: &mut Parser<'_>) -> Result<Expression> {
+        // @Note ugly match+unreachable, directly relates to consume/consume_identifier-issue mentioned above
+        parser.consume(TokenKind::TextLiteral).map(|token| {
+            expr! {
+                TextLiteral[token.span] {
+                    value: match token.inner {
+                        lexer::Token::TextLiteral(value) => value,
+                        _ => unreachable!(),
+                    },
+                }
+            }
+        })
+    }
+
+    // Path ::= %identifier%
+    fn parse_path(parser: &mut Parser<'_>) -> Result<Expression> {
+        parser.consume_identifier().map(|identifier| {
+            expr! {
+                Path[identifier.span] {
+                    segments: identifier,
+                }
+            }
+        })
+    }
+
+    /// Finish parsing a lambda literal expression.a
+    ///
+    /// The initial `\` ought to be consumed beforehand.
     ///
     /// ## Grammar
     ///
     /// ```text
     /// Lambda_Literal ::= "\" Parameters Type_Annotation? "=>" Expression
     /// ```
-    fn parse_lambda_literal(parser: &mut Parser<'_>) -> Result<LambdaLiteral> {
-        let span_of_backslash = parser.consume(TokenKind::Backslash)?.span;
+    fn finish_parse_lambda_literal(
+        parser: &mut Parser<'_>,
+        span_of_backslash: Span,
+    ) -> Result<Expression> {
         let parameters = parser.reflect(parse_parameters)?;
         let body_type_annotation = parser.reflect(parse_type_annotation).ok();
         parser.consume(TokenKind::WideArrow)?;
         let body = parser.reflect(parse_expression)?;
 
-        Ok(LambdaLiteral {
-            parameters,
-            body_type_annotation,
-            span: span_of_backslash.merge(body.span()),
-            body,
+        Ok(expr! {
+            LambdaLiteral[span_of_backslash.merge(body.span)] {
+                parameters,
+                body_type_annotation,
+                body,
+            }
         })
     }
 
-    /// Parse an let-in expression.
+    /// Finish parsing an let-in expression.
+    ///
+    /// The initial `let` ought to be consumed beforehand.
     ///
     /// ## Grammar
     ///
     /// ```text
     /// Let_In ::= "'let" Identifier Parameters Type_Annotation? "=" Expression "'in" Expression
     /// ```
-    fn parse_let_in(parser: &mut Parser<'_>) -> Result<LetIn> {
-        let let_keyword = parser.consume(TokenKind::Let)?;
+    fn finish_parse_let_in(parser: &mut Parser<'_>, span_of_let: Span) -> Result<Expression> {
         let binder = parser.consume_identifier()?;
         let parameters = parser.reflect(parse_parameters)?;
         let type_annotation = parser.reflect(parse_type_annotation).ok();
         parser.consume(TokenKind::Equals)?;
         let expression = parser.reflect(parse_expression)?;
         parser.consume(TokenKind::In)?;
+        // @Bug commented code does not work as expected (says: unexpected dedentation)
+        // let scope = parser.reflect(parse_possibly_indented_expression_followed_by_line_break)?;
         let scope = parser.reflect(parse_expression)?;
-        Ok(LetIn {
-            binder,
-            parameters,
-            type_annotation,
-            expression,
-            span: let_keyword.span.merge(scope.span()),
-            scope,
+
+        Ok(expr! {
+            LetIn[span_of_let.merge(scope.span)] {
+                binder,
+                parameters,
+                type_annotation,
+                expression,
+                scope,
+            }
         })
     }
 
+    /// Finish parsing a case analysis expression.
+    ///
+    /// The initial `case` ought to be consumed beforehand.
     // @Note grammar is out-of-sync in respect to line breaks
     // Case_Analysis ::= "'case" Expression Line_Break Case_Analysis_Case_Group*
-    fn parse_case_analysis(parser: &mut Parser<'_>) -> Result<CaseAnalysis> {
-        let span_of_keyword = parser.consume(TokenKind::Case)?.span;
+    fn finish_parse_case_analysis(
+        parser: &mut Parser<'_>,
+        span_of_case: Span,
+    ) -> Result<Expression> {
         let expression = parse_expression_followed_by_line_break(parser)?;
 
         let mut cases = Vec::new();
@@ -701,21 +705,22 @@ pub mod expression {
             }
         }
 
-        Ok(CaseAnalysis {
-            span: span_of_keyword.merge(
+        Ok(expr! {
+            CaseAnalysis[span_of_case.merge(
                 cases
                     .last()
-                    .map(|case_group| case_group.expression.span())
-                    .unwrap_or_else(|| expression.span()),
-            ),
-            expression,
-            cases,
+                    .map(|case_group| case_group.expression.span)
+                    .unwrap_or_else(|| expression.span),
+            )] {
+                expression,
+                cases,
+            }
         })
     }
 
     #[derive(Debug, Clone)]
     pub struct CaseAnalysisCaseGroup {
-        pub patterns: Vec<Pattern>,
+        pub patterns: Vec<pattern::Pattern>,
         pub expression: Expression,
     }
 
@@ -724,7 +729,7 @@ pub mod expression {
         let mut patterns = Vec::new();
 
         parser.consume(TokenKind::Of)?;
-        patterns.push(parse_pattern(parser)?);
+        patterns.push(pattern::parse_pattern(parser)?);
 
         loop {
             if parser.consumed(TokenKind::WideArrow) {
@@ -732,95 +737,13 @@ pub mod expression {
             }
 
             parser.consume(TokenKind::Of)?;
-            patterns.push(parse_pattern(parser)?);
+            patterns.push(pattern::parse_pattern(parser)?);
         }
 
         Ok(CaseAnalysisCaseGroup {
             patterns,
             expression: parse_expression(parser)?,
         })
-    }
-
-    // @Task box variants to reduce size of nat patterns
-    #[derive(Debug, Clone)]
-    pub enum Pattern {
-        NatLiteral(NatLiteral),
-        Path {
-            path: Path,
-            type_annotation: Option<Expression>,
-            span: Span,
-        },
-        Application {
-            callee: Box<Pattern>,
-            argument: Box<Pattern>,
-            span: Span,
-        },
-    }
-
-    impl Spanning for Pattern {
-        fn span(&self) -> Span {
-            match self {
-                Self::NatLiteral(literal) => literal.span,
-                Self::Path { path, .. } => path.span,
-                Self::Application { span, .. } => *span,
-            }
-        }
-
-        fn span_mut(&mut self) -> &mut Span {
-            match self {
-                Self::NatLiteral(literal) => &mut literal.span,
-                Self::Path { path, .. } => &mut path.span,
-                Self::Application { ref mut span, .. } => span,
-            }
-        }
-    }
-
-    // Pattern ::= Lower_Pattern+
-    // @Task verfiy
-    fn parse_pattern(parser: &mut Parser<'_>) -> Result<Pattern> {
-        let mut callee = parser.reflect(parse_lower_pattern)?;
-
-        while let Ok(argument) = parser.reflect(parse_lower_pattern) {
-            callee = Pattern::Application {
-                span: callee.span().merge(argument.span()),
-                callee: Box::new(callee),
-                argument: Box::new(argument),
-            };
-        }
-        Ok(callee)
-    }
-
-    // @Task Lower_Pattern ::= Nat_Literal | "(" Path Type_Annotation? ")" | Path | "(" Pattern ")"
-    // @Task verify
-    // @Bug or_else(_) produces bad error messages
-    fn parse_lower_pattern(parser: &mut Parser<'_>) -> Result<Pattern> {
-        parse_nat_literal(parser)
-            .map(Pattern::NatLiteral)
-            .or_else(|_| {
-                let (span, path, type_annotation) =
-                    if let Ok(opening_bracket) = parser.consume(TokenKind::OpeningRoundBracket) {
-                        let path = parser.reflect(parse_path)?;
-                        let type_annotation = parser.reflect(parse_type_annotation)?;
-                        let span_of_closing_bracket =
-                            parser.consume(TokenKind::ClosingRoundBracket)?.span;
-
-                        (
-                            opening_bracket.span.merge(span_of_closing_bracket),
-                            path,
-                            Some(type_annotation),
-                        )
-                    } else {
-                        let path = parser.reflect(parse_path)?;
-                        (path.span, path, None)
-                    };
-
-                Ok(Pattern::Path {
-                    path,
-                    span,
-                    type_annotation,
-                })
-            })
-            .or_else(|_: Error| parse_bracketed(parser, parse_pattern))
     }
 
     pub type Parameters = Vec<ParameterGroup>;
@@ -882,6 +805,120 @@ pub mod expression {
             })
             .or_else(|_| parse_optionally_annotated_parameter_group(parser))
     }
+
+    macro expr {
+        ($kind:ident[$span:expr] { $( $body:tt )+ }) => {
+            Expression {
+                span: $span,
+                kind: ExpressionKind::$kind(Box::new($kind { $( $body )+ })),
+            }
+        },
+        ($kind:ident[$span:expr]) => {
+            Expression {
+                span: $span,
+                kind: ExpressionKind::$kind,
+            }
+        }
+    }
+}
+
+pub use pattern::{Pattern, PatternKind};
+
+pub mod pattern {
+    use super::*;
+
+    #[derive(Debug, Clone)]
+    pub struct Pattern {
+        pub kind: PatternKind,
+        pub span: Span,
+    }
+
+    #[freestanding]
+    #[streamline(Box)]
+    #[derive(Debug, Clone)]
+    pub enum PatternKind {
+        NatLiteral {
+            value: crate::Nat,
+        },
+        Path {
+            segments: Identifier,
+            type_annotation: Option<Expression>,
+        },
+        Application {
+            callee: Pattern,
+            argument: Pattern,
+        },
+    }
+
+    // Pattern ::= Lower_Pattern+
+    pub(super) fn parse_pattern(parser: &mut Parser<'_>) -> Result<Pattern> {
+        let mut callee = parser.reflect(parse_lower_pattern)?;
+
+        while let Ok(argument) = parser.reflect(parse_lower_pattern) {
+            callee = pat! {
+                Application[callee.span.merge(argument.span)] {
+                    callee,
+                    argument,
+                }
+            };
+        }
+        Ok(callee)
+    }
+
+    // @Task Lower_Pattern ::= Nat_Literal | "(" Path Type_Annotation? ")" | Path | "(" Pattern ")"
+    // @Bug or_else(_) produces bad error messages
+    fn parse_lower_pattern(parser: &mut Parser<'_>) -> Result<Pattern> {
+        parse_nat_literal(parser)
+            .or_else(|_| {
+                let (span, identifier, type_annotation) =
+                    if let Ok(opening_bracket) = parser.consume(TokenKind::OpeningRoundBracket) {
+                        let path = parser.consume_identifier()?;
+                        let type_annotation = parser.reflect(parse_type_annotation)?;
+                        let span_of_closing_bracket =
+                            parser.consume(TokenKind::ClosingRoundBracket)?.span;
+
+                        (
+                            opening_bracket.span.merge(span_of_closing_bracket),
+                            path,
+                            Some(type_annotation),
+                        )
+                    } else {
+                        let identifier = parser.consume_identifier()?;
+                        (identifier.span, identifier, None)
+                    };
+
+                Ok(pat! {
+                    Path[span] {
+                        segments: identifier,
+                        type_annotation,
+                    }
+                })
+            })
+            .or_else(|_: Diagnostic| parse_bracketed(parser, parse_pattern))
+    }
+
+    fn parse_nat_literal(parser: &mut Parser<'_>) -> Result<Pattern> {
+        // @Note ugly match+unreachable, directly relates to consume/consume_identifier-issue mentioned above
+        parser.consume(TokenKind::NatLiteral).map(|token| {
+            pat! {
+                NatLiteral[token.span] {
+                    value: match token.inner {
+                        lexer::Token::NatLiteral(value) => value,
+                        _ => unreachable!(),
+                    },
+                }
+            }
+        })
+    }
+
+    macro pat {
+        ($kind:ident[$span:expr] { $( $body:tt )+ }) => {
+            Pattern {
+                span: $span,
+                kind: PatternKind::$kind(Box::new($kind { $( $body )+ })),
+            }
+        }
+    }
 }
 
 /// Parse a type annotation.
@@ -912,13 +949,14 @@ fn parse_possibly_indented_expression_followed_by_line_break(
     }
 }
 
-// @Note temporary generalize
+// @Note temporary, generalize
 fn parse_expression_followed_by_line_break(parser: &mut Parser<'_>) -> Result<Expression> {
     let expression = parse_expression(parser)?;
     parser.consume(TokenKind::LineBreak)?;
     Ok(expression)
 }
 
+// @Note imo stupid generalization, improve
 fn parse_bracketed<T: Spanning>(
     parser: &mut Parser<'_>,
     subparser: fn(&mut Parser<'_>) -> Result<T>,
@@ -927,7 +965,7 @@ fn parse_bracketed<T: Spanning>(
     // @Question reflect necessary?
     let mut inner = parser.reflect(subparser)?;
     let span_of_closing_bracket = parser.consume(TokenKind::ClosingRoundBracket)?.span;
-    *inner.span_mut() = span_of_opening_bracket.merge(span_of_closing_bracket);
+    *inner.span() = span_of_opening_bracket.merge(span_of_closing_bracket);
     Ok(inner)
 }
 
@@ -939,16 +977,27 @@ fn consume_explicitness_symbol(parser: &mut Parser<'_>) -> Explicitness {
 }
 
 trait Spanning {
-    fn span(&self) -> Span;
-    fn span_mut(&mut self) -> &mut Span;
+    fn span(&mut self) -> &mut Span;
+}
+
+impl Spanning for Expression {
+    fn span(&mut self) -> &mut Span {
+        &mut self.span
+    }
+}
+
+impl Spanning for Pattern {
+    fn span(&mut self) -> &mut Span {
+        &mut self.span
+    }
 }
 
 /// The explicitness of a parameter or argument.
 ///
-/// In the parser of parameters, this specifies whether in an application, the corresponding argument has
+/// In the context of parameters, this specifies whether in an application, the corresponding argument has
 /// to be passed explicitly or should be infered, i.e. the parameter is [Explicitness::Implicit].
 ///
-/// In the parser of applications, [Explicitness::Implicit] means that the argument is passed explicitly
+/// In the context of applications, [Explicitness::Implicit] means that the argument is passed explicitly
 /// even though the parameter is marked implicit.
 #[derive(Clone, Copy, Debug)]
 pub enum Explicitness {
@@ -964,3 +1013,5 @@ impl fmt::Display for Explicitness {
         }
     }
 }
+
+pub type Result<T, E = Diagnostic> = std::result::Result<T, E>;

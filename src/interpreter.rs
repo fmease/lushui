@@ -435,6 +435,8 @@ pub fn infer_type(expression: Expression, scope: &FunctionScope<'_>) -> Result<h
     })
 }
 
+use std::collections::VecDeque;
+
 /// Try to evaluate an expression.
 ///
 /// This is beta-reduction I think.
@@ -463,13 +465,18 @@ pub fn evaluate(expression: Expression, scope: &FunctionScope<'_>) -> Result<Exp
                     ),
                     scope,
                 )?,
-                Expression::Path(path) if scope.is_foreign(&path.identifier) => {
-                    scope.try_applying_foreign_binding(&path.identifier, vec![argument])?
-                }
+                // @Bug currentky not checked that it does not contain any parameters/is a non-value/is not
+                // FFI-compatible
+                Expression::Path(path) if scope.is_foreign(&path.identifier) => scope
+                    .try_apply_foreign_binding(dbg!(&path.identifier), {
+                        let mut arguments = VecDeque::with_capacity(1);
+                        arguments.push_back(argument);
+                        arguments
+                    })?,
                 Expression::UnsaturatedForeignApplication(application) => scope
-                    .try_applying_foreign_binding(&application.callee, {
+                    .try_apply_foreign_binding(&application.callee, {
                         let mut arguments = application.arguments.clone();
-                        arguments.push(argument);
+                        arguments.push_back(argument);
                         arguments
                     })?,
                 expression => expr! {

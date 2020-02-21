@@ -12,7 +12,12 @@ use super::{Error, Result};
 pub use module::ModuleScope;
 
 mod module {
-    use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
+    use std::{
+        cell::RefCell,
+        collections::{HashMap, VecDeque},
+        fmt,
+        rc::Rc,
+    };
 
     use super::{ffi, Error, FunctionScope, Result};
     use crate::hir::{expr, Expression, Identifier};
@@ -164,10 +169,10 @@ mod module {
         /// ## Panics
         ///
         /// Panics if `binder` is either not bound or not foreign.
-        pub fn try_applying_foreign_binding(
+        pub fn try_apply_foreign_binding(
             self,
             binder: &Identifier,
-            arguments: Vec<Expression>,
+            arguments: VecDeque<Expression>,
         ) -> Result<Expression> {
             match self.clone().bindings.borrow()[binder] {
                 Entity::Foreign {
@@ -178,7 +183,7 @@ mod module {
                         // @Question should we run `infer_type` over it as well? I think so
                         // @Task match_with_annotated_type
                         let function_scope = FunctionScope::new(self);
-                        evaluate(function(&arguments), &function_scope)
+                        evaluate(function(arguments), &function_scope)
                     } else {
                         Ok(expr! {
                             UnsaturatedForeignApplication {
@@ -344,6 +349,8 @@ mod function {
     use super::{ModuleScope, Result};
     use crate::hir::{Expression, Identifier};
 
+    use std::collections::VecDeque;
+
     /// And entity found in a function scope.
     ///
     /// Right now, that's solely parameters but this might be extended to have the two variants
@@ -456,16 +463,17 @@ mod function {
         /// ## Panics
         ///
         /// Panics if `binder` is either not bound or not foreign.
-        pub fn try_applying_foreign_binding(
+        // @Beacon @Beacon @Bug tries to apply neutral terms to foreign
+        pub fn try_apply_foreign_binding(
             &self,
             binder: &Identifier,
-            arguments: Vec<Expression>,
+            arguments: VecDeque<Expression>,
         ) -> Result<Expression> {
             match &self.inner {
-                Inner::Module(module) => module
-                    .clone()
-                    .try_applying_foreign_binding(binder, arguments),
-                Inner::Function { .. } => unreachable!(),
+                Inner::Module(module) => {
+                    module.clone().try_apply_foreign_binding(binder, arguments)
+                }
+                Inner::Function { .. } => panic!(),
             }
         }
     }

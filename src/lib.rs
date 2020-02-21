@@ -13,10 +13,12 @@
 #![forbid(rust_2018_idioms, unused_must_use)]
 
 pub mod diagnostic;
-pub mod error;
 pub mod hir;
 pub mod interpreter;
 pub mod lexer;
 pub mod parser;
 pub mod resolver;
 pub mod span;
+
+use num_bigint::BigUint as Nat;
+use string_cache::DefaultAtom as Atom;

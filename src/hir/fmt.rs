@@ -34,16 +34,15 @@ impl Display for Declaration {
             Self::Module { declarations } => {
                 f.write_str("module =\n")?;
                 for declaration in declarations {
-                    writeln!(f, "{}", declaration)?;
+                    writeln!(f, "    {}", declaration)?;
                 }
                 Ok(())
             }
             Self::Use => todo!(),
-            // @Task @Beacon
             Self::Foreign {
-                binder: _,
-                type_annotation: _,
-            } => todo!(),
+                binder,
+                type_annotation,
+            } => write!(f, "foreign {}: {}", binder, type_annotation),
         }
     }
 }

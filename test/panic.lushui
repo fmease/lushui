@@ -1,6 +1,6 @@
-foreign panic (A: Type) (message: Nat): A
+foreign panic (A: Type) (message: Text): A
 
 data Unit: Type =
     Unit': Unit
 
-main: Unit = panic Unit 73111222
+main: Unit = panic Unit "this is not going well"

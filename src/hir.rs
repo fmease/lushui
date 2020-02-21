@@ -129,6 +129,8 @@ pub use expression::{lower_expression, Expression};
 pub mod expression {
     use super::*;
 
+    use std::collections::VecDeque;
+
     // @Beacon @Beacon @Task add span information!!! @Note @Beacon now, we are in the HIR,
     // there might not be any span information if synthesize HIR nodes (common thing probably)
     // @Note we can also think about **interning** Expressions but not sure if a good idea
@@ -150,7 +152,7 @@ pub mod expression {
         TypeLiteral,
         NatTypeLiteral,
         NatLiteral {
-            value: crate::lexer::Nat,
+            value: crate::Nat,
         },
         TextTypeLiteral,
         TextLiteral {
@@ -173,7 +175,7 @@ pub mod expression {
         },
         UnsaturatedForeignApplication {
             callee: Identifier,
-            arguments: Vec<Expression>,
+            arguments: VecDeque<Expression>,
         },
     }
 
@@ -181,9 +183,9 @@ pub mod expression {
 
     /// Lower an expression from AST to HIR.
     pub fn lower_expression(expression: parser::Expression) -> Expression {
-        use parser::Expression::*;
+        use parser::ExpressionKind::*;
 
-        match expression {
+        match expression.kind {
             PiTypeLiteral(literal) => expr! {
                 PiTypeLiteral {
                     parameter: literal.binder.clone().map(Identifier::Plain),
@@ -199,14 +201,14 @@ pub mod expression {
                     explicitness: application.explicitness,
                 }
             },
-            TypeLiteral(_literal) => Expression::TypeLiteral,
-            NatTypeLiteral(_literal) => Expression::NatTypeLiteral,
+            TypeLiteral => Expression::TypeLiteral,
+            NatTypeLiteral => Expression::NatTypeLiteral,
             NatLiteral(literal) => expr! {
                 NatLiteral {
                     value: literal.value,
                 }
             },
-            TextTypeLiteral(_literal) => Expression::TextTypeLiteral,
+            TextTypeLiteral => Expression::TextTypeLiteral,
             TextLiteral(literal) => expr! {
                 TextLiteral {
                     value: literal.value,
@@ -279,7 +281,9 @@ pub mod expression {
                                 // @Note we cannot simply lower parameters and a type annotation because
                                 // in the chain (`->`) of parameters, there might always be one missing and
                                 // we don't support partial type annotations yet (using `'_`)
-                                parameter_type_annotation: None,
+                                // @Temporary @Update @Bug -gy because we ignore above message
+                                // @Task verify correct semantics
+                                parameter_type_annotation: type_annotation.next(),
                                 explicitness: Explicitness::Explicit,
                                 body_type_annotation: None,
                                 body: lower_expression(let_in.scope),
@@ -290,7 +294,7 @@ pub mod expression {
                     }
                 }
             }
-            UseIn(_use_in) => todo!(),
+            UseIn => todo!(),
             CaseAnalysis(case_analysis) => {
                 let mut cases = Vec::new();
 
@@ -355,26 +359,20 @@ pub mod expression {
     /// Lower a pattern from AST to HIR.
     ///
     /// Currently, [parser::expression::Pattern] and [Pattern] are identical (apart from forgetting span information)!
-    fn lower_pattern(pattern: parser::expression::Pattern) -> Pattern {
-        match pattern {
-            parser::expression::Pattern::NatLiteral(literal) => Pattern::NatLiteral(NatLiteral {
+    fn lower_pattern(pattern: parser::Pattern) -> Pattern {
+        match pattern.kind {
+            parser::PatternKind::NatLiteral(literal) => Pattern::NatLiteral(NatLiteral {
                 value: literal.value,
             }),
-            parser::expression::Pattern::Path {
-                path,
-                type_annotation,
-                ..
-            } => Pattern::Path {
+            parser::PatternKind::Path(path) => Pattern::Path {
                 path: Path {
                     identifier: Identifier::Plain(path.segments),
                 },
-                type_annotation: type_annotation.map(lower_expression),
+                type_annotation: path.type_annotation.map(lower_expression),
             },
-            parser::expression::Pattern::Application {
-                callee, argument, ..
-            } => Pattern::Application {
-                callee: Rc::new(lower_pattern(*callee)),
-                argument: Rc::new(lower_pattern(*argument)),
+            parser::PatternKind::Application(application) => Pattern::Application {
+                callee: Rc::new(lower_pattern(application.callee)),
+                argument: Rc::new(lower_pattern(application.argument)),
             },
         }
     }

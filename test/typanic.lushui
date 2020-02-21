@@ -1,4 +1,0 @@
-foreign panic (|A: Type) (message: Nat): A
-
-Natural: panic Type 0303 = Nat
-

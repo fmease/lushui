@@ -25,7 +25,7 @@ impl Identifier {
 
     fn plain(identifier: &str) -> parser::Identifier {
         parser::Identifier {
-            atom: crate::lexer::Atom::from(identifier),
+            atom: crate::Atom::from(identifier),
             // @Bug ugly, error-prone
             span: Span::dummy(),
         }

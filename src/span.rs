@@ -1,13 +1,9 @@
-use std::{
-    convert::TryInto,
-    path::{Path, PathBuf},
-    rc::Rc,
-};
+use std::{convert::TryInto, path::PathBuf, rc::Rc};
 
 /// Global byte index.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct ByteIndex {
-    pub value: u32,
+    value: u32,
 }
 
 impl ByteIndex {
@@ -22,11 +18,11 @@ impl ByteIndex {
     /// Panics on addition overflow.
     pub fn from_local(source: &SourceFile, index: LocalByteIndex) -> Self {
         Self {
-            value: source.span.start().value + index.value,
+            value: source.span.start.value + index.value,
         }
     }
 
-    pub fn try_add_offset(self, offset: u32) -> Result<Self> {
+    fn try_add_offset(self, offset: u32) -> Result<Self> {
         let sum = self
             .value
             .checked_add(offset)
@@ -34,34 +30,36 @@ impl ByteIndex {
 
         Ok(Self::new(sum))
     }
-
-    // @Temporary
-    pub fn try_add_negative_offset(self, offset: u32) -> Result<Self> {
-        let sum = self
-            .value
-            .checked_sub(offset)
-            .ok_or(Error::OffsetOverflow)?;
-
-        Ok(Self::new(sum))
-    }
 }
 
 /// File-local byte index.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub struct LocalByteIndex {
     value: u32,
 }
 
 impl LocalByteIndex {
+    pub fn new(index: u32) -> Self {
+        Self { value: index }
+    }
+
     /// Create new file-local byte index.
     ///
     /// ## Panics
     ///
     /// Panics if `index` does not fit into `u32`.
-    pub fn new(index: usize) -> Self {
-        Self {
-            value: index.try_into().unwrap(),
-        }
+    pub fn from_usize(index: usize) -> Self {
+        Self::new(index.try_into().unwrap())
+    }
+
+    pub fn from_global(source: &SourceFile, index: ByteIndex) -> Self {
+        Self::new(index.value - source.span.start.value)
+    }
+}
+
+impl From<LocalByteIndex> for usize {
+    fn from(index: LocalByteIndex) -> Self {
+        index.value as _
     }
 }
 
@@ -70,24 +68,28 @@ use std::ops::{Add, Sub};
 impl Add<usize> for LocalByteIndex {
     type Output = Self;
 
-    fn add(self, offset: usize) -> Self {
-        Self {
-            value: self.value + LocalByteIndex::new(offset).value,
-        }
+    fn add(self, offset: usize) -> Self::Output {
+        Self::new(self.value + LocalByteIndex::from_usize(offset).value)
+    }
+}
+
+impl Sub for LocalByteIndex {
+    type Output = Self;
+
+    fn sub(self, other: Self) -> Self::Output {
+        Self::new(self.value - other.value)
     }
 }
 
 impl Sub<usize> for LocalByteIndex {
     type Output = Self;
 
-    fn sub(self, offset: usize) -> Self {
-        Self {
-            value: self.value - LocalByteIndex::new(offset).value,
-        }
+    fn sub(self, offset: usize) -> Self::Output {
+        self - LocalByteIndex::from_usize(offset)
     }
 }
 
-/// Absolute byte span of source code.
+/// Global byte span of source code.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Span {
     start: ByteIndex,
@@ -95,40 +97,22 @@ pub struct Span {
 }
 
 impl Span {
-    pub fn new(start: ByteIndex, end: ByteIndex) -> Span {
+    pub fn new(start: ByteIndex, end: ByteIndex) -> Self {
         debug_assert!(start <= end);
 
         Self { start, end }
     }
 
-    pub fn from_local(source: &SourceFile, start: LocalByteIndex, end: LocalByteIndex) -> Self {
+    pub fn from_local(source: &SourceFile, span: LocalSpan) -> Self {
         Self::new(
-            ByteIndex::from_local(source, start),
-            ByteIndex::from_local(source, end),
+            ByteIndex::from_local(source, span.start),
+            ByteIndex::from_local(source, span.end),
         )
     }
 
-    // @Bug @Temporary actually links to a possibly valid line
     pub fn dummy() -> Self {
-        Self {
-            start: ByteIndex::new(0),
-            end: ByteIndex::new(0),
-        }
+        Self::new(ByteIndex::new(0), ByteIndex::new(0))
     }
-
-    pub fn start(self) -> ByteIndex {
-        self.start
-    }
-
-    pub fn end(self) -> ByteIndex {
-        self.end
-    }
-
-    // pub fn _contains(self, span: Span) -> bool {
-    //     // @Task debug_assert that span does not span multiple files
-
-    //     self.contains_index(span.start)
-    // }
 
     pub fn contains_index(self, index: ByteIndex) -> bool {
         self.start <= index && index <= self.end
@@ -137,10 +121,47 @@ impl Span {
     pub fn merge(self, other: Self) -> Self {
         debug_assert!(self.start <= other.start && self.end <= other.end);
 
-        Span {
-            start: self.start,
-            end: other.end,
-        }
+        Self::new(self.start, other.end)
+    }
+}
+
+/// Span inside a single source file.
+#[derive(Clone, Copy)]
+pub struct LocalSpan {
+    pub start: LocalByteIndex,
+    pub end: LocalByteIndex,
+}
+
+impl LocalSpan {
+    pub fn new(start: LocalByteIndex, end: LocalByteIndex) -> Self {
+        Self { start, end }
+    }
+
+    pub fn from_global(source: &SourceFile, span: Span) -> Self {
+        Self::new(
+            LocalByteIndex::from_global(source, span.start),
+            LocalByteIndex::from_global(source, span.end),
+        )
+    }
+}
+
+impl From<LocalByteIndex> for LocalSpan {
+    fn from(index: LocalByteIndex) -> Self {
+        Self::new(index, index)
+    }
+}
+
+impl From<LocalSpan> for RangeInclusive<usize> {
+    fn from(span: LocalSpan) -> Self {
+        span.start.into()..=span.end.into()
+    }
+}
+
+impl Sub<LocalByteIndex> for LocalSpan {
+    type Output = Self;
+
+    fn sub(self, offset: LocalByteIndex) -> Self::Output {
+        Self::new(self.start - offset, self.end - offset)
     }
 }
 
@@ -152,14 +173,14 @@ pub struct SourceMap {
 impl SourceMap {
     fn next_offset(&self) -> Result<ByteIndex> {
         match self.files.last() {
-            Some(file) => file.span.end().try_add_offset(1),
+            Some(file) => file.span.end.try_add_offset(1),
             None => Ok(ByteIndex::new(0)),
         }
     }
 
-    pub fn load(&mut self, path: &Path) -> Result<Rc<SourceFile>> {
-        let source = std::fs::read_to_string(path).map_err(Error::IO)?;
-        self.add(FileName::Real(path.to_owned()), source)
+    pub fn load(&mut self, path: std::path::PathBuf) -> Result<Rc<SourceFile>> {
+        let source = std::fs::read_to_string(&path).map_err(Error::IO)?;
+        self.add(FileName::Real(path), source)
     }
 
     fn add(&mut self, name: FileName, source: String) -> Result<Rc<SourceFile>> {
@@ -169,44 +190,109 @@ impl SourceMap {
         Ok(file)
     }
 
-    // @Beacon @Beacon @Task
     // @Task do a binary search instead of a linear one
-    // returns position as `<filepath>:<line>:<column>`
-    pub fn index_to_file_name_line_column(&self, index: ByteIndex) -> Result<String> {
-        let name = self
-            .files
+    // @Note panics on invalid index
+    fn file_from_index(&self, index: ByteIndex) -> Rc<SourceFile> {
+        self.files
             .iter()
             .find(|file| file.span.contains_index(index))
-            .map(|file| file.name.to_string())
-            .ok_or(Error::UnmappedSpan)?;
-
-        // @Task not done yet!!
-        Ok(name)
+            .unwrap()
+            .clone()
     }
 
-    // @Beacon @Beacon @Task
-    // @Question should it panic or result?
-    pub fn span_to_source(&self, _span: Span) -> Result<String> {
-        if self.files.is_empty() {
-            return Err(Error::UnmappedSpan);
+    // @Beacon @Task handle multiline spans
+    pub fn resolve_span(&self, span: Span) -> Lines {
+        let file = self.file_from_index(span.start);
+        let span = LocalSpan::from_global(&file, span);
+        let mut line_number = 1;
+        let mut highlight_start = None;
+        let mut highlight = None;
+        let mut line_start = None;
+        let mut line = None;
+
+        for (index, character) in file.content().char_indices() {
+            let index = LocalByteIndex::from_usize(index);
+
+            if line_start.is_none() {
+                line_start = Some(index);
+            }
+
+            if index == span.start {
+                highlight_start = Some(index);
+            }
+            if index == span.end {
+                let span = LocalSpan::new(highlight_start.unwrap(), index);
+                let offset = line_start.unwrap();
+
+                highlight = Some(Highlight {
+                    line_number,
+                    // @Note panics on multiline string
+                    range: (span - offset).into(),
+                });
+            }
+
+            if character == '\n' {
+                // @Bug does not work with multiline spans
+                if highlight.is_some() && line.is_some() {
+                    break;
+                }
+
+                if highlight.is_some() {
+                    line = Some(LocalSpan::new(line_start.unwrap(), index));
+                }
+
+                line_number += 1;
+                line_start = None;
+            } else {
+            }
         }
 
-        todo!()
+        struct Highlight {
+            line_number: u32,
+            range: RangeInclusive<usize>,
+        }
+
+        let highlight = highlight.unwrap();
+        let line = line.unwrap();
+
+        Lines {
+            filename: file.name.to_string(),
+            first: Line {
+                content: file[line].to_owned(),
+                number: highlight.line_number,
+                highlight: highlight.range,
+            },
+            last: None,
+        }
     }
+}
+
+pub struct Lines {
+    pub filename: String,
+    pub first: Line,
+    /// This is `None` if the last is the first line.
+    pub last: Option<Line>,
+}
+
+use std::ops::RangeInclusive;
+
+pub struct Line {
+    pub content: String,
+    pub number: u32,
+    pub highlight: RangeInclusive<usize>,
 }
 
 pub struct SourceFile {
     name: FileName,
     content: String,
-    pub span: Span,
+    span: Span,
 }
 
 impl SourceFile {
     pub fn new(name: FileName, content: String, start: ByteIndex) -> Result<Self> {
-        let offset = content
-            .len()
-            .try_into()
-            .map_err(|_| Error::OffsetOverflow)?;
+        use std::convert::TryFrom;
+
+        let offset = u32::try_from(content.len()).map_err(|_| Error::OffsetOverflow)? - 1;
 
         Ok(Self {
             name,
@@ -220,18 +306,15 @@ impl SourceFile {
     }
 }
 
-use std::ops::{Index, RangeInclusive};
-
-impl Index<RangeInclusive<LocalByteIndex>> for SourceFile {
+impl std::ops::Index<LocalSpan> for SourceFile {
     type Output = str;
 
-    fn index(&self, index: RangeInclusive<LocalByteIndex>) -> &Self::Output {
-        let start = index.start().value as usize;
-        let end = index.end().value as usize;
-        &self.content[start..=end]
+    fn index(&self, index: LocalSpan) -> &Self::Output {
+        &self.content[RangeInclusive::from(index)]
     }
 }
 
+#[derive(Clone)]
 pub enum FileName {
     Real(PathBuf),
     Anonymous,
@@ -253,6 +336,22 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 #[derive(Debug)]
 pub enum Error {
     OffsetOverflow,
-    UnmappedSpan,
     IO(std::io::Error),
+}
+
+use std::fmt;
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use std::io::ErrorKind::*;
+
+        f.write_str(match self {
+            Self::OffsetOverflow => "input file too large",
+            Self::IO(error) => match error.kind() {
+                NotFound => "referenced file does not exist",
+                PermissionDenied => "file does not have required permissions",
+                _ => "an I/O error occurred",
+            },
+        })
+    }
 }

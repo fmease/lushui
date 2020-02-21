@@ -1,8 +1,11 @@
 use std::convert::TryFrom;
 use std::fmt;
 
-use crate::lexer::{self, Atom};
-use crate::span::Span;
+use crate::{
+    lexer::{SourceToken, Token},
+    span::Span,
+    Atom,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Identifier {
@@ -17,12 +20,12 @@ impl fmt::Display for Identifier {
 }
 
 // @Note only ever used in consume_identifier @Question over-engineered?
-impl TryFrom<lexer::SourceToken> for Identifier {
+impl TryFrom<SourceToken> for Identifier {
     type Error = ();
 
-    fn try_from(token: lexer::SourceToken) -> Result<Self, Self::Error> {
+    fn try_from(token: SourceToken) -> Result<Self, Self::Error> {
         match token.inner {
-            lexer::Token::Identifier(atom) => Ok(Self {
+            Token::Identifier(atom) => Ok(Self {
                 atom,
                 span: token.span,
             }),
