@@ -20,7 +20,7 @@ mod module {
     };
 
     use super::{ffi, Error, FunctionScope, Result};
-    use crate::hir::{expr, Expression, Identifier};
+    use crate::desugar::{expr, Expression, Identifier};
     use crate::interpreter::evaluate;
 
     /// An entity found inside a module scope.
@@ -230,17 +230,15 @@ mod module {
             r#type: Expression,
             value: Expression,
         ) {
-            debug_assert!(self
-                .bindings
-                .borrow_mut()
-                .insert(
-                    binder,
-                    Entity::Expression {
-                        r#type,
-                        expression: value,
-                    },
-                )
-                .is_none());
+            let old = self.bindings.borrow_mut().insert(
+                binder,
+                Entity::Expression {
+                    r#type,
+                    expression: value,
+                },
+            );
+
+            debug_assert!(old.is_none());
         }
 
         /// Insert a data type binding into the scope.
@@ -249,17 +247,15 @@ mod module {
         ///
         /// Panics under `cfg(debug_assertions)` if the `binder` is already bound.
         pub fn insert_data_binding(self, binder: Identifier, r#type: Expression) {
-            debug_assert!(self
-                .bindings
-                .borrow_mut()
-                .insert(
-                    binder,
-                    Entity::DataType {
-                        r#type,
-                        constructors: Vec::new(),
-                    },
-                )
-                .is_none());
+            let old = self.bindings.borrow_mut().insert(
+                binder,
+                Entity::DataType {
+                    r#type,
+                    constructors: Vec::new(),
+                },
+            );
+
+            debug_assert!(old.is_none());
         }
 
         /// Insert constructor binding into the scope.
@@ -318,14 +314,12 @@ mod module {
             arity: usize,
             function: ffi::ForeignFunction,
         ) {
-            debug_assert!(self
-                .bindings
-                .borrow_mut()
-                .insert(
-                    Identifier::from(binder),
-                    Entity::UntypedForeign { arity, function }
-                )
-                .is_none());
+            let old = self.bindings.borrow_mut().insert(
+                Identifier::from(binder),
+                Entity::UntypedForeign { arity, function },
+            );
+
+            debug_assert!(old.is_none());
         }
     }
 
@@ -347,7 +341,7 @@ pub use function::FunctionScope;
 
 mod function {
     use super::{ModuleScope, Result};
-    use crate::hir::{Expression, Identifier};
+    use crate::desugar::{Expression, Identifier};
 
     use std::collections::VecDeque;
 
@@ -482,7 +476,7 @@ mod function {
 pub use substitutions::Substitutions;
 
 mod substitutions {
-    use crate::hir::{Expression, Identifier};
+    use crate::desugar::{Expression, Identifier};
 
     /// List of substitions.
     ///

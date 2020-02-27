@@ -1,0 +1,10 @@
+data Equals (A B: Type): Type =
+    Reflective (|A: Type): Equals A A
+
+a: Equals Nat Nat = Reflective (|Nat)
+
+;;b: Equals Nat Text = Reflective (|Nat)
+
+;; ;; does not work yet due to missing type inference
+;; transitive (A B C: Type) (e1: Equals A B) (e2: Equals B C): Equals A C =
+;;     Reflective (|_)

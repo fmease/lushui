@@ -52,6 +52,7 @@ impl Diagnostic {
 
     pub fn emit(self, map: Option<&SourceMap>) {
         eprintln!("{}", self.display(map));
+        eprintln!();
     }
 
     // @Beacon @Note to underline spans, we very likely need to
@@ -73,12 +74,13 @@ impl Diagnostic {
 
             let preview = format!(
                 "\n\
-                {padding}{arrow} {file}:{line}\n\
+                {padding}{arrow} {file}:{line}:{column}\n\
                 {padding} {bar}\n\
                 {line} {bar} {snippet}{padding} {bar} {highlight_padding}{highlight}",
                 arrow = "-->".bright_blue().bold(),
                 file = lines.filename,
                 line = lines.first.number,
+                column = lines.first.highlight_column,
                 snippet = lines.first.content,
                 padding = SPACE.repeat(padding),
                 highlight_padding = SPACE.repeat(*highlight.start()),

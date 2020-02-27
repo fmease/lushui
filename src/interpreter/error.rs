@@ -8,7 +8,7 @@
 
 use std::fmt;
 
-use crate::hir::{Expression, Identifier};
+use crate::desugar::{Expression, Identifier};
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 

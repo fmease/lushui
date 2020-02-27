@@ -25,7 +25,7 @@ mod data_types;
 mod error;
 mod scope;
 
-use crate::hir::{self, expr, Declaration, Expression};
+use crate::desugar::{self, expr, Declaration, Expression};
 use crate::parser::Explicitness;
 use error::{Error, Result};
 pub use scope::ModuleScope;
@@ -87,7 +87,7 @@ pub fn evaluate_declaration(declaration: &Declaration, module_scope: ModuleScope
                 .clone()
                 .insert_data_binding(data_type_binder.clone(), r#type);
 
-            for hir::Constructor {
+            for desugar::Constructor {
                 binder,
                 type_annotation,
             } in constructors
@@ -264,7 +264,10 @@ fn substitute(
 }
 
 /// Try to infer the type of an expression.
-pub fn infer_type(expression: Expression, scope: &FunctionScope<'_>) -> Result<hir::Expression> {
+pub fn infer_type(
+    expression: Expression,
+    scope: &FunctionScope<'_>,
+) -> Result<desugar::Expression> {
     Ok(match expression {
         Expression::Path(path) => scope
             .lookup_type(&path.identifier)
@@ -365,7 +368,7 @@ pub fn infer_type(expression: Expression, scope: &FunctionScope<'_>) -> Result<h
                 _ => todo!("encountered unsupported type to be case-analysed"),
             };
 
-            use hir::expression::Pattern;
+            use desugar::expression::Pattern;
 
             let mut type_of_previous_body = None::<Expression>;
 
@@ -420,12 +423,13 @@ pub fn infer_type(expression: Expression, scope: &FunctionScope<'_>) -> Result<h
             }
 
             type_of_previous_body.unwrap_or_else(|| {
+                let parameter = desugar::Identifier::sourced("A").refresh();
+
                 expr! {
                     PiTypeLiteral {
-                        // @Question is Identifier::Stub error-prone in respect to substitution?
-                        parameter: Some(hir::Identifier::Stub),
+                        parameter: Some(parameter.clone()),
                         domain: Expression::TypeLiteral,
-                        codomain: expr! { Path { identifier: hir::Identifier::Stub } },
+                        codomain: expr! { Path { identifier: parameter } },
                         explicitness: Explicitness::Implicit,
                     }
                 }
@@ -545,7 +549,7 @@ pub fn evaluate(expression: Expression, scope: &FunctionScope<'_>) -> Result<Exp
         // @Note how to handle them: just like functions: case analysis only wotks with a binder-case
         // (default case)
         Expression::CaseAnalysis(case_analysis) => {
-            use hir::expression::Pattern;
+            use desugar::expression::Pattern;
 
             let subject = evaluate(case_analysis.subject.clone(), scope)?;
 

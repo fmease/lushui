@@ -2,52 +2,52 @@
 
 use std::fmt::{Display, Formatter, Result};
 
-use super::{expression, Constructor, Declaration, Expression};
+use super::{
+    expression, Binder, Constructor, Declaration, DeclarationKind, Expression, ExpressionKind,
+};
 
 // @Task reduce amount of (String) allocations
 // @Bug indentation not correctly handled (e.g. an indented data declaration doesn't have its constructors indented)
 // @Task implement indentation logic (@Note for now, it's not that relevant because we don*t have modules yet, so a data
 // declaration is never actually indented, also expressions which face the same issue when pretty-printing, are printed out in one single line!)
-impl Display for Declaration {
+impl<B: Binder> Display for Declaration<B> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            Self::Value {
-                binder,
-                type_annotation,
-                expression,
-            } => write!(f, "{}: {} = {}", binder, type_annotation, expression),
-            Self::Data {
-                binder,
-                type_annotation,
-                constructors,
-            } => write!(
+        match &self.kind {
+            DeclarationKind::Value(declaration) => write!(
+                f,
+                "{}: {} = {}",
+                declaration.binder, declaration.type_annotation, declaration.expression
+            ),
+            DeclarationKind::Data(declaration) => write!(
                 f,
                 "data {}: {} =\n{}",
-                binder,
-                type_annotation,
-                constructors
-                    .into_iter()
+                declaration.binder,
+                declaration.type_annotation,
+                declaration
+                    .constructors
+                    .iter()
                     .map(|constructor| format!("    {}", constructor))
                     .collect::<Vec<_>>()
                     .join("\n")
             ),
-            Self::Module { declarations } => {
+            DeclarationKind::Module(declaration) => {
                 f.write_str("module =\n")?;
-                for declaration in declarations {
+                for declaration in &declaration.declarations {
                     writeln!(f, "    {}", declaration)?;
                 }
                 Ok(())
             }
-            Self::Use => todo!(),
-            Self::Foreign {
-                binder,
-                type_annotation,
-            } => write!(f, "foreign {}: {}", binder, type_annotation),
+            DeclarationKind::Use => todo!(),
+            DeclarationKind::Foreign(declaration) => write!(
+                f,
+                "foreign {}: {}",
+                declaration.binder, declaration.type_annotation
+            ),
         }
     }
 }
 
-impl Display for Constructor {
+impl<B: Binder> Display for Constructor<B> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}: {}", self.binder, self.type_annotation)
     }
@@ -55,10 +55,10 @@ impl Display for Constructor {
 
 // @Task display fewer round brackets by making use of precedence
 // @Note many wasted allocations (intermediate Strings)
-impl Display for Expression {
+impl<B: Binder> Display for Expression<B> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            Self::PiTypeLiteral(literal) => write!(
+        match &self.kind {
+            ExpressionKind::PiTypeLiteral(literal) => write!(
                 f,
                 "({}{}{}) -> ({})",
                 literal.explicitness,
@@ -70,18 +70,18 @@ impl Display for Expression {
                 literal.domain,
                 literal.codomain,
             ),
-            Self::Application(application) => write!(
+            ExpressionKind::Application(application) => write!(
                 f,
                 "({}) ({}{})",
                 application.callee, application.explicitness, application.argument,
             ),
-            Self::TypeLiteral => f.write_str("Type"),
-            Self::NatTypeLiteral => f.write_str("Nat"),
-            Self::NatLiteral(literal) => write!(f, "{}", literal.value),
-            Self::TextTypeLiteral => f.write_str("Text"),
-            Self::TextLiteral(literal) => write!(f, "{:?}", literal.value),
-            Self::Path(path) => write!(f, "{}", path.identifier),
-            Self::LambdaLiteral(literal) => write!(
+            ExpressionKind::TypeLiteral => f.write_str("Type"),
+            ExpressionKind::NatTypeLiteral => f.write_str("Nat"),
+            ExpressionKind::NatLiteral(literal) => write!(f, "{}", literal.value),
+            ExpressionKind::TextTypeLiteral => f.write_str("Text"),
+            ExpressionKind::TextLiteral(literal) => write!(f, "{:?}", literal.value),
+            ExpressionKind::Binding(path) => write!(f, "{}", path.binder),
+            ExpressionKind::LambdaLiteral(literal) => write!(
                 f,
                 "\\({}{}{}){} => ({})",
                 literal.explicitness,
@@ -98,8 +98,8 @@ impl Display for Expression {
                     .unwrap_or_default(),
                 literal.body
             ),
-            Self::UseIn(_) => todo!(),
-            Self::CaseAnalysis(case_analysis) => write!(
+            ExpressionKind::UseIn => todo!(),
+            ExpressionKind::CaseAnalysis(case_analysis) => write!(
                 f,
                 "case ({}){}",
                 case_analysis.subject,
@@ -109,7 +109,7 @@ impl Display for Expression {
                     .map(|case| format!(" {}", case))
                     .collect::<String>()
             ),
-            Self::UnsaturatedForeignApplication(application) => write!(
+            ExpressionKind::UnsaturatedForeignApplication(application) => write!(
                 f,
                 "{}[{}]",
                 application.callee,
@@ -123,22 +123,22 @@ impl Display for Expression {
     }
 }
 
-impl Display for expression::Case {
+impl<B: Binder> Display for expression::Case<B> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "of {} => ({})", self.pattern, self.body)
     }
 }
 
-impl Display for expression::Pattern {
+impl<B: Binder> Display for expression::Pattern<B> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             expression::Pattern::NatLiteral(literal) => write!(f, "{}", literal.value),
-            expression::Pattern::Path {
-                path,
+            expression::Pattern::Binding {
+                binder,
                 type_annotation,
             } => match type_annotation {
-                Some(type_annotation) => write!(f, "({}: {})", path.identifier, type_annotation),
-                None => write!(f, "{}", path.identifier),
+                Some(type_annotation) => write!(f, "({}: {})", binder.binder, type_annotation),
+                None => write!(f, "{}", binder.binder),
             },
             expression::Pattern::Application { callee, argument } => {
                 write!(f, "({}) ({})", callee, argument)

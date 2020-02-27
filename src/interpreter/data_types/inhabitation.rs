@@ -1,6 +1,6 @@
 //! Inhabitation analysis.
 
-use crate::hir::Expression;
+use crate::desugar::Expression;
 use crate::interpreter::ModuleScope;
 
 /// Indicate whether a type is uninhabited.

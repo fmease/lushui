@@ -7,14 +7,13 @@
 //!
 //! * `decl_macro` for out-of-order macro declarations which work with the module system
 //!   and also look way better syntactically
-//! * `const_if_match` and `const_panic` for ensuring that certain types won't grow in size
 
-#![feature(const_if_match, const_panic, decl_macro)]
+#![feature(decl_macro)]
 #![forbid(rust_2018_idioms, unused_must_use)]
 
+pub mod desugar;
 pub mod diagnostic;
-pub mod hir;
-pub mod interpreter;
+// pub mod interpreter; // @Temporary comment during rewrite of name resolution
 pub mod lexer;
 pub mod parser;
 pub mod resolver;

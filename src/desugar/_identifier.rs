@@ -1,29 +1,28 @@
-use std::fmt;
-use std::hash::{Hash, Hasher};
-use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
+use std::{
+    fmt,
+    hash::{Hash, Hasher},
+    sync::atomic::{AtomicU64, Ordering as AtomicOrdering},
+};
 
-use crate::parser;
-use crate::span::Span;
+use crate::{parser, span::Span};
 
 static LAST_GENERATED_NUMERIC_IDENTIFIER: AtomicU64 = AtomicU64::new(0);
 
-// @Task update docs
 /// Either an identifier found in the source program or a synthetic one.
 ///
-/// Plain identifiers don't compare by their span only their (interned) contents.
+/// Sourced identifiers don't compare by their span only their (interned) contents.
 #[derive(Clone, Debug, Eq)]
 pub enum Identifier {
-    Stub,
-    Plain(parser::Identifier),
-    Generated(parser::Identifier, u64),
+    Sourced(parser::Identifier),
+    Synthetic(parser::Identifier, u64),
 }
 
 impl Identifier {
     pub fn from(identifier: &str) -> Self {
-        Identifier::Plain(Self::plain(identifier))
+        Identifier::Sourced(Self::sourced(identifier))
     }
 
-    fn plain(identifier: &str) -> parser::Identifier {
+    fn sourced(identifier: &str) -> parser::Identifier {
         parser::Identifier {
             atom: crate::Atom::from(identifier),
             // @Bug ugly, error-prone
@@ -32,11 +31,10 @@ impl Identifier {
     }
 
     pub fn refresh(&self) -> Self {
-        Self::Generated(
+        Self::Synthetic(
             match self {
-                Self::Stub => Identifier::plain(""),
-                Self::Plain(identifier) => identifier.clone(),
-                Self::Generated(identifier, _) => identifier.clone(),
+                Self::Sourced(identifier) => identifier.clone(),
+                Self::Synthetic(identifier, _) => identifier.clone(),
             },
             LAST_GENERATED_NUMERIC_IDENTIFIER.fetch_add(1, AtomicOrdering::SeqCst),
         )
@@ -46,12 +44,10 @@ impl Identifier {
 impl PartialEq for Identifier {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            // @Question are two stubs equal?
-            (Self::Stub, Self::Stub) => true,
-            (Self::Plain(left), Self::Plain(right)) => left.atom == right.atom,
+            (Self::Sourced(left), Self::Sourced(right)) => left.atom == right.atom,
             (
-                Self::Generated(left_identifier, left_version),
-                Self::Generated(right_identifier, right_version),
+                Self::Synthetic(left_identifier, left_version),
+                Self::Synthetic(right_identifier, right_version),
             ) => left_identifier.atom == right_identifier.atom && left_version == right_version,
             _ => false,
         }
@@ -61,12 +57,11 @@ impl PartialEq for Identifier {
 impl Hash for Identifier {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
-            Self::Stub => 0u64.hash(state),
-            Self::Plain(identifier) => {
+            Self::Sourced(identifier) => {
                 1u64.hash(state);
                 identifier.atom.hash(state);
             }
-            Self::Generated(identifier, version) => {
+            Self::Synthetic(identifier, version) => {
                 2u64.hash(state);
                 identifier.atom.hash(state);
                 version.hash(state);
@@ -78,10 +73,9 @@ impl Hash for Identifier {
 impl fmt::Display for Identifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Plain(identifier) => write!(f, "{}", identifier),
+            Self::Sourced(identifier) => write!(f, "{}", identifier),
             // @Temporary
-            Self::Stub => f.write_str("$"),
-            Self::Generated(identifier, version) => write!(f, "{}${}", identifier, version),
+            Self::Synthetic(identifier, version) => write!(f, "{}${}", identifier, version),
         }
     }
 }

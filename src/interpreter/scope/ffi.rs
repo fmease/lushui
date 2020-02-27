@@ -3,7 +3,7 @@
 use std::collections::VecDeque;
 
 use super::ModuleScope;
-use crate::hir::{expr, Expression, Identifier};
+use crate::desugar::{expr, Expression, Identifier};
 
 pub type ForeignFunction = fn(arguments: VecDeque<Expression>) -> Expression;
 

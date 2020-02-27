@@ -226,6 +226,7 @@ impl SourceMap {
 
                 highlight = Some(Highlight {
                     line_number,
+                    column: span.start,
                     // @Note panics on multiline string
                     range: (span - offset).into(),
                 });
@@ -249,6 +250,7 @@ impl SourceMap {
 
         struct Highlight {
             line_number: u32,
+            column: LocalByteIndex,
             range: RangeInclusive<usize>,
         }
 
@@ -260,6 +262,7 @@ impl SourceMap {
             first: Line {
                 content: file[line].to_owned(),
                 number: highlight.line_number,
+                highlight_column: highlight.column.value + 1,
                 highlight: highlight.range,
             },
             last: None,
@@ -276,9 +279,11 @@ pub struct Lines {
 
 use std::ops::RangeInclusive;
 
+// @Task find better field names
 pub struct Line {
     pub content: String,
     pub number: u32,
+    pub highlight_column: u32,
     pub highlight: RangeInclusive<usize>,
 }
 

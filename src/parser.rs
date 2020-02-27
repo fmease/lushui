@@ -9,16 +9,12 @@
 
 // @Task @Beacon make parse_* methods of Parser
 
-mod identifier;
-
 use freestanding::freestanding;
 use std::fmt;
 
 use crate::diagnostic::Diagnostic;
 use crate::lexer::{self, TokenKind};
 use crate::span::Span;
-
-pub use identifier::Identifier;
 
 // @Task use SourceFiles
 pub struct Parser<'i> {
@@ -32,8 +28,6 @@ impl<'input> Parser<'input> {
         Self { tokens, index: 0 }
     }
 }
-
-use std::convert::TryInto;
 
 // @Task document that they may panic if EndOfInput not correctly handled (bug)
 impl Parser<'_> {
@@ -73,7 +67,13 @@ impl Parser<'_> {
     // @Task generalize
     pub fn consume_identifier(&mut self) -> Result<Identifier> {
         self.consume(lexer::TokenKind::Identifier)
-            .map(|token| token.try_into().unwrap())
+            .map(|token| match token.inner {
+                lexer::Token::Identifier(identifier) => Identifier {
+                    atom: identifier,
+                    span: token.span,
+                },
+                _ => unreachable!(),
+            })
     }
 
     pub fn advance(&mut self) {
@@ -102,25 +102,29 @@ impl Parser<'_> {
     }
 }
 
-pub use declaration::{parse_declaration, Declaration};
+pub use declaration::{parse_declaration, Declaration, DeclarationKind};
 
 /// The part of the parser concerned with declarations.
 pub mod declaration {
     use super::*;
 
+    #[derive(Debug)]
+    pub struct Declaration {
+        pub kind: DeclarationKind,
+        pub span: Span,
+    }
+
     /// The syntax node of a declaration.
-    //  @Task split into Declaration/DeclarationKind for improved Span-handling
     #[freestanding]
     #[streamline(Box)]
     #[derive(Debug)] // @Temporary
-    pub enum Declaration {
+    pub enum DeclarationKind {
         /// The syntax node of a value declaration.
         Value {
             binder: Identifier,
             parameters: AnnotatedParameters,
             type_annotation: Expression,
             expression: Expression,
-            span: Span,
         },
         /// The syntax node of a data declaration.
         Data {
@@ -128,37 +132,17 @@ pub mod declaration {
             parameters: AnnotatedParameters,
             type_annotation: Expression,
             constructors: Vec<Constructor>,
-            span: Span,
         },
         /// The syntax node of a module declaration.
-        Module {
-            declarations: Vec<Declaration>,
-            span: Span,
-        },
+        Module { declarations: Vec<Declaration> },
         /// The syntax node of a use declaration.
-        // @Task
-        Use { span: Span },
+        Use,
         /// The syntax node of a foreign declaration.
         Foreign {
             binder: Identifier,
             parameters: AnnotatedParameters,
             type_annotation: Expression,
-            span: Span,
         },
-    }
-
-    const _: () = assert!(std::mem::size_of::<Declaration>() == 16);
-
-    impl Declaration {
-        pub fn span(&self) -> Span {
-            match self {
-                Self::Value(r#let) => r#let.span,
-                Self::Data(data) => data.span,
-                Self::Module(module) => module.span,
-                Self::Use(r#use) => r#use.span,
-                Self::Foreign(foreign) => foreign.span,
-            }
-        }
     }
 
     /// Parse a declaration.
@@ -171,12 +155,11 @@ pub mod declaration {
     pub fn parse_declaration(parser: &mut Parser<'_>) -> Result<Declaration> {
         let token = parser.token();
 
+        // @Task use finish_parse_* functions
         Ok(match token.kind() {
-            TokenKind::Identifier => Declaration::Value(Box::new(parse_value_declaration(parser)?)),
-            TokenKind::Data => Declaration::Data(Box::new(parse_data_declaration(parser)?)),
-            TokenKind::Foreign => {
-                Declaration::Foreign(Box::new(parse_foreign_declaration(parser)?))
-            }
+            TokenKind::Identifier => parse_value_declaration(parser)?,
+            TokenKind::Data => parse_data_declaration(parser)?,
+            TokenKind::Foreign => parse_foreign_declaration(parser)?,
             kind => {
                 return Err(Diagnostic::fatal(
                     format!("expected start of declaration, found {}", kind),
@@ -194,7 +177,7 @@ pub mod declaration {
     /// Value_Declaration ::= Identifier Annotated_Parameters Type_Annotation "="
     ///     Possibly_Indented_Expression_Followed_By_Line_Break
     /// ```
-    fn parse_value_declaration(parser: &mut Parser<'_>) -> Result<Value> {
+    fn parse_value_declaration(parser: &mut Parser<'_>) -> Result<Declaration> {
         let binder = parser.consume_identifier()?;
         let parameters = parse_annotated_parameters(parser)?;
 
@@ -202,17 +185,19 @@ pub mod declaration {
         parser.consume(TokenKind::Equals)?;
         let expression = parse_possibly_indented_expression_followed_by_line_break(parser)?;
 
-        Ok(Value {
+        Ok(Declaration {
             span: binder.span.merge(expression.span),
-            binder,
-            parameters,
-            type_annotation,
-            expression,
+            kind: DeclarationKind::Value(Box::new(Value {
+                binder,
+                parameters,
+                type_annotation,
+                expression,
+            })),
         })
     }
 
     // @Task grammar rule
-    pub fn parse_data_declaration(parser: &mut Parser<'_>) -> Result<Data> {
+    pub fn parse_data_declaration(parser: &mut Parser<'_>) -> Result<Declaration> {
         let span_of_keyword = parser.consume(TokenKind::Data)?.span;
         let binder = parser.consume_identifier()?;
         let parameters = parse_annotated_parameters(parser)?;
@@ -231,22 +216,24 @@ pub mod declaration {
             parser.consume(TokenKind::Dedentation)?;
         }
 
-        Ok(Data {
+        Ok(Declaration {
             span: span_of_keyword.merge(
                 constructors
                     .last()
                     .map(|constructor| constructor.span)
                     .unwrap_or(span_of_equals),
             ),
-            binder,
-            parameters,
-            type_annotation,
-            constructors,
+            kind: DeclarationKind::Data(Box::new(Data {
+                binder,
+                parameters,
+                type_annotation,
+                constructors,
+            })),
         })
     }
 
     // @Temporary
-    pub fn parse_file_module_no_header(parser: &mut Parser<'_>) -> Result<Module> {
+    pub fn parse_file_module_no_header(parser: &mut Parser<'_>) -> Result<Declaration> {
         let mut declarations = Vec::<Declaration>::new();
 
         loop {
@@ -256,18 +243,11 @@ pub mod declaration {
             }
 
             if parser.consumed(TokenKind::EndOfInput) {
-                break Ok(Module {
+                break Ok(Declaration {
                     // @Temporary span handling because this function itself is temporary @Bug Span::dummy()
-                    span: (|| {
-                        Some(
-                            declarations
-                                .first()?
-                                .span()
-                                .merge(declarations.last()?.span()),
-                        )
-                    })()
-                    .unwrap_or(Span::dummy()),
-                    declarations,
+                    span: (|| Some(declarations.first()?.span.merge(declarations.last()?.span)))()
+                        .unwrap_or(Span::dummy()),
+                    kind: DeclarationKind::Module(Box::new(Module { declarations })),
                 });
             }
 
@@ -282,7 +262,7 @@ pub mod declaration {
     /// ```text
     /// Foreign_Declaration ::= "foreign" Identifier Annotated_Parameters Type_Annotation Line_Break
     /// ```
-    fn parse_foreign_declaration(parser: &mut Parser<'_>) -> Result<Foreign> {
+    fn parse_foreign_declaration(parser: &mut Parser<'_>) -> Result<Declaration> {
         let span_of_keyword = parser.consume(TokenKind::Foreign)?.span;
         let binder = parser.consume_identifier()?;
         let parameters = parse_annotated_parameters(parser)?;
@@ -290,11 +270,13 @@ pub mod declaration {
         // @Task allow EOI as an alternative
         parser.consume(TokenKind::LineBreak)?;
 
-        Ok(Foreign {
+        Ok(Declaration {
             span: span_of_keyword.merge(type_annotation.span),
-            binder,
-            parameters,
-            type_annotation,
+            kind: DeclarationKind::Foreign(Box::new(Foreign {
+                binder,
+                parameters,
+                type_annotation,
+            })),
         })
     }
 
@@ -989,6 +971,30 @@ impl Spanning for Expression {
 impl Spanning for Pattern {
     fn span(&mut self) -> &mut Span {
         &mut self.span
+    }
+}
+
+#[derive(Debug, Clone, Eq)]
+pub struct Identifier {
+    pub atom: crate::Atom,
+    pub span: Span,
+}
+
+impl PartialEq for Identifier {
+    fn eq(&self, other: &Self) -> bool {
+        self.atom == other.atom
+    }
+}
+
+impl std::hash::Hash for Identifier {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.atom.hash(state);
+    }
+}
+
+impl fmt::Display for Identifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.atom)
     }
 }
 

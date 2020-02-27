@@ -9,7 +9,7 @@
 //! existentials and specialized instances but we first might want to
 //! feature-gate them.
 
-use crate::hir::{Expression, Identifier};
+use crate::desugar::{Expression, Identifier};
 use crate::interpreter::{equal, Error, FunctionScope, ModuleScope, Result};
 
 pub(in crate::interpreter) fn assert_constructor_is_instance_of_type(

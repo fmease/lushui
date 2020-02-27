@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use crate::hir::expression;
+use crate::desugar::expression;
 use crate::interpreter::{substitute, FunctionScope, Substitutions};
 
 /// Substitute inside the case of a case analysis.
