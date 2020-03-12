@@ -9,7 +9,7 @@
 use std::{cmp::Ordering, fmt, rc::Rc, str::FromStr};
 
 use crate::{
-    diagnostic::Diagnostic,
+    diagnostic::{Diagnostic, Level},
     span::{LocalByteIndex, LocalSpan, SourceFile, SourceMap, Span},
     Atom, Nat,
 };
@@ -72,6 +72,7 @@ tokens! {
         ClosingRoundBracket "closing round bracket",
         As "keyword `as`",
         Case "keyword `case`",
+        Crate "keyword `crate`",
         Data "keyword `data`",
         Foreign "keyword `foreign`",
         In "keyword `in`",
@@ -80,6 +81,7 @@ tokens! {
         Nat "keyword `Nat`",
         Text "keyword `Text`",
         Of "keyword `of`",
+        Self_ "keyword `self`",
         Super "keyword `super`",
         Type "keyword `Type`",
         Use "keyword `use`",
@@ -116,6 +118,7 @@ fn parse_keyword(source: &str) -> Option<Token> {
     Some(match source {
         "as" => Token::As,
         "case" => Token::Case,
+        "crate" => Token::Crate,
         "data" => Token::Data,
         "foreign" => Token::Foreign,
         "in" => Token::In,
@@ -123,6 +126,7 @@ fn parse_keyword(source: &str) -> Option<Token> {
         "module" => Token::Module,
         "Nat" => Token::Nat,
         "of" => Token::Of,
+        "self" => Token::Self_,
         "super" => Token::Super,
         "Text" => Token::Text,
         "Type" => Token::Type,
@@ -144,7 +148,6 @@ fn parse_reserved_punctuation(source: &str) -> Option<Token> {
     })
 }
 
-// @Bug implementation seems hacky with illegal case start == 0, @Note this is one ugly function
 fn extend_with_dedentation(
     source: &SourceFile,
     tokens: &mut Vec<SourceToken>,
@@ -154,8 +157,6 @@ fn extend_with_dedentation(
     if amount_of_spaces == 0 {
         return;
     }
-
-    debug_assert_ne!(start, LocalByteIndex::new(0));
 
     // @Task use better span (it should span 4 spaces if possible) @Note you need to go backwards
     let dedentation = SourceToken::new(
@@ -314,13 +315,14 @@ fn lex(lexer: &mut Lexer) -> Result<(), Diagnostic> {
             if absolute_difference % INDENTATION_IN_SPACES != 0
                 || change == Ordering::Greater && absolute_difference > INDENTATION_IN_SPACES
             {
-                return Err(Diagnostic::fatal(
+                return Err(Diagnostic::new(
+                    Level::Fatal,
                     format!(
                         "invalid indentation consisting of {} spaces",
                         absolute_difference
                     ),
-                    global_span,
-                ));
+                )
+                .with_span(global_span));
             }
 
             match change {
@@ -394,10 +396,8 @@ fn lex(lexer: &mut Lexer) -> Result<(), Diagnostic> {
             let global_span = Span::from_local(lexer.source.as_ref(), span);
 
             if !terminated {
-                return Err(Diagnostic::fatal(
-                    "unterminated text literal".to_owned(),
-                    global_span,
-                ));
+                return Err(Diagnostic::new(Level::Fatal, "unterminated text literal")
+                    .with_span(global_span));
             }
 
             lexer.tokens.push(SourceToken::new(
@@ -415,13 +415,14 @@ fn lex(lexer: &mut Lexer) -> Result<(), Diagnostic> {
                     '(' => Token::OpeningRoundBracket,
                     ')' => Token::ClosingRoundBracket,
                     _ => {
-                        return Err(Diagnostic::fatal(
+                        return Err(Diagnostic::new(
+                            Level::Fatal,
                             format!(
                                 "illegal character U+{:04X} `{}`",
                                 character as u32, character
                             ),
-                            global_span,
-                        ))
+                        )
+                        .with_span(global_span))
                     }
                 },
                 global_span,

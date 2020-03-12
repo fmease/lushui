@@ -90,7 +90,7 @@ impl Sub<usize> for LocalByteIndex {
 }
 
 /// Global byte span of source code.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Span {
     start: ByteIndex,
     end: ByteIndex,
@@ -190,19 +190,26 @@ impl SourceMap {
         Ok(file)
     }
 
-    // @Task do a binary search instead of a linear one
-    // @Note panics on invalid index
-    fn file_from_index(&self, index: ByteIndex) -> Rc<SourceFile> {
+    // @Note panics on invalid span
+    fn file_from_span(&self, span: Span) -> Rc<SourceFile> {
         self.files
             .iter()
-            .find(|file| file.span.contains_index(index))
+            .find(|file| file.span.contains_index(span.start))
             .unwrap()
             .clone()
+
+        // @Bug panics @Beacon @Task find out why and adjust
+        // let index = self
+        //     .files
+        //     .binary_search_by(|file| file.span.cmp(&span))
+        //     .unwrap();
+
+        // self.files[index].clone()
     }
 
     // @Beacon @Task handle multiline spans
     pub fn resolve_span(&self, span: Span) -> Lines {
-        let file = self.file_from_index(span.start);
+        let file = self.file_from_span(span);
         let span = LocalSpan::from_global(&file, span);
         let mut line_number = 1;
         let mut highlight_start = None;
@@ -226,7 +233,6 @@ impl SourceMap {
 
                 highlight = Some(Highlight {
                     line_number,
-                    column: span.start,
                     // @Note panics on multiline string
                     range: (span - offset).into(),
                 });
@@ -250,7 +256,6 @@ impl SourceMap {
 
         struct Highlight {
             line_number: u32,
-            column: LocalByteIndex,
             range: RangeInclusive<usize>,
         }
 
@@ -262,7 +267,6 @@ impl SourceMap {
             first: Line {
                 content: file[line].to_owned(),
                 number: highlight.line_number,
-                highlight_column: highlight.column.value + 1,
                 highlight: highlight.range,
             },
             last: None,
@@ -283,7 +287,6 @@ use std::ops::RangeInclusive;
 pub struct Line {
     pub content: String,
     pub number: u32,
-    pub highlight_column: u32,
     pub highlight: RangeInclusive<usize>,
 }
 

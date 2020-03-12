@@ -12,13 +12,15 @@
 use freestanding::freestanding;
 use std::fmt;
 
-use crate::diagnostic::Diagnostic;
-use crate::lexer::{self, TokenKind};
-use crate::span::Span;
+use crate::{
+    diagnostic::{Diagnostic, Level},
+    lexer::{self, Token, TokenKind},
+    span::Span,
+};
 
 // @Task use SourceFiles
-pub struct Parser<'i> {
-    tokens: &'i [lexer::SourceToken],
+pub struct Parser<'input> {
+    tokens: &'input [lexer::SourceToken],
     index: usize,
 }
 
@@ -34,7 +36,7 @@ impl Parser<'_> {
     /// Parse the source in a sandboxed context.
     ///
     /// Used for arbitrary look-ahead. Restores the old cursor on failure.
-    pub fn reflect<T>(&mut self, parser: fn(&mut Self) -> Result<T>) -> Result<T> {
+    pub fn reflect<Node>(&mut self, parser: fn(&mut Self) -> Result<Node>) -> Result<Node> {
         let saved_index = self.index;
         let result = parser(self);
 
@@ -51,10 +53,11 @@ impl Parser<'_> {
         if actual == expected {
             Ok(token)
         } else {
-            Err(Diagnostic::fatal(
+            Err(Diagnostic::new(
+                Level::Fatal,
                 format!("expected {}, found {}", expected, actual),
-                token.span,
-            ))
+            )
+            .with_span(token.span))
         }
     }
 
@@ -80,6 +83,16 @@ impl Parser<'_> {
         self.index += 1;
     }
 
+    pub fn advance_with<Node, Knowledge>(
+        &mut self,
+        knowledge: Knowledge,
+        subparser: fn(&mut Self, Knowledge) -> Result<Node>,
+    ) -> Result<Node> {
+        self.advance();
+        subparser(self, knowledge)
+    }
+
+    // @Question why clone?
     pub fn token(&self) -> lexer::SourceToken {
         self.tokens[self.index].clone()
     }
@@ -102,7 +115,7 @@ impl Parser<'_> {
     }
 }
 
-pub use declaration::{parse_declaration, Declaration, DeclarationKind};
+pub use declaration::{parse_declaration, Constructor, Declaration, DeclarationKind};
 
 /// The part of the parser concerned with declarations.
 pub mod declaration {
@@ -155,21 +168,22 @@ pub mod declaration {
     pub fn parse_declaration(parser: &mut Parser<'_>) -> Result<Declaration> {
         let token = parser.token();
 
-        // @Task use finish_parse_* functions
-        Ok(match token.kind() {
-            TokenKind::Identifier => parse_value_declaration(parser)?,
-            TokenKind::Data => parse_data_declaration(parser)?,
-            TokenKind::Foreign => parse_foreign_declaration(parser)?,
-            kind => {
-                return Err(Diagnostic::fatal(
-                    format!("expected start of declaration, found {}", kind),
-                    token.span,
-                ))
-            }
-        })
+        match token.inner {
+            Token::Identifier(identifier) => parser.advance_with(
+                Identifier::new(identifier, token.span),
+                finish_parse_value_declaration,
+            ),
+            Token::Data => parser.advance_with(token.span, finish_parse_data_declaration),
+            Token::Foreign => parser.advance_with(token.span, finish_parse_foreign_declaration),
+            _ => Err(Diagnostic::new(
+                Level::Fatal,
+                format!("expected start of declaration, found {}", token.kind()),
+            )
+            .with_span(token.span)),
+        }
     }
 
-    /// Parse a value declaration.
+    /// Finish parsing a value declaration.
     ///
     /// ## Grammar
     ///
@@ -177,10 +191,11 @@ pub mod declaration {
     /// Value_Declaration ::= Identifier Annotated_Parameters Type_Annotation "="
     ///     Possibly_Indented_Expression_Followed_By_Line_Break
     /// ```
-    fn parse_value_declaration(parser: &mut Parser<'_>) -> Result<Declaration> {
-        let binder = parser.consume_identifier()?;
+    fn finish_parse_value_declaration(
+        parser: &mut Parser<'_>,
+        binder: Identifier,
+    ) -> Result<Declaration> {
         let parameters = parse_annotated_parameters(parser)?;
-
         let type_annotation = parse_type_annotation(parser)?;
         parser.consume(TokenKind::Equals)?;
         let expression = parse_possibly_indented_expression_followed_by_line_break(parser)?;
@@ -197,8 +212,11 @@ pub mod declaration {
     }
 
     // @Task grammar rule
-    pub fn parse_data_declaration(parser: &mut Parser<'_>) -> Result<Declaration> {
-        let span_of_keyword = parser.consume(TokenKind::Data)?.span;
+    /// Finish parsing a data declaration.
+    pub fn finish_parse_data_declaration(
+        parser: &mut Parser<'_>,
+        span_of_data: Span,
+    ) -> Result<Declaration> {
         let binder = parser.consume_identifier()?;
         let parameters = parse_annotated_parameters(parser)?;
         let type_annotation = parse_type_annotation(parser)?;
@@ -217,7 +235,7 @@ pub mod declaration {
         }
 
         Ok(Declaration {
-            span: span_of_keyword.merge(
+            span: span_of_data.merge(
                 constructors
                     .last()
                     .map(|constructor| constructor.span)
@@ -255,15 +273,17 @@ pub mod declaration {
         }
     }
 
-    /// Parse a foreign declaration.
+    /// Finish parsing a foreign declaration.
     ///
     /// ## Grammar
     ///
     /// ```text
     /// Foreign_Declaration ::= "foreign" Identifier Annotated_Parameters Type_Annotation Line_Break
     /// ```
-    fn parse_foreign_declaration(parser: &mut Parser<'_>) -> Result<Declaration> {
-        let span_of_keyword = parser.consume(TokenKind::Foreign)?.span;
+    fn finish_parse_foreign_declaration(
+        parser: &mut Parser<'_>,
+        span_of_foreign: Span,
+    ) -> Result<Declaration> {
         let binder = parser.consume_identifier()?;
         let parameters = parse_annotated_parameters(parser)?;
         let type_annotation = parse_type_annotation(parser)?;
@@ -271,7 +291,7 @@ pub mod declaration {
         parser.consume(TokenKind::LineBreak)?;
 
         Ok(Declaration {
-            span: span_of_keyword.merge(type_annotation.span),
+            span: span_of_foreign.merge(type_annotation.span),
             kind: DeclarationKind::Foreign(Box::new(Foreign {
                 binder,
                 parameters,
@@ -442,12 +462,12 @@ pub mod expression {
     pub fn parse_expression(parser: &mut Parser<'_>) -> Result<Expression> {
         let token = parser.token();
 
-        Ok(match token.kind() {
-            TokenKind::Let => finish_parse_let_in(parser, token.span)?,
-            TokenKind::Backslash => finish_parse_lambda_literal(parser, token.span)?,
-            TokenKind::Case => finish_parse_case_analysis(parser, token.span)?,
-            _ => return parse_pi_type_literal_or_lower(parser),
-        })
+        match token.kind() {
+            TokenKind::Let => parser.advance_with(token.span, finish_parse_let_in),
+            TokenKind::Backslash => parser.advance_with(token.span, finish_parse_lambda_literal),
+            TokenKind::Case => parser.advance_with(token.span, finish_parse_case_analysis),
+            _ => parse_pi_type_literal_or_lower(parser),
+        }
     }
 
     /// Parse a pi-type literal or a lower expression.
@@ -939,10 +959,10 @@ fn parse_expression_followed_by_line_break(parser: &mut Parser<'_>) -> Result<Ex
 }
 
 // @Note imo stupid generalization, improve
-fn parse_bracketed<T: Spanning>(
+fn parse_bracketed<Node: Spanning>(
     parser: &mut Parser<'_>,
-    subparser: fn(&mut Parser<'_>) -> Result<T>,
-) -> Result<T> {
+    subparser: fn(&mut Parser<'_>) -> Result<Node>,
+) -> Result<Node> {
     let span_of_opening_bracket = parser.consume(TokenKind::OpeningRoundBracket)?.span;
     // @Question reflect necessary?
     let mut inner = parser.reflect(subparser)?;
@@ -978,6 +998,12 @@ impl Spanning for Pattern {
 pub struct Identifier {
     pub atom: crate::Atom,
     pub span: Span,
+}
+
+impl Identifier {
+    pub fn new(atom: crate::Atom, span: Span) -> Self {
+        Self { atom, span }
+    }
 }
 
 impl PartialEq for Identifier {

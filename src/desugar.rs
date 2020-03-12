@@ -8,6 +8,9 @@
 
 // @Task fix documentation (remove mentions of `HIR` (now desugared AST))
 
+// @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon
+// @Bug all those Span::dummy()s, they should be replaced with real spans!!!! @Task
+
 mod fmt;
 
 use freestanding::freestanding;
@@ -24,7 +27,7 @@ pub trait Binder: std::fmt::Debug + std::fmt::Display + Clone {}
 // @Note later: Path/Vec<Segment>
 impl Binder for parser::Identifier {}
 
-pub use declaration::{desugar_declaration, Constructor, Declaration, DeclarationKind};
+pub use declaration::{Constructor, Declaration, DeclarationKind};
 
 pub mod declaration {
     use super::*;
@@ -57,106 +60,112 @@ pub mod declaration {
         },
     }
 
-    /// Desugar a declaration from AST.
-    pub fn desugar_declaration(declaration: parser::Declaration) -> Declaration<Identifier> {
-        match declaration.kind {
-            parser::DeclarationKind::Value(declaration) => {
-                // @Note type_annotation is currently desugared twice
-                // @Task remove duplicate work
-                // @Temporary
-                let mut expression = desugar_expression(declaration.expression);
-                {
-                    let mut type_annotation =
-                        std::iter::once(desugar_expression(declaration.type_annotation.clone()));
-                    for parameter_group in declaration.parameters.iter().rev() {
-                        let parameter =
-                            Some(desugar_expression(parameter_group.type_annotation.clone()));
-                        for binder in parameter_group.parameters.iter().rev() {
-                            expression = expr! {
-                                LambdaLiteral[Span::dummy()] {
-                                    parameter: binder.clone(),
-                                    parameter_type_annotation: parameter.clone(),
-                                    explicitness: parameter_group.explicitness,
-                                    body_type_annotation: type_annotation.next(),
-                                    body: expression,
+    impl parser::Declaration {
+        /// Desugar a declaration from AST.
+        pub fn desugar(self) -> Declaration<Identifier> {
+            match self.kind {
+                parser::DeclarationKind::Value(declaration) => {
+                    // @Note type_annotation is currently desugared twice
+                    // @Task remove duplicate work
+                    // @Temporary
+                    let mut expression = declaration.expression.desugar();
+                    {
+                        let mut type_annotation =
+                            std::iter::once(declaration.type_annotation.clone().desugar());
+                        for parameter_group in declaration.parameters.iter().rev() {
+                            let parameter = Some(parameter_group.type_annotation.clone().desugar());
+                            for binder in parameter_group.parameters.iter().rev() {
+                                expression = expr! {
+                                    Lambda[Span::dummy()] {
+                                        parameter: binder.clone(),
+                                        parameter_type_annotation: parameter.clone(),
+                                        explicitness: parameter_group.explicitness,
+                                        body_type_annotation: type_annotation.next(),
+                                        body: expression,
+                                    }
                                 }
                             }
                         }
                     }
+                    Declaration {
+                        span: Span::dummy(),
+                        kind: DeclarationKind::Value(Box::new(Value {
+                            binder: declaration.binder,
+                            type_annotation: desugar_annotated_parameters(
+                                declaration.parameters,
+                                declaration.type_annotation,
+                            ),
+                            expression,
+                        })),
+                    }
                 }
-                Declaration {
+                parser::DeclarationKind::Data(data) => Declaration {
                     span: Span::dummy(),
-                    kind: DeclarationKind::Value(Box::new(Value {
+                    kind: DeclarationKind::Data(Box::new(Data {
+                        binder: data.binder,
+                        type_annotation: desugar_annotated_parameters(
+                            data.parameters,
+                            data.type_annotation,
+                        ),
+                        constructors: data
+                            .constructors
+                            .into_iter()
+                            .map(parser::Constructor::desugar)
+                            .collect(),
+                    })),
+                },
+                parser::DeclarationKind::Module(module) => Declaration {
+                    span: Span::dummy(),
+                    kind: DeclarationKind::Module(Box::new(Module {
+                        declarations: module
+                            .declarations
+                            .into_iter()
+                            .map(parser::Declaration::desugar)
+                            .collect(),
+                    })),
+                },
+                parser::DeclarationKind::Use => todo!(),
+                parser::DeclarationKind::Foreign(declaration) => Declaration {
+                    span: Span::dummy(),
+                    kind: DeclarationKind::Foreign(Box::new(Foreign {
                         binder: declaration.binder,
                         type_annotation: desugar_annotated_parameters(
                             declaration.parameters,
                             declaration.type_annotation,
                         ),
-                        expression,
                     })),
-                }
+                },
             }
-            parser::DeclarationKind::Data(data) => Declaration {
-                span: Span::dummy(),
-                kind: DeclarationKind::Data(Box::new(Data {
-                    binder: data.binder,
-                    type_annotation: desugar_annotated_parameters(
-                        data.parameters,
-                        data.type_annotation,
-                    ),
-                    constructors: data
-                        .constructors
-                        .into_iter()
-                        .map(desugar_constructor)
-                        .collect(),
-                })),
-            },
-            parser::DeclarationKind::Module(module) => Declaration {
-                span: Span::dummy(),
-                kind: DeclarationKind::Module(Box::new(Module {
-                    declarations: module
-                        .declarations
-                        .into_iter()
-                        .map(desugar_declaration)
-                        .collect(),
-                })),
-            },
-            parser::DeclarationKind::Use => todo!(),
-            parser::DeclarationKind::Foreign(declaration) => Declaration {
-                span: Span::dummy(),
-                kind: DeclarationKind::Foreign(Box::new(Foreign {
-                    binder: declaration.binder,
-                    type_annotation: desugar_annotated_parameters(
-                        declaration.parameters,
-                        declaration.type_annotation,
-                    ),
-                })),
-            },
         }
     }
+
     pub struct Constructor<B: Binder> {
         pub binder: B,
         pub type_annotation: Expression<B>,
         pub span: Span,
     }
 
-    /// Desugar a constructor from AST.
-    fn desugar_constructor(
-        constructor: parser::declaration::Constructor,
-    ) -> Constructor<Identifier> {
-        Constructor {
-            binder: constructor.binder,
-            type_annotation: desugar_annotated_parameters(
-                constructor.parameters,
-                constructor.type_annotation,
-            ),
-            span: Span::dummy(),
+    impl parser::Constructor {
+        /// Desugar a constructor from AST.
+        fn desugar(self) -> Constructor<Identifier> {
+            Constructor {
+                binder: self.binder,
+                type_annotation: desugar_annotated_parameters(
+                    self.parameters,
+                    self.type_annotation,
+                ),
+                span: Span::dummy(),
+            }
         }
     }
 }
 
-pub use expression::{desugar_expression, Expression, ExpressionKind};
+use crate::diagnostic::{Diagnostic, Level};
 
+pub use expression::{Expression, ExpressionKind};
+
+// @Task don't desugar let-in expressions to lambda literals as we still need them for
+// locally nameless/debruijn substitutions
 pub mod expression {
     use super::*;
 
@@ -179,7 +188,7 @@ pub mod expression {
     #[streamline(Rc)]
     #[derive(Clone, Debug)]
     pub enum ExpressionKind<B: Binder> {
-        PiTypeLiteral {
+        PiType {
             parameter: Option<B>,
             domain: Expression<B>,
             codomain: Expression<B>,
@@ -190,22 +199,22 @@ pub mod expression {
             argument: Expression<B>,
             explicitness: Explicitness,
         },
-        TypeLiteral,
-        NatTypeLiteral,
-        TextTypeLiteral,
-        NatLiteral {
+        Type,
+        NatType,
+        TextType,
+        Nat {
             value: crate::Nat,
             _marker: PhantomData<B>,
         },
-        TextLiteral {
+        Text {
             value: String,
             _marker: PhantomData<B>,
         },
         Binding {
             binder: B,
         },
-        LambdaLiteral {
-            parameter: Identifier,
+        Lambda {
+            parameter: B,
             parameter_type_annotation: Option<Expression<B>>,
             explicitness: Explicitness,
             body_type_annotation: Option<Expression<B>>,
@@ -218,154 +227,156 @@ pub mod expression {
         },
         // @Task move???
         UnsaturatedForeignApplication {
-            callee: Identifier,
+            callee: B,
             arguments: VecDeque<Expression<B>>,
         },
     }
 
-    /// Lower an expression from AST to HIR.
-    pub fn desugar_expression(expression: parser::Expression) -> Expression<Identifier> {
-        use parser::ExpressionKind::*;
+    impl parser::Expression {
+        /// Lower an expression from AST to HIR.
+        pub fn desugar(self) -> Expression<Identifier> {
+            use parser::ExpressionKind::*;
 
-        match expression.kind {
-            PiTypeLiteral(literal) => expr! {
-                PiTypeLiteral[Span::dummy()] {
-                    parameter: literal.binder.clone(),
-                    domain: desugar_expression(literal.parameter),
-                    codomain: desugar_expression(literal.expression),
-                    explicitness: literal.explicitness,
-                }
-            },
-            Application(application) => expr! {
-                Application[Span::dummy()] {
-                    callee: desugar_expression(application.callee),
-                    argument: desugar_expression(application.argument),
-                    explicitness: application.explicitness,
-                }
-            },
-            TypeLiteral => expr! { TypeLiteral[Span::dummy()] },
-            NatTypeLiteral => expr! { NatTypeLiteral[Span::dummy()] },
-            NatLiteral(literal) => expr! {
-                NatLiteral[Span::dummy()] {
-                    value: literal.value,
-                    _marker: PhantomData,
-                }
-            },
-            TextTypeLiteral => expr! { TextTypeLiteral[Span::dummy()] },
-            TextLiteral(literal) => expr! {
-                TextLiteral[Span::dummy()] {
-                    value: literal.value,
-                    _marker: PhantomData,
-                }
-            },
-            Path(path) => expr! {
-                Binding[Span::dummy()] {
-                    binder: path.segments,
-                }
-            },
-            LambdaLiteral(literal) => {
-                let mut expression = desugar_expression(literal.body);
-
-                let mut type_annotation = literal
-                    .body_type_annotation
-                    .map(desugar_expression)
-                    .into_iter();
-
-                for parameter_group in literal.parameters.iter().rev() {
-                    let parameter = parameter_group
-                        .type_annotation
-                        .clone()
-                        .map(desugar_expression);
-
-                    for binder in parameter_group.parameters.iter().rev() {
-                        expression = expr! {
-                            LambdaLiteral[Span::dummy()] {
-                                parameter: binder.clone(),
-                                parameter_type_annotation: parameter.clone(),
-                                explicitness: parameter_group.explicitness,
-                                body_type_annotation: type_annotation.next(),
-                                body: expression,
-                            }
-                        };
+            match self.kind {
+                PiTypeLiteral(literal) => expr! {
+                    PiType[Span::dummy()] {
+                        parameter: literal.binder.clone(),
+                        domain: literal.parameter.desugar(),
+                        codomain: literal.expression.desugar(),
+                        explicitness: literal.explicitness,
                     }
-                }
-                expression
-            }
-            LetIn(let_in) => {
-                let mut expression = desugar_expression(let_in.expression);
-
-                let mut type_annotation = let_in
-                    .type_annotation
-                    .map(|expression| desugar_expression(expression))
-                    .into_iter();
-
-                for parameter_group in let_in.parameters.iter().rev() {
-                    let parameter = parameter_group
-                        .type_annotation
-                        .clone()
-                        .map(desugar_expression);
-                    for binder in parameter_group.parameters.iter().rev() {
-                        expression = expr! {
-                            LambdaLiteral[Span::dummy()] {
-                                parameter: binder.clone(),
-                                parameter_type_annotation: parameter.clone(),
-                                explicitness: parameter_group.explicitness,
-                                body_type_annotation: type_annotation.next(),
-                                body: expression,
-                            }
-                        };
-                    }
-                }
-
-                expr! {
+                },
+                Application(application) => expr! {
                     Application[Span::dummy()] {
-                        callee: expr! {
-                            LambdaLiteral[Span::dummy()] {
-                                parameter: let_in.binder,
-                                // @Note we cannot simply desugar parameters and a type annotation because
-                                // in the chain (`->`) of parameters, there might always be one missing and
-                                // we don't support partial type annotations yet (using `'_`)
-                                // @Temporary @Update @Bug -gy because we ignore above message
-                                // @Task verify correct semantics
-                                parameter_type_annotation: type_annotation.next(),
-                                explicitness: Explicitness::Explicit,
-                                body_type_annotation: None,
-                                body: desugar_expression(let_in.scope),
-                            }
-                        },
-                        argument: expression,
-                        explicitness: Explicitness::Explicit,
+                        callee: application.callee.desugar(),
+                        argument: application.argument.desugar(),
+                        explicitness: application.explicitness,
+                    }
+                },
+                TypeLiteral => expr! { Type[Span::dummy()] },
+                NatTypeLiteral => expr! { NatType[Span::dummy()] },
+                NatLiteral(literal) => expr! {
+                    Nat[Span::dummy()] {
+                        value: literal.value,
+                        _marker: PhantomData,
+                    }
+                },
+                TextTypeLiteral => expr! { TextType[Span::dummy()] },
+                TextLiteral(literal) => expr! {
+                    Text[Span::dummy()] {
+                        value: literal.value,
+                        _marker: PhantomData,
+                    }
+                },
+                Path(path) => expr! {
+                    Binding[Span::dummy()] {
+                        binder: path.segments,
+                    }
+                },
+                LambdaLiteral(literal) => {
+                    let mut expression = literal.body.desugar();
+
+                    let mut type_annotation = literal
+                        .body_type_annotation
+                        .map(parser::Expression::desugar)
+                        .into_iter();
+
+                    for parameter_group in literal.parameters.iter().rev() {
+                        let parameter = parameter_group
+                            .type_annotation
+                            .clone()
+                            .map(parser::Expression::desugar);
+
+                        for binder in parameter_group.parameters.iter().rev() {
+                            expression = expr! {
+                                Lambda[Span::dummy()] {
+                                    parameter: binder.clone(),
+                                    parameter_type_annotation: parameter.clone(),
+                                    explicitness: parameter_group.explicitness,
+                                    body_type_annotation: type_annotation.next(),
+                                    body: expression,
+                                }
+                            };
+                        }
+                    }
+                    expression
+                }
+                LetIn(let_in) => {
+                    let mut expression = let_in.expression.desugar();
+
+                    let mut type_annotation = let_in
+                        .type_annotation
+                        .map(|expression| expression.desugar())
+                        .into_iter();
+
+                    for parameter_group in let_in.parameters.iter().rev() {
+                        let parameter = parameter_group
+                            .type_annotation
+                            .clone()
+                            .map(parser::Expression::desugar);
+                        for binder in parameter_group.parameters.iter().rev() {
+                            expression = expr! {
+                                Lambda[Span::dummy()] {
+                                    parameter: binder.clone(),
+                                    parameter_type_annotation: parameter.clone(),
+                                    explicitness: parameter_group.explicitness,
+                                    body_type_annotation: type_annotation.next(),
+                                    body: expression,
+                                }
+                            };
+                        }
+                    }
+
+                    expr! {
+                        Application[Span::dummy()] {
+                            callee: expr! {
+                                Lambda[Span::dummy()] {
+                                    parameter: let_in.binder,
+                                    // @Note we cannot simply desugar parameters and a type annotation because
+                                    // in the chain (`->`) of parameters, there might always be one missing and
+                                    // we don't support partial type annotations yet (using `'_`)
+                                    // @Temporary @Update @Bug -gy because we ignore above message
+                                    // @Task verify correct semantics
+                                    parameter_type_annotation: type_annotation.next(),
+                                    explicitness: Explicitness::Explicit,
+                                    body_type_annotation: None,
+                                    body: let_in.scope.desugar(),
+                                }
+                            },
+                            argument: expression,
+                            explicitness: Explicitness::Explicit,
+                        }
                     }
                 }
-            }
-            UseIn => todo!(),
-            CaseAnalysis(case_analysis) => {
-                let mut cases = Vec::new();
+                UseIn => todo!(),
+                CaseAnalysis(case_analysis) => {
+                    let mut cases = Vec::new();
 
-                for case_group in case_analysis.cases {
-                    // @Task naïvely desugaring this, results is worse error messages if the patterns don't introduce the
-                    // same bindings, example: `'of Foo 'of Bar x` gives the error `x not defined` which is not *that*
-                    // bad but we can do better (like Rust does) and error with `x` not defined in both arms/cases
-                    if case_group.patterns.len() > 1 {
-                        crate::diagnostic::Diagnostic::warn(
-                            "contracted cases not thoroughly supported yet".to_owned(),
-                            None,
-                        )
-                        .emit(None);
+                    for case_group in case_analysis.cases {
+                        // @Task naïvely desugaring this, results is worse error messages if the patterns don't introduce the
+                        // same bindings, example: `'of Foo 'of Bar x` gives the error `x not defined` which is not *that*
+                        // bad but we can do better (like Rust does) and error with `x` not defined in both arms/cases
+                        if case_group.patterns.len() > 1 {
+                            Diagnostic::new(
+                                Level::Warning,
+                                "contracted cases not thoroughly supported yet",
+                            )
+                            .emit(None);
+                        }
+
+                        for pattern in case_group.patterns {
+                            cases.push(Case {
+                                pattern: desugar_pattern(pattern),
+                                body: case_group.expression.clone().desugar(),
+                            });
+                        }
                     }
 
-                    for pattern in case_group.patterns {
-                        cases.push(Case {
-                            pattern: desugar_pattern(pattern),
-                            body: desugar_expression(case_group.expression.clone()),
-                        });
-                    }
-                }
-
-                expr! {
-                    CaseAnalysis[Span::dummy()] {
-                        subject: desugar_expression(case_analysis.expression),
-                        cases,
+                    expr! {
+                        CaseAnalysis[Span::dummy()] {
+                            subject: case_analysis.expression.desugar(),
+                            cases,
+                        }
                     }
                 }
             }
@@ -381,7 +392,7 @@ pub mod expression {
     // @Task @Beacon @Beacon @Beacon @Beacon transform Pattern like we did in the parser
     #[derive(Debug, Clone)]
     pub enum Pattern<B: Binder> {
-        NatLiteral(NatLiteral<B>),
+        NatLiteral(Nat<B>),
         Binding {
             binder: Binding<B>,
             type_annotation: Option<Expression<B>>,
@@ -397,7 +408,7 @@ pub mod expression {
     /// Currently, [parser::expression::Pattern] and [Pattern] are identical (apart from forgetting span information)!
     fn desugar_pattern(pattern: parser::Pattern) -> Pattern<Identifier> {
         match pattern.kind {
-            parser::PatternKind::NatLiteral(literal) => Pattern::NatLiteral(NatLiteral {
+            parser::PatternKind::NatLiteral(literal) => Pattern::NatLiteral(Nat {
                 value: literal.value,
                 _marker: PhantomData,
             }),
@@ -405,7 +416,7 @@ pub mod expression {
                 binder: Binding {
                     binder: path.segments,
                 },
-                type_annotation: path.type_annotation.map(desugar_expression),
+                type_annotation: path.type_annotation.map(parser::Expression::desugar),
             },
             parser::PatternKind::Application(application) => Pattern::Application {
                 callee: Rc::new(desugar_pattern(application.callee)),
@@ -420,14 +431,14 @@ fn desugar_annotated_parameters(
     parameters: parser::declaration::AnnotatedParameters,
     type_annotation: parser::Expression,
 ) -> Expression<Identifier> {
-    let mut expression = desugar_expression(type_annotation);
+    let mut expression = type_annotation.desugar();
 
     for parameter_group in parameters.into_iter().rev() {
-        let parameter = desugar_expression(parameter_group.type_annotation);
+        let parameter = parameter_group.type_annotation.desugar();
 
         for binder in parameter_group.parameters.iter().rev() {
             expression = expr! {
-                PiTypeLiteral[Span::dummy()] {
+                PiType[Span::dummy()] {
                     parameter: Some(binder.clone()),
                     domain: parameter.clone(),
                     codomain: expression,

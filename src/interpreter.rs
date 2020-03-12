@@ -451,6 +451,7 @@ pub fn evaluate(expression: Expression, scope: &FunctionScope<'_>) -> Result<Exp
         // binding
         Expression::Path(ref path) => scope
             .lookup_value(&path.identifier)
+            // @Question will this ever happen after type checking?
             .ok_or_else(|| Error::UndefinedBinding(path.identifier.clone()))?
             // @Question is this normalization necessary? I mean, yes, we got a new scope,
             // but the thing in the previous was already normalized (well, it should have been

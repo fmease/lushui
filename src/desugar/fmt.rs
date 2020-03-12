@@ -58,7 +58,7 @@ impl<B: Binder> Display for Constructor<B> {
 impl<B: Binder> Display for Expression<B> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match &self.kind {
-            ExpressionKind::PiTypeLiteral(literal) => write!(
+            ExpressionKind::PiType(literal) => write!(
                 f,
                 "({}{}{}) -> ({})",
                 literal.explicitness,
@@ -75,13 +75,13 @@ impl<B: Binder> Display for Expression<B> {
                 "({}) ({}{})",
                 application.callee, application.explicitness, application.argument,
             ),
-            ExpressionKind::TypeLiteral => f.write_str("Type"),
-            ExpressionKind::NatTypeLiteral => f.write_str("Nat"),
-            ExpressionKind::NatLiteral(literal) => write!(f, "{}", literal.value),
-            ExpressionKind::TextTypeLiteral => f.write_str("Text"),
-            ExpressionKind::TextLiteral(literal) => write!(f, "{:?}", literal.value),
+            ExpressionKind::Type => f.write_str("Type"),
+            ExpressionKind::NatType => f.write_str("Nat"),
+            ExpressionKind::Nat(literal) => write!(f, "{}", literal.value),
+            ExpressionKind::TextType => f.write_str("Text"),
+            ExpressionKind::Text(literal) => write!(f, "{:?}", literal.value),
             ExpressionKind::Binding(path) => write!(f, "{}", path.binder),
-            ExpressionKind::LambdaLiteral(literal) => write!(
+            ExpressionKind::Lambda(literal) => write!(
                 f,
                 "\\({}{}{}){} => ({})",
                 literal.explicitness,

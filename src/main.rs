@@ -1,8 +1,7 @@
 #![forbid(rust_2018_idioms, unused_must_use)]
 
 use lushuic::{
-    desugar,
-    diagnostic::Diagnostic,
+    diagnostic::{Diagnostic, Level},
     // interpreter, @Temporary
     lexer::Lexer,
     parser::{declaration::parse_file_module_no_header, Parser},
@@ -25,7 +24,7 @@ fn main() {
             message += &format!(" at {}", location);
         }
 
-        Diagnostic::bug(message, None).emit(None);
+        Diagnostic::new(Level::Bug, message).emit(None);
     }));
 
     let mut map = SourceMap::default();
@@ -35,22 +34,22 @@ fn main() {
 
         let path = arguments
             .next()
-            .ok_or_else(|| Diagnostic::fatal("no source file path supplied".to_owned(), None))?;
+            .ok_or_else(|| Diagnostic::new(Level::Fatal, "no source file path supplied"))?;
 
         let mut lexer = Lexer::load(&mut map, path.into())
-            .map_err(|error| Diagnostic::fatal(error.to_string(), None))?;
+            .map_err(|error| Diagnostic::new(Level::Fatal, error.to_string()))?;
         lexer.lex()?;
         let tokens = lexer.into_tokens();
-        // dbg!("{:#?}", &tokens);
+        // eprintln!("{:#?}", &tokens);
 
         let mut parser = Parser::new(&tokens);
         let node = parse_file_module_no_header(&mut parser)?;
 
-        let node = desugar::desugar_declaration(node);
+        let node = node.desugar();
         // eprintln!("{}", &node);
 
         // @Temporary
-        let _node = match resolver::resolve_declaration(&mut resolver::Map::default(), node) {
+        let _node = match node.resolve(&mut resolver::ModuleScope::default()) {
             Ok(node) => node,
             Err(errors) => {
                 let amount = errors.len();
@@ -58,12 +57,14 @@ fn main() {
                 for error in errors {
                     error.emit(Some(&mut map));
                 }
-                return Err(Diagnostic::fatal(
+                return Err(Diagnostic::new(
+                    Level::Fatal,
                     format!("aborting due to {} previous errors", amount),
-                    None,
                 ));
             }
         };
+
+        eprintln!("{}", _node);
 
         // @Temporary comment
         // let scope = interpreter::ModuleScope::new();

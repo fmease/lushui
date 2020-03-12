@@ -1,5 +1,3 @@
-;; @Bug there are parse errors
-
 False: Type = (P: Type) -> P
 
 negate (Phi: Type): Type = Phi -> False
@@ -12,7 +10,7 @@ data _Hole: Type =
 tau (t: power (power U)) (X: Type) (f: power (power X) -> X) (p: power X): _Hole =
     t (\(x: U) => p (f (x X f)))
 
-sigma (s: U): _Hole = s U (\(t: power (power U) => tau t)
+sigma (s: U): _Hole = s U (\(t: power (power U)) => tau t)
 
 Delta (y: U): Type = negate ((p: power U) -> sigma y p -> p (tau (sigma y)))
 Omega: Type = tau (\(p: power U) => (x: U) -> sigma x p -> p x)
