@@ -46,12 +46,12 @@ impl Declaration<parser::Identifier> {
 
                 let type_annotation = value
                     .type_annotation
-                    .resolve(&Scope::new(scope, &FunctionScope::Empty))
+                    .resolve(&FunctionScope::Module(scope))
                     .map_err(|error| vec![error]);
 
                 let expression = value
                     .expression
-                    .resolve(&Scope::new(scope, &FunctionScope::Empty))
+                    .resolve(&FunctionScope::Module(scope))
                     .map_err(|error| vec![error]);
 
                 let span = self.span;
@@ -74,7 +74,7 @@ impl Declaration<parser::Identifier> {
 
                 let type_annotation = data
                     .type_annotation
-                    .resolve(&Scope::new(scope, &FunctionScope::Empty))
+                    .resolve(&FunctionScope::Module(scope))
                     .map_err(|error| vec![error]);
 
                 let mut constructors = Vec::new();
@@ -86,7 +86,7 @@ impl Declaration<parser::Identifier> {
 
                     let type_annotation = constructor
                         .type_annotation
-                        .resolve(&Scope::new(scope, &FunctionScope::Empty))
+                        .resolve(&FunctionScope::Module(scope))
                         .map_err(|error| vec![error]);
 
                     let span = constructor.span;
@@ -136,7 +136,7 @@ impl Declaration<parser::Identifier> {
 
                 let type_annotation = foreign
                     .type_annotation
-                    .resolve(&Scope::new(scope, &FunctionScope::Empty))
+                    .resolve(&FunctionScope::Module(scope))
                     .map_err(|error| vec![error]);
 
                 let span = self.span;
@@ -155,7 +155,7 @@ impl Declaration<parser::Identifier> {
 
 // @Task @Beacon use Rc::try_unwrap more instead of clone
 impl Expression<parser::Identifier> {
-    pub fn resolve(self, scope: &Scope<'_>) -> Result<Expression<Identifier>, Diagnostic> {
+    pub fn resolve(self, scope: &FunctionScope<'_>) -> Result<Expression<Identifier>, Diagnostic> {
         use ExpressionKind::*;
 
         Ok(match self.kind {
@@ -168,7 +168,7 @@ impl Expression<parser::Identifier> {
                         }),
                         domain: pi.domain.clone().resolve(scope)?,
                         codomain: match pi.parameter.clone() {
-                            Some(parameter) => pi.codomain.clone().resolve(&Scope { function: &scope.function.extend(parameter), module: scope.module })?,
+                            Some(parameter) => pi.codomain.clone().resolve(&scope.extend(parameter))?,
                             None => pi.codomain.clone().resolve(scope)?,
                         },
                         explicitness: pi.explicitness,
@@ -201,10 +201,7 @@ impl Expression<parser::Identifier> {
             },
             Binding(binding) => expr! {
                 Binding[self.span] {
-                    binder: match scope.function.index(&binding.binder) {
-                        Some(index) => Identifier { source: binding.binder.clone(), index: Index::Debruijn(index) },
-                        None => scope.module.lookup_binding(&binding.binder)?,
-                    }
+                    binder: scope.lookup_binding(&binding.binder)?,
                 }
             },
             Lambda(lambda) => expr! {
@@ -217,9 +214,9 @@ impl Expression<parser::Identifier> {
                         .map(|r#type| r#type.resolve(scope))
                         .transpose()?,
                     body_type_annotation: lambda.body_type_annotation.clone()
-                        .map(|r#type| r#type.resolve(&Scope { function: &scope.function.extend(lambda.parameter.clone()), module: scope.module }))
+                        .map(|r#type| r#type.resolve(&scope.extend(lambda.parameter.clone())))
                         .transpose()?,
-                    body: lambda.body.clone().resolve(&Scope { function: &scope.function.extend(lambda.parameter.clone()), module: scope.module })?,
+                    body: lambda.body.clone().resolve(&scope.extend(lambda.parameter.clone()))?,
                     explicitness: lambda.explicitness,
                 }
             },
@@ -227,17 +224,6 @@ impl Expression<parser::Identifier> {
             CaseAnalysis(_expression) => todo!(),
             Substitution(_) | UnsaturatedForeignApplication(_) => unreachable!(),
         })
-    }
-}
-
-pub struct Scope<'a> {
-    module: &'a ModuleScope,
-    function: &'a FunctionScope<'a>,
-}
-
-impl<'a> Scope<'a> {
-    fn new(module: &'a ModuleScope, function: &'a FunctionScope<'a>) -> Self {
-        Self { module, function }
     }
 }
 
@@ -395,41 +381,44 @@ impl fmt::Display for Identifier {
     }
 }
 
-pub enum FunctionScope<'parent> {
-    Empty,
+pub enum FunctionScope<'a> {
+    Module(&'a ModuleScope),
     Binding {
-        parent: &'parent FunctionScope<'parent>,
+        parent: &'a FunctionScope<'a>,
         binder: parser::Identifier,
     },
 }
 
-impl<'parent> FunctionScope<'parent> {
-    pub fn extend(&'parent self, binder: parser::Identifier) -> Self {
+impl<'a> FunctionScope<'a> {
+    fn extend(&'a self, binder: parser::Identifier) -> Self {
         Self::Binding {
             parent: self,
             binder,
         }
     }
 
-    fn index(&self, query: &parser::Identifier) -> Option<DebruijnIndex> {
-        fn index(
+    fn lookup_binding(&self, query: &parser::Identifier) -> Result<Identifier, Diagnostic> {
+        fn lookup_binding(
             scope: &FunctionScope<'_>,
             query: &parser::Identifier,
             depth: usize,
-        ) -> Option<usize> {
+        ) -> Result<Identifier, Diagnostic> {
             match scope {
-                FunctionScope::Empty => None,
+                FunctionScope::Module(module) => module.lookup_binding(query),
                 FunctionScope::Binding { parent, binder } => {
                     if binder == query {
-                        Some(depth)
+                        Ok(Identifier {
+                            source: query.clone(),
+                            index: Index::Debruijn(DebruijnIndex { value: depth }),
+                        })
                     } else {
-                        index(parent, query, depth + 1)
+                        lookup_binding(parent, query, depth + 1)
                     }
                 }
             }
         }
 
-        index(self, query, 0).map(|index| DebruijnIndex { value: index })
+        lookup_binding(self, query, 0)
     }
 }
 

@@ -16,32 +16,6 @@ use crate::{
 
 // use super::{Error, Result};
 
-// @Task merge this *again* with FunctionScope, it makes no sense otherwise
-pub struct Scope<'a> {
-    pub module: &'a ModuleScope,
-    pub function: &'a FunctionScope<'a>,
-}
-
-impl<'a> Scope<'a> {
-    pub fn new(module: &'a ModuleScope, function: &'a FunctionScope<'a>) -> Self {
-        Self { module, function }
-    }
-
-    pub fn lookup_type(&self, binder: &Identifier) -> Option<Expression<Identifier>> {
-        self.function
-            .lookup_type(binder)
-            .or_else(|| self.module.lookup_type(binder))
-    }
-
-    pub fn lookup_value(&self, binder: &Identifier) -> Option<Value> {
-        // @Note hacky use a generic lookup/exists please
-        match self.function.lookup_type(binder) {
-            Some(_) => None,
-            None => self.module.lookup_value(binder),
-        }
-    }
-}
-
 /// The scope of bindings inside of a module.
 ///
 /// Can store all kinds of bindings:
@@ -356,18 +330,19 @@ impl fmt::Display for Entity {
 /// most importantly, recursion only works explicitly via the fix-point-combinator.
 // @Note probably bad cache behavior as this is just a linked list. but I honestly cannot think
 // of a better data structure right now that does not involve deep-cloning an association list or the like
-pub enum FunctionScope<'parent> {
-    Empty,
+pub enum FunctionScope<'a> {
+    Module(&'a ModuleScope),
+    // @Note obviously, we don't store an Identifier but a DebruijnIndex here hmm
     Function {
-        parent: &'parent FunctionScope<'parent>,
+        parent: &'a FunctionScope<'a>,
         index: DebruijnIndex,
         r#type: Expression<Identifier>,
     },
 }
 
-impl<'parent> FunctionScope<'parent> {
+impl<'a> FunctionScope<'a> {
     pub fn extend_with_parameter(
-        &'parent self,
+        &'a self,
         binder: Identifier,
         r#type: Expression<Identifier>,
     ) -> Self {
@@ -380,16 +355,37 @@ impl<'parent> FunctionScope<'parent> {
 
     pub fn lookup_type(&self, query: &Identifier) -> Option<Expression<Identifier>> {
         match self {
-            Self::Empty => None,
+            Self::Module(module) => module.lookup_type(query),
             Self::Function {
                 parent,
                 index,
                 r#type,
             } => {
-                if *index == query.debruijn().unwrap() {
+                if query
+                    .debruijn()
+                    .map(|query| *index == query)
+                    .unwrap_or(false)
+                {
                     Some(r#type.clone())
                 } else {
                     parent.lookup_type(query)
+                }
+            }
+        }
+    }
+
+    pub fn lookup_value(&self, query: &Identifier) -> Option<Value> {
+        match self {
+            Self::Module(module) => module.lookup_value(query),
+            Self::Function { parent, index, .. } => {
+                if query
+                    .debruijn()
+                    .map(|query| *index == query)
+                    .unwrap_or(false)
+                {
+                    None
+                } else {
+                    parent.lookup_value(query)
                 }
             }
         }

@@ -11,7 +11,7 @@
 
 use crate::{
     desugar::{Expression, ExpressionKind},
-    interpreter::{Error, FunctionScope, ModuleScope, Result, Scope},
+    interpreter::{Error, FunctionScope, ModuleScope, Result},
     resolver::Identifier,
 };
 
@@ -21,10 +21,10 @@ pub(in crate::interpreter) fn assert_constructor_is_instance_of_type(
     r#type: Expression<Identifier>,
     scope: &ModuleScope,
 ) -> Result<()> {
-    let result_type = constructor.result_type(&Scope::new(scope, &FunctionScope::Empty));
+    let result_type = constructor.result_type(&FunctionScope::Module(scope));
     let callee = result_type.callee();
 
-    if !r#type.equals(callee, &Scope::new(scope, &FunctionScope::Empty))? {
+    if !r#type.equals(callee, &FunctionScope::Module(scope))? {
         Err(Error::InvalidConstructor {
             name: constructor_name,
         })
@@ -37,22 +37,19 @@ impl Expression<Identifier> {
     // @Question @Bug returns are type that might depend on parameters which we don't supply!!
     // gets R in A -> B -> C -> R plus an environment b.c. R could depend on outer stuff
     // @Note this function assumes that the expression has already been normalized!
-    fn result_type(self, scope: &Scope<'_>) -> Self {
+    fn result_type(self, scope: &FunctionScope<'_>) -> Self {
         use ExpressionKind::*;
 
         match self.kind {
-            ExpressionKind::PiType(literal) => {
+            PiType(literal) => {
                 if let Some(parameter) = literal.parameter.clone() {
-                    let scope = Scope {
-                        function: &scope.function.extend_with_parameter(parameter, literal.domain.clone()),
-                        module:scope.module,
-                    };
+                    let scope = scope.extend_with_parameter(parameter, literal.domain.clone());
                     literal.codomain.clone().result_type(&scope)
                 } else {
                     literal.codomain.clone().result_type(scope)
                 }
             }
-            ExpressionKind::Application(_)
+            Application(_)
             | Type
             | NatType
             | TextType

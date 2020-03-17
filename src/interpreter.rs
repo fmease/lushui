@@ -32,8 +32,8 @@ use crate::{
     span::Span,
 };
 use error::{Error, Result};
+use scope::FunctionScope;
 pub use scope::ModuleScope;
-use scope::{FunctionScope, Scope};
 
 /// An internal compiler bug message.
 ///
@@ -58,7 +58,7 @@ impl Declaration<Identifier> {
         match &self.kind {
             Value(declaration) => {
                 let (infered_type, value) = {
-                    let scope = Scope::new(scope, &FunctionScope::Empty);
+                    let scope = FunctionScope::Module(scope);
                     let infered_type = declaration
                         .expression
                         .clone()
@@ -72,13 +72,11 @@ impl Declaration<Identifier> {
                 scope.insert_value_binding(declaration.binder.clone(), infered_type, value);
             }
             Data(data) => {
-                let r#type = data.type_annotation.clone().evaluate(
-                    &Scope::new(scope, &FunctionScope::Empty),
-                    Form::WeakHeadNormal,
-                )?;
-                r#type
+                let r#type = data
+                    .type_annotation
                     .clone()
-                    .is_a_type(&Scope::new(scope, &FunctionScope::Empty))?;
+                    .evaluate(&FunctionScope::Module(scope), Form::WeakHeadNormal)?;
+                r#type.clone().is_a_type(&FunctionScope::Module(scope))?;
 
                 // @Task diagnostic note: only `Type` can be extended
                 // @Note currently is: invalid constructor X
@@ -99,13 +97,10 @@ impl Declaration<Identifier> {
                     span: _,
                 } in &data.constructors
                 {
-                    let r#type = type_annotation.clone().evaluate(
-                        &Scope::new(scope, &FunctionScope::Empty),
-                        Form::WeakHeadNormal,
-                    )?;
-                    r#type
+                    let r#type = type_annotation
                         .clone()
-                        .is_a_type(&Scope::new(scope, &FunctionScope::Empty))?;
+                        .evaluate(&FunctionScope::Module(scope), Form::WeakHeadNormal)?;
+                    r#type.clone().is_a_type(&FunctionScope::Module(scope))?;
 
                     data_types::instance::assert_constructor_is_instance_of_type(
                         binder.clone(),
@@ -125,7 +120,7 @@ impl Declaration<Identifier> {
             Use => todo!(),
             Foreign(foreign) => {
                 let r#type = {
-                    let scope = Scope::new(scope, &FunctionScope::Empty);
+                    let scope = FunctionScope::Module(scope);
                     let r#type = foreign
                         .type_annotation
                         .clone()
@@ -275,7 +270,7 @@ impl Expression<Identifier> {
     }
 
     /// Try to infer the type of an expression.
-    pub fn infer_type(self, scope: &Scope<'_>) -> Result<Self> {
+    pub fn infer_type(self, scope: &FunctionScope<'_>) -> Result<Self> {
         use self::Substitution::*;
         use ExpressionKind::*;
 
@@ -295,12 +290,9 @@ impl Expression<Identifier> {
                 literal.domain.clone().is_a_type(scope)?;
 
                 if let Some(parameter) = literal.parameter.clone() {
-                    literal.codomain.clone().is_a_type(&Scope {
-                        function: &scope
-                            .function
-                            .extend_with_parameter(parameter, literal.domain.clone()),
-                        module: scope.module,
-                    })?;
+                    literal.codomain.clone().is_a_type(
+                        &scope.extend_with_parameter(parameter, literal.domain.clone()),
+                    )?;
                 } else {
                     literal.codomain.clone().is_a_type(scope)?;
                 }
@@ -315,12 +307,8 @@ impl Expression<Identifier> {
 
                 parameter_type.clone().is_a_type(scope)?;
 
-                let scope = Scope {
-                    function: &scope
-                        .function
-                        .extend_with_parameter(literal.parameter.clone(), parameter_type.clone()),
-                    module: scope.module,
-                };
+                let scope =
+                    &scope.extend_with_parameter(literal.parameter.clone(), parameter_type.clone());
                 let infered_body_type = literal.body.clone().infer_type(&scope)?;
 
                 if let Some(body_type_annotation) = literal.body_type_annotation.clone() {
@@ -461,7 +449,7 @@ impl Expression<Identifier> {
     ///
     /// This is beta-reduction I think.
     // @Task differenciate between Expression<InitialPhase> and Expression<Normalized>
-    pub fn evaluate(self, scope: &Scope<'_>, form: Form) -> Result<Self> {
+    pub fn evaluate(self, scope: &FunctionScope<'_>, form: Form) -> Result<Self> {
         use self::Substitution::*;
         use ExpressionKind::*;
 
@@ -528,12 +516,7 @@ impl Expression<Identifier> {
                     // @Task verify
                     let codomain = match &pi.parameter {
                         Some(parameter) => pi.codomain.clone().evaluate(
-                            &Scope {
-                                function: &scope
-                                    .function
-                                    .extend_with_parameter(parameter.clone(), domain.clone()),
-                                module: scope.module,
-                            },
+                            &scope.extend_with_parameter(parameter.clone(), domain.clone()),
                             form,
                         )?,
                         None => pi.codomain.clone(),
@@ -558,13 +541,10 @@ impl Expression<Identifier> {
                         .expect(MISSING_ANNOTATION)
                         .evaluate(scope, form)?;
                     let body = lambda.body.clone().evaluate(
-                        &Scope {
-                            function: &scope.function.extend_with_parameter(
-                                lambda.parameter.clone(),
-                                parameter_type.clone(),
-                            ),
-                            module: scope.module,
-                        },
+                        &scope.extend_with_parameter(
+                            lambda.parameter.clone(),
+                            parameter_type.clone(),
+                        ),
                         form,
                     )?;
                     let body_type = lambda
@@ -572,13 +552,10 @@ impl Expression<Identifier> {
                         .clone()
                         .map(|r#type| {
                             r#type.evaluate(
-                                &Scope {
-                                    function: &scope.function.extend_with_parameter(
-                                        lambda.parameter.clone(),
-                                        parameter_type.clone(),
-                                    ),
-                                    module: scope.module,
-                                },
+                                &scope.extend_with_parameter(
+                                    lambda.parameter.clone(),
+                                    parameter_type.clone(),
+                                ),
                                 form,
                             )
                         })
@@ -661,7 +638,7 @@ impl Expression<Identifier> {
     }
 
     /// Assert that an expression is of type `Type`.
-    fn is_a_type(self, scope: &Scope<'_>) -> Result<()> {
+    fn is_a_type(self, scope: &FunctionScope<'_>) -> Result<()> {
         let r#type = self.infer_type(scope)?;
         (expr! { Type[Span::dummy()] }).is_actual(r#type, scope)
     }
@@ -669,7 +646,11 @@ impl Expression<Identifier> {
     /// Infer type of expression and match it with the type annotation.
     ///
     /// Returns infered type and for convenience also checks if the supplied type annotation is actually a type.
-    fn matches_type_annotation(self, type_annotation: Self, scope: &Scope<'_>) -> Result<Self> {
+    fn matches_type_annotation(
+        self,
+        type_annotation: Self,
+        scope: &FunctionScope<'_>,
+    ) -> Result<Self> {
         type_annotation.clone().is_a_type(scope)?;
         let infered_type = self.infer_type(scope)?;
         type_annotation.is_actual(infered_type.clone(), scope)?;
@@ -678,7 +659,7 @@ impl Expression<Identifier> {
     }
 
     /// Assert that two expression are equal under evaluation/normalization.
-    fn is_actual(self, actual: Self, scope: &Scope<'_>) -> Result<()> {
+    fn is_actual(self, actual: Self, scope: &FunctionScope<'_>) -> Result<()> {
         if !self.clone().equals(actual.clone(), scope)? {
             Err(Error::ExpressionsNotEqual {
                 expected: self,
@@ -690,7 +671,7 @@ impl Expression<Identifier> {
     }
 
     /// Dictates if two expressions are alpha-equivalent.
-    fn equals(self, other: Self, scope: &Scope<'_>) -> Result<bool> {
+    fn equals(self, other: Self, scope: &FunctionScope<'_>) -> Result<bool> {
         use ExpressionKind::*;
 
         let expression0 = self.evaluate(scope, Form::WeakHeadNormal)?;
@@ -718,30 +699,15 @@ impl Expression<Identifier> {
                         // @Task @Beacon verify
                         (Some(parameter0), Some(_parameter1)) => pi0.codomain.clone().equals(
                             pi1.codomain.clone(),
-                            &Scope {
-                                function: &scope
-                                    .function
-                                    .extend_with_parameter(parameter0, pi0.domain.clone()),
-                                module: scope.module,
-                            },
+                            &scope.extend_with_parameter(parameter0, pi0.domain.clone()),
                         )?,
                         (Some(parameter), None) => pi0.codomain.clone().equals(
                             pi1.codomain.clone(),
-                            &Scope {
-                                function: &scope
-                                    .function
-                                    .extend_with_parameter(parameter, pi0.domain.clone()),
-                                module: scope.module,
-                            },
+                            &scope.extend_with_parameter(parameter, pi0.domain.clone()),
                         )?,
                         (None, Some(parameter)) => pi0.codomain.clone().equals(
                             pi1.codomain.clone(),
-                            &Scope {
-                                function: &scope
-                                    .function
-                                    .extend_with_parameter(parameter, pi1.domain.clone()),
-                                module: scope.module,
-                            },
+                            &scope.extend_with_parameter(parameter, pi1.domain.clone()),
                         )?,
                         (None, None) => pi0.codomain.clone().equals(pi1.codomain.clone(), scope)?,
                     }
@@ -762,13 +728,10 @@ impl Expression<Identifier> {
                     .equals(parameter_type_annotation1, scope)?
                     && lambda0.body.clone().equals(
                         lambda1.body.clone(),
-                        &Scope {
-                            function: &scope.function.extend_with_parameter(
-                                lambda0.parameter.clone(),
-                                parameter_type_annotation0,
-                            ),
-                            module: scope.module,
-                        },
+                        &scope.extend_with_parameter(
+                            lambda0.parameter.clone(),
+                            parameter_type_annotation0,
+                        ),
                     )?
             }
             (CaseAnalysis(_), CaseAnalysis(_)) => unreachable!(),
