@@ -8,19 +8,19 @@
 
 use std::fmt;
 
-use crate::desugar::{Expression, Identifier};
+use crate::{desugar::Expression, resolver::Identifier};
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 pub enum Error {
     UndefinedBinding(Identifier),
     FunctionExpected {
-        actual: Expression,
-        argument: Expression,
+        actual: Expression<Identifier>,
+        argument: Expression<Identifier>,
     },
     ExpressionsNotEqual {
-        expected: Expression,
-        actual: Expression,
+        expected: Expression<Identifier>,
+        actual: Expression<Identifier>,
     },
     // @Task replace with InvalidInstance and also reference said instance
     // @Update use multispan/subdiagnostics (once we hook everything up correctly)

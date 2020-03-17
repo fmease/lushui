@@ -9,16 +9,22 @@
 //! existentials and specialized instances but we first might want to
 //! feature-gate them.
 
-use crate::desugar::{Expression, Identifier};
-use crate::interpreter::{equal, Error, FunctionScope, ModuleScope, Result};
+use crate::{
+    desugar::{Expression, ExpressionKind},
+    interpreter::{Error, FunctionScope, ModuleScope, Result, Scope},
+    resolver::Identifier,
+};
 
 pub(in crate::interpreter) fn assert_constructor_is_instance_of_type(
     constructor_name: Identifier,
-    constructor: Expression,
-    r#type: Expression,
-    scope: ModuleScope,
+    constructor: Expression<Identifier>,
+    r#type: Expression<Identifier>,
+    scope: &ModuleScope,
 ) -> Result<()> {
-    if !constructor_is_instance_of_type(constructor, r#type, scope) {
+    let result_type = constructor.result_type(&Scope::new(scope, &FunctionScope::Empty));
+    let callee = result_type.callee();
+
+    if !r#type.equals(callee, &Scope::new(scope, &FunctionScope::Empty))? {
         Err(Error::InvalidConstructor {
             name: constructor_name,
         })
@@ -27,55 +33,50 @@ pub(in crate::interpreter) fn assert_constructor_is_instance_of_type(
     }
 }
 
-// @Note currently allows existential quantification and specialized instances
-pub(in crate::interpreter) fn constructor_is_instance_of_type(
-    constructor: Expression,
-    r#type: Expression,
-    module_scope: ModuleScope,
-) -> bool {
-    let function_scope = FunctionScope::new(module_scope);
-    let result_type = result_type(constructor, &function_scope);
-    let callee = callee(result_type);
+impl Expression<Identifier> {
+    // @Question @Bug returns are type that might depend on parameters which we don't supply!!
+    // gets R in A -> B -> C -> R plus an environment b.c. R could depend on outer stuff
+    // @Note this function assumes that the expression has already been normalized!
+    fn result_type(self, scope: &Scope<'_>) -> Self {
+        use ExpressionKind::*;
 
-    // @Question evaluation_equal instead?
-    equal(r#type, callee, &function_scope)
-}
-
-// @Question @Bug returns are type that might depend on parameters which we don't supply!!
-// gets R in A -> B -> C -> R plus an environment b.c. R could depend on outer stuff
-// @Note this function assumes that the expression has already been normalized!
-fn result_type(expression: Expression, scope: &FunctionScope<'_>) -> Expression {
-    match expression {
-        Expression::PiTypeLiteral(literal) => {
-            if let Some(parameter) = literal.parameter.clone() {
-                let scope = scope.extend_with_parameter(parameter, literal.domain.clone());
-                result_type(literal.codomain.clone(), &scope)
-            } else {
-                result_type(literal.codomain.clone(), scope)
+        match self.kind {
+            ExpressionKind::PiType(literal) => {
+                if let Some(parameter) = literal.parameter.clone() {
+                    let scope = Scope {
+                        function: &scope.function.extend_with_parameter(parameter, literal.domain.clone()),
+                        module:scope.module,
+                    };
+                    literal.codomain.clone().result_type(&scope)
+                } else {
+                    literal.codomain.clone().result_type(scope)
+                }
             }
+            ExpressionKind::Application(_)
+            | Type
+            | NatType
+            | TextType
+            | Binding(_) => self,
+            Lambda(_)
+            | Nat(_)
+            | Text(_)
+            | UseIn
+            | CaseAnalysis(_)
+            // @Note not sure
+            | Substitution(_)
+            | UnsaturatedForeignApplication(_) => unreachable!(),
         }
-        Expression::Application(_)
-        | Expression::TypeLiteral
-        | Expression::NatTypeLiteral
-        | Expression::TextTypeLiteral
-        | Expression::Path(_) => expression,
-        Expression::LambdaLiteral(_)
-        | Expression::NatLiteral(_)
-        | Expression::TextLiteral(_)
-        | Expression::UseIn(_)
-        | Expression::CaseAnalysis(_)
-        | Expression::UnsaturatedForeignApplication(_) => unreachable!(),
     }
-}
 
-/// Returns the callee of an expression.
-///
-/// Example: Returns the `f` in `f a b c`.
-fn callee(mut expression: Expression) -> Expression {
-    loop {
-        expression = match expression {
-            Expression::Application(application) => application.callee.clone(),
-            expression => return expression,
+    /// Returns the callee of an expression.
+    ///
+    /// Example: Returns the `f` in `f a b c`.
+    fn callee(mut self) -> Self {
+        loop {
+            self = match self.kind {
+                ExpressionKind::Application(application) => application.callee.clone(),
+                _ => return self,
+            }
         }
     }
 }

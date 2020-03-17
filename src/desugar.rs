@@ -11,14 +11,17 @@
 // @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon
 // @Bug all those Span::dummy()s, they should be replaced with real spans!!!! @Task
 
+// @Beacon @Beacon @Task move DeclarationKind and ExpressionKind into a hir.rs so we can alias the
+// stuff in desugar, resolver and interpreter
+
 mod fmt;
 
 use freestanding::freestanding;
-use std::{marker::PhantomData, rc::Rc};
+use std::rc::Rc;
 
 use crate::{
     parser::{self, Explicitness, Identifier},
-    span::Span,
+    span::{Span, Spanned},
 };
 
 // @Temporary location
@@ -32,10 +35,7 @@ pub use declaration::{Constructor, Declaration, DeclarationKind};
 pub mod declaration {
     use super::*;
 
-    pub struct Declaration<B: Binder> {
-        pub kind: DeclarationKind<B>,
-        pub span: Span,
-    }
+    pub type Declaration<B> = Spanned<DeclarationKind<B>>;
 
     #[freestanding]
     #[streamline(Box)]
@@ -164,26 +164,13 @@ use crate::diagnostic::{Diagnostic, Level};
 
 pub use expression::{Expression, ExpressionKind};
 
-// @Task don't desugar let-in expressions to lambda literals as we still need them for
-// locally nameless/debruijn substitutions
 pub mod expression {
     use super::*;
 
     use std::collections::VecDeque;
 
-    // @Temporary only used for migration
-    // pub type Expression = Expression<Identifier>;
-    // pub type ExpressionKind = ExpressionKind<Identifier>;
+    pub type Expression<B> = Spanned<ExpressionKind<B>>;
 
-    // @Task @Beacon @Beacon @Beacon parameterize over binder <B: Binder>
-    // @Note this requites updating freestanding to support generics! (blocker)
-    #[derive(Clone, Debug)]
-    pub struct Expression<B: Binder> {
-        pub kind: ExpressionKind<B>,
-        pub span: Span,
-    }
-
-    // @Note we can also think about **interning** Expressions but not sure if a good idea
     #[freestanding]
     #[streamline(Rc)]
     #[derive(Clone, Debug)]
@@ -202,13 +189,13 @@ pub mod expression {
         Type,
         NatType,
         TextType,
+        #[parameterless]
         Nat {
             value: crate::Nat,
-            _marker: PhantomData<B>,
         },
+        #[parameterless]
         Text {
             value: String,
-            _marker: PhantomData<B>,
         },
         Binding {
             binder: B,
@@ -226,6 +213,10 @@ pub mod expression {
             cases: Vec<Case<B>>,
         },
         // @Task move???
+        Substitution {
+            substitution: crate::interpreter::Substitution,
+            expression: Expression<B>,
+        },
         UnsaturatedForeignApplication {
             callee: B,
             arguments: VecDeque<Expression<B>>,
@@ -258,14 +249,12 @@ pub mod expression {
                 NatLiteral(literal) => expr! {
                     Nat[Span::dummy()] {
                         value: literal.value,
-                        _marker: PhantomData,
                     }
                 },
                 TextTypeLiteral => expr! { TextType[Span::dummy()] },
                 TextLiteral(literal) => expr! {
                     Text[Span::dummy()] {
                         value: literal.value,
-                        _marker: PhantomData,
                     }
                 },
                 Path(path) => expr! {
@@ -392,7 +381,7 @@ pub mod expression {
     // @Task @Beacon @Beacon @Beacon @Beacon transform Pattern like we did in the parser
     #[derive(Debug, Clone)]
     pub enum Pattern<B: Binder> {
-        NatLiteral(Nat<B>),
+        Nat(Nat),
         Binding {
             binder: Binding<B>,
             type_annotation: Option<Expression<B>>,
@@ -408,9 +397,8 @@ pub mod expression {
     /// Currently, [parser::expression::Pattern] and [Pattern] are identical (apart from forgetting span information)!
     fn desugar_pattern(pattern: parser::Pattern) -> Pattern<Identifier> {
         match pattern.kind {
-            parser::PatternKind::NatLiteral(literal) => Pattern::NatLiteral(Nat {
+            parser::PatternKind::NatLiteral(literal) => Pattern::Nat(Nat {
                 value: literal.value,
-                _marker: PhantomData,
             }),
             parser::PatternKind::Path(path) => Pattern::Binding {
                 binder: Binding {

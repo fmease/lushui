@@ -15,7 +15,7 @@ use std::fmt;
 use crate::{
     diagnostic::{Diagnostic, Level},
     lexer::{self, Token, TokenKind},
-    span::Span,
+    span::{Span, Spanned},
 };
 
 // @Task use SourceFiles
@@ -121,16 +121,11 @@ pub use declaration::{parse_declaration, Constructor, Declaration, DeclarationKi
 pub mod declaration {
     use super::*;
 
-    #[derive(Debug)]
-    pub struct Declaration {
-        pub kind: DeclarationKind,
-        pub span: Span,
-    }
+    pub type Declaration = Spanned<DeclarationKind>;
 
     /// The syntax node of a declaration.
     #[freestanding]
     #[streamline(Box)]
-    #[derive(Debug)] // @Temporary
     pub enum DeclarationKind {
         /// The syntax node of a value declaration.
         Value {
@@ -309,7 +304,6 @@ pub mod declaration {
         pub span: Span,
     }
 
-    // @Task very future: unnameable constructor `_`
     fn parse_constructor(parser: &mut Parser<'_>) -> Result<Constructor> {
         let binder = parser.consume_identifier()?;
         let parameters = parse_annotated_parameters(parser)?;
@@ -344,11 +338,9 @@ pub mod declaration {
         Ok(parameters)
     }
 
-    // @Task add span information @Question or shouldn't we?
-    // @Task inline pattern-match
     #[derive(Debug)]
     pub struct AnnotatedParameterGroup {
-        pub parameters: Vec<Identifier>, // @Task replace with OneOrMore
+        pub parameters: Vec<Identifier>, // @Task use SmallVec<[Identifier; 1]> instead of Vec
         pub type_annotation: Expression,
         pub explicitness: Explicitness,
     }
@@ -392,11 +384,7 @@ pub use expression::{parse_expression, Expression, ExpressionKind, Path};
 pub mod expression {
     use super::*;
 
-    #[derive(Debug, Clone)]
-    pub struct Expression {
-        pub kind: ExpressionKind,
-        pub span: Span,
-    }
+    pub type Expression = Spanned<ExpressionKind>;
 
     /// The syntax node of an expression.
     #[freestanding]
@@ -762,8 +750,6 @@ pub mod expression {
         Ok(parameters)
     }
 
-    // @Question add span information?
-    // @Task inline pattern-match
     #[derive(Debug, Clone)] // @Temporary clone
     pub struct ParameterGroup {
         pub parameters: Vec<Identifier>,
@@ -829,11 +815,7 @@ pub use pattern::{Pattern, PatternKind};
 pub mod pattern {
     use super::*;
 
-    #[derive(Debug, Clone)]
-    pub struct Pattern {
-        pub kind: PatternKind,
-        pub span: Span,
-    }
+    pub type Pattern = Spanned<PatternKind>;
 
     #[freestanding]
     #[streamline(Box)]
@@ -958,39 +940,29 @@ fn parse_expression_followed_by_line_break(parser: &mut Parser<'_>) -> Result<Ex
     Ok(expression)
 }
 
-// @Note imo stupid generalization, improve
-fn parse_bracketed<Node: Spanning>(
+fn parse_bracketed<K>(
     parser: &mut Parser<'_>,
-    subparser: fn(&mut Parser<'_>) -> Result<Node>,
-) -> Result<Node> {
+    subparser: fn(&mut Parser<'_>) -> Result<Spanned<K>>,
+) -> Result<Spanned<K>> {
     let span_of_opening_bracket = parser.consume(TokenKind::OpeningRoundBracket)?.span;
     // @Question reflect necessary?
     let mut inner = parser.reflect(subparser)?;
     let span_of_closing_bracket = parser.consume(TokenKind::ClosingRoundBracket)?.span;
-    *inner.span() = span_of_opening_bracket.merge(span_of_closing_bracket);
+    inner.span = span_of_opening_bracket.merge(span_of_closing_bracket);
     Ok(inner)
 }
 
 fn consume_explicitness_symbol(parser: &mut Parser<'_>) -> Explicitness {
     match parser.consume(TokenKind::VerticalBar) {
-        Ok(_) => Explicitness::Implicit,
+        Ok(_token) => {
+            // @Note there might be false positives (through arbitrary look-ahead)
+            // @Task let this function have access to the source map #ParserRefactor
+            Diagnostic::new(Level::Warning, "implicitness markers are currently ignored")
+                // .with_span(token.span)
+                .emit(None);
+            Explicitness::Implicit
+        }
         Err(_) => Explicitness::Explicit,
-    }
-}
-
-trait Spanning {
-    fn span(&mut self) -> &mut Span;
-}
-
-impl Spanning for Expression {
-    fn span(&mut self) -> &mut Span {
-        &mut self.span
-    }
-}
-
-impl Spanning for Pattern {
-    fn span(&mut self) -> &mut Span {
-        &mut self.span
     }
 }
 

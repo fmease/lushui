@@ -15,6 +15,7 @@ use crate::{
 };
 
 /// A token with span information.
+// @Task use crate::span::Spanned
 #[derive(Debug, Clone)]
 pub struct SourceToken {
     pub inner: Token,

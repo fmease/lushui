@@ -24,31 +24,34 @@ use crate::{
     },
     diagnostic::{Diagnostic, Level},
     parser,
-    support::{Handle2ResultsExt as _, Handle3ResultsExt as _, TransposeVecResultVecExt as _},
+    support::{Handle2Ext, Handle3Ext, TransposeExt},
 };
 
 // @Beacon @Beacon @Beacon @Task
 // * order-indepedence
 
+// @Task use SmallVec<[Diagnostic; 1]> instead of Vec
 impl Declaration<parser::Identifier> {
     pub fn resolve(
         self,
-        module_scope: &mut ModuleScope,
+        scope: &mut ModuleScope,
     ) -> Result<Declaration<Identifier>, Vec<Diagnostic>> {
+        use DeclarationKind::*;
+
         match self.kind {
-            DeclarationKind::Value(value) => {
-                let binder = module_scope
+            Value(value) => {
+                let binder = scope
                     .insert_binding(value.binder)
                     .map_err(|error| vec![error]);
 
                 let type_annotation = value
                     .type_annotation
-                    .resolve(module_scope, &FunctionScope::Empty)
+                    .resolve(&Scope::new(scope, &FunctionScope::Empty))
                     .map_err(|error| vec![error]);
 
                 let expression = value
                     .expression
-                    .resolve(module_scope, &FunctionScope::Empty)
+                    .resolve(&Scope::new(scope, &FunctionScope::Empty))
                     .map_err(|error| vec![error]);
 
                 let span = self.span;
@@ -64,26 +67,26 @@ impl Declaration<parser::Identifier> {
                     },
                 )
             }
-            DeclarationKind::Data(data) => {
-                let data_binder = module_scope
+            Data(data) => {
+                let data_binder = scope
                     .insert_binding(data.binder)
                     .map_err(|error| vec![error]);
 
                 let type_annotation = data
                     .type_annotation
-                    .resolve(module_scope, &FunctionScope::Empty)
+                    .resolve(&Scope::new(scope, &FunctionScope::Empty))
                     .map_err(|error| vec![error]);
 
                 let mut constructors = Vec::new();
 
                 for constructor in data.constructors {
-                    let constructor_binder = module_scope
+                    let constructor_binder = scope
                         .insert_binding(constructor.binder)
                         .map_err(|error| vec![error]);
 
                     let type_annotation = constructor
                         .type_annotation
-                        .resolve(module_scope, &FunctionScope::Empty)
+                        .resolve(&Scope::new(scope, &FunctionScope::Empty))
                         .map_err(|error| vec![error]);
 
                     let span = constructor.span;
@@ -110,11 +113,11 @@ impl Declaration<parser::Identifier> {
                     },
                 )
             }
-            DeclarationKind::Module(module) => {
+            Module(module) => {
                 let declarations = module
                     .declarations
                     .into_iter()
-                    .map(|declaration| declaration.resolve(module_scope))
+                    .map(|declaration| declaration.resolve(scope))
                     .collect::<Vec<_>>()
                     .transpose()?;
 
@@ -125,15 +128,15 @@ impl Declaration<parser::Identifier> {
                     span: self.span,
                 })
             }
-            DeclarationKind::Use => todo!(),
-            DeclarationKind::Foreign(foreign) => {
-                let binder = module_scope
+            Use => todo!(),
+            Foreign(foreign) => {
+                let binder = scope
                     .insert_binding(foreign.binder)
                     .map_err(|error| vec![error]);
 
                 let type_annotation = foreign
                     .type_annotation
-                    .resolve(module_scope, &FunctionScope::Empty)
+                    .resolve(&Scope::new(scope, &FunctionScope::Empty))
                     .map_err(|error| vec![error]);
 
                 let span = self.span;
@@ -152,81 +155,89 @@ impl Declaration<parser::Identifier> {
 
 // @Task @Beacon use Rc::try_unwrap more instead of clone
 impl Expression<parser::Identifier> {
-    // @Note we probably need to add Expression::LetIn and replace desugaring code
-    pub fn resolve(
-        self,
-        module_scope: &mut ModuleScope,
-        function_scope: &FunctionScope<'_>,
-    ) -> Result<Expression<Identifier>, Diagnostic> {
+    pub fn resolve(self, scope: &Scope<'_>) -> Result<Expression<Identifier>, Diagnostic> {
+        use ExpressionKind::*;
+
         Ok(match self.kind {
-            ExpressionKind::PiType(pi) => expr! {
-                PiType[self.span] {
-                    parameter: pi.parameter.clone().map(|parameter| Identifier {
-                        source: parameter.clone(),
-                        index: Index::None,
-                    }),
-                    domain: pi.domain.clone().resolve(module_scope, function_scope)?,
-                    codomain: match pi.parameter.clone() {
-                        Some(parameter) => pi.codomain.clone().resolve(module_scope, &function_scope.extend(parameter))?,
-                        None => pi.codomain.clone().resolve(module_scope, function_scope)?,
-                    },
-                    explicitness: pi.explicitness,
+            PiType(pi) => {
+                expr! {
+                    PiType[self.span] {
+                        parameter: pi.parameter.clone().map(|parameter| Identifier {
+                            source: parameter.clone(),
+                            index: Index::None,
+                        }),
+                        domain: pi.domain.clone().resolve(scope)?,
+                        codomain: match pi.parameter.clone() {
+                            Some(parameter) => pi.codomain.clone().resolve(&Scope { function: &scope.function.extend(parameter), module: scope.module })?,
+                            None => pi.codomain.clone().resolve(scope)?,
+                        },
+                        explicitness: pi.explicitness,
+                    }
                 }
-            },
-            ExpressionKind::Application(application) => expr! {
+            }
+            Application(application) => expr! {
                 Application[self.span] {
-                    callee: application.callee.clone().resolve(module_scope, function_scope)?,
-                    argument: application.argument.clone().resolve(module_scope, function_scope)?,
+                    callee: application.callee.clone().resolve(scope)?,
+                    argument: application.argument.clone().resolve(scope)?,
                     explicitness: application.explicitness,
                 }
             },
-            ExpressionKind::Type => expr! { Type[self.span] },
-            ExpressionKind::NatType => expr! { NatType[self.span] },
-            ExpressionKind::TextType => expr! { TextType[self.span] },
-            ExpressionKind::Nat(nat) => expr! {
+            Type => expr! { Type[self.span] },
+            NatType => expr! { NatType[self.span] },
+            TextType => expr! { TextType[self.span] },
+            Nat(nat) => expr! {
                 Nat[self.span] {
                     value: Rc::try_unwrap(nat)
                         .map(|nat| nat.value)
                         .unwrap_or_else(|nat| nat.value.clone()),
-                    _marker: std::marker::PhantomData,
                 }
             },
-            ExpressionKind::Text(text) => expr! {
+            Text(text) => expr! {
                 Text[self.span] {
                     value: Rc::try_unwrap(text)
                         .map(|text| text.value)
                         .unwrap_or_else(|text| text.value.clone()),
-                    _marker: std::marker::PhantomData,
                 }
             },
-            ExpressionKind::Binding(binding) => expr! {
+            Binding(binding) => expr! {
                 Binding[self.span] {
-                    binder: match function_scope.index(&binding.binder) {
-                        Some(index) => Identifier { source: binding.binder.clone(), index },
-                        None => module_scope.lookup_binding(&binding.binder)?,
+                    binder: match scope.function.index(&binding.binder) {
+                        Some(index) => Identifier { source: binding.binder.clone(), index: Index::Debruijn(index) },
+                        None => scope.module.lookup_binding(&binding.binder)?,
                     }
                 }
             },
-            ExpressionKind::Lambda(lambda) => expr! {
+            Lambda(lambda) => expr! {
                 Lambda[self.span] {
                     parameter: Identifier {
                         index: Index::None,
                         source: lambda.parameter.clone(),
                     },
                     parameter_type_annotation: lambda.parameter_type_annotation.clone()
-                        .map(|r#type| r#type.resolve(module_scope, function_scope))
+                        .map(|r#type| r#type.resolve(scope))
                         .transpose()?,
                     body_type_annotation: lambda.body_type_annotation.clone()
-                        .map(|r#type| r#type.resolve(module_scope, &function_scope.extend(lambda.parameter.clone())))
+                        .map(|r#type| r#type.resolve(&Scope { function: &scope.function.extend(lambda.parameter.clone()), module: scope.module }))
                         .transpose()?,
-                    body: lambda.body.clone().resolve(module_scope, &function_scope.extend(lambda.parameter.clone()))?,
+                    body: lambda.body.clone().resolve(&Scope { function: &scope.function.extend(lambda.parameter.clone()), module: scope.module })?,
                     explicitness: lambda.explicitness,
                 }
             },
-            ExpressionKind::UseIn => todo!(),
-            ExpressionKind::CaseAnalysis(_expression) => todo!(),
-            ExpressionKind::UnsaturatedForeignApplication(_) => unreachable!(),
+            UseIn => todo!(),
+            CaseAnalysis(_expression) => todo!(),
+            Substitution(_) | UnsaturatedForeignApplication(_) => unreachable!(),
         })
+    }
+}
+
+pub struct Scope<'a> {
+    module: &'a ModuleScope,
+    function: &'a FunctionScope<'a>,
+}
+
+impl<'a> Scope<'a> {
+    fn new(module: &'a ModuleScope, function: &'a FunctionScope<'a>) -> Self {
+        Self { module, function }
     }
 }
 
@@ -248,14 +259,14 @@ impl ModuleScope {
         {
             return Err(Diagnostic::new(
                 Level::Error,
-                format!("`{}` is defined multiple times", identifier),
+                format!("`{}` is defined multiple times in this scope", identifier),
             )
             .with_labeled_span(identifier.span, "redefinition")
             .with_labeled_span(old.source.span, "previous definition"));
         }
         self.bindings.push(binding);
         Ok(Identifier {
-            index: Index::Module { value: index },
+            index: Index::Module(ModuleIndex { value: index }),
             source: identifier,
         })
     }
@@ -266,7 +277,7 @@ impl ModuleScope {
             .position(|binding| &binding.source == identifier)
             .map(|index| Identifier {
                 source: identifier.clone(),
-                index: Index::Module { value: index },
+                index: Index::Module(ModuleIndex { value: index }),
             })
             .ok_or_else(|| {
                 Diagnostic::new(
@@ -278,26 +289,98 @@ impl ModuleScope {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Identifier {
     /// Source at the use-site/call-site or def-site if definition.
-    source: parser::Identifier,
-    index: Index,
+    pub source: parser::Identifier,
+    pub index: Index,
 }
 
-// @Note it's kind of stupid to also store the index for defining binders because we'd need to
-// keep them updated as well without any benefit
-#[derive(Debug, Clone)]
-enum Index {
+impl Identifier {
+    // @Note I dunno about this interface
+    pub fn local(identifier: &Identifier) -> Self {
+        Self {
+            source: identifier.source.clone(),
+            index: Index::Debruijn(DebruijnIndex { value: 0 }),
+        }
+    }
+
+    pub fn shift(self, amount: usize) -> Self {
+        Self {
+            index: self.index.shift(amount),
+            ..self
+        }
+    }
+
+    pub fn unshift(self) -> Self {
+        Self {
+            index: self.index.unshift(),
+            ..self
+        }
+    }
+
+    pub fn module(&self) -> Option<ModuleIndex> {
+        match self.index {
+            Index::Module(index) => Some(index),
+            _ => None,
+        }
+    }
+
+    pub fn debruijn(&self) -> Option<DebruijnIndex> {
+        match self.index {
+            Index::Debruijn(index) => Some(index),
+            _ => None,
+        }
+    }
+}
+
+impl Binder for Identifier {}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Index {
     /// For bindings defined at module-scope.
-    Module { value: usize },
+    Module(ModuleIndex),
     /// For bindings bound by a function parameter.
-    Debruijn { value: usize },
+    Debruijn(DebruijnIndex),
     /// For function parameters.
     None,
 }
 
-impl Binder for Identifier {}
+impl Index {
+    fn shift(self, amount: usize) -> Self {
+        match self {
+            // Self::Module { .. } | Self::None => self,
+            Self::Module { .. } => self,
+            // @Question is that the case?
+            Self::None => unreachable!(),
+            Self::Debruijn(index) => Self::Debruijn(DebruijnIndex {
+                value: index.value + amount,
+            }),
+        }
+    }
+
+    fn unshift(self) -> Self {
+        match self {
+            // Self::Module { .. } | Self::None => self,
+            Self::Module(_) => self,
+            // @Question is that the case?
+            Self::None => unreachable!(),
+            Self::Debruijn(index) => Self::Debruijn(DebruijnIndex {
+                value: index.value.saturating_sub(1),
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ModuleIndex {
+    value: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DebruijnIndex {
+    value: usize,
+}
 
 use std::fmt;
 
@@ -305,17 +388,11 @@ impl fmt::Display for Identifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.source)?;
         match self.index {
-            Index::Module { value } => write!(f, "#{}M", value),
-            Index::Debruijn { value } => write!(f, "#{}F", value),
+            Index::Module(index) => write!(f, "#{}M", index.value),
+            Index::Debruijn(index) => write!(f, "#{}F", index.value),
             Index::None => Ok(()),
         }
     }
-}
-
-#[derive(Clone)]
-pub struct Binding {
-    /// Source at the def-site
-    source: parser::Identifier,
 }
 
 pub enum FunctionScope<'parent> {
@@ -334,7 +411,7 @@ impl<'parent> FunctionScope<'parent> {
         }
     }
 
-    fn index(&self, query: &parser::Identifier) -> Option<Index> {
+    fn index(&self, query: &parser::Identifier) -> Option<DebruijnIndex> {
         fn index(
             scope: &FunctionScope<'_>,
             query: &parser::Identifier,
@@ -352,6 +429,12 @@ impl<'parent> FunctionScope<'parent> {
             }
         }
 
-        index(self, query, 0).map(|index| Index::Debruijn { value: index })
+        index(self, query, 0).map(|index| DebruijnIndex { value: index })
     }
+}
+
+#[derive(Clone)]
+pub struct Binding {
+    /// Source at the def-site
+    source: parser::Identifier,
 }

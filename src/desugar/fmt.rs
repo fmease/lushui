@@ -109,9 +109,13 @@ impl<B: Binder> Display for Expression<B> {
                     .map(|case| format!(" {}", case))
                     .collect::<String>()
             ),
+            // @Note actual substitution.substituiton missing!
+            ExpressionKind::Substitution(substitution) => {
+                write!(f, "_substitution_ {}", substitution.expression)
+            }
             ExpressionKind::UnsaturatedForeignApplication(application) => write!(
                 f,
-                "{}[{}]",
+                "_foreign_ {}[{}]",
                 application.callee,
                 application
                     .arguments
@@ -132,7 +136,7 @@ impl<B: Binder> Display for expression::Case<B> {
 impl<B: Binder> Display for expression::Pattern<B> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            expression::Pattern::NatLiteral(literal) => write!(f, "{}", literal.value),
+            expression::Pattern::Nat(literal) => write!(f, "{}", literal.value),
             expression::Pattern::Binding {
                 binder,
                 type_annotation,

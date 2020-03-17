@@ -1,12 +1,12 @@
 /// "Handle" 2 results mapping okays and merging errors which are `Vec`s.
-pub trait Handle2ResultsExt<E> {
+pub trait Handle2Ext<E> {
     type A;
     type B;
 
     fn handle<O>(self, map: impl FnOnce(Self::A, Self::B) -> O) -> Result<O, Vec<E>>;
 }
 
-pub trait Handle3ResultsExt<E> {
+pub trait Handle3Ext<E> {
     type A;
     type B;
     type C;
@@ -14,7 +14,7 @@ pub trait Handle3ResultsExt<E> {
     fn handle<O>(self, map: impl FnOnce(Self::A, Self::B, Self::C) -> O) -> Result<O, Vec<E>>;
 }
 
-impl<A, B, E> Handle2ResultsExt<E> for (Result<A, Vec<E>>, Result<B, Vec<E>>) {
+impl<A, B, E> Handle2Ext<E> for (Result<A, Vec<E>>, Result<B, Vec<E>>) {
     type A = A;
     type B = B;
 
@@ -31,9 +31,7 @@ impl<A, B, E> Handle2ResultsExt<E> for (Result<A, Vec<E>>, Result<B, Vec<E>>) {
     }
 }
 
-impl<A, B, C, E> Handle3ResultsExt<E>
-    for (Result<A, Vec<E>>, Result<B, Vec<E>>, Result<C, Vec<E>>)
-{
+impl<A, B, C, E> Handle3Ext<E> for (Result<A, Vec<E>>, Result<B, Vec<E>>, Result<C, Vec<E>>) {
     type A = A;
     type B = B;
     type C = C;
@@ -47,11 +45,11 @@ impl<A, B, C, E> Handle3ResultsExt<E>
     }
 }
 
-pub trait TransposeVecResultVecExt<A, E> {
+pub trait TransposeExt<A, E> {
     fn transpose(self) -> Result<Vec<A>, Vec<E>>;
 }
 
-impl<A, E> TransposeVecResultVecExt<A, E> for Vec<Result<A, Vec<E>>> {
+impl<A, E> TransposeExt<A, E> for Vec<Result<A, Vec<E>>> {
     fn transpose(self) -> Result<Vec<A>, Vec<E>> {
         let mut final_result = Ok(Vec::new());
         for result in self {
@@ -62,7 +60,7 @@ impl<A, E> TransposeVecResultVecExt<A, E> for Vec<Result<A, Vec<E>>> {
                 },
                 Err(ref mut previous_errors) => match result {
                     Ok(_) => (),
-                    Err(errors) => previous_errors.extend(errors),
+                    Err(mut errors) => previous_errors.append(&mut errors),
                 },
             }
         }

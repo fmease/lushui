@@ -89,6 +89,12 @@ impl Sub<usize> for LocalByteIndex {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Spanned<K> {
+    pub kind: K,
+    pub span: Span,
+}
+
 /// Global byte span of source code.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Span {
