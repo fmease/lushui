@@ -22,37 +22,29 @@
 //! * integration and regression tests missing
 
 mod data_types;
-mod error;
 mod scope;
 
 use crate::{
     desugar::{self, expr, Declaration, DeclarationKind, Expression, ExpressionKind},
+    diagnostic::{Diagnostic, Level},
     parser::Explicitness,
     resolver::Identifier,
     span::Span,
 };
-use error::{Error, Result};
 use scope::FunctionScope;
 pub use scope::ModuleScope;
 
-/// An internal compiler bug message.
-///
-/// We don't do non-trivial type inference yet and thus, type parameters of lambda literals
-/// must be annotated with a type. And since we don't have a dedicated `Error::InternalCompilerError` yet,
-/// we use this constant for an error message.
-// @Bug
-const MISSING_ANNOTATION: &str =
-    "currently lambda literal parameters and patterns must be type-annotated";
+fn missing_annotation() -> Diagnostic {
+    Diagnostic::new(
+        Level::Bug,
+        "currently lambda literal parameters and patterns must be type-annotated",
+    )
+}
 
 impl Declaration<Identifier> {
-    // @Task move type inference logic from Self::evaluate here
-    pub fn infer_type(&self, _scope: &mut ModuleScope) -> Result<()> {
-        todo!()
-    }
-
     /// Try to type check and evaluate a declaration modifying the given scope.
-    // @Task support order-independence, recursion and proper modules
-    pub fn evaluate(&self, scope: &mut ModuleScope) -> Result<()> {
+    // @Task move evaluation logic
+    pub fn infer_type_and_evaluate(&self, scope: &mut ModuleScope) -> Result<(), Diagnostic> {
         use DeclarationKind::*;
 
         match &self.kind {
@@ -67,6 +59,7 @@ impl Declaration<Identifier> {
                         .expression
                         .clone()
                         .evaluate(&scope, Form::WeakHeadNormal)?;
+                    // .evaluate(&scope, Form::Normal)?;
                     (infered_type, value)
                 };
                 scope.insert_value_binding(declaration.binder.clone(), infered_type, value);
@@ -76,6 +69,7 @@ impl Declaration<Identifier> {
                     .type_annotation
                     .clone()
                     .evaluate(&FunctionScope::Module(scope), Form::WeakHeadNormal)?;
+                // .evaluate(&FunctionScope::Module(scope), Form::Normal)?;
                 r#type.clone().is_a_type(&FunctionScope::Module(scope))?;
 
                 // @Task diagnostic note: only `Type` can be extended
@@ -87,9 +81,7 @@ impl Declaration<Identifier> {
                     scope,
                 )?;
 
-                scope
-                    .clone()
-                    .insert_data_binding(data.binder.clone(), r#type);
+                scope.insert_data_binding(data.binder.clone(), r#type);
 
                 for desugar::Constructor {
                     binder,
@@ -100,6 +92,7 @@ impl Declaration<Identifier> {
                     let r#type = type_annotation
                         .clone()
                         .evaluate(&FunctionScope::Module(scope), Form::WeakHeadNormal)?;
+                    // .evaluate(&FunctionScope::Module(scope), Form::Normal)?;
                     r#type.clone().is_a_type(&FunctionScope::Module(scope))?;
 
                     data_types::instance::assert_constructor_is_instance_of_type(
@@ -124,7 +117,8 @@ impl Declaration<Identifier> {
                     let r#type = foreign
                         .type_annotation
                         .clone()
-                        .evaluate(&scope, Form::WeakHeadNormal)?;
+                        // .evaluate(&scope, Form::WeakHeadNormal)?;
+                        .evaluate(&scope, Form::Normal)?;
                     r#type.clone().is_a_type(&scope)?;
                     r#type
                 };
@@ -134,6 +128,11 @@ impl Declaration<Identifier> {
         }
 
         Ok(())
+    }
+
+    // @Task
+    pub fn evaluate(&self, _scope: &mut ModuleScope) -> Result<(), Diagnostic> {
+        todo!()
     }
 }
 
@@ -152,9 +151,15 @@ impl Expression<Identifier> {
             (Binding(binding), Shift(amount)) => {
                 expr! { Binding[self.span] { binder: binding.binder.clone().shift(amount) } }
             }
-            (Binding(binding), Use(substitution, _)) => {
-                (expr! { Binding[self.span] { binder: binding.binder.clone().unshift() } })
-                    .substitute(*substitution)
+            (Binding(binding), Use(substitution, expression)) => {
+                if binding.binder.is_innermost() {
+                    expression.substitute(Shift(0))
+                } else {
+                    {
+                        (expr! { Binding[self.span] { binder: binding.binder.clone().unshift() } })
+                            .substitute(*substitution)
+                    }
+                }
             }
             (Substitution(substitution0), substitution1) => substitution0
                 .expression
@@ -162,23 +167,25 @@ impl Expression<Identifier> {
                 .substitute(substitution0.substitution.clone())
                 .substitute(substitution1),
             (Type, _) | (NatType, _) | (TextType, _) | (Nat(_), _) | (Text(_), _) => self,
-            (Application(application), substitution) => expr! {
-                Application[self.span] {
-                    callee: expr! {
-                        Substitution[Span::dummy()] {
-                            expression: application.callee.clone(),
-                            substitution: substitution.clone(),
-                        }
-                    },
-                    argument: expr! {
-                        Substitution[Span::dummy()] {
-                            expression: application.argument.clone(),
-                            substitution,
-                        }
-                    },
-                    explicitness: application.explicitness,
+            (Application(application), substitution) => {
+                expr! {
+                    Application[self.span] {
+                        callee: expr! {
+                            Substitution[Span::dummy()] {
+                                expression: application.callee.clone(),
+                                substitution: substitution.clone(),
+                            }
+                        },
+                        argument: expr! {
+                            Substitution[Span::dummy()] {
+                                expression: application.argument.clone(),
+                                substitution,
+                            }
+                        },
+                        explicitness: application.explicitness,
+                    }
                 }
-            },
+            }
             (PiType(pi), substitution) => {
                 let domain = expr! {
                     Substitution[Span::dummy()] {
@@ -270,14 +277,12 @@ impl Expression<Identifier> {
     }
 
     /// Try to infer the type of an expression.
-    pub fn infer_type(self, scope: &FunctionScope<'_>) -> Result<Self> {
+    pub fn infer_type(self, scope: &FunctionScope<'_>) -> Result<Self, Diagnostic> {
         use self::Substitution::*;
         use ExpressionKind::*;
 
         Ok(match self.kind {
-            Binding(binding) => scope
-                .lookup_type(&binding.binder)
-                .ok_or_else(|| Error::UndefinedBinding(binding.binder.clone()))?,
+            Binding(binding) => scope.lookup_type(&binding.binder),
             Type | NatType | TextType => {
                 expr! { Type[Span::dummy()] }
             }
@@ -289,36 +294,36 @@ impl Expression<Identifier> {
                 // `expression` (parameter of `infer_type`) has been normalized?
                 literal.domain.clone().is_a_type(scope)?;
 
-                if let Some(parameter) = literal.parameter.clone() {
-                    literal.codomain.clone().is_a_type(
-                        &scope.extend_with_parameter(parameter, literal.domain.clone()),
-                    )?;
+                if literal.parameter.is_some() {
+                    literal
+                        .codomain
+                        .clone()
+                        .is_a_type(&scope.extend_with_parameter(literal.domain.clone()))?;
                 } else {
                     literal.codomain.clone().is_a_type(scope)?;
                 }
 
                 expr! { Type[Span::dummy()] }
             }
-            Lambda(literal) => {
-                let parameter_type: Self = literal
+            Lambda(lambda) => {
+                let parameter_type: Self = lambda
                     .parameter_type_annotation
                     .clone()
-                    .expect(MISSING_ANNOTATION);
+                    .ok_or_else(missing_annotation)?;
 
                 parameter_type.clone().is_a_type(scope)?;
 
-                let scope =
-                    &scope.extend_with_parameter(literal.parameter.clone(), parameter_type.clone());
-                let infered_body_type = literal.body.clone().infer_type(&scope)?;
+                let scope = &scope.extend_with_parameter(parameter_type.clone());
+                let infered_body_type = lambda.body.clone().infer_type(&scope)?;
 
-                if let Some(body_type_annotation) = literal.body_type_annotation.clone() {
+                if let Some(body_type_annotation) = lambda.body_type_annotation.clone() {
                     body_type_annotation.clone().is_a_type(&scope)?;
                     body_type_annotation.is_actual(infered_body_type.clone(), &scope)?;
                 }
 
                 expr! {
                     PiType[self.span] {
-                        parameter: Some(literal.parameter.clone()),
+                        parameter: Some(lambda.parameter.clone()),
                         domain: parameter_type,
                         codomain: infered_body_type,
                         explicitness: Explicitness::Explicit,
@@ -333,13 +338,13 @@ impl Expression<Identifier> {
                     .clone()
                     .infer_type(scope)?
                     .evaluate(scope, Form::WeakHeadNormal)?;
+                // .evaluate(scope, Form::Normal)?;
 
-                match type_of_callee.kind {
+                match &type_of_callee.kind {
                     PiType(pi) => {
                         let argument_type = application.argument.clone().infer_type(scope)?;
                         pi.domain.clone().is_actual(argument_type, scope)?;
 
-                        // @Task verify
                         match pi.parameter.clone() {
                             Some(_) => expr! {
                                 Substitution[Span::dummy()] {
@@ -351,10 +356,15 @@ impl Expression<Identifier> {
                         }
                     }
                     _ => {
-                        return Err(Error::FunctionExpected {
-                            actual: type_of_callee,
-                            argument: application.argument.clone(),
-                        });
+                        // @Task improve error diagnostic
+                        // @Task add span
+                        return Err(Diagnostic::new(
+                            Level::Fatal,
+                            format!(
+                                "cannot apply `{}` to a `{}`",
+                                application.argument, type_of_callee
+                            ),
+                        ));
                     }
                 }
             }
@@ -449,17 +459,13 @@ impl Expression<Identifier> {
     ///
     /// This is beta-reduction I think.
     // @Task differenciate between Expression<InitialPhase> and Expression<Normalized>
-    pub fn evaluate(self, scope: &FunctionScope<'_>, form: Form) -> Result<Self> {
+    pub fn evaluate(self, scope: &FunctionScope<'_>, form: Form) -> Result<Self, Diagnostic> {
         use self::Substitution::*;
         use ExpressionKind::*;
 
         Ok(match self.clone().kind {
             // @Task if path refers to a foreign binding AND arity == 0, then resolve the foreign binding
-            Binding(binding) => match scope
-                .lookup_value(&binding.binder)
-                // @Question @Beacon @Beacon will this ever happen after type checking? I don't think so
-                .ok_or_else(|| Error::UndefinedBinding(binding.binder.clone()))?
-            {
+            Binding(binding) => match scope.lookup_value(&binding.binder) {
                 // @Question is this normalization necessary? I mean, yes, we got a new scope,
                 // but the thing in the previous was already normalized (well, it should have been
                 // at least). I guess it is necessary because it can contain parameters which could not
@@ -472,6 +478,7 @@ impl Expression<Identifier> {
                 match callee.kind {
                     Lambda(lambda) => (expr! {
                         Substitution[Span::dummy()] {
+                            // @Note could very well be a module index (the argument)
                             substitution: Use(Box::new(Shift(0)), application.argument.clone()),
                             expression: lambda.body.clone(),
                         }
@@ -513,13 +520,12 @@ impl Expression<Identifier> {
                 Form::Normal => {
                     let domain = pi.domain.clone().evaluate(scope, form)?;
 
-                    // @Task verify
-                    let codomain = match &pi.parameter {
-                        Some(parameter) => pi.codomain.clone().evaluate(
-                            &scope.extend_with_parameter(parameter.clone(), domain.clone()),
-                            form,
-                        )?,
-                        None => pi.codomain.clone(),
+                    let codomain = if pi.parameter.is_some() {
+                        pi.codomain
+                            .clone()
+                            .evaluate(&scope.extend_with_parameter(domain.clone()), form)?
+                    } else {
+                        pi.codomain.clone()
                     };
 
                     expr! {
@@ -538,28 +544,22 @@ impl Expression<Identifier> {
                     let parameter_type = lambda
                         .parameter_type_annotation
                         .clone()
-                        .expect(MISSING_ANNOTATION)
+                        .ok_or_else(missing_annotation)?
                         .evaluate(scope, form)?;
-                    let body = lambda.body.clone().evaluate(
-                        &scope.extend_with_parameter(
-                            lambda.parameter.clone(),
-                            parameter_type.clone(),
-                        ),
-                        form,
-                    )?;
                     let body_type = lambda
                         .body_type_annotation
                         .clone()
                         .map(|r#type| {
                             r#type.evaluate(
-                                &scope.extend_with_parameter(
-                                    lambda.parameter.clone(),
-                                    parameter_type.clone(),
-                                ),
+                                &scope.extend_with_parameter(parameter_type.clone()),
                                 form,
                             )
                         })
                         .transpose()?;
+                    let body = lambda
+                        .body
+                        .clone()
+                        .evaluate(&scope.extend_with_parameter(parameter_type.clone()), form)?;
 
                     expr! {
                         Lambda[self.span] {
@@ -638,7 +638,7 @@ impl Expression<Identifier> {
     }
 
     /// Assert that an expression is of type `Type`.
-    fn is_a_type(self, scope: &FunctionScope<'_>) -> Result<()> {
+    fn is_a_type(self, scope: &FunctionScope<'_>) -> Result<(), Diagnostic> {
         let r#type = self.infer_type(scope)?;
         (expr! { Type[Span::dummy()] }).is_actual(r#type, scope)
     }
@@ -650,7 +650,7 @@ impl Expression<Identifier> {
         self,
         type_annotation: Self,
         scope: &FunctionScope<'_>,
-    ) -> Result<Self> {
+    ) -> Result<Self, Diagnostic> {
         type_annotation.clone().is_a_type(scope)?;
         let infered_type = self.infer_type(scope)?;
         type_annotation.is_actual(infered_type.clone(), scope)?;
@@ -659,25 +659,32 @@ impl Expression<Identifier> {
     }
 
     /// Assert that two expression are equal under evaluation/normalization.
-    fn is_actual(self, actual: Self, scope: &FunctionScope<'_>) -> Result<()> {
-        if !self.clone().equals(actual.clone(), scope)? {
-            Err(Error::ExpressionsNotEqual {
-                expected: self,
-                actual,
-            })
+    // @Bug @Beacon @Beacon if form == WeakHeadNormal, type mismatches occur when there shouldn't
+    // @Update that is because `equals` is called on 2 `Substitutions` but 2 of those are never
+    // equal. I think they should be "killed" earlier. probably a bug
+    fn is_actual(self, actual: Self, scope: &FunctionScope<'_>) -> Result<(), Diagnostic> {
+        // let expected = self.evaluate(scope, Form::WeakHeadNormal)?;
+        // let actual = actual.evaluate(scope, Form::WeakHeadNormal)?;
+        let expected = self.evaluate(scope, Form::Normal)?;
+        let actual = actual.evaluate(scope, Form::Normal)?;
+
+        if !expected.clone().equals(actual.clone(), scope)? {
+            // @Task improve diagnostic
+            // @Task add span information
+            Err(Diagnostic::new(
+                Level::Fatal,
+                format!("expected `{}` got `{}`", expected, actual),
+            ))
         } else {
             Ok(())
         }
     }
 
     /// Dictates if two expressions are alpha-equivalent.
-    fn equals(self, other: Self, scope: &FunctionScope<'_>) -> Result<bool> {
+    fn equals(self, other: Self, scope: &FunctionScope<'_>) -> Result<bool, Diagnostic> {
         use ExpressionKind::*;
 
-        let expression0 = self.evaluate(scope, Form::WeakHeadNormal)?;
-        let expression1 = other.evaluate(scope, Form::WeakHeadNormal)?;
-
-        Ok(match (expression0.kind, expression1.kind) {
+        Ok(match (self.kind, other.kind) {
             (Binding(binding0), Binding(binding1)) => binding0.binder == binding1.binder,
             (Application(application0), Application(application1)) => {
                 application0
@@ -697,17 +704,17 @@ impl Expression<Identifier> {
                 pi0.domain.clone().equals(pi1.domain.clone(), scope)?
                     && match (pi0.parameter.clone(), pi1.parameter.clone()) {
                         // @Task @Beacon verify
-                        (Some(parameter0), Some(_parameter1)) => pi0.codomain.clone().equals(
+                        (Some(_), Some(_parameter1)) => pi0.codomain.clone().equals(
                             pi1.codomain.clone(),
-                            &scope.extend_with_parameter(parameter0, pi0.domain.clone()),
+                            &scope.extend_with_parameter(pi0.domain.clone()),
                         )?,
-                        (Some(parameter), None) => pi0.codomain.clone().equals(
+                        (Some(_), None) => pi0.codomain.clone().equals(
                             pi1.codomain.clone(),
-                            &scope.extend_with_parameter(parameter, pi0.domain.clone()),
+                            &scope.extend_with_parameter(pi0.domain.clone()),
                         )?,
-                        (None, Some(parameter)) => pi0.codomain.clone().equals(
+                        (None, Some(_)) => pi0.codomain.clone().equals(
                             pi1.codomain.clone(),
-                            &scope.extend_with_parameter(parameter, pi1.domain.clone()),
+                            &scope.extend_with_parameter(pi1.domain.clone()),
                         )?,
                         (None, None) => pi0.codomain.clone().equals(pi1.codomain.clone(), scope)?,
                     }
@@ -717,21 +724,18 @@ impl Expression<Identifier> {
                 let parameter_type_annotation0 = lambda0
                     .parameter_type_annotation
                     .clone()
-                    .expect(MISSING_ANNOTATION);
+                    .ok_or_else(missing_annotation)?;
                 let parameter_type_annotation1 = lambda1
                     .parameter_type_annotation
                     .clone()
-                    .expect(MISSING_ANNOTATION);
+                    .ok_or_else(missing_annotation)?;
 
                 parameter_type_annotation0
                     .clone()
                     .equals(parameter_type_annotation1, scope)?
                     && lambda0.body.clone().equals(
                         lambda1.body.clone(),
-                        &scope.extend_with_parameter(
-                            lambda0.parameter.clone(),
-                            parameter_type_annotation0,
-                        ),
+                        &scope.extend_with_parameter(parameter_type_annotation0),
                     )?
             }
             (CaseAnalysis(_), CaseAnalysis(_)) => unreachable!(),
@@ -740,7 +744,7 @@ impl Expression<Identifier> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Substitution {
     Shift(usize),
     Use(Box<Substitution>, Expression<Identifier>),
@@ -762,6 +766,18 @@ impl Substitution {
                     }
                 },
             ),
+        }
+    }
+}
+
+use std::fmt;
+
+impl fmt::Display for Substitution {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use Substitution::*;
+        match self {
+            Shift(amount) => write!(f, "shift {}", amount),
+            Use(substitution, expression) => write!(f, "{}[{}]", expression, substitution),
         }
     }
 }

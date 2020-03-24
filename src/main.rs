@@ -2,7 +2,7 @@
 
 use lushuic::{
     diagnostic::{Diagnostic, Level},
-    // interpreter, @Temporary
+    interpreter,
     lexer::Lexer,
     parser::{declaration::parse_file_module_no_header, Parser},
     resolver,
@@ -10,7 +10,7 @@ use lushuic::{
 };
 
 fn main() {
-    // #[cfg(FALSE)]
+    #[cfg(FALSE)]
     std::panic::set_hook(Box::new(|information| {
         let payload = information.payload();
 
@@ -49,7 +49,7 @@ fn main() {
         // eprintln!("{}", &node);
 
         // @Temporary
-        let _node = match node.resolve(&mut resolver::ModuleScope::default()) {
+        let node = match node.resolve(&mut resolver::ModuleScope::default()) {
             Ok(node) => node,
             Err(errors) => {
                 let amount = errors.len();
@@ -63,14 +63,12 @@ fn main() {
                 ));
             }
         };
+        eprintln!("{}", node);
 
-        eprintln!("{}", _node);
+        let mut scope = interpreter::ModuleScope::new();
+        node.infer_type_and_evaluate(&mut scope)?;
 
-        // @Temporary comment
-        // let scope = interpreter::ModuleScope::new();
-        // interpreter::evaluate_declaration(&node, scope.clone())
-        //     .map_err(|error| Diagnostic::fatal(error.to_string(), None))?;
-        // eprintln!("{:?}", scope);
+        eprintln!("{:?}", scope);
 
         Ok(())
     })();

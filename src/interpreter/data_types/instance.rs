@@ -11,7 +11,8 @@
 
 use crate::{
     desugar::{Expression, ExpressionKind},
-    interpreter::{Error, FunctionScope, ModuleScope, Result},
+    diagnostic::{Diagnostic, Level},
+    interpreter::{FunctionScope, ModuleScope},
     resolver::Identifier,
 };
 
@@ -20,14 +21,17 @@ pub(in crate::interpreter) fn assert_constructor_is_instance_of_type(
     constructor: Expression<Identifier>,
     r#type: Expression<Identifier>,
     scope: &ModuleScope,
-) -> Result<()> {
+) -> Result<(), Diagnostic> {
     let result_type = constructor.result_type(&FunctionScope::Module(scope));
     let callee = result_type.callee();
 
     if !r#type.equals(callee, &FunctionScope::Module(scope))? {
-        Err(Error::InvalidConstructor {
-            name: constructor_name,
-        })
+        // @Task improve error diagnostic
+        // @Task add span information
+        Err(Diagnostic::new(
+            Level::Fatal,
+            format!("invalid constructor `{}`", constructor_name),
+        ))
     } else {
         Ok(())
     }
@@ -42,8 +46,8 @@ impl Expression<Identifier> {
 
         match self.kind {
             PiType(literal) => {
-                if let Some(parameter) = literal.parameter.clone() {
-                    let scope = scope.extend_with_parameter(parameter, literal.domain.clone());
+                if literal.parameter.is_some() {
+                    let scope = scope.extend_with_parameter(literal.domain.clone());
                     literal.codomain.clone().result_type(&scope)
                 } else {
                     literal.codomain.clone().result_type(scope)

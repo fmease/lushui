@@ -81,23 +81,7 @@ impl<B: Binder> Display for Expression<B> {
             ExpressionKind::TextType => f.write_str("Text"),
             ExpressionKind::Text(literal) => write!(f, "{:?}", literal.value),
             ExpressionKind::Binding(path) => write!(f, "{}", path.binder),
-            ExpressionKind::Lambda(literal) => write!(
-                f,
-                "\\({}{}{}){} => ({})",
-                literal.explicitness,
-                literal.parameter,
-                literal
-                    .parameter_type_annotation
-                    .as_ref()
-                    .map(|parameter| format!(": {}", parameter))
-                    .unwrap_or_default(),
-                literal
-                    .body_type_annotation
-                    .as_ref()
-                    .map(|type_annotation| format!(": {}", type_annotation))
-                    .unwrap_or_default(),
-                literal.body
-            ),
+            ExpressionKind::Lambda(lambda) => write!(f, "{}", lambda),
             ExpressionKind::UseIn => todo!(),
             ExpressionKind::CaseAnalysis(case_analysis) => write!(
                 f,
@@ -109,13 +93,14 @@ impl<B: Binder> Display for Expression<B> {
                     .map(|case| format!(" {}", case))
                     .collect::<String>()
             ),
-            // @Note actual substitution.substituiton missing!
-            ExpressionKind::Substitution(substitution) => {
-                write!(f, "_substitution_ {}", substitution.expression)
-            }
+            ExpressionKind::Substitution(substitution) => write!(
+                f,
+                "<substitution {} {}>",
+                substitution.substitution, substitution.expression
+            ),
             ExpressionKind::UnsaturatedForeignApplication(application) => write!(
                 f,
-                "_foreign_ {}[{}]",
+                "<foreign {} {}>",
                 application.callee,
                 application
                     .arguments
@@ -124,6 +109,26 @@ impl<B: Binder> Display for Expression<B> {
                     .collect::<String>()
             ),
         }
+    }
+}
+
+impl<B: Binder> Display for expression::Lambda<B> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "\\({}{}{}){} => ({})",
+            self.explicitness,
+            self.parameter,
+            self.parameter_type_annotation
+                .as_ref()
+                .map(|parameter| format!(": {}", parameter))
+                .unwrap_or_default(),
+            self.body_type_annotation
+                .as_ref()
+                .map(|type_annotation| format!(": {}", type_annotation))
+                .unwrap_or_default(),
+            self.body
+        )
     }
 }
 

@@ -10,8 +10,8 @@ mod ffi;
 use std::{collections::HashMap, fmt};
 
 use crate::{
-    desugar::Expression,
-    resolver::{DebruijnIndex, Identifier, ModuleIndex},
+    desugar::{expr, Expression},
+    resolver::{Identifier, ModuleIndex},
 };
 
 // use super::{Error, Result};
@@ -33,7 +33,7 @@ use crate::{
 pub struct ModuleScope {
     bindings: HashMap<ModuleIndex, Entity>,
     // for printing for now
-    names: HashMap<ModuleIndex, crate::parser::Identifier>,
+    // names: HashMap<ModuleIndex, crate::parser::Identifier>,
 }
 
 /// Many methods of module scope panic instead of returning a `Result` because
@@ -47,20 +47,17 @@ impl ModuleScope {
         scope
     }
 
-    pub fn lookup_type(&self, binder: &Identifier) -> Option<Expression<Identifier>> {
-        self.bindings
-            .get(&binder.module().unwrap())
-            .map(Entity::r#type)
+    fn lookup_type(&self, index: ModuleIndex) -> Expression<Identifier> {
+        // @Temporary @Note indexing should never panic after name resolution
+        // @Task verify and remove this notice
+        self.bindings[&index].r#type()
     }
 
     /// Look up the value of a binding.
-    ///
-    /// * returns `None` if the `binder` is not bound.
-    /// * returns `Some(None)` if the binding is **neutral** (non-reducible)
-    pub fn lookup_value(&self, binder: &Identifier) -> Option<Value> {
-        self.bindings
-            .get(&binder.module().unwrap())
-            .map(|entity| entity.value())
+    fn lookup_value(&self, index: ModuleIndex) -> Value {
+        // @Temporary @Note indexing should never panic after name resolution
+        // @Task verify and remove this notice
+        self.bindings[&index].value()
     }
 
     fn is(&self, binder: &Identifier, predicate: fn(&Entity) -> bool) -> bool {
@@ -142,6 +139,8 @@ impl ModuleScope {
     ///
     /// Panics under `cfg(debug_assertions)` if the `binder` is already bound.
     pub fn insert_data_binding(&mut self, binder: Identifier, r#type: Expression<Identifier>) {
+        // eprintln!("ModuleScope::insert_data_binding({})", binder);
+
         let old = self.bindings.insert(
             binder.module().unwrap(),
             Entity::DataType {
@@ -227,13 +226,6 @@ impl ModuleScope {
     }
 }
 
-// @Task find out if we can get rid of this type by letting `ModuleScope::lookup_value` resolve to the Binder
-// if it's neutral
-pub enum Value {
-    Reducible(Expression<Identifier>),
-    Neutral,
-}
-
 impl fmt::Debug for ModuleScope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (binder, entity) in &self.bindings {
@@ -241,9 +233,27 @@ impl fmt::Debug for ModuleScope {
                 continue;
             }
 
-            writeln!(f, "{} |-> {}", self.names[binder], entity)?;
+            // writeln!(f, "{} |-> {}", self.names[binder], entity)?;
+            writeln!(f, "{} |-> {}", binder.value, entity)?;
         }
         Ok(())
+    }
+}
+
+// @Task find out if we can get rid of this type by letting `ModuleScope::lookup_value` resolve to the Binder
+// if it's neutral
+pub enum Value {
+    Reducible(Expression<Identifier>),
+    Neutral,
+}
+
+// @Temporary
+impl fmt::Debug for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Reducible(expression) => write!(f, "(REDUCIBLE {})", expression),
+            Self::Neutral => f.write_str("NEUTRAL"),
+        }
     }
 }
 
@@ -330,64 +340,84 @@ impl fmt::Display for Entity {
 /// most importantly, recursion only works explicitly via the fix-point-combinator.
 // @Note probably bad cache behavior as this is just a linked list. but I honestly cannot think
 // of a better data structure right now that does not involve deep-cloning an association list or the like
+// @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Bug
+// rewrite this to correctly handle Identifier::None i.e. count depth just like in crate::resolver::Scope::resolve_binder
 pub enum FunctionScope<'a> {
     Module(&'a ModuleScope),
     // @Note obviously, we don't store an Identifier but a DebruijnIndex here hmm
     Function {
         parent: &'a FunctionScope<'a>,
-        index: DebruijnIndex,
+        // index: DebruijnIndex,
         r#type: Expression<Identifier>,
     },
 }
 
+use crate::interpreter::Substitution::Shift;
+use crate::resolver::{DebruijnIndex, Index};
+
 impl<'a> FunctionScope<'a> {
-    pub fn extend_with_parameter(
-        &'a self,
-        binder: Identifier,
-        r#type: Expression<Identifier>,
-    ) -> Self {
+    pub fn extend_with_parameter(&'a self, r#type: Expression<Identifier>) -> Self {
         Self::Function {
             parent: self,
-            index: binder.debruijn().unwrap(),
             r#type,
         }
     }
 
-    pub fn lookup_type(&self, query: &Identifier) -> Option<Expression<Identifier>> {
+    fn module(&self) -> &ModuleScope {
         match self {
-            Self::Module(module) => module.lookup_type(query),
-            Self::Function {
-                parent,
-                index,
-                r#type,
-            } => {
-                if query
-                    .debruijn()
-                    .map(|query| *index == query)
-                    .unwrap_or(false)
-                {
-                    Some(r#type.clone())
-                } else {
-                    parent.lookup_type(query)
-                }
-            }
+            Self::Module(module) => module,
+            Self::Function { parent, .. } => parent.module(),
         }
     }
 
-    pub fn lookup_value(&self, query: &Identifier) -> Option<Value> {
-        match self {
-            Self::Module(module) => module.lookup_value(query),
-            Self::Function { parent, index, .. } => {
-                if query
-                    .debruijn()
-                    .map(|query| *index == query)
-                    .unwrap_or(false)
-                {
-                    None
-                } else {
-                    parent.lookup_value(query)
+    pub fn lookup_type(&self, binder: &Identifier) -> Expression<Identifier> {
+        // eprintln!("FunctionScope::lookup_type(binder={}):\n{:?}", binder, self);
+
+        fn lookup_type(
+            scope: &FunctionScope<'_>,
+            index: DebruijnIndex,
+            depth: usize,
+        ) -> Expression<Identifier> {
+            match scope {
+                FunctionScope::Function { parent, r#type } => {
+                    if depth == index.value {
+                        expr! {
+                            Substitution[crate::span::Span::dummy()] {
+                                substitution: Shift(depth + 1),
+                                expression: r#type.clone(),
+                            }
+                        }
+                    } else {
+                        lookup_type(parent, index, depth + 1)
+                    }
                 }
+                FunctionScope::Module(_) => unreachable!(),
             }
+        }
+
+        match binder.index {
+            Index::Module(index) => self.module().lookup_type(index),
+            Index::Debruijn(index) => lookup_type(self, index, 0),
+            Index::None => unreachable!(),
+        }
+    }
+
+    pub fn lookup_value(&self, binder: &Identifier) -> Value {
+        // eprintln!("FunctionScope::lookup_value() binder={}", binder);
+
+        match binder.index {
+            Index::Module(index) => self.module().lookup_value(index),
+            Index::Debruijn(_) => Value::Neutral,
+            Index::None => unreachable!(),
+        }
+    }
+}
+
+impl fmt::Debug for FunctionScope<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Module(_) => f.write_str("module"),
+            Self::Function { parent, r#type } => write!(f, "(': {}) --> {:?}", r#type, parent),
         }
     }
 }

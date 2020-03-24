@@ -25,7 +25,7 @@ use crate::{
 };
 
 // @Temporary location
-pub trait Binder: std::fmt::Debug + std::fmt::Display + Clone {}
+pub trait Binder: std::fmt::Display + Clone {}
 
 // @Note later: Path/Vec<Segment>
 impl Binder for parser::Identifier {}
@@ -173,7 +173,7 @@ pub mod expression {
 
     #[freestanding]
     #[streamline(Rc)]
-    #[derive(Clone, Debug)]
+    #[derive(Clone)]
     pub enum ExpressionKind<B: Binder> {
         PiType {
             parameter: Option<B>,
@@ -372,14 +372,14 @@ pub mod expression {
         }
     }
 
-    #[derive(Clone, Debug)]
+    #[derive(Clone)]
     pub struct Case<B: Binder> {
         pub pattern: Pattern<B>,
         pub body: Expression<B>,
     }
 
     // @Task @Beacon @Beacon @Beacon @Beacon transform Pattern like we did in the parser
-    #[derive(Debug, Clone)]
+    #[derive(Clone)]
     pub enum Pattern<B: Binder> {
         Nat(Nat),
         Binding {

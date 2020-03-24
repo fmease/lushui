@@ -284,11 +284,15 @@ pub struct Identifier {
 
 impl Identifier {
     // @Note I dunno about this interface
-    pub fn local(identifier: &Identifier) -> Self {
+    pub fn local(identifier: &Self) -> Self {
         Self {
             source: identifier.source.clone(),
             index: Index::Debruijn(DebruijnIndex { value: 0 }),
         }
+    }
+
+    pub fn is_innermost(&self) -> bool {
+        matches!(self.index, Index::Debruijn(DebruijnIndex { value: 0 }))
     }
 
     pub fn shift(self, amount: usize) -> Self {
@@ -320,6 +324,23 @@ impl Identifier {
     }
 }
 
+use std::fmt;
+
+impl fmt::Display for Identifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.source)?;
+        #[cfg(FALSE)]
+        {
+            match self.index {
+                Index::Module(index) => write!(f, "#{}M", index.value)?,
+                Index::Debruijn(index) => write!(f, "#{}F", index.value)?,
+                Index::None => (),
+            }
+        }
+        Ok(())
+    }
+}
+
 impl Binder for Identifier {}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -333,6 +354,8 @@ pub enum Index {
 }
 
 impl Index {
+    // @Bug @Beacon @Beacon if the index is a module index, it should not be "shifted"
+    // but replaced by a new module index
     fn shift(self, amount: usize) -> Self {
         match self {
             // Self::Module { .. } | Self::None => self,
@@ -360,25 +383,12 @@ impl Index {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ModuleIndex {
-    value: usize,
+    pub value: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DebruijnIndex {
-    value: usize,
-}
-
-use std::fmt;
-
-impl fmt::Display for Identifier {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.source)?;
-        match self.index {
-            Index::Module(index) => write!(f, "#{}M", index.value),
-            Index::Debruijn(index) => write!(f, "#{}F", index.value),
-            Index::None => Ok(()),
-        }
-    }
+    pub value: usize,
 }
 
 pub enum FunctionScope<'a> {
