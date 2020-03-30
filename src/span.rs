@@ -1,4 +1,4 @@
-use std::{convert::TryInto, path::PathBuf};
+use std::{convert::TryInto, path::PathBuf, rc::Rc};
 
 /// Global byte index.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
@@ -191,7 +191,7 @@ impl Sub<LocalByteIndex> for LocalSpan {
 
 #[derive(Default)]
 pub struct SourceMap {
-    files: Vec<SourceFile>,
+    files: Vec<Rc<SourceFile>>,
 }
 
 impl SourceMap {
@@ -202,16 +202,16 @@ impl SourceMap {
         }
     }
 
-    pub fn load(&mut self, path: std::path::PathBuf) -> Result<&SourceFile> {
+    pub fn load(&mut self, path: std::path::PathBuf) -> Result<Rc<SourceFile>> {
         let source = std::fs::read_to_string(&path).map_err(Error::IO)?;
         self.add(FileName::Real(path), source)
     }
 
-    fn add(&mut self, name: FileName, source: String) -> Result<&SourceFile> {
-        let file = SourceFile::new(name, source, self.next_offset()?)?;
-        self.files.push(file);
+    fn add(&mut self, name: FileName, source: String) -> Result<Rc<SourceFile>> {
+        let file = Rc::new(SourceFile::new(name, source, self.next_offset()?)?);
+        self.files.push(file.clone());
 
-        Ok(self.files.last().unwrap())
+        Ok(file)
     }
 
     // @Note panics on invalid span
@@ -234,7 +234,6 @@ impl SourceMap {
     pub fn resolve_span(&self, span: Span) -> Lines {
         let file = self.file_from_span(span);
         let span = LocalSpan::from_global(&file, span);
-        dbg!(span);
         let mut line_number = 1;
         let mut highlight_start = None;
         let mut highlight = None;

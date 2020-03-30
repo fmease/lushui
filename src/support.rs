@@ -1,47 +1,49 @@
-/// "Handle" 2 results mapping okays and merging errors which are `Vec`s.
-pub trait Handle2Ext<E> {
-    type A;
-    type B;
+pub mod handle {
+    /// "Handle" 2 results mapping okays and merging errors which are `Vec`s
+    pub trait Two<E> {
+        type A;
+        type B;
 
-    fn handle<O>(self, map: impl FnOnce(Self::A, Self::B) -> O) -> Result<O, Vec<E>>;
-}
+        fn handle<O>(self, map: impl FnOnce(Self::A, Self::B) -> O) -> Result<O, Vec<E>>;
+    }
 
-pub trait Handle3Ext<E> {
-    type A;
-    type B;
-    type C;
+    pub trait Three<E> {
+        type A;
+        type B;
+        type C;
 
-    fn handle<O>(self, map: impl FnOnce(Self::A, Self::B, Self::C) -> O) -> Result<O, Vec<E>>;
-}
+        fn handle<O>(self, map: impl FnOnce(Self::A, Self::B, Self::C) -> O) -> Result<O, Vec<E>>;
+    }
 
-impl<A, B, E> Handle2Ext<E> for (Result<A, Vec<E>>, Result<B, Vec<E>>) {
-    type A = A;
-    type B = B;
+    impl<A, B, E> Two<E> for (Result<A, Vec<E>>, Result<B, Vec<E>>) {
+        type A = A;
+        type B = B;
 
-    fn handle<O>(self, map: impl FnOnce(Self::A, Self::B) -> O) -> Result<O, Vec<E>> {
-        match (self.0, self.1) {
-            (Ok(okay0), Ok(okay1)) => Ok(map(okay0, okay1)),
-            (Err(error), Ok(_)) | (Ok(_), Err(error)) => Err(error),
-            (Err(error0), Err(mut error1)) => {
-                let mut error = error0;
-                error.append(&mut error1);
-                Err(error)
+        fn handle<O>(self, map: impl FnOnce(Self::A, Self::B) -> O) -> Result<O, Vec<E>> {
+            match (self.0, self.1) {
+                (Ok(okay0), Ok(okay1)) => Ok(map(okay0, okay1)),
+                (Err(error), Ok(_)) | (Ok(_), Err(error)) => Err(error),
+                (Err(error0), Err(mut error1)) => {
+                    let mut error = error0;
+                    error.append(&mut error1);
+                    Err(error)
+                }
             }
         }
     }
-}
 
-impl<A, B, C, E> Handle3Ext<E> for (Result<A, Vec<E>>, Result<B, Vec<E>>, Result<C, Vec<E>>) {
-    type A = A;
-    type B = B;
-    type C = C;
+    impl<A, B, C, E> Three<E> for (Result<A, Vec<E>>, Result<B, Vec<E>>, Result<C, Vec<E>>) {
+        type A = A;
+        type B = B;
+        type C = C;
 
-    fn handle<O>(self, map: impl FnOnce(Self::A, Self::B, Self::C) -> O) -> Result<O, Vec<E>> {
-        (
-            (self.0, self.1).handle(|okay0, okay1| (okay0, okay1)),
-            self.2,
-        )
-            .handle(|(okay0, okay1), okay2| map(okay0, okay1, okay2))
+        fn handle<O>(self, map: impl FnOnce(Self::A, Self::B, Self::C) -> O) -> Result<O, Vec<E>> {
+            (
+                (self.0, self.1).handle(|okay0, okay1| (okay0, okay1)),
+                self.2,
+            )
+                .handle(|(okay0, okay1), okay2| map(okay0, okay1, okay2))
+        }
     }
 }
 

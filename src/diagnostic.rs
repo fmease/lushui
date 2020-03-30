@@ -13,6 +13,8 @@ pub struct Diagnostic {
 
 const SPACE: &str = " ";
 
+// @Task be able to have errors associated with a file but not a snippet
+// @Note I still want to rely on `Span`
 impl Diagnostic {
     pub fn new(level: Level, message: impl Into<CowStr>) -> Self {
         Self {

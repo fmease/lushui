@@ -24,7 +24,7 @@ use crate::{
     },
     diagnostic::{Diagnostic, Level},
     parser,
-    support::{Handle2Ext, Handle3Ext, TransposeExt},
+    support::{handle::*, TransposeExt},
 };
 
 // @Beacon @Beacon @Beacon @Task

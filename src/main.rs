@@ -40,7 +40,7 @@ fn main() {
             .load(path.into())
             .map_err(|error| Diagnostic::new(Level::Fatal, error.to_string()))?;
 
-        let tokens = Lexer::new(&file).lex()?;
+        let tokens = handle_multiple_errors(&mut map, Lexer::new(&file).lex())?;
         // eprintln!("{:#?}", &tokens);
 
         let mut parser = Parser::new(&tokens);
@@ -49,21 +49,10 @@ fn main() {
         let node = node.desugar();
         eprintln!("{}", &node);
 
-        // @Temporary
-        let node = match node.resolve(&mut resolver::ModuleScope::default()) {
-            Ok(node) => node,
-            Err(errors) => {
-                let amount = errors.len();
-
-                for error in errors {
-                    error.emit(Some(&mut map));
-                }
-                return Err(Diagnostic::new(
-                    Level::Fatal,
-                    format!("aborting due to {} previous errors", amount),
-                ));
-            }
-        };
+        let node = handle_multiple_errors(
+            &mut map,
+            node.resolve(&mut resolver::ModuleScope::default()),
+        )?;
         eprintln!("{}", node);
 
         let mut scope = interpreter::ModuleScope::new();
@@ -76,5 +65,27 @@ fn main() {
 
     if let Err(error) = result {
         error.emit(Some(&map));
+    }
+}
+
+// @Temporary use an error buffer in general! @Note does not report actual number of errors!
+fn handle_multiple_errors<T>(
+    map: &mut SourceMap,
+    result: Result<T, impl IntoIterator<Item = Diagnostic>>,
+) -> Result<T, Diagnostic> {
+    match result {
+        Ok(value) => Ok(value),
+        Err(errors) => {
+            let errors = errors.into_iter();
+            let (amount, _) = errors.size_hint();
+
+            for error in errors {
+                error.emit(Some(map));
+            }
+            Err(Diagnostic::new(
+                Level::Fatal,
+                format!("aborting due to {} previous errors", amount),
+            ))
+        }
     }
 }

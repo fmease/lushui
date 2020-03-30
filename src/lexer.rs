@@ -1,4 +1,4 @@
-//! The self.
+//! The lexer.
 //!
 //! It parses indentation and dedentation intwo two pseudo tokens:
 //! [TokenKind::Indentation] and [TokenKind::Dedentation] respectively.
@@ -14,6 +14,7 @@ use crate::{
     span::{LocalByteIndex, LocalSpan, SourceFile, Span, Spanned},
     Atom, Nat,
 };
+use smallvec::{smallvec, SmallVec};
 use std::{
     fmt,
     iter::{repeat, Peekable},
@@ -183,12 +184,15 @@ fn parse_reserved_punctuation(source: &str) -> Option<TokenKind> {
     })
 }
 
+type Diagnostics = SmallVec<[Diagnostic; 1]>;
+
 pub struct Lexer<'a> {
     source: &'a SourceFile,
     characters: Peekable<CharIndices<'a>>,
     tokens: Vec<Token>,
     span: LocalSpan,
     indentation_in_spaces: usize,
+    round_brackets: Vec<Span>,
 }
 
 impl<'a> Lexer<'a> {
@@ -199,12 +203,12 @@ impl<'a> Lexer<'a> {
             tokens: Vec::new(),
             span: LocalSpan::dummy(),
             indentation_in_spaces: 0,
+            round_brackets: Vec::new(),
         }
     }
 
-    /// Lex source code into an array of self.tokens.
-    // @Task keep a bracket stack to report better error messages
-    pub fn lex(mut self) -> Result<Vec<Token>, Diagnostic> {
+    /// Lex source code into an array of tokens
+    pub fn lex(mut self) -> Result<Vec<Token>, Diagnostics> {
         while let Some(character) = self.peek() {
             self.span = LocalSpan::from(self.index().unwrap());
             match character {
@@ -212,25 +216,40 @@ impl<'a> Lexer<'a> {
                 // (SOI should act as a line break)
                 ' ' => self.lex_whitespace(),
                 ';' => self.lex_comment(),
-                character if is_identifier_candidate(character) => self.lex_identifier()?,
-                '\n' => self.lex_indentation()?,
+                character if is_identifier_candidate(character) => {
+                    self.lex_identifier().map_err(|error| smallvec![error])?
+                }
+                '\n' => self.lex_indentation().map_err(|error| smallvec![error])?,
                 character if is_punctuation(character) => self.lex_punctuation(),
                 character if character.is_ascii_digit() => self.lex_nat_literal(),
-                '"' => self.lex_text_literal()?,
+                '"' => self.lex_text_literal().map_err(|error| smallvec![error])?,
                 '(' => self.lex_opening_round_bracket(),
-                ')' => self.lex_closing_round_bracket(),
+                ')' => self
+                    .lex_closing_round_bracket()
+                    .map_err(|error| smallvec![error])?,
                 '_' => self.lex_underscore(),
                 character => {
-                    return Err(Diagnostic::new(
+                    return Err(smallvec![Diagnostic::new(
                         Level::Fatal,
                         format!(
                             "illegal character U+{:04X} `{}`",
                             character as u32, character
                         ),
                     )
-                    .with_span(self.span()))
+                    .with_span(self.span())])
                 }
             }
+        }
+
+        if !self.round_brackets.is_empty() {
+            return Err(self
+                .round_brackets
+                .into_iter()
+                .map(|bracket| {
+                    Diagnostic::new(Level::Fatal, "unbalanced brackets")
+                        .with_labeled_span(bracket, "has no matching closing bracket")
+                })
+                .collect());
         }
 
         self.extend_with_dedentation(
@@ -416,12 +435,20 @@ impl<'a> Lexer<'a> {
 
     fn lex_opening_round_bracket(&mut self) {
         self.add(TokenKind::OpeningRoundBracket);
+        self.round_brackets.push(self.span());
         self.advance();
     }
 
-    fn lex_closing_round_bracket(&mut self) {
+    fn lex_closing_round_bracket(&mut self) -> Result<(), Diagnostic> {
         self.add(TokenKind::ClosingRoundBracket);
+        if self.round_brackets.is_empty() {
+            return Err(Diagnostic::new(Level::Fatal, "unbalanced brackets")
+                .with_labeled_span(self.span(), "has no matching opening bracket"));
+        }
+        self.round_brackets.pop();
         self.advance();
+
+        Ok(())
     }
 
     fn lex_underscore(&mut self) {

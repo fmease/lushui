@@ -1,11 +1,8 @@
 use super::{
-    Lexer, Token,
+    Diagnostics, Lexer, Token,
     TokenKind::{self, *},
 };
-use crate::{
-    diagnostic::Diagnostic,
-    span::{ByteIndex, Span},
-};
+use crate::span::{ByteIndex, Span};
 use std::fmt;
 
 impl fmt::Debug for TokenKind {
@@ -14,26 +11,25 @@ impl fmt::Debug for TokenKind {
     }
 }
 
-fn lex(source: &'static str) -> Result<Vec<Token>, Diagnostic> {
+fn lex(source: &'static str) -> Result<Vec<Token>, Diagnostics> {
     use crate::span::{FileName, SourceFile};
 
     let file = SourceFile::new(FileName::Anonymous, source.to_owned(), ByteIndex::new(0)).unwrap();
-    let lexer = Lexer::new(&file);
-    lexer.lex()
+    Lexer::new(&file).lex()
 }
 
 fn token(kind: TokenKind, start: u32, end: u32) -> Token {
     Token::new(kind, Span::new(ByteIndex::new(start), ByteIndex::new(end)))
 }
 
-fn assert_ok_token(actual: Result<Vec<Token>, Diagnostic>, expected: Vec<Token>) {
+fn assert_ok_token(actual: Result<Vec<Token>, Diagnostics>, expected: Vec<Token>) {
     match actual {
         Ok(actual) => assert_eq!(actual, expected),
         Err(_) => panic!("expected `{:?}`, got an `Err`", expected),
     }
 }
 
-fn assert_err(actual: Result<Vec<Token>, Diagnostic>) {
+fn assert_err(actual: Result<Vec<Token>, Diagnostics>) {
     if let Ok(actual) = actual {
         panic!("expected an `Err`, got `{:?}`", actual);
     }
@@ -254,6 +250,9 @@ fn lex_other() {
             token(EndOfInput, 14, 14),
         ],
     );
+
+    assert_err(lex("(("));
+    assert_err(lex("(()"));
 }
 
 #[test]
