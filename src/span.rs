@@ -1,4 +1,4 @@
-use std::{convert::TryInto, path::PathBuf, rc::Rc};
+use std::{convert::TryInto, path::PathBuf};
 
 /// Global byte index.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
@@ -7,7 +7,7 @@ pub struct ByteIndex {
 }
 
 impl ByteIndex {
-    fn new(index: u32) -> Self {
+    pub fn new(index: u32) -> Self {
         ByteIndex { value: index }
     }
 
@@ -90,16 +90,23 @@ impl Sub<usize> for LocalByteIndex {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Spanned<K> {
     pub kind: K,
     pub span: Span,
 }
 
+impl<K> Spanned<K> {
+    pub fn new(kind: K, span: Span) -> Self {
+        Self { kind, span }
+    }
+}
+
 /// Global byte span of source code.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Span {
-    start: ByteIndex,
-    end: ByteIndex,
+    pub start: ByteIndex,
+    pub end: ByteIndex,
 }
 
 impl Span {
@@ -131,8 +138,14 @@ impl Span {
     }
 }
 
+impl fmt::Debug for Span {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Span({}, {})", self.start.value, self.end.value)
+    }
+}
+
 /// Span inside a single source file.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct LocalSpan {
     pub start: LocalByteIndex,
     pub end: LocalByteIndex,
@@ -141,6 +154,11 @@ pub struct LocalSpan {
 impl LocalSpan {
     pub fn new(start: LocalByteIndex, end: LocalByteIndex) -> Self {
         Self { start, end }
+    }
+
+    // @Note this is actually a valid span
+    pub fn dummy() -> Self {
+        Self::from(LocalByteIndex::new(0))
     }
 
     pub fn from_global(source: &SourceFile, span: Span) -> Self {
@@ -173,7 +191,7 @@ impl Sub<LocalByteIndex> for LocalSpan {
 
 #[derive(Default)]
 pub struct SourceMap {
-    files: Vec<Rc<SourceFile>>,
+    files: Vec<SourceFile>,
 }
 
 impl SourceMap {
@@ -184,25 +202,24 @@ impl SourceMap {
         }
     }
 
-    pub fn load(&mut self, path: std::path::PathBuf) -> Result<Rc<SourceFile>> {
+    pub fn load(&mut self, path: std::path::PathBuf) -> Result<&SourceFile> {
         let source = std::fs::read_to_string(&path).map_err(Error::IO)?;
         self.add(FileName::Real(path), source)
     }
 
-    fn add(&mut self, name: FileName, source: String) -> Result<Rc<SourceFile>> {
-        let file = Rc::new(SourceFile::new(name, source, self.next_offset()?)?);
-        self.files.push(file.clone());
+    fn add(&mut self, name: FileName, source: String) -> Result<&SourceFile> {
+        let file = SourceFile::new(name, source, self.next_offset()?)?;
+        self.files.push(file);
 
-        Ok(file)
+        Ok(self.files.last().unwrap())
     }
 
     // @Note panics on invalid span
-    fn file_from_span(&self, span: Span) -> Rc<SourceFile> {
+    fn file_from_span(&self, span: Span) -> &SourceFile {
         self.files
             .iter()
             .find(|file| file.span.contains_index(span.start))
             .unwrap()
-            .clone()
 
         // @Bug panics @Beacon @Task find out why and adjust
         // let index = self
@@ -217,6 +234,7 @@ impl SourceMap {
     pub fn resolve_span(&self, span: Span) -> Lines {
         let file = self.file_from_span(span);
         let span = LocalSpan::from_global(&file, span);
+        dbg!(span);
         let mut line_number = 1;
         let mut highlight_start = None;
         let mut highlight = None;
@@ -233,7 +251,7 @@ impl SourceMap {
             if index == span.start {
                 highlight_start = Some(index);
             }
-            if index == span.end {
+            if index + character.len_utf8() - 1 == span.end {
                 let span = LocalSpan::new(highlight_start.unwrap(), index);
                 let offset = line_start.unwrap();
 
@@ -299,7 +317,7 @@ pub struct Line {
 pub struct SourceFile {
     name: FileName,
     content: String,
-    span: Span,
+    pub span: Span,
 }
 
 impl SourceFile {
@@ -334,13 +352,11 @@ pub enum FileName {
     Anonymous,
 }
 
-impl FileName {
-    // @Note we do not impl Display because I want to handle the inner PathBuf
-    // differently, not using to_lossy. Maybe returning OsString?
-    pub fn to_string(&self) -> String {
+impl fmt::Display for FileName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            FileName::Real(path) => path.to_string_lossy().to_string(),
-            FileName::Anonymous => "<anonymous>".into(),
+            FileName::Real(path) => write!(f, "{}", path.to_string_lossy()),
+            FileName::Anonymous => f.write_str("<anonymous>"),
         }
     }
 }
@@ -360,10 +376,11 @@ impl fmt::Display for Error {
         use std::io::ErrorKind::*;
 
         f.write_str(match self {
-            Self::OffsetOverflow => "input file too large",
-            Self::IO(error) => match error.kind() {
+            Self::OffsetOverflow => "file too large",
+            Self::IO(error) => match dbg!(error.kind()) {
                 NotFound => "referenced file does not exist",
                 PermissionDenied => "file does not have required permissions",
+                InvalidData => "file contains invalid UTF-8",
                 _ => "an I/O error occurred",
             },
         })

@@ -20,13 +20,13 @@ use crate::{
 
 // @Task use SourceFiles
 pub struct Parser<'input> {
-    tokens: &'input [lexer::SourceToken],
+    tokens: &'input [Token],
     index: usize,
 }
 
 impl<'input> Parser<'input> {
     /// Construct a new context with the pointer at the beginning.
-    pub fn new(tokens: &'input [lexer::SourceToken]) -> Self {
+    pub fn new(tokens: &'input [Token]) -> Self {
         Self { tokens, index: 0 }
     }
 }
@@ -36,7 +36,9 @@ impl Parser<'_> {
     /// Parse the source in a sandboxed context.
     ///
     /// Used for arbitrary look-ahead. Restores the old cursor on failure.
-    pub fn reflect<Node>(&mut self, parser: fn(&mut Self) -> Result<Node>) -> Result<Node> {
+    // @Bug because of arbitrary look-ahead/this function, a magnitude of Diagnostics are constructed
+    // but never emitted/wasted
+    fn reflect<Node>(&mut self, parser: fn(&mut Self) -> Result<Node>) -> Result<Node> {
         let saved_index = self.index;
         let result = parser(self);
 
@@ -47,43 +49,87 @@ impl Parser<'_> {
         result
     }
 
-    pub fn expect(&self, expected: lexer::TokenKind) -> Result<lexer::SourceToken> {
-        let token = self.token();
-        let actual = token.kind();
-        if actual == expected {
-            Ok(token)
+    fn expect(&self, expected: TokenKind) -> Result<Token> {
+        let actual = self.token();
+        if actual.kind == expected {
+            Ok(actual)
         } else {
             Err(Diagnostic::new(
                 Level::Fatal,
-                format!("expected {}, found {}", expected, actual),
+                format!("expected {}, found {}", expected, actual.kind),
             )
-            .with_span(token.span))
+            .with_span(actual.span))
         }
     }
 
-    pub fn consume(&mut self, token_kind: lexer::TokenKind) -> Result<lexer::SourceToken> {
+    fn expect_identifier(&self) -> Result<Identifier> {
+        let actual = self.token();
+        match actual.kind {
+            TokenKind::Identifier(identifier) => Ok(Identifier::new(identifier, actual.span)),
+            _ => Err(Diagnostic::new(
+                Level::Fatal,
+                format!("expected identifier, found {}", actual.kind),
+            )
+            .with_span(actual.span)),
+        }
+    }
+
+    fn expect_nat_literal(&self) -> Result<(crate::Nat, Span)> {
+        let actual = self.token();
+        match actual.kind {
+            TokenKind::NatLiteral(nat) => Ok((nat, actual.span)),
+            _ => Err(Diagnostic::new(
+                Level::Fatal,
+                format!("expected natural number literal, found {}", actual.kind),
+            )
+            .with_span(actual.span)),
+        }
+    }
+
+    fn expect_text_literal(&self) -> Result<(String, Span)> {
+        let actual = self.token();
+        match actual.kind {
+            TokenKind::TextLiteral(text) => Ok((text, actual.span)),
+            _ => Err(Diagnostic::new(
+                Level::Fatal,
+                format!("expected text literal, found {}", actual.kind),
+            )
+            .with_span(actual.span)),
+        }
+    }
+
+    fn consume(&mut self, token_kind: lexer::TokenKind) -> Result<lexer::Token> {
         let token = self.expect(token_kind)?;
         self.advance();
         Ok(token)
     }
 
-    // @Task generalize
-    pub fn consume_identifier(&mut self) -> Result<Identifier> {
-        self.consume(lexer::TokenKind::Identifier)
-            .map(|token| match token.inner {
-                lexer::Token::Identifier(identifier) => Identifier {
-                    atom: identifier,
-                    span: token.span,
-                },
-                _ => unreachable!(),
-            })
+    // @Note boilerplate, use a trait smh
+    fn consume_identifier(&mut self) -> Result<Identifier> {
+        let identifier = self.expect_identifier()?;
+        self.advance();
+        Ok(identifier)
     }
 
-    pub fn advance(&mut self) {
+    // @Note boilerplate, use a trait smh
+    fn consume_nat_literal(&mut self) -> Result<(crate::Nat, Span)> {
+        let nat = self.expect_nat_literal()?;
+        self.advance();
+        Ok(nat)
+    }
+
+    // @Note boilerplate, use a trait smh
+    fn consume_text_literal(&mut self) -> Result<(String, Span)> {
+        let text = self.expect_text_literal()?;
+        self.advance();
+        Ok(text)
+    }
+
+    fn advance(&mut self) {
         self.index += 1;
     }
 
-    pub fn advance_with<Node, Knowledge>(
+    fn advance_with<Node, Knowledge>(
         &mut self,
         knowledge: Knowledge,
         subparser: fn(&mut Self, Knowledge) -> Result<Node>,
@@ -93,19 +139,20 @@ impl Parser<'_> {
     }
 
     // @Question why clone?
-    pub fn token(&self) -> lexer::SourceToken {
+    // @Bug note this probably clones text literals booo!
+    fn token(&self) -> lexer::Token {
         self.tokens[self.index].clone()
     }
 
-    pub fn current(&self, kind: lexer::TokenKind) -> bool {
-        self.tokens[self.index].kind() == kind
+    fn current(&self, kind: lexer::TokenKind) -> bool {
+        self.tokens[self.index].kind == kind
     }
 
-    pub fn succeeding(&self, kind: lexer::TokenKind) -> bool {
-        self.tokens[self.index + 1].kind() == kind
+    fn succeeding(&self, kind: lexer::TokenKind) -> bool {
+        self.tokens[self.index + 1].kind == kind
     }
 
-    pub fn consumed(&mut self, kind: lexer::TokenKind) -> bool {
+    fn consumed(&mut self, kind: lexer::TokenKind) -> bool {
         if self.current(kind) {
             self.advance();
             true
@@ -163,16 +210,16 @@ pub mod declaration {
     pub fn parse_declaration(parser: &mut Parser<'_>) -> Result<Declaration> {
         let token = parser.token();
 
-        match token.inner {
-            Token::Identifier(identifier) => parser.advance_with(
+        match token.kind {
+            TokenKind::Identifier(identifier) => parser.advance_with(
                 Identifier::new(identifier, token.span),
                 finish_parse_value_declaration,
             ),
-            Token::Data => parser.advance_with(token.span, finish_parse_data_declaration),
-            Token::Foreign => parser.advance_with(token.span, finish_parse_foreign_declaration),
+            TokenKind::Data => parser.advance_with(token.span, finish_parse_data_declaration),
+            TokenKind::Foreign => parser.advance_with(token.span, finish_parse_foreign_declaration),
             _ => Err(Diagnostic::new(
                 Level::Fatal,
-                format!("expected start of declaration, found {}", token.kind()),
+                format!("expected start of declaration, found {}", token.kind),
             )
             .with_span(token.span)),
         }
@@ -450,7 +497,7 @@ pub mod expression {
     pub fn parse_expression(parser: &mut Parser<'_>) -> Result<Expression> {
         let token = parser.token();
 
-        match token.kind() {
+        match token.kind {
             TokenKind::Let => parser.advance_with(token.span, finish_parse_let_in),
             TokenKind::Backslash => parser.advance_with(token.span, finish_parse_lambda_literal),
             TokenKind::Case => parser.advance_with(token.span, finish_parse_case_analysis),
@@ -570,14 +617,10 @@ pub mod expression {
     }
 
     pub fn parse_nat_literal(parser: &mut Parser<'_>) -> Result<Expression> {
-        // @Note ugly match+unreachable, directly relates to consume/consume_identifier-issue mentioned above
-        parser.consume(TokenKind::NatLiteral).map(|token| {
+        parser.consume_nat_literal().map(|(nat, span)| {
             expr! {
-                NatLiteral[token.span] {
-                    value: match token.inner {
-                        lexer::Token::NatLiteral(value) => value,
-                        _ => unreachable!(),
-                    },
+                NatLiteral[span] {
+                    value: nat
                 }
             }
         })
@@ -590,14 +633,10 @@ pub mod expression {
     }
 
     fn parse_text_literal(parser: &mut Parser<'_>) -> Result<Expression> {
-        // @Note ugly match+unreachable, directly relates to consume/consume_identifier-issue mentioned above
-        parser.consume(TokenKind::TextLiteral).map(|token| {
+        parser.consume_text_literal().map(|(text, span)| {
             expr! {
-                TextLiteral[token.span] {
-                    value: match token.inner {
-                        lexer::Token::TextLiteral(value) => value,
-                        _ => unreachable!(),
-                    },
+                TextLiteral[span] {
+                    value: text,
                 }
             }
         })
@@ -721,11 +760,7 @@ pub mod expression {
         parser.consume(TokenKind::Of)?;
         patterns.push(pattern::parse_pattern(parser)?);
 
-        loop {
-            if parser.consumed(TokenKind::WideArrow) {
-                break;
-            }
-
+        while !parser.consumed(TokenKind::WideArrow) {
             parser.consume(TokenKind::Of)?;
             patterns.push(pattern::parse_pattern(parser)?);
         }
@@ -882,14 +917,10 @@ pub mod pattern {
     }
 
     fn parse_nat_literal(parser: &mut Parser<'_>) -> Result<Pattern> {
-        // @Note ugly match+unreachable, directly relates to consume/consume_identifier-issue mentioned above
-        parser.consume(TokenKind::NatLiteral).map(|token| {
+        parser.consume_nat_literal().map(|(nat, span)| {
             pat! {
-                NatLiteral[token.span] {
-                    value: match token.inner {
-                        lexer::Token::NatLiteral(value) => value,
-                        _ => unreachable!(),
-                    },
+                NatLiteral[span] {
+                    value: nat,
                 }
             }
         })

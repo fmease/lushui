@@ -36,17 +36,18 @@ fn main() {
             .next()
             .ok_or_else(|| Diagnostic::new(Level::Fatal, "no source file path supplied"))?;
 
-        let mut lexer = Lexer::load(&mut map, path.into())
+        let file = map
+            .load(path.into())
             .map_err(|error| Diagnostic::new(Level::Fatal, error.to_string()))?;
-        lexer.lex()?;
-        let tokens = lexer.into_tokens();
+
+        let tokens = Lexer::new(&file).lex()?;
         // eprintln!("{:#?}", &tokens);
 
         let mut parser = Parser::new(&tokens);
         let node = parse_file_module_no_header(&mut parser)?;
 
         let node = node.desugar();
-        // eprintln!("{}", &node);
+        eprintln!("{}", &node);
 
         // @Temporary
         let node = match node.resolve(&mut resolver::ModuleScope::default()) {

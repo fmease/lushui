@@ -107,7 +107,7 @@ impl Declaration<Identifier> {
             }
             Module(module) => {
                 for declaration in &module.declarations {
-                    declaration.evaluate(scope)?;
+                    declaration.infer_type_and_evaluate(scope)?;
                 }
             }
             Use => todo!(),
