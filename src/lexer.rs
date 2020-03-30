@@ -10,7 +10,7 @@
 mod test;
 
 use crate::{
-    diagnostic::{Diagnostic, Level},
+    diagnostic::{Code, Diagnostic, Level},
     span::{LocalByteIndex, LocalSpan, SourceFile, Span, Spanned},
     Atom, Nat,
 };
@@ -231,6 +231,7 @@ impl<'a> Lexer<'a> {
                 character => {
                     return Err(smallvec![Diagnostic::new(
                         Level::Fatal,
+                        Code::E000,
                         format!(
                             "illegal character U+{:04X} `{}`",
                             character as u32, character
@@ -246,7 +247,7 @@ impl<'a> Lexer<'a> {
                 .round_brackets
                 .into_iter()
                 .map(|bracket| {
-                    Diagnostic::new(Level::Fatal, "unbalanced brackets")
+                    Diagnostic::new(Level::Fatal, Code::E001, "unbalanced brackets")
                         .with_labeled_span(bracket, "has no matching closing bracket")
                 })
                 .collect());
@@ -312,8 +313,12 @@ impl<'a> Lexer<'a> {
             let previous = self.span;
             self.lex_identifier_segment();
             if self.span == previous {
-                return Err(Diagnostic::new(Level::Fatal, "trailing dash on identifier")
-                    .with_span(Span::from_local(self.source, dash.into())));
+                return Err(Diagnostic::new(
+                    Level::Fatal,
+                    Code::E002,
+                    "trailing dash on identifier",
+                )
+                .with_span(Span::from_local(self.source, dash.into())));
             }
         }
 
@@ -366,6 +371,7 @@ impl<'a> Lexer<'a> {
         {
             return Err(Diagnostic::new(
                 Level::Fatal,
+                Code::E003,
                 format!(
                     "invalid indentation consisting of {} spaces",
                     absolute_difference
@@ -421,7 +427,8 @@ impl<'a> Lexer<'a> {
 
         if !terminated {
             return Err(
-                Diagnostic::new(Level::Fatal, "unterminated text literal").with_span(self.span())
+                Diagnostic::new(Level::Fatal, Code::E004, "unterminated text literal")
+                    .with_span(self.span()),
             );
         }
 
@@ -442,8 +449,10 @@ impl<'a> Lexer<'a> {
     fn lex_closing_round_bracket(&mut self) -> Result<(), Diagnostic> {
         self.add(TokenKind::ClosingRoundBracket);
         if self.round_brackets.is_empty() {
-            return Err(Diagnostic::new(Level::Fatal, "unbalanced brackets")
-                .with_labeled_span(self.span(), "has no matching opening bracket"));
+            return Err(
+                Diagnostic::new(Level::Fatal, Code::E001, "unbalanced brackets")
+                    .with_labeled_span(self.span(), "has no matching opening bracket"),
+            );
         }
         self.round_brackets.pop();
         self.advance();

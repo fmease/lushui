@@ -13,7 +13,7 @@ use freestanding::freestanding;
 use std::fmt;
 
 use crate::{
-    diagnostic::{Diagnostic, Level},
+    diagnostic::{Code, Diagnostic, Level},
     lexer::{self, Token, TokenKind},
     span::{Span, Spanned},
 };
@@ -56,6 +56,7 @@ impl Parser<'_> {
         } else {
             Err(Diagnostic::new(
                 Level::Fatal,
+                Code::E010,
                 format!("expected {}, found {}", expected, actual.kind),
             )
             .with_span(actual.span))
@@ -68,6 +69,7 @@ impl Parser<'_> {
             TokenKind::Identifier(identifier) => Ok(Identifier::new(identifier, actual.span)),
             _ => Err(Diagnostic::new(
                 Level::Fatal,
+                Code::E010,
                 format!("expected identifier, found {}", actual.kind),
             )
             .with_span(actual.span)),
@@ -80,6 +82,7 @@ impl Parser<'_> {
             TokenKind::NatLiteral(nat) => Ok((nat, actual.span)),
             _ => Err(Diagnostic::new(
                 Level::Fatal,
+                Code::E010,
                 format!("expected natural number literal, found {}", actual.kind),
             )
             .with_span(actual.span)),
@@ -92,6 +95,7 @@ impl Parser<'_> {
             TokenKind::TextLiteral(text) => Ok((text, actual.span)),
             _ => Err(Diagnostic::new(
                 Level::Fatal,
+                Code::E010,
                 format!("expected text literal, found {}", actual.kind),
             )
             .with_span(actual.span)),
@@ -219,6 +223,7 @@ pub mod declaration {
             TokenKind::Foreign => parser.advance_with(token.span, finish_parse_foreign_declaration),
             _ => Err(Diagnostic::new(
                 Level::Fatal,
+                Code::E010,
                 format!("expected start of declaration, found {}", token.kind),
             )
             .with_span(token.span)),
@@ -988,9 +993,13 @@ fn consume_explicitness_symbol(parser: &mut Parser<'_>) -> Explicitness {
         Ok(_token) => {
             // @Note there might be false positives (through arbitrary look-ahead)
             // @Task let this function have access to the source map #ParserRefactor
-            Diagnostic::new(Level::Warning, "implicitness markers are currently ignored")
-                // .with_span(token.span)
-                .emit(None);
+            Diagnostic::new(
+                Level::Warning,
+                Code::W001,
+                "implicitness markers are currently ignored",
+            )
+            // .with_span(token.span)
+            .emit(None);
             Explicitness::Implicit
         }
         Err(_) => Explicitness::Explicit,

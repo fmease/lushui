@@ -7,7 +7,7 @@ type CowStr = std::borrow::Cow<'static, str>;
 pub struct Diagnostic {
     level: Level,
     message: CowStr,
-    // code: Code
+    code: Option<Code>,
     spans: Vec<EnrichedSpan>,
 }
 
@@ -16,9 +16,10 @@ const SPACE: &str = " ";
 // @Task be able to have errors associated with a file but not a snippet
 // @Note I still want to rely on `Span`
 impl Diagnostic {
-    pub fn new(level: Level, message: impl Into<CowStr>) -> Self {
+    pub fn new(level: Level, code: impl Into<Option<Code>>, message: impl Into<CowStr>) -> Self {
         Self {
             level,
+            code: code.into(),
             message: message.into(),
             spans: Vec::new(),
         }
@@ -63,7 +64,14 @@ impl Diagnostic {
     // @Beacon @Task make this more robust and able to handle multiline
     // spans (which we first need to implement in `crate::span`)
     fn display(&mut self, map: Option<&SourceMap>) -> String {
-        let header = format!("{:#}: {}", self.level, self.message.bright_white().bold());
+        let header = format!(
+            "{:#}{}: {}",
+            self.level,
+            self.code
+                .map(|code| format!("[{:?}]", code).color(self.level.color()))
+                .unwrap_or_default(),
+            self.message.bright_white().bold()
+        );
         self.spans.sort_unstable_by_key(|span| span.span);
 
         let mut message = header;
@@ -203,4 +211,33 @@ impl Role {
             Self::Secondary => "-",
         }
     }
+}
+
+/// Error codes
+///
+/// Used for language-related error in contrast to errors emitted because of
+/// faulty interactions with the CLI.
+///
+/// Naming scheme: `E` or `W`, followed by 3 hexadecimal digits.
+#[derive(Debug, Clone, Copy)]
+pub enum Code {
+    // lexer
+    E000,
+    E001,
+    E002,
+    E003,
+    E004,
+    // parser
+    E010,
+    // resolver
+    E020,
+    E021,
+    // interpreter
+    E030,
+    E031,
+    E032,
+    E033,
+    // warnings
+    W000,
+    W001,
 }

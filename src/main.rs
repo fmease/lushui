@@ -34,11 +34,11 @@ fn main() {
 
         let path = arguments
             .next()
-            .ok_or_else(|| Diagnostic::new(Level::Fatal, "no source file path supplied"))?;
+            .ok_or_else(|| Diagnostic::new(Level::Fatal, None, "no source file path supplied"))?;
 
         let file = map
             .load(path.into())
-            .map_err(|error| Diagnostic::new(Level::Fatal, error.to_string()))?;
+            .map_err(|error| Diagnostic::new(Level::Fatal, None, error.to_string()))?;
 
         let tokens = handle_multiple_errors(&mut map, Lexer::new(&file).lex())?;
         // eprintln!("{:#?}", &tokens);
@@ -84,6 +84,7 @@ fn handle_multiple_errors<T>(
             }
             Err(Diagnostic::new(
                 Level::Fatal,
+                None,
                 format!("aborting due to {} previous errors", amount),
             ))
         }

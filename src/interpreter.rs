@@ -26,7 +26,7 @@ mod scope;
 
 use crate::{
     desugar::{self, expr, Declaration, DeclarationKind, Expression, ExpressionKind},
-    diagnostic::{Diagnostic, Level},
+    diagnostic::{Code, Diagnostic, Level},
     parser::Explicitness,
     resolver::Identifier,
     span::Span,
@@ -37,6 +37,7 @@ pub use scope::ModuleScope;
 fn missing_annotation() -> Diagnostic {
     Diagnostic::new(
         Level::Bug,
+        Code::E030,
         "currently lambda literal parameters and patterns must be type-annotated",
     )
 }
@@ -360,6 +361,7 @@ impl Expression<Identifier> {
                         // @Task add span
                         return Err(Diagnostic::new(
                             Level::Fatal,
+                            Code::E031,
                             format!(
                                 "cannot apply `{}` to a `{}`",
                                 application.argument, type_of_callee
@@ -673,6 +675,7 @@ impl Expression<Identifier> {
             // @Task add span information
             Err(Diagnostic::new(
                 Level::Fatal,
+                Code::E032,
                 format!("expected `{}` got `{}`", expected, actual),
             ))
         } else {

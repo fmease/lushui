@@ -22,7 +22,7 @@ use crate::{
     desugar::{
         self, expr, Binder, Constructor, Declaration, DeclarationKind, Expression, ExpressionKind,
     },
-    diagnostic::{Diagnostic, Level},
+    diagnostic::{Code, Diagnostic, Level},
     parser,
     support::{handle::*, TransposeExt},
 };
@@ -245,6 +245,7 @@ impl ModuleScope {
         {
             return Err(Diagnostic::new(
                 Level::Error,
+                Code::E020,
                 format!("`{}` is defined multiple times in this scope", identifier),
             )
             .with_labeled_span(identifier.span, "redefinition")
@@ -268,6 +269,7 @@ impl ModuleScope {
             .ok_or_else(|| {
                 Diagnostic::new(
                     Level::Error,
+                    Code::E021,
                     format!("binding `{}` is not defined in this scope", identifier),
                 )
                 .with_span(identifier.span)

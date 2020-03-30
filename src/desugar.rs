@@ -20,10 +20,10 @@ use freestanding::freestanding;
 use std::rc::Rc;
 
 use crate::{
+    diagnostic::{Code, Diagnostic, Level},
     parser::{self, Explicitness, Identifier},
     span::{Span, Spanned},
 };
-
 // @Temporary location
 pub trait Binder: std::fmt::Display + Clone {}
 
@@ -159,8 +159,6 @@ pub mod declaration {
         }
     }
 }
-
-use crate::diagnostic::{Diagnostic, Level};
 
 pub use expression::{Expression, ExpressionKind};
 
@@ -348,6 +346,7 @@ pub mod expression {
                         if case_group.patterns.len() > 1 {
                             Diagnostic::new(
                                 Level::Warning,
+                                Code::W000,
                                 "contracted cases not thoroughly supported yet",
                             )
                             .emit(None);

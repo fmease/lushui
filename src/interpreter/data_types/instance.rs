@@ -11,7 +11,7 @@
 
 use crate::{
     desugar::{Expression, ExpressionKind},
-    diagnostic::{Diagnostic, Level},
+    diagnostic::{Code, Diagnostic, Level},
     interpreter::{FunctionScope, ModuleScope},
     resolver::Identifier,
 };
@@ -30,6 +30,7 @@ pub(in crate::interpreter) fn assert_constructor_is_instance_of_type(
         // @Task add span information
         Err(Diagnostic::new(
             Level::Fatal,
+            Code::E033,
             format!("invalid constructor `{}`", constructor_name),
         ))
     } else {
