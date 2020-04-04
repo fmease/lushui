@@ -7,7 +7,9 @@
 //! * crude error locations
 //! * cannot really handle optional indentation and some legal EOIs
 
-// @Task @Beacon make parse_* methods of Parser
+// @Beacon @Task make some errors non-fatal (e.g. unknown attributes)
+
+mod ast;
 
 use freestanding::freestanding;
 use std::fmt;
@@ -15,10 +17,12 @@ use std::fmt;
 use crate::{
     diagnostic::{Code, Diagnostic, Level},
     lexer::{self, Token, TokenKind},
+    smallvec,
     span::{Span, Spanned},
+    Nat, SmallVec,
 };
+pub use ast::*;
 
-// @Task use SourceFiles
 pub struct Parser<'input> {
     tokens: &'input [Token],
     index: usize,
@@ -62,9 +66,25 @@ impl Parser<'_> {
             .with_span(actual.span))
         }
     }
+}
 
-    fn expect_identifier(&self) -> Result<Identifier> {
-        let actual = self.token();
+trait Expect {
+    type Output;
+
+    fn expect(parser: &Parser<'_>) -> Result<Self::Output>;
+
+    fn consume(parser: &mut Parser<'_>) -> Result<Self::Output> {
+        let output = Self::expect(parser)?;
+        parser.advance();
+        Ok(output)
+    }
+}
+
+impl Expect for Identifier {
+    type Output = Self;
+
+    fn expect(parser: &Parser<'_>) -> Result<Self> {
+        let actual = parser.token();
         match actual.kind {
             TokenKind::Identifier(identifier) => Ok(Identifier::new(identifier, actual.span)),
             _ => Err(Diagnostic::new(
@@ -75,9 +95,13 @@ impl Parser<'_> {
             .with_span(actual.span)),
         }
     }
+}
 
-    fn expect_nat_literal(&self) -> Result<(crate::Nat, Span)> {
-        let actual = self.token();
+impl Expect for Nat {
+    type Output = (Self, Span);
+
+    fn expect(parser: &Parser<'_>) -> Result<Self::Output> {
+        let actual = parser.token();
         match actual.kind {
             TokenKind::NatLiteral(nat) => Ok((nat, actual.span)),
             _ => Err(Diagnostic::new(
@@ -88,9 +112,13 @@ impl Parser<'_> {
             .with_span(actual.span)),
         }
     }
+}
 
-    fn expect_text_literal(&self) -> Result<(String, Span)> {
-        let actual = self.token();
+impl Expect for String {
+    type Output = (Self, Span);
+
+    fn expect(parser: &Parser<'_>) -> Result<Self::Output> {
+        let actual = parser.token();
         match actual.kind {
             TokenKind::TextLiteral(text) => Ok((text, actual.span)),
             _ => Err(Diagnostic::new(
@@ -101,32 +129,13 @@ impl Parser<'_> {
             .with_span(actual.span)),
         }
     }
+}
 
+impl Parser<'_> {
     fn consume(&mut self, token_kind: lexer::TokenKind) -> Result<lexer::Token> {
         let token = self.expect(token_kind)?;
         self.advance();
         Ok(token)
-    }
-
-    // @Note boilerplate, use a trait smh
-    fn consume_identifier(&mut self) -> Result<Identifier> {
-        let identifier = self.expect_identifier()?;
-        self.advance();
-        Ok(identifier)
-    }
-
-    // @Note boilerplate, use a trait smh
-    fn consume_nat_literal(&mut self) -> Result<(crate::Nat, Span)> {
-        let nat = self.expect_nat_literal()?;
-        self.advance();
-        Ok(nat)
-    }
-
-    // @Note boilerplate, use a trait smh
-    fn consume_text_literal(&mut self) -> Result<(String, Span)> {
-        let text = self.expect_text_literal()?;
-        self.advance();
-        Ok(text)
     }
 
     fn advance(&mut self) {
@@ -142,8 +151,9 @@ impl Parser<'_> {
         subparser(self, knowledge)
     }
 
-    // @Question why clone?
-    // @Bug note this probably clones text literals booo!
+    // @Note cloning is not that good, esp. text literals
+    // but otherwise, we run into nasty borrowing errors because of
+    // compound borrowing (limitation of rustc)
     fn token(&self) -> lexer::Token {
         self.tokens[self.index].clone()
     }
@@ -164,45 +174,6 @@ impl Parser<'_> {
             false
         }
     }
-}
-
-pub use declaration::{parse_declaration, Constructor, Declaration, DeclarationKind};
-
-/// The part of the parser concerned with declarations.
-pub mod declaration {
-    use super::*;
-
-    pub type Declaration = Spanned<DeclarationKind>;
-
-    /// The syntax node of a declaration.
-    #[freestanding]
-    #[streamline(Box)]
-    pub enum DeclarationKind {
-        /// The syntax node of a value declaration.
-        Value {
-            binder: Identifier,
-            parameters: AnnotatedParameters,
-            type_annotation: Expression,
-            expression: Expression,
-        },
-        /// The syntax node of a data declaration.
-        Data {
-            binder: Identifier,
-            parameters: AnnotatedParameters,
-            type_annotation: Expression,
-            constructors: Vec<Constructor>,
-        },
-        /// The syntax node of a module declaration.
-        Module { declarations: Vec<Declaration> },
-        /// The syntax node of a use declaration.
-        Use,
-        /// The syntax node of a foreign declaration.
-        Foreign {
-            binder: Identifier,
-            parameters: AnnotatedParameters,
-            type_annotation: Expression,
-        },
-    }
 
     /// Parse a declaration.
     ///
@@ -211,16 +182,30 @@ pub mod declaration {
     /// ```text
     /// Declaration ::= Value_Declaration | Data_Declaration | Foreign_Declaration
     /// ```
-    pub fn parse_declaration(parser: &mut Parser<'_>) -> Result<Declaration> {
-        let token = parser.token();
+    pub fn parse_declaration(&mut self) -> Result<Declaration> {
+        let token = self.token();
 
+        // @Task transform attribute logic into iterative alogorithm just like we do in
+        // `parse_constructor`
         match token.kind {
-            TokenKind::Identifier(identifier) => parser.advance_with(
+            TokenKind::Identifier(identifier) => self.advance_with(
                 Identifier::new(identifier, token.span),
-                finish_parse_value_declaration,
+                Self::finish_parse_value_declaration,
             ),
-            TokenKind::Data => parser.advance_with(token.span, finish_parse_data_declaration),
-            TokenKind::Foreign => parser.advance_with(token.span, finish_parse_foreign_declaration),
+            TokenKind::Data => self.advance_with(token.span, Self::finish_parse_data_declaration),
+            TokenKind::Underscore => {
+                let attribute = self.advance_with(token.span, Self::finish_parse_attribute)?;
+                let mut declaration = self.parse_declaration()?;
+                declaration.attributes.push(attribute);
+                Ok(declaration)
+            }
+            TokenKind::DocumentationComment => {
+                let attribute =
+                    self.advance_with(token.span, Self::finish_parse_documentation_comment)?;
+                let mut declaration = self.parse_declaration()?;
+                declaration.attributes.push(attribute);
+                Ok(declaration)
+            }
             _ => Err(Diagnostic::new(
                 Level::Fatal,
                 Code::E010,
@@ -230,7 +215,49 @@ pub mod declaration {
         }
     }
 
+    /// Finish parsing attribute.
+    ///
+    /// First underscore is already parsed.
+    /// The span does not include the trailing line break.
+    fn finish_parse_attribute(&mut self, span_of_underscore: Span) -> Result<Attribute> {
+        let identifier = Identifier::consume(self)?;
+        let kind = match &*identifier.atom {
+            "foreign" => AttributeKind::Foreign,
+            _ => {
+                return Err(Diagnostic::new(
+                    Level::Fatal,
+                    Code::E011,
+                    format!("attribute `{}` does not exist", identifier),
+                )
+                .with_span(identifier.span))
+            }
+        };
+        let ending_underscore = self.consume(TokenKind::Underscore)?;
+        self.consume(TokenKind::LineBreak)?;
+
+        Ok(Attribute {
+            span: span_of_underscore.merge(ending_underscore.span),
+            kind,
+        })
+    }
+
+    /// Finish parsing documentation comment.
+    ///
+    /// The comment is already parsed.
+    /// The span does not include the trailing line break.
+    fn finish_parse_documentation_comment(&mut self, span: Span) -> Result<Attribute> {
+        self.consume(TokenKind::LineBreak)?;
+
+        Ok(Attribute {
+            kind: AttributeKind::Documentation,
+            span,
+        })
+    }
+
     /// Finish parsing a value declaration.
+    ///
+    /// Leading identifier already parsed.
+    /// The span does not include the trailing line break.
     ///
     /// ## Grammar
     ///
@@ -238,140 +265,137 @@ pub mod declaration {
     /// Value_Declaration ::= Identifier Annotated_Parameters Type_Annotation "="
     ///     Possibly_Indented_Expression_Followed_By_Line_Break
     /// ```
-    fn finish_parse_value_declaration(
-        parser: &mut Parser<'_>,
-        binder: Identifier,
-    ) -> Result<Declaration> {
-        let parameters = parse_annotated_parameters(parser)?;
-        let type_annotation = parse_type_annotation(parser)?;
-        parser.consume(TokenKind::Equals)?;
-        let expression = parse_possibly_indented_expression_followed_by_line_break(parser)?;
+    fn finish_parse_value_declaration(&mut self, binder: Identifier) -> Result<Declaration> {
+        let parameters = self.parse_annotated_parameters()?;
+        let type_annotation = self.parse_type_annotation()?;
+
+        let (expression, span) = if self.consumed(TokenKind::Equals) {
+            let expression = self.parse_possibly_indented_expression_followed_by_line_break()?;
+            let span = expression.span;
+            (Some(expression), span)
+        } else {
+            self.consume(TokenKind::LineBreak)?;
+            (None, type_annotation.span)
+        };
 
         Ok(Declaration {
-            span: binder.span.merge(expression.span),
+            span: binder.span.merge(span),
             kind: DeclarationKind::Value(Box::new(Value {
                 binder,
                 parameters,
                 type_annotation,
                 expression,
             })),
+            attributes: Attributes::default(),
         })
     }
 
     // @Task grammar rule
     /// Finish parsing a data declaration.
-    pub fn finish_parse_data_declaration(
-        parser: &mut Parser<'_>,
-        span_of_data: Span,
-    ) -> Result<Declaration> {
-        let binder = parser.consume_identifier()?;
-        let parameters = parse_annotated_parameters(parser)?;
-        let type_annotation = parse_type_annotation(parser)?;
-        let span_of_equals = parser.consume(TokenKind::Equals)?.span;
-        parser.consume(TokenKind::LineBreak)?;
+    ///
+    /// Keyword `data` is already parsed.
+    /// The span does not include the trailing line break.
+    // @Task allow empty lines (just line breaks) in constructor list (allows comments)
+    pub fn finish_parse_data_declaration(&mut self, span_of_data: Span) -> Result<Declaration> {
+        let binder = Identifier::consume(self)?;
+        let parameters = self.parse_annotated_parameters()?;
+        let type_annotation = self.parse_type_annotation()?;
 
-        let mut constructors = Vec::new();
+        let (constructors, span) = match self.consume(TokenKind::Equals).ok() {
+            Some(equals) => {
+                self.consume(TokenKind::LineBreak)?;
 
-        if parser.consumed(TokenKind::Indentation) {
-            // @Bug produces bad error messages
-            while let Ok(constructor) = parser.reflect(parse_constructor) {
-                constructors.push(constructor);
-            }
-            // @Question or EOI?
-            parser.consume(TokenKind::Dedentation)?;
-        }
+                let mut constructors = Vec::new();
 
-        Ok(Declaration {
-            span: span_of_data.merge(
-                constructors
+                if self.consumed(TokenKind::Indentation) {
+                    // @Bug produces bad error messages
+                    while let Ok(constructor) = self.reflect(Self::parse_constructor) {
+                        constructors.push(constructor);
+                    }
+                    // @Question or EOI?
+                    self.consume(TokenKind::Dedentation)?;
+                }
+
+                let span = constructors
                     .last()
                     .map(|constructor| constructor.span)
-                    .unwrap_or(span_of_equals),
-            ),
+                    .unwrap_or(equals.span);
+
+                (Some(constructors), span)
+            }
+            None => {
+                self.consume(TokenKind::LineBreak)?;
+                (None, type_annotation.span)
+            }
+        };
+
+        Ok(Declaration {
+            span: span_of_data.merge(span),
             kind: DeclarationKind::Data(Box::new(Data {
                 binder,
                 parameters,
                 type_annotation,
                 constructors,
             })),
+            attributes: Attributes::default(),
         })
     }
 
-    // @Temporary
-    pub fn parse_file_module_no_header(parser: &mut Parser<'_>) -> Result<Declaration> {
+    pub fn parse_file_module_no_header(&mut self) -> Result<Declaration> {
         let mut declarations = Vec::<Declaration>::new();
 
         loop {
             // skip empty lines
-            if parser.consumed(TokenKind::LineBreak) {
+            if self.consumed(TokenKind::LineBreak) {
                 continue;
             }
 
-            if parser.consumed(TokenKind::EndOfInput) {
+            if self.consumed(TokenKind::EndOfInput) {
                 break Ok(Declaration {
-                    // @Temporary span handling because this function itself is temporary @Bug Span::dummy()
                     span: (|| Some(declarations.first()?.span.merge(declarations.last()?.span)))()
                         .unwrap_or(Span::dummy()),
                     kind: DeclarationKind::Module(Box::new(Module { declarations })),
+                    attributes: Attributes::default(),
                 });
             }
 
-            declarations.push(parse_declaration(parser)?);
+            declarations.push(self.parse_declaration()?);
         }
     }
 
-    /// Finish parsing a foreign declaration.
+    /// Parse constructor.
     ///
-    /// ## Grammar
-    ///
-    /// ```text
-    /// Foreign_Declaration ::= "foreign" Identifier Annotated_Parameters Type_Annotation Line_Break
-    /// ```
-    fn finish_parse_foreign_declaration(
-        parser: &mut Parser<'_>,
-        span_of_foreign: Span,
-    ) -> Result<Declaration> {
-        let binder = parser.consume_identifier()?;
-        let parameters = parse_annotated_parameters(parser)?;
-        let type_annotation = parse_type_annotation(parser)?;
+    /// The span does not include the trailing line break.
+    fn parse_constructor(&mut self) -> Result<Constructor> {
+        let mut attributes = Attributes::default();
+
+        loop {
+            let token = self.token();
+            attributes.push(match token.kind {
+                TokenKind::Underscore => {
+                    self.advance_with(token.span, Self::finish_parse_attribute)?
+                }
+                TokenKind::DocumentationComment => {
+                    self.advance_with(token.span, Self::finish_parse_documentation_comment)?
+                }
+                _ => break,
+            });
+        }
+
+        let binder = Identifier::consume(self)?;
+        let parameters = self.parse_annotated_parameters()?;
+        let type_annotation = self.parse_type_annotation()?;
         // @Task allow EOI as an alternative
-        parser.consume(TokenKind::LineBreak)?;
-
-        Ok(Declaration {
-            span: span_of_foreign.merge(type_annotation.span),
-            kind: DeclarationKind::Foreign(Box::new(Foreign {
-                binder,
-                parameters,
-                type_annotation,
-            })),
-        })
-    }
-
-    /// The syntax node of a constructor.
-    #[derive(Debug)]
-    pub struct Constructor {
-        pub binder: Identifier,
-        pub parameters: AnnotatedParameters,
-        pub type_annotation: Expression,
-        pub span: Span,
-    }
-
-    fn parse_constructor(parser: &mut Parser<'_>) -> Result<Constructor> {
-        let binder = parser.consume_identifier()?;
-        let parameters = parse_annotated_parameters(parser)?;
-        let type_annotation = parse_type_annotation(parser)?;
-        // @Task allow EOI as an alternative
-        parser.consume(TokenKind::LineBreak)?;
+        self.consume(TokenKind::LineBreak)?;
 
         Ok(Constructor {
             span: binder.span.merge(type_annotation.span),
             binder,
             parameters,
             type_annotation,
+            attributes,
         })
     }
-
-    pub type AnnotatedParameters = Vec<AnnotatedParameterGroup>;
 
     /// Parse type-annotated parameters.
     ///
@@ -380,21 +404,14 @@ pub mod declaration {
     /// ```text
     /// Annotated_Parameters ::= Annotated_Parameter_Group*
     /// ```
-    fn parse_annotated_parameters(parser: &mut Parser<'_>) -> Result<AnnotatedParameters> {
+    fn parse_annotated_parameters(&mut self) -> Result<AnnotatedParameters> {
         let mut parameters = Vec::new();
 
-        while parser.current(TokenKind::OpeningRoundBracket) {
-            parameters.push(parser.reflect(parse_annotated_parameter_group)?);
+        while self.current(TokenKind::OpeningRoundBracket) {
+            parameters.push(self.reflect(Self::parse_annotated_parameter_group)?);
         }
 
         Ok(parameters)
-    }
-
-    #[derive(Debug)]
-    pub struct AnnotatedParameterGroup {
-        pub parameters: Vec<Identifier>, // @Task use SmallVec<[Identifier; 1]> instead of Vec
-        pub type_annotation: Expression,
-        pub explicitness: Explicitness,
     }
 
     /// Parse a type-annotated parameter group.
@@ -405,91 +422,28 @@ pub mod declaration {
     /// Annotated_Parameter_Group ::= "(" "|"? Unfenced_Annotated_Parameter_Group ")"
     /// Unfenced_Annotated_Parameter_Group ::= Identifier+ Type_Annotation
     /// ```
-    fn parse_annotated_parameter_group(parser: &mut Parser<'_>) -> Result<AnnotatedParameterGroup> {
-        parser.consume(TokenKind::OpeningRoundBracket)?;
-        let explicitness = consume_explicitness_symbol(parser);
-        let mut parameters = Vec::new();
+    fn parse_annotated_parameter_group(&mut self) -> Result<AnnotatedParameterGroup> {
+        self.consume(TokenKind::OpeningRoundBracket)?;
+        let explicitness = self.consume_explicitness_symbol();
+        let mut parameters = SmallVec::new();
 
-        parameters.push(parser.consume_identifier()?);
+        parameters.push(Identifier::consume(self)?);
 
         // @Note @Bug probably drops errors as well @Note shouldn't: consume
         // reflects by itself @Task verify
         // @Bug produces bad error messages
-        while let Ok(parameter) = parser.consume_identifier() {
+        while let Ok(parameter) = Identifier::consume(self) {
             parameters.push(parameter);
         }
 
-        let type_annotation = parser.reflect(parse_type_annotation)?;
-        parser.consume(TokenKind::ClosingRoundBracket)?;
+        let type_annotation = self.reflect(Self::parse_type_annotation)?;
+        self.consume(TokenKind::ClosingRoundBracket)?;
 
         Ok(AnnotatedParameterGroup {
             parameters,
             type_annotation,
             explicitness,
         })
-    }
-}
-
-pub use expression::{parse_expression, Expression, ExpressionKind, Path};
-
-/// The part of the parser concerned with expressions.
-pub mod expression {
-    use super::*;
-
-    pub type Expression = Spanned<ExpressionKind>;
-
-    /// The syntax node of an expression.
-    #[freestanding]
-    #[streamline(Box)]
-    #[derive(Debug, Clone)]
-    pub enum ExpressionKind {
-        /// The syntax node of pi-type literals.
-        PiTypeLiteral {
-            binder: Option<Identifier>,
-            parameter: Expression,
-            expression: Expression,
-            explicitness: Explicitness,
-        },
-        /// The syntax node of function application.
-        Application {
-            callee: Expression,
-            argument: Expression,
-            explicitness: Explicitness,
-        },
-        TypeLiteral,
-        NatTypeLiteral,
-        NatLiteral {
-            value: crate::Nat,
-        },
-        TextTypeLiteral,
-        TextLiteral {
-            value: String,
-        },
-        // @Task make it able to parse complex paths
-        Path {
-            // @Task in the future: segments: Vec<Identifier>,
-            segments: Identifier,
-        },
-        /// The syntax node of a lambda literal expression.
-        LambdaLiteral {
-            parameters: Parameters,
-            body_type_annotation: Option<Expression>,
-            body: Expression,
-        },
-        /// The syntax-node of a let-in expression.
-        LetIn {
-            binder: Identifier,
-            parameters: Parameters,
-            type_annotation: Option<Expression>,
-            // @Task improve upon naming
-            expression: Expression,
-            scope: Expression,
-        },
-        UseIn,
-        CaseAnalysis {
-            expression: Expression,
-            cases: Vec<CaseAnalysisCaseGroup>,
-        },
     }
 
     /// Parse an expression.
@@ -499,29 +453,31 @@ pub mod expression {
     /// ```text
     /// Expression ::= Let_In | Lambda_Literal | Case_Analysis | Pi_Literal_Or_Lower
     /// ```
-    pub fn parse_expression(parser: &mut Parser<'_>) -> Result<Expression> {
-        let token = parser.token();
+    pub fn parse_expression(&mut self) -> Result<Expression> {
+        let token = self.token();
 
         match token.kind {
-            TokenKind::Let => parser.advance_with(token.span, finish_parse_let_in),
-            TokenKind::Backslash => parser.advance_with(token.span, finish_parse_lambda_literal),
-            TokenKind::Case => parser.advance_with(token.span, finish_parse_case_analysis),
-            _ => parse_pi_type_literal_or_lower(parser),
+            TokenKind::Let => self.advance_with(token.span, Self::finish_parse_let_in),
+            TokenKind::Backslash => {
+                self.advance_with(token.span, Self::finish_parse_lambda_literal)
+            }
+            TokenKind::Case => self.advance_with(token.span, Self::finish_parse_case_analysis),
+            _ => self.parse_pi_type_literal_or_lower(),
         }
     }
 
     /// Parse a pi-type literal or a lower expression.
     // @Task update grammar
     // Pi_Literal_Or_Lower %right% ::= Application_Or_Lower (-> Pi_Literal_Or_Lower)*
-    fn parse_pi_type_literal_or_lower(parser: &mut Parser<'_>) -> Result<Expression> {
-        let (span_at_the_beginning, explicitness, binder, parameter) = parser
+    fn parse_pi_type_literal_or_lower(&mut self) -> Result<Expression> {
+        let (span_at_the_beginning, explicitness, binder, parameter) = self
             .reflect(|parser| {
                 let span_of_opening_round_bracket =
                     parser.consume(TokenKind::OpeningRoundBracket)?.span;
 
-                let explicitness = consume_explicitness_symbol(parser);
-                let binder = parser.consume_identifier()?;
-                let parameter = parse_type_annotation(parser)?;
+                let explicitness = parser.consume_explicitness_symbol();
+                let binder = Identifier::consume(parser)?;
+                let parameter = parser.parse_type_annotation()?;
 
                 parser.consume(TokenKind::ClosingRoundBracket)?;
 
@@ -534,14 +490,13 @@ pub mod expression {
             })
             .or_else(|_| {
                 // @Question do we need reflect here?
-                parser
-                    .reflect(parse_application_or_lower)
+                self.reflect(Self::parse_application_or_lower)
                     .map(|parameter| (parameter.span, Explicitness::Explicit, None, parameter))
             })?;
 
-        Ok(match parser.consume(TokenKind::ThinArrow) {
+        Ok(match self.consume(TokenKind::ThinArrow) {
             Ok(_) => {
-                let expression = parser.reflect(parse_pi_type_literal_or_lower)?;
+                let expression = self.reflect(Self::parse_pi_type_literal_or_lower)?;
 
                 expr! {
                     PiTypeLiteral[span_at_the_beginning.merge(expression.span)] {
@@ -564,15 +519,15 @@ pub mod expression {
     /// ```text
     /// Application_Or_Lower %left% ::= Lower_Expression (Lower_Expression | "(" "|" Expression ")")*
     /// ```
-    fn parse_application_or_lower(parser: &mut Parser<'_>) -> Result<Expression> {
-        let mut expression = parser.reflect(parse_lower_expression)?;
-        while let Ok((argument, explicitness)) = parser
-            .reflect(|parser| Ok((parse_lower_expression(parser)?, Explicitness::Explicit)))
+    fn parse_application_or_lower(&mut self) -> Result<Expression> {
+        let mut expression = self.reflect(Self::parse_lower_expression)?;
+        while let Ok((argument, explicitness)) = self
+            .reflect(|parser| Ok((parser.parse_lower_expression()?, Explicitness::Explicit)))
             .or_else(|_| -> Result<_> {
-                parser.consume(TokenKind::OpeningRoundBracket)?;
-                parser.consume(TokenKind::VerticalBar)?;
-                let expression = parse_expression(parser)?;
-                parser.consume(TokenKind::ClosingRoundBracket)?;
+                self.consume(TokenKind::OpeningRoundBracket)?;
+                self.consume(TokenKind::VerticalBar)?;
+                let expression = self.parse_expression()?;
+                self.consume(TokenKind::ClosingRoundBracket)?;
                 Ok((expression, Explicitness::Implicit))
             })
         {
@@ -597,32 +552,29 @@ pub mod expression {
     /// ```
     // @Task massively improve structually: match in here "without" extra functions.
     // this will increase performance as well
-    fn parse_lower_expression(parser: &mut Parser<'_>) -> Result<Expression> {
-        parser
-            .reflect(parse_path)
-            .or_else(|_| parse_type_literal(parser))
-            .or_else(|_| parse_nat_type_literal(parser))
-            .or_else(|_| parse_nat_literal(parser))
-            .or_else(|_| parse_text_type_literal(parser))
-            .or_else(|_| parse_text_literal(parser))
-            .or_else(|_| parse_bracketed(parser, parse_expression))
+    fn parse_lower_expression(&mut self) -> Result<Expression> {
+        self.reflect(Self::parse_path)
+            .or_else(|_| self.parse_type_literal())
+            .or_else(|_| self.parse_nat_type_literal())
+            .or_else(|_| self.parse_nat_literal())
+            .or_else(|_| self.parse_text_type_literal())
+            .or_else(|_| self.parse_text_literal())
+            .or_else(|_| self.parse_bracketed(Self::parse_expression))
     }
 
     // Type_Literal ::= %type literal%
-    fn parse_type_literal(parser: &mut Parser<'_>) -> Result<Expression> {
-        parser
-            .consume(TokenKind::Type)
+    fn parse_type_literal(&mut self) -> Result<Expression> {
+        self.consume(TokenKind::Type)
             .map(|token| expr! { TypeLiteral[token.span] })
     }
 
-    fn parse_nat_type_literal(parser: &mut Parser<'_>) -> Result<Expression> {
-        parser
-            .consume(TokenKind::Nat)
+    fn parse_nat_type_literal(&mut self) -> Result<Expression> {
+        self.consume(TokenKind::Nat)
             .map(|token| expr! { NatTypeLiteral[token.span] })
     }
 
-    pub fn parse_nat_literal(parser: &mut Parser<'_>) -> Result<Expression> {
-        parser.consume_nat_literal().map(|(nat, span)| {
+    pub fn parse_nat_literal(&mut self) -> Result<Expression> {
+        Nat::consume(self).map(|(nat, span)| {
             expr! {
                 NatLiteral[span] {
                     value: nat
@@ -631,14 +583,13 @@ pub mod expression {
         })
     }
 
-    fn parse_text_type_literal(parser: &mut Parser<'_>) -> Result<Expression> {
-        parser
-            .consume(TokenKind::Text)
+    fn parse_text_type_literal(&mut self) -> Result<Expression> {
+        self.consume(TokenKind::Text)
             .map(|token| expr! { TextTypeLiteral[token.span] })
     }
 
-    fn parse_text_literal(parser: &mut Parser<'_>) -> Result<Expression> {
-        parser.consume_text_literal().map(|(text, span)| {
+    fn parse_text_literal(&mut self) -> Result<Expression> {
+        String::consume(self).map(|(text, span)| {
             expr! {
                 TextLiteral[span] {
                     value: text,
@@ -648,8 +599,8 @@ pub mod expression {
     }
 
     // Path ::= %identifier%
-    fn parse_path(parser: &mut Parser<'_>) -> Result<Expression> {
-        parser.consume_identifier().map(|identifier| {
+    fn parse_path(&mut self) -> Result<Expression> {
+        Identifier::consume(self).map(|identifier| {
             expr! {
                 Path[identifier.span] {
                     segments: identifier,
@@ -667,14 +618,11 @@ pub mod expression {
     /// ```text
     /// Lambda_Literal ::= "\" Parameters Type_Annotation? "=>" Expression
     /// ```
-    fn finish_parse_lambda_literal(
-        parser: &mut Parser<'_>,
-        span_of_backslash: Span,
-    ) -> Result<Expression> {
-        let parameters = parser.reflect(parse_parameters)?;
-        let body_type_annotation = parser.reflect(parse_type_annotation).ok();
-        parser.consume(TokenKind::WideArrow)?;
-        let body = parser.reflect(parse_expression)?;
+    fn finish_parse_lambda_literal(&mut self, span_of_backslash: Span) -> Result<Expression> {
+        let parameters = self.reflect(Self::parse_parameters)?;
+        let body_type_annotation = self.reflect(Self::parse_type_annotation).ok();
+        self.consume(TokenKind::WideArrow)?;
+        let body = self.reflect(Self::parse_expression)?;
 
         Ok(expr! {
             LambdaLiteral[span_of_backslash.merge(body.span)] {
@@ -694,16 +642,16 @@ pub mod expression {
     /// ```text
     /// Let_In ::= "'let" Identifier Parameters Type_Annotation? "=" Expression "'in" Expression
     /// ```
-    fn finish_parse_let_in(parser: &mut Parser<'_>, span_of_let: Span) -> Result<Expression> {
-        let binder = parser.consume_identifier()?;
-        let parameters = parser.reflect(parse_parameters)?;
-        let type_annotation = parser.reflect(parse_type_annotation).ok();
-        parser.consume(TokenKind::Equals)?;
-        let expression = parser.reflect(parse_expression)?;
-        parser.consume(TokenKind::In)?;
+    fn finish_parse_let_in(&mut self, span_of_let: Span) -> Result<Expression> {
+        let binder = Identifier::consume(self)?;
+        let parameters = self.reflect(Self::parse_parameters)?;
+        let type_annotation = self.reflect(Self::parse_type_annotation).ok();
+        self.consume(TokenKind::Equals)?;
+        let expression = self.reflect(Self::parse_expression)?;
+        self.consume(TokenKind::In)?;
         // @Bug commented code does not work as expected (says: unexpected dedentation)
-        // let scope = parser.reflect(parse_possibly_indented_expression_followed_by_line_break)?;
-        let scope = parser.reflect(parse_expression)?;
+        // let scope = self.reflect(parse_possibly_indented_expression_followed_by_line_break)?;
+        let scope = self.reflect(Self::parse_expression)?;
 
         Ok(expr! {
             LetIn[span_of_let.merge(scope.span)] {
@@ -721,21 +669,18 @@ pub mod expression {
     /// The initial `case` ought to be consumed beforehand.
     // @Note grammar is out-of-sync in respect to line breaks
     // Case_Analysis ::= "'case" Expression Line_Break Case_Analysis_Case_Group*
-    fn finish_parse_case_analysis(
-        parser: &mut Parser<'_>,
-        span_of_case: Span,
-    ) -> Result<Expression> {
-        let expression = parse_expression_followed_by_line_break(parser)?;
+    fn finish_parse_case_analysis(&mut self, span_of_case: Span) -> Result<Expression> {
+        let expression = self.parse_expression_followed_by_line_break()?;
 
         let mut cases = Vec::new();
 
-        while parser.current(TokenKind::Of) {
-            cases.push(parse_case_analysis_case_group(parser)?);
+        while self.current(TokenKind::Of) {
+            cases.push(self.parse_case_analysis_case_group()?);
 
             // only consume a line break if the token after the line break is the keyword "of" to
             // achieve parsing line breaks as joins/separators between each case group
-            if parser.current(TokenKind::LineBreak) && parser.succeeding(TokenKind::Of) {
-                parser.advance();
+            if self.current(TokenKind::LineBreak) && self.succeeding(TokenKind::Of) {
+                self.advance();
             }
         }
 
@@ -752,135 +697,77 @@ pub mod expression {
         })
     }
 
-    #[derive(Debug, Clone)]
-    pub struct CaseAnalysisCaseGroup {
-        pub patterns: Vec<pattern::Pattern>,
-        pub expression: Expression,
-    }
-
     // Case_Analyis_Case_Group ::= ("of" Pattern)+ "=>" Expression
-    fn parse_case_analysis_case_group(parser: &mut Parser<'_>) -> Result<CaseAnalysisCaseGroup> {
+    fn parse_case_analysis_case_group(&mut self) -> Result<CaseAnalysisCaseGroup> {
         let mut patterns = Vec::new();
 
-        parser.consume(TokenKind::Of)?;
-        patterns.push(pattern::parse_pattern(parser)?);
+        self.consume(TokenKind::Of)?;
+        patterns.push(self.parse_pattern()?);
 
-        while !parser.consumed(TokenKind::WideArrow) {
-            parser.consume(TokenKind::Of)?;
-            patterns.push(pattern::parse_pattern(parser)?);
+        while !self.consumed(TokenKind::WideArrow) {
+            self.consume(TokenKind::Of)?;
+            patterns.push(self.parse_pattern()?);
         }
 
         Ok(CaseAnalysisCaseGroup {
             patterns,
-            expression: parse_expression(parser)?,
+            expression: self.parse_expression()?,
         })
     }
 
-    pub type Parameters = Vec<ParameterGroup>;
-
     // Parameters ::= Parameter_Group*
-    fn parse_parameters(parser: &mut Parser<'_>) -> Result<Parameters> {
+    fn parse_parameters(&mut self) -> Result<Parameters> {
         let mut parameters = Vec::new();
 
         // @Bug produces bad error messages
-        while let Ok(parameter_group) = parser.reflect(parse_parameter_group) {
+        while let Ok(parameter_group) = self.reflect(Self::parse_parameter_group) {
             parameters.push(parameter_group)
         }
 
         Ok(parameters)
     }
 
-    #[derive(Debug, Clone)] // @Temporary clone
-    pub struct ParameterGroup {
-        pub parameters: Vec<Identifier>,
-        pub type_annotation: Option<Expression>,
-        pub explicitness: Explicitness,
-    }
-
     // @Task grammar snippet above function decl
-    fn parse_parameter_group(parser: &mut Parser<'_>) -> Result<ParameterGroup> {
-        fn parse_optionally_annotated_parameter_group(
-            parser: &mut Parser<'_>,
-        ) -> Result<ParameterGroup> {
-            parser.consume(TokenKind::OpeningRoundBracket)?;
-            let explicitness = consume_explicitness_symbol(parser);
-            let mut parameters = Vec::new();
-
-            parameters.push(parser.consume_identifier()?);
-
-            // @Bug produces bad error messages
-            while let Ok(parameter) = parser.consume_identifier() {
-                parameters.push(parameter);
-            }
-
-            let type_annotation = parse_type_annotation(parser).ok();
-
-            parser.consume(TokenKind::ClosingRoundBracket)?;
-
-            Ok(ParameterGroup {
-                parameters,
-                type_annotation,
-                explicitness,
-            })
-        }
-
-        parser
-            .consume_identifier()
+    fn parse_parameter_group(&mut self) -> Result<ParameterGroup> {
+        Identifier::consume(self)
             .map(|identifier| ParameterGroup {
-                parameters: vec![identifier],
+                parameters: smallvec![identifier],
                 type_annotation: None,
                 explicitness: Explicitness::Explicit,
             })
-            .or_else(|_| parse_optionally_annotated_parameter_group(parser))
+            .or_else(|_| self.parse_optionally_annotated_parameter_group())
     }
 
-    macro expr {
-        ($kind:ident[$span:expr] { $( $body:tt )+ }) => {
-            Expression {
-                span: $span,
-                kind: ExpressionKind::$kind(Box::new($kind { $( $body )+ })),
-            }
-        },
-        ($kind:ident[$span:expr]) => {
-            Expression {
-                span: $span,
-                kind: ExpressionKind::$kind,
-            }
+    fn parse_optionally_annotated_parameter_group(&mut self) -> Result<ParameterGroup> {
+        self.consume(TokenKind::OpeningRoundBracket)?;
+        let explicitness = self.consume_explicitness_symbol();
+        let mut parameters = SmallVec::new();
+
+        parameters.push(Identifier::consume(self)?);
+
+        // @Bug produces bad error messages
+        while let Ok(parameter) = Identifier::consume(self) {
+            parameters.push(parameter);
         }
-    }
-}
 
-pub use pattern::{Pattern, PatternKind};
+        let type_annotation = self.parse_type_annotation().ok();
 
-pub mod pattern {
-    use super::*;
+        self.consume(TokenKind::ClosingRoundBracket)?;
 
-    pub type Pattern = Spanned<PatternKind>;
-
-    #[freestanding]
-    #[streamline(Box)]
-    #[derive(Debug, Clone)]
-    pub enum PatternKind {
-        NatLiteral {
-            value: crate::Nat,
-        },
-        Path {
-            segments: Identifier,
-            type_annotation: Option<Expression>,
-        },
-        Application {
-            callee: Pattern,
-            argument: Pattern,
-        },
+        Ok(ParameterGroup {
+            parameters,
+            type_annotation,
+            explicitness,
+        })
     }
 
     // Pattern ::= Lower_Pattern+
-    pub(super) fn parse_pattern(parser: &mut Parser<'_>) -> Result<Pattern> {
-        let mut callee = parser.reflect(parse_lower_pattern)?;
+    pub(super) fn parse_pattern(&mut self) -> Result<Pattern> {
+        let mut callee = self.reflect(Self::parse_lower_pattern)?;
 
-        while let Ok(argument) = parser.reflect(parse_lower_pattern) {
+        while let Ok(argument) = self.reflect(Self::parse_lower_pattern) {
             callee = pat! {
-                Application[callee.span.merge(argument.span)] {
+                ApplicationPattern[callee.span.merge(argument.span)] {
                     callee,
                     argument,
                 }
@@ -891,15 +778,15 @@ pub mod pattern {
 
     // @Task Lower_Pattern ::= Nat_Literal | "(" Path Type_Annotation? ")" | Path | "(" Pattern ")"
     // @Bug or_else(_) produces bad error messages
-    fn parse_lower_pattern(parser: &mut Parser<'_>) -> Result<Pattern> {
-        parse_nat_literal(parser)
+    fn parse_lower_pattern(&mut self) -> Result<Pattern> {
+        self.parse_nat_literal_pattern()
             .or_else(|_| {
                 let (span, identifier, type_annotation) =
-                    if let Ok(opening_bracket) = parser.consume(TokenKind::OpeningRoundBracket) {
-                        let path = parser.consume_identifier()?;
-                        let type_annotation = parser.reflect(parse_type_annotation)?;
+                    if let Ok(opening_bracket) = self.consume(TokenKind::OpeningRoundBracket) {
+                        let path = Identifier::consume(self)?;
+                        let type_annotation = self.reflect(Self::parse_type_annotation)?;
                         let span_of_closing_bracket =
-                            parser.consume(TokenKind::ClosingRoundBracket)?.span;
+                            self.consume(TokenKind::ClosingRoundBracket)?.span;
 
                         (
                             opening_bracket.span.merge(span_of_closing_bracket),
@@ -907,153 +794,114 @@ pub mod pattern {
                             Some(type_annotation),
                         )
                     } else {
-                        let identifier = parser.consume_identifier()?;
+                        let identifier = Identifier::consume(self)?;
                         (identifier.span, identifier, None)
                     };
 
                 Ok(pat! {
-                    Path[span] {
+                    PathPattern[span] {
                         segments: identifier,
                         type_annotation,
                     }
                 })
             })
-            .or_else(|_: Diagnostic| parse_bracketed(parser, parse_pattern))
+            .or_else(|_: Diagnostic| self.parse_bracketed(Self::parse_pattern))
     }
 
-    fn parse_nat_literal(parser: &mut Parser<'_>) -> Result<Pattern> {
-        parser.consume_nat_literal().map(|(nat, span)| {
+    fn parse_nat_literal_pattern(&mut self) -> Result<Pattern> {
+        Nat::consume(self).map(|(nat, span)| {
             pat! {
-                NatLiteral[span] {
+                NatLiteralPattern[span] {
                     value: nat,
                 }
             }
         })
     }
 
-    macro pat {
-        ($kind:ident[$span:expr] { $( $body:tt )+ }) => {
-            Pattern {
-                span: $span,
-                kind: PatternKind::$kind(Box::new($kind { $( $body )+ })),
-            }
+    /// Parse a type annotation.
+    ///
+    /// ## Grammar
+    ///
+    /// ```text
+    /// Type_Annotation ::= ":" Expression
+    /// ```
+    fn parse_type_annotation(&mut self) -> Result<Expression> {
+        self.consume(TokenKind::Colon)?;
+        self.reflect(Self::parse_expression)
+    }
+
+    // @Task generalize, move somewhere else
+    // @Note this is currently only used for let-declarations and I don't know if
+    // it works in other parsers
+    fn parse_possibly_indented_expression_followed_by_line_break(&mut self) -> Result<Expression> {
+        if self.consumed(TokenKind::LineBreak) {
+            self.consume(TokenKind::Indentation)?;
+            let expression = self.parse_expression_followed_by_line_break()?;
+            self.consume(TokenKind::Dedentation)?;
+            Ok(expression)
+        } else {
+            self.parse_expression_followed_by_line_break()
         }
     }
-}
 
-/// Parse a type annotation.
-///
-/// ## Grammar
-///
-/// ```text
-/// Type_Annotation ::= ":" Expression
-/// ```
-fn parse_type_annotation(parser: &mut Parser<'_>) -> Result<Expression> {
-    parser.consume(TokenKind::Colon)?;
-    parser.reflect(parse_expression)
-}
-
-// @Task generalize, move somewhere else
-// @Note this is currently only used for let-declarations and I don't know if
-// it works in other parsers
-fn parse_possibly_indented_expression_followed_by_line_break(
-    parser: &mut Parser<'_>,
-) -> Result<Expression> {
-    if parser.consumed(TokenKind::LineBreak) {
-        parser.consume(TokenKind::Indentation)?;
-        let expression = parse_expression_followed_by_line_break(parser)?;
-        parser.consume(TokenKind::Dedentation)?;
+    // @Note temporary, generalize
+    fn parse_expression_followed_by_line_break(&mut self) -> Result<Expression> {
+        let expression = self.parse_expression()?;
+        self.consume(TokenKind::LineBreak)?;
         Ok(expression)
-    } else {
-        parse_expression_followed_by_line_break(parser)
     }
-}
 
-// @Note temporary, generalize
-fn parse_expression_followed_by_line_break(parser: &mut Parser<'_>) -> Result<Expression> {
-    let expression = parse_expression(parser)?;
-    parser.consume(TokenKind::LineBreak)?;
-    Ok(expression)
-}
+    fn parse_bracketed<K>(
+        &mut self,
+        subparser: fn(&mut Self) -> Result<Spanned<K>>,
+    ) -> Result<Spanned<K>> {
+        let span_of_opening_bracket = self.consume(TokenKind::OpeningRoundBracket)?.span;
+        // @Question reflect necessary?
+        let mut inner = self.reflect(subparser)?;
+        let span_of_closing_bracket = self.consume(TokenKind::ClosingRoundBracket)?.span;
+        inner.span = span_of_opening_bracket.merge(span_of_closing_bracket);
+        Ok(inner)
+    }
 
-fn parse_bracketed<K>(
-    parser: &mut Parser<'_>,
-    subparser: fn(&mut Parser<'_>) -> Result<Spanned<K>>,
-) -> Result<Spanned<K>> {
-    let span_of_opening_bracket = parser.consume(TokenKind::OpeningRoundBracket)?.span;
-    // @Question reflect necessary?
-    let mut inner = parser.reflect(subparser)?;
-    let span_of_closing_bracket = parser.consume(TokenKind::ClosingRoundBracket)?.span;
-    inner.span = span_of_opening_bracket.merge(span_of_closing_bracket);
-    Ok(inner)
-}
-
-fn consume_explicitness_symbol(parser: &mut Parser<'_>) -> Explicitness {
-    match parser.consume(TokenKind::VerticalBar) {
-        Ok(_token) => {
-            // @Note there might be false positives (through arbitrary look-ahead)
-            // @Task let this function have access to the source map #ParserRefactor
-            Diagnostic::new(
-                Level::Warning,
-                Code::W001,
-                "implicitness markers are currently ignored",
-            )
-            // .with_span(token.span)
-            .emit(None);
-            Explicitness::Implicit
+    fn consume_explicitness_symbol(&mut self) -> Explicitness {
+        match self.consume(TokenKind::VerticalBar) {
+            Ok(_token) => {
+                // @Note there might be false positives (through arbitrary look-ahead)
+                // @Task let this function have access to the source map #ParserRefactor
+                Diagnostic::new(
+                    Level::Warning,
+                    Code::W001,
+                    "implicitness markers are currently ignored",
+                )
+                // .with_span(token.span)
+                .emit(None);
+                Explicitness::Implicit
+            }
+            Err(_) => Explicitness::Explicit,
         }
-        Err(_) => Explicitness::Explicit,
     }
 }
 
-#[derive(Debug, Clone, Eq)]
-pub struct Identifier {
-    pub atom: crate::Atom,
-    pub span: Span,
-}
-
-impl Identifier {
-    pub fn new(atom: crate::Atom, span: Span) -> Self {
-        Self { atom, span }
+macro expr {
+    ($kind:ident[$span:expr] { $( $body:tt )+ }) => {
+        Expression {
+            span: $span,
+            kind: ExpressionKind::$kind(Box::new($kind { $( $body )+ })),
+        }
+    },
+    ($kind:ident[$span:expr]) => {
+        Expression {
+            span: $span,
+            kind: ExpressionKind::$kind,
+        }
     }
 }
 
-impl PartialEq for Identifier {
-    fn eq(&self, other: &Self) -> bool {
-        self.atom == other.atom
-    }
-}
-
-impl std::hash::Hash for Identifier {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.atom.hash(state);
-    }
-}
-
-impl fmt::Display for Identifier {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.atom)
-    }
-}
-
-/// The explicitness of a parameter or argument.
-///
-/// In the context of parameters, this specifies whether in an application, the corresponding argument has
-/// to be passed explicitly or should be infered, i.e. the parameter is [Explicitness::Implicit].
-///
-/// In the context of applications, [Explicitness::Implicit] means that the argument is passed explicitly
-/// even though the parameter is marked implicit.
-#[derive(Clone, Copy, Debug)]
-pub enum Explicitness {
-    Implicit,
-    Explicit,
-}
-
-impl fmt::Display for Explicitness {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Implicit => f.write_str("|"),
-            Self::Explicit => f.write_str(""),
+macro pat {
+    ($kind:ident[$span:expr] { $( $body:tt )+ }) => {
+        Pattern {
+            span: $span,
+            kind: PatternKind::$kind(Box::new($kind { $( $body )+ })),
         }
     }
 }

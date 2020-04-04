@@ -10,7 +10,7 @@ mod ffi;
 use std::{collections::HashMap, fmt};
 
 use crate::{
-    desugar::{expr, Expression},
+    hir::{expr, Expression},
     resolver::{Identifier, ModuleIndex},
 };
 

@@ -1,7 +1,7 @@
 //! Inhabitation analysis.
 
 use crate::{
-    desugar::{Expression, ExpressionKind},
+    hir::{Expression, ExpressionKind},
     interpreter::ModuleScope,
     resolver::Identifier,
 };

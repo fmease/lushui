@@ -11,10 +11,10 @@ mod test;
 
 use crate::{
     diagnostic::{Code, Diagnostic, Level},
+    smallvec,
     span::{LocalByteIndex, LocalSpan, SourceFile, Span, Spanned},
-    Atom, Nat,
+    Atom, Nat, SmallVec,
 };
-use smallvec::{smallvec, SmallVec};
 use std::{
     fmt,
     iter::{repeat, Peekable},
@@ -62,7 +62,6 @@ pub enum TokenKind {
     Case,
     Crate,
     Data,
-    Foreign,
     In,
     Let,
     Module,
@@ -101,7 +100,6 @@ impl fmt::Display for TokenKind {
             Self::Case => "keyword `case`",
             Self::Crate => "keyword `crate`",
             Self::Data => "keyword `data`",
-            Self::Foreign => "keyword `foreign`",
             Self::In => "keyword `in`",
             Self::Let => "keyword `let`",
             Self::Module => "keyword `module`",
@@ -156,7 +154,6 @@ fn parse_keyword(source: &str) -> Option<TokenKind> {
         "case" => TokenKind::Case,
         "crate" => TokenKind::Crate,
         "data" => TokenKind::Data,
-        "foreign" => TokenKind::Foreign,
         "in" => TokenKind::In,
         "let" => TokenKind::Let,
         "module" => TokenKind::Module,
@@ -254,7 +251,7 @@ impl<'a> Lexer<'a> {
         }
 
         self.extend_with_dedentation(
-            LocalByteIndex::from_usize(self.tokens.len() - 1),
+            LocalByteIndex::from_usize(self.tokens.len().saturating_sub(1)),
             self.indentation_in_spaces,
         );
         self.span = LocalSpan::from(LocalByteIndex::from_usize(self.source.content().len()));

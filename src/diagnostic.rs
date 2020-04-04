@@ -213,31 +213,42 @@ impl Role {
     }
 }
 
-/// Error codes
+/// Diagnostic code.
 ///
 /// Used for language-related error in contrast to errors emitted because of
 /// faulty interactions with the CLI.
-///
-/// Naming scheme: `E` or `W`, followed by 3 hexadecimal digits.
 #[derive(Debug, Clone, Copy)]
 pub enum Code {
-    // lexer
+    /// Illegal character encountered.
     E000,
+    /// Unbalanced (round) brackets.
     E001,
+    /// Trailing dash on identifier.
     E002,
+    /// Invalid indentation.
     E003,
+    /// Unterminated text literal.
     E004,
-    // parser
+    /// Unexpected token.
     E010,
-    // resolver
+    /// Undefined attribute.
+    E011,
+    /// Definitionless declaration.
+    E012,
+    /// Duplicate definitions.
     E020,
+    /// Undefined binding.
     E021,
-    // interpreter
+    /// Missing type annotation for lambda literal parameter or pattern.
     E030,
+    /// Illegal function application.
     E031,
+    /// Type mismatch.
     E032,
+    /// Invalid constructor.
     E033,
-    // warnings
+    /// Contracted case analysis cases buggy.
     W000,
+    /// Implicitness unimplemented.
     W001,
 }

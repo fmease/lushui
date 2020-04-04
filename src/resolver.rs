@@ -19,18 +19,17 @@
 use std::rc::Rc;
 
 use crate::{
-    desugar::{
-        self, expr, Binder, Constructor, Declaration, DeclarationKind, Expression, ExpressionKind,
-    },
     diagnostic::{Code, Diagnostic, Level},
+    hir::{self, *},
     parser,
     support::{handle::*, TransposeExt},
 };
 
+// @Note the `handle` methods ignore whether an error is fatal or not, this should be changed @Task
+
 // @Beacon @Beacon @Beacon @Task
 // * order-indepedence
 
-// @Task use SmallVec<[Diagnostic; 1]> instead of Vec
 impl Declaration<parser::Identifier> {
     pub fn resolve(
         self,
@@ -51,19 +50,25 @@ impl Declaration<parser::Identifier> {
 
                 let expression = value
                     .expression
-                    .resolve(&FunctionScope::Module(scope))
-                    .map_err(|error| vec![error]);
+                    .map(|expression| {
+                        expression
+                            .resolve(&FunctionScope::Module(scope))
+                            .map_err(|error| vec![error])
+                    })
+                    .transpose();
 
                 let span = self.span;
+                let attributes = self.attributes;
 
                 (binder, type_annotation, expression).handle(
                     |binder, type_annotation, expression| Declaration {
-                        kind: DeclarationKind::Value(Box::new(desugar::declaration::Value {
+                        kind: DeclarationKind::Value(Box::new(hir::Value {
                             binder,
                             type_annotation,
                             expression,
                         })),
                         span,
+                        attributes,
                     },
                 )
             }
@@ -77,39 +82,46 @@ impl Declaration<parser::Identifier> {
                     .resolve(&FunctionScope::Module(scope))
                     .map_err(|error| vec![error]);
 
-                let mut constructors = Vec::new();
+                let constructors = data.constructors.map(|constructors| {
+                    constructors
+                        .into_iter()
+                        .map(|constructor| {
+                            let constructor_binder = scope
+                                .insert_binding(constructor.binder)
+                                .map_err(|error| vec![error]);
 
-                for constructor in data.constructors {
-                    let constructor_binder = scope
-                        .insert_binding(constructor.binder)
-                        .map_err(|error| vec![error]);
+                            let type_annotation = constructor
+                                .type_annotation
+                                .resolve(&FunctionScope::Module(scope))
+                                .map_err(|error| vec![error]);
 
-                    let type_annotation = constructor
-                        .type_annotation
-                        .resolve(&FunctionScope::Module(scope))
-                        .map_err(|error| vec![error]);
+                            let span = constructor.span;
+                            let attributes = constructor.attributes;
 
-                    let span = constructor.span;
-
-                    constructors.push((constructor_binder, type_annotation).handle(
-                        |constructor_binder, type_annotation| Constructor {
-                            binder: constructor_binder,
-                            span,
-                            type_annotation,
-                        },
-                    ));
-                }
+                            (constructor_binder, type_annotation).handle(
+                                |constructor_binder, type_annotation| Constructor {
+                                    binder: constructor_binder,
+                                    span,
+                                    type_annotation,
+                                    attributes,
+                                },
+                            )
+                        })
+                        .collect()
+                });
 
                 let span = self.span;
+                let attributes = self.attributes;
 
                 (data_binder, type_annotation, constructors.transpose()).handle(
                     |data_binder, type_annotation, constructors| Declaration {
-                        kind: DeclarationKind::Data(Box::new(desugar::declaration::Data {
+                        kind: DeclarationKind::Data(Box::new(hir::Data {
                             binder: data_binder,
                             constructors,
                             type_annotation,
                         })),
                         span,
+                        attributes,
                     },
                 )
             }
@@ -122,33 +134,12 @@ impl Declaration<parser::Identifier> {
                     .transpose()?;
 
                 Ok(Declaration {
-                    kind: DeclarationKind::Module(Box::new(desugar::declaration::Module {
-                        declarations,
-                    })),
+                    kind: DeclarationKind::Module(Box::new(hir::Module { declarations })),
                     span: self.span,
+                    attributes: self.attributes,
                 })
             }
             Use => todo!(),
-            Foreign(foreign) => {
-                let binder = scope
-                    .insert_binding(foreign.binder)
-                    .map_err(|error| vec![error]);
-
-                let type_annotation = foreign
-                    .type_annotation
-                    .resolve(&FunctionScope::Module(scope))
-                    .map_err(|error| vec![error]);
-
-                let span = self.span;
-
-                (binder, type_annotation).handle(|binder, type_annotation| Declaration {
-                    kind: DeclarationKind::Foreign(Box::new(desugar::declaration::Foreign {
-                        binder,
-                        type_annotation,
-                    })),
-                    span,
-                })
-            }
         }
     }
 }

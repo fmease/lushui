@@ -2,17 +2,21 @@
 
 // use std::rc::Rc;
 
-use crate::{desugar::expression, interpreter::Substitution, resolver::Identifier};
+use crate::{
+    hir::{Case, Pattern},
+    interpreter::Substitution,
+    resolver::Identifier,
+};
 
 /// Substitute inside the case of a case analysis.
 pub fn _case_analysis_case_substitute(
-    case: expression::Case<Identifier>,
+    case: Case<Identifier>,
     substitution: Substitution,
-) -> expression::Case<Identifier> {
+) -> Case<Identifier> {
     // @Note does not return a new substitutions anymore
     let pattern = _pattern_substitute(case.pattern, substitution.clone());
 
-    expression::Case {
+    Case {
         pattern,
         body: case.body.clone().substitute(substitution),
     }
@@ -21,9 +25,9 @@ pub fn _case_analysis_case_substitute(
 /// Substitute inside of a pattern.
 // @Bug does not work at all anymore!!!
 pub fn _pattern_substitute<'p>(
-    _pattern: expression::Pattern<Identifier>,
+    _pattern: Pattern<Identifier>,
     _substitution: Substitution,
-) -> expression::Pattern<Identifier> {
+) -> Pattern<Identifier> {
     todo!()
     // match pattern {
     //     expression::Pattern::NatLiteral(_) => pattern,

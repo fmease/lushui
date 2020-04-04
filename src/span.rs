@@ -323,7 +323,9 @@ impl SourceFile {
     pub fn new(name: FileName, content: String, start: ByteIndex) -> Result<Self> {
         use std::convert::TryFrom;
 
-        let offset = u32::try_from(content.len()).map_err(|_| Error::OffsetOverflow)? - 1;
+        let offset = u32::try_from(content.len())
+            .map_err(|_| Error::OffsetOverflow)?
+            .saturating_sub(1);
 
         Ok(Self {
             name,
@@ -376,7 +378,7 @@ impl fmt::Display for Error {
 
         f.write_str(match self {
             Self::OffsetOverflow => "file too large",
-            Self::IO(error) => match dbg!(error.kind()) {
+            Self::IO(error) => match error.kind() {
                 NotFound => "referenced file does not exist",
                 PermissionDenied => "file does not have required permissions",
                 InvalidData => "file contains invalid UTF-8",

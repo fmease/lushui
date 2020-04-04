@@ -4,11 +4,14 @@
 //! (with type-checking).
 //!
 
+// @Task we need a more principled approach for attributes (explicit validator phases)
+
 #![feature(decl_macro, move_ref_pattern)]
 #![forbid(rust_2018_idioms, unused_must_use)]
 
 pub mod desugar;
 pub mod diagnostic;
+mod hir;
 pub mod interpreter;
 pub mod lexer;
 pub mod parser;
@@ -17,4 +20,5 @@ pub mod span;
 mod support;
 
 use num_bigint::BigUint as Nat;
+use smallvec::{smallvec, SmallVec};
 use string_cache::DefaultAtom as Atom;

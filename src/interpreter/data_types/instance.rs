@@ -10,8 +10,8 @@
 //! feature-gate them.
 
 use crate::{
-    desugar::{Expression, ExpressionKind},
     diagnostic::{Code, Diagnostic, Level},
+    hir::{Expression, ExpressionKind},
     interpreter::{FunctionScope, ModuleScope},
     resolver::Identifier,
 };

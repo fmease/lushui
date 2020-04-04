@@ -11,28 +11,30 @@
 //! ## Issues
 //!
 //! * too many bugs
-//! * using substitution environments instead of locally nameless/Debruijn-indeces
 //! * case analysis not implemented
 //! * order-independent declarations and recursion not implemented
 //! * modules not implemented
 //! * non-trivial type inference not done
 //! * untyped/unkinded AST-transformations
-//! * bad unstructured error reporting without span information
-//! * bad API/project structure could be better
 //! * integration and regression tests missing
+
+// @Beacon @Task order-independence and recursion
 
 mod data_types;
 mod scope;
 
 use crate::{
-    desugar::{self, expr, Declaration, DeclarationKind, Expression, ExpressionKind},
     diagnostic::{Code, Diagnostic, Level},
-    parser::Explicitness,
+    hir::{self, *},
+    parser::{AttributeKind, Explicitness},
     resolver::Identifier,
     span::Span,
 };
 use scope::FunctionScope;
 pub use scope::ModuleScope;
+
+type Declaration = hir::Declaration<Identifier>;
+type Expression = hir::Expression<Identifier>;
 
 fn missing_annotation() -> Diagnostic {
     Diagnostic::new(
@@ -42,7 +44,7 @@ fn missing_annotation() -> Diagnostic {
     )
 }
 
-impl Declaration<Identifier> {
+impl Declaration {
     /// Try to type check and evaluate a declaration modifying the given scope.
     // @Task move evaluation logic
     pub fn infer_type_and_evaluate(&self, scope: &mut ModuleScope) -> Result<(), Diagnostic> {
@@ -50,20 +52,21 @@ impl Declaration<Identifier> {
 
         match &self.kind {
             Value(declaration) => {
-                let (infered_type, value) = {
-                    let scope = FunctionScope::Module(scope);
-                    let infered_type = declaration
-                        .expression
-                        .clone()
-                        .matches_type_annotation(declaration.type_annotation.clone(), &scope)?;
-                    let value = declaration
-                        .expression
-                        .clone()
-                        .evaluate(&scope, Form::WeakHeadNormal)?;
-                    // .evaluate(&scope, Form::Normal)?;
-                    (infered_type, value)
-                };
-                scope.insert_value_binding(declaration.binder.clone(), infered_type, value);
+                if self.attributes.has(AttributeKind::Foreign) {
+                    todo!("foreign value declarations") // @Task
+                } else {
+                    let (infered_type, value) = {
+                        let scope = FunctionScope::Module(scope);
+                        let expression = declaration.expression.clone().unwrap();
+                        let infered_type = expression
+                            .clone()
+                            .matches_type_annotation(declaration.type_annotation.clone(), &scope)?;
+                        let value = expression.clone().evaluate(&scope, Form::WeakHeadNormal)?;
+                        // .evaluate(&scope, Form::Normal)?;
+                        (infered_type, value)
+                    };
+                    scope.insert_value_binding(declaration.binder.clone(), infered_type, value);
+                }
             }
             Data(data) => {
                 let r#type = data
@@ -84,26 +87,37 @@ impl Declaration<Identifier> {
 
                 scope.insert_data_binding(data.binder.clone(), r#type);
 
-                for desugar::Constructor {
-                    binder,
-                    type_annotation,
-                    span: _,
-                } in &data.constructors
-                {
-                    let r#type = type_annotation
-                        .clone()
-                        .evaluate(&FunctionScope::Module(scope), Form::WeakHeadNormal)?;
-                    // .evaluate(&FunctionScope::Module(scope), Form::Normal)?;
-                    r#type.clone().is_a_type(&FunctionScope::Module(scope))?;
+                if self.attributes.has(AttributeKind::Foreign) {
+                    todo!("foreign data declarations"); // @Task
+                } else {
+                    let constructors = data.constructors.as_ref().unwrap();
 
-                    data_types::instance::assert_constructor_is_instance_of_type(
-                        binder.clone(),
-                        r#type.clone(),
-                        expr! { Binding[self.span] { binder: data.binder.clone() } },
-                        scope,
-                    )?;
+                    for Constructor {
+                        binder,
+                        type_annotation,
+                        span: _,
+                        attributes: _,
+                    } in constructors
+                    {
+                        let r#type = type_annotation
+                            .clone()
+                            .evaluate(&FunctionScope::Module(scope), Form::WeakHeadNormal)?;
+                        // .evaluate(&FunctionScope::Module(scope), Form::Normal)?;
+                        r#type.clone().is_a_type(&FunctionScope::Module(scope))?;
 
-                    scope.insert_constructor_binding(binder.clone(), r#type.clone(), &data.binder);
+                        data_types::instance::assert_constructor_is_instance_of_type(
+                            binder.clone(),
+                            r#type.clone(),
+                            expr! { Binding[self.span] { binder: data.binder.clone() } },
+                            scope,
+                        )?;
+
+                        scope.insert_constructor_binding(
+                            binder.clone(),
+                            r#type.clone(),
+                            &data.binder,
+                        );
+                    }
                 }
             }
             Module(module) => {
@@ -112,20 +126,6 @@ impl Declaration<Identifier> {
                 }
             }
             Use => todo!(),
-            Foreign(foreign) => {
-                let r#type = {
-                    let scope = FunctionScope::Module(scope);
-                    let r#type = foreign
-                        .type_annotation
-                        .clone()
-                        // .evaluate(&scope, Form::WeakHeadNormal)?;
-                        .evaluate(&scope, Form::Normal)?;
-                    r#type.clone().is_a_type(&scope)?;
-                    r#type
-                };
-
-                scope.insert_type_for_foreign_binding(foreign.binder.clone(), r#type);
-            }
         }
 
         Ok(())
@@ -143,7 +143,7 @@ pub enum Form {
     WeakHeadNormal,
 }
 
-impl Expression<Identifier> {
+impl Expression {
     fn substitute(self, substitution: Substitution) -> Self {
         use self::Substitution::*;
         use ExpressionKind::*;
@@ -750,12 +750,12 @@ impl Expression<Identifier> {
 #[derive(Clone)]
 pub enum Substitution {
     Shift(usize),
-    Use(Box<Substitution>, Expression<Identifier>),
+    Use(Box<Substitution>, Expression),
 }
 
 impl Substitution {
     fn compose(self, other: Self) -> Self {
-        use Substitution::*;
+        use self::Substitution::*;
         match (self, other) {
             (substitution0, Shift(0)) => substitution0,
             (Use(substitution, _), Shift(amount)) => substitution.compose(Shift(amount - 1)),
@@ -777,7 +777,7 @@ use std::fmt;
 
 impl fmt::Display for Substitution {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use Substitution::*;
+        use self::Substitution::*;
         match self {
             Shift(amount) => write!(f, "shift {}", amount),
             Use(substitution, expression) => write!(f, "{}[{}]", expression, substitution),

@@ -4,13 +4,13 @@ use lushui::{
     diagnostic::{Diagnostic, Level},
     interpreter,
     lexer::Lexer,
-    parser::{declaration::parse_file_module_no_header, Parser},
+    parser::Parser,
     resolver,
     span::SourceMap,
 };
 
 fn main() {
-    #[cfg(FALSE)]
+    // #[cfg(FALSE)]
     std::panic::set_hook(Box::new(|information| {
         let payload = information.payload();
 
@@ -24,7 +24,7 @@ fn main() {
             message += &format!(" at {}", location);
         }
 
-        Diagnostic::new(Level::Bug, message).emit(None);
+        Diagnostic::new(Level::Bug, None, message).emit(None);
     }));
 
     let mut map = SourceMap::default();
@@ -40,19 +40,16 @@ fn main() {
             .load(path.into())
             .map_err(|error| Diagnostic::new(Level::Fatal, None, error.to_string()))?;
 
-        let tokens = handle_multiple_errors(&mut map, Lexer::new(&file).lex())?;
+        let tokens = handle_multiple_errors(&map, Lexer::new(&file).lex())?;
         // eprintln!("{:#?}", &tokens);
 
-        let mut parser = Parser::new(&tokens);
-        let node = parse_file_module_no_header(&mut parser)?;
+        let node = Parser::new(&tokens).parse_file_module_no_header()?;
 
-        let node = node.desugar();
+        let node = node.desugar()?;
         eprintln!("{}", &node);
 
-        let node = handle_multiple_errors(
-            &mut map,
-            node.resolve(&mut resolver::ModuleScope::default()),
-        )?;
+        let node =
+            handle_multiple_errors(&map, node.resolve(&mut resolver::ModuleScope::default()))?;
         eprintln!("{}", node);
 
         let mut scope = interpreter::ModuleScope::new();
@@ -70,7 +67,7 @@ fn main() {
 
 // @Temporary use an error buffer in general! @Note does not report actual number of errors!
 fn handle_multiple_errors<T>(
-    map: &mut SourceMap,
+    map: &SourceMap,
     result: Result<T, impl IntoIterator<Item = Diagnostic>>,
 ) -> Result<T, Diagnostic> {
     match result {
