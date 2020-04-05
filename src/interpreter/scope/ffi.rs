@@ -3,12 +3,15 @@
 use std::collections::VecDeque;
 
 use super::ModuleScope;
-use crate::{hir::Expression, resolver::Identifier};
+use crate::interpreter::Expression;
 
-pub type ForeignFunction =
-    fn(arguments: VecDeque<Expression<Identifier>>) -> Expression<Identifier>;
+pub type ForeignFunction = fn(arguments: VecDeque<Expression>) -> Expression;
 
-pub fn register_foreign_bindings(_scope: &mut ModuleScope) {
+pub fn register_foreign_bindings(scope: &mut ModuleScope) {
+    // @Note very ad-hoc
+    scope.register_foreign_data("Nat");
+    scope.register_foreign_data("Text");
+
     // scope
     //     .clone()
     //     .insert_untyped_foreign_binding("add", 2, |arguments| {

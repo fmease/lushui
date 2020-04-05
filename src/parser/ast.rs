@@ -111,11 +111,9 @@ pub enum ExpressionKind {
         explicitness: Explicitness,
     },
     TypeLiteral,
-    NatTypeLiteral,
     NatLiteral {
         value: crate::Nat,
     },
-    TextTypeLiteral,
     TextLiteral {
         value: String,
     },

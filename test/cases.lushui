@@ -1,8 +1,10 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;     CASE ANALYSIS BELOW ALREADY WORKS AS WISHED     ;;
+;; @Update does not work anymore because we haven't
+;; ported the code to Debruijn-indexing
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-identity (|A: Type) (a: A): A = a
+identity (A: Type) (a: A): A = a
 
 data Ordering: Type =
     Less: Ordering
@@ -16,10 +18,10 @@ invert (ordering: Ordering): Ordering =
     of Greater => Less
 
 data Tuple (A B: Type): Type =
-    Tuple' (|A B: Type): A -> B -> Tuple A B
+    'Tuple (A B: Type): A -> B -> Tuple A B
 
 alpha: Tuple Ordering Ordering =
-    Tuple' (|Ordering) (|Ordering) (invert (identity (|Ordering) Equal)) (invert Greater)
+    'Tuple Ordering Ordering (invert (identity Ordering Equal)) (invert Greater)
 
 beta: Ordering = invert (invert Less)
 
@@ -38,10 +40,10 @@ data Bool: Type =
     True: Bool
 
 data List (A: Type): Type =
-    Empty (|A: Type): List A
-    Item (|A: Type): A -> List A -> List A
+    Empty (A: Type): List A
+    Item (A: Type): A -> List A -> List A
 
-is_empty (|A: Type) (list: List A): Bool =
+is-empty (A: Type) (list: List A): Bool =
     case list
     of Empty A => True
     of Item A a => False

@@ -22,6 +22,6 @@ data List (A: Type): Type =
     Cons (A: Type): A -> List A
 
 data Ouw: Type =
-    Ouw': Ouw
+    'Ouw: Ouw
     One: Ouw
     Two: Nat -> Ouw

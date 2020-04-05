@@ -10,7 +10,7 @@
 mod test;
 
 use crate::{
-    diagnostic::{Code, Diagnostic, Level},
+    diagnostic::{Code, Diagnostic, Level, Result},
     smallvec,
     span::{LocalByteIndex, LocalSpan, SourceFile, Span, Spanned},
     Atom, Nat, SmallVec,
@@ -65,8 +65,6 @@ pub enum TokenKind {
     In,
     Let,
     Module,
-    Nat,
-    Text,
     Of,
     Self_,
     Super,
@@ -103,8 +101,6 @@ impl fmt::Display for TokenKind {
             Self::In => "keyword `in`",
             Self::Let => "keyword `let`",
             Self::Module => "keyword `module`",
-            Self::Nat => "keyword `Nat`",
-            Self::Text => "keyword `Text`",
             Self::Of => "keyword `of`",
             Self::Self_ => "keyword `self`",
             Self::Super => "keyword `super`",
@@ -157,11 +153,9 @@ fn parse_keyword(source: &str) -> Option<TokenKind> {
         "in" => TokenKind::In,
         "let" => TokenKind::Let,
         "module" => TokenKind::Module,
-        "Nat" => TokenKind::Nat,
         "of" => TokenKind::Of,
         "self" => TokenKind::Self_,
         "super" => TokenKind::Super,
-        "Text" => TokenKind::Text,
         "Type" => TokenKind::Type,
         "use" => TokenKind::Use,
         _ => return None,
@@ -301,7 +295,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn lex_identifier(&mut self) -> Result<(), Diagnostic> {
+    fn lex_identifier(&mut self) -> Result<()> {
         self.lex_identifier_segment();
         while self.peek() == Some('-') {
             let dash = self.index().unwrap();
@@ -340,7 +334,7 @@ impl<'a> Lexer<'a> {
         self.take_while(|character| character == PRIME);
     }
 
-    fn lex_indentation(&mut self) -> Result<(), Diagnostic> {
+    fn lex_indentation(&mut self) -> Result<()> {
         use std::cmp::Ordering::*;
 
         self.advance();
@@ -408,7 +402,7 @@ impl<'a> Lexer<'a> {
     }
 
     // @Task escape sequences
-    fn lex_text_literal(&mut self) -> Result<(), Diagnostic> {
+    fn lex_text_literal(&mut self) -> Result<()> {
         let mut terminated = false;
         self.advance();
 
@@ -443,7 +437,7 @@ impl<'a> Lexer<'a> {
         self.advance();
     }
 
-    fn lex_closing_round_bracket(&mut self) -> Result<(), Diagnostic> {
+    fn lex_closing_round_bracket(&mut self) -> Result<()> {
         self.add(TokenKind::ClosingRoundBracket);
         if self.round_brackets.is_empty() {
             return Err(

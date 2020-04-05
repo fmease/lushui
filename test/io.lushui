@@ -1,8 +1,0 @@
-;; @Note does not work yet (we need to fix FFI first)
-
-data IO (A: Type): Type =
-    _IO (|A: Type): IO A
-
-pure_io: (|A: Type) (a: A): IO A = _IO
-
-bind_io (|A B: Type) (io: IO A) (b: A -> IO B): IO B =

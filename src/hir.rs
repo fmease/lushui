@@ -63,8 +63,6 @@ pub enum ExpressionKind<B: Binder> {
         explicitness: Explicitness,
     },
     Type,
-    NatType,
-    TextType,
     #[parameterless]
     Nat {
         value: crate::Nat,

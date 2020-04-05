@@ -1,6 +1,10 @@
 ;; @Note this does not work yet, sadly, it should have already
 
-foreign add: Nat -> Nat -> Nat
+_foreign_
+data Nat: Type
+
+_foreign_
+add: Nat -> Nat -> Nat
 
 ;; foo: Nat = add 2 1
 

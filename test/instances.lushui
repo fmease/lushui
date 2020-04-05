@@ -6,7 +6,7 @@ identity (A: Type) (a: A): A = a
 
 
 data List (A: Type): Type =
-    Nil (|A: Type): List A
+    Nil (A: Type): List A
     Foo: List Nat
     ;; Bar: Nat
 

@@ -1,12 +1,12 @@
 data Any: Type =
-    Any': (A: Type) -> A -> Any
+    'Any: (A: Type) -> A -> Any
 
 data List (A: Type): Type =
     Nil (A: Type): List A
     Cons (A: Type): A -> List A -> List A
 
 data Unit: Type =
-    Unit': Unit
+    'Unit: Unit
 
 data Bool: Type =
     False: Bool
@@ -16,5 +16,5 @@ foo: List Bool =
     Cons Bool False (Cons Bool True (Nil Bool))
 
 bar: List Any =
-    Cons Any (Any' Unit Unit') (Cons Any (Any' Bool False) (Nil Any))
+    Cons Any ('Any Unit 'Unit) (Cons Any ('Any Bool False) (Nil Any))
 

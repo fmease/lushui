@@ -555,9 +555,7 @@ impl Parser<'_> {
     fn parse_lower_expression(&mut self) -> Result<Expression> {
         self.reflect(Self::parse_path)
             .or_else(|_| self.parse_type_literal())
-            .or_else(|_| self.parse_nat_type_literal())
             .or_else(|_| self.parse_nat_literal())
-            .or_else(|_| self.parse_text_type_literal())
             .or_else(|_| self.parse_text_literal())
             .or_else(|_| self.parse_bracketed(Self::parse_expression))
     }
@@ -568,11 +566,6 @@ impl Parser<'_> {
             .map(|token| expr! { TypeLiteral[token.span] })
     }
 
-    fn parse_nat_type_literal(&mut self) -> Result<Expression> {
-        self.consume(TokenKind::Nat)
-            .map(|token| expr! { NatTypeLiteral[token.span] })
-    }
-
     pub fn parse_nat_literal(&mut self) -> Result<Expression> {
         Nat::consume(self).map(|(nat, span)| {
             expr! {
@@ -581,11 +574,6 @@ impl Parser<'_> {
                 }
             }
         })
-    }
-
-    fn parse_text_type_literal(&mut self) -> Result<Expression> {
-        self.consume(TokenKind::Text)
-            .map(|token| expr! { TextTypeLiteral[token.span] })
     }
 
     fn parse_text_literal(&mut self) -> Result<Expression> {

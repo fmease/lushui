@@ -10,7 +10,7 @@
 //! feature-gate them.
 
 use crate::{
-    diagnostic::{Code, Diagnostic, Level},
+    diagnostic::{Code, Diagnostic, Level, Result},
     hir::{Expression, ExpressionKind},
     interpreter::{FunctionScope, ModuleScope},
     resolver::Identifier,
@@ -21,7 +21,7 @@ pub(in crate::interpreter) fn assert_constructor_is_instance_of_type(
     constructor: Expression<Identifier>,
     r#type: Expression<Identifier>,
     scope: &ModuleScope,
-) -> Result<(), Diagnostic> {
+) -> Result<()> {
     let result_type = constructor.result_type(&FunctionScope::Module(scope));
     let callee = result_type.callee();
 
@@ -56,8 +56,6 @@ impl Expression<Identifier> {
             }
             Application(_)
             | Type
-            | NatType
-            | TextType
             | Binding(_) => self,
             Lambda(_)
             | Nat(_)

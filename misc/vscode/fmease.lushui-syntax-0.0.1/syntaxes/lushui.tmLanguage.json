@@ -1,5 +1,5 @@
 {
-    "__comment__": "missing parameters, text and number literals",
+    "__comment__": "missing text literals, attributes",
     "scopeName": "source.lushui",
     "name": "lushui",
     "patterns": [
@@ -14,6 +14,9 @@
         },
         {
             "include": "#punctuation"
+        },
+        {
+            "include": "#attributes"
         },
         {
             "patterns": [
@@ -42,11 +45,11 @@
             "__bug__": "`Nat'` still hightlighted as a keyword. Appending `[^']` does not work because of the overlay check (?)",
             "patterns": [
                 {
-                    "match": "\\b(_|in|of|super)\\b",
+                    "match": "\\b(in|of|super)\\b",
                     "name": "keyword.other.lushui"
                 },
                 {
-                    "match": "\\b(data|use|module|foreign|let)\\b",
+                    "match": "\\b(data|use|module|let)\\b",
                     "name": "storage.modifier.lushui"
                 },
                 {
@@ -58,7 +61,7 @@
                     "name": "keyword.control.lushui"
                 },
                 {
-                    "match": "\\b(Type|Nat|Text)\\b",
+                    "match": "\\bType\\b",
                     "name": "storage.type.lushui"
                 },
                 {
@@ -88,7 +91,7 @@
             "patterns": [
                 {
                     "__comment__": "Note that we can add a patterns field containing includes. What effect does it have though?",
-                    "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*'*)\\s*:",
+                    "match": "\\b('*[a-zA-Z][a-zA-Z0-9]*'*)(-'*[a-zA-Z][a-zA-Z0-9]*'*)*\\s*:",
                     "captures": {
                         "1": {
                             "name": "entity.name.function.lushui"
@@ -96,6 +99,13 @@
                     }
                 }
             ]
+        },
+        "attributes": {
+            "patterns": {
+                "__comment__": "@Task",
+                "match": "_\\s*\\s*_",
+                "name": "meta.attribute.lushui"
+            }
         }
     }
 }

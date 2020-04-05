@@ -5,17 +5,17 @@ power (S: Type): Type = S -> Type
 
 U: Type = (X: Type) -> (power (power X) -> X) -> power (power X)
 
-data _Hole: Type =
+data HOLE: Type =
 
-tau (t: power (power U)) (X: Type) (f: power (power X) -> X) (p: power X): _Hole =
+tau (t: power (power U)) (X: Type) (f: power (power X) -> X) (p: power X): HOLE =
     t (\(x: U) => p (f (x X f)))
 
-sigma (s: U): _Hole = s U (\(t: power (power U)) => tau t)
+sigma (s: U): HOLE = s U (\(t: power (power U)) => tau t)
 
 Delta (y: U): Type = negate ((p: power U) -> sigma y p -> p (tau (sigma y)))
 Omega: Type = tau (\(p: power U) => (x: U) -> sigma x p -> p x)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-main: _Hole = (\(zero: (p: power U) -> ((x: U) -> sigma x p -> p x) -> p Omega) => (zero Delta (\(x: U) (two: sigma x Delta) (three: (p: power U) -> sigma x p -> p (tau (sigma x))) => three Delta two (\(p: power U) => three (\(y: U) => p (tau (sigma y))))))(\(p: power U) => zero (\(y: U) => p (tau (sigma y)))))(\(p: power U) (one: (x: U) -> sigma x p -> p x) => one Omega (\(x: U) => one (tau (sigma x))))
+main: HOLE = (\(zero: (p: power U) -> ((x: U) -> sigma x p -> p x) -> p Omega) => (zero Delta (\(x: U) (two: sigma x Delta) (three: (p: power U) -> sigma x p -> p (tau (sigma x))) => three Delta two (\(p: power U) => three (\(y: U) => p (tau (sigma y))))))(\(p: power U) => zero (\(y: U) => p (tau (sigma y)))))(\(p: power U) (one: (x: U) -> sigma x p -> p x) => one Omega (\(x: U) => one (tau (sigma x))))
 

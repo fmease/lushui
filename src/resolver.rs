@@ -14,12 +14,11 @@
 //!   and (!) equi-recursive types)
 //! * gracefully handle cyclic dependencies
 //! * handle module privacy (notably restricted exposure and good error messages)
-//! * create Debruijn-indices for local names
 
 use std::rc::Rc;
 
 use crate::{
-    diagnostic::{Code, Diagnostic, Level},
+    diagnostic::{Code, Diagnostic, Level, Result},
     hir::{self, *},
     parser,
     support::{handle::*, TransposeExt},
@@ -139,14 +138,14 @@ impl Declaration<parser::Identifier> {
                     attributes: self.attributes,
                 })
             }
-            Use => todo!(),
+            Use => todo!("resolving use declaration"),
         }
     }
 }
 
 // @Task @Beacon use Rc::try_unwrap more instead of clone
 impl Expression<parser::Identifier> {
-    pub fn resolve(self, scope: &FunctionScope<'_>) -> Result<Expression<Identifier>, Diagnostic> {
+    pub fn resolve(self, scope: &FunctionScope<'_>) -> Result<Expression<Identifier>> {
         use ExpressionKind::*;
 
         Ok(match self.kind {
@@ -174,8 +173,6 @@ impl Expression<parser::Identifier> {
                 }
             },
             Type => expr! { Type[self.span] },
-            NatType => expr! { NatType[self.span] },
-            TextType => expr! { TextType[self.span] },
             Nat(nat) => expr! {
                 Nat[self.span] {
                     value: Rc::try_unwrap(nat)
@@ -211,8 +208,8 @@ impl Expression<parser::Identifier> {
                     explicitness: lambda.explicitness,
                 }
             },
-            UseIn => todo!(),
-            CaseAnalysis(_expression) => todo!(),
+            UseIn => todo!("resolving use/in"),
+            CaseAnalysis(_expression) => todo!("resolving case analysis"),
             Substitution(_) | UnsaturatedForeignApplication(_) => unreachable!(),
         })
     }
@@ -224,7 +221,7 @@ pub struct ModuleScope {
 }
 
 impl ModuleScope {
-    fn insert_binding(&mut self, identifier: parser::Identifier) -> Result<Identifier, Diagnostic> {
+    fn insert_binding(&mut self, identifier: parser::Identifier) -> Result<Identifier> {
         let index = self.bindings.len();
         let binding = Binding {
             source: identifier.clone(),
@@ -249,7 +246,7 @@ impl ModuleScope {
         })
     }
 
-    fn lookup_binding(&self, identifier: &parser::Identifier) -> Result<Identifier, Diagnostic> {
+    fn lookup_binding(&self, identifier: &parser::Identifier) -> Result<Identifier> {
         self.bindings
             .iter()
             .position(|binding| &binding.source == identifier)
@@ -400,12 +397,12 @@ impl<'a> FunctionScope<'a> {
         }
     }
 
-    fn lookup_binding(&self, query: &parser::Identifier) -> Result<Identifier, Diagnostic> {
+    fn lookup_binding(&self, query: &parser::Identifier) -> Result<Identifier> {
         fn lookup_binding(
             scope: &FunctionScope<'_>,
             query: &parser::Identifier,
             depth: usize,
-        ) -> Result<Identifier, Diagnostic> {
+        ) -> Result<Identifier> {
             match scope {
                 FunctionScope::Module(module) => module.lookup_binding(query),
                 FunctionScope::Binding { parent, binder } => {

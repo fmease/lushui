@@ -1,7 +1,7 @@
 #![forbid(rust_2018_idioms, unused_must_use)]
 
 use lushui::{
-    diagnostic::{Diagnostic, Level},
+    diagnostic::{Diagnostic, Level, Result},
     interpreter,
     lexer::Lexer,
     parser::Parser,
@@ -11,6 +11,7 @@ use lushui::{
 
 fn main() {
     // #[cfg(FALSE)]
+    // @Task always print a stacktrace
     std::panic::set_hook(Box::new(|information| {
         let payload = information.payload();
 
@@ -29,7 +30,7 @@ fn main() {
 
     let mut map = SourceMap::default();
 
-    let result: Result<(), Diagnostic> = (|| {
+    let result: Result<()> = (|| {
         let mut arguments = std::env::args().skip(1);
 
         let path = arguments
@@ -46,11 +47,11 @@ fn main() {
         let node = Parser::new(&tokens).parse_file_module_no_header()?;
 
         let node = node.desugar()?;
-        eprintln!("{}", &node);
+        // eprintln!("{}", &node);
 
         let node =
             handle_multiple_errors(&map, node.resolve(&mut resolver::ModuleScope::default()))?;
-        eprintln!("{}", node);
+        // eprintln!("{}", node);
 
         let mut scope = interpreter::ModuleScope::new();
         node.infer_type_and_evaluate(&mut scope)?;
@@ -69,7 +70,7 @@ fn main() {
 fn handle_multiple_errors<T>(
     map: &SourceMap,
     result: Result<T, impl IntoIterator<Item = Diagnostic>>,
-) -> Result<T, Diagnostic> {
+) -> Result<T> {
     match result {
         Ok(value) => Ok(value),
         Err(errors) => {

@@ -2,6 +2,8 @@ use crate::span::{SourceMap, Span};
 
 type CowStr = std::borrow::Cow<'static, str>;
 
+pub type Result<T, E = Diagnostic> = std::result::Result<T, E>;
+
 // @Note the design of the diagnostic system is still not set.
 // one big question: subdiagnostics: when, how?
 pub struct Diagnostic {
@@ -63,6 +65,9 @@ impl Diagnostic {
     // grapheme) (@Update you cannot get this right, not even rustc can :/)
     // @Beacon @Task make this more robust and able to handle multiline
     // spans (which we first need to implement in `crate::span`)
+    // @Task if the span equals the span of the entire file, don't output its content
+    // @Task if two spans (in the list of spans) reside on the same line,
+    // print them inline not above each other
     fn display(&mut self, map: Option<&SourceMap>) -> String {
         let header = format!(
             "{:#}{}: {}",
@@ -247,6 +252,10 @@ pub enum Code {
     E032,
     /// Invalid constructor.
     E033,
+    /// Unregistered foreign binding.
+    E060,
+    /// Foreign data not declared.
+    E061,
     /// Contracted case analysis cases buggy.
     W000,
     /// Implicitness unimplemented.

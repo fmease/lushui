@@ -22,7 +22,7 @@ impl Expression<Identifier> {
             }
             // @Note we need to be able pass type arguments to is_uninhabited!
             Application(_application) => todo!(),
-            Type | NatType | TextType => false,
+            Type => false,
             Binding(_path) => {
                 // @Task look up path in context and decide upon returned information
                 // if is an ADT, go through every constructor and for each one check

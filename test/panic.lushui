@@ -1,6 +1,12 @@
-foreign panic (A: Type) (message: Text): A
+;; @Update foreign data declarations don't work anymore because of the Debruijn-rewrite
+
+_foreign_
+data Text: Type
+
+_foreign_
+panic (A: Type) (message: Text): A
 
 data Unit: Type =
-    Unit': Unit
+    'Unit: Unit
 
 main: Unit = panic Unit "this is not going well"

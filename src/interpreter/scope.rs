@@ -9,12 +9,13 @@ mod ffi;
 
 use std::{collections::HashMap, fmt};
 
+use super::{Expression, Substitution::Shift};
 use crate::{
-    hir::{expr, Expression},
-    resolver::{Identifier, ModuleIndex},
+    diagnostic::{Code, Diagnostic, Level, Result},
+    hir::expr,
+    resolver::{DebruijnIndex, Identifier, Index, ModuleIndex},
+    span::Span,
 };
-
-// use super::{Error, Result};
 
 /// The scope of bindings inside of a module.
 ///
@@ -34,6 +35,8 @@ pub struct ModuleScope {
     bindings: HashMap<ModuleIndex, Entity>,
     // for printing for now
     // names: HashMap<ModuleIndex, crate::parser::Identifier>,
+    // @Note very ad-hoc solution, does not scale to modules
+    foreign_data: HashMap<&'static str, Option<Identifier>>,
 }
 
 /// Many methods of module scope panic instead of returning a `Result` because
@@ -47,7 +50,7 @@ impl ModuleScope {
         scope
     }
 
-    fn lookup_type(&self, index: ModuleIndex) -> Expression<Identifier> {
+    fn lookup_type(&self, index: ModuleIndex) -> Expression {
         // @Temporary @Note indexing should never panic after name resolution
         // @Task verify and remove this notice
         self.bindings[&index].r#type()
@@ -119,8 +122,8 @@ impl ModuleScope {
     pub fn insert_value_binding(
         &mut self,
         binder: Identifier,
-        r#type: Expression<Identifier>,
-        value: Expression<Identifier>,
+        r#type: Expression,
+        value: Expression,
     ) {
         let old = self.bindings.insert(
             binder.module().unwrap(),
@@ -138,7 +141,7 @@ impl ModuleScope {
     /// ## Panics
     ///
     /// Panics under `cfg(debug_assertions)` if the `binder` is already bound.
-    pub fn insert_data_binding(&mut self, binder: Identifier, r#type: Expression<Identifier>) {
+    pub fn insert_data_binding(&mut self, binder: Identifier, r#type: Expression) {
         // eprintln!("ModuleScope::insert_data_binding({})", binder);
 
         let old = self.bindings.insert(
@@ -161,7 +164,7 @@ impl ModuleScope {
     pub fn insert_constructor_binding(
         &mut self,
         binder: Identifier,
-        r#type: Expression<Identifier>,
+        r#type: Expression,
         data_type: &Identifier,
     ) {
         let old = self
@@ -188,20 +191,30 @@ impl ModuleScope {
     pub fn insert_type_for_foreign_binding(
         &mut self,
         binder: Identifier,
-        r#type: Expression<Identifier>,
-    ) {
+        r#type: Expression,
+    ) -> Result<()> {
         let index = binder.module().unwrap();
         self.bindings.insert(
             index,
-            match &self.bindings[&index] {
-                Entity::_UntypedForeign { arity, function } => Entity::Foreign {
+            match &self.bindings.get(&index) {
+                Some(Entity::_UntypedForeign { arity, function }) => Entity::Foreign {
                     r#type,
                     arity: *arity,
                     function: *function,
                 },
-                _ => unreachable!(),
+                Some(_) => unreachable!(),
+                None => {
+                    // @Task better message
+                    return Err(Diagnostic::new(
+                        Level::Fatal,
+                        Code::E060,
+                        format!("foreign binding `{}` is not registered", binder),
+                    )
+                    .with_span(binder.source.span));
+                }
             },
         );
+        Ok(())
     }
 
     /// Partially register a foreign binding letting it untyped.
@@ -215,7 +228,7 @@ impl ModuleScope {
         _arity: usize,
         _function: ffi::ForeignFunction,
     ) {
-        todo!() // @Task @Beacon
+        todo!("insert untyped foreign binding") // @Task @Beacon
 
         // let old = self.bindings.insert(
         //     Identifier::from(binder),
@@ -223,6 +236,50 @@ impl ModuleScope {
         // );
 
         // debug_assert!(old.is_none());
+    }
+
+    fn register_foreign_data(&mut self, binder: &'static str) {
+        let old = self.foreign_data.insert(binder, None);
+        debug_assert!(old.is_none());
+    }
+
+    pub fn insert_foreign_data(&mut self, binder: &Identifier) -> Result<()> {
+        match self.foreign_data.get_mut(&*binder.source.atom) {
+            Some(index @ None) => {
+                *index = Some(binder.clone());
+                Ok(())
+            }
+            Some(Some(_)) => unreachable!(),
+            None => Err(Diagnostic::new(
+                Level::Fatal,
+                Code::E060,
+                format!("foreign data type `{}` is not registered", binder),
+            )
+            .with_span(binder.source.span)),
+        }
+    }
+
+    // @Note does not scale to modules
+    pub fn lookup_foreign_data(
+        &self,
+        binder: &'static str,
+        expression: Expression,
+    ) -> Result<Expression> {
+        match self.foreign_data.get(binder) {
+            Some(Some(binder)) => Ok(expr! {
+                Binding[Span::dummy()] {
+                    binder: binder.clone(),
+                }
+            }),
+            // @Task better message
+            Some(None) => Err(Diagnostic::new(
+                Level::Fatal,
+                Code::E061,
+                format!("the foreign type `{}` has not been declared", binder,),
+            )
+            .with_labeled_span(expression.span, "the type of this expression")),
+            None => unreachable!(),
+        }
     }
 }
 
@@ -243,7 +300,7 @@ impl fmt::Debug for ModuleScope {
 // @Task find out if we can get rid of this type by letting `ModuleScope::lookup_value` resolve to the Binder
 // if it's neutral
 pub enum Value {
-    Reducible(Expression<Identifier>),
+    Reducible(Expression),
     Neutral,
 }
 
@@ -261,23 +318,23 @@ impl fmt::Debug for Value {
 #[derive(Clone)]
 enum Entity {
     Expression {
-        r#type: Expression<Identifier>,
-        expression: Expression<Identifier>,
+        r#type: Expression,
+        expression: Expression,
     },
     // @Question should we store the constructors?
     DataType {
-        r#type: Expression<Identifier>,
+        r#type: Expression,
         constructors: Vec<Identifier>,
     },
     Constructor {
-        r#type: Expression<Identifier>,
+        r#type: Expression,
     },
     _UntypedForeign {
         arity: usize,
         function: ffi::ForeignFunction,
     },
     Foreign {
-        r#type: Expression<Identifier>,
+        r#type: Expression,
         arity: usize,
         function: ffi::ForeignFunction,
     },
@@ -289,7 +346,7 @@ impl Entity {
     /// ## Panics
     ///
     /// Panics if called on an [Entity::UntypedForeign].
-    fn r#type(&self) -> Expression<Identifier> {
+    fn r#type(&self) -> Expression {
         match self {
             Self::Expression { r#type, .. } => r#type.clone(),
             Self::DataType { r#type, .. } => r#type.clone(),
@@ -348,36 +405,31 @@ pub enum FunctionScope<'a> {
     Function {
         parent: &'a FunctionScope<'a>,
         // index: DebruijnIndex,
-        r#type: Expression<Identifier>,
+        r#type: Expression,
     },
 }
 
-use crate::interpreter::Substitution::Shift;
-use crate::resolver::{DebruijnIndex, Index};
-
 impl<'a> FunctionScope<'a> {
-    pub fn extend_with_parameter(&'a self, r#type: Expression<Identifier>) -> Self {
+    pub fn extend_with_parameter(&'a self, r#type: Expression) -> Self {
         Self::Function {
             parent: self,
             r#type,
         }
     }
 
-    fn module(&self) -> &ModuleScope {
+    pub fn module(&self) -> &ModuleScope {
         match self {
             Self::Module(module) => module,
             Self::Function { parent, .. } => parent.module(),
         }
     }
 
-    pub fn lookup_type(&self, binder: &Identifier) -> Expression<Identifier> {
-        // eprintln!("FunctionScope::lookup_type(binder={}):\n{:?}", binder, self);
-
+    pub fn lookup_type(&self, binder: &Identifier) -> Expression {
         fn lookup_type(
             scope: &FunctionScope<'_>,
             index: DebruijnIndex,
             depth: usize,
-        ) -> Expression<Identifier> {
+        ) -> Expression {
             match scope {
                 FunctionScope::Function { parent, r#type } => {
                     if depth == index.value {
@@ -403,8 +455,6 @@ impl<'a> FunctionScope<'a> {
     }
 
     pub fn lookup_value(&self, binder: &Identifier) -> Value {
-        // eprintln!("FunctionScope::lookup_value() binder={}", binder);
-
         match binder.index {
             Index::Module(index) => self.module().lookup_value(index),
             Index::Debruijn(_) => Value::Neutral,

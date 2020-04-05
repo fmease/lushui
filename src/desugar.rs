@@ -9,7 +9,7 @@
 use std::{iter::once, rc::Rc};
 
 use crate::{
-    diagnostic::{Code, Diagnostic, Level},
+    diagnostic::{Code, Diagnostic, Level, Result},
     hir::{self, expr},
     parser::{self, AttributeKind, Explicitness, Identifier},
     span::Span,
@@ -24,7 +24,7 @@ impl parser::Declaration {
     /// Also, filters documentation attributes and validates
     /// foreign attributes. Those checks should probably be moved somewhere
     /// else.
-    pub fn desugar(mut self) -> Result<hir::Declaration<Identifier>, Diagnostic> {
+    pub fn desugar(mut self) -> Result<hir::Declaration<Identifier>> {
         use parser::DeclarationKind::*;
 
         self.validate_attributes()?;
@@ -112,7 +112,7 @@ impl parser::Declaration {
     // @Task use a more principled approach
     // @Task ensure `_foreign_` is not used on Module and Use (check against `target` (not yet
     // defined))
-    fn validate_attributes(&mut self) -> Result<(), Diagnostic> {
+    fn validate_attributes(&mut self) -> Result<()> {
         use parser::DeclarationKind::*;
 
         self.attributes
@@ -195,13 +195,11 @@ impl parser::Expression {
                 }
             },
             TypeLiteral => expr! { Type[self.span] },
-            NatTypeLiteral => expr! { NatType[self.span] },
             NatLiteral(literal) => expr! {
                 Nat[self.span] {
                     value: literal.value,
                 }
             },
-            TextTypeLiteral => expr! { TextType[self.span] },
             TextLiteral(text) => expr! {
                 Text[self.span] {
                     value: text.value,

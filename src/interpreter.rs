@@ -24,7 +24,7 @@ mod data_types;
 mod scope;
 
 use crate::{
-    diagnostic::{Code, Diagnostic, Level},
+    diagnostic::{Code, Diagnostic, Level, Result},
     hir::{self, *},
     parser::{AttributeKind, Explicitness},
     resolver::Identifier,
@@ -37,6 +37,7 @@ type Declaration = hir::Declaration<Identifier>;
 type Expression = hir::Expression<Identifier>;
 
 fn missing_annotation() -> Diagnostic {
+    // @Task add span
     Diagnostic::new(
         Level::Bug,
         Code::E030,
@@ -47,15 +48,26 @@ fn missing_annotation() -> Diagnostic {
 impl Declaration {
     /// Try to type check and evaluate a declaration modifying the given scope.
     // @Task move evaluation logic
-    pub fn infer_type_and_evaluate(&self, scope: &mut ModuleScope) -> Result<(), Diagnostic> {
+    pub fn infer_type_and_evaluate(&self, scope: &mut ModuleScope) -> Result<()> {
         use DeclarationKind::*;
 
         match &self.kind {
             Value(declaration) => {
                 if self.attributes.has(AttributeKind::Foreign) {
-                    todo!("foreign value declarations") // @Task
+                    let r#type = {
+                        let scope = FunctionScope::Module(scope);
+                        let r#type = declaration
+                            .type_annotation
+                            .clone()
+                            // .evaluate(&scope, Form::WeakHeadNormal)?;
+                            .evaluate(&scope, Form::Normal)?;
+                        r#type.clone().is_a_type(&scope)?;
+                        r#type
+                    };
+
+                    scope.insert_type_for_foreign_binding(declaration.binder.clone(), r#type)?;
                 } else {
-                    let (infered_type, value) = {
+                    let (r#type, value) = {
                         let scope = FunctionScope::Module(scope);
                         let expression = declaration.expression.clone().unwrap();
                         let infered_type = expression
@@ -65,7 +77,7 @@ impl Declaration {
                         // .evaluate(&scope, Form::Normal)?;
                         (infered_type, value)
                     };
-                    scope.insert_value_binding(declaration.binder.clone(), infered_type, value);
+                    scope.insert_value_binding(declaration.binder.clone(), r#type, value);
                 }
             }
             Data(data) => {
@@ -88,7 +100,7 @@ impl Declaration {
                 scope.insert_data_binding(data.binder.clone(), r#type);
 
                 if self.attributes.has(AttributeKind::Foreign) {
-                    todo!("foreign data declarations"); // @Task
+                    scope.insert_foreign_data(&data.binder)?;
                 } else {
                     let constructors = data.constructors.as_ref().unwrap();
 
@@ -125,14 +137,14 @@ impl Declaration {
                     declaration.infer_type_and_evaluate(scope)?;
                 }
             }
-            Use => todo!(),
+            Use => todo!("infer type of use declaration"),
         }
 
         Ok(())
     }
 
     // @Task
-    pub fn evaluate(&self, _scope: &mut ModuleScope) -> Result<(), Diagnostic> {
+    pub fn evaluate(&self, _scope: &mut ModuleScope) -> Result<()> {
         todo!()
     }
 }
@@ -167,7 +179,7 @@ impl Expression {
                 .clone()
                 .substitute(substitution0.substitution.clone())
                 .substitute(substitution1),
-            (Type, _) | (NatType, _) | (TextType, _) | (Nat(_), _) | (Text(_), _) => self,
+            (Type, _) | (Nat(_), _) | (Text(_), _) => self,
             (Application(application), substitution) => {
                 expr! {
                     Application[self.span] {
@@ -271,24 +283,24 @@ impl Expression {
                     }
                 }
             }
-            (CaseAnalysis(_), _) => todo!(),
-            (UseIn, _) => todo!(),
-            (UnsaturatedForeignApplication(_), _) => todo!(),
+            (CaseAnalysis(_), _) => todo!("substitute case analysis"),
+            (UseIn, _) => todo!("substitute use/in"),
+            (UnsaturatedForeignApplication(_), _) => todo!("substitute foreign application"),
         }
     }
 
     /// Try to infer the type of an expression.
-    pub fn infer_type(self, scope: &FunctionScope<'_>) -> Result<Self, Diagnostic> {
+    pub fn infer_type(self, scope: &FunctionScope<'_>) -> Result<Self> {
         use self::Substitution::*;
         use ExpressionKind::*;
 
         Ok(match self.kind {
             Binding(binding) => scope.lookup_type(&binding.binder),
-            Type | NatType | TextType => {
+            Type => {
                 expr! { Type[Span::dummy()] }
             }
-            Nat(_) => expr! { NatType[Span::dummy()] },
-            Text(_) => expr! { TextType[Span::dummy()] },
+            Nat(_) => scope.module().lookup_foreign_data("Nat", self)?,
+            Text(_) => scope.module().lookup_foreign_data("Text", self)?,
             PiType(literal) => {
                 // ensure domain and codomain are are well-typed
                 // @Question why do we need to this? shouldn't this be already handled if
@@ -375,12 +387,12 @@ impl Expression {
                 .clone()
                 .substitute(substitution.substitution.clone())
                 .infer_type(scope)?,
-            UseIn => todo!(),
+            UseIn => todo!("infer type of use/in"),
             // @Beacon @Beacon @Beacon @Temporary @Task
             // first: fiddeling, then: building abstractions
             // @Bug this is *not* principled design
             CaseAnalysis(_case_analysis) => {
-                todo!() // @Task @Beacon
+                todo!("infer type of case analysis") // @Task @Beacon
 
                 // let r#type = case_analysis.subject.clone().infer_type(scope)?;
                 // // @Task verify that
@@ -461,7 +473,7 @@ impl Expression {
     ///
     /// This is beta-reduction I think.
     // @Task differenciate between Expression<InitialPhase> and Expression<Normalized>
-    pub fn evaluate(self, scope: &FunctionScope<'_>, form: Form) -> Result<Self, Diagnostic> {
+    pub fn evaluate(self, scope: &FunctionScope<'_>, form: Form) -> Result<Self> {
         use self::Substitution::*;
         use ExpressionKind::*;
 
@@ -517,7 +529,7 @@ impl Expression {
                     _ => unreachable!(),
                 }
             }
-            Type | NatType | Nat(_) | TextType | Text(_) => self,
+            Type | Nat(_) | Text(_) => self,
             PiType(pi) => match form {
                 Form::Normal => {
                     let domain = pi.domain.clone().evaluate(scope, form)?;
@@ -580,7 +592,7 @@ impl Expression {
                 .clone()
                 .substitute(substitution.substitution.clone())
                 .evaluate(scope, form)?,
-            UseIn => todo!(),
+            UseIn => todo!("evaluate use/in"),
             // @Note @Beacon, now, meta information would be nice, so we don't need to do
             // double work (the work of `infer_type` again)
             // @Beacon @Beacon @Beacon @Note this code is @Temporary as hell.
@@ -592,7 +604,7 @@ impl Expression {
             // @Note how to handle them: just like functions: case analysis only wotks with a binder-case
             // (default case)
             CaseAnalysis(_case_analysis) => {
-                todo!() // @Task @Beacon
+                todo!("evaluate case analysis") // @Task @Beacon
 
                 // use desugar::expression::Pattern;
 
@@ -640,7 +652,7 @@ impl Expression {
     }
 
     /// Assert that an expression is of type `Type`.
-    fn is_a_type(self, scope: &FunctionScope<'_>) -> Result<(), Diagnostic> {
+    fn is_a_type(self, scope: &FunctionScope<'_>) -> Result<()> {
         let r#type = self.infer_type(scope)?;
         (expr! { Type[Span::dummy()] }).is_actual(r#type, scope)
     }
@@ -652,7 +664,7 @@ impl Expression {
         self,
         type_annotation: Self,
         scope: &FunctionScope<'_>,
-    ) -> Result<Self, Diagnostic> {
+    ) -> Result<Self> {
         type_annotation.clone().is_a_type(scope)?;
         let infered_type = self.infer_type(scope)?;
         type_annotation.is_actual(infered_type.clone(), scope)?;
@@ -664,7 +676,7 @@ impl Expression {
     // @Bug @Beacon @Beacon if form == WeakHeadNormal, type mismatches occur when there shouldn't
     // @Update that is because `equals` is called on 2 `Substitutions` but 2 of those are never
     // equal. I think they should be "killed" earlier. probably a bug
-    fn is_actual(self, actual: Self, scope: &FunctionScope<'_>) -> Result<(), Diagnostic> {
+    fn is_actual(self, actual: Self, scope: &FunctionScope<'_>) -> Result<()> {
         // let expected = self.evaluate(scope, Form::WeakHeadNormal)?;
         // let actual = actual.evaluate(scope, Form::WeakHeadNormal)?;
         let expected = self.evaluate(scope, Form::Normal)?;
@@ -684,7 +696,7 @@ impl Expression {
     }
 
     /// Dictates if two expressions are alpha-equivalent.
-    fn equals(self, other: Self, scope: &FunctionScope<'_>) -> Result<bool, Diagnostic> {
+    fn equals(self, other: Self, scope: &FunctionScope<'_>) -> Result<bool> {
         use ExpressionKind::*;
 
         Ok(match (self.kind, other.kind) {
@@ -699,7 +711,7 @@ impl Expression {
                         .clone()
                         .equals(application1.argument.clone(), scope)?
             }
-            (Type, Type) | (NatType, NatType) | (TextType, TextType) => true,
+            (Type, Type) => true,
             (Nat(nat0), Nat(nat1)) => nat0.value == nat1.value,
             (Text(text0), Text(text1)) => text0.value == text1.value,
             // @Question what about explicitness?

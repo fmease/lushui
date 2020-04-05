@@ -1,9 +1,17 @@
+;; @Update foreign value declarations don't work anymore,
+;; we need to rewrite the FFI logic first
+
 data Bool: Type =
     False: Bool
     True: Bool
 
-foreign add: Nat -> Nat -> Nat
-foreign equal: Nat -> Nat -> Bool
+_foreign_
+data Nat: Type
+
+_foreign_
+add: Nat -> Nat -> Nat
+_foreign_
+equal: Nat -> Nat -> Bool
 
 combine: Nat -> Nat -> Nat = add
 successor: Nat -> Nat = combine 1
@@ -12,6 +20,6 @@ p: Bool = equal 50 (add 10 40)
 q: Bool = equal 1 0
 
 data Pair (A B: Type): Type =
-    Pair' (X Y: Type): X -> Y -> Pair X Y
+    'Pair (X Y: Type): X -> Y -> Pair X Y
 
-main: Pair Nat Nat = Pair' Nat Nat (add 3 6) (successor 338389220489284293)
+main: Pair Nat Nat = 'Pair Nat Nat (add 3 6) (successor 338389220489284293)
