@@ -28,13 +28,15 @@ use crate::{
     hir::{self, *},
     parser::{AttributeKind, Explicitness},
     resolver::Identifier,
-    span::Span,
 };
 use scope::FunctionScope;
 pub use scope::ModuleScope;
 
 type Declaration = hir::Declaration<Identifier>;
 type Expression = hir::Expression<Identifier>;
+
+const NAT_TYPE_NAME: &str = "Nat";
+const TEXT_TYPE_NAME: &str = "Text";
 
 fn missing_annotation() -> Diagnostic {
     // @Task add span
@@ -93,7 +95,7 @@ impl Declaration {
                 data_types::instance::assert_constructor_is_instance_of_type(
                     data.binder.clone(),
                     r#type.clone(),
-                    expr! { Type[Span::dummy()] },
+                    expr! { Type[] },
                     scope,
                 )?;
 
@@ -104,34 +106,36 @@ impl Declaration {
                 } else {
                     let constructors = data.constructors.as_ref().unwrap();
 
-                    for Constructor {
-                        binder,
-                        type_annotation,
-                        span: _,
-                        attributes: _,
-                    } in constructors
-                    {
-                        let r#type = type_annotation
+                    // @Task move this logic into the `Constructor` match arm,
+                    // @Note this only works if we are able to pass extra parameters,
+                    // in our case `data.binder` (for the instance check)
+                    for constructor in constructors {
+                        let constructor = constructor.constructor().unwrap();
+
+                        let r#type = constructor
+                            .type_annotation
                             .clone()
                             .evaluate(&FunctionScope::Module(scope), Form::WeakHeadNormal)?;
                         // .evaluate(&FunctionScope::Module(scope), Form::Normal)?;
                         r#type.clone().is_a_type(&FunctionScope::Module(scope))?;
 
                         data_types::instance::assert_constructor_is_instance_of_type(
-                            binder.clone(),
+                            constructor.binder.clone(),
                             r#type.clone(),
                             expr! { Binding[self.span] { binder: data.binder.clone() } },
                             scope,
                         )?;
 
                         scope.insert_constructor_binding(
-                            binder.clone(),
+                            constructor.binder.clone(),
                             r#type.clone(),
                             &data.binder,
                         );
                     }
                 }
             }
+            // handled in the `Data` arm
+            Constructor(_) => unreachable!(),
             Module(module) => {
                 for declaration in &module.declarations {
                     declaration.infer_type_and_evaluate(scope)?;
@@ -184,13 +188,13 @@ impl Expression {
                 expr! {
                     Application[self.span] {
                         callee: expr! {
-                            Substitution[Span::dummy()] {
+                            Substitution[] {
                                 expression: application.callee.clone(),
                                 substitution: substitution.clone(),
                             }
                         },
                         argument: expr! {
-                            Substitution[Span::dummy()] {
+                            Substitution[] {
                                 expression: application.argument.clone(),
                                 substitution,
                             }
@@ -201,14 +205,14 @@ impl Expression {
             }
             (PiType(pi), substitution) => {
                 let domain = expr! {
-                    Substitution[Span::dummy()] {
+                    Substitution[] {
                         expression: pi.domain.clone(),
                         substitution: substitution.clone(),
                     }
                 };
 
                 let codomain = expr! {
-                    Substitution[Span::dummy()] {
+                    Substitution[] {
                         expression: pi.codomain.clone(),
                         substitution: match &pi.parameter {
                             Some(parameter) => {
@@ -237,7 +241,7 @@ impl Expression {
                 let parameter_type_annotation =
                     lambda.parameter_type_annotation.clone().map(|r#type| {
                         expr! {
-                            Substitution[Span::dummy()] {
+                            Substitution[] {
                                 expression: r#type,
                                 substitution: substitution.clone(),
                             }
@@ -246,7 +250,7 @@ impl Expression {
 
                 let body_type_annotation = lambda.body_type_annotation.clone().map(|r#type| {
                     expr! {
-                        Substitution[Span::dummy()] {
+                        Substitution[] {
                             expression: r#type,
                             substitution: {
                                 let binder = Identifier::local(&lambda.parameter);
@@ -260,7 +264,7 @@ impl Expression {
                 });
 
                 let body = expr! {
-                    Substitution[Span::dummy()] {
+                    Substitution[] {
                         expression: lambda.body.clone(),
                         substitution: {
                                 let binder = Identifier::local(&lambda.parameter);
@@ -297,10 +301,10 @@ impl Expression {
         Ok(match self.kind {
             Binding(binding) => scope.lookup_type(&binding.binder),
             Type => {
-                expr! { Type[Span::dummy()] }
+                expr! { Type[] }
             }
-            Nat(_) => scope.module().lookup_foreign_data("Nat", self)?,
-            Text(_) => scope.module().lookup_foreign_data("Text", self)?,
+            Nat(_) => scope.module().lookup_foreign_data(NAT_TYPE_NAME, self)?,
+            Text(_) => scope.module().lookup_foreign_data(TEXT_TYPE_NAME, self)?,
             PiType(literal) => {
                 // ensure domain and codomain are are well-typed
                 // @Question why do we need to this? shouldn't this be already handled if
@@ -316,7 +320,7 @@ impl Expression {
                     literal.codomain.clone().is_a_type(scope)?;
                 }
 
-                expr! { Type[Span::dummy()] }
+                expr! { Type[] }
             }
             Lambda(lambda) => {
                 let parameter_type: Self = lambda
@@ -360,7 +364,7 @@ impl Expression {
 
                         match pi.parameter.clone() {
                             Some(_) => expr! {
-                                Substitution[Span::dummy()] {
+                                Substitution[] {
                                     substitution: Use(Box::new(Shift(0)), application.argument.clone()),
                                     expression: pi.codomain.clone(),
                                 }
@@ -458,7 +462,7 @@ impl Expression {
                 //     expr! {
                 //         PiType[self.span] {
                 //             parameter: Some(parameter.clone()),
-                //             domain: expr! { Type[Span::dummy()] },
+                //             domain: expr! { Type[] },
                 //             codomain: expr! { Binding[self.span] { binder: parameter } },
                 //             explicitness: Explicitness::Implicit,
                 //         }
@@ -491,7 +495,7 @@ impl Expression {
                 let callee = application.callee.clone().evaluate(scope, form)?;
                 match callee.kind {
                     Lambda(lambda) => (expr! {
-                        Substitution[Span::dummy()] {
+                        Substitution[] {
                             // @Note could very well be a module index (the argument)
                             substitution: Use(Box::new(Shift(0)), application.argument.clone()),
                             expression: lambda.body.clone(),
@@ -654,7 +658,7 @@ impl Expression {
     /// Assert that an expression is of type `Type`.
     fn is_a_type(self, scope: &FunctionScope<'_>) -> Result<()> {
         let r#type = self.infer_type(scope)?;
-        (expr! { Type[Span::dummy()] }).is_actual(r#type, scope)
+        (expr! { Type[] }).is_actual(r#type, scope)
     }
 
     /// Infer type of expression and match it with the type annotation.
@@ -775,7 +779,7 @@ impl Substitution {
             (substitution0, Use(substitution1, expression)) => Use(
                 Box::new(substitution0.clone().compose(*substitution1)),
                 expr! {
-                    Substitution[Span::dummy()] {
+                    Substitution[] {
                         substitution: substitution0,
                         expression,
                     }

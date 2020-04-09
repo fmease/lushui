@@ -219,10 +219,12 @@ impl Parser<'_> {
     ///
     /// First underscore is already parsed.
     /// The span does not include the trailing line break.
+    // @Task abstract over attributes with 0, 1, … arguments
     fn finish_parse_attribute(&mut self, span_of_underscore: Span) -> Result<Attribute> {
         let identifier = Identifier::consume(self)?;
         let kind = match &*identifier.atom {
             "foreign" => AttributeKind::Foreign,
+            "inherent" => AttributeKind::Inherent,
             _ => {
                 return Err(Diagnostic::new(
                     Level::Fatal,
@@ -353,7 +355,7 @@ impl Parser<'_> {
             if self.consumed(TokenKind::EndOfInput) {
                 break Ok(Declaration {
                     span: (|| Some(declarations.first()?.span.merge(declarations.last()?.span)))()
-                        .unwrap_or(Span::dummy()),
+                        .unwrap_or(Span::DUMMY),
                     kind: DeclarationKind::Module(Box::new(Module { declarations })),
                     attributes: Attributes::default(),
                 });
@@ -366,7 +368,7 @@ impl Parser<'_> {
     /// Parse constructor.
     ///
     /// The span does not include the trailing line break.
-    fn parse_constructor(&mut self) -> Result<Constructor> {
+    fn parse_constructor(&mut self) -> Result<Declaration> {
         let mut attributes = Attributes::default();
 
         loop {
@@ -388,11 +390,13 @@ impl Parser<'_> {
         // @Task allow EOI as an alternative
         self.consume(TokenKind::LineBreak)?;
 
-        Ok(Constructor {
+        Ok(Declaration {
             span: binder.span.merge(type_annotation.span),
-            binder,
-            parameters,
-            type_annotation,
+            kind: DeclarationKind::Constructor(Box::new(Constructor {
+                binder,
+                parameters,
+                type_annotation,
+            })),
             attributes,
         })
     }

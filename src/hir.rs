@@ -19,6 +19,15 @@ pub struct Declaration<B: Binder> {
     pub attributes: Attributes,
 }
 
+impl<B: Binder> Declaration<B> {
+    pub fn constructor(&self) -> Option<&Constructor<B>> {
+        match &self.kind {
+            DeclarationKind::Constructor(constructor) => Some(&constructor),
+            _ => None,
+        }
+    }
+}
+
 #[freestanding]
 #[streamline(Box)]
 pub enum DeclarationKind<B: Binder> {
@@ -30,19 +39,16 @@ pub enum DeclarationKind<B: Binder> {
     Data {
         binder: B,
         type_annotation: Expression<B>,
-        constructors: Option<Vec<Constructor<B>>>,
+        constructors: Option<Vec<Declaration<B>>>,
+    },
+    Constructor {
+        binder: B,
+        type_annotation: Expression<B>,
     },
     Module {
         declarations: Vec<Declaration<B>>,
     },
     Use,
-}
-
-pub struct Constructor<B: Binder> {
-    pub binder: B,
-    pub type_annotation: Expression<B>,
-    pub span: Span,
-    pub attributes: Attributes,
 }
 
 pub type Expression<B> = Spanned<ExpressionKind<B>>;
@@ -118,13 +124,31 @@ pub enum Pattern<B: Binder> {
 }
 
 pub(crate) macro expr {
-    ($kind:ident[$span:expr] { $( $body:tt )+ }) => {{
-        let span = $span;
-        let kind = crate::hir::$kind { $( $body )+ };
-        let kind = crate::hir::ExpressionKind::$kind(Rc::new(kind));
-        crate::hir::Expression::new(kind, span)
+    ($kind:ident[$( $span:expr )?] { $( $body:tt )+ }) => {{
+        let span = span!($( $span )?);
+        Expression::new(
+            ExpressionKind::$kind(Rc::new(self::$kind { $( $body )+ })),
+            span,
+        )
     }},
-    ($kind:ident[$span:expr]) => {
-        crate::hir::Expression::new(crate::hir::ExpressionKind::$kind, $span)
-    }
+    ($kind:ident[$( $span:expr )?]) => {{
+        let span = span!($( $span )?);
+        Expression::new(ExpressionKind::$kind, span)
+    }}
 }
+
+macro span {
+    () => { Span::DUMMY },
+    ($span:expr) => { $span },
+}
+
+pub(crate) macro decl($kind:ident[$span:expr][$attrs:expr] { $( $body:tt )+ }) {{
+    let span = $span;
+    let attributes = $attrs;
+
+    Declaration {
+        kind: DeclarationKind::$kind(Box::new(self::$kind { $( $body )+ })),
+        span,
+        attributes,
+    }
+}}

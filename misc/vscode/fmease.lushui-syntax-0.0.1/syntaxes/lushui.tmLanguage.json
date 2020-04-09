@@ -101,11 +101,13 @@
             ]
         },
         "attributes": {
-            "patterns": {
-                "__comment__": "@Task",
-                "match": "_\\s*\\s*_",
-                "name": "meta.attribute.lushui"
-            }
+            "patterns": [
+                {
+                    "__comment__": "@Task",
+                    "match": "_[^_]+?_",
+                    "name": "meta.attribute.lushui punctuation.definition.variable"
+                }
+            ]
         }
     }
 }

@@ -8,6 +8,32 @@ pub struct Declaration {
     pub attributes: Attributes,
 }
 
+impl Declaration {
+    pub fn as_attribute_target(&self) -> Targets {
+        use DeclarationKind::*;
+
+        match &self.kind {
+            Value(_) => Targets::VALUE,
+            Data(_) => Targets::DATA,
+            Constructor(_) => Targets::CONSTRUCTOR,
+            Module(_) => Targets::MODULE,
+            Use => Targets::USE,
+        }
+    }
+
+    pub fn kind_as_str(&self) -> &'static str {
+        use DeclarationKind::*;
+
+        match &self.kind {
+            Value(_) => "value",
+            Data(_) => "data",
+            Constructor(_) => "constructor",
+            Module(_) => "module",
+            Use => "use",
+        }
+    }
+}
+
 /// The syntax node of a declaration.
 #[freestanding]
 #[streamline(Box)]
@@ -24,22 +50,18 @@ pub enum DeclarationKind {
         binder: Identifier,
         parameters: AnnotatedParameters,
         type_annotation: Expression,
-        constructors: Option<Vec<Constructor>>,
+        constructors: Option<Vec<Declaration>>,
+    },
+    /// The syntax node of a constructor.
+    Constructor {
+        binder: Identifier,
+        parameters: AnnotatedParameters,
+        type_annotation: Expression,
     },
     /// The syntax node of a module declaration.
     Module { declarations: Vec<Declaration> },
     /// The syntax node of a use declaration.
     Use,
-}
-
-/// The syntax node of a constructor.
-#[derive(Debug)]
-pub struct Constructor {
-    pub binder: Identifier,
-    pub parameters: AnnotatedParameters,
-    pub type_annotation: Expression,
-    pub span: Span,
-    pub attributes: Attributes,
 }
 
 pub type AnnotatedParameters = Vec<AnnotatedParameterGroup>;
@@ -58,9 +80,17 @@ pub struct Attributes {
 
 impl Attributes {
     pub fn has(&self, query: AttributeKind) -> bool {
+        self.get(query).is_some()
+    }
+
+    pub fn get(&self, query: AttributeKind) -> Option<&Attribute> {
+        self.iter().find(|attribute| attribute.kind == query)
+    }
+
+    pub fn nonconforming(&self, targets: Targets) -> Vec<&Attribute> {
         self.iter()
-            .find(|attribute| attribute.kind == query)
-            .is_some()
+            .filter(|attribute| !attribute.targets().contains(targets))
+            .collect()
     }
 }
 
@@ -78,16 +108,56 @@ impl DerefMut for Attributes {
     }
 }
 
-// @Task move attribute logic into its own module Further, create a more principled approach
-// using a `AttributeKind::target`-method and a function which validates against
-// `DeclarationKind` and the like
 pub type Attribute = Spanned<AttributeKind>;
+
+impl Attribute {
+    pub fn targets(&self) -> Targets {
+        use AttributeKind::*;
+
+        match self.kind {
+            Documentation => Targets::all(),
+            Foreign => Targets::VALUE | Targets::DATA,
+            Inherent => Targets::DATA,
+        }
+    }
+
+    pub fn unique(&self) -> bool {
+        use AttributeKind::*;
+
+        match self.kind {
+            Documentation => false,
+            Foreign | Inherent => true,
+        }
+    }
+}
 
 // @Task add `include`, `if`, `deprecated`, `unstable`, `unsafe`, `open`, … in the future
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AttributeKind {
     Documentation,
     Foreign,
+    /// Make bindings available for FFI. Opposite of `foreign`.
+    Inherent,
+}
+
+impl fmt::Display for AttributeKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Documentation => "a documentation comment",
+            Self::Foreign => "attribute `foreign`",
+            Self::Inherent => "attribute `inherent`",
+        })
+    }
+}
+
+bitflags::bitflags! {
+    pub struct Targets: u8 {
+        const VALUE = 0b0000_0001;
+        const DATA = 0b0000_0010;
+        const CONSTRUCTOR = 0b0000_0100;
+        const MODULE = 0b0000_1000;
+        const USE = 0b0001_0000;
+    }
 }
 
 pub type Expression = Spanned<ExpressionKind>;
@@ -161,6 +231,7 @@ pub struct ParameterGroup {
 
 pub type Pattern = Spanned<PatternKind>;
 
+// @Task add text literal pattern
 #[freestanding]
 #[streamline(Box)]
 #[derive(Debug, Clone)]

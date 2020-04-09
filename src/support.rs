@@ -1,3 +1,5 @@
+// @Question should we move the Result helpers to crate::diagnostic?
+
 pub mod handle {
     /// "Handle" 2 results mapping okays and merging errors which are `Vec`s
     pub trait Two<E> {

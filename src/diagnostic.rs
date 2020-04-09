@@ -4,9 +4,15 @@ type CowStr = std::borrow::Cow<'static, str>;
 
 pub type Result<T, E = Diagnostic> = std::result::Result<T, E>;
 
+pub type Diagnostics = Vec<Diagnostic>;
+
+pub struct Diagnostic {
+    inner: Box<InnerDiagnostic>,
+}
+
 // @Note the design of the diagnostic system is still not set.
 // one big question: subdiagnostics: when, how?
-pub struct Diagnostic {
+struct InnerDiagnostic {
     level: Level,
     message: CowStr,
     code: Option<Code>,
@@ -20,15 +26,17 @@ const SPACE: &str = " ";
 impl Diagnostic {
     pub fn new(level: Level, code: impl Into<Option<Code>>, message: impl Into<CowStr>) -> Self {
         Self {
-            level,
-            code: code.into(),
-            message: message.into(),
-            spans: Vec::new(),
+            inner: Box::new(InnerDiagnostic {
+                level,
+                code: code.into(),
+                message: message.into(),
+                spans: Vec::new(),
+            }),
         }
     }
 
     pub fn with_span(mut self, span: Span) -> Self {
-        self.spans.push(EnrichedSpan {
+        self.inner.spans.push(EnrichedSpan {
             span,
             label: None,
             role: self.choose_role(),
@@ -37,7 +45,7 @@ impl Diagnostic {
     }
 
     pub fn with_labeled_span(mut self, span: Span, label: impl Into<CowStr>) -> Self {
-        self.spans.push(EnrichedSpan {
+        self.inner.spans.push(EnrichedSpan {
             span,
             label: Some(label.into()),
             role: self.choose_role(),
@@ -46,7 +54,7 @@ impl Diagnostic {
     }
 
     fn choose_role(&self) -> Role {
-        if self.spans.is_empty() {
+        if self.inner.spans.is_empty() {
             Role::Primary
         } else {
             Role::Secondary
@@ -71,17 +79,23 @@ impl Diagnostic {
     fn display(&mut self, map: Option<&SourceMap>) -> String {
         let header = format!(
             "{:#}{}: {}",
-            self.level,
-            self.code
-                .map(|code| format!("[{:?}]", code).color(self.level.color()))
+            self.inner.level,
+            self.inner
+                .code
+                .map(|code| format!("[{:?}]", code).color(self.inner.level.color()))
                 .unwrap_or_default(),
-            self.message.bright_white().bold()
+            self.inner.message.bright_white().bold()
         );
-        self.spans.sort_unstable_by_key(|span| span.span);
+        self.inner.spans.sort_unstable_by_key(|span| span.span);
 
         let mut message = header;
 
-        if let Some(span) = self.spans.iter().find(|span| span.role == Role::Primary) {
+        if let Some(span) = self
+            .inner
+            .spans
+            .iter()
+            .find(|span| span.role == Role::Primary)
+        {
             let map = map.unwrap();
             let lines = map.resolve_span(span.span);
             let line_number = lines.first.number.to_string();
@@ -99,7 +113,7 @@ impl Diagnostic {
             let primary_span = span;
             let mut primary_lines = Some(lines);
 
-            for span in &self.spans {
+            for span in &self.inner.spans {
                 message.push_str(&self.display_preview(
                     if span == primary_span {
                         primary_lines.take().unwrap()
@@ -130,12 +144,12 @@ impl Diagnostic {
                 .role
                 .symbol()
                 .repeat(highlight.end() + 1 - highlight.start())
-                .color(span.role.color(self.level.color()))
+                .color(span.role.color(self.inner.level.color()))
                 .bold(),
             label = span
                 .label
                 .as_ref()
-                .map(|label| label.color(span.role.color(self.level.color())))
+                .map(|label| label.color(span.role.color(self.inner.level.color())))
                 .unwrap_or_default(),
             bar = "|".bright_blue().bold()
         )
@@ -240,6 +254,10 @@ pub enum Code {
     E011,
     /// Definitionless declaration.
     E012,
+    /// Illegal attribute target.
+    E013,
+    /// Mutually exclusive attributes.
+    E014,
     /// Duplicate definitions.
     E020,
     /// Undefined binding.

@@ -1,5 +1,7 @@
 //! The desugaring stage.
 //!
+//! Additionally, this phase validates attributes.
+//!
 //! ## Issues
 //!
 //! * and information concerning modules
@@ -9,10 +11,9 @@
 use std::{iter::once, rc::Rc};
 
 use crate::{
-    diagnostic::{Code, Diagnostic, Level, Result},
-    hir::{self, expr},
+    diagnostic::{Code, Diagnostic, Diagnostics, Level, Result},
+    hir::{self, decl, expr},
     parser::{self, AttributeKind, Explicitness, Identifier},
-    span::Span,
 };
 
 // @Note later: Path/Vec<Segment>
@@ -24,7 +25,7 @@ impl parser::Declaration {
     /// Also, filters documentation attributes and validates
     /// foreign attributes. Those checks should probably be moved somewhere
     /// else.
-    pub fn desugar(mut self) -> Result<hir::Declaration<Identifier>> {
+    pub fn desugar(mut self) -> Result<hir::Declaration<Identifier>, Diagnostics> {
         use parser::DeclarationKind::*;
 
         self.validate_attributes()?;
@@ -46,7 +47,7 @@ impl parser::Declaration {
                                     Some(parameter_group.type_annotation.clone().desugar());
                                 for binder in parameter_group.parameters.iter().rev() {
                                     expression = expr! {
-                                        Lambda[Span::dummy()] {
+                                        Lambda[] {
                                             parameter: binder.clone(),
                                             parameter_type_annotation: parameter.clone(),
                                             explicitness: parameter_group.explicitness,
@@ -62,22 +63,19 @@ impl parser::Declaration {
                     None => None,
                 };
 
-                hir::Declaration {
-                    span: self.span,
-                    kind: hir::DeclarationKind::Value(Box::new(hir::Value {
+                decl! {
+                    Value[self.span][self.attributes] {
                         binder: declaration.binder,
                         type_annotation: desugar_annotated_parameters(
                             declaration.parameters,
                             declaration.type_annotation,
                         ),
                         expression,
-                    })),
-                    attributes: self.attributes,
+                    }
                 }
             }
-            Data(data) => hir::Declaration {
-                span: self.span,
-                kind: hir::DeclarationKind::Data(Box::new(hir::Data {
+            Data(data) => decl! {
+                Data[self.span][self.attributes] {
                     binder: data.binder,
                     type_annotation: desugar_annotated_parameters(
                         data.parameters,
@@ -86,90 +84,98 @@ impl parser::Declaration {
                     constructors: data.constructors.map(|constructors| {
                         constructors
                             .into_iter()
-                            .map(parser::Constructor::desugar)
+                            .map(parser::Declaration::desugar)
                             .collect()
-                    }),
-                })),
-                attributes: self.attributes,
+                    }).transpose()?,
+                }
+            },
+            Constructor(constructor) => decl! {
+                Constructor[self.span][self.attributes] {
+                    binder: constructor.binder,
+                    type_annotation: desugar_annotated_parameters(constructor.parameters, constructor.type_annotation),
+                }
             },
             // @Task cumulate non-fatal errors (there are none here yet, thus it's not acute)
-            Module(module) => hir::Declaration {
-                span: self.span,
-                kind: hir::DeclarationKind::Module(Box::new(hir::Module {
+            Module(module) => decl! {
+                Module[self.span][self.attributes] {
                     declarations: module
                         .declarations
                         .into_iter()
                         .map(parser::Declaration::desugar)
                         .collect::<Result<_, _>>()?,
-                })),
-                attributes: self.attributes,
+                }
             },
             Use => todo!(),
         })
     }
 
-    // @Task validate that attributes are unique (e.g. there aren't multiple `_foreign_`s)
-    // @Task use a more principled approach
-    // @Task ensure `_foreign_` is not used on Module and Use (check against `target` (not yet
-    // defined))
-    fn validate_attributes(&mut self) -> Result<()> {
+    // @Task validate that attributes are unique (using Attribute::unique)
+    fn validate_attributes(&mut self) -> Result<(), Diagnostics> {
         use parser::DeclarationKind::*;
 
+        let nonconforming = self.attributes.nonconforming(self.as_attribute_target());
+
+        if !nonconforming.is_empty() {
+            return Err(nonconforming
+                .into_iter()
+                .map(|attribute| {
+                    let message = format!(
+                        "{} cannot be ascribed to a {} declaration",
+                        attribute.kind,
+                        self.kind_as_str()
+                    );
+                    Diagnostic::new(Level::Fatal, Code::E013, message)
+                        .with_labeled_span(attribute.span, "misplaced attribute")
+                        .with_labeled_span(self.span, "incompatible declaration")
+                })
+                .collect());
+        }
+
+        // not further used, unless in documenting mode (which is unimplemented)
         self.attributes
             .retain(|attribute| !matches!(attribute.kind, AttributeKind::Documentation));
 
-        let (bodiless, foreign) = match &self.kind {
-            Value(value) => (
-                value.expression.is_none(),
-                self.attributes.has(AttributeKind::Foreign),
-            ),
-            Data(data) => (
-                data.constructors.is_none(),
-                self.attributes.has(AttributeKind::Foreign),
-            ),
-            _ => (false, false),
+        let foreign = self.attributes.get(AttributeKind::Foreign);
+        let inherent = self.attributes.get(AttributeKind::Inherent);
+
+        if let (Some(foreign), Some(inherent)) = (foreign, inherent) {
+            use std::cmp::{max, min};
+
+            return Err(vec![Diagnostic::new(
+                Level::Fatal,
+                Code::E014,
+                "attributes `foreign` and `inherent` are mutually exclusive",
+            )
+            .with_span(max(foreign.span, inherent.span))
+            .with_span(min(foreign.span, inherent.span))]);
+        }
+
+        let abnormally_bodiless = match &self.kind {
+            Value(value) => value.expression.is_none(),
+            Data(data) => data.constructors.is_none(),
+            _ => false,
         };
 
-        match (bodiless, foreign) {
-            (true, false) => {
-                Err(
-                    Diagnostic::new(Level::Fatal, Code::E012, "declaration without a definition")
-                        .with_span(self.span),
-                )
-            }
+        match (abnormally_bodiless, foreign.is_some()) {
+            (true, false) => Err(vec![Diagnostic::new(
+                Level::Fatal,
+                Code::E012,
+                "declaration without a definition",
+            )
+            .with_span(self.span)]),
             (false, true) => {
                 // @Task make non-fatal, @Task improve message
                 // @Task add subdiagonstic note: foreign is one definition and
                 // explicit body is another
-                Err(Diagnostic::new(
+                Err(vec![Diagnostic::new(
                     Level::Fatal,
                     Code::E020,
                     "declaration has multiple definitions",
                 )
-                .with_labeled_span(self.span, "is foreign and has a body"))
+                .with_labeled_span(self.span, "is foreign and has a body")])
             }
             (true, true) | (false, false) => Ok(()),
         }
-    }
-}
-
-impl parser::Constructor {
-    /// Desugar a constructor from AST.
-    fn desugar(mut self) -> hir::Constructor<Identifier> {
-        self.validate_attributes();
-
-        hir::Constructor {
-            binder: self.binder,
-            type_annotation: desugar_annotated_parameters(self.parameters, self.type_annotation),
-            span: self.span,
-            attributes: self.attributes,
-        }
-    }
-
-    // @Task ensure uniqueness and that the target matches (e.g. disallow `_foreign_` here)
-    fn validate_attributes(&mut self) {
-        self.attributes
-            .retain(|attribute| !matches!(attribute.kind, AttributeKind::Documentation));
     }
 }
 
@@ -226,7 +232,7 @@ impl parser::Expression {
 
                     for binder in parameter_group.parameters.iter().rev() {
                         expression = expr! {
-                            Lambda[Span::dummy()] {
+                            Lambda[] {
                                 parameter: binder.clone(),
                                 parameter_type_annotation: parameter.clone(),
                                 explicitness: parameter_group.explicitness,
@@ -253,7 +259,7 @@ impl parser::Expression {
                         .map(parser::Expression::desugar);
                     for binder in parameter_group.parameters.iter().rev() {
                         expression = expr! {
-                            Lambda[Span::dummy()] {
+                            Lambda[] {
                                 parameter: binder.clone(),
                                 parameter_type_annotation: parameter.clone(),
                                 explicitness: parameter_group.explicitness,
@@ -265,9 +271,9 @@ impl parser::Expression {
                 }
 
                 expr! {
-                    Application[Span::dummy()] {
+                    Application[] {
                         callee: expr! {
-                            Lambda[Span::dummy()] {
+                            Lambda[] {
                                 parameter: let_in.binder,
                                 // @Note we cannot simply desugar parameters and a type annotation because
                                 // in the chain (`->`) of parameters, there might always be one missing and
@@ -356,7 +362,7 @@ fn desugar_annotated_parameters(
 
         for binder in parameter_group.parameters.iter().rev() {
             expression = expr! {
-                PiType[Span::dummy()] {
+                PiType[] {
                     parameter: Some(binder.clone()),
                     domain: parameter.clone(),
                     codomain: expression,

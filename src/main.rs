@@ -46,7 +46,7 @@ fn main() {
 
         let node = Parser::new(&tokens).parse_file_module_no_header()?;
 
-        let node = node.desugar()?;
+        let node = handle_multiple_errors(&map, node.desugar())?;
         // eprintln!("{}", &node);
 
         let node =

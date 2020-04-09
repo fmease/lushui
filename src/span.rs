@@ -7,7 +7,7 @@ pub struct ByteIndex {
 }
 
 impl ByteIndex {
-    pub fn new(index: u32) -> Self {
+    pub const fn new(index: u32) -> Self {
         ByteIndex { value: index }
     }
 
@@ -110,6 +110,12 @@ pub struct Span {
 }
 
 impl Span {
+    // @Bug may actually be a valid span, @Note solution: let source files start at index 1
+    pub const DUMMY: Self = Self {
+        start: ByteIndex::new(0),
+        end: ByteIndex::new(0),
+    };
+
     pub fn new(start: ByteIndex, end: ByteIndex) -> Self {
         debug_assert!(start <= end);
 
@@ -121,10 +127,6 @@ impl Span {
             ByteIndex::from_local(source, span.start),
             ByteIndex::from_local(source, span.end),
         )
-    }
-
-    pub fn dummy() -> Self {
-        Self::new(ByteIndex::new(0), ByteIndex::new(0))
     }
 
     pub fn contains_index(self, index: ByteIndex) -> bool {

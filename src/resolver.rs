@@ -84,28 +84,7 @@ impl Declaration<parser::Identifier> {
                 let constructors = data.constructors.map(|constructors| {
                     constructors
                         .into_iter()
-                        .map(|constructor| {
-                            let constructor_binder = scope
-                                .insert_binding(constructor.binder)
-                                .map_err(|error| vec![error]);
-
-                            let type_annotation = constructor
-                                .type_annotation
-                                .resolve(&FunctionScope::Module(scope))
-                                .map_err(|error| vec![error]);
-
-                            let span = constructor.span;
-                            let attributes = constructor.attributes;
-
-                            (constructor_binder, type_annotation).handle(
-                                |constructor_binder, type_annotation| Constructor {
-                                    binder: constructor_binder,
-                                    span,
-                                    type_annotation,
-                                    attributes,
-                                },
-                            )
-                        })
+                        .map(|constructor| constructor.resolve(scope))
                         .collect()
                 });
 
@@ -113,16 +92,38 @@ impl Declaration<parser::Identifier> {
                 let attributes = self.attributes;
 
                 (data_binder, type_annotation, constructors.transpose()).handle(
-                    |data_binder, type_annotation, constructors| Declaration {
-                        kind: DeclarationKind::Data(Box::new(hir::Data {
-                            binder: data_binder,
-                            constructors,
-                            type_annotation,
-                        })),
-                        span,
-                        attributes,
+                    |data_binder, type_annotation, constructors| {
+                        decl! {
+                            Data[span][attributes] {
+                                binder: data_binder,
+                                constructors,
+                                type_annotation,
+                            }
+                        }
                     },
                 )
+            }
+            Constructor(constructor) => {
+                let binder = scope
+                    .insert_binding(constructor.binder)
+                    .map_err(|error| vec![error]);
+
+                let type_annotation = constructor
+                    .type_annotation
+                    .resolve(&FunctionScope::Module(scope))
+                    .map_err(|error| vec![error]);
+
+                let span = self.span;
+                let attributes = self.attributes;
+
+                (binder, type_annotation).handle(|binder, type_annotation| {
+                    decl! {
+                        Constructor[span][attributes] {
+                            binder,
+                            type_annotation,
+                        }
+                    }
+                })
             }
             Module(module) => {
                 let declarations = module
@@ -132,10 +133,10 @@ impl Declaration<parser::Identifier> {
                     .collect::<Vec<_>>()
                     .transpose()?;
 
-                Ok(Declaration {
-                    kind: DeclarationKind::Module(Box::new(hir::Module { declarations })),
-                    span: self.span,
-                    attributes: self.attributes,
+                Ok(decl! {
+                    Module[self.span][self.attributes] {
+                        declarations,
+                    }
                 })
             }
             Use => todo!("resolving use declaration"),

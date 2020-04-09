@@ -4,8 +4,6 @@
 //! (with type-checking).
 //!
 
-// @Task we need a more principled approach for attributes (explicit validator phases)
-
 #![feature(decl_macro, move_ref_pattern)]
 #![forbid(rust_2018_idioms, unused_must_use)]
 

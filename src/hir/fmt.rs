@@ -40,6 +40,9 @@ impl<B: Binder> Display for Declaration<B> {
                     declaration.binder, declaration.type_annotation
                 ),
             },
+            Constructor(constructor) => {
+                write!(f, "{}: {}", constructor.binder, constructor.type_annotation)
+            }
             Module(declaration) => {
                 f.write_str("module =\n")?;
                 for declaration in &declaration.declarations {
@@ -49,12 +52,6 @@ impl<B: Binder> Display for Declaration<B> {
             }
             Use => todo!(),
         }
-    }
-}
-
-impl<B: Binder> Display for Constructor<B> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}: {}", self.binder, self.type_annotation)
     }
 }
 

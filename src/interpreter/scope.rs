@@ -14,7 +14,6 @@ use crate::{
     diagnostic::{Code, Diagnostic, Level, Result},
     hir::expr,
     resolver::{DebruijnIndex, Identifier, Index, ModuleIndex},
-    span::Span,
 };
 
 /// The scope of bindings inside of a module.
@@ -267,7 +266,7 @@ impl ModuleScope {
     ) -> Result<Expression> {
         match self.foreign_data.get(binder) {
             Some(Some(binder)) => Ok(expr! {
-                Binding[Span::dummy()] {
+                Binding[] {
                     binder: binder.clone(),
                 }
             }),
@@ -434,7 +433,7 @@ impl<'a> FunctionScope<'a> {
                 FunctionScope::Function { parent, r#type } => {
                     if depth == index.value {
                         expr! {
-                            Substitution[crate::span::Span::dummy()] {
+                            Substitution[] {
                                 substitution: Shift(depth + 1),
                                 expression: r#type.clone(),
                             }
