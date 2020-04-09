@@ -1,10 +1,6 @@
 # Lushui Programming Language
 
-<p align="center">
-    <img src="misc/logo.svg" alt="lushui" width="250" height="250" />
-</p>
-
----
+<img src="misc/logo.svg" alt="lushui" width="150" height="150" />
 
 **露水 (lushui)**: _ephemeral, transient, of short duration_.
 
