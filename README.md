@@ -6,4 +6,6 @@
 
 ---
 
+**露水 (lushui)**: _ephemeral, transient, of short duration_.
+
 Reference compiler of the Lushui Programming Language.
