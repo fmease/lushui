@@ -36,10 +36,11 @@ pub struct ModuleScope {
     // @Note very ad-hoc solution, does not scale to modules
     // @Question merge the two?
     // `ForeignEntity`
-    foreign_types: HashMap<&'static str, Option<Identifier>>,
+    pub foreign_types: HashMap<&'static str, Option<Identifier>>,
     // @Temporary types (above and below, … they are not descriptive)
     foreign_bindings: HashMap<&'static str, (usize, ffi::ForeignFunction)>,
-    pub inherent: InherentMap,
+    pub inherent_values: ffi::InherentValueMap,
+    pub inherent_types: ffi::InherentTypeMap,
 }
 
 /// Many methods of module scope panic instead of returning a `Result` because
@@ -90,7 +91,6 @@ impl ModuleScope {
     /// ## Panics
     ///
     /// Panics if `binder` is either not bound or not foreign.
-    // @Beacon @Beacon @Bug: pretty buggy: replace with a better concept, maybe
     // @Task correctly handle
     // * pure vs impure
     // * polymorphism
@@ -110,16 +110,14 @@ impl ModuleScope {
 
                 // @Task tidy up with iterator combinators
                 for argument in arguments {
-                    if let Some(argument) =
-                        ffi::Value::try_from_expression(argument, &self.inherent)?
-                    {
+                    if let Some(argument) = ffi::Value::from_expression(&argument, self) {
                         value_arguments.push(argument);
                     } else {
                         return Ok(None);
                     }
                 }
 
-                Some(function(value_arguments).try_into_expression(&self.inherent)?)
+                Some(function(value_arguments).into_expression(self)?)
             } else {
                 None
             }),
@@ -270,10 +268,13 @@ impl ModuleScope {
     }
 
     // @Note does not scale to modules
+    // @Task don't take expression as an argument to get access to span information.
+    // rather, return a custom error type, so that the caller can append the label
+    // @Temporary signature
     pub fn lookup_foreign_type(
         &self,
         binder: &'static str,
-        expression: Expression,
+        expression: Option<Expression>,
     ) -> Result<Expression> {
         match self.foreign_types.get(binder) {
             Some(Some(binder)) => Ok(expr! {
@@ -282,12 +283,19 @@ impl ModuleScope {
                 }
             }),
             // @Task better message
-            Some(None) => Err(Diagnostic::new(
-                Level::Fatal,
-                Code::E061,
-                format!("the foreign type `{}` has not been declared", binder,),
-            )
-            .with_labeled_span(expression.span, "the type of this expression")),
+            Some(None) => {
+                let diagnostic = Diagnostic::new(
+                    Level::Fatal,
+                    Code::E061,
+                    format!("the foreign type `{}` has not been declared", binder),
+                );
+                Err(match expression {
+                    Some(expression) => {
+                        diagnostic.with_labeled_span(expression.span, "the type of this expression")
+                    }
+                    None => diagnostic,
+                })
+            }
             None => unreachable!(),
         }
     }
@@ -301,16 +309,6 @@ impl fmt::Debug for ModuleScope {
         }
         Ok(())
     }
-}
-
-// @Task better representation: group by type
-#[derive(Default)]
-pub struct InherentMap {
-    pub unit: Option<Identifier>,
-    pub r#false: Option<Identifier>,
-    pub r#true: Option<Identifier>,
-    pub none: Option<Identifier>,
-    pub some: Option<Identifier>,
 }
 
 // @Task find out if we can get rid of this type by letting `ModuleScope::lookup_value` resolve to the Binder

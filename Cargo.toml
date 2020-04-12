@@ -9,6 +9,7 @@ publish = false
 colored = "1.9.1"
 string_cache = "0.8.0"
 num-bigint = "0.2.5"
+num-traits = "0.2.11"
 # freestanding = { git = "https://github.com/fmease/freestanding.git", tag = "v0.1.0" }
 freestanding = { path = "/home/fmease/coding/side_projects/freestanding" }
 smallvec = "1.2.0"

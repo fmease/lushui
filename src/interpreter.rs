@@ -36,24 +36,6 @@ pub use scope::ModuleScope;
 type Declaration = hir::Declaration<Identifier>;
 type Expression = hir::Expression<Identifier>;
 
-/// Names of important (foreign or inherent) types.
-mod type_names {
-    pub const UNIT: &str = "Unit";
-    pub const BOOL: &str = "Bool";
-    pub const NAT: &str = "Nat";
-    pub const TEXT: &str = "Text";
-    pub const OPTION: &str = "Option";
-}
-
-/// Names of important (inherent) values.
-mod value_names {
-    pub const UNIT: &str = "'Unit";
-    pub const FALSE: &str = "False";
-    pub const TRUE: &str = "True";
-    pub const NONE: &str = "None";
-    pub const SOME: &str = "Some";
-}
-
 fn missing_annotation() -> Diagnostic {
     // @Task add span
     Diagnostic::new(
@@ -152,12 +134,9 @@ impl Declaration {
                         );
                     }
 
-                    // @Question verify types?
-                    // @Question move to crate::resolver?
-                    // @Task use variable instead of complex check to check for duplicate definitions
-                    // (which is also buggy if there are no constructors at all)
+                    // @Task move into ffi module @Beacon @Beacon
                     if let Some(inherent) = self.attributes.get(AttributeKind::Inherent) {
-                        // @Task link to previous definitio
+                        // @Task link to previous definition
                         let duplicate = || {
                             Diagnostic::new(
                                 Level::Fatal,
@@ -178,30 +157,31 @@ impl Declaration {
                         };
 
                         match &*data.binder.source.atom {
-                            type_names::UNIT => {
-                                if scope.inherent.unit.is_some() {
+                            ffi::Type::UNIT => {
+                                if scope.inherent_types.unit.is_some() {
                                     return Err(duplicate());
                                 }
 
-                                find(value_names::UNIT, &mut scope.inherent.unit);
+                                scope.inherent_types.unit = Some(data.binder.clone().dummified());
+                                find(ffi::Value::UNIT, &mut scope.inherent_values.unit);
                             }
-                            type_names::BOOL => {
-                                if scope.inherent.r#false.is_some()
-                                    || scope.inherent.r#true.is_some()
-                                {
+                            ffi::Type::BOOL => {
+                                if scope.inherent_types.bool.is_some() {
                                     return Err(duplicate());
                                 }
 
-                                find(value_names::FALSE, &mut scope.inherent.r#false);
-                                find(value_names::TRUE, &mut scope.inherent.r#true);
+                                scope.inherent_types.bool = Some(data.binder.clone().dummified());
+                                find(ffi::Value::FALSE, &mut scope.inherent_values.r#false);
+                                find(ffi::Value::TRUE, &mut scope.inherent_values.r#true);
                             }
-                            type_names::OPTION => {
-                                if scope.inherent.none.is_some() || scope.inherent.some.is_some() {
+                            ffi::Type::OPTION => {
+                                if scope.inherent_types.option.is_some() {
                                     return Err(duplicate());
                                 }
 
-                                find(value_names::NONE, &mut scope.inherent.none);
-                                find(value_names::SOME, &mut scope.inherent.some);
+                                scope.inherent_types.option = Some(data.binder.clone().dummified());
+                                find(ffi::Value::NONE, &mut scope.inherent_values.none);
+                                find(ffi::Value::SOME, &mut scope.inherent_values.some);
                             }
                             _ => {
                                 return Err(Diagnostic::new(
@@ -395,8 +375,12 @@ impl Expression {
         Ok(match self.kind {
             Binding(binding) => scope.lookup_type(&binding.binder),
             Type => TYPE,
-            Nat(_) => scope.module().lookup_foreign_type(type_names::NAT, self)?,
-            Text(_) => scope.module().lookup_foreign_type(type_names::TEXT, self)?,
+            Nat(_) => scope
+                .module()
+                .lookup_foreign_type(ffi::Type::NAT, Some(self))?,
+            Text(_) => scope
+                .module()
+                .lookup_foreign_type(ffi::Type::TEXT, Some(self))?,
             PiType(literal) => {
                 // ensure domain and codomain are are well-typed
                 // @Question why do we need to this? shouldn't this be already handled if

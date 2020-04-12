@@ -1,14 +1,41 @@
 # Imminent Tasks
 
-3. rewrite FFI logic using middleware/abstractions
-  * dedicated `enum ffi::Value` e.g. containing `Bool(bool)` or `Nat(crate::Nat)`
-  * middleware looks for a `Bool` declaration marked with the attribute `language` and
-    reports a compiletime/runtime error if a foreign function returns a bool but it has not
-    been registered
-5. add effect infrastructure
-7. work on case analysis
-8. work on order-independence and recursion
-10. modules
+* rewrite FFI logic using middleware/abstractions
+* add effect infrastructure
+  * add foreign data type `Effect: Type -> Type` with foreign bindings `pure-effect`,
+    `bind-effect`, `read-line` and `print-line`
+  * recognize `main: Effect Unit`
+  * define effect runner
+  * have effect identifiers
+* work on case analysis
+  * port to debruijn
+  * the rest
+* work on order-independence and recursion
+* modules
+* advanced type inference
+
+## Smaller
+
+* span information for type errors (very likely needs a second error type)
+* implement `Option` as inherent type, add `substract: Nat -> Nat -> Option Nat` and
+  `divide: Nat -> Nat -> Option Nat`
+* implement polymorphic foreign bindings to allow `panic` again
+* be able to format multi-line spans
+* pretty-print HIR (way fewer parens)
+* refactor HIR's patterns to new system
+* command line arguments
+* pass a context to more and more functions containing command line arguments, source map
+  and stuff
+* fix let/in (parsing)
+* update VS Code grammar
+* fix the ugly functions in the parser which lead to bad error messages
+* finally check what early EOI do to the parser instead of line breaks and the like
+* figure out how to handle multiple errors better
+* count total number of thrown errors in main
+* use program flags to control whether to print tokens, AST, HIR, …
+* test dedentation/indentation-filtering
+* correctly parse any kind of indented expressions
+* parse more possible indentations (eg. after parameter groups)
 
 ## FFI
 

@@ -1,13 +1,3 @@
-
-_inherent_
-data Unit: Type =
-    'Unit: Unit
-
-_inherent_
-data Bool: Type =
-    False: Bool
-    True: Bool
-
 _foreign_
 data Nat: Type
 

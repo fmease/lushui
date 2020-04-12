@@ -53,6 +53,16 @@ pub enum DeclarationKind<B: Binder> {
 
 pub type Expression<B> = Spanned<ExpressionKind<B>>;
 
+impl<B: Binder> Expression<B> {
+    // @Question by value or by reference?
+    pub fn binding(&self) -> Option<&Binding<B>> {
+        match &self.kind {
+            ExpressionKind::Binding(binding) => Some(binding),
+            _ => None,
+        }
+    }
+}
+
 #[freestanding]
 #[streamline(Rc)]
 #[derive(Clone)]

@@ -1,0 +1,23 @@
+_foreign_
+data Nat: Type
+
+_inherent_
+data Option (A: Type): Type =
+    None (A: Type): Option A
+    Some (A: Type): A -> Option A
+
+;; map-option (A B: Type) (f: A -> B) (a: Option A): Option B =
+;;     case a
+;;     of Some A a => Some B (f a)
+;;     of None A => None B
+
+_foreign_
+subtract: Nat -> Nat -> Option Nat
+
+_foreign_
+divide: Nat -> Nat -> Option Nat
+
+alpha: Option Nat = subtract 400 23
+beta: Option Nat = subtract 4 400
+gamma: Option Nat = divide 34 3
+delta: Option Nat = divide 500 0

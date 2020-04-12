@@ -1,4 +1,11 @@
-;; @Note this does not work yet, sadly, it should have already
+_inherent_
+data Unit: Type =
+    'Unit: Unit
+
+_inherent_
+data Bool: Type =
+    False: Bool
+    True: Bool
 
 _foreign_
 data Nat: Type
@@ -6,11 +13,11 @@ data Nat: Type
 _foreign_
 add: Nat -> Nat -> Nat
 
-;; foo: Nat = add 2 1
+foo: Nat = add 2 1
 
 ;; @Bug fails to parse
 ;; main: Nat =
-    ;; let a: Nat = 10 in let b: Nat = 20 in add a b
+;;     let a: Nat = 10 in let b: Nat = 20 in add a b
 
-;; @Bug fails to evaluate
+;; now correctly evaluates
 x: Nat = (\(a: Nat) (b: Nat): Nat => add a b) 10 20
