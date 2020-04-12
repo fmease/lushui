@@ -277,7 +277,7 @@ pub enum Code {
     E033,
     /// Unregistered foreign binding.
     E060,
-    /// Foreign tyüe not declared.
+    /// Foreign type not declared.
     E061,
     /// Invalid inherent type.
     E062,

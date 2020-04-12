@@ -297,7 +297,6 @@ impl Parser<'_> {
     ///
     /// Keyword `data` is already parsed.
     /// The span does not include the trailing line break.
-    // @Task allow empty lines (just line breaks) in constructor list (allows comments)
     pub fn finish_parse_data_declaration(&mut self, span_of_data: Span) -> Result<Declaration> {
         let binder = Identifier::consume(self)?;
         let parameters = self.parse_annotated_parameters()?;
@@ -309,13 +308,18 @@ impl Parser<'_> {
 
                 let mut constructors = Vec::new();
 
-                if self.consumed(TokenKind::Indentation) {
-                    // @Bug produces bad error messages
-                    while let Ok(constructor) = self.reflect(Self::parse_constructor) {
-                        constructors.push(constructor);
+                while self.consumed(TokenKind::Indentation) {
+                    while !self.current(TokenKind::Dedentation) {
+                        if self.consumed(TokenKind::LineBreak) {
+                            continue;
+                        }
+
+                        constructors.push(self.parse_constructor()?);
                     }
-                    // @Question or EOI?
+
                     self.consume(TokenKind::Dedentation)?;
+
+                    while self.consumed(TokenKind::LineBreak) {}
                 }
 
                 let span = constructors

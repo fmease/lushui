@@ -10,7 +10,7 @@
 mod test;
 
 use crate::{
-    diagnostic::{Code, Diagnostic, Level, Result},
+    diagnostic::*,
     smallvec,
     span::{LocalByteIndex, LocalSpan, SourceFile, Span, Spanned},
     Atom, Nat, SmallVec,
@@ -18,8 +18,7 @@ use crate::{
 use std::{
     fmt,
     iter::{repeat, Peekable},
-    str::CharIndices,
-    str::FromStr,
+    str::{CharIndices, FromStr},
 };
 
 pub type Token = Spanned<TokenKind>;
@@ -73,41 +72,49 @@ pub enum TokenKind {
     EndOfInput,
 }
 
+use TokenKind::*;
+
 impl fmt::Display for TokenKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Self::DocumentationComment => "documentation comment",
-            Self::Identifier(identifier) => return write!(f, "identifier `{}`", identifier),
-            Self::Punctuation => "punctuation",
-            Self::NatLiteral(nat) => return write!(f, "text literal `{}`", nat),
-            Self::TextLiteral(text) => return write!(f, "text literal `{:?}`", text),
-            Self::VerticalBar => "vertical bar",
-            Self::Colon => "colon",
-            Self::DoubleColon => "double colon",
-            Self::Equals => "equals sign",
-            Self::Backslash => "backslash",
-            Self::ThinArrow => "thin arrow",
-            Self::WideArrow => "wide arrow",
-            Self::Indentation => "indentation",
-            Self::Dedentation => "dedentation",
-            Self::LineBreak => "line break",
-            Self::OpeningRoundBracket => "opening round bracket",
-            Self::ClosingRoundBracket => "closing round bracket",
-            Self::Underscore => "underscore",
-            Self::As => "keyword `as`",
-            Self::Case => "keyword `case`",
-            Self::Crate => "keyword `crate`",
-            Self::Data => "keyword `data`",
-            Self::In => "keyword `in`",
-            Self::Let => "keyword `let`",
-            Self::Module => "keyword `module`",
-            Self::Of => "keyword `of`",
-            Self::Self_ => "keyword `self`",
-            Self::Super => "keyword `super`",
-            Self::Type => "keyword `Type`",
-            Self::Use => "keyword `use`",
-            Self::EndOfInput => "end of input",
+            DocumentationComment => "documentation comment",
+            Identifier(identifier) => return write!(f, "identifier `{}`", identifier),
+            Punctuation => "punctuation",
+            NatLiteral(nat) => return write!(f, "text literal `{}`", nat),
+            TextLiteral(text) => return write!(f, "text literal `{:?}`", text),
+            VerticalBar => "vertical bar",
+            Colon => "colon",
+            DoubleColon => "double colon",
+            Equals => "equals sign",
+            Backslash => "backslash",
+            ThinArrow => "thin arrow",
+            WideArrow => "wide arrow",
+            Indentation => "indentation",
+            Dedentation => "dedentation",
+            LineBreak => "line break",
+            OpeningRoundBracket => "opening round bracket",
+            ClosingRoundBracket => "closing round bracket",
+            Underscore => "underscore",
+            As => "keyword `as`",
+            Case => "keyword `case`",
+            Crate => "keyword `crate`",
+            Data => "keyword `data`",
+            In => "keyword `in`",
+            Let => "keyword `let`",
+            Module => "keyword `module`",
+            Of => "keyword `of`",
+            Self_ => "keyword `self`",
+            Super => "keyword `super`",
+            Type => "keyword `Type`",
+            Use => "keyword `use`",
+            EndOfInput => "end of input",
         })
+    }
+}
+
+impl fmt::Debug for TokenKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
     }
 }
 
@@ -146,31 +153,31 @@ fn is_identifier_candidate(character: char) -> bool {
 
 fn parse_keyword(source: &str) -> Option<TokenKind> {
     Some(match source {
-        "as" => TokenKind::As,
-        "case" => TokenKind::Case,
-        "crate" => TokenKind::Crate,
-        "data" => TokenKind::Data,
-        "in" => TokenKind::In,
-        "let" => TokenKind::Let,
-        "module" => TokenKind::Module,
-        "of" => TokenKind::Of,
-        "self" => TokenKind::Self_,
-        "super" => TokenKind::Super,
-        "Type" => TokenKind::Type,
-        "use" => TokenKind::Use,
+        "as" => As,
+        "case" => Case,
+        "crate" => Crate,
+        "data" => Data,
+        "in" => In,
+        "let" => Let,
+        "module" => Module,
+        "of" => Of,
+        "self" => Self_,
+        "super" => Super,
+        "Type" => Type,
+        "use" => Use,
         _ => return None,
     })
 }
 
 fn parse_reserved_punctuation(source: &str) -> Option<TokenKind> {
     Some(match source {
-        ":" => TokenKind::Colon,
-        "::" => TokenKind::DoubleColon,
-        "=" => TokenKind::Equals,
-        "|" => TokenKind::VerticalBar,
-        "\\" => TokenKind::Backslash,
-        "->" => TokenKind::ThinArrow,
-        "=>" => TokenKind::WideArrow,
+        ":" => Colon,
+        "::" => DoubleColon,
+        "=" => Equals,
+        "|" => VerticalBar,
+        "\\" => Backslash,
+        "->" => ThinArrow,
+        "=>" => WideArrow,
         _ => return None,
     })
 }
@@ -249,7 +256,7 @@ impl<'a> Lexer<'a> {
             self.indentation_in_spaces,
         );
         self.span = LocalSpan::from(LocalByteIndex::from_usize(self.source.content().len()));
-        self.add(TokenKind::EndOfInput);
+        self.add(EndOfInput);
 
         Ok(self.tokens)
     }
@@ -291,7 +298,7 @@ impl<'a> Lexer<'a> {
         }
 
         if documentation {
-            self.add(TokenKind::DocumentationComment)
+            self.add(DocumentationComment)
         }
     }
 
@@ -315,7 +322,7 @@ impl<'a> Lexer<'a> {
 
         self.add(match parse_keyword(&self.source[self.span]) {
             Some(keyword) => keyword,
-            None => TokenKind::Identifier(Atom::from(&self.source[self.span])),
+            None => Identifier(Atom::from(&self.source[self.span])),
         });
 
         Ok(())
@@ -338,7 +345,7 @@ impl<'a> Lexer<'a> {
         use std::cmp::Ordering::*;
 
         self.advance();
-        self.add(TokenKind::LineBreak);
+        self.add(LineBreak);
 
         self.span = match self.index() {
             Some(index) => LocalSpan::from(index),
@@ -372,7 +379,7 @@ impl<'a> Lexer<'a> {
         }
 
         match change {
-            Greater => self.add(TokenKind::Indentation),
+            Greater => self.add(Indentation),
             Less => self.extend_with_dedentation(self.span.start, absolute_difference),
             Equal => unreachable!(),
         }
@@ -386,9 +393,7 @@ impl<'a> Lexer<'a> {
         self.advance();
         self.take_while(is_punctuation);
 
-        self.add(
-            parse_reserved_punctuation(&self.source[self.span]).unwrap_or(TokenKind::Punctuation),
-        )
+        self.add(parse_reserved_punctuation(&self.source[self.span]).unwrap_or(Punctuation))
     }
 
     // @Task numeric separator `'`
@@ -396,9 +401,7 @@ impl<'a> Lexer<'a> {
         self.advance();
         self.take_while(|character| character.is_ascii_digit());
 
-        self.add(TokenKind::NatLiteral(
-            Nat::from_str(&self.source[self.span]).unwrap(),
-        ));
+        self.add(NatLiteral(Nat::from_str(&self.source[self.span]).unwrap()));
     }
 
     // @Task escape sequences
@@ -424,7 +427,7 @@ impl<'a> Lexer<'a> {
         }
 
         // @Note once we implement escaping, this won't cut it and we need to build our own string
-        self.add(TokenKind::TextLiteral(
+        self.add(TextLiteral(
             self.source[LocalSpan::new(self.span.start + 1, self.span.end - 1)].to_owned(),
         ));
 
@@ -432,13 +435,13 @@ impl<'a> Lexer<'a> {
     }
 
     fn lex_opening_round_bracket(&mut self) {
-        self.add(TokenKind::OpeningRoundBracket);
+        self.add(OpeningRoundBracket);
         self.round_brackets.push(self.span());
         self.advance();
     }
 
     fn lex_closing_round_bracket(&mut self) -> Result<()> {
-        self.add(TokenKind::ClosingRoundBracket);
+        self.add(ClosingRoundBracket);
         if self.round_brackets.is_empty() {
             return Err(
                 Diagnostic::new(Level::Fatal, Code::E001, "unbalanced brackets")
@@ -452,7 +455,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn lex_underscore(&mut self) {
-        self.add(TokenKind::Underscore);
+        self.add(Underscore);
         self.advance();
     }
 
@@ -505,7 +508,7 @@ impl<'a> Lexer<'a> {
 
         // @Task use better span (it should span 4 spaces if possible) @Note you need to go backwards
         self.span = LocalSpan::from(start);
-        let dedentation = Token::new(TokenKind::Dedentation, self.span());
+        let dedentation = Token::new(Dedentation, self.span());
         self.tokens
             .extend(repeat(dedentation).take(amount_of_spaces / INDENTATION_IN_SPACES));
     }

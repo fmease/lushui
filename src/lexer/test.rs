@@ -3,13 +3,6 @@ use super::{
     TokenKind::{self, *},
 };
 use crate::span::{ByteIndex, Span};
-use std::fmt;
-
-impl fmt::Debug for TokenKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self)
-    }
-}
 
 fn lex(source: &'static str) -> Result<Vec<Token>, Diagnostics> {
     use crate::span::{FileName, SourceFile};
@@ -252,7 +245,7 @@ fn lex_other() {
     );
 
     assert_err(lex("(("));
-    assert_err(lex("(()"));
+    assert_err(lex(")))"));
 }
 
 #[test]

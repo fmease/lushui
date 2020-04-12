@@ -1,21 +1,13 @@
-;; Testing out pi-type-related bugs
-
 identity (A: Type) (a: A): A = a
 
 data Void: identity Type Type =
 
-;; @Bug parse error
-;; data Bar: Type =
-;;     ;; Crazy (A: Type): A
-;;     Foo: Bar
-;;     ;; @Bug fails the instance check even though it should pass
-;;     ;; Ban: identity Type Bar
-
-;; @Bug comments don't parse rn, we need to be able to parse empty lines in
-;; constructor lists
-;; data Bar: Type =
-;;     ;; Crazy (A: Type): A
-;;     Foo: Bar
+data Bar: Type =
+    ;; below fails as it should
+    ;; Crazy (A: Type): A
+    Foo: Bar
+    ;; works like a charm
+    Ban: identity Type Bar
 
 _foreign_
 data Nat: Type
