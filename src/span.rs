@@ -97,7 +97,7 @@ pub struct Spanned<K> {
 }
 
 impl<K> Spanned<K> {
-    pub fn new(kind: K, span: Span) -> Self {
+    pub const fn new(kind: K, span: Span) -> Self {
         Self { kind, span }
     }
 }

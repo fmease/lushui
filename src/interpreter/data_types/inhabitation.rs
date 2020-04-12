@@ -36,7 +36,7 @@ impl Expression<Identifier> {
             CaseAnalysis(_case_analysis) => todo!(),
             Nat(_) | Text(_) => unreachable!(),
             Substitution(_) => todo!(),
-            UnsaturatedForeignApplication(_) => todo!(),
+            ForeignApplication(_) => todo!(),
         }
     }
 }

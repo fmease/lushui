@@ -9,7 +9,7 @@ use crate::{
     span::{Span, Spanned},
 };
 use freestanding::freestanding;
-use std::{collections::VecDeque, rc::Rc};
+use std::rc::Rc;
 
 pub trait Binder: std::fmt::Display + Clone {}
 
@@ -20,10 +20,10 @@ pub struct Declaration<B: Binder> {
 }
 
 impl<B: Binder> Declaration<B> {
-    pub fn constructor(&self) -> Option<&Constructor<B>> {
+    pub fn unwrap_constructor(&self) -> &Constructor<B> {
         match &self.kind {
-            DeclarationKind::Constructor(constructor) => Some(&constructor),
-            _ => None,
+            DeclarationKind::Constructor(constructor) => constructor,
+            _ => unreachable!(),
         }
     }
 }
@@ -97,9 +97,9 @@ pub enum ExpressionKind<B: Binder> {
         substitution: crate::interpreter::Substitution,
         expression: Expression<B>,
     },
-    UnsaturatedForeignApplication {
+    ForeignApplication {
         callee: B,
-        arguments: VecDeque<Expression<B>>,
+        arguments: Vec<Expression<B>>,
     },
 }
 

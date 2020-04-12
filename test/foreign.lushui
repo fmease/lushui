@@ -1,6 +1,4 @@
-;; @Update foreign value declarations don't work anymore,
-;; we need to rewrite the FFI logic first
-
+_inherent_
 data Bool: Type =
     False: Bool
     True: Bool

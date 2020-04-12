@@ -6,7 +6,8 @@ data Text: Type
 _foreign_
 data Nat: Type
 
+;; @Note does not work rn
 _foreign_
-panic (|A: Type) (message: Text): A
+panic (A: Type) (message: Text): A
 
 Natural: panic Type "crazy things happening here" = Nat

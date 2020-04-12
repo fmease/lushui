@@ -1,6 +1,6 @@
 //! Formatted printing of the HIR.
 
-use std::fmt::{Display, Formatter, Result};
+use std::fmt::{Debug, Display, Formatter, Result};
 
 use super::*;
 
@@ -100,7 +100,9 @@ impl<B: Binder> Display for Expression<B> {
                 "<substitution {} {}>",
                 substitution.substitution, substitution.expression
             ),
-            UnsaturatedForeignApplication(application) => write!(
+            // @Task make it look like a normal application because this is user-visible in
+            // error messages!!
+            ForeignApplication(application) => write!(
                 f,
                 "<foreign {} {}>",
                 application.callee,
@@ -111,6 +113,12 @@ impl<B: Binder> Display for Expression<B> {
                     .collect::<String>()
             ),
         }
+    }
+}
+
+impl<B: Binder> fmt::Debug for Expression<B> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
     }
 }
 

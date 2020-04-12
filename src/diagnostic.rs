@@ -96,6 +96,11 @@ impl Diagnostic {
             .iter()
             .find(|span| span.role == Role::Primary)
         {
+            // @Temporary
+            if span.span == Span::DUMMY {
+                eprintln!("WARNING: span could be `Span::DUMMY`");
+            }
+
             let map = map.unwrap();
             let lines = map.resolve_span(span.span);
             let line_number = lines.first.number.to_string();
@@ -272,8 +277,12 @@ pub enum Code {
     E033,
     /// Unregistered foreign binding.
     E060,
-    /// Foreign data not declared.
+    /// Foreign tyüe not declared.
     E061,
+    /// Invalid inherent type.
+    E062,
+    /// Inherent type not declared.
+    E063,
     /// Contracted case analysis cases buggy.
     W000,
     /// Implicitness unimplemented.

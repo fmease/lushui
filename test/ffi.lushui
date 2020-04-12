@@ -1,0 +1,36 @@
+
+_inherent_
+data Unit: Type =
+    'Unit: Unit
+
+_inherent_
+data Bool: Type =
+    False: Bool
+    True: Bool
+
+_foreign_
+data Nat: Type
+
+_foreign_
+multiply: Nat -> Nat -> Nat
+
+result: Nat = multiply 16 4
+
+do-something (x: Nat): Nat = multiply x 2
+
+nat-identity (x: Nat): Nat = x
+
+alpha: Nat = do-something 3000
+beta: Nat = nat-identity 23
+
+;; foo: multiply 2 4 = Nat
+
+_foreign_
+data Text: Type
+
+_foreign_
+concat: Text -> Text -> Text
+
+name: Text = "Jane"
+
+welcome: Text = concat "welcome, " name

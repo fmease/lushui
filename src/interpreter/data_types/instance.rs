@@ -64,7 +64,7 @@ impl Expression<Identifier> {
             | CaseAnalysis(_)
             // @Note not sure
             | Substitution(_)
-            | UnsaturatedForeignApplication(_) => unreachable!(),
+            | ForeignApplication(_) => unreachable!(),
         }
     }
 

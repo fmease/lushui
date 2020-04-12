@@ -18,8 +18,8 @@
 use std::rc::Rc;
 
 use crate::{
-    diagnostic::{Code, Diagnostic, Level, Result},
-    hir::{self, *},
+    diagnostic::*,
+    hir::{decl, expr, Binder, Declaration, DeclarationKind, Expression, ExpressionKind},
     parser,
     support::{handle::*, TransposeExt},
 };
@@ -60,14 +60,14 @@ impl Declaration<parser::Identifier> {
                 let attributes = self.attributes;
 
                 (binder, type_annotation, expression).handle(
-                    |binder, type_annotation, expression| Declaration {
-                        kind: DeclarationKind::Value(Box::new(hir::Value {
-                            binder,
-                            type_annotation,
-                            expression,
-                        })),
-                        span,
-                        attributes,
+                    |binder, type_annotation, expression| {
+                        decl! {
+                            Value[span][attributes] {
+                                binder,
+                                type_annotation,
+                                expression,
+                            }
+                        }
                     },
                 )
             }
@@ -211,7 +211,7 @@ impl Expression<parser::Identifier> {
             },
             UseIn => todo!("resolving use/in"),
             CaseAnalysis(_expression) => todo!("resolving case analysis"),
-            Substitution(_) | UnsaturatedForeignApplication(_) => unreachable!(),
+            Substitution(_) | ForeignApplication(_) => unreachable!(),
         })
     }
 }
@@ -279,6 +279,14 @@ impl Identifier {
         Self {
             source: identifier.source.clone(),
             index: Index::Debruijn(DebruijnIndex { value: 0 }),
+        }
+    }
+
+    // @Task find better name which suggests Span
+    pub fn dummified(self) -> Self {
+        Self {
+            source: self.source.dummified(),
+            ..self
         }
     }
 

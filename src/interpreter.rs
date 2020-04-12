@@ -21,10 +21,11 @@
 // @Beacon @Task order-independence and recursion
 
 mod data_types;
+mod ffi;
 mod scope;
 
 use crate::{
-    diagnostic::{Code, Diagnostic, Level, Result},
+    diagnostic::*,
     hir::{self, *},
     parser::{AttributeKind, Explicitness},
     resolver::Identifier,
@@ -35,8 +36,23 @@ pub use scope::ModuleScope;
 type Declaration = hir::Declaration<Identifier>;
 type Expression = hir::Expression<Identifier>;
 
-const NAT_TYPE_NAME: &str = "Nat";
-const TEXT_TYPE_NAME: &str = "Text";
+/// Names of important (foreign or inherent) types.
+mod type_names {
+    pub const UNIT: &str = "Unit";
+    pub const BOOL: &str = "Bool";
+    pub const NAT: &str = "Nat";
+    pub const TEXT: &str = "Text";
+    pub const OPTION: &str = "Option";
+}
+
+/// Names of important (inherent) values.
+mod value_names {
+    pub const UNIT: &str = "'Unit";
+    pub const FALSE: &str = "False";
+    pub const TRUE: &str = "True";
+    pub const NONE: &str = "None";
+    pub const SOME: &str = "Some";
+}
 
 fn missing_annotation() -> Diagnostic {
     // @Task add span
@@ -67,16 +83,19 @@ impl Declaration {
                         r#type
                     };
 
-                    scope.insert_type_for_foreign_binding(declaration.binder.clone(), r#type)?;
+                    scope.complete_foreign_binding(declaration.binder.clone(), r#type)?;
                 } else {
                     let (r#type, value) = {
                         let scope = FunctionScope::Module(scope);
                         let expression = declaration.expression.clone().unwrap();
-                        let infered_type = expression
+                        declaration.type_annotation.clone().is_a_type(&scope)?;
+                        let infered_type = expression.clone().infer_type(&scope)?;
+                        declaration
+                            .type_annotation
                             .clone()
-                            .matches_type_annotation(declaration.type_annotation.clone(), &scope)?;
-                        let value = expression.clone().evaluate(&scope, Form::WeakHeadNormal)?;
-                        // .evaluate(&scope, Form::Normal)?;
+                            .is_actual(infered_type.clone(), &scope)?;
+                        // let value = expression.clone().evaluate(&scope, Form::WeakHeadNormal)?;
+                        let value = expression.clone().evaluate(&scope, Form::Normal)?;
                         (infered_type, value)
                     };
                     scope.insert_value_binding(declaration.binder.clone(), r#type, value);
@@ -86,8 +105,8 @@ impl Declaration {
                 let r#type = data
                     .type_annotation
                     .clone()
-                    .evaluate(&FunctionScope::Module(scope), Form::WeakHeadNormal)?;
-                // .evaluate(&FunctionScope::Module(scope), Form::Normal)?;
+                    // .evaluate(&FunctionScope::Module(scope), Form::WeakHeadNormal)?;
+                    .evaluate(&FunctionScope::Module(scope), Form::Normal)?;
                 r#type.clone().is_a_type(&FunctionScope::Module(scope))?;
 
                 // @Task diagnostic note: only `Type` can be extended
@@ -95,7 +114,7 @@ impl Declaration {
                 data_types::instance::assert_constructor_is_instance_of_type(
                     data.binder.clone(),
                     r#type.clone(),
-                    expr! { Type[] },
+                    TYPE,
                     scope,
                 )?;
 
@@ -110,13 +129,13 @@ impl Declaration {
                     // @Note this only works if we are able to pass extra parameters,
                     // in our case `data.binder` (for the instance check)
                     for constructor in constructors {
-                        let constructor = constructor.constructor().unwrap();
+                        let constructor = constructor.unwrap_constructor();
 
                         let r#type = constructor
                             .type_annotation
                             .clone()
-                            .evaluate(&FunctionScope::Module(scope), Form::WeakHeadNormal)?;
-                        // .evaluate(&FunctionScope::Module(scope), Form::Normal)?;
+                            // .evaluate(&FunctionScope::Module(scope), Form::WeakHeadNormal)?;
+                            .evaluate(&FunctionScope::Module(scope), Form::Normal)?;
                         r#type.clone().is_a_type(&FunctionScope::Module(scope))?;
 
                         data_types::instance::assert_constructor_is_instance_of_type(
@@ -131,6 +150,69 @@ impl Declaration {
                             r#type.clone(),
                             &data.binder,
                         );
+                    }
+
+                    // @Question verify types?
+                    // @Question move to crate::resolver?
+                    // @Task use variable instead of complex check to check for duplicate definitions
+                    // (which is also buggy if there are no constructors at all)
+                    if let Some(inherent) = self.attributes.get(AttributeKind::Inherent) {
+                        // @Task link to previous definitio
+                        let duplicate = || {
+                            Diagnostic::new(
+                                Level::Fatal,
+                                Code::E020,
+                                format!("`{}` is defined multiple times as inherent", data.binder),
+                            )
+                            .with_span(self.span)
+                        };
+
+                        let find = |value_name, inherent: &mut Option<_>| {
+                            if let Some(constructor) = constructors
+                                .iter()
+                                .map(|constructor| constructor.unwrap_constructor())
+                                .find(|constructor| &constructor.binder.source.atom == value_name)
+                            {
+                                *inherent = Some(constructor.binder.clone().dummified());
+                            }
+                        };
+
+                        match &*data.binder.source.atom {
+                            type_names::UNIT => {
+                                if scope.inherent.unit.is_some() {
+                                    return Err(duplicate());
+                                }
+
+                                find(value_names::UNIT, &mut scope.inherent.unit);
+                            }
+                            type_names::BOOL => {
+                                if scope.inherent.r#false.is_some()
+                                    || scope.inherent.r#true.is_some()
+                                {
+                                    return Err(duplicate());
+                                }
+
+                                find(value_names::FALSE, &mut scope.inherent.r#false);
+                                find(value_names::TRUE, &mut scope.inherent.r#true);
+                            }
+                            type_names::OPTION => {
+                                if scope.inherent.none.is_some() || scope.inherent.some.is_some() {
+                                    return Err(duplicate());
+                                }
+
+                                find(value_names::NONE, &mut scope.inherent.none);
+                                find(value_names::SOME, &mut scope.inherent.some);
+                            }
+                            _ => {
+                                return Err(Diagnostic::new(
+                                    Level::Fatal,
+                                    Code::E062,
+                                    format!("`{}` is not an inherent type", data.binder),
+                                )
+                                .with_span(inherent.span)
+                                .with_labeled_span(self.span, "ascribed to this declaration"))
+                            }
+                        }
                     }
                 }
             }
@@ -158,6 +240,8 @@ pub enum Form {
     Normal,
     WeakHeadNormal,
 }
+
+const TYPE: Expression = expr! { Type[] };
 
 impl Expression {
     fn substitute(self, substitution: Substitution) -> Self {
@@ -289,7 +373,17 @@ impl Expression {
             }
             (CaseAnalysis(_), _) => todo!("substitute case analysis"),
             (UseIn, _) => todo!("substitute use/in"),
-            (UnsaturatedForeignApplication(_), _) => todo!("substitute foreign application"),
+            (ForeignApplication(application), substitution) => expr! {
+                ForeignApplication[self.span] {
+                    callee: application.callee.clone(),
+                    arguments: application.arguments.iter().map(|argument| expr! {
+                        Substitution[argument.span] {
+                            expression: argument.clone(),
+                            substitution: substitution.clone(),
+                        }
+                    }).collect()
+                }
+            },
         }
     }
 
@@ -300,11 +394,9 @@ impl Expression {
 
         Ok(match self.kind {
             Binding(binding) => scope.lookup_type(&binding.binder),
-            Type => {
-                expr! { Type[] }
-            }
-            Nat(_) => scope.module().lookup_foreign_data(NAT_TYPE_NAME, self)?,
-            Text(_) => scope.module().lookup_foreign_data(TEXT_TYPE_NAME, self)?,
+            Type => TYPE,
+            Nat(_) => scope.module().lookup_foreign_type(type_names::NAT, self)?,
+            Text(_) => scope.module().lookup_foreign_type(type_names::TEXT, self)?,
             PiType(literal) => {
                 // ensure domain and codomain are are well-typed
                 // @Question why do we need to this? shouldn't this be already handled if
@@ -320,7 +412,7 @@ impl Expression {
                     literal.codomain.clone().is_a_type(scope)?;
                 }
 
-                expr! { Type[] }
+                TYPE
             }
             Lambda(lambda) => {
                 let parameter_type: Self = lambda
@@ -354,8 +446,8 @@ impl Expression {
                     .callee
                     .clone()
                     .infer_type(scope)?
-                    .evaluate(scope, Form::WeakHeadNormal)?;
-                // .evaluate(scope, Form::Normal)?;
+                    // .evaluate(scope, Form::WeakHeadNormal)?;
+                    .evaluate(scope, Form::Normal)?;
 
                 match &type_of_callee.kind {
                     PiType(pi) => {
@@ -462,14 +554,14 @@ impl Expression {
                 //     expr! {
                 //         PiType[self.span] {
                 //             parameter: Some(parameter.clone()),
-                //             domain: expr! { Type[] },
+                //             domain: TYPE,
                 //             codomain: expr! { Binding[self.span] { binder: parameter } },
                 //             explicitness: Explicitness::Implicit,
                 //         }
                 //     }
                 // })
             }
-            UnsaturatedForeignApplication(_) => todo!(),
+            ForeignApplication(_) => unreachable!(),
         })
     }
 
@@ -481,8 +573,8 @@ impl Expression {
         use self::Substitution::*;
         use ExpressionKind::*;
 
+        // @Bug we currently don't support zero-arity foreign functions
         Ok(match self.clone().kind {
-            // @Task if path refers to a foreign binding AND arity == 0, then resolve the foreign binding
             Binding(binding) => match scope.lookup_value(&binding.binder) {
                 // @Question is this normalization necessary? I mean, yes, we got a new scope,
                 // but the thing in the previous was already normalized (well, it should have been
@@ -493,43 +585,40 @@ impl Expression {
             },
             Application(application) => {
                 let callee = application.callee.clone().evaluate(scope, form)?;
+                let argument = application.argument.clone();
                 match callee.kind {
                     Lambda(lambda) => (expr! {
                         Substitution[] {
-                            // @Note could very well be a module index (the argument)
-                            substitution: Use(Box::new(Shift(0)), application.argument.clone()),
+                            substitution: Use(Box::new(Shift(0)), argument),
                             expression: lambda.body.clone(),
                         }
                     })
                     .evaluate(scope, form)?,
-                    Binding(_) | Application(_) => {
-                        expr! {
-                            Application[self.span] {
-                                // @Question or application.callee (unevaluated)?
-                                callee,
-                                argument: match form {
-                                    Form::Normal => application.argument.clone().evaluate(scope, form)?,
-                                    Form::WeakHeadNormal => application.argument.clone(),
-                                },
-                                explicitness: Explicitness::Explicit,
-                            }
+                    Binding(binding) if scope.is_foreign(&binding.binder) => (expr! {
+                        ForeignApplication[self.span] {
+                            callee: binding.binder.clone(),
+                            arguments: extended(Vec::new(), argument),
+
+                    }})
+                    .evaluate(scope, form)?,
+                    Binding(_) | Application(_) => expr! {
+                        Application[self.span] {
+                            // @Question or application.callee (unevaluated)?
+                            callee,
+                            argument: match form {
+                                Form::Normal => argument.evaluate(scope, form)?,
+                                Form::WeakHeadNormal => argument,
+                            },
+                            explicitness: Explicitness::Explicit,
                         }
-                    }
-                    // @Bug currentky not checked that it does not contain any parameters/is a non-value/is not
-                    // FFI-compatible
-                    // Binding(path) if scope.is_foreign(&binding) => scope
-                    //     .try_apply_foreign_binding(dbg!(&binding), {
-                    //         let mut arguments = VecDeque::with_capacity(1);
-                    //         arguments.push_back(argument);
-                    //         arguments
-                    //     })?,
-                    // UnsaturatedForeignApplication(application) => {
-                    //     scope.try_apply_foreign_binding(&application.callee, {
-                    //         let mut arguments = application.arguments.clone();
-                    //         arguments.push_back(argument);
-                    //         arguments
-                    //     })?
-                    // }
+                    },
+                    ForeignApplication(application) => (expr! {
+                        ForeignApplication[self.span] {
+                            callee: application.callee.clone(),
+                            arguments: extended(application.arguments.clone(), argument),
+                        }
+                    })
+                    .evaluate(scope, form)?,
                     _ => unreachable!(),
                 }
             }
@@ -650,30 +739,37 @@ impl Expression {
                 //     _ => unreachable!(),
                 // }
             }
-            // @Question or should the argument be normalized *again*? (under a possibly new scope?)
-            UnsaturatedForeignApplication(_) => self,
+            ForeignApplication(application) => {
+                let arguments = application
+                    .arguments
+                    .clone()
+                    .into_iter()
+                    .map(|argument| argument.evaluate(scope, form))
+                    .collect::<Result<Vec<_>, _>>()?;
+                scope
+                    .module()
+                    .apply_foreign_binding(application.callee.clone(), arguments.clone())?
+                    .unwrap_or_else(|| {
+                        expr! {
+                            ForeignApplication[self.span] {
+                                callee: application.callee.clone(),
+                                arguments,
+                            }
+                        }
+                    })
+            }
         })
     }
 
     /// Assert that an expression is of type `Type`.
     fn is_a_type(self, scope: &FunctionScope<'_>) -> Result<()> {
         let r#type = self.infer_type(scope)?;
-        (expr! { Type[] }).is_actual(r#type, scope)
+        TYPE.is_actual(r#type, scope)
     }
 
-    /// Infer type of expression and match it with the type annotation.
-    ///
-    /// Returns infered type and for convenience also checks if the supplied type annotation is actually a type.
-    fn matches_type_annotation(
-        self,
-        type_annotation: Self,
-        scope: &FunctionScope<'_>,
-    ) -> Result<Self> {
-        type_annotation.clone().is_a_type(scope)?;
-        let infered_type = self.infer_type(scope)?;
-        type_annotation.is_actual(infered_type.clone(), scope)?;
-
-        Ok(infered_type)
+    // @Question move into its own module?
+    fn _is_ffi_compatible(self) -> bool {
+        todo!() // @Task
     }
 
     /// Assert that two expression are equal under evaluation/normalization.
@@ -683,17 +779,26 @@ impl Expression {
     fn is_actual(self, actual: Self, scope: &FunctionScope<'_>) -> Result<()> {
         // let expected = self.evaluate(scope, Form::WeakHeadNormal)?;
         // let actual = actual.evaluate(scope, Form::WeakHeadNormal)?;
-        let expected = self.evaluate(scope, Form::Normal)?;
+        let expected = self.clone().evaluate(scope, Form::Normal)?;
         let actual = actual.evaluate(scope, Form::Normal)?;
 
         if !expected.clone().equals(actual.clone(), scope)? {
             // @Task improve diagnostic
             // @Task add span information
-            Err(Diagnostic::new(
-                Level::Fatal,
-                Code::E032,
-                format!("expected `{}` got `{}`", expected, actual),
-            ))
+            // @Bug span information are *so* off!!
+            // @Task we need to return a different error type (apart from Diagnostic) to
+            // handle type mismatches without placing wrong spans
+            Err(
+                // Diagnostic::new(Level::Fatal, Code::E032, "mismatched types").with_labeled_span(
+                //     actual.span,
+                //     format!("expected `{}`, got `{}`", self, actual),
+                // ),
+                Diagnostic::new(
+                    Level::Fatal,
+                    Code::E032,
+                    format!("mismatched types. expected `{}`, got `{}`", self, actual),
+                ),
+            )
         } else {
             Ok(())
         }
@@ -723,7 +828,7 @@ impl Expression {
                 pi0.domain.clone().equals(pi1.domain.clone(), scope)?
                     && match (pi0.parameter.clone(), pi1.parameter.clone()) {
                         // @Task @Beacon verify
-                        (Some(_), Some(_parameter1)) => pi0.codomain.clone().equals(
+                        (Some(_), Some(_)) => pi0.codomain.clone().equals(
                             pi1.codomain.clone(),
                             &scope.extend_with_parameter(pi0.domain.clone()),
                         )?,
@@ -761,6 +866,11 @@ impl Expression {
             _ => false,
         })
     }
+}
+
+fn extended<T>(mut vec: Vec<T>, value: T) -> Vec<T> {
+    vec.push(value);
+    vec
 }
 
 #[derive(Clone)]

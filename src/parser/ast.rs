@@ -259,6 +259,14 @@ impl Identifier {
     pub fn new(atom: crate::Atom, span: Span) -> Self {
         Self { atom, span }
     }
+
+    // @Task find better name which suggests Span
+    pub fn dummified(self) -> Self {
+        Self {
+            span: Span::DUMMY,
+            ..self
+        }
+    }
 }
 
 impl PartialEq for Identifier {
