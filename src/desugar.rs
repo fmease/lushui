@@ -8,16 +8,18 @@
 //! * paths are always simple (inherited by parser)
 //! * patterns follow old format (should use the format of the parser)
 
-use std::{iter::once, rc::Rc};
+use std::iter::once;
 
 use crate::{
     diagnostic::{Code, Diagnostic, Diagnostics, Level, Result},
-    hir::{self, decl, expr},
-    parser::{self, AttributeKind, Explicitness, Identifier},
+    hir::{self, decl, expr, pat},
+    parser::{self, AttributeKind, Explicitness, Identifier, Path},
 };
 
-// @Note later: Path/Vec<Segment>
-impl hir::Binder for parser::Identifier {}
+impl hir::Binder for Path {
+    type Simple = Identifier;
+    type Pattern = parser::PathPattern;
+}
 
 impl parser::Declaration {
     /// Desugar a declaration from AST.
@@ -25,7 +27,7 @@ impl parser::Declaration {
     /// Also, filters documentation attributes and validates
     /// foreign attributes. Those checks should probably be moved somewhere
     /// else.
-    pub fn desugar(mut self) -> Result<hir::Declaration<Identifier>, Diagnostics> {
+    pub fn desugar(mut self) -> Result<hir::Declaration<Path>, Diagnostics> {
         use parser::DeclarationKind::*;
 
         self.validate_attributes()?;
@@ -182,7 +184,7 @@ impl parser::Declaration {
 
 impl parser::Expression {
     /// Lower an expression from AST to HIR.
-    pub fn desugar(self) -> hir::Expression<Identifier> {
+    pub fn desugar(self) -> hir::Expression<Path> {
         use parser::ExpressionKind::*;
 
         match self.kind {
@@ -214,7 +216,7 @@ impl parser::Expression {
             },
             Path(path) => expr! {
                 Binding[self.span] {
-                    binder: path.segments,
+                    binder: *path,
                 }
             },
             LambdaLiteral(lambda) => {
@@ -311,7 +313,7 @@ impl parser::Expression {
 
                     for pattern in case_group.patterns {
                         cases.push(hir::Case {
-                            pattern: desugar_pattern(pattern),
+                            pattern: pattern.desugar(),
                             body: case_group.expression.clone().desugar(),
                         });
                     }
@@ -328,26 +330,32 @@ impl parser::Expression {
     }
 }
 
-/// Lower a pattern from AST to HIR.
-///
-/// Currently, [parser::expression::Pattern] and [Pattern] are identical (apart from forgetting span information)!
-fn desugar_pattern(pattern: parser::Pattern) -> hir::Pattern<Identifier> {
-    use parser::PatternKind::*;
+impl parser::Pattern {
+    /// Lower a pattern from AST to HIR.
+    ///
+    /// Currently, [parser::expression::Pattern] and [Pattern] are identical (apart from forgetting span information)!
+    fn desugar(self) -> hir::Pattern<Path> {
+        use parser::PatternKind::*;
 
-    match pattern.kind {
-        NatLiteralPattern(literal) => hir::Pattern::Nat(hir::Nat {
-            value: literal.value,
-        }),
-        PathPattern(path) => hir::Pattern::Binding {
-            binder: hir::Binding {
-                binder: path.segments,
+        match self.kind {
+            NatLiteralPattern(literal) => pat! {
+                NatPattern[self.span] {
+                    value: literal.value,
+                }
             },
-            type_annotation: path.type_annotation.map(parser::Expression::desugar),
-        },
-        ApplicationPattern(application) => hir::Pattern::Application {
-            callee: Rc::new(desugar_pattern(application.callee)),
-            argument: Rc::new(desugar_pattern(application.argument)),
-        },
+            PathPattern(path) => pat! {
+                BindingPattern[self.span] {
+                    binder: path.as_ref().clone(),
+                    type_annotation: path.type_annotation.map(parser::Expression::desugar),
+                }
+            },
+            ApplicationPattern(application) => pat! {
+                ApplicationPattern[self.span] {
+                    callee: application.callee.desugar(),
+                    argument: application.argument.desugar(),
+                }
+            },
+        }
     }
 }
 
@@ -355,7 +363,7 @@ fn desugar_pattern(pattern: parser::Pattern) -> hir::Pattern<Identifier> {
 fn desugar_annotated_parameters(
     parameters: parser::AnnotatedParameters,
     type_annotation: parser::Expression,
-) -> hir::Expression<Identifier> {
+) -> hir::Expression<Path> {
     let mut expression = type_annotation.desugar();
 
     for parameter_group in parameters.into_iter().rev() {

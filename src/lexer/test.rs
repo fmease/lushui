@@ -172,7 +172,7 @@ beta
 #[test]
 fn lex_punctuation() {
     assert_ok_token(
-        lex("+ +>alpha//$~%  @0 : :: :::"),
+        lex("+ +>alpha//$~%  @0 . .."),
         vec![
             token(Punctuation, 0, 0),
             token(Punctuation, 2, 3),
@@ -180,10 +180,9 @@ fn lex_punctuation() {
             token(Punctuation, 9, 13),
             token(Punctuation, 16, 16),
             token(NatLiteral(0u8.into()), 17, 17),
-            token(Colon, 19, 19),
-            token(DoubleColon, 21, 22),
-            token(Punctuation, 24, 26),
-            token(EndOfInput, 27, 27),
+            token(Dot, 19, 19),
+            token(Punctuation, 21, 22),
+            token(EndOfInput, 23, 23),
         ],
     );
 }

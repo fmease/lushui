@@ -29,7 +29,7 @@ use crate::{
 // @Beacon @Beacon @Beacon @Task
 // * order-indepedence
 
-impl Declaration<parser::Identifier> {
+impl Declaration<parser::Path> {
     pub fn resolve(
         self,
         scope: &mut ModuleScope,
@@ -159,7 +159,7 @@ impl Declaration<parser::Identifier> {
 }
 
 // @Task @Beacon use Rc::try_unwrap more instead of clone
-impl Expression<parser::Identifier> {
+impl Expression<parser::Path> {
     pub fn resolve(self, scope: &FunctionScope<'_>) -> Result<Expression<Identifier>> {
         use ExpressionKind::*;
 
@@ -202,11 +202,19 @@ impl Expression<parser::Identifier> {
                         .unwrap_or_else(|text| text.value.clone()),
                 }
             },
-            Binding(binding) => expr! {
-                Binding[self.span] {
-                    binder: scope.lookup_binding(&binding.binder)?,
+            Binding(binding) => {
+                // @Beacon @Beacon @Temporary handling of complex paths: resolve em!!
+                // @Task implement it
+                if binding.binder.head.is_some() || binding.binder.segments.len() != 1 {
+                    panic!("complex paths cannot be handled by the resolver yet");
                 }
-            },
+
+                expr! {
+                    Binding[self.span] {
+                        binder: scope.lookup_binding(&binding.binder.segments[0])?,
+                    }
+                }
+            }
             Lambda(lambda) => expr! {
                 Lambda[self.span] {
                     parameter: Identifier {
@@ -354,7 +362,10 @@ impl fmt::Display for Identifier {
     }
 }
 
-impl Binder for Identifier {}
+impl Binder for Identifier {
+    type Simple = Self;
+    type Pattern = Self;
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Index {

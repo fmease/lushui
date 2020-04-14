@@ -9,9 +9,13 @@ use crate::{
     span::{Span, Spanned},
 };
 use freestanding::freestanding;
-use std::rc::Rc;
+use std::{fmt::Display, rc::Rc};
 
-pub trait Binder: std::fmt::Display + Clone {}
+// @Note this trait is not well designed
+pub trait Binder: Display + Clone {
+    type Simple: Display;
+    type Pattern: Display;
+}
 
 pub struct Declaration<B: Binder> {
     pub kind: DeclarationKind<B>,
@@ -32,21 +36,21 @@ impl<B: Binder> Declaration<B> {
 #[streamline(Box)]
 pub enum DeclarationKind<B: Binder> {
     Value {
-        binder: B,
+        binder: B::Simple,
         type_annotation: Expression<B>,
         expression: Option<Expression<B>>,
     },
     Data {
-        binder: B,
+        binder: B::Simple,
         type_annotation: Expression<B>,
         constructors: Option<Vec<Declaration<B>>>,
     },
     Constructor {
-        binder: B,
+        binder: B::Simple,
         type_annotation: Expression<B>,
     },
     Module {
-        binder: B,
+        binder: B::Simple,
         declarations: Option<Vec<Declaration<B>>>,
     },
     Use,
@@ -69,7 +73,7 @@ impl<B: Binder> Expression<B> {
 #[derive(Clone)]
 pub enum ExpressionKind<B: Binder> {
     PiType {
-        parameter: Option<B>,
+        parameter: Option<B::Simple>,
         domain: Expression<B>,
         codomain: Expression<B>,
         explicitness: Explicitness,
@@ -92,7 +96,7 @@ pub enum ExpressionKind<B: Binder> {
         binder: B,
     },
     Lambda {
-        parameter: B,
+        parameter: B::Simple,
         parameter_type_annotation: Option<Expression<B>>,
         explicitness: Explicitness,
         body_type_annotation: Option<Expression<B>>,
@@ -109,7 +113,7 @@ pub enum ExpressionKind<B: Binder> {
         expression: Expression<B>,
     },
     ForeignApplication {
-        callee: B,
+        callee: B::Simple,
         arguments: Vec<Expression<B>>,
     },
 }
@@ -120,21 +124,38 @@ pub struct Case<B: Binder> {
     pub body: Expression<B>,
 }
 
-// @Task @Beacon @Beacon @Beacon @Beacon transform Pattern like we did in the parser
+pub type Pattern<B> = Spanned<PatternKind<B>>;
+
+#[freestanding]
+#[streamline(Rc)]
 #[derive(Clone)]
-pub enum Pattern<B: Binder> {
-    Nat(Nat),
-    Binding {
-        binder: Binding<B>,
+// @Note naming of variants in unfortunate (necessary because of freestanding
+// and bc we don't use submodules here by design)
+pub enum PatternKind<B: Binder> {
+    #[parameterless]
+    NatPattern { value: crate::Nat },
+    BindingPattern {
+        binder: B::Pattern,
         type_annotation: Option<Expression<B>>,
     },
-    Application {
-        callee: Rc<Pattern<B>>,
-        argument: Rc<Pattern<B>>,
+    ApplicationPattern {
+        callee: Pattern<B>,
+        argument: Pattern<B>,
     },
 }
 
-pub(crate) macro expr {
+pub macro decl($kind:ident[$span:expr][$attrs:expr] { $( $body:tt )+ }) {{
+    let span = $span;
+    let attributes = $attrs;
+
+    Declaration {
+        kind: DeclarationKind::$kind(Box::new(self::$kind { $( $body )+ })),
+        span,
+        attributes,
+    }
+}}
+
+pub macro expr {
     ($kind:ident[$( $span:expr )?] { $( $body:tt )+ }) => {{
         let span = span!($( $span )?);
         Expression::new(
@@ -153,13 +174,10 @@ macro span {
     ($span:expr) => { $span },
 }
 
-pub(crate) macro decl($kind:ident[$span:expr][$attrs:expr] { $( $body:tt )+ }) {{
+pub macro pat($kind:ident[$span:expr] { $( $body:tt )+ }) {{
     let span = $span;
-    let attributes = $attrs;
-
-    Declaration {
-        kind: DeclarationKind::$kind(Box::new(self::$kind { $( $body )+ })),
+    Pattern::new(
+        PatternKind::$kind(Rc::new(self::$kind { $( $body )+ })),
         span,
-        attributes,
-    }
+    )
 }}

@@ -24,15 +24,10 @@ use crate::{
 };
 pub use ast::*;
 
-pub struct Session {
-    file_modules: VecDeque<Identifier>,
-}
-
 pub struct Parser<'input> {
     tokens: &'input [Token],
     index: usize,
-    // @Note used to queue up file modules found in fs-module declarations
-    session: Session,
+    pub queued_file_modules: VecDeque<Identifier>,
 }
 
 impl<'input> Parser<'input> {
@@ -41,9 +36,7 @@ impl<'input> Parser<'input> {
         Self {
             tokens,
             index: 0,
-            session: Session {
-                file_modules: VecDeque::new(),
-            },
+            queued_file_modules: VecDeque::new(),
         }
     }
 }
@@ -367,7 +360,7 @@ impl Parser<'_> {
         let binder = Identifier::consume(self)?;
 
         if self.consumed(TokenKind::LineBreak) {
-            self.session.file_modules.push_back(binder.clone());
+            self.queued_file_modules.push_back(binder.clone());
             return Ok(decl! {
                 Module[span_of_keyword.merge(binder.span)] {
                     binder,
@@ -659,15 +652,48 @@ impl Parser<'_> {
         })
     }
 
-    // Path ::= %identifier%
     fn parse_path(&mut self) -> Result<Expression> {
-        Identifier::consume(self).map(|identifier| {
-            expr! {
-                Path[identifier.span] {
-                    segments: identifier,
-                }
+        let (span, head, segments) = self.parse_path_raw()?;
+        Ok(expr! { Path[span] { head, segments } })
+    }
+
+    // @Note ugly
+    fn parse_path_raw(&mut self) -> Result<(Span, Option<PathHead>, Vec<Identifier>)> {
+        let mut segments = Vec::new();
+
+        let token = self.token();
+        // @Note super ugly handling + data structures
+        let head = match token.kind {
+            TokenKind::Identifier(identifier) => {
+                segments.push(Identifier::new(identifier, token.span));
+                None
             }
-        })
+            TokenKind::Crate => Some(PathHead::new(PathHeadKind::Crate, token.span)),
+            TokenKind::Super => Some(PathHead::new(PathHeadKind::Super, token.span)),
+            // @Task message
+            _ => {
+                return Err(Diagnostic::new(
+                    Level::Fatal,
+                    Code::E010,
+                    format!("expected start of path, found {}", &token.kind),
+                )
+                .with_span(token.span))
+            }
+        };
+        self.advance();
+
+        while self.consumed(TokenKind::Dot) {
+            segments.push(Identifier::consume(self)?);
+        }
+
+        let span = token.span.merge(
+            segments
+                .last()
+                .map(|segment| segment.span)
+                .unwrap_or_else(|| head.as_ref().unwrap().span),
+        );
+
+        Ok((span, head, segments))
     }
 
     /// Finish parsing a lambda literal expression.a
@@ -839,29 +865,34 @@ impl Parser<'_> {
 
     // @Task Lower_Pattern ::= Nat_Literal | "(" Path Type_Annotation? ")" | Path | "(" Pattern ")"
     // @Bug or_else(_) produces bad error messages
+    // @Task use match + custom error message ("expected pattern")
+    // @Note all this ugliness will (hopefully) go away once we improve the
+    // syntax of patterns
+    // @Task be able to parse any bracketed pattern
     fn parse_lower_pattern(&mut self) -> Result<Pattern> {
         self.parse_nat_literal_pattern()
             .or_else(|_| {
-                let (span, identifier, type_annotation) =
+                let (span, (head, segments), type_annotation) =
                     if let Ok(opening_bracket) = self.consume(TokenKind::OpeningRoundBracket) {
-                        let path = Identifier::consume(self)?;
+                        let (_, head, segments) = self.parse_path_raw()?;
                         let type_annotation = self.reflect(Self::parse_type_annotation)?;
                         let span_of_closing_bracket =
                             self.consume(TokenKind::ClosingRoundBracket)?.span;
 
                         (
                             opening_bracket.span.merge(span_of_closing_bracket),
-                            path,
+                            (head, segments),
                             Some(type_annotation),
                         )
                     } else {
-                        let identifier = Identifier::consume(self)?;
-                        (identifier.span, identifier, None)
+                        let (span, head, segments) = self.parse_path_raw()?;
+                        (span, (head, segments), None)
                     };
 
                 Ok(pat! {
                     PathPattern[span] {
-                        segments: identifier,
+                        head,
+                        segments,
                         type_annotation,
                     }
                 })
@@ -939,38 +970,6 @@ impl Parser<'_> {
                 Explicitness::Implicit
             }
             Err(_) => Explicitness::Explicit,
-        }
-    }
-}
-
-macro decl($kind:ident[$span:expr] { $( $body:tt )+ }) {
-    Declaration {
-        span: $span,
-        attributes: Attributes::default(),
-        kind: DeclarationKind::$kind(Box::new($kind { $( $body )+ })),
-    }
-}
-
-macro expr {
-    ($kind:ident[$span:expr] { $( $body:tt )+ }) => {
-        Expression {
-            span: $span,
-            kind: ExpressionKind::$kind(Box::new($kind { $( $body )+ })),
-        }
-    },
-    ($kind:ident[$span:expr]) => {
-        Expression {
-            span: $span,
-            kind: ExpressionKind::$kind,
-        }
-    }
-}
-
-macro pat {
-    ($kind:ident[$span:expr] { $( $body:tt )+ }) => {
-        Pattern {
-            span: $span,
-            kind: PatternKind::$kind(Box::new($kind { $( $body )+ })),
         }
     }
 }

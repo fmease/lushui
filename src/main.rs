@@ -50,7 +50,7 @@ fn main() {
         // @Beacon @Task use parser.session.module_files (better name plz) to load more files
 
         let node = handle_multiple_errors(&map, node.desugar())?;
-        // eprintln!("{}", &node);
+        eprintln!("{}", &node);
 
         let node =
             handle_multiple_errors(&map, node.resolve(&mut resolver::ModuleScope::default()))?;

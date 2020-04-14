@@ -45,8 +45,8 @@ pub enum TokenKind {
     NatLiteral(Nat),
     TextLiteral(String),
     VerticalBar,
+    Dot,
     Colon,
-    DoubleColon,
     Equals,
     Backslash,
     ThinArrow,
@@ -83,8 +83,8 @@ impl fmt::Display for TokenKind {
             NatLiteral(nat) => return write!(f, "text literal `{}`", nat),
             TextLiteral(text) => return write!(f, "text literal `{:?}`", text),
             VerticalBar => "vertical bar",
+            Dot => "dot",
             Colon => "colon",
-            DoubleColon => "double colon",
             Equals => "equals sign",
             Backslash => "backslash",
             ThinArrow => "thin arrow",
@@ -171,8 +171,8 @@ fn parse_keyword(source: &str) -> Option<TokenKind> {
 
 fn parse_reserved_punctuation(source: &str) -> Option<TokenKind> {
     Some(match source {
+        "." => Dot,
         ":" => Colon,
-        "::" => DoubleColon,
         "=" => Equals,
         "|" => VerticalBar,
         "\\" => Backslash,

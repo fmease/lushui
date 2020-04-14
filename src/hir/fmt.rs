@@ -152,16 +152,15 @@ impl<B: Binder> Display for Case<B> {
 
 impl<B: Binder> Display for Pattern<B> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            Pattern::Nat(literal) => write!(f, "{}", literal.value),
-            Pattern::Binding {
-                binder,
-                type_annotation,
-            } => match type_annotation {
-                Some(type_annotation) => write!(f, "({}: {})", binder.binder, type_annotation),
-                None => write!(f, "{}", binder.binder),
+        match &self.kind {
+            PatternKind::NatPattern(literal) => write!(f, "{}", literal.value),
+            PatternKind::BindingPattern(binding) => match &binding.type_annotation {
+                Some(type_annotation) => write!(f, "({}: {})", binding.binder, type_annotation),
+                None => write!(f, "{}", binding.binder),
             },
-            Pattern::Application { callee, argument } => write!(f, "({}) ({})", callee, argument),
+            PatternKind::ApplicationPattern(application) => {
+                write!(f, "({}) ({})", application.callee, application.argument)
+            }
         }
     }
 }

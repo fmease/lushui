@@ -45,7 +45,7 @@
             "__bug__": "`Nat'` still hightlighted as a keyword. Appending `[^']` does not work because of the overlay check (?)",
             "patterns": [
                 {
-                    "match": "\\b(in|of|super)\\b",
+                    "match": "\\b(in|of|super|crate)\\b",
                     "name": "keyword.other.lushui"
                 },
                 {

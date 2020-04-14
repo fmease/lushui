@@ -190,10 +190,9 @@ pub enum ExpressionKind {
     TextLiteral {
         value: String,
     },
-    // @Task make it able to parse complex paths
     Path {
-        // @Task in the future: segments: Vec<Identifier>,
-        segments: Identifier,
+        head: Option<PathHead>,
+        segments: Vec<Identifier>,
     },
     /// The syntax node of a lambda literal expression.
     LambdaLiteral {
@@ -235,6 +234,12 @@ pub struct ParameterGroup {
 pub type Pattern = Spanned<PatternKind>;
 
 // @Task add text literal pattern
+// @Note unfortunately, there is much duplication going on of things from Expression
+// currently, the separation is used for type safety and documentation as we theoretically
+// could use Expression::{NatLiteral, Path, Application}. In fact, there are no pattern-
+// exclusive constructs right now. that might all change, especially if we syntactically
+// differenciate "l-values" from "r-values" in patterns (well, ... type annotation's are
+// exclusive)
 #[freestanding]
 #[streamline(Box)]
 #[derive(Debug, Clone)]
@@ -243,13 +248,25 @@ pub enum PatternKind {
         value: crate::Nat,
     },
     PathPattern {
-        segments: Identifier,
+        head: Option<PathHead>,
+        segments: Vec<Identifier>,
         type_annotation: Option<Expression>,
     },
     ApplicationPattern {
         callee: Pattern,
         argument: Pattern,
     },
+}
+
+pub type PathHead = Spanned<PathHeadKind>;
+
+// @Note this is not well designed at all:
+// so much rigmarole. if we were to use identifiers plus string comparison
+// with `"super"` etc, life would be simpler (but not type-safe i know!!)
+#[derive(Debug, Clone)]
+pub enum PathHeadKind {
+    Crate,
+    Super,
 }
 
 #[derive(Debug, Clone, Eq)]
@@ -290,6 +307,56 @@ impl fmt::Display for Identifier {
     }
 }
 
+// @Note we are required to implement `Display` for `Path` because
+// the `hir::Binder` trait requires it. And we won't change that for now
+// because it makes sense.
+// Nonetheless, I think that we will never print paths via the parser's Path,
+// only ever through ModuleScope methods in crate::resolver
+// Solution: narrow the bound `Display` to functions processing hir::Expression<resolver::Identifier>
+// @Temporary
+impl fmt::Display for Path {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        display_path(&self.head, &self.segments, f)
+    }
+}
+
+impl fmt::Display for PathPattern {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        display_path(&self.head, &self.segments, f)
+    }
+}
+
+// @Temporary sorry. not in the mood for programming right now
+// I will be happier once I figure out how to abstract over all of this
+// nicely
+fn display_path(
+    head: &Option<PathHead>,
+    segments: &[Identifier],
+    f: &mut fmt::Formatter<'_>,
+) -> fmt::Result {
+    let mut segments = segments.iter();
+
+    match head {
+        Some(PathHead {
+            kind: PathHeadKind::Crate,
+            ..
+        }) => f.write_str("crate")?,
+        Some(PathHead {
+            kind: PathHeadKind::Super,
+            ..
+        }) => f.write_str("super")?,
+        None => write!(f, "{}", segments.next().unwrap())?,
+    }
+
+    write!(
+        f,
+        "{}",
+        segments
+            .map(|segment| format!(".{}", segment))
+            .collect::<String>()
+    )
+}
+
 /// The explicitness of a parameter or argument.
 ///
 /// In the context of parameters, this specifies whether in an application, the corresponding argument has
@@ -308,6 +375,38 @@ impl fmt::Display for Explicitness {
         match self {
             Self::Implicit => f.write_str("|"),
             Self::Explicit => f.write_str(""),
+        }
+    }
+}
+
+pub macro decl($kind:ident[$span:expr] { $( $body:tt )+ }) {
+    Declaration {
+        span: $span,
+        attributes: Attributes::default(),
+        kind: DeclarationKind::$kind(Box::new($kind { $( $body )+ })),
+    }
+}
+
+pub macro expr {
+    ($kind:ident[$span:expr] { $( $body:tt )+ }) => {
+        Expression {
+            span: $span,
+            kind: ExpressionKind::$kind(Box::new($kind { $( $body )+ })),
+        }
+    },
+    ($kind:ident[$span:expr]) => {
+        Expression {
+            span: $span,
+            kind: ExpressionKind::$kind,
+        }
+    }
+}
+
+pub macro pat {
+    ($kind:ident[$span:expr] { $( $body:tt )+ }) => {
+        Pattern {
+            span: $span,
+            kind: PatternKind::$kind(Box::new($kind { $( $body )+ })),
         }
     }
 }
