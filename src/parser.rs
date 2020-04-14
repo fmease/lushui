@@ -11,9 +11,7 @@
 
 mod ast;
 
-use freestanding::freestanding;
 use std::collections::VecDeque;
-use std::fmt;
 
 use crate::{
     diagnostic::{Code, Diagnostic, Level},
@@ -64,14 +62,18 @@ impl Parser<'_> {
         if actual.kind == expected {
             Ok(actual)
         } else {
-            Err(Diagnostic::new(
-                Level::Fatal,
-                Code::E010,
-                format!("expected {}, found {}", expected, actual.kind),
-            )
-            .with_span(actual.span))
+            Err(unexpected_token(actual, expected))
         }
     }
+}
+
+fn unexpected_token<T: std::fmt::Display>(actual: Token, expected: T) -> Diagnostic {
+    Diagnostic::new(
+        Level::Fatal,
+        Code::E010,
+        format!("expected {}, found {}", expected, actual.kind),
+    )
+    .with_span(actual.span)
 }
 
 trait Expect {
@@ -93,12 +95,7 @@ impl Expect for Identifier {
         let actual = parser.token();
         match actual.kind {
             TokenKind::Identifier(identifier) => Ok(Identifier::new(identifier, actual.span)),
-            _ => Err(Diagnostic::new(
-                Level::Fatal,
-                Code::E010,
-                format!("expected identifier, found {}", actual.kind),
-            )
-            .with_span(actual.span)),
+            _ => Err(unexpected_token(actual, "identifier")),
         }
     }
 }
@@ -110,29 +107,7 @@ impl Expect for Nat {
         let actual = parser.token();
         match actual.kind {
             TokenKind::NatLiteral(nat) => Ok((nat, actual.span)),
-            _ => Err(Diagnostic::new(
-                Level::Fatal,
-                Code::E010,
-                format!("expected natural number literal, found {}", actual.kind),
-            )
-            .with_span(actual.span)),
-        }
-    }
-}
-
-impl Expect for String {
-    type Output = (Self, Span);
-
-    fn expect(parser: &Parser<'_>) -> Result<Self::Output> {
-        let actual = parser.token();
-        match actual.kind {
-            TokenKind::TextLiteral(text) => Ok((text, actual.span)),
-            _ => Err(Diagnostic::new(
-                Level::Fatal,
-                Code::E010,
-                format!("expected text literal, found {}", actual.kind),
-            )
-            .with_span(actual.span)),
+            _ => Err(unexpected_token(actual, "natural number literal")),
         }
     }
 }
@@ -189,38 +164,33 @@ impl Parser<'_> {
     /// Declaration ::= Value_Declaration | Data_Declaration | Foreign_Declaration
     /// ```
     pub fn parse_declaration(&mut self) -> Result<Declaration> {
+        use TokenKind::*;
+
         let token = self.token();
 
         // @Task transform attribute logic into iterative alogorithm just like we do in
         // `parse_constructor`
         match token.kind {
-            TokenKind::Identifier(identifier) => self.advance_with(
-                Identifier::new(identifier, token.span),
+            Identifier(identifier) => self.advance_with(
+                self::Identifier::new(identifier, token.span),
                 Self::finish_parse_value_declaration,
             ),
-            TokenKind::Data => self.advance_with(token.span, Self::finish_parse_data_declaration),
-            TokenKind::Module => {
-                self.advance_with(token.span, Self::finish_parse_module_declaration)
-            }
-            TokenKind::Underscore => {
+            Data => self.advance_with(token.span, Self::finish_parse_data_declaration),
+            Module => self.advance_with(token.span, Self::finish_parse_module_declaration),
+            Underscore => {
                 let attribute = self.advance_with(token.span, Self::finish_parse_attribute)?;
                 let mut declaration = self.parse_declaration()?;
                 declaration.attributes.push(attribute);
                 Ok(declaration)
             }
-            TokenKind::DocumentationComment => {
+            DocumentationComment => {
                 let attribute =
                     self.advance_with(token.span, Self::finish_parse_documentation_comment)?;
                 let mut declaration = self.parse_declaration()?;
                 declaration.attributes.push(attribute);
                 Ok(declaration)
             }
-            _ => Err(Diagnostic::new(
-                Level::Fatal,
-                Code::E010,
-                format!("expected start of declaration, found {}", token.kind),
-            )
-            .with_span(token.span)),
+            _ => Err(unexpected_token(token, "declaration")),
         }
     }
 
@@ -520,14 +490,14 @@ impl Parser<'_> {
     /// Expression ::= Let_In | Lambda_Literal | Case_Analysis | Pi_Literal_Or_Lower
     /// ```
     pub fn parse_expression(&mut self) -> Result<Expression> {
+        use TokenKind::*;
+
         let token = self.token();
 
         match token.kind {
-            TokenKind::Let => self.advance_with(token.span, Self::finish_parse_let_in),
-            TokenKind::Backslash => {
-                self.advance_with(token.span, Self::finish_parse_lambda_literal)
-            }
-            TokenKind::Case => self.advance_with(token.span, Self::finish_parse_case_analysis),
+            Let => self.advance_with(token.span, Self::finish_parse_let_in),
+            Backslash => self.advance_with(token.span, Self::finish_parse_lambda_literal),
+            Case => self.advance_with(token.span, Self::finish_parse_case_analysis),
             _ => self.parse_pi_type_literal_or_lower(),
         }
     }
@@ -616,40 +586,30 @@ impl Parser<'_> {
     /// Lower_Expression ::=
     ///     Type_Literal | Nat_Literal | Path | Hole | Bracketed_Expression
     /// ```
-    // @Task massively improve structually: match in here "without" extra functions.
-    // this will increase performance as well
     fn parse_lower_expression(&mut self) -> Result<Expression> {
-        self.reflect(Self::parse_path)
-            .or_else(|_| self.parse_type_literal())
-            .or_else(|_| self.parse_nat_literal())
-            .or_else(|_| self.parse_text_literal())
-            .or_else(|_| self.parse_bracketed(Self::parse_expression))
-    }
+        use TokenKind::*;
 
-    // Type_Literal ::= %type literal%
-    fn parse_type_literal(&mut self) -> Result<Expression> {
-        self.consume(TokenKind::Type)
-            .map(|token| expr! { TypeLiteral[token.span] })
-    }
-
-    pub fn parse_nat_literal(&mut self) -> Result<Expression> {
-        Nat::consume(self).map(|(nat, span)| {
-            expr! {
-                NatLiteral[span] {
-                    value: nat
-                }
+        let token = self.token();
+        match token.kind {
+            // @Task use a "finish"-parser
+            Identifier(_) => self.parse_path(),
+            Crate => self.parse_path(),
+            Super => self.parse_path(),
+            Type => {
+                self.advance();
+                Ok(expr! { TypeLiteral[token.span] })
             }
-        })
-    }
-
-    fn parse_text_literal(&mut self) -> Result<Expression> {
-        String::consume(self).map(|(text, span)| {
-            expr! {
-                TextLiteral[span] {
-                    value: text,
-                }
+            NatLiteral(value) => {
+                self.advance();
+                Ok(expr! { NatLiteral[token.span] { value } })
             }
-        })
+            TextLiteral(value) => {
+                self.advance();
+                Ok(expr! { TextLiteral[token.span] { value } })
+            }
+            OpeningRoundBracket => self.parse_bracketed(Self::parse_expression),
+            _ => return Err(unexpected_token(token, "expression")),
+        }
     }
 
     fn parse_path(&mut self) -> Result<Expression> {
@@ -670,15 +630,7 @@ impl Parser<'_> {
             }
             TokenKind::Crate => Some(PathHead::new(PathHeadKind::Crate, token.span)),
             TokenKind::Super => Some(PathHead::new(PathHeadKind::Super, token.span)),
-            // @Task message
-            _ => {
-                return Err(Diagnostic::new(
-                    Level::Fatal,
-                    Code::E010,
-                    format!("expected start of path, found {}", &token.kind),
-                )
-                .with_span(token.span))
-            }
+            _ => return Err(unexpected_token(token, "path")),
         };
         self.advance();
 
@@ -865,10 +817,9 @@ impl Parser<'_> {
 
     // @Task Lower_Pattern ::= Nat_Literal | "(" Path Type_Annotation? ")" | Path | "(" Pattern ")"
     // @Bug or_else(_) produces bad error messages
-    // @Task use match + custom error message ("expected pattern")
+    // @Task @Beacon @Beacon use match + custom error message ("expected pattern")
     // @Note all this ugliness will (hopefully) go away once we improve the
     // syntax of patterns
-    // @Task be able to parse any bracketed pattern
     fn parse_lower_pattern(&mut self) -> Result<Pattern> {
         self.parse_nat_literal_pattern()
             .or_else(|_| {

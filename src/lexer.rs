@@ -74,14 +74,15 @@ pub enum TokenKind {
 
 use TokenKind::*;
 
+// does not display payload by design
 impl fmt::Display for TokenKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             DocumentationComment => "documentation comment",
-            Identifier(identifier) => return write!(f, "identifier `{}`", identifier),
+            Identifier(_) => "identifier",
             Punctuation => "punctuation",
-            NatLiteral(nat) => return write!(f, "text literal `{}`", nat),
-            TextLiteral(text) => return write!(f, "text literal `{:?}`", text),
+            NatLiteral(_) => "natural number literal",
+            TextLiteral(_) => "text literal",
             VerticalBar => "vertical bar",
             Dot => "dot",
             Colon => "colon",

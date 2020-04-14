@@ -1,6 +1,10 @@
-use std::ops::{Deref, DerefMut};
+use std::{
+    fmt,
+    ops::{Deref, DerefMut},
+};
 
-use super::*;
+use crate::span::{Span, Spanned};
+use freestanding::freestanding;
 
 pub struct Declaration {
     pub kind: DeclarationKind,
@@ -383,7 +387,7 @@ pub macro decl($kind:ident[$span:expr] { $( $body:tt )+ }) {
     Declaration {
         span: $span,
         attributes: Attributes::default(),
-        kind: DeclarationKind::$kind(Box::new($kind { $( $body )+ })),
+        kind: DeclarationKind::$kind(Box::new(self::$kind { $( $body )+ })),
     }
 }
 
@@ -391,7 +395,7 @@ pub macro expr {
     ($kind:ident[$span:expr] { $( $body:tt )+ }) => {
         Expression {
             span: $span,
-            kind: ExpressionKind::$kind(Box::new($kind { $( $body )+ })),
+            kind: ExpressionKind::$kind(Box::new(self::$kind { $( $body )+ })),
         }
     },
     ($kind:ident[$span:expr]) => {
@@ -406,7 +410,7 @@ pub macro pat {
     ($kind:ident[$span:expr] { $( $body:tt )+ }) => {
         Pattern {
             span: $span,
-            kind: PatternKind::$kind(Box::new($kind { $( $body )+ })),
+            kind: PatternKind::$kind(Box::new(self::$kind { $( $body )+ })),
         }
     }
 }
