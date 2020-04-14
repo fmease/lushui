@@ -1,4 +1,3 @@
 #!/usr/bin/sh
 
-cargo r -q -- "$*"
-
+cargo r -q -- $*

@@ -1,4 +1,4 @@
-use std::{convert::TryInto, path::PathBuf, rc::Rc};
+use std::{convert::TryInto, rc::Rc};
 
 /// Global byte index.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
@@ -204,9 +204,9 @@ impl SourceMap {
         }
     }
 
-    pub fn load(&mut self, path: std::path::PathBuf) -> Result<Rc<SourceFile>> {
-        let source = std::fs::read_to_string(&path).map_err(Error::IO)?;
-        self.add(FileName::Real(path), source)
+    pub fn load(&mut self, path: &str) -> Result<Rc<SourceFile>> {
+        let source = std::fs::read_to_string(path).map_err(Error::IO)?;
+        self.add(FileName::Real(path.to_owned()), source)
     }
 
     fn add(&mut self, name: FileName, source: String) -> Result<Rc<SourceFile>> {
@@ -351,14 +351,14 @@ impl std::ops::Index<LocalSpan> for SourceFile {
 
 #[derive(Clone)]
 pub enum FileName {
-    Real(PathBuf),
+    Real(String),
     Anonymous,
 }
 
 impl fmt::Display for FileName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            FileName::Real(path) => write!(f, "{}", path.to_string_lossy()),
+            FileName::Real(path) => write!(f, "{}", path),
             FileName::Anonymous => f.write_str("<anonymous>"),
         }
     }
