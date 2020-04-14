@@ -59,7 +59,10 @@ pub enum DeclarationKind {
         type_annotation: Expression,
     },
     /// The syntax node of a module declaration.
-    Module { declarations: Vec<Declaration> },
+    Module {
+        binder: Identifier,
+        declarations: Option<Vec<Declaration>>,
+    },
     /// The syntax node of a use declaration.
     Use,
 }

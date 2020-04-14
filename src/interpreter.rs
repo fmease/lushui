@@ -199,8 +199,11 @@ impl Declaration {
             // handled in the `Data` arm
             Constructor(_) => unreachable!(),
             Module(module) => {
-                for declaration in &module.declarations {
-                    declaration.infer_type_and_evaluate(scope)?;
+                // @Temporary if let Some
+                if let Some(declarations) = &module.declarations {
+                    for declaration in declarations {
+                        declaration.infer_type_and_evaluate(scope)?;
+                    }
                 }
             }
             Use => todo!("infer type of use declaration"),

@@ -126,15 +126,29 @@ impl Declaration<parser::Identifier> {
                 })
             }
             Module(module) => {
-                let declarations = module
-                    .declarations
-                    .into_iter()
-                    .map(|declaration| declaration.resolve(scope))
-                    .collect::<Vec<_>>()
-                    .transpose()?;
+                // @Bug file modules (parse_file_module_no_header) are the file name, maybe buggy behavior?
+                // @Task don't use the try operator here, make it non-fatal
+                // @Temporary try
+                let binder = scope
+                    .insert_binding(module.binder)
+                    .map_err(|error| vec![error])?;
+
+                // @Temporary: if let Some
+                let declarations = if let Some(declarations) = module.declarations {
+                    Some(
+                        declarations
+                            .into_iter()
+                            .map(|declaration| declaration.resolve(scope))
+                            .collect::<Vec<_>>()
+                            .transpose()?,
+                    )
+                } else {
+                    None
+                };
 
                 Ok(decl! {
                     Module[self.span][self.attributes] {
+                        binder,
                         declarations,
                     }
                 })

@@ -46,7 +46,8 @@ pub enum DeclarationKind<B: Binder> {
         type_annotation: Expression<B>,
     },
     Module {
-        declarations: Vec<Declaration<B>>,
+        binder: B,
+        declarations: Option<Vec<Declaration<B>>>,
     },
     Use,
 }

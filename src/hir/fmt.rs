@@ -45,8 +45,10 @@ impl<B: Binder> Display for Declaration<B> {
             }
             Module(declaration) => {
                 f.write_str("module =\n")?;
-                for declaration in &declaration.declarations {
-                    writeln!(f, "    {}", declaration)?;
+                if let Some(declarations) = &declaration.declarations {
+                    for declaration in declarations {
+                        writeln!(f, "    {}", declaration)?;
+                    }
                 }
                 Ok(())
             }

@@ -316,7 +316,7 @@ pub struct Line {
 }
 
 pub struct SourceFile {
-    name: FileName,
+    pub name: FileName,
     content: String,
     pub span: Span,
 }

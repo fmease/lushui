@@ -12,6 +12,7 @@
 mod ast;
 
 use freestanding::freestanding;
+use std::collections::VecDeque;
 use std::fmt;
 
 use crate::{
@@ -23,15 +24,27 @@ use crate::{
 };
 pub use ast::*;
 
+pub struct Session {
+    file_modules: VecDeque<Identifier>,
+}
+
 pub struct Parser<'input> {
     tokens: &'input [Token],
     index: usize,
+    // @Note used to queue up file modules found in fs-module declarations
+    session: Session,
 }
 
 impl<'input> Parser<'input> {
     /// Construct a new context with the pointer at the beginning.
     pub fn new(tokens: &'input [Token]) -> Self {
-        Self { tokens, index: 0 }
+        Self {
+            tokens,
+            index: 0,
+            session: Session {
+                file_modules: VecDeque::new(),
+            },
+        }
     }
 }
 
@@ -193,6 +206,9 @@ impl Parser<'_> {
                 Self::finish_parse_value_declaration,
             ),
             TokenKind::Data => self.advance_with(token.span, Self::finish_parse_data_declaration),
+            TokenKind::Module => {
+                self.advance_with(token.span, Self::finish_parse_module_declaration)
+            }
             TokenKind::Underscore => {
                 let attribute = self.advance_with(token.span, Self::finish_parse_attribute)?;
                 let mut declaration = self.parse_declaration()?;
@@ -280,15 +296,13 @@ impl Parser<'_> {
             (None, type_annotation.span)
         };
 
-        Ok(Declaration {
-            span: binder.span.merge(span),
-            kind: DeclarationKind::Value(Box::new(Value {
+        Ok(decl! {
+            Value[binder.span.merge(span)] {
                 binder,
                 parameters,
                 type_annotation,
                 expression,
-            })),
-            attributes: Attributes::default(),
+            }
         })
     }
 
@@ -308,6 +322,7 @@ impl Parser<'_> {
 
                 let mut constructors = Vec::new();
 
+                // @Task @Beacon abstract over it: it's also used for modules
                 while self.consumed(TokenKind::Indentation) {
                     while !self.current(TokenKind::Dedentation) {
                         if self.consumed(TokenKind::LineBreak) {
@@ -335,33 +350,83 @@ impl Parser<'_> {
             }
         };
 
-        Ok(Declaration {
-            span: span_of_data.merge(span),
-            kind: DeclarationKind::Data(Box::new(Data {
+        Ok(decl! {
+            Data[span_of_data.merge(span)] {
                 binder,
                 parameters,
                 type_annotation,
                 constructors,
-            })),
-            attributes: Attributes::default(),
+            }
         })
     }
 
-    pub fn parse_file_module_no_header(&mut self) -> Result<Declaration> {
+    /// Finish parsing module declaration.
+    ///
+    /// Either a module declaration or a file system module declaration.
+    fn finish_parse_module_declaration(&mut self, span_of_keyword: Span) -> Result<Declaration> {
+        let binder = Identifier::consume(self)?;
+
+        if self.consumed(TokenKind::LineBreak) {
+            self.session.file_modules.push_back(binder.clone());
+            return Ok(decl! {
+                Module[span_of_keyword.merge(binder.span)] {
+                    binder,
+                    declarations: None,
+                }
+            });
+        }
+
+        self.consume(TokenKind::Colon)?;
+        // @Task exposure list
+        self.consume(TokenKind::Equals)?;
+
+        self.consume(TokenKind::LineBreak)?;
+
+        let mut declarations = Vec::new();
+
+        while self.consumed(TokenKind::Indentation) {
+            while !self.current(TokenKind::Dedentation) {
+                if self.consumed(TokenKind::LineBreak) {
+                    continue;
+                }
+
+                declarations.push(self.parse_declaration()?);
+            }
+
+            self.consume(TokenKind::Dedentation)?;
+
+            while self.consumed(TokenKind::LineBreak) {}
+        }
+
+        // @Bug span is wrong: we need to store the last token's span: dedentation/line break
+        Ok(decl! {
+            Module[span_of_keyword] {
+                binder,
+                declarations: Some(declarations),
+            }
+        })
+    }
+
+    // @Temporary signature
+    pub fn parse_file_module_no_header(
+        &mut self,
+        name: &crate::span::FileName,
+    ) -> Result<Declaration> {
         let mut declarations = Vec::<Declaration>::new();
 
         loop {
-            // skip empty lines
             if self.consumed(TokenKind::LineBreak) {
                 continue;
             }
 
             if self.consumed(TokenKind::EndOfInput) {
-                break Ok(Declaration {
-                    span: (|| Some(declarations.first()?.span.merge(declarations.last()?.span)))()
-                        .unwrap_or(Span::DUMMY),
-                    kind: DeclarationKind::Module(Box::new(Module { declarations })),
-                    attributes: Attributes::default(),
+                let span = (|| Some(declarations.first()?.span.merge(declarations.last()?.span)))()
+                    .unwrap_or(Span::DUMMY);
+                break Ok(decl! {
+                    Module[span] {
+                        binder: Identifier::new(crate::Atom::from(name.to_string()), Span::DUMMY),
+                        declarations: Some(declarations)
+                    }
                 });
             }
 
@@ -394,15 +459,15 @@ impl Parser<'_> {
         // @Task allow EOI as an alternative
         self.consume(TokenKind::LineBreak)?;
 
-        Ok(Declaration {
-            span: binder.span.merge(type_annotation.span),
-            kind: DeclarationKind::Constructor(Box::new(Constructor {
+        let mut constructor = decl! {
+            Constructor[binder.span.merge(type_annotation.span)] {
                 binder,
                 parameters,
                 type_annotation,
-            })),
-            attributes,
-        })
+            }
+        };
+        constructor.attributes = attributes;
+        Ok(constructor)
     }
 
     /// Parse type-annotated parameters.
@@ -875,6 +940,14 @@ impl Parser<'_> {
             }
             Err(_) => Explicitness::Explicit,
         }
+    }
+}
+
+macro decl($kind:ident[$span:expr] { $( $body:tt )+ }) {
+    Declaration {
+        span: $span,
+        attributes: Attributes::default(),
+        kind: DeclarationKind::$kind(Box::new($kind { $( $body )+ })),
     }
 }
 

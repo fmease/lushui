@@ -44,7 +44,10 @@ fn main() {
         let tokens = handle_multiple_errors(&map, Lexer::new(&file).lex())?;
         // eprintln!("{:#?}", &tokens);
 
-        let node = Parser::new(&tokens).parse_file_module_no_header()?;
+        let mut parser = Parser::new(&tokens);
+        let node = parser.parse_file_module_no_header(&file.name)?;
+
+        // @Beacon @Task use parser.session.module_files (better name plz) to load more files
 
         let node = handle_multiple_errors(&map, node.desugar())?;
         // eprintln!("{}", &node);

@@ -98,11 +98,12 @@ impl parser::Declaration {
             // @Task cumulate non-fatal errors (there are none here yet, thus it's not acute)
             Module(module) => decl! {
                 Module[self.span][self.attributes] {
+                    binder: module.binder,
                     declarations: module
                         .declarations
-                        .into_iter()
+                        .map(|declarations| declarations.into_iter()
                         .map(parser::Declaration::desugar)
-                        .collect::<Result<_, _>>()?,
+                        .collect::<Result<_, _>>()).transpose()?,
                 }
             },
             Use => todo!(),
