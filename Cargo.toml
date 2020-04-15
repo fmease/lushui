@@ -1,6 +1,7 @@
 [package]
 name = "lushui"
 version = "0.1.0"
+description = "The reference compiler of the Lushui programming language"
 authors = ["León Orell Valerian Liehr <liehr.exchange@gmx.net>"]
 edition = "2018"
 publish = false
@@ -14,3 +15,4 @@ num-traits = "0.2.11"
 freestanding = { path = "/home/fmease/coding/side_projects/freestanding" }
 smallvec = "1.2.0"
 bitflags = "1.2.1"
+clap = "2.33.0"

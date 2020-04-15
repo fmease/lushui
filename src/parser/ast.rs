@@ -6,6 +6,7 @@ use std::{
 use crate::span::{Span, Spanned};
 use freestanding::freestanding;
 
+#[derive(Debug)]
 pub struct Declaration {
     pub kind: DeclarationKind,
     pub span: Span,
@@ -41,6 +42,7 @@ impl Declaration {
 /// The syntax node of a declaration.
 #[freestanding]
 #[streamline(Box)]
+#[derive(Debug)]
 pub enum DeclarationKind {
     /// The syntax node of a value declaration.
     Value {
