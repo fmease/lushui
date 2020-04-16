@@ -1,0 +1,3 @@
+module core
+
+x: Nat = 100

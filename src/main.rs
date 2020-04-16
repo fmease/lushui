@@ -7,11 +7,20 @@ use lushui::{
     parser::Parser,
     resolver,
     span::SourceMap,
+    support::ManyExt,
 };
 
 const NAME: &str = env!("CARGO_PKG_NAME");
 const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " ", env!("GIT_COMMIT_HASH"));
 const DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
+
+struct Arguments<'a> {
+    tokens: bool,
+    ast: bool,
+    hir: bool,
+    resolved_hir: bool,
+    file: &'a str,
+}
 
 mod flags {
     pub const TOKENS: &str = "tokens";
@@ -53,52 +62,66 @@ fn main() {
         .arg(
             Arg::with_name(flags::FILE)
                 .required(true)
-                .help("Sets the source file"),
+                .help("Set the source file"),
         )
         .get_matches();
 
+    let arguments = Arguments {
+        tokens: matches.is_present(flags::TOKENS),
+        ast: matches.is_present(flags::AST),
+        hir: matches.is_present(flags::HIR),
+        resolved_hir: matches.is_present(flags::RESOLVED_HIR),
+        file: matches.value_of(flags::FILE).unwrap().into(),
+    };
+
     let mut map = SourceMap::default();
 
-    let result: Result<()> = (|| {
-        let source_file_path = matches.value_of(flags::FILE).unwrap();
+    let result: Result<(), Vec<Diagnostic>> = (|| {
+        let file = map.load(arguments.file).many()?;
 
-        let file = map
-            .load(source_file_path)
-            .map_err(|error| Diagnostic::new(Level::Fatal, None, error.to_string()))?;
-
-        let tokens = handle_multiple_errors(&map, Lexer::new(&file).lex())?;
-        if matches.is_present(flags::TOKENS) {
+        let tokens = Lexer::new(&file).lex()?;
+        if arguments.tokens {
             println!("{:#?}", tokens);
         }
 
-        let mut parser = Parser::new(&tokens);
-        let node = parser.parse_file_module_no_header(&file.name)?;
-        // @Beacon @Task use parser.session.module_files (better name plz) to load more file
-        if matches.is_present(flags::AST) {
+        let node = Parser::new(file, &tokens)
+            .parse_file_module_no_header()
+            .many()?;
+        if arguments.ast {
             println!("{:?}", node);
         }
 
-        let node = handle_multiple_errors(&map, node.desugar())?;
-        if matches.is_present(flags::HIR) {
+        let node = node.desugar()?;
+        if arguments.hir {
             println!("{}", node);
         }
 
-        let node =
-            handle_multiple_errors(&map, node.resolve(&mut resolver::ModuleScope::default()))?;
-        if matches.is_present(flags::RESOLVED_HIR) {
+        let node = node.resolve(&mut resolver::ModuleScope::default(), &mut map)?;
+        if arguments.resolved_hir {
             eprintln!("{}", node);
         }
 
         let mut scope = interpreter::ModuleScope::new();
-        node.infer_type_and_evaluate(&mut scope)?;
+        node.infer_type_and_evaluate(&mut scope).many()?;
 
         eprintln!("{:?}", scope);
 
         Ok(())
     })();
 
-    if let Err(error) = result {
-        error.emit(Some(&map));
+    if let Err(errors) = result {
+        let amount = errors.len();
+
+        for error in errors {
+            error.emit(Some(&map));
+        }
+
+        Diagnostic::new(
+            Level::Fatal,
+            None,
+            format!("aborting due to {} previous errors", amount),
+        )
+        .emit(Some(&map));
     }
 }
 
@@ -119,27 +142,4 @@ fn set_panic_hook() {
 
         Diagnostic::new(Level::Bug, None, message).emit(None);
     }));
-}
-
-// @Temporary use an error buffer in general! @Note does not report actual number of errors!
-fn handle_multiple_errors<T>(
-    map: &SourceMap,
-    result: Result<T, impl IntoIterator<Item = Diagnostic>>,
-) -> Result<T> {
-    match result {
-        Ok(value) => Ok(value),
-        Err(errors) => {
-            let errors = errors.into_iter();
-            let (amount, _) = errors.size_hint();
-
-            for error in errors {
-                error.emit(Some(map));
-            }
-            Err(Diagnostic::new(
-                Level::Fatal,
-                None,
-                format!("aborting due to {} previous errors", amount),
-            ))
-        }
-    }
 }

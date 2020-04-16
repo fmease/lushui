@@ -1,4 +1,5 @@
-use std::{convert::TryInto, rc::Rc};
+use crate::diagnostic::*;
+use std::{convert::TryInto, fmt, rc::Rc};
 
 /// Global byte index.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
@@ -23,10 +24,7 @@ impl ByteIndex {
     }
 
     fn try_add_offset(self, offset: u32) -> Result<Self> {
-        let sum = self
-            .value
-            .checked_add(offset)
-            .ok_or(Error::OffsetOverflow)?;
+        let sum = self.value.checked_add(offset).ok_or(offset_overflow())?;
 
         Ok(Self::new(sum))
     }
@@ -205,11 +203,12 @@ impl SourceMap {
     }
 
     pub fn load(&mut self, path: &str) -> Result<Rc<SourceFile>> {
-        let source = std::fs::read_to_string(path).map_err(Error::IO)?;
-        self.add(FileName::Real(path.to_owned()), source)
+        dbg!(path);
+        let source = std::fs::read_to_string(path).map_err(io_error)?;
+        self.add(path.to_owned(), source)
     }
 
-    fn add(&mut self, name: FileName, source: String) -> Result<Rc<SourceFile>> {
+    fn add(&mut self, name: String, source: String) -> Result<Rc<SourceFile>> {
         let file = Rc::new(SourceFile::new(name, source, self.next_offset()?)?);
         self.files.push(file.clone());
 
@@ -316,17 +315,17 @@ pub struct Line {
 }
 
 pub struct SourceFile {
-    pub name: FileName,
+    pub name: String,
     content: String,
     pub span: Span,
 }
 
 impl SourceFile {
-    pub fn new(name: FileName, content: String, start: ByteIndex) -> Result<Self> {
+    pub fn new(name: String, content: String, start: ByteIndex) -> Result<Self> {
         use std::convert::TryFrom;
 
         let offset = u32::try_from(content.len())
-            .map_err(|_| Error::OffsetOverflow)?
+            .map_err(|_| offset_overflow())?
             .saturating_sub(1);
 
         Ok(Self {
@@ -349,43 +348,26 @@ impl std::ops::Index<LocalSpan> for SourceFile {
     }
 }
 
-#[derive(Clone)]
-pub enum FileName {
-    Real(String),
-    Anonymous,
-}
-
-impl fmt::Display for FileName {
+impl fmt::Debug for SourceFile {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            FileName::Real(path) => write!(f, "{}", path),
-            FileName::Anonymous => f.write_str("<anonymous>"),
-        }
+        write!(f, "SourceFile {} {:?}", self.name, self.span)
     }
 }
 
-pub type Result<T, E = Error> = std::result::Result<T, E>;
-
-#[derive(Debug)]
-pub enum Error {
-    OffsetOverflow,
-    IO(std::io::Error),
+// @Task add file name once we support it #SpanOfWholeFileInDiagnostic
+fn offset_overflow() -> Diagnostic {
+    Diagnostic::new(Level::Fatal, None, "file too large")
 }
 
-use std::fmt;
+fn io_error(error: std::io::Error) -> Diagnostic {
+    use std::io::ErrorKind::*;
 
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use std::io::ErrorKind::*;
+    let message = match error.kind() {
+        NotFound => "referenced file does not exist",
+        PermissionDenied => "file does not have required permissions",
+        InvalidData => "file contains invalid UTF-8",
+        _ => "an I/O error occurred",
+    };
 
-        f.write_str(match self {
-            Self::OffsetOverflow => "file too large",
-            Self::IO(error) => match error.kind() {
-                NotFound => "referenced file does not exist",
-                PermissionDenied => "file does not have required permissions",
-                InvalidData => "file contains invalid UTF-8",
-                _ => "an I/O error occurred",
-            },
-        })
-    }
+    Diagnostic::new(Level::Fatal, None, message)
 }

@@ -5,9 +5,10 @@ use super::{
 use crate::span::{ByteIndex, Span};
 
 fn lex(source: &'static str) -> Result<Vec<Token>, Diagnostics> {
-    use crate::span::{FileName, SourceFile};
+    use crate::span::SourceFile;
 
-    let file = SourceFile::new(FileName::Anonymous, source.to_owned(), ByteIndex::new(0)).unwrap();
+    let file = SourceFile::new("test.lushui".into(), source.to_owned(), ByteIndex::new(0))
+        .unwrap_or_else(|_| panic!());
     Lexer::new(&file).lex()
 }
 

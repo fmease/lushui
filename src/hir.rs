@@ -6,7 +6,7 @@ mod fmt;
 
 use crate::{
     parser::{Attributes, Explicitness},
-    span::{Span, Spanned},
+    span::{SourceFile, Span, Spanned},
 };
 use freestanding::freestanding;
 use std::{fmt::Display, rc::Rc};
@@ -51,6 +51,7 @@ pub enum DeclarationKind<B: Binder> {
     },
     Module {
         binder: B::Simple,
+        file: Rc<SourceFile>,
         declarations: Option<Vec<Declaration<B>>>,
     },
     Use,

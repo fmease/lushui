@@ -6,8 +6,6 @@
 //!
 //! * resolve package imports (package declarations)
 //! * resolve module imports (file system module declarations)
-//! * resolve paths to an identifier consisting of a package-unique definiton identifier
-//!   (which is mappable to the definition-site span) and a usage-site span
 //! * resolve out-of-order declarations
 //! * resolve recursive (value) declarations and prepare the resulting bindings
 //!   for the type checker which should be able to type-check recursive functions
@@ -21,7 +19,8 @@ use crate::{
     diagnostic::*,
     hir::{decl, expr, Binder, Declaration, DeclarationKind, Expression, ExpressionKind},
     parser,
-    support::{handle::*, TransposeExt},
+    span::SourceMap,
+    support::{handle::*, ManyExt, TransposeExt},
 };
 
 // @Note the `handle` methods ignore whether an error is fatal or not, this should be changed @Task
@@ -33,27 +32,22 @@ impl Declaration<parser::Path> {
     pub fn resolve(
         self,
         scope: &mut ModuleScope,
+        map: &mut SourceMap,
     ) -> Result<Declaration<Identifier>, Vec<Diagnostic>> {
         use DeclarationKind::*;
 
         match self.kind {
             Value(value) => {
-                let binder = scope
-                    .insert_binding(value.binder)
-                    .map_err(|error| vec![error]);
+                let binder = scope.insert_binding(value.binder).many();
 
                 let type_annotation = value
                     .type_annotation
                     .resolve(&FunctionScope::Module(scope))
-                    .map_err(|error| vec![error]);
+                    .many();
 
                 let expression = value
                     .expression
-                    .map(|expression| {
-                        expression
-                            .resolve(&FunctionScope::Module(scope))
-                            .map_err(|error| vec![error])
-                    })
+                    .map(|expression| expression.resolve(&FunctionScope::Module(scope)).many())
                     .transpose();
 
                 let span = self.span;
@@ -72,19 +66,17 @@ impl Declaration<parser::Path> {
                 )
             }
             Data(data) => {
-                let data_binder = scope
-                    .insert_binding(data.binder)
-                    .map_err(|error| vec![error]);
+                let data_binder = scope.insert_binding(data.binder).many();
 
                 let type_annotation = data
                     .type_annotation
                     .resolve(&FunctionScope::Module(scope))
-                    .map_err(|error| vec![error]);
+                    .many();
 
                 let constructors = data.constructors.map(|constructors| {
                     constructors
                         .into_iter()
-                        .map(|constructor| constructor.resolve(scope))
+                        .map(|constructor| constructor.resolve(scope, map))
                         .collect()
                 });
 
@@ -104,14 +96,12 @@ impl Declaration<parser::Path> {
                 )
             }
             Constructor(constructor) => {
-                let binder = scope
-                    .insert_binding(constructor.binder)
-                    .map_err(|error| vec![error]);
+                let binder = scope.insert_binding(constructor.binder).many();
 
                 let type_annotation = constructor
                     .type_annotation
                     .resolve(&FunctionScope::Module(scope))
-                    .map_err(|error| vec![error]);
+                    .many();
 
                 let span = self.span;
                 let attributes = self.attributes;
@@ -126,30 +116,54 @@ impl Declaration<parser::Path> {
                 })
             }
             Module(module) => {
-                // @Bug file modules (parse_file_module_no_header) are the file name, maybe buggy behavior?
-                // @Task don't use the try operator here, make it non-fatal
-                // @Temporary try
-                let binder = scope
-                    .insert_binding(module.binder)
-                    .map_err(|error| vec![error])?;
+                // @Bug file modules (created by parse_file_module_no_header) are the file name,
+                // maybe buggy behavior?
+                // @Task don't use the try operator here, make it non-fatal @Temporary try
+                let binder = scope.insert_binding(module.binder).many()?;
 
-                // @Temporary: if let Some
-                let declarations = if let Some(declarations) = module.declarations {
-                    Some(
-                        declarations
-                            .into_iter()
-                            .map(|declaration| declaration.resolve(scope))
-                            .collect::<Vec<_>>()
-                            .transpose()?,
-                    )
-                } else {
-                    None
+                let declarations = match module.declarations {
+                    Some(declarations) => declarations,
+                    None => {
+                        let path = std::path::Path::new(&module.file.name)
+                            .ancestors()
+                            .nth(1)
+                            .unwrap()
+                            .join(&format!("{}.lushui", binder.source.atom));
+                        let file = map.load(path.to_str().unwrap()).many()?;
+                        let tokens = crate::lexer::Lexer::new(&file).lex()?;
+                        let node = parser::Parser::new(file, &tokens)
+                            .parse_file_module_no_header()
+                            .many()?;
+                        let node = node.desugar()?;
+                        let module = match node.kind {
+                            Module(module) => module,
+                            _ => unreachable!(),
+                        };
+                        if !node.attributes.is_empty() {
+                            Diagnostic::new(
+                                Level::Warning,
+                                None,
+                                "attributes on module headers are ignored right now",
+                            )
+                            .emit(None);
+                        }
+                        module.declarations.unwrap()
+                    }
                 };
+
+                // @Beacon @Task create new module scope
+                // @Temporary: if let Some
+                let declarations = declarations
+                    .into_iter()
+                    .map(|declaration| declaration.resolve(scope, map))
+                    .collect::<Vec<_>>()
+                    .transpose()?;
 
                 Ok(decl! {
                     Module[self.span][self.attributes] {
                         binder,
-                        declarations,
+                        file: module.file,
+                        declarations: Some(declarations),
                     }
                 })
             }

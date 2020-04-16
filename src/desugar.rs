@@ -101,6 +101,7 @@ impl parser::Declaration {
             Module(module) => decl! {
                 Module[self.span][self.attributes] {
                     binder: module.binder,
+                    file: module.file,
                     declarations: module
                         .declarations
                         .map(|declarations| declarations.into_iter()

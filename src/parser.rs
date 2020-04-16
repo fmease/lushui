@@ -11,30 +11,29 @@
 
 mod ast;
 
-use std::collections::VecDeque;
-
 use crate::{
     diagnostic::{Code, Diagnostic, Level},
     lexer::{self, Token, TokenKind},
     smallvec,
-    span::{Span, Spanned},
+    span::{SourceFile, Span, Spanned},
     Nat, SmallVec,
 };
 pub use ast::*;
+use std::rc::Rc;
 
-pub struct Parser<'input> {
-    tokens: &'input [Token],
+pub struct Parser<'a> {
+    file: Rc<SourceFile>,
+    tokens: &'a [Token],
     index: usize,
-    pub queued_file_modules: VecDeque<Identifier>,
 }
 
-impl<'input> Parser<'input> {
+impl<'a> Parser<'a> {
     /// Construct a new context with the pointer at the beginning.
-    pub fn new(tokens: &'input [Token]) -> Self {
+    pub fn new(file: Rc<SourceFile>, tokens: &'a [Token]) -> Self {
         Self {
+            file,
             tokens,
             index: 0,
-            queued_file_modules: VecDeque::new(),
         }
     }
 }
@@ -330,10 +329,10 @@ impl Parser<'_> {
         let binder = Identifier::consume(self)?;
 
         if self.consumed(TokenKind::LineBreak) {
-            self.queued_file_modules.push_back(binder.clone());
             return Ok(decl! {
                 Module[span_of_keyword.merge(binder.span)] {
                     binder,
+                    file: self.file.clone(),
                     declarations: None,
                 }
             });
@@ -365,16 +364,13 @@ impl Parser<'_> {
         Ok(decl! {
             Module[span_of_keyword] {
                 binder,
+                file: self.file.clone(),
                 declarations: Some(declarations),
             }
         })
     }
 
-    // @Temporary signature
-    pub fn parse_file_module_no_header(
-        &mut self,
-        name: &crate::span::FileName,
-    ) -> Result<Declaration> {
+    pub fn parse_file_module_no_header(&mut self) -> Result<Declaration> {
         let mut declarations = Vec::<Declaration>::new();
 
         loop {
@@ -387,7 +383,8 @@ impl Parser<'_> {
                     .unwrap_or(Span::DUMMY);
                 break Ok(decl! {
                     Module[span] {
-                        binder: Identifier::new(crate::Atom::from(name.to_string()), Span::DUMMY),
+                        binder: Identifier::new(crate::Atom::from(self.file.name.to_string()), Span::DUMMY),
+                        file: self.file.clone(),
                         declarations: Some(declarations)
                     }
                 });

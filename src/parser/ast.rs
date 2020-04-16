@@ -1,9 +1,10 @@
 use std::{
     fmt,
     ops::{Deref, DerefMut},
+    rc::Rc,
 };
 
-use crate::span::{Span, Spanned};
+use crate::span::{SourceFile, Span, Spanned};
 use freestanding::freestanding;
 
 #[derive(Debug)]
@@ -67,6 +68,7 @@ pub enum DeclarationKind {
     /// The syntax node of a module declaration.
     Module {
         binder: Identifier,
+        file: Rc<SourceFile>,
         declarations: Option<Vec<Declaration>>,
     },
     /// The syntax node of a use declaration.

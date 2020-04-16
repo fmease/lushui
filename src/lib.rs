@@ -15,7 +15,7 @@ pub mod lexer;
 pub mod parser;
 pub mod resolver;
 pub mod span;
-mod support;
+pub mod support;
 
 use num_bigint::BigUint as Nat;
 use smallvec::{smallvec, SmallVec};

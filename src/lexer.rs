@@ -11,9 +11,9 @@ mod test;
 
 use crate::{
     diagnostic::*,
-    smallvec,
     span::{LocalByteIndex, LocalSpan, SourceFile, Span, Spanned},
-    Atom, Nat, SmallVec,
+    support::ManyExt,
+    Atom, Nat,
 };
 use std::{
     fmt,
@@ -183,8 +183,6 @@ fn parse_reserved_punctuation(source: &str) -> Option<TokenKind> {
     })
 }
 
-type Diagnostics = SmallVec<[Diagnostic; 1]>;
-
 pub struct Lexer<'a> {
     source: &'a SourceFile,
     characters: Peekable<CharIndices<'a>>,
@@ -207,7 +205,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// Lex source code into an array of tokens
-    pub fn lex(mut self) -> Result<Vec<Token>, Diagnostics> {
+    pub fn lex(mut self) -> Result<Vec<Token>, Vec<Diagnostic>> {
         while let Some(character) = self.peek() {
             self.span = LocalSpan::from(self.index().unwrap());
             match character {
@@ -215,20 +213,16 @@ impl<'a> Lexer<'a> {
                 // (SOI should act as a line break)
                 ' ' => self.lex_whitespace(),
                 ';' => self.lex_comment(),
-                character if is_identifier_candidate(character) => {
-                    self.lex_identifier().map_err(|error| smallvec![error])?
-                }
-                '\n' => self.lex_indentation().map_err(|error| smallvec![error])?,
+                character if is_identifier_candidate(character) => self.lex_identifier().many()?,
+                '\n' => self.lex_indentation().many()?,
                 character if is_punctuation(character) => self.lex_punctuation(),
                 character if character.is_ascii_digit() => self.lex_nat_literal(),
-                '"' => self.lex_text_literal().map_err(|error| smallvec![error])?,
+                '"' => self.lex_text_literal().many()?,
                 '(' => self.lex_opening_round_bracket(),
-                ')' => self
-                    .lex_closing_round_bracket()
-                    .map_err(|error| smallvec![error])?,
+                ')' => self.lex_closing_round_bracket().many()?,
                 '_' => self.lex_underscore(),
                 character => {
-                    return Err(smallvec![Diagnostic::new(
+                    return Err(vec![Diagnostic::new(
                         Level::Fatal,
                         Code::E000,
                         format!(

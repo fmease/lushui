@@ -71,3 +71,13 @@ impl<A, E> TransposeExt<A, E> for Vec<Result<A, Vec<E>>> {
         final_result
     }
 }
+
+pub trait ManyExt<T, E> {
+    fn many(self) -> Result<T, Vec<E>>;
+}
+
+impl<T, E> ManyExt<T, E> for Result<T, E> {
+    fn many(self) -> Result<T, Vec<E>> {
+        self.map_err(|error| vec![error])
+    }
+}
