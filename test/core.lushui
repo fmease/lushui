@@ -1,2 +1,97 @@
-_foreign_
-data Nat: Type
+;; @Task implement the concept of crates and make `core` (this) a crate
+
+identity (A: Type) (a: A): A = a
+
+constant (A B: Type) (a: A) (': B): A = a
+
+;; @Bug @Bug @Beacon regression: a pi-type w/o a parameter is no longer equal to
+;; to a pi-type with one:
+;; error[E032]: mismatched types. expected `(A) -> (C)`, got `(x: A) -> (C)`
+;; compose (A B C: Type) (f: A -> B) (g: B -> C): A -> C =
+;;     \(x: A) => g (f x)
+
+module void: =
+    data Void: Type =
+
+module unit: =
+    _inherent_
+    data Unit: Type =
+        'Unit: Unit
+
+module bool: =
+    _inherent_
+    data Bool: Type =
+        False: Bool
+        True: Bool
+
+module text: =
+    _foreign_
+    data Text: Type
+
+    _foreign_
+    concat: Text -> Text -> Text
+
+module option: =
+    _inherent_
+    data Option (A: Type): Type =
+        None (A: Type): Option A
+        Some (A: Type): A -> Option A
+
+    ;; map-option (A B: Type) (f: A -> B) (a: Option A): Option B =
+    ;;     case a
+    ;;     of Some A a => Some B (f a)
+    ;;     of None A => None B
+
+module nat: =
+    _foreign_
+    data Nat: Type
+
+    _foreign_
+    add: Nat -> Nat -> Nat
+
+    _foreign_
+    subtract: Nat -> Nat -> Option Nat
+
+    _foreign_
+    multiply: Nat -> Nat -> Nat
+    
+    _foreign_
+    divide: Nat -> Nat -> Option Nat
+
+    _foreign_
+    equal: Nat -> Nat -> Bool
+
+    _foreign_
+    less: Nat -> Nat -> Bool
+
+    _foreign_
+    less-equal: Nat -> Nat -> Bool
+
+    _foreign_
+    greater: Nat -> Nat -> Bool
+
+    _foreign_
+    greater-equal: Nat -> Nat -> Bool
+
+    _foreign_
+    display-nat: Nat -> Text
+
+module tuple: =
+    ;; @Task make inherent as well
+    data Tuple (A B: Type): Type =
+        'Tuple (A B: Type): A -> B -> Tuple A B
+
+module triple: =
+    data Triple (A B C: Type): Type =
+        'Triple (A B C: Type): A -> B -> C -> Triple A B C
+
+module result: =
+    ;; @Task make inherent as well
+    data Result (A E: Type): Type =
+        Failure (A E: Type): E -> Result A E
+        Success (A E: Type): A -> Result A E
+
+module list: =
+    data List (A: Type): Type =
+        Nil (A: Type): List A
+        Cons (A: Type): A -> List A -> List A

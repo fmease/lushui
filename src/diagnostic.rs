@@ -76,6 +76,8 @@ impl Diagnostic {
     // @Task if the span equals the span of the entire file, don't output its content
     // @Task if two spans (in the list of spans) reside on the same line,
     // print them inline not above each other
+    // @Bug padding does not work, really if stuff is across file boundaries
+    // example error: multiple definitions (E020)
     fn display(&mut self, map: Option<&SourceMap>) -> String {
         let header = format!(
             "{:#}{}: {}",

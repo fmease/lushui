@@ -1,18 +1,19 @@
-identity (A: Type) (a: A): A = a
+module core
 
 ;; @Bug should also work
 ;; data Bool: Type =
 ;;     False: identity Type Bool
 
 
-data List (A: Type): Type =
-    Nil (A: Type): List A
+data ListX (A: Type): Type =
+    NilX (A: Type): List A
     Foo: List Nat
     ;; Bar: Nat
 
 ;; This is bad!!!
 
 data Foo: Type =
+    ;; @Bug @Bug @Beacon smh a parsing error below why???
     Bar: (n: Nat) -> if (n == 0) Nat Foo
 
 ;; So in this case, clearly `if (n == 0) 'Nat Foo` is *not* an instance
@@ -30,8 +31,6 @@ data Ban: Type =
 ;; not dependent on any constructor param, ...)
 
 ;; @Task verify Bar reduces/fix it to reduce:
-
-constant (A B: Type) (a: A) (b: B): A = a
 
 data Foo2: Type =
     ;; @Bug fails instance check even though it should pass

@@ -1,18 +1,10 @@
-;; Testing the recently implemented natural numbers!!!
-
-_foreign_
-data Nat: Type
+module core
 
 x: Nat = 6000232
 
 zero: Nat = 0
 one: Nat = 1
 
-data Tuple (A B: Type): Type =
-    'Tuple (A B: Type): A -> B -> Tuple A B
-
 nice: Tuple Nat Nat = 'Tuple Nat Nat 69 420
 
-the (A: Type) (x: A): A = x
-
-indirect: Nat = the Nat 123929292
+indirect: Nat = identity Nat 123929292

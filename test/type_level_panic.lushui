@@ -1,10 +1,6 @@
 ;; @Update FFI currently does not work
 
-_foreign_
-data Text: Type
-
-_foreign_
-data Nat: Type
+module core
 
 ;; @Note does not work rn
 _foreign_

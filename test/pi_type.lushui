@@ -1,6 +1,6 @@
-identity (A: Type) (a: A): A = a
+module core
 
-data Void: identity Type Type =
+data Void2: identity Type Type =
 
 data Bar: Type =
     ;; below fails as it should
@@ -8,13 +8,6 @@ data Bar: Type =
     Foo: Bar
     ;; works like a charm
     Ban: identity Type Bar
-
-_foreign_
-data Nat: Type
-
-data List (A: Type): Type =
-    Nil (A: Type): List A
-    Cons (A: Type): A -> List A
 
 data Ouw: Type =
     'Ouw: Ouw

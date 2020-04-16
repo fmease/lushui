@@ -1,8 +1,4 @@
-_foreign_
-data Nat: Type
-
-_foreign_
-data Text: Type
+module core
 
 ;; 这件衣服是漂亮的。
 content: Text = "这件衣服是漂亮的。"
