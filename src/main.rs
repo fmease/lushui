@@ -19,6 +19,7 @@ struct Arguments<'a> {
     ast: bool,
     hir: bool,
     resolved_hir: bool,
+    scope: bool,
     file: &'a str,
 }
 
@@ -27,6 +28,7 @@ mod flags {
     pub const AST: &str = "ast";
     pub const HIR: &str = "hir";
     pub const RESOLVED_HIR: &str = "resolved-hir";
+    pub const SCOPE: &str = "scope";
     pub const FILE: &str = "FILE";
 }
 
@@ -60,6 +62,12 @@ fn main() {
                 .help("Print the HIR emitted by the resolver"),
         )
         .arg(
+            Arg::with_name(flags::SCOPE)
+                .long(flags::SCOPE)
+                .short("s")
+                .help("Print the evaluated module scope"),
+        )
+        .arg(
             Arg::with_name(flags::FILE)
                 .required(true)
                 .help("Set the source file"),
@@ -71,6 +79,7 @@ fn main() {
         ast: matches.is_present(flags::AST),
         hir: matches.is_present(flags::HIR),
         resolved_hir: matches.is_present(flags::RESOLVED_HIR),
+        scope: matches.is_present(flags::SCOPE),
         file: matches.value_of(flags::FILE).unwrap().into(),
     };
 
@@ -103,8 +112,9 @@ fn main() {
 
         let mut scope = interpreter::ModuleScope::new();
         node.infer_type_and_evaluate(&mut scope).many()?;
-
-        eprintln!("{:?}", scope);
+        if arguments.scope {
+            eprintln!("{:?}", scope);
+        }
 
         Ok(())
     })();

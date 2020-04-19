@@ -203,7 +203,6 @@ impl SourceMap {
     }
 
     pub fn load(&mut self, path: &str) -> Result<Rc<SourceFile>> {
-        dbg!(path);
         let source = std::fs::read_to_string(path).map_err(io_error)?;
         self.add(path.to_owned(), source)
     }

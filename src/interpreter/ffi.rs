@@ -1,13 +1,80 @@
 use super::{Expression, ModuleScope};
 use crate::{
     diagnostic::*,
-    hir::{expr, ExpressionKind},
+    hir::{expr, Constructor, ExpressionKind},
     parser::Explicitness,
     resolver::Identifier,
+    span::Span,
     Nat,
 };
 
 pub type ForeignFunction = fn(arguments: Vec<Value>) -> Value;
+
+pub fn register_inherent_bindings<'a>(
+    binder: &Identifier,
+    mut constructors: impl Iterator<Item = &'a Constructor<Identifier>>,
+    declaration: Span,
+    attribute: Span,
+    scope: &mut ModuleScope,
+) -> Result<()> {
+    // @Task link to previous definition
+    let duplicate = || {
+        Diagnostic::new(
+            Level::Fatal,
+            Code::E020,
+            format!("`{}` is defined multiple times as inherent", binder),
+        )
+        .with_span(declaration)
+    };
+
+    let mut find = |value_name, inherent: &mut Option<_>| {
+        if let Some(constructor) =
+            constructors.find(|constructor| &constructor.binder.source.atom == value_name)
+        {
+            *inherent = Some(constructor.binder.clone().dummified());
+        }
+    };
+
+    match &*binder.source.atom {
+        Type::UNIT => {
+            if scope.inherent_types.unit.is_some() {
+                return Err(duplicate());
+            }
+
+            scope.inherent_types.unit = Some(binder.clone().dummified());
+            find(Value::UNIT, &mut scope.inherent_values.unit);
+        }
+        Type::BOOL => {
+            if scope.inherent_types.bool.is_some() {
+                return Err(duplicate());
+            }
+
+            scope.inherent_types.bool = Some(binder.clone().dummified());
+            find(Value::FALSE, &mut scope.inherent_values.r#false);
+            find(Value::TRUE, &mut scope.inherent_values.r#true);
+        }
+        Type::OPTION => {
+            if scope.inherent_types.option.is_some() {
+                return Err(duplicate());
+            }
+
+            scope.inherent_types.option = Some(binder.clone().dummified());
+            find(Value::NONE, &mut scope.inherent_values.none);
+            find(Value::SOME, &mut scope.inherent_values.some);
+        }
+        _ => {
+            return Err(Diagnostic::new(
+                Level::Fatal,
+                Code::E062,
+                format!("`{}` is not an inherent type", binder),
+            )
+            .with_span(attribute)
+            .with_labeled_span(declaration, "ascribed to this declaration"))
+        }
+    }
+
+    Ok(())
+}
 
 /// An FFI-compatible type.
 ///
@@ -261,50 +328,17 @@ pub fn register_foreign_bindings(scope: &mut ModuleScope) {
     scope.register_foreign_type(Type::NAT);
     scope.register_foreign_type(Type::TEXT);
 
-    scope.register_pure_foreign_binding("add", 2, |arguments| {
-        assume! { let [x: Nat, y: Nat] = arguments }
-        (x + y).into()
-    });
-    scope.register_pure_foreign_binding("subtract", 2, |arguments| {
-        assume! { let [x: Nat, y: Nat] = arguments }
-        x.checked_sub(&y).into()
-    });
-    scope.register_pure_foreign_binding("multiply", 2, |arguments| {
-        assume! { let [x: Nat, y: Nat] = arguments }
-        (x * y).into()
-    });
-    scope.register_pure_foreign_binding("divide", 2, |arguments| {
-        assume! { let [x: Nat, y: Nat] = arguments }
-        x.checked_div(&y).into()
-    });
-    scope.register_pure_foreign_binding("equal", 2, |arguments| {
-        assume! { let [x: Nat, y: Nat] = arguments }
-        (x == y).into()
-    });
-    scope.register_pure_foreign_binding("less", 2, |arguments| {
-        assume! { let [x: Nat, y: Nat] = arguments }
-        (x < y).into()
-    });
-    scope.register_pure_foreign_binding("less-equal", 2, |arguments| {
-        assume! { let [x: Nat, y: Nat] = arguments }
-        (x <= y).into()
-    });
-    scope.register_pure_foreign_binding("greater", 2, |arguments| {
-        assume! { let [x: Nat, y: Nat] = arguments }
-        (x > y).into()
-    });
-    scope.register_pure_foreign_binding("greater-equal", 2, |arguments| {
-        assume! { let [x: Nat, y: Nat] = arguments }
-        (x >= y).into()
-    });
-    scope.register_pure_foreign_binding("display-nat", 1, |arguments| {
-        assume! { let [x: Nat] = arguments }
-        x.to_string().into()
-    });
-    scope.register_pure_foreign_binding("concat", 2, |arguments| {
-        assume! { let [a: Text, b: Text] = arguments }
-        (a + &b).into()
-    });
+    pure!(scope, "add", |x: Nat, y: Nat| x + y);
+    pure!(scope, "subtract", |x: Nat, y: Nat| x.checked_sub(&y));
+    pure!(scope, "multiply", |x: Nat, y: Nat| x * y);
+    pure!(scope, "divide", |x: Nat, y: Nat| x.checked_div(&y));
+    pure!(scope, "equal", |x: Nat, y: Nat| x == y);
+    pure!(scope, "less", |x: Nat, y: Nat| x < y);
+    pure!(scope, "less-equal", |x: Nat, y: Nat| x <= y);
+    pure!(scope, "greater", |x: Nat, y: Nat| x > y);
+    pure!(scope, "greater-equal", |x: Nat, y: Nat| x >= y);
+    pure!(scope, "display-nat", |x: Nat| x.to_string());
+    pure!(scope, "concat", |a: Text, b: Text| a + &b);
 
     // scope.insert_untyped_foreign_binding("panic", 2, |arguments| {
     //     let message = assume!(Text(&arguments[1]));
@@ -313,15 +347,24 @@ pub fn register_foreign_bindings(scope: &mut ModuleScope) {
     // });
 }
 
-macro assume(let [$( $var:ident: $variant:ident ),+] = $arguments:ident) {
-    let mut arguments = $arguments.into_iter();
+macro pure($scope:ident, $binder:literal, |$( $var:ident: $variant:ident ),*| $( $body:tt )+) {
+    $scope.register_pure_foreign_binding($binder, count!($( $var )*), |arguments| {
+        let mut arguments = arguments.into_iter();
 
-    $(
-        let $var = match arguments.next() {
-            Some(Value::$variant(value)) => value,
-            _ => unreachable!(),
-        };
-    )+
+        $(
+            let $var = match arguments.next() {
+                Some(Value::$variant(value)) => value,
+                _ => unreachable!(),
+            };
+        )+
+
+        (|| $( $body )+)().into()
+    });
+}
+
+macro count {
+    () => { 0 },
+    ($var:ident $( $rest:tt )*) => { 1 + count!($( $rest )*) },
 }
 
 fn binding(binder: Identifier) -> Expression {

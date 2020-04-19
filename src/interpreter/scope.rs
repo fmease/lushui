@@ -36,6 +36,7 @@ pub struct ModuleScope {
     // @Note very ad-hoc solution, does not scale to modules
     // @Question merge the two?
     // `ForeignEntity`
+    // @Beacon @Beacon @Update move the things below into CrateScope!!
     pub foreign_types: HashMap<&'static str, Option<Identifier>>,
     // @Temporary types (above and below, … they are not descriptive)
     foreign_bindings: HashMap<&'static str, (usize, ffi::ForeignFunction)>,
@@ -55,15 +56,11 @@ impl ModuleScope {
     }
 
     fn lookup_type(&self, index: ModuleIndex) -> Expression {
-        // @Temporary @Note indexing should never panic after name resolution
-        // @Task verify and remove this notice
         self.bindings[&index].r#type()
     }
 
     /// Look up the value of a binding.
     fn lookup_value(&self, index: ModuleIndex) -> Value {
-        // @Temporary @Note indexing should never panic after name resolution
-        // @Task verify and remove this notice
         self.bindings[&index].value()
     }
 
@@ -369,7 +366,7 @@ impl Entity {
     /// Retrieve the value of an entity
     fn value(&self) -> Value {
         match self {
-            Entity::Expression { expression, .. } => Value::Reducible(expression.clone()),
+            Self::Expression { expression, .. } => Value::Reducible(expression.clone()),
             _ => Value::Neutral,
         }
     }

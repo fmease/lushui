@@ -134,65 +134,16 @@ impl Declaration {
                         );
                     }
 
-                    // @Task move into ffi module @Beacon @Beacon
                     if let Some(inherent) = self.attributes.get(AttributeKind::Inherent) {
-                        // @Task link to previous definition
-                        let duplicate = || {
-                            Diagnostic::new(
-                                Level::Fatal,
-                                Code::E020,
-                                format!("`{}` is defined multiple times as inherent", data.binder),
-                            )
-                            .with_span(self.span)
-                        };
-
-                        let find = |value_name, inherent: &mut Option<_>| {
-                            if let Some(constructor) = constructors
+                        ffi::register_inherent_bindings(
+                            &data.binder,
+                            constructors
                                 .iter()
-                                .map(|constructor| constructor.unwrap_constructor())
-                                .find(|constructor| &constructor.binder.source.atom == value_name)
-                            {
-                                *inherent = Some(constructor.binder.clone().dummified());
-                            }
-                        };
-
-                        match &*data.binder.source.atom {
-                            ffi::Type::UNIT => {
-                                if scope.inherent_types.unit.is_some() {
-                                    return Err(duplicate());
-                                }
-
-                                scope.inherent_types.unit = Some(data.binder.clone().dummified());
-                                find(ffi::Value::UNIT, &mut scope.inherent_values.unit);
-                            }
-                            ffi::Type::BOOL => {
-                                if scope.inherent_types.bool.is_some() {
-                                    return Err(duplicate());
-                                }
-
-                                scope.inherent_types.bool = Some(data.binder.clone().dummified());
-                                find(ffi::Value::FALSE, &mut scope.inherent_values.r#false);
-                                find(ffi::Value::TRUE, &mut scope.inherent_values.r#true);
-                            }
-                            ffi::Type::OPTION => {
-                                if scope.inherent_types.option.is_some() {
-                                    return Err(duplicate());
-                                }
-
-                                scope.inherent_types.option = Some(data.binder.clone().dummified());
-                                find(ffi::Value::NONE, &mut scope.inherent_values.none);
-                                find(ffi::Value::SOME, &mut scope.inherent_values.some);
-                            }
-                            _ => {
-                                return Err(Diagnostic::new(
-                                    Level::Fatal,
-                                    Code::E062,
-                                    format!("`{}` is not an inherent type", data.binder),
-                                )
-                                .with_span(inherent.span)
-                                .with_labeled_span(self.span, "ascribed to this declaration"))
-                            }
-                        }
+                                .map(|constructor| constructor.unwrap_constructor()),
+                            self.span,
+                            inherent.span,
+                            scope,
+                        )?;
                     }
                 }
             }
@@ -235,6 +186,7 @@ impl Expression {
             (Binding(binding), Shift(amount)) => {
                 expr! { Binding[self.span] { binder: binding.binder.clone().shift(amount) } }
             }
+            // @Beacon @Beacon @Question @Bug
             (Binding(binding), Use(substitution, expression)) => {
                 if binding.binder.is_innermost() {
                     expression.substitute(Shift(0))
@@ -245,6 +197,7 @@ impl Expression {
                     }
                 }
             }
+            // @Beacon @Beacon @Question @Bug
             (Substitution(substitution0), substitution1) => substitution0
                 .expression
                 .clone()
@@ -763,6 +716,7 @@ impl Expression {
     // @Bug @Beacon @Beacon if form == WeakHeadNormal, type mismatches occur when there shouldn't
     // @Update that is because `equals` is called on 2 `Substitutions` but 2 of those are never
     // equal. I think they should be "killed" earlier. probably a bug
+    // @Update this happens with Form::Normal, too. what a bummer
     fn is_actual(self, actual: Self, scope: &FunctionScope<'_>) -> Result<()> {
         // let expected = self.evaluate(scope, Form::WeakHeadNormal)?;
         // let actual = actual.evaluate(scope, Form::WeakHeadNormal)?;

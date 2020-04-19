@@ -86,7 +86,6 @@ module triple: =
         'Triple (A B C: Type): A -> B -> C -> Triple A B C
 
 module result: =
-    ;; @Task make inherent as well
     data Result (A E: Type): Type =
         Failure (A E: Type): E -> Result A E
         Success (A E: Type): A -> Result A E
