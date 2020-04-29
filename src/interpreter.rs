@@ -236,7 +236,7 @@ impl Expression {
                         expression: pi.codomain.clone(),
                         substitution: match &pi.parameter {
                             Some(parameter) => {
-                                let binder = Identifier::local(parameter);
+                                let binder = parameter.localized();
 
                                 Use(
                                     Box::new(Shift(1).compose(substitution)),
@@ -273,7 +273,7 @@ impl Expression {
                         Substitution[] {
                             expression: r#type,
                             substitution: {
-                                let binder = Identifier::local(&lambda.parameter);
+                                let binder = lambda.parameter.localized();
                                 Use(
                                     Box::new(Shift(1).compose(substitution.clone())),
                                     expr! { Binding[binder.source.span] { binder } }
@@ -287,7 +287,7 @@ impl Expression {
                     Substitution[] {
                         expression: lambda.body.clone(),
                         substitution: {
-                                let binder = Identifier::local(&lambda.parameter);
+                                let binder = lambda.parameter.localized();
 
                                 Use(
                                     Box::new(Shift(1).compose(substitution)),

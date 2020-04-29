@@ -12,7 +12,7 @@
 mod ast;
 
 use crate::{
-    diagnostic::{Code, Diagnostic, Level},
+    diagnostic::{Code, Diagnostic, Level, Result},
     lexer::{self, Token, TokenKind},
     smallvec,
     span::{SourceFile, Span, Spanned},
@@ -370,7 +370,7 @@ impl Parser<'_> {
         })
     }
 
-    pub fn parse_file_module_no_header(&mut self) -> Result<Declaration> {
+    pub fn parse_top_level(&mut self) -> Result<Declaration> {
         let mut declarations = Vec::<Declaration>::new();
 
         loop {
@@ -383,6 +383,8 @@ impl Parser<'_> {
                     .unwrap_or(Span::DUMMY);
                 break Ok(decl! {
                     Module[span] {
+                        // @Temporary dbg
+                        // @Bug we take the whole path, just take the file name w/o the extension, dummy!
                         binder: Identifier::new(crate::Atom::from(self.file.name.to_string()), Span::DUMMY),
                         file: self.file.clone(),
                         declarations: Some(declarations)
@@ -921,5 +923,3 @@ impl Parser<'_> {
         }
     }
 }
-
-pub type Result<T, E = Diagnostic> = std::result::Result<T, E>;

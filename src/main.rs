@@ -1,14 +1,16 @@
 #![forbid(rust_2018_idioms, unused_must_use)]
 
+use clap::{App, Arg};
 use lushui::{
-    diagnostic::{Diagnostic, Level, Result},
+    diagnostic::{Diagnostic, Diagnostics, Level, Result},
     interpreter,
-    lexer::Lexer,
-    parser::Parser,
+    lexer::{parse_identifier, Lexer},
+    parser::{Identifier, Parser},
     resolver,
-    span::SourceMap,
-    support::ManyExt,
+    span::{SourceMap, Span},
+    support::ManyErrExt,
 };
+use std::{borrow::Cow, path::Path};
 
 const NAME: &str = env!("CARGO_PKG_NAME");
 const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " ", env!("GIT_COMMIT_HASH"));
@@ -35,8 +37,6 @@ mod flags {
 fn main() {
     // #[cfg(FALSE)]
     set_panic_hook();
-
-    use clap::{App, Arg};
 
     let matches = App::new(NAME)
         .version(VERSION)
@@ -85,17 +85,17 @@ fn main() {
 
     let mut map = SourceMap::default();
 
-    let result: Result<(), Vec<Diagnostic>> = (|| {
-        let file = map.load(arguments.file).many()?;
+    let result: Result<(), Diagnostics> = (|| {
+        let file = map.load(arguments.file).many_err()?;
+
+        let file_stem = Path::new(arguments.file).file_stem().unwrap();
 
         let tokens = Lexer::new(&file).lex()?;
         if arguments.tokens {
             println!("{:#?}", tokens);
         }
 
-        let node = Parser::new(file, &tokens)
-            .parse_file_module_no_header()
-            .many()?;
+        let node = Parser::new(file, &tokens).parse_top_level().many_err()?;
         if arguments.ast {
             println!("{:?}", node);
         }
@@ -105,13 +105,27 @@ fn main() {
             println!("{}", node);
         }
 
-        let node = node.resolve(&mut resolver::ModuleScope::default(), &mut map)?;
+        let mut krate = resolver::Crate::new(Identifier::new(
+            (|| parse_identifier(file_stem.to_str()?.to_owned()))().ok_or_else(|| {
+                vec![Diagnostic::new(
+                    Level::Fatal,
+                    None,
+                    format!(
+                        "`{}` is not a valid crate name",
+                        file_stem.to_string_lossy()
+                    ),
+                )]
+            })?,
+            Span::DUMMY,
+        ));
+
+        let node = node.resolve(krate.root(), &mut krate, &mut map)?;
         if arguments.resolved_hir {
             eprintln!("{}", node);
         }
 
         let mut scope = interpreter::ModuleScope::new();
-        node.infer_type_and_evaluate(&mut scope).many()?;
+        node.infer_type_and_evaluate(&mut scope).many_err()?;
         if arguments.scope {
             eprintln!("{:?}", scope);
         }
@@ -129,7 +143,10 @@ fn main() {
         Diagnostic::new(
             Level::Fatal,
             None,
-            format!("aborting due to {} previous errors", amount),
+            match amount {
+                1 => Cow::from("aborting due to previous error"),
+                amount => format!("aborting due to {} previous errors", amount).into(),
+            },
         )
         .emit(Some(&map));
     }

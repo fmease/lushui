@@ -1,27 +1,24 @@
 // @Question should we move the Result helpers to crate::diagnostic?
 
+use crate::diagnostic::{Diagnostic, Diagnostics};
+
+type Result<T> = std::result::Result<T, Diagnostics>;
+
+// @Task better names
 pub mod handle {
+    use super::*;
+
     /// "Handle" 2 results mapping okays and merging errors which are `Vec`s
-    pub trait Two<E> {
-        type A;
-        type B;
-
-        fn handle<O>(self, map: impl FnOnce(Self::A, Self::B) -> O) -> Result<O, Vec<E>>;
+    pub trait Two<A, B> {
+        fn handle<O>(self, map: impl FnOnce(A, B) -> O) -> Result<O>;
     }
 
-    pub trait Three<E> {
-        type A;
-        type B;
-        type C;
-
-        fn handle<O>(self, map: impl FnOnce(Self::A, Self::B, Self::C) -> O) -> Result<O, Vec<E>>;
+    pub trait Three<A, B, C> {
+        fn handle<O>(self, map: impl FnOnce(A, B, C) -> O) -> Result<O>;
     }
 
-    impl<A, B, E> Two<E> for (Result<A, Vec<E>>, Result<B, Vec<E>>) {
-        type A = A;
-        type B = B;
-
-        fn handle<O>(self, map: impl FnOnce(Self::A, Self::B) -> O) -> Result<O, Vec<E>> {
+    impl<A, B> Two<A, B> for (Result<A>, Result<B>) {
+        fn handle<O>(self, map: impl FnOnce(A, B) -> O) -> Result<O> {
             match (self.0, self.1) {
                 (Ok(okay0), Ok(okay1)) => Ok(map(okay0, okay1)),
                 (Err(error), Ok(_)) | (Ok(_), Err(error)) => Err(error),
@@ -34,12 +31,8 @@ pub mod handle {
         }
     }
 
-    impl<A, B, C, E> Three<E> for (Result<A, Vec<E>>, Result<B, Vec<E>>, Result<C, Vec<E>>) {
-        type A = A;
-        type B = B;
-        type C = C;
-
-        fn handle<O>(self, map: impl FnOnce(Self::A, Self::B, Self::C) -> O) -> Result<O, Vec<E>> {
+    impl<A, B, C> Three<A, B, C> for (Result<A>, Result<B>, Result<C>) {
+        fn handle<O>(self, map: impl FnOnce(A, B, C) -> O) -> Result<O> {
             (
                 (self.0, self.1).handle(|okay0, okay1| (okay0, okay1)),
                 self.2,
@@ -49,12 +42,12 @@ pub mod handle {
     }
 }
 
-pub trait TransposeExt<A, E> {
-    fn transpose(self) -> Result<Vec<A>, Vec<E>>;
+pub trait TransposeExt<T> {
+    fn transpose(self) -> Result<Vec<T>>;
 }
 
-impl<A, E> TransposeExt<A, E> for Vec<Result<A, Vec<E>>> {
-    fn transpose(self) -> Result<Vec<A>, Vec<E>> {
+impl<T> TransposeExt<T> for Vec<Result<T>> {
+    fn transpose(self) -> Result<Vec<T>> {
         let mut final_result = Ok(Vec::new());
         for result in self {
             match final_result {
@@ -72,12 +65,12 @@ impl<A, E> TransposeExt<A, E> for Vec<Result<A, Vec<E>>> {
     }
 }
 
-pub trait ManyExt<T, E> {
-    fn many(self) -> Result<T, Vec<E>>;
+pub trait ManyErrExt<T> {
+    fn many_err(self) -> Result<T>;
 }
 
-impl<T, E> ManyExt<T, E> for Result<T, E> {
-    fn many(self) -> Result<T, Vec<E>> {
+impl<T> ManyErrExt<T> for std::result::Result<T, Diagnostic> {
+    fn many_err(self) -> Result<T> {
         self.map_err(|error| vec![error])
     }
 }

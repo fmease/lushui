@@ -11,7 +11,7 @@ use super::{ffi, Expression, Substitution::Shift};
 use crate::{
     diagnostic::*,
     hir::expr,
-    resolver::{DebruijnIndex, Identifier, Index, ModuleIndex},
+    resolver::{CrateIndex, DebruijnIndex, Identifier, Index},
 };
 
 /// The scope of bindings inside of a module.
@@ -30,7 +30,7 @@ use crate::{
 #[derive(Default)]
 // @Question naming? `native_bindings`, `foreign_bindings`
 pub struct ModuleScope {
-    bindings: HashMap<ModuleIndex, Entity>,
+    bindings: HashMap<CrateIndex, Entity>,
     // for printing for now
     // names: HashMap<ModuleIndex, crate::parser::Identifier>,
     // @Note very ad-hoc solution, does not scale to modules
@@ -55,18 +55,18 @@ impl ModuleScope {
         scope
     }
 
-    fn lookup_type(&self, index: ModuleIndex) -> Expression {
+    fn lookup_type(&self, index: CrateIndex) -> Expression {
         self.bindings[&index].r#type()
     }
 
     /// Look up the value of a binding.
-    fn lookup_value(&self, index: ModuleIndex) -> Value {
+    fn lookup_value(&self, index: CrateIndex) -> Value {
         self.bindings[&index].value()
     }
 
     fn is(&self, binder: &Identifier, predicate: fn(&Entity) -> bool) -> bool {
         self.bindings
-            .get(&binder.module().unwrap())
+            .get(&binder.krate().unwrap())
             .map(predicate)
             // @Question shouldn't it just be unwrap() b.c. resolver already ran?
             .unwrap_or(false)
@@ -79,7 +79,7 @@ impl ModuleScope {
         )
     }
 
-    pub fn is_foreign(&self, index: ModuleIndex) -> bool {
+    pub fn is_foreign(&self, index: CrateIndex) -> bool {
         matches!(self.bindings[&index], Entity::Foreign { .. })
     }
 
@@ -99,7 +99,7 @@ impl ModuleScope {
         binder: Identifier,
         arguments: Vec<Expression>,
     ) -> Result<Option<Expression>> {
-        match self.bindings[&binder.module().unwrap()] {
+        match self.bindings[&binder.krate().unwrap()] {
             Entity::Foreign {
                 arity, function, ..
             } => Ok(if arguments.len() == arity {
@@ -134,7 +134,7 @@ impl ModuleScope {
         value: Expression,
     ) {
         let old = self.bindings.insert(
-            binder.module().unwrap(),
+            binder.krate().unwrap(),
             Entity::Expression {
                 r#type,
                 expression: value,
@@ -151,7 +151,7 @@ impl ModuleScope {
     /// Panics under `cfg(debug_assertions)` if the `binder` is already bound.
     pub fn insert_data_binding(&mut self, binder: Identifier, r#type: Expression) {
         let old = self.bindings.insert(
-            binder.module().unwrap(),
+            binder.krate().unwrap(),
             Entity::DataType {
                 r#type,
                 constructors: Vec::new(),
@@ -175,11 +175,11 @@ impl ModuleScope {
     ) {
         let old = self
             .bindings
-            .insert(binder.module().unwrap(), Entity::Constructor { r#type });
+            .insert(binder.krate().unwrap(), Entity::Constructor { r#type });
 
         debug_assert!(old.is_none());
 
-        match self.bindings.get_mut(&data_type.module().unwrap()).unwrap() {
+        match self.bindings.get_mut(&data_type.krate().unwrap()).unwrap() {
             Entity::DataType {
                 ref mut constructors,
                 ..
@@ -199,7 +199,7 @@ impl ModuleScope {
         binder: Identifier,
         r#type: Expression,
     ) -> Result<()> {
-        let index = binder.module().unwrap();
+        let index = binder.krate().unwrap();
         self.bindings.insert(
             index,
             match &self.foreign_bindings.remove(&*binder.source.atom) {
@@ -302,7 +302,7 @@ impl fmt::Debug for ModuleScope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (binder, entity) in &self.bindings {
             // writeln!(f, "{} |-> {}", self.names[binder], entity)?;
-            writeln!(f, "{} |-> {}", binder.value, entity)?;
+            writeln!(f, "{} |-> {}", binder.0, entity)?;
         }
         Ok(())
     }
@@ -325,6 +325,7 @@ impl fmt::Debug for Value {
     }
 }
 
+// @Task rename to BindingKind (analoguous to crate::resolver)
 /// An entity found inside a module scope.
 #[derive(Clone)]
 enum Entity {
@@ -434,7 +435,7 @@ impl<'a> FunctionScope<'a> {
         ) -> Expression {
             match scope {
                 FunctionScope::Function { parent, r#type } => {
-                    if depth == index.value {
+                    if depth == index.0 {
                         expr! {
                             Substitution[] {
                                 substitution: Shift(depth + 1),
@@ -450,7 +451,7 @@ impl<'a> FunctionScope<'a> {
         }
 
         match binder.index {
-            Index::Module(index) => self.module().lookup_type(index),
+            Index::Crate(index) => self.module().lookup_type(index),
             Index::Debruijn(index) => lookup_type(self, index, 0),
             Index::None => unreachable!(),
         }
@@ -458,7 +459,7 @@ impl<'a> FunctionScope<'a> {
 
     pub fn lookup_value(&self, binder: &Identifier) -> Value {
         match binder.index {
-            Index::Module(index) => self.module().lookup_value(index),
+            Index::Crate(index) => self.module().lookup_value(index),
             Index::Debruijn(_) => Value::Neutral,
             Index::None => unreachable!(),
         }
@@ -466,7 +467,7 @@ impl<'a> FunctionScope<'a> {
 
     pub fn is_foreign(&self, binder: &Identifier) -> bool {
         match binder.index {
-            Index::Module(index) => self.module().is_foreign(index),
+            Index::Crate(index) => self.module().is_foreign(index),
             Index::Debruijn(_) => false,
             Index::None => unreachable!(),
         }

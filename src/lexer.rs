@@ -12,7 +12,7 @@ mod test;
 use crate::{
     diagnostic::*,
     span::{LocalByteIndex, LocalSpan, SourceFile, Span, Spanned},
-    support::ManyExt,
+    support::ManyErrExt,
     Atom, Nat,
 };
 use std::{
@@ -183,6 +183,23 @@ fn parse_reserved_punctuation(source: &str) -> Option<TokenKind> {
     })
 }
 
+/// Utility to parse identifiers from a string slice.
+///
+/// Used for non-lushui code like crate names.
+pub fn parse_identifier(source: String) -> Option<Atom> {
+    let mut tokens = Lexer::simply_lex(source).ok()?;
+    let mut tokens = tokens.drain(..);
+    match [tokens.next(), tokens.next()] {
+        [Some(Token {
+            kind: Identifier(identifier),
+            ..
+        }), Some(Token {
+            kind: EndOfInput, ..
+        })] => Some(identifier),
+        _ => None,
+    }
+}
+
 pub struct Lexer<'a> {
     source: &'a SourceFile,
     characters: Peekable<CharIndices<'a>>,
@@ -205,7 +222,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// Lex source code into an array of tokens
-    pub fn lex(mut self) -> Result<Vec<Token>, Vec<Diagnostic>> {
+    pub fn lex(mut self) -> Result<Vec<Token>, Diagnostics> {
         while let Some(character) = self.peek() {
             self.span = LocalSpan::from(self.index().unwrap());
             match character {
@@ -213,13 +230,15 @@ impl<'a> Lexer<'a> {
                 // (SOI should act as a line break)
                 ' ' => self.lex_whitespace(),
                 ';' => self.lex_comment(),
-                character if is_identifier_candidate(character) => self.lex_identifier().many()?,
-                '\n' => self.lex_indentation().many()?,
+                character if is_identifier_candidate(character) => {
+                    self.lex_identifier().many_err()?
+                }
+                '\n' => self.lex_indentation().many_err()?,
                 character if is_punctuation(character) => self.lex_punctuation(),
                 character if character.is_ascii_digit() => self.lex_nat_literal(),
-                '"' => self.lex_text_literal().many()?,
+                '"' => self.lex_text_literal().many_err()?,
                 '(' => self.lex_opening_round_bracket(),
-                ')' => self.lex_closing_round_bracket().many()?,
+                ')' => self.lex_closing_round_bracket().many_err()?,
                 '_' => self.lex_underscore(),
                 character => {
                     return Err(vec![Diagnostic::new(
@@ -254,6 +273,13 @@ impl<'a> Lexer<'a> {
         self.add(EndOfInput);
 
         Ok(self.tokens)
+    }
+
+    pub fn simply_lex(source: String) -> Result<Vec<Token>, Diagnostics> {
+        let path = String::new();
+        let index = crate::span::ByteIndex::new(0);
+        let file = SourceFile::new(path, source, index).ok().unwrap();
+        Lexer::new(&file).lex()
     }
 
     fn lex_whitespace(&mut self) {

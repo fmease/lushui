@@ -4,14 +4,6 @@ use super::{
 };
 use crate::span::{ByteIndex, Span};
 
-fn lex(source: &'static str) -> Result<Vec<Token>, Diagnostics> {
-    use crate::span::SourceFile;
-
-    let file = SourceFile::new("test.lushui".into(), source.to_owned(), ByteIndex::new(0))
-        .unwrap_or_else(|_| panic!());
-    Lexer::new(&file).lex()
-}
-
 fn token(kind: TokenKind, start: u32, end: u32) -> Token {
     Token::new(kind, Span::new(ByteIndex::new(start), ByteIndex::new(end)))
 }
@@ -32,11 +24,14 @@ fn assert_err(actual: Result<Vec<Token>, Diagnostics>) {
 #[test]
 fn lex_comment() {
     assert_ok_token(
-        lex("
+        Lexer::simply_lex(
+            "
 ;; bland commentary ensues
 ;; a filler line
 ;; and an end
-"),
+"
+            .into(),
+        ),
         vec![
             token(LineBreak, 0, 0),
             token(LineBreak, 27, 27),
@@ -47,11 +42,14 @@ fn lex_comment() {
     );
 
     assert_ok_token(
-        lex("\
+        Lexer::simply_lex(
+            "\
 alpha;;文本
 0401 ; stray documentation comment
 ; next one
-;有意思的信"),
+;有意思的信"
+                .into(),
+        ),
         vec![
             token(Identifier("alpha".into()), 0, 4),
             token(LineBreak, 13, 13),
@@ -69,7 +67,7 @@ alpha;;文本
 #[test]
 fn lex_identifier() {
     assert_ok_token(
-        lex("alpha alpha' alpha''' 'alpha '''alpha'''"),
+        Lexer::simply_lex("alpha alpha' alpha''' 'alpha '''alpha'''".into()),
         vec![
             token(Identifier("alpha".into()), 0, 4),
             token(Identifier("alpha'".into()), 6, 11),
@@ -81,7 +79,7 @@ fn lex_identifier() {
     );
 
     assert_ok_token(
-        lex("ALPH4-G4MM4 alpha'-gamma' ''d000''-''e000''-z999 ' ''' '-'-'"),
+        Lexer::simply_lex("ALPH4-G4MM4 alpha'-gamma' ''d000''-''e000''-z999 ' ''' '-'-'".into()),
         vec![
             token(Identifier("ALPH4-G4MM4".into()), 0, 10),
             token(Identifier("alpha'-gamma'".into()), 12, 24),
@@ -93,13 +91,13 @@ fn lex_identifier() {
         ],
     );
 
-    assert_err(lex("alpha-"));
-    assert_err(lex("alpha-:"));
-    assert_err(lex("alpha-0"));
-    assert_err(lex("alpha--gamma"));
+    assert_err(Lexer::simply_lex("alpha-".into()));
+    assert_err(Lexer::simply_lex("alpha-:".into()));
+    assert_err(Lexer::simply_lex("alpha-0".into()));
+    assert_err(Lexer::simply_lex("alpha--gamma".into()));
 
     assert_ok_token(
-        lex("self   Type Type' 'Type Type-Type in"),
+        Lexer::simply_lex("self   Type Type' 'Type Type-Type in".into()),
         vec![
             token(Self_, 0, 3),
             token(Type, 7, 10),
@@ -116,7 +114,8 @@ fn lex_identifier() {
 // @Task invalid indentation after SOI (currently not correctly implemented)
 fn lex_indentation() {
     assert_ok_token(
-        lex("
+        Lexer::simply_lex(
+            "
 alpha
     alpha|
     <$
@@ -126,7 +125,9 @@ beta
 +
     -
         *
-    /"),
+    /"
+            .into(),
+        ),
         vec![
             token(LineBreak, 0, 0),
             token(Identifier("alpha".into()), 1, 5),
@@ -163,17 +164,23 @@ beta
         ],
     );
 
-    assert_err(lex("
-  ="));
-    assert_err(lex("
+    assert_err(Lexer::simply_lex(
+        "
+  ="
+        .into(),
+    ));
+    assert_err(Lexer::simply_lex(
+        "
         |
-    "));
+    "
+        .into(),
+    ));
 }
 
 #[test]
 fn lex_punctuation() {
     assert_ok_token(
-        lex("+ +>alpha//$~%  @0 . .."),
+        Lexer::simply_lex("+ +>alpha//$~%  @0 . ..".into()),
         vec![
             token(Punctuation, 0, 0),
             token(Punctuation, 2, 3),
@@ -191,7 +198,7 @@ fn lex_punctuation() {
 #[test]
 fn lex_nat_literal() {
     assert_ok_token(
-        lex("1001409409220293022239833211 01"),
+        Lexer::simply_lex("1001409409220293022239833211 01".into()),
         vec![
             token(NatLiteral(1001409409220293022239833211u128.into()), 0, 27),
             token(NatLiteral(1u8.into()), 29, 30),
@@ -203,9 +210,12 @@ fn lex_nat_literal() {
 #[test]
 fn lex_text_literal() {
     assert_ok_token(
-        lex(r#""
+        Lexer::simply_lex(
+            r#""
     al
-  pha""#),
+  pha""#
+                .into(),
+        ),
         vec![
             token(
                 TextLiteral(
@@ -221,14 +231,14 @@ fn lex_text_literal() {
         ],
     );
 
-    assert_err(lex(r#""text message"#));
+    assert_err(Lexer::simply_lex(r#""text message"#.into()));
 }
 
 #[test]
 // @Task test bracket stack implementation once implemented
 fn lex_other() {
     assert_ok_token(
-        lex("___ _ (( )( ))"),
+        Lexer::simply_lex("___ _ (( )( ))".into()),
         vec![
             token(Underscore, 0, 0),
             token(Underscore, 1, 1),
@@ -244,15 +254,15 @@ fn lex_other() {
         ],
     );
 
-    assert_err(lex("(("));
-    assert_err(lex(")))"));
+    assert_err(Lexer::simply_lex("((".into()));
+    assert_err(Lexer::simply_lex(")))".into()));
 }
 
 #[test]
 fn illegal() {
-    assert_err(lex("函数"));
-    assert_err(lex("`"));
-    assert_err(lex("\t"));
-    assert_err(lex("[]"));
-    assert_err(lex("{}"));
+    assert_err(Lexer::simply_lex("函数".into()));
+    assert_err(Lexer::simply_lex("`".into()));
+    assert_err(Lexer::simply_lex("\t".into()));
+    assert_err(Lexer::simply_lex("[]".into()));
+    assert_err(Lexer::simply_lex("{}".into()));
 }
