@@ -169,11 +169,11 @@ pub enum Value {
 impl Value {
     // @Task rename so they have "name" in their names, or make them
     // resolver::Identifiers (dummified)
-    pub const UNIT: &'static str = "'Unit";
-    pub const FALSE: &'static str = "False";
-    pub const TRUE: &'static str = "True";
-    pub const NONE: &'static str = "None";
-    pub const SOME: &'static str = "Some";
+    pub const UNIT: &'static str = "unit";
+    pub const FALSE: &'static str = "false";
+    pub const TRUE: &'static str = "true";
+    pub const NONE: &'static str = "none";
+    pub const SOME: &'static str = "some";
 
     pub fn from_expression(expression: &Expression, scope: &super::ModuleScope) -> Option<Self> {
         let values = &scope.inherent_values;
@@ -328,6 +328,8 @@ pub fn register_foreign_bindings(scope: &mut ModuleScope) {
     scope.register_foreign_type(Type::NAT);
     scope.register_foreign_type(Type::TEXT);
 
+    // @Task make this module aware
+
     pure!(scope, "add", |x: Nat, y: Nat| x + y);
     pure!(scope, "subtract", |x: Nat, y: Nat| x.checked_sub(&y));
     pure!(scope, "multiply", |x: Nat, y: Nat| x * y);
@@ -337,7 +339,7 @@ pub fn register_foreign_bindings(scope: &mut ModuleScope) {
     pure!(scope, "less-equal", |x: Nat, y: Nat| x <= y);
     pure!(scope, "greater", |x: Nat, y: Nat| x > y);
     pure!(scope, "greater-equal", |x: Nat, y: Nat| x >= y);
-    pure!(scope, "display-nat", |x: Nat| x.to_string());
+    pure!(scope, "display", |x: Nat| x.to_string());
     pure!(scope, "concat", |a: Text, b: Text| a + &b);
 
     // scope.insert_untyped_foreign_binding("panic", 2, |arguments| {

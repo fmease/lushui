@@ -93,7 +93,7 @@ module nat: =
     greater-equal: Nat -> Nat -> super.bool.Bool
 
     _foreign_
-    display-nat: Nat -> super.text.Text
+    display: Nat -> super.text.Text
 
 module duple: =
     ;; @Task make inherent as well

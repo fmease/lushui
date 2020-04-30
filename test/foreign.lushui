@@ -1,9 +1,9 @@
 module core
 
-combine: Nat -> Nat -> Nat = add
-successor: Nat -> Nat = combine 1
+combine: core.nat.Nat -> core.nat.Nat -> core.nat.Nat = core.nat.add
+successor: core.nat.Nat -> core.nat.Nat = combine 1
 
-p: Bool = equal 50 (add 10 40)
-q: Bool = equal 1 0
+p: core.bool.Bool = core.nat.equal 50 (core.nat.add 10 40)
+q: core.bool.Bool = core.nat.equal 1 0
 
-main: Tuple Nat Nat = 'Tuple Nat Nat (add 3 6) (successor 338389220489284293)
+main: core.duple.Duple core.nat.Nat core.nat.Nat = core.duple.duple core.nat.Nat core.nat.Nat (core.nat.add 3 6) (successor 338389220489284293)

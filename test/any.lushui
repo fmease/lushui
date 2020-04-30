@@ -1,10 +1,10 @@
 module core
 
 data Any: Type =
-    'Any: (A: Type) -> A -> Any
+    any: (A: Type) -> A -> Any
 
-foo: List Bool =
-    Cons Bool False (Cons Bool True (Nil Bool))
+foo: core.list.List core.bool.Bool =
+    core.list.cons core.bool.Bool core.bool.false (core.list.cons core.bool.Bool core.bool.true (core.list.nil core.bool.Bool))
 
-bar: List Any =
-    Cons Any ('Any Unit 'Unit) (Cons Any ('Any Bool False) (Nil Any))
+bar: core.list.List Any =
+    core.list.cons Any (any core.unit.Unit core.unit.unit) (core.list.cons Any (any core.bool.Bool core.bool.false) (core.list.nil Any))

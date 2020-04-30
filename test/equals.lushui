@@ -1,7 +1,9 @@
-data Equals (A B: Type): Type =
-    Reflective (|A: Type): Equals A A
+module core
 
-a: Equals Nat Nat = Reflective (|Nat)
+data Equals (A B: Type): Type =
+    reflective (|A: Type): Equals A A
+
+a: Equals core.nat.Nat core.nat.Nat = reflective (|core.nat.Nat)
 
 ;;b: Equals Nat Text = Reflective (|Nat)
 
