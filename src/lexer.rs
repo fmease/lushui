@@ -74,7 +74,7 @@ pub enum TokenKind {
 
 use TokenKind::*;
 
-// does not display payload by design
+/// Does not display the payload by design.
 impl fmt::Display for TokenKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
@@ -121,6 +121,7 @@ impl fmt::Debug for TokenKind {
 
 /// Amount of spaces making up one unit of indentation.
 pub const INDENTATION_IN_SPACES: usize = 4;
+
 const PRIME: char = '\'';
 
 fn is_punctuation(character: char) -> bool {
@@ -146,10 +147,6 @@ fn is_punctuation(character: char) -> bool {
             | '$'
             | '@'
     )
-}
-
-fn is_identifier_candidate(character: char) -> bool {
-    character.is_ascii_alphabetic() || character == PRIME
 }
 
 fn parse_keyword(source: &str) -> Option<TokenKind> {
@@ -187,7 +184,7 @@ fn parse_reserved_punctuation(source: &str) -> Option<TokenKind> {
 ///
 /// Used for non-lushui code like crate names.
 pub fn parse_identifier(source: String) -> Option<Atom> {
-    let mut tokens = Lexer::simply_lex(source).ok()?;
+    let mut tokens = lex(source).ok()?;
     let mut tokens = tokens.drain(..);
     match [tokens.next(), tokens.next()] {
         [Some(Token {
@@ -198,6 +195,13 @@ pub fn parse_identifier(source: String) -> Option<Atom> {
         })] => Some(identifier),
         _ => None,
     }
+}
+
+pub fn lex(source: String) -> Result<Vec<Token>, Diagnostics> {
+    let path = String::new();
+    let index = crate::span::ByteIndex::new(0);
+    let file = SourceFile::new(path, source, index).ok().unwrap();
+    Lexer::new(&file).lex()
 }
 
 pub struct Lexer<'a> {
@@ -230,9 +234,7 @@ impl<'a> Lexer<'a> {
                 // (SOI should act as a line break)
                 ' ' => self.lex_whitespace(),
                 ';' => self.lex_comment(),
-                character if is_identifier_candidate(character) => {
-                    self.lex_identifier().many_err()?
-                }
+                character if character.is_ascii_alphabetic() => self.lex_identifier().many_err()?,
                 '\n' => self.lex_indentation().many_err()?,
                 character if is_punctuation(character) => self.lex_punctuation(),
                 character if character.is_ascii_digit() => self.lex_nat_literal(),
@@ -273,13 +275,6 @@ impl<'a> Lexer<'a> {
         self.add(EndOfInput);
 
         Ok(self.tokens)
-    }
-
-    pub fn simply_lex(source: String) -> Result<Vec<Token>, Diagnostics> {
-        let path = String::new();
-        let index = crate::span::ByteIndex::new(0);
-        let file = SourceFile::new(path, source, index).ok().unwrap();
-        Lexer::new(&file).lex()
     }
 
     fn lex_whitespace(&mut self) {
@@ -350,16 +345,14 @@ impl<'a> Lexer<'a> {
     }
 
     fn lex_identifier_segment(&mut self) {
-        self.take_while(|character| character == PRIME);
-
         if let Some(character) = self.peek() {
             if character.is_ascii_alphabetic() {
                 self.take();
                 self.advance();
-                self.take_while(|character| character.is_ascii_alphanumeric())
+                self.take_while(|character| character.is_ascii_alphanumeric());
+                self.take_while(|character| character == PRIME);
             }
         }
-        self.take_while(|character| character == PRIME);
     }
 
     fn lex_indentation(&mut self) -> Result<()> {

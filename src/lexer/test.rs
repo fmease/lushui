@@ -1,5 +1,5 @@
 use super::{
-    Diagnostics, Lexer, Token,
+    lex, Diagnostics, Token,
     TokenKind::{self, *},
 };
 use crate::span::{ByteIndex, Span};
@@ -24,14 +24,12 @@ fn assert_err(actual: Result<Vec<Token>, Diagnostics>) {
 #[test]
 fn lex_comment() {
     assert_ok_token(
-        Lexer::simply_lex(
-            "
+        lex("
 ;; bland commentary ensues
 ;; a filler line
 ;; and an end
 "
-            .into(),
-        ),
+        .into()),
         vec![
             token(LineBreak, 0, 0),
             token(LineBreak, 27, 27),
@@ -42,14 +40,12 @@ fn lex_comment() {
     );
 
     assert_ok_token(
-        Lexer::simply_lex(
-            "\
+        lex("\
 alpha;;文本
 0401 ; stray documentation comment
 ; next one
 ;有意思的信"
-                .into(),
-        ),
+            .into()),
         vec![
             token(Identifier("alpha".into()), 0, 4),
             token(LineBreak, 13, 13),
@@ -67,55 +63,51 @@ alpha;;文本
 #[test]
 fn lex_identifier() {
     assert_ok_token(
-        Lexer::simply_lex("alpha alpha' alpha''' 'alpha '''alpha'''".into()),
+        lex("alpha alpha' alpha'''".into()),
         vec![
             token(Identifier("alpha".into()), 0, 4),
             token(Identifier("alpha'".into()), 6, 11),
             token(Identifier("alpha'''".into()), 13, 20),
-            token(Identifier("'alpha".into()), 22, 27),
-            token(Identifier("'''alpha'''".into()), 29, 39),
-            token(EndOfInput, 40, 40),
+            token(EndOfInput, 21, 21),
         ],
     );
 
     assert_ok_token(
-        Lexer::simply_lex("ALPH4-G4MM4 alpha'-gamma' ''d000''-''e000''-z999 ' ''' '-'-'".into()),
+        lex("ALPH4-G4MM4 alpha'-gamma' d000''-e000''-z999".into()),
         vec![
             token(Identifier("ALPH4-G4MM4".into()), 0, 10),
             token(Identifier("alpha'-gamma'".into()), 12, 24),
-            token(Identifier("''d000''-''e000''-z999".into()), 26, 47),
-            token(Identifier("'".into()), 49, 49),
-            token(Identifier("'''".into()), 51, 53),
-            token(Identifier("'-'-'".into()), 55, 59),
-            token(EndOfInput, 60, 60),
+            token(Identifier("d000''-e000''-z999".into()), 26, 43),
+            token(EndOfInput, 44, 44),
         ],
     );
 
-    assert_err(Lexer::simply_lex("alpha-".into()));
-    assert_err(Lexer::simply_lex("alpha-:".into()));
-    assert_err(Lexer::simply_lex("alpha-0".into()));
-    assert_err(Lexer::simply_lex("alpha--gamma".into()));
-
     assert_ok_token(
-        Lexer::simply_lex("self   Type Type' 'Type Type-Type in".into()),
+        lex("self   Type Type' Type-Type in".into()),
         vec![
             token(Self_, 0, 3),
             token(Type, 7, 10),
             token(Identifier("Type'".into()), 12, 16),
-            token(Identifier("'Type".into()), 18, 22),
-            token(Identifier("Type-Type".into()), 24, 32),
-            token(In, 34, 35),
-            token(EndOfInput, 36, 36),
+            token(Identifier("Type-Type".into()), 18, 26),
+            token(In, 28, 29),
+            token(EndOfInput, 30, 30),
         ],
     );
+
+    assert_err(lex("'".into()));
+    assert_err(lex("'alpha".into()));
+    assert_err(lex("alpha-".into()));
+    assert_err(lex("alpha-'".into()));
+    assert_err(lex("alpha-:".into()));
+    assert_err(lex("alpha-0".into()));
+    assert_err(lex("alpha--gamma".into()));
 }
 
 #[test]
 // @Task invalid indentation after SOI (currently not correctly implemented)
 fn lex_indentation() {
     assert_ok_token(
-        Lexer::simply_lex(
-            "
+        lex("
 alpha
     alpha|
     <$
@@ -126,8 +118,7 @@ beta
     -
         *
     /"
-            .into(),
-        ),
+        .into()),
         vec![
             token(LineBreak, 0, 0),
             token(Identifier("alpha".into()), 1, 5),
@@ -164,23 +155,19 @@ beta
         ],
     );
 
-    assert_err(Lexer::simply_lex(
-        "
+    assert_err(lex("
   ="
-        .into(),
-    ));
-    assert_err(Lexer::simply_lex(
-        "
+    .into()));
+    assert_err(lex("
         |
     "
-        .into(),
-    ));
+    .into()));
 }
 
 #[test]
 fn lex_punctuation() {
     assert_ok_token(
-        Lexer::simply_lex("+ +>alpha//$~%  @0 . ..".into()),
+        lex("+ +>alpha//$~%  @0 . ..".into()),
         vec![
             token(Punctuation, 0, 0),
             token(Punctuation, 2, 3),
@@ -198,7 +185,7 @@ fn lex_punctuation() {
 #[test]
 fn lex_nat_literal() {
     assert_ok_token(
-        Lexer::simply_lex("1001409409220293022239833211 01".into()),
+        lex("1001409409220293022239833211 01".into()),
         vec![
             token(NatLiteral(1001409409220293022239833211u128.into()), 0, 27),
             token(NatLiteral(1u8.into()), 29, 30),
@@ -210,12 +197,10 @@ fn lex_nat_literal() {
 #[test]
 fn lex_text_literal() {
     assert_ok_token(
-        Lexer::simply_lex(
-            r#""
+        lex(r#""
     al
   pha""#
-                .into(),
-        ),
+            .into()),
         vec![
             token(
                 TextLiteral(
@@ -231,14 +216,14 @@ fn lex_text_literal() {
         ],
     );
 
-    assert_err(Lexer::simply_lex(r#""text message"#.into()));
+    assert_err(lex(r#""text message"#.into()));
 }
 
 #[test]
 // @Task test bracket stack implementation once implemented
 fn lex_other() {
     assert_ok_token(
-        Lexer::simply_lex("___ _ (( )( ))".into()),
+        lex("___ _ (( )( ))".into()),
         vec![
             token(Underscore, 0, 0),
             token(Underscore, 1, 1),
@@ -254,15 +239,15 @@ fn lex_other() {
         ],
     );
 
-    assert_err(Lexer::simply_lex("((".into()));
-    assert_err(Lexer::simply_lex(")))".into()));
+    assert_err(lex("((".into()));
+    assert_err(lex(")))".into()));
 }
 
 #[test]
 fn illegal() {
-    assert_err(Lexer::simply_lex("函数".into()));
-    assert_err(Lexer::simply_lex("`".into()));
-    assert_err(Lexer::simply_lex("\t".into()));
-    assert_err(Lexer::simply_lex("[]".into()));
-    assert_err(Lexer::simply_lex("{}".into()));
+    assert_err(lex("函数".into()));
+    assert_err(lex("`".into()));
+    assert_err(lex("\t".into()));
+    assert_err(lex("[]".into()));
+    assert_err(lex("{}".into()));
 }

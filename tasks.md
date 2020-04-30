@@ -2,9 +2,10 @@
 
 * update lexer to syntax changes to identifiers
 * update syntax of patterns and case analysis
+* add constructor `|`-syntax
 * add effect infrastructure
   * add foreign data type `Effect: Type -> Type` with foreign bindings `pure`,
-    `bind-effect`, `read-line` and `print-line`
+    `bind`, `read-line` and `print-line`
   * recognize `main: Effect Unit`
   * define effect runner
   * have effect identifiers
@@ -18,12 +19,12 @@
   * work on order-independence and recursion
   * implement exposure lists and privacy
   * design and implement namespaced constructors
-* advanced type inference
+* advanced type inference (!!!)
 * FFI
   * add infrastructure for polymorphic foreign functions (necessary for `panic`, effects, …)
   * check for FFI-compability at foreign declarations
   * implement higher-order foreign functions
-* fix all the bugs related to substitutions
+* fix all the bugs related to substitutions (!!!)
 * fix `(a: A) -> B` smh not equalling `A -> B` anymore
 * print full path on type mismatch (and the like)
 
