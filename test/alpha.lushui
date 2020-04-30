@@ -1,16 +1,23 @@
 module core
 
-some-result: core.nat.Nat = core.nat.multiply 16 4
+use core.nat.Nat
+use core.nat.multiply
+use core.text.Text
+use core.text.concat
 
-do-something (x: core.nat.Nat): core.nat.Nat = core.nat.multiply x 2
+;; use core.(nat.(Nat multiply) text.(Text concat))
 
-nat-identity (x: core.nat.Nat): core.nat.Nat = x
+some-result: Nat = multiply 16 4
 
-alpha: core.nat.Nat = do-something 3000
-beta: core.nat.Nat = nat-identity 23
+do-something (x: Nat): Nat = multiply x 2
 
-;; foo: core.nat.multiply 2 4 = core.nat.Nat
+nat-identity (x: Nat): Nat = x
 
-name: core.text.Text = "Jane"
+alpha: Nat = do-something 3000
+beta: Nat = nat-identity 23
 
-welcome: core.text.Text = core.text.concat "welcome, " name
+;; foo: multiply 2 4 = Nat
+
+name: Text = "Jane"
+
+welcome: Text = concat "welcome, " name

@@ -62,6 +62,10 @@ module option: =
     ;;         none ?A => none B
 
 module nat: =
+    use super.option.Option
+    use super.bool.Bool
+    use super.text.Text
+
     _foreign_
     data Nat: Type
 
@@ -69,31 +73,31 @@ module nat: =
     add: Nat -> Nat -> Nat
 
     _foreign_
-    subtract: Nat -> Nat -> super.option.Option Nat
+    subtract: Nat -> Nat -> Option Nat
 
     _foreign_
     multiply: Nat -> Nat -> Nat
     
     _foreign_
-    divide: Nat -> Nat -> super.option.Option Nat
+    divide: Nat -> Nat -> Option Nat
 
     _foreign_
-    equal: Nat -> Nat -> super.bool.Bool
+    equal: Nat -> Nat -> Bool
 
     _foreign_
-    less: Nat -> Nat -> super.bool.Bool
+    less: Nat -> Nat -> Bool
 
     _foreign_
-    less-equal: Nat -> Nat -> super.bool.Bool
+    less-equal: Nat -> Nat -> Bool
 
     _foreign_
-    greater: Nat -> Nat -> super.bool.Bool
+    greater: Nat -> Nat -> Bool
 
     _foreign_
-    greater-equal: Nat -> Nat -> super.bool.Bool
+    greater-equal: Nat -> Nat -> Bool
 
     _foreign_
-    display: Nat -> super.text.Text
+    display: Nat -> Text
 
 module duple: =
     ;; @Task make inherent as well

@@ -54,7 +54,10 @@ pub enum DeclarationKind<B: Binder> {
         file: Rc<SourceFile>,
         declarations: Option<Vec<Declaration<B>>>,
     },
-    Use,
+    Use {
+        path: B,
+        binders: (),
+    },
 }
 
 pub type Expression<B> = Spanned<ExpressionKind<B>>;

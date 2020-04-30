@@ -44,7 +44,7 @@ impl<B: Binder> Display for Declaration<B> {
                 write!(f, "{}: {}", constructor.binder, constructor.type_annotation)
             }
             Module(declaration) => {
-                f.write_str("module =\n")?;
+                writeln!(f, "module {}: =", declaration.binder)?;
                 if let Some(declarations) = &declaration.declarations {
                     for declaration in declarations {
                         writeln!(f, "    {}", declaration)?;
@@ -52,7 +52,8 @@ impl<B: Binder> Display for Declaration<B> {
                 }
                 Ok(())
             }
-            Use => todo!(),
+            // @Task
+            Use(declaration) => write!(f, "use {}", declaration.path),
         }
     }
 }

@@ -1,6 +1,5 @@
 # Imminent Tasks
 
-* update lexer to syntax changes to identifiers
 * update syntax of patterns and case analysis
 * add constructor `|`-syntax
 * add effect infrastructure
@@ -27,16 +26,15 @@
 * fix all the bugs related to substitutions (!!!)
 * fix `(a: A) -> B` smh not equalling `A -> B` anymore
 * print full path on type mismatch (and the like)
-
-## Smaller
-
-* span information for type errors (very likely needs a second error type)
-* be able to format multi-line spans
 * pretty-print HIR (way fewer parens)
+* spans
+  * span information for type errors (very likely needs a second error type)
+  * be able to format multi-line spans
 * pass a context to more and more functions containing command line arguments, source map
   and stuff
 * fix let/in (parsing)
 * update VS Code grammar
+* update grammar rules inside the documentation comments
 * fix the ugly functions in the parser which lead to bad error messages
 * drastically improve error message for missing type annotations for declarations in the parser
 * finally check what early EOI do to the parser instead of line breaks and the like
@@ -44,9 +42,6 @@
 * correctly parse any kind of indented expressions
   * there are still some bugs
 * parse more possible indentations (eg. after parameter groups)
-
-## Style
-
 * replace as many signatures taking `Expression`s with `&Expression`s. this will reduce clones I
   think because most functions don't need ownership and if it does, we can just cheaply clone the Rc.
   this is useful for lifetime stuff e.g. `ModuleScope::constructors` should take an `&Expression` to

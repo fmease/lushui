@@ -1,0 +1,12 @@
+Cool: Type = Type
+
+module m: =
+    Alpha: Type = Type
+
+    use super.m.Alpha
+
+    T: Type = Cool
+
+use m.T
+
+A: Type = T

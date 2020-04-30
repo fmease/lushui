@@ -180,6 +180,7 @@ impl Parser<'_> {
             ),
             Data => self.advance_with(token.span, Self::finish_parse_data_declaration),
             Module => self.advance_with(token.span, Self::finish_parse_module_declaration),
+            Use => self.advance_with(token.span, Self::finish_parse_use_declaration),
             Underscore => {
                 let attribute = self.advance_with(token.span, Self::finish_parse_attribute)?;
                 let mut declaration = self.parse_declaration()?;
@@ -434,6 +435,21 @@ impl Parser<'_> {
         Ok(constructor)
     }
 
+    /// Finish parsing use declaration.
+    ///
+    /// The keyword `use` has already been consumed.
+    fn finish_parse_use_declaration(&mut self, keyword_span: Span) -> Result<Declaration> {
+        let path = self.parse_path_raw()?;
+        self.consume(TokenKind::LineBreak)?;
+
+        Ok(decl! {
+            Use[keyword_span.merge(path.span)] {
+                path: path.kind,
+                bindings: (),
+            }
+        })
+    }
+
     /// Parse type-annotated parameters.
     ///
     /// ## Grammar
@@ -614,12 +630,17 @@ impl Parser<'_> {
     }
 
     fn parse_path(&mut self) -> Result<Expression> {
-        let (span, head, segments) = self.parse_path_raw()?;
-        Ok(expr! { Path[span] { head, segments } })
+        let path = self.parse_path_raw()?;
+        Ok(expr! {
+            Path[path.span] {
+                head: path.kind.head,
+                segments: path.kind.segments
+            }
+        })
     }
 
     // @Note ugly
-    fn parse_path_raw(&mut self) -> Result<(Span, Option<PathHead>, Vec<Identifier>)> {
+    fn parse_path_raw(&mut self) -> Result<RawExpression<Path>> {
         let mut segments = Vec::new();
 
         let token = self.token();
@@ -646,7 +667,10 @@ impl Parser<'_> {
                 .unwrap_or_else(|| head.as_ref().unwrap().span),
         );
 
-        Ok((span, head, segments))
+        Ok(RawExpression {
+            span,
+            kind: Path { head, segments },
+        })
     }
 
     /// Finish parsing a lambda literal expression.a
@@ -821,30 +845,31 @@ impl Parser<'_> {
     // @Task @Beacon @Beacon use match + custom error message ("expected pattern")
     // @Note all this ugliness will (hopefully) go away once we improve the
     // syntax of patterns
+    // @Beacon @Task update to new syntax
     fn parse_lower_pattern(&mut self) -> Result<Pattern> {
         self.parse_nat_literal_pattern()
             .or_else(|_| {
-                let (span, (head, segments), type_annotation) =
+                let (span, path, type_annotation) =
                     if let Ok(opening_bracket) = self.consume(TokenKind::OpeningRoundBracket) {
-                        let (_, head, segments) = self.parse_path_raw()?;
+                        let path = self.parse_path_raw()?;
                         let type_annotation = self.reflect(Self::parse_type_annotation)?;
                         let span_of_closing_bracket =
                             self.consume(TokenKind::ClosingRoundBracket)?.span;
 
                         (
                             opening_bracket.span.merge(span_of_closing_bracket),
-                            (head, segments),
+                            path.kind,
                             Some(type_annotation),
                         )
                     } else {
-                        let (span, head, segments) = self.parse_path_raw()?;
-                        (span, (head, segments), None)
+                        let path = self.parse_path_raw()?;
+                        (path.span, path.kind, None)
                     };
 
                 Ok(pat! {
                     PathPattern[span] {
-                        head,
-                        segments,
+                        head: path.head,
+                        segments: path.segments,
                         type_annotation,
                     }
                 })

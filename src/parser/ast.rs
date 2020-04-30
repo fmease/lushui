@@ -23,7 +23,7 @@ impl Declaration {
             Data(_) => Targets::DATA,
             Constructor(_) => Targets::CONSTRUCTOR,
             Module(_) => Targets::MODULE,
-            Use => Targets::USE,
+            Use(_) => Targets::USE,
         }
     }
 
@@ -35,7 +35,7 @@ impl Declaration {
             Data(_) => "data",
             Constructor(_) => "constructor",
             Module(_) => "module",
-            Use => "use",
+            Use(_) => "use",
         }
     }
 }
@@ -72,7 +72,8 @@ pub enum DeclarationKind {
         declarations: Option<Vec<Declaration>>,
     },
     /// The syntax node of a use declaration.
-    Use,
+    // @Task
+    Use { path: Path, bindings: () },
 }
 
 pub type AnnotatedParameters = Vec<AnnotatedParameterGroup>;
@@ -224,6 +225,9 @@ pub enum ExpressionKind {
     },
 }
 
+/// Expression where ExpressionKind is unboxed.
+pub type RawExpression<K> = Spanned<K>;
+
 #[derive(Debug, Clone)]
 pub struct CaseAnalysisCaseGroup {
     pub patterns: Vec<Pattern>,
@@ -315,6 +319,9 @@ impl fmt::Display for Identifier {
     }
 }
 
+// @Note the separation between Head and Segments is soo annoying
+// and leads to convoluted code which would actually be really simple
+// in a different format
 impl Path {
     pub fn identifier_head(&self) -> Option<&Identifier> {
         if self.head.is_some() {
@@ -341,6 +348,16 @@ impl Path {
             } else {
                 self.segments.iter().skip(1).cloned().collect()
             },
+        }
+    }
+
+    // @Task avoid allocation, try to design it as a slice `&self.segments[..LEN - 1]`
+    /// Path consisting of segments 0 to n-1
+    // @Task verify
+    pub fn prefix(&self) -> Self {
+        Self {
+            head: self.head.clone(),
+            segments: self.segments.iter().rev().skip(1).rev().cloned().collect(),
         }
     }
 }

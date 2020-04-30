@@ -109,7 +109,12 @@ impl parser::Declaration {
                         .collect::<Result<_, _>>()).transpose()?,
                 }
             },
-            Use => todo!(),
+            Use(declaration) => decl! {
+                Use[self.span][self.attributes] {
+                    path: declaration.path,
+                    binders: (),
+                }
+            },
         })
     }
 

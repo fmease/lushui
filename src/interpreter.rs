@@ -157,7 +157,8 @@ impl Declaration {
                     }
                 }
             }
-            Use => todo!("infer type of use declaration"),
+            // @Task
+            Use(_) => todo!("infer type of use declaration"),
         }
 
         Ok(())
