@@ -38,6 +38,7 @@ fn main() {
     // #[cfg(FALSE)]
     set_panic_hook();
 
+    // @Task gather all print arguments under a common --print=THING argument
     let matches = App::new(NAME)
         .version(VERSION)
         .about(DESCRIPTION)
@@ -120,9 +121,9 @@ fn main() {
             println!("{}", node);
         }
 
-        let mut krate = resolver::Crate::new(crate_name);
+        let mut krate = resolver::Crate::default();
 
-        let node = node.resolve(krate.root(), &mut krate, &mut map)?;
+        let node = node.resolve(None, &mut krate, &mut map)?;
         if arguments.resolved_hir {
             eprintln!("{}", node);
         }

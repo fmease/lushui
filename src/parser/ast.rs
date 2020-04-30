@@ -332,15 +332,15 @@ impl Path {
         Some(&self.segments[0])
     }
 
-    /// Does not allow `super`/`crate`.
     pub fn tail(&self) -> Self {
-        // @Temporary
-        assert!(self.head.is_none());
-
         Self {
             head: None,
             // @Task avoid allocation, try to design it as a slice `&self.segments[1..]`
-            segments: self.segments.iter().skip(1).cloned().collect(),
+            segments: if self.head.is_some() {
+                self.segments.clone()
+            } else {
+                self.segments.iter().skip(1).cloned().collect()
+            },
         }
     }
 }

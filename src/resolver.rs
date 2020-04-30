@@ -25,51 +25,33 @@ use crate::{
     support::{handle::*, ManyErrExt, TransposeExt},
 };
 
+#[derive(Default)]
 pub struct Crate {
-    _name: parser::Identifier,
     /// All bindings inside of a crate.
     ///
-    /// The first element is always the root module.
+    /// The first element will always be the root module.
     bindings: IndexVec<CrateIndex, Binding>,
 }
 
 impl Crate {
-    pub fn new(name: parser::Identifier) -> Self {
-        let mut bindings = IndexVec::new();
-
-        bindings.push(Binding {
-            source: name.clone(),
-            kind: BindingKind::Module(ModuleScope {
-                bindings: Vec::new(),
-            }),
-        });
-
-        Self {
-            _name: name,
-            bindings,
-        }
-    }
-
-    pub fn root(&self) -> CrateIndex {
+    fn root(&self) -> CrateIndex {
         CrateIndex(0)
     }
 
-    // @Temporary needs better API
-    fn lookup_subbindings(&self, index: CrateIndex) -> &[CrateIndex] {
+    fn unwrap_module_scope(&self, index: CrateIndex) -> &ModuleScope {
         match &self.bindings[index].kind {
-            BindingKind::Module(scope) => &scope.bindings,
+            BindingKind::Module(scope) => scope,
             _ => unreachable!(),
         }
     }
 
-    fn lookup_module_bindings_mut(&mut self, index: CrateIndex) -> &mut Vec<CrateIndex> {
+    fn unwrap_module_scope_mut(&mut self, index: CrateIndex) -> &mut ModuleScope {
         match &mut self.bindings[index].kind {
-            BindingKind::Module(scope) => &mut scope.bindings,
+            BindingKind::Module(scope) => scope,
             _ => unreachable!(),
         }
     }
 
-    // @Task error if module used as value (maybe)
     fn register_value_binding(
         &mut self,
         binder: parser::Identifier,
@@ -81,20 +63,23 @@ impl Crate {
                 source: binder,
                 kind: BindingKind::Value,
             },
-            module,
+            Some(module),
         )
     }
 
     fn register_module_binding(
         &mut self,
         binder: parser::Identifier,
-        module: CrateIndex,
+        module: Option<CrateIndex>,
     ) -> Result<Identifier> {
         self.register_binding(
             binder.clone(),
             Binding {
                 source: binder,
-                kind: BindingKind::Module(ModuleScope::default()),
+                kind: BindingKind::Module(ModuleScope {
+                    parent: module,
+                    bindings: Vec::new(),
+                }),
             },
             module,
         )
@@ -104,11 +89,12 @@ impl Crate {
         &mut self,
         binder: parser::Identifier,
         binding: Binding,
-        module: CrateIndex,
+        module: Option<CrateIndex>,
     ) -> Result<Identifier> {
-        {
+        if let Some(module) = module {
             if let Some(previous) = self
-                .lookup_subbindings(module)
+                .unwrap_module_scope(module)
+                .bindings
                 .iter()
                 .map(|&index| &self.bindings[index])
                 .find(|binding| binding.source == binder)
@@ -124,28 +110,53 @@ impl Crate {
         }
 
         let index = self.bindings.push(binding);
-        self.lookup_module_bindings_mut(module).push(index);
+
+        if let Some(module) = module {
+            self.unwrap_module_scope_mut(module).bindings.push(index);
+        }
 
         Ok(Identifier::new(index, binder))
     }
 
-    // @Task error if module used as value
     /// Try to resolve a textual identifier to a resolved one.
-    // @Task @Beacon @Beacon @Beacon
     fn resolve_binding(&self, path: &Path, module: CrateIndex) -> Result<Identifier> {
-        if path.head.is_some() {
-            todo!("`super` and `crate` paths");
+        if let Some(head) = &path.head {
+            use parser::PathHeadKind::*;
+
+            if path.segments.is_empty() {
+                return Err(module_used_as_a_value(head.span));
+            }
+
+            return match head.kind {
+                Crate => self.resolve_binding(&path.tail(), self.root()),
+                Super => match self.unwrap_module_scope(module).parent {
+                    Some(parent) => self.resolve_binding(&path.tail(), parent),
+                    None => Err(Diagnostic::new(
+                        Level::Error,
+                        Code::E021,
+                        "the crate root does not have a parent",
+                    )
+                    .with_span(head.span)),
+                },
+            };
         }
 
-        self.lookup_subbindings(module)
+        self.unwrap_module_scope(module)
+            .bindings
             .iter()
             .copied()
             .find(|&index| self.bindings[index].source == path.segments[0])
             .map(|index| match path.simple() {
-                Some(identifier) => Ok(Identifier::new(index, identifier.clone())),
+                Some(identifier) => {
+                    if matches!(self.bindings[index].kind, BindingKind::Value) {
+                        Ok(Identifier::new(index, identifier.clone()))
+                    } else {
+                        Err(module_used_as_a_value(identifier.span))
+                    }
+                }
                 None => match self.bindings[index].kind {
                     BindingKind::Module(_) => self.resolve_binding(&path.tail(), index),
-                    BindingKind::Value => Err(indexing_a_non_module(
+                    BindingKind::Value => Err(value_used_as_a_module(
                         path.segments[0].span,
                         path.segments[1].span,
                     )),
@@ -171,7 +182,7 @@ impl Crate {
 impl Declaration<Path> {
     pub fn resolve(
         self,
-        parent: CrateIndex,
+        parent: Option<CrateIndex>,
         krate: &mut Crate,
         map: &mut SourceMap,
     ) -> Result<Declaration<Identifier>, Diagnostics> {
@@ -179,6 +190,8 @@ impl Declaration<Path> {
 
         match self.kind {
             Value(value) => {
+                let parent = parent.unwrap();
+
                 let binder = krate
                     .register_value_binding(value.binder, parent)
                     .many_err();
@@ -213,6 +226,8 @@ impl Declaration<Path> {
                 )
             }
             Data(data) => {
+                let parent = parent.unwrap();
+
                 let data_binder = krate.register_value_binding(data.binder, parent).many_err();
 
                 let type_annotation = data
@@ -223,7 +238,7 @@ impl Declaration<Path> {
                 let constructors = data.constructors.map(|constructors| {
                     constructors
                         .into_iter()
-                        .map(|constructor| constructor.resolve(parent, krate, map))
+                        .map(|constructor| constructor.resolve(Some(parent), krate, map))
                         .collect()
                 });
 
@@ -243,6 +258,8 @@ impl Declaration<Path> {
                 )
             }
             Constructor(constructor) => {
+                let parent = parent.unwrap();
+
                 let binder = krate
                     .register_value_binding(constructor.binder, parent)
                     .many_err();
@@ -305,7 +322,9 @@ impl Declaration<Path> {
                 // @Temporary: if let Some
                 let declarations = declarations
                     .into_iter()
-                    .map(|declaration| declaration.resolve(binder.krate().unwrap(), krate, map))
+                    .map(|declaration| {
+                        declaration.resolve(Some(binder.krate().unwrap()), krate, map)
+                    })
                     .collect::<Vec<_>>()
                     .transpose()?;
 
@@ -392,14 +411,12 @@ impl Expression<parser::Path> {
     }
 }
 
-#[derive(Default)]
 pub struct ModuleScope {
-    // binder: ModuleIndex,
-    // parent: Option<ModuleIndex>,
+    parent: Option<CrateIndex>,
     bindings: Vec<CrateIndex>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Identifier {
     /// Source at the use-site/call-site or def-site if definition.
     pub source: parser::Identifier,
@@ -414,7 +431,7 @@ impl Identifier {
         }
     }
 
-    // @Note I dunno about this interface
+    // @Note bad name
     pub fn localized(&self) -> Self {
         Self::new(DebruijnIndex(0), self.source.clone())
     }
@@ -575,7 +592,7 @@ impl<'a> FunctionScope<'a> {
                     if let Some(identifier) = query.identifier_head() {
                         if binder == identifier {
                             if query.segments.len() > 1 {
-                                return Err(indexing_a_non_module(
+                                return Err(value_used_as_a_module(
                                     identifier.span,
                                     query.segments[1].span,
                                 ));
@@ -603,8 +620,6 @@ impl<'a> FunctionScope<'a> {
     }
 }
 
-// @Task redesign this stufff!!!
-
 pub struct Binding {
     /// Source information of the definition site.
     source: parser::Identifier,
@@ -618,7 +633,7 @@ enum BindingKind {
 }
 
 // @Question fatal?? and if non-fatal, it's probably ignored
-fn indexing_a_non_module(non_module_span: Span, subbinder_span: Span) -> Diagnostic {
+fn value_used_as_a_module(non_module_span: Span, subbinder_span: Span) -> Diagnostic {
     Diagnostic::new(
         Level::Fatal,
         Code::E022,
@@ -626,4 +641,8 @@ fn indexing_a_non_module(non_module_span: Span, subbinder_span: Span) -> Diagnos
     )
     .with_labeled_span(subbinder_span, "reference to a subdeclaration")
     .with_labeled_span(non_module_span, "a value, not a module")
+}
+
+fn module_used_as_a_value(span: Span) -> Diagnostic {
+    Diagnostic::new(Level::Fatal, Code::E023, "modules are not values").with_span(span)
 }

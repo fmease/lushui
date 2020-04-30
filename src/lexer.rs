@@ -343,7 +343,7 @@ impl<'a> Lexer<'a> {
 
         self.add(match parse_keyword(&self.source[self.span]) {
             Some(keyword) => keyword,
-            None => Identifier(Atom::from(&self.source[self.span])),
+            None => Identifier(self.source[self.span].into()),
         });
 
         Ok(())

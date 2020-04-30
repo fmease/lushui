@@ -2,27 +2,46 @@
 
 identity (A: Type) (a: A): A = a
 
-constant (A B: Type) (a: A) (': B): A = a
+constant (A B: Type) (a: A) (b: B): A = a
 
 ;; @Bug @Bug @Beacon regression: a pi-type w/o a parameter is no longer equal to
 ;; to a pi-type with one:
 ;; error[E032]: mismatched types. expected `(A) -> (C)`, got `(x: A) -> (C)`
-;; compose (A B C: Type) (f: A -> B) (g: B -> C): A -> C =
-;;     \(x: A) => g (f x)
+;; compose (A B C: Type) (f: A -> B) (g: B -> C) (a: A): C =
+;;     g (f a)
 
 module void: =
     data Void: Type =
 
+    ;; absurd (A: Type) (v: Void): A =
+    ;;     case v of
+
 module unit: =
     _inherent_
     data Unit: Type =
-        'Unit: Unit
+        unit: Unit
 
 module bool: =
     _inherent_
     data Bool: Type =
-        False: Bool
-        True: Bool
+        false: Bool
+        true: Bool
+    
+    ;; not (b: Bool): Bool =
+    ;;     case b of
+    ;;         false => true
+    ;;         true => false
+    
+    ;; @Note not lazy
+    ;; if (A: Type) (condition: Bool) (consequent alternate: A): A =
+    ;;     case condition of
+    ;;         false => alternate
+    ;;         true => consequent
+
+    ;; @Note not lazy
+    ;; and (b c: Bool): Bool = if Bool b c false
+
+    ;; or (b c: Bool): Bool = if Bool b True c
 
 module text: =
     _foreign_
@@ -34,13 +53,13 @@ module text: =
 module option: =
     _inherent_
     data Option (A: Type): Type =
-        None (A: Type): Option A
-        Some (A: Type): A -> Option A
+        none (A: Type): Option A
+        some (A: Type): A -> Option A
 
-    ;; map-option (A B: Type) (f: A -> B) (a: Option A): Option B =
-    ;;     case a
-    ;;     of Some A a => Some B (f a)
-    ;;     of None A => None B
+    ;; map (A B: Type) (f: A -> B) (a: Option A): Option B =
+    ;;     case a of
+    ;;         some ?A ?a => some B (f a)
+    ;;         none ?A => none B
 
 module nat: =
     _foreign_
@@ -50,47 +69,48 @@ module nat: =
     add: Nat -> Nat -> Nat
 
     _foreign_
-    subtract: Nat -> Nat -> Option Nat
+    subtract: Nat -> Nat -> super.option.Option Nat
 
     _foreign_
     multiply: Nat -> Nat -> Nat
     
     _foreign_
-    divide: Nat -> Nat -> Option Nat
+    divide: Nat -> Nat -> super.option.Option Nat
 
     _foreign_
-    equal: Nat -> Nat -> Bool
+    equal: Nat -> Nat -> super.bool.Bool
 
     _foreign_
-    less: Nat -> Nat -> Bool
+    less: Nat -> Nat -> super.bool.Bool
 
     _foreign_
-    less-equal: Nat -> Nat -> Bool
+    less-equal: Nat -> Nat -> super.bool.Bool
 
     _foreign_
-    greater: Nat -> Nat -> Bool
+    greater: Nat -> Nat -> super.bool.Bool
 
     _foreign_
-    greater-equal: Nat -> Nat -> Bool
+    greater-equal: Nat -> Nat -> super.bool.Bool
 
     _foreign_
-    display-nat: Nat -> Text
+    display-nat: Nat -> super.text.Text
 
-module tuple: =
+module duple: =
     ;; @Task make inherent as well
-    data Tuple (A B: Type): Type =
-        'Tuple (A B: Type): A -> B -> Tuple A B
+    data Duple (A B: Type): Type =
+        duple (A B: Type): A -> B -> Duple A B
 
 module triple: =
     data Triple (A B C: Type): Type =
-        'Triple (A B C: Type): A -> B -> C -> Triple A B C
+        triple (A B C: Type): A -> B -> C -> Triple A B C
 
 module result: =
     data Result (A E: Type): Type =
-        Failure (A E: Type): E -> Result A E
-        Success (A E: Type): A -> Result A E
+        failure (A E: Type): E -> Result A E
+        success (A E: Type): A -> Result A E
 
 module list: =
     data List (A: Type): Type =
-        Nil (A: Type): List A
-        Cons (A: Type): A -> List A -> List A
+        ;; @bad naming
+        nil (A: Type): List A
+        cons (A: Type): A -> List A -> List A
