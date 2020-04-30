@@ -9,15 +9,15 @@ pub mod handle {
     use super::*;
 
     /// "Handle" 2 results mapping okays and merging errors which are `Vec`s
-    pub trait Two<A, B> {
+    pub trait HandleTwo<A, B> {
         fn handle<O>(self, map: impl FnOnce(A, B) -> O) -> Result<O>;
     }
 
-    pub trait Three<A, B, C> {
+    pub trait HandleThree<A, B, C> {
         fn handle<O>(self, map: impl FnOnce(A, B, C) -> O) -> Result<O>;
     }
 
-    impl<A, B> Two<A, B> for (Result<A>, Result<B>) {
+    impl<A, B> HandleTwo<A, B> for (Result<A>, Result<B>) {
         fn handle<O>(self, map: impl FnOnce(A, B) -> O) -> Result<O> {
             match (self.0, self.1) {
                 (Ok(okay0), Ok(okay1)) => Ok(map(okay0, okay1)),
@@ -31,7 +31,7 @@ pub mod handle {
         }
     }
 
-    impl<A, B, C> Three<A, B, C> for (Result<A>, Result<B>, Result<C>) {
+    impl<A, B, C> HandleThree<A, B, C> for (Result<A>, Result<B>, Result<C>) {
         fn handle<O>(self, map: impl FnOnce(A, B, C) -> O) -> Result<O> {
             (
                 (self.0, self.1).handle(|okay0, okay1| (okay0, okay1)),

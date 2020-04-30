@@ -8,6 +8,10 @@
 //! * cannot really handle optional indentation and some legal EOIs
 
 // @Beacon @Task make some errors non-fatal (e.g. unknown attributes)
+// @Task merge parse_parameters and parse_annotated_parameters using enum AnnotationPolicy { Mandatory, Optional }
+// to create better error messages: "missing type annotation on declaration",
+// subdiagnostic: "note: type annotations are mandatory on the top level",
+// subdiagnostic: "help: instead of `x`, write `(x: ?Type)`"
 
 mod ast;
 
@@ -370,7 +374,7 @@ impl Parser<'_> {
         })
     }
 
-    pub fn parse_top_level(&mut self) -> Result<Declaration> {
+    pub fn parse_top_level(&mut self, binder: Identifier) -> Result<Declaration> {
         let mut declarations = Vec::<Declaration>::new();
 
         loop {
@@ -383,9 +387,7 @@ impl Parser<'_> {
                     .unwrap_or(Span::DUMMY);
                 break Ok(decl! {
                     Module[span] {
-                        // @Temporary dbg
-                        // @Bug we take the whole path, just take the file name w/o the extension, dummy!
-                        binder: Identifier::new(crate::Atom::from(self.file.name.to_string()), Span::DUMMY),
+                        binder,
                         file: self.file.clone(),
                         declarations: Some(declarations)
                     }

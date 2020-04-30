@@ -20,8 +20,8 @@ use std::rc::Rc;
 use crate::{
     diagnostic::*,
     hir::{decl, expr, Binder, Declaration, DeclarationKind, Expression, ExpressionKind},
-    parser,
-    span::SourceMap,
+    parser::{self, Path},
+    span::{SourceMap, Span},
     support::{handle::*, ManyErrExt, TransposeExt},
 };
 
@@ -55,7 +55,7 @@ impl Crate {
     }
 
     // @Temporary needs better API
-    fn lookup_module_bindings(&self, index: CrateIndex) -> &[CrateIndex] {
+    fn lookup_subbindings(&self, index: CrateIndex) -> &[CrateIndex] {
         match &self.bindings[index].kind {
             BindingKind::Module(scope) => &scope.bindings,
             _ => unreachable!(),
@@ -85,7 +85,7 @@ impl Crate {
         )
     }
 
-    pub fn register_module_binding(
+    fn register_module_binding(
         &mut self,
         binder: parser::Identifier,
         module: CrateIndex,
@@ -108,7 +108,7 @@ impl Crate {
     ) -> Result<Identifier> {
         {
             if let Some(previous) = self
-                .lookup_module_bindings(module)
+                .lookup_subbindings(module)
                 .iter()
                 .map(|&index| &self.bindings[index])
                 .find(|binding| binding.source == binder)
@@ -129,36 +129,46 @@ impl Crate {
         Ok(Identifier::new(index, binder))
     }
 
-    // @Note @Beacon @Beacon missing: resolving parser::Path to self::Identifier
-
-    // @Task error if module used as value (maybe)
-    // @Task @Beacon @Beacon @Beacon
-    // @Question rename to resolve_value_binding?
-    // @Question should we only handle value bindings here and disallow module bindings?
-    // @Note dependends on where we want to check that we don't use a module as value
+    // @Task error if module used as value
     /// Try to resolve a textual identifier to a resolved one.
-    fn resolve_binding(
-        &self,
-        identifier: &parser::Identifier,
-        module: CrateIndex,
-    ) -> Result<Identifier> {
-        self.lookup_module_bindings(module)
+    // @Task @Beacon @Beacon @Beacon
+    fn resolve_binding(&self, path: &Path, module: CrateIndex) -> Result<Identifier> {
+        if path.head.is_some() {
+            todo!("`super` and `crate` paths");
+        }
+
+        self.lookup_subbindings(module)
             .iter()
-            .map(|&index| &self.bindings[index])
-            .position(|binding| &binding.source == identifier)
-            .map(|index| Identifier::new(CrateIndex(index), identifier.clone()))
+            .copied()
+            .find(|&index| self.bindings[index].source == path.segments[0])
+            .map(|index| match path.simple() {
+                Some(identifier) => Ok(Identifier::new(index, identifier.clone())),
+                None => match self.bindings[index].kind {
+                    BindingKind::Module(_) => self.resolve_binding(&path.tail(), index),
+                    BindingKind::Value => Err(indexing_a_non_module(
+                        path.segments[0].span,
+                        path.segments[1].span,
+                    )),
+                },
+            })
+            .transpose()?
             .ok_or_else(|| {
                 Diagnostic::new(
                     Level::Error,
                     Code::E021,
-                    format!("binding `{}` is not defined in this scope", identifier),
+                    // @Task modify error message: if it's a simple path: "in this scope/module"
+                    // and if it's a complex one: "in module `module`"
+                    format!(
+                        "binding `{}` is not defined in this scope",
+                        path.segments[0]
+                    ),
                 )
-                .with_span(identifier.span)
+                .with_span(path.segments[0].span)
             })
     }
 }
 
-impl Declaration<parser::Path> {
+impl Declaration<Path> {
     pub fn resolve(
         self,
         parent: CrateIndex,
@@ -259,7 +269,7 @@ impl Declaration<parser::Path> {
                 // maybe buggy behavior?
                 // @Task don't use the try operator here, make it non-fatal @Temporary try
                 let binder = krate
-                    .register_module_binding(module.binder, parent)
+                    .register_module_binding(module.binder.clone(), parent)
                     .many_err()?;
 
                 let declarations = match module.declarations {
@@ -273,7 +283,7 @@ impl Declaration<parser::Path> {
                         let file = map.load(path.to_str().unwrap()).many_err()?;
                         let tokens = crate::lexer::Lexer::new(&file).lex()?;
                         let node = parser::Parser::new(file, &tokens)
-                            .parse_top_level()
+                            .parse_top_level(module.binder)
                             .many_err()?;
                         let node = node.desugar()?;
                         let module = match node.kind {
@@ -357,19 +367,11 @@ impl Expression<parser::Path> {
                         .unwrap_or_else(|text| text.value.clone()),
                 }
             },
-            Binding(binding) => {
-                // @Beacon @Beacon @Temporary handling of complex paths: resolve em!!
-                // @Task implement it
-                if binding.binder.head.is_some() || binding.binder.segments.len() != 1 {
-                    panic!("complex paths cannot be handled by the resolver yet");
+            Binding(binding) => expr! {
+                Binding[self.span] {
+                    binder: scope.resolve_binding(&binding.binder, krate)?,
                 }
-
-                expr! {
-                    Binding[self.span] {
-                        binder: scope.resolve_binding(&binding.binder.segments[0], krate)?,
-                    }
-                }
-            }
+            },
             Lambda(lambda) => expr! {
                 Lambda[self.span] {
                     parameter: Identifier::new(Index::None, lambda.parameter.clone()),
@@ -558,28 +560,46 @@ impl<'a> FunctionScope<'a> {
         }
     }
 
-    // @Task @Beacon @Beacon allow complex paths (parser::Path)
-
-    fn resolve_binding(&self, query: &parser::Identifier, krate: &Crate) -> Result<Identifier> {
+    fn resolve_binding(&self, query: &Path, krate: &Crate) -> Result<Identifier> {
         fn resolve_binding(
             scope: &FunctionScope<'_>,
-            query: &parser::Identifier,
+            query: &Path,
             krate: &Crate,
             depth: usize,
         ) -> Result<Identifier> {
+            // eprintln!("FunctionScope::resolve_binding called on {}", query);
+
             match scope {
                 FunctionScope::Module(module) => krate.resolve_binding(query, *module),
                 FunctionScope::Binding { parent, binder } => {
-                    if binder == query {
-                        Ok(Identifier::new(DebruijnIndex(depth), query.clone()))
+                    if let Some(identifier) = query.identifier_head() {
+                        if binder == identifier {
+                            if query.segments.len() > 1 {
+                                return Err(indexing_a_non_module(
+                                    identifier.span,
+                                    query.segments[1].span,
+                                ));
+                            }
+
+                            Ok(Identifier::new(DebruijnIndex(depth), identifier.clone()))
+                        } else {
+                            resolve_binding(parent, query, krate, depth + 1)
+                        }
                     } else {
-                        resolve_binding(parent, query, krate, depth + 1)
+                        krate.resolve_binding(query, parent.module())
                     }
                 }
             }
         }
 
         resolve_binding(self, query, krate, 0)
+    }
+
+    fn module(&self) -> CrateIndex {
+        match self {
+            Self::Module(index) => *index,
+            Self::Binding { parent, .. } => parent.module(),
+        }
     }
 }
 
@@ -595,4 +615,15 @@ pub struct Binding {
 enum BindingKind {
     Value,
     Module(ModuleScope),
+}
+
+// @Question fatal?? and if non-fatal, it's probably ignored
+fn indexing_a_non_module(non_module_span: Span, subbinder_span: Span) -> Diagnostic {
+    Diagnostic::new(
+        Level::Fatal,
+        Code::E022,
+        "values do not have subdeclarations",
+    )
+    .with_labeled_span(subbinder_span, "reference to a subdeclaration")
+    .with_labeled_span(non_module_span, "a value, not a module")
 }

@@ -269,6 +269,8 @@ pub enum Code {
     E020,
     /// Undefined binding.
     E021,
+    /// Value used as a module.
+    E022,
     /// Missing type annotation for lambda literal parameter or pattern.
     E030,
     /// Illegal function application.

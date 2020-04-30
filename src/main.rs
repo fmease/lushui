@@ -87,25 +87,9 @@ fn main() {
 
     let result: Result<(), Diagnostics> = (|| {
         let file = map.load(arguments.file).many_err()?;
-
         let file_stem = Path::new(arguments.file).file_stem().unwrap();
 
-        let tokens = Lexer::new(&file).lex()?;
-        if arguments.tokens {
-            println!("{:#?}", tokens);
-        }
-
-        let node = Parser::new(file, &tokens).parse_top_level().many_err()?;
-        if arguments.ast {
-            println!("{:?}", node);
-        }
-
-        let node = node.desugar()?;
-        if arguments.hir {
-            println!("{}", node);
-        }
-
-        let mut krate = resolver::Crate::new(Identifier::new(
+        let crate_name = Identifier::new(
             (|| parse_identifier(file_stem.to_str()?.to_owned()))().ok_or_else(|| {
                 vec![Diagnostic::new(
                     Level::Fatal,
@@ -117,7 +101,26 @@ fn main() {
                 )]
             })?,
             Span::DUMMY,
-        ));
+        );
+
+        let tokens = Lexer::new(&file).lex()?;
+        if arguments.tokens {
+            println!("{:#?}", tokens);
+        }
+
+        let node = Parser::new(file, &tokens)
+            .parse_top_level(crate_name.clone())
+            .many_err()?;
+        if arguments.ast {
+            println!("{:?}", node);
+        }
+
+        let node = node.desugar()?;
+        if arguments.hir {
+            println!("{}", node);
+        }
+
+        let mut krate = resolver::Crate::new(crate_name);
 
         let node = node.resolve(krate.root(), &mut krate, &mut map)?;
         if arguments.resolved_hir {
