@@ -46,3 +46,4 @@
   think because most functions don't need ownership and if it does, we can just cheaply clone the Rc.
   this is useful for lifetime stuff e.g. `ModuleScope::constructors` should take an `&Expression` to
   be able to return `&[Identifier]` instead of an expensive clone for `Vec<Identifier>`
+* split `interpreter.rs` into type checker and interpreter

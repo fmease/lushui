@@ -1,3 +1,8 @@
+//! Helper "support" bindings for every module.
+//!
+//! All of those items are about error handling. They want a home.
+//! `crate::diagnostic` might not be it. It's still some way to go
+//! until I figure out how to handle errors best.
 // @Question should we move the Result helpers to crate::diagnostic?
 
 use crate::diagnostic::{Diagnostic, Diagnostics};

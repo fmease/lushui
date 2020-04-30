@@ -1,4 +1,4 @@
-//! The reference compiler of lushui called `lushuic`.
+//! The reference compiler of lushui.
 //!
 //! It's not a compiler yet, still a bug-ridden feature-incomplete tree-walk interpreter
 //! (with type-checking).

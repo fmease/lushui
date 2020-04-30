@@ -1,3 +1,12 @@
+//! The diagnostic system.
+//!
+//! ## Issues
+//!
+//! * does not support subdiagnostics yet
+//! * does not support multiline spans
+//! * cannot correctly align code when it's from different files
+//! * does not feature error handling abstractions like diagnostic buffers
+
 use crate::span::{SourceMap, Span};
 
 type CowStr = std::borrow::Cow<'static, str>;
@@ -18,8 +27,6 @@ struct InnerDiagnostic {
     code: Option<Code>,
     spans: Vec<EnrichedSpan>,
 }
-
-const SPACE: &str = " ";
 
 // @Task be able to have errors associated with a file but not a snippet
 // @Note I still want to rely on `Span`
@@ -106,7 +113,7 @@ impl Diagnostic {
             let map = map.unwrap();
             let lines = map.resolve_span(span.span);
             let line_number = lines.first.number.to_string();
-            let padding = SPACE.repeat(line_number.len());
+            let padding = " ".repeat(line_number.len());
 
             message.push_str(&format!(
                 "\n{padding} {arrow} {file}:{line}:{column}",
@@ -137,7 +144,7 @@ impl Diagnostic {
 
     fn display_preview(&self, lines: crate::span::Lines, span: &EnrichedSpan) -> String {
         let line_number = lines.first.number.to_string();
-        let padding = SPACE.repeat(line_number.len());
+        let padding = " ".repeat(line_number.len());
         let highlight = lines.first.highlight;
         format!(
             "\n\
@@ -146,7 +153,7 @@ impl Diagnostic {
             line = line_number,
             snippet = lines.first.content,
             padding = padding,
-            highlight_padding = SPACE.repeat(*highlight.start()),
+            highlight_padding = " ".repeat(*highlight.start()),
             highlight = span
                 .role
                 .symbol()
