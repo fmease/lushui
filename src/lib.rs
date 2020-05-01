@@ -17,6 +17,11 @@ pub mod resolver;
 pub mod span;
 pub mod support;
 
+pub const NAME: &str = env!("CARGO_PKG_NAME");
+pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " ", env!("GIT_COMMIT_HASH"));
+pub const DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
+pub const FILE_EXTENSION: &str = "lushui";
+
 use num_bigint::BigUint as Nat;
 use smallvec::{smallvec, SmallVec};
 use string_cache::DefaultAtom as Atom;

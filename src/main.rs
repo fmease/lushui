@@ -12,17 +12,13 @@ use lushui::{
 };
 use std::{borrow::Cow, path::Path};
 
-const NAME: &str = env!("CARGO_PKG_NAME");
-const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " ", env!("GIT_COMMIT_HASH"));
-const DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
-
 struct Arguments<'a> {
     tokens: bool,
     ast: bool,
     hir: bool,
     resolved_hir: bool,
     scope: bool,
-    file: &'a str,
+    file_path: &'a str,
 }
 
 mod flags {
@@ -39,9 +35,9 @@ fn main() {
     set_panic_hook();
 
     // @Task gather all print arguments under a common --print=THING argument
-    let matches = App::new(NAME)
-        .version(VERSION)
-        .about(DESCRIPTION)
+    let matches = App::new(lushui::NAME)
+        .version(lushui::VERSION)
+        .about(lushui::DESCRIPTION)
         .arg(
             Arg::with_name(flags::TOKENS)
                 .long(flags::TOKENS)
@@ -81,14 +77,25 @@ fn main() {
         hir: matches.is_present(flags::HIR),
         resolved_hir: matches.is_present(flags::RESOLVED_HIR),
         scope: matches.is_present(flags::SCOPE),
-        file: matches.value_of(flags::FILE).unwrap().into(),
+        file_path: matches.value_of(flags::FILE).unwrap().into(),
     };
 
     let mut map = SourceMap::default();
 
     let result: Result<(), Diagnostics> = (|| {
-        let file = map.load(arguments.file).many_err()?;
-        let file_stem = Path::new(arguments.file).file_stem().unwrap();
+        let file_path = Path::new(arguments.file_path);
+        let file = map.load(arguments.file_path).many_err()?;
+        let file_stem = file_path.file_stem().unwrap();
+        let file_extension = file_path.extension();
+
+        if file_extension.and_then(|extension| extension.to_str()) != Some(lushui::FILE_EXTENSION) {
+            Diagnostic::new(
+                Level::Warning,
+                None,
+                "missing or non-standard file extension",
+            )
+            .emit(None);
+        }
 
         let crate_name = Identifier::new(
             (|| parse_identifier(file_stem.to_str()?.to_owned()))().ok_or_else(|| {

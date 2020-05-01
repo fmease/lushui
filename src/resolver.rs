@@ -387,7 +387,7 @@ impl Declaration<Path> {
                             .ancestors()
                             .nth(1)
                             .unwrap()
-                            .join(&format!("{}.lushui", binder.source.atom));
+                            .join(&format!("{}.{}", binder.source.atom, crate::FILE_EXTENSION));
                         let file = map.load(path.to_str().unwrap()).many_err()?;
                         let tokens = crate::lexer::Lexer::new(&file).lex()?;
                         let node = parser::Parser::new(file, &tokens)
