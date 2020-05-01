@@ -26,14 +26,14 @@ use crate::{
 };
 
 #[derive(Default)]
-pub struct Crate {
+pub struct CrateScope {
     /// All bindings inside of a crate.
     ///
     /// The first element will always be the root module.
     bindings: IndexVec<CrateIndex, Binding>,
 }
 
-impl Crate {
+impl CrateScope {
     fn root(&self) -> CrateIndex {
         CrateIndex(0)
     }
@@ -85,6 +85,24 @@ impl Crate {
         )
     }
 
+    fn register_use_binding(
+        &mut self,
+        binder: parser::Identifier,
+        target: CrateIndex,
+        module: CrateIndex,
+    ) -> Result<Identifier> {
+        let target = self.resolve_alias(target);
+
+        self.register_binding(
+            binder.clone(),
+            Binding {
+                source: binder,
+                kind: BindingKind::Use(target),
+            },
+            Some(module),
+        )
+    }
+
     fn register_binding(
         &mut self,
         binder: parser::Identifier,
@@ -118,9 +136,8 @@ impl Crate {
         Ok(Identifier::new(index, binder))
     }
 
-    // @Task share some code with resolve_value_binding
-    fn lookup_binding(&self, path: &Path, module: CrateIndex) -> Result<&Binding> {
-        // @Question can we streamline this code?
+    fn resolve_binding(&self, path: &Path, module: CrateIndex) -> Result<CrateIndex> {
+        use BindingKind::*;
 
         if let Some(head) = &path.head {
             use parser::PathHeadKind::*;
@@ -128,62 +145,44 @@ impl Crate {
             return match head.kind {
                 Crate => {
                     if path.segments.is_empty() {
-                        Ok(&self.bindings[self.root()])
+                        Ok(self.root())
                     } else {
-                        self.lookup_binding(&path.tail(), self.root())
+                        self.resolve_binding(&path.tail(), self.root())
                     }
                 }
-                Super => match self.unwrap_module_scope(module).parent {
-                    Some(parent) => {
-                        if path.segments.is_empty() {
-                            Ok(&self.bindings[parent])
-                        } else {
-                            self.lookup_binding(&path.tail(), parent)
-                        }
+                Super => {
+                    let parent = self.resolve_super(head.span, module)?;
+
+                    if path.segments.is_empty() {
+                        Ok(parent)
+                    } else {
+                        self.resolve_binding(&path.tail(), parent)
                     }
-                    None => Err(Diagnostic::new(
-                        Level::Error,
-                        Code::E021,
-                        "the crate root does not have a parent",
-                    )
-                    .with_span(head.span)),
-                },
+                }
             };
         }
 
-        self.unwrap_module_scope(module)
-            .bindings
-            .iter()
-            .copied()
-            .find(|&index| self.bindings[index].source == path.segments[0])
-            .map(|index| match path.simple() {
-                Some(_) => Ok(&self.bindings[index]),
-                None => match self.bindings[index].kind {
-                    BindingKind::Module(_) => self.lookup_binding(&path.tail(), index),
-                    BindingKind::Value => Err(value_used_as_a_module(
-                        path.segments[0].span,
-                        path.segments[1].span,
-                    )),
-                },
-            })
-            .transpose()?
-            .ok_or_else(|| {
-                Diagnostic::new(
-                    Level::Error,
-                    Code::E021,
-                    // @Task modify error message: if it's a simple path: "in this scope/module"
-                    // and if it's a complex one: "in module `module`"
-                    format!(
-                        "binding `{}` is not defined in this scope",
-                        path.segments[0]
-                    ),
-                )
-                .with_span(path.segments[0].span)
-            })
+        let index = self.resolve_identifier(module, &path.segments[0])?;
+        let index = self.resolve_alias(index);
+
+        if path.simple().is_some() {
+            Ok(index)
+        } else {
+            match self.bindings[index].kind {
+                Module(_) => self.resolve_binding(&path.tail(), index),
+                Value => Err(value_used_as_a_module(
+                    path.segments[0].span,
+                    path.segments[1].span,
+                )),
+                Use(_) => unreachable!(),
+            }
+        }
     }
 
     /// Try to resolve a textual identifier refering to a value to a resolved one.
     fn resolve_value_binding(&self, path: &Path, module: CrateIndex) -> Result<Identifier> {
+        use BindingKind::*;
+
         if let Some(head) = &path.head {
             use parser::PathHeadKind::*;
 
@@ -193,53 +192,72 @@ impl Crate {
 
             return match head.kind {
                 Crate => self.resolve_value_binding(&path.tail(), self.root()),
-                Super => match self.unwrap_module_scope(module).parent {
-                    Some(parent) => self.resolve_value_binding(&path.tail(), parent),
-                    None => Err(Diagnostic::new(
-                        Level::Error,
-                        Code::E021,
-                        "the crate root does not have a parent",
-                    )
-                    .with_span(head.span)),
-                },
+                Super => {
+                    self.resolve_value_binding(&path.tail(), self.resolve_super(head.span, module)?)
+                }
             };
         }
 
+        let index = self.resolve_identifier(module, &path.segments[0])?;
+        let index = self.resolve_alias(index);
+
+        match path.simple() {
+            Some(identifier) => match self.bindings[index].kind {
+                Value => Ok(Identifier::new(index, identifier.clone())),
+                Module(_) => Err(module_used_as_a_value(identifier.span)),
+                Use(_) => unreachable!(),
+            },
+            None => match self.bindings[index].kind {
+                Module(_) => self.resolve_value_binding(&path.tail(), index),
+                Value => Err(value_used_as_a_module(
+                    path.segments[0].span,
+                    path.segments[1].span,
+                )),
+                Use(_) => unreachable!(),
+            },
+        }
+    }
+
+    fn resolve_super(&self, span: Span, module: CrateIndex) -> Result<CrateIndex> {
+        self.unwrap_module_scope(module).parent.ok_or_else(|| {
+            Diagnostic::new(
+                Level::Error,
+                Code::E021,
+                "the crate root does not have a parent",
+            )
+            .with_span(span)
+        })
+    }
+
+    fn resolve_identifier(
+        &self,
+        module: CrateIndex,
+        identifier: &parser::Identifier,
+    ) -> Result<CrateIndex> {
         self.unwrap_module_scope(module)
             .bindings
             .iter()
             .copied()
-            .find(|&index| self.bindings[index].source == path.segments[0])
-            .map(|index| match path.simple() {
-                Some(identifier) => {
-                    if matches!(self.bindings[index].kind, BindingKind::Value) {
-                        Ok(Identifier::new(index, identifier.clone()))
-                    } else {
-                        Err(module_used_as_a_value(identifier.span))
-                    }
-                }
-                None => match self.bindings[index].kind {
-                    BindingKind::Module(_) => self.resolve_value_binding(&path.tail(), index),
-                    BindingKind::Value => Err(value_used_as_a_module(
-                        path.segments[0].span,
-                        path.segments[1].span,
-                    )),
-                },
-            })
-            .transpose()?
+            .find(|&index| &self.bindings[index].source == identifier)
             .ok_or_else(|| {
                 Diagnostic::new(
                     Level::Error,
                     Code::E021,
                     // @Task modify error message: if it's a simple path: "in this scope/module"
                     // and if it's a complex one: "in module `module`"
-                    format!(
-                        "binding `{}` is not defined in this scope",
-                        path.segments[0]
-                    ),
+                    format!("binding `{}` is not defined in this scope", identifier),
                 )
-                .with_span(path.segments[0].span)
+                .with_span(identifier.span)
             })
+    }
+
+    fn resolve_alias(&self, index: CrateIndex) -> CrateIndex {
+        use BindingKind::*;
+
+        match self.bindings[index].kind {
+            Value | Module(_) => index,
+            Use(target) => target,
+        }
     }
 }
 
@@ -247,7 +265,7 @@ impl Declaration<Path> {
     pub fn resolve(
         self,
         parent: Option<CrateIndex>,
-        krate: &mut Crate,
+        krate: &mut CrateScope,
         map: &mut SourceMap,
     ) -> Result<Declaration<Identifier>, Diagnostics> {
         use DeclarationKind::*;
@@ -346,9 +364,6 @@ impl Declaration<Path> {
                 })
             }
             Module(module) => {
-                // @Bug file modules (created by parse_file_module_no_header) are the file name,
-                // maybe buggy behavior?
-                // @Task don't use the try operator here, make it non-fatal @Temporary try
                 let binder = krate
                     .register_module_binding(module.binder.clone(), parent)
                     .many_err()?;
@@ -383,7 +398,6 @@ impl Declaration<Path> {
                     }
                 };
 
-                // @Temporary: if let Some
                 let declarations = declarations
                     .into_iter()
                     .map(|declaration| {
@@ -403,29 +417,28 @@ impl Declaration<Path> {
             Use(declaration) => {
                 let parent = parent.unwrap();
 
+                let binder = match declaration.path.segments.last() {
+                    Some(binder) => binder,
+                    None => {
+                        return Err(Diagnostic::new(
+                            Level::Fatal,
+                            None,
+                            "`use` of bare `super` and `crate` disallowed",
+                        )
+                        .with_span(self.span))
+                        .many_err()
+                    }
+                };
+
                 // @Task even if this does not resolve, register the binder (last segment) into
                 // this module to prevent unnecessary consequential errors
                 // @Note remove try op and handle stuff
-                let binding = krate.lookup_binding(&declaration.path, parent).many_err()?;
-
-                let binder = match declaration.path.segments.last() {
-                    Some(binder) => binder,
-                    // @Task crate diagnostic for this or think about how we should handle
-                    // it differently
-                    None => panic!("`use super|crate` disallowed, use renaming (unimpl)"),
-                };
-
-                // @Bug probably: `binding.kind.clone()` clones underlying ModuleScope
-                // this means that if we add to the module scope in a later step
-                // (e.g. once we try to implement order-independent declarations)
-                // then the stuff gets out of sync. one possible solution: Rc<RefCell<ModuleScope>>
-                let binding = Binding {
-                    source: binder.clone(),
-                    kind: binding.kind.clone(),
-                };
+                let target = krate
+                    .resolve_binding(&declaration.path, parent)
+                    .many_err()?;
 
                 let binder = krate
-                    .register_binding(binder.clone(), binding, Some(parent))
+                    .register_use_binding(binder.clone(), target, parent)
                     .many_err()?;
 
                 Ok(decl! {
@@ -445,7 +458,7 @@ impl Expression<parser::Path> {
     pub fn resolve(
         self,
         scope: &FunctionScope<'_>,
-        krate: &Crate,
+        krate: &CrateScope,
     ) -> Result<Expression<Identifier>> {
         use ExpressionKind::*;
 
@@ -510,7 +523,6 @@ impl Expression<parser::Path> {
     }
 }
 
-#[derive(Clone)]
 pub struct ModuleScope {
     parent: Option<CrateIndex>,
     bindings: Vec<CrateIndex>,
@@ -630,11 +642,9 @@ impl Index {
     }
 }
 
-// @Question should the indices *really* be public?
-
 /// Crate-local identifier for bindings defined through declarations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct CrateIndex(pub usize);
+pub struct CrateIndex(usize);
 
 impl From<CrateIndex> for Index {
     fn from(index: CrateIndex) -> Self {
@@ -677,11 +687,11 @@ impl<'a> FunctionScope<'a> {
         }
     }
 
-    fn resolve_binding(&self, query: &Path, krate: &Crate) -> Result<Identifier> {
+    fn resolve_binding(&self, query: &Path, krate: &CrateScope) -> Result<Identifier> {
         fn resolve_binding(
             scope: &FunctionScope<'_>,
             query: &Path,
-            krate: &Crate,
+            krate: &CrateScope,
             depth: usize,
         ) -> Result<Identifier> {
             // eprintln!("FunctionScope::resolve_binding called on {}", query);
@@ -726,11 +736,18 @@ pub struct Binding {
     kind: BindingKind,
 }
 
-#[derive(Clone)]
 // @Task later: Undefined, Untyped
+// @Note corresponds to [crate::interpreter::scope::Entity].
 enum BindingKind {
     Value,
     Module(ModuleScope),
+    /// A use bindings means extra indirection. We don't just "clone" the value it gets
+    /// "assigned" to. We merely reference it. This way we don't need to reference-count
+    /// module scopes (to avoid deep copies). Also, once we merge this data structure with
+    /// the one from the interpreter, we can successfully alias constructors and still
+    /// pattern match on them!
+    /// Invariant: The "target" is never a Use itself. There are no nested aliases
+    Use(CrateIndex),
 }
 
 // @Question fatal?? and if non-fatal, it's probably ignored

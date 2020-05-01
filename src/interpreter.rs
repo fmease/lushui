@@ -30,8 +30,8 @@ use crate::{
     parser::{AttributeKind, Explicitness},
     resolver::Identifier,
 };
+pub use scope::CrateScope;
 use scope::FunctionScope;
-pub use scope::ModuleScope;
 
 type Declaration = hir::Declaration<Identifier>;
 type Expression = hir::Expression<Identifier>;
@@ -48,7 +48,7 @@ fn missing_annotation() -> Diagnostic {
 impl Declaration {
     /// Try to type check and evaluate a declaration modifying the given scope.
     // @Task move evaluation logic
-    pub fn infer_type_and_evaluate(&self, scope: &mut ModuleScope) -> Result<()> {
+    pub fn infer_type_and_evaluate(&self, scope: &mut CrateScope) -> Result<()> {
         use DeclarationKind::*;
 
         match &self.kind {
@@ -157,15 +157,14 @@ impl Declaration {
                     }
                 }
             }
-            // @Task
-            Use(_) => todo!("infer type of use declaration"),
+            Use(_) => {}
         }
 
         Ok(())
     }
 
     // @Task
-    pub fn evaluate(&self, _scope: &mut ModuleScope) -> Result<()> {
+    pub fn evaluate(&self, _scope: &mut CrateScope) -> Result<()> {
         todo!()
     }
 }

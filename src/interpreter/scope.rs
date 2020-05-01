@@ -1,9 +1,4 @@
 //! Binding and scope handler.
-//!
-//! Exposes two types of scopes:
-//!
-//! * [ModuleScope]
-//! * [FunctionScope]
 
 use std::{collections::HashMap, fmt};
 
@@ -14,31 +9,13 @@ use crate::{
     resolver::{CrateIndex, DebruijnIndex, Identifier, Index},
 };
 
-/// The scope of bindings inside of a module.
-///
-/// Can store all kinds of bindings:
-///
-/// * typed values
-/// * data types with its constructors
-/// * constructors
-/// * partially and fully registered (untyped and typed respectively)
-///   foreign bindings
-///
-/// Difference to [FunctionScope]: The module scopes is designed for declarations which may appear out of order and
-/// cross-reference each other (as long as there is no cyclic dependency) and for recursive bindings. It's flat.
-/// The API offers mutating functions.
 #[derive(Default)]
-// @Question naming? `native_bindings`, `foreign_bindings`
-pub struct ModuleScope {
+pub struct CrateScope {
     bindings: HashMap<CrateIndex, Entity>,
     // for printing for now
     // names: HashMap<ModuleIndex, crate::parser::Identifier>,
-    // @Note very ad-hoc solution, does not scale to modules
-    // @Question merge the two?
-    // `ForeignEntity`
-    // @Beacon @Beacon @Update move the things below into CrateScope!!
+    // @Note ugly types!
     pub foreign_types: HashMap<&'static str, Option<Identifier>>,
-    // @Temporary types (above and below, … they are not descriptive)
     foreign_bindings: HashMap<&'static str, (usize, ffi::ForeignFunction)>,
     pub inherent_values: ffi::InherentValueMap,
     pub inherent_types: ffi::InherentTypeMap,
@@ -46,8 +23,8 @@ pub struct ModuleScope {
 
 /// Many methods of module scope panic instead of returning a `Result` because
 /// the invariants are expected to be checked beforehand by using the predicate
-/// methods also found here. This design is most flexible for the caller I think.
-impl ModuleScope {
+/// methods also found here. This design is most ergonomic for the caller.
+impl CrateScope {
     /// Create a new scope with foreign bindings partially registered.
     pub fn new() -> Self {
         let mut scope = Self::default();
@@ -298,11 +275,11 @@ impl ModuleScope {
     }
 }
 
-impl fmt::Debug for ModuleScope {
+impl fmt::Debug for CrateScope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (binder, entity) in &self.bindings {
             // writeln!(f, "{} |-> {}", self.names[binder], entity)?;
-            writeln!(f, "{} |-> {}", binder.0, entity)?;
+            writeln!(f, "{:?} |-> {}", binder, entity)?;
         }
         Ok(())
     }
@@ -325,7 +302,7 @@ impl fmt::Debug for Value {
     }
 }
 
-// @Task rename to BindingKind (analoguous to crate::resolver)
+// @Task rename to BindingKind (analoguous to crate::resolver), @Update merge them at one point
 /// An entity found inside a module scope.
 #[derive(Clone)]
 enum Entity {
@@ -403,7 +380,7 @@ impl fmt::Display for Entity {
 /// And since lambdas and let/ins are nested, they are ordered and
 /// most importantly, recursion only works explicitly via the fix-point-combinator.
 pub enum FunctionScope<'a> {
-    Module(&'a ModuleScope),
+    Module(&'a CrateScope),
     // @Note obviously, we don't store an Identifier but a DebruijnIndex here hmm
     Function {
         parent: &'a FunctionScope<'a>,
@@ -420,7 +397,7 @@ impl<'a> FunctionScope<'a> {
         }
     }
 
-    pub fn module(&self) -> &ModuleScope {
+    pub fn module(&self) -> &CrateScope {
         match self {
             Self::Module(module) => module,
             Self::Function { parent, .. } => parent.module(),

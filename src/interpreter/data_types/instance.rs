@@ -12,7 +12,7 @@
 use crate::{
     diagnostic::{Code, Diagnostic, Level, Result},
     hir::{Expression, ExpressionKind},
-    interpreter::{FunctionScope, ModuleScope},
+    interpreter::{CrateScope, FunctionScope},
     resolver::Identifier,
 };
 
@@ -20,7 +20,7 @@ pub(in crate::interpreter) fn assert_constructor_is_instance_of_type(
     constructor_name: Identifier,
     constructor: Expression<Identifier>,
     r#type: Expression<Identifier>,
-    scope: &ModuleScope,
+    scope: &CrateScope,
 ) -> Result<()> {
     let result_type = constructor.result_type(&FunctionScope::Module(scope));
     let callee = result_type.callee();

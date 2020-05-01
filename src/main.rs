@@ -121,14 +121,14 @@ fn main() {
             println!("{}", node);
         }
 
-        let mut krate = resolver::Crate::default();
+        let mut scope = resolver::CrateScope::default();
 
-        let node = node.resolve(None, &mut krate, &mut map)?;
+        let node = node.resolve(None, &mut scope, &mut map)?;
         if arguments.resolved_hir {
             eprintln!("{}", node);
         }
 
-        let mut scope = interpreter::ModuleScope::new();
+        let mut scope = interpreter::CrateScope::new();
         node.infer_type_and_evaluate(&mut scope).many_err()?;
         if arguments.scope {
             eprintln!("{:?}", scope);

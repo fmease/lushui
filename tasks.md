@@ -1,6 +1,5 @@
 # Imminent Tasks
 
-* update syntax of patterns and case analysis
 * add constructor `|`-syntax
 * add effect infrastructure
   * add foreign data type `Effect: Type -> Type` with foreign bindings `pure`,
@@ -9,15 +8,16 @@
   * define effect runner
   * have effect identifiers
 * work on case analysis
+  * update syntax of patterns and case analysis
   * port to debruijn
   * the rest
 * modules
-  * port the interpreter/tycker to the new module system (or does is just work??)
-  * implement use-declarations
+  * implement more complicated use-declarations (multiple binders, self, as)
     * implement symbols as identifiers 
   * work on order-independence and recursion
   * implement exposure lists and privacy
   * design and implement namespaced constructors
+  * improve error messages of the resolver
 * advanced type inference (!!!)
 * FFI
   * add infrastructure for polymorphic foreign functions (necessary for `panic`, effects, …)
@@ -34,7 +34,6 @@
   and stuff
 * fix let/in (parsing)
 * update VS Code grammar
-* update grammar rules inside the documentation comments
 * fix the ugly functions in the parser which lead to bad error messages
 * drastically improve error message for missing type annotations for declarations in the parser
 * finally check what early EOI do to the parser instead of line breaks and the like

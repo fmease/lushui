@@ -1,4 +1,4 @@
-use super::{Expression, ModuleScope};
+use super::{CrateScope, Expression};
 use crate::{
     diagnostic::*,
     hir::{expr, Constructor, ExpressionKind},
@@ -15,7 +15,7 @@ pub fn register_inherent_bindings<'a>(
     mut constructors: impl Iterator<Item = &'a Constructor<Identifier>>,
     declaration: Span,
     attribute: Span,
-    scope: &mut ModuleScope,
+    scope: &mut CrateScope,
 ) -> Result<()> {
     // @Task link to previous definition
     let duplicate = || {
@@ -96,7 +96,7 @@ impl Type {
     pub const TEXT: &'static str = "Text";
     pub const OPTION: &'static str = "Option";
 
-    fn from_expression(expression: &Expression, scope: &super::ModuleScope) -> Option<Self> {
+    fn from_expression(expression: &Expression, scope: &super::CrateScope) -> Option<Self> {
         let types = &scope.inherent_types;
 
         use ExpressionKind::*;
@@ -124,7 +124,7 @@ impl Type {
         })
     }
 
-    fn into_expression(self, scope: &super::ModuleScope) -> Result<Expression> {
+    fn into_expression(self, scope: &super::CrateScope) -> Result<Expression> {
         let types = &scope.inherent_types;
 
         // @Task message
@@ -175,7 +175,7 @@ impl Value {
     pub const NONE: &'static str = "none";
     pub const SOME: &'static str = "some";
 
-    pub fn from_expression(expression: &Expression, scope: &super::ModuleScope) -> Option<Self> {
+    pub fn from_expression(expression: &Expression, scope: &super::CrateScope) -> Option<Self> {
         let values = &scope.inherent_values;
 
         use ExpressionKind::*;
@@ -207,7 +207,7 @@ impl Value {
         })
     }
 
-    pub fn into_expression(self, scope: &super::ModuleScope) -> Result<Expression> {
+    pub fn into_expression(self, scope: &super::CrateScope) -> Result<Expression> {
         let values = &scope.inherent_values;
 
         // @Task message
@@ -324,7 +324,7 @@ impl<V: IntoValue> IntoValue for Option<V> {
 
 use num_traits::ops::checked::{CheckedDiv, CheckedSub};
 
-pub fn register_foreign_bindings(scope: &mut ModuleScope) {
+pub fn register_foreign_bindings(scope: &mut CrateScope) {
     scope.register_foreign_type(Type::NAT);
     scope.register_foreign_type(Type::TEXT);
 

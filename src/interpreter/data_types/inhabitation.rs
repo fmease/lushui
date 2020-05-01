@@ -2,7 +2,7 @@
 
 use crate::{
     hir::{Expression, ExpressionKind},
-    interpreter::ModuleScope,
+    interpreter::CrateScope,
     resolver::Identifier,
 };
 
@@ -12,7 +12,7 @@ impl Expression<Identifier> {
     // @Task we need to consider polymorphic types like `Identity` (with `Identity'`) where
     // `Identity Uninhabited` is uninhabited but `Identity Inhabited` is inhabited
     // @Note becomes important when we handle Expression::Application
-    pub fn _is_uninhabited(self, _scope: ModuleScope) -> bool {
+    pub fn _is_uninhabited(self, _scope: CrateScope) -> bool {
         use ExpressionKind::*;
 
         match self.kind {
