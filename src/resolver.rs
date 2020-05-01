@@ -136,79 +136,37 @@ impl CrateScope {
         Ok(Identifier::new(index, binder))
     }
 
-    fn resolve_binding(&self, path: &Path, module: CrateIndex) -> Result<CrateIndex> {
+    fn resolve_binding<T: ResolutionTarget>(
+        &self,
+        path: &Path,
+        module: CrateIndex,
+    ) -> Result<T::Output> {
+        use parser::PathHeadKind::*;
         use BindingKind::*;
 
         if let Some(head) = &path.head {
-            use parser::PathHeadKind::*;
-
-            return match head.kind {
-                Crate => {
-                    if path.segments.is_empty() {
-                        Ok(self.root())
-                    } else {
-                        self.resolve_binding(&path.tail(), self.root())
-                    }
-                }
-                Super => {
-                    let parent = self.resolve_super(head.span, module)?;
-
-                    if path.segments.is_empty() {
-                        Ok(parent)
-                    } else {
-                        self.resolve_binding(&path.tail(), parent)
-                    }
-                }
-            };
-        }
-
-        let index = self.resolve_identifier(module, &path.segments[0])?;
-        let index = self.resolve_alias(index);
-
-        if path.simple().is_some() {
-            Ok(index)
-        } else {
-            match self.bindings[index].kind {
-                Module(_) => self.resolve_binding(&path.tail(), index),
-                Value => Err(value_used_as_a_module(
-                    path.segments[0].span,
-                    path.segments[1].span,
-                )),
-                Use(_) => unreachable!(),
-            }
-        }
-    }
-
-    /// Try to resolve a textual identifier refering to a value to a resolved one.
-    fn resolve_value_binding(&self, path: &Path, module: CrateIndex) -> Result<Identifier> {
-        use BindingKind::*;
-
-        if let Some(head) = &path.head {
-            use parser::PathHeadKind::*;
-
             if path.segments.is_empty() {
-                return Err(module_used_as_a_value(head.span));
+                return T::resolve_bare_super_and_crate(head.span, module);
             }
 
-            return match head.kind {
-                Crate => self.resolve_value_binding(&path.tail(), self.root()),
-                Super => {
-                    self.resolve_value_binding(&path.tail(), self.resolve_super(head.span, module)?)
-                }
-            };
+            return self.resolve_binding::<T>(
+                &path.tail(),
+                match head.kind {
+                    Crate => self.root(),
+                    Super => self.resolve_super(head.span, module)?,
+                },
+            );
         }
 
         let index = self.resolve_identifier(module, &path.segments[0])?;
         let index = self.resolve_alias(index);
 
         match path.simple() {
-            Some(identifier) => match self.bindings[index].kind {
-                Value => Ok(Identifier::new(index, identifier.clone())),
-                Module(_) => Err(module_used_as_a_value(identifier.span)),
-                Use(_) => unreachable!(),
-            },
+            Some(identifier) => {
+                T::resolve_simple_path(identifier, &self.bindings[index].kind, index)
+            }
             None => match self.bindings[index].kind {
-                Module(_) => self.resolve_value_binding(&path.tail(), index),
+                Module(_) => self.resolve_binding::<T>(&path.tail(), index),
                 Value => Err(value_used_as_a_module(
                     path.segments[0].span,
                     path.segments[1].span,
@@ -261,11 +219,65 @@ impl CrateScope {
     }
 }
 
+enum ValueOrModule {}
+
+impl ResolutionTarget for ValueOrModule {
+    type Output = CrateIndex;
+
+    fn resolve_bare_super_and_crate(_: Span, module: CrateIndex) -> Result<Self::Output> {
+        Ok(module)
+    }
+
+    fn resolve_simple_path(
+        _: &parser::Identifier,
+        _: &BindingKind,
+        index: CrateIndex,
+    ) -> Result<Self::Output> {
+        Ok(index)
+    }
+}
+
+enum OnlyValue {}
+
+impl ResolutionTarget for OnlyValue {
+    type Output = Identifier;
+
+    fn resolve_bare_super_and_crate(span: Span, _: CrateIndex) -> Result<Self::Output> {
+        Err(module_used_as_a_value(span))
+    }
+
+    fn resolve_simple_path(
+        identifier: &parser::Identifier,
+        binding: &BindingKind,
+        index: CrateIndex,
+    ) -> Result<Self::Output> {
+        use BindingKind::*;
+
+        match binding {
+            Value => Ok(Identifier::new(index, identifier.clone())),
+            Module(_) => Err(module_used_as_a_value(identifier.span)),
+            Use(_) => unreachable!(),
+        }
+    }
+}
+
+trait ResolutionTarget {
+    type Output;
+
+    fn resolve_bare_super_and_crate(span: Span, module: CrateIndex) -> Result<Self::Output>;
+
+    fn resolve_simple_path(
+        identifier: &parser::Identifier,
+        binding: &BindingKind,
+        index: CrateIndex,
+    ) -> Result<Self::Output>;
+}
+
 impl Declaration<Path> {
     pub fn resolve(
         self,
         parent: Option<CrateIndex>,
-        krate: &mut CrateScope,
+        scope: &mut CrateScope,
         map: &mut SourceMap,
     ) -> Result<Declaration<Identifier>, Diagnostics> {
         use DeclarationKind::*;
@@ -274,20 +286,20 @@ impl Declaration<Path> {
             Value(value) => {
                 let parent = parent.unwrap();
 
-                let binder = krate
+                let binder = scope
                     .register_value_binding(value.binder, parent)
                     .many_err();
 
                 let type_annotation = value
                     .type_annotation
-                    .resolve(&FunctionScope::Module(parent), krate)
+                    .resolve(&FunctionScope::Module(parent), scope)
                     .many_err();
 
                 let expression = value
                     .expression
                     .map(|expression| {
                         expression
-                            .resolve(&FunctionScope::Module(parent), krate)
+                            .resolve(&FunctionScope::Module(parent), scope)
                             .many_err()
                     })
                     .transpose();
@@ -310,17 +322,17 @@ impl Declaration<Path> {
             Data(data) => {
                 let parent = parent.unwrap();
 
-                let data_binder = krate.register_value_binding(data.binder, parent).many_err();
+                let data_binder = scope.register_value_binding(data.binder, parent).many_err();
 
                 let type_annotation = data
                     .type_annotation
-                    .resolve(&FunctionScope::Module(parent), krate)
+                    .resolve(&FunctionScope::Module(parent), scope)
                     .many_err();
 
                 let constructors = data.constructors.map(|constructors| {
                     constructors
                         .into_iter()
-                        .map(|constructor| constructor.resolve(Some(parent), krate, map))
+                        .map(|constructor| constructor.resolve(Some(parent), scope, map))
                         .collect()
                 });
 
@@ -342,13 +354,13 @@ impl Declaration<Path> {
             Constructor(constructor) => {
                 let parent = parent.unwrap();
 
-                let binder = krate
+                let binder = scope
                     .register_value_binding(constructor.binder, parent)
                     .many_err();
 
                 let type_annotation = constructor
                     .type_annotation
-                    .resolve(&FunctionScope::Module(parent), krate)
+                    .resolve(&FunctionScope::Module(parent), scope)
                     .many_err();
 
                 let span = self.span;
@@ -364,7 +376,7 @@ impl Declaration<Path> {
                 })
             }
             Module(module) => {
-                let binder = krate
+                let binder = scope
                     .register_module_binding(module.binder.clone(), parent)
                     .many_err()?;
 
@@ -401,7 +413,7 @@ impl Declaration<Path> {
                 let declarations = declarations
                     .into_iter()
                     .map(|declaration| {
-                        declaration.resolve(Some(binder.krate().unwrap()), krate, map)
+                        declaration.resolve(Some(binder.krate().unwrap()), scope, map)
                     })
                     .collect::<Vec<_>>()
                     .transpose()?;
@@ -432,12 +444,11 @@ impl Declaration<Path> {
 
                 // @Task even if this does not resolve, register the binder (last segment) into
                 // this module to prevent unnecessary consequential errors
-                // @Note remove try op and handle stuff
-                let target = krate
-                    .resolve_binding(&declaration.path, parent)
+                let target = scope
+                    .resolve_binding::<ValueOrModule>(&declaration.path, parent)
                     .many_err()?;
 
-                let binder = krate
+                let binder = scope
                     .register_use_binding(binder.clone(), target, parent)
                     .many_err()?;
 
@@ -458,7 +469,7 @@ impl Expression<parser::Path> {
     pub fn resolve(
         self,
         scope: &FunctionScope<'_>,
-        krate: &CrateScope,
+        crate_scope: &CrateScope,
     ) -> Result<Expression<Identifier>> {
         use ExpressionKind::*;
 
@@ -467,10 +478,10 @@ impl Expression<parser::Path> {
                 expr! {
                     PiType[self.span] {
                         parameter: pi.parameter.clone().map(|parameter| Identifier::new(Index::None, parameter.clone())),
-                        domain: pi.domain.clone().resolve(scope, krate)?,
+                        domain: pi.domain.clone().resolve(scope, crate_scope)?,
                         codomain: match pi.parameter.clone() {
-                            Some(parameter) => pi.codomain.clone().resolve(&scope.extend(parameter), krate)?,
-                            None => pi.codomain.clone().resolve(scope, krate)?,
+                            Some(parameter) => pi.codomain.clone().resolve(&scope.extend(parameter), crate_scope)?,
+                            None => pi.codomain.clone().resolve(scope, crate_scope)?,
                         },
                         explicitness: pi.explicitness,
                     }
@@ -478,8 +489,8 @@ impl Expression<parser::Path> {
             }
             Application(application) => expr! {
                 Application[self.span] {
-                    callee: application.callee.clone().resolve(scope, krate)?,
-                    argument: application.argument.clone().resolve(scope, krate)?,
+                    callee: application.callee.clone().resolve(scope, crate_scope)?,
+                    argument: application.argument.clone().resolve(scope, crate_scope)?,
                     explicitness: application.explicitness,
                 }
             },
@@ -500,19 +511,19 @@ impl Expression<parser::Path> {
             },
             Binding(binding) => expr! {
                 Binding[self.span] {
-                    binder: scope.resolve_binding(&binding.binder, krate)?,
+                    binder: scope.resolve_binding(&binding.binder, crate_scope)?,
                 }
             },
             Lambda(lambda) => expr! {
                 Lambda[self.span] {
                     parameter: Identifier::new(Index::None, lambda.parameter.clone()),
                     parameter_type_annotation: lambda.parameter_type_annotation.clone()
-                        .map(|r#type| r#type.resolve(scope, krate))
+                        .map(|r#type| r#type.resolve(scope, crate_scope))
                         .transpose()?,
                     body_type_annotation: lambda.body_type_annotation.clone()
-                        .map(|r#type| r#type.resolve(&scope.extend(lambda.parameter.clone()), krate))
+                        .map(|r#type| r#type.resolve(&scope.extend(lambda.parameter.clone()), crate_scope))
                         .transpose()?,
-                    body: lambda.body.clone().resolve(&scope.extend(lambda.parameter.clone()), krate)?,
+                    body: lambda.body.clone().resolve(&scope.extend(lambda.parameter.clone()), crate_scope)?,
                     explicitness: lambda.explicitness,
                 }
             },
@@ -697,7 +708,7 @@ impl<'a> FunctionScope<'a> {
             // eprintln!("FunctionScope::resolve_binding called on {}", query);
 
             match scope {
-                FunctionScope::Module(module) => krate.resolve_value_binding(query, *module),
+                FunctionScope::Module(module) => krate.resolve_binding::<OnlyValue>(query, *module),
                 FunctionScope::Binding { parent, binder } => {
                     if let Some(identifier) = query.identifier_head() {
                         if binder == identifier {
@@ -713,7 +724,7 @@ impl<'a> FunctionScope<'a> {
                             resolve_binding(parent, query, krate, depth + 1)
                         }
                     } else {
-                        krate.resolve_value_binding(query, parent.module())
+                        krate.resolve_binding::<OnlyValue>(query, parent.module())
                     }
                 }
             }
