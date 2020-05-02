@@ -45,10 +45,14 @@ fn missing_annotation() -> Diagnostic {
     )
 }
 
+pub fn evaluate_program_entry(program_entry: Identifier, scope: &CrateScope) -> Result<Expression> {
+    let expression = expr! { Binding[] { binder: program_entry } };
+    expression.evaluate(&FunctionScope::Module(scope), Form::Normal)
+}
+
 impl Declaration {
-    /// Try to type check and evaluate a declaration modifying the given scope.
-    // @Task move evaluation logic
-    pub fn infer_type_and_evaluate(&self, scope: &mut CrateScope) -> Result<()> {
+    /// Try to type check a declaration modifying the given scope.
+    pub fn infer_type(&self, scope: &mut CrateScope) -> Result<()> {
         use DeclarationKind::*;
 
         match &self.kind {
@@ -67,7 +71,7 @@ impl Declaration {
 
                     scope.complete_foreign_binding(declaration.binder.clone(), r#type)?;
                 } else {
-                    let (r#type, value) = {
+                    let (r#type, expression) = {
                         let scope = FunctionScope::Module(scope);
                         let expression = declaration.expression.clone().unwrap();
                         declaration.type_annotation.clone().is_a_type(&scope)?;
@@ -76,11 +80,9 @@ impl Declaration {
                             .type_annotation
                             .clone()
                             .is_actual(infered_type.clone(), &scope)?;
-                        // let value = expression.clone().evaluate(&scope, Form::WeakHeadNormal)?;
-                        let value = expression.clone().evaluate(&scope, Form::Normal)?;
-                        (infered_type, value)
+                        (infered_type, expression)
                     };
-                    scope.insert_value_binding(declaration.binder.clone(), r#type, value);
+                    scope.insert_value_binding(declaration.binder.clone(), r#type, expression);
                 }
             }
             Data(data) => {
@@ -134,6 +136,7 @@ impl Declaration {
                         );
                     }
 
+                    // @Note could be done in the resolver once we unify the 2 CrateScopes
                     if let Some(inherent) = self.attributes.get(AttributeKind::Inherent) {
                         ffi::register_inherent_bindings(
                             &data.binder,
@@ -153,7 +156,7 @@ impl Declaration {
                 // @Temporary if let Some
                 if let Some(declarations) = &module.declarations {
                     for declaration in declarations {
-                        declaration.infer_type_and_evaluate(scope)?;
+                        declaration.infer_type(scope)?;
                     }
                 }
             }
@@ -161,11 +164,6 @@ impl Declaration {
         }
 
         Ok(())
-    }
-
-    // @Task
-    pub fn evaluate(&self, _scope: &mut CrateScope) -> Result<()> {
-        todo!()
     }
 }
 

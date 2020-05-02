@@ -128,17 +128,23 @@ fn main() {
             println!("{}", node);
         }
 
-        let mut scope = resolver::CrateScope::default();
+        let mut resolver_scope = resolver::CrateScope::default();
 
-        let node = node.resolve(None, &mut scope, &mut map)?;
+        let node = node.resolve(None, &mut resolver_scope, &mut map)?;
         if arguments.resolved_hir {
             eprintln!("{}", node);
         }
 
         let mut scope = interpreter::CrateScope::new();
-        node.infer_type_and_evaluate(&mut scope).many_err()?;
+        node.infer_type(&mut scope).many_err()?;
         if arguments.scope {
             eprintln!("{:?}", scope);
+        }
+
+        if let Some(program_entry) = resolver_scope.program_entry {
+            let result = interpreter::evaluate_program_entry(program_entry, &scope).many_err()?;
+
+            println!("{}", result);
         }
 
         Ok(())

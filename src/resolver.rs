@@ -25,12 +25,15 @@ use crate::{
     support::{handle::*, ManyErrExt, TransposeExt},
 };
 
+const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
+
 #[derive(Default)]
 pub struct CrateScope {
     /// All bindings inside of a crate.
     ///
     /// The first element will always be the root module.
     bindings: IndexVec<CrateIndex, Binding>,
+    pub program_entry: Option<Identifier>,
 }
 
 impl CrateScope {
@@ -289,6 +292,14 @@ impl Declaration<Path> {
                 let binder = scope
                     .register_value_binding(value.binder, parent)
                     .many_err();
+
+                if scope.program_entry.is_none() && parent == scope.root() {
+                    if let Ok(binder) = &binder {
+                        if &binder.source.atom == PROGRAM_ENTRY_IDENTIFIER {
+                            scope.program_entry = Some(binder.clone());
+                        }
+                    }
+                }
 
                 let type_annotation = value
                     .type_annotation
