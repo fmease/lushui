@@ -110,6 +110,7 @@ dependencies = [
  "num-traits",
  "smallvec",
  "string_cache",
+ "unicode-width",
 ]
 
 [[package]]

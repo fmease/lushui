@@ -1,6 +1,6 @@
 module core
 
+use core.text.Text
+
 ;; 这件衣服是漂亮的。
 content: Text = "这件衣服是漂亮的。"
-
-alpha: Nat = 20

@@ -7,6 +7,8 @@
 //! * cannot correctly align code when it's from different files
 //! * does not feature error handling abstractions like diagnostic buffers
 
+use unicode_width::UnicodeWidthStr;
+
 use crate::span::{SourceMap, Span};
 
 type CowStr = std::borrow::Cow<'static, str>;
@@ -73,18 +75,10 @@ impl Diagnostic {
         eprintln!();
     }
 
-    // @Beacon @Note to underline spans, we very likely need to
-    // include a grapheme library so we can e.g. have two carets below a
-    // Chinese character because they are so wide and just 1 below a
-    // u with umlaut even if it consists of two code points (it's but 1
-    // grapheme) (@Update you cannot get this right, not even rustc can :/)
-    // @Beacon @Task make this more robust and able to handle multiline
-    // spans (which we first need to implement in `crate::span`)
+    // @Task handle multiline spans (needs support from crate::span)
     // @Task if the span equals the span of the entire file, don't output its content
-    // @Task if two spans (in the list of spans) reside on the same line,
-    // print them inline not above each other
-    // @Bug padding does not work, really if stuff is across file boundaries
-    // example error: multiple definitions (E020)
+    // @Task if two spans reside on the same line, print them inline not above each other (maybe)
+    // @Bug file number padding does not work if span are from different files
     fn display(&mut self, map: Option<&SourceMap>) -> String {
         let header = format!(
             "{:#}{}: {}",
@@ -153,11 +147,11 @@ impl Diagnostic {
             line = line_number,
             snippet = lines.first.content,
             padding = padding,
-            highlight_padding = " ".repeat(*highlight.start()),
+            highlight_padding = " ".repeat(lines.first.content[..*highlight.start()].width()),
             highlight = span
                 .role
                 .symbol()
-                .repeat(highlight.end() + 1 - highlight.start())
+                .repeat(lines.first.content[highlight].width())
                 .color(span.role.color(self.inner.level.color()))
                 .bold(),
             label = span
