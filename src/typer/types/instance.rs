@@ -16,7 +16,7 @@ use crate::{
     resolver::Identifier,
 };
 
-pub(in crate::interpreter) fn assert_constructor_is_instance_of_type(
+pub(in crate::typer) fn assert_constructor_is_instance_of_type(
     constructor_name: Identifier,
     constructor: Expression<Identifier>,
     r#type: Expression<Identifier>,
