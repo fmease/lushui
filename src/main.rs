@@ -41,16 +41,23 @@ struct Arguments {
     #[structopt(long)]
     print_scope: bool,
 
+    /// Use rustc panic hook with RUST_BACKTRACE=1
+    #[structopt(long, short = "B")]
+    panic_with_backtrace: bool,
+
     /// Set the source file
     #[structopt(name = "FILE")]
     file: String,
 }
 
 fn main() {
-    // #[cfg(FALSE)]
-    set_panic_hook();
-
     let arguments = Arguments::from_args();
+
+    if arguments.panic_with_backtrace {
+        std::env::set_var("RUST_BACKTRACE", "1");
+    } else {
+        set_panic_hook();
+    }
 
     lushui::OPTIONS
         .set(lushui::Options {
