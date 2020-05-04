@@ -4,31 +4,29 @@
     "name": "lushui",
     "patterns": [
         {
-            "include": "#comments"
+            "include": "#comment"
         },
         {
-            "include": "#entities"
+            "include": "#entity"
         },
         {
-            "include": "#keywords"
+            "include": "#keyword"
         },
         {
             "include": "#punctuation"
         },
         {
-            "include": "#attributes"
+            "include": "#attribute"
         },
         {
-            "patterns": [
-                {
-                    "name": "constant.numeric.integer.decimal.lushui",
-                    "match": "\\b[0-9]+\\b"
-                }
-            ]
+            "include": "#number-literal"
+        },
+        {
+            "include": "#text-literal"
         }
     ],
     "repository": {
-        "comments": {
+        "comment": {
             "patterns": [
                 {
                     "name": "comment.line.double-semicolon.lushui",
@@ -41,8 +39,7 @@
                 }
             ]
         },
-        "keywords": {
-            "__bug__": "`Nat'` still hightlighted as a keyword. Appending `[^']` does not work because of the overlay check (?)",
+        "keyword": {
             "patterns": [
                 {
                     "match": "\\b(in|of|super|crate)\\b",
@@ -70,7 +67,7 @@
                     "name": "storage.modifier.lushui"
                 },
                 {
-                    "match": "[\\.:+\\-~=<>*^!?|/\\\\&#%$@]+",
+                    "match": "[\\.:+~=<>*^!?|/\\\\&#%$@]|(?<![a-z-A-Z0-9'])-(?![a-z-A-Z])",
                     "name": "keyword.operator.lushui"
                 }
             ]
@@ -87,11 +84,38 @@
                 }
             ]
         },
-        "entities": {
+        "number-literal": {
+            "patterns": [
+                {
+                    "name": "constant.numeric.integer.decimal.lushui",
+                    "match": "\\b[0-9]([0-9]|'[0-9])*\\b"
+                }
+            ]
+        },
+        "text-literal": {
+            "patterns": [
+                {
+                    "name": "string.quoted.double.lushui",
+                    "begin": "\"",
+                    "end": "\"",
+                    "patterns": [
+                        {
+                            "include": "#escape_sequence"
+                        }
+                    ]
+                }
+            ]
+        },
+        "escape_sequence": {
+            "__comment__": "@Task verify",
+            "name": "constant.character.escape.lushui",
+            "match": "\\\\(u[0-9a-f]{4}|U[0-9a-f]{6}|\\\\|\")"
+        },
+        "entity": {
             "patterns": [
                 {
                     "__comment__": "Note that we can add a patterns field containing includes. What effect does it have though?",
-                    "match": "\\b('*[a-zA-Z][a-zA-Z0-9]*'*)(-'*[a-zA-Z][a-zA-Z0-9]*'*)*\\s*:",
+                    "match": "\\b((?:[a-zA-Z][a-zA-Z0-9]*'*)(?:-[a-zA-Z][a-zA-Z0-9]*'*)*)\\s*:",
                     "captures": {
                         "1": {
                             "name": "entity.name.function.lushui"
@@ -100,7 +124,7 @@
                 }
             ]
         },
-        "attributes": {
+        "attribute": {
             "patterns": [
                 {
                     "__comment__": "@Task",

@@ -27,5 +27,9 @@
             "\"",
             "\""
         ]
-    ]
+    ],
+    "indentationRules": {
+        "__comment__": "does not work yet, need to figure out how this should be structured",
+        "increaseIndentPattern": "^.*=$",
+    }
 }
