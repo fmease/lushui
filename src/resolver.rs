@@ -838,9 +838,7 @@ use std::fmt;
 impl fmt::Display for Identifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.source)?;
-        // @Temporary
-        // #[cfg(FALSE)]
-        {
+        if crate::OPTIONS.get().unwrap().display_crate_indices {
             f.write_str("#")?;
             match self.index {
                 Index::Crate(index) => write!(f, "{}M", index.0)?,

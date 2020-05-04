@@ -1,8 +1,10 @@
 #![forbid(rust_2018_idioms, unused_must_use)]
 
-use clap::{App, Arg};
+use std::{borrow::Cow, path::Path};
+use structopt::StructOpt;
+
 use lushui::{
-    diagnostic::{Diagnostic, Diagnostics, Level, Result},
+    diagnostic::*,
     interpreter,
     lexer::{parse_identifier, Lexer},
     parser::{Identifier, Parser},
@@ -10,81 +12,57 @@ use lushui::{
     span::{SourceMap, Span},
     support::ManyErrExt,
 };
-use std::{borrow::Cow, path::Path};
 
-struct Arguments<'a> {
-    tokens: bool,
-    ast: bool,
-    hir: bool,
-    resolved_hir: bool,
-    scope: bool,
-    file_path: &'a str,
-}
+// @Task gather all print flags under a common --print=THING option
+#[derive(StructOpt)]
+#[structopt(version = lushui::VERSION, author, about)]
+struct Arguments {
+    /// Print the tokens emitted by the lexer
+    #[structopt(long)]
+    print_tokens: bool,
 
-mod flags {
-    pub const TOKENS: &str = "tokens";
-    pub const AST: &str = "ast";
-    pub const HIR: &str = "hir";
-    pub const RESOLVED_HIR: &str = "resolved-hir";
-    pub const SCOPE: &str = "scope";
-    pub const FILE: &str = "FILE";
+    /// Print the AST
+    #[structopt(long)]
+    print_ast: bool,
+
+    /// Print the HIR emitted after desugaring
+    #[structopt(long)]
+    print_hir: bool,
+
+    /// Display crate indices when emitting the resolved HIR
+    #[structopt(long)]
+    display_crate_indices: bool,
+
+    /// Print the HIR emitted by the resolver
+    #[structopt(long)]
+    print_hir_resolved: bool,
+
+    /// Print the evaluated module scope"
+    #[structopt(long)]
+    print_scope: bool,
+
+    /// Set the source file
+    #[structopt(name = "FILE")]
+    file: String,
 }
 
 fn main() {
     // #[cfg(FALSE)]
     set_panic_hook();
 
-    // @Task gather all print arguments under a common --print=THING argument
-    let matches = App::new(lushui::NAME)
-        .version(lushui::VERSION)
-        .about(lushui::DESCRIPTION)
-        .arg(
-            Arg::with_name(flags::TOKENS)
-                .long(flags::TOKENS)
-                .help("Print the tokens emitted by the lexer"),
-        )
-        .arg(
-            Arg::with_name(flags::AST)
-                .long(flags::AST)
-                .help("Print the AST"),
-        )
-        .arg(
-            Arg::with_name(flags::HIR)
-                .long(flags::HIR)
-                .help("Print the HIR emitted after desugaring"),
-        )
-        .arg(
-            Arg::with_name(flags::RESOLVED_HIR)
-                .long(flags::RESOLVED_HIR)
-                .help("Print the HIR emitted by the resolver"),
-        )
-        .arg(
-            Arg::with_name(flags::SCOPE)
-                .long(flags::SCOPE)
-                .short("s")
-                .help("Print the evaluated module scope"),
-        )
-        .arg(
-            Arg::with_name(flags::FILE)
-                .required(true)
-                .help("Set the source file"),
-        )
-        .get_matches();
+    let arguments = Arguments::from_args();
 
-    let arguments = Arguments {
-        tokens: matches.is_present(flags::TOKENS),
-        ast: matches.is_present(flags::AST),
-        hir: matches.is_present(flags::HIR),
-        resolved_hir: matches.is_present(flags::RESOLVED_HIR),
-        scope: matches.is_present(flags::SCOPE),
-        file_path: matches.value_of(flags::FILE).unwrap().into(),
-    };
+    lushui::OPTIONS
+        .set(lushui::Options {
+            display_crate_indices: arguments.display_crate_indices,
+        })
+        .unwrap_or_else(|_| unreachable!());
 
     let mut map = SourceMap::default();
 
     let result: Result<(), Diagnostics> = (|| {
-        let file_path = Path::new(arguments.file_path);
-        let file = map.load(arguments.file_path).many_err()?;
+        let file_path = Path::new(&arguments.file);
+        let file = map.load(&arguments.file).many_err()?;
         let file_stem = file_path.file_stem().unwrap();
         let file_extension = file_path.extension();
 
@@ -112,26 +90,26 @@ fn main() {
         );
 
         let tokens = Lexer::new(&file).lex()?;
-        if arguments.tokens {
+        if arguments.print_tokens {
             println!("{:#?}", tokens);
         }
 
         let node = Parser::new(file, &tokens)
             .parse_top_level(crate_name.clone())
             .many_err()?;
-        if arguments.ast {
+        if arguments.print_ast {
             println!("{:?}", node);
         }
 
         let node = node.desugar(&mut map)?;
-        if arguments.hir {
+        if arguments.print_hir {
             println!("{}", node);
         }
 
         let mut resolver_scope = resolver::CrateScope::default();
 
         let node = node.resolve(None, &mut resolver_scope)?;
-        if arguments.resolved_hir {
+        if arguments.print_hir_resolved {
             eprintln!("{}", node);
         } else {
             // @Temporary see note below
@@ -143,7 +121,7 @@ fn main() {
         if false {
             let mut scope = interpreter::CrateScope::new();
             node.infer_type(&mut scope).many_err()?;
-            if arguments.scope {
+            if arguments.print_scope {
                 eprintln!("{:?}", scope);
             }
 

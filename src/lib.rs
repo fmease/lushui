@@ -26,3 +26,11 @@ pub const FILE_EXTENSION: &str = "lushui";
 use num_bigint::BigUint as Nat;
 use smallvec::{smallvec, SmallVec};
 use string_cache::DefaultAtom as Atom;
+
+use once_cell::sync::OnceCell;
+
+pub static OPTIONS: OnceCell<Options> = OnceCell::new();
+
+pub struct Options {
+    pub display_crate_indices: bool,
+}
