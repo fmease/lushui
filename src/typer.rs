@@ -127,11 +127,8 @@ impl Declaration {
             // handled in the `Data` arm
             Constructor(_) => unreachable!(),
             Module(module) => {
-                // @Temporary if let Some
-                if let Some(declarations) = &module.declarations {
-                    for declaration in declarations {
-                        declaration.infer_type(scope)?;
-                    }
+                for declaration in &module.declarations {
+                    declaration.infer_type(scope)?;
                 }
             }
             Use(_) => {}

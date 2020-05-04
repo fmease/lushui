@@ -123,28 +123,36 @@ fn main() {
             println!("{:?}", node);
         }
 
-        let node = node.desugar()?;
+        let node = node.desugar(&mut map)?;
         if arguments.hir {
             println!("{}", node);
         }
 
         let mut resolver_scope = resolver::CrateScope::default();
 
-        let node = node.resolve(None, &mut resolver_scope, &mut map)?;
+        let node = node.resolve(None, &mut resolver_scope)?;
         if arguments.resolved_hir {
             eprintln!("{}", node);
+        } else {
+            // @Temporary see note below
+            eprintln!("the resolver succeeded");
         }
 
-        let mut scope = interpreter::CrateScope::new();
-        node.infer_type(&mut scope).many_err()?;
-        if arguments.scope {
-            eprintln!("{:?}", scope);
-        }
+        // @Beacon @Temporary we are working on the resolver
+        // the type checker won't handle the new system yet
+        if false {
+            let mut scope = interpreter::CrateScope::new();
+            node.infer_type(&mut scope).many_err()?;
+            if arguments.scope {
+                eprintln!("{:?}", scope);
+            }
 
-        if let Some(program_entry) = resolver_scope.program_entry {
-            let result = interpreter::evaluate_program_entry(program_entry, &scope).many_err()?;
+            if let Some(program_entry) = resolver_scope.program_entry {
+                let result =
+                    interpreter::evaluate_program_entry(program_entry, &scope).many_err()?;
 
-            println!("{}", result);
+                println!("{}", result);
+            }
         }
 
         Ok(())

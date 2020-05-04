@@ -14,6 +14,9 @@
 
 // @Note the `handle` methods ignore whether an error is fatal or not, this should be changed @Task
 
+// @Beacon @Task `X: Type = Duple Non-Existent-One Non-Existent-Two` should
+// report both errors (I don't think that's the case right now)
+
 use indexed_vec::IndexVec;
 use std::rc::Rc;
 
@@ -21,7 +24,7 @@ use crate::{
     diagnostic::*,
     hir::{decl, expr, Binder, Declaration, DeclarationKind, Expression, ExpressionKind},
     parser::{self, Path},
-    span::{SourceMap, Span},
+    span::Span,
     support::{handle::*, ManyErrExt, TransposeExt},
 };
 
@@ -139,37 +142,54 @@ impl CrateScope {
         Ok(Identifier::new(index, binder))
     }
 
-    fn resolve_binding<T: ResolutionTarget>(
+    // @Beacon @Task abstract over resolve_binding_{first,second}_pass with a trait and assoc types!
+    fn resolve_binding_first_pass<Target: ResolutionTarget>(
         &self,
         path: &Path,
         module: CrateIndex,
-    ) -> Result<T::Output> {
+    ) -> Result<Target::Output> {
         use parser::PathHeadKind::*;
         use BindingKind::*;
 
         if let Some(head) = &path.head {
             if path.segments.is_empty() {
-                return T::resolve_bare_super_and_crate(head.span, module);
+                return Target::resolve_bare_super_and_crate(head.span, module);
             }
 
-            return self.resolve_binding::<T>(
+            return self.resolve_binding_first_pass::<Target>(
                 &path.tail(),
                 match head.kind {
                     Crate => self.root(),
-                    Super => self.resolve_super(head.span, module)?,
+                    Super => self.resolve_super_first_pass(head.span, module)?,
                 },
             );
         }
 
-        let index = self.resolve_identifier(module, &path.segments[0])?;
+        let index = self.resolve_identifier_first_pass(module, &path.segments[0]);
+
+        // @Temporary @Beacon
+        let index = match index {
+            Some(index) => index,
+            None => {
+                return match path.simple() {
+                    Some(identifier) => Target::resolve_index_none(identifier),
+                    None => Err(Diagnostic::new(
+                        Level::Fatal,
+                        None,
+                        "order-independent modules not supported yet; only values right now",
+                    )),
+                }
+            }
+        };
+
         let index = self.resolve_alias(index);
 
+        let binding = &self.bindings[index].kind;
+
         match path.simple() {
-            Some(identifier) => {
-                T::resolve_simple_path(identifier, &self.bindings[index].kind, index)
-            }
-            None => match self.bindings[index].kind {
-                Module(_) => self.resolve_binding::<T>(&path.tail(), index),
+            Some(identifier) => Target::resolve_simple_path(identifier, binding, index),
+            None => match binding {
+                Module(_) => self.resolve_binding_first_pass::<Target>(&path.tail(), index),
                 Value => Err(value_used_as_a_module(
                     path.segments[0].span,
                     path.segments[1].span,
@@ -179,7 +199,7 @@ impl CrateScope {
         }
     }
 
-    fn resolve_super(&self, span: Span, module: CrateIndex) -> Result<CrateIndex> {
+    fn resolve_super_first_pass(&self, span: Span, module: CrateIndex) -> Result<CrateIndex> {
         self.unwrap_module_scope(module).parent.ok_or_else(|| {
             Diagnostic::new(
                 Level::Error,
@@ -190,26 +210,16 @@ impl CrateScope {
         })
     }
 
-    fn resolve_identifier(
+    fn resolve_identifier_first_pass(
         &self,
         module: CrateIndex,
         identifier: &parser::Identifier,
-    ) -> Result<CrateIndex> {
+    ) -> Option<CrateIndex> {
         self.unwrap_module_scope(module)
             .bindings
             .iter()
             .copied()
             .find(|&index| &self.bindings[index].source == identifier)
-            .ok_or_else(|| {
-                Diagnostic::new(
-                    Level::Error,
-                    Code::E021,
-                    // @Task modify error message: if it's a simple path: "in this scope/module"
-                    // and if it's a complex one: "in module `module`"
-                    format!("binding `{}` is not defined in this scope", identifier),
-                )
-                .with_span(identifier.span)
-            })
     }
 
     fn resolve_alias(&self, index: CrateIndex) -> CrateIndex {
@@ -219,6 +229,41 @@ impl CrateScope {
             Value | Module(_) => index,
             Use(target) => target,
         }
+    }
+
+    // @Task
+    // @Note if it's a Debruijn-Indexed id, return early with it
+    // @Note prob it's binder &mut Identifier
+    // @Task adopt ResolutionTarget for second pass also
+    // @Task we probably need to check again for the target: OnlyValue
+    // vs ValueOrModule
+    fn resolve_binding_second_pass<T: ResolutionTarget>(
+        &self,
+        binder: Identifier,
+        module: CrateIndex,
+    ) -> Result<Identifier> {
+        if binder.index != Index::None {
+            return Ok(binder);
+        }
+
+        let index = self
+            .unwrap_module_scope(module)
+            .bindings
+            .iter()
+            .copied()
+            .find(|&index| self.bindings[index].source == binder.source)
+            .ok_or_else(|| {
+                Diagnostic::new(
+                    Level::Error,
+                    Code::E021,
+                    // @Task modify error message: if it's a simple path: "in this scope/module"
+                    // and if it's a complex one: "in module `module`"
+                    format!("binding `{}` is not defined in this scope", binder.source),
+                )
+                .with_span(binder.source.span)
+            })?;
+
+        Ok(Identifier::new(index, binder.source))
     }
 }
 
@@ -237,6 +282,14 @@ impl ResolutionTarget for ValueOrModule {
         index: CrateIndex,
     ) -> Result<Self::Output> {
         Ok(index)
+    }
+
+    fn resolve_index_none(_: &parser::Identifier) -> Result<Self::Output> {
+        Err(Diagnostic::new(
+            Level::Fatal,
+            None,
+            "cannot fully resolve order-independent things right now",
+        ))
     }
 }
 
@@ -262,6 +315,10 @@ impl ResolutionTarget for OnlyValue {
             Use(_) => unreachable!(),
         }
     }
+
+    fn resolve_index_none(identifier: &parser::Identifier) -> Result<Self::Output> {
+        Ok(Identifier::new(Index::None, identifier.clone()))
+    }
 }
 
 trait ResolutionTarget {
@@ -274,26 +331,37 @@ trait ResolutionTarget {
         binding: &BindingKind,
         index: CrateIndex,
     ) -> Result<Self::Output>;
+
+    // @Temporary @Beacon
+    fn resolve_index_none(identifier: &parser::Identifier) -> Result<Self::Output>;
 }
 
 impl Declaration<Path> {
     pub fn resolve(
         self,
-        parent: Option<CrateIndex>,
+        module: Option<CrateIndex>,
         scope: &mut CrateScope,
-        map: &mut SourceMap,
+    ) -> Result<Declaration<Identifier>, Diagnostics> {
+        let declaration = self.resolve_first_pass(module, scope)?;
+        declaration.resolve_second_pass(module.unwrap_or(scope.root()), scope)
+    }
+
+    fn resolve_first_pass(
+        self,
+        module: Option<CrateIndex>,
+        scope: &mut CrateScope,
     ) -> Result<Declaration<Identifier>, Diagnostics> {
         use DeclarationKind::*;
 
         match self.kind {
-            Value(value) => {
-                let parent = parent.unwrap();
+            Value(declaration) => {
+                let module = module.unwrap();
 
                 let binder = scope
-                    .register_value_binding(value.binder, parent)
+                    .register_value_binding(declaration.binder, module)
                     .many_err();
 
-                if scope.program_entry.is_none() && parent == scope.root() {
+                if scope.program_entry.is_none() && module == scope.root() {
                     if let Ok(binder) = &binder {
                         if &binder.source.atom == PROGRAM_ENTRY_IDENTIFIER {
                             scope.program_entry = Some(binder.clone());
@@ -301,16 +369,16 @@ impl Declaration<Path> {
                     }
                 }
 
-                let type_annotation = value
+                let type_annotation = declaration
                     .type_annotation
-                    .resolve(&FunctionScope::Module(parent), scope)
+                    .resolve_first_pass(&FunctionScope::Module(module), scope)
                     .many_err();
 
-                let expression = value
+                let expression = declaration
                     .expression
                     .map(|expression| {
                         expression
-                            .resolve(&FunctionScope::Module(parent), scope)
+                            .resolve_first_pass(&FunctionScope::Module(module), scope)
                             .many_err()
                     })
                     .transpose();
@@ -330,27 +398,29 @@ impl Declaration<Path> {
                     },
                 )
             }
-            Data(data) => {
-                let parent = parent.unwrap();
+            Data(declaration) => {
+                let module = module.unwrap();
 
-                let data_binder = scope.register_value_binding(data.binder, parent).many_err();
-
-                let type_annotation = data
-                    .type_annotation
-                    .resolve(&FunctionScope::Module(parent), scope)
+                let binder = scope
+                    .register_value_binding(declaration.binder, module)
                     .many_err();
 
-                let constructors = data.constructors.map(|constructors| {
+                let type_annotation = declaration
+                    .type_annotation
+                    .resolve_first_pass(&FunctionScope::Module(module), scope)
+                    .many_err();
+
+                let constructors = declaration.constructors.map(|constructors| {
                     constructors
                         .into_iter()
-                        .map(|constructor| constructor.resolve(Some(parent), scope, map))
+                        .map(|constructor| constructor.resolve_first_pass(Some(module), scope))
                         .collect()
                 });
 
                 let span = self.span;
                 let attributes = self.attributes;
 
-                (data_binder, type_annotation, constructors.transpose()).handle(
+                (binder, type_annotation, constructors.transpose()).handle(
                     |data_binder, type_annotation, constructors| {
                         decl! {
                             Data[span][attributes] {
@@ -362,16 +432,16 @@ impl Declaration<Path> {
                     },
                 )
             }
-            Constructor(constructor) => {
-                let parent = parent.unwrap();
+            Constructor(declaration) => {
+                let module = module.unwrap();
 
                 let binder = scope
-                    .register_value_binding(constructor.binder, parent)
+                    .register_value_binding(declaration.binder, module)
                     .many_err();
 
-                let type_annotation = constructor
+                let type_annotation = declaration
                     .type_annotation
-                    .resolve(&FunctionScope::Module(parent), scope)
+                    .resolve_first_pass(&FunctionScope::Module(module), scope)
                     .many_err();
 
                 let span = self.span;
@@ -386,45 +456,16 @@ impl Declaration<Path> {
                     }
                 })
             }
-            Module(module) => {
+            Module(declaration) => {
                 let binder = scope
-                    .register_module_binding(module.binder.clone(), parent)
+                    .register_module_binding(declaration.binder, module)
                     .many_err()?;
 
-                let declarations = match module.declarations {
-                    Some(declarations) => declarations,
-                    None => {
-                        let path = std::path::Path::new(&module.file.name)
-                            .ancestors()
-                            .nth(1)
-                            .unwrap()
-                            .join(&format!("{}.{}", binder.source.atom, crate::FILE_EXTENSION));
-                        let file = map.load(path.to_str().unwrap()).many_err()?;
-                        let tokens = crate::lexer::Lexer::new(&file).lex()?;
-                        let node = parser::Parser::new(file, &tokens)
-                            .parse_top_level(module.binder)
-                            .many_err()?;
-                        let node = node.desugar()?;
-                        let module = match node.kind {
-                            Module(module) => module,
-                            _ => unreachable!(),
-                        };
-                        if !node.attributes.is_empty() {
-                            Diagnostic::new(
-                                Level::Warning,
-                                None,
-                                "attributes on module headers are ignored right now",
-                            )
-                            .emit(None);
-                        }
-                        module.declarations.unwrap()
-                    }
-                };
-
-                let declarations = declarations
+                let declarations = declaration
+                    .declarations
                     .into_iter()
                     .map(|declaration| {
-                        declaration.resolve(Some(binder.krate().unwrap()), scope, map)
+                        declaration.resolve_first_pass(Some(binder.krate().unwrap()), scope)
                     })
                     .collect::<Vec<_>>()
                     .transpose()?;
@@ -432,15 +473,18 @@ impl Declaration<Path> {
                 Ok(decl! {
                     Module[self.span][self.attributes] {
                         binder,
-                        file: module.file,
-                        declarations: Some(declarations),
+                        file: declaration.file,
+                        declarations,
                     }
                 })
             }
+            // @Beacon @Beacon @Task don't actually register_use_binding since
+            // there is no way to refer to it later: all the use binding are
+            // directly resolved with CrateScope::resolve_alias
             Use(declaration) => {
-                let parent = parent.unwrap();
+                let module = module.unwrap();
 
-                let binder = match declaration.path.segments.last() {
+                let binder = match declaration.binder.segments.last() {
                     Some(binder) => binder,
                     None => {
                         return Err(Diagnostic::new(
@@ -456,19 +500,129 @@ impl Declaration<Path> {
                 // @Task even if this does not resolve, register the binder (last segment) into
                 // this module to prevent unnecessary consequential errors
                 let target = scope
-                    .resolve_binding::<ValueOrModule>(&declaration.path, parent)
+                    .resolve_binding_first_pass::<ValueOrModule>(&declaration.binder, module)
                     .many_err()?;
 
                 let binder = scope
-                    .register_use_binding(binder.clone(), target, parent)
+                    .register_use_binding(binder.clone(), target, module)
+                    .many_err()?;
+
+                Ok(decl! { Use[self.span][self.attributes] { binder } })
+            }
+        }
+    }
+}
+
+impl Declaration<Identifier> {
+    fn resolve_second_pass(
+        self,
+        module: CrateIndex,
+        scope: &CrateScope,
+    ) -> Result<Self, Diagnostics> {
+        use DeclarationKind::*;
+
+        match self.kind {
+            Value(declaration) => {
+                let type_annotation = declaration
+                    .type_annotation
+                    .resolve_second_pass(module, scope)
+                    .many_err();
+
+                let expression = declaration
+                    .expression
+                    .map(|expression| expression.resolve_second_pass(module, scope).many_err())
+                    .transpose();
+
+                let binder = declaration.binder;
+                let span = self.span;
+                let attributes = self.attributes;
+
+                (type_annotation, expression).handle(|type_annotation, expression| {
+                    decl! {
+                        Value[span][attributes] {
+                            binder,
+                            type_annotation,
+                            expression,
+                        }
+                    }
+                })
+            }
+            Data(declaration) => {
+                let type_annotation = declaration
+                    .type_annotation
+                    .resolve_second_pass(module, scope)
+                    .many_err();
+
+                let constructors = declaration.constructors.map(|constructors| {
+                    constructors
+                        .into_iter()
+                        .map(|constructor| constructor.resolve_second_pass(module, scope))
+                        .collect()
+                });
+
+                let binder = declaration.binder;
+                let span = self.span;
+                let attributes = self.attributes;
+
+                (type_annotation, constructors.transpose()).handle(
+                    |type_annotation, constructors| {
+                        decl! {
+                            Data[span][attributes] {
+                                binder,
+                                constructors,
+                                type_annotation,
+                            }
+                        }
+                    },
+                )
+            }
+            Constructor(declaration) => {
+                let type_annotation = declaration
+                    .type_annotation
+                    .resolve_second_pass(module, scope)
                     .many_err()?;
 
                 Ok(decl! {
-                    Use[self.span][self.attributes] {
-                        // @Note confusing use of path in hir::Declararion<RESOLVER::IDENTIFIER>
-                        path: binder,
-                        binders: (),
+                    Constructor[self.span][self.attributes] {
+                        binder: declaration.binder,
+                        type_annotation,
                     }
+                })
+            }
+            Module(declaration) => {
+                let binder = declaration.binder;
+
+                let declarations = declaration
+                    .declarations
+                    .into_iter()
+                    .map(|declaration| {
+                        declaration.resolve_second_pass(binder.krate().unwrap(), scope)
+                    })
+                    .collect::<Vec<_>>()
+                    .transpose()?;
+
+                Ok(decl! {
+                    Module[self.span][self.attributes] {
+                        binder,
+                        file: declaration.file,
+                        declarations,
+                    }
+                })
+            }
+            Use(declaration) => {
+                // @Task even if this does not resolve, register the binder (last segment) into
+                // this module to prevent unnecessary consequential errors
+                let _target = scope
+                    .resolve_binding_second_pass::<ValueOrModule>(
+                        declaration.binder.clone(),
+                        module,
+                    )
+                    .many_err()?;
+
+                // @Note we do something different and use `target` from above
+
+                Ok(decl! {
+                    Use[self.span][self.attributes] { binder: declaration.binder }
                 })
             }
         }
@@ -476,8 +630,8 @@ impl Declaration<Path> {
 }
 
 // @Task @Beacon use Rc::try_unwrap more instead of clone
-impl Expression<parser::Path> {
-    pub fn resolve(
+impl Expression<Path> {
+    fn resolve_first_pass(
         self,
         scope: &FunctionScope<'_>,
         crate_scope: &CrateScope,
@@ -488,11 +642,11 @@ impl Expression<parser::Path> {
             PiType(pi) => {
                 expr! {
                     PiType[self.span] {
-                        parameter: pi.parameter.clone().map(|parameter| Identifier::new(Index::None, parameter.clone())),
-                        domain: pi.domain.clone().resolve(scope, crate_scope)?,
+                        parameter: pi.parameter.clone().map(|parameter| Identifier::new(Index::DebruijnParameter, parameter.clone())),
+                        domain: pi.domain.clone().resolve_first_pass(scope, crate_scope)?,
                         codomain: match pi.parameter.clone() {
-                            Some(parameter) => pi.codomain.clone().resolve(&scope.extend(parameter), crate_scope)?,
-                            None => pi.codomain.clone().resolve(scope, crate_scope)?,
+                            Some(parameter) => pi.codomain.clone().resolve_first_pass(&scope.extend(parameter), crate_scope)?,
+                            None => pi.codomain.clone().resolve_first_pass(scope, crate_scope)?,
                         },
                         explicitness: pi.explicitness,
                     }
@@ -500,8 +654,8 @@ impl Expression<parser::Path> {
             }
             Application(application) => expr! {
                 Application[self.span] {
-                    callee: application.callee.clone().resolve(scope, crate_scope)?,
-                    argument: application.argument.clone().resolve(scope, crate_scope)?,
+                    callee: application.callee.clone().resolve_first_pass(scope, crate_scope)?,
+                    argument: application.argument.clone().resolve_first_pass(scope, crate_scope)?,
                     explicitness: application.explicitness,
                 }
             },
@@ -522,19 +676,87 @@ impl Expression<parser::Path> {
             },
             Binding(binding) => expr! {
                 Binding[self.span] {
-                    binder: scope.resolve_binding(&binding.binder, crate_scope)?,
+                    binder: scope.resolve_binding_first_pass(&binding.binder, crate_scope)?,
                 }
             },
             Lambda(lambda) => expr! {
                 Lambda[self.span] {
-                    parameter: Identifier::new(Index::None, lambda.parameter.clone()),
+                    parameter: Identifier::new(Index::DebruijnParameter, lambda.parameter.clone()),
                     parameter_type_annotation: lambda.parameter_type_annotation.clone()
-                        .map(|r#type| r#type.resolve(scope, crate_scope))
+                        .map(|r#type| r#type.resolve_first_pass(scope, crate_scope))
                         .transpose()?,
                     body_type_annotation: lambda.body_type_annotation.clone()
-                        .map(|r#type| r#type.resolve(&scope.extend(lambda.parameter.clone()), crate_scope))
+                        .map(|r#type| r#type.resolve_first_pass(&scope.extend(lambda.parameter.clone()), crate_scope))
                         .transpose()?,
-                    body: lambda.body.clone().resolve(&scope.extend(lambda.parameter.clone()), crate_scope)?,
+                    body: lambda.body.clone().resolve_first_pass(&scope.extend(lambda.parameter.clone()), crate_scope)?,
+                    explicitness: lambda.explicitness,
+                }
+            },
+            UseIn => todo!("resolving use/in"),
+            CaseAnalysis(_expression) => todo!("resolving case analysis"),
+            Substitution(_) | ForeignApplication(_) => unreachable!(),
+        })
+    }
+}
+
+// @Note cannot abstracto over Pass…rust's type system is too weak
+// @Task @Beacon use Rc::try_unwrap more instead of clone
+impl Expression<Identifier> {
+    fn resolve_second_pass(
+        self,
+        module: CrateIndex,
+        crate_scope: &CrateScope,
+    ) -> Result<Expression<Identifier>> {
+        use ExpressionKind::*;
+
+        Ok(match self.kind {
+            PiType(pi) => {
+                expr! {
+                    PiType[self.span] {
+                        parameter: pi.parameter.clone(),
+                        domain: pi.domain.clone().resolve_second_pass(module, crate_scope)?,
+                        codomain: pi.codomain.clone().resolve_second_pass(module, crate_scope)?,
+                        explicitness: pi.explicitness,
+                    }
+                }
+            }
+            Application(application) => expr! {
+                Application[self.span] {
+                    callee: application.callee.clone().resolve_second_pass(module, crate_scope)?,
+                    argument: application.argument.clone().resolve_second_pass(module, crate_scope)?,
+                    explicitness: application.explicitness,
+                }
+            },
+            Type => expr! { Type[self.span] },
+            Nat(nat) => expr! {
+                Nat[self.span] {
+                    value: Rc::try_unwrap(nat)
+                        .map(|nat| nat.value)
+                        .unwrap_or_else(|nat| nat.value.clone()),
+                }
+            },
+            Text(text) => expr! {
+                Text[self.span] {
+                    value: Rc::try_unwrap(text)
+                        .map(|text| text.value)
+                        .unwrap_or_else(|text| text.value.clone()),
+                }
+            },
+            Binding(binding) => expr! {
+                Binding[self.span] {
+                    binder: crate_scope.resolve_binding_second_pass::<OnlyValue>(binding.binder.clone(), module)?,
+                }
+            },
+            Lambda(lambda) => expr! {
+                Lambda[self.span] {
+                    parameter: lambda.parameter.clone(),
+                    parameter_type_annotation: lambda.parameter_type_annotation.clone()
+                        .map(|r#type| r#type.resolve_second_pass(module, crate_scope))
+                        .transpose()?,
+                    body_type_annotation: lambda.body_type_annotation.clone()
+                        .map(|r#type| r#type.resolve_second_pass(module, crate_scope))
+                        .transpose()?,
+                    body: lambda.body.clone().resolve_second_pass(module, crate_scope)?,
                     explicitness: lambda.explicitness,
                 }
             },
@@ -616,12 +838,15 @@ use std::fmt;
 impl fmt::Display for Identifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.source)?;
-        #[cfg(FALSE)]
+        // @Temporary
+        // #[cfg(FALSE)]
         {
+            f.write_str("#")?;
             match self.index {
-                Index::Crate(index) => write!(f, "#{}M", index.0)?,
-                Index::Debruijn(index) => write!(f, "#{}F", index.0)?,
-                Index::None => (),
+                Index::Crate(index) => write!(f, "{}M", index.0)?,
+                Index::Debruijn(index) => write!(f, "{}F", index.0)?,
+                Index::DebruijnParameter => f.write_str("P")?,
+                Index::None => f.write_str("N")?,
             }
         }
         Ok(())
@@ -636,12 +861,9 @@ impl Binder for Identifier {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Index {
     Crate(CrateIndex),
-    Debruijn(DebruijnIndex),
-    /// Dummy identifier for function parameters.
-    ///
-    /// Those "l-values" don't need to be referenceable by index in the world
-    /// of Debruijn-indexing.
     None,
+    Debruijn(DebruijnIndex),
+    DebruijnParameter,
 }
 
 impl Index {
@@ -650,16 +872,16 @@ impl Index {
     fn shift(self, amount: usize) -> Self {
         match self {
             Self::Crate(_) => self,
-            Self::None => unreachable!(),
             Self::Debruijn(index) => DebruijnIndex(index.0 + amount).into(),
+            Self::DebruijnParameter | Self::None => unreachable!(),
         }
     }
 
     fn unshift(self) -> Self {
         match self {
             Self::Crate(_) => self,
-            Self::None => unreachable!(),
             Self::Debruijn(index) => DebruijnIndex(index.0.saturating_sub(1)).into(),
+            Self::DebruijnParameter | Self::None => unreachable!(),
         }
     }
 }
@@ -709,39 +931,43 @@ impl<'a> FunctionScope<'a> {
         }
     }
 
-    fn resolve_binding(&self, query: &Path, krate: &CrateScope) -> Result<Identifier> {
-        fn resolve_binding(
-            scope: &FunctionScope<'_>,
-            query: &Path,
-            krate: &CrateScope,
-            depth: usize,
-        ) -> Result<Identifier> {
-            // eprintln!("FunctionScope::resolve_binding called on {}", query);
+    fn resolve_binding_first_pass(
+        &self,
+        query: &Path,
+        crate_scope: &CrateScope,
+    ) -> Result<Identifier> {
+        self.resolve_binding_first_pass_with_depth(query, crate_scope, 0)
+    }
 
-            match scope {
-                FunctionScope::Module(module) => krate.resolve_binding::<OnlyValue>(query, *module),
-                FunctionScope::Binding { parent, binder } => {
-                    if let Some(identifier) = query.identifier_head() {
-                        if binder == identifier {
-                            if query.segments.len() > 1 {
-                                return Err(value_used_as_a_module(
-                                    identifier.span,
-                                    query.segments[1].span,
-                                ));
-                            }
-
-                            Ok(Identifier::new(DebruijnIndex(depth), identifier.clone()))
-                        } else {
-                            resolve_binding(parent, query, krate, depth + 1)
+    fn resolve_binding_first_pass_with_depth(
+        &self,
+        query: &Path,
+        crate_scope: &CrateScope,
+        depth: usize,
+    ) -> Result<Identifier> {
+        match self {
+            FunctionScope::Module(module) => {
+                crate_scope.resolve_binding_first_pass::<OnlyValue>(query, *module)
+            }
+            FunctionScope::Binding { parent, binder } => {
+                if let Some(identifier) = query.identifier_head() {
+                    if binder == identifier {
+                        if query.segments.len() > 1 {
+                            return Err(value_used_as_a_module(
+                                identifier.span,
+                                query.segments[1].span,
+                            ));
                         }
+
+                        Ok(Identifier::new(DebruijnIndex(depth), identifier.clone()))
                     } else {
-                        krate.resolve_binding::<OnlyValue>(query, parent.module())
+                        parent.resolve_binding_first_pass_with_depth(query, crate_scope, depth + 1)
                     }
+                } else {
+                    crate_scope.resolve_binding_first_pass::<OnlyValue>(query, parent.module())
                 }
             }
         }
-
-        resolve_binding(self, query, krate, 0)
     }
 
     fn module(&self) -> CrateIndex {
@@ -784,5 +1010,5 @@ fn value_used_as_a_module(non_module_span: Span, subbinder_span: Span) -> Diagno
 }
 
 fn module_used_as_a_value(span: Span) -> Diagnostic {
-    Diagnostic::new(Level::Fatal, Code::E023, "modules are not values").with_span(span)
+    Diagnostic::new(Level::Fatal, Code::E023, "module used as if it was a value").with_span(span)
 }

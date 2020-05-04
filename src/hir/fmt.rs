@@ -45,15 +45,13 @@ impl<B: Binder> Display for Declaration<B> {
             }
             Module(declaration) => {
                 writeln!(f, "module {}: =", declaration.binder)?;
-                if let Some(declarations) = &declaration.declarations {
-                    for declaration in declarations {
-                        writeln!(f, "    {}", declaration)?;
-                    }
+                for declaration in &declaration.declarations {
+                    writeln!(f, "    {}", declaration)?;
                 }
                 Ok(())
             }
             // @Task
-            Use(declaration) => write!(f, "use {}", declaration.path),
+            Use(declaration) => write!(f, "use {}", declaration.binder),
         }
     }
 }

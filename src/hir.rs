@@ -52,11 +52,10 @@ pub enum DeclarationKind<B: Binder> {
     Module {
         binder: B::Simple,
         file: Rc<SourceFile>,
-        declarations: Option<Vec<Declaration<B>>>,
+        declarations: Vec<Declaration<B>>,
     },
     Use {
-        path: B,
-        binders: (),
+        binder: B,
     },
 }
 

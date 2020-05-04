@@ -14,6 +14,8 @@ use crate::{
     diagnostic::{Code, Diagnostic, Diagnostics, Level, Result},
     hir::{self, decl, expr, pat},
     parser::{self, AttributeKind, Explicitness, Identifier, Path},
+    span::SourceMap,
+    support::ManyErrExt,
 };
 
 impl hir::Binder for Path {
@@ -27,7 +29,7 @@ impl parser::Declaration {
     /// Also, filters documentation attributes and validates
     /// foreign attributes. Those checks should probably be moved somewhere
     /// else.
-    pub fn desugar(mut self) -> Result<hir::Declaration<Path>, Diagnostics> {
+    pub fn desugar(mut self, map: &mut SourceMap) -> Result<hir::Declaration<Path>, Diagnostics> {
         use parser::DeclarationKind::*;
 
         self.validate_attributes()?;
@@ -86,7 +88,7 @@ impl parser::Declaration {
                     constructors: data.constructors.map(|constructors| {
                         constructors
                             .into_iter()
-                            .map(parser::Declaration::desugar)
+                            .map(|constructor| constructor.desugar(map))
                             .collect()
                     }).transpose()?,
                 }
@@ -97,22 +99,52 @@ impl parser::Declaration {
                     type_annotation: desugar_annotated_parameters(constructor.parameters, constructor.type_annotation),
                 }
             },
-            // @Task cumulate non-fatal errors (there are none here yet, thus it's not acute)
-            Module(module) => decl! {
-                Module[self.span][self.attributes] {
-                    binder: module.binder,
-                    file: module.file,
-                    declarations: module
-                        .declarations
-                        .map(|declarations| declarations.into_iter()
-                        .map(parser::Declaration::desugar)
-                        .collect::<Result<_, _>>()).transpose()?,
+            Module(module) => {
+                let declarations = match module.declarations {
+                    Some(declarations) => declarations,
+                    None => {
+                        let path = std::path::Path::new(&module.file.name)
+                            .ancestors()
+                            .nth(1)
+                            .unwrap()
+                            .join(&format!("{}.{}", module.binder.atom, crate::FILE_EXTENSION));
+                        let file = map.load(path.to_str().unwrap()).many_err()?;
+                        let tokens = crate::lexer::Lexer::new(&file).lex()?;
+                        let node = parser::Parser::new(file, &tokens)
+                            .parse_top_level(module.binder.clone())
+                            .many_err()?;
+                        let module = match node.kind {
+                            Module(module) => module,
+                            _ => unreachable!(),
+                        };
+                        if !node.attributes.is_empty() {
+                            Diagnostic::new(
+                                Level::Warning,
+                                None,
+                                "attributes on module headers are ignored right now",
+                            )
+                            .emit(None);
+                        }
+                        module.declarations.unwrap()
+                    }
+                };
+
+                decl! {
+                    Module[self.span][self.attributes] {
+                        binder: module.binder,
+                        file: module.file,
+                        // @Task cumulate non-fatal errors (there are none here yet, thus it's not acute)
+                        // @Task write a "HandleTwo" for an arbitrary amount of elements
+                        // @Update @Question how about using into_iter().fold(...handle)
+                        declarations: declarations.into_iter()
+                                .map(|declaration| declaration.desugar(map))
+                                .collect::<Result<_, _>>()?,
+                    }
                 }
-            },
+            }
             Use(declaration) => decl! {
                 Use[self.span][self.attributes] {
-                    path: declaration.path,
-                    binders: (),
+                    binder: declaration.path,
                 }
             },
         })

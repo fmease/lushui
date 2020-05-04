@@ -405,32 +405,29 @@ impl<'a> FunctionScope<'a> {
     }
 
     pub fn lookup_type(&self, binder: &Identifier) -> Expression {
-        fn lookup_type(
-            scope: &FunctionScope<'_>,
-            index: DebruijnIndex,
-            depth: usize,
-        ) -> Expression {
-            match scope {
-                FunctionScope::Function { parent, r#type } => {
-                    if depth == index.0 {
-                        expr! {
-                            Substitution[] {
-                                substitution: Shift(depth + 1),
-                                expression: r#type.clone(),
-                            }
-                        }
-                    } else {
-                        lookup_type(parent, index, depth + 1)
-                    }
-                }
-                FunctionScope::Module(_) => unreachable!(),
-            }
-        }
-
         match binder.index {
             Index::Crate(index) => self.module().lookup_type(index),
-            Index::Debruijn(index) => lookup_type(self, index, 0),
+            Index::Debruijn(index) => self.lookup_type_with_depth(index, 0),
+            Index::DebruijnParameter => unreachable!(),
             Index::None => unreachable!(),
+        }
+    }
+
+    fn lookup_type_with_depth(&self, index: DebruijnIndex, depth: usize) -> Expression {
+        match self {
+            FunctionScope::Function { parent, r#type } => {
+                if depth == index.0 {
+                    expr! {
+                        Substitution[] {
+                            substitution: Shift(depth + 1),
+                            expression: r#type.clone(),
+                        }
+                    }
+                } else {
+                    parent.lookup_type_with_depth(index, depth + 1)
+                }
+            }
+            FunctionScope::Module(_) => unreachable!(),
         }
     }
 
@@ -438,6 +435,7 @@ impl<'a> FunctionScope<'a> {
         match binder.index {
             Index::Crate(index) => self.module().lookup_value(index),
             Index::Debruijn(_) => Value::Neutral,
+            Index::DebruijnParameter => unreachable!(),
             Index::None => unreachable!(),
         }
     }
@@ -446,6 +444,7 @@ impl<'a> FunctionScope<'a> {
         match binder.index {
             Index::Crate(index) => self.module().is_foreign(index),
             Index::Debruijn(_) => false,
+            Index::DebruijnParameter => unreachable!(),
             Index::None => unreachable!(),
         }
     }
