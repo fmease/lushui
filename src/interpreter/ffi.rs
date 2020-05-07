@@ -1,18 +1,21 @@
 use super::{CrateScope, Expression};
 use crate::{
     diagnostic::*,
-    hir::{expr, Constructor, ExpressionKind},
+    hir,
+    hir::{expr, ExpressionKind},
     parser::Explicitness,
-    resolver::Identifier,
+    resolver::{Identifier, Resolved},
     span::Span,
     Nat,
 };
 
 pub type ForeignFunction = fn(arguments: Vec<Value>) -> Value;
 
+type Constructor = hir::Constructor<Resolved>;
+
 pub fn register_inherent_bindings<'a>(
     binder: &Identifier,
-    mut constructors: impl Iterator<Item = &'a Constructor<Identifier>>,
+    mut constructors: impl Iterator<Item = &'a Constructor>,
     declaration: Span,
     attribute: Span,
     scope: &mut CrateScope,

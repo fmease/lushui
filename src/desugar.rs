@@ -12,15 +12,20 @@ use std::iter::once;
 
 use crate::{
     diagnostic::{Code, Diagnostic, Diagnostics, Level, Result},
-    hir::{self, decl, expr, pat},
+    hir::{self, decl, expr, pat, Pass},
     parser::{self, AttributeKind, Explicitness, Identifier, Path},
     span::SourceMap,
     support::ManyErrExt,
 };
 
-impl hir::Binder for Path {
-    type Simple = Identifier;
-    type Pattern = parser::PathPattern;
+#[derive(Clone)]
+pub enum Desugared {}
+
+impl Pass for Desugared {
+    type Binder = Identifier;
+    type ReferencedBinder = Path;
+    type PatternBinder = parser::PathPattern;
+    type ForeignApplicationBinder = !;
 }
 
 impl parser::Declaration {
@@ -29,7 +34,10 @@ impl parser::Declaration {
     /// Also, filters documentation attributes and validates
     /// foreign attributes. Those checks should probably be moved somewhere
     /// else.
-    pub fn desugar(mut self, map: &mut SourceMap) -> Result<hir::Declaration<Path>, Diagnostics> {
+    pub fn desugar(
+        mut self,
+        map: &mut SourceMap,
+    ) -> Result<hir::Declaration<Desugared>, Diagnostics> {
         use parser::DeclarationKind::*;
 
         self.validate_attributes()?;
@@ -222,7 +230,7 @@ impl parser::Declaration {
 
 impl parser::Expression {
     /// Lower an expression from AST to HIR.
-    pub fn desugar(self) -> hir::Expression<Path> {
+    pub fn desugar(self) -> hir::Expression<Desugared> {
         use parser::ExpressionKind::*;
 
         match self.kind {
@@ -372,7 +380,7 @@ impl parser::Pattern {
     /// Lower a pattern from AST to HIR.
     ///
     /// Currently, [parser::expression::Pattern] and [Pattern] are identical (apart from forgetting span information)!
-    fn desugar(self) -> hir::Pattern<Path> {
+    fn desugar(self) -> hir::Pattern<Desugared> {
         use parser::PatternKind::*;
 
         match self.kind {
@@ -401,7 +409,7 @@ impl parser::Pattern {
 fn desugar_annotated_parameters(
     parameters: parser::AnnotatedParameters,
     type_annotation: parser::Expression,
-) -> hir::Expression<Path> {
+) -> hir::Expression<Desugared> {
     let mut expression = type_annotation.desugar();
 
     for parameter_group in parameters.into_iter().rev() {

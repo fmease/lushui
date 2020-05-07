@@ -1,20 +1,17 @@
 //! Case analysis.
 
-// use std::rc::Rc;
+// @Temporary
+#![allow(dead_code)]
 
-use crate::{
-    hir::{Case, Pattern},
-    interpreter::Substitution,
-    resolver::Identifier,
-};
+use crate::{hir, interpreter::Substitution, resolver::Resolved};
+
+type Case = hir::Case<Resolved>;
+type Pattern = hir::Pattern<Resolved>;
 
 /// Substitute inside the case of a case analysis.
-pub fn _case_analysis_case_substitute(
-    case: Case<Identifier>,
-    substitution: Substitution,
-) -> Case<Identifier> {
+pub fn case_analysis_case_substitute(case: Case, substitution: Substitution) -> Case {
     // @Note does not return a new substitutions anymore
-    let pattern = _pattern_substitute(case.pattern, substitution.clone());
+    let pattern = pattern_substitute(case.pattern, substitution.clone());
 
     Case {
         pattern,
@@ -24,10 +21,7 @@ pub fn _case_analysis_case_substitute(
 
 /// Substitute inside of a pattern.
 // @Bug does not work at all anymore!!!
-pub fn _pattern_substitute<'p>(
-    _pattern: Pattern<Identifier>,
-    _substitution: Substitution,
-) -> Pattern<Identifier> {
+pub fn pattern_substitute<'p>(_pattern: Pattern, _substitution: Substitution) -> Pattern {
     todo!()
     // match pattern {
     //     expression::Pattern::NatLiteral(_) => pattern,

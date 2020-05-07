@@ -7,11 +7,11 @@ use crate::{
     hir::{self, *},
     interpreter::{ffi, CrateScope, Form, FunctionScope},
     parser::{AttributeKind, Explicitness},
-    resolver::Identifier,
+    resolver::Resolved,
 };
 
-type Declaration = hir::Declaration<Identifier>;
-type Expression = hir::Expression<Identifier>;
+type Declaration = hir::Declaration<Resolved>;
+type Expression = hir::Expression<Resolved>;
 
 const TYPE: Expression = expr! { Type[] };
 

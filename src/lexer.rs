@@ -13,7 +13,7 @@ use crate::{
     diagnostic::*,
     span::{LocalByteIndex, LocalSpan, SourceFile, Span, Spanned},
     support::ManyErrExt,
-    Atom, Nat,
+    Atom, Nat, INDENTATION_IN_SPACES,
 };
 use std::{
     fmt,
@@ -118,9 +118,6 @@ impl fmt::Debug for TokenKind {
         write!(f, "{}", self)
     }
 }
-
-/// Amount of spaces making up one unit of indentation.
-pub const INDENTATION_IN_SPACES: usize = 4;
 
 const PRIME: char = '\'';
 

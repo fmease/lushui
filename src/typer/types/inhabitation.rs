@@ -1,12 +1,11 @@
 //! Inhabitation analysis.
 
 use crate::{
-    hir::{Expression, ExpressionKind},
     interpreter::CrateScope,
-    resolver::Identifier,
+    typer::{Expression, ExpressionKind},
 };
 
-impl Expression<Identifier> {
+impl Expression {
     /// Indicate whether a type is uninhabited.
     // @Note assumes expression_is_type(r#type, ..) holds
     // @Task we need to consider polymorphic types like `Identity` (with `Identity'`) where

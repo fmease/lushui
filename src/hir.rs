@@ -11,20 +11,28 @@ use crate::{
 use freestanding::freestanding;
 use std::{fmt::Display, rc::Rc};
 
-// @Note this trait is not well designed
-pub trait Binder: Display + Clone {
-    type Simple: Display;
-    type Pattern: Display;
+// @Note the marker clone should ideally not be there (it's a marker type) but rustc's derive(Clone)
+// is too stupid
+pub trait Pass: Clone {
+    /// "l-value"/place
+    type Binder: Display + Clone;
+    /// "r-value"
+    type ReferencedBinder: Display + Clone;
+
+    /// "l-value" in patterns
+    type PatternBinder: Display + Clone;
+    /// "r-value" in foreign applications
+    type ForeignApplicationBinder: Display + Clone;
 }
 
-pub struct Declaration<B: Binder> {
-    pub kind: DeclarationKind<B>,
+pub struct Declaration<P: Pass> {
+    pub kind: DeclarationKind<P>,
     pub span: Span,
     pub attributes: Attributes,
 }
 
-impl<B: Binder> Declaration<B> {
-    pub fn unwrap_constructor(&self) -> &Constructor<B> {
+impl<P: Pass> Declaration<P> {
+    pub fn unwrap_constructor(&self) -> &Constructor<P> {
         match &self.kind {
             DeclarationKind::Constructor(constructor) => constructor,
             _ => unreachable!(),
@@ -34,36 +42,36 @@ impl<B: Binder> Declaration<B> {
 
 #[freestanding]
 #[streamline(Box)]
-pub enum DeclarationKind<B: Binder> {
+pub enum DeclarationKind<P: Pass> {
     Value {
-        binder: B::Simple,
-        type_annotation: Expression<B>,
-        expression: Option<Expression<B>>,
+        binder: P::Binder,
+        type_annotation: Expression<P>,
+        expression: Option<Expression<P>>,
     },
     Data {
-        binder: B::Simple,
-        type_annotation: Expression<B>,
-        constructors: Option<Vec<Declaration<B>>>,
+        binder: P::Binder,
+        type_annotation: Expression<P>,
+        constructors: Option<Vec<Declaration<P>>>,
     },
     Constructor {
-        binder: B::Simple,
-        type_annotation: Expression<B>,
+        binder: P::Binder,
+        type_annotation: Expression<P>,
     },
     Module {
-        binder: B::Simple,
+        binder: P::Binder,
         file: Rc<SourceFile>,
-        declarations: Vec<Declaration<B>>,
+        declarations: Vec<Declaration<P>>,
     },
     Use {
-        binder: B,
+        binder: P::ReferencedBinder,
     },
 }
 
-pub type Expression<B> = Spanned<ExpressionKind<B>>;
+pub type Expression<P> = Spanned<ExpressionKind<P>>;
 
-impl<B: Binder> Expression<B> {
+impl<P: Pass> Expression<P> {
     // @Question by value or by reference?
-    pub fn binding(&self) -> Option<&Binding<B>> {
+    pub fn binding(&self) -> Option<&Binding<P>> {
         match &self.kind {
             ExpressionKind::Binding(binding) => Some(binding),
             _ => None,
@@ -74,16 +82,16 @@ impl<B: Binder> Expression<B> {
 #[freestanding]
 #[streamline(Rc)]
 #[derive(Clone)]
-pub enum ExpressionKind<B: Binder> {
+pub enum ExpressionKind<P: Pass> {
     PiType {
-        parameter: Option<B::Simple>,
-        domain: Expression<B>,
-        codomain: Expression<B>,
+        parameter: Option<P::Binder>,
+        domain: Expression<P>,
+        codomain: Expression<P>,
         explicitness: Explicitness,
     },
     Application {
-        callee: Expression<B>,
-        argument: Expression<B>,
+        callee: Expression<P>,
+        argument: Expression<P>,
         explicitness: Explicitness,
     },
     Type,
@@ -96,54 +104,55 @@ pub enum ExpressionKind<B: Binder> {
         value: String,
     },
     Binding {
-        binder: B,
+        binder: P::ReferencedBinder,
     },
     Lambda {
-        parameter: B::Simple,
-        parameter_type_annotation: Option<Expression<B>>,
+        parameter: P::Binder,
+        parameter_type_annotation: Option<Expression<P>>,
         explicitness: Explicitness,
-        body_type_annotation: Option<Expression<B>>,
-        body: Expression<B>,
+        body_type_annotation: Option<Expression<P>>,
+        body: Expression<P>,
     },
     UseIn,
     CaseAnalysis {
-        subject: Expression<B>,
-        cases: Vec<Case<B>>,
+        subject: Expression<P>,
+        cases: Vec<Case<P>>,
     },
-    // @Task move???
+    // @Task move??? this only exists in typer,interpreter
     Substitution {
         substitution: crate::interpreter::Substitution,
-        expression: Expression<B>,
+        expression: Expression<P>,
     },
+    // @Task move??? typer,interpreter
     ForeignApplication {
-        callee: B::Simple,
-        arguments: Vec<Expression<B>>,
+        callee: P::ForeignApplicationBinder,
+        arguments: Vec<Expression<P>>,
     },
 }
 
 #[derive(Clone)]
-pub struct Case<B: Binder> {
-    pub pattern: Pattern<B>,
-    pub body: Expression<B>,
+pub struct Case<P: Pass> {
+    pub pattern: Pattern<P>,
+    pub body: Expression<P>,
 }
 
-pub type Pattern<B> = Spanned<PatternKind<B>>;
+pub type Pattern<P> = Spanned<PatternKind<P>>;
 
 #[freestanding]
 #[streamline(Rc)]
 #[derive(Clone)]
 // @Note naming of variants in unfortunate (necessary because of freestanding
 // and bc we don't use submodules here by design)
-pub enum PatternKind<B: Binder> {
+pub enum PatternKind<P: Pass> {
     #[parameterless]
     NatPattern { value: crate::Nat },
     BindingPattern {
-        binder: B::Pattern,
-        type_annotation: Option<Expression<B>>,
+        binder: P::PatternBinder,
+        type_annotation: Option<Expression<P>>,
     },
     ApplicationPattern {
-        callee: Pattern<B>,
-        argument: Pattern<B>,
+        callee: Pattern<P>,
+        argument: Pattern<P>,
     },
 }
 

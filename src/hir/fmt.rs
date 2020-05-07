@@ -4,61 +4,71 @@ use std::fmt::{Debug, Display, Formatter, Result};
 
 use super::*;
 
+impl<P: Pass> Display for Declaration<P> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        self.format(f, 0)
+    }
+}
+
 // @Task reduce amount of (String) allocations
 // @Bug indentation not correctly handled (e.g. an indented data declaration doesn't have its constructors indented)
 // @Task implement indentation logic (@Note for now, it's not that relevant because we don*t have modules yet, so a data
 // declaration is never actually indented, also expressions which face the same issue when pretty-printing, are printed out in one single line!)
 // @Task @Beacon display attributes
-impl<B: Binder> Display for Declaration<B> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+impl<P: Pass> Declaration<P> {
+    fn format(&self, f: &mut Formatter<'_>, depth: usize) -> Result {
+        use crate::INDENTATION_IN_SPACES;
         use DeclarationKind::*;
 
         match &self.kind {
             Value(declaration) => match &declaration.expression {
-                Some(expression) => write!(
+                Some(expression) => writeln!(
                     f,
                     "{}: {} = {}",
                     declaration.binder, declaration.type_annotation, expression
                 ),
-                None => write!(f, "{}: {}", declaration.binder, declaration.type_annotation),
-            },
+                None => writeln!(f, "{}: {}", declaration.binder, declaration.type_annotation),
+            }?,
             Data(declaration) => match &declaration.constructors {
-                Some(constructors) => write!(
+                Some(constructors) => {
+                    writeln!(
+                        f,
+                        "data {}: {} =",
+                        declaration.binder, declaration.type_annotation
+                    )?;
+                    for constructor in constructors {
+                        let depth = depth + 1;
+                        f.write_str(&" ".repeat(depth * INDENTATION_IN_SPACES))?;
+                        constructor.format(f, depth)?;
+                    }
+                }
+                None => writeln!(
                     f,
-                    "data {}: {} =\n{}",
-                    declaration.binder,
-                    declaration.type_annotation,
-                    constructors
-                        .iter()
-                        .map(|constructor| format!("    {}", constructor))
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                ),
-                None => write!(
-                    f,
-                    "data {}: {}\n",
+                    "data {}: {}",
                     declaration.binder, declaration.type_annotation
-                ),
+                )?,
             },
             Constructor(constructor) => {
-                write!(f, "{}: {}", constructor.binder, constructor.type_annotation)
+                writeln!(f, "{}: {}", constructor.binder, constructor.type_annotation)?;
             }
             Module(declaration) => {
                 writeln!(f, "module {}: =", declaration.binder)?;
                 for declaration in &declaration.declarations {
-                    writeln!(f, "    {}", declaration)?;
+                    let depth = depth + 1;
+                    f.write_str(&" ".repeat(depth * INDENTATION_IN_SPACES))?;
+                    declaration.format(f, depth)?;
                 }
-                Ok(())
             }
-            // @Task
-            Use(declaration) => write!(f, "use {}", declaration.binder),
+            Use(declaration) => writeln!(f, "use {}", declaration.binder)?,
         }
+
+        Ok(())
     }
 }
 
 // @Task display fewer round brackets by making use of precedence
 // @Note many wasted allocations (intermediate Strings)
-impl<B: Binder> Display for Expression<B> {
+impl<P: Pass> Display for Expression<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         use ExpressionKind::*;
 
@@ -117,13 +127,13 @@ impl<B: Binder> Display for Expression<B> {
     }
 }
 
-impl<B: Binder> fmt::Debug for Expression<B> {
+impl<P: Pass> fmt::Debug for Expression<P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self)
     }
 }
 
-impl<B: Binder> Display for Lambda<B> {
+impl<P: Pass> Display for Lambda<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -143,13 +153,13 @@ impl<B: Binder> Display for Lambda<B> {
     }
 }
 
-impl<B: Binder> Display for Case<B> {
+impl<P: Pass> Display for Case<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "of {} => ({})", self.pattern, self.body)
     }
 }
 
-impl<B: Binder> Display for Pattern<B> {
+impl<P: Pass> Display for Pattern<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match &self.kind {
             PatternKind::NatPattern(literal) => write!(f, "{}", literal.value),

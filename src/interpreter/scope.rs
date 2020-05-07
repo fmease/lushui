@@ -409,7 +409,6 @@ impl<'a> FunctionScope<'a> {
             Index::Crate(index) => self.module().lookup_type(index),
             Index::Debruijn(index) => self.lookup_type_with_depth(index, 0),
             Index::DebruijnParameter => unreachable!(),
-            Index::None => unreachable!(),
         }
     }
 
@@ -436,7 +435,6 @@ impl<'a> FunctionScope<'a> {
             Index::Crate(index) => self.module().lookup_value(index),
             Index::Debruijn(_) => Value::Neutral,
             Index::DebruijnParameter => unreachable!(),
-            Index::None => unreachable!(),
         }
     }
 
@@ -445,7 +443,6 @@ impl<'a> FunctionScope<'a> {
             Index::Crate(index) => self.module().is_foreign(index),
             Index::Debruijn(_) => false,
             Index::DebruijnParameter => unreachable!(),
-            Index::None => unreachable!(),
         }
     }
 }

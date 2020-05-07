@@ -13,9 +13,11 @@ use lushui::{
     support::ManyErrExt,
 };
 
+const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " ", env!("GIT_COMMIT_HASH"));
+
 // @Task gather all print flags under a common --print=THING option
 #[derive(StructOpt)]
-#[structopt(version = lushui::VERSION, author, about)]
+#[structopt(version = VERSION, author, about)]
 struct Arguments {
     /// Print the tokens emitted by the lexer
     #[structopt(long)]
@@ -37,7 +39,7 @@ struct Arguments {
     #[structopt(long)]
     print_hir_resolved: bool,
 
-    /// Print the evaluated module scope"
+    /// Print the evaluated module scope
     #[structopt(long)]
     print_scope: bool,
 
@@ -115,7 +117,7 @@ fn main() {
 
         let mut resolver_scope = resolver::CrateScope::default();
 
-        let node = node.resolve(None, &mut resolver_scope)?;
+        let node = node.resolve(&mut resolver_scope)?;
         if arguments.print_hir_resolved {
             eprintln!("{}", node);
         } else {

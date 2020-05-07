@@ -4,7 +4,7 @@
 //! with type-checking.
 //!
 
-#![feature(decl_macro, move_ref_pattern)]
+#![feature(decl_macro, move_ref_pattern, associated_type_defaults, never_type)]
 #![forbid(rust_2018_idioms, unused_must_use)]
 
 pub mod desugar;
@@ -18,10 +18,10 @@ pub mod span;
 pub mod support;
 pub mod typer;
 
-pub const NAME: &str = env!("CARGO_PKG_NAME");
-pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " ", env!("GIT_COMMIT_HASH"));
-pub const DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
 pub const FILE_EXTENSION: &str = "lushui";
+
+/// Amount of spaces making up one unit of indentation.
+pub const INDENTATION_IN_SPACES: usize = 4;
 
 use num_bigint::BigUint as Nat;
 use smallvec::{smallvec, SmallVec};

@@ -27,13 +27,13 @@ use crate::{
     diagnostic::*,
     hir::{self, *},
     parser::Explicitness,
-    resolver::Identifier,
+    resolver::{Identifier, Resolved},
     typer,
 };
 pub use scope::CrateScope;
 pub(crate) use scope::FunctionScope;
 
-type Expression = hir::Expression<Identifier>;
+type Expression = hir::Expression<Resolved>;
 
 pub fn evaluate_program_entry(program_entry: Identifier, scope: &CrateScope) -> Result<Expression> {
     let expression = expr! { Binding[] { binder: program_entry } };

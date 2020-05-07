@@ -11,15 +11,15 @@
 
 use crate::{
     diagnostic::{Code, Diagnostic, Level, Result},
-    hir::{Expression, ExpressionKind},
     interpreter::{CrateScope, FunctionScope},
     resolver::Identifier,
+    typer::{Expression, ExpressionKind},
 };
 
 pub(in crate::typer) fn assert_constructor_is_instance_of_type(
     constructor_name: Identifier,
-    constructor: Expression<Identifier>,
-    r#type: Expression<Identifier>,
+    constructor: Expression,
+    r#type: Expression,
     scope: &CrateScope,
 ) -> Result<()> {
     let result_type = constructor.result_type(&FunctionScope::Module(scope));
@@ -38,7 +38,7 @@ pub(in crate::typer) fn assert_constructor_is_instance_of_type(
     }
 }
 
-impl Expression<Identifier> {
+impl Expression {
     // @Question @Bug returns are type that might depend on parameters which we don't supply!!
     // gets R in A -> B -> C -> R plus an environment b.c. R could depend on outer stuff
     // @Note this function assumes that the expression has already been normalized!
