@@ -150,9 +150,11 @@ impl parser::Declaration {
                     }
                 }
             }
+            // @Task improve upon this
             Use(declaration) => decl! {
                 Use[self.span][self.attributes] {
-                    binder: declaration.path,
+                    binder: declaration.path.segments.last().cloned(),
+                    reference: declaration.path,
                 }
             },
         })

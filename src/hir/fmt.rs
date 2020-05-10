@@ -59,7 +59,10 @@ impl<P: Pass> Declaration<P> {
                     declaration.format(f, depth)?;
                 }
             }
-            Use(declaration) => writeln!(f, "use {}", declaration.binder)?,
+            Use(declaration) => match &declaration.binder {
+                Some(binder) => writeln!(f, "use {} as {}", declaration.reference, binder)?,
+                None => writeln!(f, "use {}", declaration.reference)?,
+            },
         }
 
         Ok(())

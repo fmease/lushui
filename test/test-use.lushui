@@ -3,9 +3,9 @@ Cool: Type = Type
 module m: =
     Alpha: Type = Type
 
-    use super.m.Alpha
+    ;; use super.m.Alpha
 
-    T: Type = Cool
+    T: Type = super.Cool
 
 use m.T
 

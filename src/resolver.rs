@@ -16,9 +16,11 @@
 
 // @Beacon @Task `X: Type = Duple Non-Existent-One Non-Existent-Two` should
 // report both errors (I don't think that's the case right now)
+// @Note for this create a DeclarationKind::Invalid (and maybe also ::Fatal) and have a#
+// Diagnostic buffer in CrateScope. Then, bubble invalids up
 
 use indexed_vec::IndexVec;
-use std::rc::Rc;
+use std::{collections::HashMap, rc::Rc};
 
 use crate::{
     desugar::Desugared,
@@ -33,11 +35,17 @@ const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
 
 #[derive(Default)]
 pub struct CrateScope {
+    pub program_entry: Option<Identifier>,
     /// All bindings inside of a crate.
     ///
     /// The first element will always be the root module.
-    bindings: IndexVec<CrateIndex, Binding>,
-    pub program_entry: Option<Identifier>,
+    bindings: IndexVec<CrateIndex, Entity>,
+    unresolved_uses: HashMap<CrateIndex, WorklistItem>,
+}
+
+struct WorklistItem {
+    reference: Path,
+    module: CrateIndex,
 }
 
 impl CrateScope {
@@ -47,14 +55,14 @@ impl CrateScope {
 
     fn unwrap_module_scope(&self, index: CrateIndex) -> &ModuleScope {
         match &self.bindings[index].kind {
-            BindingKind::Module(scope) => scope,
+            EntityKind::Module(scope) => scope,
             _ => unreachable!(),
         }
     }
 
     fn unwrap_module_scope_mut(&mut self, index: CrateIndex) -> &mut ModuleScope {
         match &mut self.bindings[index].kind {
-            BindingKind::Module(scope) => scope,
+            EntityKind::Module(scope) => scope,
             _ => unreachable!(),
         }
     }
@@ -65,25 +73,26 @@ impl CrateScope {
         module: CrateIndex,
     ) -> Result<Identifier> {
         self.register_binding(
-            binder.clone(),
-            Binding {
-                source: binder,
-                kind: BindingKind::Value,
+            &binder,
+            Entity {
+                source: binder.clone(),
+                kind: EntityKind::Value,
             },
             Some(module),
         )
+        .map(|index| Identifier::new(index, binder))
     }
 
     fn register_module_binding(
         &mut self,
         binder: parser::Identifier,
         module: Option<CrateIndex>,
-    ) -> Result<Identifier> {
+    ) -> Result<CrateIndex> {
         self.register_binding(
-            binder.clone(),
-            Binding {
-                source: binder,
-                kind: BindingKind::Module(ModuleScope {
+            &binder,
+            Entity {
+                source: binder.clone(),
+                kind: EntityKind::Module(ModuleScope {
                     parent: module,
                     bindings: Vec::new(),
                 }),
@@ -95,34 +104,44 @@ impl CrateScope {
     fn register_use_binding(
         &mut self,
         binder: parser::Identifier,
-        target: CrateIndex,
+        reference: &Path,
         module: CrateIndex,
-    ) -> Result<Identifier> {
-        let target = self.resolve_use(target);
-
-        self.register_binding(
-            binder.clone(),
-            Binding {
-                source: binder,
-                kind: BindingKind::Use(target),
+    ) -> Result<()> {
+        let index = self.register_binding(
+            &binder,
+            Entity {
+                source: binder.clone(),
+                kind: EntityKind::UnresolvedUse,
             },
             Some(module),
-        )
+        )?;
+
+        let old = self.unresolved_uses.insert(
+            index,
+            WorklistItem {
+                reference: reference.clone(),
+                module,
+            },
+        );
+
+        debug_assert!(old.is_none());
+
+        Ok(())
     }
 
     fn register_binding(
         &mut self,
-        binder: parser::Identifier,
-        binding: Binding,
+        binder: &parser::Identifier,
+        binding: Entity,
         module: Option<CrateIndex>,
-    ) -> Result<Identifier> {
+    ) -> Result<CrateIndex> {
         if let Some(module) = module {
             if let Some(previous) = self
                 .unwrap_module_scope(module)
                 .bindings
                 .iter()
                 .map(|&index| &self.bindings[index])
-                .find(|binding| binding.source == binder)
+                .find(|binding| &binding.source == binder)
             {
                 return Err(Diagnostic::new(
                     Level::Error,
@@ -140,20 +159,20 @@ impl CrateScope {
             self.unwrap_module_scope_mut(module).bindings.push(index);
         }
 
-        Ok(Identifier::new(index, binder))
+        Ok(index)
     }
 
     fn resolve_path<Target: ResolutionTarget>(
         &self,
         path: &Path,
         module: CrateIndex,
-    ) -> Result<Target::Output> {
+    ) -> Result<Target::Output, Error> {
         use parser::PathHeadKind::*;
-        use BindingKind::*;
+        use EntityKind::*;
 
         if let Some(head) = &path.head {
             if path.segments.is_empty() {
-                return Target::resolve_bare_super_and_crate(head.span, module);
+                return Target::resolve_bare_super_and_crate(head.span, module).map_err(Into::into);
             }
 
             return self.resolve_path::<Target>(
@@ -166,18 +185,18 @@ impl CrateScope {
         }
 
         let index = self.resolve_first_segment(&path.segments[0], module)?;
-
         let binding = &self.bindings[index].kind;
 
         match path.simple() {
-            Some(identifier) => Target::resolve_simple_path(identifier, binding, index),
+            Some(identifier) => {
+                Target::resolve_simple_path(identifier, binding, index).map_err(Into::into)
+            }
             None => match binding {
                 Module(_) => self.resolve_path::<Target>(&path.tail(), index),
-                Value => Err(value_used_as_a_module(
-                    path.segments[0].span,
-                    path.segments[1].span,
-                )),
-                Use(_) => unreachable!(),
+                Value => {
+                    Err(value_used_as_a_module(path.segments[0].span, path.segments[1].span).into())
+                }
+                UnresolvedUse | Use(_) => unreachable!(),
             },
         }
     }
@@ -197,46 +216,71 @@ impl CrateScope {
         &self,
         identifier: &parser::Identifier,
         module: CrateIndex,
-    ) -> Result<CrateIndex> {
+    ) -> Result<CrateIndex, Error> {
         self.unwrap_module_scope(module)
             .bindings
             .iter()
             .copied()
             .find(|&index| &self.bindings[index].source == identifier)
-            .ok_or_else(|| {
-                Diagnostic::new(
-                    Level::Error,
-                    Code::E021,
-                    // @Task modify error message: if it's a simple path: "in this scope/module"
-                    // and if it's a complex one: "in module `module`"
-                    format!("binding `{}` is not defined in this scope", identifier),
-                )
-                .with_span(identifier.span)
-            })
-            .map(|index| self.resolve_use(index))
+            .ok_or_else(|| Error::UndefinedBinding(identifier.clone()))
+            .and_then(|index| self.resolve_use(index))
     }
 
-    fn resolve_use(&self, index: CrateIndex) -> CrateIndex {
-        use BindingKind::*;
+    fn resolve_use(&self, index: CrateIndex) -> Result<CrateIndex, Error> {
+        use EntityKind::*;
 
         match self.bindings[index].kind {
-            Value | Module(_) => index,
-            Use(target) => target,
+            Value | Module(_) => Ok(index),
+            Use(reference) => Ok(reference),
+            UnresolvedUse => Err(Error::FoundUnresolvedUse),
         }
     }
 
-    // @Beacon @Note I *think* we should return a Result because
-    // if we resolve an identifier (textually), it could mean that it has been
-    // defined multiple times and that the one we are getting (textually!) is
-    // actually of a different kind (Value vs Module)
     fn resolve_identifier<Target: ResolutionTarget>(
         &self,
         identifier: &parser::Identifier,
         module: CrateIndex,
     ) -> Result<Target::Output> {
         let index = self.resolve_first_segment(identifier, module)?;
-        // .unwrap_or_else(|_| unreachable!());
         Target::resolve_simple_path(identifier, &self.bindings[index].kind, index)
+    }
+
+    fn resolve_unresolved_uses(&mut self) -> Result<(), Diagnostics> {
+        while !self.unresolved_uses.is_empty() {
+            let mut unresolved_uses = HashMap::new();
+
+            for (&index, item) in self.unresolved_uses.iter() {
+                match self.resolve_path::<ValueOrModule>(&item.reference, item.module) {
+                    Ok(reference) => {
+                        self.bindings[index].kind = EntityKind::Use(reference);
+                    }
+                    Err(FoundUnresolvedUse) => {
+                        unresolved_uses.insert(
+                            index,
+                            WorklistItem {
+                                reference: item.reference.clone(),
+                                module: item.module,
+                            },
+                        );
+                    }
+                    Err(other) => return Err(other.into()).many_err(),
+                }
+            }
+
+            if unresolved_uses.len() == self.unresolved_uses.len() {
+                return Err(unresolved_uses
+                    .keys()
+                    .map(|&index| {
+                        Diagnostic::new(Level::Error, Code::E024, "this declaration is circular")
+                            .with_span(self.bindings[index].source.span)
+                    })
+                    .collect());
+            }
+
+            self.unresolved_uses = unresolved_uses;
+        }
+
+        Ok(())
     }
 }
 
@@ -251,7 +295,7 @@ impl ResolutionTarget for ValueOrModule {
 
     fn resolve_simple_path(
         _: &parser::Identifier,
-        _: &BindingKind,
+        _: &EntityKind,
         index: CrateIndex,
     ) -> Result<Self::Output> {
         Ok(index)
@@ -269,15 +313,15 @@ impl ResolutionTarget for OnlyValue {
 
     fn resolve_simple_path(
         identifier: &parser::Identifier,
-        binding: &BindingKind,
+        binding: &EntityKind,
         index: CrateIndex,
     ) -> Result<Self::Output> {
-        use BindingKind::*;
+        use EntityKind::*;
 
         match binding {
             Value => Ok(Identifier::new(index, identifier.clone())),
             Module(_) => Err(module_used_as_a_value(identifier.span)),
-            Use(_) => unreachable!(),
+            UnresolvedUse | Use(_) => unreachable!(),
         }
     }
 }
@@ -289,7 +333,7 @@ trait ResolutionTarget {
 
     fn resolve_simple_path(
         identifier: &parser::Identifier,
-        binding: &BindingKind,
+        binding: &EntityKind,
         index: CrateIndex,
     ) -> Result<Self::Output>;
 }
@@ -297,11 +341,10 @@ trait ResolutionTarget {
 impl Declaration<Desugared> {
     pub fn resolve(self, scope: &mut CrateScope) -> Result<Declaration<Resolved>, Diagnostics> {
         self.resolve_first_pass(None, scope)?;
-        // eprintln!("{:?}", scope.bindings);
+        scope.resolve_unresolved_uses()?;
         self.resolve_second_pass(None, scope)
     }
 
-    // @Task rename we are not doing any resolving...only registering
     fn resolve_first_pass(
         &self,
         module: Option<CrateIndex>,
@@ -327,7 +370,7 @@ impl Declaration<Desugared> {
                 let module = module.unwrap();
 
                 // @Task @Beacon don't return early on error
-                let _binder = scope
+                scope
                     .register_value_binding(declaration.binder.clone(), module)
                     .many_err()?;
 
@@ -341,28 +384,40 @@ impl Declaration<Desugared> {
             Constructor(declaration) => {
                 let module = module.unwrap();
 
-                let _binder = scope
+                scope
                     .register_value_binding(declaration.binder.clone(), module)
                     .many_err()?;
             }
             Module(declaration) => {
                 // @Task @Beacon don't return early on error
-                let binder = scope
+                let index = scope
                     .register_module_binding(declaration.binder.clone(), module)
                     .many_err()?;
 
                 for declaration in &declaration.declarations {
                     // @Task @Beacon don't return early on error
-                    declaration.resolve_first_pass(Some(binder.krate().unwrap()), scope)?;
+                    declaration.resolve_first_pass(Some(index), scope)?;
                 }
             }
-            Use(_declaration) => {
-                return Err(Diagnostic::new(
-                    Level::Bug,
-                    None,
-                    "use declarations not supported right now",
-                ))
-                .many_err()?;
+            Use(declaration) => {
+                let module = module.unwrap();
+
+                let binder = declaration
+                    .binder
+                    .as_ref()
+                    .ok_or_else(|| {
+                        Diagnostic::new(
+                            Level::Fatal,
+                            None,
+                            "`use` of bare `super` and `crate` disallowed",
+                        )
+                        .with_span(self.span)
+                    })
+                    .many_err()?;
+
+                scope
+                    .register_use_binding(binder.clone(), &declaration.reference, module)
+                    .many_err()?;
             }
         }
 
@@ -397,6 +452,7 @@ impl Declaration<Desugared> {
                 let binder = scope
                     .resolve_identifier::<OnlyValue>(&declaration.binder, module)
                     .many_err()?;
+
                 let span = self.span;
                 let attributes = self.attributes;
 
@@ -491,31 +547,19 @@ impl Declaration<Desugared> {
             }
             Use(declaration) => {
                 let module = module.unwrap();
+                let binder = declaration.binder.unwrap();
 
-                let binder = match declaration.binder.segments.last() {
-                    Some(binder) => binder,
-                    None => {
-                        return Err(Diagnostic::new(
-                            Level::Fatal,
-                            None,
-                            "`use` of bare `super` and `crate` disallowed",
-                        )
-                        .with_span(self.span))
-                        .many_err()
+                let index = scope
+                    .resolve_identifier::<ValueOrModule>(&binder, module)
+                    .many_err()?;
+
+                Ok(decl! {
+                    Use[self.span][self.attributes] {
+                        binder: Some(Identifier::new(index, binder.clone())),
+                        // @Temporary
+                        reference: Identifier::new(index, binder.clone()),
                     }
-                };
-
-                // @Task even if this does not resolve, register the binder (last segment) into
-                // this module to prevent unnecessary consequential errors
-                let target = scope
-                    .resolve_path::<ValueOrModule>(&declaration.binder, module)
-                    .many_err()?;
-
-                let binder = scope
-                    .register_use_binding(binder.clone(), target, module)
-                    .many_err()?;
-
-                Ok(decl! { Use[self.span][self.attributes] { binder } })
+                })
             }
         }
     }
@@ -534,7 +578,8 @@ impl Expression<Desugared> {
             PiType(pi) => {
                 expr! {
                     PiType[self.span] {
-                        parameter: pi.parameter.clone().map(|parameter| Identifier::new(Index::DebruijnParameter, parameter.clone())),
+                        parameter: pi.parameter.clone()
+                            .map(|parameter| Identifier::new(Index::DebruijnParameter, parameter.clone())),
                         domain: pi.domain.clone().resolve(scope, crate_scope)?,
                         codomain: match pi.parameter.clone() {
                             Some(parameter) => pi.codomain.clone().resolve(&scope.extend(parameter), crate_scope)?,
@@ -580,7 +625,8 @@ impl Expression<Desugared> {
                     body_type_annotation: lambda.body_type_annotation.clone()
                         .map(|r#type| r#type.resolve(&scope.extend(lambda.parameter.clone()), crate_scope))
                         .transpose()?,
-                    body: lambda.body.clone().resolve(&scope.extend(lambda.parameter.clone()), crate_scope)?,
+                    body: lambda.body.clone()
+                        .resolve(&scope.extend(lambda.parameter.clone()), crate_scope)?,
                     explicitness: lambda.explicitness,
                 }
             },
@@ -591,10 +637,20 @@ impl Expression<Desugared> {
     }
 }
 
-#[derive(Debug)]
 pub struct ModuleScope {
     parent: Option<CrateIndex>,
     bindings: Vec<CrateIndex>,
+}
+
+impl fmt::Debug for ModuleScope {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "super: ")?;
+        match &self.parent {
+            Some(parent) => write!(f, "{:?}", parent)?,
+            None => f.write_str("_|_")?,
+        };
+        write!(f, ", {:?}", self.bindings)
+    }
 }
 
 #[derive(Clone, PartialEq)]
@@ -667,7 +723,7 @@ impl fmt::Display for Identifier {
         if crate::OPTIONS.get().unwrap().display_crate_indices {
             f.write_str("#")?;
             match self.index {
-                Index::Crate(index) => write!(f, "{}C", index.0)?,
+                Index::Crate(index) => write!(f, "{:?}", index)?,
                 Index::Debruijn(index) => write!(f, "{}D", index.0)?,
                 Index::DebruijnParameter => f.write_str("P")?,
             }
@@ -714,8 +770,14 @@ impl Index {
 }
 
 /// Crate-local identifier for bindings defined through declarations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CrateIndex(usize);
+
+impl fmt::Debug for CrateIndex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}C", self.0)
+    }
+}
 
 impl From<CrateIndex> for Index {
     fn from(index: CrateIndex) -> Self {
@@ -769,7 +831,9 @@ impl<'a> FunctionScope<'a> {
         depth: usize,
     ) -> Result<Identifier> {
         match self {
-            FunctionScope::Module(module) => crate_scope.resolve_path::<OnlyValue>(query, *module),
+            FunctionScope::Module(module) => crate_scope
+                .resolve_path::<OnlyValue>(query, *module)
+                .map_err(Into::into),
             FunctionScope::Binding { parent, binder } => {
                 if let Some(identifier) = query.identifier_head() {
                     if binder == identifier {
@@ -785,7 +849,9 @@ impl<'a> FunctionScope<'a> {
                         parent.resolve_binding_with_depth(query, crate_scope, depth + 1)
                     }
                 } else {
-                    crate_scope.resolve_path::<OnlyValue>(query, parent.module())
+                    crate_scope
+                        .resolve_path::<OnlyValue>(query, parent.module())
+                        .map_err(Into::into)
                 }
             }
         }
@@ -799,26 +865,21 @@ impl<'a> FunctionScope<'a> {
     }
 }
 
-pub struct Binding {
+pub struct Entity {
     /// Source information of the definition site.
     source: parser::Identifier,
-    kind: BindingKind,
+    kind: EntityKind,
 }
 
-impl fmt::Debug for Binding {
+impl fmt::Debug for Entity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Binding {{ source: {}, kind: {:?} }}",
-            self.source, self.kind
-        )
+        write!(f, "{:20} |-> {:?}", self.source, self.kind)
     }
 }
 
 // @Task later: Undefined, Untyped
 // @Note corresponds to [crate::interpreter::scope::Entity].
-#[derive(Debug)]
-enum BindingKind {
+enum EntityKind {
     Value,
     Module(ModuleScope),
     /// A use bindings means extra indirection. We don't just "clone" the value it gets
@@ -828,6 +889,51 @@ enum BindingKind {
     /// pattern match on them!
     /// Invariant: The "target" is never a Use itself. There are no nested aliases
     Use(CrateIndex),
+    UnresolvedUse,
+}
+
+impl fmt::Debug for EntityKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Value => f.write_str("value"),
+            Self::Module(scope) => write!(f, "module, {:?}", scope),
+            Self::Use(index) => write!(f, "use {:?}", index),
+            Self::UnresolvedUse => write!(f, "use ???"),
+        }
+    }
+}
+
+use Error::*;
+
+enum Error {
+    UndefinedBinding(parser::Identifier),
+    FoundUnresolvedUse,
+    Unrecoverable(Diagnostic),
+}
+
+impl From<Error> for Diagnostic {
+    fn from(error: Error) -> Self {
+        match error {
+            UndefinedBinding(identifier) => Diagnostic::new(
+                Level::Error,
+                Code::E021,
+                // @Task modify error message: if it's a simple path: "in this scope/module"
+                // and if it's a complex one: "in module `module`"
+                format!("binding `{}` is not defined in this scope", identifier),
+            )
+            .with_span(identifier.span),
+            FoundUnresolvedUse => {
+                Diagnostic::new(Level::Error, None, "some use declarations form a cycle")
+            }
+            Unrecoverable(diagnostic) => diagnostic,
+        }
+    }
+}
+
+impl From<Diagnostic> for Error {
+    fn from(diagnostic: Diagnostic) -> Self {
+        Unrecoverable(diagnostic)
+    }
 }
 
 // @Question fatal?? and if non-fatal, it's probably ignored

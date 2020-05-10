@@ -19,6 +19,9 @@ pub trait Pass: Clone {
     /// "r-value"
     type ReferencedBinder: Display + Clone;
 
+    // @Temporary
+    type ReferencedBinderInUse: Display = Self::ReferencedBinder;
+
     /// "l-value" in patterns
     type PatternBinder: Display + Clone;
     /// "r-value" in foreign applications
@@ -63,7 +66,8 @@ pub enum DeclarationKind<P: Pass> {
         declarations: Vec<Declaration<P>>,
     },
     Use {
-        binder: P::ReferencedBinder,
+        binder: Option<P::Binder>,
+        reference: P::ReferencedBinderInUse,
     },
 }
 

@@ -315,7 +315,12 @@ impl std::hash::Hash for Identifier {
 
 impl fmt::Display for Identifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.atom)
+        write!(
+            f,
+            "{:width$}",
+            self.atom,
+            width = f.width().unwrap_or_default()
+        )
     }
 }
 

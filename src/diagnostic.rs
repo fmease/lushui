@@ -274,6 +274,8 @@ pub enum Code {
     E022,
     /// Module used as a value.
     E023,
+    /// Circular declaration.
+    E024,
     /// Missing type annotation for lambda literal parameter or pattern.
     E030,
     /// Illegal function application.

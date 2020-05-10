@@ -1,5 +1,7 @@
 # Imminent Tasks
 
+* test infrastructure: testing `test/*.lushui`-files for certain criteria specifiable
+  in the first line of the respective files
 * add constructor `|`-syntax
 * add effect infrastructure
   * add foreign data type `Effect: Type -> Type` with foreign bindings `pure`,
@@ -46,3 +48,14 @@
   this is useful for lifetime stuff e.g. `ModuleScope::constructors` should take an `&Expression` to
   be able to return `&[Identifier]` instead of an expensive clone for `Vec<Identifier>`
 * split `interpreter.rs` into type checker and interpreter
+* CLI
+  * add subcommands:
+    * `check` (type check only)
+    * `run` (type check and run program entry)
+    * `highlight`
+      * format the AST to HTML with CSS classes
+      * add lexer option to keep comments
+      * the first versions won't stay true to source and will act like a very simple
+        code formatter but that's actually very good!
+      * advanced highlighting: mark binders ("binding occurrens") different from referenced binders ("applied occurrens")
+      * maybe generalize this to also be able to print JSON, so we can inspect a complex ast with firefox's JSON viewer
