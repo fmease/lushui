@@ -5,13 +5,14 @@ use std::{collections::HashMap, fmt};
 use super::{ffi, Expression, Substitution::Shift};
 use crate::{
     diagnostic::*,
+    entity::{Entity, EntityKind},
     hir::expr,
-    resolver::{CrateIndex, DebruijnIndex, Identifier, Index},
+    resolver::{self, Bindings, CrateIndex, DebruijnIndex, Identifier, Index},
 };
 
-#[derive(Default)]
 pub struct CrateScope {
-    bindings: HashMap<CrateIndex, Entity>,
+    bindings: Bindings,
+    pub(crate) program_entry: Option<Identifier>,
     // for printing for now
     // names: HashMap<ModuleIndex, crate::parser::Identifier>,
     // @Note ugly types!
@@ -26,24 +27,24 @@ pub struct CrateScope {
 /// methods also found here. This design is most ergonomic for the caller.
 impl CrateScope {
     /// Create a new scope with foreign bindings partially registered.
-    pub fn new() -> Self {
-        let mut scope = Self::default();
+    pub fn new(scope: resolver::CrateScope) -> Self {
+        let mut scope = Self::from(scope);
         ffi::register_foreign_bindings(&mut scope);
         scope
     }
 
     fn lookup_type(&self, index: CrateIndex) -> Expression {
-        self.bindings[&index].r#type()
+        self.bindings[index].r#type()
     }
 
     /// Look up the value of a binding.
-    fn lookup_value(&self, index: CrateIndex) -> Value {
-        self.bindings[&index].value()
+    fn lookup_value(&self, index: CrateIndex) -> ValueView {
+        self.bindings[index].value()
     }
 
     fn is(&self, binder: &Identifier, predicate: fn(&Entity) -> bool) -> bool {
         self.bindings
-            .get(&binder.krate().unwrap())
+            .get(binder.krate().unwrap())
             .map(predicate)
             // @Question shouldn't it just be unwrap() b.c. resolver already ran?
             .unwrap_or(false)
@@ -52,12 +53,12 @@ impl CrateScope {
     pub fn is_constructor(&self, binder: &Identifier) -> bool {
         self.is(
             binder,
-            |entity| matches!(entity, Entity::Constructor { .. }),
+            |entity| matches!(entity.kind, EntityKind::Constructor { .. }),
         )
     }
 
     pub fn is_foreign(&self, index: CrateIndex) -> bool {
-        matches!(self.bindings[&index], Entity::Foreign { .. })
+        matches!(self.bindings[index].kind, EntityKind::Foreign { .. })
     }
 
     /// Try applying foreign binding.
@@ -76,8 +77,8 @@ impl CrateScope {
         binder: Identifier,
         arguments: Vec<Expression>,
     ) -> Result<Option<Expression>> {
-        match self.bindings[&binder.krate().unwrap()] {
-            Entity::Foreign {
+        match self.bindings[binder.krate().unwrap()].kind {
+            EntityKind::Foreign {
                 arity, function, ..
             } => Ok(if arguments.len() == arity {
                 let mut value_arguments = Vec::new();
@@ -104,21 +105,19 @@ impl CrateScope {
     /// ## Panics
     ///
     /// Panics under `cfg(debug_assertions)` if `binder` is already bound.
+    // @Task better name
     pub fn insert_value_binding(
         &mut self,
         binder: Identifier,
         r#type: Expression,
         value: Expression,
     ) {
-        let old = self.bindings.insert(
-            binder.krate().unwrap(),
-            Entity::Expression {
-                r#type,
-                expression: value,
-            },
-        );
-
-        debug_assert!(old.is_none());
+        let index = binder.krate().unwrap();
+        debug_assert!(self.bindings[index].is_untyped_value());
+        self.bindings[index].kind = EntityKind::Value {
+            r#type,
+            expression: value,
+        };
     }
 
     /// Insert a data type binding into the scope.
@@ -126,16 +125,14 @@ impl CrateScope {
     /// ## Panics
     ///
     /// Panics under `cfg(debug_assertions)` if the `binder` is already bound.
+    // @Task change name
     pub fn insert_data_binding(&mut self, binder: Identifier, r#type: Expression) {
-        let old = self.bindings.insert(
-            binder.krate().unwrap(),
-            Entity::DataType {
-                r#type,
-                constructors: Vec::new(),
-            },
-        );
-
-        debug_assert!(old.is_none());
+        let index = binder.krate().unwrap();
+        debug_assert!(self.bindings[index].is_untyped_value());
+        self.bindings[index].kind = EntityKind::DataType {
+            r#type,
+            constructors: Vec::new(),
+        };
     }
 
     /// Insert constructor binding into the scope.
@@ -144,20 +141,24 @@ impl CrateScope {
     ///
     /// Panics under `cfg(debug_assertions)` if `binder` is already bound and does so
     /// in every case if given data type does not exist or is not a data type.
+    // @Task change name
     pub fn insert_constructor_binding(
         &mut self,
         binder: Identifier,
         r#type: Expression,
         data_type: &Identifier,
     ) {
-        let old = self
+        let index = binder.krate().unwrap();
+        debug_assert!(self.bindings[index].is_untyped_value());
+        self.bindings[index].kind = EntityKind::Constructor { r#type };
+
+        match self
             .bindings
-            .insert(binder.krate().unwrap(), Entity::Constructor { r#type });
-
-        debug_assert!(old.is_none());
-
-        match self.bindings.get_mut(&data_type.krate().unwrap()).unwrap() {
-            Entity::DataType {
+            .get_mut(data_type.krate().unwrap())
+            .unwrap()
+            .kind
+        {
+            EntityKind::DataType {
                 ref mut constructors,
                 ..
             } => constructors.push(binder),
@@ -177,25 +178,24 @@ impl CrateScope {
         r#type: Expression,
     ) -> Result<()> {
         let index = binder.krate().unwrap();
-        self.bindings.insert(
-            index,
-            match &self.foreign_bindings.remove(&*binder.source.atom) {
-                Some((arity, function)) => Entity::Foreign {
-                    r#type,
-                    arity: *arity,
-                    function: *function,
-                },
-                None => {
-                    // @Task better message
-                    return Err(Diagnostic::new(
-                        Level::Fatal,
-                        Code::E060,
-                        format!("foreign binding `{}` is not registered", binder),
-                    )
-                    .with_span(binder.source.span));
-                }
+        debug_assert!(self.bindings[index].is_untyped_value());
+
+        self.bindings[index].kind = match &self.foreign_bindings.remove(binder.as_str()) {
+            Some((arity, function)) => EntityKind::Foreign {
+                r#type,
+                arity: *arity,
+                function: *function,
             },
-        );
+            None => {
+                // @Task better message
+                return Err(Diagnostic::new(
+                    Level::Fatal,
+                    Code::E060,
+                    format!("foreign binding `{}` is not registered", binder),
+                )
+                .with_span(binder.source.span));
+            }
+        };
         Ok(())
     }
 
@@ -226,7 +226,7 @@ impl CrateScope {
     }
 
     pub fn insert_foreign_data(&mut self, binder: &Identifier) -> Result<()> {
-        match self.foreign_types.get_mut(&*binder.source.atom) {
+        match self.foreign_types.get_mut(binder.as_str()) {
             Some(index @ None) => {
                 *index = Some(binder.clone());
                 Ok(())
@@ -277,97 +277,37 @@ impl CrateScope {
 
 impl fmt::Debug for CrateScope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (binder, entity) in &self.bindings {
-            // writeln!(f, "{} |-> {}", self.names[binder], entity)?;
-            writeln!(f, "{:?} |-> {}", binder, entity)?;
+        write!(f, "{:#?}", self.bindings)
+    }
+}
+
+// @Temporary, for interop. ideally, those 2 will be merged
+impl From<resolver::CrateScope> for CrateScope {
+    fn from(scope: resolver::CrateScope) -> Self {
+        Self {
+            bindings: scope.bindings,
+            program_entry: scope.program_entry,
+            foreign_bindings: Default::default(),
+            foreign_types: Default::default(),
+            inherent_values: Default::default(),
+            inherent_types: Default::default(),
         }
-        Ok(())
     }
 }
 
 // @Task find out if we can get rid of this type by letting `ModuleScope::lookup_value` resolve to the Binder
 // if it's neutral
-pub enum Value {
+pub enum ValueView {
     Reducible(Expression),
     Neutral,
 }
 
 // @Temporary
-impl fmt::Debug for Value {
+impl fmt::Debug for ValueView {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Reducible(expression) => write!(f, "(REDUCIBLE {})", expression),
             Self::Neutral => f.write_str("NEUTRAL"),
-        }
-    }
-}
-
-// @Task rename to BindingKind (analoguous to crate::resolver), @Update merge them at one point
-/// An entity found inside a module scope.
-#[derive(Clone)]
-enum Entity {
-    Expression {
-        r#type: Expression,
-        expression: Expression,
-    },
-    // @Question should we store the constructors?
-    DataType {
-        r#type: Expression,
-        constructors: Vec<Identifier>,
-    },
-    Constructor {
-        r#type: Expression,
-    },
-    Foreign {
-        r#type: Expression,
-        arity: usize,
-        function: ffi::ForeignFunction,
-    },
-}
-
-impl Entity {
-    /// Retrieve the type of an entity.
-    ///
-    /// ## Panics
-    ///
-    /// Panics if called on an [Entity::UntypedForeign].
-    fn r#type(&self) -> Expression {
-        match self {
-            Self::Expression { r#type, .. } => r#type,
-            Self::DataType { r#type, .. } => r#type,
-            Self::Constructor { r#type, .. } => r#type,
-            Self::Foreign { r#type, .. } => r#type,
-        }
-        .clone()
-    }
-
-    /// Retrieve the value of an entity
-    fn value(&self) -> Value {
-        match self {
-            Self::Expression { expression, .. } => Value::Reducible(expression.clone()),
-            _ => Value::Neutral,
-        }
-    }
-}
-
-impl fmt::Display for Entity {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Expression { r#type, expression } => write!(f, "{}: {}", expression, r#type),
-            Self::DataType {
-                r#type,
-                constructors,
-            } => write!(
-                f,
-                "_data_: {} = {}",
-                r#type,
-                constructors
-                    .iter()
-                    .map(|constructor| format!("{} ", constructor))
-                    .collect::<String>()
-            ),
-            Self::Constructor { r#type } => write!(f, "_constructor_: {}", r#type),
-            Self::Foreign { r#type, .. } => write!(f, "_foreign_: {}", r#type),
         }
     }
 }
@@ -430,10 +370,10 @@ impl<'a> FunctionScope<'a> {
         }
     }
 
-    pub fn lookup_value(&self, binder: &Identifier) -> Value {
+    pub fn lookup_value(&self, binder: &Identifier) -> ValueView {
         match binder.index {
             Index::Crate(index) => self.module().lookup_value(index),
-            Index::Debruijn(_) => Value::Neutral,
+            Index::Debruijn(_) => ValueView::Neutral,
             Index::DebruijnParameter => unreachable!(),
         }
     }

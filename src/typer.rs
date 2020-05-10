@@ -11,7 +11,7 @@ use crate::{
 };
 
 type Declaration = hir::Declaration<Resolved>;
-type Expression = hir::Expression<Resolved>;
+pub type Expression = hir::Expression<Resolved>;
 
 const TYPE: Expression = expr! { Type[] };
 

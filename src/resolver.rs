@@ -25,6 +25,7 @@ use std::{collections::HashMap, rc::Rc};
 use crate::{
     desugar::Desugared,
     diagnostic::*,
+    entity::{Entity, EntityKind},
     hir::{decl, expr, Declaration, DeclarationKind, Expression, ExpressionKind, Pass},
     parser::{self, Path},
     span::Span,
@@ -35,13 +36,15 @@ const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
 
 #[derive(Default)]
 pub struct CrateScope {
-    pub program_entry: Option<Identifier>,
+    pub(crate) program_entry: Option<Identifier>,
     /// All bindings inside of a crate.
     ///
     /// The first element will always be the root module.
-    bindings: IndexVec<CrateIndex, Entity>,
+    pub(crate) bindings: Bindings,
     unresolved_uses: HashMap<CrateIndex, WorklistItem>,
 }
+
+pub type Bindings = IndexVec<CrateIndex, Entity>;
 
 struct WorklistItem {
     reference: Path,
@@ -76,7 +79,7 @@ impl CrateScope {
             &binder,
             Entity {
                 source: binder.clone(),
-                kind: EntityKind::Value,
+                kind: EntityKind::UntypedValue,
             },
             Some(module),
         )
@@ -193,10 +196,10 @@ impl CrateScope {
             }
             None => match binding {
                 Module(_) => self.resolve_path::<Target>(&path.tail(), index),
-                Value => {
+                UntypedValue => {
                     Err(value_used_as_a_module(path.segments[0].span, path.segments[1].span).into())
                 }
-                UnresolvedUse | Use(_) => unreachable!(),
+                _ => unreachable!(),
             },
         }
     }
@@ -230,9 +233,12 @@ impl CrateScope {
         use EntityKind::*;
 
         match self.bindings[index].kind {
-            Value | Module(_) => Ok(index),
+            UntypedValue | Module(_) => Ok(index),
             Use(reference) => Ok(reference),
+            // @Note @Beacon looks like a hack, we should improve upon
+            // this design
             UnresolvedUse => Err(Error::FoundUnresolvedUse),
+            _ => unreachable!(),
         }
     }
 
@@ -319,9 +325,9 @@ impl ResolutionTarget for OnlyValue {
         use EntityKind::*;
 
         match binding {
-            Value => Ok(Identifier::new(index, identifier.clone())),
+            UntypedValue => Ok(Identifier::new(index, identifier.clone())),
             Module(_) => Err(module_used_as_a_value(identifier.span)),
-            UnresolvedUse | Use(_) => unreachable!(),
+            _ => unreachable!(),
         }
     }
 }
@@ -361,7 +367,7 @@ impl Declaration<Desugared> {
                     .many_err()?;
 
                 if scope.program_entry.is_none() && module == scope.root() {
-                    if &binder.source.atom == PROGRAM_ENTRY_IDENTIFIER {
+                    if binder.as_str() == PROGRAM_ENTRY_IDENTIFIER {
                         scope.program_entry = Some(binder.clone());
                     }
                 }
@@ -637,6 +643,7 @@ impl Expression<Desugared> {
     }
 }
 
+#[derive(Clone)]
 pub struct ModuleScope {
     parent: Option<CrateIndex>,
     bindings: Vec<CrateIndex>,
@@ -666,6 +673,10 @@ impl Identifier {
             index: index.into(),
             source,
         }
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.source.as_str()
     }
 
     // @Note bad name
@@ -860,44 +871,6 @@ impl<'a> FunctionScope<'a> {
         match self {
             Self::Module(index) => *index,
             Self::Binding { parent, .. } => parent.module(),
-        }
-    }
-}
-
-pub struct Entity {
-    /// Source information of the definition site.
-    source: parser::Identifier,
-    kind: EntityKind,
-}
-
-impl fmt::Debug for Entity {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:20} |-> {:?}", self.source, self.kind)
-    }
-}
-
-// @Task later: Undefined, Untyped
-// @Note corresponds to [crate::interpreter::scope::Entity].
-enum EntityKind {
-    Value,
-    Module(ModuleScope),
-    /// A use bindings means extra indirection. We don't just "clone" the value it gets
-    /// "assigned" to. We merely reference it. This way we don't need to reference-count
-    /// module scopes (to avoid deep copies). Also, once we merge this data structure with
-    /// the one from the interpreter, we can successfully alias constructors and still
-    /// pattern match on them!
-    /// Invariant: The "target" is never a Use itself. There are no nested aliases
-    Use(CrateIndex),
-    UnresolvedUse,
-}
-
-impl fmt::Debug for EntityKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Value => f.write_str("value"),
-            Self::Module(scope) => write!(f, "module, {:?}", scope),
-            Self::Use(index) => write!(f, "use {:?}", index),
-            Self::UnresolvedUse => write!(f, "use ???"),
         }
     }
 }

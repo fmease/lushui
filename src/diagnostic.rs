@@ -284,6 +284,8 @@ pub enum Code {
     E032,
     /// Invalid constructor.
     E033,
+    /// Missing program entry.
+    E050,
     /// Unregistered foreign binding.
     E060,
     /// Foreign type not declared.

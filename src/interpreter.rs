@@ -21,23 +21,34 @@
 // @Beacon @Task order-independence and recursion
 
 pub(crate) mod ffi;
-mod scope;
+pub(crate) mod scope;
 
 use crate::{
     diagnostic::*,
     hir::{self, *},
     parser::Explicitness,
-    resolver::{Identifier, Resolved},
+    resolver::Resolved,
     typer,
 };
 pub use scope::CrateScope;
 pub(crate) use scope::FunctionScope;
+use scope::ValueView;
 
 type Expression = hir::Expression<Resolved>;
 
-pub fn evaluate_program_entry(program_entry: Identifier, scope: &CrateScope) -> Result<Expression> {
-    let expression = expr! { Binding[] { binder: program_entry } };
-    expression.evaluate(&FunctionScope::Module(scope), Form::Normal)
+impl CrateScope {
+    pub fn run(mut self) -> Result<Expression> {
+        if let Some(program_entry) = self.program_entry.take() {
+            let expression = expr! { Binding[] { binder: program_entry } };
+            expression.evaluate(&FunctionScope::Module(&self), Form::Normal)
+        } else {
+            Err(Diagnostic::new(
+                Level::Fatal,
+                Code::E050,
+                "missing program entry",
+            ))
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -206,8 +217,8 @@ impl Expression {
                 // but the thing in the previous was already normalized (well, it should have been
                 // at least). I guess it is necessary because it can contain parameters which could not
                 // be resolved yet but potentially can be now.
-                scope::Value::Reducible(expression) => expression.evaluate(scope, form)?,
-                scope::Value::Neutral => self,
+                ValueView::Reducible(expression) => expression.evaluate(scope, form)?,
+                ValueView::Neutral => self,
             },
             Application(application) => {
                 let callee = application.callee.clone().evaluate(scope, form)?;

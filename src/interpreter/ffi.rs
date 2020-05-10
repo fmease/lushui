@@ -32,13 +32,13 @@ pub fn register_inherent_bindings<'a>(
 
     let mut find = |value_name, inherent: &mut Option<_>| {
         if let Some(constructor) =
-            constructors.find(|constructor| &constructor.binder.source.atom == value_name)
+            constructors.find(|constructor| constructor.binder.as_str() == value_name)
         {
             *inherent = Some(constructor.binder.clone().stripped());
         }
     };
 
-    match &*binder.source.atom {
+    match binder.as_str() {
         Type::UNIT => {
             if scope.inherent_types.unit.is_some() {
                 return Err(duplicate());

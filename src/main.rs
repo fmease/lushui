@@ -5,7 +5,6 @@ use structopt::StructOpt;
 
 use lushui::{
     diagnostic::*,
-    interpreter,
     lexer::{parse_identifier, Lexer},
     parser::{Identifier, Parser},
     resolver,
@@ -149,38 +148,23 @@ fn main() {
                     println!("{}", node);
                 }
 
-                let mut resolver_scope = resolver::CrateScope::default();
+                let mut scope = resolver::CrateScope::default();
 
-                let node = node.resolve(&mut resolver_scope)?;
+                let node = node.resolve(&mut scope)?;
                 if arguments.print_hir_resolved {
                     eprintln!("{}", node);
-                } else {
-                    // @Temporary see note below
-                    eprintln!("the resolver succeeded");
                 }
 
-                // @Beacon @Temporary we are working on the resolver
-                // the type checker won't handle the new system yet
-                if false {
-                    let mut scope = interpreter::CrateScope::new();
-                    node.infer_type(&mut scope).many_err()?;
-                    if arguments.print_scope {
-                        eprintln!("{:?}", scope);
-                    }
+                let mut scope = scope.into();
+                node.infer_type(&mut scope).many_err()?;
+                if arguments.print_scope {
+                    eprintln!("{:?}", scope);
+                }
 
-                    if matches!(arguments.command, Command::Run {..}) {
-                        let program_entry = resolver_scope
-                            .program_entry
-                            .ok_or_else(|| {
-                                Diagnostic::new(Level::Fatal, None, "no program entry found")
-                            })
-                            .many_err()?;
+                if matches!(arguments.command, Command::Run {..}) {
+                    let result = scope.run().many_err()?;
 
-                        let result = interpreter::evaluate_program_entry(program_entry, &scope)
-                            .many_err()?;
-
-                        println!("{}", result);
-                    }
+                    println!("{}", result);
                 }
             }
             Command::Highlight { .. } => todo!(),

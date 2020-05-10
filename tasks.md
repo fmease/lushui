@@ -52,8 +52,6 @@
 * split `interpreter.rs` into type checker and interpreter
 * CLI
   * add subcommands:
-    * `check` (type check only)
-    * `run` (type check and run program entry)
     * `highlight`
       * format the AST to HTML with CSS classes
       * add lexer option to keep comments

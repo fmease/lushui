@@ -283,13 +283,17 @@ pub enum PathHeadKind {
 
 #[derive(Debug, Clone, Eq)]
 pub struct Identifier {
-    pub atom: crate::Atom,
+    atom: crate::Atom,
     pub span: Span,
 }
 
 impl Identifier {
     pub fn new(atom: crate::Atom, span: Span) -> Self {
         Self { atom, span }
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.atom
     }
 
     pub fn stripped(self) -> Self {

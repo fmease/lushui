@@ -210,7 +210,7 @@ impl Parser<'_> {
     // @Task abstract over attributes with 0, 1, … arguments
     fn finish_parse_attribute(&mut self, keyword_span: Span) -> Result<Attribute> {
         let identifier = Identifier::consume(self)?;
-        let kind = match &*identifier.atom {
+        let kind = match identifier.as_str() {
             "foreign" => AttributeKind::Foreign,
             "inherent" => AttributeKind::Inherent,
             _ => {

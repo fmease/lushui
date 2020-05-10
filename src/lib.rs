@@ -9,6 +9,7 @@
 
 pub mod desugar;
 pub mod diagnostic;
+mod entity;
 mod hir;
 pub mod interpreter;
 pub mod lexer;
