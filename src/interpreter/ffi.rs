@@ -34,7 +34,7 @@ pub fn register_inherent_bindings<'a>(
         if let Some(constructor) =
             constructors.find(|constructor| &constructor.binder.source.atom == value_name)
         {
-            *inherent = Some(constructor.binder.clone().dummified());
+            *inherent = Some(constructor.binder.clone().stripped());
         }
     };
 
@@ -44,7 +44,7 @@ pub fn register_inherent_bindings<'a>(
                 return Err(duplicate());
             }
 
-            scope.inherent_types.unit = Some(binder.clone().dummified());
+            scope.inherent_types.unit = Some(binder.clone().stripped());
             find(Value::UNIT, &mut scope.inherent_values.unit);
         }
         Type::BOOL => {
@@ -52,7 +52,7 @@ pub fn register_inherent_bindings<'a>(
                 return Err(duplicate());
             }
 
-            scope.inherent_types.bool = Some(binder.clone().dummified());
+            scope.inherent_types.bool = Some(binder.clone().stripped());
             find(Value::FALSE, &mut scope.inherent_values.r#false);
             find(Value::TRUE, &mut scope.inherent_values.r#true);
         }
@@ -61,7 +61,7 @@ pub fn register_inherent_bindings<'a>(
                 return Err(duplicate());
             }
 
-            scope.inherent_types.option = Some(binder.clone().dummified());
+            scope.inherent_types.option = Some(binder.clone().stripped());
             find(Value::NONE, &mut scope.inherent_values.none);
             find(Value::SOME, &mut scope.inherent_values.some);
         }

@@ -433,7 +433,7 @@ impl Parser<'_> {
 
             if self.consumed(TokenKind::EndOfInput) {
                 let span = (|| Some(declarations.first()?.span.merge(declarations.last()?.span)))()
-                    .unwrap_or(Span::DUMMY);
+                    .unwrap_or(Span::SHAM);
                 break Ok(decl! {
                     Module[span] {
                         binder,

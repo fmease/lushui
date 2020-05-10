@@ -95,7 +95,7 @@ fn main() {
                     ),
                 )]
             })?,
-            Span::DUMMY,
+            Span::SHAM,
         );
 
         let tokens = Lexer::new(&file).lex()?;

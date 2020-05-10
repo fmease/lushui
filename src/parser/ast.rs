@@ -292,10 +292,9 @@ impl Identifier {
         Self { atom, span }
     }
 
-    // @Task find better name which suggests Span
-    pub fn dummified(self) -> Self {
+    pub fn stripped(self) -> Self {
         Self {
-            span: Span::DUMMY,
+            span: Span::SHAM,
             ..self
         }
     }

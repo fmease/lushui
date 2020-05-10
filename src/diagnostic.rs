@@ -99,9 +99,9 @@ impl Diagnostic {
             .iter()
             .find(|span| span.role == Role::Primary)
         {
-            // @Temporary
-            if span.span == Span::DUMMY {
-                eprintln!("WARNING: span could be `Span::DUMMY`");
+            if span.span == Span::SHAM {
+                message += &format!("\n {arrow} ??? ??? ???", arrow = ">".bright_blue().bold());
+                return message;
             }
 
             let map = map.unwrap();
@@ -109,14 +109,14 @@ impl Diagnostic {
             let line_number = lines.first.number.to_string();
             let padding = " ".repeat(line_number.len());
 
-            message.push_str(&format!(
+            message += &format!(
                 "\n{padding} {arrow} {file}:{line}:{column}",
                 arrow = ">".bright_blue().bold(),
                 file = lines.filename,
                 line = line_number,
                 column = lines.first.highlight.start() + 1,
                 padding = padding,
-            ));
+            );
 
             let primary_span = span;
             let mut primary_lines = Some(lines);

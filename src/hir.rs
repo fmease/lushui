@@ -186,7 +186,7 @@ pub macro expr {
 }
 
 macro span {
-    () => { Span::DUMMY },
+    () => { Span::SHAM },
     ($span:expr) => { $span },
 }
 

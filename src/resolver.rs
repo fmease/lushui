@@ -669,14 +669,13 @@ impl Identifier {
     }
 
     // @Note bad name
-    pub fn localized(&self) -> Self {
+    pub fn as_innermost(&self) -> Self {
         Self::new(DebruijnIndex(0), self.source.clone())
     }
 
-    // @Task find better name which suggests Span
-    pub fn dummified(self) -> Self {
+    pub fn stripped(self) -> Self {
         Self {
-            source: self.source.dummified(),
+            source: self.source.stripped(),
             ..self
         }
     }

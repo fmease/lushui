@@ -108,8 +108,7 @@ pub struct Span {
 }
 
 impl Span {
-    // @Bug may actually be a valid span, @Note solution: let source files start at index 1
-    pub const DUMMY: Self = Self {
+    pub const SHAM: Self = Self {
         start: ByteIndex::new(0),
         end: ByteIndex::new(0),
     };
@@ -156,7 +155,7 @@ impl LocalSpan {
         Self { start, end }
     }
 
-    // @Note this is actually a valid span
+    // @Bug this is actually a valid span
     pub fn dummy() -> Self {
         Self::from(LocalByteIndex::new(0))
     }
@@ -189,6 +188,8 @@ impl Sub<LocalByteIndex> for LocalSpan {
     }
 }
 
+const START_OF_FIRST_SOURCE_FILE: ByteIndex = ByteIndex::new(1);
+
 #[derive(Default)]
 pub struct SourceMap {
     files: Vec<Rc<SourceFile>>,
@@ -196,10 +197,10 @@ pub struct SourceMap {
 
 impl SourceMap {
     fn next_offset(&self) -> Result<ByteIndex> {
-        match self.files.last() {
-            Some(file) => file.span.end.try_add_offset(1),
-            None => Ok(ByteIndex::new(0)),
-        }
+        self.files
+            .last()
+            .map(|file| file.span.end.try_add_offset(1))
+            .unwrap_or(Ok(START_OF_FIRST_SOURCE_FILE))
     }
 
     pub fn load(&mut self, path: &str) -> Result<Rc<SourceFile>> {
