@@ -47,9 +47,40 @@ struct Arguments {
     #[structopt(long, short = "B")]
     panic_with_backtrace: bool,
 
-    /// Set the source file
-    #[structopt(name = "FILE")]
-    file: String,
+    #[structopt(subcommand)]
+    command: Command,
+}
+
+#[derive(StructOpt)]
+enum Command {
+    /// Type check a given program
+    Check {
+        /// Set the source file
+        #[structopt(name = "FILE")]
+        file: String,
+    },
+    /// Type check and run a given program
+    Run {
+        /// Set the source file
+        #[structopt(name = "FILE")]
+        file: String,
+    },
+    /// Generate syntax highlighting for a given file in HTML
+    Highlight {
+        /// Set the source file
+        #[structopt(name = "FILE")]
+        file: String,
+    },
+}
+
+impl Command {
+    fn file(&self) -> &str {
+        match self {
+            Self::Check { file, .. } => file,
+            Self::Run { file, .. } => file,
+            Self::Highlight { file, .. } => file,
+        }
+    }
 }
 
 fn main() {
@@ -70,10 +101,11 @@ fn main() {
     let mut map = SourceMap::default();
 
     let result: Result<(), Diagnostics> = (|| {
-        let file_path = Path::new(&arguments.file);
-        let file = map.load(&arguments.file).many_err()?;
-        let file_stem = file_path.file_stem().unwrap();
-        let file_extension = file_path.extension();
+        let file = arguments.command.file();
+        let path = Path::new(file);
+        let file = map.load(file).many_err()?;
+        let file_stem = path.file_stem().unwrap();
+        let file_extension = path.extension();
 
         if file_extension.and_then(|extension| extension.to_str()) != Some(lushui::FILE_EXTENSION) {
             Diagnostic::new(
@@ -110,36 +142,48 @@ fn main() {
             println!("{:?}", node);
         }
 
-        let node = node.desugar(&mut map)?;
-        if arguments.print_hir {
-            println!("{}", node);
-        }
+        match arguments.command {
+            Command::Check { .. } | Command::Run { .. } => {
+                let node = node.desugar(&mut map)?;
+                if arguments.print_hir {
+                    println!("{}", node);
+                }
 
-        let mut resolver_scope = resolver::CrateScope::default();
+                let mut resolver_scope = resolver::CrateScope::default();
 
-        let node = node.resolve(&mut resolver_scope)?;
-        if arguments.print_hir_resolved {
-            eprintln!("{}", node);
-        } else {
-            // @Temporary see note below
-            eprintln!("the resolver succeeded");
-        }
+                let node = node.resolve(&mut resolver_scope)?;
+                if arguments.print_hir_resolved {
+                    eprintln!("{}", node);
+                } else {
+                    // @Temporary see note below
+                    eprintln!("the resolver succeeded");
+                }
 
-        // @Beacon @Temporary we are working on the resolver
-        // the type checker won't handle the new system yet
-        if false {
-            let mut scope = interpreter::CrateScope::new();
-            node.infer_type(&mut scope).many_err()?;
-            if arguments.print_scope {
-                eprintln!("{:?}", scope);
+                // @Beacon @Temporary we are working on the resolver
+                // the type checker won't handle the new system yet
+                if false {
+                    let mut scope = interpreter::CrateScope::new();
+                    node.infer_type(&mut scope).many_err()?;
+                    if arguments.print_scope {
+                        eprintln!("{:?}", scope);
+                    }
+
+                    if matches!(arguments.command, Command::Run {..}) {
+                        let program_entry = resolver_scope
+                            .program_entry
+                            .ok_or_else(|| {
+                                Diagnostic::new(Level::Fatal, None, "no program entry found")
+                            })
+                            .many_err()?;
+
+                        let result = interpreter::evaluate_program_entry(program_entry, &scope)
+                            .many_err()?;
+
+                        println!("{}", result);
+                    }
+                }
             }
-
-            if let Some(program_entry) = resolver_scope.program_entry {
-                let result =
-                    interpreter::evaluate_program_entry(program_entry, &scope).many_err()?;
-
-                println!("{}", result);
-            }
+            Command::Highlight { .. } => todo!(),
         }
 
         Ok(())

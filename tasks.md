@@ -22,6 +22,7 @@
   * design and implement namespaced constructors
   * improve error messages of the resolver
 * advanced type inference (!!!)
+* design and implement records
 * FFI
   * add infrastructure for polymorphic foreign functions (necessary for `panic`, effects, …)
   * check for FFI-compability at foreign declarations
