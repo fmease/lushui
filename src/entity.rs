@@ -20,22 +20,20 @@ impl Entity {
         matches!(self.kind, EntityKind::UntypedValue)
     }
 
-    /// Retrieve the type of an entity.
-    ///
-    /// ## Panics
-    ///
-    /// Panics if called on an [Entity::UntypedForeign].
-    pub fn r#type(&self) -> Expression {
+    pub fn r#type(&self) -> Option<Expression> {
         use EntityKind::*;
 
-        match &self.kind {
-            Value { r#type, .. } => r#type,
-            DataType { r#type, .. } => r#type,
-            Constructor { r#type, .. } => r#type,
-            Foreign { r#type, .. } => r#type,
-            _ => unreachable!(),
-        }
-        .clone()
+        Some(
+            match &self.kind {
+                Value { r#type, .. } => r#type,
+                DataType { r#type, .. } => r#type,
+                Constructor { r#type, .. } => r#type,
+                Foreign { r#type, .. } => r#type,
+                UntypedValue => return None,
+                _ => unreachable!(),
+            }
+            .clone(),
+        )
     }
 
     /// Retrieve the value of an entity
@@ -90,19 +88,21 @@ impl EntityKind {
     fn is_resolver_specific(&self) -> bool {
         use EntityKind::*;
 
-        matches!(self, UntypedValue| Module(_) | Use(_) | UnresolvedUse)
+        matches!(self, UntypedValue | Module(_) | Use(_) | UnresolvedUse)
     }
 }
 
 impl fmt::Debug for EntityKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use EntityKind::*;
+
         match self {
-            Self::UntypedValue => f.write_str("untyped value"),
-            Self::Module(scope) => write!(f, "module, {:?}", scope),
-            Self::Use(index) => write!(f, "use {:?}", index),
-            Self::UnresolvedUse => write!(f, "unresolved use"),
-            Self::Value { r#type, expression } => write!(f, "{}: {}", expression, r#type),
-            Self::DataType {
+            UntypedValue => f.write_str("untyped value"),
+            Module(scope) => write!(f, "module, {:?}", scope),
+            Use(index) => write!(f, "use {:?}", index),
+            UnresolvedUse => write!(f, "unresolved use"),
+            Value { r#type, expression } => write!(f, "{}: {}", expression, r#type),
+            DataType {
                 r#type,
                 constructors,
             } => write!(
@@ -114,8 +114,8 @@ impl fmt::Debug for EntityKind {
                     .map(|constructor| format!("{} ", constructor))
                     .collect::<String>()
             ),
-            Self::Constructor { r#type } => write!(f, "constructor: {}", r#type),
-            Self::Foreign { r#type, .. } => write!(f, "foreign: {}", r#type),
+            Constructor { r#type } => write!(f, "constructor: {}", r#type),
+            Foreign { r#type, .. } => write!(f, "foreign: {}", r#type),
         }
     }
 }

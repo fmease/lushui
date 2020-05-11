@@ -145,7 +145,14 @@ impl Expression {
         use ExpressionKind::*;
 
         Ok(match self.kind {
-            Binding(binding) => scope.lookup_type(&binding.binder),
+            Binding(binding) => scope.lookup_type(&binding.binder).ok_or_else(|| {
+                Diagnostic::new(
+                    Level::Bug,
+                    None,
+                    "out-of-order declarations not supported yet",
+                )
+                .with_span(binding.binder.source.span)
+            })?,
             Type => TYPE,
             Nat(_) => scope
                 .module()

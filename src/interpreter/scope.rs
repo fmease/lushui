@@ -10,6 +10,7 @@ use crate::{
     resolver::{self, Bindings, CrateIndex, DebruijnIndex, Identifier, Index},
 };
 
+#[derive(Default)]
 pub struct CrateScope {
     bindings: Bindings,
     pub(crate) program_entry: Option<Identifier>,
@@ -33,7 +34,7 @@ impl CrateScope {
         scope
     }
 
-    fn lookup_type(&self, index: CrateIndex) -> Expression {
+    fn lookup_type(&self, index: CrateIndex) -> Option<Expression> {
         self.bindings[index].r#type()
     }
 
@@ -287,10 +288,7 @@ impl From<resolver::CrateScope> for CrateScope {
         Self {
             bindings: scope.bindings,
             program_entry: scope.program_entry,
-            foreign_bindings: Default::default(),
-            foreign_types: Default::default(),
-            inherent_values: Default::default(),
-            inherent_types: Default::default(),
+            ..Default::default()
         }
     }
 }
@@ -344,10 +342,10 @@ impl<'a> FunctionScope<'a> {
         }
     }
 
-    pub fn lookup_type(&self, binder: &Identifier) -> Expression {
+    pub fn lookup_type(&self, binder: &Identifier) -> Option<Expression> {
         match binder.index {
             Index::Crate(index) => self.module().lookup_type(index),
-            Index::Debruijn(index) => self.lookup_type_with_depth(index, 0),
+            Index::Debruijn(index) => Some(self.lookup_type_with_depth(index, 0)),
             Index::DebruijnParameter => unreachable!(),
         }
     }

@@ -742,6 +742,12 @@ impl fmt::Display for Identifier {
     }
 }
 
+impl fmt::Debug for Identifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
 #[derive(Clone)]
 pub enum Resolved {}
 

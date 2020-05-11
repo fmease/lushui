@@ -115,11 +115,7 @@ impl parser::Declaration {
                             .ancestors()
                             .nth(1)
                             .unwrap()
-                            .join(&format!(
-                                "{}.{}",
-                                module.binder.as_str(),
-                                crate::FILE_EXTENSION
-                            ));
+                            .join(&format!("{}.{}", module.binder, crate::FILE_EXTENSION));
                         let file = map.load(path.to_str().unwrap()).many_err()?;
                         let tokens = crate::lexer::Lexer::new(&file).lex()?;
                         let node = parser::Parser::new(file, &tokens)

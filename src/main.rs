@@ -5,6 +5,7 @@ use structopt::StructOpt;
 
 use lushui::{
     diagnostic::*,
+    interpreter,
     lexer::{parse_identifier, Lexer},
     parser::{Identifier, Parser},
     resolver,
@@ -116,16 +117,18 @@ fn main() {
         }
 
         let crate_name = Identifier::new(
-            (|| parse_identifier(file_stem.to_str()?.to_owned()))().ok_or_else(|| {
-                vec![Diagnostic::new(
-                    Level::Fatal,
-                    None,
-                    format!(
-                        "`{}` is not a valid crate name",
-                        file_stem.to_string_lossy()
-                    ),
-                )]
-            })?,
+            (|| parse_identifier(file_stem.to_str()?.to_owned()))()
+                .ok_or_else(|| {
+                    Diagnostic::new(
+                        Level::Fatal,
+                        None,
+                        format!(
+                            "`{}` is not a valid crate name",
+                            file_stem.to_string_lossy()
+                        ),
+                    )
+                })
+                .many_err()?,
             Span::SHAM,
         );
 
@@ -155,7 +158,7 @@ fn main() {
                     eprintln!("{}", node);
                 }
 
-                let mut scope = scope.into();
+                let mut scope = interpreter::CrateScope::new(scope);
                 node.infer_type(&mut scope).many_err()?;
                 if arguments.print_scope {
                     eprintln!("{:?}", scope);
@@ -167,7 +170,14 @@ fn main() {
                     println!("{}", result);
                 }
             }
-            Command::Highlight { .. } => todo!(),
+            Command::Highlight { .. } => {
+                return Err(Diagnostic::new(
+                    Level::Fatal,
+                    None,
+                    "operation not supported yet",
+                ))
+                .many_err()
+            }
         }
 
         Ok(())
