@@ -232,7 +232,7 @@ impl SourceMap {
     }
 
     // @Beacon @Task handle multiline spans
-    pub fn resolve_span(&self, span: Span) -> Lines {
+    pub fn resolve_span(&self, span: Span) -> ResolvedSpan {
         let file = self.file_from_span(span);
         let span = LocalSpan::from_global(&file, span);
         let mut line_number = 1;
@@ -286,7 +286,8 @@ impl SourceMap {
         let highlight = highlight.unwrap();
         let line = line.unwrap();
 
-        Lines {
+        // @Question borrow instead of clone?
+        ResolvedSpan {
             filename: file.name.to_string(),
             first: Line {
                 content: file[line].to_owned(),
@@ -298,7 +299,7 @@ impl SourceMap {
     }
 }
 
-pub struct Lines {
+pub struct ResolvedSpan {
     pub filename: String,
     pub first: Line,
     /// This is `None` if the last is the first line.

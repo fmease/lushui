@@ -4,7 +4,6 @@
 //!
 //! * does not support subdiagnostics yet
 //! * does not support multiline spans
-//! * cannot correctly align code when it's from different files
 //! * does not feature error handling abstractions like diagnostic buffers
 
 use unicode_width::UnicodeWidthStr;
@@ -27,7 +26,7 @@ struct InnerDiagnostic {
     level: Level,
     message: CowStr,
     code: Option<Code>,
-    spans: Vec<EnrichedSpan>,
+    highlights: Vec<Highlight>,
 }
 
 // @Task be able to have errors associated with a file but not a snippet
@@ -39,13 +38,13 @@ impl Diagnostic {
                 level,
                 code: code.into(),
                 message: message.into(),
-                spans: Vec::new(),
+                highlights: Vec::new(),
             }),
         }
     }
 
     pub fn with_span(mut self, span: Span) -> Self {
-        self.inner.spans.push(EnrichedSpan {
+        self.inner.highlights.push(Highlight {
             span,
             label: None,
             role: self.choose_role(),
@@ -54,7 +53,7 @@ impl Diagnostic {
     }
 
     pub fn with_labeled_span(mut self, span: Span, label: impl Into<CowStr>) -> Self {
-        self.inner.spans.push(EnrichedSpan {
+        self.inner.highlights.push(Highlight {
             span,
             label: Some(label.into()),
             role: self.choose_role(),
@@ -63,7 +62,7 @@ impl Diagnostic {
     }
 
     fn choose_role(&self) -> Role {
-        if self.inner.spans.is_empty() {
+        if self.inner.highlights.is_empty() {
             Role::Primary
         } else {
             Role::Secondary
@@ -78,7 +77,6 @@ impl Diagnostic {
     // @Task handle multiline spans (needs support from crate::span)
     // @Task if the span equals the span of the entire file, don't output its content
     // @Task if two spans reside on the same line, print them inline not above each other (maybe)
-    // @Bug file number padding does not work if span are from different files
     fn display(&mut self, map: Option<&SourceMap>) -> String {
         let header = format!(
             "{:#}{}: {}",
@@ -89,78 +87,98 @@ impl Diagnostic {
                 .unwrap_or_default(),
             self.inner.message.bright_white().bold()
         );
-        self.inner.spans.sort_unstable_by_key(|span| span.span);
+        self.inner
+            .highlights
+            .sort_unstable_by_key(|highlight| highlight.span);
 
         let mut message = header;
 
-        if let Some(span) = self
-            .inner
-            .spans
-            .iter()
-            .find(|span| span.role == Role::Primary)
-        {
-            if span.span == Span::SHAM {
+        if !self.inner.highlights.is_empty() {
+            let primary_highlight = self
+                .inner
+                .highlights
+                .iter()
+                .position(|highlight| highlight.role == Role::Primary)
+                .unwrap();
+
+            if self.inner.highlights[primary_highlight].span == Span::SHAM {
                 message += &format!("\n {arrow} ??? ??? ???", arrow = ">".bright_blue().bold());
                 return message;
             }
 
             let map = map.unwrap();
-            let lines = map.resolve_span(span.span);
-            let line_number = lines.first.number.to_string();
-            let padding = " ".repeat(line_number.len());
+
+            let resolved_spans: Vec<_> = self
+                .inner
+                .highlights
+                .iter()
+                .map(|highlight| map.resolve_span(highlight.span))
+                .collect();
+
+            let primary_file_name = &resolved_spans[primary_highlight].filename;
+
+            let largest_line_number = resolved_spans
+                .iter()
+                .map(|span| span.first.number)
+                .max()
+                .unwrap() as usize;
+
+            let padding_len = largest_line_number.to_string().len();
+            let padding = " ".repeat(padding_len);
+            let bar = "|".bright_blue().bold();
+
+            let primary_span = &resolved_spans[primary_highlight];
 
             message += &format!(
-                "\n{padding} {arrow} {file}:{line}:{column}",
+                "\n\
+                {padding} {arrow} {file}:{line}:{column}",
                 arrow = ">".bright_blue().bold(),
-                file = lines.filename,
-                line = line_number,
-                column = lines.first.highlight.start() + 1,
+                file = primary_span.filename,
+                line = primary_span.first.number,
+                column = primary_span.first.highlight.start() + 1,
                 padding = padding,
             );
 
-            let primary_span = span;
-            let mut primary_lines = Some(lines);
+            for (highlight, span) in self.inner.highlights.iter().zip(&resolved_spans) {
+                if highlight.role != Role::Primary && &span.filename != primary_file_name {
+                    message += &format!(
+                        "\n\
+                        {padding} {bar}\n\
+                        {padding} {arrow} {file}",
+                        arrow = "~".bright_blue().bold(),
+                        bar = bar,
+                        file = span.filename,
+                        padding = padding,
+                    );
+                }
 
-            for span in &self.inner.spans {
-                message.push_str(&self.display_preview(
-                    if span == primary_span {
-                        primary_lines.take().unwrap()
-                    } else {
-                        map.resolve_span(span.span)
-                    },
-                    span,
-                ));
+                message += &format!(
+                    "\n\
+                    {padding} {bar}\n\
+                    {line:>padding_len$} {bar} {snippet}\
+                    {padding} {bar} {highlight:highlight_padding$} {label}",
+                    line = span.first.number,
+                    snippet = span.first.content,
+                    padding = padding,
+                    padding_len = padding_len,
+                    highlight_padding = span.first.content[..*span.first.highlight.start()].width(),
+                    highlight = highlight
+                        .role
+                        .symbol()
+                        .repeat(span.first.content[span.first.highlight.clone()].width())
+                        .color(highlight.role.color(self.inner.level.color()))
+                        .bold(),
+                    label = highlight
+                        .label
+                        .as_ref()
+                        .map(|label| label.color(highlight.role.color(self.inner.level.color())))
+                        .unwrap_or_default(),
+                    bar = bar
+                );
             }
         }
 
         message
-    }
-
-    fn display_preview(&self, lines: crate::span::Lines, span: &EnrichedSpan) -> String {
-        let line_number = lines.first.number.to_string();
-        let padding = " ".repeat(line_number.len());
-        let highlight = lines.first.highlight;
-        format!(
-            "\n\
-            {padding} {bar}\n\
-            {line} {bar} {snippet}{padding} {bar} {highlight_padding}{highlight} {label}",
-            line = line_number,
-            snippet = lines.first.content,
-            padding = padding,
-            highlight_padding = " ".repeat(lines.first.content[..*highlight.start()].width()),
-            highlight = span
-                .role
-                .symbol()
-                .repeat(lines.first.content[highlight].width())
-                .color(span.role.color(self.inner.level.color()))
-                .bold(),
-            label = span
-                .label
-                .as_ref()
-                .map(|label| label.color(span.role.color(self.inner.level.color())))
-                .unwrap_or_default(),
-            bar = "|".bright_blue().bold()
-        )
     }
 }
 
@@ -209,7 +227,7 @@ impl fmt::Display for Level {
 }
 
 #[derive(PartialEq, Eq)]
-struct EnrichedSpan {
+struct Highlight {
     span: Span,
     role: Role,
     label: Option<CowStr>,
@@ -245,6 +263,7 @@ impl Role {
 /// Used for language-related error in contrast to errors emitted because of
 /// faulty interactions with the CLI.
 #[derive(Debug, Clone, Copy)]
+#[forbid(missing_docs)]
 pub enum Code {
     /// Illegal character encountered.
     E000,
