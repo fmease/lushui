@@ -1,5 +1,6 @@
 # Imminent Tasks
 
+* allow "trailing dashes"
 * documentation!
 * test infrastructure: testing `test/*.lushui`-files for certain criteria specifiable
   in the first line of the respective files

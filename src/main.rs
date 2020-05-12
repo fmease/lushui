@@ -134,21 +134,21 @@ fn main() {
 
         let tokens = Lexer::new(&file).lex()?;
         if arguments.print_tokens {
-            println!("{:#?}", tokens);
+            eprintln!("{:#?}", tokens);
         }
 
         let node = Parser::new(file, &tokens)
             .parse_top_level(crate_name.clone())
             .many_err()?;
         if arguments.print_ast {
-            println!("{:?}", node);
+            eprintln!("{:?}", node);
         }
 
         match arguments.command {
             Command::Check { .. } | Command::Run { .. } => {
                 let node = node.desugar(&mut map)?;
                 if arguments.print_hir {
-                    println!("{}", node);
+                    eprintln!("{}", node);
                 }
 
                 let mut scope = resolver::CrateScope::default();

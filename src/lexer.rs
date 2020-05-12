@@ -196,8 +196,9 @@ pub fn parse_identifier(source: String) -> Option<Atom> {
 
 pub fn lex(source: String) -> Result<Vec<Token>, Diagnostics> {
     let path = String::new();
-    let index = crate::span::ByteIndex::new(0);
-    let file = SourceFile::new(path, source, index).ok().unwrap();
+    let file = SourceFile::new(path, source, crate::span::START_OF_FIRST_SOURCE_FILE)
+        .ok()
+        .unwrap();
     Lexer::new(&file).lex()
 }
 
@@ -240,6 +241,7 @@ impl<'a> Lexer<'a> {
                 ')' => self.lex_closing_round_bracket().many_err()?,
                 '_' => self.lex_underscore(),
                 character => {
+                    self.take();
                     return Err(vec![Diagnostic::new(
                         Level::Fatal,
                         Code::E000,
@@ -248,7 +250,7 @@ impl<'a> Lexer<'a> {
                             character as u32, character
                         ),
                     )
-                    .with_span(self.span())])
+                    .with_span(self.span())]);
                 }
             }
         }
@@ -479,8 +481,8 @@ impl<'a> Lexer<'a> {
     }
 
     fn take(&mut self) {
-        let (index, character) = self.characters.peek().unwrap();
-        self.span.end = LocalByteIndex::from_usize(index + character.len_utf8() - 1);
+        let &(index, character) = self.characters.peek().unwrap();
+        self.span.end = LocalByteIndex::from_usize(index) + character;
     }
 
     fn peek(&mut self) -> Option<char> {

@@ -71,6 +71,14 @@ impl Add<usize> for LocalByteIndex {
     }
 }
 
+impl Add<char> for LocalByteIndex {
+    type Output = Self;
+
+    fn add(self, character: char) -> Self::Output {
+        self + character.len_utf8() - 1
+    }
+}
+
 impl Sub for LocalByteIndex {
     type Output = Self;
 
@@ -188,7 +196,7 @@ impl Sub<LocalByteIndex> for LocalSpan {
     }
 }
 
-const START_OF_FIRST_SOURCE_FILE: ByteIndex = ByteIndex::new(1);
+pub const START_OF_FIRST_SOURCE_FILE: ByteIndex = ByteIndex::new(1);
 
 #[derive(Default)]
 pub struct SourceMap {
@@ -215,7 +223,6 @@ impl SourceMap {
         Ok(file)
     }
 
-    // @Note panics on invalid span
     fn file_from_span(&self, span: Span) -> &SourceFile {
         self.files
             .iter()
@@ -251,8 +258,8 @@ impl SourceMap {
             if index == span.start {
                 highlight_start = Some(index);
             }
-            if index + character.len_utf8() - 1 == span.end {
-                let span = LocalSpan::new(highlight_start.unwrap(), index);
+            if index + character == span.end {
+                let span = LocalSpan::new(highlight_start.unwrap(), index + character);
                 let offset = line_start.unwrap();
 
                 highlight = Some(Highlight {
@@ -278,6 +285,7 @@ impl SourceMap {
             }
         }
 
+        #[derive(Debug)]
         struct Highlight {
             line_number: u32,
             range: RangeInclusive<usize>,
@@ -307,12 +315,23 @@ pub struct ResolvedSpan {
 }
 
 use std::ops::RangeInclusive;
+use unicode_width::UnicodeWidthStr;
 
 // @Task find better field names
 pub struct Line {
     pub content: String,
     pub number: u32,
     pub highlight: RangeInclusive<usize>,
+}
+
+impl Line {
+    pub fn highlight_width(&self) -> usize {
+        self.content[self.highlight.clone()].width()
+    }
+
+    pub fn highlight_prefix_width(&self) -> usize {
+        self.content[..*self.highlight.start()].width()
+    }
 }
 
 pub struct SourceFile {

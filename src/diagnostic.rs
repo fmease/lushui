@@ -6,8 +6,6 @@
 //! * does not support multiline spans
 //! * does not feature error handling abstractions like diagnostic buffers
 
-use unicode_width::UnicodeWidthStr;
-
 use crate::span::{SourceMap, Span};
 
 type CowStr = std::borrow::Cow<'static, str>;
@@ -17,12 +15,26 @@ pub type Result<T, E = Diagnostic> = std::result::Result<T, E>;
 pub type Diagnostics = Vec<Diagnostic>;
 
 pub struct Diagnostic {
-    inner: Box<InnerDiagnostic>,
+    raw: Box<RawDiagnostic>,
+}
+
+impl std::ops::Deref for Diagnostic {
+    type Target = RawDiagnostic;
+
+    fn deref(&self) -> &Self::Target {
+        &self.raw
+    }
+}
+
+impl std::ops::DerefMut for Diagnostic {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.raw
+    }
 }
 
 // @Note the design of the diagnostic system is still not set.
 // one big question: subdiagnostics: when, how?
-struct InnerDiagnostic {
+pub struct RawDiagnostic {
     level: Level,
     message: CowStr,
     code: Option<Code>,
@@ -34,7 +46,7 @@ struct InnerDiagnostic {
 impl Diagnostic {
     pub fn new(level: Level, code: impl Into<Option<Code>>, message: impl Into<CowStr>) -> Self {
         Self {
-            inner: Box::new(InnerDiagnostic {
+            raw: Box::new(RawDiagnostic {
                 level,
                 code: code.into(),
                 message: message.into(),
@@ -44,29 +56,40 @@ impl Diagnostic {
     }
 
     pub fn with_span(mut self, span: Span) -> Self {
-        self.inner.highlights.push(Highlight {
+        let role = self.choose_role();
+
+        self.highlights.push(Highlight {
             span,
             label: None,
-            role: self.choose_role(),
+            role,
         });
         self
     }
 
     pub fn with_labeled_span(mut self, span: Span, label: impl Into<CowStr>) -> Self {
-        self.inner.highlights.push(Highlight {
+        let role = self.choose_role();
+
+        self.highlights.push(Highlight {
             span,
             label: Some(label.into()),
-            role: self.choose_role(),
+            role,
         });
         self
     }
 
     fn choose_role(&self) -> Role {
-        if self.inner.highlights.is_empty() {
+        if self.highlights.is_empty() {
             Role::Primary
         } else {
             Role::Secondary
         }
+    }
+
+    pub fn spans<'a>(&'a self) -> Vec<Span> {
+        self.highlights
+            .iter()
+            .map(|highlight| highlight.span)
+            .collect()
     }
 
     pub fn emit(mut self, map: Option<&SourceMap>) {
@@ -80,28 +103,25 @@ impl Diagnostic {
     fn display(&mut self, map: Option<&SourceMap>) -> String {
         let header = format!(
             "{:#}{}: {}",
-            self.inner.level,
-            self.inner
-                .code
-                .map(|code| format!("[{:?}]", code).color(self.inner.level.color()))
+            self.level,
+            self.code
+                .map(|code| format!("[{:?}]", code).color(self.raw.level.color()))
                 .unwrap_or_default(),
-            self.inner.message.bright_white().bold()
+            self.message.bright_white().bold()
         );
-        self.inner
-            .highlights
+        self.highlights
             .sort_unstable_by_key(|highlight| highlight.span);
 
         let mut message = header;
 
-        if !self.inner.highlights.is_empty() {
+        if !self.highlights.is_empty() {
             let primary_highlight = self
-                .inner
                 .highlights
                 .iter()
                 .position(|highlight| highlight.role == Role::Primary)
                 .unwrap();
 
-            if self.inner.highlights[primary_highlight].span == Span::SHAM {
+            if self.highlights[primary_highlight].span == Span::SHAM {
                 message += &format!("\n {arrow} ??? ??? ???", arrow = ">".bright_blue().bold());
                 return message;
             }
@@ -109,7 +129,6 @@ impl Diagnostic {
             let map = map.unwrap();
 
             let resolved_spans: Vec<_> = self
-                .inner
                 .highlights
                 .iter()
                 .map(|highlight| map.resolve_span(highlight.span))
@@ -139,7 +158,7 @@ impl Diagnostic {
                 padding = padding,
             );
 
-            for (highlight, span) in self.inner.highlights.iter().zip(&resolved_spans) {
+            for (highlight, span) in self.highlights.iter().zip(&resolved_spans) {
                 if highlight.role != Role::Primary && &span.filename != primary_file_name {
                     message += &format!(
                         "\n\
@@ -156,22 +175,22 @@ impl Diagnostic {
                     "\n\
                     {padding} {bar}\n\
                     {line:>padding_len$} {bar} {snippet}\
-                    {padding} {bar} {highlight:highlight_padding$} {label}",
+                    {padding} {bar} {highlight_padding}{highlight} {label}",
                     line = span.first.number,
                     snippet = span.first.content,
                     padding = padding,
                     padding_len = padding_len,
-                    highlight_padding = span.first.content[..*span.first.highlight.start()].width(),
+                    highlight_padding = " ".repeat(span.first.highlight_prefix_width()),
                     highlight = highlight
                         .role
                         .symbol()
-                        .repeat(span.first.content[span.first.highlight.clone()].width())
-                        .color(highlight.role.color(self.inner.level.color()))
+                        .repeat(span.first.highlight_width())
+                        .color(highlight.role.color(self.level.color()))
                         .bold(),
                     label = highlight
                         .label
                         .as_ref()
-                        .map(|label| label.color(highlight.role.color(self.inner.level.color())))
+                        .map(|label| label.color(highlight.role.color(self.level.color())))
                         .unwrap_or_default(),
                     bar = bar
                 );
