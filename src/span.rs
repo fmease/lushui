@@ -321,10 +321,15 @@ impl SourceMap {
                 let start = self.start?;
                 let highlight = self.highlight?;
 
+                let highlight_width = match &file[LocalSpan::new(highlight.start, highlight.end?)] {
+                    "\n" => 1,
+                    snippet => snippet.width(),
+                };
+
                 Some(LineInformation {
                     number: self.number,
                     content: &file[LocalSpan::new(start, self.end?)],
-                    highlight_width: file[LocalSpan::new(highlight.start, highlight.end?)].width(),
+                    highlight_width,
                     highlight_prefix_width: file[LocalSpan::new(start, highlight.start - 1)]
                         .width(),
                     highlight_start_column: (highlight.start + 1 - start).into(),
@@ -345,6 +350,7 @@ impl SourceMap {
     }
 }
 
+#[derive(Debug)]
 pub struct ResolvedSpan<'a> {
     pub filename: &'a str,
     pub first_line: LineInformation<'a>,
@@ -355,7 +361,16 @@ pub struct ResolvedSpan<'a> {
 #[derive(Debug)]
 pub struct LineInformation<'a> {
     pub number: u32,
+    /// The content of the entire line that contains the to-be-highlighted snippet.
+    ///
+    /// It may contain the whole snippet or only the starting or the ending part of it
+    /// if the snippet spans multiple lines.
     pub content: &'a str,
+    /// In most cases the Unicode width of the to-be-highlighted snippet.
+    ///
+    /// The exception is the line break character (U+000A) which following the Unicode
+    /// recommendations has a width of 0 but in our case has a width of 1. This allows
+    /// us to actually point at the "invisible" character (by e.g. placing a caret below it).
     pub highlight_width: usize,
     pub highlight_prefix_width: usize,
     pub highlight_start_column: usize,
