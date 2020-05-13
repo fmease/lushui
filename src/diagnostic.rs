@@ -138,7 +138,7 @@ impl Diagnostic {
 
             let largest_line_number = resolved_spans
                 .iter()
-                .map(|span| span.first.number)
+                .map(|span| span.first_line.number)
                 .max()
                 .unwrap() as usize;
 
@@ -153,13 +153,13 @@ impl Diagnostic {
                 {padding} {arrow} {file}:{line}:{column}",
                 arrow = ">".bright_blue().bold(),
                 file = primary_span.filename,
-                line = primary_span.first.number,
-                column = primary_span.first.highlight.start() + 1,
+                line = primary_span.first_line.number,
+                column = primary_span.first_line.highlight_start_column,
                 padding = padding,
             );
 
             for (highlight, span) in self.highlights.iter().zip(&resolved_spans) {
-                if highlight.role != Role::Primary && &span.filename != primary_file_name {
+                if &span.filename != primary_file_name && highlight.role != Role::Primary {
                     message += &format!(
                         "\n\
                         {padding} {bar}\n\
@@ -171,29 +171,89 @@ impl Diagnostic {
                     );
                 }
 
-                message += &format!(
-                    "\n\
-                    {padding} {bar}\n\
-                    {line:>padding_len$} {bar} {snippet}\
-                    {padding} {bar} {highlight_padding}{highlight} {label}",
-                    line = span.first.number,
-                    snippet = span.first.content,
-                    padding = padding,
-                    padding_len = padding_len,
-                    highlight_padding = " ".repeat(span.first.highlight_prefix_width()),
-                    highlight = highlight
-                        .role
-                        .symbol()
-                        .repeat(span.first.highlight_width())
-                        .color(highlight.role.color(self.level.color()))
-                        .bold(),
-                    label = highlight
-                        .label
-                        .as_ref()
-                        .map(|label| label.color(highlight.role.color(self.level.color())))
-                        .unwrap_or_default(),
-                    bar = bar
-                );
+                let role_color = highlight.role.color(self.level.color());
+
+                match &span.final_line {
+                    // the snippet spans a single line
+                    None => {
+                        message += &format!(
+                            "\n\
+                            {padding} {bar}\n\
+                            {line:>padding_len$} {bar} {snippet}\
+                            {padding} {bar} {highlight_padding}{highlight} {label}",
+                            line = span.first_line.number,
+                            snippet = span.first_line.content,
+                            padding = padding,
+                            padding_len = padding_len,
+                            highlight_padding = " ".repeat(span.first_line.highlight_prefix_width),
+                            highlight = highlight
+                                .role
+                                .symbol()
+                                .repeat(span.first_line.highlight_width)
+                                .color(role_color)
+                                .bold(),
+                            label = highlight
+                                .label
+                                .as_ref()
+                                .map(|label| label.color(role_color))
+                                .unwrap_or_default(),
+                            bar = bar
+                        );
+                    }
+                    // the snippet spans multiple lines
+                    Some(final_line) => {
+                        let ellipsis = if final_line.number - span.first_line.number > 1 {
+                            format!(
+                                "{ellipsis:<padding_len$} ",
+                                ellipsis = "...",
+                                padding_len = padding_len
+                            )
+                        } else {
+                            format!("{padding} {bar}", padding = padding, bar = bar)
+                        };
+                        message += &format!(
+                            "\n\
+                            {padding} {bar}\n\
+                            {line:>padding_len$} {bar}   {snippet}\
+                            {ellipsis:>padding_len$}  {highlight_horizontal_arm}{highlight_hand}\n",
+                            line = span.first_line.number,
+                            snippet = span.first_line.content,
+                            padding = padding,
+                            padding_len = padding_len,
+                            ellipsis = ellipsis,
+                            highlight_horizontal_arm = "_"
+                                .repeat(span.first_line.highlight_prefix_width + 1)
+                                .color(role_color)
+                                .bold(),
+                            // the hand is currently not dependent on the Unicode width of the first character
+                            highlight_hand = highlight.role.symbol().color(role_color).bold(),
+                            bar = bar
+                        );
+
+                        message += &format!(
+                            "{line:>padding_len$} {bar} {highlight_vertical_arm} {snippet}\
+                            {padding} {bar} {highlight_vertical_arm}{highlight_horizontal_arm}{highlight_hand} {label}",
+                            line = final_line.number,
+                            snippet = final_line.content,
+                            padding = padding,
+                            padding_len = padding_len,
+                            // the arm is currently not dependent on the Unicode width of the last character
+                            highlight_horizontal_arm = "_"
+                                .repeat(final_line.highlight_width)
+                                .color(role_color)
+                                .bold(),
+                            highlight_vertical_arm = "|".color(role_color).bold(),
+                            // the hand is currently not dependent on the Unicode width of the 1st character
+                            highlight_hand = highlight.role.symbol().color(role_color).bold(),
+                            label = highlight
+                                .label
+                                .as_ref()
+                                .map(|label| label.color(role_color))
+                                .unwrap_or_default(),
+                            bar = bar
+                        );
+                    }
+                }
             }
         }
 

@@ -1,15 +1,14 @@
 use crate::diagnostic::*;
-use std::{convert::TryInto, fmt, rc::Rc};
+use std::{convert::TryInto, fmt, ops::RangeInclusive, rc::Rc};
+use unicode_width::UnicodeWidthStr;
 
 /// Global byte index.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
-pub struct ByteIndex {
-    value: u32,
-}
+pub struct ByteIndex(u32);
 
 impl ByteIndex {
     pub const fn new(index: u32) -> Self {
-        ByteIndex { value: index }
+        Self(index)
     }
 
     /// Map local byte index to global global one.
@@ -18,13 +17,11 @@ impl ByteIndex {
     ///
     /// Panics on addition overflow.
     pub fn from_local(source: &SourceFile, index: LocalByteIndex) -> Self {
-        Self {
-            value: source.span.start.value + index.value,
-        }
+        Self::new(source.span.start.0 + index.0)
     }
 
     fn try_add_offset(self, offset: u32) -> Result<Self> {
-        let sum = self.value.checked_add(offset).ok_or(offset_overflow())?;
+        let sum = self.0.checked_add(offset).ok_or(offset_overflow())?;
 
         Ok(Self::new(sum))
     }
@@ -32,13 +29,11 @@ impl ByteIndex {
 
 /// File-local byte index.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, PartialOrd, Ord)]
-pub struct LocalByteIndex {
-    value: u32,
-}
+pub struct LocalByteIndex(u32);
 
 impl LocalByteIndex {
-    pub fn new(index: u32) -> Self {
-        Self { value: index }
+    pub const fn new(index: u32) -> Self {
+        Self(index)
     }
 
     /// Create new file-local byte index.
@@ -46,18 +41,19 @@ impl LocalByteIndex {
     /// ## Panics
     ///
     /// Panics if `index` does not fit into `u32`.
+    // @Task get rid of this method
     pub fn from_usize(index: usize) -> Self {
         Self::new(index.try_into().unwrap())
     }
 
     pub fn from_global(source: &SourceFile, index: ByteIndex) -> Self {
-        Self::new(index.value - source.span.start.value)
+        Self::new(index.0 - source.span.start.0)
     }
 }
 
 impl From<LocalByteIndex> for usize {
     fn from(index: LocalByteIndex) -> Self {
-        index.value as _
+        index.0 as _
     }
 }
 
@@ -67,7 +63,7 @@ impl Add<usize> for LocalByteIndex {
     type Output = Self;
 
     fn add(self, offset: usize) -> Self::Output {
-        Self::new(self.value + LocalByteIndex::from_usize(offset).value)
+        Self::new(self.0 + LocalByteIndex::from_usize(offset).0)
     }
 }
 
@@ -83,7 +79,7 @@ impl Sub for LocalByteIndex {
     type Output = Self;
 
     fn sub(self, other: Self) -> Self::Output {
-        Self::new(self.value - other.value)
+        Self::new(self.0 - other.0)
     }
 }
 
@@ -147,7 +143,7 @@ impl Span {
 
 impl fmt::Debug for Span {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Span({}, {})", self.start.value, self.end.value)
+        write!(f, "Span({}, {})", self.start.0, self.end.0)
     }
 }
 
@@ -163,8 +159,7 @@ impl LocalSpan {
         Self { start, end }
     }
 
-    // @Bug this is actually a valid span
-    pub fn dummy() -> Self {
+    pub fn zero() -> Self {
         Self::from(LocalByteIndex::new(0))
     }
 
@@ -238,100 +233,132 @@ impl SourceMap {
         // self.files[index].clone()
     }
 
-    // @Beacon @Task handle multiline spans
-    pub fn resolve_span(&self, span: Span) -> ResolvedSpan {
+    pub fn resolve_span(&self, span: Span) -> ResolvedSpan<'_> {
         let file = self.file_from_span(span);
         let span = LocalSpan::from_global(&file, span);
-        let mut line_number = 1;
-        let mut highlight_start = None;
-        let mut highlight = None;
-        let mut line_start = None;
-        let mut line = None;
 
-        for (index, character) in file.content().char_indices() {
-            let index = LocalByteIndex::from_usize(index);
+        let mut first_line = None::<Line>;
+        let mut final_line = None::<Line>;
 
-            if line_start.is_none() {
-                line_start = Some(index);
+        let mut line = Line {
+            number: 1,
+            start: None,
+            end: None,
+            highlight: None,
+        };
+
+        for (index, character) in file
+            .content()
+            .char_indices()
+            .map(|(index, character)| (LocalByteIndex::from_usize(index), character))
+        {
+            if line.start.is_none() {
+                line.start = Some(index);
+                if first_line.is_some() {
+                    line.highlight = Some(Highlight {
+                        start: index,
+                        end: None,
+                    });
+                }
             }
 
-            if index == span.start {
-                highlight_start = Some(index);
-            }
-            if index + character == span.end {
-                let span = LocalSpan::new(highlight_start.unwrap(), index + character);
-                let offset = line_start.unwrap();
-
-                highlight = Some(Highlight {
-                    line_number,
-                    // @Note panics on multiline string
-                    range: (span - offset).into(),
+            if index == span.start && line.highlight.is_none() {
+                line.highlight = Some(Highlight {
+                    start: index,
+                    end: None,
                 });
             }
 
+            if index + character == span.end {
+                if let Some(highlight) = &mut line.highlight {
+                    highlight.end = Some(index + character);
+                }
+            }
+
             if character == '\n' {
-                // @Bug does not work with multiline spans
-                if highlight.is_some() && line.is_some() {
-                    break;
+                line.end = Some(index);
+
+                if first_line.is_none() {
+                    if let Some(highlight) = &mut line.highlight {
+                        let number = line.number;
+
+                        if highlight.end.is_none() {
+                            highlight.end = line.end;
+                        }
+
+                        first_line = Some(line);
+
+                        line = Line {
+                            number,
+                            start: None,
+                            end: None,
+                            highlight: None,
+                        };
+                    }
                 }
 
-                if highlight.is_some() {
-                    line = Some(LocalSpan::new(line_start.unwrap(), index));
+                if let Some(highlight) = &mut line.highlight {
+                    if highlight.end.is_some() {
+                        final_line = Some(line);
+                        break;
+                    }
                 }
 
-                line_number += 1;
-                line_start = None;
-            } else {
+                line.start = None;
+                line.number += 1;
             }
         }
 
-        #[derive(Debug)]
+        struct Line {
+            number: u32,
+            start: Option<LocalByteIndex>,
+            end: Option<LocalByteIndex>,
+            highlight: Option<Highlight>,
+        }
+
+        impl Line {
+            fn extract_information(self, file: &SourceFile) -> Option<LineInformation<'_>> {
+                let start = self.start?;
+                let highlight = self.highlight?;
+
+                Some(LineInformation {
+                    number: self.number,
+                    content: &file[LocalSpan::new(start, self.end?)],
+                    highlight_width: file[LocalSpan::new(highlight.start, highlight.end?)].width(),
+                    highlight_prefix_width: file[LocalSpan::new(start, highlight.start - 1)]
+                        .width(),
+                    highlight_start_column: (highlight.start + 1 - start).into(),
+                })
+            }
+        }
+
         struct Highlight {
-            line_number: u32,
-            range: RangeInclusive<usize>,
+            start: LocalByteIndex,
+            end: Option<LocalByteIndex>,
         }
 
-        let highlight = highlight.unwrap();
-        let line = line.unwrap();
-
-        // @Question borrow instead of clone?
         ResolvedSpan {
-            filename: file.name.to_string(),
-            first: Line {
-                content: file[line].to_owned(),
-                number: highlight.line_number,
-                highlight: highlight.range,
-            },
-            last: None,
+            filename: &file.name,
+            first_line: first_line.unwrap().extract_information(file).unwrap(),
+            final_line: final_line.map(|line| line.extract_information(file).unwrap()),
         }
     }
 }
 
-pub struct ResolvedSpan {
-    pub filename: String,
-    pub first: Line,
+pub struct ResolvedSpan<'a> {
+    pub filename: &'a str,
+    pub first_line: LineInformation<'a>,
     /// This is `None` if the last is the first line.
-    pub last: Option<Line>,
+    pub final_line: Option<LineInformation<'a>>,
 }
 
-use std::ops::RangeInclusive;
-use unicode_width::UnicodeWidthStr;
-
-// @Task find better field names
-pub struct Line {
-    pub content: String,
+#[derive(Debug)]
+pub struct LineInformation<'a> {
     pub number: u32,
-    pub highlight: RangeInclusive<usize>,
-}
-
-impl Line {
-    pub fn highlight_width(&self) -> usize {
-        self.content[self.highlight.clone()].width()
-    }
-
-    pub fn highlight_prefix_width(&self) -> usize {
-        self.content[..*self.highlight.start()].width()
-    }
+    pub content: &'a str,
+    pub highlight_width: usize,
+    pub highlight_prefix_width: usize,
+    pub highlight_start_column: usize,
 }
 
 pub struct SourceFile {

@@ -34,7 +34,6 @@
 * pretty-print HIR (way fewer parens)
 * spans
   * span information for type errors (very likely needs a second error type)
-  * be able to format multi-line spans
 * pass a context to more and more functions containing command line arguments, source map
   and stuff
 * fix let/in (parsing)
@@ -43,9 +42,14 @@
 * drastically improve error message for missing type annotations for declarations in the parser
 * finally check what early EOI do to the parser instead of line breaks and the like
 * figure out how to handle multiple errors better
-* correctly parse any kind of indented expressions
-  * there are still some bugs
-* parse more possible indentations (eg. after parameter groups)
+* indentation
+  * allow indentation by a multiple of 4 (e.g. 8), the parser should handle invalid stuff
+    this solves issues where there are empty lines at the beginning of a module body
+    * update: maybe the lexer can handle it (e.g. not adding anymore indenation(dedent) in some
+      special cases)
+  * correctly parse any kind of indented expressions
+    * there are still some bugs
+  * parse more possible indentations (eg. after parameter groups)
 * replace as many signatures taking `Expression`s with `&Expression`s. this will reduce clones I
   think because most functions don't need ownership and if it does, we can just cheaply clone the Rc.
   this is useful for lifetime stuff e.g. `ModuleScope::constructors` should take an `&Expression` to

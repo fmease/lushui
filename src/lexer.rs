@@ -217,7 +217,7 @@ impl<'a> Lexer<'a> {
             source,
             characters: source.content().char_indices().peekable(),
             tokens: Vec::new(),
-            span: LocalSpan::dummy(),
+            span: LocalSpan::zero(),
             indentation_in_spaces: 0,
             round_brackets: Vec::new(),
         }
