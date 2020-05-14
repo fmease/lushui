@@ -6,7 +6,7 @@
 //! * does not support multiline spans
 //! * does not feature error handling abstractions like diagnostic buffers
 
-use crate::span::{SourceMap, Span};
+use crate::span::{SourceMap, Span, Spanning};
 
 type CowStr = std::borrow::Cow<'static, str>;
 
@@ -55,22 +55,22 @@ impl Diagnostic {
         }
     }
 
-    pub fn with_span(mut self, span: Span) -> Self {
+    pub fn with_span(mut self, spanning: &impl Spanning) -> Self {
         let role = self.choose_role();
 
         self.highlights.push(Highlight {
-            span,
+            span: spanning.span(),
             label: None,
             role,
         });
         self
     }
 
-    pub fn with_labeled_span(mut self, span: Span, label: impl Into<CowStr>) -> Self {
+    pub fn with_labeled_span(mut self, spanning: &impl Spanning, label: impl Into<CowStr>) -> Self {
         let role = self.choose_role();
 
         self.highlights.push(Highlight {
-            span,
+            span: spanning.span(),
             label: Some(label.into()),
             role,
         });
@@ -364,6 +364,8 @@ pub enum Code {
     E013,
     /// Mutually exclusive attributes.
     E014,
+    /// Missing mandatory type annotations.
+    E015,
     /// Duplicate definitions.
     E020,
     /// Undefined binding.

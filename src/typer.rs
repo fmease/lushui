@@ -10,7 +10,7 @@ use crate::{
     resolver::Resolved,
 };
 
-type Declaration = hir::Declaration<Resolved>;
+pub type Declaration = hir::Declaration<Resolved>;
 pub type Expression = hir::Expression<Resolved>;
 
 const TYPE: Expression = expr! { Type[] };
@@ -117,8 +117,8 @@ impl Declaration {
                             constructors
                                 .iter()
                                 .map(|constructor| constructor.unwrap_constructor()),
-                            self.span,
-                            inherent.span,
+                            self,
+                            inherent,
                             scope,
                         )?;
                     }
@@ -151,7 +151,7 @@ impl Expression {
                     None,
                     "out-of-order declarations not supported yet",
                 )
-                .with_span(binding.binder.source.span)
+                .with_span(&binding.binder)
             })?,
             Type => TYPE,
             Nat(_) => scope

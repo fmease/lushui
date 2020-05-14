@@ -47,7 +47,7 @@ impl Parser<'_> {
     /// Used for arbitrary look-ahead. Restores the old cursor on failure.
     // @Bug because of arbitrary look-ahead/this function, a magnitude of Diagnostics are constructed
     // but never emitted/wasted
-    fn reflect<Node>(&mut self, parser: fn(&mut Self) -> Result<Node>) -> Result<Node> {
+    fn reflect<Node>(&mut self, parser: impl FnOnce(&mut Self) -> Result<Node>) -> Result<Node> {
         let saved_index = self.index;
         let result = parser(self);
 
@@ -74,7 +74,7 @@ fn unexpected_token<T: std::fmt::Display>(actual: Token, expected: T) -> Diagnos
         Code::E010,
         format!("expected {}, found {}", expected, actual.kind),
     )
-    .with_span(actual.span)
+    .with_span(&actual)
 }
 
 trait Expect {
@@ -209,6 +209,8 @@ impl Parser<'_> {
     /// ```
     // @Task abstract over attributes with 0, 1, … arguments
     fn finish_parse_attribute(&mut self, keyword_span: Span) -> Result<Attribute> {
+        let mut span = keyword_span;
+
         let identifier = Identifier::consume(self)?;
         let kind = match identifier.as_str() {
             "foreign" => AttributeKind::Foreign,
@@ -219,16 +221,13 @@ impl Parser<'_> {
                     Code::E011,
                     format!("attribute `{}` does not exist", identifier),
                 )
-                .with_span(identifier.span))
+                .with_span(&identifier))
             }
         };
-        let ending_underscore = self.consume(TokenKind::Underscore)?;
+        span.merging(&self.consume(TokenKind::Underscore)?);
         self.consume(TokenKind::LineBreak)?;
 
-        Ok(Attribute {
-            span: keyword_span.merge(ending_underscore.span),
-            kind,
-        })
+        Ok(Attribute { span, kind })
     }
 
     /// Finish parsing documentation comment.
@@ -262,20 +261,24 @@ impl Parser<'_> {
     ///     ("=" Possibly-Indented-Expression-Followed-By-Line-Break | Line-Break)
     /// ```
     fn finish_parse_value_declaration(&mut self, binder: Identifier) -> Result<Declaration> {
-        let parameters = self.parse_annotated_parameters()?;
-        let type_annotation = self.parse_type_annotation()?;
+        let mut span = binder.span;
 
-        let (expression, span) = if self.consumed(TokenKind::Equals) {
+        let parameters = self.parse_parameters()?;
+        span.merging(&parameters);
+        let type_annotation = self.parse_optional_type_annotation()?;
+        span.merging(&type_annotation);
+
+        let expression = if self.consumed(TokenKind::Equals) {
             let expression = self.parse_possibly_indented_expression_followed_by_line_break()?;
-            let span = expression.span;
-            (Some(expression), span)
+            span.merging(&expression);
+            Some(expression)
         } else {
             self.consume(TokenKind::LineBreak)?;
-            (None, type_annotation.span)
+            None
         };
 
         Ok(decl! {
-            Value[binder.span.merge(span)] {
+            Value[span] {
                 binder,
                 parameters,
                 type_annotation,
@@ -302,14 +305,18 @@ impl Parser<'_> {
     ///     Dedentation)
     /// ```
     fn finish_parse_data_declaration(&mut self, keyword_span: Span) -> Result<Declaration> {
+        let mut span = keyword_span;
+
         let binder = self::Identifier::consume(self)?;
-        let parameters = self.parse_annotated_parameters()?;
-        let type_annotation = self.parse_type_annotation()?;
+        let parameters = self.parse_parameters()?;
+        let type_annotation = self.parse_optional_type_annotation()?;
+        span.merging(&type_annotation);
 
         use TokenKind::*;
 
-        let (constructors, span) = match self.consume(TokenKind::Equals).ok() {
+        let constructors = match self.consume(TokenKind::Equals).ok() {
             Some(equals) => {
+                span.merging(&equals);
                 self.consume(LineBreak)?;
 
                 let mut constructors = Vec::new();
@@ -329,16 +336,13 @@ impl Parser<'_> {
                     while self.consumed(LineBreak) {}
                 }
 
-                let span = constructors
-                    .last()
-                    .map(|constructor| constructor.span)
-                    .unwrap_or(equals.span);
+                span.merging(&constructors.last());
 
-                (Some(constructors), span)
+                Some(constructors)
             }
             None => {
                 self.consume(LineBreak)?;
-                (None, type_annotation.span)
+                None
             }
         };
 
@@ -369,11 +373,14 @@ impl Parser<'_> {
     ///     Dedentation)
     /// ```
     fn finish_parse_module_declaration(&mut self, keyword_span: Span) -> Result<Declaration> {
+        let mut span = keyword_span;
+
         let binder = Identifier::consume(self)?;
+        span.merging(&binder);
 
         if self.consumed(TokenKind::LineBreak) {
             return Ok(decl! {
-                Module[keyword_span.merge(binder.span)] {
+                Module[span] {
                     binder,
                     file: self.file.clone(),
                     declarations: None,
@@ -382,13 +389,13 @@ impl Parser<'_> {
         }
 
         self.consume(TokenKind::Colon)?;
-        // @Task exposure list
         self.consume(TokenKind::Equals)?;
-
         self.consume(TokenKind::LineBreak)?;
 
         let mut declarations = Vec::new();
 
+        // @Task abstract over this, @Note we could maybe use an indentation counter
+        // to make this very easy
         while self.consumed(TokenKind::Indentation) {
             while !self.current(TokenKind::Dedentation) {
                 if self.consumed(TokenKind::LineBreak) {
@@ -405,7 +412,7 @@ impl Parser<'_> {
 
         // @Bug span is wrong: we need to store the last token's span: dedentation/line break
         Ok(decl! {
-            Module[keyword_span] {
+            Module[span] {
                 binder,
                 file: self.file.clone(),
                 declarations: Some(declarations),
@@ -432,10 +439,8 @@ impl Parser<'_> {
             }
 
             if self.consumed(TokenKind::EndOfInput) {
-                let span = (|| Some(declarations.first()?.span.merge(declarations.last()?.span)))()
-                    .unwrap_or(Span::SHAM);
                 break Ok(decl! {
-                    Module[span] {
+                    Module[self.file.span] {
                         binder,
                         file: self.file.clone(),
                         declarations: Some(declarations)
@@ -496,13 +501,18 @@ impl Parser<'_> {
         }
 
         let binder = Identifier::consume(self)?;
-        let parameters = self.parse_annotated_parameters()?;
-        let type_annotation = self.parse_type_annotation()?;
-        // @Task allow EOI as an alternative
+        let mut span = binder.span;
+
+        let parameters = self.parse_parameters()?;
+        span.merging(&parameters);
+
+        let type_annotation = self.parse_optional_type_annotation()?;
+        span.merging(&type_annotation);
+
         self.consume(TokenKind::LineBreak)?;
 
         let mut constructor = decl! {
-            Constructor[binder.span.merge(type_annotation.span)] {
+            Constructor[span] {
                 binder,
                 parameters,
                 type_annotation,
@@ -510,55 +520,6 @@ impl Parser<'_> {
         };
         constructor.attributes = attributes;
         Ok(constructor)
-    }
-
-    /// Parse type-annotated parameters.
-    ///
-    /// ## Grammar
-    ///
-    /// ```text
-    /// Annotated-Parameters ::= Annotated-Parameter-Group*
-    /// ```
-    fn parse_annotated_parameters(&mut self) -> Result<AnnotatedParameters> {
-        let mut parameters = Vec::new();
-
-        while self.current(TokenKind::OpeningRoundBracket) {
-            parameters.push(self.reflect(Self::parse_annotated_parameter_group)?);
-        }
-
-        Ok(parameters)
-    }
-
-    /// Parse a type-annotated parameter group.
-    ///
-    /// ## Grammar
-    ///
-    /// ```text
-    /// Annotated-Parameter-Group ::= "(" "|"? Unfenced-Annotated-Parameter-Group ")"
-    /// Unfenced-Annotated-Parameter-Group ::= %Identifie%r+ Type-Annotation
-    /// ```
-    fn parse_annotated_parameter_group(&mut self) -> Result<AnnotatedParameterGroup> {
-        self.consume(TokenKind::OpeningRoundBracket)?;
-        let explicitness = self.consume_explicitness_symbol();
-        let mut parameters = SmallVec::new();
-
-        parameters.push(Identifier::consume(self)?);
-
-        // @Note @Bug probably drops errors as well @Note shouldn't: consume
-        // reflects by itself @Task verify
-        // @Bug produces bad error messages
-        while let Ok(parameter) = Identifier::consume(self) {
-            parameters.push(parameter);
-        }
-
-        let type_annotation = self.reflect(Self::parse_type_annotation)?;
-        self.consume(TokenKind::ClosingRoundBracket)?;
-
-        Ok(AnnotatedParameterGroup {
-            parameters,
-            type_annotation,
-            explicitness,
-        })
     }
 
     /// Parse an expression.
@@ -592,10 +553,11 @@ impl Parser<'_> {
     ///         ("->" Pi-Literal-Or-Lower)*
     /// ```
     fn parse_pi_type_literal_or_lower(&mut self) -> Result<Expression> {
-        let (span_at_the_beginning, explicitness, binder, parameter) = self
+        let mut span = Span::SHAM;
+
+        let (explicitness, binder, parameter) = self
             .reflect(|parser| {
-                let span_of_opening_round_bracket =
-                    parser.consume(TokenKind::OpeningRoundBracket)?.span;
+                span = parser.consume(TokenKind::OpeningRoundBracket)?.span;
 
                 let explicitness = parser.consume_explicitness_symbol();
                 let binder = Identifier::consume(parser)?;
@@ -603,25 +565,24 @@ impl Parser<'_> {
 
                 parser.consume(TokenKind::ClosingRoundBracket)?;
 
-                Ok((
-                    span_of_opening_round_bracket,
-                    explicitness,
-                    Some(binder),
-                    parameter,
-                ))
+                Ok((explicitness, Some(binder), parameter))
             })
             .or_else(|_| {
                 // @Question do we need reflect here?
                 self.reflect(Self::parse_application_or_lower)
-                    .map(|parameter| (parameter.span, Explicitness::Explicit, None, parameter))
+                    .map(|parameter| {
+                        span = parameter.span;
+                        (Explicitness::Explicit, None, parameter)
+                    })
             })?;
 
         Ok(match self.consume(TokenKind::ThinArrow) {
             Ok(_) => {
                 let expression = self.reflect(Self::parse_pi_type_literal_or_lower)?;
+                span.merging(&expression);
 
                 expr! {
-                    PiTypeLiteral[span_at_the_beginning.merge(expression.span)] {
+                    PiTypeLiteral[span] {
                         expression,
                         binder,
                         parameter,
@@ -731,18 +692,14 @@ impl Parser<'_> {
             TokenKind::Super => Some(PathHead::new(PathHeadKind::Super, token.span)),
             _ => return Err(unexpected_token(token, "path")),
         };
+        let mut span = token.span;
         self.advance();
 
         while self.consumed(TokenKind::Dot) {
             segments.push(Identifier::consume(self)?);
         }
 
-        let span = token.span.merge(
-            segments
-                .last()
-                .map(|segment| segment.span)
-                .unwrap_or_else(|| head.as_ref().unwrap().span),
-        );
+        span.merging(&segments.last());
 
         Ok(RawExpression {
             span,
@@ -760,13 +717,15 @@ impl Parser<'_> {
     /// Lambda-Literal ::= "\" Parameters Type-Annotation? "=>" Expression
     /// ```
     fn finish_parse_lambda_literal(&mut self, keyword_span: Span) -> Result<Expression> {
-        let parameters = self.reflect(Self::parse_parameters)?;
-        let body_type_annotation = self.reflect(Self::parse_type_annotation).ok();
+        let mut span = keyword_span;
+        let parameters = self.parse_parameters()?;
+        let body_type_annotation = self.parse_optional_type_annotation()?;
         self.consume(TokenKind::WideArrow)?;
-        let body = self.reflect(Self::parse_expression)?;
+        let body = self.parse_expression()?;
+        span.merging(&body);
 
         Ok(expr! {
-            LambdaLiteral[keyword_span.merge(body.span)] {
+            LambdaLiteral[span] {
                 parameters,
                 body_type_annotation,
                 body,
@@ -784,15 +743,17 @@ impl Parser<'_> {
     /// Let-In ::= "'let" %Identifier% Parameters Type_Annotation? "=" Expression "in" Expression
     /// ```
     fn finish_parse_let_in(&mut self, span_of_let: Span) -> Result<Expression> {
+        let mut span = span_of_let;
         let binder = Identifier::consume(self)?;
-        let parameters = self.reflect(Self::parse_parameters)?;
-        let type_annotation = self.reflect(Self::parse_type_annotation).ok();
+        let parameters = self.parse_parameters()?;
+        let type_annotation = self.parse_optional_type_annotation()?;
         self.consume(TokenKind::Equals)?;
-        let expression = self.reflect(Self::parse_expression)?;
+        let expression = self.parse_expression()?;
         self.consume(TokenKind::In)?;
         // @Bug commented code does not work as expected (says: unexpected dedentation)
-        // let scope = self.reflect(parse_possibly_indented_expression_followed_by_line_break)?;
-        let scope = self.reflect(Self::parse_expression)?;
+        // let scope = self.parse_possibly_indented_expression_followed_by_line_break()?;
+        let scope = self.parse_expression()?;
+        span.merging(&scope);
 
         Ok(expr! {
             LetIn[span_of_let.merge(scope.span)] {
@@ -881,6 +842,9 @@ impl Parser<'_> {
     /// ```text
     /// Parameters ::= Parameter-Group*
     /// ```
+    // @Task @Beacon @Beacon vastly improve parsing techniques (match over or_else) for better
+    // error messages!!
+    // @Note maybe take a delimiter: TokenKind
     fn parse_parameters(&mut self) -> Result<Parameters> {
         let mut parameters = Vec::new();
 
@@ -889,7 +853,13 @@ impl Parser<'_> {
             parameters.push(parameter_group)
         }
 
-        Ok(parameters)
+        let span = parameters.get(0).map(|parameter| {
+            let mut span = parameter.span;
+            span.merging(&parameters.last());
+            span
+        });
+
+        Ok(Parameters { span, parameters })
     }
 
     /// Parse a parameter group.
@@ -900,8 +870,10 @@ impl Parser<'_> {
     /// Parameter-Group ::= %Identifier% | Optionally-Annotated-Parameter-Group
     /// ```
     fn parse_parameter_group(&mut self) -> Result<ParameterGroup> {
+        // @Bug bad error message: use match instead of or_else
         Identifier::consume(self)
             .map(|identifier| ParameterGroup {
+                span: identifier.span,
                 parameters: smallvec![identifier],
                 type_annotation: None,
                 explicitness: Explicitness::Explicit,
@@ -916,8 +888,10 @@ impl Parser<'_> {
     /// ```text
     /// Optionally-Annotated-Parameter-Group ::= "(" "|"? %Identifier%+ Type-Annotation? ")"
     /// ```
+    // @Note bad naming because `parse_parameter_group` actually also parses an
+    // optionally annotated parameter group
     fn parse_optionally_annotated_parameter_group(&mut self) -> Result<ParameterGroup> {
-        self.consume(TokenKind::OpeningRoundBracket)?;
+        let mut span = self.consume(TokenKind::OpeningRoundBracket)?.span;
         let explicitness = self.consume_explicitness_symbol();
         let mut parameters = SmallVec::new();
 
@@ -928,14 +902,15 @@ impl Parser<'_> {
             parameters.push(parameter);
         }
 
-        let type_annotation = self.parse_type_annotation().ok();
+        let type_annotation = self.parse_optional_type_annotation()?;
 
-        self.consume(TokenKind::ClosingRoundBracket)?;
+        span.merging(&self.consume(TokenKind::ClosingRoundBracket)?);
 
         Ok(ParameterGroup {
             parameters,
             type_annotation,
             explicitness,
+            span,
         })
     }
 
@@ -1013,6 +988,21 @@ impl Parser<'_> {
         self.reflect(Self::parse_expression)
     }
 
+    /// Parse a type annotation.
+    ///
+    /// ## Grammar
+    ///
+    /// ```text
+    /// Optional-Type-Annotation ::= (":" Expression)?
+    /// ```
+    fn parse_optional_type_annotation(&mut self) -> Result<Option<Expression>> {
+        if self.consumed(TokenKind::Colon) {
+            self.parse_expression().map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+
     // @Task generalize, move somewhere else
     // @Note this is currently only used for let-declarations and I don't know if
     // it works in other parsers
@@ -1038,11 +1028,11 @@ impl Parser<'_> {
         &mut self,
         subparser: fn(&mut Self) -> Result<Spanned<K>>,
     ) -> Result<Spanned<K>> {
-        let span_of_opening_bracket = self.consume(TokenKind::OpeningRoundBracket)?.span;
+        let mut span = self.consume(TokenKind::OpeningRoundBracket)?.span;
         // @Question reflect necessary?
         let mut inner = self.reflect(subparser)?;
-        let span_of_closing_bracket = self.consume(TokenKind::ClosingRoundBracket)?.span;
-        inner.span = span_of_opening_bracket.merge(span_of_closing_bracket);
+        span.merging(&self.consume(TokenKind::ClosingRoundBracket)?);
+        inner.span = span;
         Ok(inner)
     }
 

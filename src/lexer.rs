@@ -250,7 +250,7 @@ impl<'a> Lexer<'a> {
                             character as u32, character
                         ),
                     )
-                    .with_span(self.span())]);
+                    .with_span(&self.span())]);
                 }
             }
         }
@@ -261,7 +261,7 @@ impl<'a> Lexer<'a> {
                 .into_iter()
                 .map(|bracket| {
                     Diagnostic::new(Level::Fatal, Code::E001, "unbalanced brackets")
-                        .with_labeled_span(bracket, "has no matching closing bracket")
+                        .with_labeled_span(&bracket, "has no matching closing bracket")
                 })
                 .collect());
         }
@@ -331,7 +331,7 @@ impl<'a> Lexer<'a> {
                     Code::E002,
                     "trailing dash on identifier",
                 )
-                .with_span(Span::from_local(self.source, dash.into())));
+                .with_span(&Span::from_local(self.source, dash.into())));
             }
         }
 
@@ -388,7 +388,7 @@ impl<'a> Lexer<'a> {
                     absolute_difference
                 ),
             )
-            .with_span(self.span()));
+            .with_span(&self.span()));
         }
 
         match change {
@@ -435,7 +435,7 @@ impl<'a> Lexer<'a> {
         if !terminated {
             return Err(
                 Diagnostic::new(Level::Fatal, Code::E004, "unterminated text literal")
-                    .with_span(self.span()),
+                    .with_span(&self.span()),
             );
         }
 
@@ -458,7 +458,7 @@ impl<'a> Lexer<'a> {
         if self.round_brackets.is_empty() {
             return Err(
                 Diagnostic::new(Level::Fatal, Code::E001, "unbalanced brackets")
-                    .with_labeled_span(self.span(), "has no matching opening bracket"),
+                    .with_labeled_span(&self.span(), "has no matching opening bracket"),
             );
         }
         self.round_brackets.pop();

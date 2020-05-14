@@ -28,6 +28,7 @@ use crate::{
     hir::{self, *},
     parser::Explicitness,
     resolver::Resolved,
+    span::Spanning,
     typer,
 };
 pub use scope::CrateScope;
@@ -120,7 +121,7 @@ impl Expression {
 
                                 Use(
                                     Box::new(Shift(1).compose(substitution)),
-                                    expr! { Binding[binder.source.span] { binder } }
+                                    expr! { Binding[binder.span()] { binder } }
                                 )
                             }
                             None => substitution,
@@ -156,7 +157,7 @@ impl Expression {
                                 let binder = lambda.parameter.as_innermost();
                                 Use(
                                     Box::new(Shift(1).compose(substitution.clone())),
-                                    expr! { Binding[binder.source.span] { binder } }
+                                    expr! { Binding[binder.span()] { binder } }
                                 )
                             }
                         }
@@ -171,7 +172,7 @@ impl Expression {
 
                                 Use(
                                     Box::new(Shift(1).compose(substitution)),
-                                    expr! { Binding[binder.source.span] { binder } }
+                                    expr! { Binding[binder.span()] { binder } }
                                 )
                         },
                     }

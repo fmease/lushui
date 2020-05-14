@@ -4,7 +4,7 @@ use std::{
     rc::Rc,
 };
 
-use crate::span::{SourceFile, Span, Spanned};
+use crate::span::{PossiblySpanning, SourceFile, Span, Spanned, Spanning};
 use freestanding::freestanding;
 
 #[derive(Debug)]
@@ -40,6 +40,12 @@ impl Declaration {
     }
 }
 
+impl Spanning for Declaration {
+    fn span(&self) -> Span {
+        self.span
+    }
+}
+
 /// The syntax node of a declaration.
 #[freestanding]
 #[streamline(Box)]
@@ -48,22 +54,22 @@ pub enum DeclarationKind {
     /// The syntax node of a value declaration.
     Value {
         binder: Identifier,
-        parameters: AnnotatedParameters,
-        type_annotation: Expression,
+        parameters: Parameters,
+        type_annotation: Option<Expression>,
         expression: Option<Expression>,
     },
     /// The syntax node of a data declaration.
     Data {
         binder: Identifier,
-        parameters: AnnotatedParameters,
-        type_annotation: Expression,
+        parameters: Parameters,
+        type_annotation: Option<Expression>,
         constructors: Option<Vec<Declaration>>,
     },
     /// The syntax node of a constructor.
     Constructor {
         binder: Identifier,
-        parameters: AnnotatedParameters,
-        type_annotation: Expression,
+        parameters: Parameters,
+        type_annotation: Option<Expression>,
     },
     /// The syntax node of a module declaration.
     Module {
@@ -74,15 +80,6 @@ pub enum DeclarationKind {
     /// The syntax node of a use declaration.
     // @Task
     Use { path: Path, bindings: () },
-}
-
-pub type AnnotatedParameters = Vec<AnnotatedParameterGroup>;
-
-#[derive(Debug)]
-pub struct AnnotatedParameterGroup {
-    pub parameters: crate::SmallVec<[Identifier; 1]>,
-    pub type_annotation: Expression,
-    pub explicitness: Explicitness,
 }
 
 #[derive(Debug, Default)]
@@ -234,13 +231,38 @@ pub struct CaseAnalysisCaseGroup {
     pub expression: Expression,
 }
 
-pub type Parameters = Vec<ParameterGroup>;
+#[derive(Debug, Clone)]
+pub struct Parameters {
+    pub parameters: Vec<ParameterGroup>,
+    pub span: Option<Span>,
+}
+
+impl PossiblySpanning for Parameters {
+    fn possible_span(&self) -> Option<Span> {
+        self.span
+    }
+}
+
+impl Deref for Parameters {
+    type Target = Vec<ParameterGroup>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.parameters
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ParameterGroup {
     pub parameters: crate::SmallVec<[Identifier; 1]>,
     pub type_annotation: Option<Expression>,
     pub explicitness: Explicitness,
+    pub span: Span,
+}
+
+impl Spanning for ParameterGroup {
+    fn span(&self) -> Span {
+        self.span
+    }
 }
 
 pub type Pattern = Spanned<PatternKind>;
@@ -301,6 +323,12 @@ impl Identifier {
             span: Span::SHAM,
             ..self
         }
+    }
+}
+
+impl Spanning for Identifier {
+    fn span(&self) -> Span {
+        self.span
     }
 }
 

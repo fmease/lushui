@@ -139,11 +139,66 @@ impl Span {
 
         Self::new(self.start, other.end)
     }
+
+    pub fn merging(&mut self, other: &impl PossiblySpanning) {
+        if let Some(other) = other.possible_span() {
+            assert!(self.start <= other.start && self.end <= other.end);
+
+            self.end = other.end;
+        }
+    }
 }
 
 impl fmt::Debug for Span {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Span({}, {})", self.start.0, self.end.0)
+    }
+}
+
+pub trait Spanning {
+    fn span(&self) -> Span;
+}
+
+impl Spanning for Span {
+    fn span(&self) -> Span {
+        *self
+    }
+}
+
+impl<S> Spanning for Spanned<S> {
+    fn span(&self) -> Span {
+        self.span
+    }
+}
+
+impl<S: Spanning> Spanning for &S {
+    fn span(&self) -> Span {
+        (*self).span()
+    }
+}
+
+// impl<S: Spanning> Spanning for &mut S {
+//     fn span(&self) -> Span {
+//         (**self).span()
+//     }
+// }
+
+pub trait PossiblySpanning {
+    fn possible_span(&self) -> Option<Span>;
+}
+
+impl<S: Spanning> PossiblySpanning for S {
+    fn possible_span(&self) -> Option<Span> {
+        Some(self.span())
+    }
+}
+
+impl<S> PossiblySpanning for Option<S>
+where
+    S: Spanning,
+{
+    fn possible_span(&self) -> Option<Span> {
+        self.as_ref().map(<_>::span)
     }
 }
 

@@ -14,7 +14,7 @@ use crate::{
     diagnostic::{Code, Diagnostic, Diagnostics, Level, Result},
     hir::{self, decl, expr, pat, Pass},
     parser::{self, AttributeKind, Explicitness, Identifier, Path},
-    span::SourceMap,
+    span::{SourceMap, Spanning},
     support::ManyErrExt,
 };
 
@@ -28,6 +28,8 @@ impl Pass for Desugared {
     type ForeignApplicationBinder = !;
 }
 
+// @Task @Beacon @Beacon @Beacon @Beacon @Beacon dont return early on E015!!
+// collect them!
 impl parser::Declaration {
     /// Desugar a declaration from AST.
     ///
@@ -44,6 +46,12 @@ impl parser::Declaration {
 
         Ok(match self.kind {
             Value(declaration) => {
+                // @Task don't return early?
+                let declaration_type_annotation = match declaration.type_annotation {
+                    Some(type_annotation) => type_annotation,
+                    None => return Err(missing_mandatory_type_annotation(&self.span)).many_err(),
+                };
+
                 // @Note type_annotation is currently desugared twice
                 // @Task remove duplicate work
                 // @Task find a way to use `Option::map` (currently does not work because of
@@ -53,15 +61,28 @@ impl parser::Declaration {
                         let mut expression = expression.desugar();
                         {
                             let mut type_annotation =
-                                once(declaration.type_annotation.clone().desugar());
+                                once(declaration_type_annotation.clone().desugar());
+
                             for parameter_group in declaration.parameters.iter().rev() {
-                                let parameter =
-                                    Some(parameter_group.type_annotation.clone().desugar());
+                                let parameter_type_annotation =
+                                    match &parameter_group.type_annotation {
+                                        Some(type_annotation) => {
+                                            Some(type_annotation.clone().desugar())
+                                        }
+                                        // @Task don't return early (?)
+                                        None => {
+                                            return Err(missing_mandatory_type_annotation(
+                                                parameter_group,
+                                            ))
+                                            .many_err();
+                                        }
+                                    };
+
                                 for binder in parameter_group.parameters.iter().rev() {
                                     expression = expr! {
                                         Lambda[] {
                                             parameter: binder.clone(),
-                                            parameter_type_annotation: parameter.clone(),
+                                            parameter_type_annotation: parameter_type_annotation.clone(),
                                             explicitness: parameter_group.explicitness,
                                             body_type_annotation: type_annotation.next(),
                                             body: expression,
@@ -78,35 +99,51 @@ impl parser::Declaration {
                 decl! {
                     Value[self.span][self.attributes] {
                         binder: declaration.binder,
-                        type_annotation: desugar_annotated_parameters(
+                        type_annotation: desugar_parameters_to_annotated_ones(
                             declaration.parameters,
-                            declaration.type_annotation,
-                        ),
+                            declaration_type_annotation,
+                        ).many_err()?,
                         expression,
                     }
                 }
             }
-            Data(data) => decl! {
-                Data[self.span][self.attributes] {
-                    binder: data.binder,
-                    type_annotation: desugar_annotated_parameters(
-                        data.parameters,
-                        data.type_annotation,
-                    ),
-                    constructors: data.constructors.map(|constructors| {
-                        constructors
-                            .into_iter()
-                            .map(|constructor| constructor.desugar(map))
-                            .collect()
-                    }).transpose()?,
+            Data(data) => {
+                // @Task don't return early?
+                let data_type_annotation = match data.type_annotation {
+                    Some(type_annotation) => type_annotation,
+                    None => return Err(missing_mandatory_type_annotation(&self.span)).many_err(),
+                };
+
+                decl! {
+                    Data[self.span][self.attributes] {
+                        binder: data.binder,
+                        type_annotation: desugar_parameters_to_annotated_ones(
+                            data.parameters,
+                            data_type_annotation,
+                        ).many_err()?,
+                        constructors: data.constructors.map(|constructors| {
+                            constructors
+                                .into_iter()
+                                .map(|constructor| constructor.desugar(map))
+                                .collect()
+                        }).transpose()?,
+                    }
                 }
-            },
-            Constructor(constructor) => decl! {
-                Constructor[self.span][self.attributes] {
-                    binder: constructor.binder,
-                    type_annotation: desugar_annotated_parameters(constructor.parameters, constructor.type_annotation),
+            }
+            Constructor(constructor) => {
+                // @Task don't return early?
+                let constructor_type_annotation = match constructor.type_annotation {
+                    Some(type_annotation) => type_annotation,
+                    None => return Err(missing_mandatory_type_annotation(&self.span)).many_err(),
+                };
+                decl! {
+                    Constructor[self.span][self.attributes] {
+                        binder: constructor.binder,
+                        type_annotation: desugar_parameters_to_annotated_ones(constructor.parameters, constructor_type_annotation)
+                            .many_err()?,
+                    }
                 }
-            },
+            }
             Module(module) => {
                 let declarations = match module.declarations {
                     Some(declarations) => declarations,
@@ -176,8 +213,8 @@ impl parser::Declaration {
                         self.kind_as_str()
                     );
                     Diagnostic::new(Level::Fatal, Code::E013, message)
-                        .with_labeled_span(attribute.span, "misplaced attribute")
-                        .with_labeled_span(self.span, "incompatible declaration")
+                        .with_labeled_span(attribute, "misplaced attribute")
+                        .with_labeled_span(self, "incompatible declaration")
                 })
                 .collect());
         }
@@ -197,8 +234,8 @@ impl parser::Declaration {
                 Code::E014,
                 "attributes `foreign` and `inherent` are mutually exclusive",
             )
-            .with_span(max(foreign.span, inherent.span))
-            .with_span(min(foreign.span, inherent.span))]);
+            .with_span(&max(foreign.span, inherent.span))
+            .with_span(&min(foreign.span, inherent.span))]);
         }
 
         let abnormally_bodiless = match &self.kind {
@@ -213,7 +250,7 @@ impl parser::Declaration {
                 Code::E012,
                 "declaration without a definition",
             )
-            .with_span(self.span)]),
+            .with_span(self)]),
             (false, true) => {
                 // @Task make non-fatal, @Task improve message
                 // @Task add subdiagonstic note: foreign is one definition and
@@ -223,7 +260,7 @@ impl parser::Declaration {
                     Code::E020,
                     "declaration has multiple definitions",
                 )
-                .with_labeled_span(self.span, "is foreign and has a body")])
+                .with_labeled_span(self, "is foreign and has a body")])
             }
             (true, true) | (false, false) => Ok(()),
         }
@@ -408,20 +445,25 @@ impl parser::Pattern {
 }
 
 /// Lower annotated parameters from AST to HIR.
-fn desugar_annotated_parameters(
-    parameters: parser::AnnotatedParameters,
+fn desugar_parameters_to_annotated_ones(
+    parameters: parser::Parameters,
     type_annotation: parser::Expression,
-) -> hir::Expression<Desugared> {
+) -> Result<hir::Expression<Desugared>> {
     let mut expression = type_annotation.desugar();
 
-    for parameter_group in parameters.into_iter().rev() {
-        let parameter = parameter_group.type_annotation.desugar();
+    for parameter_group in parameters.parameters.into_iter().rev() {
+        let parameter_type_annotation = match parameter_group.type_annotation {
+            Some(type_annotation) => type_annotation.desugar(),
+            None => {
+                return Err(missing_mandatory_type_annotation(&parameter_group));
+            }
+        };
 
         for binder in parameter_group.parameters.iter().rev() {
             expression = expr! {
                 PiType[] {
                     parameter: Some(binder.clone()),
-                    domain: parameter.clone(),
+                    domain: parameter_type_annotation.clone(),
                     codomain: expression,
                     explicitness: parameter_group.explicitness,
                 }
@@ -429,5 +471,15 @@ fn desugar_annotated_parameters(
         }
     }
 
-    expression
+    Ok(expression)
+}
+
+// @Task maybe differenciate between missing ta on parameters vs body?
+fn missing_mandatory_type_annotation(spanning: &impl Spanning) -> Diagnostic {
+    Diagnostic::new(
+        Level::Error,
+        Code::E015,
+        "missing mandatory type annotation",
+    )
+    .with_span(spanning)
 }

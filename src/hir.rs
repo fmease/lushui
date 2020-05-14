@@ -6,7 +6,7 @@ mod fmt;
 
 use crate::{
     parser::{Attributes, Explicitness},
-    span::{SourceFile, Span, Spanned},
+    span::{SourceFile, Span, Spanned, Spanning},
 };
 use freestanding::freestanding;
 use std::{fmt::Display, rc::Rc};
@@ -40,6 +40,12 @@ impl<P: Pass> Declaration<P> {
             DeclarationKind::Constructor(constructor) => constructor,
             _ => unreachable!(),
         }
+    }
+}
+
+impl<P: Pass> Spanning for Declaration<P> {
+    fn span(&self) -> Span {
+        self.span
     }
 }
 

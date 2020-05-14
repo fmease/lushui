@@ -3,9 +3,9 @@ use crate::{
     diagnostic::*,
     hir,
     hir::{expr, ExpressionKind},
-    parser::Explicitness,
+    parser::{Attribute, Explicitness},
     resolver::{Identifier, Resolved},
-    span::Span,
+    typer::Declaration,
     Nat,
 };
 
@@ -16,8 +16,8 @@ type Constructor = hir::Constructor<Resolved>;
 pub fn register_inherent_bindings<'a>(
     binder: &Identifier,
     mut constructors: impl Iterator<Item = &'a Constructor>,
-    declaration: Span,
-    attribute: Span,
+    declaration: &Declaration,
+    attribute: &Attribute,
     scope: &mut CrateScope,
 ) -> Result<()> {
     // @Task link to previous definition

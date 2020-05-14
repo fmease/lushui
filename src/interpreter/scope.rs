@@ -194,7 +194,7 @@ impl CrateScope {
                     Code::E060,
                     format!("foreign binding `{}` is not registered", binder),
                 )
-                .with_span(binder.source.span));
+                .with_span(&binder));
             }
         };
         Ok(())
@@ -238,7 +238,7 @@ impl CrateScope {
                 Code::E060,
                 format!("foreign data type `{}` is not registered", binder),
             )
-            .with_span(binder.source.span)),
+            .with_span(&binder)),
         }
     }
 
@@ -266,7 +266,7 @@ impl CrateScope {
                 );
                 Err(match expression {
                     Some(expression) => {
-                        diagnostic.with_labeled_span(expression.span, "the type of this expression")
+                        diagnostic.with_labeled_span(&expression, "the type of this expression")
                     }
                     None => diagnostic,
                 })

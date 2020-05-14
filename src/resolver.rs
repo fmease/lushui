@@ -28,7 +28,7 @@ use crate::{
     entity::{Entity, EntityKind},
     hir::{decl, expr, Declaration, DeclarationKind, Expression, ExpressionKind, Pass},
     parser::{self, Path},
-    span::Span,
+    span::{Span, Spanning},
     support::{handle::*, ManyErrExt, TransposeExt},
 };
 
@@ -151,8 +151,8 @@ impl CrateScope {
                     Code::E020,
                     format!("`{}` is defined multiple times in this scope", binder),
                 )
-                .with_labeled_span(binder.span, "redefinition")
-                .with_labeled_span(previous.source.span, "previous definition"));
+                .with_labeled_span(&binder, "redefinition")
+                .with_labeled_span(&previous.source, "previous definition"));
             }
         }
 
@@ -182,7 +182,7 @@ impl CrateScope {
                 &path.tail(),
                 match head.kind {
                     Crate => self.root(),
-                    Super => self.resolve_super(head.span, module)?,
+                    Super => self.resolve_super(head, module)?,
                 },
             );
         }
@@ -197,14 +197,14 @@ impl CrateScope {
             None => match binding {
                 Module(_) => self.resolve_path::<Target>(&path.tail(), index),
                 UntypedValue => {
-                    Err(value_used_as_a_module(path.segments[0].span, path.segments[1].span).into())
+                    Err(value_used_as_a_module(&path.segments[0], &path.segments[1]).into())
                 }
                 _ => unreachable!(),
             },
         }
     }
 
-    fn resolve_super(&self, span: Span, module: CrateIndex) -> Result<CrateIndex> {
+    fn resolve_super(&self, span: &parser::PathHead, module: CrateIndex) -> Result<CrateIndex> {
         self.unwrap_module_scope(module).parent.ok_or_else(|| {
             Diagnostic::new(
                 Level::Error,
@@ -278,7 +278,7 @@ impl CrateScope {
                     .keys()
                     .map(|&index| {
                         Diagnostic::new(Level::Error, Code::E024, "this declaration is circular")
-                            .with_span(self.bindings[index].source.span)
+                            .with_span(&self.bindings[index].source)
                     })
                     .collect());
             }
@@ -417,7 +417,7 @@ impl Declaration<Desugared> {
                             None,
                             "`use` of bare `super` and `crate` disallowed",
                         )
-                        .with_span(self.span)
+                        .with_span(self)
                     })
                     .many_err()?;
 
@@ -724,6 +724,12 @@ impl Identifier {
     }
 }
 
+impl Spanning for Identifier {
+    fn span(&self) -> Span {
+        self.source.span
+    }
+}
+
 use std::fmt;
 
 // @Task print whole path
@@ -854,10 +860,7 @@ impl<'a> FunctionScope<'a> {
                 if let Some(identifier) = query.identifier_head() {
                     if binder == identifier {
                         if query.segments.len() > 1 {
-                            return Err(value_used_as_a_module(
-                                identifier.span,
-                                query.segments[1].span,
-                            ));
+                            return Err(value_used_as_a_module(identifier, &query.segments[1]));
                         }
 
                         Ok(Identifier::new(DebruijnIndex(depth), identifier.clone()))
@@ -899,7 +902,7 @@ impl From<Error> for Diagnostic {
                 // and if it's a complex one: "in module `module`"
                 format!("binding `{}` is not defined in this scope", identifier),
             )
-            .with_span(identifier.span),
+            .with_span(&identifier),
             FoundUnresolvedUse => {
                 Diagnostic::new(Level::Error, None, "some use declarations form a cycle")
             }
@@ -915,16 +918,19 @@ impl From<Diagnostic> for Error {
 }
 
 // @Question fatal?? and if non-fatal, it's probably ignored
-fn value_used_as_a_module(non_module_span: Span, subbinder_span: Span) -> Diagnostic {
+fn value_used_as_a_module(
+    non_module: &parser::Identifier,
+    subbinder: &parser::Identifier,
+) -> Diagnostic {
     Diagnostic::new(
         Level::Fatal,
         Code::E022,
         "values do not have subdeclarations",
     )
-    .with_labeled_span(subbinder_span, "reference to a subdeclaration")
-    .with_labeled_span(non_module_span, "a value, not a module")
+    .with_labeled_span(subbinder, "reference to a subdeclaration")
+    .with_labeled_span(non_module, "a value, not a module")
 }
 
 fn module_used_as_a_value(span: Span) -> Diagnostic {
-    Diagnostic::new(Level::Fatal, Code::E023, "module used as if it was a value").with_span(span)
+    Diagnostic::new(Level::Fatal, Code::E023, "module used as if it was a value").with_span(&span)
 }
