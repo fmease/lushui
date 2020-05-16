@@ -5,7 +5,7 @@
 //! ## Issues
 //!
 //! * crude error locations
-//! * cannot really handle optional indentation and some legal EOIs
+//! * cannot really handle optional indentation
 
 // @Beacon @Task make some errors non-fatal (e.g. unknown attributes)
 // @Task merge parse_parameters and parse_annotated_parameters using enum AnnotationPolicy { Mandatory, Optional }

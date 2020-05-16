@@ -177,12 +177,6 @@ impl<S: Spanning> Spanning for &S {
     }
 }
 
-// impl<S: Spanning> Spanning for &mut S {
-//     fn span(&self) -> Span {
-//         (**self).span()
-//     }
-// }
-
 pub trait PossiblySpanning {
     fn possible_span(&self) -> Option<Span>;
 }

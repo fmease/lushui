@@ -7,6 +7,7 @@ mod fmt;
 use crate::{
     parser::{Attributes, Explicitness},
     span::{SourceFile, Span, Spanned, Spanning},
+    support::MayBeInvalid,
 };
 use freestanding::freestanding;
 use std::{fmt::Display, rc::Rc};
@@ -49,6 +50,14 @@ impl<P: Pass> Spanning for Declaration<P> {
     }
 }
 
+impl<P: Pass> MayBeInvalid for Declaration<P> {
+    fn invalid() -> Self {
+        decl! {
+            Invalid[][Default::default()]
+        }
+    }
+}
+
 #[freestanding]
 #[streamline(Box)]
 pub enum DeclarationKind<P: Pass> {
@@ -75,6 +84,7 @@ pub enum DeclarationKind<P: Pass> {
         binder: Option<P::Binder>,
         reference: P::ReferencedBinderInUse,
     },
+    Invalid,
 }
 
 pub type Expression<P> = Spanned<ExpressionKind<P>>;
@@ -128,6 +138,27 @@ pub enum ExpressionKind<P: Pass> {
         subject: Expression<P>,
         cases: Vec<Case<P>>,
     },
+    // @Task move this the documentation below somewhere else (module-level documentation)
+    // because this applies to so many types
+    /// A sham node emitted when a compiler pass runs into an error state.
+    ///
+    /// This value is necessary to be able to emit multiple seemingly fatal errors
+    /// instead of bailing out early. An HIR value containing an invalid node is
+    /// considered invalid itself. Invalid nodes (implicitly) poison the tree.
+    /// This means that the pass using an invalid node needs to keep track whether
+    /// the tree erroneous. For example by using a `Bag<Diagnostic>` and "emitting"
+    /// all collected errors at once at some defined point. "Emitting" here means
+    /// returning an `Err` such that overall, the pass/function offically fails and
+    /// no invalid nodes ever reach the next pass.
+    /// Invalid nodes should be considered local to a pass.
+    ///
+    /// The alternative design to invalid nodes is more passes (and maybe more intermediate
+    /// representations where each succesive one contains more information).
+    /// This is inconvenient even if we would be able to parameterize an existing HIR
+    /// instead of defining a completely separate one.
+    /// And also maybe, it's more performant than traversing an IR too often (although
+    /// micro pass compilers are known to be very fast actually).
+    Invalid,
     // @Task move??? this only exists in typer,interpreter
     Substitution {
         substitution: crate::interpreter::Substitution,
@@ -138,6 +169,12 @@ pub enum ExpressionKind<P: Pass> {
         callee: P::ForeignApplicationBinder,
         arguments: Vec<Expression<P>>,
     },
+}
+
+impl<P: Pass> MayBeInvalid for Expression<P> {
+    fn invalid() -> Self {
+        expr! { Invalid[] }
+    }
 }
 
 #[derive(Clone)]
@@ -166,16 +203,23 @@ pub enum PatternKind<P: Pass> {
     },
 }
 
-pub macro decl($kind:ident[$span:expr][$attrs:expr] { $( $body:tt )+ }) {{
-    let span = $span;
-    let attributes = $attrs;
-
-    Declaration {
-        kind: DeclarationKind::$kind(Box::new(self::$kind { $( $body )+ })),
-        span,
-        attributes,
+pub macro decl {
+    ($kind:ident[$( $span:expr )?][$attrs:expr] { $( $body:tt )+ }) => {
+        Declaration {
+            span: span!($( $span )?),
+            attributes: $attrs,
+            kind: DeclarationKind::$kind(Box::new(self::$kind { $( $body )+ })),
+        }
+    },
+    ($kind:ident[$( $span:expr )?][$attrs:expr]) => {
+        Declaration {
+            span: span!($( $span )?),
+            attributes: $attrs,
+            kind: DeclarationKind::$kind,
+        }
     }
-}}
+
+}
 
 pub macro expr {
     ($kind:ident[$( $span:expr )?] { $( $body:tt )+ }) => {{

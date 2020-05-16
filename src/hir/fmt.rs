@@ -63,6 +63,7 @@ impl<P: Pass> Declaration<P> {
                 Some(binder) => writeln!(f, "use {} as {}", declaration.reference, binder)?,
                 None => writeln!(f, "use {}", declaration.reference)?,
             },
+            Invalid => f.write_str("<invalid>")?,
         }
 
         Ok(())
@@ -109,6 +110,7 @@ impl<P: Pass> Display for Expression<P> {
                     .map(|case| format!(" {}", case))
                     .collect::<String>()
             ),
+            Invalid => f.write_str("<invalid>"),
             Substitution(substitution) => write!(
                 f,
                 "<substitution {} {}>",

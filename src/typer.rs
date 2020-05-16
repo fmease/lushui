@@ -8,6 +8,7 @@ use crate::{
     interpreter::{ffi, CrateScope, Form, FunctionScope},
     parser::{AttributeKind, Explicitness},
     resolver::Resolved,
+    support::MayBeInvalid,
 };
 
 pub type Declaration = hir::Declaration<Resolved>;
@@ -132,6 +133,7 @@ impl Declaration {
                 }
             }
             Use(_) => {}
+            Invalid => {}
         }
 
         Ok(())
@@ -325,6 +327,7 @@ impl Expression {
                 // })
             }
             ForeignApplication(_) => unreachable!(),
+            Invalid => MayBeInvalid::invalid(),
         })
     }
 

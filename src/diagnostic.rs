@@ -12,8 +12,11 @@ type CowStr = std::borrow::Cow<'static, str>;
 
 pub type Result<T, E = Diagnostic> = std::result::Result<T, E>;
 
-pub type Diagnostics = Vec<Diagnostic>;
+pub use std::collections::HashSet as Bag;
 
+pub type Diagnostics = Bag<Diagnostic>;
+
+#[derive(Hash, PartialEq, Eq)]
 pub struct Diagnostic {
     raw: Box<RawDiagnostic>,
 }
@@ -34,13 +37,13 @@ impl std::ops::DerefMut for Diagnostic {
 
 // @Note the design of the diagnostic system is still not set.
 // one big question: subdiagnostics: when, how?
+#[derive(Hash, PartialEq, Eq)]
 pub struct RawDiagnostic {
     level: Level,
     message: CowStr,
     code: Option<Code>,
     highlights: Vec<Highlight>,
 }
-
 // @Task be able to have errors associated with a file but not a snippet
 // @Note I still want to rely on `Span`
 impl Diagnostic {
@@ -261,7 +264,7 @@ impl Diagnostic {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub enum Level {
     Bug,
     Fatal,
@@ -305,7 +308,7 @@ impl fmt::Display for Level {
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Hash)]
 struct Highlight {
     span: Span,
     role: Role,
@@ -315,7 +318,7 @@ struct Highlight {
 // @Note multiple primaries don't merge right now but have undefined behavior/should be an error
 // @Note we have this design because we want to ergonomically sort by span (primary is not necessarily
 // the first to be previewed)
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Hash)]
 enum Role {
     Primary,
     Secondary,
@@ -341,7 +344,7 @@ impl Role {
 ///
 /// Used for language-related error in contrast to errors emitted because of
 /// faulty interactions with the CLI.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 #[forbid(missing_docs)]
 pub enum Code {
     /// Illegal character encountered.

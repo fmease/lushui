@@ -1,6 +1,6 @@
 #![forbid(rust_2018_idioms, unused_must_use)]
 
-use std::{borrow::Cow, path::Path};
+use std::path::Path;
 use structopt::StructOpt;
 
 use lushui::{
@@ -10,7 +10,7 @@ use lushui::{
     parser::{Identifier, Parser},
     resolver,
     span::{SourceMap, Span},
-    support::ManyErrExt,
+    support::{pluralize, ManyErrExt},
 };
 
 const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " ", env!("GIT_COMMIT_HASH"));
@@ -193,10 +193,9 @@ fn main() {
         Diagnostic::new(
             Level::Fatal,
             None,
-            match amount {
-                1 => Cow::from("aborting due to previous error"),
-                amount => format!("aborting due to {} previous errors", amount).into(),
-            },
+            pluralize(amount, "aborting due to previous error", |amount| {
+                format!("aborting due to {} previous errors", amount)
+            }),
         )
         .emit(Some(&map));
     }

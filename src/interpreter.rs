@@ -29,6 +29,7 @@ use crate::{
     parser::Explicitness,
     resolver::Resolved,
     span::Spanning,
+    support::MayBeInvalid,
     typer,
 };
 pub use scope::CrateScope;
@@ -201,6 +202,7 @@ impl Expression {
                     }).collect()
                 }
             },
+            (Invalid, _) => MayBeInvalid::invalid(),
         }
     }
 
@@ -396,6 +398,7 @@ impl Expression {
                         }
                     })
             }
+            Invalid => MayBeInvalid::invalid(),
         })
     }
 
@@ -496,6 +499,7 @@ impl Expression {
                     )?
             }
             (CaseAnalysis(_), CaseAnalysis(_)) => unreachable!(),
+            (Invalid, _) | (_, Invalid) => panic!("trying to check equality on an invalid node"),
             _ => false,
         })
     }

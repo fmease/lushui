@@ -37,11 +37,7 @@
 * pass a context to more and more functions containing command line arguments, source map
   and stuff
 * fix let/in (parsing)
-* update VS Code grammar
 * fix the ugly functions in the parser which lead to bad error messages
-* drastically improve error message for missing type annotations for declarations in the parser
-* finally check what early EOI do to the parser instead of line breaks and the like
-* figure out how to handle multiple errors better
 * indentation
   * allow indentation by a multiple of 4 (e.g. 8), the parser should handle invalid stuff
     this solves issues where there are empty lines at the beginning of a module body
@@ -54,7 +50,6 @@
   think because most functions don't need ownership and if it does, we can just cheaply clone the Rc.
   this is useful for lifetime stuff e.g. `ModuleScope::constructors` should take an `&Expression` to
   be able to return `&[Identifier]` instead of an expensive clone for `Vec<Identifier>`
-* split `interpreter.rs` into type checker and interpreter
 * CLI
   * add subcommands:
     * `highlight`

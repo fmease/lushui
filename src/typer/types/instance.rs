@@ -13,6 +13,7 @@ use crate::{
     diagnostic::{Code, Diagnostic, Level, Result},
     interpreter::{CrateScope, FunctionScope},
     resolver::Identifier,
+    support::MayBeInvalid,
     typer::{Expression, ExpressionKind},
 };
 
@@ -65,6 +66,7 @@ impl Expression {
             // @Note not sure
             | Substitution(_)
             | ForeignApplication(_) => unreachable!(),
+            Invalid => MayBeInvalid::invalid(),
         }
     }
 

@@ -7,45 +7,82 @@
 
 use crate::diagnostic::{Diagnostic, Diagnostics};
 
-type Result<T> = std::result::Result<T, Diagnostics>;
+type Result<T, E = Diagnostics> = std::result::Result<T, E>;
 
-// @Task better names
-pub mod handle {
+// @Note the `accumulate_error` methods ignore whether an error is fatal or not, this should be changed @Task
+
+pub mod accumulate_errors {
     use super::*;
 
-    /// "Handle" 2 results mapping okays and merging errors which are `Vec`s
-    pub trait HandleTwo<A, B> {
-        fn handle<O>(self, map: impl FnOnce(A, B) -> O) -> Result<O>;
+    pub trait Accumulate2Errors<A, B> {
+        fn accumulate_err(self) -> Result<(A, B)>;
     }
 
-    pub trait HandleThree<A, B, C> {
-        fn handle<O>(self, map: impl FnOnce(A, B, C) -> O) -> Result<O>;
+    pub trait Accumulate3Errors<A, B, C> {
+        fn accumulate_err(self) -> Result<(A, B, C)>;
     }
 
-    impl<A, B> HandleTwo<A, B> for (Result<A>, Result<B>) {
-        fn handle<O>(self, map: impl FnOnce(A, B) -> O) -> Result<O> {
+    impl<A, B> Accumulate2Errors<A, B> for (Result<A>, Result<B>) {
+        fn accumulate_err(self) -> Result<(A, B)> {
             match (self.0, self.1) {
-                (Ok(okay0), Ok(okay1)) => Ok(map(okay0, okay1)),
+                (Ok(okay0), Ok(okay1)) => Ok((okay0, okay1)),
                 (Err(error), Ok(_)) | (Ok(_), Err(error)) => Err(error),
-                (Err(error0), Err(mut error1)) => {
+                (Err(error0), Err(error1)) => {
                     let mut error = error0;
-                    error.append(&mut error1);
+                    error.extend(error1);
                     Err(error)
                 }
             }
         }
     }
 
-    impl<A, B, C> HandleThree<A, B, C> for (Result<A>, Result<B>, Result<C>) {
-        fn handle<O>(self, map: impl FnOnce(A, B, C) -> O) -> Result<O> {
-            (
-                (self.0, self.1).handle(|okay0, okay1| (okay0, okay1)),
-                self.2,
-            )
-                .handle(|(okay0, okay1), okay2| map(okay0, okay1, okay2))
+    impl<A, B, C> Accumulate3Errors<A, B, C> for (Result<A>, Result<B>, Result<C>) {
+        fn accumulate_err(self) -> Result<(A, B, C)> {
+            let result = (self.0, self.1).accumulate_err();
+            let ((okay0, okay1), okay2) = (result, self.2).accumulate_err()?;
+            Ok((okay0, okay1, okay2))
         }
     }
 }
+
+pub trait MayBeInvalid {
+    fn invalid() -> Self;
+}
+
+pub trait TryNonFatallyExt<T: MayBeInvalid> {
+    fn try_non_fatally(self, bag: &mut Diagnostics) -> T;
+}
+
+impl<T: MayBeInvalid> TryNonFatallyExt<T> for Result<T> {
+    fn try_non_fatally(self, bag: &mut Diagnostics) -> T {
+        match self {
+            Ok(okay) => okay,
+            Err(errors) => {
+                bag.extend(errors);
+                T::invalid()
+            }
+        }
+    }
+}
+
+impl<T: MayBeInvalid> TryNonFatallyExt<T> for Result<T, Diagnostic> {
+    fn try_non_fatally(self, bag: &mut Diagnostics) -> T {
+        match self {
+            Ok(okay) => okay,
+            Err(error) => {
+                bag.insert(error);
+                T::invalid()
+            }
+        }
+    }
+}
+
+pub macro release_errors($errors:expr) {{
+    let errors = $errors;
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+}}
 
 pub trait TransposeExt<T> {
     fn transpose(self) -> Result<Vec<T>>;
@@ -62,7 +99,7 @@ impl<T> TransposeExt<T> for Vec<Result<T>> {
                 },
                 Err(ref mut previous_errors) => match result {
                     Ok(_) => (),
-                    Err(mut errors) => previous_errors.append(&mut errors),
+                    Err(errors) => previous_errors.extend(errors),
                 },
             }
         }
@@ -74,8 +111,21 @@ pub trait ManyErrExt<T> {
     fn many_err(self) -> Result<T>;
 }
 
-impl<T> ManyErrExt<T> for std::result::Result<T, Diagnostic> {
+impl<T> ManyErrExt<T> for Result<T, Diagnostic> {
     fn many_err(self) -> Result<T> {
-        self.map_err(|error| vec![error])
+        self.map_err(|error| Some(error).into_iter().collect())
+    }
+}
+
+use std::borrow::Cow;
+
+pub fn pluralize<'a, S: Into<Cow<'a, str>>>(
+    amount: usize,
+    singular: &'a str,
+    plural: fn(usize) -> S,
+) -> Cow<'a, str> {
+    match amount {
+        1 => singular.into(),
+        amount => plural(amount).into(),
     }
 }

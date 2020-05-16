@@ -4,7 +4,10 @@ use std::{
     rc::Rc,
 };
 
-use crate::span::{PossiblySpanning, SourceFile, Span, Spanned, Spanning};
+use crate::{
+    span::{PossiblySpanning, SourceFile, Span, Spanned, Spanning},
+    support::MayBeInvalid,
+};
 use freestanding::freestanding;
 
 #[derive(Debug)]
@@ -220,6 +223,16 @@ pub enum ExpressionKind {
         expression: Expression,
         cases: Vec<CaseAnalysisCaseGroup>,
     },
+    /// See documentation on [crate::hir::Expression::Invalid].
+    Invalid,
+}
+
+impl MayBeInvalid for Expression {
+    fn invalid() -> Self {
+        expr! {
+            Invalid[Span::SHAM]
+        }
+    }
 }
 
 /// Expression where ExpressionKind is unboxed.

@@ -12,8 +12,6 @@
 //! * handle module privacy (notably restricted exposure and good error messages)
 //! * handle crate declarations
 
-// @Note the `handle` methods ignore whether an error is fatal or not, this should be changed @Task
-
 // @Beacon @Task `X: Type = Duple Non-Existent-One Non-Existent-Two` should
 // report both errors (I don't think that's the case right now)
 // @Note for this create a DeclarationKind::Invalid (and maybe also ::Fatal) and have a#
@@ -29,7 +27,7 @@ use crate::{
     hir::{decl, expr, Declaration, DeclarationKind, Expression, ExpressionKind, Pass},
     parser::{self, Path},
     span::{Span, Spanning},
-    support::{handle::*, ManyErrExt, TransposeExt},
+    support::{accumulate_errors::*, ManyErrExt, MayBeInvalid, TransposeExt},
 };
 
 const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
@@ -425,6 +423,7 @@ impl Declaration<Desugared> {
                     .register_use_binding(binder.clone(), &declaration.reference, module)
                     .many_err()?;
             }
+            Invalid => {}
         }
 
         Ok(())
@@ -437,7 +436,7 @@ impl Declaration<Desugared> {
     ) -> Result<Declaration<Resolved>, Diagnostics> {
         use DeclarationKind::*;
 
-        match self.kind {
+        Ok(match self.kind {
             Value(declaration) => {
                 let module = module.unwrap();
 
@@ -462,15 +461,16 @@ impl Declaration<Desugared> {
                 let span = self.span;
                 let attributes = self.attributes;
 
-                (type_annotation, expression).handle(|type_annotation, expression| {
-                    decl! {
-                        Value[span][attributes] {
-                            binder,
-                            type_annotation,
-                            expression,
-                        }
+                let (type_annotation, expression) =
+                    (type_annotation, expression).accumulate_err()?;
+
+                decl! {
+                    Value[span][attributes] {
+                        binder,
+                        type_annotation,
+                        expression,
                     }
-                })
+                }
             }
             Data(declaration) => {
                 let module = module.unwrap();
@@ -493,17 +493,16 @@ impl Declaration<Desugared> {
                 let span = self.span;
                 let attributes = self.attributes;
 
-                (type_annotation, constructors.transpose()).handle(
-                    |type_annotation, constructors| {
-                        decl! {
-                            Data[span][attributes] {
-                                binder,
-                                constructors,
-                                type_annotation,
-                            }
-                        }
-                    },
-                )
+                let (type_annotation, constructors) =
+                    (type_annotation, constructors.transpose()).accumulate_err()?;
+
+                decl! {
+                    Data[span][attributes] {
+                        binder,
+                        constructors,
+                        type_annotation,
+                    }
+                }
             }
             Constructor(declaration) => {
                 let module = module.unwrap();
@@ -519,12 +518,12 @@ impl Declaration<Desugared> {
                 let span = self.span;
                 let attributes = self.attributes;
 
-                Ok(decl! {
+                decl! {
                     Constructor[span][attributes] {
                         binder,
                         type_annotation,
                     }
-                })
+                }
             }
             Module(declaration) => {
                 // @Note ValueOrModule too general @Bug this might lead to
@@ -543,13 +542,13 @@ impl Declaration<Desugared> {
                     .collect::<Vec<_>>()
                     .transpose()?;
 
-                Ok(decl! {
+                decl! {
                     Module[self.span][self.attributes] {
                         binder: Identifier::new(index, declaration.binder),
                         file: declaration.file,
                         declarations,
                     }
-                })
+                }
             }
             Use(declaration) => {
                 let module = module.unwrap();
@@ -559,15 +558,16 @@ impl Declaration<Desugared> {
                     .resolve_identifier::<ValueOrModule>(&binder, module)
                     .many_err()?;
 
-                Ok(decl! {
+                decl! {
                     Use[self.span][self.attributes] {
                         binder: Some(Identifier::new(index, binder.clone())),
                         // @Temporary
                         reference: Identifier::new(index, binder.clone()),
                     }
-                })
+                }
             }
-        }
+            Invalid => MayBeInvalid::invalid(),
+        })
     }
 }
 
@@ -639,6 +639,7 @@ impl Expression<Desugared> {
             UseIn => todo!("resolving use/in"),
             CaseAnalysis(_expression) => todo!("resolving case analysis"),
             Substitution(_) | ForeignApplication(_) => unreachable!(),
+            Invalid => MayBeInvalid::invalid(),
         })
     }
 }

@@ -36,6 +36,7 @@ impl Expression {
             Nat(_) | Text(_) => unreachable!(),
             Substitution(_) => todo!(),
             ForeignApplication(_) => todo!(),
+            Invalid => panic!("trying to check inhabitation of an invalid node"),
         }
     }
 }

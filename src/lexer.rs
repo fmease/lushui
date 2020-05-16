@@ -242,7 +242,7 @@ impl<'a> Lexer<'a> {
                 '_' => self.lex_underscore(),
                 character => {
                     self.take();
-                    return Err(vec![Diagnostic::new(
+                    return Err(Diagnostic::new(
                         Level::Fatal,
                         Code::E000,
                         format!(
@@ -250,7 +250,8 @@ impl<'a> Lexer<'a> {
                             character as u32, character
                         ),
                     )
-                    .with_span(&self.span())]);
+                    .with_span(&self.span()))
+                    .many_err();
                 }
             }
         }
