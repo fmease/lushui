@@ -13,7 +13,14 @@ use lushui::{
     support::{pluralize, ManyErrExt},
 };
 
-const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " ", env!("GIT_COMMIT_HASH"));
+const VERSION: &str = concat!(
+    env!("CARGO_PKG_VERSION"),
+    " (",
+    env!("GIT_COMMIT_HASH"),
+    " ",
+    env!("GIT_COMMIT_DATE"),
+    ")"
+);
 
 // @Task gather all print flags under a common --print=THING option
 #[derive(StructOpt)]
@@ -193,7 +200,7 @@ fn main() {
         Diagnostic::new(
             Level::Fatal,
             None,
-            pluralize(amount, "aborting due to previous error", |amount| {
+            pluralize(amount, "aborting due to previous error", || {
                 format!("aborting due to {} previous errors", amount)
             }),
         )

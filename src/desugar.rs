@@ -541,7 +541,7 @@ impl fmt::Display for AnnotationTarget {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Parameters { amount } => {
-                write!(f, "{}", pluralize(*amount, "parameter", |_| "parameters"))
+                write!(f, "{}", pluralize(*amount, "parameter", || "parameters"))
             }
             Self::Function => f.write_str("function declaration"),
             Self::Constructor => f.write_str("constructor declaration"),

@@ -122,10 +122,10 @@ use std::borrow::Cow;
 pub fn pluralize<'a, S: Into<Cow<'a, str>>>(
     amount: usize,
     singular: &'a str,
-    plural: fn(usize) -> S,
+    plural: impl FnOnce() -> S,
 ) -> Cow<'a, str> {
     match amount {
         1 => singular.into(),
-        amount => plural(amount).into(),
+        _ => plural().into(),
     }
 }

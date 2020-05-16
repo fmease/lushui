@@ -150,11 +150,12 @@ pub enum ExpressionKind<P: Pass> {
     /// all collected errors at once at some defined point. "Emitting" here means
     /// returning an `Err` such that overall, the pass/function offically fails and
     /// no invalid nodes ever reach the next pass.
-    /// Invalid nodes should be considered local to a pass.
+    /// Invalid nodes should be considered local to a pass (the definition of a pass
+    /// is left open).
     ///
     /// The alternative design to invalid nodes is more passes (and maybe more intermediate
-    /// representations where each succesive one contains more information).
-    /// This is inconvenient even if we would be able to parameterize an existing HIR
+    /// representations where each successive one contains more information).
+    /// This is inconvenient even if we were able to parameterize an existing HIR
     /// instead of defining a completely separate one.
     /// And also maybe, it's more performant than traversing an IR too often (although
     /// micro pass compilers are known to be very fast actually).
