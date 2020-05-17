@@ -50,7 +50,7 @@ impl parser::Declaration {
                     Some(type_annotation) => type_annotation,
                     None => Err(missing_mandatory_type_annotation(
                         &self.span,
-                        AnnotationTarget::Function,
+                        AnnotationTarget::Declaration,
                     ))
                     .try_non_fatally(&mut error_bag),
                 };
@@ -119,7 +119,7 @@ impl parser::Declaration {
                     Some(type_annotation) => type_annotation,
                     None => Err(missing_mandatory_type_annotation(
                         &self.span,
-                        AnnotationTarget::DataType,
+                        AnnotationTarget::Declaration,
                     ))
                     .try_non_fatally(&mut error_bag),
                 };
@@ -152,7 +152,7 @@ impl parser::Declaration {
                     Some(type_annotation) => type_annotation,
                     None => Err(missing_mandatory_type_annotation(
                         &self.span,
-                        AnnotationTarget::Constructor,
+                        AnnotationTarget::Declaration,
                     ))
                     .try_non_fatally(&mut error_bag),
                 };
@@ -532,9 +532,7 @@ fn missing_mandatory_type_annotation(
 
 enum AnnotationTarget {
     Parameters { amount: usize },
-    Function,
-    Constructor,
-    DataType,
+    Declaration,
 }
 
 impl fmt::Display for AnnotationTarget {
@@ -543,9 +541,7 @@ impl fmt::Display for AnnotationTarget {
             Self::Parameters { amount } => {
                 write!(f, "{}", pluralize(*amount, "parameter", || "parameters"))
             }
-            Self::Function => f.write_str("function declaration"),
-            Self::Constructor => f.write_str("constructor declaration"),
-            Self::DataType => f.write_str("data type declaration"),
+            Self::Declaration => f.write_str("declaration"),
         }
     }
 }

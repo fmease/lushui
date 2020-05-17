@@ -27,7 +27,10 @@ use crate::{
     hir::{decl, expr, Declaration, DeclarationKind, Expression, ExpressionKind, Pass},
     parser::{self, Path},
     span::{Span, Spanning},
-    support::{accumulate_errors::*, ManyErrExt, MayBeInvalid, TransposeExt},
+    support::{
+        accumulate_errors::*, release_errors, ManyErrExt, MayBeInvalid, TransposeExt,
+        TryNonFatallyExt,
+    },
 };
 
 const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
@@ -442,16 +445,11 @@ impl Declaration<Desugared> {
 
                 let type_annotation = declaration
                     .type_annotation
-                    .resolve(&FunctionScope::Module(module), scope)
-                    .many_err();
+                    .resolve(&FunctionScope::Module(module), scope);
 
                 let expression = declaration
                     .expression
-                    .map(|expression| {
-                        expression
-                            .resolve(&FunctionScope::Module(module), scope)
-                            .many_err()
-                    })
+                    .map(|expression| expression.resolve(&FunctionScope::Module(module), scope))
                     .transpose();
 
                 let binder = scope
@@ -477,8 +475,7 @@ impl Declaration<Desugared> {
 
                 let type_annotation = declaration
                     .type_annotation
-                    .resolve(&FunctionScope::Module(module), scope)
-                    .many_err();
+                    .resolve(&FunctionScope::Module(module), scope);
 
                 let constructors = declaration.constructors.map(|constructors| {
                     constructors
@@ -509,8 +506,7 @@ impl Declaration<Desugared> {
 
                 let type_annotation = declaration
                     .type_annotation
-                    .resolve(&FunctionScope::Module(module), scope)
-                    .many_err()?;
+                    .resolve(&FunctionScope::Module(module), scope)?;
 
                 let binder = scope
                     .resolve_identifier::<OnlyValue>(&declaration.binder, module)
@@ -577,28 +573,30 @@ impl Expression<Desugared> {
         self,
         scope: &FunctionScope<'_>,
         crate_scope: &CrateScope,
-    ) -> Result<Expression<Resolved>> {
+    ) -> Result<Expression<Resolved>, Diagnostics> {
         use ExpressionKind::*;
 
-        Ok(match self.kind {
+        let mut error_collection = Bag::new();
+
+        let expression = match self.kind {
             PiType(pi) => {
                 expr! {
                     PiType[self.span] {
                         parameter: pi.parameter.clone()
                             .map(|parameter| Identifier::new(Index::DebruijnParameter, parameter.clone())),
-                        domain: pi.domain.clone().resolve(scope, crate_scope)?,
+                        domain: pi.domain.clone().resolve(scope, crate_scope).try_non_fatally(&mut error_collection),
                         codomain: match pi.parameter.clone() {
-                            Some(parameter) => pi.codomain.clone().resolve(&scope.extend(parameter), crate_scope)?,
-                            None => pi.codomain.clone().resolve(scope, crate_scope)?,
-                        },
+                            Some(parameter) => pi.codomain.clone().resolve(&scope.extend(parameter), crate_scope),
+                            None => pi.codomain.clone().resolve(scope, crate_scope),
+                        }.try_non_fatally(&mut error_collection),
                         explicitness: pi.explicitness,
                     }
                 }
             }
             Application(application) => expr! {
                 Application[self.span] {
-                    callee: application.callee.clone().resolve(scope, crate_scope)?,
-                    argument: application.argument.clone().resolve(scope, crate_scope)?,
+                    callee: application.callee.clone().resolve(scope, crate_scope).try_non_fatally(&mut error_collection),
+                    argument: application.argument.clone().resolve(scope, crate_scope).try_non_fatally(&mut error_collection),
                     explicitness: application.explicitness,
                 }
             },
@@ -619,20 +617,22 @@ impl Expression<Desugared> {
             },
             Binding(binding) => expr! {
                 Binding[self.span] {
-                    binder: scope.resolve_binding(&binding.binder, crate_scope)?,
+                    binder: scope.resolve_binding(&binding.binder, crate_scope).many_err()?,
                 }
             },
             Lambda(lambda) => expr! {
                 Lambda[self.span] {
                     parameter: Identifier::new(Index::DebruijnParameter, lambda.parameter.clone()),
                     parameter_type_annotation: lambda.parameter_type_annotation.clone()
-                        .map(|r#type| r#type.resolve(scope, crate_scope))
-                        .transpose()?,
+                        .map(|r#type| r#type
+                            .resolve(scope, crate_scope)
+                            .try_non_fatally(&mut error_collection)),
                     body_type_annotation: lambda.body_type_annotation.clone()
-                        .map(|r#type| r#type.resolve(&scope.extend(lambda.parameter.clone()), crate_scope))
-                        .transpose()?,
+                        .map(|r#type| r#type
+                            .resolve(&scope.extend(lambda.parameter.clone()), crate_scope)
+                            .try_non_fatally(&mut error_collection)),
                     body: lambda.body.clone()
-                        .resolve(&scope.extend(lambda.parameter.clone()), crate_scope)?,
+                        .resolve(&scope.extend(lambda.parameter.clone()), crate_scope).try_non_fatally(&mut error_collection),
                     explicitness: lambda.explicitness,
                 }
             },
@@ -640,7 +640,11 @@ impl Expression<Desugared> {
             CaseAnalysis(_expression) => todo!("resolving case analysis"),
             Substitution(_) | ForeignApplication(_) => unreachable!(),
             Invalid => MayBeInvalid::invalid(),
-        })
+        };
+
+        release_errors!(error_collection);
+
+        Ok(expression)
     }
 }
 
