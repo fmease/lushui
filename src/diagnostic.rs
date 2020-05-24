@@ -1,10 +1,4 @@
 //! The diagnostic system.
-//!
-//! ## Issues
-//!
-//! * does not support subdiagnostics yet
-//! * does not support multiline spans
-//! * does not feature error handling abstractions like diagnostic buffers
 
 use crate::span::{SourceMap, Span, Spanning};
 
@@ -100,7 +94,6 @@ impl Diagnostic {
         eprintln!();
     }
 
-    // @Task handle multiline spans (needs support from crate::span)
     // @Task if the span equals the span of the entire file, don't output its content
     // @Task if two spans reside on the same line, print them inline not above each other (maybe)
     fn display(&mut self, map: Option<&SourceMap>) -> String {

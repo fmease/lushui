@@ -4,21 +4,15 @@
 //!
 //! ## Future Features
 //!
-//! * resolve out-of-order declarations
-//! * resolve recursive (value) declarations and prepare the resulting bindings
-//!   for the type checker which should be able to type-check recursive functions
-//!   and (!) equi-recursive types)
-//! * gracefully handle cyclic dependencies
 //! * handle module privacy (notably restricted exposure and good error messages)
 //! * handle crate declarations
 
-// @Beacon @Task `X: Type = Duple Non-Existent-One Non-Existent-Two` should
-// report both errors (I don't think that's the case right now)
-// @Note for this create a DeclarationKind::Invalid (and maybe also ::Fatal) and have a#
-// Diagnostic buffer in CrateScope. Then, bubble invalids up
-
 use indexed_vec::IndexVec;
-use std::{collections::HashMap, rc::Rc};
+use std::{
+    collections::HashMap,
+    convert::{TryFrom, TryInto},
+    rc::Rc,
+};
 
 use crate::{
     desugar::Desugared,
@@ -42,12 +36,47 @@ pub struct CrateScope {
     ///
     /// The first element will always be the root module.
     pub(crate) bindings: Bindings,
-    unresolved_uses: HashMap<CrateIndex, WorklistItem>,
+    /// For resolving out-of-order use declarations.
+    unresolved_uses: HashMap<CrateIndex, UnresolvedUse>,
+}
+
+impl fmt::Debug for CrateScope {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use crate::support::DisplayIsDebug;
+
+        f.debug_struct("resolver::CrateScope")
+            .field(
+                "bindings",
+                &DisplayIsDebug(&display_bindings(&self.bindings)),
+            )
+            .field("unresolved_uses", &self.unresolved_uses)
+            .finish()
+    }
 }
 
 pub type Bindings = IndexVec<CrateIndex, Entity>;
 
-struct WorklistItem {
+pub fn display_bindings(bindings: &Bindings) -> String {
+    let break_on = |predicate| if predicate { "\n" } else { "" };
+
+    bindings
+        .iter()
+        .enumerate()
+        .map(|(index, binding)| {
+            let index = CrateIndex(index);
+            format!(
+                "{}    {:?}: {:?}{}",
+                break_on(index == CrateIndex(0)),
+                index,
+                binding,
+                break_on(index != bindings.last_idx().unwrap()),
+            )
+        })
+        .collect()
+}
+
+#[derive(Debug)]
+struct UnresolvedUse {
     reference: Path,
     module: CrateIndex,
 }
@@ -122,7 +151,7 @@ impl CrateScope {
 
         let old = self.unresolved_uses.insert(
             index,
-            WorklistItem {
+            UnresolvedUse {
                 reference: reference.clone(),
                 module,
             },
@@ -226,7 +255,7 @@ impl CrateScope {
             .iter()
             .copied()
             .find(|&index| &self.bindings[index].source == identifier)
-            .ok_or_else(|| Error::UndefinedBinding(identifier.clone()))
+            .ok_or_else(|| Error::Recoverable(UndefinedBinding(identifier.clone())))
             .and_then(|index| self.resolve_use(index))
     }
 
@@ -238,7 +267,7 @@ impl CrateScope {
             Use(reference) => Ok(reference),
             // @Note @Beacon looks like a hack, we should improve upon
             // this design
-            UnresolvedUse => Err(Error::FoundUnresolvedUse),
+            UnresolvedUse => Err(Error::Recoverable(FoundUnresolvedUse)),
             _ => unreachable!(),
         }
     }
@@ -248,7 +277,9 @@ impl CrateScope {
         identifier: &parser::Identifier,
         module: CrateIndex,
     ) -> Result<Target::Output> {
-        let index = self.resolve_first_segment(identifier, module)?;
+        let index = self
+            .resolve_first_segment(identifier, module)
+            .map_err(|error| error.try_into().unwrap())?;
         Target::resolve_simple_path(identifier, &self.bindings[index].kind, index)
     }
 
@@ -261,16 +292,16 @@ impl CrateScope {
                     Ok(reference) => {
                         self.bindings[index].kind = EntityKind::Use(reference);
                     }
-                    Err(FoundUnresolvedUse) => {
+                    Err(Error::Recoverable(FoundUnresolvedUse)) => {
                         unresolved_uses.insert(
                             index,
-                            WorklistItem {
+                            UnresolvedUse {
                                 reference: item.reference.clone(),
                                 module: item.module,
                             },
                         );
                     }
-                    Err(other) => return Err(other.into()).many_err(),
+                    Err(other) => return Err(other.try_into().unwrap()).many_err(),
                 }
             }
 
@@ -684,6 +715,10 @@ impl Identifier {
         self.source.as_str()
     }
 
+    pub fn to_expression(self) -> Expression<Resolved> {
+        expr! { Binding[self.span()] { binder: self } }
+    }
+
     // @Note bad name
     pub fn as_innermost(&self) -> Self {
         Self::new(DebruijnIndex(0), self.source.clone())
@@ -860,7 +895,7 @@ impl<'a> FunctionScope<'a> {
         match self {
             FunctionScope::Module(module) => crate_scope
                 .resolve_path::<OnlyValue>(query, *module)
-                .map_err(Into::into),
+                .map_err(|error| error.try_into().unwrap()),
             FunctionScope::Binding { parent, binder } => {
                 if let Some(identifier) = query.identifier_head() {
                     if binder == identifier {
@@ -875,7 +910,7 @@ impl<'a> FunctionScope<'a> {
                 } else {
                     crate_scope
                         .resolve_path::<OnlyValue>(query, parent.module())
-                        .map_err(Into::into)
+                        .map_err(|error| error.try_into().unwrap())
                 }
             }
         }
@@ -889,36 +924,31 @@ impl<'a> FunctionScope<'a> {
     }
 }
 
-use Error::*;
+type Error = crate::support::Error<RecoverableError>;
 
-enum Error {
+use RecoverableError::*;
+
+enum RecoverableError {
+    // @Note not recovered anywhere (yet?)
     UndefinedBinding(parser::Identifier),
     FoundUnresolvedUse,
-    Unrecoverable(Diagnostic),
 }
 
-impl From<Error> for Diagnostic {
-    fn from(error: Error) -> Self {
+impl TryFrom<RecoverableError> for Diagnostic {
+    type Error = ();
+
+    fn try_from(error: RecoverableError) -> Result<Self, Self::Error> {
         match error {
-            UndefinedBinding(identifier) => Diagnostic::new(
+            UndefinedBinding(identifier) => Ok(Diagnostic::new(
                 Level::Error,
                 Code::E021,
                 // @Task modify error message: if it's a simple path: "in this scope/module"
                 // and if it's a complex one: "in module `module`"
                 format!("binding `{}` is not defined in this scope", identifier),
             )
-            .with_span(&identifier),
-            FoundUnresolvedUse => {
-                Diagnostic::new(Level::Error, None, "some use declarations form a cycle")
-            }
-            Unrecoverable(diagnostic) => diagnostic,
+            .with_span(&identifier)),
+            FoundUnresolvedUse => Err(()),
         }
-    }
-}
-
-impl From<Diagnostic> for Error {
-    fn from(diagnostic: Diagnostic) -> Self {
-        Unrecoverable(diagnostic)
     }
 }
 

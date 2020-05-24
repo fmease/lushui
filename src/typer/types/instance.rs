@@ -11,7 +11,7 @@
 
 use crate::{
     diagnostic::{Code, Diagnostic, Level, Result},
-    interpreter::{CrateScope, FunctionScope},
+    interpreter::scope::FunctionScope,
     resolver::Identifier,
     support::MayBeInvalid,
     typer::{Expression, ExpressionKind},
@@ -21,12 +21,11 @@ pub(in crate::typer) fn assert_constructor_is_instance_of_type(
     constructor_name: Identifier,
     constructor: Expression,
     r#type: Expression,
-    scope: &CrateScope,
 ) -> Result<()> {
-    let result_type = constructor.result_type(&FunctionScope::Module(scope));
+    let result_type = constructor.result_type(&FunctionScope::Empty);
     let callee = result_type.callee();
 
-    if !r#type.equals(callee, &FunctionScope::Module(scope))? {
+    if !r#type.equals(callee, &FunctionScope::Empty)? {
         // @Task improve error diagnostic
         // @Task add span information
         Err(Diagnostic::new(
@@ -49,8 +48,8 @@ impl Expression {
         match self.kind {
             PiType(literal) => {
                 if literal.parameter.is_some() {
-                    let scope = scope.extend_with_parameter(literal.domain.clone());
-                    literal.codomain.clone().result_type(&scope)
+                    let mut scope = scope.extend_with_parameter(literal.domain.clone());
+                    literal.codomain.clone().result_type(&mut scope)
                 } else {
                     literal.codomain.clone().result_type(scope)
                 }

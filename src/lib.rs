@@ -4,7 +4,13 @@
 //! with type-checking.
 //!
 
-#![feature(decl_macro, move_ref_pattern, associated_type_defaults, never_type)]
+#![feature(
+    decl_macro,
+    move_ref_pattern,
+    associated_type_defaults,
+    never_type,
+    bool_to_option
+)]
 #![forbid(rust_2018_idioms, unused_must_use)]
 
 pub mod desugar;

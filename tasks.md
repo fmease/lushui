@@ -54,7 +54,7 @@
   * add subcommands:
     * `highlight`
       * format the AST to HTML with CSS classes
-      * add lexer option to keep comments
+      * need a losless AST first
       * the first versions won't stay true to source and will act like a very simple
         code formatter but that's actually very good!
       * advanced highlighting: mark binders ("binding occurrens") different from referenced binders ("applied occurrens")

@@ -21,6 +21,11 @@ pub struct CrateScope {
     foreign_bindings: HashMap<&'static str, (usize, ffi::ForeignFunction)>,
     pub inherent_values: ffi::InherentValueMap,
     pub inherent_types: ffi::InherentTypeMap,
+    // @Note this is very coarse-grained: as soon as we cannot resolve EITHER type annotation (for example)
+    // OR actual value(s), we bail out and add this here. This might be too conversative (leading to more
+    // "circular type" errors or whatever), we can just discriminate by creating sth like
+    // UnresolvedThingy/WorlistItem { index: CrateIndex, expression: TypeAnnotation|Value|Both|... }
+    pub out_of_order_bindings: Vec<Registration>,
 }
 
 /// Many methods of module scope panic instead of returning a `Result` because
@@ -101,103 +106,83 @@ impl CrateScope {
         }
     }
 
-    /// Insert a value binding into the scope.
-    ///
-    /// ## Panics
-    ///
-    /// Panics under `cfg(debug_assertions)` if `binder` is already bound.
-    // @Task better name
-    pub fn insert_value_binding(
-        &mut self,
-        binder: Identifier,
-        r#type: Expression,
-        value: Expression,
-    ) {
-        let index = binder.krate().unwrap();
-        debug_assert!(self.bindings[index].is_untyped_value());
-        self.bindings[index].kind = EntityKind::Value {
-            r#type,
-            expression: value,
-        };
-    }
-
-    /// Insert a data type binding into the scope.
-    ///
-    /// ## Panics
-    ///
-    /// Panics under `cfg(debug_assertions)` if the `binder` is already bound.
-    // @Task change name
-    pub fn insert_data_binding(&mut self, binder: Identifier, r#type: Expression) {
-        let index = binder.krate().unwrap();
-        debug_assert!(self.bindings[index].is_untyped_value());
-        self.bindings[index].kind = EntityKind::DataType {
-            r#type,
-            constructors: Vec::new(),
-        };
-    }
-
-    /// Insert constructor binding into the scope.
-    ///
-    /// # Panics
-    ///
-    /// Panics under `cfg(debug_assertions)` if `binder` is already bound and does so
-    /// in every case if given data type does not exist or is not a data type.
-    // @Task change name
-    pub fn insert_constructor_binding(
-        &mut self,
-        binder: Identifier,
-        r#type: Expression,
-        data_type: &Identifier,
-    ) {
-        let index = binder.krate().unwrap();
-        debug_assert!(self.bindings[index].is_untyped_value());
-        self.bindings[index].kind = EntityKind::Constructor { r#type };
-
-        match self
-            .bindings
-            .get_mut(data_type.krate().unwrap())
-            .unwrap()
-            .kind
-        {
-            EntityKind::DataType {
-                ref mut constructors,
-                ..
-            } => constructors.push(binder),
-            _ => unreachable!(),
-        }
-    }
-
-    /// Complete the registration of a foreign binding by typing it.
-    ///
-    /// ## Panics
-    ///
-    /// Panics if the `binder` is not bound or the binding is not a partially
-    /// registered one.
-    pub fn complete_foreign_binding(
-        &mut self,
-        binder: Identifier,
-        r#type: Expression,
-    ) -> Result<()> {
-        let index = binder.krate().unwrap();
-        debug_assert!(self.bindings[index].is_untyped_value());
-
-        self.bindings[index].kind = match &self.foreign_bindings.remove(binder.as_str()) {
-            Some((arity, function)) => EntityKind::Foreign {
+    pub fn carry_out(&mut self, registration: Registration) -> Result<()> {
+        Ok(match registration {
+            Registration::ValueBinding {
+                binder,
                 r#type,
-                arity: *arity,
-                function: *function,
-            },
-            None => {
-                // @Task better message
-                return Err(Diagnostic::new(
-                    Level::Fatal,
-                    Code::E060,
-                    format!("foreign binding `{}` is not registered", binder),
-                )
-                .with_span(&binder));
+                value,
+            } => {
+                let index = binder.krate().unwrap();
+                debug_assert!(self.bindings[index].is_untyped_value());
+                self.bindings[index].kind = EntityKind::Value {
+                    r#type,
+                    expression: value,
+                };
             }
-        };
-        Ok(())
+            Registration::DataBinding { binder, r#type } => {
+                let index = binder.krate().unwrap();
+                debug_assert!(self.bindings[index].is_untyped_value());
+                self.bindings[index].kind = EntityKind::DataType {
+                    r#type,
+                    constructors: Vec::new(),
+                };
+            }
+            Registration::ConstructorBinding {
+                binder,
+                r#type,
+                data,
+            } => {
+                let index = binder.krate().unwrap();
+                debug_assert!(self.bindings[index].is_untyped_value());
+                self.bindings[index].kind = EntityKind::Constructor { r#type };
+
+                match self.bindings.get_mut(data.krate().unwrap()).unwrap().kind {
+                    EntityKind::DataType {
+                        ref mut constructors,
+                        ..
+                    } => constructors.push(binder),
+                    _ => unreachable!(),
+                }
+            }
+            Registration::ForeignValueBinding { binder, r#type } => {
+                let index = binder.krate().unwrap();
+                debug_assert!(self.bindings[index].is_untyped_value());
+
+                self.bindings[index].kind = match &self.foreign_bindings.remove(binder.as_str()) {
+                    Some((arity, function)) => EntityKind::Foreign {
+                        r#type,
+                        arity: *arity,
+                        function: *function,
+                    },
+                    None => {
+                        // @Task better message
+                        return Err(Diagnostic::new(
+                            Level::Fatal,
+                            Code::E060,
+                            format!("foreign binding `{}` is not registered", binder),
+                        )
+                        .with_span(&binder));
+                    }
+                };
+            }
+            Registration::ForeignDataBinding { binder } => {
+                match self.foreign_types.get_mut(binder.as_str()) {
+                    Some(index @ None) => {
+                        *index = Some(binder.clone());
+                    }
+                    Some(Some(_)) => unreachable!(),
+                    None => {
+                        return Err(Diagnostic::new(
+                            Level::Fatal,
+                            Code::E060,
+                            format!("foreign data type `{}` is not registered", binder),
+                        )
+                        .with_span(&binder))
+                    }
+                }
+            }
+        })
     }
 
     /// Partially register a foreign binding letting it untyped.
@@ -224,22 +209,6 @@ impl CrateScope {
     pub fn register_foreign_type(&mut self, binder: &'static str) {
         let old = self.foreign_types.insert(binder, None);
         debug_assert!(old.is_none());
-    }
-
-    pub fn insert_foreign_data(&mut self, binder: &Identifier) -> Result<()> {
-        match self.foreign_types.get_mut(binder.as_str()) {
-            Some(index @ None) => {
-                *index = Some(binder.clone());
-                Ok(())
-            }
-            Some(Some(_)) => unreachable!(),
-            None => Err(Diagnostic::new(
-                Level::Fatal,
-                Code::E060,
-                format!("foreign data type `{}` is not registered", binder),
-            )
-            .with_span(&binder)),
-        }
     }
 
     // @Note does not scale to modules
@@ -278,7 +247,15 @@ impl CrateScope {
 
 impl fmt::Debug for CrateScope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:#?}", self.bindings)
+        use crate::support::DisplayIsDebug;
+
+        f.debug_struct("interpreter::CrateScope")
+            .field(
+                "bindings",
+                &DisplayIsDebug(&resolver::display_bindings(&self.bindings)),
+            )
+            .field("out_of_order_bindings", &self.out_of_order_bindings)
+            .finish()
     }
 }
 
@@ -291,6 +268,32 @@ impl From<resolver::CrateScope> for CrateScope {
             ..Default::default()
         }
     }
+}
+
+// @Question too big?
+#[derive(Debug, Clone)]
+pub enum Registration {
+    ValueBinding {
+        binder: Identifier,
+        r#type: Expression,
+        value: Expression,
+    },
+    DataBinding {
+        binder: Identifier,
+        r#type: Expression,
+    },
+    ConstructorBinding {
+        binder: Identifier,
+        r#type: Expression,
+        data: Identifier,
+    },
+    ForeignValueBinding {
+        binder: Identifier,
+        r#type: Expression,
+    },
+    ForeignDataBinding {
+        binder: Identifier,
+    },
 }
 
 // @Task find out if we can get rid of this type by letting `ModuleScope::lookup_value` resolve to the Binder
@@ -318,33 +321,24 @@ impl fmt::Debug for ValueView {
 /// And since lambdas and let/ins are nested, they are ordered and
 /// most importantly, recursion only works explicitly via the fix-point-combinator.
 pub enum FunctionScope<'a> {
-    Module(&'a CrateScope),
-    // @Note obviously, we don't store an Identifier but a DebruijnIndex here hmm
-    Function {
-        parent: &'a FunctionScope<'a>,
-        // index: DebruijnIndex,
+    Empty,
+    Parameter {
+        parent: &'a Self,
         r#type: Expression,
     },
 }
 
 impl<'a> FunctionScope<'a> {
     pub fn extend_with_parameter(&'a self, r#type: Expression) -> Self {
-        Self::Function {
+        Self::Parameter {
             parent: self,
             r#type,
         }
     }
 
-    pub fn module(&self) -> &CrateScope {
-        match self {
-            Self::Module(module) => module,
-            Self::Function { parent, .. } => parent.module(),
-        }
-    }
-
-    pub fn lookup_type(&self, binder: &Identifier) -> Option<Expression> {
+    pub fn lookup_type(&self, binder: &Identifier, scope: &CrateScope) -> Option<Expression> {
         match binder.index {
-            Index::Crate(index) => self.module().lookup_type(index),
+            Index::Crate(index) => scope.lookup_type(index),
             Index::Debruijn(index) => Some(self.lookup_type_with_depth(index, 0)),
             Index::DebruijnParameter => unreachable!(),
         }
@@ -352,7 +346,7 @@ impl<'a> FunctionScope<'a> {
 
     fn lookup_type_with_depth(&self, index: DebruijnIndex, depth: usize) -> Expression {
         match self {
-            FunctionScope::Function { parent, r#type } => {
+            Self::Parameter { r#type, parent } => {
                 if depth == index.0 {
                     expr! {
                         Substitution[] {
@@ -364,32 +358,32 @@ impl<'a> FunctionScope<'a> {
                     parent.lookup_type_with_depth(index, depth + 1)
                 }
             }
-            FunctionScope::Module(_) => unreachable!(),
+            Self::Empty => unreachable!(),
         }
     }
 
-    pub fn lookup_value(&self, binder: &Identifier) -> ValueView {
+    pub fn lookup_value(&self, binder: &Identifier, scope: &CrateScope) -> ValueView {
         match binder.index {
-            Index::Crate(index) => self.module().lookup_value(index),
+            Index::Crate(index) => scope.lookup_value(index),
             Index::Debruijn(_) => ValueView::Neutral,
             Index::DebruijnParameter => unreachable!(),
         }
     }
 
-    pub fn is_foreign(&self, binder: &Identifier) -> bool {
+    pub fn is_foreign(&self, binder: &Identifier, scope: &CrateScope) -> bool {
         match binder.index {
-            Index::Crate(index) => self.module().is_foreign(index),
+            Index::Crate(index) => scope.is_foreign(index),
             Index::Debruijn(_) => false,
             Index::DebruijnParameter => unreachable!(),
         }
     }
 }
 
-impl fmt::Debug for FunctionScope<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Module(_) => f.write_str("module"),
-            Self::Function { parent, r#type } => write!(f, "(': {}) --> {:?}", r#type, parent),
-        }
-    }
-}
+// impl fmt::Debug for FunctionScope<'_> {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         match self {
+//             Self::Crate(_) => f.write_str("module"),
+//             Self::Function { parent, r#type } => write!(f, "(_: {}) --> {:?}", r#type, parent),
+//         }
+//     }
+// }

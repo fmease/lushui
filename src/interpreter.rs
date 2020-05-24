@@ -33,8 +33,7 @@ use crate::{
     typer,
 };
 pub use scope::CrateScope;
-pub(crate) use scope::FunctionScope;
-use scope::ValueView;
+use scope::{FunctionScope, ValueView};
 
 type Expression = hir::Expression<Resolved>;
 
@@ -42,7 +41,7 @@ impl CrateScope {
     pub fn run(mut self) -> Result<Expression> {
         if let Some(program_entry) = self.program_entry.take() {
             let expression = expr! { Binding[] { binder: program_entry } };
-            expression.evaluate(&FunctionScope::Module(&self), Form::Normal)
+            expression.evaluate(&FunctionScope::Empty, &mut self, Form::Normal)
         } else {
             Err(Diagnostic::new(
                 Level::Fatal,
@@ -209,22 +208,33 @@ impl Expression {
     /// Try to evaluate an expression.
     ///
     /// This is beta-reduction I think.
-    pub fn evaluate(self, scope: &FunctionScope<'_>, form: Form) -> Result<Self> {
+    // @Beacon @Task merge CrateScope back into FunctionScope
+    pub fn evaluate(
+        self,
+        scope: &FunctionScope<'_>,
+        crate_scope: &mut CrateScope,
+        form: Form,
+    ) -> Result<Self> {
         use self::Substitution::*;
         use ExpressionKind::*;
 
         // @Bug we currently don't support zero-arity foreign functions
         Ok(match self.clone().kind {
-            Binding(binding) => match scope.lookup_value(&binding.binder) {
+            Binding(binding) => match scope.lookup_value(&binding.binder, crate_scope) {
                 // @Question is this normalization necessary? I mean, yes, we got a new scope,
                 // but the thing in the previous was already normalized (well, it should have been
                 // at least). I guess it is necessary because it can contain parameters which could not
                 // be resolved yet but potentially can be now.
-                ValueView::Reducible(expression) => expression.evaluate(scope, form)?,
+                ValueView::Reducible(expression) => {
+                    expression.evaluate(scope, crate_scope, form)?
+                }
                 ValueView::Neutral => self,
             },
             Application(application) => {
-                let callee = application.callee.clone().evaluate(scope, form)?;
+                let callee = application
+                    .callee
+                    .clone()
+                    .evaluate(scope, crate_scope, form)?;
                 let argument = application.argument.clone();
                 match callee.kind {
                     Lambda(lambda) => (expr! {
@@ -233,20 +243,20 @@ impl Expression {
                             expression: lambda.body.clone(),
                         }
                     })
-                    .evaluate(scope, form)?,
-                    Binding(binding) if scope.is_foreign(&binding.binder) => (expr! {
+                    .evaluate(scope, crate_scope, form)?,
+                    Binding(binding) if scope.is_foreign(&binding.binder, crate_scope) => (expr! {
                         ForeignApplication[self.span] {
                             callee: binding.binder.clone(),
                             arguments: extended(Vec::new(), argument),
 
                     }})
-                    .evaluate(scope, form)?,
+                    .evaluate(scope, crate_scope, form)?,
                     Binding(_) | Application(_) => expr! {
                         Application[self.span] {
                             // @Question or application.callee (unevaluated)?
                             callee,
                             argument: match form {
-                                Form::Normal => argument.evaluate(scope, form)?,
+                                Form::Normal => argument.evaluate(scope, crate_scope, form)?,
                                 Form::WeakHeadNormal => argument,
                             },
                             explicitness: Explicitness::Explicit,
@@ -258,19 +268,21 @@ impl Expression {
                             arguments: extended(application.arguments.clone(), argument),
                         }
                     })
-                    .evaluate(scope, form)?,
+                    .evaluate(scope, crate_scope, form)?,
                     _ => unreachable!(),
                 }
             }
             Type | Nat(_) | Text(_) => self,
             PiType(pi) => match form {
                 Form::Normal => {
-                    let domain = pi.domain.clone().evaluate(scope, form)?;
+                    let domain = pi.domain.clone().evaluate(scope, crate_scope, form)?;
 
                     let codomain = if pi.parameter.is_some() {
-                        pi.codomain
-                            .clone()
-                            .evaluate(&scope.extend_with_parameter(domain.clone()), form)?
+                        pi.codomain.clone().evaluate(
+                            &mut scope.extend_with_parameter(domain.clone()),
+                            crate_scope,
+                            form,
+                        )?
                     } else {
                         pi.codomain.clone()
                     };
@@ -292,21 +304,23 @@ impl Expression {
                         .parameter_type_annotation
                         .clone()
                         .ok_or_else(typer::missing_annotation)?
-                        .evaluate(scope, form)?;
+                        .evaluate(scope, crate_scope, form)?;
                     let body_type = lambda
                         .body_type_annotation
                         .clone()
                         .map(|r#type| {
                             r#type.evaluate(
-                                &scope.extend_with_parameter(parameter_type.clone()),
+                                &mut scope.extend_with_parameter(parameter_type.clone()),
+                                crate_scope,
                                 form,
                             )
                         })
                         .transpose()?;
-                    let body = lambda
-                        .body
-                        .clone()
-                        .evaluate(&scope.extend_with_parameter(parameter_type.clone()), form)?;
+                    let body = lambda.body.clone().evaluate(
+                        &mut scope.extend_with_parameter(parameter_type.clone()),
+                        crate_scope,
+                        form,
+                    )?;
 
                     expr! {
                         Lambda[self.span] {
@@ -324,7 +338,7 @@ impl Expression {
                 .expression
                 .clone()
                 .substitute(substitution.substitution.clone())
-                .evaluate(scope, form)?,
+                .evaluate(scope, crate_scope, form)?,
             UseIn => todo!("evaluate use/in"),
             // @Note @Beacon, now, meta information would be nice, so we don't need to do
             // double work (the work of `infer_type` again)
@@ -384,10 +398,9 @@ impl Expression {
                     .arguments
                     .clone()
                     .into_iter()
-                    .map(|argument| argument.evaluate(scope, form))
+                    .map(|argument| argument.evaluate(scope, crate_scope, form))
                     .collect::<Result<Vec<_>, _>>()?;
-                scope
-                    .module()
+                crate_scope
                     .apply_foreign_binding(application.callee.clone(), arguments.clone())?
                     .unwrap_or_else(|| {
                         expr! {
@@ -407,41 +420,8 @@ impl Expression {
         todo!() // @Task
     }
 
-    /// Assert that two expression are equal under evaluation/normalization.
-    // @Bug @Beacon @Beacon if form == WeakHeadNormal, type mismatches occur when there shouldn't
-    // @Update that is because `equals` is called on 2 `Substitutions` but 2 of those are never
-    // equal. I think they should be "killed" earlier. probably a bug
-    // @Update this happens with Form::Normal, too. what a bummer
-    pub(crate) fn is_actual(self, actual: Self, scope: &FunctionScope<'_>) -> Result<()> {
-        // let expected = self.evaluate(scope, Form::WeakHeadNormal)?;
-        // let actual = actual.evaluate(scope, Form::WeakHeadNormal)?;
-        let expected = self.clone().evaluate(scope, Form::Normal)?;
-        let actual = actual.evaluate(scope, Form::Normal)?;
-
-        if !expected.clone().equals(actual.clone(), scope)? {
-            // @Task improve diagnostic
-            // @Task add span information
-            // @Bug span information are *so* off!!
-            // @Task we need to return a different error type (apart from Diagnostic) to
-            // handle type mismatches without placing wrong spans
-            Err(
-                // Diagnostic::new(Level::Fatal, Code::E032, "mismatched types").with_labeled_span(
-                //     actual.span,
-                //     format!("expected `{}`, got `{}`", self, actual),
-                // ),
-                Diagnostic::new(
-                    Level::Fatal,
-                    Code::E032,
-                    format!("mismatched types. expected `{}`, got `{}`", self, actual),
-                ),
-            )
-        } else {
-            Ok(())
-        }
-    }
-
     /// Dictates if two expressions are alpha-equivalent.
-    pub(crate) fn equals(self, other: Self, scope: &FunctionScope<'_>) -> Result<bool> {
+    pub(crate) fn equals<'a>(self, other: Self, scope: &'a FunctionScope<'a>) -> Result<bool> {
         use ExpressionKind::*;
 
         Ok(match (self.kind, other.kind) {

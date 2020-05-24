@@ -32,16 +32,16 @@
 ;; data Void: Type =
 
 ;; @Note very difficult test case:
-;; use alpha.Void
+use alpha.Void
 
-;; module alpha: =
-;;     use super.V
+module alpha: =
+    use super.V
 
-;;     module xoo: =
-;;         W: Type = super.V
+    module xoo: =
+        W: Type = super.V
 
-;;     data Void: Type =
+    data Void: Type =
 
-;; V: Type = Void
+V: Type = Void
 
-Self: Type = Self
+;; Self: Type = Self

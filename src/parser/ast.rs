@@ -474,6 +474,12 @@ pub enum Explicitness {
     Explicit,
 }
 
+impl Explicitness {
+    pub fn is_implicit(self) -> bool {
+        matches!(self, Self::Implicit)
+    }
+}
+
 impl fmt::Display for Explicitness {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

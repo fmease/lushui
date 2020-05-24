@@ -50,17 +50,6 @@ module text: =
     _foreign_
     concat: Text -> Text -> Text
 
-module option: =
-    _inherent_
-    data Option (A: Type): Type =
-        none (A: Type): Option A
-        some (A: Type): A -> Option A
-
-    ;; map (A B: Type) (f: A -> B) (a: Option A): Option B =
-    ;;     case a of
-    ;;         some ?A ?a => some B (f a)
-    ;;         none ?A => none B
-
 module nat: =
     use super.option.Option
     use super.bool.Bool
@@ -107,6 +96,17 @@ module duple: =
 module triple: =
     data Triple (A B C: Type): Type =
         triple (A B C: Type): A -> B -> C -> Triple A B C
+
+module option: =
+    _inherent_
+    data Option (A: Type): Type =
+        none (A: Type): Option A
+        some (A: Type): A -> Option A
+
+    ;; map (A B: Type) (f: A -> B) (a: Option A): Option B =
+    ;;     case a of
+    ;;         some ?A ?a => some B (f a)
+    ;;         none ?A => none B
 
 module result: =
     data Result (A E: Type): Type =

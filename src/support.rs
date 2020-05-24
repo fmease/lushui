@@ -49,6 +49,7 @@ pub trait MayBeInvalid {
     fn invalid() -> Self;
 }
 
+// @Task better name which incorporates 'invalid'
 pub trait TryNonFatallyExt<T: MayBeInvalid> {
     fn try_non_fatally(self, bag: &mut Diagnostics) -> T;
 }
@@ -117,6 +118,30 @@ impl<T> ManyErrExt<T> for Result<T, Diagnostic> {
     }
 }
 
+pub enum Error<E> {
+    Unrecoverable(Diagnostic),
+    Recoverable(E),
+}
+
+use std::convert::{TryFrom, TryInto};
+
+impl<E: TryInto<Diagnostic>> TryFrom<Error<E>> for Diagnostic {
+    type Error = E::Error;
+
+    fn try_from(error: Error<E>) -> Result<Self, Self::Error> {
+        match error {
+            Error::Unrecoverable(diagnostic) => Ok(diagnostic),
+            Error::Recoverable(error) => error.try_into(),
+        }
+    }
+}
+
+impl<E> From<Diagnostic> for Error<E> {
+    fn from(diagnostic: Diagnostic) -> Self {
+        Self::Unrecoverable(diagnostic)
+    }
+}
+
 use std::borrow::Cow;
 
 pub fn pluralize<'a, S: Into<Cow<'a, str>>>(
@@ -127,5 +152,23 @@ pub fn pluralize<'a, S: Into<Cow<'a, str>>>(
     match amount {
         1 => singular.into(),
         _ => plural().into(),
+    }
+}
+
+use std::fmt;
+
+pub struct DisplayIsDebug<'a, T: fmt::Display>(pub &'a T);
+
+impl<T: fmt::Display> fmt::Debug for DisplayIsDebug<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+pub struct DebugIsDisplay<'a, T: fmt::Debug>(pub &'a T);
+
+impl<T: fmt::Debug> fmt::Display for DebugIsDisplay<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
     }
 }
