@@ -36,7 +36,6 @@ impl CrateScope {
             program_entry.to_expression().evaluate(Context {
                 scope: &(&self).into(),
                 form: Form::Normal,
-                phase: RunTime,
             })
         } else {
             Err(Diagnostic::new(
@@ -54,14 +53,6 @@ pub enum Form {
     WeakHeadNormal,
 }
 
-#[derive(Clone, Copy)]
-pub enum Phase {
-    CompileTime,
-    RunTime,
-}
-
-pub use Phase::*;
-
 /// Evaluation context.
 // @Beacon @Task merge CrateScope back into FunctionScope
 // @Task a recursion_depth: usize, @Note if we do that,
@@ -70,7 +61,6 @@ pub use Phase::*;
 pub struct Context<'a> {
     pub(crate) scope: &'a FunctionScope<'a>,
     pub(crate) form: Form,
-    pub(crate) phase: Phase,
 }
 
 impl<'a> Context<'a> {

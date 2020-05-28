@@ -17,12 +17,12 @@ module void: =
     ;;     case v of
 
 module unit: =
-    _inherent_
+    @inherent
     data Unit: Type =
         unit: Unit
 
 module bool: =
-    _inherent_
+    @inherent
     data Bool: Type =
         false: Bool
         true: Bool
@@ -44,10 +44,10 @@ module bool: =
     ;; or (b c: Bool): Bool = if Bool b True c
 
 module text: =
-    _foreign_
+    @foreign
     data Text: Type
 
-    _foreign_
+    @foreign
     concat: Text -> Text -> Text
 
 module nat: =
@@ -55,37 +55,37 @@ module nat: =
     use super.bool.Bool
     use super.text.Text
 
-    _foreign_
+    @foreign
     data Nat: Type
 
-    _foreign_
+    @foreign
     add: Nat -> Nat -> Nat
 
-    _foreign_
+    @foreign
     subtract: Nat -> Nat -> Option Nat
 
-    _foreign_
+    @foreign
     multiply: Nat -> Nat -> Nat
     
-    _foreign_
+    @foreign
     divide: Nat -> Nat -> Option Nat
 
-    _foreign_
+    @foreign
     equal: Nat -> Nat -> Bool
 
-    _foreign_
+    @foreign
     less: Nat -> Nat -> Bool
 
-    _foreign_
+    @foreign
     less-equal: Nat -> Nat -> Bool
 
-    _foreign_
+    @foreign
     greater: Nat -> Nat -> Bool
 
-    _foreign_
+    @foreign
     greater-equal: Nat -> Nat -> Bool
 
-    _foreign_
+    @foreign
     display: Nat -> Text
 
 module duple: =
@@ -98,7 +98,7 @@ module triple: =
         triple (A B C: Type): A -> B -> C -> Triple A B C
 
 module option: =
-    _inherent_
+    @inherent
     data Option (A: Type): Type =
         none (A: Type): Option A
         some (A: Type): A -> Option A

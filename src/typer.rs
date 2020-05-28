@@ -8,7 +8,7 @@ use crate::{
     interpreter::{
         self, ffi,
         scope::{FunctionScope, Registration},
-        CompileTime, CrateScope, Form,
+        CrateScope, Form,
     },
     parser::{AttributeKind, Explicit},
     resolver::{Identifier, Resolved},
@@ -171,7 +171,6 @@ impl Registration {
                 let r#type = r#type.evaluate(interpreter::Context {
                     scope: &(&*scope).into(),
                     form: Form::Normal, /* Form::WeakHeadNormal */
-                    phase: CompileTime,
                 })?;
                 handle_out_of_order_binding!(
                     scope,
@@ -198,7 +197,6 @@ impl Registration {
                 let r#type = r#type.evaluate(interpreter::Context {
                     scope: &(&*scope).into(),
                     form: Form::Normal, /* Form::WeakHeadNormal */
-                    phase: CompileTime,
                 })?;
                 handle_out_of_order_binding!(
                     scope,
@@ -223,7 +221,6 @@ impl Registration {
                 let r#type = r#type.evaluate(interpreter::Context {
                     scope: &(&*scope).into(),
                     form: Form::Normal, /* Form::WeakHeadNormal */
-                    phase: CompileTime,
                 })?;
                 handle_out_of_order_binding!(
                     scope,
@@ -346,7 +343,6 @@ impl Expression {
                     interpreter::Context {
                         scope,
                         form: Form::Normal, /* Form::WeakHeadNormal */
-                        phase: CompileTime,
                     },
                 )?;
 
@@ -482,12 +478,10 @@ impl Expression {
         let expected = self.clone().evaluate(interpreter::Context {
             scope,
             form: Form::Normal, /* Form::WeakHeadNormal */
-            phase: CompileTime,
         })?;
         let actual = actual.evaluate(interpreter::Context {
             scope,
             form: Form::Normal, /* Form::WeakHeadNormal */
-            phase: CompileTime,
         })?;
 
         if !expected.clone().equals(actual.clone(), scope)? {

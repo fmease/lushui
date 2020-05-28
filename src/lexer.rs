@@ -44,7 +44,7 @@ pub enum TokenKind {
     Punctuation,
     NatLiteral(Nat),
     TextLiteral(String),
-    VerticalBar,
+    At,
     Dot,
     Colon,
     Equals,
@@ -56,6 +56,7 @@ pub enum TokenKind {
     LineBreak,
     OpeningRoundBracket,
     ClosingRoundBracket,
+    Comma,
     Underscore,
     As,
     Case,
@@ -83,19 +84,20 @@ impl fmt::Display for TokenKind {
             Punctuation => "punctuation",
             NatLiteral(_) => "natural number literal",
             TextLiteral(_) => "text literal",
-            VerticalBar => "vertical bar",
-            Dot => "dot",
-            Colon => "colon",
-            Equals => "equals sign",
-            Backslash => "backslash",
-            ThinArrow => "thin arrow",
-            WideArrow => "wide arrow",
+            At => "at sign `@`",
+            Dot => "dot `.`",
+            Colon => "colon `:`",
+            Equals => "equals sign `=`",
+            Backslash => "backslash `\\`",
+            ThinArrow => "thin arrow `->`",
+            WideArrow => "wide arrow `=>`",
             Indentation => "indentation",
             Dedentation => "dedentation",
             LineBreak => "line break",
-            OpeningRoundBracket => "opening round bracket",
-            ClosingRoundBracket => "closing round bracket",
-            Underscore => "underscore",
+            OpeningRoundBracket => "opening round bracket `(`",
+            ClosingRoundBracket => "closing round bracket `)`",
+            Comma => "comma `,`",
+            Underscore => "underscore `_`",
             As => "keyword `as`",
             Case => "keyword `case`",
             Crate => "keyword `crate`",
@@ -169,7 +171,7 @@ fn parse_reserved_punctuation(source: &str) -> Option<TokenKind> {
         "." => Dot,
         ":" => Colon,
         "=" => Equals,
-        "|" => VerticalBar,
+        "@" => At,
         "\\" => Backslash,
         "->" => ThinArrow,
         "=>" => WideArrow,
@@ -239,6 +241,7 @@ impl<'a> Lexer<'a> {
                 '"' => self.lex_text_literal().many_err()?,
                 '(' => self.lex_opening_round_bracket(),
                 ')' => self.lex_closing_round_bracket().many_err()?,
+                ',' => self.lex_comma(),
                 '_' => self.lex_underscore(),
                 character => {
                     self.take();
@@ -466,6 +469,11 @@ impl<'a> Lexer<'a> {
         self.advance();
 
         Ok(())
+    }
+
+    fn lex_comma(&mut self) {
+        self.add(Comma);
+        self.advance();
     }
 
     fn lex_underscore(&mut self) {

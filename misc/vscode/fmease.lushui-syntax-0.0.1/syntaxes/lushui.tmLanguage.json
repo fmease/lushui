@@ -45,7 +45,7 @@
                     "name": "keyword.other.lushui"
                 },
                 {
-                    "match": "\\b(data|use|module|let)\\b",
+                    "match": "\\b(data|use|module|let|record)\\b",
                     "name": "storage.modifier.lushui"
                 },
                 {
@@ -61,11 +61,6 @@
                     "name": "storage.type.lushui"
                 },
                 {
-                    "__comment__": "Maybe assert that round bracket preceeds the comma with (?<=\\(\\s*)",
-                    "match": "\\|",
-                    "name": "storage.modifier.lushui"
-                },
-                {
                     "match": "[\\.:+~=<>*^!?|/\\\\&#%$@]|(?<![a-z-A-Z0-9'])-(?![a-z-A-Z])",
                     "name": "keyword.operator.lushui"
                 }
@@ -75,11 +70,15 @@
             "patterns": [
                 {
                     "match": "\\(",
-                    "name": "punctuation.grouping.begin.bracket.round.lushui"
+                    "name": "punctuation.grouping.begin.bracket.round.lushui meta.brace.round.lushui"
                 },
                 {
                     "match": "\\)",
-                    "name": "punctuation.grouping.end.bracket.round.lushui"
+                    "name": "punctuation.grouping.end.bracket.round.lushui meta.brace.round.lushui"
+                },
+                {
+                    "match": ",",
+                    "name": "punctuation.lushui"
                 }
             ]
         },
@@ -126,7 +125,7 @@
         "attribute": {
             "patterns": [
                 {
-                    "match": "(?:^| {4})@:?(?:\\w+|\\(.+?\\))",
+                    "match": "(?:^| {4})@\\w+.*",
                     "name": "meta.attribute.lushui punctuation.definition.variable"
                 }
             ]

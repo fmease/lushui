@@ -133,7 +133,7 @@ fn lex_indentation() {
     assert_ok_token(
         lex("
 alpha
-    alpha|
+    alpha,
     <$
 beta
     gamma
@@ -149,7 +149,7 @@ beta
             token(LineBreak, span(7, 7)),
             token(Indentation, span(8, 11)),
             token(Identifier("alpha".into()), span(12, 16)),
-            token(VerticalBar, span(17, 17)),
+            token(Comma, span(17, 17)),
             token(LineBreak, span(18, 18)),
             token(Punctuation, span(23, 24)),
             token(LineBreak, span(25, 25)),
@@ -197,7 +197,7 @@ beta
 #[test]
 fn lex_punctuation() {
     assert_ok_token(
-        lex("+ +>alpha//$~%  @0 . ..".into()),
+        lex("+ +>alpha//$~%  #0 . ..".into()),
         vec![
             token(Punctuation, span(1, 1)),
             token(Punctuation, span(3, 4)),
@@ -270,6 +270,8 @@ fn lex_other() {
         ],
     );
 
+    // @Bug @Beacon fails non-deterministically: order of spans might be switched...but I thought I was only using Vecs here,
+    // no HashMaps, what happens here?
     assert_err(lex("((".into()), &[&[span(1, 1)], &[span(2, 2)]]);
     assert_err(lex(")))".into()), &[&[span(1, 1)]]);
 }

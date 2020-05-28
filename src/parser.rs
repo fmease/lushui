@@ -180,7 +180,7 @@ impl Parser<'_> {
             Data => self.advance_with(token.span, Self::finish_parse_data_declaration),
             Module => self.advance_with(token.span, Self::finish_parse_module_declaration),
             Use => self.advance_with(token.span, Self::finish_parse_use_declaration),
-            Underscore => {
+            At => {
                 let attribute = self.advance_with(token.span, Self::finish_parse_attribute)?;
                 let mut declaration = self.parse_declaration()?;
                 declaration.attributes.push(attribute);
@@ -212,6 +212,7 @@ impl Parser<'_> {
         let mut span = keyword_span;
 
         let identifier = Identifier::consume(self)?;
+        span.merging(&identifier);
         let kind = match identifier.as_str() {
             "foreign" => AttributeKind::Foreign,
             "inherent" => AttributeKind::Inherent,
@@ -224,7 +225,6 @@ impl Parser<'_> {
                 .with_span(&identifier))
             }
         };
-        span.merging(&self.consume(TokenKind::Underscore)?);
         self.consume(TokenKind::LineBreak)?;
 
         Ok(Attribute { span, kind })
@@ -602,13 +602,14 @@ impl Parser<'_> {
     /// ```text
     /// Application-Or-Lower @left@ ::= Lower-Expression (Lower-Expression | "(" "|" Expression ")")*
     /// ```
+    // @Task heavily improve without using or_else/reflect
     fn parse_application_or_lower(&mut self) -> Result<Expression> {
         let mut expression = self.reflect(Self::parse_lower_expression)?;
         while let Ok((argument, explicitness)) = self
             .reflect(|parser| Ok((parser.parse_lower_expression()?, Explicit)))
             .or_else(|_| -> Result<_> {
                 self.consume(TokenKind::OpeningRoundBracket)?;
-                self.consume(TokenKind::VerticalBar)?;
+                self.consume(TokenKind::Comma)?;
                 let expression = self.parse_expression()?;
                 self.consume(TokenKind::ClosingRoundBracket)?;
                 Ok((expression, Implicit))
@@ -1037,20 +1038,19 @@ impl Parser<'_> {
     }
 
     fn consume_explicitness_symbol(&mut self) -> Explicitness {
-        match self.consume(TokenKind::VerticalBar) {
-            Ok(_token) => {
-                // @Note there might be false positives (through arbitrary look-ahead)
-                // @Task let this function have access to the source map #ParserRefactor
-                Diagnostic::new(
-                    Level::Warning,
-                    Code::W001,
-                    "implicitness markers are currently ignored",
-                )
-                // .with_span(token.span)
-                .emit(None);
-                Implicit
-            }
-            Err(_) => Explicit,
+        if self.consumed(TokenKind::Comma) {
+            // @Note there might be false positives (through arbitrary look-ahead)
+            // @Task let this function have access to the source map #ParserRefactor
+            Diagnostic::new(
+                Level::Warning,
+                Code::W001,
+                "implicitness markers are currently ignored",
+            )
+            // .with_span(token.span)
+            .emit(None);
+            Implicit
+        } else {
+            Explicit
         }
     }
 }
