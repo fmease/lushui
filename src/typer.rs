@@ -6,11 +6,11 @@ use crate::{
     diagnostic::*,
     hir::{self, *},
     interpreter::{
-        ffi,
+        self, ffi,
         scope::{FunctionScope, Registration},
-        CrateScope, Form,
+        CompileTime, CrateScope, Form,
     },
-    parser::{AttributeKind, Explicitness},
+    parser::{AttributeKind, Explicit},
     resolver::{Identifier, Resolved},
 };
 
@@ -29,7 +29,7 @@ pub(crate) fn missing_annotation() -> Diagnostic {
 }
 
 #[derive(Default)]
-struct Context {
+struct Environment {
     data: Option<Identifier>,
 }
 
@@ -40,7 +40,11 @@ impl Declaration {
         scope.infer_type_of_out_of_order_bindings()
     }
 
-    fn infer_type_first_pass(&self, scope: &mut CrateScope, context: Context) -> Result<()> {
+    fn infer_type_first_pass(
+        &self,
+        scope: &mut CrateScope,
+        environment: Environment,
+    ) -> Result<()> {
         use DeclarationKind::*;
 
         match &self.kind {
@@ -55,7 +59,7 @@ impl Declaration {
                     Registration::ValueBinding {
                         binder: declaration.binder.clone(),
                         r#type: declaration.type_annotation.clone(),
-                        value: declaration.expression.clone().unwrap(),
+                        value: Some(declaration.expression.clone().unwrap()),
                     }
                     .evaluate(scope)?;
                 }
@@ -76,7 +80,7 @@ impl Declaration {
                 } else {
                     let constructors = data.constructors.as_ref().unwrap();
 
-                    // @Note could be done in the resolver once we unify the 2 CrateScopes
+                    // @Task @Beacon move to resolver
                     if let Some(inherent) = self.attributes.get(AttributeKind::Inherent) {
                         ffi::register_inherent_bindings(
                             &data.binder,
@@ -92,7 +96,7 @@ impl Declaration {
                     for constructor in constructors {
                         constructor.infer_type_first_pass(
                             scope,
-                            Context {
+                            Environment {
                                 data: Some(data.binder.clone()),
                             },
                         )?;
@@ -103,7 +107,7 @@ impl Declaration {
                 Registration::ConstructorBinding {
                     binder: constructor.binder.clone(),
                     r#type: constructor.type_annotation.clone(),
-                    data: context.data.unwrap(),
+                    data: environment.data.unwrap(),
                 }
                 .evaluate(scope)?;
             }
@@ -121,48 +125,64 @@ impl Declaration {
 }
 
 // @Note very strange API goiong on here
+// @Note we might want to store the evaluated types into the scopes instead of the
+// unevaluated ones. This dependends on how we'd like to normalize (WeakHead|Normal)
 impl Registration {
     fn evaluate(self, scope: &mut CrateScope) -> Result<()> {
+        use Registration::*;
+
         match self.clone() {
-            Self::ValueBinding {
+            ValueBinding {
                 binder,
                 r#type,
                 value,
             } => {
-                let (r#type, value) = {
-                    let function_scope = FunctionScope::Empty;
-                    // @Note too conservative
-                    handle_out_of_order_binding!(
-                        scope,
-                        self,
-                        r#type.clone().is_a_type(&function_scope, scope)
-                    );
-                    let infered_type = handle_out_of_order_binding!(
-                        scope,
-                        self,
-                        value.clone().infer_type(&function_scope, scope)
-                    );
-                    handle_out_of_order_binding!(
-                        scope,
-                        self,
-                        r#type.is_actual(infered_type.clone(), &function_scope, scope,)
-                    );
-                    (infered_type, value)
-                };
-                scope.carry_out(Registration::ValueBinding {
-                    binder,
-                    r#type,
-                    value,
-                })?;
-            }
-            Self::DataBinding { binder, r#type } => {
-                let r#type = r#type
-                    // .evaluate(&FunctionScope::Module(scope), Form::WeakHeadNormal)?;
-                    .evaluate(&FunctionScope::Empty, scope, Form::Normal)?;
                 handle_out_of_order_binding!(
                     scope,
                     self,
-                    r#type.clone().is_a_type(&FunctionScope::Empty, scope)
+                    r#type.clone().is_a_type(&(&*scope).into())
+                );
+                // let infered_type = match value.clone().unwrap().infer_type(&(&*scope).into()) {
+                //     Err(Error::Recoverable(OutOfOrderBinding)) => {
+                //         scope.out_of_order_bindings.push(self);
+                //         scope.carry_out(Registration::ValueBinding {
+                //             binder,
+                //             r#type,
+                //             value: None,
+                //         })?;
+                //         return Ok(());
+                //     }
+                //     Err(error) => return Err(error.try_into().unwrap()),
+                //     Ok(expression) => expression,
+                // };
+
+                let infered_type = handle_out_of_order_binding!(
+                    scope,
+                    self,
+                    value.clone().unwrap().infer_type(&(&*scope).into())
+                );
+
+                handle_out_of_order_binding!(
+                    scope,
+                    self,
+                    r#type.is_actual(infered_type.clone(), &(&*scope).into())
+                );
+                scope.carry_out(Registration::ValueBinding {
+                    binder,
+                    r#type: infered_type,
+                    value,
+                })?;
+            }
+            DataBinding { binder, r#type } => {
+                let r#type = r#type.evaluate(interpreter::Context {
+                    scope: &(&*scope).into(),
+                    form: Form::Normal, /* Form::WeakHeadNormal */
+                    phase: CompileTime,
+                })?;
+                handle_out_of_order_binding!(
+                    scope,
+                    self,
+                    r#type.clone().is_a_type(&(&*scope).into())
                 );
 
                 // @Task diagnostic note: only `Type` can be extended
@@ -171,28 +191,32 @@ impl Registration {
                     binder.clone(),
                     r#type.clone(),
                     TYPE,
+                    scope,
                 )?;
 
                 scope.carry_out(Registration::DataBinding { binder, r#type })?;
             }
-            Self::ConstructorBinding {
+            ConstructorBinding {
                 binder,
                 r#type,
                 data,
             } => {
-                let r#type = r#type
-                    // .evaluate(&FunctionScope::Module(scope), Form::WeakHeadNormal)?;
-                    .evaluate(&FunctionScope::Empty, scope, Form::Normal)?;
+                let r#type = r#type.evaluate(interpreter::Context {
+                    scope: &(&*scope).into(),
+                    form: Form::Normal, /* Form::WeakHeadNormal */
+                    phase: CompileTime,
+                })?;
                 handle_out_of_order_binding!(
                     scope,
                     self,
-                    r#type.clone().is_a_type(&FunctionScope::Empty, scope)
+                    r#type.clone().is_a_type(&(&*scope).into())
                 );
 
                 types::instance::assert_constructor_is_instance_of_type(
                     binder.clone(),
                     r#type.clone(),
                     data.clone().to_expression(),
+                    scope,
                 )?;
 
                 scope.carry_out(Registration::ConstructorBinding {
@@ -201,19 +225,17 @@ impl Registration {
                     data,
                 })?;
             }
-            Self::ForeignValueBinding { binder, r#type } => {
-                let r#type = {
-                    let function_scope = FunctionScope::Empty;
-                    let r#type = r#type
-                        // .evaluate(&scope, Form::WeakHeadNormal)?;
-                        .evaluate(&function_scope, scope, Form::Normal)?;
-                    handle_out_of_order_binding!(
-                        scope,
-                        self,
-                        r#type.clone().is_a_type(&function_scope, scope)
-                    );
-                    r#type
-                };
+            ForeignValueBinding { binder, r#type } => {
+                let r#type = r#type.evaluate(interpreter::Context {
+                    scope: &(&*scope).into(),
+                    form: Form::Normal, /* Form::WeakHeadNormal */
+                    phase: CompileTime,
+                })?;
+                handle_out_of_order_binding!(
+                    scope,
+                    self,
+                    r#type.clone().is_a_type(&(&*scope).into())
+                );
 
                 scope.carry_out(Self::ForeignValueBinding { binder, r#type })?;
             }
@@ -249,8 +271,14 @@ impl CrateScope {
             }
 
             if previous_amount == self.out_of_order_bindings.len() {
+                dbg!(&self.out_of_order_bindings);
                 // @Task @Beacon add spans etc
-                return Err(Diagnostic::new(Level::Fatal, None, "found infinite type"));
+                // @Update @Task remove
+                return Err(Diagnostic::new(
+                    Level::Fatal,
+                    None,
+                    "found equi-recursive thingy trying to type-check",
+                ));
             }
         }
 
@@ -260,34 +288,34 @@ impl CrateScope {
 
 impl Expression {
     /// Try to infer the type of an expression.
-    fn infer_type(
-        self,
-        scope: &FunctionScope<'_>,
-        crate_scope: &mut CrateScope,
-    ) -> Result<Self, Error> {
+    fn infer_type(self, scope: &FunctionScope<'_>) -> Result<Self, Error> {
         use crate::interpreter::Substitution::*;
         use ExpressionKind::*;
 
         Ok(match self.kind {
             Binding(binding) => scope
-                .lookup_type(&binding.binder, crate_scope)
+                .lookup_type(&binding.binder)
                 .ok_or(Error::Recoverable(OutOfOrderBinding))?,
             Type => TYPE,
-            Nat(_) => crate_scope.lookup_foreign_type(ffi::Type::NAT, Some(self))?,
-            Text(_) => crate_scope.lookup_foreign_type(ffi::Type::TEXT, Some(self))?,
+            Nat(_) => scope
+                .crate_scope()
+                .lookup_foreign_type(ffi::Type::NAT, Some(self))?,
+            Text(_) => scope
+                .crate_scope()
+                .lookup_foreign_type(ffi::Type::TEXT, Some(self))?,
             PiType(literal) => {
                 // ensure domain and codomain are are well-typed
                 // @Question why do we need to this? shouldn't this be already handled if
                 // `expression` (parameter of `infer_type`) has been normalized?
-                literal.domain.clone().is_a_type(scope, crate_scope)?;
+                literal.domain.clone().is_a_type(scope)?;
 
                 if literal.parameter.is_some() {
-                    literal.codomain.clone().is_a_type(
-                        &mut scope.extend_with_parameter(literal.domain.clone()),
-                        crate_scope,
-                    )?;
+                    literal
+                        .codomain
+                        .clone()
+                        .is_a_type(&mut scope.extend_with_parameter(literal.domain.clone()))?;
                 } else {
-                    literal.codomain.clone().is_a_type(scope, crate_scope)?;
+                    literal.codomain.clone().is_a_type(scope)?;
                 }
 
                 TYPE
@@ -298,20 +326,14 @@ impl Expression {
                     .clone()
                     .ok_or_else(missing_annotation)?;
 
-                parameter_type.clone().is_a_type(scope, crate_scope)?;
+                parameter_type.clone().is_a_type(scope)?;
 
                 let scope = scope.extend_with_parameter(parameter_type.clone());
-                let infered_body_type = lambda.body.clone().infer_type(&scope, crate_scope)?;
+                let infered_body_type = lambda.body.clone().infer_type(&scope)?;
 
                 if let Some(body_type_annotation) = lambda.body_type_annotation.clone() {
-                    body_type_annotation
-                        .clone()
-                        .is_a_type(&scope, crate_scope)?;
-                    body_type_annotation.is_actual(
-                        infered_body_type.clone(),
-                        &scope,
-                        crate_scope,
-                    )?;
+                    body_type_annotation.clone().is_a_type(&scope)?;
+                    body_type_annotation.is_actual(infered_body_type.clone(), &scope)?;
                 }
 
                 expr! {
@@ -319,29 +341,25 @@ impl Expression {
                         parameter: Some(lambda.parameter.clone()),
                         domain: parameter_type,
                         codomain: infered_body_type,
-                        explicitness: Explicitness::Explicit,
+                        explicitness: Explicit,
                     }
                 }
             }
             Application(application) => {
                 // @Note this is an example where we normalize after an infer_type which means infer_type
                 // returns possibly non-normalized expressions, can we do better?
-                let type_of_callee = application
-                    .callee
-                    .clone()
-                    .infer_type(scope, crate_scope)?
-                    // .evaluate(scope, Form::WeakHeadNormal)?;
-                    .evaluate(scope, crate_scope, Form::Normal)?;
+                let type_of_callee = application.callee.clone().infer_type(scope)?.evaluate(
+                    interpreter::Context {
+                        scope,
+                        form: Form::Normal, /* Form::WeakHeadNormal */
+                        phase: CompileTime,
+                    },
+                )?;
 
                 match &type_of_callee.kind {
                     PiType(pi) => {
-                        let argument_type = application
-                            .argument
-                            .clone()
-                            .infer_type(scope, crate_scope)?;
-                        pi.domain
-                            .clone()
-                            .is_actual(argument_type, scope, crate_scope)?;
+                        let argument_type = application.argument.clone().infer_type(scope)?;
+                        pi.domain.clone().is_actual(argument_type, scope)?;
 
                         match pi.parameter.clone() {
                             Some(_) => expr! {
@@ -371,13 +389,13 @@ impl Expression {
                 .expression
                 .clone()
                 .substitute(substitution.substitution.clone())
-                .infer_type(scope, crate_scope)?,
+                .infer_type(scope)?,
             UseIn => todo!("1stP infer type of use/in"),
             // @Beacon @Beacon @Beacon @Temporary @Task
             // first: fiddeling, then: building abstractions
             // @Bug this is *not* principled design
             CaseAnalysis(_case_analysis) => {
-                todo!("1stP infer type of case analysis") // @Task @Beacon
+                todo!("infer type of case analysis") // @Task @Beacon
 
                 // let r#type = case_analysis.subject.clone().infer_type(scope)?;
                 // // @Task verify that
@@ -445,7 +463,7 @@ impl Expression {
                 //             parameter: Some(parameter.clone()),
                 //             domain: TYPE,
                 //             codomain: expr! { Binding[self.span] { binder: parameter } },
-                //             explicitness: Explicitness::Implicit,
+                //             explicitness: Implicit,
                 //         }
                 //     }
                 // })
@@ -456,13 +474,9 @@ impl Expression {
     }
 
     /// Assert that an expression is of type `Type`.
-    fn is_a_type(
-        self,
-        scope: &FunctionScope<'_>,
-        crate_scope: &mut CrateScope,
-    ) -> Result<(), Error> {
-        let r#type = self.infer_type(scope, crate_scope)?;
-        TYPE.is_actual(r#type, scope, crate_scope)
+    fn is_a_type(self, scope: &FunctionScope<'_>) -> Result<(), Error> {
+        let r#type = self.infer_type(scope)?;
+        TYPE.is_actual(r#type, scope)
     }
 
     /// Assert that two expression are equal under evaluation/normalization.
@@ -470,16 +484,17 @@ impl Expression {
     // @Update that is because `equals` is called on 2 `Substitutions` but 2 of those are never
     // equal. I think they should be "killed" earlier. probably a bug
     // @Update this happens with Form::Normal, too. what a bummer
-    fn is_actual(
-        self,
-        actual: Self,
-        scope: &FunctionScope<'_>,
-        crate_scope: &mut CrateScope,
-    ) -> Result<(), Error> {
-        // let expected = self.evaluate(scope, Form::WeakHeadNormal)?;
-        // let actual = actual.evaluate(scope, Form::WeakHeadNormal)?;
-        let expected = self.clone().evaluate(scope, crate_scope, Form::Normal)?;
-        let actual = actual.evaluate(scope, crate_scope, Form::Normal)?;
+    fn is_actual(self, actual: Self, scope: &FunctionScope<'_>) -> Result<(), Error> {
+        let expected = self.clone().evaluate(interpreter::Context {
+            scope,
+            form: Form::Normal, /* Form::WeakHeadNormal */
+            phase: CompileTime,
+        })?;
+        let actual = actual.evaluate(interpreter::Context {
+            scope,
+            form: Form::Normal, /* Form::WeakHeadNormal */
+            phase: CompileTime,
+        })?;
 
         if !expected.clone().equals(actual.clone(), scope)? {
             // @Task improve diagnostic
@@ -487,7 +502,7 @@ impl Expression {
             // @Bug span information are *so* off!!
             // @Task we need to return a different error type (apart from Diagnostic) to
             // handle type mismatches without placing wrong spans
-            Err(
+            return Err(
                 // Diagnostic::new(Level::Fatal, Code::E032, "mismatched types").with_labeled_span(
                 //     actual.span,
                 //     format!("expected `{}`, got `{}`", self, actual),
@@ -497,10 +512,10 @@ impl Expression {
                     Code::E032,
                     format!("mismatched types. expected `{}`, got `{}`", self, actual),
                 )),
-            )
-        } else {
-            Ok(())
+            );
         }
+
+        Ok(())
     }
 }
 

@@ -3,7 +3,7 @@ use crate::{
     diagnostic::*,
     hir,
     hir::{expr, ExpressionKind},
-    parser::{Attribute, Explicitness},
+    parser::{Attribute, Explicit},
     resolver::{Identifier, Resolved},
     typer::Declaration,
     Nat,
@@ -378,7 +378,7 @@ fn binding(binder: Identifier) -> Expression {
 
 fn application(callee: Expression, argument: Expression) -> Expression {
     expr! {
-        Application[] { callee, argument, explicitness: Explicitness::Explicit }
+        Application[] { callee, argument, explicitness: Explicit }
     }
 }
 

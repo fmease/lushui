@@ -1,10 +1,15 @@
 # Imminent Tasks
 
-* allow "trailing dashes"
-* documentation!
+* change syntax of implicits from `|` to `,`
+* change attribute syntax from `_XXX_` to `@XXX` and `@(XXX)`
+* add record syntax:
+  * keyword + change of constructor syntax
+  * named application `f (x = a)`, `f (,x = a)`
+* implement records
+* allow "trailing dashes" in identifiers
+* documentation of the interpreter!
 * test infrastructure: testing `test/*.lushui`-files for certain criteria specifiable
   in the first line of the respective files
-* add constructor `|`-syntax
 * add effect infrastructure
   * add foreign data type `Effect: Type -> Type` with foreign bindings `pure`,
     `bind`, `read-line` and `print-line`
@@ -23,13 +28,11 @@
   * design and implement namespaced constructors
   * improve error messages of the resolver
 * advanced type inference (!!!)
-* design and implement records
 * FFI
   * add infrastructure for polymorphic foreign functions (necessary for `panic`, effects, …)
   * check for FFI-compability at foreign declarations
   * implement higher-order foreign functions
 * fix all the bugs related to substitutions (!!!)
-* fix `(a: A) -> B` smh not equalling `A -> B` anymore
 * print full path on type mismatch (and the like)
 * pretty-print HIR (way fewer parens)
 * spans

@@ -13,7 +13,7 @@ use std::{fmt, iter::once};
 use crate::{
     diagnostic::{Bag, Code, Diagnostic, Diagnostics, Level, Result},
     hir::{self, decl, expr, pat, Pass},
-    parser::{self, AttributeKind, Explicitness, Identifier, Path},
+    parser::{self, AttributeKind, Explicit, Identifier, Path},
     span::{SourceMap, Spanning},
     support::{pluralize, release_errors, ManyErrExt, MayBeInvalid, TryNonFatallyExt},
 };
@@ -404,13 +404,13 @@ impl parser::Expression {
                                 // @Temporary @Update @Bug -gy because we ignore above message
                                 // @Task verify correct semantics
                                 parameter_type_annotation: type_annotation.next(),
-                                explicitness: Explicitness::Explicit,
+                                explicitness: Explicit,
                                 body_type_annotation: None,
                                 body: let_in.scope.desugar(),
                             }
                         },
                         argument: expression,
-                        explicitness: Explicitness::Explicit,
+                        explicitness: Explicit,
                     }
                 }
             }

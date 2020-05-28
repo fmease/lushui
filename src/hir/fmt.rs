@@ -77,17 +77,7 @@ impl<P: Pass> Display for Expression<P> {
         use ExpressionKind::*;
 
         match &self.kind {
-            PiType(literal) => {
-                if let Some(parameter) = &literal.parameter {
-                    write!(f, "({}{}: {})", literal.explicitness, parameter, literal.domain)?;
-                } else if literal.explicitness.is_implicit() {
-                    write!(f, "({}{})", literal.explicitness, literal.domain)?;
-                } else {
-                    literal.domain.display_possibly_wrapped(f)?;
-                }
-                f.write_str(" -> ")?;
-                literal.codomain.display_possibly_wrapped(f)
-            }
+            PiType(literal) => write!(f, "{}", literal),
             Application(application) => {
                 application.callee.display_possibly_wrapped(f)?;
                 f.write_str(" ")?;
@@ -96,7 +86,7 @@ impl<P: Pass> Display for Expression<P> {
                 } else {
                     application.argument.display_possibly_wrapped(f)
                 }
-            },
+            }
             Type => f.write_str("Type"),
             Nat(literal) => write!(f, "{}", literal.value),
             Text(literal) => write!(f, "{:?}", literal.value),
@@ -138,6 +128,20 @@ impl<P: Pass> Display for Expression<P> {
 impl<P: Pass> fmt::Debug for Expression<P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self)
+    }
+}
+
+impl<P: Pass> Display for PiType<P> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        if let Some(parameter) = &self.parameter {
+            write!(f, "({}{}: {})", self.explicitness, parameter, self.domain)?;
+        } else if self.explicitness.is_implicit() {
+            write!(f, "({}{})", self.explicitness, self.domain)?;
+        } else {
+            self.domain.display_possibly_wrapped(f)?;
+        }
+        f.write_str(" -> ")?;
+        self.codomain.display_possibly_wrapped(f)
     }
 }
 

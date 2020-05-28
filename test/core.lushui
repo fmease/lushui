@@ -4,11 +4,11 @@ identity (A: Type) (a: A): A = a
 
 constant (A B: Type) (a: A) (b: B): A = a
 
-;; @Bug @Bug @Beacon regression: a pi-type w/o a parameter is no longer equal to
-;; to a pi-type with one:
-;; error[E032]: mismatched types. expected `(A) -> (C)`, got `(x: A) -> (C)`
-;; compose (A B C: Type) (f: A -> B) (g: B -> C) (a: A): C =
-;;     g (f a)
+compose (A B C: Type) (f: A -> B) (g: B -> C) (a: A): C =
+    g (f a)
+
+flip (A B C: Type) (f: A -> B -> C) (b: B) (a: A): C =
+    f a b
 
 module void: =
     data Void: Type =

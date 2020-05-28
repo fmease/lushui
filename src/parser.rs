@@ -572,7 +572,7 @@ impl Parser<'_> {
                 self.reflect(Self::parse_application_or_lower)
                     .map(|parameter| {
                         span = parameter.span;
-                        (Explicitness::Explicit, None, parameter)
+                        (Explicit, None, parameter)
                     })
             })?;
 
@@ -605,13 +605,13 @@ impl Parser<'_> {
     fn parse_application_or_lower(&mut self) -> Result<Expression> {
         let mut expression = self.reflect(Self::parse_lower_expression)?;
         while let Ok((argument, explicitness)) = self
-            .reflect(|parser| Ok((parser.parse_lower_expression()?, Explicitness::Explicit)))
+            .reflect(|parser| Ok((parser.parse_lower_expression()?, Explicit)))
             .or_else(|_| -> Result<_> {
                 self.consume(TokenKind::OpeningRoundBracket)?;
                 self.consume(TokenKind::VerticalBar)?;
                 let expression = self.parse_expression()?;
                 self.consume(TokenKind::ClosingRoundBracket)?;
-                Ok((expression, Explicitness::Implicit))
+                Ok((expression, Implicit))
             })
         {
             expression = expr! {
@@ -876,7 +876,7 @@ impl Parser<'_> {
                 span: identifier.span,
                 parameters: smallvec![identifier],
                 type_annotation: None,
-                explicitness: Explicitness::Explicit,
+                explicitness: Explicit,
             })
             .or_else(|_| self.parse_optionally_annotated_parameter_group())
     }
@@ -1048,9 +1048,9 @@ impl Parser<'_> {
                 )
                 // .with_span(token.span)
                 .emit(None);
-                Explicitness::Implicit
+                Implicit
             }
-            Err(_) => Explicitness::Explicit,
+            Err(_) => Explicit,
         }
     }
 }

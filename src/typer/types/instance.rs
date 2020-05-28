@@ -11,7 +11,7 @@
 
 use crate::{
     diagnostic::{Code, Diagnostic, Level, Result},
-    interpreter::scope::FunctionScope,
+    interpreter::scope::{CrateScope, FunctionScope},
     resolver::Identifier,
     support::MayBeInvalid,
     typer::{Expression, ExpressionKind},
@@ -21,11 +21,12 @@ pub(in crate::typer) fn assert_constructor_is_instance_of_type(
     constructor_name: Identifier,
     constructor: Expression,
     r#type: Expression,
+    scope: &CrateScope,
 ) -> Result<()> {
-    let result_type = constructor.result_type(&FunctionScope::Empty);
+    let result_type = constructor.result_type(&scope.into());
     let callee = result_type.callee();
 
-    if !r#type.equals(callee, &FunctionScope::Empty)? {
+    if !r#type.equals(callee, &scope.into())? {
         // @Task improve error diagnostic
         // @Task add span information
         Err(Diagnostic::new(

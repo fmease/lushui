@@ -464,9 +464,9 @@ fn display_path(
 /// The explicitness of a parameter or argument.
 ///
 /// In the context of parameters, this specifies whether in an application, the corresponding argument has
-/// to be passed explicitly or should be infered, i.e. the parameter is [Explicitness::Implicit].
+/// to be passed explicitly or should be infered, i.e. the parameter is [Implicit].
 ///
-/// In the context of applications, [Explicitness::Implicit] means that the argument is passed explicitly
+/// In the context of applications, [Implicit] means that the argument is passed explicitly
 /// even though the parameter is marked implicit.
 #[derive(Clone, Copy, Debug)]
 pub enum Explicitness {
@@ -474,17 +474,19 @@ pub enum Explicitness {
     Explicit,
 }
 
+pub use Explicitness::*;
+
 impl Explicitness {
     pub fn is_implicit(self) -> bool {
-        matches!(self, Self::Implicit)
+        matches!(self, Implicit)
     }
 }
 
 impl fmt::Display for Explicitness {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Implicit => f.write_str("|"),
-            Self::Explicit => f.write_str(""),
+            Implicit => f.write_str("|"),
+            Explicit => f.write_str(""),
         }
     }
 }

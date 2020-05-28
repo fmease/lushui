@@ -39,12 +39,12 @@ impl CrateScope {
         scope
     }
 
-    fn lookup_type(&self, index: CrateIndex) -> Option<Expression> {
+    pub fn lookup_type(&self, index: CrateIndex) -> Option<Expression> {
         self.bindings[index].r#type()
     }
 
     /// Look up the value of a binding.
-    fn lookup_value(&self, index: CrateIndex) -> ValueView {
+    pub fn lookup_value(&self, index: CrateIndex) -> ValueView {
         self.bindings[index].value()
     }
 
@@ -114,7 +114,10 @@ impl CrateScope {
                 value,
             } => {
                 let index = binder.krate().unwrap();
-                debug_assert!(self.bindings[index].is_untyped_value());
+                debug_assert!(
+                    self.bindings[index].is_untyped_value()
+                        || matches!(self.bindings[index], Entity { kind: EntityKind::Value { expression: None, .. }, .. })
+                );
                 self.bindings[index].kind = EntityKind::Value {
                     r#type,
                     expression: value,
@@ -276,7 +279,7 @@ pub enum Registration {
     ValueBinding {
         binder: Identifier,
         r#type: Expression,
-        value: Expression,
+        value: Option<Expression>,
     },
     DataBinding {
         binder: Identifier,
@@ -321,7 +324,7 @@ impl fmt::Debug for ValueView {
 /// And since lambdas and let/ins are nested, they are ordered and
 /// most importantly, recursion only works explicitly via the fix-point-combinator.
 pub enum FunctionScope<'a> {
-    Empty,
+    CrateScope(&'a CrateScope),
     Parameter {
         parent: &'a Self,
         r#type: Expression,
@@ -336,9 +339,16 @@ impl<'a> FunctionScope<'a> {
         }
     }
 
-    pub fn lookup_type(&self, binder: &Identifier, scope: &CrateScope) -> Option<Expression> {
+    pub fn crate_scope(&self) -> &CrateScope {
+        match self {
+            Self::CrateScope(scope) => scope,
+            Self::Parameter { parent, .. } => parent.crate_scope(),
+        }
+    }
+
+    pub fn lookup_type(&self, binder: &Identifier) -> Option<Expression> {
         match binder.index {
-            Index::Crate(index) => scope.lookup_type(index),
+            Index::Crate(index) => self.crate_scope().lookup_type(index),
             Index::Debruijn(index) => Some(self.lookup_type_with_depth(index, 0)),
             Index::DebruijnParameter => unreachable!(),
         }
@@ -358,32 +368,29 @@ impl<'a> FunctionScope<'a> {
                     parent.lookup_type_with_depth(index, depth + 1)
                 }
             }
-            Self::Empty => unreachable!(),
+            Self::CrateScope(_) => unreachable!(),
         }
     }
 
-    pub fn lookup_value(&self, binder: &Identifier, scope: &CrateScope) -> ValueView {
+    pub fn lookup_value(&self, binder: &Identifier) -> ValueView {
         match binder.index {
-            Index::Crate(index) => scope.lookup_value(index),
+            Index::Crate(index) => self.crate_scope().lookup_value(index),
             Index::Debruijn(_) => ValueView::Neutral,
             Index::DebruijnParameter => unreachable!(),
         }
     }
 
-    pub fn is_foreign(&self, binder: &Identifier, scope: &CrateScope) -> bool {
+    pub fn is_foreign(&self, binder: &Identifier) -> bool {
         match binder.index {
-            Index::Crate(index) => scope.is_foreign(index),
+            Index::Crate(index) => self.crate_scope().is_foreign(index),
             Index::Debruijn(_) => false,
             Index::DebruijnParameter => unreachable!(),
         }
     }
 }
 
-// impl fmt::Debug for FunctionScope<'_> {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         match self {
-//             Self::Crate(_) => f.write_str("module"),
-//             Self::Function { parent, r#type } => write!(f, "(_: {}) --> {:?}", r#type, parent),
-//         }
-//     }
-// }
+impl<'a> From<&'a CrateScope> for FunctionScope<'a> {
+    fn from(scope: &'a CrateScope) -> Self {
+        Self::CrateScope(scope)
+    }
+}

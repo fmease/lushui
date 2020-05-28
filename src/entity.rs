@@ -39,7 +39,9 @@ impl Entity {
     /// Retrieve the value of an entity
     pub fn value(&self) -> ValueView {
         match &self.kind {
-            EntityKind::Value { expression, .. } => ValueView::Reducible(expression.clone()),
+            EntityKind::Value { expression, .. } => {
+                ValueView::Reducible(expression.clone().unwrap())
+            }
             kind if kind.is_resolver_specific() => unreachable!(),
             _ => ValueView::Neutral,
         }
@@ -67,7 +69,7 @@ pub enum EntityKind {
 
     Value {
         r#type: Expression,
-        expression: Expression,
+        expression: Option<Expression>,
     },
     // @Question should we store the constructors?
     DataType {
@@ -101,7 +103,10 @@ impl fmt::Debug for EntityKind {
             Module(scope) => write!(f, "module, {:?}", scope),
             Use(index) => write!(f, "use {:?}", index),
             UnresolvedUse => write!(f, "unresolved use"),
-            Value { r#type, expression } => write!(f, "{}: {}", expression, r#type),
+            Value { r#type, expression } => match expression {
+                Some(expression) => write!(f, "{}: {}", expression, r#type),
+                None => write!(f, ": {}", r#type),
+            },
             DataType {
                 r#type,
                 constructors,

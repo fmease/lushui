@@ -1,10 +1,12 @@
 {
-    "__comment__": "missing text literals, attributes",
     "scopeName": "source.lushui",
     "name": "lushui",
     "patterns": [
         {
             "include": "#comment"
+        },
+        {
+            "include": "#attribute"
         },
         {
             "include": "#entity"
@@ -14,9 +16,6 @@
         },
         {
             "include": "#punctuation"
-        },
-        {
-            "include": "#attribute"
         },
         {
             "include": "#number-literal"
@@ -127,8 +126,7 @@
         "attribute": {
             "patterns": [
                 {
-                    "__comment__": "@Task",
-                    "match": "_[^_]+?_",
+                    "match": "(?:^| {4})@:?(?:\\w+|\\(.+?\\))",
                     "name": "meta.attribute.lushui punctuation.definition.variable"
                 }
             ]
