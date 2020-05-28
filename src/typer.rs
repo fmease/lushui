@@ -142,25 +142,19 @@ impl Registration {
                     self,
                     r#type.clone().is_a_type(&(&*scope).into())
                 );
-                // let infered_type = match value.clone().unwrap().infer_type(&(&*scope).into()) {
-                //     Err(Error::Recoverable(OutOfOrderBinding)) => {
-                //         scope.out_of_order_bindings.push(self);
-                //         scope.carry_out(Registration::ValueBinding {
-                //             binder,
-                //             r#type,
-                //             value: None,
-                //         })?;
-                //         return Ok(());
-                //     }
-                //     Err(error) => return Err(error.try_into().unwrap()),
-                //     Ok(expression) => expression,
-                // };
-
-                let infered_type = handle_out_of_order_binding!(
-                    scope,
-                    self,
-                    value.clone().unwrap().infer_type(&(&*scope).into())
-                );
+                let infered_type = match value.clone().unwrap().infer_type(&(&*scope).into()) {
+                    Err(Error::Recoverable(OutOfOrderBinding)) => {
+                        scope.out_of_order_bindings.push(self);
+                        scope.carry_out(Registration::ValueBinding {
+                            binder,
+                            r#type,
+                            value: None,
+                        })?;
+                        return Ok(());
+                    }
+                    Err(error) => return Err(error.try_into().unwrap()),
+                    Ok(expression) => expression,
+                };
 
                 handle_out_of_order_binding!(
                     scope,
@@ -271,13 +265,13 @@ impl CrateScope {
             }
 
             if previous_amount == self.out_of_order_bindings.len() {
-                dbg!(&self.out_of_order_bindings);
-                // @Task @Beacon add spans etc
-                // @Update @Task remove
+                // @Temporary
+                // @Note this case might occur when the bindings is its own type (like Type-in-Type)
+                // I don't know if there any other cases
                 return Err(Diagnostic::new(
                     Level::Fatal,
                     None,
-                    "found equi-recursive thingy trying to type-check",
+                    "found equi-recursive? or circular thingy trying to type-check",
                 ));
             }
         }
@@ -497,15 +491,15 @@ impl Expression {
         })?;
 
         if !expected.clone().equals(actual.clone(), scope)? {
-            // @Task improve diagnostic
-            // @Task add span information
-            // @Bug span information are *so* off!!
-            // @Task we need to return a different error type (apart from Diagnostic) to
-            // handle type mismatches without placing wrong spans
+            // @Task improve diagnostic, add span information, @Bug span information are *so* off!!
+            // @Task we need to return an Error::Recoverable(TypeMismatch(…))
             return Err(
-                // Diagnostic::new(Level::Fatal, Code::E032, "mismatched types").with_labeled_span(
-                //     actual.span,
-                //     format!("expected `{}`, got `{}`", self, actual),
+                // Error::Unrecoverable(
+                //     Diagnostic::new(Level::Fatal, Code::E032, "mismatched types")
+                //         .with_labeled_span(
+                //             &actual,
+                //             format!("expected `{}`, got `{}`", self, actual),
+                //         ),
                 // ),
                 Error::Unrecoverable(Diagnostic::new(
                     Level::Fatal,

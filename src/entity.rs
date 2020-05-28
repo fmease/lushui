@@ -39,9 +39,13 @@ impl Entity {
     /// Retrieve the value of an entity
     pub fn value(&self) -> ValueView {
         match &self.kind {
-            EntityKind::Value { expression, .. } => {
-                ValueView::Reducible(expression.clone().unwrap())
-            }
+            EntityKind::Value {
+                expression: Some(expression),
+                ..
+            } => ValueView::Reducible(expression.clone()),
+            EntityKind::Value {
+                expression: None, ..
+            } => ValueView::Neutral,
             kind if kind.is_resolver_specific() => unreachable!(),
             _ => ValueView::Neutral,
         }
