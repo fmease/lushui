@@ -1,7 +1,5 @@
 # Imminent Tasks
 
-* change syntax of implicits from `|` to `,`
-* change attribute syntax from `_XXX_` to `@XXX` and `@(XXX)`
 * add record syntax:
   * keyword + change of constructor syntax
   * named application `f (x = a)`, `f (,x = a)`

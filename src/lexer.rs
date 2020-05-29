@@ -17,7 +17,7 @@ use crate::{
 };
 use std::{
     fmt,
-    iter::{repeat, Peekable},
+    iter::Peekable,
     str::{CharIndices, FromStr},
 };
 
@@ -45,19 +45,20 @@ pub enum TokenKind {
     NatLiteral(Nat),
     TextLiteral(String),
     At,
-    Dot,
-    Colon,
-    Equals,
     Backslash,
-    ThinArrow,
-    WideArrow,
-    Indentation,
+    ClosingRoundBracket,
+    Colon,
+    Comma,
     Dedentation,
+    Dot,
+    Equals,
+    Indentation,
     LineBreak,
     OpeningRoundBracket,
-    ClosingRoundBracket,
-    Comma,
+    QuestionMark,
+    ThinArrow,
     Underscore,
+    WideArrow,
     As,
     Case,
     Crate,
@@ -66,6 +67,7 @@ pub enum TokenKind {
     Let,
     Module,
     Of,
+    Record,
     Self_,
     Super,
     Type,
@@ -85,19 +87,20 @@ impl fmt::Display for TokenKind {
             NatLiteral(_) => "natural number literal",
             TextLiteral(_) => "text literal",
             At => "at sign `@`",
-            Dot => "dot `.`",
-            Colon => "colon `:`",
-            Equals => "equals sign `=`",
             Backslash => "backslash `\\`",
-            ThinArrow => "thin arrow `->`",
-            WideArrow => "wide arrow `=>`",
-            Indentation => "indentation",
+            ClosingRoundBracket => "closing round bracket `)`",
+            Colon => "colon `:`",
+            Comma => "comma `,`",
             Dedentation => "dedentation",
+            Dot => "dot `.`",
+            Equals => "equals sign `=`",
+            Indentation => "indentation",
             LineBreak => "line break",
             OpeningRoundBracket => "opening round bracket `(`",
-            ClosingRoundBracket => "closing round bracket `)`",
-            Comma => "comma `,`",
+            QuestionMark => "question mark `?`",
+            ThinArrow => "thin arrow `->`",
             Underscore => "underscore `_`",
+            WideArrow => "wide arrow `=>`",
             As => "keyword `as`",
             Case => "keyword `case`",
             Crate => "keyword `crate`",
@@ -106,6 +109,7 @@ impl fmt::Display for TokenKind {
             Let => "keyword `let`",
             Module => "keyword `module`",
             Of => "keyword `of`",
+            Record => "keyword `record`",
             Self_ => "keyword `self`",
             Super => "keyword `super`",
             Type => "keyword `Type`",
@@ -158,6 +162,7 @@ fn parse_keyword(source: &str) -> Option<TokenKind> {
         "let" => Let,
         "module" => Module,
         "of" => Of,
+        "record" => Record,
         "self" => Self_,
         "super" => Super,
         "Type" => Type,
@@ -171,8 +176,9 @@ fn parse_reserved_punctuation(source: &str) -> Option<TokenKind> {
         "." => Dot,
         ":" => Colon,
         "=" => Equals,
-        "@" => At,
         "\\" => Backslash,
+        "@" => At,
+        "?" => QuestionMark,
         "->" => ThinArrow,
         "=>" => WideArrow,
         _ => return None,
@@ -270,11 +276,11 @@ impl<'a> Lexer<'a> {
                 .collect());
         }
 
-        self.extend_with_dedentation(
-            LocalByteIndex::from_usize(self.tokens.len().saturating_sub(1)),
-            self.indentation_in_spaces,
-        );
-        self.span = LocalSpan::from(LocalByteIndex::from_usize(self.source.content().len()));
+        // @Bug panics if last byte is not a valid codepoint, right?
+        let last = LocalByteIndex::from_usize(self.source.content().len() - 1);
+
+        self.extend_with_dedentations(last, self.indentation_in_spaces);
+        self.span = LocalSpan::from(last);
         self.add(EndOfInput);
 
         Ok(self.tokens)
@@ -397,7 +403,8 @@ impl<'a> Lexer<'a> {
 
         match change {
             Greater => self.add(Indentation),
-            Less => self.extend_with_dedentation(self.span.start, absolute_difference),
+            // @Note hacky
+            Less => self.extend_with_dedentations(self.span.end - 1, absolute_difference),
             Equal => unreachable!(),
         }
 
@@ -523,15 +530,18 @@ impl<'a> Lexer<'a> {
         self.tokens.push(Token::new(token, self.span()));
     }
 
-    fn extend_with_dedentation(&mut self, start: LocalByteIndex, amount_of_spaces: usize) {
+    fn extend_with_dedentations(&mut self, start: LocalByteIndex, amount_of_spaces: usize) {
         if amount_of_spaces == 0 {
             return;
         }
 
         // @Task use better span (it should span 4 spaces if possible) @Note you need to go backwards
         self.span = LocalSpan::from(start);
-        let dedentation = Token::new(Dedentation, self.span());
-        self.tokens
-            .extend(repeat(dedentation).take(amount_of_spaces / INDENTATION_IN_SPACES));
+        let span = self.span();
+
+        let extension = std::iter::repeat(Token::new(TokenKind::Dedentation, span))
+            .take(amount_of_spaces / INDENTATION_IN_SPACES);
+
+        self.tokens.extend(extension);
     }
 }

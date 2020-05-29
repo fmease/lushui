@@ -193,12 +193,20 @@ pub type Pattern<P> = Spanned<PatternKind<P>>;
 // and bc we don't use submodules here by design)
 pub enum PatternKind<P: Pass> {
     #[parameterless]
-    NatPattern { value: crate::Nat },
-    BindingPattern {
-        binder: P::PatternBinder,
-        type_annotation: Option<Expression<P>>,
+    PatternNat {
+        value: crate::Nat,
     },
-    ApplicationPattern {
+    #[parameterless]
+    PatternText {
+        value: String,
+    },
+    PatternPath {
+        binder: P::ReferencedBinder,
+    },
+    PatternBinding {
+        binder: P::PatternBinder,
+    },
+    Deapplication {
         callee: Pattern<P>,
         argument: Pattern<P>,
     },

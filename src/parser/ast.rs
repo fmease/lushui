@@ -7,6 +7,7 @@ use std::{
 use crate::{
     span::{PossiblySpanning, SourceFile, Span, Spanned, Spanning},
     support::MayBeInvalid,
+    SmallVec,
 };
 use freestanding::freestanding;
 
@@ -81,8 +82,7 @@ pub enum DeclarationKind {
         declarations: Option<Vec<Declaration>>,
     },
     /// The syntax node of a use declaration.
-    // @Task
-    Use { path: Path, bindings: () },
+    Use { path: Path },
 }
 
 #[derive(Debug, Default)]
@@ -201,7 +201,7 @@ pub enum ExpressionKind {
     },
     Path {
         head: Option<PathHead>,
-        segments: Vec<Identifier>,
+        segments: SmallVec<[Identifier; 1]>,
     },
     /// The syntax node of a lambda literal expression.
     LambdaLiteral {
@@ -221,7 +221,7 @@ pub enum ExpressionKind {
     UseIn,
     CaseAnalysis {
         expression: Expression,
-        cases: Vec<CaseAnalysisCaseGroup>,
+        cases: Vec<Case>,
     },
     /// See documentation on [crate::hir::Expression::Invalid].
     Invalid,
@@ -235,12 +235,31 @@ impl MayBeInvalid for Expression {
     }
 }
 
-/// Expression where ExpressionKind is unboxed.
-pub type RawExpression<K> = Spanned<K>;
+impl From<Spanned<Path>> for Expression {
+    fn from(path: Spanned<Path>) -> Self {
+        expr! {
+            Path[path.span] {
+                head: path.kind.head,
+                segments: path.kind.segments
+            }
+        }
+    }
+}
+
+impl From<Spanned<Path>> for Pattern {
+    fn from(path: Spanned<Path>) -> Self {
+        pat! {
+            PatternPath[path.span] {
+                head: path.kind.head,
+                segments: path.kind.segments
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
-pub struct CaseAnalysisCaseGroup {
-    pub patterns: Vec<Pattern>,
+pub struct Case {
+    pub pattern: Pattern,
     pub expression: Expression,
 }
 
@@ -291,15 +310,20 @@ pub type Pattern = Spanned<PatternKind>;
 #[streamline(Box)]
 #[derive(Debug, Clone)]
 pub enum PatternKind {
-    NatLiteralPattern {
+    PatternNatLiteral {
         value: crate::Nat,
     },
-    PathPattern {
-        head: Option<PathHead>,
-        segments: Vec<Identifier>,
-        type_annotation: Option<Expression>,
+    PatternTextLiteral {
+        value: String,
     },
-    ApplicationPattern {
+    PatternPath {
+        head: Option<PathHead>,
+        segments: SmallVec<[Identifier; 1]>,
+    },
+    PatternBinding {
+        binder: Identifier,
+    },
+    Deapplication {
         callee: Pattern,
         argument: Pattern,
     },
@@ -424,7 +448,7 @@ impl fmt::Display for Path {
     }
 }
 
-impl fmt::Display for PathPattern {
+impl fmt::Display for PatternPath {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         display_path(&self.head, &self.segments, f)
     }

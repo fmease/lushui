@@ -207,7 +207,7 @@ fn main() {
             .parse_top_level(crate_name.clone())
             .many_err()?;
         if merged_arguments.print_ast {
-            eprintln!("{:?}", node);
+            eprintln!("{:#?}", node);
         }
 
         match arguments.command {

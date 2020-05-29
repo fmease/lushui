@@ -8,10 +8,6 @@
 //! * cannot really handle optional indentation
 
 // @Beacon @Task make some errors non-fatal (e.g. unknown attributes)
-// @Task merge parse_parameters and parse_annotated_parameters using enum AnnotationPolicy { Mandatory, Optional }
-// to create better error messages: "missing type annotation on declaration",
-// subdiagnostic: "note: type annotations are mandatory on the top level",
-// subdiagnostic: "help: instead of `x`, write `(x: ?Type)`"
 
 mod ast;
 
@@ -124,18 +120,10 @@ impl Parser<'_> {
         self.index += 1;
     }
 
-    fn advance_with<Node, Knowledge>(
-        &mut self,
-        knowledge: Knowledge,
-        subparser: fn(&mut Self, Knowledge) -> Result<Node>,
-    ) -> Result<Node> {
-        self.advance();
-        subparser(self, knowledge)
-    }
-
     // @Note cloning is not that good, esp. text literals
     // but otherwise, we run into nasty borrowing errors because of
     // compound borrowing (limitation of rustc)
+    // @Question create a function that moves out of (using remove)?
     fn token(&self) -> lexer::Token {
         self.tokens[self.index].clone()
     }
@@ -173,22 +161,32 @@ impl Parser<'_> {
         // @Task transform attribute logic into iterative alogorithm just like we do in
         // `parse_constructor`
         match token.kind {
-            Identifier(identifier) => self.advance_with(
-                self::Identifier::new(identifier, token.span),
-                Self::finish_parse_value_declaration,
-            ),
-            Data => self.advance_with(token.span, Self::finish_parse_data_declaration),
-            Module => self.advance_with(token.span, Self::finish_parse_module_declaration),
-            Use => self.advance_with(token.span, Self::finish_parse_use_declaration),
+            Identifier(identifier) => {
+                self.advance();
+                self.finish_parse_value_declaration(self::Identifier::new(identifier, token.span))
+            }
+            Data => {
+                self.advance();
+                self.finish_parse_data_declaration(token.span)
+            }
+            Module => {
+                self.advance();
+                self.finish_parse_module_declaration(token.span)
+            }
+            Use => {
+                self.advance();
+                self.finish_parse_use_declaration(token.span)
+            }
             At => {
-                let attribute = self.advance_with(token.span, Self::finish_parse_attribute)?;
+                self.advance();
+                let attribute = self.finish_parse_attribute(token.span)?;
                 let mut declaration = self.parse_declaration()?;
                 declaration.attributes.push(attribute);
                 Ok(declaration)
             }
             DocumentationComment => {
-                let attribute =
-                    self.advance_with(token.span, Self::finish_parse_documentation_comment)?;
+                self.advance();
+                let attribute = self.finish_parse_documentation_comment(token.span)?;
                 let mut declaration = self.parse_declaration()?;
                 declaration.attributes.push(attribute);
                 Ok(declaration)
@@ -235,7 +233,7 @@ impl Parser<'_> {
     /// The comment should have already been parsed beforehand.
     /// The span does not include the trailing line break.
     ///
-    /// ## Grammer
+    /// ## Grammar
     ///
     /// ```text
     /// Documentation-Comment ::= %Documentation-Comment% Line-Break
@@ -269,7 +267,7 @@ impl Parser<'_> {
         span.merging(&type_annotation);
 
         let expression = if self.consumed(TokenKind::Equals) {
-            let expression = self.parse_possibly_indented_expression_followed_by_line_break()?;
+            let expression = self.parse_possibly_indented_terminated_expression()?;
             span.merging(&expression);
             Some(expression)
         } else {
@@ -463,13 +461,12 @@ impl Parser<'_> {
     /// Use-Declaration ::= "use" Path Line-Break
     /// ```
     fn finish_parse_use_declaration(&mut self, keyword_span: Span) -> Result<Declaration> {
-        let path = self.parse_path_raw()?;
+        let path = self.parse_path()?;
         self.consume(TokenKind::LineBreak)?;
 
         Ok(decl! {
             Use[keyword_span.merge(path.span)] {
                 path: path.kind,
-                bindings: (),
             }
         })
     }
@@ -491,10 +488,12 @@ impl Parser<'_> {
             let token = self.token();
             attributes.push(match token.kind {
                 TokenKind::Underscore => {
-                    self.advance_with(token.span, Self::finish_parse_attribute)?
+                    self.advance();
+                    self.finish_parse_attribute(token.span)?
                 }
                 TokenKind::DocumentationComment => {
-                    self.advance_with(token.span, Self::finish_parse_documentation_comment)?
+                    self.advance();
+                    self.finish_parse_documentation_comment(token.span)?
                 }
                 _ => break,
             });
@@ -535,9 +534,18 @@ impl Parser<'_> {
         let token = self.token();
 
         match token.kind {
-            Let => self.advance_with(token.span, Self::finish_parse_let_in),
-            Backslash => self.advance_with(token.span, Self::finish_parse_lambda_literal),
-            Case => self.advance_with(token.span, Self::finish_parse_case_analysis),
+            Let => {
+                self.advance();
+                self.finish_parse_let_in(token.span)
+            }
+            Backslash => {
+                self.advance();
+                self.finish_parse_lambda_literal(token.span)
+            }
+            Case => {
+                self.advance();
+                self.finish_parse_case_analysis(token.span)
+            }
             _ => self.parse_pi_type_literal_or_lower(),
         }
     }
@@ -552,6 +560,7 @@ impl Parser<'_> {
     ///     Application-Or-Lower)
     ///         ("->" Pi-Literal-Or-Lower)*
     /// ```
+    // @Task don't use reflect/or_else
     fn parse_pi_type_literal_or_lower(&mut self) -> Result<Expression> {
         let mut span = Span::SHAM;
 
@@ -637,37 +646,39 @@ impl Parser<'_> {
         use TokenKind::*;
 
         let token = self.token();
-        match token.kind {
-            // @Task use a "finish"-parser
-            Identifier(_) => self.parse_path(),
-            Crate => self.parse_path(),
-            Super => self.parse_path(),
+        Ok(match token.kind {
+            Identifier(identifier) => {
+                self.advance();
+                self.finish_parse_path_with_identifier(self::Identifier::new(
+                    identifier, token.span,
+                ))?
+                .into()
+            }
+            Crate => {
+                self.advance();
+                self.finish_parse_path_with_head(PathHead::new(PathHeadKind::Crate, token.span))?
+                    .into()
+            }
+            Super => {
+                self.advance();
+                self.finish_parse_path_with_head(PathHead::new(PathHeadKind::Super, token.span))?
+                    .into()
+            }
             Type => {
                 self.advance();
-                Ok(expr! { TypeLiteral[token.span] })
+                expr! { TypeLiteral[token.span] }
             }
             NatLiteral(value) => {
                 self.advance();
-                Ok(expr! { NatLiteral[token.span] { value } })
+                expr! { NatLiteral[token.span] { value } }
             }
             TextLiteral(value) => {
                 self.advance();
-                Ok(expr! { TextLiteral[token.span] { value } })
+                expr! { TextLiteral[token.span] { value } }
             }
             // @Task use advance_with//finish
-            OpeningRoundBracket => self.parse_bracketed(Self::parse_expression),
+            OpeningRoundBracket => return self.parse_bracketed(Self::parse_expression),
             _ => return Err(unexpected_token(token, "expression")),
-        }
-    }
-
-    /// Parse a path.
-    fn parse_path(&mut self) -> Result<Expression> {
-        let path = self.parse_path_raw()?;
-        Ok(expr! {
-            Path[path.span] {
-                head: path.kind.head,
-                segments: path.kind.segments
-            }
         })
     }
 
@@ -678,34 +689,60 @@ impl Parser<'_> {
     /// ```text
     /// Path ::= ("crate" | "super" | %Identifier%)? ("." %Identifier%)*
     /// ```
-    // @Note ugly
-    fn parse_path_raw(&mut self) -> Result<RawExpression<Path>> {
-        let mut segments = Vec::new();
-
+    fn parse_path(&mut self) -> Result<Spanned<Path>> {
+        use TokenKind::*;
         let token = self.token();
-        // @Note super ugly handling + data structures
-        let head = match token.kind {
-            TokenKind::Identifier(identifier) => {
-                segments.push(Identifier::new(identifier, token.span));
-                None
-            }
-            TokenKind::Crate => Some(PathHead::new(PathHeadKind::Crate, token.span)),
-            TokenKind::Super => Some(PathHead::new(PathHeadKind::Super, token.span)),
-            _ => return Err(unexpected_token(token, "path")),
-        };
-        let mut span = token.span;
-        self.advance();
 
+        match token.kind {
+            Identifier(identifier) => {
+                self.advance();
+                self.finish_parse_path_with_identifier(self::Identifier::new(
+                    identifier, token.span,
+                ))
+            }
+            Crate => {
+                self.advance();
+                self.finish_parse_path_with_head(PathHead::new(PathHeadKind::Crate, token.span))
+            }
+            Super => {
+                self.advance();
+                self.finish_parse_path_with_head(PathHead::new(PathHeadKind::Super, token.span))
+            }
+            _ => return Err(unexpected_token(token, "path")),
+        }
+    }
+
+    fn finish_parse_path_with_head(&mut self, head: PathHead) -> Result<Spanned<Path>> {
+        self.parse_path_tail(Spanned {
+            span: head.span,
+            kind: Path {
+                head: Some(head),
+                segments: SmallVec::new(),
+            },
+        })
+    }
+
+    fn finish_parse_path_with_identifier(
+        &mut self,
+        identifier: Identifier,
+    ) -> Result<Spanned<Path>> {
+        self.parse_path_tail(Spanned {
+            span: identifier.span,
+            kind: Path {
+                head: None,
+                segments: smallvec![identifier],
+            },
+        })
+    }
+
+    fn parse_path_tail(&mut self, mut path: Spanned<Path>) -> Result<Spanned<Path>> {
         while self.consumed(TokenKind::Dot) {
-            segments.push(Identifier::consume(self)?);
+            path.kind.segments.push(Identifier::consume(self)?);
         }
 
-        span.merging(&segments.last());
+        path.span.merging(&path.kind.segments.last());
 
-        Ok(RawExpression {
-            span,
-            kind: Path { head, segments },
-        })
+        Ok(path)
     }
 
     /// Finish parsing a lambda literal expression.
@@ -773,63 +810,55 @@ impl Parser<'_> {
     ///
     /// ## Grammar
     ///
-    /// @Task update to new syntax
     ///
     /// ```text
-    /// Case-Analysis ::= "case" Expression Line-Break Case-Analysis-Case-Group*
+    /// Case-Analysis ::= "case" Expression "Of" (Line-Break (Indentation Case* Dedentation)?)?
     /// ```
-    // @Note grammar is out-of-sync in respect to line breaks
     fn finish_parse_case_analysis(&mut self, span_of_case: Span) -> Result<Expression> {
-        let expression = self.parse_expression_followed_by_line_break()?;
+        use TokenKind::*;
+        let mut span = span_of_case;
+
+        let expression = self.parse_possibly_indented_expression()?;
+        span.merging(&self.consume(TokenKind::Of)?);
 
         let mut cases = Vec::new();
 
-        while self.current(TokenKind::Of) {
-            cases.push(self.parse_case_analysis_case_group()?);
+        if self.current(LineBreak) && self.succeeding(Indentation) {
+            self.advance();
+            self.advance();
 
-            // only consume a line break if the token after the line break is the keyword "of" to
-            // achieve parsing line breaks as joins/separators between each case group
-            if self.current(TokenKind::LineBreak) && self.succeeding(TokenKind::Of) {
-                self.advance();
+            while !self.current(Dedentation) {
+                cases.push(self.parse_case()?);
             }
+
+            span.merging(&self.token());
+            self.advance();
         }
 
         Ok(expr! {
-            CaseAnalysis[span_of_case.merge(
-                cases
-                    .last()
-                    .map(|case_group| case_group.expression.span)
-                    .unwrap_or_else(|| expression.span),
-            )] {
+            CaseAnalysis[span] {
                 expression,
                 cases,
             }
         })
     }
 
-    /// Parse a case group (part of a case analysis).
+    /// Parse a case (part of a case analysis).
     ///
     /// ## Grammar
     ///
-    /// @Task update to new syntax
     ///
     /// ```text
-    /// Case-Analyis-Case-Group ::= ("of" Pattern)+ "=>" Expression
+    /// Case ::= Pattern "=>" Expression
     /// ```
-    fn parse_case_analysis_case_group(&mut self) -> Result<CaseAnalysisCaseGroup> {
-        let mut patterns = Vec::new();
+    fn parse_case(&mut self) -> Result<Case> {
+        let pattern = self.parse_pattern()?;
+        self.consume(TokenKind::WideArrow)?;
+        let expression = self.parse_possibly_indented_terminated_expression()?;
 
-        self.consume(TokenKind::Of)?;
-        patterns.push(self.parse_pattern()?);
-
-        while !self.consumed(TokenKind::WideArrow) {
-            self.consume(TokenKind::Of)?;
-            patterns.push(self.parse_pattern()?);
-        }
-
-        Ok(CaseAnalysisCaseGroup {
-            patterns,
-            expression: self.parse_expression()?,
+        Ok(Case {
+            pattern,
+            expression,
         })
     }
 
@@ -916,12 +945,13 @@ impl Parser<'_> {
     }
 
     // Pattern ::= Lower_Pattern+
+    // @Task @Beacon @Beacon implicit application e.g. `foo (,bar)`
     fn parse_pattern(&mut self) -> Result<Pattern> {
         let mut callee = self.reflect(Self::parse_lower_pattern)?;
 
         while let Ok(argument) = self.reflect(Self::parse_lower_pattern) {
             callee = pat! {
-                ApplicationPattern[callee.span.merge(argument.span)] {
+                Deapplication[callee.span.merge(argument.span)] {
                     callee,
                     argument,
                 }
@@ -930,50 +960,63 @@ impl Parser<'_> {
         Ok(callee)
     }
 
-    // @Task Lower_Pattern ::= Nat_Literal | "(" Path Type_Annotation? ")" | Path | "(" Pattern ")"
-    // @Bug or_else(_) produces bad error messages
-    // @Task @Beacon @Beacon use match + custom error message ("expected pattern")
-    // @Note all this ugliness will (hopefully) go away once we improve the
-    // syntax of patterns
-    // @Beacon @Task update to new syntax
+    /// Parse a lower pattern.
+    ///
+    /// ## Grammar
+    ///
+    /// ```text
+    /// Lower_Pattern ::= Nat_Literal | "?" Identifier | Path | "(" Pattern ")"
+    /// ```
     fn parse_lower_pattern(&mut self) -> Result<Pattern> {
-        self.parse_nat_literal_pattern()
-            .or_else(|_| {
-                let (span, path, type_annotation) =
-                    if let Ok(opening_bracket) = self.consume(TokenKind::OpeningRoundBracket) {
-                        let path = self.parse_path_raw()?;
-                        let type_annotation = self.reflect(Self::parse_type_annotation)?;
-                        let span_of_closing_bracket =
-                            self.consume(TokenKind::ClosingRoundBracket)?.span;
+        let token = self.token();
 
-                        (
-                            opening_bracket.span.merge(span_of_closing_bracket),
-                            path.kind,
-                            Some(type_annotation),
-                        )
-                    } else {
-                        let path = self.parse_path_raw()?;
-                        (path.span, path.kind, None)
-                    };
+        use TokenKind::*;
 
-                Ok(pat! {
-                    PathPattern[span] {
-                        head: path.head,
-                        segments: path.segments,
-                        type_annotation,
+        Ok(match token.kind {
+            NatLiteral(nat) => {
+                self.advance();
+                pat! {
+                    PatternNatLiteral[token.span] {
+                        value: nat,
                     }
-                })
-            })
-            .or_else(|_: Diagnostic| self.parse_bracketed(Self::parse_pattern))
-    }
-
-    fn parse_nat_literal_pattern(&mut self) -> Result<Pattern> {
-        Nat::consume(self).map(|(nat, span)| {
-            pat! {
-                NatLiteralPattern[span] {
-                    value: nat,
                 }
             }
+            TextLiteral(text) => {
+                self.advance();
+                pat! {
+                    PatternTextLiteral[token.span] {
+                        value: text,
+                    }
+                }
+            }
+            QuestionMark => {
+                self.advance();
+                pat! {
+                    PatternBinding[token.span] {
+                        binder: self::Identifier::consume(self)?,
+                    }
+                }
+            }
+            Identifier(identifier) => {
+                self.advance();
+                self.finish_parse_path_with_identifier(self::Identifier::new(
+                    identifier, token.span,
+                ))?
+                .into()
+            }
+            Crate => {
+                self.advance();
+                self.finish_parse_path_with_head(PathHead::new(PathHeadKind::Crate, token.span))?
+                    .into()
+            }
+            Super => {
+                self.advance();
+                self.finish_parse_path_with_head(PathHead::new(PathHeadKind::Super, token.span))?
+                    .into()
+            }
+            // @Task @Beacon use a "finish"-parser
+            OpeningRoundBracket => return self.parse_bracketed(Self::parse_pattern),
+            _ => return Err(unexpected_token(token, "pattern")),
         })
     }
 
@@ -1004,22 +1047,38 @@ impl Parser<'_> {
         }
     }
 
-    // @Task generalize, move somewhere else
-    // @Note this is currently only used for let-declarations and I don't know if
-    // it works in other parsers
-    fn parse_possibly_indented_expression_followed_by_line_break(&mut self) -> Result<Expression> {
-        if self.consumed(TokenKind::LineBreak) {
-            self.consume(TokenKind::Indentation)?;
-            let expression = self.parse_expression_followed_by_line_break()?;
-            self.consume(TokenKind::Dedentation)?;
+    /// Parse a possibly indented expression terminated by a line break.
+    fn parse_possibly_indented_terminated_expression(&mut self) -> Result<Expression> {
+        use TokenKind::*;
+
+        if self.consumed(LineBreak) {
+            self.consume(Indentation)?;
+            let expression = self.parse_expression()?;
+            let _ = self.consumed(LineBreak);
+            self.consume(Dedentation)?;
             Ok(expression)
         } else {
-            self.parse_expression_followed_by_line_break()
+            self.parse_terminated_expression()
         }
     }
 
-    // @Note temporary, generalize
-    fn parse_expression_followed_by_line_break(&mut self) -> Result<Expression> {
+    /// Parse a possibly indented expression terminated by a line break.
+    fn parse_possibly_indented_expression(&mut self) -> Result<Expression> {
+        use TokenKind::*;
+
+        if self.consumed(LineBreak) {
+            self.consume(Indentation)?;
+            let expression = self.parse_expression()?;
+            let _ = self.consumed(LineBreak);
+            self.consume(Dedentation)?;
+            Ok(expression)
+        } else {
+            self.parse_expression()
+        }
+    }
+
+    /// Parse an expression terminated by a line break.
+    fn parse_terminated_expression(&mut self) -> Result<Expression> {
         let expression = self.parse_expression()?;
         self.consume(TokenKind::LineBreak)?;
         Ok(expression)

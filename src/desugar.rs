@@ -24,7 +24,8 @@ pub enum Desugared {}
 impl Pass for Desugared {
     type Binder = Identifier;
     type ReferencedBinder = Path;
-    type PatternBinder = parser::PathPattern;
+    // @Temporary
+    type PatternBinder = parser::PatternPath;
     type ForeignApplicationBinder = !;
 }
 
@@ -419,24 +420,10 @@ impl parser::Expression {
                 let mut cases = Vec::new();
 
                 for case_group in case_analysis.cases {
-                    // @Task naïvely desugaring this, results is worse error messages if the patterns don't introduce the
-                    // same bindings, example: `'of Foo 'of Bar x` gives the error `x not defined` which is not *that*
-                    // bad but we can do better (like Rust does) and error with `x` not defined in both arms/cases
-                    if case_group.patterns.len() > 1 {
-                        Diagnostic::new(
-                            Level::Warning,
-                            Code::W000,
-                            "contracted cases not thoroughly supported yet",
-                        )
-                        .emit(None);
-                    }
-
-                    for pattern in case_group.patterns {
-                        cases.push(hir::Case {
-                            pattern: pattern.desugar(),
-                            body: case_group.expression.clone().desugar(),
-                        });
-                    }
+                    cases.push(hir::Case {
+                        pattern: case_group.pattern.desugar(),
+                        body: case_group.expression.clone().desugar(),
+                    });
                 }
 
                 expr! {
@@ -459,19 +446,16 @@ impl parser::Pattern {
         use parser::PatternKind::*;
 
         match self.kind {
-            NatLiteralPattern(literal) => pat! {
-                NatPattern[self.span] {
+            PatternNatLiteral(literal) => pat! {
+                PatternNat[self.span] {
                     value: literal.value,
                 }
             },
-            PathPattern(path) => pat! {
-                BindingPattern[self.span] {
-                    binder: path.as_ref().clone(),
-                    type_annotation: path.type_annotation.map(parser::Expression::desugar),
-                }
-            },
-            ApplicationPattern(application) => pat! {
-                ApplicationPattern[self.span] {
+            PatternTextLiteral(_literal) => todo!("desugaring text literal patterns"),
+            PatternPath(_path) => todo!("desugaring pattern path"),
+            PatternBinding(_binding) => todo!("desugaring pattern binding"),
+            Deapplication(application) => pat! {
+                Deapplication[self.span] {
                     callee: application.callee.desugar(),
                     argument: application.argument.desugar(),
                 }
