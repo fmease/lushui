@@ -249,7 +249,7 @@ impl From<Spanned<Path>> for Expression {
 impl From<Spanned<Path>> for Pattern {
     fn from(path: Spanned<Path>) -> Self {
         pat! {
-            PatternPath[path.span] {
+            Path[path.span] {
                 head: path.kind.head,
                 segments: path.kind.segments
             }
@@ -299,28 +299,17 @@ impl Spanning for ParameterGroup {
 
 pub type Pattern = Spanned<PatternKind>;
 
-// @Task add text literal pattern
-// @Note unfortunately, there is much duplication going on of things from Expression
-// currently, the separation is used for type safety and documentation as we theoretically
-// could use Expression::{NatLiteral, Path, Application}. In fact, there are no pattern-
-// exclusive constructs right now. that might all change, especially if we syntactically
-// differenciate "l-values" from "r-values" in patterns (well, ... type annotation's are
-// exclusive)
 #[freestanding]
 #[streamline(Box)]
 #[derive(Debug, Clone)]
 pub enum PatternKind {
-    PatternNatLiteral {
-        value: crate::Nat,
-    },
-    PatternTextLiteral {
-        value: String,
-    },
-    PatternPath {
-        head: Option<PathHead>,
-        segments: SmallVec<[Identifier; 1]>,
-    },
-    PatternBinding {
+    #[skip]
+    NatLiteral(NatLiteral),
+    #[skip]
+    TextLiteral(TextLiteral),
+    #[skip]
+    Path(Path),
+    Binder {
         binder: Identifier,
     },
     Deapplication {
@@ -448,12 +437,6 @@ impl fmt::Display for Path {
     }
 }
 
-impl fmt::Display for PatternPath {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        display_path(&self.head, &self.segments, f)
-    }
-}
-
 // @Temporary sorry. not in the mood for programming right now
 // I will be happier once I figure out how to abstract over all of this
 // nicely
@@ -509,7 +492,7 @@ impl Explicitness {
 impl fmt::Display for Explicitness {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Implicit => f.write_str("|"),
+            Implicit => f.write_str(","),
             Explicit => f.write_str(""),
         }
     }

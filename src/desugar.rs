@@ -25,7 +25,7 @@ impl Pass for Desugared {
     type Binder = Identifier;
     type ReferencedBinder = Path;
     // @Temporary
-    type PatternBinder = parser::PatternPath;
+    type PatternBinder = Path;
     type ForeignApplicationBinder = !;
 }
 
@@ -446,14 +446,26 @@ impl parser::Pattern {
         use parser::PatternKind::*;
 
         match self.kind {
-            PatternNatLiteral(literal) => pat! {
-                PatternNat[self.span] {
+            NatLiteral(literal) => pat! {
+                Nat[self.span] {
                     value: literal.value,
                 }
             },
-            PatternTextLiteral(_literal) => todo!("desugaring text literal patterns"),
-            PatternPath(_path) => todo!("desugaring pattern path"),
-            PatternBinding(_binding) => todo!("desugaring pattern binding"),
+            TextLiteral(literal) => pat! {
+                Text[self.span] {
+                    value: literal.value,
+                }
+            },
+            Path(path) => pat! {
+                Binding[self.span] {
+                    binder: *path,
+                }
+            },
+            Binder(binding) => pat! {
+                Binder[self.span] {
+                    binder: binding.binder,
+                }
+            },
             Deapplication(application) => pat! {
                 Deapplication[self.span] {
                     callee: application.callee.desugar(),

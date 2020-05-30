@@ -93,14 +93,15 @@ impl<P: Pass> Display for Expression<P> {
             Binding(path) => write!(f, "{}", path.binder),
             Lambda(lambda) => write!(f, "{}", lambda),
             UseIn => todo!(),
+            // @Task fix indentation
             CaseAnalysis(case_analysis) => write!(
                 f,
-                "case ({}){}",
+                "case {} of\n{}",
                 case_analysis.subject,
                 case_analysis
                     .cases
                     .iter()
-                    .map(|case| format!(" {}", case))
+                    .map(|case| format!("    {}", case))
                     .collect::<String>()
             ),
             Invalid => f.write_str("<invalid>"),
@@ -168,18 +169,21 @@ impl<P: Pass> Display for Lambda<P> {
 
 impl<P: Pass> Display for Case<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "of {} => ({})", self.pattern, self.body)
+        write!(f, "{} => {}\n", self.pattern, self.body)
     }
 }
 
+// @Task update bracket business
 impl<P: Pass> Display for Pattern<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        use PatternKind::*;
+
         match &self.kind {
-            PatternKind::PatternNat(literal) => write!(f, "{}", literal.value),
-            PatternKind::PatternText(literal) => write!(f, "{:?}", literal.value),
-            PatternKind::PatternPath(path) => write!(f, "{}", path.binder),
-            PatternKind::PatternBinding(binding) => write!(f, "{}", binding.binder),
-            PatternKind::Deapplication(application) => {
+            Nat(literal) => write!(f, "{}", literal.value),
+            Text(literal) => write!(f, "{:?}", literal.value),
+            Binding(path) => write!(f, "{}", path.binder),
+            Binder(binding) => write!(f, "?{}", binding.binder),
+            Deapplication(application) => {
                 write!(f, "({}) ({})", application.callee, application.argument)
             }
         }

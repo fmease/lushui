@@ -89,16 +89,6 @@ pub enum DeclarationKind<P: Pass> {
 
 pub type Expression<P> = Spanned<ExpressionKind<P>>;
 
-impl<P: Pass> Expression<P> {
-    // @Question by value or by reference?
-    pub fn binding(&self) -> Option<&Binding<P>> {
-        match &self.kind {
-            ExpressionKind::Binding(binding) => Some(binding),
-            _ => None,
-        }
-    }
-}
-
 #[freestanding]
 #[streamline(Rc)]
 #[derive(Clone)]
@@ -189,22 +179,15 @@ pub type Pattern<P> = Spanned<PatternKind<P>>;
 #[freestanding]
 #[streamline(Rc)]
 #[derive(Clone)]
-// @Note naming of variants in unfortunate (necessary because of freestanding
-// and bc we don't use submodules here by design)
 pub enum PatternKind<P: Pass> {
-    #[parameterless]
-    PatternNat {
-        value: crate::Nat,
-    },
-    #[parameterless]
-    PatternText {
-        value: String,
-    },
-    PatternPath {
-        binder: P::ReferencedBinder,
-    },
-    PatternBinding {
-        binder: P::PatternBinder,
+    #[skip]
+    Nat(Nat),
+    #[skip]
+    Text(Text),
+    #[skip]
+    Binding(Binding<P>),
+    Binder {
+        binder: P::Binder,
     },
     Deapplication {
         callee: Pattern<P>,

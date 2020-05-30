@@ -976,7 +976,7 @@ impl Parser<'_> {
             NatLiteral(nat) => {
                 self.advance();
                 pat! {
-                    PatternNatLiteral[token.span] {
+                    NatLiteral[token.span] {
                         value: nat,
                     }
                 }
@@ -984,7 +984,7 @@ impl Parser<'_> {
             TextLiteral(text) => {
                 self.advance();
                 pat! {
-                    PatternTextLiteral[token.span] {
+                    TextLiteral[token.span] {
                         value: text,
                     }
                 }
@@ -992,7 +992,7 @@ impl Parser<'_> {
             QuestionMark => {
                 self.advance();
                 pat! {
-                    PatternBinding[token.span] {
+                    Binder[token.span] {
                         binder: self::Identifier::consume(self)?,
                     }
                 }

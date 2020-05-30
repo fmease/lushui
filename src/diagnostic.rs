@@ -390,8 +390,6 @@ pub enum Code {
     E062,
     /// Inherent type not declared.
     E063,
-    /// Contracted case analysis cases buggy.
-    W000,
     /// Implicitness unimplemented.
     W001,
 }
