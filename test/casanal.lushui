@@ -9,14 +9,31 @@
 ;;             344 => 33
 ;;         33 => 23
 
-main: N =
-    case 100 of
-        some.path.to.Bool.false => "foo"
-        super.Xoo => "bar"
-        crate.Xan => 22222
-        ?a => 233
-        "ban" => 111
-        (foo) => 0
-        (((foo))) => 1
-        23 ?x => 22
-        344 w2w 2 => 1
+;; main: N =
+;; case 100 of
+;;     some.path.to.Bool.false => "foo"
+;;     super.Xoo => "bar"
+;;     crate.Xan => 22222
+;;     ?a => 233
+;;     "ban" => 111
+;;     (foo) => 0
+;;     (((foo))) => 1
+;;     23 ?x => 22
+;;     344 w2w 2 => 1
+
+module core
+
+use core.nat.Nat
+use core.bool.Bool
+use core.bool.false
+use core.bool.true
+
+invert (b: Bool): Bool = case b of
+    false => true
+    true => false
+
+invert2 (b: Bool): Bool = case b of
+    false => true
+    ?xoodle => false
+
+main: Nat = 0

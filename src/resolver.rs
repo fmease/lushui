@@ -18,7 +18,7 @@ use crate::{
     desugar::Desugared,
     diagnostic::*,
     entity::{Entity, EntityKind},
-    hir::{decl, expr, Declaration, DeclarationKind, Expression, ExpressionKind, Pass},
+    hir::{self, decl, expr, Declaration, Expression, Pass},
     parser::{self, Path},
     span::{Span, Spanning},
     support::{
@@ -388,7 +388,7 @@ impl Declaration<Desugared> {
         module: Option<CrateIndex>,
         scope: &mut CrateScope,
     ) -> Result<(), Diagnostics> {
-        use DeclarationKind::*;
+        use hir::DeclarationKind::*;
 
         match &self.kind {
             Value(declaration) => {
@@ -468,7 +468,7 @@ impl Declaration<Desugared> {
         module: Option<CrateIndex>,
         scope: &mut CrateScope,
     ) -> Result<Declaration<Resolved>, Diagnostics> {
-        use DeclarationKind::*;
+        use hir::DeclarationKind::*;
 
         Ok(match self.kind {
             Value(declaration) => {
@@ -605,11 +605,13 @@ impl Expression<Desugared> {
         scope: &FunctionScope<'_>,
         crate_scope: &CrateScope,
     ) -> Result<Expression<Resolved>, Diagnostics> {
-        use ExpressionKind::*;
+        use hir::ExpressionKind::*;
 
         let mut error_collection = Bag::new();
 
         let expression = match self.kind {
+            // @Task @Beacon @Beacon don't use try_non_fatally here: you don't need to: use
+            // accumulate_err, the stuff here is independent! right??
             PiType(pi) => {
                 expr! {
                     PiType[self.span] {
@@ -624,6 +626,8 @@ impl Expression<Desugared> {
                     }
                 }
             }
+            // @Task @Beacon @Beacon don't use try_non_fatally here: you don't need to: use
+            // accumulate_err, the stuff here is independent! right??
             Application(application) => expr! {
                 Application[self.span] {
                     callee: application.callee.clone().resolve(scope, crate_scope).try_non_fatally(&mut error_collection),
@@ -651,6 +655,8 @@ impl Expression<Desugared> {
                     binder: scope.resolve_binding(&binding.binder, crate_scope).many_err()?,
                 }
             },
+            // @Task @Beacon @Beacon don't use try_non_fatally here: you don't need to: use
+            // accumulate_err, the stuff here is independent! right??
             Lambda(lambda) => expr! {
                 Lambda[self.span] {
                     parameter: Identifier::new(Index::DebruijnParameter, lambda.parameter.clone()),
@@ -668,7 +674,25 @@ impl Expression<Desugared> {
                 }
             },
             UseIn => todo!("resolving use/in"),
-            CaseAnalysis(_expression) => todo!("resolving case analysis"),
+            // @Beacon @Task
+            CaseAnalysis(expression) => {
+                let subject = expression.subject.clone().resolve(scope, crate_scope)?;
+                let mut cases = Vec::new();
+
+                for case in &expression.cases {
+                    let pattern = case.pattern.clone().resolve(scope, crate_scope)?;
+                    let body = case.body.clone().resolve(scope, crate_scope)?;
+
+                    cases.push(hir::Case { pattern, body });
+                }
+
+                expr! {
+                    CaseAnalysis[self.span] {
+                        subject,
+                        cases,
+                    }
+                }
+            }
             Substitution(_) | ForeignApplication(_) => unreachable!(),
             Invalid => MayBeInvalid::invalid(),
         };
@@ -676,6 +700,62 @@ impl Expression<Desugared> {
         release_errors!(error_collection);
 
         Ok(expression)
+    }
+}
+
+use hir::Pattern;
+
+impl Pattern<Desugared> {
+    fn resolve(
+        self,
+        scope: &FunctionScope<'_>,
+        crate_scope: &CrateScope,
+    ) -> Result<Pattern<Resolved>, Diagnostics> {
+        use hir::{pat, PatternKind::*};
+
+        Ok(match self.kind.clone() {
+            Nat(nat) => pat! {
+                Nat[self.span] {
+                    // @Note: stupid clone
+                    value: nat.value.clone(),
+                }
+            },
+            Text(text) => pat! {
+                Text[self.span] {
+                    // @Note: very stupid clone
+                    value: text.value.clone(),
+                }
+            },
+            Binding(binding) => pat! {
+                Binding[self.span] {
+                    binder: scope.resolve_binding(&binding.binder, crate_scope).many_err()?,
+                }
+            },
+            Binder(_) => {
+                // @Temporary
+                return Err(Diagnostic::new(
+                    Level::Error,
+                    None,
+                    "pattern binders are not supported yet",
+                )
+                .with_span(&self.span))
+                .many_err();
+            }
+            Deapplication(deapplication) => {
+                let (callee, argument) = (
+                    deapplication.callee.clone().resolve(scope, crate_scope),
+                    deapplication.argument.clone().resolve(scope, crate_scope),
+                )
+                    .accumulate_err()?;
+
+                pat! {
+                    Deapplication[self.span] {
+                        callee,
+                        argument,
+                    }
+                }
+            }
+        })
     }
 }
 

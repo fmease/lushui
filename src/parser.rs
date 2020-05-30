@@ -991,11 +991,8 @@ impl Parser<'_> {
             }
             QuestionMark => {
                 self.advance();
-                pat! {
-                    Binder[token.span] {
-                        binder: self::Identifier::consume(self)?,
-                    }
-                }
+                let binder = self::Identifier::consume(self)?;
+                pat! { Binder[token.span.merge(binder.span)] { binder } }
             }
             Identifier(identifier) => {
                 self.advance();
