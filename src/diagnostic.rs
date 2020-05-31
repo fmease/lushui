@@ -294,7 +294,7 @@ use std::fmt;
 impl fmt::Display for Level {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if !f.alternate() {
-            f.write_str(self.to_str())
+            write!(f, "{}", self.to_str())
         } else {
             write!(f, "{}", self.to_str().color(self.color()).bold())
         }

@@ -451,11 +451,11 @@ fn display_path(
         Some(PathHead {
             kind: PathHeadKind::Crate,
             ..
-        }) => f.write_str("crate")?,
+        }) => write!(f, "crate")?,
         Some(PathHead {
             kind: PathHeadKind::Super,
             ..
-        }) => f.write_str("super")?,
+        }) => write!(f, "super")?,
         None => write!(f, "{}", segments.next().unwrap())?,
     }
 
@@ -492,8 +492,8 @@ impl Explicitness {
 impl fmt::Display for Explicitness {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Implicit => f.write_str(","),
-            Explicit => f.write_str(""),
+            Implicit => write!(f, ","),
+            Explicit => write!(f, ""),
         }
     }
 }

@@ -537,7 +537,7 @@ impl fmt::Display for AnnotationTarget {
             Self::Parameters { amount } => {
                 write!(f, "{}", pluralize(*amount, "parameter", || "parameters"))
             }
-            Self::Declaration => f.write_str("declaration"),
+            Self::Declaration => write!(f, "declaration"),
         }
     }
 }

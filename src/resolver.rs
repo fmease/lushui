@@ -770,7 +770,7 @@ impl fmt::Debug for ModuleScope {
         write!(f, "super: ")?;
         match &self.parent {
             Some(parent) => write!(f, "{:?}", parent)?,
-            None => f.write_str("_|_")?,
+            None => write!(f, "_|_")?,
         };
         write!(f, ", {:?}", self.bindings)
     }
@@ -857,11 +857,11 @@ impl fmt::Display for Identifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.source)?;
         if crate::OPTIONS.get().unwrap().display_crate_indices {
-            f.write_str("#")?;
+            write!(f, "#")?;
             match self.index {
                 Index::Crate(index) => write!(f, "{:?}", index)?,
                 Index::Debruijn(index) => write!(f, "{}D", index.0)?,
-                Index::DebruijnParameter => f.write_str("P")?,
+                Index::DebruijnParameter => write!(f, "P")?,
             }
         }
         Ok(())

@@ -103,7 +103,7 @@ impl fmt::Debug for EntityKind {
         use EntityKind::*;
 
         match self {
-            UntypedValue => f.write_str("untyped value"),
+            UntypedValue => write!(f, "untyped value"),
             Module(scope) => write!(f, "module, {:?}", scope),
             Use(index) => write!(f, "use {:?}", index),
             UnresolvedUse => write!(f, "unresolved use"),

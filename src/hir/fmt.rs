@@ -38,7 +38,7 @@ impl<P: Pass> Declaration<P> {
                     )?;
                     for constructor in constructors {
                         let depth = depth + 1;
-                        f.write_str(&" ".repeat(depth * INDENTATION_IN_SPACES))?;
+                        write!(f, "{}", &" ".repeat(depth * INDENTATION_IN_SPACES))?;
                         constructor.format(f, depth)?;
                     }
                 }
@@ -55,7 +55,7 @@ impl<P: Pass> Declaration<P> {
                 writeln!(f, "module {}: =", declaration.binder)?;
                 for declaration in &declaration.declarations {
                     let depth = depth + 1;
-                    f.write_str(&" ".repeat(depth * INDENTATION_IN_SPACES))?;
+                    write!(f, "{}", &" ".repeat(depth * INDENTATION_IN_SPACES))?;
                     declaration.format(f, depth)?;
                 }
             }
@@ -63,7 +63,7 @@ impl<P: Pass> Declaration<P> {
                 Some(binder) => writeln!(f, "use {} as {}", declaration.reference, binder)?,
                 None => writeln!(f, "use {}", declaration.reference)?,
             },
-            Invalid => f.write_str("<invalid>")?,
+            Invalid => write!(f, "<invalid>")?,
         }
 
         Ok(())
@@ -80,14 +80,14 @@ impl<P: Pass> Display for Expression<P> {
             PiType(literal) => write!(f, "{}", literal),
             Application(application) => {
                 application.callee.display_possibly_wrapped(f)?;
-                f.write_str(" ")?;
+                write!(f, " ")?;
                 if application.explicitness.is_implicit() {
                     write!(f, "({}{})", application.explicitness, application.argument)
                 } else {
                     application.argument.display_possibly_wrapped(f)
                 }
             }
-            Type => f.write_str("Type"),
+            Type => write!(f, "Type"),
             Nat(literal) => write!(f, "{}", literal.value),
             Text(literal) => write!(f, "{:?}", literal.value),
             Binding(path) => write!(f, "{}", path.binder),
@@ -104,7 +104,7 @@ impl<P: Pass> Display for Expression<P> {
                     .map(|case| format!("    {}", case))
                     .collect::<String>()
             ),
-            Invalid => f.write_str("<invalid>"),
+            Invalid => write!(f, "<invalid>"),
             Substitution(substitution) => write!(
                 f,
                 "<substitution {} {}>",
@@ -141,7 +141,7 @@ impl<P: Pass> Display for PiType<P> {
         } else {
             self.domain.display_possibly_wrapped(f)?;
         }
-        f.write_str(" -> ")?;
+        write!(f, " -> ")?;
         self.codomain.display_possibly_wrapped(f)
     }
 }
@@ -159,10 +159,10 @@ impl<P: Pass> Display for Lambda<P> {
                 .unwrap_or_default()
         )?;
         if let Some(type_annotation) = &self.body_type_annotation {
-            f.write_str(": ")?;
+            write!(f, ": ")?;
             type_annotation.display_possibly_wrapped(f)?;
         }
-        f.write_str(" => ")?;
+        write!(f, " => ")?;
         self.body.display_possibly_wrapped(f)
     }
 }

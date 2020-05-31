@@ -311,7 +311,7 @@ impl fmt::Debug for ValueView {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Reducible(expression) => write!(f, "(REDUCIBLE {})", expression),
-            Self::Neutral => f.write_str("NEUTRAL"),
+            Self::Neutral => write!(f, "NEUTRAL"),
         }
     }
 }
