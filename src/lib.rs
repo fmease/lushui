@@ -9,7 +9,8 @@
     move_ref_pattern,
     associated_type_defaults,
     never_type,
-    bool_to_option
+    bool_to_option,
+    // untagged_unions
 )]
 #![forbid(rust_2018_idioms, unused_must_use)]
 

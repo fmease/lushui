@@ -5,6 +5,7 @@ use std::{
 };
 
 use crate::{
+    lexer::Token,
     span::{PossiblySpanning, SourceFile, Span, Spanned, Spanning},
     support::MayBeInvalid,
     SmallVec,
@@ -338,6 +339,14 @@ pub struct Identifier {
 impl Identifier {
     pub fn new(atom: crate::Atom, span: Span) -> Self {
         Self { atom, span }
+    }
+
+    /// Panics if the token is not an identifier.
+    pub fn from_token(token: Token) -> Self {
+        Self {
+            span: token.span,
+            atom: token.identifier(),
+        }
     }
 
     pub fn as_str(&self) -> &str {

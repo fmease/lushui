@@ -70,7 +70,7 @@ impl Parser<'_> {
     fn expect_identifier(&self) -> Result<Identifier> {
         let actual = self.token();
         match actual.kind {
-            TokenKind::Identifier(atom) => Ok(Identifier::new(atom, actual.span)),
+            TokenKind::Identifier => Ok(Identifier::from_token(actual)),
             _ => Err(Expected::Identifier.but_actual_is(actual)),
         }
     }
@@ -143,9 +143,9 @@ impl Parser<'_> {
         // @Task transform attribute logic into iterative alogorithm just like we do in
         // `parse_constructor`
         match token.kind {
-            Identifier(identifier) => {
+            Identifier => {
                 self.advance();
-                self.finish_parse_value_declaration(self::Identifier::new(identifier, token.span))
+                self.finish_parse_value_declaration(ast::Identifier::from_token(token))
             }
             Data => {
                 self.advance();
@@ -627,9 +627,9 @@ impl Parser<'_> {
 
         let token = self.token();
         Ok(match token.kind {
-            Identifier(atom) => {
+            Identifier => {
                 self.advance();
-                self.finish_parse_path_with_identifier(atom, token.span)?
+                self.finish_parse_path_with_identifier(ast::Identifier::from_token(token))?
                     .into()
             }
             Crate => {
@@ -644,13 +644,13 @@ impl Parser<'_> {
                 self.advance();
                 expr! { TypeLiteral[token.span] }
             }
-            NatLiteral(value) => {
+            NatLiteral => {
                 self.advance();
-                expr! { NatLiteral[token.span] { value } }
+                expr! { NatLiteral[token.span] { value: token.nat_literal() } }
             }
-            TextLiteral(value) => {
+            TextLiteral => {
                 self.advance();
-                expr! { TextLiteral[token.span] { value } }
+                expr! { TextLiteral[token.span] { value: token.text_literal() } }
             }
             // @Task use advance_with//finish
             OpeningRoundBracket => return self.parse_bracketed(Self::parse_expression),
@@ -670,9 +670,9 @@ impl Parser<'_> {
         let token = self.token();
 
         match token.kind {
-            Identifier(atom) => {
+            Identifier => {
                 self.advance();
-                self.finish_parse_path_with_identifier(atom, token.span)
+                self.finish_parse_path_with_identifier(ast::Identifier::from_token(token))
             }
             Crate => {
                 self.advance();
@@ -708,14 +708,13 @@ impl Parser<'_> {
 
     fn finish_parse_path_with_identifier(
         &mut self,
-        atom: crate::Atom,
-        span: Span,
+        identifier: Identifier,
     ) -> Result<Spanned<Path>> {
         self.parse_path_tail(Spanned {
-            span,
+            span: identifier.span,
             kind: Path {
                 head: None,
-                segments: smallvec![Identifier::new(atom, span)],
+                segments: smallvec![identifier],
             },
         })
     }
@@ -878,9 +877,9 @@ impl Parser<'_> {
     fn parse_parameter_group(&mut self, delimiters: &[Delimiter]) -> Result<ParameterGroup> {
         let token = self.token();
         match token.kind {
-            TokenKind::Identifier(atom) => Ok(ParameterGroup {
+            TokenKind::Identifier => Ok(ParameterGroup {
                 span: token.span,
-                parameters: smallvec![Identifier::new(atom, token.span)],
+                parameters: smallvec![Identifier::from_token(token)],
                 type_annotation: None,
                 explicitness: Explicit,
             }),
@@ -955,22 +954,22 @@ impl Parser<'_> {
         use TokenKind::*;
 
         Ok(match token.kind {
-            NatLiteral(value) => {
+            NatLiteral => {
                 self.advance();
-                pat! { NatLiteral[token.span] { value } }
+                pat! { NatLiteral[token.span] { value: token.nat_literal() } }
             }
-            TextLiteral(value) => {
+            TextLiteral => {
                 self.advance();
-                pat! { TextLiteral[token.span] { value } }
+                pat! { TextLiteral[token.span] { value: token.text_literal() } }
             }
             QuestionMark => {
                 self.advance();
                 let binder = self.consume_identifier()?;
                 pat! { Binder[token.span.merge(binder.span)] { binder } }
             }
-            Identifier(atom) => {
+            Identifier => {
                 self.advance();
-                self.finish_parse_path_with_identifier(atom, token.span)?
+                self.finish_parse_path_with_identifier(ast::Identifier::from_token(token))?
                     .into()
             }
             Crate => {

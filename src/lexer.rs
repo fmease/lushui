@@ -8,196 +8,38 @@
 
 #[cfg(test)]
 mod test;
+mod token;
 
 use crate::{
     diagnostic::*,
-    span::{LocalByteIndex, LocalSpan, SourceFile, Span, Spanned},
+    span::{LocalByteIndex, LocalSpan, SourceFile, Span},
     support::ManyErrExt,
     Atom, Nat, INDENTATION_IN_SPACES,
 };
 use std::{
-    fmt,
     iter::Peekable,
     str::{CharIndices, FromStr},
 };
-
-pub type Token = Spanned<TokenKind>;
-
-/// A token *without* span information.
-///
-/// The payload contains processed (in constrast to raw source) data.
-/// Currently, only identifiers (`self::Token::Identifier`) make use of this extra payload
-/// as they get interned.
-/// In the future, the lexer may want to store processed string literals as the work of
-/// decoding escape characters (and what not) has already been done to check for lexical errors.
-/// I don't know about number literals though. They shouldn't be interpreted for as long as possible
-/// because they are of arbitrary precision anyways.
-///
-/// We could think about interning (non-reserved) punctuation.
-///
-/// Note: Maybe, this design is over-engineered but I don't know where to elegantly store
-/// interned strings.
-#[derive(Clone, PartialEq, Eq)]
-pub enum TokenKind {
-    DocumentationComment,
-    Identifier(Atom),
-    Punctuation,
-    NatLiteral(Nat),
-    TextLiteral(String),
-    At,
-    Backslash,
-    ClosingRoundBracket,
-    Colon,
-    Comma,
-    Dedentation,
-    Dot,
-    Equals,
-    Indentation,
-    LineBreak,
-    OpeningRoundBracket,
-    QuestionMark,
-    ThinArrow,
-    Underscore,
-    WideArrow,
-    As,
-    Case,
-    Crate,
-    Data,
-    In,
-    Let,
-    Module,
-    Of,
-    Record,
-    Self_,
-    Super,
-    Type,
-    Use,
-    EndOfInput,
-}
-
-use TokenKind::*;
-
-/// Does not display the payload by design.
-impl fmt::Display for TokenKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            DocumentationComment => "documentation comment",
-            Identifier(_) => "identifier",
-            Punctuation => "punctuation",
-            NatLiteral(_) => "number literal",
-            TextLiteral(_) => "text literal",
-            At => "`@`",
-            Backslash => "`\\`",
-            ClosingRoundBracket => "`)`",
-            Colon => "`:`",
-            Comma => "`,`",
-            Dedentation => "dedentation",
-            Dot => "`.`",
-            Equals => "`=`",
-            Indentation => "indentation",
-            LineBreak => "line break",
-            OpeningRoundBracket => "`(`",
-            QuestionMark => "`?`",
-            ThinArrow => "`->`",
-            Underscore => "`_`",
-            WideArrow => "`=>`",
-            As => "keyword `as`",
-            Case => "keyword `case`",
-            Crate => "keyword `crate`",
-            Data => "keyword `data`",
-            In => "keyword `in`",
-            Let => "keyword `let`",
-            Module => "keyword `module`",
-            Of => "keyword `of`",
-            Record => "keyword `record`",
-            Self_ => "keyword `self`",
-            Super => "keyword `super`",
-            Type => "keyword `Type`",
-            Use => "keyword `use`",
-            EndOfInput => "end of input",
-        })
-    }
-}
-
-impl fmt::Debug for TokenKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self)
-    }
-}
-
-const PRIME: char = '\'';
-
-fn is_punctuation(character: char) -> bool {
-    matches!(
-        character,
-        '.' | ':'
-            | '+'
-            | '-'
-            | '~'
-            | '='
-            | '<'
-            | '>'
-            | '*'
-            | '^'
-            | '!'
-            | '?'
-            | '|'
-            | '/'
-            | '\\'
-            | '&'
-            | '#'
-            | '%'
-            | '$'
-            | '@'
-    )
-}
-
-fn parse_keyword(source: &str) -> Option<TokenKind> {
-    Some(match source {
-        "as" => As,
-        "case" => Case,
-        "crate" => Crate,
-        "data" => Data,
-        "in" => In,
-        "let" => Let,
-        "module" => Module,
-        "of" => Of,
-        "record" => Record,
-        "self" => Self_,
-        "super" => Super,
-        "Type" => Type,
-        "use" => Use,
-        _ => return None,
-    })
-}
-
-fn parse_reserved_punctuation(source: &str) -> Option<TokenKind> {
-    Some(match source {
-        "." => Dot,
-        ":" => Colon,
-        "=" => Equals,
-        "\\" => Backslash,
-        "@" => At,
-        "?" => QuestionMark,
-        "->" => ThinArrow,
-        "=>" => WideArrow,
-        _ => return None,
-    })
-}
+pub use token::{
+    Token,
+    TokenKind::{self, *},
+};
 
 /// Utility to parse identifiers from a string slice.
 ///
 /// Used for non-lushui code like crate names.
+// @Note this is ugly
 pub fn parse_identifier(source: String) -> Option<Atom> {
     let mut tokens = lex(source).ok()?;
     let mut tokens = tokens.drain(..);
     match [tokens.next(), tokens.next()] {
         [Some(Token {
-            kind: Identifier(identifier),
+            kind: Identifier,
+            data: token::TokenData::Identifier(atom),
             ..
         }), Some(Token {
             kind: EndOfInput, ..
-        })] => Some(identifier),
+        })] => Some(atom),
         _ => None,
     }
 }
@@ -242,7 +84,7 @@ impl<'a> Lexer<'a> {
                 ';' => self.lex_comment(),
                 character if character.is_ascii_alphabetic() => self.lex_identifier().many_err()?,
                 '\n' => self.lex_indentation().many_err()?,
-                character if is_punctuation(character) => self.lex_punctuation(),
+                character if token::is_punctuation(character) => self.lex_punctuation(),
                 character if character.is_ascii_digit() => self.lex_nat_literal(),
                 '"' => self.lex_text_literal().many_err()?,
                 '(' => self.lex_opening_round_bracket(),
@@ -345,10 +187,13 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        self.add(match parse_keyword(&self.source[self.span]) {
-            Some(keyword) => keyword,
-            None => Identifier(self.source[self.span].into()),
-        });
+        match token::parse_keyword(&self.source[self.span]) {
+            Some(keyword) => self.add(keyword),
+            None => {
+                let identifier = self.source[self.span].into();
+                self.add_with(|span| Token::new_identifier(identifier, span))
+            }
+        };
 
         Ok(())
     }
@@ -359,7 +204,7 @@ impl<'a> Lexer<'a> {
                 self.take();
                 self.advance();
                 self.take_while(|character| character.is_ascii_alphanumeric());
-                self.take_while(|character| character == PRIME);
+                self.take_while(|character| character == token::PRIME);
             }
         }
     }
@@ -415,9 +260,9 @@ impl<'a> Lexer<'a> {
 
     fn lex_punctuation(&mut self) {
         self.advance();
-        self.take_while(is_punctuation);
+        self.take_while(token::is_punctuation);
 
-        self.add(parse_reserved_punctuation(&self.source[self.span]).unwrap_or(Punctuation))
+        self.add(token::parse_reserved_punctuation(&self.source[self.span]).unwrap_or(Punctuation))
     }
 
     // @Task numeric separator `'`
@@ -425,7 +270,8 @@ impl<'a> Lexer<'a> {
         self.advance();
         self.take_while(|character| character.is_ascii_digit());
 
-        self.add(NatLiteral(Nat::from_str(&self.source[self.span]).unwrap()));
+        let nat = Nat::from_str(&self.source[self.span]).unwrap();
+        self.add_with(|span| Token::new_nat_literal(nat, span));
     }
 
     // @Task escape sequences
@@ -451,9 +297,8 @@ impl<'a> Lexer<'a> {
         }
 
         // @Note once we implement escaping, this won't cut it and we need to build our own string
-        self.add(TextLiteral(
-            self.source[LocalSpan::new(self.span.start + 1, self.span.end - 1)].to_owned(),
-        ));
+        let text = self.source[LocalSpan::new(self.span.start + 1, self.span.end - 1)].to_owned();
+        self.add_with(|span| Token::new_text_literal(text, span));
 
         Ok(())
     }
@@ -528,6 +373,10 @@ impl<'a> Lexer<'a> {
 
     fn add(&mut self, token: TokenKind) {
         self.tokens.push(Token::new(token, self.span()));
+    }
+
+    fn add_with(&mut self, constructor: impl FnOnce(Span) -> Token) {
+        self.tokens.push(constructor(self.span()))
     }
 
     fn extend_with_dedentations(&mut self, start: LocalByteIndex, amount_of_spaces: usize) {
