@@ -95,6 +95,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "joinery"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85a5c968b1e8336a945da21fab473045df2d5f8c81535e762d52f6b2c49477b9"
+
+[[package]]
 name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -114,6 +120,7 @@ dependencies = [
  "colored",
  "freestanding",
  "indexed_vec",
+ "joinery",
  "num-bigint",
  "num-traits",
  "once_cell",
