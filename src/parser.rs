@@ -877,13 +877,17 @@ impl Parser<'_> {
     fn parse_parameter_group(&mut self, delimiters: &[Delimiter]) -> Result<ParameterGroup> {
         let token = self.token();
         match token.kind {
-            TokenKind::Identifier => Ok(ParameterGroup {
-                span: token.span,
-                parameters: smallvec![Identifier::from_token(token)],
-                type_annotation: None,
-                explicitness: Explicit,
-            }),
+            TokenKind::Identifier => {
+                self.advance();
+                Ok(ParameterGroup {
+                    span: token.span,
+                    parameters: smallvec![Identifier::from_token(token)],
+                    type_annotation: None,
+                    explicitness: Explicit,
+                })
+            }
             TokenKind::OpeningRoundBracket => {
+                self.advance();
                 let mut span = token.span;
                 let explicitness = self.consume_explicitness_symbol();
                 let mut parameters = SmallVec::new();
@@ -912,7 +916,7 @@ impl Parser<'_> {
             }
 
             _ => {
-                let delimiters = delimiters.iter().map(Expected::Delimiter);
+                let delimiters = delimiters.iter().copied().map(Expected::Delimiter);
                 return Err(Expected::OneOf(
                     &*Some(Expected::Parameter)
                         .into_iter()
@@ -1088,7 +1092,7 @@ enum Expected<'a> {
     Expression,
     Pattern,
     Parameter,
-    Delimiter(&'a Delimiter),
+    Delimiter(Delimiter),
     OneOf(&'a [Self]),
 }
 
@@ -1135,6 +1139,7 @@ impl fmt::Display for Expected<'_> {
 }
 
 // @Question merge with ExpectedOccurence?
+#[derive(Clone, Copy)]
 enum Delimiter {
     TypeAnnotationPrefix,
     DefinitionPrefix,
