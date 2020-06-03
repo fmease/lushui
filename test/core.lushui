@@ -14,7 +14,7 @@ module void: =
     data Void: Type =
 
     ;; absurd (A: Type) (v: Void): A =
-    ;;     case v of
+    ;;     (case v of) A
 
 module unit: =
     @inherent
@@ -27,10 +27,9 @@ module bool: =
         false: Bool
         true: Bool
     
-    ;; not (b: Bool): Bool =
-    ;;     case b of
-    ;;         false => true
-    ;;         true => false
+    not (b: Bool): Bool = case b of
+        false => true
+        true => false
     
     ;; @Note not lazy
     ;; if (A: Type) (condition: Bool) (consequent alternate: A): A =
@@ -64,11 +63,23 @@ module nat: =
     @foreign
     subtract: Nat -> Nat -> Option Nat
 
+    ;; @Temporary
+    @foreign
+    panicking-subtract: Nat -> Nat -> Nat
+
     @foreign
     multiply: Nat -> Nat -> Nat
     
     @foreign
     divide: Nat -> Nat -> Option Nat
+
+    ;; @Note instead of all those foreign comparison function,
+    ;; we could just have a single foreign compare: Nat -> Nat -> Ordering
+    ;; except that Ordering would need to be inherent...I know the
+    ;; design of inherent (which basically just means "export"/"ffi-export"/"extern")
+    ;; is bad; somehow, we need to improve the API of registering inherent bindings!
+    ;; as a hacky alternative, we could make compare return an Int (-1, 0, 1) or even a Nat
+    ;; (0, 1, 2) and map it afterwards to Ordering
 
     @foreign
     equal: Nat -> Nat -> Bool
@@ -87,6 +98,20 @@ module nat: =
 
     @foreign
     display: Nat -> Text
+
+    use super.bool
+    use super.ordering
+
+    ;; @Temporary, see comment about foreign compare
+    ;; @Bug parsing issues
+    compare (n m: Nat): ordering.Ordering =
+        case equal n m of
+            bool.true => ordering.equal
+            bool.false => case less n m of
+                bool.true => ordering.less
+                bool.false => ordering.greater
+            ;;
+    ;;
 
 module duple: =
     ;; @Task make inherent as well
@@ -115,6 +140,18 @@ module result: =
 
 module list: =
     data List (A: Type): Type =
-        ;; @bad naming
+        ;; @Note bad naming
         nil (A: Type): List A
         cons (A: Type): A -> List A -> List A
+
+module ordering: =
+    data Ordering: Type =
+        less: Ordering
+        equal: Ordering
+        greater: Ordering
+    
+    invert (o: Ordering): Ordering = case o of
+        less => greater
+        equal => equal
+        greater => less
+    ;; @Bug without comment, does not parse

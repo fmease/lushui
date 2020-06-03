@@ -1,5 +1,6 @@
 # Imminent Tasks
 
+* replace pattern binder syntax `?ident` with `\ident` to mirror lambda literals
 * add record syntax:
   * keyword + change of constructor syntax
   * named application `f (x = a)`, `f (,x = a)`

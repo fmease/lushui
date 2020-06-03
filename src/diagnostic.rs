@@ -200,7 +200,7 @@ impl Diagnostic {
                     Some(final_line) => {
                         let ellipsis = if final_line.number - span.first_line.number > 1 {
                             format!(
-                                "{ellipsis:<padding_len$} ",
+                                "{ellipsis:<padding_len$}",
                                 ellipsis = "...",
                                 padding_len = padding_len
                             )
@@ -331,6 +331,44 @@ impl Role {
             Self::Secondary => "-",
         }
     }
+}
+
+/// No prefix: Get a diagnostic.
+/// Prefix `&`: Get a result of diagnostic.
+/// Prefix `?`: Apply the try operator to the resulting diagnostic.
+/// Prefix `!`: (nmemonic never type) Return the resulting diagnostic (Ok = never).
+/// Prefix `*?`: Apply `many_err` and the try operator to the resulting diagnostic.
+pub macro todo {
+    () => {
+        todo!("something")
+    },
+    ($message:literal $( ,$spanning:expr )?) => {
+        Diagnostic::new(
+            Level::Bug,
+            None,
+            concat!(
+                "not yet implemented: ",
+                $message,
+                " at ",
+                file!(),
+                ":",
+                column!()
+            ),
+        ) $(.with_span($spanning))?
+    },
+    (& $( $rest:tt )*) => {
+        Err(todo!( $( $rest )* ))
+    },
+    (? $( $rest:tt )*) => {
+        todo!(& $( $rest )*)?
+    },
+    (! $( $rest:tt )*) => {
+        return todo!(& $( $rest )*)
+    },
+    (*? $( $rest:tt )*) => {{
+        use crate::support::ManyErrExt;
+        todo!(& $( $rest )*).many_err()?
+    }}
 }
 
 /// Diagnostic code.

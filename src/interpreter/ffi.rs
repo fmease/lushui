@@ -222,9 +222,9 @@ impl Value {
             Self::Unit => binding(values.unit.clone().ok_or_else(missing_inherent)?),
             Self::Bool(value) => binding(
                 if value {
-                    &values.r#false
-                } else {
                     &values.r#true
+                } else {
+                    &values.r#false
                 }
                 .clone()
                 .ok_or_else(missing_inherent)?,
@@ -335,6 +335,8 @@ pub fn register_foreign_bindings(scope: &mut CrateScope) {
 
     pure!(scope, "add", |x: Nat, y: Nat| x + y);
     pure!(scope, "subtract", |x: Nat, y: Nat| x.checked_sub(&y));
+    // @Temporary until we get option.unwrap
+    pure!(scope, "panicking-subtract", |x: Nat, y: Nat| x - y);
     pure!(scope, "multiply", |x: Nat, y: Nat| x * y);
     pure!(scope, "divide", |x: Nat, y: Nat| x.checked_div(&y));
     pure!(scope, "equal", |x: Nat, y: Nat| x == y);

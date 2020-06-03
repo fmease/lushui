@@ -3,6 +3,7 @@
 mod types;
 
 use crate::{
+    diagnostic::todo,
     diagnostic::*,
     hir::{self, *},
     interpreter::{
@@ -264,7 +265,7 @@ impl CrateScope {
             if previous_amount == self.out_of_order_bindings.len() {
                 // @Temporary
                 // @Note this case might occur when the bindings is its own type (like Type-in-Type)
-                // I don't know if there any other cases
+                // I don't know if there are any other cases
                 return Err(Diagnostic::new(
                     Level::Fatal,
                     None,
@@ -380,83 +381,62 @@ impl Expression {
                 .clone()
                 .substitute(substitution.substitution.clone())
                 .infer_type(scope)?,
-            UseIn => todo!("1stP infer type of use/in"),
-            // @Beacon @Beacon @Beacon @Temporary @Task
-            // first: fiddeling, then: building abstractions
-            // @Bug this is *not* principled design
-            CaseAnalysis(_case_analysis) => {
-                todo!("infer type of case analysis") // @Task @Beacon
+            UseIn => todo!(? "1stP infer type of use/in"),
+            CaseAnalysis(case_analysis) => {
+                let r#type = case_analysis
+                    .subject
+                    .clone()
+                    .infer_type(scope)?
+                    // to get rid of Substitutions
+                    .evaluate(interpreter::Context::new(scope))?;
 
-                // let r#type = case_analysis.subject.clone().infer_type(scope)?;
-                // // @Task verify that
-                // // * patterns are of correct type (i.e. r#type is an ADT and the constructors are the valid ones)
-                // // * all constructors are covered
-                // // * all case_analysis.cases>>.expressions are of the same type
+                // @Task verify that
+                // * patterns are of correct type (i.e. r#type is an ADT and the constructors are the valid ones)
+                // * all constructors are covered
+                // * all case_analysis.cases>>.expressions are of the same type
 
-                // match &r#type.kind {
-                //     Binding(_) => {}
-                //     Application(_application) => todo!("polymorphic types in patterns"),
-                //     _ => todo!("encountered unsupported type to be case-analysed"),
-                // };
+                match &r#type.kind {
+                    Binding(_) => {}
+                    Application(_application) => todo!(? "polymorphic types in patterns"),
+                    _ => todo!(? "encountered unsupported type to be case-analysed"),
+                };
 
-                // use desugar::expression::Pattern;
+                let mut type_of_previous_body = None::<Self>;
 
-                // let mut type_of_previous_body = None::<Self>;
+                for case in case_analysis.cases.iter() {
+                    match &case.pattern.kind {
+                        PatternKind::Nat(_nat) => todo!(? "handle nats in patterns", &case.pattern),
+                        PatternKind::Text(_text) => {
+                            todo!(? "handle texts in patterns", &case.pattern)
+                        }
+                        PatternKind::Binding(binding) => {
+                            let type_of_constructor = scope.lookup_type(&binding.binder).unwrap();
+                            // @Note error message very general, could be specialized to constructors
+                            r#type
+                                .clone()
+                                .is_actual(type_of_constructor.clone(), scope)?;
+                        }
+                        PatternKind::Binder(_binder) => {
+                            todo!(? "handle binders in patterns", &case.pattern)
+                        }
+                        PatternKind::Deapplication(_deapplication) => {
+                            todo!(? "handle deapplications in patterns", &case.pattern)
+                        }
+                    }
+                    // @Task @Beacon insert bindings from pattern when type checking body
+                    let r#type = case.body.clone().infer_type(scope)?;
 
-                // for case in case_analysis.cases.iter() {
-                //     match &case.pattern {
-                //         Pattern::Nat(_) => todo!("nat literal patterns"),
-                //         Pattern::Binding {
-                //             binder,
-                //             type_annotation,
-                //         } => {
-                //             if scope.is_constructor(&binder) {
-                //                 let type_of_constructor = scope.lookup_type(&binder).unwrap();
-                //                 if let Some(annotation) = type_annotation {
-                //                     annotation
-                //                         .clone()
-                //                         .is_actual(type_of_constructor.clone(), scope)?;
-                //                 }
-                //                 // @Note error message very general, could be specialized to constructors
-                //                 // once our diagnostic system is in place
-                //                 r#type
-                //                     .clone()
-                //                     .is_actual(type_of_constructor.clone(), scope)?;
-                //             } else {
-                //                 todo!("bindings inside of patterns");
-                //             }
-                //             // todo!() // @Beacon @Beacon @Beacon @Task
-                //         }
-                //         Pattern::Application {
-                //             callee: _,
-                //             argument: _,
-                //         } => todo!("application patterns"),
-                //     }
-                //     // @Task @Beacon insert bindings from pattern when type checking body
-                //     let r#type = case.body.clone().infer_type(scope)?;
+                    match type_of_previous_body {
+                        Some(ref previous_type) => {
+                            previous_type.clone().is_actual(r#type, scope)?;
+                        }
+                        None => {
+                            type_of_previous_body = Some(r#type);
+                        }
+                    }
+                }
 
-                //     match type_of_previous_body {
-                //         Some(ref previous_type) => {
-                //             previous_type.clone().is_actual(r#type, scope)?;
-                //         }
-                //         None => {
-                //             type_of_previous_body = Some(r#type);
-                //         }
-                //     }
-                // }
-
-                // type_of_previous_body.unwrap_or_else(|| {
-                //     let parameter = desugar::Identifier::sourced("A").refresh();
-
-                //     expr! {
-                //         PiType[self.span] {
-                //             parameter: Some(parameter.clone()),
-                //             domain: TYPE,
-                //             codomain: expr! { Binding[self.span] { binder: parameter } },
-                //             explicitness: Implicit,
-                //         }
-                //     }
-                // })
+                type_of_previous_body.ok_or_else(|| todo!("caseless case analyses"))?
             }
             ForeignApplication(_) => unreachable!(),
             Invalid => self,

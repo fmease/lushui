@@ -48,21 +48,6 @@ impl CrateScope {
         self.bindings[index].value()
     }
 
-    fn is(&self, binder: &Identifier, predicate: fn(&Entity) -> bool) -> bool {
-        self.bindings
-            .get(binder.krate().unwrap())
-            .map(predicate)
-            // @Question shouldn't it just be unwrap() b.c. resolver already ran?
-            .unwrap_or(false)
-    }
-
-    pub fn is_constructor(&self, binder: &Identifier) -> bool {
-        self.is(
-            binder,
-            |entity| matches!(entity.kind, EntityKind::Constructor { .. }),
-        )
-    }
-
     pub fn is_foreign(&self, index: CrateIndex) -> bool {
         matches!(self.bindings[index].kind, EntityKind::Foreign { .. })
     }
@@ -206,7 +191,7 @@ impl CrateScope {
 
     // @Task
     pub fn register_impure_foreign_binding<V: Into<ffi::Value>>(&mut self) {
-        todo!("register impure foreign binding")
+        std::todo!("register impure foreign binding")
     }
 
     pub fn register_foreign_type(&mut self, binder: &'static str) {

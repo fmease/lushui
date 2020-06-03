@@ -16,6 +16,7 @@ use std::{
 
 use crate::{
     desugar::Desugared,
+    diagnostic::todo,
     diagnostic::*,
     entity::{Entity, EntityKind},
     hir::{self, decl, expr, Declaration, Expression, Pass},
@@ -673,7 +674,7 @@ impl Expression<Desugared> {
                     explicitness: lambda.explicitness,
                 }
             },
-            UseIn => todo!("resolving use/in"),
+            UseIn => todo!(*? "resolving use/in"),
             // @Beacon @Task
             CaseAnalysis(expression) => {
                 let subject = expression.subject.clone().resolve(scope, crate_scope)?;

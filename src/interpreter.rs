@@ -7,7 +7,6 @@
 //!
 //! * too many bugs
 //! * case analysis not implemented
-//! * recursion not implemented
 //! * non-trivial type inference not done
 //! * untyped/unkinded AST-transformations
 //! * integration and regression tests missing
@@ -16,6 +15,7 @@ pub(crate) mod ffi;
 pub(crate) mod scope;
 
 use crate::{
+    diagnostic::todo,
     diagnostic::*,
     hir::{self, *},
     parser::Explicit,
@@ -35,7 +35,8 @@ impl CrateScope {
         if let Some(program_entry) = self.program_entry.take() {
             program_entry.to_expression().evaluate(Context {
                 scope: &(&self).into(),
-                form: Form::Normal,
+                // form: Form::Normal,
+                form: Form::WeakHeadNormal,
             })
         } else {
             Err(Diagnostic::new(
@@ -54,13 +55,25 @@ pub enum Form {
 }
 
 /// Evaluation context.
-// @Beacon @Task merge CrateScope back into FunctionScope
 // @Task a recursion_depth: usize, @Note if we do that,
 // remove Copy and have a custom Clone impl incrementing the value
 #[derive(Clone, Copy)]
 pub struct Context<'a> {
     pub(crate) scope: &'a FunctionScope<'a>,
     pub(crate) form: Form,
+}
+
+impl<'a> Context<'a> {
+    /// Temporarily, for convenience and until we fix some bugs, the form
+    /// is [Form::Normal] by default.
+    pub fn new(scope: &'a FunctionScope<'_>) -> Self {
+        // @Temporary: Normal
+        Self {
+            scope,
+            form: Form::Normal,
+            // form: Form::WeakHeadNormal,
+        }
+    }
 }
 
 impl<'a> Context<'a> {
@@ -199,8 +212,28 @@ impl Expression {
                     }
                 }
             }
-            (CaseAnalysis(_), _) => todo!("substitute case analysis"),
-            (UseIn, _) => todo!("substitute use/in"),
+            (CaseAnalysis(case_analysis), substitution) => {
+                expr! {
+                    CaseAnalysis[self.span] {
+                        cases: case_analysis.cases.iter().map(|case| Case {
+                            pattern: case.pattern.clone(),
+                            body: expr! {
+                                Substitution[] {
+                                    expression: case.body.clone(),
+                                    substitution: substitution.clone(),
+                                }
+                            },
+                        }).collect(),
+                        subject: expr! {
+                            Substitution[] {
+                                expression: case_analysis.subject.clone(),
+                                substitution,
+                            }
+                        },
+                    }
+                }
+            }
+            (UseIn, _) => std::todo!("substitute use/in"),
             (ForeignApplication(application), substitution) => expr! {
                 ForeignApplication[self.span] {
                     callee: application.callee.clone(),
@@ -253,11 +286,11 @@ impl Expression {
                     .evaluate(context)?,
                     Binding(_) | Application(_) => expr! {
                         Application[self.span] {
-                            // @Question or application.callee (unevaluated)?
                             callee,
                             argument: match context.form {
-                                Form::Normal => argument.evaluate(context)?,
-                                Form::WeakHeadNormal => argument,
+                                // Form::Normal => argument.evaluate(context)?,
+                                // Form::WeakHeadNormal => argument,
+                                _ => argument.evaluate(context)?,
                             },
                             explicitness: Explicit,
                         }
@@ -330,7 +363,7 @@ impl Expression {
                 .clone()
                 .substitute(substitution.substitution.clone())
                 .evaluate(context)?,
-            UseIn => todo!("evaluate use/in"),
+            UseIn => todo!(? "evaluate use/in"),
             // @Note @Beacon, now, meta information would be nice, so we don't need to do
             // double work (the work of `infer_type` again)
             // @Beacon @Beacon @Beacon @Note this code is @Temporary as hell.
@@ -341,48 +374,38 @@ impl Expression {
             // because the code will not check for the arity of the neutral application
             // @Note how to handle them: just like functions: case analysis only wotks with a binder-case
             // (default case)
-            CaseAnalysis(_case_analysis) => {
-                todo!("evaluate case analysis") // @Task @Beacon
+            CaseAnalysis(case_analysis) => {
+                let subject = case_analysis.subject.clone().evaluate(context)?;
 
-                // use desugar::expression::Pattern;
-
-                // let subject = case_analysis.subject.clone().evaluate(scope, form)?;
-
-                // // @Note we assume, subject is composed of only applications, paths
-                // // and natural number literals corresponding to the pattern types we
-                // // want to support right now
-                // // everything else should be impossible because of type checking
-                // // but I might be wrong. possible counter examples: unevaluated case
-                // // analysis expressions etc
-                // match subject.kind {
-                //     Binding(subject) => {
-                //         // @Beacon @Beacon @Task
-                //         if scope.is_constructor(&subject) {
-                //             for case in case_analysis.cases.iter() {
-                //                 match &case.pattern {
-                //                     Pattern::Nat(_) => todo!(),
-                //                     Pattern::Binding { binder, .. } => {
-                //                         if binder == subject {
-                //                             // @Task @Beacon extend with parameters when evaluating
-                //                             return case.body.clone().evaluate(scope, form);
-                //                         }
-                //                     }
-                //                     Pattern::Application { .. } => todo!(),
-                //                 }
-                //             }
-                //             // we should not be here
-                //             // @Note this is currently reachable because we don't do a check for
-                //             // exhaustiveness in `infer_type`, just fyi
-                //             unreachable!()
-                //         } else {
-                //             self
-                //         }
-                //     }
-                //     Application(_application) => todo!(),
-                //     Nat(_literal) => todo!(),
-                //     // @Note reachable if they contain neutrals, right??
-                //     _ => unreachable!(),
-                // }
+                // @Note we assume, subject is composed of only applications, bindings etc corresponding to the pattern types
+                // everything else should be impossible because of type checking but I might be wrong.
+                // possible counter examples: unevaluated case analysis expression
+                match subject.kind {
+                    Binding(subject) => {
+                        for case in case_analysis.cases.iter() {
+                            match &case.pattern.kind {
+                                PatternKind::Nat(_) => todo!(!),
+                                PatternKind::Text(_) => todo!(!),
+                                PatternKind::Binding(binding) => {
+                                    if binding.binder == subject.binder {
+                                        // @Task @Beacon extend with parameters when evaluating
+                                        return case.body.clone().evaluate(context);
+                                    }
+                                }
+                                PatternKind::Binder(_) => todo!(!),
+                                PatternKind::Deapplication(_) => todo!(!),
+                            }
+                        }
+                        // we should not be here
+                        // @Note this is currently reachable because we don't do a check for
+                        // exhaustiveness in `infer_type`, just fyi
+                        unreachable!()
+                    }
+                    Application(_application) => todo!(!),
+                    Nat(_literal) => todo!(!),
+                    // @Note reachable if they contain neutrals, right??
+                    _ => unreachable!(),
+                }
             }
             ForeignApplication(application) => {
                 let arguments = application
@@ -410,7 +433,7 @@ impl Expression {
 
     // @Question move into its own module?
     fn _is_ffi_compatible(self) -> bool {
-        todo!() // @Task
+        std::todo!() // @Task
     }
 
     /// Dictates if two expressions are alpha-equivalent.
