@@ -364,11 +364,6 @@ impl Expression {
                 .substitute(substitution.substitution.clone())
                 .evaluate(context)?,
             UseIn => todo!(? "evaluate use/in"),
-            // @Note @Beacon, now, meta information would be nice, so we don't need to do
-            // double work (the work of `infer_type` again)
-            // @Beacon @Beacon @Beacon @Note this code is @Temporary as hell.
-            // I just need to implement enough of it till I start building good
-            // abstractions
             // @Note partially applied constructors differ from normal values
             // I guess it's very likely that the first code we write will handle them incorrectly
             // because the code will not check for the arity of the neutral application

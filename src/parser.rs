@@ -966,7 +966,7 @@ impl Parser<'_> {
                 self.advance();
                 pat! { TextLiteral[token.span] { value: token.text_literal() } }
             }
-            QuestionMark => {
+            Backslash => {
                 self.advance();
                 let binder = self.consume_identifier()?;
                 pat! { Binder[token.span.merge(binder.span)] { binder } }

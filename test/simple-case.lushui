@@ -24,4 +24,4 @@ factorial (n: Nat): Nat =
     case n of
         0 => 1
         1 => 1
-        ?n => nat.multiply n (factorial (nat.panicking-subtract n 1))
+        \n => nat.multiply n (factorial (nat.panicking-subtract n 1))

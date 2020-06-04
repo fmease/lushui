@@ -182,7 +182,7 @@ impl<P: Pass> Display for Pattern<P> {
             Nat(literal) => write!(f, "{}", literal.value),
             Text(literal) => write!(f, "{:?}", literal.value),
             Binding(path) => write!(f, "{}", path.binder),
-            Binder(binding) => write!(f, "?{}", binding.binder),
+            Binder(binding) => write!(f, "\\{}", binding.binder),
             Deapplication(application) => {
                 write!(f, "({}) ({})", application.callee, application.argument)
             }
