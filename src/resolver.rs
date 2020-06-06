@@ -445,6 +445,7 @@ impl Declaration<Desugared> {
                     .binder
                     .as_ref()
                     .ok_or_else(|| {
+                        // @Task add note why
                         Diagnostic::new(
                             Level::Fatal,
                             None,
@@ -620,7 +621,7 @@ impl Expression<Desugared> {
                             .map(|parameter| Identifier::new(Index::DebruijnParameter, parameter.clone())),
                         domain: pi.domain.clone().resolve(scope, crate_scope).try_non_fatally(&mut error_collection),
                         codomain: match pi.parameter.clone() {
-                            Some(parameter) => pi.codomain.clone().resolve(&scope.extend(parameter), crate_scope),
+                            Some(parameter) => pi.codomain.clone().resolve(&scope.extend_with_parameter(parameter), crate_scope),
                             None => pi.codomain.clone().resolve(scope, crate_scope),
                         }.try_non_fatally(&mut error_collection),
                         explicitness: pi.explicitness,
@@ -639,16 +640,12 @@ impl Expression<Desugared> {
             Type => expr! { Type[self.span] },
             Nat(nat) => expr! {
                 Nat[self.span] {
-                    value: Rc::try_unwrap(nat)
-                        .map(|nat| nat.value)
-                        .unwrap_or_else(|nat| nat.value.clone()),
+                    value: unrc!(nat.value),
                 }
             },
             Text(text) => expr! {
                 Text[self.span] {
-                    value: Rc::try_unwrap(text)
-                        .map(|text| text.value)
-                        .unwrap_or_else(|text| text.value.clone()),
+                    value: unrc!(text.value),
                 }
             },
             Binding(binding) => expr! {
@@ -667,10 +664,11 @@ impl Expression<Desugared> {
                             .try_non_fatally(&mut error_collection)),
                     body_type_annotation: lambda.body_type_annotation.clone()
                         .map(|r#type| r#type
-                            .resolve(&scope.extend(lambda.parameter.clone()), crate_scope)
+                            .resolve(&scope.extend_with_parameter(lambda.parameter.clone()), crate_scope)
                             .try_non_fatally(&mut error_collection)),
                     body: lambda.body.clone()
-                        .resolve(&scope.extend(lambda.parameter.clone()), crate_scope).try_non_fatally(&mut error_collection),
+                        .resolve(&scope.extend_with_parameter(lambda.parameter.clone()), crate_scope)
+                        .try_non_fatally(&mut error_collection),
                     explicitness: lambda.explicitness,
                 }
             },
@@ -681,8 +679,13 @@ impl Expression<Desugared> {
                 let mut cases = Vec::new();
 
                 for case in &expression.cases {
-                    let pattern = case.pattern.clone().resolve(scope, crate_scope)?;
-                    let body = case.body.clone().resolve(scope, crate_scope)?;
+                    let (pattern, binders) = case.pattern.clone().resolve(scope, crate_scope)?;
+                    // @Task @Beacon @Beacon @Beacon add all the binders (are ordered) into scope created
+                    // by the pattern above
+                    let body = case
+                        .body
+                        .clone()
+                        .resolve(&scope.extend_with_pattern_binders(binders), crate_scope)?;
 
                     cases.push(hir::Case { pattern, body });
                 }
@@ -711,20 +714,20 @@ impl Pattern<Desugared> {
         self,
         scope: &FunctionScope<'_>,
         crate_scope: &CrateScope,
-    ) -> Result<Pattern<Resolved>, Diagnostics> {
+    ) -> Result<(Pattern<Resolved>, Vec<parser::Identifier>), Diagnostics> {
         use hir::{pat, PatternKind::*};
 
-        Ok(match self.kind.clone() {
+        let mut binders = Vec::new();
+
+        let pattern = match self.kind.clone() {
             Nat(nat) => pat! {
                 Nat[self.span] {
-                    // @Note: stupid clone
-                    value: nat.value.clone(),
+                    value: unrc!(nat.value),
                 }
             },
             Text(text) => pat! {
                 Text[self.span] {
-                    // @Note: very stupid clone
-                    value: text.value.clone(),
+                    value: unrc!(text.value),
                 }
             },
             Binding(binding) => pat! {
@@ -732,22 +735,23 @@ impl Pattern<Desugared> {
                     binder: scope.resolve_binding(&binding.binder, crate_scope).many_err()?,
                 }
             },
-            Binder(_) => {
-                // @Temporary
-                return Err(Diagnostic::new(
-                    Level::Error,
-                    None,
-                    "pattern binders are not supported yet",
-                )
-                .with_span(&self.span))
-                .many_err();
+            Binder(binder) => {
+                binders.push(binder.binder.clone());
+                pat! {
+                    Binder[self.span] {
+                        binder: Identifier::new(Index::DebruijnParameter, unrc!(binder.binder)),
+                    }
+                }
             }
             Deapplication(deapplication) => {
-                let (callee, argument) = (
+                let ((callee, mut callee_binders), (argument, mut argument_binders)) = (
                     deapplication.callee.clone().resolve(scope, crate_scope),
                     deapplication.argument.clone().resolve(scope, crate_scope),
                 )
                     .accumulate_err()?;
+
+                binders.append(&mut callee_binders);
+                binders.append(&mut argument_binders);
 
                 pat! {
                     Deapplication[self.span] {
@@ -756,7 +760,9 @@ impl Pattern<Desugared> {
                     }
                 }
             }
-        })
+        };
+
+        Ok((pattern, binders))
     }
 }
 
@@ -949,35 +955,49 @@ impl From<DebruijnIndex> for Index {
 
 pub enum FunctionScope<'a> {
     Module(CrateIndex),
-    Binding {
+    FunctionParameter {
         parent: &'a Self,
         binder: parser::Identifier,
+    },
+    PatternBinders {
+        parent: &'a Self,
+        binders: Vec<parser::Identifier>,
     },
 }
 
 impl<'a> FunctionScope<'a> {
-    fn extend(&'a self, binder: parser::Identifier) -> Self {
-        Self::Binding {
+    fn extend_with_parameter(&'a self, binder: parser::Identifier) -> Self {
+        Self::FunctionParameter {
             parent: self,
             binder,
         }
     }
 
-    fn resolve_binding(&self, query: &Path, crate_scope: &CrateScope) -> Result<Identifier> {
-        self.resolve_binding_with_depth(query, crate_scope, 0)
+    fn extend_with_pattern_binders(&'a self, binders: Vec<parser::Identifier>) -> Self {
+        Self::PatternBinders {
+            parent: self,
+            binders,
+        }
+    }
+
+    fn resolve_binding(&self, query: &Path, scope: &CrateScope) -> Result<Identifier> {
+        self.resolve_binding_with_depth(query, scope, 0)
     }
 
     fn resolve_binding_with_depth(
         &self,
         query: &Path,
-        crate_scope: &CrateScope,
+        scope: &CrateScope,
         depth: usize,
     ) -> Result<Identifier> {
+        use FunctionScope::*;
+
         match self {
-            FunctionScope::Module(module) => crate_scope
+            Module(module) => scope
                 .resolve_path::<OnlyValue>(query, *module)
                 .map_err(|error| error.try_into().unwrap()),
-            FunctionScope::Binding { parent, binder } => {
+            // @Note this looks ugly/complicated, use helper functions
+            FunctionParameter { parent, binder } => {
                 if let Some(identifier) = query.identifier_head() {
                     if binder == identifier {
                         if query.segments.len() > 1 {
@@ -986,10 +1006,36 @@ impl<'a> FunctionScope<'a> {
 
                         Ok(Identifier::new(DebruijnIndex(depth), identifier.clone()))
                     } else {
-                        parent.resolve_binding_with_depth(query, crate_scope, depth + 1)
+                        parent.resolve_binding_with_depth(query, scope, depth + 1)
                     }
                 } else {
-                    crate_scope
+                    scope
+                        .resolve_path::<OnlyValue>(query, parent.module())
+                        .map_err(|error| error.try_into().unwrap())
+                }
+            }
+            // @Note this looks ugly/complicated, use helper functions
+            PatternBinders { parent, binders } => {
+                if let Some(identifier) = query.identifier_head() {
+                    match binders
+                        .iter()
+                        .rev()
+                        .zip(depth..)
+                        .find(|(binder, _)| binder == &identifier)
+                    {
+                        Some((_, depth)) => {
+                            if query.segments.len() > 1 {
+                                return Err(value_used_as_a_module(identifier, &query.segments[1]));
+                            }
+
+                            Ok(Identifier::new(DebruijnIndex(depth), identifier.clone()))
+                        }
+                        None => {
+                            parent.resolve_binding_with_depth(query, scope, depth + binders.len())
+                        }
+                    }
+                } else {
+                    scope
                         .resolve_path::<OnlyValue>(query, parent.module())
                         .map_err(|error| error.try_into().unwrap())
                 }
@@ -998,9 +1044,12 @@ impl<'a> FunctionScope<'a> {
     }
 
     fn module(&self) -> CrateIndex {
+        use FunctionScope::*;
+
         match self {
-            Self::Module(index) => *index,
-            Self::Binding { parent, .. } => parent.module(),
+            Module(index) => *index,
+            FunctionParameter { parent, .. } => parent.module(),
+            PatternBinders { parent, .. } => parent.module(),
         }
     }
 }
@@ -1049,4 +1098,10 @@ fn value_used_as_a_module(
 
 fn module_used_as_a_value(span: Span) -> Diagnostic {
     Diagnostic::new(Level::Fatal, Code::E023, "module used as if it was a value").with_span(&span)
+}
+
+macro unrc($compound:ident.$projection:ident) {
+    Rc::try_unwrap($compound)
+        .map(|compound| compound.$projection)
+        .unwrap_or_else(|compound| compound.$projection.clone())
 }

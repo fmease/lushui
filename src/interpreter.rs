@@ -311,6 +311,7 @@ impl Expression {
                     let domain = pi.domain.clone().evaluate(context)?;
 
                     let codomain = if pi.parameter.is_some() {
+                        // @Beacon @Beacon @Question whyy do we need type information here in *evaluate*???
                         let scope = context.scope.extend_with_parameter(domain.clone());
                         pi.codomain.clone().evaluate(context.with_scope(&scope))?
                     } else {
@@ -339,10 +340,12 @@ impl Expression {
                         .body_type_annotation
                         .clone()
                         .map(|r#type| {
+                            // @Beacon @Beacon @Question whyy do we need type information here in *evaluate*???
                             let scope = context.scope.extend_with_parameter(parameter_type.clone());
                             r#type.evaluate(context.with_scope(&scope))
                         })
                         .transpose()?;
+                    // @Beacon @Beacon @Question whyy do we need type information here in *evaluate*???
                     let scope = context.scope.extend_with_parameter(parameter_type.clone());
                     let body = lambda.body.clone().evaluate(context.with_scope(&scope))?;
 
@@ -375,6 +378,7 @@ impl Expression {
                 // @Note we assume, subject is composed of only applications, bindings etc corresponding to the pattern types
                 // everything else should be impossible because of type checking but I might be wrong.
                 // possible counter examples: unevaluated case analysis expression
+                // @Note @Beacon think about having a variable `matches: bool` (whatever) to avoid repetition
                 match subject.kind {
                     Binding(subject) => {
                         for case in case_analysis.cases.iter() {
@@ -397,7 +401,31 @@ impl Expression {
                         unreachable!()
                     }
                     Application(_application) => todo!(!),
-                    Nat(_literal) => todo!(!),
+                    Nat(literal0) => {
+                        for case in case_analysis.cases.iter() {
+                            match &case.pattern.kind {
+                                PatternKind::Nat(literal1) => {
+                                    if literal0.value == literal1.value {
+                                        return case.body.clone().evaluate(context);
+                                    }
+                                }
+                                PatternKind::Text(_) => todo!(!),
+                                PatternKind::Binding(_) => todo!(!),
+                                PatternKind::Binder(_) => {
+                                    // @Beacon @Beacon @Question whyy do we need type information here in *evaluate*???
+                                    let scope = context
+                                        .scope
+                                        .extend_with_parameter(MayBeInvalid::invalid());
+                                    return case.body.clone().evaluate(context.with_scope(&scope));
+                                }
+                                PatternKind::Deapplication(_) => todo!(!),
+                            }
+                        }
+                        // we should not be here
+                        // @Note this is currently reachable because we don't do a check for
+                        // exhaustiveness in `infer_type`, just fyi
+                        unreachable!()
+                    }
                     // @Note reachable if they contain neutrals, right??
                     _ => unreachable!(),
                 }

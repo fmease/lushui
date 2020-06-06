@@ -291,10 +291,10 @@ impl Expression {
             Type => TYPE,
             Nat(_) => scope
                 .crate_scope()
-                .lookup_foreign_type(ffi::Type::NAT, Some(self))?,
+                .lookup_foreign_type(ffi::Type::NAT, Some(self.span))?,
             Text(_) => scope
                 .crate_scope()
-                .lookup_foreign_type(ffi::Type::TEXT, Some(self))?,
+                .lookup_foreign_type(ffi::Type::TEXT, Some(self.span))?,
             PiType(literal) => {
                 // ensure domain and codomain are are well-typed
                 // @Question why do we need to this? shouldn't this be already handled if
@@ -404,10 +404,25 @@ impl Expression {
                 let mut type_of_previous_body = None::<Self>;
 
                 for case in case_analysis.cases.iter() {
+                    let mut types = Vec::new();
+
                     match &case.pattern.kind {
-                        PatternKind::Nat(_nat) => todo!(? "handle nats in patterns", &case.pattern),
+                        PatternKind::Nat(_) => {
+                            r#type.clone().is_actual(
+                                scope
+                                    .crate_scope()
+                                    .lookup_foreign_type(ffi::Type::NAT, Some(case.pattern.span))?,
+                                scope,
+                            )?;
+                        }
                         PatternKind::Text(_text) => {
-                            todo!(? "handle texts in patterns", &case.pattern)
+                            r#type.clone().is_actual(
+                                scope.crate_scope().lookup_foreign_type(
+                                    ffi::Type::TEXT,
+                                    Some(case.pattern.span),
+                                )?,
+                                scope,
+                            )?;
                         }
                         PatternKind::Binding(binding) => {
                             let type_of_constructor = scope.lookup_type(&binding.binder).unwrap();
@@ -416,15 +431,18 @@ impl Expression {
                                 .clone()
                                 .is_actual(type_of_constructor.clone(), scope)?;
                         }
-                        PatternKind::Binder(_binder) => {
-                            todo!(? "handle binders in patterns", &case.pattern)
+                        PatternKind::Binder(_) => {
+                            // @Temporary @Beacon error prone (once we try to impl deappl)
+                            types.push(r#type.clone());
                         }
                         PatternKind::Deapplication(_deapplication) => {
                             todo!(? "handle deapplications in patterns", &case.pattern)
                         }
                     }
-                    // @Task @Beacon insert bindings from pattern when type checking body
-                    let r#type = case.body.clone().infer_type(scope)?;
+                    let r#type = case
+                        .body
+                        .clone()
+                        .infer_type(&scope.extend_with_pattern_binders(types))?;
 
                     match type_of_previous_body {
                         Some(ref previous_type) => {

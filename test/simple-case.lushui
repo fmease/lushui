@@ -14,11 +14,17 @@ use core.duple.duple
 ;; main: Duple Bool Bool =
 ;;     duple Bool Bool (bool.not false) (bool.not (bool.not false))
 
-main: core.ordering.Ordering =
-    core.nat.compare 234222222222 1233333
+;; main: core.ordering.Ordering =
+;;     core.nat.compare 234222222222 1233333
 
 use core.nat.Nat
 use core.nat
+
+;; main: Nat = factorial 6
+;; main: Nat = factorial 10
+;; main: Nat = factorial 15
+main: Nat = factorial 50
+;; main: Nat = factorial 100 ;; @Note overflows stack :/ we need to optimize
 
 factorial (n: Nat): Nat =
     case n of

@@ -8,6 +8,7 @@ use crate::{
     entity::{Entity, EntityKind},
     hir::expr,
     resolver::{self, Bindings, CrateIndex, DebruijnIndex, Identifier, Index},
+    span::Span,
 };
 
 #[derive(Default)]
@@ -206,7 +207,7 @@ impl CrateScope {
     pub fn lookup_foreign_type(
         &self,
         binder: &'static str,
-        expression: Option<Expression>,
+        expression_span: Option<Span>,
     ) -> Result<Expression> {
         match self.foreign_types.get(binder) {
             Some(Some(binder)) => Ok(expr! {
@@ -221,9 +222,9 @@ impl CrateScope {
                     Code::E061,
                     format!("the foreign type `{}` has not been declared", binder),
                 );
-                Err(match expression {
-                    Some(expression) => {
-                        diagnostic.with_labeled_span(&expression, "the type of this expression")
+                Err(match expression_span {
+                    Some(span) => {
+                        diagnostic.with_labeled_span(&span, "the type of this expression")
                     }
                     None => diagnostic,
                 })
@@ -310,38 +311,56 @@ impl fmt::Debug for ValueView {
 /// most importantly, recursion only works explicitly via the fix-point-combinator.
 pub enum FunctionScope<'a> {
     CrateScope(&'a CrateScope),
-    Parameter {
+    FunctionParameter {
         parent: &'a Self,
         r#type: Expression,
+    },
+    PatternBinders {
+        parent: &'a Self,
+        // @Note idk
+        types: Vec<Expression>,
     },
 }
 
 impl<'a> FunctionScope<'a> {
     pub fn extend_with_parameter(&'a self, r#type: Expression) -> Self {
-        Self::Parameter {
+        Self::FunctionParameter {
             parent: self,
             r#type,
         }
     }
 
+    pub fn extend_with_pattern_binders(&'a self, types: Vec<Expression>) -> Self {
+        Self::PatternBinders {
+            parent: self,
+            types,
+        }
+    }
+
     pub fn crate_scope(&self) -> &CrateScope {
+        use FunctionScope::*;
+
         match self {
-            Self::CrateScope(scope) => scope,
-            Self::Parameter { parent, .. } => parent.crate_scope(),
+            CrateScope(scope) => scope,
+            FunctionParameter { parent, .. } | PatternBinders { parent, .. } => {
+                parent.crate_scope()
+            }
         }
     }
 
     pub fn lookup_type(&self, binder: &Identifier) -> Option<Expression> {
+        use Index::*;
+
         match binder.index {
-            Index::Crate(index) => self.crate_scope().lookup_type(index),
-            Index::Debruijn(index) => Some(self.lookup_type_with_depth(index, 0)),
-            Index::DebruijnParameter => unreachable!(),
+            Crate(index) => self.crate_scope().lookup_type(index),
+            Debruijn(index) => Some(self.lookup_type_with_depth(index, 0)),
+            DebruijnParameter => unreachable!(),
         }
     }
 
     fn lookup_type_with_depth(&self, index: DebruijnIndex, depth: usize) -> Expression {
         match self {
-            Self::Parameter { r#type, parent } => {
+            Self::FunctionParameter { parent, r#type } => {
                 if depth == index.0 {
                     expr! {
                         Substitution[] {
@@ -353,23 +372,44 @@ impl<'a> FunctionScope<'a> {
                     parent.lookup_type_with_depth(index, depth + 1)
                 }
             }
+            Self::PatternBinders { parent, types } => {
+                match types
+                    .iter()
+                    .rev()
+                    .zip(depth..)
+                    .find(|(_, depth)| *depth == index.0)
+                {
+                    Some((r#type, depth)) => expr! {
+                        Substitution[] {
+                            // @Task verify this shift
+                            substitution: Shift(depth + 1),
+                            expression: r#type.clone(),
+                        }
+                    },
+                    None => parent.lookup_type_with_depth(index, depth + types.len()),
+                }
+            }
             Self::CrateScope(_) => unreachable!(),
         }
     }
 
     pub fn lookup_value(&self, binder: &Identifier) -> ValueView {
+        use Index::*;
+
         match binder.index {
-            Index::Crate(index) => self.crate_scope().lookup_value(index),
-            Index::Debruijn(_) => ValueView::Neutral,
-            Index::DebruijnParameter => unreachable!(),
+            Crate(index) => self.crate_scope().lookup_value(index),
+            Debruijn(_) => ValueView::Neutral,
+            DebruijnParameter => unreachable!(),
         }
     }
 
     pub fn is_foreign(&self, binder: &Identifier) -> bool {
+        use Index::*;
+
         match binder.index {
-            Index::Crate(index) => self.crate_scope().is_foreign(index),
-            Index::Debruijn(_) => false,
-            Index::DebruijnParameter => unreachable!(),
+            Crate(index) => self.crate_scope().is_foreign(index),
+            Debruijn(_) => false,
+            DebruijnParameter => unreachable!(),
         }
     }
 }
