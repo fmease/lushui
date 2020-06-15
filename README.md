@@ -5,3 +5,9 @@
 **露水 (lushui)**: _dew; ephemeral, transient, of short duration_.
 
 The reference compiler of the Lushui programming language.
+
+## Remotes
+
+* [GitHub](https://github.com/fmease/lushui.git)
+* [GitLab](https://gitlab.com/fmease/lushui.git)
+
