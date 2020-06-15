@@ -41,7 +41,7 @@
         "keyword": {
             "patterns": [
                 {
-                    "match": "\\b(in|of|super|crate)\\b",
+                    "match": "\\b(in|of|self|super|crate)\\b",
                     "name": "keyword.other.lushui"
                 },
                 {
