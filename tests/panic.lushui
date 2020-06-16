@@ -1,3 +1,5 @@
+;; TEST ignore
+
 ;; @Update foreign data declarations don't work anymore because of the Debruijn-rewrite
 
 module core

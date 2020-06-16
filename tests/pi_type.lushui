@@ -1,3 +1,5 @@
+;; TEST ignore
+
 module core
 
 data Void2: identity Type Type =

@@ -1,5 +1,8 @@
 # Imminent Tasks
 
+* add lushui to SCC's `languages.json` and build custom scc against it,
+  provide a script to add the entry to the file (to be included in the repository)
+  alternative: switch to cloc where you can just add a `xxx.cloc` file in you project root
 * add record syntax:
   * keyword + change of constructor syntax
   * named application `f (x = a)`, `f (,x = a)`

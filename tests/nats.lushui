@@ -1,3 +1,5 @@
+;; TEST ignore
+
 module core
 
 x: Nat = 6000232

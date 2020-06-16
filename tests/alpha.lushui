@@ -1,3 +1,5 @@
+;; TEST pass check
+
 module core
 
 use core.nat.Nat

@@ -1,15 +1,14 @@
 #![forbid(rust_2018_idioms, unused_must_use)]
 
-use std::path::Path;
 use structopt::StructOpt;
 
 use lushui::{
     diagnostic::*,
     interpreter,
-    lexer::{parse_identifier, Lexer},
-    parser::{Identifier, Parser},
+    lexer::Lexer,
+    parser::Parser,
     resolver,
-    span::{SourceMap, Span},
+    span::SourceMap,
     support::{pluralize, ManyErrExt},
 };
 
@@ -167,43 +166,17 @@ fn main() {
     let mut map = SourceMap::default();
 
     let result: Result<(), Diagnostics> = (|| {
-        let file = merged_arguments.file;
-        let path = Path::new(file);
-        let file = map.load(file).many_err()?;
-        let file_stem = path.file_stem().unwrap();
-        let file_extension = path.extension();
+        let path = merged_arguments.file;
+        let source_file = map.load(path).many_err()?;
 
-        if file_extension.and_then(|extension| extension.to_str()) != Some(lushui::FILE_EXTENSION) {
-            Diagnostic::new(
-                Level::Warning,
-                None,
-                "missing or non-standard file extension",
-            )
-            .emit(None);
-        }
+        let crate_name = lushui::parse_crate_name(path).many_err()?;
 
-        let crate_name = Identifier::new(
-            (|| parse_identifier(file_stem.to_str()?.to_owned()))()
-                .ok_or_else(|| {
-                    Diagnostic::new(
-                        Level::Fatal,
-                        None,
-                        format!(
-                            "`{}` is not a valid crate name",
-                            file_stem.to_string_lossy()
-                        ),
-                    )
-                })
-                .many_err()?,
-            Span::SHAM,
-        );
-
-        let tokens = Lexer::new(&file).lex()?;
+        let tokens = Lexer::new(&source_file).lex()?;
         if merged_arguments.print_tokens {
             eprintln!("{:#?}", tokens);
         }
 
-        let node = Parser::new(file, &tokens)
+        let node = Parser::new(source_file, &tokens)
             .parse_top_level(crate_name.clone())
             .many_err()?;
         if merged_arguments.print_ast {

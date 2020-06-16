@@ -1,3 +1,5 @@
+;; TEST ignore
+
 Cool: Type = Type
 
 module m: =

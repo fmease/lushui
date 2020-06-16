@@ -1,3 +1,5 @@
+;; TEST pass check
+
 ;; @Task implement the concept of crates and make `core` (this) a crate
 
 identity (A: Type) (a: A): A = a

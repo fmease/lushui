@@ -8,6 +8,6 @@ The reference compiler of the Lushui programming language.
 
 ## Remotes
 
-* [GitHub](https://github.com/fmease/lushui.git)
-* [GitLab](https://gitlab.com/fmease/lushui.git)
+* [GitHub](https://github.com/fmease/lushui.git) (origin)
+* [GitLab](https://gitlab.com/fmease/lushui.git) (mirror)
 

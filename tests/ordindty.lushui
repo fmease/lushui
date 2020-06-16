@@ -1,3 +1,5 @@
+;; TEST ignore
+
 module core
 
 use core.text.Text

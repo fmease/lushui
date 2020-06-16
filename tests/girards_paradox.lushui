@@ -1,3 +1,5 @@
+;; TEST ignore
+
 False: Type = (P: Type) -> P
 
 negate (Phi: Type): Type = Phi -> False

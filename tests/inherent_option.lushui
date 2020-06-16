@@ -1,3 +1,5 @@
+;; TEST ignore
+
 module core
 
 alpha: Option Nat = subtract 400 23
