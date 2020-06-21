@@ -1,51 +1,15 @@
 ;; TEST ignore
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;     CASE ANALYSIS BELOW ALREADY WORKS AS WISHED     ;;
-;; @Update does not work anymore because we haven't
-;; ported the code to Debruijn-indexing
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+module core
 
-identity (A: Type) (a: A): A = a
-
-data Ordering: Type =
-    Less: Ordering
-    Equal: Ordering
-    Greater: Ordering
-
-invert (ordering: Ordering): Ordering =
-    case ordering
-    of Less => Greater
-    of Equal => Equal
-    of Greater => Less
-
-data Tuple (A B: Type): Type =
-    'Tuple (A B: Type): A -> B -> Tuple A B
-
-alpha: Tuple Ordering Ordering =
-    'Tuple Ordering Ordering (invert (identity Ordering Equal)) (invert Greater)
-
-beta: Ordering = invert (invert Less)
-
-gamma: Ordering = invert Greater
-gamma': Ordering = invert Equal
-gamma'': Ordering = invert Less
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; now we need to extend it to constructors with
-;; parameters, natural numbers, parametric types and so
-;; on.
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-data Bool: Type =
-    False: Bool
-    True: Bool
-
-data List (A: Type): Type =
-    Empty (A: Type): List A
-    Item (A: Type): A -> List A -> List A
+use core.list.List
+use core.list.cons
+use core.list.nil
+use core.bool.Bool
+use core.bool.false
+use core.bool.true
 
 is-empty (A: Type) (list: List A): Bool =
-    case list
-    of Empty A => True
-    of Item A a => False
+    case list of
+        nil \A => true
+        cons \A \a => false

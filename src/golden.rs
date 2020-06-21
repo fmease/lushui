@@ -1,8 +1,11 @@
 //! The golden test runner.
+//!
+//! To see the output of this runner when `cargo test`ing, pass the flag
+//! `--show-output`. If you'd like to only run golden tests, execute
+//! `cargo t golden::run -- --show-output`.
 
-//  @Beacon document that you need to use `cargo test -- --show-output`
 // be able to read arguments (should be possible) accepting the argument `--golden-disallow-ignored`
-// to list all ignored tests (and fail)
+// to list all ignored tests (and fail) @Update or use an environment variable
 // @Beacon @Beacon @Task create *a lot* of parsing tests and some type checker tests
 
 // @Task add more flags to the general CLI
@@ -17,7 +20,6 @@ use std::{collections::HashMap, fmt, fs::read_to_string, path::Path, process::Co
 
 const TEST_DIRECTORY_NAME: &str = "tests";
 
-// @Task improve `Error`-reporting: it looks messy!
 #[test]
 fn run() -> Result<(), Error> {
     let test_directory = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -65,11 +67,9 @@ fn run() -> Result<(), Error> {
 
         print!("test {} ... ", file_name);
 
-        // @Beacon @Task use Error::FailedLoadingSourceFile adfter adjusting sig of map.load
-        let source_file = map.load(path.to_str().unwrap()).unwrap_or_else(|diag| {
-            diag.emit(Some(&map));
-            panic!();
-        });
+        let source_file = map
+            .load(path.to_str().unwrap())
+            .map_err(|_| Error::FailedLoadingSourceFile)?;
 
         let config = TestConfiguration::parse(source_file.content())
             .map_err(Error::InvalidTestFileHeader)?;
@@ -97,19 +97,9 @@ fn run() -> Result<(), Error> {
         let golden_stderr =
             read_to_string(golden_stderr_path).map_err(Error::GoldenFileInaccessible)?;
 
-        let mut program_arguments = config.program_arguments.into_iter();
-
-        // @Note @Beacon hacky, relying on too much stuff, better extend TestConfiguration DSL
-        // to have commands Run and Check
-        // @Temporary code below!!
         let output = Command::new(&program_path)
-            .arg(
-                program_arguments
-                    .next()
-                    .ok_or(Error::InvalidTestFileHeader(ParseError::MissingArgument))?,
-            )
+            .args(config.program_arguments)
             .arg(&path)
-            .args(program_arguments.collect::<Vec<_>>())
             .output()
             .map_err(Error::FailedRunningCompilerProcess)?;
 
@@ -176,12 +166,15 @@ fn run() -> Result<(), Error> {
     let number_of_recognized_tests = number_of_passed_tests + number_of_failed_tests;
     let number_of_tests = number_of_recognized_tests + number_of_ignored_tests;
 
+    let golden_tests_failed = number_of_failed_tests != 0;
+
     println!();
     println!(
         "golden test result: {}. {} total. {} passed ({:.2}%); {} failed; {} ignored",
-        match number_of_failed_tests {
-            0 => badge_ok,
-            _ => badge_failed,
+        if golden_tests_failed {
+            badge_failed
+        } else {
+            badge_ok
         },
         number_of_tests,
         number_of_passed_tests,
@@ -190,6 +183,10 @@ fn run() -> Result<(), Error> {
         number_of_failed_tests,
         number_of_ignored_tests
     );
+
+    if golden_tests_failed {
+        return Err(Error::TestsFailed);
+    }
 
     Ok(())
 }
@@ -224,6 +221,7 @@ impl fmt::Display for Stream {
 
 impl fmt::Display for Failure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: ", "test failure".red().bold())?;
         match self {
             Self::UnexpectedPass => {
                 write!(f, "expected test to fail but compiler exited successfully")?
@@ -231,7 +229,7 @@ impl fmt::Display for Failure {
             Self::UnexpectedFail { code } => {
                 write!(f, "expected test to pass but compiler failed")?;
                 if let Some(code) = code {
-                    write!(f, "with exit code {}", code)?;
+                    write!(f, " with exit code {}", code)?;
                 }
             }
             Self::GoldenFileMismatch {
@@ -338,6 +336,7 @@ enum Error {
     // @Task add filename
     GoldenFileInaccessible(io::Error),
     FailedRunningCompilerProcess(io::Error),
+    TestsFailed,
 }
 
 impl fmt::Debug for Error {
@@ -370,6 +369,7 @@ impl fmt::Debug for Error {
             FailedRunningCompilerProcess(error) => {
                 format!("failed to run the compiler as a process because {}", error)
             }
+            TestsFailed => format!("some golden tests failed"),
         };
 
         write!(f, "{}", message.bright_red().bold())
