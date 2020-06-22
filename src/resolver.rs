@@ -429,14 +429,18 @@ impl Declaration<Desugared> {
             }
             Module(declaration) => {
                 // @Task @Beacon don't return early on error
+                // @Note you need to create a fake index for this (an index which points to
+                // a fake, nameless binding)
                 let index = scope
                     .register_module_binding(declaration.binder.clone(), module)
                     .many_err()?;
 
-                for declaration in &declaration.declarations {
-                    // @Task @Beacon don't return early on error
-                    declaration.resolve_first_pass(Some(index), scope)?;
-                }
+                declaration
+                    .declarations
+                    .iter()
+                    .map(|declaration| declaration.resolve_first_pass(Some(index), scope))
+                    .collect::<Vec<_>>()
+                    .transpose()?;
             }
             Use(declaration) => {
                 let module = module.unwrap();

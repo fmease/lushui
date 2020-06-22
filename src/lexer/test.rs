@@ -122,7 +122,6 @@ fn lex_identifier() {
 
 #[test]
 // @Task invalid indentation after SOI (currently not correctly implemented)
-// @Bug currently failing (I think tests need to be updated), @Task investigate
 fn lex_indentation() {
     assert_ok_token(
         lex("
@@ -147,7 +146,7 @@ beta
             Token::new(LineBreak, span(18, 18)),
             Token::new(Punctuation, span(23, 24)),
             Token::new(LineBreak, span(25, 25)),
-            Token::new(Dedentation, span(23, 23)),
+            Token::new(Dedentation, span(25, 25)),
             Token::new_identifier("beta".into(), span(26, 29)),
             Token::new(LineBreak, span(30, 30)),
             Token::new(Indentation, span(31, 34)),
@@ -156,8 +155,8 @@ beta
             Token::new(Indentation, span(45, 48)),
             Token::new_identifier("delta".into(), span(49, 53)),
             Token::new(LineBreak, span(54, 54)),
-            Token::new(Dedentation, span(48, 48)),
-            Token::new(Dedentation, span(48, 48)),
+            Token::new(Dedentation, span(54, 54)),
+            Token::new(Dedentation, span(54, 54)),
             Token::new(Punctuation, span(55, 55)),
             Token::new(LineBreak, span(56, 56)),
             Token::new(Indentation, span(57, 60)),
@@ -166,9 +165,9 @@ beta
             Token::new(Indentation, span(67, 70)),
             Token::new(Punctuation, span(71, 71)),
             Token::new(LineBreak, span(72, 72)),
-            Token::new(Dedentation, span(73, 73)),
+            Token::new(Dedentation, span(75, 75)),
             Token::new(Punctuation, span(77, 77)),
-            Token::new(Dedentation, span(30, 30)),
+            Token::new(Dedentation, span(77, 77)),
             Token::new(EndOfInput, span(77, 77)),
         ],
     );

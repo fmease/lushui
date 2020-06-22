@@ -1,4 +1,4 @@
-;; TEST ignore
+;; TEST pass run
 
 module core
 

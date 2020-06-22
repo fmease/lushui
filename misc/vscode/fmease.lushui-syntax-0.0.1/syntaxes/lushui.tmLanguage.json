@@ -41,23 +41,23 @@
         "keyword": {
             "patterns": [
                 {
-                    "match": "\\b(in|of|self|super|crate)\\b",
+                    "match": "(?<![\\w\\-])(in|of|self|super|crate)(?![\\w\\-])",
                     "name": "keyword.other.lushui"
                 },
                 {
-                    "match": "\\b(data|use|module|let|record)\\b",
+                    "match": "(?<![\\w\\-])(data|use|module|let|record)(?![\\w\\-])",
                     "name": "storage.modifier.lushui"
                 },
                 {
-                    "match": "\\bas\\b",
+                    "match": "(?<![\\w\\-])as(?![\\w\\-])",
                     "name": "keyword.operator.lushui"
                 },
                 {
-                    "match": "\\bcase\\b",
+                    "match": "(?<![\\w\\-])case(?![\\w\\-])",
                     "name": "keyword.control.lushui"
                 },
                 {
-                    "match": "\\bType\\b",
+                    "match": "(?<![\\w\\-])Type(?![\\w\\-])",
                     "name": "storage.type.lushui"
                 },
                 {

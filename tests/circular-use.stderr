@@ -1,0 +1,14 @@
+error[E024]: this declaration is circular
+  > ${DIRECTORY}/circular-use.lushui:4:18
+  |
+4 |     use super.nu.A
+  |                  ^ 
+
+error[E024]: this declaration is circular
+  > ${DIRECTORY}/circular-use.lushui:7:18
+  |
+7 |     use super.mu.A
+  |                  ^ 
+
+error: aborting due to 2 previous errors
+

@@ -1,0 +1,14 @@
+;; TEST fail check
+
+RECORD: Type = Type
+
+r0: RECORD = am-i-a-record
+
+module am-i-a-record: =
+    module am-i-a-record-too: =
+
+r1: RECORD = am-i-a-record.am-i-a-record-too
+
+use am-i-a-record.am-i-a-record-too
+
+r2: ANOTHER-RECORD = am-i-a-record-too

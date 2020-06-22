@@ -10,24 +10,35 @@
 //! of using `cargo test` to drive the test suite and not some shell script (which
 //! could make use of `cargo build` to automatically rebuild before running the tests).
 //!
-//! ## Tasks
+//! ## Pending Tasks
 //!
 //! * create a mode where the golden files of failing golden tests are
 //!   overwritten/updated to the actual output (controlled by a flag or
 //!   an environment variable). one can then use git to actually commit
 //!   to the changes or not
-//! * be able to locate the binary
+//! * be able to locate the binary on Windows
 //! * fix the output for a mismatch between golden and actual output: We print
 //!   an extra line break which is not part of the content
 //! * improve error reporting (printing `Error`s)
 //! * make it possible to escape dollar signs in golden stderr files
 //! * (not strictly related to this runner) create more relevant tests
+//! * somehow prevent test writers from adding golden stderr files which
+//!   don't use `${DIRECTORY}` but a local path
+//! * verify some unwraps and replace them if necessary
 
 use crate::{has_file_extension, span::SourceMap};
 use colored::Colorize;
-use std::{collections::HashMap, fmt, fs::read_to_string, path::Path, process::Command};
+use std::{
+    collections::HashMap,
+    fmt,
+    fs::{read_to_string, File},
+    io::Write,
+    path::Path,
+    process::Command,
+};
 
 const TEST_DIRECTORY_NAME: &str = "tests";
+const GOLDEN_STDERR_VARIABLE_DIRECTORY: &str = "${DIRECTORY}";
 
 #[test]
 fn run() -> Result<(), Error> {
@@ -48,6 +59,7 @@ fn run() -> Result<(), Error> {
     let badge_ok = "ok".green();
     let badge_failed = "FAILED".red();
     let badge_ignored = "ignored".yellow();
+    let badge_generated = "generated".blue();
 
     let mut number_of_ignored_tests = 0u32;
     let mut number_of_passed_tests = 0u32;
@@ -93,26 +105,9 @@ fn run() -> Result<(), Error> {
         let golden_stdout_path = path.with_extension("stdout");
         let golden_stderr_path = path.with_extension("stderr");
 
-        if !golden_stdout_path.exists() {
-            std::fs::File::create(&golden_stdout_path).map_err(Error::UnableToCreateGoldenFile)?;
-        };
-
-        if !golden_stderr_path.exists() {
-            std::fs::File::create(&golden_stderr_path).map_err(Error::UnableToCreateGoldenFile)?;
-        };
-
-        let golden_stdout =
-            read_to_string(golden_stdout_path).map_err(Error::GoldenFileInaccessible)?;
-
-        let golden_stderr =
-            read_to_string(golden_stderr_path).map_err(Error::GoldenFileInaccessible)?;
-
-        // @Task don't replace if preceeded by another `$` (and replace `$$` with `$` in a second step)
-        let golden_stderr = golden_stderr.replace("${DIRECTORY}", test_directory_path_str);
-
         let output = Command::new(&program_path)
             // .env("NO_COLOR", "") // not necessary apparently
-            .arg("--sort-diagnostics")
+            .arg("--sort-diagnostics") // for deterministic output
             .args(config.program_arguments)
             .arg(&path)
             .output()
@@ -136,23 +131,58 @@ fn run() -> Result<(), Error> {
             TestTag::Ignore => unreachable!(),
         }
 
-        let stdout = String::from_utf8(output.stdout).unwrap();
-        let stderr = String::from_utf8(output.stderr).unwrap();
+        let mut some_stream_was_generated = false;
 
-        if stdout != golden_stdout {
-            failures.push(Failure::GoldenFileMismatch {
-                golden: golden_stdout,
-                actual: stdout,
-                stream: Stream::Stdout,
-            });
+        if golden_stdout_path.exists() {
+            let golden_stdout =
+                read_to_string(golden_stdout_path).map_err(Error::GoldenFileInaccessible)?;
+            let stdout = String::from_utf8(output.stdout).unwrap();
+
+            if stdout != golden_stdout {
+                failures.push(Failure::GoldenFileMismatch {
+                    golden: golden_stdout,
+                    actual: stdout,
+                    stream: Stream::Stdout,
+                });
+            }
+        } else {
+            File::create(&golden_stdout_path)
+                .map_err(Error::UnableToCreateGoldenFile)?
+                .write_all(&output.stdout)
+                .unwrap();
+
+            some_stream_was_generated = true;
         }
 
-        if stderr != golden_stderr {
-            failures.push(Failure::GoldenFileMismatch {
-                golden: golden_stderr,
-                actual: stderr,
-                stream: Stream::Stderr,
-            });
+        let stderr = String::from_utf8(output.stderr).unwrap();
+
+        if golden_stderr_path.exists() {
+            let golden_stderr =
+                read_to_string(golden_stderr_path).map_err(Error::GoldenFileInaccessible)?;
+            // @Task don't replace if preceeded by another `$` (and replace `$$` with `$` in a second step)
+            let golden_stderr =
+                golden_stderr.replace(GOLDEN_STDERR_VARIABLE_DIRECTORY, test_directory_path_str);
+
+            if stderr != golden_stderr {
+                failures.push(Failure::GoldenFileMismatch {
+                    golden: golden_stderr,
+                    actual: stderr,
+                    stream: Stream::Stderr,
+                });
+            }
+        } else {
+            let stderr = stderr.replace(test_directory_path_str, GOLDEN_STDERR_VARIABLE_DIRECTORY);
+
+            File::create(&golden_stderr_path)
+                .map_err(Error::UnableToCreateGoldenFile)?
+                .write_all(stderr.as_bytes())
+                .unwrap();
+
+            some_stream_was_generated = true;
+        };
+
+        if some_stream_was_generated {
+            print!("{}, ", badge_generated);
         }
 
         if failures.is_empty() {

@@ -1,0 +1,15 @@
+;; TEST fail check
+
+what: on earth = this bogus line
+
+data Xoo (A: Non-Existent): Departed =
+    x00: Slipped-Away
+    x11: Lost-All-Along
+
+module realm: =
+    Nothing: Type = Void
+
+data Thing: Type =
+    thing: Thing
+
+ex-nihilo (x y: Thing): Thing = f z thing

@@ -1,0 +1,38 @@
+;; TEST pass check
+
+module first: =
+    use alpha.alias
+
+    module alpha: =
+        use beta.alias
+        module beta: =
+            alias: Type = Type
+
+module second: =
+    X: Type = Alpha
+
+    data Alpha: Type =
+        alpha: Alpha
+
+    module foo: =
+        use super.Alpha
+        use super.alpha
+        what-every: Alpha = alpha
+        use super.Void
+        V: Type = Void
+
+    data Void: Type =
+
+use alpha.Void
+
+module alpha: =
+    use super.V
+
+    module xoo: =
+        W: Type = super.V
+
+    data Void: Type =
+
+V: Type = Void
+
+Self: Type = Self
