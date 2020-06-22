@@ -1,0 +1,11 @@
+;; TEST fail check
+
+data Alpha =
+    alpha a
+
+data Beta A =
+    beta A: Beta A
+
+number = 0
+
+apply f x = f x

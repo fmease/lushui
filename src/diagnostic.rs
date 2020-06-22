@@ -83,10 +83,13 @@ impl Diagnostic {
     }
 
     pub fn spans<'a>(&'a self) -> Vec<Span> {
-        self.highlights
+        let mut spans: Vec<_> = self
+            .highlights
             .iter()
             .map(|highlight| highlight.span)
-            .collect()
+            .collect();
+        spans.sort();
+        spans
     }
 
     pub fn emit(mut self, map: Option<&SourceMap>) {
@@ -105,8 +108,7 @@ impl Diagnostic {
                 .unwrap_or_default(),
             self.message.bright_white().bold()
         );
-        self.highlights
-            .sort_unstable_by_key(|highlight| highlight.span);
+        self.highlights.sort_by_key(|highlight| highlight.span);
 
         let mut message = header;
 

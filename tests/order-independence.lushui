@@ -1,0 +1,21 @@
+;; TEST pass check --only-resolve
+;; @Bug the type checker cannot handle it yet (panics)
+
+Ty: Type = Type
+
+data Beta: m0.T =
+    beta: Beta
+
+b: Beta = alpha
+
+alpha: Beta = beta
+
+g: Gamma = gamma
+
+data Gamma: Type =
+    gamma: Gamma-Alias
+
+Gamma-Alias: Ty = Gamma
+
+module m0: =
+    T: super.Ty = Type

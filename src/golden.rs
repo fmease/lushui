@@ -3,16 +3,25 @@
 //! To see the output of this runner when `cargo test`ing, pass the flag
 //! `--show-output`. If you'd like to only run golden tests, execute
 //! `cargo t golden::run -- --show-output`.
-
-// be able to read arguments (should be possible) accepting the argument `--golden-disallow-ignored`
-// to list all ignored tests (and fail) @Update or use an environment variable
-// @Beacon @Beacon @Task create *a lot* of parsing tests and some type checker tests
-
-// @Task add more flags to the general CLI
-// `--only-parse`, `--only-desugar` and `--only-resolve` (or under `-Z`) which do NOT output to
-// stderr/stdout (just use `--print-ast` etc NEXT to the preceeding ones)
-
-// @Task have a flag to update golden files
+//!
+//! An inherent issue of the design of this specific test runner is the need to
+//! rebuild the compiler before running the tests, otherwise the old binary is
+//! picked up. Maybe there is a solution which is stays compatible with the principle
+//! of using `cargo test` to drive the test suite and not some shell script (which
+//! could make use of `cargo build` to automatically rebuild before running the tests).
+//!
+//! ## Tasks
+//!
+//! * create a mode where the golden files of failing golden tests are
+//!   overwritten/updated to the actual output (controlled by a flag or
+//!   an environment variable). one can then use git to actually commit
+//!   to the changes or not
+//! * be able to locate the binary
+//! * fix the output for a mismatch between golden and actual output: We print
+//!   an extra line break which is not part of the content
+//! * improve error reporting (printing `Error`s)
+//! * make it possible to escape dollar signs in golden stderr files
+//! * (not strictly related to this runner) create more relevant tests
 
 use crate::{has_file_extension, span::SourceMap};
 use colored::Colorize;
@@ -22,8 +31,9 @@ const TEST_DIRECTORY_NAME: &str = "tests";
 
 #[test]
 fn run() -> Result<(), Error> {
-    let test_directory = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join(TEST_DIRECTORY_NAME)
+    let test_directory_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(TEST_DIRECTORY_NAME);
+    let test_directory_path_str = test_directory_path.to_str().unwrap();
+    let test_directory = test_directory_path
         .read_dir()
         .map_err(Error::InaccessibleTestsDirectory)?;
 
@@ -97,7 +107,12 @@ fn run() -> Result<(), Error> {
         let golden_stderr =
             read_to_string(golden_stderr_path).map_err(Error::GoldenFileInaccessible)?;
 
+        // @Task don't replace if preceeded by another `$` (and replace `$$` with `$` in a second step)
+        let golden_stderr = golden_stderr.replace("${DIRECTORY}", test_directory_path_str);
+
         let output = Command::new(&program_path)
+            // .env("NO_COLOR", "") // not necessary apparently
+            .arg("--sort-diagnostics")
             .args(config.program_arguments)
             .arg(&path)
             .output()

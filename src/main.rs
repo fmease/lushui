@@ -1,7 +1,5 @@
 #![forbid(rust_2018_idioms, unused_must_use)]
 
-use structopt::StructOpt;
-
 use lushui::{
     diagnostic::*,
     interpreter,
@@ -11,6 +9,7 @@ use lushui::{
     span::SourceMap,
     support::{pluralize, ManyErrExt},
 };
+use structopt::StructOpt;
 
 const VERSION: &str = concat!(
     env!("CARGO_PKG_VERSION"),
@@ -28,11 +27,15 @@ struct Arguments {
     #[structopt(long, short = "B")]
     panic_with_backtrace: bool,
 
+    #[structopt(long)]
+    sort_diagnostics: bool,
+
     #[structopt(subcommand)]
     command: Command,
 }
 
 impl Arguments {
+    // @Task remove (create function instead which uses unwrap_or(false))
     // @Note what a cruel poilerplate :'(
     fn merged(&self) -> MergedCommandArguments<'_> {
         let mut arguments = MergedCommandArguments::default();
@@ -40,19 +43,27 @@ impl Arguments {
         match &self.command {
             Command::Check {
                 file,
+                only_lex,
                 print_tokens,
+                only_parse,
                 print_ast,
+                only_desugar,
                 print_desugar_hir,
                 print_interpreter_scope,
+                only_resolve,
                 print_resolver_hir,
                 print_resolver_scope,
                 display_crate_indices,
             } => {
                 arguments.file = file;
+                arguments.only_lex = *only_lex;
                 arguments.print_tokens = *print_tokens;
+                arguments.only_parse = *only_parse;
                 arguments.print_ast = *print_ast;
+                arguments.only_desugar = *only_desugar;
                 arguments.print_desugar_hir = *print_desugar_hir;
                 arguments.print_interpreter_scope = *print_interpreter_scope;
+                arguments.only_resolve = *only_resolve;
                 arguments.print_resolver_hir = *print_resolver_hir;
                 arguments.print_resolver_scope = *print_resolver_scope;
                 arguments.display_crate_indices = *display_crate_indices;
@@ -77,10 +88,14 @@ impl Arguments {
 
 #[derive(Default)]
 struct MergedCommandArguments<'a> {
+    only_lex: bool,
     print_tokens: bool,
+    only_parse: bool,
     print_ast: bool,
+    only_desugar: bool,
     print_desugar_hir: bool,
     display_crate_indices: bool,
+    only_resolve: bool,
     print_resolver_hir: bool,
     print_resolver_scope: bool,
     print_interpreter_scope: bool,
@@ -92,13 +107,25 @@ struct MergedCommandArguments<'a> {
 enum Command {
     /// Type check a given program
     Check {
+        /// Only run the lexer
+        #[structopt(long)]
+        only_lex: bool,
+
         /// Print the tokens emitted by the lexer
         #[structopt(long)]
         print_tokens: bool,
 
+        /// Only run the parser
+        #[structopt(long)]
+        only_parse: bool,
+
         /// Print the AST
         #[structopt(long)]
         print_ast: bool,
+
+        /// Only desugar
+        #[structopt(long)]
+        only_desugar: bool,
 
         /// Print the HIR emitted after desugaring
         #[structopt(long)]
@@ -107,6 +134,10 @@ enum Command {
         /// Display crate indices when emitting a resolved HIR
         #[structopt(long)]
         display_crate_indices: bool,
+
+        /// Only run the resolver
+        #[structopt(long)]
+        only_resolve: bool,
 
         /// Print the HIR emitted by the resolver
         #[structopt(long)]
@@ -175,6 +206,9 @@ fn main() {
         if merged_arguments.print_tokens {
             eprintln!("{:#?}", tokens);
         }
+        if merged_arguments.only_lex {
+            return Ok(());
+        }
 
         let node = Parser::new(source_file, &tokens)
             .parse_top_level(crate_name.clone())
@@ -182,12 +216,18 @@ fn main() {
         if merged_arguments.print_ast {
             eprintln!("{:#?}", node);
         }
+        if merged_arguments.only_parse {
+            return Ok(());
+        }
 
         match arguments.command {
             Command::Check { .. } | Command::Run { .. } => {
                 let node = node.desugar(&mut map)?;
                 if merged_arguments.print_desugar_hir {
                     eprintln!("{}", node);
+                }
+                if merged_arguments.only_desugar {
+                    return Ok(());
                 }
 
                 let mut scope = resolver::CrateScope::default();
@@ -198,6 +238,9 @@ fn main() {
                 }
                 if merged_arguments.print_resolver_scope {
                     eprintln!("{:#?}", scope);
+                }
+                if merged_arguments.only_resolve {
+                    return Ok(());
                 }
 
                 let mut scope = interpreter::CrateScope::new(scope);
@@ -228,8 +271,17 @@ fn main() {
     if let Err(errors) = result {
         let amount = errors.len();
 
-        for error in errors {
-            error.emit(Some(&map));
+        if arguments.sort_diagnostics {
+            let mut errors: Vec<_> = errors.into_iter().collect();
+            errors.sort_by_key(|error| error.spans());
+
+            for error in errors {
+                error.emit(Some(&map));
+            }
+        } else {
+            for error in errors {
+                error.emit(Some(&map));
+            }
         }
 
         Diagnostic::new(
@@ -240,6 +292,11 @@ fn main() {
             }),
         )
         .emit(Some(&map));
+
+        // @Task instead of this using this function, return a std::process::ExitCode
+        // from main once stable again. I am not sure but it could be that right now,
+        // destructors are not run
+        std::process::exit(1);
     }
 }
 
