@@ -2,11 +2,8 @@
 
 module core
 
-use core.text.concat
-use core.text.Text
-
-use core.nat
-use core.nat.Nat
+use core.text.(concat Text)
+use core.nat.(self Nat)
 
 base: Nat = 1034032
 

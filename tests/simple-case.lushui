@@ -2,25 +2,13 @@
 
 module core
 
-;; use core.bool.(self Bool false true)
-;; use core.duple.(Duple duple)
-
-use core.bool.Bool
-use core.bool
-use core.bool.false
-use core.bool.true
-
-use core.duple.Duple
-use core.duple.duple
+use core.(bool.(self Bool false true) duple.(Duple duple) nat.(self Nat))
 
 ;; main: Duple Bool Bool =
 ;;     duple Bool Bool (bool.not false) (bool.not (bool.not false))
 
 ;; main: core.ordering.Ordering =
 ;;     core.nat.compare 234222222222 1233333
-
-use core.nat.Nat
-use core.nat
 
 ;; main: Nat = factorial 6
 ;; main: Nat = factorial 10

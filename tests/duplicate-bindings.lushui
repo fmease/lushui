@@ -1,7 +1,4 @@
 ;; TEST fail check
-;; @Bug regression: this used to produce 6 errors, now it only produces one
-;; this probably happened because of the implementation of order independence
-;; example commit where it still behaved as expected: 3d9b61a42e35ec4b29932a12b25b95f444448271
 
 module core
 

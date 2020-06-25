@@ -1,0 +1,18 @@
+;; TEST pass check --only-desugar --print-desugar-hir
+
+use foocoo.()
+
+use foo as bar
+use foo.bar.(self A.f (B as gg))
+
+use alpha
+use alpha.beta
+use alpha as a
+
+use foo.A as F
+
+use foo.((A as F0))
+
+use foo.((A as F1) (B as F2))
+
+use crate.foo.alpha.(gamma.delta.zeta.(foo bar) (xoo.moo.doo as XXX))

@@ -2,12 +2,7 @@
 
 module core
 
-use core.nat.Nat
-use core.nat.multiply
-use core.text.Text
-use core.text.concat
-
-;; use core.(nat.(Nat multiply) text.(Text concat))
+use core.(nat.(Nat multiply) text.(Text concat))
 
 some-result: Nat = multiply 16 4
 

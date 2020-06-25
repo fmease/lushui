@@ -13,20 +13,20 @@ use crate::{
     diagnostic::{Code, Diagnostic, Level, Result},
     interpreter::scope::{CrateScope, FunctionScope},
     resolver::Identifier,
-    support::MayBeInvalid,
+    support::InvalidFallback,
     typer::{Expression, ExpressionKind},
 };
 
 pub(in crate::typer) fn assert_constructor_is_instance_of_type(
     constructor_name: Identifier,
     constructor: Expression,
-    r#type: Expression,
+    type_: Expression,
     scope: &CrateScope,
 ) -> Result<()> {
     let result_type = constructor.result_type(&scope.into());
     let callee = result_type.callee();
 
-    if !r#type.equals(callee, &scope.into())? {
+    if !type_.equals(callee, &scope.into())? {
         // @Task improve error diagnostic
         // @Task add span information
         Err(Diagnostic::new(
@@ -66,7 +66,7 @@ impl Expression {
             // @Note not sure
             | Substitution(_)
             | ForeignApplication(_) => unreachable!(),
-            Invalid => MayBeInvalid::invalid(),
+            Invalid => InvalidFallback::invalid(),
         }
     }
 

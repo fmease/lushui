@@ -53,8 +53,8 @@ pub fn register_inherent_bindings<'a>(
             }
 
             scope.inherent_types.bool = Some(binder.clone().stripped());
-            find(Value::FALSE, &mut scope.inherent_values.r#false);
-            find(Value::TRUE, &mut scope.inherent_values.r#true);
+            find(Value::FALSE, &mut scope.inherent_values.false_);
+            find(Value::TRUE, &mut scope.inherent_values.true_);
         }
         Type::OPTION => {
             if scope.inherent_types.option.is_some() {
@@ -140,9 +140,9 @@ impl Type {
             Self::Bool => binding(types.bool.clone().ok_or_else(missing_inherent)?),
             Self::Nat => scope.lookup_foreign_type(Type::NAT, None)?,
             Self::Text => scope.lookup_foreign_type(Type::TEXT, None)?,
-            Self::Option(r#type) => application(
+            Self::Option(type_) => application(
                 binding(types.option.clone().ok_or_else(missing_inherent)?),
-                r#type.into_expression(scope)?,
+                type_.into_expression(scope)?,
             ),
         })
     }
@@ -164,7 +164,7 @@ pub enum Value {
     Text(String),
     Nat(Nat),
     Option {
-        r#type: Type,
+        type_: Type,
         value: Option<Box<Value>>,
     },
 }
@@ -187,12 +187,12 @@ impl Value {
             Text(text) => Self::Text(text.value.clone()),
             Nat(nat) => Self::Nat(nat.value.clone()),
             Binding(binding) if matches(&binding.binder, &values.unit)? => Value::Unit,
-            Binding(binding) if matches(&binding.binder, &values.r#false)? => Value::Bool(false),
-            Binding(binding) if matches(&binding.binder, &values.r#true)? => Value::Bool(true),
+            Binding(binding) if matches(&binding.binder, &values.false_)? => Value::Bool(false),
+            Binding(binding) if matches(&binding.binder, &values.true_)? => Value::Bool(true),
             Application(application0) => match &application0.callee.kind {
                 Binding(binding) if matches(&binding.binder, &values.none)? => Value::Option {
                     value: None,
-                    r#type: self::Type::from_expression(&application0.argument, scope)?,
+                    type_: self::Type::from_expression(&application0.argument, scope)?,
                 },
                 Application(application1) => match &application1.callee.kind {
                     Binding(binding) if matches(&binding.binder, &values.some)? => Value::Option {
@@ -200,7 +200,7 @@ impl Value {
                             &application0.argument,
                             scope,
                         )?)),
-                        r#type: self::Type::from_expression(&application1.argument, scope)?,
+                        type_: self::Type::from_expression(&application1.argument, scope)?,
                     },
                     _ => return None,
                 },
@@ -221,27 +221,23 @@ impl Value {
         Ok(match self {
             Self::Unit => binding(values.unit.clone().ok_or_else(missing_inherent)?),
             Self::Bool(value) => binding(
-                if value {
-                    &values.r#true
-                } else {
-                    &values.r#false
-                }
-                .clone()
-                .ok_or_else(missing_inherent)?,
+                if value { &values.true_ } else { &values.false_ }
+                    .clone()
+                    .ok_or_else(missing_inherent)?,
             ),
             Self::Text(value) => expr! { Text[] { value } },
             Self::Nat(value) => expr! { Nat[] { value } },
-            Self::Option { r#type, value } => match value {
+            Self::Option { type_, value } => match value {
                 Some(value) => application(
                     application(
                         binding(values.some.clone().ok_or_else(missing_inherent)?),
-                        r#type.into_expression(scope)?,
+                        type_.into_expression(scope)?,
                     ),
                     value.into_expression(scope)?,
                 ),
                 None => application(
                     binding(values.none.clone().ok_or_else(missing_inherent)?),
-                    r#type.into_expression(scope)?,
+                    type_.into_expression(scope)?,
                 ),
             },
         })
@@ -251,8 +247,8 @@ impl Value {
 #[derive(Default)]
 pub struct InherentValueMap {
     pub unit: Option<Identifier>,
-    pub r#false: Option<Identifier>,
-    pub r#true: Option<Identifier>,
+    pub false_: Option<Identifier>,
+    pub true_: Option<Identifier>,
     pub none: Option<Identifier>,
     pub some: Option<Identifier>,
 }
@@ -319,7 +315,7 @@ impl<V: IntoValue> IntoValue for Option<V> {
 
     fn into_value(self) -> Value {
         Value::Option {
-            r#type: V::into_type(),
+            type_: V::into_type(),
             value: self.map(|value| Box::new(value.into())),
         }
     }

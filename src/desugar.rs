@@ -14,8 +14,10 @@ use crate::{
     diagnostic::{Bag, Code, Diagnostic, Diagnostics, Level, Result},
     hir::{self, decl, expr, pat, Pass},
     parser::{self, AttributeKind, Explicit, Identifier, Path},
+    smallvec,
     span::{SourceMap, Spanning},
-    support::{pluralize, release_errors, ManyErrExt, MayBeInvalid, TryNonFatallyExt},
+    support::{pluralize, release, InvalidFallback, ManyErrExt, TrySoftly},
+    SmallVec,
 };
 
 #[derive(Clone)]
@@ -38,14 +40,14 @@ impl parser::Declaration {
     pub fn desugar(
         mut self,
         map: &mut SourceMap,
-    ) -> Result<hir::Declaration<Desugared>, Diagnostics> {
+    ) -> Result<SmallVec<[hir::Declaration<Desugared>; 1]>, Diagnostics> {
         use parser::DeclarationKind::*;
 
         self.validate_attributes()?;
 
         Ok(match self.kind {
             Value(declaration) => {
-                let mut error_bag = Bag::new();
+                let mut errors = Bag::new();
 
                 let declaration_type_annotation = match declaration.type_annotation {
                     Some(type_annotation) => type_annotation,
@@ -53,7 +55,7 @@ impl parser::Declaration {
                         &self.span,
                         AnnotationTarget::Declaration,
                     ))
-                    .try_non_fatally(&mut error_bag),
+                    .try_softly(&mut errors),
                 };
 
                 // @Note type_annotation is currently desugared twice @Task remove duplicate work
@@ -76,7 +78,7 @@ impl parser::Declaration {
                                                 amount: parameter_group.parameters.len(),
                                             },
                                         ))
-                                        .try_non_fatally(&mut error_bag),
+                                        .try_softly(&mut errors),
                                     };
 
                                 for binder in parameter_group.parameters.iter().rev() {
@@ -101,20 +103,20 @@ impl parser::Declaration {
                     declaration.parameters,
                     declaration_type_annotation,
                 )
-                .try_non_fatally(&mut error_bag);
+                .try_softly(&mut errors);
 
-                release_errors!(error_bag);
+                release!(errors);
 
-                decl! {
+                smallvec![decl! {
                     Value[self.span][self.attributes] {
                         binder: declaration.binder,
                         type_annotation,
                         expression,
                     }
-                }
+                }]
             }
             Data(data) => {
-                let mut error_bag = Bag::new();
+                let mut errors = Bag::new();
 
                 let data_type_annotation = match data.type_annotation {
                     Some(type_annotation) => type_annotation,
@@ -122,32 +124,32 @@ impl parser::Declaration {
                         &self.span,
                         AnnotationTarget::Declaration,
                     ))
-                    .try_non_fatally(&mut error_bag),
+                    .try_softly(&mut errors),
                 };
 
                 let type_annotation =
                     desugar_parameters_to_annotated_ones(data.parameters, data_type_annotation)
-                        .try_non_fatally(&mut error_bag);
+                        .try_softly(&mut errors);
 
                 let constructors = data.constructors.map(|constructors| {
                     constructors
                         .into_iter()
-                        .map(|constructor| constructor.desugar(map).try_non_fatally(&mut error_bag))
+                        .flat_map(|constructor| constructor.desugar(map).try_softly(&mut errors))
                         .collect()
                 });
 
-                release_errors!(error_bag);
+                release!(errors);
 
-                decl! {
+                smallvec![decl! {
                     Data[self.span][self.attributes] {
                         binder: data.binder,
                         type_annotation,
                         constructors,
                     }
-                }
+                }]
             }
             Constructor(constructor) => {
-                let mut error_bag = Bag::new();
+                let mut errors = Bag::new();
 
                 let constructor_type_annotation = match constructor.type_annotation {
                     Some(type_annotation) => type_annotation,
@@ -155,23 +157,23 @@ impl parser::Declaration {
                         &self.span,
                         AnnotationTarget::Declaration,
                     ))
-                    .try_non_fatally(&mut error_bag),
+                    .try_softly(&mut errors),
                 };
 
                 let type_annotation = desugar_parameters_to_annotated_ones(
                     constructor.parameters,
                     constructor_type_annotation,
                 )
-                .try_non_fatally(&mut error_bag);
+                .try_softly(&mut errors);
 
-                release_errors!(error_bag);
+                release!(errors);
 
-                decl! {
+                smallvec![decl! {
                     Constructor[self.span][self.attributes] {
                         binder: constructor.binder,
                         type_annotation,
                     }
-                }
+                }]
             }
             Module(module) => {
                 let declarations = match module.declarations {
@@ -203,30 +205,88 @@ impl parser::Declaration {
                     }
                 };
 
-                let mut error_bag = Bag::new();
+                let mut errors = Bag::new();
 
                 let declarations = declarations
                     .into_iter()
-                    .map(|declaration| declaration.desugar(map).try_non_fatally(&mut error_bag))
+                    .flat_map(|declaration| declaration.desugar(map).try_softly(&mut errors))
                     .collect();
 
-                release_errors!(error_bag);
+                release!(errors);
 
-                decl! {
+                smallvec![decl! {
                     Module[self.span][self.attributes] {
                         binder: module.binder,
                         file: module.file,
                         declarations,
                     }
-                }
+                }]
             }
-            // @Task improve upon this
-            Use(declaration) => decl! {
-                Use[self.span][self.attributes] {
-                    binder: declaration.path.segments.last().cloned(),
-                    reference: declaration.path,
+            Use(declaration) => {
+                use crate::span::Span;
+                use parser::{
+                    Attributes,
+                    UseBindings::{self, *},
+                };
+                let mut declarations = SmallVec::new();
+
+                fn desugar_multiple_use_bindings(
+                    path: Path,
+                    bindings: Vec<UseBindings>,
+                    span: Span,
+                    attributes: &Attributes,
+                    declarations: &mut SmallVec<[hir::Declaration<Desugared>; 1]>,
+                ) {
+                    for binding in bindings {
+                        match binding {
+                            parser::UseBindings::Single { target, binder } => {
+                                // if the binder is not explicitly set, look for the most-specific/last/right-most
+                                // identifier of the target but if that one is `self`, look up the last identifier of
+                                // the parent path
+                                declarations.push(decl! {
+                                    Use[span][attributes.clone()] {
+                                        binder: binder.or_else(|| if !target.is_self() { &target } else { &path }
+                                            .last_identifier().cloned()),
+                                        target: path.clone().join(target),
+                                    }
+                                });
+                            }
+                            parser::UseBindings::Multiple {
+                                path: inner_path,
+                                bindings,
+                            } => {
+                                desugar_multiple_use_bindings(
+                                    path.clone().join(inner_path),
+                                    bindings,
+                                    span,
+                                    attributes,
+                                    declarations,
+                                );
+                            }
+                        }
+                    }
+                };
+
+                match declaration.bindings {
+                    Single { target, binder } => declarations.push(decl! {
+                        Use[self.span][self.attributes] {
+                            binder: binder.or_else(|| target.last_identifier().cloned()),
+                            target,
+                        }
+                    }),
+                    Multiple { path, bindings } => {
+                        desugar_multiple_use_bindings(
+                            path,
+                            bindings,
+                            self.span,
+                            &self.attributes,
+                            &mut declarations,
+                        );
+                    }
                 }
-            },
+
+                declarations
+            }
         })
     }
 
@@ -300,6 +360,12 @@ impl parser::Declaration {
             }
             (true, true) | (false, false) => Ok(()),
         }
+    }
+}
+
+impl InvalidFallback for SmallVec<[hir::Declaration<Desugared>; 1]> {
+    fn invalid() -> Self {
+        SmallVec::new()
     }
 }
 
@@ -433,7 +499,7 @@ impl parser::Expression {
                     }
                 }
             }
-            Invalid => MayBeInvalid::invalid(),
+            Invalid => InvalidFallback::invalid(),
         }
     }
 }
@@ -483,7 +549,7 @@ fn desugar_parameters_to_annotated_ones(
 ) -> Result<hir::Expression<Desugared>, Diagnostics> {
     let mut expression = type_annotation.desugar();
 
-    let mut error_bag = Bag::new();
+    let mut errors = Bag::new();
 
     for parameter_group in parameters.parameters.into_iter().rev() {
         let parameter_type_annotation = match parameter_group.type_annotation {
@@ -494,7 +560,7 @@ fn desugar_parameters_to_annotated_ones(
                     amount: parameter_group.parameters.len(),
                 },
             ))
-            .try_non_fatally(&mut error_bag),
+            .try_softly(&mut errors),
         };
 
         for binder in parameter_group.parameters.iter().rev() {
@@ -509,7 +575,7 @@ fn desugar_parameters_to_annotated_ones(
         }
     }
 
-    release_errors!(error_bag);
+    release!(errors);
 
     Ok(expression)
 }

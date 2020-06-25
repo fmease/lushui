@@ -6,9 +6,10 @@ use std::{
 
 use crate::{
     lexer::Token,
+    smallvec,
     span::{PossiblySpanning, SourceFile, Span, Spanned, Spanning},
-    support::MayBeInvalid,
-    SmallVec,
+    support::InvalidFallback,
+    Atom, SmallVec,
 };
 use freestanding::freestanding;
 
@@ -83,10 +84,34 @@ pub enum DeclarationKind {
         declarations: Option<Vec<Declaration>>,
     },
     /// The syntax node of a use declaration.
-    Use { path: Path },
+    Use { bindings: UseBindings },
 }
 
-#[derive(Debug, Default)]
+// @Task documentation, span information
+#[derive(Debug)]
+pub enum UseBindings {
+    Single {
+        target: Path,
+        binder: Option<Identifier>,
+    },
+    Multiple {
+        path: Path,
+        bindings: Vec<Self>,
+    },
+}
+
+impl Spanning for UseBindings {
+    fn span(&self) -> Span {
+        match self {
+            Self::Single { target, binder } => target.span().merge(binder),
+            Self::Multiple { path, bindings } => {
+                path.span().merge(&bindings.first()).merge(&bindings.last())
+            }
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone)]
 pub struct Attributes {
     values: Vec<Attribute>,
 }
@@ -201,7 +226,7 @@ pub enum ExpressionKind {
         value: String,
     },
     Path {
-        head: Option<PathHead>,
+        head: Option<Head>,
         segments: SmallVec<[Identifier; 1]>,
     },
     /// The syntax node of a lambda literal expression.
@@ -228,7 +253,7 @@ pub enum ExpressionKind {
     Invalid,
 }
 
-impl MayBeInvalid for Expression {
+impl InvalidFallback for Expression {
     fn invalid() -> Self {
         expr! {
             Invalid[Span::SHAM]
@@ -236,24 +261,20 @@ impl MayBeInvalid for Expression {
     }
 }
 
-impl From<Spanned<Path>> for Expression {
-    fn from(path: Spanned<Path>) -> Self {
-        expr! {
-            Path[path.span] {
-                head: path.kind.head,
-                segments: path.kind.segments
-            }
+impl From<Path> for Expression {
+    fn from(path: Path) -> Self {
+        Expression {
+            span: path.span(),
+            kind: ExpressionKind::Path(Box::new(path)),
         }
     }
 }
 
-impl From<Spanned<Path>> for Pattern {
-    fn from(path: Spanned<Path>) -> Self {
-        pat! {
-            Path[path.span] {
-                head: path.kind.head,
-                segments: path.kind.segments
-            }
+impl From<Path> for Pattern {
+    fn from(path: Path) -> Self {
+        Pattern {
+            span: path.span(),
+            kind: PatternKind::Path(Box::new(path)),
         }
     }
 }
@@ -319,25 +340,38 @@ pub enum PatternKind {
     },
 }
 
-pub type PathHead = Spanned<PathHeadKind>;
+pub type Head = Spanned<HeadKind>;
 
-// @Note this is not well designed at all:
-// so much rigmarole. if we were to use identifiers plus string comparison
-// with `"super"` etc, life would be simpler (but not type-safe i know!!)
-#[derive(Debug, Clone)]
-pub enum PathHeadKind {
+impl fmt::Display for Head {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self.kind {
+                HeadKind::Crate => "crate",
+                HeadKind::Super => "super",
+                HeadKind::Self_ => "self",
+            }
+        )
+    }
+}
+
+/// The head of a path.
+#[derive(Clone, Debug)]
+pub enum HeadKind {
     Crate,
     Super,
+    Self_,
 }
 
 #[derive(Debug, Clone, Eq)]
 pub struct Identifier {
-    atom: crate::Atom,
+    atom: Atom,
     pub span: Span,
 }
 
 impl Identifier {
-    pub fn new(atom: crate::Atom, span: Span) -> Self {
+    pub fn new(atom: Atom, span: Span) -> Self {
         Self { atom, span }
     }
 
@@ -390,16 +424,62 @@ impl fmt::Display for Identifier {
     }
 }
 
-// @Note the separation between Head and Segments is soo annoying
-// and leads to convoluted code which would actually be really simple
-// in a different format
 impl Path {
-    pub fn identifier_head(&self) -> Option<&Identifier> {
+    pub fn new_identifier(token: Token) -> Self {
+        Self {
+            head: None,
+            segments: smallvec![Identifier::from_token(token).into()],
+        }
+    }
+
+    pub fn new_crate(token: Token) -> Self {
+        Self {
+            head: Some(Head::new(token.span, HeadKind::Crate)),
+            segments: SmallVec::new(),
+        }
+    }
+
+    pub fn new_super(token: Token) -> Self {
+        Self {
+            head: Some(Head::new(token.span, HeadKind::Super)),
+            segments: SmallVec::new(),
+        }
+    }
+
+    pub fn new_self(token: Token) -> Self {
+        Self {
+            head: Some(Head::new(token.span, HeadKind::Self_)),
+            segments: SmallVec::new(),
+        }
+    }
+
+    // @Beacon @Beacon @Task proper error handling, disallow super and crate here
+    pub fn join(mut self, other: Self) -> Self {
+        debug_assert!(other.head.is_none() || other.is_self());
+        self.segments.extend(other.segments);
+        self
+    }
+
+    pub fn is_self(&self) -> bool {
+        matches!(
+            self.head,
+            Some(Head {
+                kind: HeadKind::Self_,
+                ..
+            })
+        )
+    }
+
+    pub fn first_identifier(&self) -> Option<&Identifier> {
         if self.head.is_some() {
             return None;
         }
 
         Some(&self.segments[0])
+    }
+
+    pub fn last_identifier(&self) -> Option<&Identifier> {
+        self.segments.last()
     }
 
     pub fn simple(&self) -> Option<&Identifier> {
@@ -433,48 +513,46 @@ impl Path {
     }
 }
 
-// @Note we are required to implement `Display` for `Path` because
-// the `hir::Binder` trait requires it. And we won't change that for now
-// because it makes sense.
-// Nonetheless, I think that we will never print paths via the parser's Path,
-// only ever through ModuleScope methods in crate::resolver
-// Solution: narrow the bound `Display` to functions processing hir::Expression<resolver::Identifier>
-// @Temporary
-impl fmt::Display for Path {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        display_path(&self.head, &self.segments, f)
+impl Spanning for Path {
+    fn span(&self) -> Span {
+        if let Some(head) = &self.head {
+            head.span()
+                .merge(&self.segments.first())
+                .merge(&self.segments.last())
+        } else {
+            self.segments
+                .first()
+                .unwrap()
+                .span
+                .merge(&self.segments.last().unwrap())
+        }
     }
 }
 
-// @Temporary sorry. not in the mood for programming right now
-// I will be happier once I figure out how to abstract over all of this
-// nicely
-fn display_path(
-    head: &Option<PathHead>,
-    segments: &[Identifier],
-    f: &mut fmt::Formatter<'_>,
-) -> fmt::Result {
-    let mut segments = segments.iter();
+impl fmt::Display for Path {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fn display_path(
+            head: &Option<Head>,
+            segments: &[Identifier],
+            f: &mut fmt::Formatter<'_>,
+        ) -> fmt::Result {
+            let mut segments = segments.iter();
 
-    match head {
-        Some(PathHead {
-            kind: PathHeadKind::Crate,
-            ..
-        }) => write!(f, "crate")?,
-        Some(PathHead {
-            kind: PathHeadKind::Super,
-            ..
-        }) => write!(f, "super")?,
-        None => write!(f, "{}", segments.next().unwrap())?,
+            match head {
+                Some(head) => write!(f, "{}", head)?,
+                None => write!(f, "{}", segments.next().unwrap())?,
+            }
+
+            write!(
+                f,
+                "{}",
+                segments
+                    .map(|segment| format!(".{}", segment))
+                    .collect::<String>()
+            )
+        }
+        display_path(&self.head, &self.segments, f)
     }
-
-    write!(
-        f,
-        "{}",
-        segments
-            .map(|segment| format!(".{}", segment))
-            .collect::<String>()
-    )
 }
 
 /// The explicitness of a parameter or argument.
@@ -517,24 +595,24 @@ pub macro decl($kind:ident[$span:expr] { $( $body:tt )+ }) {
 
 pub macro expr {
     ($kind:ident[$span:expr] { $( $body:tt )+ }) => {
-        Expression {
-            span: $span,
-            kind: ExpressionKind::$kind(Box::new(self::$kind { $( $body )+ })),
-        }
+        Expression::new(
+            $span,
+            ExpressionKind::$kind(Box::new(self::$kind { $( $body )+ })),
+        )
     },
     ($kind:ident[$span:expr]) => {
-        Expression {
-            span: $span,
-            kind: ExpressionKind::$kind,
-        }
+        Expression::new(
+            $span,
+            ExpressionKind::$kind,
+        )
     }
 }
 
 pub macro pat {
     ($kind:ident[$span:expr] { $( $body:tt )+ }) => {
-        Pattern {
-            span: $span,
-            kind: PatternKind::$kind(Box::new(self::$kind { $( $body )+ })),
-        }
+        Pattern::new(
+            $span,
+            PatternKind::$kind(Box::new(self::$kind { $( $body )+ })),
+        )
     }
 }

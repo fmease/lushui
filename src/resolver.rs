@@ -23,8 +23,7 @@ use crate::{
     parser::{self, Path},
     span::{Span, Spanning},
     support::{
-        accumulate_errors::*, release_errors, ManyErrExt, MayBeInvalid, TransposeExt,
-        TryNonFatallyExt,
+        accumulate_errors::*, release, InvalidFallback, ManyErrExt, TransposeExt, TrySoftly,
     },
 };
 
@@ -201,7 +200,7 @@ impl CrateScope {
         path: &Path,
         module: CrateIndex,
     ) -> Result<Target::Output, Error> {
-        use parser::PathHeadKind::*;
+        use parser::HeadKind::*;
         use EntityKind::*;
 
         if let Some(head) = &path.head {
@@ -214,10 +213,12 @@ impl CrateScope {
                 match head.kind {
                     Crate => self.root(),
                     Super => self.resolve_super(head, module)?,
+                    Self_ => module,
                 },
             );
         }
 
+        // @Bug will probably panic
         let index = self.resolve_first_segment(&path.segments[0], module)?;
         let binding = &self.bindings[index].kind;
 
@@ -235,14 +236,14 @@ impl CrateScope {
         }
     }
 
-    fn resolve_super(&self, span: &parser::PathHead, module: CrateIndex) -> Result<CrateIndex> {
+    fn resolve_super(&self, head: &parser::Head, module: CrateIndex) -> Result<CrateIndex> {
         self.unwrap_module_scope(module).parent.ok_or_else(|| {
             Diagnostic::new(
                 Level::Error,
                 Code::E021,
                 "the crate root does not have a parent",
             )
-            .with_span(span)
+            .with_span(head)
         })
     }
 
@@ -460,7 +461,7 @@ impl Declaration<Desugared> {
                     .many_err()?;
 
                 scope
-                    .register_use_binding(binder.clone(), &declaration.reference, module)
+                    .register_use_binding(binder.clone(), &declaration.target, module)
                     .many_err()?;
             }
             Invalid => {}
@@ -595,11 +596,11 @@ impl Declaration<Desugared> {
                     Use[self.span][self.attributes] {
                         binder: Some(Identifier::new(index, binder.clone())),
                         // @Temporary
-                        reference: Identifier::new(index, binder.clone()),
+                        target: Identifier::new(index, binder),
                     }
                 }
             }
-            Invalid => MayBeInvalid::invalid(),
+            Invalid => InvalidFallback::invalid(),
         })
     }
 }
@@ -613,31 +614,31 @@ impl Expression<Desugared> {
     ) -> Result<Expression<Resolved>, Diagnostics> {
         use hir::ExpressionKind::*;
 
-        let mut error_collection = Bag::new();
+        let mut errors = Bag::new();
 
         let expression = match self.kind {
-            // @Task @Beacon @Beacon don't use try_non_fatally here: you don't need to: use
+            // @Task @Beacon @Beacon don't use try_softly here: you don't need to: use
             // accumulate_err, the stuff here is independent! right??
             PiType(pi) => {
                 expr! {
                     PiType[self.span] {
                         parameter: pi.parameter.clone()
                             .map(|parameter| Identifier::new(Index::DebruijnParameter, parameter.clone())),
-                        domain: pi.domain.clone().resolve(scope, crate_scope).try_non_fatally(&mut error_collection),
+                        domain: pi.domain.clone().resolve(scope, crate_scope).try_softly(&mut errors),
                         codomain: match pi.parameter.clone() {
                             Some(parameter) => pi.codomain.clone().resolve(&scope.extend_with_parameter(parameter), crate_scope),
                             None => pi.codomain.clone().resolve(scope, crate_scope),
-                        }.try_non_fatally(&mut error_collection),
+                        }.try_softly(&mut errors),
                         explicitness: pi.explicitness,
                     }
                 }
             }
-            // @Task @Beacon @Beacon don't use try_non_fatally here: you don't need to: use
+            // @Task @Beacon @Beacon don't use try_softly here: you don't need to: use
             // accumulate_err, the stuff here is independent! right??
             Application(application) => expr! {
                 Application[self.span] {
-                    callee: application.callee.clone().resolve(scope, crate_scope).try_non_fatally(&mut error_collection),
-                    argument: application.argument.clone().resolve(scope, crate_scope).try_non_fatally(&mut error_collection),
+                    callee: application.callee.clone().resolve(scope, crate_scope).try_softly(&mut errors),
+                    argument: application.argument.clone().resolve(scope, crate_scope).try_softly(&mut errors),
                     explicitness: application.explicitness,
                 }
             },
@@ -657,22 +658,22 @@ impl Expression<Desugared> {
                     binder: scope.resolve_binding(&binding.binder, crate_scope).many_err()?,
                 }
             },
-            // @Task @Beacon @Beacon don't use try_non_fatally here: you don't need to: use
+            // @Task @Beacon @Beacon don't use try_softly here: you don't need to: use
             // accumulate_err, the stuff here is independent! right??
             Lambda(lambda) => expr! {
                 Lambda[self.span] {
                     parameter: Identifier::new(Index::DebruijnParameter, lambda.parameter.clone()),
                     parameter_type_annotation: lambda.parameter_type_annotation.clone()
-                        .map(|r#type| r#type
+                        .map(|type_| type_
                             .resolve(scope, crate_scope)
-                            .try_non_fatally(&mut error_collection)),
+                            .try_softly(&mut errors)),
                     body_type_annotation: lambda.body_type_annotation.clone()
-                        .map(|r#type| r#type
+                        .map(|type_| type_
                             .resolve(&scope.extend_with_parameter(lambda.parameter.clone()), crate_scope)
-                            .try_non_fatally(&mut error_collection)),
+                            .try_softly(&mut errors)),
                     body: lambda.body.clone()
                         .resolve(&scope.extend_with_parameter(lambda.parameter.clone()), crate_scope)
-                        .try_non_fatally(&mut error_collection),
+                        .try_softly(&mut errors),
                     explicitness: lambda.explicitness,
                 }
             },
@@ -702,10 +703,10 @@ impl Expression<Desugared> {
                 }
             }
             Substitution(_) | ForeignApplication(_) => unreachable!(),
-            Invalid => MayBeInvalid::invalid(),
+            Invalid => InvalidFallback::invalid(),
         };
 
-        release_errors!(error_collection);
+        release!(errors);
 
         Ok(expression)
     }
@@ -1002,7 +1003,7 @@ impl<'a> FunctionScope<'a> {
                 .map_err(|error| error.try_into().unwrap()),
             // @Note this looks ugly/complicated, use helper functions
             FunctionParameter { parent, binder } => {
-                if let Some(identifier) = query.identifier_head() {
+                if let Some(identifier) = query.first_identifier() {
                     if binder == identifier {
                         if query.segments.len() > 1 {
                             return Err(value_used_as_a_module(identifier, &query.segments[1]));
@@ -1020,7 +1021,7 @@ impl<'a> FunctionScope<'a> {
             }
             // @Note this looks ugly/complicated, use helper functions
             PatternBinders { parent, binders } => {
-                if let Some(identifier) = query.identifier_head() {
+                if let Some(identifier) = query.first_identifier() {
                     match binders
                         .iter()
                         .rev()

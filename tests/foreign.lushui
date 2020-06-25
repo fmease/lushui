@@ -2,11 +2,7 @@
 
 module core
 
-use core.nat
-use core.nat.Nat
-use core.bool.Bool
-use core.duple.Duple
-use core.duple.duple
+use core.(nat.(self Nat) bool.Bool duple.(Duple duple))
 
 combine: Nat -> Nat -> Nat = nat.add
 successor: Nat -> core.nat.Nat = combine 1

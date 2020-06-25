@@ -45,17 +45,17 @@ pub mod accumulate_errors {
     }
 }
 
-pub trait MayBeInvalid {
+pub trait InvalidFallback {
     fn invalid() -> Self;
 }
 
-// @Task better name which incorporates 'invalid'
-pub trait TryNonFatallyExt<T: MayBeInvalid> {
-    fn try_non_fatally(self, bag: &mut Diagnostics) -> T;
+/// Try to get a value falling back to something invalid logging errors.
+pub trait TrySoftly<T: InvalidFallback> {
+    fn try_softly(self, bag: &mut Diagnostics) -> T;
 }
 
-impl<T: MayBeInvalid> TryNonFatallyExt<T> for Result<T> {
-    fn try_non_fatally(self, bag: &mut Diagnostics) -> T {
+impl<T: InvalidFallback> TrySoftly<T> for Result<T> {
+    fn try_softly(self, bag: &mut Diagnostics) -> T {
         match self {
             Ok(okay) => okay,
             Err(errors) => {
@@ -66,8 +66,8 @@ impl<T: MayBeInvalid> TryNonFatallyExt<T> for Result<T> {
     }
 }
 
-impl<T: MayBeInvalid> TryNonFatallyExt<T> for Result<T, Diagnostic> {
-    fn try_non_fatally(self, bag: &mut Diagnostics) -> T {
+impl<T: InvalidFallback> TrySoftly<T> for Result<T, Diagnostic> {
+    fn try_softly(self, bag: &mut Diagnostics) -> T {
         match self {
             Ok(okay) => okay,
             Err(error) => {
@@ -78,7 +78,7 @@ impl<T: MayBeInvalid> TryNonFatallyExt<T> for Result<T, Diagnostic> {
     }
 }
 
-pub macro release_errors($errors:expr) {{
+pub macro release($errors:expr) {{
     let errors = $errors;
     if !errors.is_empty() {
         return Err(errors);

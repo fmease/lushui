@@ -7,7 +7,7 @@ use crate::{
 
 impl Expression {
     /// Indicate whether a type is uninhabited.
-    // @Note assumes expression_is_type(r#type, ..) holds
+    // @Note assumes expression_is_type(type_, ..) holds
     // @Task we need to consider polymorphic types like `Identity` (with `Identity'`) where
     // `Identity Uninhabited` is uninhabited but `Identity Inhabited` is inhabited
     // @Note becomes important when we handle Expression::Application

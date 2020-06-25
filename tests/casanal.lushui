@@ -26,10 +26,7 @@ main: N =
 
 module core
 
-use core.nat.Nat
-use core.bool.Bool
-use core.bool.false
-use core.bool.true
+use core.nat.(Nat Bool false true)
 
 invert (b: Bool): Bool = case b of
     false => true

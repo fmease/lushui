@@ -21,7 +21,7 @@ use crate::{
     parser::Explicit,
     resolver::Resolved,
     span::Spanning,
-    support::MayBeInvalid,
+    support::InvalidFallback,
     typer,
 };
 pub use scope::CrateScope;
@@ -164,19 +164,19 @@ impl Expression {
             }
             (Lambda(lambda), substitution) => {
                 let parameter_type_annotation =
-                    lambda.parameter_type_annotation.clone().map(|r#type| {
+                    lambda.parameter_type_annotation.clone().map(|type_| {
                         expr! {
                             Substitution[] {
-                                expression: r#type,
+                                expression: type_,
                                 substitution: substitution.clone(),
                             }
                         }
                     });
 
-                let body_type_annotation = lambda.body_type_annotation.clone().map(|r#type| {
+                let body_type_annotation = lambda.body_type_annotation.clone().map(|type_| {
                     expr! {
                         Substitution[] {
-                            expression: r#type,
+                            expression: type_,
                             substitution: {
                                 let binder = lambda.parameter.as_innermost();
                                 Use(
@@ -245,7 +245,7 @@ impl Expression {
                     }).collect()
                 }
             },
-            (Invalid, _) => MayBeInvalid::invalid(),
+            (Invalid, _) => InvalidFallback::invalid(),
         }
     }
 
@@ -339,10 +339,10 @@ impl Expression {
                     let body_type = lambda
                         .body_type_annotation
                         .clone()
-                        .map(|r#type| {
+                        .map(|type_| {
                             // @Beacon @Beacon @Question whyy do we need type information here in *evaluate*???
                             let scope = context.scope.extend_with_parameter(parameter_type.clone());
-                            r#type.evaluate(context.with_scope(&scope))
+                            type_.evaluate(context.with_scope(&scope))
                         })
                         .transpose()?;
                     // @Beacon @Beacon @Question whyy do we need type information here in *evaluate*???
@@ -415,7 +415,7 @@ impl Expression {
                                     // @Beacon @Beacon @Question whyy do we need type information here in *evaluate*???
                                     let scope = context
                                         .scope
-                                        .extend_with_parameter(MayBeInvalid::invalid());
+                                        .extend_with_parameter(InvalidFallback::invalid());
                                     return case.body.clone().evaluate(context.with_scope(&scope));
                                 }
                                 PatternKind::Deapplication(_) => todo!(!),
@@ -450,7 +450,7 @@ impl Expression {
                         }
                     })
             }
-            Invalid => MayBeInvalid::invalid(),
+            Invalid => InvalidFallback::invalid(),
         })
     }
 

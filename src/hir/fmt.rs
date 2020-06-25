@@ -60,8 +60,8 @@ impl<P: Pass> Declaration<P> {
                 }
             }
             Use(declaration) => match &declaration.binder {
-                Some(binder) => writeln!(f, "use {} as {}", declaration.reference, binder)?,
-                None => writeln!(f, "use {}", declaration.reference)?,
+                Some(binder) => writeln!(f, "use {} as {}", declaration.target, binder)?,
+                None => writeln!(f, "use {}", declaration.target)?,
             },
             Invalid => write!(f, "<invalid>")?,
         }

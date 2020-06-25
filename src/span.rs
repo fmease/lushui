@@ -91,22 +91,21 @@ impl Sub<usize> for LocalByteIndex {
     }
 }
 
-#[derive(Clone)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Spanned<K> {
     pub kind: K,
     pub span: Span,
 }
 
 impl<K> Spanned<K> {
-    pub const fn new(kind: K, span: Span) -> Self {
+    pub const fn new(span: Span, kind: K) -> Self {
         Self { kind, span }
     }
 }
 
 impl<K: fmt::Debug> fmt::Debug for Spanned<K> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?} @ {:?}", self.kind, self.span)
+        write!(f, "{:?} {:?}", self.kind, self.span)
     }
 }
 
@@ -140,10 +139,22 @@ impl Span {
         self.start <= index && index <= self.end
     }
 
-    pub fn merge(self, other: Self) -> Self {
-        self.assert_consecutive(other);
+    pub fn merge(self, other: &impl PossiblySpanning) -> Self {
+        if let Some(other) = other.possible_span() {
+            self.assert_consecutive(other);
+            Self::new(self.start, other.end)
+        } else {
+            self
+        }
+    }
 
-        Self::new(self.start, other.end)
+    pub fn merge_into(self, other: &impl PossiblySpanning) -> Self {
+        if let Some(other) = other.possible_span() {
+            other.assert_consecutive(self);
+            Self::new(other.start, self.end)
+        } else {
+            self
+        }
     }
 
     pub fn merging(&mut self, other: &impl PossiblySpanning) {

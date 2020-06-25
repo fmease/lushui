@@ -2,14 +2,7 @@
 
 module core
 
-use core.list.List
-use core.list.nil
-use core.list.cons
-use core.bool.Bool
-use core.bool.false
-use core.bool.true
-use core.unit.Unit
-use core.unit.unit
+use core.(list.(List nil cons) bool.(Bool false true) unit.(Unit unit))
 
 data Any: Type =
     any: (A: Type) -> A -> Any

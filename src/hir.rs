@@ -7,7 +7,7 @@ mod fmt;
 use crate::{
     parser::{Attributes, Explicitness},
     span::{SourceFile, Span, Spanned, Spanning},
-    support::MayBeInvalid,
+    support::InvalidFallback,
 };
 use freestanding::freestanding;
 use std::{fmt::Display, rc::Rc};
@@ -21,7 +21,8 @@ pub trait Pass: Clone {
     type ReferencedBinder: Display + Clone;
 
     // @Temporary
-    type ReferencedBinderInUse: Display = Self::ReferencedBinder;
+    /// Use target
+    type Target: Display = Self::ReferencedBinder;
 
     /// "l-value" in patterns
     type PatternBinder: Display + Clone;
@@ -50,7 +51,7 @@ impl<P: Pass> Spanning for Declaration<P> {
     }
 }
 
-impl<P: Pass> MayBeInvalid for Declaration<P> {
+impl<P: Pass> InvalidFallback for Declaration<P> {
     fn invalid() -> Self {
         decl! {
             Invalid[][Default::default()]
@@ -82,7 +83,7 @@ pub enum DeclarationKind<P: Pass> {
     },
     Use {
         binder: Option<P::Binder>,
-        reference: P::ReferencedBinderInUse,
+        target: P::Target,
     },
     Invalid,
 }
@@ -162,7 +163,7 @@ pub enum ExpressionKind<P: Pass> {
     },
 }
 
-impl<P: Pass> MayBeInvalid for Expression<P> {
+impl<P: Pass> InvalidFallback for Expression<P> {
     fn invalid() -> Self {
         expr! { Invalid[] }
     }
@@ -214,17 +215,15 @@ pub macro decl {
 }
 
 pub macro expr {
-    ($kind:ident[$( $span:expr )?] { $( $body:tt )+ }) => {{
-        let span = span!($( $span )?);
+    ($kind:ident[$( $span:expr )?] { $( $body:tt )+ }) => {
         Expression::new(
+            span!($( $span )?),
             ExpressionKind::$kind(Rc::new(self::$kind { $( $body )+ })),
-            span,
         )
-    }},
-    ($kind:ident[$( $span:expr )?]) => {{
-        let span = span!($( $span )?);
-        Expression::new(ExpressionKind::$kind, span)
-    }}
+    },
+    ($kind:ident[$( $span:expr )?]) => {
+        Expression::new(span!($( $span )?), ExpressionKind::$kind)
+    }
 }
 
 macro span {
@@ -232,10 +231,9 @@ macro span {
     ($span:expr) => { $span },
 }
 
-pub macro pat($kind:ident[$span:expr] { $( $body:tt )+ }) {{
-    let span = $span;
+pub macro pat($kind:ident[$span:expr] { $( $body:tt )+ }) {
     Pattern::new(
+        $span,
         PatternKind::$kind(Rc::new(self::$kind { $( $body )+ })),
-        span,
     )
-}}
+}

@@ -53,13 +53,13 @@ impl Declaration {
                 if self.attributes.has(AttributeKind::Foreign) {
                     Registration::ForeignValueBinding {
                         binder: declaration.binder.clone(),
-                        r#type: declaration.type_annotation.clone(),
+                        type_: declaration.type_annotation.clone(),
                     }
                     .evaluate(scope)?;
                 } else {
                     Registration::ValueBinding {
                         binder: declaration.binder.clone(),
-                        r#type: declaration.type_annotation.clone(),
+                        type_: declaration.type_annotation.clone(),
                         value: Some(declaration.expression.clone().unwrap()),
                     }
                     .evaluate(scope)?;
@@ -69,7 +69,7 @@ impl Declaration {
                 // @Question don't return early??
                 Registration::DataBinding {
                     binder: data.binder.clone(),
-                    r#type: data.type_annotation.clone(),
+                    type_: data.type_annotation.clone(),
                 }
                 .evaluate(scope)?;
 
@@ -107,7 +107,7 @@ impl Declaration {
             Constructor(constructor) => {
                 Registration::ConstructorBinding {
                     binder: constructor.binder.clone(),
-                    r#type: constructor.type_annotation.clone(),
+                    type_: constructor.type_annotation.clone(),
                     data: environment.data.unwrap(),
                 }
                 .evaluate(scope)?;
@@ -135,20 +135,20 @@ impl Registration {
         match self.clone() {
             ValueBinding {
                 binder,
-                r#type,
+                type_,
                 value,
             } => {
                 handle_out_of_order_binding!(
                     scope,
                     self,
-                    r#type.clone().is_a_type(&(&*scope).into())
+                    type_.clone().is_a_type(&(&*scope).into())
                 );
                 let infered_type = match value.clone().unwrap().infer_type(&(&*scope).into()) {
                     Err(Error::Recoverable(OutOfOrderBinding)) => {
                         scope.out_of_order_bindings.push(self);
                         scope.carry_out(Registration::ValueBinding {
                             binder,
-                            r#type,
+                            type_,
                             value: None,
                         })?;
                         return Ok(());
@@ -160,76 +160,76 @@ impl Registration {
                 handle_out_of_order_binding!(
                     scope,
                     self,
-                    r#type.is_actual(infered_type.clone(), &(&*scope).into())
+                    type_.is_actual(infered_type.clone(), &(&*scope).into())
                 );
                 scope.carry_out(Registration::ValueBinding {
                     binder,
-                    r#type: infered_type,
+                    type_: infered_type,
                     value,
                 })?;
             }
-            DataBinding { binder, r#type } => {
-                let r#type = r#type.evaluate(interpreter::Context {
+            DataBinding { binder, type_ } => {
+                let type_ = type_.evaluate(interpreter::Context {
                     scope: &(&*scope).into(),
                     form: Form::Normal, /* Form::WeakHeadNormal */
                 })?;
                 handle_out_of_order_binding!(
                     scope,
                     self,
-                    r#type.clone().is_a_type(&(&*scope).into())
+                    type_.clone().is_a_type(&(&*scope).into())
                 );
 
                 // @Task diagnostic note: only `Type` can be extended
                 // @Note currently is: invalid constructor X
                 types::instance::assert_constructor_is_instance_of_type(
                     binder.clone(),
-                    r#type.clone(),
+                    type_.clone(),
                     TYPE,
                     scope,
                 )?;
 
-                scope.carry_out(Registration::DataBinding { binder, r#type })?;
+                scope.carry_out(Registration::DataBinding { binder, type_ })?;
             }
             ConstructorBinding {
                 binder,
-                r#type,
+                type_,
                 data,
             } => {
-                let r#type = r#type.evaluate(interpreter::Context {
+                let type_ = type_.evaluate(interpreter::Context {
                     scope: &(&*scope).into(),
                     form: Form::Normal, /* Form::WeakHeadNormal */
                 })?;
                 handle_out_of_order_binding!(
                     scope,
                     self,
-                    r#type.clone().is_a_type(&(&*scope).into())
+                    type_.clone().is_a_type(&(&*scope).into())
                 );
 
                 types::instance::assert_constructor_is_instance_of_type(
                     binder.clone(),
-                    r#type.clone(),
+                    type_.clone(),
                     data.clone().to_expression(),
                     scope,
                 )?;
 
                 scope.carry_out(Registration::ConstructorBinding {
                     binder,
-                    r#type: r#type.clone(),
+                    type_: type_.clone(),
                     data,
                 })?;
             }
-            ForeignValueBinding { binder, r#type } => {
-                let r#type = r#type.evaluate(interpreter::Context {
+            ForeignValueBinding { binder, type_ } => {
+                let type_ = type_.evaluate(interpreter::Context {
                     scope: &(&*scope).into(),
                     form: Form::Normal, /* Form::WeakHeadNormal */
                 })?;
                 handle_out_of_order_binding!(
                     scope,
                     self,
-                    r#type.clone().is_a_type(&(&*scope).into())
+                    type_.clone().is_a_type(&(&*scope).into())
                 );
 
-                scope.carry_out(Self::ForeignValueBinding { binder, r#type })?;
+                scope.carry_out(Self::ForeignValueBinding { binder, type_ })?;
             }
             Self::ForeignDataBinding { binder } => {
                 scope.carry_out(Registration::ForeignDataBinding { binder })?;
@@ -383,7 +383,7 @@ impl Expression {
                 .infer_type(scope)?,
             UseIn => todo!(? "1stP infer type of use/in"),
             CaseAnalysis(case_analysis) => {
-                let r#type = case_analysis
+                let type_ = case_analysis
                     .subject
                     .clone()
                     .infer_type(scope)?
@@ -391,11 +391,11 @@ impl Expression {
                     .evaluate(interpreter::Context::new(scope))?;
 
                 // @Task verify that
-                // * patterns are of correct type (i.e. r#type is an ADT and the constructors are the valid ones)
+                // * patterns are of correct type (i.e. type_ is an ADT and the constructors are the valid ones)
                 // * all constructors are covered
                 // * all case_analysis.cases>>.expressions are of the same type
 
-                match &r#type.kind {
+                match &type_.kind {
                     Binding(_) => {}
                     Application(_application) => todo!(? "polymorphic types in patterns"),
                     _ => todo!(? "encountered unsupported type to be case-analysed"),
@@ -408,7 +408,7 @@ impl Expression {
 
                     match &case.pattern.kind {
                         PatternKind::Nat(_) => {
-                            r#type.clone().is_actual(
+                            type_.clone().is_actual(
                                 scope
                                     .crate_scope()
                                     .lookup_foreign_type(ffi::Type::NAT, Some(case.pattern.span))?,
@@ -416,7 +416,7 @@ impl Expression {
                             )?;
                         }
                         PatternKind::Text(_text) => {
-                            r#type.clone().is_actual(
+                            type_.clone().is_actual(
                                 scope.crate_scope().lookup_foreign_type(
                                     ffi::Type::TEXT,
                                     Some(case.pattern.span),
@@ -427,29 +427,29 @@ impl Expression {
                         PatternKind::Binding(binding) => {
                             let type_of_constructor = scope.lookup_type(&binding.binder).unwrap();
                             // @Note error message very general, could be specialized to constructors
-                            r#type
+                            type_
                                 .clone()
                                 .is_actual(type_of_constructor.clone(), scope)?;
                         }
                         PatternKind::Binder(_) => {
                             // @Temporary @Beacon error prone (once we try to impl deappl)
-                            types.push(r#type.clone());
+                            types.push(type_.clone());
                         }
                         PatternKind::Deapplication(_deapplication) => {
                             todo!(? "handle deapplications in patterns", &case.pattern)
                         }
                     }
-                    let r#type = case
+                    let type_ = case
                         .body
                         .clone()
                         .infer_type(&scope.extend_with_pattern_binders(types))?;
 
                     match type_of_previous_body {
                         Some(ref previous_type) => {
-                            previous_type.clone().is_actual(r#type, scope)?;
+                            previous_type.clone().is_actual(type_, scope)?;
                         }
                         None => {
-                            type_of_previous_body = Some(r#type);
+                            type_of_previous_body = Some(type_);
                         }
                     }
                 }
@@ -463,8 +463,8 @@ impl Expression {
 
     /// Assert that an expression is of type `Type`.
     fn is_a_type(self, scope: &FunctionScope<'_>) -> Result<(), Error> {
-        let r#type = self.infer_type(scope)?;
-        TYPE.is_actual(r#type, scope)
+        let type_ = self.infer_type(scope)?;
+        TYPE.is_actual(type_, scope)
     }
 
     /// Assert that two expression are equal under evaluation/normalization.

@@ -1,55 +1,55 @@
 error[E020]: `Alpha` is defined multiple times in this scope
-   > ${DIRECTORY}/duplicate-bindings.lushui:13:1
+   > /home/fmease/programming/main_projects/lushui/tests/duplicate-bindings.lushui:10:1
    |
-10 | data Alpha: Type =
+ 7 | data Alpha: Type =
    |      ----- previous definition
    |
-13 | Alpha: Type = Type
+10 | Alpha: Type = Type
    | ^^^^^ redefinition
 
 error[E020]: `beta` is defined multiple times in this scope
-   > ${DIRECTORY}/duplicate-bindings.lushui:24:1
+   > /home/fmease/programming/main_projects/lushui/tests/duplicate-bindings.lushui:21:1
    |
-15 | beta: Nat = 1000
+12 | beta: Nat = 1000
    | ---- previous definition
    |
-24 | beta (x y: Nat): Nat = y
+21 | beta (x y: Nat): Nat = y
    | ^^^^ redefinition
 
 error[E020]: `capsule` is defined multiple times in this scope
-   > ${DIRECTORY}/duplicate-bindings.lushui:26:1
+   > /home/fmease/programming/main_projects/lushui/tests/duplicate-bindings.lushui:23:1
    |
-17 | module capsule: =
+14 | module capsule: =
    |        ------- previous definition
    |
-26 | capsule: Nat = beta
+23 | capsule: Nat = beta
    | ^^^^^^^ redefinition
 
 error[E020]: `Nat` is defined multiple times in this scope
-   > ${DIRECTORY}/duplicate-bindings.lushui:20:10
+   > /home/fmease/programming/main_projects/lushui/tests/duplicate-bindings.lushui:17:10
    |
-18 |     use super.Nat
+15 |     use super.Nat
    |               --- previous definition
    |
-20 |     data Nat: Type =
+17 |     data Nat: Type =
    |          ^^^ redefinition
 
 error[E020]: `ALIKE` is defined multiple times in this scope
-   > ${DIRECTORY}/duplicate-bindings.lushui:29:5
+   > /home/fmease/programming/main_projects/lushui/tests/duplicate-bindings.lushui:26:5
    |
-28 | data ALIKE: Type =
+25 | data ALIKE: Type =
    |      ----- previous definition
    |
-29 |     ALIKE: ALIKE
+26 |     ALIKE: ALIKE
    |     ^^^^^ redefinition
 
 error[E020]: `zero` is defined multiple times in this scope
-   > ${DIRECTORY}/duplicate-bindings.lushui:33:13
+   > /home/fmease/programming/main_projects/lushui/tests/duplicate-bindings.lushui:30:13
    |
-31 | zero: Nat = 0
+28 | zero: Nat = 0
    | ---- previous definition
    |
-33 | use capsule.zero
+30 | use capsule.zero
    |             ^^^^ redefinition
 
 error: aborting due to 6 previous errors

@@ -41,7 +41,7 @@ impl CrateScope {
     }
 
     pub fn lookup_type(&self, index: CrateIndex) -> Option<Expression> {
-        self.bindings[index].r#type()
+        self.bindings[index].type_()
     }
 
     /// Look up the value of a binding.
@@ -96,7 +96,7 @@ impl CrateScope {
         Ok(match registration {
             Registration::ValueBinding {
                 binder,
-                r#type,
+                type_,
                 value,
             } => {
                 let index = binder.krate().unwrap();
@@ -105,26 +105,26 @@ impl CrateScope {
                         || matches!(self.bindings[index], Entity { kind: EntityKind::Value { expression: None, .. }, .. })
                 );
                 self.bindings[index].kind = EntityKind::Value {
-                    r#type,
+                    type_,
                     expression: value,
                 };
             }
-            Registration::DataBinding { binder, r#type } => {
+            Registration::DataBinding { binder, type_ } => {
                 let index = binder.krate().unwrap();
                 debug_assert!(self.bindings[index].is_untyped_value());
                 self.bindings[index].kind = EntityKind::DataType {
-                    r#type,
+                    type_,
                     constructors: Vec::new(),
                 };
             }
             Registration::ConstructorBinding {
                 binder,
-                r#type,
+                type_,
                 data,
             } => {
                 let index = binder.krate().unwrap();
                 debug_assert!(self.bindings[index].is_untyped_value());
-                self.bindings[index].kind = EntityKind::Constructor { r#type };
+                self.bindings[index].kind = EntityKind::Constructor { type_ };
 
                 match self.bindings.get_mut(data.krate().unwrap()).unwrap().kind {
                     EntityKind::DataType {
@@ -134,13 +134,13 @@ impl CrateScope {
                     _ => unreachable!(),
                 }
             }
-            Registration::ForeignValueBinding { binder, r#type } => {
+            Registration::ForeignValueBinding { binder, type_ } => {
                 let index = binder.krate().unwrap();
                 debug_assert!(self.bindings[index].is_untyped_value());
 
                 self.bindings[index].kind = match &self.foreign_bindings.remove(binder.as_str()) {
                     Some((arity, function)) => EntityKind::Foreign {
-                        r#type,
+                        type_,
                         arity: *arity,
                         function: *function,
                     },
@@ -264,21 +264,21 @@ impl From<resolver::CrateScope> for CrateScope {
 pub enum Registration {
     ValueBinding {
         binder: Identifier,
-        r#type: Expression,
+        type_: Expression,
         value: Option<Expression>,
     },
     DataBinding {
         binder: Identifier,
-        r#type: Expression,
+        type_: Expression,
     },
     ConstructorBinding {
         binder: Identifier,
-        r#type: Expression,
+        type_: Expression,
         data: Identifier,
     },
     ForeignValueBinding {
         binder: Identifier,
-        r#type: Expression,
+        type_: Expression,
     },
     ForeignDataBinding {
         binder: Identifier,
@@ -313,7 +313,7 @@ pub enum FunctionScope<'a> {
     CrateScope(&'a CrateScope),
     FunctionParameter {
         parent: &'a Self,
-        r#type: Expression,
+        type_: Expression,
     },
     PatternBinders {
         parent: &'a Self,
@@ -323,10 +323,10 @@ pub enum FunctionScope<'a> {
 }
 
 impl<'a> FunctionScope<'a> {
-    pub fn extend_with_parameter(&'a self, r#type: Expression) -> Self {
+    pub fn extend_with_parameter(&'a self, type_: Expression) -> Self {
         Self::FunctionParameter {
             parent: self,
-            r#type,
+            type_,
         }
     }
 
@@ -360,12 +360,12 @@ impl<'a> FunctionScope<'a> {
 
     fn lookup_type_with_depth(&self, index: DebruijnIndex, depth: usize) -> Expression {
         match self {
-            Self::FunctionParameter { parent, r#type } => {
+            Self::FunctionParameter { parent, type_ } => {
                 if depth == index.0 {
                     expr! {
                         Substitution[] {
                             substitution: Shift(depth + 1),
-                            expression: r#type.clone(),
+                            expression: type_.clone(),
                         }
                     }
                 } else {
@@ -379,11 +379,11 @@ impl<'a> FunctionScope<'a> {
                     .zip(depth..)
                     .find(|(_, depth)| *depth == index.0)
                 {
-                    Some((r#type, depth)) => expr! {
+                    Some((type_, depth)) => expr! {
                         Substitution[] {
                             // @Task verify this shift
                             substitution: Shift(depth + 1),
-                            expression: r#type.clone(),
+                            expression: type_.clone(),
                         }
                     },
                     None => parent.lookup_type_with_depth(index, depth + types.len()),

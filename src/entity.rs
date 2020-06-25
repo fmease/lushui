@@ -20,15 +20,15 @@ impl Entity {
         matches!(self.kind, EntityKind::UntypedValue)
     }
 
-    pub fn r#type(&self) -> Option<Expression> {
+    pub fn type_(&self) -> Option<Expression> {
         use EntityKind::*;
 
         Some(
             match &self.kind {
-                Value { r#type, .. } => r#type,
-                DataType { r#type, .. } => r#type,
-                Constructor { r#type, .. } => r#type,
-                Foreign { r#type, .. } => r#type,
+                Value { type_, .. } => type_,
+                DataType { type_, .. } => type_,
+                Constructor { type_, .. } => type_,
+                Foreign { type_, .. } => type_,
                 UntypedValue => return None,
                 _ => unreachable!(),
             }
@@ -72,19 +72,19 @@ pub enum EntityKind {
     UnresolvedUse,
 
     Value {
-        r#type: Expression,
+        type_: Expression,
         expression: Option<Expression>,
     },
     // @Question should we store the constructors?
     DataType {
-        r#type: Expression,
+        type_: Expression,
         constructors: Vec<Identifier>,
     },
     Constructor {
-        r#type: Expression,
+        type_: Expression,
     },
     Foreign {
-        r#type: Expression,
+        type_: Expression,
         arity: usize,
         function: ForeignFunction,
     },
@@ -107,24 +107,24 @@ impl fmt::Debug for EntityKind {
             Module(scope) => write!(f, "module, {:?}", scope),
             Use(index) => write!(f, "use {:?}", index),
             UnresolvedUse => write!(f, "unresolved use"),
-            Value { r#type, expression } => match expression {
-                Some(expression) => write!(f, "{}: {}", expression, r#type),
-                None => write!(f, ": {}", r#type),
+            Value { type_, expression } => match expression {
+                Some(expression) => write!(f, "{}: {}", expression, type_),
+                None => write!(f, ": {}", type_),
             },
             DataType {
-                r#type,
+                type_,
                 constructors,
             } => write!(
                 f,
                 "data: {} = {}",
-                r#type,
+                type_,
                 constructors
                     .iter()
                     .map(|constructor| format!("{} ", constructor))
                     .collect::<String>()
             ),
-            Constructor { r#type } => write!(f, "constructor: {}", r#type),
-            Foreign { r#type, .. } => write!(f, "foreign: {}", r#type),
+            Constructor { type_ } => write!(f, "constructor: {}", type_),
+            Foreign { type_, .. } => write!(f, "foreign: {}", type_),
         }
     }
 }

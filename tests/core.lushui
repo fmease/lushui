@@ -52,9 +52,7 @@ module text: =
     concat: Text -> Text -> Text
 
 module nat: =
-    use super.option.Option
-    use super.bool.Bool
-    use super.text.Text
+    use super.(option.Option bool.Bool text.Text)
 
     @foreign
     data Nat: Type
@@ -101,8 +99,7 @@ module nat: =
     @foreign
     display: Nat -> Text
 
-    use super.bool
-    use super.ordering
+    use super.(bool ordering)
 
     ;; @Temporary, see comment about foreign compare
     ;; @Bug parsing issues
@@ -132,8 +129,8 @@ module option: =
 
     ;; map (A B: Type) (f: A -> B) (a: Option A): Option B =
     ;;     case a of
-    ;;         some ?A ?a => some B (f a)
-    ;;         none ?A => none B
+    ;;         some \_ \a => some B (f a)
+    ;;         none \_ => none B
 
 module result: =
     data Result (A E: Type): Type =

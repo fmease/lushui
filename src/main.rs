@@ -222,7 +222,7 @@ fn main() {
 
         match arguments.command {
             Command::Check { .. } | Command::Run { .. } => {
-                let node = node.desugar(&mut map)?;
+                let node = node.desugar(&mut map)?.remove(0);
                 if merged_arguments.print_desugar_hir {
                     eprintln!("{}", node);
                 }

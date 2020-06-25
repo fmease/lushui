@@ -69,7 +69,7 @@ fn run() -> Result<(), Error> {
 
     for dir_entry in test_directory {
         let entry = dir_entry.map_err(Error::InvalidTestsDirectoryEntry)?;
-        let r#type = entry
+        let type_ = entry
             .file_type()
             .map_err(Error::TestsDirectoryEntryTypeUnavailable)?;
         let path = entry.path();
@@ -78,7 +78,7 @@ fn run() -> Result<(), Error> {
             .and_then(|name| name.to_str())
             .ok_or(Error::IllegalTestFileName)?;
 
-        if !r#type.is_file() {
+        if !type_.is_file() {
             continue;
         }
 
