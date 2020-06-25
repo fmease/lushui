@@ -1,0 +1,9 @@
+;; TEST pass check --only-parse
+
+module: alpha beta =
+
+module m0: gamma delta =
+
+module m1: =
+
+module m2: gamma =

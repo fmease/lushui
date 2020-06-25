@@ -81,6 +81,8 @@ pub enum DeclarationKind {
     Module {
         binder: Identifier,
         file: Rc<SourceFile>,
+        // @Task support for constructor (and field) exposures (paths + multipaths)
+        exposures: Vec<Identifier>,
         declarations: Option<Vec<Declaration>>,
     },
     /// The syntax node of a use declaration.

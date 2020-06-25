@@ -1,5 +1,5 @@
 error[E020]: `Alpha` is defined multiple times in this scope
-   > /home/fmease/programming/main_projects/lushui/tests/duplicate-bindings.lushui:10:1
+   > ${DIRECTORY}/duplicate-bindings.lushui:10:1
    |
  7 | data Alpha: Type =
    |      ----- previous definition
@@ -8,7 +8,7 @@ error[E020]: `Alpha` is defined multiple times in this scope
    | ^^^^^ redefinition
 
 error[E020]: `beta` is defined multiple times in this scope
-   > /home/fmease/programming/main_projects/lushui/tests/duplicate-bindings.lushui:21:1
+   > ${DIRECTORY}/duplicate-bindings.lushui:21:1
    |
 12 | beta: Nat = 1000
    | ---- previous definition
@@ -17,7 +17,7 @@ error[E020]: `beta` is defined multiple times in this scope
    | ^^^^ redefinition
 
 error[E020]: `capsule` is defined multiple times in this scope
-   > /home/fmease/programming/main_projects/lushui/tests/duplicate-bindings.lushui:23:1
+   > ${DIRECTORY}/duplicate-bindings.lushui:23:1
    |
 14 | module capsule: =
    |        ------- previous definition
@@ -26,7 +26,7 @@ error[E020]: `capsule` is defined multiple times in this scope
    | ^^^^^^^ redefinition
 
 error[E020]: `Nat` is defined multiple times in this scope
-   > /home/fmease/programming/main_projects/lushui/tests/duplicate-bindings.lushui:17:10
+   > ${DIRECTORY}/duplicate-bindings.lushui:17:10
    |
 15 |     use super.Nat
    |               --- previous definition
@@ -35,7 +35,7 @@ error[E020]: `Nat` is defined multiple times in this scope
    |          ^^^ redefinition
 
 error[E020]: `ALIKE` is defined multiple times in this scope
-   > /home/fmease/programming/main_projects/lushui/tests/duplicate-bindings.lushui:26:5
+   > ${DIRECTORY}/duplicate-bindings.lushui:26:5
    |
 25 | data ALIKE: Type =
    |      ----- previous definition
@@ -44,7 +44,7 @@ error[E020]: `ALIKE` is defined multiple times in this scope
    |     ^^^^^ redefinition
 
 error[E020]: `zero` is defined multiple times in this scope
-   > /home/fmease/programming/main_projects/lushui/tests/duplicate-bindings.lushui:30:13
+   > ${DIRECTORY}/duplicate-bindings.lushui:30:13
    |
 28 | zero: Nat = 0
    | ---- previous definition

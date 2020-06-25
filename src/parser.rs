@@ -347,9 +347,10 @@ impl Parser<'_> {
     /// ```text
     /// Module-Declaration ::= "module" %Identifier%
     ///     (Line-Break |
-    ///     ":" "=" Line-Break Indentation
+    ///     ":" Exposure-List "=" Line-Break Indentation
     ///         (Line-Break | Declaration)*
     ///     Dedentation)
+    /// Exposure-List ::= Identifier*
     /// ```
     fn finish_parse_module_declaration(&mut self, keyword_span: Span) -> Result<Declaration> {
         use TokenKind::*;
@@ -363,13 +364,14 @@ impl Parser<'_> {
                 Module[span] {
                     binder,
                     file: self.file.clone(),
+                    exposures: Vec::new(),
                     declarations: None,
                 }
             });
         }
 
         self.consume(Colon)?;
-        self.consume(Equals)?;
+        let exposures = self.parse_exposure_list()?;
         self.consume(LineBreak)?;
 
         let mut declarations = Vec::new();
@@ -395,6 +397,7 @@ impl Parser<'_> {
             Module[span] {
                 binder,
                 file: self.file.clone(),
+                exposures,
                 declarations: Some(declarations),
             }
         })
@@ -408,9 +411,24 @@ impl Parser<'_> {
     /// ## Grammar
     ///
     /// ```text
-    /// Top-Level ::= (Line-Break | Declaration)* %End-Of-Input%
+    /// Top-Level ::= Header? (Line-Break | Declaration)* %End-Of-Input%
+    /// Header ::= Exposure-List
     /// ```
     pub fn parse_top_level(&mut self, binder: Identifier) -> Result<Declaration> {
+        while self.consumed(TokenKind::LineBreak) {}
+
+        // header
+        let exposures =
+            if self.current_is(TokenKind::Module) && self.succeeding_is(TokenKind::Colon) {
+                self.advance();
+                self.advance();
+                let exposures = self.parse_exposure_list()?;
+                self.consume(TokenKind::LineBreak)?;
+                exposures
+            } else {
+                Vec::new()
+            };
+
         let mut declarations = Vec::<Declaration>::new();
 
         loop {
@@ -423,6 +441,7 @@ impl Parser<'_> {
                     Module[self.file.span] {
                         binder,
                         file: self.file.clone(),
+                        exposures,
                         declarations: Some(declarations)
                     }
                 });
@@ -430,6 +449,18 @@ impl Parser<'_> {
 
             declarations.push(self.parse_declaration()?);
         }
+    }
+
+    /// Delimiter is `=`.
+    // @Task parse complex and multipaths for constructor and field exposures
+    fn parse_exposure_list(&mut self) -> Result<Vec<Identifier>> {
+        let mut exposures = Vec::new();
+
+        while !self.consumed(TokenKind::Equals) {
+            exposures.push(self.consume_identifier()?);
+        }
+
+        Ok(exposures)
     }
 
     /// Finish parsing use declaration.
