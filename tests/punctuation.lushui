@@ -1,0 +1,10 @@
+;; TEST pass run
+
+module core
+
+use core.nat.(Nat (add as +) (multiply as *))
+
+x: Nat = * 1 2
+
+main: Nat =
+    * 232 (+ 12 x)

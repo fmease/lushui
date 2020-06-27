@@ -24,6 +24,10 @@ impl Token {
         Self::with_data(Identifier, TokenData::Identifier(atom), span)
     }
 
+    pub fn new_punctuation(atom: Atom, span: Span) -> Self {
+        Self::with_data(Punctuation, TokenData::Identifier(atom), span)
+    }
+
     pub fn new_nat_literal(nat: Nat, span: Span) -> Self {
         Self::with_data(NatLiteral, TokenData::NatLiteral(nat), span)
     }

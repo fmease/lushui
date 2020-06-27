@@ -60,19 +60,11 @@ impl Parser<'_> {
     }
 
     fn expect(&self, expected: TokenKind) -> Result<Token> {
-        let actual = self.current();
-        if actual.kind == expected {
-            Ok(actual)
+        let token = self.current();
+        if token.kind == expected {
+            Ok(token)
         } else {
-            Err(Expected::Token(&expected).but_actual_is(actual))
-        }
-    }
-
-    fn expect_identifier(&self) -> Result<Identifier> {
-        let actual = self.current();
-        match actual.kind {
-            TokenKind::Identifier => Ok(Identifier::from_token(actual)),
-            _ => Err(Expected::Identifier.but_actual_is(actual)),
+            Err(Expected::Token(expected).but_actual_is(token))
         }
     }
 
@@ -83,9 +75,23 @@ impl Parser<'_> {
     }
 
     fn consume_identifier(&mut self) -> Result<Identifier> {
-        let identifier = self.expect_identifier()?;
-        self.advance();
-        Ok(identifier)
+        self.consume(TokenKind::Identifier)
+            .map(Identifier::from_token)
+    }
+
+    /// A general identifier includes (alphanumeric) identifiers and punctuation.
+    fn consume_general_identifier(&mut self) -> Result<Identifier> {
+        use TokenKind::*;
+        let token = self.current();
+        match token.kind {
+            Identifier | Punctuation => {
+                self.advance();
+                Ok(ast::Identifier::from_token(token))
+            }
+            _ => {
+                Err(Expected::OneOf(&[Identifier.into(), Punctuation.into()]).but_actual_is(token))
+            }
+        }
     }
 
     fn advance(&mut self) {
@@ -415,28 +421,29 @@ impl Parser<'_> {
     /// Header ::= Exposure-List
     /// ```
     pub fn parse_top_level(&mut self, binder: Identifier) -> Result<Declaration> {
-        while self.consumed(TokenKind::LineBreak) {}
+        use TokenKind::*;
+        while self.consumed(LineBreak) {}
 
-        // header
-        let exposures =
-            if self.current_is(TokenKind::Module) && self.succeeding_is(TokenKind::Colon) {
-                self.advance();
-                self.advance();
-                let exposures = self.parse_exposure_list()?;
-                self.consume(TokenKind::LineBreak)?;
-                exposures
-            } else {
-                Vec::new()
-            };
+        // module header
+        // @Task parse attributes and documentation comments on here
+        let exposures = if self.current_is(Module) && self.succeeding_is(Colon) {
+            self.advance();
+            self.advance();
+            let exposures = self.parse_exposure_list()?;
+            self.consume(LineBreak)?;
+            exposures
+        } else {
+            Vec::new()
+        };
 
-        let mut declarations = Vec::<Declaration>::new();
+        let mut declarations = Vec::new();
 
         loop {
-            if self.consumed(TokenKind::LineBreak) {
+            if self.consumed(LineBreak) {
                 continue;
             }
 
-            if self.consumed(TokenKind::EndOfInput) {
+            if self.consumed(EndOfInput) {
                 break Ok(decl! {
                     Module[self.file.span] {
                         binder,
@@ -457,7 +464,7 @@ impl Parser<'_> {
         let mut exposures = Vec::new();
 
         while !self.consumed(TokenKind::Equals) {
-            exposures.push(self.consume_identifier()?);
+            exposures.push(self.consume_general_identifier()?);
         }
 
         Ok(exposures)
@@ -497,7 +504,7 @@ impl Parser<'_> {
         let token = self.current();
 
         match token.kind {
-            Identifier => {
+            Identifier | Punctuation => {
                 self.advance();
                 self.finish_parse_use_bindings(Path::new_identifier(token), delimiters)
             }
@@ -524,10 +531,10 @@ impl Parser<'_> {
     ) -> Result<UseBindings> {
         use TokenKind::*;
 
-        while self.consumed(TokenKind::Dot) {
+        while self.consumed(Dot) {
             let token = self.current();
             match token.kind {
-                Identifier => {
+                Identifier | Punctuation => {
                     self.advance();
                     path.segments
                         .push(ast::Identifier::from_token(token).into());
@@ -541,7 +548,7 @@ impl Parser<'_> {
                         if self.consumed(OpeningRoundBracket) {
                             let target = self.parse_simple_path()?;
                             self.consume(As)?;
-                            let binder = self.consume_identifier()?;
+                            let binder = self.consume_general_identifier()?;
                             self.consume(ClosingRoundBracket)?;
 
                             bindings.push(UseBindings::Single {
@@ -549,11 +556,12 @@ impl Parser<'_> {
                                 binder: Some(binder),
                             });
                         } else {
-                            // @Note this is really fragile
+                            // @Note this is really really fragile=non-extensible!
                             bindings.push(self.parse_use_bindings(&[
                                 OpeningRoundBracket.into(),
                                 ClosingRoundBracket.into(),
                                 Identifier.into(),
+                                Punctuation.into(),
                                 Self_.into(),
                             ])?);
                         }
@@ -562,11 +570,10 @@ impl Parser<'_> {
                     return Ok(UseBindings::Multiple { path, bindings });
                 }
                 _ => {
-                    return Err(Expected::OneOf(&[
-                        Expected::Identifier,
-                        Expected::Token(&OpeningRoundBracket),
-                    ])
-                    .but_actual_is(token))
+                    return Err(
+                        Expected::OneOf(&[Identifier.into(), OpeningRoundBracket.into()])
+                            .but_actual_is(token),
+                    )
                 }
             }
         }
@@ -576,13 +583,12 @@ impl Parser<'_> {
         let binder = if self.current_is_delimiter(delimiters) {
             None
         } else if self.consumed(As) {
-            Some(self.consume_identifier()?)
+            Some(self.consume_general_identifier()?)
         } else {
-            return Err(Expected::OneOf(&delimiters_with_expected(
-                delimiters,
-                Some(Expected::Token(&As)),
-            ))
-            .but_actual_is(self.current()));
+            return Err(
+                Expected::OneOf(&delimiters_with_expected(delimiters, Some(As.into())))
+                    .but_actual_is(self.current()),
+            );
         };
 
         // @Task correct span info
@@ -766,7 +772,7 @@ impl Parser<'_> {
 
         let token = self.current();
         Ok(match token.kind {
-            Identifier => {
+            Identifier | Punctuation => {
                 self.advance();
                 self.finish_parse_simple_path(Path::new_identifier(token))?
                     .into()
@@ -807,7 +813,7 @@ impl Parser<'_> {
         use TokenKind::*;
         let token = self.current();
         match token.kind {
-            Identifier => {
+            Identifier | Punctuation => {
                 self.advance();
                 self.finish_parse_simple_path(Path::new_identifier(token))
             }
@@ -829,7 +835,8 @@ impl Parser<'_> {
 
     fn finish_parse_simple_path(&mut self, mut path: Path) -> Result<Path> {
         while self.consumed(TokenKind::Dot) {
-            path.segments.push(self.consume_identifier()?.into());
+            path.segments
+                .push(self.consume_general_identifier()?.into());
         }
 
         Ok(path)
@@ -912,7 +919,7 @@ impl Parser<'_> {
         let mut span = span_of_case;
 
         let expression = self.parse_possibly_indented_expression()?;
-        span.merging(&self.consume(TokenKind::Of)?);
+        span.merging(&self.consume(Of)?);
 
         let mut cases = Vec::new();
 
@@ -922,7 +929,7 @@ impl Parser<'_> {
 
             while !self.current_is(Dedentation) {
                 let pattern = self.parse_pattern()?;
-                self.consume(TokenKind::WideArrow)?;
+                self.consume(WideArrow)?;
                 let expression = self.parse_possibly_indented_terminated_expression()?;
 
                 cases.push(ast::Case {
@@ -1073,7 +1080,7 @@ impl Parser<'_> {
                 let binder = self.consume_identifier()?;
                 pat! { Binder[token.span.merge(&binder)] { binder } }
             }
-            Identifier => {
+            Identifier | Punctuation => {
                 self.advance();
                 self.finish_parse_simple_path(Path::new_identifier(token))?
                     .into()
@@ -1187,8 +1194,7 @@ impl Parser<'_> {
 }
 
 enum Expected<'a> {
-    Token(&'a TokenKind),
-    Identifier,
+    Token(TokenKind),
     Path,
     Declaration,
     Expression,
@@ -1196,6 +1202,14 @@ enum Expected<'a> {
     Parameter,
     Delimiter(Delimiter),
     OneOf(&'a [Self]),
+}
+
+fn delimiters_with_expected<'a>(
+    delimiters: &[Delimiter],
+    expected: impl IntoIterator<Item = Expected<'a>>,
+) -> Vec<Expected<'a>> {
+    let delimiters = delimiters.iter().copied().map(Expected::Delimiter);
+    expected.into_iter().chain(delimiters).collect()
 }
 
 impl<'a> Expected<'a> {
@@ -1209,12 +1223,10 @@ impl<'a> Expected<'a> {
     }
 }
 
-fn delimiters_with_expected<'a>(
-    delimiters: &[Delimiter],
-    expected: impl IntoIterator<Item = Expected<'a>>,
-) -> Vec<Expected<'a>> {
-    let delimiters = delimiters.iter().copied().map(Expected::Delimiter);
-    expected.into_iter().chain(delimiters).collect()
+impl From<TokenKind> for Expected<'_> {
+    fn from(token: TokenKind) -> Self {
+        Self::Token(token)
+    }
 }
 
 use std::fmt;
@@ -1226,7 +1238,6 @@ impl fmt::Display for Expected<'_> {
 
         match self {
             Token(token) => write!(f, "{}", token),
-            Identifier => write!(f, "identifier"),
             Path => write!(f, "path"),
             Declaration => write!(f, "declaration"),
             Expression => write!(f, "expression"),

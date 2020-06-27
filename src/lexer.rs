@@ -21,7 +21,7 @@ use std::{
     str::{CharIndices, FromStr},
 };
 pub use token::{
-    Token,
+    is_punctuation, Token,
     TokenKind::{self, *},
 };
 
@@ -262,7 +262,14 @@ impl<'a> Lexer<'a> {
         self.advance();
         self.take_while(token::is_punctuation);
 
-        self.add(token::parse_reserved_punctuation(&self.source[self.span]).unwrap_or(Punctuation))
+        // @Beacon @Note strange API, return a bool or Result<(), ()>
+        match token::parse_reserved_punctuation(&self.source[self.span]) {
+            Some(punctuation) => self.add(punctuation),
+            None => {
+                let identifier = self.source[self.span].into();
+                self.add_with(|span| Token::new_punctuation(identifier, span))
+            }
+        }
     }
 
     // @Task numeric separator `'`
