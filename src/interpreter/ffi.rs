@@ -6,7 +6,7 @@ use crate::{
     parser::{Attribute, Explicit},
     resolver::{Identifier, Resolved},
     typer::Declaration,
-    Nat,
+    Int, Nat,
 };
 
 pub type ForeignFunction = fn(arguments: Vec<Value>) -> Value;
@@ -86,6 +86,11 @@ pub enum Type {
     Unit,
     Bool,
     Nat,
+    Nat32,
+    Nat64,
+    Int,
+    Int32,
+    Int64,
     Text,
     Option(Box<Type>),
 }
@@ -96,6 +101,11 @@ impl Type {
     pub const UNIT: &'static str = "Unit";
     pub const BOOL: &'static str = "Bool";
     pub const NAT: &'static str = "Nat";
+    pub const NAT32: &'static str = "Nat32";
+    pub const NAT64: &'static str = "Nat64";
+    pub const INT: &'static str = "Int";
+    pub const INT32: &'static str = "Int32";
+    pub const INT64: &'static str = "Int64";
     pub const TEXT: &'static str = "Text";
     pub const OPTION: &'static str = "Option";
 
@@ -111,6 +121,31 @@ impl Type {
                 if matches(&binding.binder, &scope.foreign_types[self::Type::NAT])? =>
             {
                 Self::Nat
+            }
+            Binding(binding)
+                if matches(&binding.binder, &scope.foreign_types[self::Type::NAT32])? =>
+            {
+                Self::Nat32
+            }
+            Binding(binding)
+                if matches(&binding.binder, &scope.foreign_types[self::Type::NAT64])? =>
+            {
+                Self::Nat64
+            }
+            Binding(binding)
+                if matches(&binding.binder, &scope.foreign_types[self::Type::INT])? =>
+            {
+                Self::Int
+            }
+            Binding(binding)
+                if matches(&binding.binder, &scope.foreign_types[self::Type::INT32])? =>
+            {
+                Self::Int32
+            }
+            Binding(binding)
+                if matches(&binding.binder, &scope.foreign_types[self::Type::INT64])? =>
+            {
+                Self::Int64
             }
             Binding(binding)
                 if matches(&binding.binder, &scope.foreign_types[self::Type::TEXT])? =>
@@ -139,6 +174,11 @@ impl Type {
             Self::Unit => binding(types.unit.clone().ok_or_else(missing_inherent)?),
             Self::Bool => binding(types.bool.clone().ok_or_else(missing_inherent)?),
             Self::Nat => scope.lookup_foreign_type(Type::NAT, None)?,
+            Self::Nat32 => scope.lookup_foreign_type(Type::NAT32, None)?,
+            Self::Nat64 => scope.lookup_foreign_type(Type::NAT64, None)?,
+            Self::Int => scope.lookup_foreign_type(Type::INT, None)?,
+            Self::Int32 => scope.lookup_foreign_type(Type::INT32, None)?,
+            Self::Int64 => scope.lookup_foreign_type(Type::INT64, None)?,
             Self::Text => scope.lookup_foreign_type(Type::TEXT, None)?,
             Self::Option(type_) => application(
                 binding(types.option.clone().ok_or_else(missing_inherent)?),
@@ -163,6 +203,11 @@ pub enum Value {
     Bool(bool),
     Text(String),
     Nat(Nat),
+    Nat32(u32),
+    Nat64(u64),
+    Int(Int),
+    Int32(i32),
+    Int64(i64),
     Option {
         type_: Type,
         value: Option<Box<Value>>,
@@ -185,7 +230,18 @@ impl Value {
 
         Some(match &expression.kind {
             Text(text) => Self::Text(text.value.clone()),
-            Nat(nat) => Self::Nat(nat.value.clone()),
+            Number(number) => {
+                use crate::lexer::Number::*;
+
+                match &**number {
+                    Nat(nat) => Self::Nat(nat.clone()),
+                    Nat32(nat) => Self::Nat32(*nat),
+                    Nat64(nat) => Self::Nat64(*nat),
+                    Int(int) => Self::Int(int.clone()),
+                    Int32(int) => Self::Int32(*int),
+                    Int64(int) => Self::Int64(*int),
+                }
+            }
             Binding(binding) if matches(&binding.binder, &values.unit)? => Value::Unit,
             Binding(binding) if matches(&binding.binder, &values.false_)? => Value::Bool(false),
             Binding(binding) if matches(&binding.binder, &values.true_)? => Value::Bool(true),
@@ -218,6 +274,8 @@ impl Value {
             Diagnostic::new(Level::Fatal, Code::E063, "XXX XXX")
         }
 
+        use crate::lexer::Number::*;
+
         Ok(match self {
             Self::Unit => binding(values.unit.clone().ok_or_else(missing_inherent)?),
             Self::Bool(value) => binding(
@@ -226,7 +284,12 @@ impl Value {
                     .ok_or_else(missing_inherent)?,
             ),
             Self::Text(value) => expr! { Text[] { value } },
-            Self::Nat(value) => expr! { Nat[] { value } },
+            Self::Nat(value) => expr! { Number[](Nat(value)) },
+            Self::Nat32(value) => expr! { Number[](Nat32(value)) },
+            Self::Nat64(value) => expr! { Number[](Nat64(value)) },
+            Self::Int(value) => expr! { Number[](Int(value)) },
+            Self::Int32(value) => expr! { Number[](Int32(value)) },
+            Self::Int64(value) => expr! { Number[](Int64(value)) },
             Self::Option { type_, value } => match value {
                 Some(value) => application(
                     application(
@@ -325,6 +388,11 @@ use num_traits::ops::checked::{CheckedDiv, CheckedSub};
 
 pub fn register_foreign_bindings(scope: &mut CrateScope) {
     scope.register_foreign_type(Type::NAT);
+    scope.register_foreign_type(Type::NAT32);
+    scope.register_foreign_type(Type::NAT64);
+    scope.register_foreign_type(Type::INT);
+    scope.register_foreign_type(Type::INT32);
+    scope.register_foreign_type(Type::INT64);
     scope.register_foreign_type(Type::TEXT);
 
     // @Task make this module aware

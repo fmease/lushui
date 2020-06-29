@@ -7,6 +7,7 @@ use crate::{
     diagnostic::*,
     entity::{Entity, EntityKind},
     hir::expr,
+    lexer::Number,
     resolver::{self, Bindings, CrateIndex, DebruijnIndex, Identifier, Index},
     span::Span,
 };
@@ -231,6 +232,24 @@ impl CrateScope {
             }
             None => unreachable!(),
         }
+    }
+
+    pub fn lookup_foreign_number_type(
+        &self,
+        number: &Number,
+        expression_span: Option<Span>,
+    ) -> Result<Expression> {
+        self.lookup_foreign_type(
+            match number {
+                Number::Nat(_) => ffi::Type::NAT,
+                Number::Nat32(_) => ffi::Type::NAT32,
+                Number::Nat64(_) => ffi::Type::NAT64,
+                Number::Int(_) => ffi::Type::INT,
+                Number::Int32(_) => ffi::Type::INT32,
+                Number::Int64(_) => ffi::Type::INT64,
+            },
+            expression_span,
+        )
     }
 }
 

@@ -795,9 +795,9 @@ impl Parser<'_> {
                 self.advance();
                 expr! { TypeLiteral[token.span] }
             }
-            NatLiteral => {
+            NumberLiteral => {
                 self.advance();
-                expr! { NatLiteral[token.span] { value: token.nat_literal() } }
+                expr! { NumberLiteral[token.span](token.number_literal()) }
             }
             TextLiteral => {
                 self.advance();
@@ -1067,9 +1067,9 @@ impl Parser<'_> {
         use TokenKind::*;
 
         Ok(match token.kind {
-            NatLiteral => {
+            NumberLiteral => {
                 self.advance();
-                pat! { NatLiteral[token.span] { value: token.nat_literal() } }
+                pat! { NumberLiteral[token.span](token.number_literal()) }
             }
             TextLiteral => {
                 self.advance();

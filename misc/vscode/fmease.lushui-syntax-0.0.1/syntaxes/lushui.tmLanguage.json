@@ -9,6 +9,9 @@
             "include": "#attribute"
         },
         {
+            "include": "#number-literal"
+        },
+        {
             "include": "#punctuation"
         },
         {
@@ -16,9 +19,6 @@
         },
         {
             "include": "#keyword"
-        },
-        {
-            "include": "#number-literal"
         },
         {
             "include": "#text-literal"
@@ -35,6 +35,14 @@
                     "__comment__": "Also works: ;(?!;).*",
                     "name": "comment.block.documentation.lushui",
                     "match": ";.*"
+                }
+            ]
+        },
+        "number-literal": {
+            "patterns": [
+                {
+                    "name": "constant.numeric.integer.decimal.lushui",
+                    "match": "(-|\\b)[0-9]([0-9]|'[0-9])*\\b(#(N|N32|N64|I|I32|I64)\\b)?"
                 }
             ]
         },
@@ -67,6 +75,7 @@
             ]
         },
         "punctuation": {
+            "__comment__": "@Bug consecutive `-` not highlighted",
             "patterns": [
                 {
                     "match": "\\(",
@@ -79,18 +88,6 @@
                 {
                     "match": ",",
                     "name": "punctuation.lushui"
-                },
-                {
-                    "match": "\\?(?=[a-zA-Z])",
-                    "name": "punctuation.lushui"
-                }
-            ]
-        },
-        "number-literal": {
-            "patterns": [
-                {
-                    "name": "constant.numeric.integer.decimal.lushui",
-                    "match": "\\b[0-9]([0-9]|'[0-9])*\\b"
                 }
             ]
         },

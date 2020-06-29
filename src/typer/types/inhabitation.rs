@@ -33,7 +33,7 @@ impl Expression {
             Lambda(_literal) => unreachable!(),
             UseIn => todo!(),
             CaseAnalysis(_case_analysis) => todo!(),
-            Nat(_) | Text(_) => unreachable!(),
+            Number(_) | Text(_) => unreachable!(),
             Substitution(_) => todo!(),
             ForeignApplication(_) => todo!(),
             Invalid => panic!("trying to check inhabitation of an invalid node"),

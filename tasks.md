@@ -1,5 +1,11 @@
 # Imminent Tasks
 
+* make registration of foreign functions module-aware (on the Rust side)
+* then, add several functions for the newly added number types
+* bytecode vm
+  * create bytecode
+  * compile to bytecode
+  * create vm
 * add lushui to SCC's `languages.json` and build custom scc against it,
   provide a script to add the entry to the file (to be included in the repository)
   alternative: switch to cloc where you can just add a `xxx.cloc` file in you project root
@@ -9,8 +15,6 @@
 * implement records
 * allow "trailing dashes" in identifiers
 * documentation of the interpreter!
-* test infrastructure: testing `test/*.lushui`-files for certain criteria specifiable
-  in the first line of the respective files
 * add effect infrastructure
   * add foreign data type `Effect: Type -> Type` with foreign bindings `pure`,
     `bind`, `read-line` and `print-line`
@@ -18,15 +22,10 @@
   * define effect runner
   * have effect identifiers
 * work on case analysis
-  * update syntax of patterns and case analysis
-  * port to debruijn
-  * the rest
 * modules
-  * implement more complicated use-declarations (multiple binders, self, as)
-    * implement symbols as identifiers 
   * work on order-independence and recursion
   * implement exposure lists and privacy
-  * design and implement namespaced constructors
+  * implement namespaced constructors
   * improve error messages of the resolver
 * advanced type inference (!!!)
 * FFI

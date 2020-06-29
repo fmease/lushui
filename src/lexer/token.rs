@@ -1,6 +1,6 @@
 use crate::{
     span::{Span, Spanning},
-    Atom, Nat,
+    Atom, Int, Nat,
 };
 use std::fmt;
 
@@ -16,7 +16,7 @@ impl Token {
         Self::with_data(kind, TokenData::None, span)
     }
 
-    fn with_data(kind: TokenKind, data: TokenData, span: Span) -> Self {
+    pub fn with_data(kind: TokenKind, data: TokenData, span: Span) -> Self {
         Self { kind, data, span }
     }
 
@@ -26,10 +26,6 @@ impl Token {
 
     pub fn new_punctuation(atom: Atom, span: Span) -> Self {
         Self::with_data(Punctuation, TokenData::Identifier(atom), span)
-    }
-
-    pub fn new_nat_literal(nat: Nat, span: Span) -> Self {
-        Self::with_data(NatLiteral, TokenData::NatLiteral(nat), span)
     }
 
     pub fn new_text_literal(text: String, span: Span) -> Self {
@@ -44,10 +40,15 @@ impl Token {
         }
     }
 
-    /// Unwrap the data of a [NatLiteral]. Panics if it isn't one.
-    pub fn nat_literal(self) -> Nat {
+    /// Unwrap the data of a number literal. Panics if it isn't one.
+    pub fn number_literal(self) -> Number {
         match self.data {
-            TokenData::NatLiteral(nat) => nat,
+            TokenData::NatLiteral(value) => Number::Nat(value),
+            TokenData::Nat32Literal(value) => Number::Nat32(value),
+            TokenData::Nat64Literal(value) => Number::Nat64(value),
+            TokenData::IntLiteral(value) => Number::Int(value),
+            TokenData::Int32Literal(value) => Number::Int32(value),
+            TokenData::Int64Literal(value) => Number::Int64(value),
             _ => unreachable!(),
         }
     }
@@ -72,19 +73,40 @@ impl fmt::Debug for Token {
         if self.data == TokenData::None {
             write!(f, "{} @ {:?}", self.kind, self.span)
         } else {
-            write!(f, "{} ({:?}) @ {:?}", self.kind, self.data, self.span)
+            write!(f, "{} {:?} @ {:?}", self.kind, self.data, self.span)
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum TokenData {
     None,
     Identifier(Atom),
     NatLiteral(Nat),
-    // boxed to reduce overall size from 24 to 8, bad cache behavior irrelevant
+    Nat32Literal(u32),
+    Nat64Literal(u64),
+    IntLiteral(Int),
+    Int32Literal(i32),
+    Int64Literal(i64),
+    // boxed to reduce overall size from 24 to 8 (on my 64bit arch ^^), bad cache behavior irrelevant
     // since it's not hot
     TextLiteral(Box<String>),
+}
+
+impl fmt::Debug for TokenData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::None => write!(f, ""),
+            Self::Identifier(value) => write!(f, "{}", value),
+            Self::NatLiteral(value) => write!(f, "{}#N", value),
+            Self::Nat32Literal(value) => write!(f, "{}#N32", value),
+            Self::Nat64Literal(value) => write!(f, "{}#N63", value),
+            Self::IntLiteral(value) => write!(f, "{}#I", value),
+            Self::Int32Literal(value) => write!(f, "{}#I32", value),
+            Self::Int64Literal(value) => write!(f, "{}#I64", value),
+            Self::TextLiteral(value) => write!(f, "{:?}", value),
+        }
+    }
 }
 
 // @Note this would allow size_of::<Token> == 24 instead of 32 (or if String not Boxed 40 from 48)
@@ -102,7 +124,7 @@ pub enum TokenKind {
     DocumentationComment,
     Identifier,
     Punctuation,
-    NatLiteral,
+    NumberLiteral,
     TextLiteral,
     At,
     Backslash,
@@ -142,7 +164,7 @@ impl fmt::Display for TokenKind {
             DocumentationComment => "documentation comment",
             Identifier => "identifier",
             Punctuation => "punctuation",
-            NatLiteral => "number literal",
+            NumberLiteral => "number literal",
             TextLiteral => "text literal",
             At => "`@`",
             Backslash => "`\\`",
@@ -239,4 +261,69 @@ pub fn parse_reserved_punctuation(source: &str) -> Option<TokenKind> {
         "=>" => WideArrow,
         _ => return None,
     })
+}
+
+#[derive(Clone, Copy)]
+#[repr(u8)]
+pub enum NumberLiteralSuffix {
+    N,
+    N32,
+    N64,
+    I,
+    I32,
+    I64,
+}
+
+impl NumberLiteralSuffix {
+    pub fn signed(self) -> bool {
+        use NumberLiteralSuffix::*;
+
+        match self {
+            N | N32 | N64 => false,
+            I | I32 | I64 => true,
+        }
+    }
+}
+
+use std::str::FromStr;
+
+impl FromStr for NumberLiteralSuffix {
+    type Err = ();
+
+    fn from_str(source: &str) -> Result<Self, Self::Err> {
+        use NumberLiteralSuffix::*;
+
+        Ok(match source {
+            "N" => N,
+            "N32" => N32,
+            "N64" => N64,
+            "I" => I,
+            "I32" => I32,
+            "I64" => I64,
+            _ => return Err(()),
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Number {
+    Nat(crate::Nat),
+    Nat32(u32),
+    Nat64(u64),
+    Int(crate::Int),
+    Int32(i32),
+    Int64(i64),
+}
+
+impl fmt::Display for Number {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Nat(value) => write!(f, "{}", value),
+            Self::Nat32(value) => write!(f, "{}", value),
+            Self::Nat64(value) => write!(f, "{}", value),
+            Self::Int(value) => write!(f, "{}", value),
+            Self::Int32(value) => write!(f, "{}", value),
+            Self::Int64(value) => write!(f, "{}", value),
+        }
+    }
 }

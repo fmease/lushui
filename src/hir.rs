@@ -5,6 +5,7 @@
 mod fmt;
 
 use crate::{
+    lexer::Number,
     parser::{Attributes, Explicitness},
     span::{SourceFile, Span, Spanned, Spanning},
     support::InvalidFallback,
@@ -106,10 +107,8 @@ pub enum ExpressionKind<P: Pass> {
         explicitness: Explicitness,
     },
     Type,
-    #[parameterless]
-    Nat {
-        value: crate::Nat,
-    },
+    #[skip]
+    Number(Number),
     #[parameterless]
     Text {
         value: String,
@@ -182,7 +181,7 @@ pub type Pattern<P> = Spanned<PatternKind<P>>;
 #[derive(Clone)]
 pub enum PatternKind<P: Pass> {
     #[skip]
-    Nat(Nat),
+    Number(Number),
     #[skip]
     Text(Text),
     #[skip]
@@ -221,6 +220,12 @@ pub macro expr {
             ExpressionKind::$kind(Rc::new(self::$kind { $( $body )+ })),
         )
     },
+    ($kind:ident[$( $span:expr )?]($value:expr)) => {
+        Expression::new(
+            span!($( $span )?),
+            ExpressionKind::$kind(Rc::from($value)),
+        )
+    },
     ($kind:ident[$( $span:expr )?]) => {
         Expression::new(span!($( $span )?), ExpressionKind::$kind)
     }
@@ -231,9 +236,17 @@ macro span {
     ($span:expr) => { $span },
 }
 
-pub macro pat($kind:ident[$span:expr] { $( $body:tt )+ }) {
-    Pattern::new(
-        $span,
-        PatternKind::$kind(Rc::new(self::$kind { $( $body )+ })),
-    )
+pub macro pat {
+    ($kind:ident[$( $span:expr )?] { $( $body:tt )+ }) => {
+        Pattern::new(
+            span!($( $span )?),
+            PatternKind::$kind(Rc::new(self::$kind { $( $body )+ })),
+        )
+    },
+    ($kind:ident[$( $span:expr )?]($value:expr)) => {
+        Pattern::new(
+            span!($( $span )?),
+            PatternKind::$kind(Rc::from($value)),
+        )
+    },
 }

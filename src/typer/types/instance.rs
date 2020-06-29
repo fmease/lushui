@@ -59,7 +59,7 @@ impl Expression {
             | Type
             | Binding(_) => self,
             Lambda(_)
-            | Nat(_)
+            | Number(_)
             | Text(_)
             | UseIn
             | CaseAnalysis(_)

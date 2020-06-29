@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    lexer::Token,
+    lexer::{Number, Token},
     smallvec,
     span::{PossiblySpanning, SourceFile, Span, Spanned, Spanning},
     support::InvalidFallback,
@@ -221,9 +221,8 @@ pub enum ExpressionKind {
         explicitness: Explicitness,
     },
     TypeLiteral,
-    NatLiteral {
-        value: crate::Nat,
-    },
+    #[skip]
+    NumberLiteral(Number),
     TextLiteral {
         value: String,
     },
@@ -328,7 +327,7 @@ pub type Pattern = Spanned<PatternKind>;
 #[derive(Debug, Clone)]
 pub enum PatternKind {
     #[skip]
-    NatLiteral(NatLiteral),
+    NumberLiteral(Number),
     #[skip]
     TextLiteral(TextLiteral),
     #[skip]
@@ -611,7 +610,13 @@ pub macro expr {
             $span,
             ExpressionKind::$kind,
         )
-    }
+    },
+    ($kind:ident[$span:expr]($value:expr)) => {
+        Expression::new(
+            $span,
+            ExpressionKind::$kind(Box::from($value)),
+        )
+    },
 }
 
 pub macro pat {
@@ -620,5 +625,11 @@ pub macro pat {
             $span,
             PatternKind::$kind(Box::new(self::$kind { $( $body )+ })),
         )
-    }
+    },
+    ($kind:ident[$span:expr]($value:expr)) => {
+        Pattern::new(
+            $span,
+            PatternKind::$kind(Box::from($value)),
+        )
+    },
 }

@@ -108,7 +108,7 @@ impl Expression {
                 .clone()
                 .substitute(substitution0.substitution.clone())
                 .substitute(substitution1),
-            (Type, _) | (Nat(_), _) | (Text(_), _) => self,
+            (Type, _) | (Number(_), _) | (Text(_), _) => self,
             (Application(application), substitution) => {
                 expr! {
                     Application[self.span] {
@@ -305,7 +305,7 @@ impl Expression {
                     _ => unreachable!(),
                 }
             }
-            Type | Nat(_) | Text(_) => self,
+            Type | Number(_) | Text(_) => self,
             PiType(pi) => match context.form {
                 Form::Normal => {
                     let domain = pi.domain.clone().evaluate(context)?;
@@ -383,7 +383,7 @@ impl Expression {
                     Binding(subject) => {
                         for case in case_analysis.cases.iter() {
                             match &case.pattern.kind {
-                                PatternKind::Nat(_) => todo!(!),
+                                PatternKind::Number(_) => todo!(!),
                                 PatternKind::Text(_) => todo!(!),
                                 PatternKind::Binding(binding) => {
                                     if binding.binder == subject.binder {
@@ -401,11 +401,11 @@ impl Expression {
                         unreachable!()
                     }
                     Application(_application) => todo!(!),
-                    Nat(literal0) => {
+                    Number(literal0) => {
                         for case in case_analysis.cases.iter() {
                             match &case.pattern.kind {
-                                PatternKind::Nat(literal1) => {
-                                    if literal0.value == literal1.value {
+                                PatternKind::Number(literal1) => {
+                                    if &literal0 == literal1 {
                                         return case.body.clone().evaluate(context);
                                     }
                                 }
@@ -478,7 +478,7 @@ impl Expression {
                         .equals(application1.argument.clone(), scope)?
             }
             (Type, Type) => true,
-            (Nat(nat0), Nat(nat1)) => nat0.value == nat1.value,
+            (Number(number0), Number(number1)) => number0 == number1,
             (Text(text0), Text(text1)) => text0.value == text1.value,
             // @Question what about explicitness?
             (PiType(pi0), PiType(pi1)) => {

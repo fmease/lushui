@@ -643,15 +643,11 @@ impl Expression<Desugared> {
                 }
             },
             Type => expr! { Type[self.span] },
-            Nat(nat) => expr! {
-                Nat[self.span] {
-                    value: unrc!(nat.value),
-                }
+            Number(number) => expr! {
+                Number[self.span](number)
             },
             Text(text) => expr! {
-                Text[self.span] {
-                    value: unrc!(text.value),
-                }
+                Text[self.span](text)
             },
             Binding(binding) => expr! {
                 Binding[self.span] {
@@ -725,10 +721,8 @@ impl Pattern<Desugared> {
         let mut binders = Vec::new();
 
         let pattern = match self.kind.clone() {
-            Nat(nat) => pat! {
-                Nat[self.span] {
-                    value: unrc!(nat.value),
-                }
+            Number(nat) => pat! {
+                Number[self.span](nat)
             },
             Text(text) => pat! {
                 Text[self.span] {

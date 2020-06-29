@@ -6,7 +6,8 @@
 //! Natural number literals are directly converted into [num_bigint::BigUint]
 //! and identifiers are interned.
 
-#[cfg(test)]
+// #[cfg(test)]
+#[cfg(FALSE)] // @Temporary
 mod test;
 mod token;
 
@@ -14,14 +15,14 @@ use crate::{
     diagnostic::*,
     span::{LocalByteIndex, LocalSpan, SourceFile, Span},
     support::ManyErrExt,
-    Atom, Nat, INDENTATION_IN_SPACES,
+    Atom, Int, INDENTATION_IN_SPACES,
 };
 use std::{
     iter::Peekable,
     str::{CharIndices, FromStr},
 };
 pub use token::{
-    is_punctuation, Token,
+    is_punctuation, Number, Token,
     TokenKind::{self, *},
 };
 
@@ -84,8 +85,23 @@ impl<'a> Lexer<'a> {
                 ';' => self.lex_comment(),
                 character if character.is_ascii_alphabetic() => self.lex_identifier().many_err()?,
                 '\n' => self.lex_indentation().many_err()?,
+                '-' => {
+                    self.advance();
+                    if self
+                        .peek()
+                        .map(|character| character.is_ascii_digit())
+                        .unwrap_or(false)
+                    {
+                        self.lex_number_literal(-1).many_err()?;
+                    } else {
+                        self.lex_punctuation();
+                    }
+                }
+                character if character.is_ascii_digit() => {
+                    self.advance();
+                    self.lex_number_literal(1).many_err()?
+                }
                 character if token::is_punctuation(character) => self.lex_punctuation(),
-                character if character.is_ascii_digit() => self.lex_nat_literal(),
                 '"' => self.lex_text_literal().many_err()?,
                 '(' => self.lex_opening_round_bracket(),
                 ')' => self.lex_closing_round_bracket().many_err()?,
@@ -259,10 +275,8 @@ impl<'a> Lexer<'a> {
     }
 
     fn lex_punctuation(&mut self) {
-        self.advance();
         self.take_while(token::is_punctuation);
 
-        // @Beacon @Note strange API, return a bool or Result<(), ()>
         match token::parse_reserved_punctuation(&self.source[self.span]) {
             Some(punctuation) => self.add(punctuation),
             None => {
@@ -272,13 +286,90 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    // @Note the hash suffx syntax is only temporary until we decide to
+    // implement generic numbers
     // @Task numeric separator `'`
-    fn lex_nat_literal(&mut self) {
-        self.advance();
+    // @Task negative numbers, handle out range error
+    fn lex_number_literal(&mut self, sign: i32) -> Result<()> {
         self.take_while(|character| character.is_ascii_digit());
 
-        let nat = Nat::from_str(&self.source[self.span]).unwrap();
-        self.add_with(|span| Token::new_nat_literal(nat, span));
+        let suffix = if let Some(character) = self.peek() {
+            let mut suffix = String::new();
+
+            if character == '#' {
+                self.advance();
+
+                while let Some(character) = self.peek() {
+                    if !character.is_ascii_alphanumeric() {
+                        break;
+                    }
+
+                    suffix.push(character);
+                    self.advance();
+                }
+                Some(suffix)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        use token::{NumberLiteralSuffix::*, TokenData};
+
+        let suffix = match suffix {
+            Some(suffix) => suffix.parse().map_err(|_| {
+                Diagnostic::new(
+                    Level::Fatal,
+                    None,
+                    format!("invalid number literal suffix `{}`", suffix),
+                )
+                .with_span(&self.span())
+            })?,
+            None => N,
+        };
+
+        if sign < 0 && !suffix.signed() {
+            // @Task code, @Beacon @Task message
+            return Err(
+                Diagnostic::new(Level::Fatal, None, "sign does not match type")
+                    .with_span(&self.span()),
+            );
+        }
+
+        let data = &self.source[self.span];
+
+        // @Task move into token module
+        // @Task error messages
+        let data = match suffix {
+            N => TokenData::NatLiteral(data.parse().unwrap()),
+            N32 => TokenData::Nat32Literal(data.parse().map_err(|_| {
+                Diagnostic::new(Level::Fatal, None, "value does not fit type")
+                    .with_span(&self.span())
+            })?),
+            N64 => TokenData::Nat64Literal(data.parse().map_err(|_| {
+                Diagnostic::new(Level::Fatal, None, "value does not fit type")
+                    .with_span(&self.span())
+            })?),
+            I => TokenData::IntLiteral(sign * Int::from_str(data).unwrap()),
+            I32 => TokenData::Int32Literal(
+                sign * i32::from_str(data).map_err(|_| {
+                    Diagnostic::new(Level::Fatal, None, "value does not fit type")
+                        .with_span(&self.span())
+                })?,
+            ),
+            I64 => TokenData::Int64Literal(
+                sign as i64
+                    * i64::from_str(data).map_err(|_| {
+                        Diagnostic::new(Level::Fatal, None, "value does not fit type")
+                            .with_span(&self.span())
+                    })?,
+            ),
+        };
+
+        self.add_with(|span| Token::with_data(TokenKind::NumberLiteral, data, span));
+
+        Ok(())
     }
 
     // @Task escape sequences

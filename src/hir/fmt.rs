@@ -1,8 +1,8 @@
 //! Formatted printing of the HIR.
 
-use std::fmt::{Debug, Display, Formatter, Result};
+use std::fmt::{Display, Formatter, Result};
 
-use super::*;
+use super::{Declaration, DeclarationKind, Expression, ExpressionKind, Pass, Pattern, PatternKind};
 
 impl<P: Pass> Display for Declaration<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
@@ -88,7 +88,7 @@ impl<P: Pass> Display for Expression<P> {
                 }
             }
             Type => write!(f, "Type"),
-            Nat(literal) => write!(f, "{}", literal.value),
+            Number(literal) => write!(f, "{}", literal),
             Text(literal) => write!(f, "{:?}", literal.value),
             Binding(path) => write!(f, "{}", path.binder),
             Lambda(lambda) => write!(f, "{}", lambda),
@@ -126,13 +126,15 @@ impl<P: Pass> Display for Expression<P> {
     }
 }
 
+use std::fmt;
+
 impl<P: Pass> fmt::Debug for Expression<P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self)
     }
 }
 
-impl<P: Pass> Display for PiType<P> {
+impl<P: Pass> Display for super::PiType<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         if let Some(parameter) = &self.parameter {
             write!(f, "({}{}: {})", self.explicitness, parameter, self.domain)?;
@@ -146,7 +148,7 @@ impl<P: Pass> Display for PiType<P> {
     }
 }
 
-impl<P: Pass> Display for Lambda<P> {
+impl<P: Pass> Display for super::Lambda<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -167,7 +169,7 @@ impl<P: Pass> Display for Lambda<P> {
     }
 }
 
-impl<P: Pass> Display for Case<P> {
+impl<P: Pass> Display for super::Case<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{} => {}\n", self.pattern, self.body)
     }
@@ -179,7 +181,7 @@ impl<P: Pass> Display for Pattern<P> {
         use PatternKind::*;
 
         match &self.kind {
-            Nat(literal) => write!(f, "{}", literal.value),
+            Number(literal) => write!(f, "{}", literal),
             Text(literal) => write!(f, "{:?}", literal.value),
             Binding(path) => write!(f, "{}", path.binder),
             Binder(binding) => write!(f, "\\{}", binding.binder),
@@ -203,6 +205,6 @@ impl<P: Pass> Expression<P> {
     fn needs_brackets_conservative(&self) -> bool {
         use ExpressionKind::*;
 
-        !matches!(&self.kind, Type | Nat(_) | Text(_) | Binding(_) | Invalid | Substitution(_) | ForeignApplication(_))
+        !matches!(&self.kind, Type | Number(_) | Text(_) | Binding(_) | Invalid | Substitution(_) | ForeignApplication(_))
     }
 }

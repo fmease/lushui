@@ -391,11 +391,7 @@ impl parser::Expression {
                 }
             },
             TypeLiteral => expr! { Type[self.span] },
-            NatLiteral(literal) => expr! {
-                Nat[self.span] {
-                    value: literal.value,
-                }
-            },
+            NumberLiteral(literal) => expr! { Number[self.span](literal) },
             TextLiteral(text) => expr! {
                 Text[self.span] {
                     value: text.value,
@@ -512,11 +508,7 @@ impl parser::Pattern {
         use parser::PatternKind::*;
 
         match self.kind {
-            NatLiteral(literal) => pat! {
-                Nat[self.span] {
-                    value: literal.value,
-                }
-            },
+            NumberLiteral(literal) => pat! { Number[self.span](literal) },
             TextLiteral(literal) => pat! {
                 Text[self.span] {
                     value: literal.value,

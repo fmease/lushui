@@ -33,6 +33,7 @@ const FILE_EXTENSION: &str = "lushui";
 /// Amount of spaces making up one unit of indentation.
 pub const INDENTATION_IN_SPACES: usize = 4;
 
+use num_bigint::BigInt as Int;
 use num_bigint::BigUint as Nat;
 use smallvec::{smallvec, SmallVec};
 use string_cache::DefaultAtom as Atom;

@@ -289,9 +289,9 @@ impl Expression {
                 .lookup_type(&binding.binder)
                 .ok_or(Error::Recoverable(OutOfOrderBinding))?,
             Type => TYPE,
-            Nat(_) => scope
+            Number(number) => scope
                 .crate_scope()
-                .lookup_foreign_type(ffi::Type::NAT, Some(self.span))?,
+                .lookup_foreign_number_type(&number, Some(self.span))?,
             Text(_) => scope
                 .crate_scope()
                 .lookup_foreign_type(ffi::Type::TEXT, Some(self.span))?,
@@ -407,11 +407,12 @@ impl Expression {
                     let mut types = Vec::new();
 
                     match &case.pattern.kind {
-                        PatternKind::Nat(_) => {
+                        PatternKind::Number(number) => {
                             type_.clone().is_actual(
+                                // @Bug @Beacon
                                 scope
                                     .crate_scope()
-                                    .lookup_foreign_type(ffi::Type::NAT, Some(case.pattern.span))?,
+                                    .lookup_foreign_number_type(number, Some(case.pattern.span))?,
                                 scope,
                             )?;
                         }
