@@ -16,8 +16,7 @@ use std::{
 
 use crate::{
     desugar::Desugared,
-    diagnostic::todo,
-    diagnostic::*,
+    diagnostic::{todo, Code, Diagnostic, Diagnostics, Result, Results},
     entity::{Entity, EntityKind},
     hir::{self, decl, expr, Declaration, Expression, Pass},
     parser::{self, Path},
@@ -176,13 +175,14 @@ impl CrateScope {
                 .map(|&index| &self.bindings[index])
                 .find(|binding| &binding.source == binder)
             {
-                return Err(Diagnostic::new(
-                    Level::Error,
-                    Code::E020,
-                    format!("`{}` is defined multiple times in this scope", binder),
-                )
-                .with_labeled_span(&binder, "redefinition")
-                .with_labeled_span(&previous.source, "previous definition"));
+                return Err(Diagnostic::error()
+                    .with_code(Code::E020)
+                    .with_message(format!(
+                        "`{}` is defined multiple times in this scope",
+                        binder
+                    ))
+                    .with_labeled_span(&binder, "redefinition")
+                    .with_labeled_span(&previous.source, "previous definition"));
             }
         }
 
@@ -238,12 +238,10 @@ impl CrateScope {
 
     fn resolve_super(&self, head: &parser::Head, module: CrateIndex) -> Result<CrateIndex> {
         self.unwrap_module_scope(module).parent.ok_or_else(|| {
-            Diagnostic::new(
-                Level::Error,
-                Code::E021,
-                "the crate root does not have a parent",
-            )
-            .with_span(head)
+            Diagnostic::error()
+                .with_code(Code::E021)
+                .with_message("the crate root does not have a parent")
+                .with_span(head)
         })
     }
 
@@ -285,7 +283,7 @@ impl CrateScope {
         Target::resolve_simple_path(identifier, &self.bindings[index].kind, index)
     }
 
-    fn resolve_unresolved_uses(&mut self) -> Result<(), Diagnostics> {
+    fn resolve_unresolved_uses(&mut self) -> Results<()> {
         while !self.unresolved_uses.is_empty() {
             let mut unresolved_uses = HashMap::new();
 
@@ -311,7 +309,9 @@ impl CrateScope {
                 return Err(unresolved_uses
                     .keys()
                     .map(|&index| {
-                        Diagnostic::new(Level::Error, Code::E024, "this declaration is circular")
+                        Diagnostic::error()
+                            .with_code(Code::E024)
+                            .with_message("this declaration is circular")
                             .with_span(&self.bindings[index].source)
                     })
                     .collect());
@@ -379,7 +379,7 @@ trait ResolutionTarget {
 }
 
 impl Declaration<Desugared> {
-    pub fn resolve(self, scope: &mut CrateScope) -> Result<Declaration<Resolved>, Diagnostics> {
+    pub fn resolve(self, scope: &mut CrateScope) -> Results<Declaration<Resolved>> {
         self.resolve_first_pass(None, scope)?;
         scope.resolve_unresolved_uses()?;
         self.resolve_second_pass(None, scope)
@@ -389,7 +389,7 @@ impl Declaration<Desugared> {
         &self,
         module: Option<CrateIndex>,
         scope: &mut CrateScope,
-    ) -> Result<(), Diagnostics> {
+    ) -> Results<()> {
         use hir::DeclarationKind::*;
 
         match &self.kind {
@@ -451,12 +451,9 @@ impl Declaration<Desugared> {
                     .as_ref()
                     .ok_or_else(|| {
                         // @Task add note why
-                        Diagnostic::new(
-                            Level::Fatal,
-                            None,
-                            "`use` of bare `super` and `crate` disallowed",
-                        )
-                        .with_span(self)
+                        Diagnostic::fatal()
+                            .with_message("`use` of bare `super` and `crate` disallowed")
+                            .with_span(self)
                     })
                     .many_err()?;
 
@@ -474,7 +471,7 @@ impl Declaration<Desugared> {
         self,
         module: Option<CrateIndex>,
         scope: &mut CrateScope,
-    ) -> Result<Declaration<Resolved>, Diagnostics> {
+    ) -> Results<Declaration<Resolved>> {
         use hir::DeclarationKind::*;
 
         Ok(match self.kind {
@@ -611,10 +608,10 @@ impl Expression<Desugared> {
         self,
         scope: &FunctionScope<'_>,
         crate_scope: &CrateScope,
-    ) -> Result<Expression<Resolved>, Diagnostics> {
+    ) -> Results<Expression<Resolved>> {
         use hir::ExpressionKind::*;
 
-        let mut errors = Bag::new();
+        let mut errors = Diagnostics::new();
 
         let expression = match self.kind {
             // @Task @Beacon @Beacon don't use try_softly here: you don't need to: use
@@ -715,7 +712,7 @@ impl Pattern<Desugared> {
         self,
         scope: &FunctionScope<'_>,
         crate_scope: &CrateScope,
-    ) -> Result<(Pattern<Resolved>, Vec<parser::Identifier>), Diagnostics> {
+    ) -> Results<(Pattern<Resolved>, Vec<parser::Identifier>)> {
         use hir::{pat, PatternKind::*};
 
         let mut binders = Vec::new();
@@ -1068,14 +1065,15 @@ impl TryFrom<RecoverableError> for Diagnostic {
 
     fn try_from(error: RecoverableError) -> Result<Self, Self::Error> {
         match error {
-            UndefinedBinding(identifier) => Ok(Diagnostic::new(
-                Level::Error,
-                Code::E021,
-                // @Task modify error message: if it's a simple path: "in this scope/module"
-                // and if it's a complex one: "in module `module`"
-                format!("binding `{}` is not defined in this scope", identifier),
-            )
-            .with_span(&identifier)),
+            // @Task modify error message: if it's a simple path: "in this scope/module"
+            // and if it's a complex one: "in module `module`"
+            UndefinedBinding(identifier) => Ok(Diagnostic::error()
+                .with_code(Code::E021)
+                .with_message(format!(
+                    "binding `{}` is not defined in this scope",
+                    identifier
+                ))
+                .with_span(&identifier)),
             FoundUnresolvedUse => Err(()),
         }
     }
@@ -1086,17 +1084,18 @@ fn value_used_as_a_module(
     non_module: &parser::Identifier,
     subbinder: &parser::Identifier,
 ) -> Diagnostic {
-    Diagnostic::new(
-        Level::Fatal,
-        Code::E022,
-        "values do not have subdeclarations",
-    )
-    .with_labeled_span(subbinder, "reference to a subdeclaration")
-    .with_labeled_span(non_module, "a value, not a module")
+    Diagnostic::fatal()
+        .with_code(Code::E022)
+        .with_message("values do not have subdeclarations")
+        .with_labeled_span(subbinder, "reference to a subdeclaration")
+        .with_labeled_span(non_module, "a value, not a module")
 }
 
 fn module_used_as_a_value(span: Span) -> Diagnostic {
-    Diagnostic::new(Level::Fatal, Code::E023, "module used as if it was a value").with_span(&span)
+    Diagnostic::fatal()
+        .with_code(Code::E023)
+        .with_message("module used as if it was a value")
+        .with_span(&span)
 }
 
 macro unrc($compound:ident.$projection:ident) {

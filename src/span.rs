@@ -1,4 +1,4 @@
-use crate::diagnostic::*;
+use crate::diagnostic::{Diagnostic, Result};
 use std::{convert::TryInto, fmt, ops::RangeInclusive, rc::Rc};
 use unicode_width::UnicodeWidthStr;
 
@@ -495,18 +495,16 @@ impl fmt::Debug for SourceFile {
 
 // @Task add file name once we support it #SpanOfWholeFileInDiagnostic
 fn offset_overflow() -> Diagnostic {
-    Diagnostic::new(Level::Fatal, None, "file too large")
+    Diagnostic::fatal().with_message("file too large")
 }
 
 fn io_error(error: std::io::Error) -> Diagnostic {
     use std::io::ErrorKind::*;
 
-    let message = match error.kind() {
+    Diagnostic::fatal().with_message(match error.kind() {
         NotFound => "referenced file does not exist",
         PermissionDenied => "file does not have required permissions",
         InvalidData => "file contains invalid UTF-8",
         _ => "an I/O error occurred",
-    };
-
-    Diagnostic::new(Level::Fatal, None, message)
+    })
 }

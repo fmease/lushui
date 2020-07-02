@@ -1,6 +1,6 @@
 use super::{CrateScope, Expression};
 use crate::{
-    diagnostic::*,
+    diagnostic::{Code, Diagnostic, Result},
     hir,
     hir::{expr, ExpressionKind},
     parser::{Attribute, Explicit},
@@ -22,12 +22,13 @@ pub fn register_inherent_bindings<'a>(
 ) -> Result<()> {
     // @Task link to previous definition
     let duplicate = || {
-        Diagnostic::new(
-            Level::Fatal,
-            Code::E020,
-            format!("`{}` is defined multiple times as inherent", binder),
-        )
-        .with_span(declaration)
+        Diagnostic::fatal()
+            .with_code(Code::E020)
+            .with_message(format!(
+                "`{}` is defined multiple times as inherent",
+                binder
+            ))
+            .with_span(declaration)
     };
 
     let mut find = |value_name, inherent: &mut Option<_>| {
@@ -66,13 +67,11 @@ pub fn register_inherent_bindings<'a>(
             find(Value::SOME, &mut scope.inherent_values.some);
         }
         _ => {
-            return Err(Diagnostic::new(
-                Level::Fatal,
-                Code::E062,
-                format!("`{}` is not an inherent type", binder),
-            )
-            .with_span(attribute)
-            .with_labeled_span(declaration, "ascribed to this declaration"))
+            return Err(Diagnostic::fatal()
+                .with_code(Code::E062)
+                .with_message(format!("`{}` is not an inherent type", binder))
+                .with_span(attribute)
+                .with_labeled_span(declaration, "ascribed to this declaration"))
         }
     }
 
@@ -165,9 +164,9 @@ impl Type {
     fn into_expression(self, scope: &super::CrateScope) -> Result<Expression> {
         let types = &scope.inherent_types;
 
-        // @Task message
         fn missing_inherent() -> Diagnostic {
-            Diagnostic::new(Level::Fatal, Code::E063, "XXX XXX")
+            // @Task message
+            Diagnostic::fatal().with_code(Code::E063)
         }
 
         Ok(match self {
@@ -269,9 +268,9 @@ impl Value {
     pub fn into_expression(self, scope: &super::CrateScope) -> Result<Expression> {
         let values = &scope.inherent_values;
 
-        // @Task message
         fn missing_inherent() -> Diagnostic {
-            Diagnostic::new(Level::Fatal, Code::E063, "XXX XXX")
+            // @Task message
+            Diagnostic::fatal().with_code(Code::E063)
         }
 
         use crate::lexer::Number::*;

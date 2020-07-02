@@ -53,29 +53,25 @@ fn has_file_extension(path: &Path, required_extension: &str) -> bool {
     path.extension().and_then(|extension| extension.to_str()) == Some(required_extension)
 }
 
-use diagnostic::{Diagnostic, Level};
+use diagnostic::Diagnostic;
 
 pub fn parse_crate_name(file: impl AsRef<Path>) -> Result<parser::Identifier, Diagnostic> {
     let file = file.as_ref();
 
     if !has_file_extension(file.as_ref(), FILE_EXTENSION) {
-        Diagnostic::new(
-            Level::Warning,
-            None,
-            "missing or non-standard file extension",
-        )
-        .emit(None);
+        Diagnostic::warning()
+            .with_message("missing or non-standard file extension")
+            .emit(None);
     }
 
     // @Question does unwrap ever fail in a real-world example?
     let stem = file.file_stem().unwrap();
 
     let atom = (|| lexer::parse_identifier(stem.to_str()?.to_owned()))().ok_or_else(|| {
-        Diagnostic::new(
-            Level::Fatal,
-            None,
-            format!("`{}` is not a valid crate name", stem.to_string_lossy()),
-        )
+        Diagnostic::fatal().with_message(format!(
+            "`{}` is not a valid crate name",
+            stem.to_string_lossy()
+        ))
     })?;
 
     Ok(parser::Identifier::new(atom, span::Span::SHAM))

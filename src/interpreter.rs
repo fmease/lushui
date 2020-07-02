@@ -16,7 +16,7 @@ pub(crate) mod scope;
 
 use crate::{
     diagnostic::todo,
-    diagnostic::*,
+    diagnostic::{Code, Diagnostic, Result},
     hir::{self, *},
     parser::Explicit,
     resolver::Resolved,
@@ -39,11 +39,9 @@ impl CrateScope {
                 form: Form::WeakHeadNormal,
             })
         } else {
-            Err(Diagnostic::new(
-                Level::Fatal,
-                Code::E050,
-                "missing program entry",
-            ))
+            Err(Diagnostic::fatal()
+                .with_code(Code::E050)
+                .with_message("missing program entry"))
         }
     }
 }

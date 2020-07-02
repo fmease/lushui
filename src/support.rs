@@ -5,9 +5,7 @@
 //! until I figure out how to handle errors best.
 // @Question should we move the Result helpers to crate::diagnostic?
 
-use crate::diagnostic::{Diagnostic, Diagnostics};
-
-type Result<T, E = Diagnostics> = std::result::Result<T, E>;
+use crate::diagnostic::{Diagnostic, Diagnostics, Results};
 
 // @Note the `accumulate_error` methods ignore whether an error is fatal or not, this should be changed @Task
 
@@ -15,15 +13,15 @@ pub mod accumulate_errors {
     use super::*;
 
     pub trait Accumulate2Errors<A, B> {
-        fn accumulate_err(self) -> Result<(A, B)>;
+        fn accumulate_err(self) -> Results<(A, B)>;
     }
 
     pub trait Accumulate3Errors<A, B, C> {
-        fn accumulate_err(self) -> Result<(A, B, C)>;
+        fn accumulate_err(self) -> Results<(A, B, C)>;
     }
 
-    impl<A, B> Accumulate2Errors<A, B> for (Result<A>, Result<B>) {
-        fn accumulate_err(self) -> Result<(A, B)> {
+    impl<A, B> Accumulate2Errors<A, B> for (Results<A>, Results<B>) {
+        fn accumulate_err(self) -> Results<(A, B)> {
             match (self.0, self.1) {
                 (Ok(okay0), Ok(okay1)) => Ok((okay0, okay1)),
                 (Err(error), Ok(_)) | (Ok(_), Err(error)) => Err(error),
@@ -36,8 +34,8 @@ pub mod accumulate_errors {
         }
     }
 
-    impl<A, B, C> Accumulate3Errors<A, B, C> for (Result<A>, Result<B>, Result<C>) {
-        fn accumulate_err(self) -> Result<(A, B, C)> {
+    impl<A, B, C> Accumulate3Errors<A, B, C> for (Results<A>, Results<B>, Results<C>) {
+        fn accumulate_err(self) -> Results<(A, B, C)> {
             let result = (self.0, self.1).accumulate_err();
             let ((okay0, okay1), okay2) = (result, self.2).accumulate_err()?;
             Ok((okay0, okay1, okay2))
@@ -54,7 +52,7 @@ pub trait TrySoftly<T: InvalidFallback> {
     fn try_softly(self, bag: &mut Diagnostics) -> T;
 }
 
-impl<T: InvalidFallback> TrySoftly<T> for Result<T> {
+impl<T: InvalidFallback> TrySoftly<T> for Results<T> {
     fn try_softly(self, bag: &mut Diagnostics) -> T {
         match self {
             Ok(okay) => okay,
@@ -67,11 +65,11 @@ impl<T: InvalidFallback> TrySoftly<T> for Result<T> {
 }
 
 impl<T: InvalidFallback> TrySoftly<T> for Result<T, Diagnostic> {
-    fn try_softly(self, bag: &mut Diagnostics) -> T {
+    fn try_softly(self, diagnostics: &mut Diagnostics) -> T {
         match self {
             Ok(okay) => okay,
             Err(error) => {
-                bag.insert(error);
+                diagnostics.add(error);
                 T::invalid()
             }
         }
@@ -86,11 +84,11 @@ pub macro release($errors:expr) {{
 }}
 
 pub trait TransposeExt<T> {
-    fn transpose(self) -> Result<Vec<T>>;
+    fn transpose(self) -> Results<Vec<T>>;
 }
 
-impl<T> TransposeExt<T> for Vec<Result<T>> {
-    fn transpose(self) -> Result<Vec<T>> {
+impl<T> TransposeExt<T> for Vec<Results<T>> {
+    fn transpose(self) -> Results<Vec<T>> {
         let mut final_result = Ok(Vec::new());
         for result in self {
             match final_result {
@@ -109,11 +107,11 @@ impl<T> TransposeExt<T> for Vec<Result<T>> {
 }
 
 pub trait ManyErrExt<T> {
-    fn many_err(self) -> Result<T>;
+    fn many_err(self) -> Results<T>;
 }
 
 impl<T> ManyErrExt<T> for Result<T, Diagnostic> {
-    fn many_err(self) -> Result<T> {
+    fn many_err(self) -> Results<T> {
         self.map_err(|error| Some(error).into_iter().collect())
     }
 }

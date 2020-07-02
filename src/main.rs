@@ -1,7 +1,7 @@
 #![forbid(rust_2018_idioms, unused_must_use)]
 
 use lushui::{
-    diagnostic::*,
+    diagnostic::{Diagnostic, Results},
     interpreter,
     lexer::Lexer,
     parser::Parser,
@@ -196,7 +196,7 @@ fn main() {
 
     let mut map = SourceMap::default();
 
-    let result: Result<(), Diagnostics> = (|| {
+    let result: Results<()> = (|| {
         let path = merged_arguments.file;
         let source_file = map.load(path).many_err()?;
 
@@ -256,12 +256,8 @@ fn main() {
                 }
             }
             Command::Highlight { .. } => {
-                return Err(Diagnostic::new(
-                    Level::Fatal,
-                    None,
-                    "operation not supported yet",
-                ))
-                .many_err()
+                return Err(Diagnostic::fatal().with_message("operation not supported yet"))
+                    .many_err()
             }
         }
 
@@ -284,14 +280,11 @@ fn main() {
             }
         }
 
-        Diagnostic::new(
-            Level::Fatal,
-            None,
-            pluralize(amount, "aborting due to previous error", || {
+        Diagnostic::fatal()
+            .with_message(pluralize(amount, "aborting due to previous error", || {
                 format!("aborting due to {} previous errors", amount)
-            }),
-        )
-        .emit(Some(&map));
+            }))
+            .emit(Some(&map));
 
         // @Task instead of this using this function, return a std::process::ExitCode
         // from main once stable again. I am not sure but it could be that right now,
@@ -315,6 +308,6 @@ fn set_panic_hook() {
             message += &format!(" at {}", location);
         }
 
-        Diagnostic::new(Level::Bug, None, message).emit(None);
+        Diagnostic::bug().with_message(message).emit(None);
     }));
 }

@@ -11,7 +11,7 @@
 mod ast;
 
 use crate::{
-    diagnostic::{Code, Diagnostic, Level, Result},
+    diagnostic::{Code, Diagnostic, Result},
     lexer::{self, Token, TokenKind},
     smallvec,
     span::{SourceFile, Span, Spanned},
@@ -201,12 +201,10 @@ impl Parser<'_> {
             "foreign" => AttributeKind::Foreign,
             "inherent" => AttributeKind::Inherent,
             _ => {
-                return Err(Diagnostic::new(
-                    Level::Fatal,
-                    Code::E011,
-                    format!("attribute `{}` does not exist", identifier),
-                )
-                .with_span(&identifier))
+                return Err(Diagnostic::fatal()
+                    .with_code(Code::E011)
+                    .with_message(format!("attribute `{}` does not exist", identifier))
+                    .with_span(&identifier))
             }
         };
         self.consume(TokenKind::LineBreak)?;
@@ -1179,13 +1177,11 @@ impl Parser<'_> {
         if self.consumed(TokenKind::Comma) {
             // @Note there might be false positives (through arbitrary look-ahead)
             // @Task let this function have access to the source map #ParserRefactor
-            Diagnostic::new(
-                Level::Warning,
-                Code::W001,
-                "implicitness markers are currently ignored",
-            )
-            // .with_span(token.span)
-            .emit(None);
+            Diagnostic::warning()
+                .with_code(Code::W001)
+                .with_message("implicitness markers are currently ignored")
+                // .with_span(token.span)
+                .emit(None);
             Implicit
         } else {
             Explicit
@@ -1214,12 +1210,10 @@ fn delimiters_with_expected<'a>(
 
 impl<'a> Expected<'a> {
     fn but_actual_is(self, actual: Token) -> Diagnostic {
-        Diagnostic::new(
-            Level::Fatal,
-            Code::E010,
-            format!("found {}, but expected {}", actual.kind, self),
-        )
-        .with_span(&actual)
+        Diagnostic::fatal()
+            .with_code(Code::E010)
+            .with_message(format!("found {}, but expected {}", actual.kind, self))
+            .with_span(&actual)
     }
 }
 

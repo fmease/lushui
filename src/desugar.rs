@@ -11,7 +11,7 @@
 use std::{fmt, iter::once};
 
 use crate::{
-    diagnostic::{Bag, Code, Diagnostic, Diagnostics, Level, Result},
+    diagnostic::{Code, Diagnostic, Diagnostics, Results},
     hir::{self, decl, expr, pat, Pass},
     parser::{self, AttributeKind, Explicit, Identifier, Path},
     smallvec,
@@ -40,14 +40,14 @@ impl parser::Declaration {
     pub fn desugar(
         mut self,
         map: &mut SourceMap,
-    ) -> Result<SmallVec<[hir::Declaration<Desugared>; 1]>, Diagnostics> {
+    ) -> Results<SmallVec<[hir::Declaration<Desugared>; 1]>> {
         use parser::DeclarationKind::*;
 
         self.validate_attributes()?;
 
         Ok(match self.kind {
             Value(declaration) => {
-                let mut errors = Bag::new();
+                let mut errors = Diagnostics::new();
 
                 let declaration_type_annotation = match declaration.type_annotation {
                     Some(type_annotation) => type_annotation,
@@ -116,7 +116,7 @@ impl parser::Declaration {
                 }]
             }
             Data(data) => {
-                let mut errors = Bag::new();
+                let mut errors = Diagnostics::new();
 
                 let data_type_annotation = match data.type_annotation {
                     Some(type_annotation) => type_annotation,
@@ -149,7 +149,7 @@ impl parser::Declaration {
                 }]
             }
             Constructor(constructor) => {
-                let mut errors = Bag::new();
+                let mut errors = Diagnostics::new();
 
                 let constructor_type_annotation = match constructor.type_annotation {
                     Some(type_annotation) => type_annotation,
@@ -194,18 +194,15 @@ impl parser::Declaration {
                             _ => unreachable!(),
                         };
                         if !node.attributes.is_empty() {
-                            Diagnostic::new(
-                                Level::Warning,
-                                None,
-                                "attributes on module headers are ignored right now",
-                            )
-                            .emit(None);
+                            Diagnostic::warning()
+                                .with_message("attributes on module headers are ignored right now")
+                                .emit(None);
                         }
                         module.declarations.unwrap()
                     }
                 };
 
-                let mut errors = Bag::new();
+                let mut errors = Diagnostics::new();
 
                 let declarations = declarations
                     .into_iter()
@@ -291,7 +288,7 @@ impl parser::Declaration {
     }
 
     // @Task validate that attributes are unique (using Attribute::unique)
-    fn validate_attributes(&mut self) -> Result<(), Diagnostics> {
+    fn validate_attributes(&mut self) -> Results<()> {
         use parser::DeclarationKind::*;
 
         let nonconforming = self.attributes.nonconforming(self.as_attribute_target());
@@ -300,12 +297,13 @@ impl parser::Declaration {
             return Err(nonconforming
                 .into_iter()
                 .map(|attribute| {
-                    let message = format!(
-                        "{} cannot be ascribed to a {} declaration",
-                        attribute.kind,
-                        self.kind_as_str()
-                    );
-                    Diagnostic::new(Level::Fatal, Code::E013, message)
+                    Diagnostic::fatal()
+                        .with_code(Code::E013)
+                        .with_message(format!(
+                            "{} cannot be ascribed to a {} declaration",
+                            attribute.kind,
+                            self.kind_as_str()
+                        ))
                         .with_labeled_span(attribute, "misplaced attribute")
                         .with_labeled_span(self, "incompatible declaration")
                 })
@@ -322,13 +320,11 @@ impl parser::Declaration {
         if let (Some(foreign), Some(inherent)) = (foreign, inherent) {
             use std::cmp::{max, min};
 
-            return Err(Diagnostic::new(
-                Level::Fatal,
-                Code::E014,
-                "attributes `foreign` and `inherent` are mutually exclusive",
-            )
-            .with_span(&max(foreign.span, inherent.span))
-            .with_span(&min(foreign.span, inherent.span)))
+            return Err(Diagnostic::fatal()
+                .with_code(Code::E014)
+                .with_message("attributes `foreign` and `inherent` are mutually exclusive")
+                .with_span(&max(foreign.span, inherent.span))
+                .with_span(&min(foreign.span, inherent.span)))
             .many_err();
         }
 
@@ -339,23 +335,19 @@ impl parser::Declaration {
         };
 
         match (abnormally_bodiless, foreign.is_some()) {
-            (true, false) => {
-                Err(
-                    Diagnostic::new(Level::Fatal, Code::E012, "declaration without a definition")
-                        .with_span(self),
-                )
-                .many_err()
-            }
+            (true, false) => Err(Diagnostic::fatal()
+                .with_code(Code::E012)
+                .with_message("declaration without a definition")
+                .with_span(self))
+            .many_err(),
             (false, true) => {
                 // @Task make non-fatal, @Task improve message
                 // @Task add subdiagonstic note: foreign is one definition and
                 // explicit body is another
-                Err(Diagnostic::new(
-                    Level::Fatal,
-                    Code::E020,
-                    "declaration has multiple definitions",
-                )
-                .with_labeled_span(self, "is foreign and has a body"))
+                Err(Diagnostic::fatal()
+                    .with_code(Code::E020)
+                    .with_message("declaration has multiple definitions")
+                    .with_labeled_span(self, "is foreign and has a body"))
                 .many_err()
             }
             (true, true) | (false, false) => Ok(()),
@@ -538,10 +530,10 @@ impl parser::Pattern {
 fn desugar_parameters_to_annotated_ones(
     parameters: parser::Parameters,
     type_annotation: parser::Expression,
-) -> Result<hir::Expression<Desugared>, Diagnostics> {
+) -> Results<hir::Expression<Desugared>> {
     let mut expression = type_annotation.desugar();
 
-    let mut errors = Bag::new();
+    let mut errors = Diagnostics::new();
 
     for parameter_group in parameters.parameters.into_iter().rev() {
         let parameter_type_annotation = match parameter_group.type_annotation {
@@ -576,12 +568,10 @@ fn missing_mandatory_type_annotation(
     spanning: &impl Spanning,
     target: AnnotationTarget,
 ) -> Diagnostic {
-    Diagnostic::new(
-        Level::Error,
-        Code::E015,
-        format!("missing mandatory type annotation on {}", target),
-    )
-    .with_span(spanning)
+    Diagnostic::error()
+        .with_code(Code::E015)
+        .with_message(format!("missing mandatory type annotation on {}", target))
+        .with_span(spanning)
 }
 
 enum AnnotationTarget {

@@ -4,7 +4,7 @@ mod types;
 
 use crate::{
     diagnostic::todo,
-    diagnostic::*,
+    diagnostic::{Code, Diagnostic, Result},
     hir::{self, *},
     interpreter::{
         self, ffi,
@@ -22,11 +22,9 @@ const TYPE: Expression = expr! { Type[] };
 
 pub(crate) fn missing_annotation() -> Diagnostic {
     // @Task add span
-    Diagnostic::new(
-        Level::Bug,
-        Code::E030,
-        "currently lambda literal parameters and patterns must be type-annotated",
-    )
+    Diagnostic::bug()
+        .with_code(Code::E030)
+        .with_message("currently lambda literal parameters and patterns must be type-annotated")
 }
 
 #[derive(Default)]
@@ -266,9 +264,7 @@ impl CrateScope {
                 // @Temporary
                 // @Note this case might occur when the bindings is its own type (like Type-in-Type)
                 // I don't know if there are any other cases
-                return Err(Diagnostic::new(
-                    Level::Fatal,
-                    None,
+                return Err(Diagnostic::fatal().with_message(
                     "found equi-recursive? or circular thingy trying to type-check",
                 ));
             }
@@ -365,14 +361,14 @@ impl Expression {
                     _ => {
                         // @Task improve error diagnostic
                         // @Task add span
-                        return Err(Error::Unrecoverable(Diagnostic::new(
-                            Level::Fatal,
-                            Code::E031,
-                            format!(
-                                "cannot apply `{}` to a `{}`",
-                                application.argument, type_of_callee
-                            ),
-                        )));
+                        return Err(Error::Unrecoverable(
+                            Diagnostic::fatal()
+                                .with_code(Code::E031)
+                                .with_message(format!(
+                                    "cannot apply `{}` to a `{}`",
+                                    application.argument, type_of_callee
+                                )),
+                        ));
                     }
                 }
             }
@@ -494,9 +490,7 @@ impl Expression {
                 //             format!("expected `{}`, got `{}`", self, actual),
                 //         ),
                 // ),
-                Error::Unrecoverable(Diagnostic::new(
-                    Level::Fatal,
-                    Code::E032,
+                Error::Unrecoverable(Diagnostic::fatal().with_code(Code::E032).with_message(
                     format!("mismatched types. expected `{}`, got `{}`", self, actual),
                 )),
             );

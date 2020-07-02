@@ -10,7 +10,7 @@
 //! feature-gate them.
 
 use crate::{
-    diagnostic::{Code, Diagnostic, Level, Result},
+    diagnostic::{Code, Diagnostic, Result},
     interpreter::scope::{CrateScope, FunctionScope},
     resolver::Identifier,
     support::InvalidFallback,
@@ -29,11 +29,9 @@ pub(in crate::typer) fn assert_constructor_is_instance_of_type(
     if !type_.equals(callee, &scope.into())? {
         // @Task improve error diagnostic
         // @Task add span information
-        Err(Diagnostic::new(
-            Level::Fatal,
-            Code::E033,
-            format!("invalid constructor `{}`", constructor_name),
-        ))
+        Err(Diagnostic::fatal()
+            .with_code(Code::E033)
+            .with_message(format!("invalid constructor `{}`", constructor_name)))
     } else {
         Ok(())
     }

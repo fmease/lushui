@@ -5,7 +5,7 @@ fn span(start: u32, end: u32) -> Span {
     Span::new(ByteIndex::new(start), ByteIndex::new(end))
 }
 
-fn assert_ok_token(actual: Result<Vec<Token>, Diagnostics>, expected: Vec<Token>) {
+fn assert_ok_token(actual: Results<Vec<Token>>, expected: Vec<Token>) {
     match actual {
         Ok(actual) => {
             if actual != expected {
@@ -19,7 +19,7 @@ fn assert_ok_token(actual: Result<Vec<Token>, Diagnostics>, expected: Vec<Token>
     }
 }
 
-fn assert_err(actual: Result<Vec<Token>, Diagnostics>, expected_spans: &[&[Span]]) {
+fn assert_err(actual: Results<Vec<Token>>, expected_spans: &[&[Span]]) {
     match actual {
         Ok(actual) => panic!("expected an `Err` but got the token `{:?}`", actual),
         Err(diagnostics) => {

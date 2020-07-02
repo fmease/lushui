@@ -4,7 +4,7 @@ use std::{collections::HashMap, fmt};
 
 use super::{ffi, Expression, Substitution::Shift};
 use crate::{
-    diagnostic::*,
+    diagnostic::{Code, Diagnostic, Result},
     entity::{Entity, EntityKind},
     hir::expr,
     lexer::Number,
@@ -147,12 +147,10 @@ impl CrateScope {
                     },
                     None => {
                         // @Task better message
-                        return Err(Diagnostic::new(
-                            Level::Fatal,
-                            Code::E060,
-                            format!("foreign binding `{}` is not registered", binder),
-                        )
-                        .with_span(&binder));
+                        return Err(Diagnostic::fatal()
+                            .with_code(Code::E060)
+                            .with_message(format!("foreign binding `{}` is not registered", binder))
+                            .with_span(&binder));
                     }
                 };
             }
@@ -163,12 +161,13 @@ impl CrateScope {
                     }
                     Some(Some(_)) => unreachable!(),
                     None => {
-                        return Err(Diagnostic::new(
-                            Level::Fatal,
-                            Code::E060,
-                            format!("foreign data type `{}` is not registered", binder),
-                        )
-                        .with_span(&binder))
+                        return Err(Diagnostic::fatal()
+                            .with_code(Code::E060)
+                            .with_message(format!(
+                                "foreign data type `{}` is not registered",
+                                binder
+                            ))
+                            .with_span(&binder))
                     }
                 }
             }
@@ -218,11 +217,12 @@ impl CrateScope {
             }),
             // @Task better message
             Some(None) => {
-                let diagnostic = Diagnostic::new(
-                    Level::Fatal,
-                    Code::E061,
-                    format!("the foreign type `{}` has not been declared", binder),
-                );
+                let diagnostic = Diagnostic::fatal()
+                    .with_code(Code::E061)
+                    .with_message(format!(
+                        "the foreign type `{}` has not been declared",
+                        binder
+                    ));
                 Err(match expression_span {
                     Some(span) => {
                         diagnostic.with_labeled_span(&span, "the type of this expression")

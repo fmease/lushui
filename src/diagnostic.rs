@@ -1,31 +1,70 @@
 //! The diagnostic system.
 
 use crate::span::{SourceMap, Span, Spanning};
+use std::collections::HashSet;
 
 type CowStr = std::borrow::Cow<'static, str>;
 
 pub type Result<T, E = Diagnostic> = std::result::Result<T, E>;
+// @Question bad name?
+pub type Results<T> = std::result::Result<T, Diagnostics>;
 
-pub use std::collections::HashSet as Bag;
+/// A bag of diagnostics.
+pub struct Diagnostics(HashSet<Diagnostic>);
 
-pub type Diagnostics = Bag<Diagnostic>;
+impl Diagnostics {
+    pub fn new() -> Self {
+        Self(HashSet::new())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn add(&mut self, diagnostic: Diagnostic) {
+        self.0.insert(diagnostic);
+    }
+}
+
+impl std::iter::Extend<Diagnostic> for Diagnostics {
+    fn extend<D: IntoIterator<Item = Diagnostic>>(&mut self, diagnostics: D) {
+        self.0.extend(diagnostics)
+    }
+}
+
+impl IntoIterator for Diagnostics {
+    type Item = Diagnostic;
+    type IntoIter = std::collections::hash_set::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl std::iter::FromIterator<Diagnostic> for Diagnostics {
+    fn from_iter<T: IntoIterator<Item = Diagnostic>>(iter: T) -> Self {
+        Self(iter.into_iter().collect())
+    }
+}
 
 #[derive(Hash, PartialEq, Eq)]
-pub struct Diagnostic {
-    raw: Box<RawDiagnostic>,
-}
+pub struct Diagnostic(Box<RawDiagnostic>);
 
 impl std::ops::Deref for Diagnostic {
     type Target = RawDiagnostic;
 
     fn deref(&self) -> &Self::Target {
-        &self.raw
+        &self.0
     }
 }
 
 impl std::ops::DerefMut for Diagnostic {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.raw
+        &mut self.0
     }
 }
 
@@ -34,22 +73,54 @@ impl std::ops::DerefMut for Diagnostic {
 #[derive(Hash, PartialEq, Eq)]
 pub struct RawDiagnostic {
     level: Level,
-    message: CowStr,
+    message: Option<CowStr>,
     code: Option<Code>,
     highlights: Vec<Highlight>,
 }
 // @Task be able to have errors associated with a file but not a snippet
 // @Note I still want to rely on `Span`
 impl Diagnostic {
-    pub fn new(level: Level, code: impl Into<Option<Code>>, message: impl Into<CowStr>) -> Self {
-        Self {
-            raw: Box::new(RawDiagnostic {
-                level,
-                code: code.into(),
-                message: message.into(),
-                highlights: Vec::new(),
-            }),
-        }
+    pub fn new(level: Level) -> Self {
+        Self(Box::new(RawDiagnostic {
+            level,
+            code: None,
+            message: None,
+            highlights: Vec::new(),
+        }))
+    }
+
+    pub fn bug() -> Self {
+        Self::new(Level::Bug)
+    }
+
+    pub fn fatal() -> Self {
+        Self::new(Level::Fatal)
+    }
+
+    pub fn error() -> Self {
+        Self::new(Level::Error)
+    }
+
+    pub fn warning() -> Self {
+        Self::new(Level::Warning)
+    }
+
+    pub fn note() -> Self {
+        Self::new(Level::Note)
+    }
+
+    pub fn help() -> Self {
+        Self::new(Level::Help)
+    }
+
+    pub fn with_message(mut self, message: impl Into<CowStr>) -> Self {
+        self.message = Some(message.into());
+        self
+    }
+
+    pub fn with_code(mut self, code: Code) -> Self {
+        self.code = Some(code);
+        self
     }
 
     pub fn with_span(mut self, spanning: &impl Spanning) -> Self {
@@ -100,14 +171,18 @@ impl Diagnostic {
     // @Task if the span equals the span of the entire file, don't output its content
     // @Task if two spans reside on the same line, print them inline not above each other (maybe)
     fn display(&mut self, map: Option<&SourceMap>) -> String {
-        let header = format!(
-            "{:#}{}: {}",
+        let mut header = format!(
+            "{:#}{}",
             self.level,
             self.code
-                .map(|code| format!("[{:?}]", code).color(self.raw.level.color()))
+                .map(|code| format!("[{:?}]", code).color(self.level.color()))
                 .unwrap_or_default(),
-            self.message.bright_white().bold()
         );
+
+        if let Some(message) = &self.message {
+            header += &format!(": {}", message.bright_white().bold());
+        }
+
         self.highlights.sort_by_key(|highlight| highlight.span);
 
         let mut message = header;
@@ -120,7 +195,7 @@ impl Diagnostic {
                 .unwrap();
 
             if self.highlights[primary_highlight].span == Span::SHAM {
-                message += &format!("\n {arrow} ??? ??? ???", arrow = ">".bright_blue().bold());
+                message += &format!("\n {arrow} sham location", arrow = ">".bright_blue().bold());
                 return message;
             }
 
@@ -272,7 +347,7 @@ pub enum Level {
 use colored::{Color, Colorize};
 
 impl Level {
-    fn to_str(self) -> &'static str {
+    const fn to_str(self) -> &'static str {
         match self {
             Self::Bug => "internal compiler error",
             Self::Fatal | Self::Error => "error",
@@ -282,7 +357,7 @@ impl Level {
         }
     }
 
-    fn color(self) -> Color {
+    const fn color(self) -> Color {
         match self {
             Self::Bug | Self::Fatal | Self::Error => Color::BrightRed,
             Self::Warning => Color::BrightYellow,
@@ -320,14 +395,14 @@ enum Role {
 }
 
 impl Role {
-    fn color(&self, primary: Color) -> Color {
+    const fn color(&self, primary: Color) -> Color {
         match self {
             Self::Primary => primary,
             Self::Secondary => Color::BrightBlue,
         }
     }
 
-    fn symbol(&self) -> &'static str {
+    const fn symbol(&self) -> &'static str {
         match self {
             Self::Primary => "^",
             Self::Secondary => "-",
@@ -335,6 +410,7 @@ impl Role {
     }
 }
 
+// @Note bad design
 /// No prefix: Get a diagnostic.
 /// Prefix `&`: Get a result of diagnostic.
 /// Prefix `?`: Apply the try operator to the resulting diagnostic.
@@ -345,9 +421,7 @@ pub macro todo {
         todo!("something")
     },
     ($message:literal $( ,$spanning:expr )?) => {
-        Diagnostic::new(
-            Level::Bug,
-            None,
+        Diagnostic::bug().with_message(
             concat!(
                 "not yet implemented: ",
                 $message,
