@@ -74,17 +74,17 @@ impl<P: Pass> Declaration<P> {
 // @Note many wasted allocations (intermediate Strings)
 impl<P: Pass> Display for Expression<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        use joinery::JoinableIterator;
         use ExpressionKind::*;
 
         match &self.kind {
             PiType(literal) => write!(f, "{}", literal),
             Application(application) => {
-                application.callee.display_possibly_wrapped(f)?;
-                write!(f, " ")?;
+                write!(f, "{} ", PossiblyWrapped(&application.callee))?;
                 if application.explicitness.is_implicit() {
                     write!(f, "({}{})", application.explicitness, application.argument)
                 } else {
-                    application.argument.display_possibly_wrapped(f)
+                    write!(f, "{}", PossiblyWrapped(&application.argument))
                 }
             }
             Type => write!(f, "Type"),
@@ -110,17 +110,15 @@ impl<P: Pass> Display for Expression<P> {
                 "<substitution {} {}>",
                 substitution.substitution, substitution.expression
             ),
-            // @Task make it look like a normal application because this is user-visible in
-            // error messages!!
             ForeignApplication(application) => write!(
                 f,
-                "<foreign {} {}>",
+                "{} {}",
                 application.callee,
                 application
                     .arguments
                     .iter()
-                    .map(|argument| format!("{},", argument))
-                    .collect::<String>()
+                    .map(PossiblyWrapped)
+                    .join_with(' ')
             ),
         }
     }
@@ -141,10 +139,9 @@ impl<P: Pass> Display for super::PiType<P> {
         } else if self.explicitness.is_implicit() {
             write!(f, "({}{})", self.explicitness, self.domain)?;
         } else {
-            self.domain.display_possibly_wrapped(f)?;
+            write!(f, "{}", PossiblyWrapped(&self.domain))?;
         }
-        write!(f, " -> ")?;
-        self.codomain.display_possibly_wrapped(f)
+        write!(f, " -> {}", PossiblyWrapped(&self.codomain))
     }
 }
 
@@ -161,11 +158,9 @@ impl<P: Pass> Display for super::Lambda<P> {
                 .unwrap_or_default()
         )?;
         if let Some(type_annotation) = &self.body_type_annotation {
-            write!(f, ": ")?;
-            type_annotation.display_possibly_wrapped(f)?;
+            write!(f, ": {}", PossiblyWrapped(type_annotation))?;
         }
-        write!(f, " => ")?;
-        self.body.display_possibly_wrapped(f)
+        write!(f, " => {}", PossiblyWrapped(&self.body))
     }
 }
 
@@ -192,19 +187,22 @@ impl<P: Pass> Display for Pattern<P> {
     }
 }
 
-impl<P: Pass> Expression<P> {
-    fn display_possibly_wrapped(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        if self.needs_brackets_conservative() {
-            write!(f, "({})", self)
-        } else {
-            write!(f, "{}", self)
-        }
-    }
+struct PossiblyWrapped<'a, P: Pass>(&'a Expression<P>);
 
-    // @Temporary
+impl<P: Pass> PossiblyWrapped<'_, P> {
     fn needs_brackets_conservative(&self) -> bool {
         use ExpressionKind::*;
 
-        !matches!(&self.kind, Type | Number(_) | Text(_) | Binding(_) | Invalid | Substitution(_) | ForeignApplication(_))
+        !matches!(&self.0.kind, Type | Number(_) | Text(_) | Binding(_) | Invalid | Substitution(_))
+    }
+}
+
+impl<P: Pass> fmt::Display for PossiblyWrapped<'_, P> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.needs_brackets_conservative() {
+            write!(f, "({})", self.0)
+        } else {
+            write!(f, "{}", self.0)
+        }
     }
 }

@@ -15,8 +15,7 @@ flip (A B C: Type) (f: A -> B -> C) (b: B) (a: A): C =
 module void: =
     data Void: Type =
 
-    ;; absurd (A: Type) (v: Void): A =
-    ;;     (case v of) A
+    ;; absurd (A: Type) (v: Void): A = (case v of) A
 
 module unit: =
     @inherent
@@ -184,6 +183,33 @@ module list: =
         ;; @Note bad naming
         nil (A: Type): List A
         cons (A: Type): A -> List A -> List A
+
+module vector: =
+    use super.nat.(Nat +)
+
+    data Vector (n: Nat) (A: Type): Type =
+        ;; @Note bad naming
+        nil (A: Type): Vector 0 A
+        cons (n: Nat) (A: Type): A -> Vector n A -> Vector (+ n 1) A
+
+;; @Question tuple backed by List or by Vector in core (or both implementations)?
+;; @Beacon @Bug out-of-order (placing above vector module crashes interpreter)
+module tuple: =
+    use super.list.(List self)
+
+    data Tuple (L: List Type): Type =
+        nil: Tuple (list.nil Type)
+        cons (A: Type) (L: List Type): A -> Tuple L -> Tuple (list.cons Type A L)
+
+;; @Question tuple backed by List or by Vector in core (or both implementations)?
+;; @Beacon @Bug out-of-order (placing above vector module crashes interpreter)
+module tuple': =
+    use super.vector.(Vector self)
+    use super.nat.(Nat +)
+
+    data Tuple (n: Nat) (L: Vector n Type): Type =
+        nil: Tuple 0 (vector.nil Type)
+        cons (A: Type) (n: Nat) (L: Vector n Type): A -> Tuple n L -> Tuple (+ n 1) (vector.cons n Type A L)
 
 module ordering: =
     data Ordering: Type =

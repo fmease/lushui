@@ -519,6 +519,16 @@ impl Expression {
                     )?
             }
             (CaseAnalysis(_), CaseAnalysis(_)) => unreachable!(),
+            (ForeignApplication(foreign0), ForeignApplication(foreign1)) => {
+                foreign0.callee == foreign1.callee
+                    && foreign0
+                        .arguments
+                        .clone()
+                        .into_iter()
+                        .zip(foreign1.arguments.clone())
+                        .map(|(argument0, argument1)| argument0.equals(argument1, scope))
+                        .fold(Ok(true), |all, this| Ok(all? && this?))?
+            }
             (Invalid, _) | (_, Invalid) => panic!("trying to check equality on an invalid node"),
             _ => false,
         })
