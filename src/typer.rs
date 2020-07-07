@@ -14,6 +14,7 @@ use crate::{
     parser::{AttributeKind, Explicit},
     resolver::{Identifier, Resolved},
 };
+use std::default::default;
 
 pub type Declaration = hir::Declaration<Resolved>;
 pub type Expression = hir::Expression<Resolved>;
@@ -35,7 +36,7 @@ struct Environment {
 impl Declaration {
     /// Try to type check a declaration modifying the given scope.
     pub fn infer_type(&self, scope: &mut CrateScope) -> Result<()> {
-        self.infer_type_first_pass(scope, Default::default())?;
+        self.infer_type_first_pass(scope, default())?;
         scope.infer_type_of_out_of_order_bindings()
     }
 
@@ -112,7 +113,7 @@ impl Declaration {
             }
             Module(module) => {
                 for declaration in &module.declarations {
-                    declaration.infer_type_first_pass(scope, Default::default())?;
+                    declaration.infer_type_first_pass(scope, default())?;
                 }
             }
             Use(_) => {}

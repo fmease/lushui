@@ -4,7 +4,7 @@ use crate::{
     interpreter::ffi::ForeignFunction,
     interpreter::scope::ValueView,
     parser,
-    resolver::{CrateIndex, Identifier, ModuleScope},
+    resolver::{CrateIndex, Identifier, Namespace},
     typer::Expression,
 };
 
@@ -16,8 +16,8 @@ pub struct Entity {
 }
 
 impl Entity {
-    pub fn is_untyped_value(&self) -> bool {
-        matches!(self.kind, EntityKind::UntypedValue)
+    pub fn is_untyped(&self) -> bool {
+        matches!(self.kind, EntityKind::UntypedValue | EntityKind::UntypedDataType(_))
     }
 
     pub fn type_(&self) -> Option<Expression> {
@@ -29,7 +29,7 @@ impl Entity {
                 DataType { type_, .. } => type_,
                 Constructor { type_, .. } => type_,
                 Foreign { type_, .. } => type_,
-                UntypedValue => return None,
+                UntypedValue | UntypedDataType(_) => return None,
                 _ => unreachable!(),
             }
             .clone(),
@@ -61,7 +61,8 @@ impl fmt::Debug for Entity {
 #[derive(Clone)]
 pub enum EntityKind {
     UntypedValue,
-    Module(ModuleScope),
+    Module(Namespace),
+    UntypedDataType(Namespace),
     /// A use bindings means extra indirection. We don't just "clone" the value it gets
     /// "assigned" to. We merely reference it. This way we don't need to reference-count
     /// module scopes (to avoid deep copies). Also, once we merge this data structure with
@@ -105,6 +106,7 @@ impl fmt::Debug for EntityKind {
         match self {
             UntypedValue => write!(f, "untyped value"),
             Module(scope) => write!(f, "module, {:?}", scope),
+            UntypedDataType(scope) => write!(f, "untyped data type, {:?}", scope),
             Use(index) => write!(f, "use {:?}", index),
             UnresolvedUse => write!(f, "unresolved use"),
             Value { type_, expression } => match expression {

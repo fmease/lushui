@@ -55,13 +55,13 @@ error[E021]: binding `Void` is not defined in this scope
 error[E021]: binding `f` is not defined in this scope
    > ${DIRECTORY}/multiple-undefined.lushui:15:33
    |
-15 | ex-nihilo (x y: Thing): Thing = f z thing
+15 | ex-nihilo (x y: Thing): Thing = f z Thing.thing
    |                                 ^ 
 
 error[E021]: binding `z` is not defined in this scope
    > ${DIRECTORY}/multiple-undefined.lushui:15:35
    |
-15 | ex-nihilo (x y: Thing): Thing = f z thing
+15 | ex-nihilo (x y: Thing): Thing = f z Thing.thing
    |                                   ^ 
 
 error: aborting due to 11 previous errors

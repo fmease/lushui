@@ -7,49 +7,9 @@ type CowStr = std::borrow::Cow<'static, str>;
 
 pub type Result<T, E = Diagnostic> = std::result::Result<T, E>;
 // @Question bad name?
-pub type Results<T> = std::result::Result<T, Diagnostics>;
+pub type Results<T> = Result<T, Diagnostics>;
 
-/// A bag of diagnostics.
-pub struct Diagnostics(HashSet<Diagnostic>);
-
-impl Diagnostics {
-    pub fn new() -> Self {
-        Self(HashSet::new())
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn add(&mut self, diagnostic: Diagnostic) {
-        self.0.insert(diagnostic);
-    }
-}
-
-impl std::iter::Extend<Diagnostic> for Diagnostics {
-    fn extend<D: IntoIterator<Item = Diagnostic>>(&mut self, diagnostics: D) {
-        self.0.extend(diagnostics)
-    }
-}
-
-impl IntoIterator for Diagnostics {
-    type Item = Diagnostic;
-    type IntoIter = std::collections::hash_set::IntoIter<Self::Item>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
-
-impl std::iter::FromIterator<Diagnostic> for Diagnostics {
-    fn from_iter<T: IntoIterator<Item = Diagnostic>>(iter: T) -> Self {
-        Self(iter.into_iter().collect())
-    }
-}
+pub type Diagnostics = HashSet<Diagnostic>;
 
 #[derive(Hash, PartialEq, Eq)]
 pub struct Diagnostic(Box<RawDiagnostic>);

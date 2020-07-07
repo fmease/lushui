@@ -16,7 +16,7 @@ module second: =
 
     module foo: =
         use super.Alpha
-        use super.alpha
+        use super.Alpha.alpha
         what-every: Alpha = alpha
         use super.Void
         V: Type = Void

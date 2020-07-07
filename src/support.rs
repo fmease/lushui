@@ -69,7 +69,7 @@ impl<T: InvalidFallback> TrySoftly<T> for Result<T, Diagnostic> {
         match self {
             Ok(okay) => okay,
             Err(error) => {
-                diagnostics.add(error);
+                diagnostics.insert(error);
                 T::invalid()
             }
         }

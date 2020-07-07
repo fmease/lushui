@@ -12,4 +12,4 @@ module realm: =
 data Thing: Type =
     thing: Thing
 
-ex-nihilo (x y: Thing): Thing = f z thing
+ex-nihilo (x y: Thing): Thing = f z Thing.thing

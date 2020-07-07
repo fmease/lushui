@@ -2,7 +2,6 @@
 //!
 //! It's not a compiler yet, still a bug-ridden feature-incomplete tree-walk interpreter
 //! with type-checking.
-//!
 
 #![feature(
     decl_macro,
@@ -10,6 +9,7 @@
     associated_type_defaults,
     never_type,
     bool_to_option,
+    default_free_fn
     // untagged_unions
 )]
 #![forbid(rust_2018_idioms, unused_must_use)]

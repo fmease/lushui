@@ -70,7 +70,7 @@ impl CrateScope {
         binder: Identifier,
         arguments: Vec<Expression>,
     ) -> Result<Option<Expression>> {
-        match self.bindings[binder.krate().unwrap()].kind {
+        match self.bindings[binder.crate_().unwrap()].kind {
             EntityKind::Foreign {
                 arity, function, ..
             } => Ok(if arguments.len() == arity {
@@ -100,9 +100,9 @@ impl CrateScope {
                 type_,
                 value,
             } => {
-                let index = binder.krate().unwrap();
+                let index = binder.crate_().unwrap();
                 debug_assert!(
-                    self.bindings[index].is_untyped_value()
+                    self.bindings[index].is_untyped()
                         || matches!(self.bindings[index], Entity { kind: EntityKind::Value { expression: None, .. }, .. })
                 );
                 self.bindings[index].kind = EntityKind::Value {
@@ -111,8 +111,8 @@ impl CrateScope {
                 };
             }
             Registration::DataBinding { binder, type_ } => {
-                let index = binder.krate().unwrap();
-                debug_assert!(self.bindings[index].is_untyped_value());
+                let index = binder.crate_().unwrap();
+                debug_assert!(self.bindings[index].is_untyped());
                 self.bindings[index].kind = EntityKind::DataType {
                     type_,
                     constructors: Vec::new(),
@@ -123,11 +123,11 @@ impl CrateScope {
                 type_,
                 data,
             } => {
-                let index = binder.krate().unwrap();
-                debug_assert!(self.bindings[index].is_untyped_value());
+                let index = binder.crate_().unwrap();
+                debug_assert!(self.bindings[index].is_untyped());
                 self.bindings[index].kind = EntityKind::Constructor { type_ };
 
-                match self.bindings.get_mut(data.krate().unwrap()).unwrap().kind {
+                match self.bindings.get_mut(data.crate_().unwrap()).unwrap().kind {
                     EntityKind::DataType {
                         ref mut constructors,
                         ..
@@ -136,8 +136,8 @@ impl CrateScope {
                 }
             }
             Registration::ForeignValueBinding { binder, type_ } => {
-                let index = binder.krate().unwrap();
-                debug_assert!(self.bindings[index].is_untyped_value());
+                let index = binder.crate_().unwrap();
+                debug_assert!(self.bindings[index].is_untyped());
 
                 self.bindings[index].kind = match &self.foreign_bindings.remove(binder.as_str()) {
                     Some((arity, function)) => EntityKind::Foreign {

@@ -8,9 +8,9 @@ data Beta: m0.T =
 
 b: Beta = alpha
 
-alpha: Beta = beta
+alpha: Beta = Beta.beta
 
-g: Gamma = gamma
+g: Gamma = Gamma.gamma
 
 data Gamma: Type =
     gamma: Gamma-Alias

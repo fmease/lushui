@@ -34,15 +34,6 @@ error[E020]: `Nat` is defined multiple times in this scope
 17 |     data Nat: Type =
    |          ^^^ redefinition
 
-error[E020]: `ALIKE` is defined multiple times in this scope
-   > ${DIRECTORY}/duplicate-bindings.lushui:26:5
-   |
-25 | data ALIKE: Type =
-   |      ----- previous definition
-   |
-26 |     ALIKE: ALIKE
-   |     ^^^^^ redefinition
-
 error[E020]: `zero` is defined multiple times in this scope
    > ${DIRECTORY}/duplicate-bindings.lushui:30:13
    |
@@ -52,5 +43,5 @@ error[E020]: `zero` is defined multiple times in this scope
 30 | use capsule.zero
    |             ^^^^ redefinition
 
-error: aborting due to 6 previous errors
+error: aborting due to 5 previous errors
 

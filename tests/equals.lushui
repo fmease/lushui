@@ -5,7 +5,7 @@ module core
 data Equals (A B: Type): Type =
     reflective (,A: Type): Equals A A
 
-a: Equals core.nat.Nat core.nat.Nat = reflective (,core.nat.Nat)
+a: Equals core.nat.Nat core.nat.Nat = Equals.reflective (,core.nat.Nat)
 
 ;;b: Equals Nat Text = Reflective (|Nat)
 

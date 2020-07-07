@@ -7,6 +7,8 @@ use core.(list.(List nil cons) bool.(Bool false true) unit.(Unit unit))
 data Any: Type =
     any: (A: Type) -> A -> Any
 
+use Any.any
+
 foo: List Bool =
     cons Bool false (cons Bool true (nil Bool))
 
