@@ -322,12 +322,6 @@ impl fmt::Debug for ValueView {
 }
 
 /// The scope of bindings inside of a function.
-///
-/// Can only store function parameters at the moment.
-///
-/// Comparison to [ModuleScope]: In function scopes, declarations shadow other ones with the same name.
-/// And since lambdas and let/ins are nested, they are ordered and
-/// most importantly, recursion only works explicitly via the fix-point-combinator.
 pub enum FunctionScope<'a> {
     CrateScope(&'a CrateScope),
     FunctionParameter {

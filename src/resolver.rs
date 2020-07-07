@@ -1,4 +1,14 @@
-//! Name resolver.
+//! The name resolver.
+//!
+//! It traverses the desugared AST (aka desugar-HIR) and registers bindings
+//! defined both at module-level using declarations and at function
+//! and pattern level as parameters. Furthermore, it resolves all paths inside
+//! expressions and patterns to resolver identifiers [Identifier] which
+//! either links to a crate-local index [CrateIndex] or a Debruijn-index [DebruijnIndex]
+//! respectively.
+//!
+//! It does two main passes and a (hopefully) small one for use declarations to support
+//! out of order declarations.
 //!
 //! ## Future Features
 //!
@@ -26,6 +36,7 @@ use std::{
 
 const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
 
+/// The crate scope for module-level bindings.
 #[derive(Default)]
 pub struct CrateScope {
     pub(crate) program_entry: Option<Identifier>,
@@ -33,7 +44,7 @@ pub struct CrateScope {
     ///
     /// The first element will always be the root module.
     pub(crate) bindings: Bindings,
-    /// For resolving out-of-order use declarations.
+    /// For resolving out of order use declarations.
     unresolved_uses: HashMap<CrateIndex, UnresolvedUse>,
 }
 
@@ -53,6 +64,7 @@ impl fmt::Debug for CrateScope {
 
 pub type Bindings = IndexVec<CrateIndex, Entity>;
 
+// no Display impl because of orphan rules
 pub fn display_bindings(bindings: &Bindings) -> String {
     let break_on = |predicate| if predicate { "\n" } else { "" };
 
@@ -72,13 +84,12 @@ pub fn display_bindings(bindings: &Bindings) -> String {
         .collect()
 }
 
-#[derive(Debug)]
-struct UnresolvedUse {
-    reference: Path,
-    module: CrateIndex,
-}
-
 impl CrateScope {
+    /// The crate root.
+    ///
+    /// Unbeknownst to the subdeclarations of the crate, it takes the name
+    /// given by external sources, the crate name. Inside the crate, the root
+    /// can only ever be referenced through the keyword `crate`.
     fn root(&self) -> CrateIndex {
         CrateIndex(0)
     }
@@ -176,6 +187,9 @@ impl CrateScope {
         Ok(())
     }
 
+    /// Register a binding to a given entity.
+    ///
+    /// Apart from actually registering, mainly checks for name duplication.
     fn register_binding(
         &mut self,
         binder: &parser::Identifier,
@@ -211,6 +225,7 @@ impl CrateScope {
         Ok(index)
     }
 
+    /// Resolves a syntactic path given a module.
     fn resolve_path<Target: ResolutionTarget>(
         &self,
         path: &Path,
@@ -274,6 +289,10 @@ impl CrateScope {
             .and_then(|index| self.resolve_use(index))
     }
 
+    /// Resolve indirect uses aka chains of use bindings.
+    ///
+    /// Makes a lot of sense to be honest and it's just an arbitrary invariant
+    /// I created to make things easir to reason about during resolution.
     fn resolve_use(&self, index: CrateIndex) -> Result<CrateIndex, Error> {
         use EntityKind::*;
 
@@ -286,6 +305,7 @@ impl CrateScope {
         }
     }
 
+    /// Resolve a single identifier (in contrast to a whole path).
     fn resolve_identifier<Target: ResolutionTarget>(
         &self,
         identifier: &parser::Identifier,
@@ -338,6 +358,14 @@ impl CrateScope {
     }
 }
 
+/// Partially resolved use binding.
+#[derive(Debug)]
+struct UnresolvedUse {
+    reference: Path,
+    module: CrateIndex,
+}
+
+/// Marker to specify it's okay to resolve to either value or module.
 enum ValueOrModule {}
 
 impl ResolutionTarget for ValueOrModule {
@@ -356,6 +384,7 @@ impl ResolutionTarget for ValueOrModule {
     }
 }
 
+/// Marker to specify to only resolve to values.
 enum OnlyValue {}
 
 impl ResolutionTarget for OnlyValue {
@@ -380,6 +409,12 @@ impl ResolutionTarget for OnlyValue {
     }
 }
 
+/// Specifies behavior for resolving different sorts of entities.
+///
+/// Right now, it's only about the difference between values and modules
+/// since modules are not values (non-first-class). As such, this trait
+/// allows to implementors to define what should happen with the resolved entity
+/// if it appears in a specific location
 trait ResolutionTarget {
     type Output;
 
@@ -392,18 +427,40 @@ trait ResolutionTarget {
     ) -> Result<Self::Output>;
 }
 
+/// Some more additional information for resolving a declaration.
+///
+/// Grown out of the situation that constructors are represented as
+/// any other declaration thus lacking knowledge about its parent
+/// data declaration which is necessary for resolving.
 #[derive(Default)]
 struct Environment {
     data: Option<CrateIndex>,
 }
 
 impl Declaration<Desugared> {
+    /// Resolve a desugar-HIR declaration to a resolver-HIR declaration.
+    ///
+    /// It performs three passes to resolve all possible out of order declarations.
+    /// If the declaration passed is not a module, this function will panic as it
+    /// requires a crate root which is defined through the root module.
     pub fn resolve(self, scope: &mut CrateScope) -> Results<Declaration<Resolved>> {
         self.resolve_first_pass(None, scope, default())?;
         scope.resolve_unresolved_uses()?;
         self.resolve_second_pass(None, scope, default())
     }
 
+    /// Partially resolve a declaration merely registering declarations.
+    ///
+    /// This traverses all declarations and registers module-level bindings
+    /// checking that they are only defined once per namespace.
+    /// Use bindings which refer to an unknown binding are marked as such
+    /// to be resolved in the second, a minor pass.
+    ///
+    /// This also searches the program entry and stores it when it finds it.
+    ///
+    /// In contrast to [Self::resolve_second_pass], this does not actually return a
+    /// new intermediate HIR because of too much mapping and type-system boilerplate
+    /// and it's just not worth is memory-wise.
     fn resolve_first_pass(
         &self,
         module: Option<CrateIndex>,
@@ -494,6 +551,13 @@ impl Declaration<Desugared> {
         Ok(())
     }
 
+    /// Completely resolve a desugar-HIR declaration to a resolver-HIR declaration.
+    ///
+    /// Tries to resolve all expressions and patterns contained within all declarations
+    /// and actually builds the new HIR.
+    ///
+    /// This is the second major pass (but the third in total including the middle minor
+    /// use-declaration resolving one).
     fn resolve_second_pass(
         self,
         module: Option<CrateIndex>,

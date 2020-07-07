@@ -494,8 +494,6 @@ impl parser::Expression {
 
 impl parser::Pattern {
     /// Lower a pattern from AST to HIR.
-    ///
-    /// Currently, [parser::expression::Pattern] and [Pattern] are identical (apart from forgetting span information)!
     fn desugar(self) -> hir::Pattern<Desugared> {
         use parser::PatternKind::*;
 
