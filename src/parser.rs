@@ -799,7 +799,7 @@ impl Parser<'_> {
             }
             TextLiteral => {
                 self.advance();
-                expr! { TextLiteral[token.span] { value: token.text_literal() } }
+                expr! { TextLiteral[token.span](token.text_literal()) }
             }
             // @Task use advance_with//finish
             OpeningRoundBracket => return self.parse_bracketed(Self::parse_expression),
@@ -1071,7 +1071,7 @@ impl Parser<'_> {
             }
             TextLiteral => {
                 self.advance();
-                pat! { TextLiteral[token.span] { value: token.text_literal() } }
+                pat! { TextLiteral[token.span](token.text_literal()) }
             }
             Backslash => {
                 self.advance();

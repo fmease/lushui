@@ -9,10 +9,13 @@
     associated_type_defaults,
     never_type,
     bool_to_option,
-    default_free_fn
+    default_free_fn,
+    const_generics
     // untagged_unions
 )]
 #![forbid(rust_2018_idioms, unused_must_use)]
+// @Note noted ^^ we will only do very basic stuff w/ const generics
+#![allow(incomplete_features)]
 
 pub mod desugar;
 pub mod diagnostic;
@@ -35,10 +38,12 @@ pub const INDENTATION_IN_SPACES: usize = 4;
 
 use num_bigint::BigInt as Int;
 use num_bigint::BigUint as Nat;
-use smallvec::{smallvec, SmallVec};
+use smallvec::smallvec;
 use string_cache::DefaultAtom as Atom;
 
 use once_cell::sync::OnceCell;
+
+type SmallVec<T, const N: usize> = smallvec::SmallVec<[T; N]>;
 
 pub static OPTIONS: OnceCell<Options> = OnceCell::new();
 

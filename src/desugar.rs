@@ -1,12 +1,7 @@
 //! The desugaring stage.
 //!
-//! Additionally, this phase validates attributes.
-//!
-//! ## Issues
-//!
-//! * and information concerning modules
-//! * paths are always simple (inherited by parser)
-//! * patterns follow old format (should use the format of the parser)
+//! Additionally, this phase validates attributes and checks if the mandatory
+//! type annotations are present.
 
 use std::{fmt, iter::once};
 
@@ -40,7 +35,7 @@ impl parser::Declaration {
     pub fn desugar(
         mut self,
         map: &mut SourceMap,
-    ) -> Results<SmallVec<[hir::Declaration<Desugared>; 1]>> {
+    ) -> Results<SmallVec<hir::Declaration<Desugared>, 1>> {
         use parser::DeclarationKind::*;
 
         self.validate_attributes()?;
@@ -232,7 +227,7 @@ impl parser::Declaration {
                     bindings: Vec<UseBindings>,
                     span: Span,
                     attributes: &Attributes,
-                    declarations: &mut SmallVec<[hir::Declaration<Desugared>; 1]>,
+                    declarations: &mut SmallVec<hir::Declaration<Desugared>, 1>,
                 ) {
                     for binding in bindings {
                         match binding {
@@ -355,7 +350,7 @@ impl parser::Declaration {
     }
 }
 
-impl InvalidFallback for SmallVec<[hir::Declaration<Desugared>; 1]> {
+impl InvalidFallback for SmallVec<hir::Declaration<Desugared>, 1> {
     fn invalid() -> Self {
         SmallVec::new()
     }
@@ -385,9 +380,7 @@ impl parser::Expression {
             TypeLiteral => expr! { Type[self.span] },
             NumberLiteral(literal) => expr! { Number[self.span](literal) },
             TextLiteral(text) => expr! {
-                Text[self.span] {
-                    value: text.value,
-                }
+                Text[self.span](text)
             },
             Path(path) => expr! {
                 Binding[self.span] {
@@ -498,11 +491,11 @@ impl parser::Pattern {
         use parser::PatternKind::*;
 
         match self.kind {
-            NumberLiteral(literal) => pat! { Number[self.span](literal) },
+            NumberLiteral(literal) => pat! {
+                Number[self.span](literal)
+            },
             TextLiteral(literal) => pat! {
-                Text[self.span] {
-                    value: literal.value,
-                }
+                Text[self.span](literal)
             },
             Path(path) => pat! {
                 Binding[self.span] {

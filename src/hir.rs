@@ -10,7 +10,6 @@ use crate::{
     span::{SourceFile, Span, Spanned, Spanning},
     support::InvalidFallback,
 };
-use freestanding::freestanding;
 use std::{fmt::Display, rc::Rc};
 
 // @Note the marker clone should ideally not be there (it's a marker type) but rustc's derive(Clone)
@@ -60,74 +59,56 @@ impl<P: Pass> InvalidFallback for Declaration<P> {
     }
 }
 
-#[freestanding]
-#[streamline(Box)]
 pub enum DeclarationKind<P: Pass> {
-    Value {
-        binder: P::Binder,
-        type_annotation: Expression<P>,
-        expression: Option<Expression<P>>,
-    },
-    Data {
-        binder: P::Binder,
-        type_annotation: Expression<P>,
-        constructors: Option<Vec<Declaration<P>>>,
-    },
-    Constructor {
-        binder: P::Binder,
-        type_annotation: Expression<P>,
-    },
-    Module {
-        binder: P::Binder,
-        file: Rc<SourceFile>,
-        declarations: Vec<Declaration<P>>,
-    },
-    Use {
-        binder: Option<P::Binder>,
-        target: P::Target,
-    },
+    Value(Box<Value<P>>),
+    Data(Box<Data<P>>),
+    Constructor(Box<Constructor<P>>),
+    Module(Box<Module<P>>),
+    Use(Box<Use<P>>),
     Invalid,
+}
+
+pub struct Value<P: Pass> {
+    pub binder: P::Binder,
+    pub type_annotation: Expression<P>,
+    pub expression: Option<Expression<P>>,
+}
+
+pub struct Data<P: Pass> {
+    pub binder: P::Binder,
+    pub type_annotation: Expression<P>,
+    pub constructors: Option<Vec<Declaration<P>>>,
+}
+
+pub struct Constructor<P: Pass> {
+    pub binder: P::Binder,
+    pub type_annotation: Expression<P>,
+}
+
+pub struct Module<P: Pass> {
+    pub binder: P::Binder,
+    pub file: Rc<SourceFile>,
+    pub declarations: Vec<Declaration<P>>,
+}
+
+pub struct Use<P: Pass> {
+    pub binder: Option<P::Binder>,
+    pub target: P::Target,
 }
 
 pub type Expression<P> = Spanned<ExpressionKind<P>>;
 
-#[freestanding]
-#[streamline(Rc)]
 #[derive(Clone)]
 pub enum ExpressionKind<P: Pass> {
-    PiType {
-        parameter: Option<P::Binder>,
-        domain: Expression<P>,
-        codomain: Expression<P>,
-        explicitness: Explicitness,
-    },
-    Application {
-        callee: Expression<P>,
-        argument: Expression<P>,
-        explicitness: Explicitness,
-    },
+    PiType(Rc<PiType<P>>),
+    Application(Rc<Application<P>>),
     Type,
-    #[skip]
-    Number(Number),
-    #[parameterless]
-    Text {
-        value: String,
-    },
-    Binding {
-        binder: P::ReferencedBinder,
-    },
-    Lambda {
-        parameter: P::Binder,
-        parameter_type_annotation: Option<Expression<P>>,
-        explicitness: Explicitness,
-        body_type_annotation: Option<Expression<P>>,
-        body: Expression<P>,
-    },
+    Number(Rc<Number>),
+    Text(Rc<String>),
+    Binding(Rc<Binding<P>>),
+    Lambda(Rc<Lambda<P>>),
     UseIn,
-    CaseAnalysis {
-        subject: Expression<P>,
-        cases: Vec<Case<P>>,
-    },
+    CaseAnalysis(Rc<CaseAnalysis<P>>),
     // @Task move this the documentation below somewhere else (module-level documentation)
     // because this applies to so many types
     /// A sham node emitted when a compiler pass runs into an error state.
@@ -151,15 +132,58 @@ pub enum ExpressionKind<P: Pass> {
     /// micro pass compilers are known to be very fast actually).
     Invalid,
     // @Task move??? this only exists in typer,interpreter
-    Substitution {
-        substitution: crate::interpreter::Substitution,
-        expression: Expression<P>,
-    },
+    Substitution(Rc<Substitution<P>>),
     // @Task move??? typer,interpreter
-    ForeignApplication {
-        callee: P::ForeignApplicationBinder,
-        arguments: Vec<Expression<P>>,
-    },
+    ForeignApplication(Rc<ForeignApplication<P>>),
+}
+
+#[derive(Clone)]
+pub struct PiType<P: Pass> {
+    pub parameter: Option<P::Binder>,
+    pub domain: Expression<P>,
+    pub codomain: Expression<P>,
+    pub explicitness: Explicitness,
+}
+
+#[derive(Clone)]
+pub struct Application<P: Pass> {
+    pub callee: Expression<P>,
+    pub argument: Expression<P>,
+    pub explicitness: Explicitness,
+}
+
+#[derive(Clone)]
+pub struct Binding<P: Pass> {
+    pub binder: P::ReferencedBinder,
+}
+
+#[derive(Clone)]
+pub struct Lambda<P: Pass> {
+    pub parameter: P::Binder,
+    pub parameter_type_annotation: Option<Expression<P>>,
+    pub explicitness: Explicitness,
+    pub body_type_annotation: Option<Expression<P>>,
+    pub body: Expression<P>,
+}
+
+#[derive(Clone)]
+pub struct CaseAnalysis<P: Pass> {
+    pub subject: Expression<P>,
+    pub cases: Vec<Case<P>>,
+}
+
+#[derive(Clone)]
+// @Task move??? this only exists in typer,interpreter
+pub struct Substitution<P: Pass> {
+    pub substitution: crate::interpreter::Substitution,
+    pub expression: Expression<P>,
+}
+
+#[derive(Clone)]
+// @Task move??? typer,interpreter
+pub struct ForeignApplication<P: Pass> {
+    pub callee: P::ForeignApplicationBinder,
+    pub arguments: Vec<Expression<P>>,
 }
 
 impl<P: Pass> InvalidFallback for Expression<P> {
@@ -176,23 +200,25 @@ pub struct Case<P: Pass> {
 
 pub type Pattern<P> = Spanned<PatternKind<P>>;
 
-#[freestanding]
-#[streamline(Rc)]
 #[derive(Clone)]
 pub enum PatternKind<P: Pass> {
-    #[skip]
-    Number(Number),
-    #[skip]
-    Text(Text),
-    #[skip]
-    Binding(Binding<P>),
-    Binder {
-        binder: P::Binder,
-    },
-    Deapplication {
-        callee: Pattern<P>,
-        argument: Pattern<P>,
-    },
+    Number(Rc<Number>),
+    Text(Rc<String>),
+    Binding(Rc<Binding<P>>),
+    Binder(Rc<Binder<P>>),
+    Deapplication(Rc<Deapplication<P>>),
+}
+
+/// A binder inside of a pattern.
+#[derive(Clone)]
+pub struct Binder<P: Pass> {
+    pub binder: P::Binder,
+}
+
+#[derive(Clone)]
+pub struct Deapplication<P: Pass> {
+    pub callee: Pattern<P>,
+    pub argument: Pattern<P>,
 }
 
 pub macro decl {

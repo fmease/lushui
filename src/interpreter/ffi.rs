@@ -228,7 +228,7 @@ impl Value {
         use ExpressionKind::*;
 
         Some(match &expression.kind {
-            Text(text) => Self::Text(text.value.clone()),
+            Text(text) => Self::Text(text.as_ref().clone()),
             Number(number) => {
                 use crate::lexer::Number::*;
 
@@ -282,7 +282,7 @@ impl Value {
                     .clone()
                     .ok_or_else(missing_inherent)?,
             ),
-            Self::Text(value) => expr! { Text[] { value } },
+            Self::Text(value) => expr! { Text[](value) },
             Self::Nat(value) => expr! { Number[](Nat(value)) },
             Self::Nat32(value) => expr! { Number[](Nat32(value)) },
             Self::Nat64(value) => expr! { Number[](Nat64(value)) },

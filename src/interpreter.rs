@@ -1,15 +1,11 @@
-//! The tree-walk interpreter.
-//!
-//! The first backend of lushuic. Later, we are going to add a bytecode interpreter for
-//! evaluation. Still, this interpreter will stay because it is necessary for type-checking.
+//! The tree-walk interpreter necessary for type-checking.
 //!
 //! ## Issues
 //!
 //! * too many bugs
-//! * case analysis not implemented
+//! * full case analysis not implemented
 //! * non-trivial type inference not done
 //! * untyped/unkinded AST-transformations
-//! * integration and regression tests missing
 
 pub(crate) mod ffi;
 pub(crate) mod scope;
@@ -17,17 +13,14 @@ pub(crate) mod scope;
 use crate::{
     diagnostic::todo,
     diagnostic::{Code, Diagnostic, Result},
-    hir::{self, *},
+    hir::*,
     parser::Explicit,
-    resolver::Resolved,
     span::Spanning,
     support::InvalidFallback,
-    typer,
+    typer::{self, Expression},
 };
 pub use scope::CrateScope;
 use scope::{FunctionScope, ValueView};
-
-type Expression = hir::Expression<Resolved>;
 
 impl CrateScope {
     /// Run the entry point of the crate.
@@ -477,7 +470,7 @@ impl Expression {
             }
             (Type, Type) => true,
             (Number(number0), Number(number1)) => number0 == number1,
-            (Text(text0), Text(text1)) => text0.value == text1.value,
+            (Text(text0), Text(text1)) => text0 == text1,
             // @Question what about explicitness?
             (PiType(pi0), PiType(pi1)) => {
                 use self::Substitution::Shift;

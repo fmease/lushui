@@ -460,7 +460,7 @@ impl Declaration<Desugared> {
     ///
     /// In contrast to [Self::resolve_second_pass], this does not actually return a
     /// new intermediate HIR because of too much mapping and type-system boilerplate
-    /// and it's just not worth is memory-wise.
+    /// and it's just not worth it memory-wise.
     fn resolve_first_pass(
         &self,
         module: Option<CrateIndex>,
@@ -830,9 +830,7 @@ impl Pattern<Desugared> {
                 Number[self.span](nat)
             },
             Text(text) => pat! {
-                Text[self.span] {
-                    value: unrc!(text.value),
-                }
+                Text[self.span](text)
             },
             Binding(binding) => pat! {
                 Binding[self.span] {

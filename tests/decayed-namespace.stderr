@@ -1,0 +1,11 @@
+error[E022]: value `A'` is not a namespace
+   > ${DIRECTORY}/decayed-namespace.lushui:12:15
+   |
+12 | y: Alpha = A'.alpha
+   |            -- a value, not a namespace
+   |
+12 | y: Alpha = A'.alpha
+   |               ^^^^^ reference to a subdeclaration
+
+error: aborting due to previous error
+

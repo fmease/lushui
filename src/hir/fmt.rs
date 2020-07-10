@@ -89,7 +89,7 @@ impl<P: Pass> Display for Expression<P> {
             }
             Type => write!(f, "Type"),
             Number(literal) => write!(f, "{}", literal),
-            Text(literal) => write!(f, "{:?}", literal.value),
+            Text(literal) => write!(f, "{:?}", literal),
             Binding(path) => write!(f, "{}", path.binder),
             Lambda(lambda) => write!(f, "{}", lambda),
             UseIn => todo!(),
@@ -177,7 +177,7 @@ impl<P: Pass> Display for Pattern<P> {
 
         match &self.kind {
             Number(literal) => write!(f, "{}", literal),
-            Text(literal) => write!(f, "{:?}", literal.value),
+            Text(literal) => write!(f, "{:?}", literal),
             Binding(path) => write!(f, "{}", path.binder),
             Binder(binding) => write!(f, "\\{}", binding.binder),
             Deapplication(application) => {

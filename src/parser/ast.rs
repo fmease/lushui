@@ -11,7 +11,6 @@ use crate::{
     support::InvalidFallback,
     Atom, SmallVec,
 };
-use freestanding::freestanding;
 
 #[derive(Debug)]
 pub struct Declaration {
@@ -53,40 +52,55 @@ impl Spanning for Declaration {
 }
 
 /// The syntax node of a declaration.
-#[freestanding]
-#[streamline(Box)]
 #[derive(Debug)]
 pub enum DeclarationKind {
-    /// The syntax node of a value declaration.
-    Value {
-        binder: Identifier,
-        parameters: Parameters,
-        type_annotation: Option<Expression>,
-        expression: Option<Expression>,
-    },
-    /// The syntax node of a data declaration.
-    Data {
-        binder: Identifier,
-        parameters: Parameters,
-        type_annotation: Option<Expression>,
-        constructors: Option<Vec<Declaration>>,
-    },
-    /// The syntax node of a constructor.
-    Constructor {
-        binder: Identifier,
-        parameters: Parameters,
-        type_annotation: Option<Expression>,
-    },
-    /// The syntax node of a module declaration.
-    Module {
-        binder: Identifier,
-        file: Rc<SourceFile>,
-        // @Task support for constructor (and field) exposures (paths + multipaths)
-        exposures: Vec<Identifier>,
-        declarations: Option<Vec<Declaration>>,
-    },
-    /// The syntax node of a use declaration.
-    Use { bindings: UseBindings },
+    Value(Box<Value>),
+    Data(Box<Data>),
+    Constructor(Box<Constructor>),
+    Module(Box<Module>),
+    Use(Box<Use>),
+}
+
+/// The syntax node of a value declaration.
+#[derive(Debug)]
+pub struct Value {
+    pub binder: Identifier,
+    pub parameters: Parameters,
+    pub type_annotation: Option<Expression>,
+    pub expression: Option<Expression>,
+}
+
+/// The syntax node of a data declaration.
+#[derive(Debug)]
+pub struct Data {
+    pub binder: Identifier,
+    pub parameters: Parameters,
+    pub type_annotation: Option<Expression>,
+    pub constructors: Option<Vec<Declaration>>,
+}
+
+/// The syntax node of a constructor.
+#[derive(Debug)]
+pub struct Constructor {
+    pub binder: Identifier,
+    pub parameters: Parameters,
+    pub type_annotation: Option<Expression>,
+}
+
+/// The syntax node of a module declaration.
+#[derive(Debug)]
+pub struct Module {
+    pub binder: Identifier,
+    pub file: Rc<SourceFile>,
+    // @Task support for constructor (and field) exposures (paths + multipaths)
+    pub exposures: Vec<Identifier>,
+    pub declarations: Option<Vec<Declaration>>,
+}
+
+/// The syntax node of a use declaration.
+#[derive(Debug)]
+pub struct Use {
+    pub bindings: UseBindings,
 }
 
 // @Task documentation, span information
@@ -203,55 +217,64 @@ bitflags::bitflags! {
 pub type Expression = Spanned<ExpressionKind>;
 
 /// The syntax node of an expression.
-#[freestanding]
-#[streamline(Box)]
 #[derive(Debug, Clone)]
 pub enum ExpressionKind {
-    /// The syntax node of pi-type literals.
-    PiTypeLiteral {
-        binder: Option<Identifier>,
-        parameter: Expression,
-        expression: Expression,
-        explicitness: Explicitness,
-    },
-    /// The syntax node of function application.
-    Application {
-        callee: Expression,
-        argument: Expression,
-        explicitness: Explicitness,
-    },
+    PiTypeLiteral(Box<PiTypeLiteral>),
+    Application(Box<Application>),
     TypeLiteral,
-    #[skip]
-    NumberLiteral(Number),
-    TextLiteral {
-        value: String,
-    },
-    Path {
-        head: Option<Head>,
-        segments: SmallVec<[Identifier; 1]>,
-    },
-    /// The syntax node of a lambda literal expression.
-    LambdaLiteral {
-        parameters: Parameters,
-        body_type_annotation: Option<Expression>,
-        body: Expression,
-    },
-    /// The syntax-node of a let-in expression.
-    LetIn {
-        binder: Identifier,
-        parameters: Parameters,
-        type_annotation: Option<Expression>,
-        // @Task improve upon naming
-        expression: Expression,
-        scope: Expression,
-    },
+    NumberLiteral(Box<Number>),
+    TextLiteral(Box<String>),
+    Path(Box<Path>),
+    LambdaLiteral(Box<LambdaLiteral>),
+    LetIn(Box<LetIn>),
     UseIn,
-    CaseAnalysis {
-        expression: Expression,
-        cases: Vec<Case>,
-    },
+    CaseAnalysis(Box<CaseAnalysis>),
     /// See documentation on [crate::hir::Expression::Invalid].
     Invalid,
+}
+
+/// The syntax node of pi-type literals.
+#[derive(Debug, Clone)]
+pub struct PiTypeLiteral {
+    pub binder: Option<Identifier>,
+    pub parameter: Expression,
+    pub expression: Expression,
+    pub explicitness: Explicitness,
+}
+/// The syntax node of function application.
+#[derive(Debug, Clone)]
+pub struct Application {
+    pub callee: Expression,
+    pub argument: Expression,
+    pub explicitness: Explicitness,
+}
+
+#[derive(Debug, Clone)]
+pub struct Path {
+    pub head: Option<Head>,
+    pub segments: SmallVec<Identifier, 1>,
+}
+/// The syntax node of a lambda literal expression.
+#[derive(Debug, Clone)]
+pub struct LambdaLiteral {
+    pub parameters: Parameters,
+    pub body_type_annotation: Option<Expression>,
+    pub body: Expression,
+}
+/// The syntax-node of a let-in expression.
+#[derive(Debug, Clone)]
+pub struct LetIn {
+    pub binder: Identifier,
+    pub parameters: Parameters,
+    pub type_annotation: Option<Expression>,
+    // @Task improve upon naming
+    pub expression: Expression,
+    pub scope: Expression,
+}
+#[derive(Debug, Clone)]
+pub struct CaseAnalysis {
+    pub expression: Expression,
+    pub cases: Vec<Case>,
 }
 
 impl InvalidFallback for Expression {
@@ -308,7 +331,7 @@ impl Deref for Parameters {
 
 #[derive(Debug, Clone)]
 pub struct ParameterGroup {
-    pub parameters: crate::SmallVec<[Identifier; 1]>,
+    pub parameters: crate::SmallVec<Identifier, 1>,
     pub type_annotation: Option<Expression>,
     pub explicitness: Explicitness,
     pub span: Span,
@@ -322,23 +345,25 @@ impl Spanning for ParameterGroup {
 
 pub type Pattern = Spanned<PatternKind>;
 
-#[freestanding]
-#[streamline(Box)]
 #[derive(Debug, Clone)]
 pub enum PatternKind {
-    #[skip]
-    NumberLiteral(Number),
-    #[skip]
-    TextLiteral(TextLiteral),
-    #[skip]
-    Path(Path),
-    Binder {
-        binder: Identifier,
-    },
-    Deapplication {
-        callee: Pattern,
-        argument: Pattern,
-    },
+    NumberLiteral(Box<Number>),
+    TextLiteral(Box<String>),
+    Path(Box<Path>),
+    Binder(Box<Binder>),
+    Deapplication(Box<Deapplication>),
+}
+
+/// A binder inside of a pattern.
+#[derive(Debug, Clone)]
+pub struct Binder {
+    pub binder: Identifier,
+}
+
+#[derive(Debug, Clone)]
+pub struct Deapplication {
+    pub callee: Pattern,
+    pub argument: Pattern,
 }
 
 pub type Head = Spanned<HeadKind>;

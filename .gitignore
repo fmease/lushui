@@ -2,3 +2,4 @@
 **/*.rs.bk
 /massif.out.*
 /tests/untracked
+history.txt

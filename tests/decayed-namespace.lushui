@@ -1,0 +1,12 @@
+;; TEST fail check
+
+data Alpha: Type =
+    alpha: Alpha
+
+use Alpha as A
+
+x: Alpha = A.alpha
+
+A': Type = Alpha
+
+y: Alpha = A'.alpha
