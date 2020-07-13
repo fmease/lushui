@@ -20,8 +20,8 @@ impl ByteIndex {
         Self::new(source.span.start.0 + index.0)
     }
 
-    fn try_add_offset(self, offset: u32) -> Result<Self> {
-        let sum = self.0.checked_add(offset).ok_or(offset_overflow())?;
+    fn try_add_offset(self, offset: u32) -> Result<Self, Error> {
+        let sum = self.0.checked_add(offset).ok_or(Error::OffsetOverflow)?;
 
         Ok(Self::new(sum))
     }
@@ -276,19 +276,21 @@ pub struct SourceMap {
 }
 
 impl SourceMap {
-    fn next_offset(&self) -> Result<ByteIndex> {
+    fn next_offset(&self) -> Result<ByteIndex, Error> {
         self.files
             .last()
             .map(|file| file.span.end.try_add_offset(1))
             .unwrap_or(Ok(START_OF_FIRST_SOURCE_FILE))
     }
 
-    pub fn load(&mut self, path: &str) -> Result<Rc<SourceFile>> {
-        let source = std::fs::read_to_string(path).map_err(io_error)?;
+    // @Note this could instead return an index, and index into an IndexVec of
+    // SourceFiles
+    pub fn load(&mut self, path: &str) -> Result<Rc<SourceFile>, Error> {
+        let source = std::fs::read_to_string(path).map_err(Error::LoadFailure)?;
         self.add(path.to_owned(), source)
     }
 
-    fn add(&mut self, name: String, source: String) -> Result<Rc<SourceFile>> {
+    fn add(&mut self, name: String, source: String) -> Result<Rc<SourceFile>, Error> {
         let file = Rc::new(SourceFile::new(name, source, self.next_offset()?)?);
         self.files.push(file.clone());
 
@@ -460,11 +462,11 @@ pub struct SourceFile {
 }
 
 impl SourceFile {
-    pub fn new(name: String, content: String, start: ByteIndex) -> Result<Self> {
+    pub fn new(name: String, content: String, start: ByteIndex) -> Result<Self, Error> {
         use std::convert::TryFrom;
 
         let offset = u32::try_from(content.len())
-            .map_err(|_| offset_overflow())?
+            .map_err(|_| Error::OffsetOverflow)?
             .saturating_sub(1);
 
         Ok(Self {
@@ -493,18 +495,32 @@ impl fmt::Debug for SourceFile {
     }
 }
 
-// @Task add file name once we support it #SpanOfWholeFileInDiagnostic
-fn offset_overflow() -> Diagnostic {
-    Diagnostic::fatal().with_message("file too large")
+use std::io;
+
+pub enum Error {
+    OffsetOverflow,
+    LoadFailure(io::Error),
 }
 
-fn io_error(error: std::io::Error) -> Diagnostic {
-    use std::io::ErrorKind::*;
+impl Error {
+    pub fn message(&self) -> &'static str {
+        use io::ErrorKind::*;
 
-    Diagnostic::fatal().with_message(match error.kind() {
-        NotFound => "referenced file does not exist",
-        PermissionDenied => "file does not have required permissions",
-        InvalidData => "file contains invalid UTF-8",
-        _ => "an I/O error occurred",
-    })
+        match self {
+            // @Task add file name once we support it #SpanOfWholeFileInDiagnostic
+            Error::OffsetOverflow => "file too large",
+            Error::LoadFailure(error) => match error.kind() {
+                NotFound => "referenced file does not exist",
+                PermissionDenied => "file does not have required permissions",
+                InvalidData => "file contains invalid UTF-8",
+                _ => "an I/O error occurred",
+            },
+        }
+    }
+}
+
+impl From<Error> for Diagnostic {
+    fn from(error: Error) -> Self {
+        Diagnostic::fatal().with_message(error.message())
+    }
 }

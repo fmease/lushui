@@ -701,7 +701,7 @@ impl Parser<'_> {
 
                 Ok((explicitness, Some(binder), parameter))
             })
-            .or_else(|_| {
+            .or_else(|_| -> Result<_> {
                 let parameter = self.parse_application_or_lower()?;
                 span = parameter.span;
                 Ok((Explicit, None, parameter))

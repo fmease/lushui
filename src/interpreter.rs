@@ -520,7 +520,7 @@ impl Expression {
                         .into_iter()
                         .zip(foreign1.arguments.clone())
                         .map(|(argument0, argument1)| argument0.equals(argument1, scope))
-                        .fold(Ok(true), |all, this| Ok(all? && this?))?
+                        .fold(Ok(true), |all: Result<_>, this| Ok(all? && this?))?
             }
             (Invalid, _) | (_, Invalid) => panic!("trying to check equality on an invalid node"),
             _ => false,

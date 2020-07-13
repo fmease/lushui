@@ -313,7 +313,7 @@ impl CrateScope {
     ) -> Result<Target::Output> {
         let index = self
             .resolve_first_segment(identifier, module)
-            .map_err(|error| error.try_into().unwrap())?;
+            .map_err(|error| Diagnostic::try_from(error).unwrap())?;
         Target::resolve_simple_path(identifier, &self.bindings[index].kind, index)
     }
 

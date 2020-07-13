@@ -198,7 +198,7 @@ fn main() {
 
     let result: Results<()> = (|| {
         let path = merged_arguments.file;
-        let source_file = map.load(path).many_err()?;
+        let source_file = map.load(path).map_err(Into::into).many_err()?;
 
         let crate_name = lushui::parse_crate_name(path).many_err()?;
 

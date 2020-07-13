@@ -174,20 +174,44 @@ impl parser::Declaration {
                 let declarations = match module.declarations {
                     Some(declarations) => declarations,
                     None => {
-                        let path = std::path::Path::new(&module.file.name)
+                        use crate::{lexer::Lexer, parser::Parser, span};
+                        use std::path::Path;
+
+                        let path = Path::new(&module.file.name)
                             .ancestors()
                             .nth(1)
                             .unwrap()
                             .join(&format!("{}.{}", module.binder, crate::FILE_EXTENSION));
-                        let file = map.load(path.to_str().unwrap()).many_err()?;
-                        let tokens = crate::lexer::Lexer::new(&file).lex()?;
-                        let node = parser::Parser::new(file, &tokens)
+
+                        let declaration_span = self.span;
+
+                        let file = map
+                            .load(path.to_str().unwrap())
+                            .map_err(|error| match error {
+                                // @Task code
+                                // @Task also print `path` (as a diagnostic note)
+                                span::Error::LoadFailure(_) => Diagnostic::error()
+                                    .with_message(format!(
+                                        "could not load module `{}`",
+                                        module.binder
+                                    ))
+                                    // @Note just using error.message() does not cut it
+                                    // it outputs "references file bla bla" that's bad UI
+                                    .with_labeled_span(&declaration_span, error.message()),
+                                // @Task add context information
+                                error => error.into(),
+                            })
+                            .many_err()?;
+
+                        let tokens = Lexer::new(&file).lex()?;
+                        let node = Parser::new(file, &tokens)
                             .parse_top_level(module.binder.clone())
                             .many_err()?;
                         let module = match node.kind {
                             Module(module) => module,
                             _ => unreachable!(),
                         };
+                        // @Temporary
                         if !node.attributes.is_empty() {
                             Diagnostic::warning()
                                 .with_message("attributes on module headers are ignored right now")
