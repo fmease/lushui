@@ -1,0 +1,35 @@
+error[E032]: expected type `X`, got type `Type`
+   > ${DIRECTORY}/type-mismatch.lushui:16:8
+   |
+16 | a: X = Type
+   |    - expected due to this
+   |
+16 | a: X = Type
+   |        ^^^^ has wrong type
+
+error[E032]: expected type `Type`, got type `X`
+   > ${DIRECTORY}/type-mismatch.lushui:17:11
+   |
+17 | b: Type = X.x
+   |    ---- expected due to this
+   |
+17 | b: Type = X.x
+   |           ^^^ has wrong type
+
+error[E032]: expected type `Type`, got type `Bool`
+   > ${DIRECTORY}/type-mismatch.lushui:21:4
+   |
+21 | x: false = false
+   |    ^^^^^ has wrong type
+
+error: expected type `Bool`, got type `Nat`
+   > ${DIRECTORY}/type-mismatch.lushui:25:16
+   |
+23 | take (b: Bool): Bool = true
+   |          ---- expected due to this
+   |
+25 | t: Bool = take 44
+   |                ^^ has wrong type
+
+error: aborting due to 4 previous errors
+

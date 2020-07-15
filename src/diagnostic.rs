@@ -1,9 +1,13 @@
 //! The diagnostic system.
 
 use crate::span::{SourceMap, Span, Spanning};
-use std::collections::HashSet;
+use std::{
+    borrow::Cow,
+    collections::HashSet,
+    ops::{Deref, DerefMut},
+};
 
-type CowStr = std::borrow::Cow<'static, str>;
+type CowStr = Cow<'static, str>;
 
 pub type Result<T, E = Diagnostic> = std::result::Result<T, E>;
 // @Question bad name?
@@ -11,10 +15,11 @@ pub type Results<T> = Result<T, Diagnostics>;
 
 pub type Diagnostics = HashSet<Diagnostic>;
 
+// @Question is this indirection actually worth it?
 #[derive(Hash, PartialEq, Eq)]
 pub struct Diagnostic(Box<RawDiagnostic>);
 
-impl std::ops::Deref for Diagnostic {
+impl Deref for Diagnostic {
     type Target = RawDiagnostic;
 
     fn deref(&self) -> &Self::Target {
@@ -22,23 +27,20 @@ impl std::ops::Deref for Diagnostic {
     }
 }
 
-impl std::ops::DerefMut for Diagnostic {
+impl DerefMut for Diagnostic {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
-// @Note the design of the diagnostic system is still not set.
-// one big question: subdiagnostics: when, how?
 #[derive(Hash, PartialEq, Eq)]
 pub struct RawDiagnostic {
     level: Level,
     message: Option<CowStr>,
     code: Option<Code>,
     highlights: Vec<Highlight>,
+    subdiagnostics: Vec<Subdiagnostic>,
 }
-// @Task be able to have errors associated with a file but not a snippet
-// @Note I still want to rely on `Span`
 impl Diagnostic {
     pub fn new(level: Level) -> Self {
         Self(Box::new(RawDiagnostic {
@@ -46,15 +48,12 @@ impl Diagnostic {
             code: None,
             message: None,
             highlights: Vec::new(),
+            subdiagnostics: Vec::new(),
         }))
     }
 
     pub fn bug() -> Self {
         Self::new(Level::Bug)
-    }
-
-    pub fn fatal() -> Self {
-        Self::new(Level::Fatal)
     }
 
     pub fn error() -> Self {
@@ -63,14 +62,6 @@ impl Diagnostic {
 
     pub fn warning() -> Self {
         Self::new(Level::Warning)
-    }
-
-    pub fn note() -> Self {
-        Self::new(Level::Note)
-    }
-
-    pub fn help() -> Self {
-        Self::new(Level::Help)
     }
 
     pub fn with_message(mut self, message: impl Into<CowStr>) -> Self {
@@ -105,6 +96,22 @@ impl Diagnostic {
         self
     }
 
+    pub fn with_note(mut self, message: impl Into<CowStr>) -> Self {
+        self.subdiagnostics.push(Subdiagnostic {
+            kind: SubdiagnosticKind::Note,
+            message: message.into(),
+        });
+        self
+    }
+
+    pub fn with_help(mut self, message: impl Into<CowStr>) -> Self {
+        self.subdiagnostics.push(Subdiagnostic {
+            kind: SubdiagnosticKind::Help,
+            message: message.into(),
+        });
+        self
+    }
+
     fn choose_role(&self) -> Role {
         if self.highlights.is_empty() {
             Role::Primary
@@ -130,6 +137,7 @@ impl Diagnostic {
 
     // @Task if the span equals the span of the entire file, don't output its content
     // @Task if two spans reside on the same line, print them inline not above each other (maybe)
+    // @Bug cannot nicely handle non-primary highlights if they have sham locations (currently skipped)
     fn display(&mut self, map: Option<&SourceMap>) -> String {
         let mut header = format!(
             "{:#}{}",
@@ -153,11 +161,6 @@ impl Diagnostic {
                 .iter()
                 .position(|highlight| highlight.role == Role::Primary)
                 .unwrap();
-
-            if self.highlights[primary_highlight].span == Span::SHAM {
-                message += &format!("\n {arrow} sham location", arrow = ">".bright_blue().bold());
-                return message;
-            }
 
             let map = map.unwrap();
 
@@ -244,6 +247,7 @@ impl Diagnostic {
                         } else {
                             format!("{padding} {bar}", padding = padding, bar = bar)
                         };
+                        // the upper arm
                         message += &format!(
                             "\n\
                             {padding} {bar}\n\
@@ -262,7 +266,7 @@ impl Diagnostic {
                             highlight_hand = highlight.role.symbol().color(role_color).bold(),
                             bar = bar
                         );
-
+                        // the connector and the lower arm
                         message += &format!(
                             "{line:>padding_len$} {bar} {highlight_vertical_arm} {snippet}\
                             {padding} {bar} {highlight_vertical_arm}{highlight_horizontal_arm}{highlight_hand} {label}",
@@ -290,18 +294,52 @@ impl Diagnostic {
             }
         }
 
+        for subdiagnostic in &self.subdiagnostics {
+            message += &format!("\n{}", subdiagnostic);
+        }
+
         message
+    }
+}
+
+#[derive(Hash, PartialEq, Eq)]
+struct Subdiagnostic {
+    kind: SubdiagnosticKind,
+    message: CowStr,
+}
+
+impl fmt::Display for Subdiagnostic {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.kind, self.message)
+    }
+}
+
+#[derive(Hash, PartialEq, Eq, Clone, Copy)]
+enum SubdiagnosticKind {
+    Note,
+    Help,
+}
+
+impl SubdiagnosticKind {
+    const fn to_str(self) -> &'static str {
+        match self {
+            Self::Note => "note",
+            Self::Help => "help",
+        }
+    }
+}
+
+impl fmt::Display for SubdiagnosticKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_str().bright_blue().bold())
     }
 }
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub enum Level {
     Bug,
-    Fatal,
     Error,
     Warning,
-    Note,
-    Help,
 }
 
 use colored::{Color, Colorize};
@@ -310,18 +348,15 @@ impl Level {
     const fn to_str(self) -> &'static str {
         match self {
             Self::Bug => "internal compiler error",
-            Self::Fatal | Self::Error => "error",
+            Self::Error => "error",
             Self::Warning => "warning",
-            Self::Note => "note",
-            Self::Help => "help",
         }
     }
 
     const fn color(self) -> Color {
         match self {
-            Self::Bug | Self::Fatal | Self::Error => Color::BrightRed,
+            Self::Bug | Self::Error => Color::BrightRed,
             Self::Warning => Color::BrightYellow,
-            Self::Note | Self::Help => Color::BrightBlue,
         }
     }
 }

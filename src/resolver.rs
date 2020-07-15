@@ -27,12 +27,7 @@ use crate::{
     },
 };
 use indexed_vec::IndexVec;
-use std::{
-    collections::HashMap,
-    convert::{TryFrom, TryInto},
-    default::default,
-    rc::Rc,
-};
+use std::{collections::HashMap, default::default, rc::Rc};
 
 const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
 
@@ -285,7 +280,16 @@ impl CrateScope {
             .iter()
             .copied()
             .find(|&index| &self.bindings[index].source == identifier)
-            .ok_or_else(|| Error::Recoverable(UndefinedBinding(identifier.clone())))
+            .ok_or_else(|| {
+                Diagnostic::error()
+                    .with_code(Code::E021)
+                    .with_message(format!(
+                        "binding `{}` is not defined in this scope",
+                        identifier
+                    ))
+                    .with_span(&identifier)
+                    .into()
+            })
             .and_then(|index| self.resolve_use(index))
     }
 
@@ -300,7 +304,7 @@ impl CrateScope {
             UntypedValue | Module(_) | UntypedDataType(_) => Ok(index),
             Use(reference) => Ok(reference),
             // @Note @Beacon looks like a hack, we should improve upon this design
-            UnresolvedUse => Err(Error::Recoverable(FoundUnresolvedUse)),
+            UnresolvedUse => Err(Error::FoundUnresolvedUse),
             _ => unreachable!(),
         }
     }
@@ -313,7 +317,7 @@ impl CrateScope {
     ) -> Result<Target::Output> {
         let index = self
             .resolve_first_segment(identifier, module)
-            .map_err(|error| Diagnostic::try_from(error).unwrap())?;
+            .map_err(Error::unwrap)?;
         Target::resolve_simple_path(identifier, &self.bindings[index].kind, index)
     }
 
@@ -326,7 +330,8 @@ impl CrateScope {
                     Ok(reference) => {
                         self.bindings[index].kind = EntityKind::Use(reference);
                     }
-                    Err(Error::Recoverable(FoundUnresolvedUse)) => {
+                    Err(Error::Unrecoverable(error)) => return Err(error).many_err(),
+                    Err(Error::FoundUnresolvedUse) => {
                         unresolved_uses.insert(
                             index,
                             UnresolvedUse {
@@ -335,7 +340,6 @@ impl CrateScope {
                             },
                         );
                     }
-                    Err(other) => return Err(other.try_into().unwrap()).many_err(),
                 }
             }
 
@@ -535,7 +539,7 @@ impl Declaration<Desugared> {
                     .as_ref()
                     .ok_or_else(|| {
                         // @Task add note why
-                        Diagnostic::fatal()
+                        Diagnostic::error()
                             .with_message("`use` of bare `super` and `crate` disallowed")
                             .with_span(self)
                     })
@@ -1004,8 +1008,6 @@ pub enum Index {
 }
 
 impl Index {
-    // @Bug @Beacon @Beacon if the index is a module index, it should not be "shifted"
-    // but replaced by a new module index @Update idk what you are talking about, past self!
     fn shift(self, amount: usize) -> Self {
         match self {
             Self::Crate(_) => self,
@@ -1100,7 +1102,7 @@ impl<'a> FunctionScope<'a> {
         match self {
             Module(module) => scope
                 .resolve_path::<OnlyValue>(query, *module)
-                .map_err(|error| error.try_into().unwrap()),
+                .map_err(Error::unwrap),
             // @Note this looks ugly/complicated, use helper functions
             FunctionParameter { parent, binder } => {
                 if let Some(identifier) = query.first_identifier() {
@@ -1116,7 +1118,7 @@ impl<'a> FunctionScope<'a> {
                 } else {
                     scope
                         .resolve_path::<OnlyValue>(query, parent.module())
-                        .map_err(|error| error.try_into().unwrap())
+                        .map_err(Error::unwrap)
                 }
             }
             // @Note this looks ugly/complicated, use helper functions
@@ -1145,7 +1147,7 @@ impl<'a> FunctionScope<'a> {
                 } else {
                     scope
                         .resolve_path::<OnlyValue>(query, parent.module())
-                        .map_err(|error| error.try_into().unwrap())
+                        .map_err(Error::unwrap)
                 }
             }
         }
@@ -1162,41 +1164,34 @@ impl<'a> FunctionScope<'a> {
     }
 }
 
-type Error = crate::support::Error<RecoverableError>;
-
-use RecoverableError::*;
-
-enum RecoverableError {
-    // @Note not recovered anywhere (yet?)
-    UndefinedBinding(parser::Identifier),
+enum Error {
+    Unrecoverable(Diagnostic),
     FoundUnresolvedUse,
 }
 
-impl TryFrom<RecoverableError> for Diagnostic {
-    type Error = ();
-
-    fn try_from(error: RecoverableError) -> Result<Self, Self::Error> {
-        match error {
-            // @Task modify error message: if it's a simple path: "in this scope/module"
-            // and if it's a complex one: "in module `module`"
-            UndefinedBinding(identifier) => Ok(Diagnostic::error()
-                .with_code(Code::E021)
-                .with_message(format!(
-                    "binding `{}` is not defined in this scope",
-                    identifier
-                ))
-                .with_span(&identifier)),
-            FoundUnresolvedUse => Err(()),
+impl Error {
+    fn unwrap(self) -> Diagnostic {
+        match self {
+            Self::Unrecoverable(error) => error,
+            _ => unreachable!(),
         }
     }
 }
+
+impl From<Diagnostic> for Error {
+    fn from(error: Diagnostic) -> Self {
+        Self::Unrecoverable(error)
+    }
+}
+
+// @Task make those functions error variants
 
 // @Question fatal?? and if non-fatal, it's probably ignored
 fn value_used_as_a_namespace(
     non_namespace: &parser::Identifier,
     subbinder: &parser::Identifier,
 ) -> Diagnostic {
-    Diagnostic::fatal()
+    Diagnostic::error()
         .with_code(Code::E022)
         .with_message(format!("value `{}` is not a namespace", non_namespace))
         .with_labeled_span(subbinder, "reference to a subdeclaration")
@@ -1204,7 +1199,7 @@ fn value_used_as_a_namespace(
 }
 
 fn module_used_as_a_value(span: Span) -> Diagnostic {
-    Diagnostic::fatal()
+    Diagnostic::error()
         .with_code(Code::E023)
         .with_message("module used as if it was a value")
         .with_span(&span)

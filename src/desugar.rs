@@ -189,15 +189,13 @@ impl parser::Declaration {
                             .load(path.to_str().unwrap())
                             .map_err(|error| match error {
                                 // @Task code
-                                // @Task also print `path` (as a diagnostic note)
                                 span::Error::LoadFailure(_) => Diagnostic::error()
                                     .with_message(format!(
                                         "could not load module `{}`",
                                         module.binder
                                     ))
-                                    // @Note just using error.message() does not cut it
-                                    // it outputs "references file bla bla" that's bad UI
-                                    .with_labeled_span(&declaration_span, error.message()),
+                                    .with_span(&declaration_span)
+                                    .with_note(error.message(Some(&path))),
                                 // @Task add context information
                                 error => error.into(),
                             })
@@ -316,7 +314,7 @@ impl parser::Declaration {
             return Err(nonconforming
                 .into_iter()
                 .map(|attribute| {
-                    Diagnostic::fatal()
+                    Diagnostic::error()
                         .with_code(Code::E013)
                         .with_message(format!(
                             "{} cannot be ascribed to a {} declaration",
@@ -339,7 +337,7 @@ impl parser::Declaration {
         if let (Some(foreign), Some(inherent)) = (foreign, inherent) {
             use std::cmp::{max, min};
 
-            return Err(Diagnostic::fatal()
+            return Err(Diagnostic::error()
                 .with_code(Code::E014)
                 .with_message("attributes `foreign` and `inherent` are mutually exclusive")
                 .with_span(&max(foreign.span, inherent.span))
@@ -354,7 +352,7 @@ impl parser::Declaration {
         };
 
         match (abnormally_bodiless, foreign.is_some()) {
-            (true, false) => Err(Diagnostic::fatal()
+            (true, false) => Err(Diagnostic::error()
                 .with_code(Code::E012)
                 .with_message("declaration without a definition")
                 .with_span(self))
@@ -363,7 +361,7 @@ impl parser::Declaration {
                 // @Task make non-fatal, @Task improve message
                 // @Task add subdiagonstic note: foreign is one definition and
                 // explicit body is another
-                Err(Diagnostic::fatal()
+                Err(Diagnostic::error()
                     .with_code(Code::E020)
                     .with_message("declaration has multiple definitions")
                     .with_labeled_span(self, "is foreign and has a body"))

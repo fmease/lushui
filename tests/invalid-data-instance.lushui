@@ -1,0 +1,11 @@
+;; TEST fail check
+
+data Int: Type =
+
+data X: Type =
+    x0: Int -> Type
+    x1: Y Int
+    x2: Int
+
+data Y: Type -> Type =
+    y: Int -> Int

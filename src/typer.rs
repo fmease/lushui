@@ -4,7 +4,7 @@ mod types;
 
 use crate::{
     diagnostic::todo,
-    diagnostic::{Code, Diagnostic, Result},
+    diagnostic::{Code, Diagnostic, Result, Results},
     hir::{self, *},
     interpreter::{
         self, ffi,
@@ -13,6 +13,7 @@ use crate::{
     },
     parser::{AttributeKind, Explicit},
     resolver::{Identifier, Resolved},
+    support::{accumulate_errors::*, ManyErrExt, TransposeExt},
 };
 use std::default::default;
 
@@ -35,16 +36,21 @@ struct Environment {
 
 impl Declaration {
     /// Try to type check a declaration modifying the given scope.
-    pub fn infer_type(&self, scope: &mut CrateScope) -> Result<()> {
-        self.infer_type_first_pass(scope, default())?;
-        scope.infer_type_of_out_of_order_bindings()
+    pub fn infer_type(&self, scope: &mut CrateScope) -> Results<()> {
+        (
+            self.infer_type_first_pass(scope, default()),
+            scope.infer_type_of_out_of_order_bindings(),
+        )
+            .accumulate_err()?;
+
+        Ok(())
     }
 
     fn infer_type_first_pass(
         &self,
         scope: &mut CrateScope,
         environment: Environment,
-    ) -> Result<()> {
+    ) -> Results<()> {
         use DeclarationKind::*;
 
         match &self.kind {
@@ -90,17 +96,22 @@ impl Declaration {
                             self,
                             inherent,
                             scope,
-                        )?;
+                        )
+                        .many_err()?;
                     }
 
-                    for constructor in constructors {
-                        constructor.infer_type_first_pass(
-                            scope,
-                            Environment {
-                                data: Some(data.binder.clone()),
-                            },
-                        )?;
-                    }
+                    constructors
+                        .iter()
+                        .map(|constructor| {
+                            constructor.infer_type_first_pass(
+                                scope,
+                                Environment {
+                                    data: Some(data.binder.clone()),
+                                },
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .transpose()?;
                 }
             }
             Constructor(constructor) => {
@@ -112,9 +123,12 @@ impl Declaration {
                 .evaluate(scope)?;
             }
             Module(module) => {
-                for declaration in &module.declarations {
-                    declaration.infer_type_first_pass(scope, default())?;
-                }
+                module
+                    .declarations
+                    .iter()
+                    .map(|declaration| declaration.infer_type_first_pass(scope, default()))
+                    .collect::<Vec<_>>()
+                    .transpose()?;
             }
             Use(_) => {}
             Invalid => {}
@@ -128,7 +142,7 @@ impl Declaration {
 // @Note we might want to store the evaluated types into the scopes instead of the
 // unevaluated ones. This dependends on how we'd like to normalize (WeakHead|Normal)
 impl Registration {
-    fn evaluate(self, scope: &mut CrateScope) -> Result<()> {
+    fn evaluate(self, scope: &mut CrateScope) -> Results<()> {
         use Registration::*;
 
         match self.clone() {
@@ -137,113 +151,171 @@ impl Registration {
                 type_,
                 value,
             } => {
-                handle_out_of_order_binding!(
+                let value = value.clone().unwrap();
+
+                recover_error!(
                     scope,
-                    self,
-                    type_.clone().is_a_type(&(&*scope).into())
+                    self;
+                    type_.clone().is_a_type(&(&*scope).into()),
+                    actual = type_
                 );
-                let infered_type = match value.clone().unwrap().infer_type(&(&*scope).into()) {
-                    Err(Error::Recoverable(OutOfOrderBinding)) => {
-                        scope.out_of_order_bindings.push(self);
-                        scope.carry_out(Registration::ValueBinding {
-                            binder,
-                            type_,
-                            value: None,
-                        })?;
-                        return Ok(());
-                    }
-                    Err(error) => return Err(error.try_into().unwrap()),
+
+                let infered_type = match value.clone().infer_type(&(&*scope).into()) {
                     Ok(expression) => expression,
+                    Err(error) => {
+                        return match error {
+                            Error::Unrecoverable(error) => Err(error),
+                            Error::OutOfOrderBinding => {
+                                scope.out_of_order_bindings.push(self);
+                                scope.carry_out(Registration::ValueBinding {
+                                    binder,
+                                    type_: type_.clone(),
+                                    value: None,
+                                })
+                            }
+                            // @Temporary code
+                            Error::TypeMismatch { expected, actual } => {
+                                eprintln!("Registration::evaluate(ValueBinding, failed to infer_type of value...");
+                                // @Temporary
+                                Err(Diagnostic::error()
+                                    .with_message(format!("expected type `{}`, got type `{}`", expected, actual))
+                                    .with_labeled_span(&actual, "has wrong type")
+                                    .with_labeled_span(&expected, "expected due to this"))
+                            },
+                        }
+                        .many_err();
+                    }
                 };
 
-                handle_out_of_order_binding!(
+                recover_error!(
                     scope,
-                    self,
-                    type_.is_actual(infered_type.clone(), &(&*scope).into())
+                    self;
+                    type_.clone().is_actual(infered_type.clone(), &(&*scope).into()),
+                    actual = value,
+                    expected = type_
                 );
-                scope.carry_out(Registration::ValueBinding {
-                    binder,
-                    type_: infered_type,
-                    value,
-                })?;
+                scope
+                    .carry_out(Registration::ValueBinding {
+                        binder,
+                        type_: infered_type,
+                        value: Some(value),
+                    })
+                    .many_err()?;
             }
             DataBinding { binder, type_ } => {
-                let type_ = type_.evaluate(interpreter::Context {
-                    scope: &(&*scope).into(),
-                    form: Form::Normal, /* Form::WeakHeadNormal */
-                })?;
-                handle_out_of_order_binding!(
+                let type_ = type_
+                    .evaluate(interpreter::Context {
+                        scope: &(&*scope).into(),
+                        form: Form::Normal, /* Form::WeakHeadNormal */
+                    })
+                    .many_err()?;
+                recover_error!(
                     scope,
-                    self,
-                    type_.clone().is_a_type(&(&*scope).into())
+                    self;
+                    type_.clone().is_a_type(&(&*scope).into()),
+                    actual = type_
                 );
 
                 // @Task diagnostic note: only `Type` can be extended
                 // @Note currently is: invalid constructor X
-                types::instance::assert_constructor_is_instance_of_type(
-                    binder.clone(),
-                    type_.clone(),
-                    TYPE,
-                    scope,
-                )?;
+                types::instance::assert_constructor_is_instance_of_type(type_.clone(), TYPE, scope)
+                    .many_err()?;
 
-                scope.carry_out(Registration::DataBinding { binder, type_ })?;
+                scope
+                    .carry_out(Registration::DataBinding { binder, type_ })
+                    .many_err()?;
             }
             ConstructorBinding {
                 binder,
                 type_,
                 data,
             } => {
-                let type_ = type_.evaluate(interpreter::Context {
-                    scope: &(&*scope).into(),
-                    form: Form::Normal, /* Form::WeakHeadNormal */
-                })?;
-                handle_out_of_order_binding!(
+                let type_ = type_
+                    .evaluate(interpreter::Context {
+                        scope: &(&*scope).into(),
+                        form: Form::Normal, /* Form::WeakHeadNormal */
+                    })
+                    .many_err()?;
+                recover_error!(
                     scope,
-                    self,
-                    type_.clone().is_a_type(&(&*scope).into())
+                    self;
+                    type_.clone().is_a_type(&(&*scope).into()),
+                    actual = type_
                 );
 
                 types::instance::assert_constructor_is_instance_of_type(
-                    binder.clone(),
                     type_.clone(),
                     data.clone().to_expression(),
                     scope,
-                )?;
+                )
+                .many_err()?;
 
-                scope.carry_out(Registration::ConstructorBinding {
-                    binder,
-                    type_: type_.clone(),
-                    data,
-                })?;
+                scope
+                    .carry_out(Registration::ConstructorBinding {
+                        binder,
+                        type_: type_.clone(),
+                        data,
+                    })
+                    .many_err()?;
             }
             ForeignValueBinding { binder, type_ } => {
-                let type_ = type_.evaluate(interpreter::Context {
-                    scope: &(&*scope).into(),
-                    form: Form::Normal, /* Form::WeakHeadNormal */
-                })?;
-                handle_out_of_order_binding!(
+                let type_ = type_
+                    .evaluate(interpreter::Context {
+                        scope: &(&*scope).into(),
+                        form: Form::Normal, /* Form::WeakHeadNormal */
+                    })
+                    .many_err()?;
+                recover_error!(
                     scope,
-                    self,
-                    type_.clone().is_a_type(&(&*scope).into())
+                    self;
+                    type_.clone().is_a_type(&(&*scope).into()),
+                    actual = type_
                 );
 
-                scope.carry_out(Self::ForeignValueBinding { binder, type_ })?;
+                scope
+                    .carry_out(Self::ForeignValueBinding { binder, type_ })
+                    .many_err()?;
             }
             Self::ForeignDataBinding { binder } => {
-                scope.carry_out(Registration::ForeignDataBinding { binder })?;
+                scope
+                    .carry_out(Registration::ForeignDataBinding { binder })
+                    .many_err()?;
             }
         }
 
-        // @Note ugly as hell!
-        macro handle_out_of_order_binding($scope:expr, $registration:expr, $check:expr) {
+        macro recover_error(
+            $scope:expr,
+            $registration:expr;
+            $check:expr,
+            actual = $actual_value:expr
+            $(, expected = $expected_reason:expr )?
+        ) {
             match $check {
-                Err(Error::Recoverable(OutOfOrderBinding)) => {
-                    $scope.out_of_order_bindings.push($registration);
-                    return Ok(());
-                }
-                Err(error) => return Err(error.try_into().unwrap()),
                 Ok(expression) => expression,
+                Err(error) => {
+                    return match error {
+                        Error::Unrecoverable(error) => Err(error),
+                        Error::OutOfOrderBinding => {
+                            $scope.out_of_order_bindings.push($registration);
+                            Ok(())
+                        }
+                        Error::TypeMismatch { expected, actual } => {
+                            Err(Diagnostic::error()
+                                .with_code(Code::E032)
+                                .with_message(format!(
+                                    "expected type `{}`, got type `{}`",
+                                    expected, actual
+                                ))
+                                .with_labeled_span(
+                                    &$actual_value,
+                                    "has wrong type",
+                                )
+                                $( .with_labeled_span(&$expected_reason, "expected due to this") )?
+                            )
+                        }
+                    }
+                    .many_err()
+                }
             }
         }
 
@@ -252,7 +324,7 @@ impl Registration {
 }
 
 impl CrateScope {
-    fn infer_type_of_out_of_order_bindings(&mut self) -> Result<()> {
+    fn infer_type_of_out_of_order_bindings(&mut self) -> Results<()> {
         while !self.out_of_order_bindings.is_empty() {
             let bindings = std::mem::take(&mut self.out_of_order_bindings);
             let previous_amount = bindings.len();
@@ -265,9 +337,10 @@ impl CrateScope {
                 // @Temporary
                 // @Note this case might occur when the bindings is its own type (like Type-in-Type)
                 // I don't know if there are any other cases
-                return Err(Diagnostic::fatal().with_message(
+                return Err(Diagnostic::error().with_message(
                     "found equi-recursive? or circular thingy trying to type-check",
-                ));
+                ))
+                .many_err();
             }
         }
 
@@ -284,7 +357,7 @@ impl Expression {
         Ok(match self.kind {
             Binding(binding) => scope
                 .lookup_type(&binding.binder)
-                .ok_or(Error::Recoverable(OutOfOrderBinding))?,
+                .ok_or(Error::OutOfOrderBinding)?,
             Type => TYPE,
             Number(number) => scope
                 .crate_scope()
@@ -347,7 +420,22 @@ impl Expression {
                 match &type_of_callee.kind {
                     PiType(pi) => {
                         let argument_type = application.argument.clone().infer_type(scope)?;
-                        pi.domain.clone().is_actual(argument_type, scope)?;
+                        // @Bug this error handling might *steal* the error from other handlers further
+                        // down the call chain
+                        pi.domain
+                            .clone()
+                            .is_actual(argument_type, scope)
+                            .map_err(|error| match error {
+                                Error::Unrecoverable(error) => error,
+                                Error::TypeMismatch { expected, actual } => Diagnostic::error()
+                                    .with_message(format!(
+                                        "expected type `{}`, got type `{}`",
+                                        expected, actual
+                                    ))
+                                    .with_labeled_span(&application.argument, "has wrong type")
+                                    .with_labeled_span(&expected, "expected due to this"),
+                                _ => unreachable!(),
+                            })?;
 
                         match pi.parameter.clone() {
                             Some(_) => expr! {
@@ -360,10 +448,10 @@ impl Expression {
                         }
                     }
                     _ => {
-                        // @Task improve error diagnostic
+                        // @Task @Beacon @Beacon @Beacon improve error diagnostic
                         // @Task add span
                         return Err(Error::Unrecoverable(
-                            Diagnostic::fatal()
+                            Diagnostic::error()
                                 .with_code(Code::E031)
                                 .with_message(format!(
                                     "cannot apply `{}` to a `{}`",
@@ -481,42 +569,47 @@ impl Expression {
         })?;
 
         if !expected.clone().equals(actual.clone(), scope)? {
-            // @Task improve diagnostic, add span information, @Bug span information are *so* off!!
-            // @Task we need to return an Error::Recoverable(TypeMismatch(…))
-            return Err(
-                // Error::Unrecoverable(
-                //     Diagnostic::new(Level::Fatal, Code::E032, "mismatched types")
-                //         .with_labeled_span(
-                //             &actual,
-                //             format!("expected `{}`, got `{}`", self, actual),
-                //         ),
-                // ),
-                Error::Unrecoverable(Diagnostic::fatal().with_code(Code::E032).with_message(
-                    format!("mismatched types. expected `{}`, got `{}`", self, actual),
-                )),
-            );
+            return Err(Error::TypeMismatch {
+                expected: self,
+                actual,
+            });
         }
 
         Ok(())
     }
 }
 
-type Error = crate::support::Error<RecoverableError>;
-
-use RecoverableError::*;
-
-enum RecoverableError {
+// @Note maybe we should redesign this as a trait (object) looking at those
+// methods mirroring the variants
+enum Error {
+    Unrecoverable(Diagnostic),
     OutOfOrderBinding,
+    TypeMismatch {
+        expected: Expression,
+        actual: Expression,
+    },
 }
 
-use std::convert::{TryFrom, TryInto};
+// impl Error {
+//     fn unwrap(self) -> Diagnostic {
+//         match self {
+//             Error::Unrecoverable(error) => error,
+//             _ => unreachable!(),
+//         }
+//     }
 
-impl TryFrom<RecoverableError> for Diagnostic {
-    type Error = ();
+//     fn handle_out_of_order_binding(self, handler: impl FnOnce() -> Self) -> Self {
+//         match self {
+//             Error::OutOfOrderBinding => handler(),
+//             _ => self,
+//         }
+//     }
 
-    fn try_from(error: RecoverableError) -> Result<Self, Self::Error> {
-        match error {
-            OutOfOrderBinding => Err(()),
-        }
+//     fn handle_type_mismatch() {}
+// }
+
+impl From<Diagnostic> for Error {
+    fn from(error: Diagnostic) -> Self {
+        Self::Unrecoverable(error)
     }
 }

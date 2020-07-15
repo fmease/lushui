@@ -73,7 +73,7 @@ pub fn parse_crate_name(file: impl AsRef<Path>) -> Result<parser::Identifier, Di
     let stem = file.file_stem().unwrap();
 
     let atom = (|| lexer::parse_identifier(stem.to_str()?.to_owned()))().ok_or_else(|| {
-        Diagnostic::fatal().with_message(format!(
+        Diagnostic::error().with_message(format!(
             "`{}` is not a valid crate name",
             stem.to_string_lossy()
         ))

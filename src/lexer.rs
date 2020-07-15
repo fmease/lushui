@@ -109,7 +109,7 @@ impl<'a> Lexer<'a> {
                 '_' => self.lex_underscore(),
                 character => {
                     self.take();
-                    return Err(Diagnostic::fatal()
+                    return Err(Diagnostic::error()
                         .with_code(Code::E000)
                         .with_message(format!(
                             "illegal character U+{:04X} `{}`",
@@ -126,7 +126,7 @@ impl<'a> Lexer<'a> {
                 .round_brackets
                 .into_iter()
                 .map(|bracket| {
-                    Diagnostic::fatal()
+                    Diagnostic::error()
                         .with_code(Code::E001)
                         .with_message("unbalanced brackets")
                         .with_labeled_span(&bracket, "has no matching closing bracket")
@@ -194,7 +194,7 @@ impl<'a> Lexer<'a> {
             let previous = self.span;
             self.lex_identifier_segment();
             if self.span == previous {
-                return Err(Diagnostic::fatal()
+                return Err(Diagnostic::error()
                     .with_code(Code::E002)
                     .with_message("trailing dash on identifier")
                     .with_span(&Span::from_local(self.source, dash.into())));
@@ -249,7 +249,7 @@ impl<'a> Lexer<'a> {
         if absolute_difference % INDENTATION_IN_SPACES != 0
             || change == Greater && absolute_difference > INDENTATION_IN_SPACES
         {
-            return Err(Diagnostic::fatal()
+            return Err(Diagnostic::error()
                 .with_code(Code::E003)
                 .with_message(format!(
                     "invalid indentation consisting of {} spaces",
@@ -316,7 +316,7 @@ impl<'a> Lexer<'a> {
         let suffix = match suffix {
             Some(suffix) => suffix.parse().map_err(|_| {
                 // @Task code
-                Diagnostic::fatal()
+                Diagnostic::error()
                     .with_message(format!("invalid number literal suffix `{}`", suffix))
                     .with_span(&self.span())
             })?,
@@ -325,7 +325,7 @@ impl<'a> Lexer<'a> {
 
         if sign < 0 && !suffix.signed() {
             // @Task code, @Beacon @Task message
-            return Err(Diagnostic::fatal()
+            return Err(Diagnostic::error()
                 .with_message("sign does not match type")
                 .with_span(&self.span()));
         }
@@ -337,19 +337,19 @@ impl<'a> Lexer<'a> {
         let data = match suffix {
             N => TokenData::NatLiteral(data.parse().unwrap()),
             N32 => TokenData::Nat32Literal(data.parse().map_err(|_| {
-                Diagnostic::fatal()
+                Diagnostic::error()
                     .with_message("value does not fit type")
                     .with_span(&self.span())
             })?),
             N64 => TokenData::Nat64Literal(data.parse().map_err(|_| {
-                Diagnostic::fatal()
+                Diagnostic::error()
                     .with_message("value does not fit type")
                     .with_span(&self.span())
             })?),
             I => TokenData::IntLiteral(sign * Int::from_str(data).unwrap()),
             I32 => TokenData::Int32Literal(
                 sign * i32::from_str(data).map_err(|_| {
-                    Diagnostic::fatal()
+                    Diagnostic::error()
                         .with_message("value does not fit type")
                         .with_span(&self.span())
                 })?,
@@ -357,7 +357,7 @@ impl<'a> Lexer<'a> {
             I64 => TokenData::Int64Literal(
                 sign as i64
                     * i64::from_str(data).map_err(|_| {
-                        Diagnostic::fatal()
+                        Diagnostic::error()
                             .with_message("value does not fit type")
                             .with_span(&self.span())
                     })?,
@@ -385,7 +385,7 @@ impl<'a> Lexer<'a> {
         }
 
         if !terminated {
-            return Err(Diagnostic::fatal()
+            return Err(Diagnostic::error()
                 .with_code(Code::E004)
                 .with_message("unterminated text literal")
                 .with_span(&self.span()));
@@ -407,7 +407,7 @@ impl<'a> Lexer<'a> {
     fn lex_closing_round_bracket(&mut self) -> Result<()> {
         self.add(ClosingRoundBracket);
         if self.round_brackets.is_empty() {
-            return Err(Diagnostic::fatal()
+            return Err(Diagnostic::error()
                 .with_code(Code::E001)
                 .with_message("unbalanced brackets")
                 .with_labeled_span(&self.span(), "has no matching opening bracket"));

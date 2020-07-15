@@ -32,7 +32,7 @@ impl CrateScope {
                 form: Form::WeakHeadNormal,
             })
         } else {
-            Err(Diagnostic::fatal()
+            Err(Diagnostic::error()
                 .with_code(Code::E050)
                 .with_message("missing program entry"))
         }

@@ -94,8 +94,10 @@ impl CrateScope {
     }
 
     pub fn carry_out(&mut self, registration: Registration) -> Result<()> {
+        use Registration::*;
+
         Ok(match registration {
-            Registration::ValueBinding {
+            ValueBinding {
                 binder,
                 type_,
                 value,
@@ -110,7 +112,7 @@ impl CrateScope {
                     expression: value,
                 };
             }
-            Registration::DataBinding { binder, type_ } => {
+            DataBinding { binder, type_ } => {
                 let index = binder.crate_().unwrap();
                 debug_assert!(self.bindings[index].is_untyped());
                 self.bindings[index].kind = EntityKind::DataType {
@@ -118,7 +120,7 @@ impl CrateScope {
                     constructors: Vec::new(),
                 };
             }
-            Registration::ConstructorBinding {
+            ConstructorBinding {
                 binder,
                 type_,
                 data,
@@ -135,7 +137,7 @@ impl CrateScope {
                     _ => unreachable!(),
                 }
             }
-            Registration::ForeignValueBinding { binder, type_ } => {
+            ForeignValueBinding { binder, type_ } => {
                 let index = binder.crate_().unwrap();
                 debug_assert!(self.bindings[index].is_untyped());
 
@@ -147,30 +149,25 @@ impl CrateScope {
                     },
                     None => {
                         // @Task better message
-                        return Err(Diagnostic::fatal()
+                        return Err(Diagnostic::error()
                             .with_code(Code::E060)
                             .with_message(format!("foreign binding `{}` is not registered", binder))
                             .with_span(&binder));
                     }
                 };
             }
-            Registration::ForeignDataBinding { binder } => {
-                match self.foreign_types.get_mut(binder.as_str()) {
-                    Some(index @ None) => {
-                        *index = Some(binder.clone());
-                    }
-                    Some(Some(_)) => unreachable!(),
-                    None => {
-                        return Err(Diagnostic::fatal()
-                            .with_code(Code::E060)
-                            .with_message(format!(
-                                "foreign data type `{}` is not registered",
-                                binder
-                            ))
-                            .with_span(&binder))
-                    }
+            ForeignDataBinding { binder } => match self.foreign_types.get_mut(binder.as_str()) {
+                Some(index @ None) => {
+                    *index = Some(binder.clone());
                 }
-            }
+                Some(Some(_)) => unreachable!(),
+                None => {
+                    return Err(Diagnostic::error()
+                        .with_code(Code::E060)
+                        .with_message(format!("foreign data type `{}` is not registered", binder))
+                        .with_span(&binder))
+                }
+            },
         })
     }
 
@@ -217,7 +214,7 @@ impl CrateScope {
             }),
             // @Task better message
             Some(None) => {
-                let diagnostic = Diagnostic::fatal()
+                let diagnostic = Diagnostic::error()
                     .with_code(Code::E061)
                     .with_message(format!(
                         "the foreign type `{}` has not been declared",

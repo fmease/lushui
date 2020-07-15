@@ -116,30 +116,6 @@ impl<T> ManyErrExt<T> for Result<T, Diagnostic> {
     }
 }
 
-pub enum Error<E> {
-    Unrecoverable(Diagnostic),
-    Recoverable(E),
-}
-
-use std::convert::{TryFrom, TryInto};
-
-impl<E: TryInto<Diagnostic>> TryFrom<Error<E>> for Diagnostic {
-    type Error = E::Error;
-
-    fn try_from(error: Error<E>) -> Result<Self, Self::Error> {
-        match error {
-            Error::Unrecoverable(diagnostic) => Ok(diagnostic),
-            Error::Recoverable(error) => error.try_into(),
-        }
-    }
-}
-
-impl<E> From<Diagnostic> for Error<E> {
-    fn from(diagnostic: Diagnostic) -> Self {
-        Self::Unrecoverable(diagnostic)
-    }
-}
-
 use std::borrow::Cow;
 
 pub fn pluralize<'a, S: Into<Cow<'a, str>>>(

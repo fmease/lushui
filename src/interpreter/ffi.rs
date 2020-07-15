@@ -22,7 +22,7 @@ pub fn register_inherent_bindings<'a>(
 ) -> Result<()> {
     // @Task link to previous definition
     let duplicate = || {
-        Diagnostic::fatal()
+        Diagnostic::error()
             .with_code(Code::E020)
             .with_message(format!(
                 "`{}` is defined multiple times as inherent",
@@ -67,7 +67,7 @@ pub fn register_inherent_bindings<'a>(
             find(Value::SOME, &mut scope.inherent_values.some);
         }
         _ => {
-            return Err(Diagnostic::fatal()
+            return Err(Diagnostic::error()
                 .with_code(Code::E062)
                 .with_message(format!("`{}` is not an inherent type", binder))
                 .with_span(attribute)
@@ -166,7 +166,7 @@ impl Type {
 
         fn missing_inherent() -> Diagnostic {
             // @Task message
-            Diagnostic::fatal().with_code(Code::E063)
+            Diagnostic::error().with_code(Code::E063)
         }
 
         Ok(match self {
@@ -270,7 +270,7 @@ impl Value {
 
         fn missing_inherent() -> Diagnostic {
             // @Task message
-            Diagnostic::fatal().with_code(Code::E063)
+            Diagnostic::error().with_code(Code::E063)
         }
 
         use crate::lexer::Number::*;

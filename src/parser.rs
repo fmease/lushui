@@ -201,7 +201,7 @@ impl Parser<'_> {
             "foreign" => AttributeKind::Foreign,
             "inherent" => AttributeKind::Inherent,
             _ => {
-                return Err(Diagnostic::fatal()
+                return Err(Diagnostic::error()
                     .with_code(Code::E011)
                     .with_message(format!("attribute `{}` does not exist", identifier))
                     .with_span(&identifier))
@@ -1210,7 +1210,7 @@ fn delimiters_with_expected<'a>(
 
 impl<'a> Expected<'a> {
     fn but_actual_is(self, actual: Token) -> Diagnostic {
-        Diagnostic::fatal()
+        Diagnostic::error()
             .with_code(Code::E010)
             .with_message(format!("found {}, but expected {}", actual.kind, self))
             .with_span(&actual)

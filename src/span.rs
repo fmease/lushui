@@ -297,7 +297,10 @@ impl SourceMap {
         Ok(file)
     }
 
+    /// Panics if span is a sham.
     fn file_from_span(&self, span: Span) -> &SourceFile {
+        debug_assert!(span != Span::SHAM);
+
         self.files
             .iter()
             .find(|file| file.span.contains_index(span.start))
@@ -496,24 +499,29 @@ impl fmt::Debug for SourceFile {
 }
 
 use std::io;
+use std::path::Path;
 
 pub enum Error {
     OffsetOverflow,
     LoadFailure(io::Error),
 }
 
+// @Note too many allocations
 impl Error {
-    pub fn message(&self) -> &'static str {
+    pub fn message(&self, path: Option<&Path>) -> String {
         use io::ErrorKind::*;
 
+        let file = path.map_or("referenced file".into(), |path| {
+            format!("`{}`", path.to_string_lossy())
+        });
+
         match self {
-            // @Task add file name once we support it #SpanOfWholeFileInDiagnostic
-            Error::OffsetOverflow => "file too large",
+            Error::OffsetOverflow => format!("{} is too large", file),
             Error::LoadFailure(error) => match error.kind() {
-                NotFound => "referenced file does not exist",
-                PermissionDenied => "file does not have required permissions",
-                InvalidData => "file contains invalid UTF-8",
-                _ => "an I/O error occurred",
+                NotFound => format!("{} does not exist", file),
+                PermissionDenied => format!("{} does not have required permissions", file),
+                InvalidData => format!("{} contains invalid UTF-8", file),
+                _ => "some IO error occured".into(),
             },
         }
     }
@@ -521,6 +529,6 @@ impl Error {
 
 impl From<Error> for Diagnostic {
     fn from(error: Error) -> Self {
-        Diagnostic::fatal().with_message(error.message())
+        Diagnostic::error().with_message(error.message(None))
     }
 }
