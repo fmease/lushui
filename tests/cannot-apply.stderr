@@ -1,0 +1,11 @@
+error[E031]: expected type `_ -> _`, got type `Nat`
+  > ${DIRECTORY}/cannot-apply.lushui:5:21
+  |
+5 | Abomination: Type = 0 1
+  |                     ^ has wrong type
+  |
+5 | Abomination: Type = 0 1
+  |                       - applied to this
+
+error: aborting due to previous error
+

@@ -244,7 +244,7 @@ fn main() {
                 }
 
                 let mut scope = interpreter::CrateScope::new(scope);
-                node.infer_type(&mut scope).many_err()?;
+                node.infer_type(&mut scope)?;
                 if merged_arguments.print_interpreter_scope {
                     eprintln!("{:#?}", scope);
                 }
@@ -256,7 +256,7 @@ fn main() {
                 }
             }
             Command::Highlight { .. } => {
-                return Err(Diagnostic::fatal().with_message("operation not supported yet"))
+                return Err(Diagnostic::error().with_message("operation not supported yet"))
                     .many_err()
             }
         }
@@ -280,7 +280,7 @@ fn main() {
             }
         }
 
-        Diagnostic::fatal()
+        Diagnostic::error()
             .with_message(pluralize(amount, "aborting due to previous error", || {
                 format!("aborting due to {} previous errors", amount)
             }))

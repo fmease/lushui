@@ -138,10 +138,13 @@ impl Declaration {
     }
 }
 
-// @Note very strange API goiong on here
+// @Note very strange API going on here
 // @Note we might want to store the evaluated types into the scopes instead of the
 // unevaluated ones. This dependends on how we'd like to normalize (WeakHead|Normal)
 impl Registration {
+    // @Task @Beacon @Beacon somehow (*somehow*!) restructure this code so it is not DRY.
+    // it is DRY even though we use an ugly macro..how sad is that??
+    // we need to design the error handling here, it's super difficult, fragile, …
     fn evaluate(self, scope: &mut CrateScope) -> Results<()> {
         use Registration::*;
 
@@ -173,15 +176,7 @@ impl Registration {
                                     value: None,
                                 })
                             }
-                            // @Temporary code
-                            Error::TypeMismatch { expected, actual } => {
-                                eprintln!("Registration::evaluate(ValueBinding, failed to infer_type of value...");
-                                // @Temporary
-                                Err(Diagnostic::error()
-                                    .with_message(format!("expected type `{}`, got type `{}`", expected, actual))
-                                    .with_labeled_span(&actual, "has wrong type")
-                                    .with_labeled_span(&expected, "expected due to this"))
-                            },
+                            Error::TypeMismatch { .. } => unreachable!(),
                         }
                         .many_err();
                     }
@@ -350,6 +345,10 @@ impl CrateScope {
 
 impl Expression {
     /// Try to infer the type of an expression.
+    // @Beacon @Beacon @Task verify and implement that all is_a_type and is_actual lead to good error messages
+    // and keep it DRY (try to abstract over error handling, find a good API)
+    // @Task make independent (^^) type errors non-fatal in respect to each other, i.e. return more than one
+    // type error in possible cases
     fn infer_type(self, scope: &FunctionScope<'_>) -> Result<Self, Error> {
         use crate::interpreter::Substitution::*;
         use ExpressionKind::*;
@@ -454,9 +453,11 @@ impl Expression {
                             Diagnostic::error()
                                 .with_code(Code::E031)
                                 .with_message(format!(
-                                    "cannot apply `{}` to a `{}`",
-                                    application.argument, type_of_callee
-                                )),
+                                    "expected type `_ -> _`, got type `{}`",
+                                    type_of_callee
+                                ))
+                                .with_labeled_span(&application.callee, "has wrong type")
+                                .with_labeled_span(&application.argument, "applied to this"),
                         ));
                     }
                 }
@@ -589,24 +590,6 @@ enum Error {
         actual: Expression,
     },
 }
-
-// impl Error {
-//     fn unwrap(self) -> Diagnostic {
-//         match self {
-//             Error::Unrecoverable(error) => error,
-//             _ => unreachable!(),
-//         }
-//     }
-
-//     fn handle_out_of_order_binding(self, handler: impl FnOnce() -> Self) -> Self {
-//         match self {
-//             Error::OutOfOrderBinding => handler(),
-//             _ => self,
-//         }
-//     }
-
-//     fn handle_type_mismatch() {}
-// }
 
 impl From<Diagnostic> for Error {
     fn from(error: Diagnostic) -> Self {

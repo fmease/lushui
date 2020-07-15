@@ -1,0 +1,5 @@
+;; TEST fail check
+
+module core
+
+Abomination: Type = 0 1
