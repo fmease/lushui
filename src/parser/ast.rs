@@ -27,7 +27,9 @@ impl Declaration {
             Value(_) => Targets::VALUE,
             Data(_) => Targets::DATA,
             Constructor(_) => Targets::CONSTRUCTOR,
-            Module(_) => Targets::MODULE,
+            Module(_) | Header(_) => Targets::MODULE,
+            Crate(_) => Targets::CRATE,
+            Group(_) => Targets::all(),
             Use(_) => Targets::USE,
         }
     }
@@ -40,6 +42,9 @@ impl Declaration {
             Data(_) => "data",
             Constructor(_) => "constructor",
             Module(_) => "module",
+            Crate(_) => "crate",
+            Header(_) => "module header",
+            Group(_) => "attribute group",
             Use(_) => "use",
         }
     }
@@ -58,6 +63,9 @@ pub enum DeclarationKind {
     Data(Box<Data>),
     Constructor(Box<Constructor>),
     Module(Box<Module>),
+    Crate(Box<Crate>),
+    Header(Box<Header>),
+    Group(Box<Group>),
     Use(Box<Use>),
 }
 
@@ -85,6 +93,7 @@ pub struct Constructor {
     pub binder: Identifier,
     pub parameters: Parameters,
     pub type_annotation: Option<Expression>,
+    pub record: bool,
 }
 
 /// The syntax node of a module declaration.
@@ -92,9 +101,26 @@ pub struct Constructor {
 pub struct Module {
     pub binder: Identifier,
     pub file: Rc<SourceFile>,
-    // @Task support for constructor (and field) exposures (paths + multipaths)
-    pub exposures: Vec<Identifier>,
+    pub exposures: ExposureList,
     pub declarations: Option<Vec<Declaration>>,
+}
+
+/// The syntax node of a crate declaration.
+#[derive(Debug)]
+pub struct Crate {
+    pub binder: Identifier,
+}
+
+/// The syntax node of a module header.
+#[derive(Debug)]
+pub struct Header {
+    pub exposures: ExposureList,
+}
+
+/// The syntax node of attribute groups.
+#[derive(Debug)]
+pub struct Group {
+    pub declarations: Vec<Declaration>,
 }
 
 /// The syntax node of a use declaration.
@@ -104,7 +130,7 @@ pub struct Use {
 }
 
 // @Task documentation, span information
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum UseBindings {
     Single {
         target: Path,
@@ -127,10 +153,12 @@ impl Spanning for UseBindings {
     }
 }
 
+// @Temporary
+// @Task support for constructor (and field) exposures (paths + multipaths)
+type ExposureList = Vec<Identifier>;
+
 #[derive(Debug, Default, Clone)]
-pub struct Attributes {
-    values: Vec<Attribute>,
-}
+pub struct Attributes(Vec<Attribute>);
 
 impl Attributes {
     pub fn has(&self, query: AttributeKind) -> bool {
@@ -141,10 +169,14 @@ impl Attributes {
         self.iter().find(|attribute| attribute.kind == query)
     }
 
-    pub fn nonconforming(&self, targets: Targets) -> Vec<&Attribute> {
+    pub fn filter(&self, predicate: impl Fn(&Attribute) -> bool) -> Vec<&Attribute> {
         self.iter()
-            .filter(|attribute| !attribute.targets().contains(targets))
+            .filter(|attribute| predicate(attribute))
             .collect()
+    }
+
+    pub fn nonconforming(&self, targets: Targets) -> Vec<&Attribute> {
+        self.filter(|attribute| !attribute.targets().contains(targets))
     }
 }
 
@@ -152,13 +184,13 @@ impl Deref for Attributes {
     type Target = Vec<Attribute>;
 
     fn deref(&self) -> &Self::Target {
-        &self.values
+        &self.0
     }
 }
 
 impl DerefMut for Attributes {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.values
+        &mut self.0
     }
 }
 
@@ -169,9 +201,12 @@ impl Attribute {
         use AttributeKind::*;
 
         match self.kind {
-            Documentation => Targets::all(),
+            Documentation | Deprecated | Unstable | If | Allow | Warn | Deny | Forbid => {
+                Targets::all()
+            }
             Foreign => Targets::VALUE | Targets::DATA,
-            Inherent => Targets::DATA,
+            Inherent | Moving => Targets::DATA,
+            Unsafe => Targets::VALUE | Targets::CONSTRUCTOR,
         }
     }
 
@@ -179,28 +214,57 @@ impl Attribute {
         use AttributeKind::*;
 
         match self.kind {
-            Documentation => false,
-            Foreign | Inherent => true,
+            Foreign | Inherent | Moving | Deprecated | Unstable | Unsafe => true,
+            Documentation | If | Allow | Warn | Deny | Forbid => false,
         }
     }
 }
 
-// @Task add `include`, `if`, `deprecated`, `unstable`, `unsafe`, `open`, … in the future
+// @Task add `include`, `provide`, … in the future
+// @Task add arguments
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AttributeKind {
     Documentation,
     Foreign,
     /// Make bindings available for FFI. Opposite of `foreign`.
     Inherent,
+    Moving,
+    Deprecated,
+    Unstable,
+    If,
+    Allow,
+    Warn,
+    Deny,
+    Forbid,
+    Unsafe,
+}
+
+impl AttributeKind {
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Documentation => "documentation comment",
+            Self::Foreign => "foreign",
+            Self::Inherent => "inherent",
+            Self::Moving => "moving",
+            Self::Deprecated => "deprecated",
+            Self::Unstable => "unstable",
+            Self::If => "if",
+            Self::Allow => "allow",
+            Self::Warn => "warn",
+            Self::Deny => "deny",
+            Self::Forbid => "forbid",
+            Self::Unsafe => "unsafe",
+        }
+    }
 }
 
 impl fmt::Display for AttributeKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Documentation => "a documentation comment",
-            Self::Foreign => "attribute `foreign`",
-            Self::Inherent => "attribute `inherent`",
-        })
+        if *self == Self::Documentation {
+            return write!(f, "a {}", self.name());
+        }
+
+        write!(f, "attribute `{}`", self.name())
     }
 }
 
@@ -210,6 +274,7 @@ bitflags::bitflags! {
         const DATA = 0b0000_0010;
         const CONSTRUCTOR = 0b0000_0100;
         const MODULE = 0b0000_1000;
+        const CRATE = 0b0010_0000;
         const USE = 0b0001_0000;
     }
 }
@@ -224,10 +289,11 @@ pub enum ExpressionKind {
     TypeLiteral,
     NumberLiteral(Box<Number>),
     TextLiteral(Box<String>),
+    TypedHole(Box<TypedHole>),
     Path(Box<Path>),
     LambdaLiteral(Box<LambdaLiteral>),
     LetIn(Box<LetIn>),
-    UseIn,
+    UseIn(Box<UseIn>),
     CaseAnalysis(Box<CaseAnalysis>),
     /// See documentation on [crate::hir::Expression::Invalid].
     Invalid,
@@ -241,12 +307,20 @@ pub struct PiTypeLiteral {
     pub expression: Expression,
     pub explicitness: Explicitness,
 }
+
 /// The syntax node of function application.
 #[derive(Debug, Clone)]
 pub struct Application {
     pub callee: Expression,
     pub argument: Expression,
     pub explicitness: Explicitness,
+    pub binder: Option<Identifier>,
+}
+
+/// The syntax node of a typed hole.
+#[derive(Debug, Clone)]
+pub struct TypedHole {
+    pub tag: Identifier,
 }
 
 #[derive(Debug, Clone)]
@@ -254,6 +328,7 @@ pub struct Path {
     pub head: Option<Head>,
     pub segments: SmallVec<Identifier, 1>,
 }
+
 /// The syntax node of a lambda literal expression.
 #[derive(Debug, Clone)]
 pub struct LambdaLiteral {
@@ -261,6 +336,7 @@ pub struct LambdaLiteral {
     pub body_type_annotation: Option<Expression>,
     pub body: Expression,
 }
+
 /// The syntax-node of a let-in expression.
 #[derive(Debug, Clone)]
 pub struct LetIn {
@@ -271,6 +347,14 @@ pub struct LetIn {
     pub expression: Expression,
     pub scope: Expression,
 }
+
+/// The syntax node of a use/in expression.
+#[derive(Debug, Clone)]
+pub struct UseIn {
+    pub bindings: UseBindings,
+    pub scope: Expression,
+}
+
 #[derive(Debug, Clone)]
 pub struct CaseAnalysis {
     pub expression: Expression,
@@ -390,7 +474,7 @@ pub enum HeadKind {
     Self_,
 }
 
-#[derive(Debug, Clone, Eq)]
+#[derive(Clone, Eq)]
 pub struct Identifier {
     atom: Atom,
     pub span: Span,
@@ -443,6 +527,13 @@ impl std::hash::Hash for Identifier {
     }
 }
 
+impl fmt::Debug for Identifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Identifier ({}) {:?}", self.atom, self.span)
+    }
+}
+
+// @Temporary
 impl fmt::Display for Identifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(

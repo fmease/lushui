@@ -405,45 +405,6 @@ impl Role {
     }
 }
 
-// @Note bad design
-/// No prefix: Get a diagnostic.
-/// Prefix `&`: Get a result of diagnostic.
-/// Prefix `?`: Apply the try operator to the resulting diagnostic.
-/// Prefix `!`: (nmemonic never type) Return the resulting diagnostic (Ok = never).
-/// Prefix `*?`: Apply `many_err` and the try operator to the resulting diagnostic.
-pub macro todo {
-    () => {
-        todo!("something")
-    },
-    ($message:literal $( ,$spanning:expr )?) => {
-        Diagnostic::bug().with_message(
-            concat!(
-                "not yet implemented: ",
-                $message,
-                " at ",
-                file!(),
-                ":",
-                line!(),
-                ":",
-                column!(),
-            ),
-        ) $(.with_span($spanning))?
-    },
-    (& $( $rest:tt )*) => {
-        Err(todo!( $( $rest )* ))
-    },
-    (? $( $rest:tt )*) => {
-        todo!(& $( $rest )*)?
-    },
-    (! $( $rest:tt )*) => {
-        return todo!(& $( $rest )*)
-    },
-    (*? $( $rest:tt )*) => {{
-        use crate::support::ManyErrExt;
-        todo!(& $( $rest )*).many_err()?
-    }}
-}
-
 /// Diagnostic code.
 ///
 /// Used for language-related error in contrast to errors emitted because of

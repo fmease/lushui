@@ -134,8 +134,6 @@ module nat: =
             bool.false => case less n m of
                 bool.true => ordering.less
                 bool.false => ordering.greater
-            ;;
-    ;;
 
 module nat32: =
     @foreign
@@ -243,4 +241,3 @@ module ordering: =
         less => greater
         equal => equal
         greater => less
-    ;; @Bug without comment, does not parse

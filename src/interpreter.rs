@@ -11,7 +11,6 @@ pub(crate) mod ffi;
 pub(crate) mod scope;
 
 use crate::{
-    diagnostic::todo,
     diagnostic::{Code, Diagnostic, Result},
     hir::*,
     parser::Explicit,
@@ -224,7 +223,7 @@ impl Expression {
                     }
                 }
             }
-            (UseIn, _) => std::todo!("substitute use/in"),
+            (UseIn, _) => todo!("substitute use/in"),
             (ForeignApplication(application), substitution) => expr! {
                 ForeignApplication[self.span] {
                     callee: application.callee.clone(),
@@ -357,7 +356,7 @@ impl Expression {
                 .clone()
                 .substitute(substitution.substitution.clone())
                 .evaluate(context)?,
-            UseIn => todo!(? "evaluate use/in"),
+            UseIn => todo!("evaluate use/in"),
             // @Note partially applied constructors differ from normal values
             // I guess it's very likely that the first code we write will handle them incorrectly
             // because the code will not check for the arity of the neutral application
@@ -374,16 +373,16 @@ impl Expression {
                     Binding(subject) => {
                         for case in case_analysis.cases.iter() {
                             match &case.pattern.kind {
-                                PatternKind::Number(_) => todo!(!),
-                                PatternKind::Text(_) => todo!(!),
+                                PatternKind::Number(_) => todo!(),
+                                PatternKind::Text(_) => todo!(),
                                 PatternKind::Binding(binding) => {
                                     if binding.binder == subject.binder {
                                         // @Task @Beacon extend with parameters when evaluating
                                         return case.body.clone().evaluate(context);
                                     }
                                 }
-                                PatternKind::Binder(_) => todo!(!),
-                                PatternKind::Deapplication(_) => todo!(!),
+                                PatternKind::Binder(_) => todo!(),
+                                PatternKind::Deapplication(_) => todo!(),
                             }
                         }
                         // we should not be here
@@ -391,7 +390,7 @@ impl Expression {
                         // exhaustiveness in `infer_type`, just fyi
                         unreachable!()
                     }
-                    Application(_application) => todo!(!),
+                    Application(_application) => todo!(),
                     Number(literal0) => {
                         for case in case_analysis.cases.iter() {
                             match &case.pattern.kind {
@@ -400,8 +399,8 @@ impl Expression {
                                         return case.body.clone().evaluate(context);
                                     }
                                 }
-                                PatternKind::Text(_) => todo!(!),
-                                PatternKind::Binding(_) => todo!(!),
+                                PatternKind::Text(_) => todo!(),
+                                PatternKind::Binding(_) => todo!(),
                                 PatternKind::Binder(_) => {
                                     // @Beacon @Beacon @Question whyy do we need type information here in *evaluate*???
                                     let scope = context
@@ -409,7 +408,7 @@ impl Expression {
                                         .extend_with_parameter(InvalidFallback::invalid());
                                     return case.body.clone().evaluate(context.with_scope(&scope));
                                 }
-                                PatternKind::Deapplication(_) => todo!(!),
+                                PatternKind::Deapplication(_) => todo!(),
                             }
                         }
                         // we should not be here
@@ -447,7 +446,7 @@ impl Expression {
 
     // @Question move into its own module?
     fn _is_ffi_compatible(self) -> bool {
-        std::todo!() // @Task
+        todo!() // @Task
     }
 
     /// Dictates if two expressions are alpha-equivalent.

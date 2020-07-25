@@ -8,10 +8,12 @@
 //! * cannot really handle optional indentation
 //! * ugly API
 
+// @Task allow underscores in places where binders are allowed
+
 mod ast;
 
 use crate::{
-    diagnostic::{Code, Diagnostic, Result},
+    diagnostic::{Code, Diagnostic, Diagnostics, Result},
     lexer::{self, Token, TokenKind},
     smallvec,
     span::{SourceFile, Span, Spanned},
@@ -29,25 +31,31 @@ const STANDARD_DECLARATION_DELIMITERS: [Delimiter; 3] = [
 pub struct Parser<'a> {
     file: Rc<SourceFile>,
     tokens: &'a [Token],
+    warnings: &'a mut Diagnostics,
     index: usize,
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(file: Rc<SourceFile>, tokens: &'a [Token]) -> Self {
+    pub fn new(file: Rc<SourceFile>, tokens: &'a [Token], warnings: &'a mut Diagnostics) -> Self {
         Self {
             file,
             tokens,
+            warnings,
             index: 0,
         }
     }
-}
 
-impl Parser<'_> {
+    fn warn(&mut self, diagnostic: Diagnostic) {
+        self.warnings.insert(diagnostic);
+    }
+
     /// Parse in a sandboxed way.
     ///
     /// Used for arbitrary look-ahead. Restores the old cursor on failure.
     // @Bug because of arbitrary look-ahead/this function, a magnitude of Diagnostics are constructed
     // but never emitted/wasted
+    // @Task "restore" old warnings state on Err, so we don't get false positive warnings
+    // when looking arbitrarily far ahead
     fn reflect<Node>(&mut self, parser: impl FnOnce(&mut Self) -> Result<Node>) -> Result<Node> {
         let saved_index = self.index;
         let result = parser(self);
@@ -139,16 +147,15 @@ impl Parser<'_> {
     ///
     /// ```text
     /// Declaration ::= (Attribute | Documentation-Comment)*
-    ///     (Value-Declaration | Data-Declaration | Module-Declaration | Use-Declaration)
+    ///     (Value-Declaration | Data-Declaration | Module-Declaration | Crate-Declaration | Use-Declaration)
+    /// Crate-Declaration ::= "crate" %Identifier% Line-Break
     /// ```
     pub fn parse_declaration(&mut self) -> Result<Declaration> {
         use TokenKind::*;
-
+        let attributes = self.parse_attributes()?;
         let token = self.current();
 
-        // @Task transform attribute logic into iterative alogorithm just like we do in
-        // `parse_constructor`
-        match token.kind {
+        let mut declaration = match token.kind {
             Identifier => {
                 self.advance();
                 self.finish_parse_value_declaration(ast::Identifier::from_token(token))
@@ -161,26 +168,55 @@ impl Parser<'_> {
                 self.advance();
                 self.finish_parse_module_declaration(token.span)
             }
+            Crate => {
+                self.advance();
+                let binder = self.consume_identifier()?;
+                self.consume(LineBreak)?;
+
+                Ok(decl! {
+                    Crate[token.span.merge(&binder.span)] {
+                        binder,
+                    }
+                })
+            }
             Use => {
                 self.advance();
                 self.finish_parse_use_declaration(token.span)
             }
-            At => {
+            // @Beacon @Task attribute group
+            Indentation => {
                 self.advance();
-                let attribute = self.finish_parse_attribute(token.span)?;
-                let mut declaration = self.parse_declaration()?;
-                declaration.attributes.push(attribute);
-                Ok(declaration)
-            }
-            DocumentationComment => {
-                self.advance();
-                let attribute = self.finish_parse_documentation_comment(token.span)?;
-                let mut declaration = self.parse_declaration()?;
-                declaration.attributes.push(attribute);
-                Ok(declaration)
+                todo!("attribute group");
+                // self.consume(Dedentation)?;
             }
             _ => Err(Expected::Declaration.but_actual_is(token)),
+        }?;
+
+        declaration.attributes = attributes;
+
+        Ok(declaration)
+    }
+
+    /// Parse attributes.
+    fn parse_attributes(&mut self) -> Result<Attributes> {
+        let mut attributes = Attributes::default();
+
+        loop {
+            let token = self.current();
+            attributes.push(match token.kind {
+                TokenKind::At => {
+                    self.advance();
+                    self.finish_parse_attribute(token.span)?
+                }
+                TokenKind::DocumentationComment => {
+                    self.advance();
+                    self.finish_parse_documentation_comment(token.span)?
+                }
+                _ => break,
+            });
         }
+
+        Ok(attributes)
     }
 
     /// Finish parsing attribute.
@@ -190,20 +226,32 @@ impl Parser<'_> {
     /// ## Grammar
     ///
     /// ```text
-    /// Attribute ::= "@" ("foreign" | "inherent")
+    /// Attribute ::= "@" @Task
     /// ```
     fn finish_parse_attribute(&mut self, keyword_span: Span) -> Result<Attribute> {
+        use AttributeKind::*;
+
         let mut span = keyword_span;
 
         let identifier = self.consume_identifier()?;
         span.merging(&identifier);
+        // @Note most of these are just stubs. some of them should take arguments
         let kind = match identifier.as_str() {
-            "foreign" => AttributeKind::Foreign,
-            "inherent" => AttributeKind::Inherent,
+            "foreign" => Foreign,
+            "inherent" => Inherent,
+            "moving" => Moving,
+            "if" => If,
+            "deprecated" => Deprecated,
+            "unstable" => Unstable,
+            "allow" => Allow,
+            "warn" => Warn,
+            "deny" => Deny,
+            "forbid" => Forbid,
+            "unsafe" => Unsafe,
             _ => {
                 return Err(Diagnostic::error()
                     .with_code(Code::E011)
-                    .with_message(format!("attribute `{}` does not exist", identifier))
+                    .with_message(format!("`{}` is not an existing attribute", identifier))
                     .with_span(&identifier))
             }
         };
@@ -240,7 +288,7 @@ impl Parser<'_> {
     ///
     /// ```text
     /// Value-Declaration ::= %Identifier% Parameters Type-Annotation?
-    ///     ("=" Possibly-Indented-Expression-Followed-By-Line-Break | Line-Break)
+    ///     ("=" Possibly-Indented-Terminated-Expression | Line-Break)
     /// ```
     fn finish_parse_value_declaration(&mut self, binder: Identifier) -> Result<Declaration> {
         use TokenKind::*;
@@ -304,20 +352,10 @@ impl Parser<'_> {
 
                 let mut constructors = Vec::new();
 
-                // @Task @Beacon abstract over it: it's also used for modules
-                while self.consumed(Indentation) {
-                    while !self.current_is(Dedentation) {
-                        if self.consumed(LineBreak) {
-                            continue;
-                        }
-
-                        constructors.push(self.parse_constructor()?);
-                    }
-
-                    self.consume(Dedentation)?;
-
-                    while self.consumed(LineBreak) {}
-                }
+                self.parse_indented(|parser| {
+                    constructors.push(parser.parse_constructor()?);
+                    Ok(())
+                })?;
 
                 span.merging(&constructors.last());
 
@@ -360,6 +398,17 @@ impl Parser<'_> {
         use TokenKind::*;
         let mut span = keyword_span;
 
+        if self.consumed(Colon) {
+            let exposures = self.parse_exposure_list()?;
+            self.consume(LineBreak)?;
+
+            return Ok(decl! {
+                Header[span] {
+                    exposures,
+                }
+            });
+        }
+
         let binder = self.consume_identifier()?;
         span.merging(&binder);
 
@@ -380,21 +429,10 @@ impl Parser<'_> {
 
         let mut declarations = Vec::new();
 
-        // @Task abstract over this, @Note we could maybe use an indentation counter
-        // to make this very easy
-        while self.consumed(Indentation) {
-            while !self.current_is(Dedentation) {
-                if self.consumed(LineBreak) {
-                    continue;
-                }
-
-                declarations.push(self.parse_declaration()?);
-            }
-
-            self.consume(Dedentation)?;
-
-            while self.consumed(LineBreak) {}
-        }
+        self.parse_indented(|parser| {
+            declarations.push(parser.parse_declaration()?);
+            Ok(())
+        })?;
 
         // @Bug span is wrong: we need to store the last token's span: dedentation/line break
         Ok(decl! {
@@ -420,19 +458,6 @@ impl Parser<'_> {
     /// ```
     pub fn parse_top_level(&mut self, binder: Identifier) -> Result<Declaration> {
         use TokenKind::*;
-        while self.consumed(LineBreak) {}
-
-        // module header
-        // @Task parse attributes and documentation comments on here
-        let exposures = if self.current_is(Module) && self.succeeding_is(Colon) {
-            self.advance();
-            self.advance();
-            let exposures = self.parse_exposure_list()?;
-            self.consume(LineBreak)?;
-            exposures
-        } else {
-            Vec::new()
-        };
 
         let mut declarations = Vec::new();
 
@@ -446,7 +471,7 @@ impl Parser<'_> {
                     Module[self.file.span] {
                         binder,
                         file: self.file.clone(),
-                        exposures,
+                        exposures: Vec::new(),
                         declarations: Some(declarations)
                     }
                 });
@@ -456,7 +481,7 @@ impl Parser<'_> {
         }
     }
 
-    /// Delimiter is `=`.
+    /// Delimiter is `=` (which is also consumed in the process).
     // @Task parse complex and multipaths for constructor and field exposures
     fn parse_exposure_list(&mut self) -> Result<Vec<Identifier>> {
         let mut exposures = Vec::new();
@@ -466,6 +491,27 @@ impl Parser<'_> {
         }
 
         Ok(exposures)
+    }
+
+    // @Note this is fragile and ugly as heck
+    fn parse_indented(&mut self, mut subparser: impl FnMut(&mut Self) -> Result<()>) -> Result<()> {
+        use TokenKind::*;
+
+        while self.consumed(Indentation) {
+            while !self.current_is(Dedentation) {
+                if self.consumed(LineBreak) {
+                    continue;
+                }
+
+                subparser(self)?;
+            }
+
+            self.consume(Dedentation)?;
+
+            while self.consumed(LineBreak) {}
+        }
+
+        Ok(())
     }
 
     /// Finish parsing use declaration.
@@ -607,25 +653,16 @@ impl Parser<'_> {
     ///     %Identifier% Parameters Type-Annotation? Line-Break
     /// ```
     fn parse_constructor(&mut self) -> Result<Declaration> {
-        let mut attributes = Attributes::default();
+        let attributes = self.parse_attributes()?;
 
-        loop {
-            let token = self.current();
-            attributes.push(match token.kind {
-                TokenKind::Underscore => {
-                    self.advance();
-                    self.finish_parse_attribute(token.span)?
-                }
-                TokenKind::DocumentationComment => {
-                    self.advance();
-                    self.finish_parse_documentation_comment(token.span)?
-                }
-                _ => break,
-            });
-        }
+        let span = self
+            .consume(TokenKind::Record)
+            .ok()
+            .map(|record| record.span);
+        let record = span.is_some();
 
         let binder = self.consume_identifier()?;
-        let mut span = binder.span;
+        let mut span = binder.span.merge_into(&span);
 
         let parameters =
             self.parse_parameters(&[Delimiter::TypeAnnotationPrefix, TokenKind::LineBreak.into()])?;
@@ -641,6 +678,7 @@ impl Parser<'_> {
                 binder,
                 parameters,
                 type_annotation,
+                record,
             }
         };
         constructor.attributes = attributes;
@@ -662,6 +700,10 @@ impl Parser<'_> {
             Let => {
                 self.advance();
                 self.finish_parse_let_in(token.span)
+            }
+            Use => {
+                self.advance();
+                self.finish_parse_use_in(token.span)
             }
             Backslash => {
                 self.advance();
@@ -731,19 +773,29 @@ impl Parser<'_> {
     /// ## Grammar
     ///
     /// ```text
-    /// Application-Or-Lower @left@ ::= Lower-Expression (Lower-Expression | "(" "," Expression ")")*
+    /// Application-Or-Lower @left@ ::=
+    ///     Lower-Expression
+    ///         (Lower-Expression | "(" "," (%Identifier% "=")? Expression ")")*
     /// ```
     fn parse_application_or_lower(&mut self) -> Result<Expression> {
         use TokenKind::*;
         let mut expression = self.reflect(Self::parse_lower_expression)?;
-        while let Ok((argument, explicitness)) = self
-            .reflect(|parser| Ok((parser.parse_lower_expression()?, Explicit)))
+        while let Ok((argument, explicitness, binder)) = self
+            .reflect(|parser| Ok((parser.parse_lower_expression()?, Explicit, None)))
             .or_else(|_| -> Result<_> {
                 self.consume(OpeningRoundBracket)?;
-                self.consume(Comma)?;
+                let explicitness = self.consume_explicitness_symbol();
+                let binder = (self.current_is(TokenKind::Identifier)
+                    && self.succeeding_is(TokenKind::Equals))
+                .then(|| {
+                    let token = self.current();
+                    self.advance();
+                    self.advance();
+                    ast::Identifier::from_token(token)
+                });
                 let expression = self.parse_expression()?;
                 self.consume(ClosingRoundBracket)?;
-                Ok((expression, Implicit))
+                Ok((expression, explicitness, binder))
             })
         {
             expression = expr! {
@@ -751,6 +803,7 @@ impl Parser<'_> {
                     callee: expression,
                     argument,
                     explicitness,
+                    binder,
                 }
             };
         }
@@ -800,6 +853,11 @@ impl Parser<'_> {
             TextLiteral => {
                 self.advance();
                 expr! { TextLiteral[token.span](token.text_literal()) }
+            }
+            QuestionMark => {
+                self.advance();
+                let tag = self.consume_identifier()?;
+                expr! { TypedHole[token.span.merge(&tag)] { tag } }
             }
             // @Task use advance_with//finish
             OpeningRoundBracket => return self.parse_bracketed(Self::parse_expression),
@@ -867,7 +925,7 @@ impl Parser<'_> {
         })
     }
 
-    /// Finish parsing an let-in expression.
+    /// Finish parsing an let/in expression.
     ///
     /// The initial `let` should have already been parsed beforehand.
     ///
@@ -896,6 +954,23 @@ impl Parser<'_> {
                 parameters,
                 type_annotation,
                 expression,
+                scope,
+            }
+        })
+    }
+
+    /// Finish parsing a use/in expression.
+    fn finish_parse_use_in(&mut self, span_of_use: Span) -> Result<Expression> {
+        let bindings = self.parse_use_bindings(&[TokenKind::In.into()])?;
+        self.consume(TokenKind::In)?;
+
+        // @Bug commented code does not work as expected (says: unexpected dedentation)
+        // let scope = self.parse_possibly_indented_expression_followed_by_line_break()?;
+        let scope = self.parse_expression()?;
+
+        Ok(expr! {
+            UseIn[span_of_use.merge(&scope)] {
+                bindings,
                 scope,
             }
         })
@@ -1154,10 +1229,15 @@ impl Parser<'_> {
         }
     }
 
-    /// Parse an expression terminated by a line break.
+    /// Parse an expression terminated by a line break or dedentation.
+    ///
+    /// A line break is parsed, dedentation is not.
     fn parse_terminated_expression(&mut self) -> Result<Expression> {
         let expression = self.parse_expression()?;
-        self.consume(TokenKind::LineBreak)?;
+        // @Note special-casing is also called programming hackily
+        if !self.current_is(TokenKind::Dedentation) {
+            self.consume(TokenKind::LineBreak)?;
+        }
         Ok(expression)
     }
 
@@ -1174,14 +1254,15 @@ impl Parser<'_> {
     }
 
     fn consume_explicitness_symbol(&mut self) -> Explicitness {
-        if self.consumed(TokenKind::Comma) {
+        if let Ok(token) = self.consume(TokenKind::Comma) {
             // @Note there might be false positives (through arbitrary look-ahead)
-            // @Task let this function have access to the source map #ParserRefactor
-            Diagnostic::warning()
-                .with_code(Code::W001)
-                .with_message("implicitness markers are currently ignored")
-                // .with_span(token.span)
-                .emit(None);
+            // (current issue of Self::reflect)
+            self.warn(
+                Diagnostic::warning()
+                    .with_code(Code::W001)
+                    .with_message("implicitness markers are currently ignored")
+                    .with_span(&token),
+            );
             Implicit
         } else {
             Explicit

@@ -1,5 +1,8 @@
-use super::{lex, Diagnostics, Token, TokenKind::*};
-use crate::span::{ByteIndex, Span};
+use super::{lex, token::TokenData, Token, TokenKind::*};
+use crate::{
+    diagnostic::Results,
+    span::{ByteIndex, Span},
+};
 
 fn span(start: u32, end: u32) -> Span {
     Span::new(ByteIndex::new(start), ByteIndex::new(end))
@@ -10,23 +13,25 @@ fn assert_ok_token(actual: Results<Vec<Token>>, expected: Vec<Token>) {
         Ok(actual) => {
             if actual != expected {
                 panic!(
-                    "expected the token `{:?}` but got the token `{:?}`",
+                    "expected the tokens `{:#?}` but got the tokens `{:#?}`",
                     expected, actual
                 );
             }
         }
-        Err(_) => panic!("expected the token `{:?}` but got an `Err`", expected),
+        Err(_) => panic!("expected the tokens `{:?}` but got an `Err`", expected),
     }
 }
 
 fn assert_err(actual: Results<Vec<Token>>, expected_spans: &[&[Span]]) {
     match actual {
-        Ok(actual) => panic!("expected an `Err` but got the token `{:?}`", actual),
+        Ok(actual) => panic!("expected an `Err` but got the tokens `{:?}`", actual),
         Err(diagnostics) => {
-            let actual_spans: Vec<Vec<Span>> = diagnostics
+            let mut actual_spans: Vec<Vec<Span>> = diagnostics
                 .iter()
                 .map(|diagnostic| diagnostic.spans())
                 .collect();
+
+            actual_spans.sort();
 
             if actual_spans != expected_spans {
                 panic!(
@@ -49,9 +54,6 @@ fn lex_comment() {
         .into()),
         vec![
             Token::new(LineBreak, span(1, 1)),
-            Token::new(LineBreak, span(28, 28)),
-            Token::new(LineBreak, span(45, 45)),
-            Token::new(LineBreak, span(59, 59)),
             Token::new(EndOfInput, span(59, 59)),
         ],
     );
@@ -65,12 +67,13 @@ alpha;;文本
             .into()),
         vec![
             Token::new_identifier("alpha".into(), span(1, 5)),
-            Token::new(LineBreak, span(14, 14)),
-            Token::new_nat_literal(401u16.into(), span(15, 18)),
-            Token::new(DocumentationComment, span(20, 48)),
-            Token::new(LineBreak, span(49, 49)),
-            Token::new(DocumentationComment, span(50, 59)),
-            Token::new(LineBreak, span(60, 60)),
+            Token::with_data(
+                NumberLiteral,
+                TokenData::NatLiteral(401u32.into()),
+                span(15, 18),
+            ),
+            Token::new(DocumentationComment, span(20, 49)),
+            Token::new(DocumentationComment, span(50, 60)),
             Token::new(DocumentationComment, span(61, 76)),
             Token::new(EndOfInput, span(76, 76)),
         ],
@@ -121,7 +124,6 @@ fn lex_identifier() {
 }
 
 #[test]
-// @Task invalid indentation after SOI (currently not correctly implemented)
 fn lex_indentation() {
     assert_ok_token(
         lex("
@@ -144,7 +146,7 @@ beta
             Token::new_identifier("alpha".into(), span(12, 16)),
             Token::new(Comma, span(17, 17)),
             Token::new(LineBreak, span(18, 18)),
-            Token::new(Punctuation, span(23, 24)),
+            Token::new_punctuation("<$".into(), span(23, 24)),
             Token::new(LineBreak, span(25, 25)),
             Token::new(Dedentation, span(25, 25)),
             Token::new_identifier("beta".into(), span(26, 29)),
@@ -157,16 +159,16 @@ beta
             Token::new(LineBreak, span(54, 54)),
             Token::new(Dedentation, span(54, 54)),
             Token::new(Dedentation, span(54, 54)),
-            Token::new(Punctuation, span(55, 55)),
+            Token::new_punctuation("+".into(), span(55, 55)),
             Token::new(LineBreak, span(56, 56)),
             Token::new(Indentation, span(57, 60)),
-            Token::new(Punctuation, span(61, 61)),
+            Token::new_punctuation("-".into(), span(61, 61)),
             Token::new(LineBreak, span(62, 62)),
             Token::new(Indentation, span(67, 70)),
-            Token::new(Punctuation, span(71, 71)),
+            Token::new_punctuation("*".into(), span(71, 71)),
             Token::new(LineBreak, span(72, 72)),
             Token::new(Dedentation, span(75, 75)),
-            Token::new(Punctuation, span(77, 77)),
+            Token::new_punctuation("/".into(), span(77, 77)),
             Token::new(Dedentation, span(77, 77)),
             Token::new(EndOfInput, span(77, 77)),
         ],
@@ -192,29 +194,80 @@ fn lex_punctuation() {
     assert_ok_token(
         lex("+ +>alpha//$~%  #0 . ..".into()),
         vec![
-            Token::new(Punctuation, span(1, 1)),
-            Token::new(Punctuation, span(3, 4)),
+            Token::new_punctuation("+".into(), span(1, 1)),
+            Token::new_punctuation("+>".into(), span(3, 4)),
             Token::new_identifier("alpha".into(), span(5, 9)),
-            Token::new(Punctuation, span(10, 14)),
-            Token::new(Punctuation, span(17, 17)),
-            Token::new_nat_literal(0u8.into(), span(18, 18)),
+            Token::new_punctuation("//$~%".into(), span(10, 14)),
+            Token::new_punctuation("#".into(), span(17, 17)),
+            Token::with_data(
+                NumberLiteral,
+                TokenData::NatLiteral(0u32.into()),
+                span(18, 18),
+            ),
             Token::new(Dot, span(20, 20)),
-            Token::new(Punctuation, span(22, 23)),
+            Token::new_punctuation("..".into(), span(22, 23)),
             Token::new(EndOfInput, span(23, 23)),
         ],
     );
 }
 
 #[test]
-fn lex_nat_literal() {
+fn lex_number_literal() {
     assert_ok_token(
         lex("1001409409220293022239833211 01".into()),
         vec![
-            Token::new_nat_literal(1001409409220293022239833211u128.into(), span(1, 28)),
-            Token::new_nat_literal(1u8.into(), span(30, 31)),
+            Token::with_data(
+                NumberLiteral,
+                TokenData::NatLiteral(1001409409220293022239833211u128.into()),
+                span(1, 28),
+            ),
+            Token::with_data(
+                NumberLiteral,
+                TokenData::NatLiteral(1u32.into()),
+                span(30, 31),
+            ),
             Token::new(EndOfInput, span(31, 31)),
         ],
     );
+
+    assert_ok_token(
+        lex(r#"334#N 1'000what 3'2'2'1"" 500#N32 10#I"" -23#I64"#.into()),
+        vec![
+            Token::with_data(
+                NumberLiteral,
+                TokenData::NatLiteral(334u32.into()),
+                span(1, 5),
+            ),
+            Token::with_data(
+                NumberLiteral,
+                TokenData::NatLiteral(1000u32.into()),
+                span(7, 11),
+            ),
+            Token::new_identifier("what".into(), span(12, 15)),
+            Token::with_data(
+                NumberLiteral,
+                TokenData::NatLiteral(3221u32.into()),
+                span(17, 23),
+            ),
+            Token::new_text_literal(String::new(), span(24, 25)),
+            Token::with_data(NumberLiteral, TokenData::Nat32Literal(500), span(27, 33)),
+            Token::with_data(
+                NumberLiteral,
+                TokenData::IntLiteral(10.into()),
+                span(35, 38),
+            ),
+            Token::new_text_literal(String::new(), span(39, 40)),
+            Token::with_data(NumberLiteral, TokenData::Int64Literal(-23), span(42, 48)),
+            Token::new(EndOfInput, span(48, 48)),
+        ],
+    );
+
+    assert_err(lex("3''100".into()), &[&[span(1, 6)]]);
+    assert_err(lex("10' ".into()), &[&[span(1, 3)]]);
+    assert_err(lex("10'".into()), &[&[span(1, 3)]]);
+    assert_err(lex("-23".into()), &[&[span(1, 3)]]);
+    assert_err(lex("45#!".into()), &[&[span(1, 3)]]);
+    assert_err(lex("12#O33".into()), &[&[span(1, 6)]]);
 }
 
 #[test]
@@ -258,8 +311,6 @@ fn lex_other() {
         ],
     );
 
-    // @Bug @Beacon fails non-deterministically: order of spans might be switched...but I thought I was only using Vecs here,
-    // no HashMaps, what happens here?
     assert_err(lex("((".into()), &[&[span(1, 1)], &[span(2, 2)]]);
     assert_err(lex(")))".into()), &[&[span(1, 1)]]);
 }

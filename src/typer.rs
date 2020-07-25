@@ -3,7 +3,6 @@
 mod types;
 
 use crate::{
-    diagnostic::todo,
     diagnostic::{Code, Diagnostic, Result, Results},
     hir::{self, *},
     interpreter::{
@@ -467,7 +466,7 @@ impl Expression {
                 .clone()
                 .substitute(substitution.substitution.clone())
                 .infer_type(scope)?,
-            UseIn => todo!(? "1stP infer type of use/in"),
+            UseIn => todo!("1stP infer type of use/in"),
             CaseAnalysis(case_analysis) => {
                 let type_ = case_analysis
                     .subject
@@ -483,8 +482,8 @@ impl Expression {
 
                 match &type_.kind {
                     Binding(_) => {}
-                    Application(_application) => todo!(? "polymorphic types in patterns"),
-                    _ => todo!(? "encountered unsupported type to be case-analysed"),
+                    Application(_application) => todo!("polymorphic types in patterns"),
+                    _ => todo!("encountered unsupported type to be case-analysed"),
                 };
 
                 let mut type_of_previous_body = None::<Self>;
@@ -523,7 +522,7 @@ impl Expression {
                             types.push(type_.clone());
                         }
                         PatternKind::Deapplication(_deapplication) => {
-                            todo!(? "handle deapplications in patterns", &case.pattern)
+                            todo!("handle deapplications in patterns")
                         }
                     }
                     let type_ = case
@@ -541,7 +540,7 @@ impl Expression {
                     }
                 }
 
-                type_of_previous_body.ok_or_else(|| todo!("caseless case analyses"))?
+                type_of_previous_body.expect("caseless case analyses")
             }
             ForeignApplication(_) => unreachable!(),
             Invalid => self,

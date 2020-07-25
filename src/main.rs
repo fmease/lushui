@@ -1,7 +1,8 @@
 #![forbid(rust_2018_idioms, unused_must_use)]
 
 use lushui::{
-    diagnostic::{Diagnostic, Results},
+    desugar::Desugarer,
+    diagnostic::{Diagnostic, Diagnostics, Results},
     interpreter,
     lexer::Lexer,
     parser::Parser,
@@ -195,6 +196,7 @@ fn main() {
         .unwrap_or_else(|_| unreachable!());
 
     let mut map = SourceMap::default();
+    let mut warnings = Diagnostics::new();
 
     let result: Results<()> = (|| {
         let path = merged_arguments.file;
@@ -210,7 +212,7 @@ fn main() {
             return Ok(());
         }
 
-        let node = Parser::new(source_file, &tokens)
+        let node = Parser::new(source_file, &tokens, &mut warnings)
             .parse_top_level(crate_name.clone())
             .many_err()?;
         if merged_arguments.print_ast {
@@ -222,7 +224,10 @@ fn main() {
 
         match arguments.command {
             Command::Check { .. } | Command::Run { .. } => {
-                let node = node.desugar(&mut map)?.remove(0);
+                let node = Desugarer::new(&mut map, &mut warnings)
+                    .desugar_declaration(node)?
+                    .pop()
+                    .unwrap();
                 if merged_arguments.print_desugar_hir {
                     eprintln!("{}", node);
                 }
@@ -264,21 +269,27 @@ fn main() {
         Ok(())
     })();
 
+    if !warnings.is_empty() {
+        let amount = warnings.len();
+        emit_diagnostics(warnings, &mut map, arguments.sort_diagnostics);
+
+        const MINIMUM_AMOUNT_WARNINGS_FOR_SUMMARY: usize = 0;
+
+        // @Question should we print this at all?
+        if amount >= MINIMUM_AMOUNT_WARNINGS_FOR_SUMMARY {
+            Diagnostic::warning()
+                .with_message(format!(
+                    "emitted {} {}",
+                    amount,
+                    pluralize(amount, "warning", || "warnings")
+                ))
+                .emit(Some(&map));
+        }
+    }
+
     if let Err(errors) = result {
         let amount = errors.len();
-
-        if arguments.sort_diagnostics {
-            let mut errors: Vec<_> = errors.into_iter().collect();
-            errors.sort_by_key(|error| error.spans());
-
-            for error in errors {
-                error.emit(Some(&map));
-            }
-        } else {
-            for error in errors {
-                error.emit(Some(&map));
-            }
-        }
+        emit_diagnostics(errors, &mut map, arguments.sort_diagnostics);
 
         Diagnostic::error()
             .with_message(pluralize(amount, "aborting due to previous error", || {
@@ -290,6 +301,22 @@ fn main() {
         // from main once stable again. I am not sure but it could be that right now,
         // destructors are not run
         std::process::exit(1);
+    }
+}
+
+// @Task
+fn emit_diagnostics(diagnostics: Diagnostics, map: &mut SourceMap, sort: bool) {
+    if sort {
+        let mut diagnostics: Vec<_> = diagnostics.into_iter().collect();
+        diagnostics.sort_by_key(|error| error.spans());
+
+        for diagnostic in diagnostics {
+            diagnostic.emit(Some(&map));
+        }
+    } else {
+        for diagnostic in diagnostics {
+            diagnostic.emit(Some(&map));
+        }
     }
 }
 

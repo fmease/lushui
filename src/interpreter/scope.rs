@@ -189,7 +189,7 @@ impl CrateScope {
 
     // @Task
     pub fn register_impure_foreign_binding<V: Into<ffi::Value>>(&mut self) {
-        std::todo!("register impure foreign binding")
+        todo!("register impure foreign binding")
     }
 
     pub fn register_foreign_type(&mut self, binder: &'static str) {

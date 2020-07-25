@@ -17,7 +17,7 @@
 
 use crate::{
     desugar::Desugared,
-    diagnostic::{todo, Code, Diagnostic, Diagnostics, Result, Results},
+    diagnostic::{Code, Diagnostic, Diagnostics, Result, Results},
     entity::{Entity, EntityKind},
     hir::{self, decl, expr, Declaration, Expression, Pass},
     parser::{self, Path},
@@ -785,7 +785,7 @@ impl Expression<Desugared> {
                     explicitness: lambda.explicitness,
                 }
             },
-            UseIn => todo!(*? "resolving use/in"),
+            UseIn => todo!("resolving use/in"),
             CaseAnalysis(expression) => {
                 let subject = expression.subject.clone().resolve(scope, crate_scope)?;
                 let mut cases = Vec::new();

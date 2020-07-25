@@ -179,7 +179,7 @@ impl Span {
 
 impl fmt::Debug for Span {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Span({}, {})", self.start.0, self.end.0)
+        write!(f, "[{}..{}]", self.start.0, self.end.0)
     }
 }
 
@@ -412,8 +412,9 @@ impl SourceMap {
                     number: self.number,
                     content: &file[LocalSpan::new(start, self.end?)],
                     highlight_width,
-                    highlight_prefix_width: file[LocalSpan::new(start, highlight.start - 1)]
-                        .width(),
+                    highlight_prefix_width: file[LocalSpan::new(start, highlight.start)]
+                        .width()
+                        .saturating_sub(1),
                     highlight_start_column: (highlight.start + 1 - start).into(),
                 })
             }

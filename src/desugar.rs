@@ -8,7 +8,7 @@ use std::{fmt, iter::once};
 use crate::{
     diagnostic::{Code, Diagnostic, Diagnostics, Results},
     hir::{self, decl, expr, pat, Pass},
-    parser::{self, AttributeKind, Explicit, Identifier, Path},
+    parser::{self, Explicit, Identifier, Path},
     smallvec,
     span::{SourceMap, Spanning},
     support::{pluralize, release, InvalidFallback, ManyErrExt, TrySoftly},
@@ -26,28 +26,43 @@ impl Pass for Desugared {
     type ForeignApplicationBinder = !;
 }
 
-impl parser::Declaration {
+pub struct Desugarer<'a> {
+    map: &'a mut SourceMap,
+    warnings: &'a mut Diagnostics,
+}
+
+impl<'a> Desugarer<'a> {
+    pub fn new(map: &'a mut SourceMap, warnings: &'a mut Diagnostics) -> Self {
+        Self { map, warnings }
+    }
+
+    fn warn(&mut self, diagnostic: Diagnostic) {
+        self.warnings.insert(diagnostic);
+    }
+
     /// Desugar a declaration from AST.
     ///
     /// Also, filters documentation attributes and validates
     /// foreign attributes. Those checks should probably be moved somewhere
     /// else.
-    pub fn desugar(
-        mut self,
-        map: &mut SourceMap,
+    pub fn desugar_declaration(
+        &mut self,
+        mut declaration: parser::Declaration,
     ) -> Results<SmallVec<hir::Declaration<Desugared>, 1>> {
         use parser::DeclarationKind::*;
 
-        self.validate_attributes()?;
+        let mut errors = Diagnostics::new();
 
-        Ok(match self.kind {
-            Value(declaration) => {
-                let mut errors = Diagnostics::new();
+        if let Err(attribute_errors) = Self::validate_attributes(&mut declaration) {
+            errors.extend(attribute_errors);
+        }
 
-                let declaration_type_annotation = match declaration.type_annotation {
+        Ok(match declaration.kind {
+            Value(value) => {
+                let declaration_type_annotation = match value.type_annotation {
                     Some(type_annotation) => type_annotation,
                     None => Err(missing_mandatory_type_annotation(
-                        &self.span,
+                        &declaration.span,
                         AnnotationTarget::Declaration,
                     ))
                     .try_softly(&mut errors),
@@ -56,17 +71,19 @@ impl parser::Declaration {
                 // @Note type_annotation is currently desugared twice @Task remove duplicate work
                 // @Task find a way to use `Option::map` (currently does not work because of
                 // partial moves, I hate those), use local bindings
-                let expression = match declaration.expression {
+                let expression = match value.expression {
                     Some(expression) => {
-                        let mut expression = expression.desugar();
+                        let mut expression = self.desugar_expression(expression);
                         {
                             let mut type_annotation =
-                                once(declaration_type_annotation.clone().desugar());
+                                once(self.desugar_expression(declaration_type_annotation.clone()));
 
-                            for parameter_group in declaration.parameters.iter().rev() {
+                            for parameter_group in value.parameters.iter().rev() {
                                 let parameter_type_annotation =
                                     match &parameter_group.type_annotation {
-                                        Some(type_annotation) => type_annotation.clone().desugar(),
+                                        Some(type_annotation) => {
+                                            self.desugar_expression(type_annotation.clone())
+                                        }
                                         None => Err(missing_mandatory_type_annotation(
                                             parameter_group,
                                             AnnotationTarget::Parameters {
@@ -94,49 +111,51 @@ impl parser::Declaration {
                     None => None,
                 };
 
-                let type_annotation = desugar_parameters_to_annotated_ones(
-                    declaration.parameters,
-                    declaration_type_annotation,
-                )
-                .try_softly(&mut errors);
+                let type_annotation = self
+                    .desugar_parameters_to_annotated_ones(
+                        value.parameters,
+                        declaration_type_annotation,
+                    )
+                    .try_softly(&mut errors);
 
                 release!(errors);
 
                 smallvec![decl! {
-                    Value[self.span][self.attributes] {
-                        binder: declaration.binder,
+                    Value[declaration.span][declaration.attributes] {
+                        binder: value.binder,
                         type_annotation,
                         expression,
                     }
                 }]
             }
             Data(data) => {
-                let mut errors = Diagnostics::new();
-
                 let data_type_annotation = match data.type_annotation {
                     Some(type_annotation) => type_annotation,
                     None => Err(missing_mandatory_type_annotation(
-                        &self.span,
+                        &declaration.span,
                         AnnotationTarget::Declaration,
                     ))
                     .try_softly(&mut errors),
                 };
 
-                let type_annotation =
-                    desugar_parameters_to_annotated_ones(data.parameters, data_type_annotation)
-                        .try_softly(&mut errors);
+                let type_annotation = self
+                    .desugar_parameters_to_annotated_ones(data.parameters, data_type_annotation)
+                    .try_softly(&mut errors);
 
                 let constructors = data.constructors.map(|constructors| {
                     constructors
                         .into_iter()
-                        .flat_map(|constructor| constructor.desugar(map).try_softly(&mut errors))
+                        .flat_map(|constructor| {
+                            self.desugar_declaration(constructor)
+                                .try_softly(&mut errors)
+                        })
                         .collect()
                 });
 
                 release!(errors);
 
                 smallvec![decl! {
-                    Data[self.span][self.attributes] {
+                    Data[declaration.span][declaration.attributes] {
                         binder: data.binder,
                         type_annotation,
                         constructors,
@@ -144,104 +163,159 @@ impl parser::Declaration {
                 }]
             }
             Constructor(constructor) => {
-                let mut errors = Diagnostics::new();
-
                 let constructor_type_annotation = match constructor.type_annotation {
                     Some(type_annotation) => type_annotation,
                     None => Err(missing_mandatory_type_annotation(
-                        &self.span,
+                        &declaration.span,
                         AnnotationTarget::Declaration,
                     ))
                     .try_softly(&mut errors),
                 };
 
-                let type_annotation = desugar_parameters_to_annotated_ones(
-                    constructor.parameters,
-                    constructor_type_annotation,
-                )
-                .try_softly(&mut errors);
+                let type_annotation = self
+                    .desugar_parameters_to_annotated_ones(
+                        constructor.parameters,
+                        constructor_type_annotation,
+                    )
+                    .try_softly(&mut errors);
+
+                // @Temporary
+                // @Task verify there is only a single constructor
+                // @Task implement
+                if constructor.record {
+                    errors.insert(
+                        Diagnostic::bug()
+                            .with_message("records not supported yet")
+                            .with_span(&declaration.span),
+                    );
+                }
 
                 release!(errors);
 
                 smallvec![decl! {
-                    Constructor[self.span][self.attributes] {
+                    Constructor[declaration.span][declaration.attributes] {
                         binder: constructor.binder,
                         type_annotation,
                     }
                 }]
             }
             Module(module) => {
-                let declarations = match module.declarations {
-                    Some(declarations) => declarations,
-                    None => {
-                        use crate::{lexer::Lexer, parser::Parser, span};
-                        use std::path::Path;
+                let declarations =
+                    match module.declarations {
+                        Some(declarations) => declarations,
+                        None => {
+                            use crate::{lexer::Lexer, parser::Parser, span};
+                            use std::path::Path;
 
-                        let path = Path::new(&module.file.name)
-                            .ancestors()
-                            .nth(1)
-                            .unwrap()
-                            .join(&format!("{}.{}", module.binder, crate::FILE_EXTENSION));
+                            let path = Path::new(&module.file.name)
+                                .ancestors()
+                                .nth(1)
+                                .unwrap()
+                                .join(&format!("{}.{}", module.binder, crate::FILE_EXTENSION));
 
-                        let declaration_span = self.span;
+                            let declaration_span = declaration.span;
 
-                        let file = map
-                            .load(path.to_str().unwrap())
-                            .map_err(|error| match error {
-                                // @Task code
-                                span::Error::LoadFailure(_) => Diagnostic::error()
-                                    .with_message(format!(
-                                        "could not load module `{}`",
-                                        module.binder
-                                    ))
-                                    .with_span(&declaration_span)
-                                    .with_note(error.message(Some(&path))),
-                                // @Task add context information
-                                error => error.into(),
-                            })
-                            .many_err()?;
+                            let file = self
+                                .map
+                                .load(path.to_str().unwrap())
+                                .map_err(|error| match error {
+                                    // @Task code
+                                    span::Error::LoadFailure(_) => Diagnostic::error()
+                                        .with_message(format!(
+                                            "could not load module `{}`",
+                                            module.binder
+                                        ))
+                                        .with_span(&declaration_span)
+                                        .with_note(error.message(Some(&path))),
+                                    // @Task add context information
+                                    error => error.into(),
+                                })
+                                .many_err()?;
 
-                        let tokens = Lexer::new(&file).lex()?;
-                        let node = Parser::new(file, &tokens)
-                            .parse_top_level(module.binder.clone())
-                            .many_err()?;
-                        let module = match node.kind {
-                            Module(module) => module,
-                            _ => unreachable!(),
-                        };
-                        // @Temporary
-                        if !node.attributes.is_empty() {
-                            Diagnostic::warning()
-                                .with_message("attributes on module headers are ignored right now")
-                                .emit(None);
+                            let tokens = Lexer::new(&file).lex()?;
+                            let node = Parser::new(file, &tokens, &mut self.warnings)
+                                .parse_top_level(module.binder.clone())
+                                .many_err()?;
+                            let module = match node.kind {
+                                Module(module) => module,
+                                _ => unreachable!(),
+                            };
+                            // @Temporary
+                            if !node.attributes.is_empty() {
+                                self.warn(Diagnostic::warning().with_message(
+                                    "attributes on module headers are ignored right now",
+                                ))
+                            }
+                            module.declarations.unwrap()
                         }
-                        module.declarations.unwrap()
-                    }
-                };
-
-                let mut errors = Diagnostics::new();
+                    };
 
                 let declarations = declarations
                     .into_iter()
-                    .flat_map(|declaration| declaration.desugar(map).try_softly(&mut errors))
+                    .flat_map(|declaration| {
+                        self.desugar_declaration(declaration)
+                            .try_softly(&mut errors)
+                    })
                     .collect();
 
                 release!(errors);
 
                 smallvec![decl! {
-                    Module[self.span][self.attributes] {
+                    Module[declaration.span][declaration.attributes] {
                         binder: module.binder,
                         file: module.file,
                         declarations,
                     }
                 }]
             }
-            Use(declaration) => {
+            // @Temporary
+            Crate(_) => {
+                return Err(Diagnostic::bug()
+                    .with_message("crate declarations not supported yet")
+                    .with_span(&declaration.span))
+                .many_err()
+            }
+            // @Beacon @Task merge information (exposure list and attributes) with parent module
+            // (through a `Context`) and ensure it's the first declaration in the whole module
+            Header(_) => {
+                return Err(Diagnostic::bug()
+                    .with_message("module headers not supported yet")
+                    .with_span(&declaration.span))
+                .many_err()
+            }
+            // @Question (language specification) should the overarching attributes be placed
+            // *above* or *below* the subdeclaration attributes? (currently, it's above)
+            // depends on the order of attribute evaluation we haven't offically specified yet
+            Group(group) => {
+                let attributes = declaration.attributes.clone();
+
+                let declarations = group
+                    .declarations
+                    .into_iter()
+                    .map(|mut declaration| {
+                        let mut attributes = attributes.clone();
+                        attributes.append(&mut declaration.attributes);
+                        declaration.attributes = attributes;
+                        declaration
+                    })
+                    .flat_map(|declaration| {
+                        self.desugar_declaration(declaration)
+                            .try_softly(&mut errors)
+                    })
+                    .collect();
+
+                release!(errors);
+
+                declarations
+            }
+            Use(use_) => {
                 use crate::span::Span;
+
                 use parser::{
                     Attributes,
                     UseBindings::{self, *},
                 };
+
                 let mut declarations = SmallVec::new();
 
                 fn desugar_multiple_use_bindings(
@@ -281,9 +355,9 @@ impl parser::Declaration {
                     }
                 };
 
-                match declaration.bindings {
+                match use_.bindings {
                     Single { target, binder } => declarations.push(decl! {
-                        Use[self.span][self.attributes] {
+                        Use[declaration.span][declaration.attributes] {
                             binder: binder.or_else(|| target.last_identifier().cloned()),
                             target,
                         }
@@ -292,8 +366,8 @@ impl parser::Declaration {
                         desugar_multiple_use_bindings(
                             path,
                             bindings,
-                            self.span,
-                            &self.attributes,
+                            declaration.span,
+                            &declaration.attributes,
                             &mut declarations,
                         );
                     }
@@ -305,10 +379,12 @@ impl parser::Declaration {
     }
 
     // @Task validate that attributes are unique (using Attribute::unique)
-    fn validate_attributes(&mut self) -> Results<()> {
-        use parser::DeclarationKind::*;
+    fn validate_attributes(declaration: &mut parser::Declaration) -> Results<()> {
+        use parser::{AttributeKind::*, DeclarationKind::*};
 
-        let nonconforming = self.attributes.nonconforming(self.as_attribute_target());
+        let nonconforming = declaration
+            .attributes
+            .nonconforming(declaration.as_attribute_target());
 
         if !nonconforming.is_empty() {
             return Err(nonconforming
@@ -319,20 +395,37 @@ impl parser::Declaration {
                         .with_message(format!(
                             "{} cannot be ascribed to a {} declaration",
                             attribute.kind,
-                            self.kind_as_str()
+                            declaration.kind_as_str()
                         ))
                         .with_labeled_span(attribute, "misplaced attribute")
-                        .with_labeled_span(self, "incompatible declaration")
+                        .with_labeled_span(declaration, "incompatible declaration")
                 })
                 .collect());
         }
 
         // not further used, unless in documenting mode (which is unimplemented)
-        self.attributes
-            .retain(|attribute| !matches!(attribute.kind, AttributeKind::Documentation));
+        declaration
+            .attributes
+            .retain(|attribute| !matches!(attribute.kind, Documentation));
 
-        let foreign = self.attributes.get(AttributeKind::Foreign);
-        let inherent = self.attributes.get(AttributeKind::Inherent);
+        // @Temporary
+        let unsupported = declaration.attributes.filter(|attribute| {
+            [Moving, Unstable, Deprecated, If, Allow, Warn, Deny, Forbid].contains(&attribute.kind)
+        });
+
+        if !unsupported.is_empty() {
+            return Err(unsupported
+                .into_iter()
+                .map(|attribute| {
+                    Diagnostic::error()
+                        .with_message(format!("{} is not supported yet", attribute.kind,))
+                        .with_span(attribute)
+                })
+                .collect());
+        }
+
+        let foreign = declaration.attributes.get(Foreign);
+        let inherent = declaration.attributes.get(Inherent);
 
         if let (Some(foreign), Some(inherent)) = (foreign, inherent) {
             use std::cmp::{max, min};
@@ -345,7 +438,7 @@ impl parser::Declaration {
             .many_err();
         }
 
-        let abnormally_bodiless = match &self.kind {
+        let abnormally_bodiless = match &declaration.kind {
             Value(value) => value.expression.is_none(),
             Data(data) => data.constructors.is_none(),
             _ => false,
@@ -355,7 +448,7 @@ impl parser::Declaration {
             (true, false) => Err(Diagnostic::error()
                 .with_code(Code::E012)
                 .with_message("declaration without a definition")
-                .with_span(self))
+                .with_span(declaration))
             .many_err(),
             (false, true) => {
                 // @Task make non-fatal, @Task improve message
@@ -364,64 +457,72 @@ impl parser::Declaration {
                 Err(Diagnostic::error()
                     .with_code(Code::E020)
                     .with_message("declaration has multiple definitions")
-                    .with_labeled_span(self, "is foreign and has a body"))
+                    .with_labeled_span(declaration, "is foreign and has a body"))
                 .many_err()
             }
             (true, true) | (false, false) => Ok(()),
         }
     }
-}
 
-impl InvalidFallback for SmallVec<hir::Declaration<Desugared>, 1> {
-    fn invalid() -> Self {
-        SmallVec::new()
-    }
-}
-
-impl parser::Expression {
     /// Lower an expression from AST to HIR.
-    pub fn desugar(self) -> hir::Expression<Desugared> {
+    // @Task rewrite this returning Results<_> for future use (that work is a bit tedious)
+    pub fn desugar_expression(
+        &mut self,
+        expression: parser::Expression,
+    ) -> hir::Expression<Desugared> {
         use parser::ExpressionKind::*;
 
-        match self.kind {
+        match expression.kind {
             PiTypeLiteral(pi) => expr! {
-                PiType[self.span] {
+                PiType[expression.span] {
                     parameter: pi.binder.clone(),
-                    domain: pi.parameter.desugar(),
-                    codomain: pi.expression.desugar(),
+                    domain: self.desugar_expression(pi.parameter),
+                    codomain: self.desugar_expression(pi.expression),
                     explicitness: pi.explicitness,
                 }
             },
-            Application(application) => expr! {
-                Application[self.span] {
-                    callee: application.callee.desugar(),
-                    argument: application.argument.desugar(),
-                    explicitness: application.explicitness,
+            Application(application) => {
+                // @Temporary
+                if let Some(binder) = &application.binder {
+                    self.warn(
+                        Diagnostic::warning()
+                            .with_message("named arguments not supported yet")
+                            .with_span(binder),
+                    )
                 }
-            },
-            TypeLiteral => expr! { Type[self.span] },
-            NumberLiteral(literal) => expr! { Number[self.span](literal) },
+
+                expr! {
+                    Application[expression.span] {
+                        callee: self.desugar_expression(application.callee),
+                        argument: self.desugar_expression(application.argument),
+                        explicitness: application.explicitness,
+                    }
+                }
+            }
+            TypeLiteral => expr! { Type[expression.span] },
+            NumberLiteral(literal) => expr! { Number[expression.span](literal) },
             TextLiteral(text) => expr! {
-                Text[self.span](text)
+                Text[expression.span](text)
             },
+            TypedHole(_hole) => todo!("typed holes not supported yet"),
             Path(path) => expr! {
-                Binding[self.span] {
+                Binding[expression.span] {
                     binder: *path,
                 }
             },
             LambdaLiteral(lambda) => {
-                let mut expression = lambda.body.desugar();
+                let mut expression = self.desugar_expression(lambda.body);
 
                 let mut type_annotation = lambda
                     .body_type_annotation
-                    .map(parser::Expression::desugar)
+                    .map(|type_annotation| self.desugar_expression(type_annotation))
                     .into_iter();
 
                 for parameter_group in lambda.parameters.iter().rev() {
                     let parameter = parameter_group
                         .type_annotation
                         .clone()
-                        .map(parser::Expression::desugar);
+                        .map(|type_annotation| self.desugar_expression(type_annotation));
 
                     for binder in parameter_group.parameters.iter().rev() {
                         expression = expr! {
@@ -438,18 +539,18 @@ impl parser::Expression {
                 expression
             }
             LetIn(let_in) => {
-                let mut expression = let_in.expression.desugar();
+                let mut expression = self.desugar_expression(let_in.expression);
 
                 let mut type_annotation = let_in
                     .type_annotation
-                    .map(|expression| expression.desugar())
+                    .map(|type_annotation| self.desugar_expression(type_annotation))
                     .into_iter();
 
                 for parameter_group in let_in.parameters.iter().rev() {
                     let parameter = parameter_group
                         .type_annotation
                         .clone()
-                        .map(parser::Expression::desugar);
+                        .map(|expression| self.desugar_expression(expression));
                     for binder in parameter_group.parameters.iter().rev() {
                         expression = expr! {
                             Lambda[] {
@@ -476,7 +577,7 @@ impl parser::Expression {
                                 parameter_type_annotation: type_annotation.next(),
                                 explicitness: Explicit,
                                 body_type_annotation: None,
-                                body: let_in.scope.desugar(),
+                                body: self.desugar_expression(let_in.scope),
                             }
                         },
                         argument: expression,
@@ -484,20 +585,21 @@ impl parser::Expression {
                     }
                 }
             }
-            UseIn => todo!(),
+            // @Beacon @Task
+            UseIn(_use_in) => todo!("use/in expressions not supported yet"),
             CaseAnalysis(case_analysis) => {
                 let mut cases = Vec::new();
 
                 for case_group in case_analysis.cases {
                     cases.push(hir::Case {
-                        pattern: case_group.pattern.desugar(),
-                        body: case_group.expression.clone().desugar(),
+                        pattern: self.desugar_pattern(case_group.pattern),
+                        body: self.desugar_expression(case_group.expression.clone()),
                     });
                 }
 
                 expr! {
-                    CaseAnalysis[self.span] {
-                        subject: case_analysis.expression.desugar(),
+                    CaseAnalysis[expression.span] {
+                        subject: self.desugar_expression(case_analysis.expression),
                         cases,
                     }
                 }
@@ -505,76 +607,75 @@ impl parser::Expression {
             Invalid => InvalidFallback::invalid(),
         }
     }
-}
 
-impl parser::Pattern {
     /// Lower a pattern from AST to HIR.
-    fn desugar(self) -> hir::Pattern<Desugared> {
+    fn desugar_pattern(&mut self, pattern: parser::Pattern) -> hir::Pattern<Desugared> {
         use parser::PatternKind::*;
 
-        match self.kind {
+        match pattern.kind {
             NumberLiteral(literal) => pat! {
-                Number[self.span](literal)
+                Number[pattern.span](literal)
             },
             TextLiteral(literal) => pat! {
-                Text[self.span](literal)
+                Text[pattern.span](literal)
             },
             Path(path) => pat! {
-                Binding[self.span] {
+                Binding[pattern.span] {
                     binder: *path,
                 }
             },
             Binder(binding) => pat! {
-                Binder[self.span] {
+                Binder[pattern.span] {
                     binder: binding.binder,
                 }
             },
             Deapplication(application) => pat! {
-                Deapplication[self.span] {
-                    callee: application.callee.desugar(),
-                    argument: application.argument.desugar(),
+                Deapplication[pattern.span] {
+                    callee: self.desugar_pattern(application.callee),
+                    argument: self.desugar_pattern(application.argument),
                 }
             },
         }
     }
-}
 
-/// Lower annotated parameters from AST to HIR.
-fn desugar_parameters_to_annotated_ones(
-    parameters: parser::Parameters,
-    type_annotation: parser::Expression,
-) -> Results<hir::Expression<Desugared>> {
-    let mut expression = type_annotation.desugar();
+    /// Lower annotated parameters from AST to HIR.
+    fn desugar_parameters_to_annotated_ones(
+        &mut self,
+        parameters: parser::Parameters,
+        type_annotation: parser::Expression,
+    ) -> Results<hir::Expression<Desugared>> {
+        let mut expression = self.desugar_expression(type_annotation);
 
-    let mut errors = Diagnostics::new();
+        let mut errors = Diagnostics::new();
 
-    for parameter_group in parameters.parameters.into_iter().rev() {
-        let parameter_type_annotation = match parameter_group.type_annotation {
-            Some(type_annotation) => type_annotation.desugar(),
-            None => Err(missing_mandatory_type_annotation(
-                &parameter_group,
-                AnnotationTarget::Parameters {
-                    amount: parameter_group.parameters.len(),
-                },
-            ))
-            .try_softly(&mut errors),
-        };
-
-        for binder in parameter_group.parameters.iter().rev() {
-            expression = expr! {
-                PiType[] {
-                    parameter: Some(binder.clone()),
-                    domain: parameter_type_annotation.clone(),
-                    codomain: expression,
-                    explicitness: parameter_group.explicitness,
-                }
+        for parameter_group in parameters.parameters.into_iter().rev() {
+            let parameter_type_annotation = match parameter_group.type_annotation {
+                Some(type_annotation) => self.desugar_expression(type_annotation),
+                None => Err(missing_mandatory_type_annotation(
+                    &parameter_group,
+                    AnnotationTarget::Parameters {
+                        amount: parameter_group.parameters.len(),
+                    },
+                ))
+                .try_softly(&mut errors),
             };
+
+            for binder in parameter_group.parameters.iter().rev() {
+                expression = expr! {
+                    PiType[] {
+                        parameter: Some(binder.clone()),
+                        domain: parameter_type_annotation.clone(),
+                        codomain: expression,
+                        explicitness: parameter_group.explicitness,
+                    }
+                };
+            }
         }
+
+        release!(errors);
+
+        Ok(expression)
     }
-
-    release!(errors);
-
-    Ok(expression)
 }
 
 fn missing_mandatory_type_annotation(
@@ -587,6 +688,7 @@ fn missing_mandatory_type_annotation(
         .with_span(spanning)
 }
 
+/// Used for error reporting.
 enum AnnotationTarget {
     Parameters { amount: usize },
     Declaration,
@@ -600,5 +702,11 @@ impl fmt::Display for AnnotationTarget {
             }
             Self::Declaration => write!(f, "declaration"),
         }
+    }
+}
+
+impl InvalidFallback for SmallVec<hir::Declaration<Desugared>, 1> {
+    fn invalid() -> Self {
+        SmallVec::new()
     }
 }

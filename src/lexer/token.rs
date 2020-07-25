@@ -42,13 +42,16 @@ impl Token {
 
     /// Unwrap the data of a number literal. Panics if it isn't one.
     pub fn number_literal(self) -> Number {
+        use Number::*;
+        use TokenData::*;
+
         match self.data {
-            TokenData::NatLiteral(value) => Number::Nat(value),
-            TokenData::Nat32Literal(value) => Number::Nat32(value),
-            TokenData::Nat64Literal(value) => Number::Nat64(value),
-            TokenData::IntLiteral(value) => Number::Int(value),
-            TokenData::Int32Literal(value) => Number::Int32(value),
-            TokenData::Int64Literal(value) => Number::Int64(value),
+            NatLiteral(value) => Nat(value),
+            Nat32Literal(value) => Nat32(value),
+            Nat64Literal(value) => Nat64(value),
+            IntLiteral(value) => Int(value),
+            Int32Literal(value) => Int32(value),
+            Int64Literal(value) => Int64(value),
             _ => unreachable!(),
         }
     }
@@ -71,9 +74,9 @@ impl Spanning for Token {
 impl fmt::Debug for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.data == TokenData::None {
-            write!(f, "{} @ {:?}", self.kind, self.span)
+            write!(f, "{} {:?}", self.kind, self.span)
         } else {
-            write!(f, "{} {:?} @ {:?}", self.kind, self.data, self.span)
+            write!(f, "{} {:?} {:?}", self.kind, self.data, self.span)
         }
     }
 }
@@ -91,6 +94,24 @@ pub enum TokenData {
     // boxed to reduce overall size from 24 to 8 (on my 64bit arch ^^), bad cache behavior irrelevant
     // since it's not hot
     TextLiteral(Box<String>),
+}
+
+impl TokenData {
+    pub fn parse_number(number: &str, suffix: NumberLiteralSuffix) -> Result<Self, &'static str> {
+        use NumberLiteralSuffix::*;
+        macro int($interval:literal) {
+            concat!("integer interval ", $interval)
+        }
+
+        Ok(match suffix {
+            N => TokenData::NatLiteral(number.parse().map_err(|_| int!("[0, infinity)"))?),
+            N32 => TokenData::Nat32Literal(number.parse().map_err(|_| int!("[0, 2^32-1]"))?),
+            N64 => TokenData::Nat64Literal(number.parse().map_err(|_| int!("[0, 2^64-1]"))?),
+            I => TokenData::IntLiteral(number.parse().unwrap()),
+            I32 => TokenData::Int32Literal(number.parse().map_err(|_| int!("[-2^31, 2^31-1]"))?),
+            I64 => TokenData::Int64Literal(number.parse().map_err(|_| int!("[-2^63, 2^63-1]"))?),
+        })
+    }
 }
 
 impl fmt::Debug for TokenData {
@@ -128,6 +149,7 @@ pub enum TokenKind {
     TextLiteral,
     At,
     Backslash,
+    QuestionMark,
     ClosingRoundBracket,
     Colon,
     Comma,
@@ -168,6 +190,7 @@ impl fmt::Display for TokenKind {
             TextLiteral => "text literal",
             At => "`@`",
             Backslash => "`\\`",
+            QuestionMark => "`?`",
             ClosingRoundBracket => "`)`",
             Colon => "`:`",
             Comma => "`,`",
@@ -256,6 +279,7 @@ pub fn parse_reserved_punctuation(source: &str) -> Option<TokenKind> {
         ":" => Colon,
         "=" => Equals,
         "\\" => Backslash,
+        "?" => QuestionMark,
         "@" => At,
         "->" => ThinArrow,
         "=>" => WideArrow,
@@ -263,6 +287,7 @@ pub fn parse_reserved_punctuation(source: &str) -> Option<TokenKind> {
     })
 }
 
+// @Task remove this type
 #[derive(Clone, Copy)]
 #[repr(u8)]
 pub enum NumberLiteralSuffix {
@@ -275,12 +300,14 @@ pub enum NumberLiteralSuffix {
 }
 
 impl NumberLiteralSuffix {
-    pub fn signed(self) -> bool {
-        use NumberLiteralSuffix::*;
-
+    pub const fn type_name(self) -> &'static str {
         match self {
-            N | N32 | N64 => false,
-            I | I32 | I64 => true,
+            Self::N => "Nat",
+            Self::N32 => "Nat32",
+            Self::N64 => "Nat64",
+            Self::I => "Int",
+            Self::I32 => "Int32",
+            Self::I64 => "Int64",
         }
     }
 }
