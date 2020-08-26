@@ -10,7 +10,7 @@
 
 // @Task allow underscores in places where binders are allowed
 
-mod ast;
+pub mod ast;
 
 use crate::{
     diagnostic::{Code, Diagnostic, Diagnostics, Result},
@@ -19,7 +19,7 @@ use crate::{
     span::{SourceFile, Span, Spanned},
     SmallVec,
 };
-pub use ast::*;
+use ast::*;
 use std::rc::Rc;
 
 const STANDARD_DECLARATION_DELIMITERS: [Delimiter; 3] = [
@@ -88,6 +88,12 @@ impl<'a> Parser<'a> {
     }
 
     /// A general identifier includes (alphanumeric) identifiers and punctuation.
+    ///
+    /// ## Grammar
+    ///
+    /// ```text
+    /// General-Identifier ::= #Identifier | #Punctuation
+    /// ```
     fn consume_general_identifier(&mut self) -> Result<Identifier> {
         use TokenKind::*;
         let token = self.current();
@@ -102,6 +108,20 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Indicate whether the given token was consumed.
+    ///
+    /// This method is conceptually equivalent to [Self::consume] followed by
+    /// [Result::is_ok] except it (probably) is more memory-efficient.
+    #[must_use]
+    fn consumed(&mut self, kind: lexer::TokenKind) -> bool {
+        if self.current_is(kind) {
+            self.advance();
+            true
+        } else {
+            false
+        }
+    }
+
     fn advance(&mut self) {
         self.index += 1;
     }
@@ -112,6 +132,9 @@ impl<'a> Parser<'a> {
     // @Question create a function that moves out of (using remove)?
     // @Update this is **really** bad: everytime we for example fail with
     // Self::consume, we might have cloned a whole string on the way!!!
+    // @Task add pseudo-token like TokenKind::Empty (sham span) to be able
+    // to move the token out of tokens using std::mem::replace (but be aware
+    // that this is not compatible with Parser::reflect any more!!!!)
     fn current(&self) -> lexer::Token {
         self.tokens[self.index].clone()
     }
@@ -132,15 +155,6 @@ impl<'a> Parser<'a> {
         self.tokens[self.index + 1].kind == kind
     }
 
-    fn consumed(&mut self, kind: lexer::TokenKind) -> bool {
-        if self.current_is(kind) {
-            self.advance();
-            true
-        } else {
-            false
-        }
-    }
-
     /// Parse a declaration.
     ///
     /// ## Grammar
@@ -148,7 +162,7 @@ impl<'a> Parser<'a> {
     /// ```text
     /// Declaration ::= (Attribute | Documentation-Comment)*
     ///     (Value-Declaration | Data-Declaration | Module-Declaration | Crate-Declaration | Use-Declaration)
-    /// Crate-Declaration ::= "crate" %Identifier% Line-Break
+    /// Crate-Declaration ::= "crate" #Identifier Line-Break
     /// ```
     pub fn parse_declaration(&mut self) -> Result<Declaration> {
         use TokenKind::*;
@@ -186,7 +200,9 @@ impl<'a> Parser<'a> {
             // @Beacon @Task attribute group
             Indentation => {
                 self.advance();
-                todo!("attribute group");
+                Err(Diagnostic::bug()
+                    .with_message("attribute groups not support yet")
+                    .with_span(&token))
                 // self.consume(Dedentation)?;
             }
             _ => Err(Expected::Declaration.but_actual_is(token)),
@@ -208,9 +224,18 @@ impl<'a> Parser<'a> {
                     self.advance();
                     self.finish_parse_attribute(token.span)?
                 }
+                // currently, documentation comments don't need line breaks in between them
+                // in the eyes of the parser as the lexer already handles this
+                // in the future I am certain that other attributes are not going to need
+                // line breaks either once we switch to the proposed new attribute syntax
+                // (the ones with the mandatory parenthesis for attributes with arguments)
                 TokenKind::DocumentationComment => {
                     self.advance();
-                    self.finish_parse_documentation_comment(token.span)?
+                    let _ = self.consumed(TokenKind::LineBreak);
+                    Attribute {
+                        kind: AttributeKind::Documentation,
+                        span: token.span,
+                    }
                 }
                 _ => break,
             });
@@ -260,25 +285,6 @@ impl<'a> Parser<'a> {
         Ok(Attribute { span, kind })
     }
 
-    /// Finish parsing documentation comment.
-    ///
-    /// The comment should have already been parsed beforehand.
-    /// The span does not include the trailing line break.
-    ///
-    /// ## Grammar
-    ///
-    /// ```text
-    /// Documentation-Comment ::= %Documentation-Comment% Line-Break
-    /// ```
-    fn finish_parse_documentation_comment(&mut self, span: Span) -> Result<Attribute> {
-        self.consume(TokenKind::LineBreak)?;
-
-        Ok(Attribute {
-            kind: AttributeKind::Documentation,
-            span,
-        })
-    }
-
     /// Finish parsing a value declaration.
     ///
     /// The leading identifier should have already parsed beforehand.
@@ -287,7 +293,7 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```text
-    /// Value-Declaration ::= %Identifier% Parameters Type-Annotation?
+    /// Value-Declaration ::= #Identifier Parameters Type-Annotation?
     ///     ("=" Possibly-Indented-Terminated-Expression | Line-Break)
     /// ```
     fn finish_parse_value_declaration(&mut self, binder: Identifier) -> Result<Declaration> {
@@ -325,11 +331,8 @@ impl<'a> Parser<'a> {
     ///
     /// ## Grammar
     ///
-    /// @Note It's not entirely clear to me how to translate the indentation/dedentation rules
-    /// to my custom EBNF. The rule below might not be 100% correct. @Update make the lexer do more work
-    ///
     /// ```text
-    /// Data-Declaration ::= "data" %Identifier% Parameters Type-Annotation?
+    /// Data-Declaration ::= "data" #Identifier Parameters Type-Annotation?
     ///     (Line-Break |
     ///     "=" Line-Break Indentation
     ///         (Line-Break | Constructor)*
@@ -383,16 +386,13 @@ impl<'a> Parser<'a> {
     ///
     /// ## Grammar
     ///
-    /// @Note It's not entirely clear to me how to translate the indentation/dedentation rules
-    /// to my custom EBNF. The rule below might not be 100% correct. @Update make the lexer do more work
-    ///
     /// ```text
-    /// Module-Declaration ::= "module" %Identifier%
+    /// Module-Declaration ::= Header | "module" #Identifier
     ///     (Line-Break |
-    ///     ":" Exposure-List "=" Line-Break Indentation
+    ///     ":" Exposure-List Line-Break Indentation
     ///         (Line-Break | Declaration)*
     ///     Dedentation)
-    /// Exposure-List ::= Identifier*
+    /// Header ::= "module" ":" Exposure-List Line-Break
     /// ```
     fn finish_parse_module_declaration(&mut self, keyword_span: Span) -> Result<Declaration> {
         use TokenKind::*;
@@ -448,13 +448,11 @@ impl<'a> Parser<'a> {
     /// Parse the "top level" aka the body of a module file.
     ///
     /// It takes the identifier of the module as an argument.
-    /// This does not parse the module file header yet.
     ///
     /// ## Grammar
     ///
     /// ```text
-    /// Top-Level ::= Header? (Line-Break | Declaration)* %End-Of-Input%
-    /// Header ::= Exposure-List
+    /// Top-Level ::= (Line-Break | Declaration)* #End-Of-Input
     /// ```
     pub fn parse_top_level(&mut self, binder: Identifier) -> Result<Declaration> {
         use TokenKind::*;
@@ -481,7 +479,13 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Delimiter is `=` (which is also consumed in the process).
+    /// Parse an exposure list consuming the delimiter `=`.
+    ///
+    /// ## Grammar
+    ///
+    /// ```text
+    /// Exposure-List ::= General-Identifier* "="
+    /// ```
     // @Task parse complex and multipaths for constructor and field exposures
     fn parse_exposure_list(&mut self) -> Result<Vec<Identifier>> {
         let mut exposures = Vec::new();
@@ -650,7 +654,7 @@ impl<'a> Parser<'a> {
     ///
     /// ```text
     /// Constructor ::= (Attribute | Documentation-Comment)*
-    ///     %Identifier% Parameters Type-Annotation? Line-Break
+    ///     #Identifier Parameters Type-Annotation? Line-Break
     /// ```
     fn parse_constructor(&mut self) -> Result<Declaration> {
         let attributes = self.parse_attributes()?;
@@ -690,7 +694,7 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```text
-    /// Expression ::= Let-In | Lambda-Literal | Case-Analysis | Pi-Literal-Or-Lower
+    /// Expression ::= Let-In | Use-In | Lambda-Literal | Case-Analysis | Pi-Literal-Or-Lower
     /// ```
     fn parse_expression(&mut self) -> Result<Expression> {
         use TokenKind::*;
@@ -722,8 +726,8 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```text
-    /// Pi-Literal-Or-Lower @right@ ::= (
-    ///     "(" "," %Identifier% Type-Annotation ")" |
+    /// Pi-Literal-Or-Lower !right ::= (
+    ///     "(" Explicitness #Identifier Type-Annotation ")" |
     ///     Application-Or-Lower)
     ///         ("->" Pi-Literal-Or-Lower)*
     /// ```
@@ -773,9 +777,9 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```text
-    /// Application-Or-Lower @left@ ::=
+    /// Application-Or-Lower !left ::=
     ///     Lower-Expression
-    ///         (Lower-Expression | "(" "," (%Identifier% "=")? Expression ")")*
+    ///         (Lower-Expression | "(" Explicitness (#Identifier "=")? Expression ")")*
     /// ```
     fn parse_application_or_lower(&mut self) -> Result<Expression> {
         use TokenKind::*;
@@ -815,8 +819,8 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```text
-    /// Lower-Expression ::= Simple-Path | "Type" | Nat-Literal | Text-Literal | Bracketed-Expression
-    /// Simple-Path ::= ("crate" | "super" | %Identifier%)? ("." %Identifier%)*
+    /// Lower-Expression ::= Simple-Path | "Type" | #Number-Literal | #Text-Literal | "(" Expression ")"
+    /// Simple-Path ::= ("crate" | "super" | General-Identifier)? ("." General-Identifier)*
     /// ```
     fn parse_lower_expression(&mut self) -> Result<Expression> {
         use TokenKind::*;
@@ -932,7 +936,9 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```text
-    /// Let-In ::= "'let" %Identifier% Parameters Type_Annotation? "=" Expression "in" Expression
+    /// Let-In ::=
+    ///     "let" #Identifier Parameters Type_Annotation? "="
+    ///     Possibly-Breakably-Indented-Expression "in" Line-Break? Expression
     /// ```
     fn finish_parse_let_in(&mut self, span_of_let: Span) -> Result<Expression> {
         let mut span = span_of_let;
@@ -941,10 +947,9 @@ impl<'a> Parser<'a> {
             self.parse_parameters(&[Delimiter::TypeAnnotationPrefix, Delimiter::DefinitionPrefix])?;
         let type_annotation = self.parse_optional_type_annotation()?;
         self.consume(TokenKind::Equals)?;
-        let expression = self.parse_expression()?;
+        let expression = self.parse_possibly_breakably_indented_expression()?;
         self.consume(TokenKind::In)?;
-        // @Bug commented code does not work as expected (says: unexpected dedentation)
-        // let scope = self.parse_possibly_indented_expression_followed_by_line_break()?;
+        let _ = self.consumed(TokenKind::LineBreak);
         let scope = self.parse_expression()?;
         span.merging(&scope);
 
@@ -960,12 +965,16 @@ impl<'a> Parser<'a> {
     }
 
     /// Finish parsing a use/in expression.
+    ///
+    /// ## Grammar
+    ///
+    /// ```text
+    /// Use-In ::= "use" Use-Bindings "in" Line-Break? Expression
+    /// ```
     fn finish_parse_use_in(&mut self, span_of_use: Span) -> Result<Expression> {
         let bindings = self.parse_use_bindings(&[TokenKind::In.into()])?;
         self.consume(TokenKind::In)?;
-
-        // @Bug commented code does not work as expected (says: unexpected dedentation)
-        // let scope = self.parse_possibly_indented_expression_followed_by_line_break()?;
+        let _ = self.consumed(TokenKind::LineBreak);
         let scope = self.parse_expression()?;
 
         Ok(expr! {
@@ -984,14 +993,15 @@ impl<'a> Parser<'a> {
     ///
     ///
     /// ```text
-    /// Case-Analysis ::= "case" Expression "of" (Line-Break (Indentation Case* Dedentation)?)?
+    /// Case-Analysis ::= "case" Possibly-Breakably-Indented-Expression "of"
+    ///     (Line-Break (Indentation Case* Dedentation)?)?
     /// Case ::= Pattern "=>" Expression
     /// ```
     fn finish_parse_case_analysis(&mut self, span_of_case: Span) -> Result<Expression> {
         use TokenKind::*;
         let mut span = span_of_case;
 
-        let expression = self.parse_possibly_indented_expression()?;
+        let expression = self.parse_possibly_breakably_indented_expression()?;
         span.merging(&self.consume(Of)?);
 
         let mut cases = Vec::new();
@@ -1058,7 +1068,7 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```text
-    /// Parameter-Group ::= %Identifier% | "(" ","? %Identifier%+ Type-Annotation? ")"
+    /// Parameter-Group ::= #Identifier | "(" Explicitness #Identifier+ Type-Annotation? ")"
     /// ```
     fn parse_parameter_group(&mut self, delimiters: &[Delimiter]) -> Result<ParameterGroup> {
         use TokenKind::*;
@@ -1109,8 +1119,15 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // Pattern ::= Lower_Pattern+
-    // @Task @Beacon @Beacon implicit application e.g. `foo (,bar)`
+    /// Parse a pattern.
+    ///
+    /// ## Grammar
+    ///
+    /// ```text
+    /// Pattern !left ::= Lower-Pattern | Deapplication
+    /// Deapplication ::= Lower-Pattern+
+    /// ```
+    // @Task implicit application e.g. `foo (,bar)`
     fn parse_pattern(&mut self) -> Result<Pattern> {
         let mut callee = self.reflect(Self::parse_lower_pattern)?;
 
@@ -1131,8 +1148,9 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```text
-    /// Lower-Pattern ::= Nat-Literal | "?" Identifier | Simple-Path | "(" Pattern ")"
-    /// Simple-Path ::= ("crate" | "super" | %Identifier%)? ("." %Identifier%)*
+    /// Lower-Pattern ::= #Number-Literal | #Text-Literal | Binder | Simple-Path | "(" Pattern ")"
+    /// Binder ::= "\" #Identifier
+    /// Simple-Path ::= ("crate" | "super" | #Identifier)? ("." #Identifier)*
     /// ```
     fn parse_lower_pattern(&mut self) -> Result<Pattern> {
         let token = self.current();
@@ -1190,16 +1208,22 @@ impl<'a> Parser<'a> {
         self.reflect(Self::parse_expression)
     }
 
-    /// Parse a type annotation.
+    /// Parse an optional type annotation.
     fn parse_optional_type_annotation(&mut self) -> Result<Option<Expression>> {
-        if self.consumed(TokenKind::Colon) {
-            self.parse_expression().map(Some)
-        } else {
-            Ok(None)
-        }
+        self.consumed(TokenKind::Colon)
+            .then(|| self.parse_expression())
+            .transpose()
     }
 
     /// Parse a possibly indented expression terminated by a line break.
+    ///
+    /// ## Grammar
+    ///
+    /// ```text
+    /// Possibly-Indented-Terminated-Expression ::=
+    ///     | Line-Break Indentation Expression Line-Break? Dedentation
+    ///     | Terminated-Expression
+    /// ```
     fn parse_possibly_indented_terminated_expression(&mut self) -> Result<Expression> {
         use TokenKind::*;
 
@@ -1214,15 +1238,33 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Parse a possibly indented expression terminated by a line break.
-    fn parse_possibly_indented_expression(&mut self) -> Result<Expression> {
+    /// Parse a possibly indented expression whose indentation can be broken.
+    ///
+    /// The user of this function needs to parse the indentation breaker by themself.
+    ///
+    /// An **indentation breaker** is a token which functions as an alternative to
+    /// a line break followed by dedentation. This feature exists for ergonomic reasons.
+    /// Well-known tokens of this sort are `in` in let/in and use/in and `of` in case/of.
+    ///
+    /// ## Grammar
+    ///
+    /// ```text
+    /// Possibly-Breakably-Indented-Expression ::=
+    ///     | Line-Break Indentation Expression (Line-Break Dedentation)?
+    ///     | Expression
+    /// ```
+    // @Bug even though this function works locally, it does not to with more context.
+    // the indentation breaking logic does not work because our parser then inserts a
+    // Dedentation token somewhere later down the line (e.g. after the In)
+    fn parse_possibly_breakably_indented_expression(&mut self) -> Result<Expression> {
         use TokenKind::*;
 
         if self.consumed(LineBreak) {
             self.consume(Indentation)?;
             let expression = self.parse_expression()?;
-            let _ = self.consumed(LineBreak);
-            self.consume(Dedentation)?;
+            if self.consumed(LineBreak) {
+                self.consume(Dedentation)?;
+            }
             Ok(expression)
         } else {
             self.parse_expression()
@@ -1232,6 +1274,12 @@ impl<'a> Parser<'a> {
     /// Parse an expression terminated by a line break or dedentation.
     ///
     /// A line break is parsed, dedentation is not.
+    ///
+    /// ## Grammar
+    ///
+    /// ```text
+    /// Terminated-Expression ::= Expression (Dedentation Line-Break)?
+    /// ```
     fn parse_terminated_expression(&mut self) -> Result<Expression> {
         let expression = self.parse_expression()?;
         // @Note special-casing is also called programming hackily
@@ -1253,6 +1301,13 @@ impl<'a> Parser<'a> {
         Ok(inner)
     }
 
+    /// Consume the explicitness symbol.
+    ///
+    /// ## Grammar
+    ///
+    /// ```text
+    /// Explicitness ::= ","?
+    /// ```
     fn consume_explicitness_symbol(&mut self) -> Explicitness {
         if let Ok(token) = self.consume(TokenKind::Comma) {
             // @Note there might be false positives (through arbitrary look-ahead)

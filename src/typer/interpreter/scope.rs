@@ -1,44 +1,22 @@
 //! Binding and scope handler.
 
-use std::{collections::HashMap, fmt};
-
 use super::{ffi, Expression, Substitution::Shift};
 use crate::{
     diagnostic::{Code, Diagnostic, Result},
-    entity::{Entity, EntityKind},
+    entity::EntityKind,
     hir::expr,
     lexer::Number,
-    resolver::{self, Bindings, CrateIndex, DebruijnIndex, Identifier, Index},
+    resolver::{CrateIndex, CrateScope, DebruijnIndex, Identifier, Index},
     span::Span,
+    support::DisplayIsDebug,
 };
-
-#[derive(Default)]
-pub struct CrateScope {
-    bindings: Bindings,
-    pub(crate) program_entry: Option<Identifier>,
-    // for printing for now
-    // names: HashMap<ModuleIndex, crate::parser::Identifier>,
-    // @Note ugly types!
-    pub foreign_types: HashMap<&'static str, Option<Identifier>>,
-    foreign_bindings: HashMap<&'static str, (usize, ffi::ForeignFunction)>,
-    pub inherent_values: ffi::InherentValueMap,
-    pub inherent_types: ffi::InherentTypeMap,
-    // @Note this is very coarse-grained: as soon as we cannot resolve EITHER type annotation (for example)
-    // OR actual value(s), we bail out and add this here. This might be too conversative (leading to more
-    // "circular type" errors or whatever), we can just discriminate by creating sth like
-    // UnresolvedThingy/WorlistItem { index: CrateIndex, expression: TypeAnnotation|Value|Both|... }
-    pub out_of_order_bindings: Vec<Registration>,
-}
 
 /// Many methods of module scope panic instead of returning a `Result` because
 /// the invariants are expected to be checked beforehand by using the predicate
 /// methods also found here. This design is most ergonomic for the caller.
 impl CrateScope {
-    /// Create a new scope with foreign bindings partially registered.
-    pub fn new(scope: resolver::CrateScope) -> Self {
-        let mut scope = Self::from(scope);
-        ffi::register_foreign_bindings(&mut scope);
-        scope
+    pub fn register_foreign_bindings(&mut self) {
+        ffi::register_foreign_bindings(self);
     }
 
     pub fn lookup_type(&self, index: CrateIndex) -> Option<Expression> {
@@ -70,7 +48,7 @@ impl CrateScope {
         binder: Identifier,
         arguments: Vec<Expression>,
     ) -> Result<Option<Expression>> {
-        match self.bindings[binder.crate_().unwrap()].kind {
+        match self.bindings[binder.crate_index().unwrap()].kind {
             EntityKind::Foreign {
                 arity, function, ..
             } => Ok(if arguments.len() == arity {
@@ -102,10 +80,10 @@ impl CrateScope {
                 type_,
                 value,
             } => {
-                let index = binder.crate_().unwrap();
+                let index = binder.crate_index().unwrap();
                 debug_assert!(
                     self.bindings[index].is_untyped()
-                        || matches!(self.bindings[index], Entity { kind: EntityKind::Value { expression: None, .. }, .. })
+                        || self.bindings[index].is_value_without_value()
                 );
                 self.bindings[index].kind = EntityKind::Value {
                     type_,
@@ -113,7 +91,7 @@ impl CrateScope {
                 };
             }
             DataBinding { binder, type_ } => {
-                let index = binder.crate_().unwrap();
+                let index = binder.crate_index().unwrap();
                 debug_assert!(self.bindings[index].is_untyped());
                 self.bindings[index].kind = EntityKind::DataType {
                     type_,
@@ -125,11 +103,16 @@ impl CrateScope {
                 type_,
                 data,
             } => {
-                let index = binder.crate_().unwrap();
+                let index = binder.crate_index().unwrap();
                 debug_assert!(self.bindings[index].is_untyped());
                 self.bindings[index].kind = EntityKind::Constructor { type_ };
 
-                match self.bindings.get_mut(data.crate_().unwrap()).unwrap().kind {
+                match self
+                    .bindings
+                    .get_mut(data.crate_index().unwrap())
+                    .unwrap()
+                    .kind
+                {
                     EntityKind::DataType {
                         ref mut constructors,
                         ..
@@ -138,7 +121,7 @@ impl CrateScope {
                 }
             }
             ForeignValueBinding { binder, type_ } => {
-                let index = binder.crate_().unwrap();
+                let index = binder.crate_index().unwrap();
                 debug_assert!(self.bindings[index].is_untyped());
 
                 self.bindings[index].kind = match &self.foreign_bindings.remove(binder.as_str()) {
@@ -250,33 +233,8 @@ impl CrateScope {
     }
 }
 
-impl fmt::Debug for CrateScope {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use crate::support::DisplayIsDebug;
-
-        f.debug_struct("interpreter::CrateScope")
-            .field(
-                "bindings",
-                &DisplayIsDebug(&resolver::display_bindings(&self.bindings)),
-            )
-            .field("out_of_order_bindings", &self.out_of_order_bindings)
-            .finish()
-    }
-}
-
-// @Temporary, for interop. ideally, those 2 will be merged
-impl From<resolver::CrateScope> for CrateScope {
-    fn from(scope: resolver::CrateScope) -> Self {
-        Self {
-            bindings: scope.bindings,
-            program_entry: scope.program_entry,
-            ..Default::default()
-        }
-    }
-}
-
 // @Question too big?
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Registration {
     ValueBinding {
         binder: Identifier,
@@ -301,21 +259,63 @@ pub enum Registration {
     },
 }
 
+use std::fmt;
+
+impl crate::support::DisplayWith for Registration {
+    type Linchpin = CrateScope;
+
+    fn format(&self, scope: &CrateScope, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use Registration::*;
+
+        match self {
+            ValueBinding {
+                binder,
+                type_,
+                value,
+            } => {
+                let mut compound = f.debug_struct("ValueBinding");
+                compound
+                    .field("binder", binder)
+                    .field("type", &DisplayIsDebug(&type_.with(scope)));
+                match value {
+                    Some(value) => compound.field("value", &DisplayIsDebug(&value.with(scope))),
+                    None => compound.field("value", &"<none>"),
+                }
+                .finish()
+            }
+            DataBinding { binder, type_ } => f
+                .debug_struct("DataBinding")
+                .field("binder", binder)
+                .field("type", &DisplayIsDebug(&type_.with(scope)))
+                .finish(),
+            ConstructorBinding {
+                binder,
+                type_,
+                data,
+            } => f
+                .debug_struct("ConstructorBinding")
+                .field("binder", binder)
+                .field("type", &DisplayIsDebug(&type_.with(scope)))
+                .field("data", data)
+                .finish(),
+            ForeignValueBinding { binder, type_ } => f
+                .debug_struct("ForeignValueBinding")
+                .field("binder", binder)
+                .field("type", &DisplayIsDebug(&type_.with(scope)))
+                .finish(),
+            ForeignDataBinding { binder } => f
+                .debug_struct("ForeignDataBinding")
+                .field("binder", binder)
+                .finish(),
+        }
+    }
+}
+
 // @Task find out if we can get rid of this type by letting `ModuleScope::lookup_value` resolve to the Binder
 // if it's neutral
 pub enum ValueView {
     Reducible(Expression),
     Neutral,
-}
-
-// @Temporary
-impl fmt::Debug for ValueView {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Reducible(expression) => write!(f, "(REDUCIBLE {})", expression),
-            Self::Neutral => write!(f, "NEUTRAL"),
-        }
-    }
 }
 
 /// The scope of bindings inside of a function.

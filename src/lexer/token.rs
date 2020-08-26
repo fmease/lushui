@@ -182,6 +182,10 @@ use TokenKind::*;
 
 impl fmt::Display for TokenKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        macro keyword($keyword:ident) {
+            concat!("keyword `", stringify!($keyword), "`")
+        }
+
         f.write_str(match self {
             DocumentationComment => "documentation comment",
             Identifier => "identifier",
@@ -203,19 +207,19 @@ impl fmt::Display for TokenKind {
             ThinArrow => "`->`",
             Underscore => "`_`",
             WideArrow => "`=>`",
-            As => "keyword `as`",
-            Case => "keyword `case`",
-            Crate => "keyword `crate`",
-            Data => "keyword `data`",
-            In => "keyword `in`",
-            Let => "keyword `let`",
-            Module => "keyword `module`",
-            Of => "keyword `of`",
-            Record => "keyword `record`",
-            Self_ => "keyword `self`",
-            Super => "keyword `super`",
-            Type => "keyword `Type`",
-            Use => "keyword `use`",
+            As => keyword!(as),
+            Case => keyword!(case),
+            Crate => keyword!(crate),
+            Data => keyword!(data),
+            In => keyword!(in),
+            Let => keyword!(let),
+            Module => keyword!(module),
+            Of => keyword!(of),
+            Record => keyword!(record),
+            Self_ => keyword!(self),
+            Super => keyword!(super),
+            Type => keyword!(Type),
+            Use => keyword!(use),
             EndOfInput => "end of input",
         })
     }

@@ -1,0 +1,7 @@
+module core
+
+;; @Bug span is not correct (eval'ed too much)
+data Thing: Type =
+    thing: Kind
+
+Kind: Type = Type

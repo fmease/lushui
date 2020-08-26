@@ -1,0 +1,58 @@
+;; TEST ignore
+
+@foreign
+data Nat: Type
+
+;; @Bug the commented out snippet
+;; creates an error because `Text` is not
+;; registered early enough
+;; if we move the registration part to
+;; the name resolver (which is possible)
+;; we won't face this issue
+;; and @Task (not important) instead of throwing
+;; E061 undeclared foreign type, we could
+;; create a the binding ourselves with
+;; an unreachable path (namely `crate.super.Text`
+;; for example but that's just a minor thingy)
+;; xxx: "foo" = "bar"
+
+;; @foreign
+;; data Text: Type
+
+
+@foreign
+data Text: Type
+
+@foreign
+add: Nat -> Nat -> Nat
+
+use add as +
+
+data OptionNat: Type =
+    none: OptionNat
+    some: Nat -> OptionNat
+
+;; @Bug still some indentation bugs!!! :(
+;; main: Nat = case value of
+;;     OptionNat.some \n => n
+;;     OptionNat.none => 0
+
+;; x: Nat =
+;;     case 0 of
+;;         "foo" \n \n => 1
+;;         ;; z => 1
+;;         \w => 2
+
+;; @Note @Task this should fail to type check
+;; inv0: Nat =
+;;     case 0 of
+;;         OptionNat.some \n => n
+;;         OptionNat.none => 0
+
+value: OptionNat = OptionNat.some 3
+
+;; @Beacon
+main: Nat =
+    case value of
+        OptionNat.some \n => n
+        OptionNat.none => 0

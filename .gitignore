@@ -1,5 +1,5 @@
 /target
 **/*.rs.bk
 /massif.out.*
-/tests/untracked
+/playground
 history.txt

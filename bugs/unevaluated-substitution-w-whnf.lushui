@@ -1,0 +1,20 @@
+
+
+data Foo: Type =
+    alpha: Foo
+    beta: Foo
+
+data Bar: Type =
+    omega: Bar
+    eta: Bar
+
+compose (f: Foo -> Bar) (g: Bar -> Foo): Foo -> Foo =
+    \(x: Foo) => g (f x)
+
+f0 (x: Foo): Bar = Bar.omega
+f1 (x: Bar): Foo = Foo.beta
+
+;; @Bug unevaluated Substitution causes invalid type mismatch
+;; @Update to reproduce one likely needs to change several Form::Normal to
+;; Form::WeakHeadNormal in interpreter/typer
+f2: Foo -> Foo = compose f0 f1

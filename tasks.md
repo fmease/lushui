@@ -1,5 +1,32 @@
-# Imminent Tasks
+# Tasks
 
+## Minimum Amount of Features for (Public) 0.2.0?
+
+* bidirectional type-checking (with unification)
+* implicit arguments
+* pattern deapplication (if GADTs don't work that's fine for this version)
+* compilation to bytecode
+* VM with garbage collection
+* polishment: no obvious crashes
+  * one is in the parser for invalid paths
+  * one is in the typer: some out-of-order declarations
+
+## For 0.3.0
+
+* simple effects with `Effect: Type -> Type`
+
+## Imminent / Mixed Bag
+
+* add mode where the whole language+ecosystem builds upon a object-capability model
+* if requested output how many in-order and how many out-of-order declarations where
+  processed by the name resolver and separately by the typer
+* implement implicit arguments
+* implement bidirectional type-checking
+* compilation
+  * compile expressions and declarations to bytecode
+  * define the bytecode (stack-based, has disk/file representation not only memory representation)
+  * erase types
+  * write a vm for the bytecode
 * parse underscores as binders
 * parse rune literals (e.g. `"X"#Rune`)
 * make registration of foreign functions module-aware (on the Rust side)
@@ -22,23 +49,14 @@
   * have effect identifiers
 * work on case analysis (!!!)
 * modules
-  * work on order-independence and recursion
   * implement exposure lists and privacy
-  * implement namespaced constructors
-  * improve error messages of the resolver
 * advanced type inference (!!!)
 * FFI
   * add infrastructure for polymorphic foreign functions (necessary for `panic`, effects, …)
   * check for FFI-compability at foreign declarations
   * implement higher-order foreign functions
 * fix all the bugs related to substitutions (!!!)
-* print full path on type mismatch (and the like)
 * pretty-print HIR (way fewer parens)
-* spans
-  * span information for type errors (very likely needs a second error type)
-* pass a context to more and more functions containing command line arguments, source map
-  and stuff
-* fix let/in (parsing)
 * fix the ugly functions in the parser which lead to bad error messages
 * indentation
   * allow indentation by a multiple of 4 (e.g. 8), the parser should handle invalid stuff

@@ -5,6 +5,7 @@ use std::{
 };
 
 use crate::{
+    diagnostic::{Diagnostic, Result},
     lexer::{Number, Token},
     smallvec,
     span::{PossiblySpanning, SourceFile, Span, Spanned, Spanning},
@@ -415,7 +416,7 @@ impl Deref for Parameters {
 
 #[derive(Debug, Clone)]
 pub struct ParameterGroup {
-    pub parameters: crate::SmallVec<Identifier, 1>,
+    pub parameters: SmallVec<Identifier, 1>,
     pub type_annotation: Option<Expression>,
     pub explicitness: Explicitness,
     pub span: Span,
@@ -574,11 +575,17 @@ impl Path {
         }
     }
 
-    // @Beacon @Beacon @Task proper error handling, disallow super and crate here
-    pub fn join(mut self, other: Self) -> Self {
-        debug_assert!(other.head.is_none() || other.is_self());
+    pub fn join(mut self, other: Self) -> Result<Self> {
+        if let Some(head) = other.head {
+            if !matches!(head.kind, HeadKind::Self_) {
+                // @Task code
+                return Err(Diagnostic::error()
+                    .with_message("`super` or `crate` not allowed in this position")
+                    .with_span(&head));
+            }
+        }
         self.segments.extend(other.segments);
-        self
+        Ok(self)
     }
 
     pub fn is_self(&self) -> bool {

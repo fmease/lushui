@@ -90,7 +90,7 @@ fn run() -> Result<(), Error> {
         print!("test {} ... ", file_name);
 
         let source_file = map
-            .load(path.to_str().unwrap())
+            .load(&path)
             .map_err(|_| Error::FailedLoadingSourceFile)?;
 
         let config = TestConfiguration::parse(source_file.content())

@@ -1,4 +1,4 @@
-error[E032]: expected type `X`, got type `Type`
+error[E032]: expected type `crate.X`, got type `Type`
    > ${DIRECTORY}/type-mismatch.lushui:16:8
    |
 16 | a: X = Type
@@ -7,7 +7,7 @@ error[E032]: expected type `X`, got type `Type`
 16 | a: X = Type
    |        ^^^^ has wrong type
 
-error[E032]: expected type `Type`, got type `X`
+error[E032]: expected type `Type`, got type `crate.X`
    > ${DIRECTORY}/type-mismatch.lushui:17:11
    |
 17 | b: Type = X.x
@@ -16,13 +16,13 @@ error[E032]: expected type `Type`, got type `X`
 17 | b: Type = X.x
    |           ^^^ has wrong type
 
-error[E032]: expected type `Type`, got type `Bool`
+error[E032]: expected type `Type`, got type `crate.core.bool.Bool`
    > ${DIRECTORY}/type-mismatch.lushui:21:4
    |
 21 | x: false = false
    |    ^^^^^ has wrong type
 
-error: expected type `Bool`, got type `Nat`
+error[E032]: expected type `crate.core.bool.Bool`, got type `crate.core.nat.Nat`
    > ${DIRECTORY}/type-mismatch.lushui:25:16
    |
 23 | take (b: Bool): Bool = true

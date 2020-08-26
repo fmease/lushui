@@ -1,17 +1,19 @@
 use std::fmt;
 
 use crate::{
-    interpreter::ffi::ForeignFunction,
-    interpreter::scope::ValueView,
-    parser,
     resolver::{CrateIndex, Identifier, Namespace},
-    typer::Expression,
+    typer::{
+        interpreter::{ffi::ForeignFunction, scope::ValueView},
+        Expression,
+    },
 };
 
 #[derive(Clone)]
 pub struct Entity {
     /// Source information of the definition site.
-    pub source: parser::Identifier,
+    pub source: crate::ast::Identifier,
+    /// The namespace this entity is a member of.
+    pub parent: Option<CrateIndex>,
     pub kind: EntityKind,
 }
 
@@ -19,6 +21,19 @@ impl Entity {
     pub fn is_untyped(&self) -> bool {
         matches!(self.kind, EntityKind::UntypedValue | EntityKind::UntypedDataType(_))
     }
+
+    pub fn is_value_without_value(&self) -> bool {
+        matches!(self.kind, EntityKind::Value { expression: None, .. })
+    }
+
+    // fn is_resolver_specific(&self) -> bool {
+    //     use EntityKind::*;
+
+    //     // @Note hmmmm.... shouldn't we include UntypedDataType?
+    //     // but then, tests/invalid-data-type-instances ICE's (from working)
+    //     // matches!(self.kind, UntypedValue | UntypedDataType(_) | Module(_) | Use(_) | UnresolvedUse)
+    //     matches!(self.kind, UntypedValue | Module(_) | Use(_) | UnresolvedUse)
+    // }
 
     pub fn type_(&self) -> Option<Expression> {
         use EntityKind::*;
@@ -38,23 +53,48 @@ impl Entity {
 
     /// Retrieve the value of an entity
     pub fn value(&self) -> ValueView {
+        use EntityKind::*;
+
         match &self.kind {
-            EntityKind::Value {
+            Value {
                 expression: Some(expression),
                 ..
             } => ValueView::Reducible(expression.clone()),
-            EntityKind::Value {
+            Value {
                 expression: None, ..
             } => ValueView::Neutral,
-            kind if kind.is_resolver_specific() => unreachable!(),
+            // _ if self.is_resolver_specific() => unreachable!(),
+            UntypedValue | UntypedDataType(_) => unreachable!(),
+            // @Note below was/is necessary for tests/invalid_data_type_instances (until the current rewrite
+            // where typer::interpreter::_::evaluate returns Error instead of Diagnostic)
+            // UntypedDataType(_) => ValueView::Neutral,
+            Module(_) | Use(_) | UnresolvedUse => unreachable!(),
             _ => ValueView::Neutral,
         }
     }
 }
 
-impl fmt::Debug for Entity {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:20} |-> {:?}", self.source, self.kind)
+/// Textual representation of what lies beyond the crate root.
+pub const BEYOND_CRATE_ROOT: &str = "crate.super";
+
+impl DisplayWith for Entity {
+    type Linchpin = <EntityKind as DisplayWith>::Linchpin;
+
+    fn format(&self, scope: &CrateScope, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use std::borrow::Cow;
+
+        write!(
+            f,
+            "{:>11}.{:20} |-> {}",
+            self.parent
+                .map_or(Cow::Borrowed(BEYOND_CRATE_ROOT), |parent| format!(
+                    "{:?}",
+                    parent
+                )
+                .into()),
+            self.source,
+            self.kind.with(scope)
+        )
     }
 }
 
@@ -91,27 +131,24 @@ pub enum EntityKind {
     },
 }
 
-impl EntityKind {
-    fn is_resolver_specific(&self) -> bool {
-        use EntityKind::*;
+use crate::resolver::CrateScope;
+use crate::support::DisplayWith;
 
-        matches!(self, UntypedValue | Module(_) | Use(_) | UnresolvedUse)
-    }
-}
+impl DisplayWith for EntityKind {
+    type Linchpin = <crate::resolver::Resolved as crate::hir::Pass>::ShowLinchpin;
 
-impl fmt::Debug for EntityKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn format(&self, scope: &CrateScope, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use EntityKind::*;
 
         match self {
             UntypedValue => write!(f, "untyped value"),
-            Module(scope) => write!(f, "module, {:?}", scope),
-            UntypedDataType(scope) => write!(f, "untyped data type, {:?}", scope),
+            Module(scope) => write!(f, "module: {:?}", scope),
+            UntypedDataType(scope) => write!(f, "untyped data type: {:?}", scope),
             Use(index) => write!(f, "use {:?}", index),
             UnresolvedUse => write!(f, "unresolved use"),
             Value { type_, expression } => match expression {
-                Some(expression) => write!(f, "{}: {}", expression, type_),
-                None => write!(f, ": {}", type_),
+                Some(expression) => write!(f, "{}: {}", expression.with(scope), type_.with(scope)),
+                None => write!(f, ": {}", type_.with(scope)),
             },
             DataType {
                 type_,
@@ -119,14 +156,14 @@ impl fmt::Debug for EntityKind {
             } => write!(
                 f,
                 "data: {} = {}",
-                type_,
+                type_.with(scope),
                 constructors
                     .iter()
                     .map(|constructor| format!("{} ", constructor))
                     .collect::<String>()
             ),
-            Constructor { type_ } => write!(f, "constructor: {}", type_),
-            Foreign { type_, .. } => write!(f, "foreign: {}", type_),
+            Constructor { type_ } => write!(f, "constructor: {}", type_.with(scope)),
+            Foreign { type_, .. } => write!(f, "foreign: {}", type_.with(scope)),
         }
     }
 }

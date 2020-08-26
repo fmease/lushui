@@ -1,0 +1,24 @@
+;; TEST ignore
+
+@foreign
+data Nat32: Type
+
+;; module core
+;; use core.nat32.Nat32
+
+;; @Bug produces SHAM span bug
+;; a: Nat32 -> Nat32 -> Nat32 = \(x: Nat32) => \(y: Nat32) => 12#N32
+
+;; a (x y: Nat32): Nat32 = 12#N32
+;; a: Nat32 -> Nat32 -> Nat32 = \(x: Nat32): Nat32 -> Nat32 => \(y: Nat32): Nat32 => 12#N32
+
+;; whatever (x y: Nat32): Nat32 = y
+;; main: Nat32 = whatever 10#N32 90#N32 ;; @Task reference module-level bindings
+
+;; main: Nat32 = (\(x y: Nat32) => y) 10#N32 20#N32
+
+alpha (x: Nat32): Nat32 = x;;33#N32
+
+main: Nat32 = beta (alpha 22#N32)
+
+beta (x: Nat32): Nat32 = x

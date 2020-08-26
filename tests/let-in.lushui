@@ -1,4 +1,4 @@
-;; TEST ignore
+;; TEST pass check
 
 module core
 
@@ -8,7 +8,7 @@ use core.nat
 ;; @Bug fails to parse
 main: Nat =
     let a: Nat = 10 in
-        let b: Nat = 20 in nat.add a b
+    let b: Nat = 20 in nat.add a b
 
 ;; now correctly evaluates
 x: Nat = (\(a: Nat) (b: Nat): Nat => nat.add a b) 10 20

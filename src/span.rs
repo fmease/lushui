@@ -1,6 +1,10 @@
 use crate::diagnostic::{Diagnostic, Result};
-use std::{convert::TryInto, fmt, ops::RangeInclusive, rc::Rc};
+use std::{convert::TryInto, fmt, ops::RangeInclusive, path::PathBuf, rc::Rc};
 use unicode_width::UnicodeWidthStr;
+
+// @Beacon @Task The API of [Span], [LocalSpan], [ByteIndex], [LocalByteIndex] is
+// utter trash!! ugly, inconvenient, confusing, unsafe (trying to prevent overflow
+// panics but they still gonna happen!)
 
 /// Global byte index.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
@@ -16,11 +20,11 @@ impl ByteIndex {
     /// ## Panics
     ///
     /// Panics on addition overflow.
-    pub fn from_local(source: &SourceFile, index: LocalByteIndex) -> Self {
+    pub fn local(source: &SourceFile, index: LocalByteIndex) -> Self {
         Self::new(source.span.start.0 + index.0)
     }
 
-    fn try_add_offset(self, offset: u32) -> Result<Self, Error> {
+    fn offset(self, offset: u32) -> Result<Self, Error> {
         let sum = self.0.checked_add(offset).ok_or(Error::OffsetOverflow)?;
 
         Ok(Self::new(sum))
@@ -46,8 +50,12 @@ impl LocalByteIndex {
         Self::new(index.try_into().unwrap())
     }
 
-    pub fn from_global(source: &SourceFile, index: ByteIndex) -> Self {
+    pub fn global(source: &SourceFile, index: ByteIndex) -> Self {
         Self::new(index.0 - source.span.start.0)
+    }
+
+    pub fn saturating_sub(self, offset: u32) -> Self {
+        Self::new(self.0.saturating_sub(offset))
     }
 }
 
@@ -117,6 +125,7 @@ pub struct Span {
 }
 
 impl Span {
+    /// Invalid span used for expressions etc. without a source location.
     pub const SHAM: Self = Self {
         start: ByteIndex::new(0),
         end: ByteIndex::new(0),
@@ -128,10 +137,23 @@ impl Span {
         Self { start, end }
     }
 
-    pub fn from_local(source: &SourceFile, span: LocalSpan) -> Self {
+    pub fn length(self) -> u32 {
+        self.end.0 + 1 - self.start.0
+    }
+
+    pub fn trim_start(self, amount: u32) -> Self {
+        debug_assert!(amount < self.length());
+
+        Self {
+            start: ByteIndex::new(self.start.0 + amount),
+            end: self.end,
+        }
+    }
+
+    pub fn local(source: &SourceFile, span: LocalSpan) -> Self {
         Self::new(
-            ByteIndex::from_local(source, span.start),
-            ByteIndex::from_local(source, span.end),
+            ByteIndex::local(source, span.start),
+            ByteIndex::local(source, span.end),
         )
     }
 
@@ -240,10 +262,10 @@ impl LocalSpan {
         Self::from(LocalByteIndex::new(0))
     }
 
-    pub fn from_global(source: &SourceFile, span: Span) -> Self {
+    pub fn global(source: &SourceFile, span: Span) -> Self {
         Self::new(
-            LocalByteIndex::from_global(source, span.start),
-            LocalByteIndex::from_global(source, span.end),
+            LocalByteIndex::global(source, span.start),
+            LocalByteIndex::global(source, span.end),
         )
     }
 }
@@ -279,26 +301,26 @@ impl SourceMap {
     fn next_offset(&self) -> Result<ByteIndex, Error> {
         self.files
             .last()
-            .map(|file| file.span.end.try_add_offset(1))
+            .map(|file| file.span.end.offset(1))
             .unwrap_or(Ok(START_OF_FIRST_SOURCE_FILE))
     }
 
     // @Note this could instead return an index, and index into an IndexVec of
     // SourceFiles
-    pub fn load(&mut self, path: &str) -> Result<Rc<SourceFile>, Error> {
+    pub fn load(&mut self, path: &Path) -> Result<Rc<SourceFile>, Error> {
         let source = std::fs::read_to_string(path).map_err(Error::LoadFailure)?;
         self.add(path.to_owned(), source)
     }
 
-    fn add(&mut self, name: String, source: String) -> Result<Rc<SourceFile>, Error> {
-        let file = Rc::new(SourceFile::new(name, source, self.next_offset()?)?);
+    fn add(&mut self, path: PathBuf, source: String) -> Result<Rc<SourceFile>, Error> {
+        let file = Rc::new(SourceFile::new(path, source, self.next_offset()?)?);
         self.files.push(file.clone());
 
         Ok(file)
     }
 
     /// Panics if span is a sham.
-    fn file_from_span(&self, span: Span) -> &SourceFile {
+    fn resolve_span_to_file(&self, span: Span) -> &SourceFile {
         debug_assert!(span != Span::SHAM);
 
         self.files
@@ -315,12 +337,25 @@ impl SourceMap {
         // self.files[index].clone()
     }
 
-    pub fn resolve_span(&self, span: Span) -> ResolvedSpan<'_> {
-        let file = self.file_from_span(span);
-        let span = LocalSpan::from_global(&file, span);
+    /// Resolve a span to the string content it points to.
+    ///
+    /// This treats line breaks verbatim.
+    pub fn resolve_span_to_snippet(&self, span: Span) -> &str {
+        let file = self.resolve_span_to_file(span);
+        let span = LocalSpan::global(&file, span);
+        &file[span]
+    }
 
-        let mut first_line = None::<Line>;
-        let mut final_line = None::<Line>;
+    // @Task improve documentation, @Note bad name of the method
+    /// Resolve a span to various information useful for highlighting.
+    ///
+    /// This procedure is line-break-aware.
+    pub fn resolve_span(&self, span: Span) -> ResolvedSpan<'_> {
+        let file = self.resolve_span_to_file(span);
+        let span = LocalSpan::global(&file, span);
+
+        let mut first_line = None;
+        let mut final_line = None;
 
         let mut line = Line {
             number: 1,
@@ -403,6 +438,7 @@ impl SourceMap {
                 let start = self.start?;
                 let highlight = self.highlight?;
 
+                // @Question should we instead map all 0s to 1s?
                 let highlight_width = match &file[LocalSpan::new(highlight.start, highlight.end?)] {
                     "\n" => 1,
                     snippet => snippet.width(),
@@ -412,9 +448,11 @@ impl SourceMap {
                     number: self.number,
                     content: &file[LocalSpan::new(start, self.end?)],
                     highlight_width,
-                    highlight_prefix_width: file[LocalSpan::new(start, highlight.start)]
-                        .width()
-                        .saturating_sub(1),
+                    highlight_prefix_width: if start < highlight.start {
+                        file[LocalSpan::new(start, highlight.start - 1)].width()
+                    } else {
+                        0
+                    },
                     highlight_start_column: (highlight.start + 1 - start).into(),
                 })
             }
@@ -426,7 +464,7 @@ impl SourceMap {
         }
 
         ResolvedSpan {
-            filename: &file.name,
+            path: &file.path,
             first_line: first_line.unwrap().extract_information(file).unwrap(),
             final_line: final_line.map(|line| line.extract_information(file).unwrap()),
         }
@@ -435,7 +473,7 @@ impl SourceMap {
 
 #[derive(Debug)]
 pub struct ResolvedSpan<'a> {
-    pub filename: &'a str,
+    pub path: &'a Path,
     pub first_line: LineInformation<'a>,
     /// This is `None` if the last is the first line.
     pub final_line: Option<LineInformation<'a>>,
@@ -460,13 +498,13 @@ pub struct LineInformation<'a> {
 }
 
 pub struct SourceFile {
-    pub name: String,
+    pub path: PathBuf,
     content: String,
     pub span: Span,
 }
 
 impl SourceFile {
-    pub fn new(name: String, content: String, start: ByteIndex) -> Result<Self, Error> {
+    pub fn new(path: PathBuf, content: String, start: ByteIndex) -> Result<Self, Error> {
         use std::convert::TryFrom;
 
         let offset = u32::try_from(content.len())
@@ -474,9 +512,9 @@ impl SourceFile {
             .saturating_sub(1);
 
         Ok(Self {
-            name,
+            path,
             content,
-            span: Span::new(start, start.try_add_offset(offset)?),
+            span: Span::new(start, start.offset(offset)?),
         })
     }
 
@@ -495,7 +533,7 @@ impl std::ops::Index<LocalSpan> for SourceFile {
 
 impl fmt::Debug for SourceFile {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "SourceFile {} {:?}", self.name, self.span)
+        write!(f, "SourceFile {:?} {:?}", self.path, self.span)
     }
 }
 
@@ -507,24 +545,25 @@ pub enum Error {
     LoadFailure(io::Error),
 }
 
-// @Note too many allocations
 impl Error {
     pub fn message(&self, path: Option<&Path>) -> String {
         use io::ErrorKind::*;
 
-        let file = path.map_or("referenced file".into(), |path| {
-            format!("`{}`", path.to_string_lossy())
+        let mut message = path.map_or("referenced file ".into(), |path| {
+            format!("file `{}` ", path.to_string_lossy())
         });
 
-        match self {
-            Error::OffsetOverflow => format!("{} is too large", file),
+        message += match self {
+            Error::OffsetOverflow => "is too large",
             Error::LoadFailure(error) => match error.kind() {
-                NotFound => format!("{} does not exist", file),
-                PermissionDenied => format!("{} does not have required permissions", file),
-                InvalidData => format!("{} contains invalid UTF-8", file),
-                _ => "some IO error occured".into(),
+                NotFound => "does not exist",
+                PermissionDenied => "does not have required permissions",
+                InvalidData => "contains invalid UTF-8",
+                _ => "triggered some file system error",
             },
-        }
+        };
+
+        message
     }
 }
 

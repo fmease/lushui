@@ -1,9 +1,9 @@
 use super::{CrateScope, Expression};
 use crate::{
+    ast::{Attribute, Explicit},
     diagnostic::{Code, Diagnostic, Result},
     hir,
     hir::{expr, ExpressionKind},
-    parser::{Attribute, Explicit},
     resolver::{Identifier, Resolved},
     typer::Declaration,
     Int, Nat,
@@ -330,6 +330,31 @@ impl<V: IntoValue> From<V> for Value {
     }
 }
 
+macro simple_value_correspondence($( $rust_type:ty => $lushui_type:ident ),+ $(,)?) {
+    $(
+        impl IntoValue for $rust_type {
+            fn into_type() -> Type {
+                Type::$lushui_type
+            }
+
+            fn into_value(self) -> Value {
+                Value::$lushui_type(self)
+            }
+        }
+    )+
+}
+
+simple_value_correspondence! {
+    bool => Bool,
+    String => Text,
+    Nat => Nat,
+    u32 => Nat32,
+    u64 => Nat64,
+    Int => Int,
+    i32 => Int32,
+    i64 => Int64,
+}
+
 impl IntoValue for () {
     fn into_type() -> Type {
         Type::Unit
@@ -337,36 +362,6 @@ impl IntoValue for () {
 
     fn into_value(self) -> Value {
         Value::Unit
-    }
-}
-
-impl IntoValue for bool {
-    fn into_type() -> Type {
-        Type::Bool
-    }
-
-    fn into_value(self) -> Value {
-        Value::Bool(self)
-    }
-}
-
-impl IntoValue for String {
-    fn into_type() -> Type {
-        Type::Text
-    }
-
-    fn into_value(self) -> Value {
-        Value::Text(self)
-    }
-}
-
-impl IntoValue for Nat {
-    fn into_type() -> Type {
-        Type::Nat
-    }
-
-    fn into_value(self) -> Value {
-        Value::Nat(self)
     }
 }
 
@@ -409,6 +404,8 @@ pub fn register_foreign_bindings(scope: &mut CrateScope) {
     pure!(scope, "greater-equal", |x: Nat, y: Nat| x >= y);
     pure!(scope, "display", |x: Nat| x.to_string());
     pure!(scope, "concat", |a: Text, b: Text| a + &b);
+    // @Temporary until we can target specific modules
+    pure!(scope, "add-nat32", |a: Nat32, b: Nat32| a + b);
 
     // scope.insert_untyped_foreign_binding("panic", 2, |arguments| {
     //     let message = assume!(Text(&arguments[1]));

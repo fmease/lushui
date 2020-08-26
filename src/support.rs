@@ -7,7 +7,35 @@
 
 use crate::diagnostic::{Diagnostic, Diagnostics, Results};
 
-// @Note the `accumulate_error` methods ignore whether an error is fatal or not, this should be changed @Task
+pub trait DisplayWith: Sized {
+    type Linchpin;
+
+    fn format(&self, linchpin: &Self::Linchpin, f: &mut fmt::Formatter<'_>) -> fmt::Result;
+
+    fn with<'a>(&'a self, linchpin: &'a Self::Linchpin) -> WithLinchpin<'a, Self> {
+        WithLinchpin {
+            subject: self,
+            linchpin,
+        }
+    }
+}
+
+pub struct WithLinchpin<'a, T: DisplayWith> {
+    pub subject: &'a T,
+    pub linchpin: &'a T::Linchpin,
+}
+
+impl<T: DisplayWith> fmt::Display for WithLinchpin<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.subject.format(self.linchpin, f)
+    }
+}
+
+impl<T: DisplayWith> fmt::Debug for WithLinchpin<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
+    }
+}
 
 pub mod accumulate_errors {
     use super::*;

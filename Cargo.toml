@@ -7,14 +7,16 @@ edition = "2018"
 publish = false
 
 [dependencies]
-colored = "1.9.1"
+colored = "2.0.0"
 string_cache = "0.8.0"
-num-bigint = "0.2.5"
+num-bigint = "0.3.0"
 num-traits = "0.2.11"
-smallvec = "1.2.0"
+smallvec = { version = "1.4.2", features = ["const_generics"] } 
 bitflags = "1.2.1"
-structopt = "0.3.14"
+structopt = "0.3.16"
 indexed_vec = "1.2.1"
 unicode-width = "0.1.7"
 once_cell = "1.3.1"
 joinery = "2.0.0"
+# typed-html = "0.2.2"
+v_htmlescape = "0.10.0"

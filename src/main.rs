@@ -3,13 +3,13 @@
 use lushui::{
     desugar::Desugarer,
     diagnostic::{Diagnostic, Diagnostics, Results},
-    interpreter,
     lexer::Lexer,
     parser::Parser,
     resolver,
     span::SourceMap,
-    support::{pluralize, ManyErrExt},
+    support::{pluralize, DisplayWith, ManyErrExt},
 };
+use std::path::{Path, PathBuf};
 use structopt::StructOpt;
 
 const VERSION: &str = concat!(
@@ -20,6 +20,8 @@ const VERSION: &str = concat!(
     env!("GIT_COMMIT_DATE"),
     ")"
 );
+
+// @Beacon @Task rewrite the argument parsing logic to be less DRY
 
 #[derive(StructOpt)]
 #[structopt(version = VERSION, author, about)]
@@ -39,7 +41,18 @@ impl Arguments {
     // @Task remove (create function instead which uses unwrap_or(false))
     // @Note what a cruel poilerplate :'(
     fn merged(&self) -> MergedCommandArguments<'_> {
-        let mut arguments = MergedCommandArguments::default();
+        let mut only_lex_ = false;
+        let mut print_tokens_ = false;
+        let mut only_parse_ = false;
+        let mut print_ast_ = false;
+        let mut only_desugar_ = false;
+        let mut print_desugar_hir_ = false;
+        let mut display_crate_indices_ = false;
+        let mut only_resolve_ = false;
+        let mut print_resolver_hir_ = false;
+        let mut print_resolver_scope_ = false;
+        let mut print_interpreter_scope_ = false;
+        let file_: &Path;
 
         match &self.command {
             Command::Check {
@@ -56,38 +69,56 @@ impl Arguments {
                 print_resolver_scope,
                 display_crate_indices,
             } => {
-                arguments.file = file;
-                arguments.only_lex = *only_lex;
-                arguments.print_tokens = *print_tokens;
-                arguments.only_parse = *only_parse;
-                arguments.print_ast = *print_ast;
-                arguments.only_desugar = *only_desugar;
-                arguments.print_desugar_hir = *print_desugar_hir;
-                arguments.print_interpreter_scope = *print_interpreter_scope;
-                arguments.only_resolve = *only_resolve;
-                arguments.print_resolver_hir = *print_resolver_hir;
-                arguments.print_resolver_scope = *print_resolver_scope;
-                arguments.display_crate_indices = *display_crate_indices;
+                file_ = file;
+                only_lex_ = *only_lex;
+                print_tokens_ = *print_tokens;
+                only_parse_ = *only_parse;
+                print_ast_ = *print_ast;
+                only_desugar_ = *only_desugar;
+                print_desugar_hir_ = *print_desugar_hir;
+                print_interpreter_scope_ = *print_interpreter_scope;
+                only_resolve_ = *only_resolve;
+                print_resolver_hir_ = *print_resolver_hir;
+                print_resolver_scope_ = *print_resolver_scope;
+                display_crate_indices_ = *display_crate_indices;
             }
             Command::Run {
                 file,
                 print_interpreter_scope,
                 display_crate_indices,
             } => {
-                arguments.file = file;
-                arguments.print_interpreter_scope = *print_interpreter_scope;
-                arguments.display_crate_indices = *display_crate_indices;
+                file_ = file;
+                print_interpreter_scope_ = *print_interpreter_scope;
+                display_crate_indices_ = *display_crate_indices;
+            }
+            Command::Build { file } => {
+                file_ = file;
             }
             Command::Highlight { file } => {
-                arguments.file = file;
+                file_ = file;
+            }
+            Command::Document { file } => {
+                file_ = file;
             }
         }
 
-        arguments
+        MergedCommandArguments {
+            only_lex: only_lex_,
+            print_tokens: print_tokens_,
+            only_parse: only_parse_,
+            print_ast: print_ast_,
+            only_desugar: only_desugar_,
+            print_desugar_hir: print_desugar_hir_,
+            display_crate_indices: display_crate_indices_,
+            only_resolve: only_resolve_,
+            print_resolver_hir: print_resolver_hir_,
+            print_resolver_scope: print_resolver_scope_,
+            print_interpreter_scope: print_interpreter_scope_,
+            file: file_,
+        }
     }
 }
 
-#[derive(Default)]
 struct MergedCommandArguments<'a> {
     only_lex: bool,
     print_tokens: bool,
@@ -100,7 +131,7 @@ struct MergedCommandArguments<'a> {
     print_resolver_hir: bool,
     print_resolver_scope: bool,
     print_interpreter_scope: bool,
-    file: &'a str,
+    file: &'a Path,
 }
 
 // @Task gather all print flags under a common --print=THING option
@@ -154,7 +185,7 @@ enum Command {
 
         /// Set the source file
         #[structopt(name = "FILE")]
-        file: String,
+        file: PathBuf,
     },
     /// Type check and run a given program
     Run {
@@ -168,13 +199,25 @@ enum Command {
 
         /// Set the source file
         #[structopt(name = "FILE")]
-        file: String,
+        file: PathBuf,
+    },
+    /// Compile the code to bytecode.
+    Build {
+        /// Set the source file
+        #[structopt(name = "FILE")]
+        file: PathBuf,
     },
     /// Generate syntax highlighting for a given file in HTML
     Highlight {
         /// Set the source file
         #[structopt(name = "FILE")]
-        file: String,
+        file: PathBuf,
+    },
+    /// Generate HTML documentation.
+    Document {
+        /// Set the source file
+        #[structopt(name = "FILE")]
+        file: PathBuf,
     },
 }
 
@@ -223,23 +266,22 @@ fn main() {
         }
 
         match arguments.command {
-            Command::Check { .. } | Command::Run { .. } => {
+            Command::Check { .. } | Command::Run { .. } | Command::Build { .. } => {
                 let node = Desugarer::new(&mut map, &mut warnings)
                     .desugar_declaration(node)?
                     .pop()
                     .unwrap();
                 if merged_arguments.print_desugar_hir {
-                    eprintln!("{}", node);
+                    eprintln!("{}", node.with(&()));
                 }
                 if merged_arguments.only_desugar {
                     return Ok(());
                 }
 
                 let mut scope = resolver::CrateScope::default();
-
                 let node = node.resolve(&mut scope)?;
                 if merged_arguments.print_resolver_hir {
-                    eprintln!("{}", node);
+                    eprintln!("{}", node.with(&scope));
                 }
                 if merged_arguments.print_resolver_scope {
                     eprintln!("{:#?}", scope);
@@ -248,21 +290,43 @@ fn main() {
                     return Ok(());
                 }
 
-                let mut scope = interpreter::CrateScope::new(scope);
+                scope.register_foreign_bindings();
+
                 node.infer_type(&mut scope)?;
                 if merged_arguments.print_interpreter_scope {
                     eprintln!("{:#?}", scope);
                 }
 
-                if matches!(arguments.command, Command::Run {..}) {
+                // @Beacon @Task dont check for program_entry in scope.run() or compile_and_interp
+                // but here (a static error) (if the CLI dictates to run it)
+
+                if let Command::Run { .. } = arguments.command {
                     let result = scope.run().many_err()?;
 
-                    println!("{}", result);
+                    println!("{}", result.with(&scope));
+                }
+                // @Temporary
+                else if let Command::Build { .. } = arguments.command {
+                    // @Temporary not just builds, also runs ^^
+
+                    lushui::compiler::compile_and_interpret_declaration(&node, &scope)
+                        .unwrap_or_else(|_| panic!());
                 }
             }
             Command::Highlight { .. } => {
                 return Err(Diagnostic::error().with_message("operation not supported yet"))
                     .many_err()
+            }
+            Command::Document { .. } => {
+                use std::fs::File;
+                use std::io::BufWriter;
+
+                // @Task error handling
+                let mut file = BufWriter::new(File::create(path.with_extension("html")).unwrap());
+                let documenter =
+                    lushui::documenter::Documenter::new(&mut file, &map, &mut warnings);
+                // @Temporary @Task
+                documenter.document(&node).unwrap();
             }
         }
 

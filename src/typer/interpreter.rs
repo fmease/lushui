@@ -1,5 +1,7 @@
 //! The tree-walk interpreter necessary for type-checking.
 //!
+//! For reference, here is the bytecode interpreter: [crate::compiler::interpreter].
+//!
 //! ## Issues
 //!
 //! * too many bugs
@@ -10,23 +12,23 @@
 pub(crate) mod ffi;
 pub(crate) mod scope;
 
+use super::Expression;
 use crate::{
+    ast::Explicit,
     diagnostic::{Code, Diagnostic, Result},
     hir::*,
-    parser::Explicit,
+    resolver::CrateScope,
     span::Spanning,
     support::InvalidFallback,
-    typer::{self, Expression},
 };
-pub use scope::CrateScope;
 use scope::{FunctionScope, ValueView};
 
 impl CrateScope {
     /// Run the entry point of the crate.
-    pub fn run(mut self) -> Result<Expression> {
-        if let Some(program_entry) = self.program_entry.take() {
-            program_entry.to_expression().evaluate(Context {
-                scope: &(&self).into(),
+    pub fn run(&self) -> Result<Expression> {
+        if let Some(program_entry) = &self.program_entry {
+            program_entry.clone().to_expression().evaluate(Context {
+                scope: &self.into(),
                 // form: Form::Normal,
                 form: Form::WeakHeadNormal,
             })
@@ -202,10 +204,10 @@ impl Expression {
                     }
                 }
             }
-            (CaseAnalysis(case_analysis), substitution) => {
+            (CaseAnalysis(analysis), substitution) => {
                 expr! {
                     CaseAnalysis[self.span] {
-                        cases: case_analysis.cases.iter().map(|case| Case {
+                        cases: analysis.cases.iter().map(|case| Case {
                             pattern: case.pattern.clone(),
                             body: expr! {
                                 Substitution[] {
@@ -216,7 +218,7 @@ impl Expression {
                         }).collect(),
                         subject: expr! {
                             Substitution[] {
-                                expression: case_analysis.subject.clone(),
+                                expression: analysis.subject.clone(),
                                 substitution,
                             }
                         },
@@ -324,7 +326,7 @@ impl Expression {
                     let parameter_type = lambda
                         .parameter_type_annotation
                         .clone()
-                        .ok_or_else(typer::missing_annotation)?
+                        .ok_or_else(super::missing_annotation)?
                         .evaluate(context)?;
                     let body_type = lambda
                         .body_type_annotation
@@ -362,8 +364,8 @@ impl Expression {
             // because the code will not check for the arity of the neutral application
             // @Note how to handle them: just like functions: case analysis only wotks with a binder-case
             // (default case)
-            CaseAnalysis(case_analysis) => {
-                let subject = case_analysis.subject.clone().evaluate(context)?;
+            CaseAnalysis(analysis) => {
+                let subject = analysis.subject.clone().evaluate(context)?;
 
                 // @Note we assume, subject is composed of only applications, bindings etc corresponding to the pattern types
                 // everything else should be impossible because of type checking but I might be wrong.
@@ -371,7 +373,7 @@ impl Expression {
                 // @Note @Beacon think about having a variable `matches: bool` (whatever) to avoid repetition
                 match subject.kind {
                     Binding(subject) => {
-                        for case in case_analysis.cases.iter() {
+                        for case in analysis.cases.iter() {
                             match &case.pattern.kind {
                                 PatternKind::Number(_) => todo!(),
                                 PatternKind::Text(_) => todo!(),
@@ -390,9 +392,10 @@ impl Expression {
                         // exhaustiveness in `infer_type`, just fyi
                         unreachable!()
                     }
+                    // @Beacon @Beacon @Task
                     Application(_application) => todo!(),
                     Number(literal0) => {
-                        for case in case_analysis.cases.iter() {
+                        for case in analysis.cases.iter() {
                             match &case.pattern.kind {
                                 PatternKind::Number(literal1) => {
                                     if &literal0 == literal1 {
@@ -496,11 +499,11 @@ impl Expression {
                 let parameter_type_annotation0 = lambda0
                     .parameter_type_annotation
                     .clone()
-                    .ok_or_else(typer::missing_annotation)?;
+                    .ok_or_else(super::missing_annotation)?;
                 let parameter_type_annotation1 = lambda1
                     .parameter_type_annotation
                     .clone()
-                    .ok_or_else(typer::missing_annotation)?;
+                    .ok_or_else(super::missing_annotation)?;
 
                 parameter_type_annotation0
                     .clone()
@@ -558,14 +561,22 @@ impl Substitution {
     }
 }
 
+use crate::support::DisplayWith;
 use std::fmt;
 
-impl fmt::Display for Substitution {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl DisplayWith for Substitution {
+    type Linchpin = CrateScope;
+
+    fn format(&self, scope: &CrateScope, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use self::Substitution::*;
         match self {
             Shift(amount) => write!(f, "shift {}", amount),
-            Use(substitution, expression) => write!(f, "{}[{}]", expression, substitution),
+            Use(substitution, expression) => write!(
+                f,
+                "{}[{}]",
+                expression.with(scope),
+                substitution.with(scope)
+            ),
         }
     }
 }

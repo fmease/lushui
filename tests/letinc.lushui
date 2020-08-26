@@ -1,0 +1,9 @@
+;; TEST pass check
+
+@foreign
+data Nat32: Type
+
+second (x y: Nat32): Nat32 = y
+
+main: Nat32 =
+    let x: Nat32 = 23#N32 in let y: Nat32 = 100#N32 in second x y

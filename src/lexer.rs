@@ -4,7 +4,6 @@
 //! [TokenKind::Indentation] and [TokenKind::Dedentation] respectively.
 
 #[cfg(test)]
-// #[cfg(FALSE)] // @Temporary @Beacon
 mod test;
 mod token;
 
@@ -40,10 +39,13 @@ pub fn parse_identifier(source: String) -> Option<Atom> {
 }
 
 pub fn lex(source: String) -> Results<Vec<Token>> {
-    let path = String::new();
-    let file = SourceFile::new(path, source, crate::span::START_OF_FIRST_SOURCE_FILE)
-        .ok()
-        .unwrap();
+    let file = SourceFile::new(
+        std::path::PathBuf::new(),
+        source,
+        crate::span::START_OF_FIRST_SOURCE_FILE,
+    )
+    .ok()
+    .unwrap();
     Lexer::new(&file).lex()
 }
 
@@ -194,7 +196,7 @@ impl<'a> Lexer<'a> {
                 return Err(Diagnostic::error()
                     .with_code(Code::E002)
                     .with_message("trailing dash on identifier")
-                    .with_span(&Span::from_local(self.source, dash.into())));
+                    .with_span(&Span::local(self.source, dash.into())));
             }
         }
 
@@ -255,7 +257,10 @@ impl<'a> Lexer<'a> {
                     absolute_difference
                 ))
                 .with_span(&self.span())
-                .with_note("indentation needs to be a multiple of 4"));
+                .with_note(format!(
+                    "indentation needs to be a multiple of {}",
+                    INDENTATION_IN_SPACES
+                )));
         }
 
         match change {
@@ -438,7 +443,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn span(&self) -> Span {
-        Span::from_local(self.source, self.span)
+        Span::local(self.source, self.span)
     }
 
     fn advance(&mut self) {

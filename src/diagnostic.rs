@@ -136,7 +136,6 @@ impl Diagnostic {
     }
 
     // @Task if the span equals the span of the entire file, don't output its content
-    // @Task if two spans reside on the same line, print them inline not above each other (maybe)
     // @Bug cannot nicely handle non-primary highlights if they have sham locations (currently skipped)
     fn display(&mut self, map: Option<&SourceMap>) -> String {
         let mut header = format!(
@@ -170,7 +169,7 @@ impl Diagnostic {
                 .map(|highlight| map.resolve_span(highlight.span))
                 .collect();
 
-            let primary_file_name = &resolved_spans[primary_highlight].filename;
+            let primary_file_name = &resolved_spans[primary_highlight].path;
 
             let largest_line_number = resolved_spans
                 .iter()
@@ -188,21 +187,21 @@ impl Diagnostic {
                 "\n\
                 {padding} {arrow} {file}:{line}:{column}",
                 arrow = ">".bright_blue().bold(),
-                file = primary_span.filename,
+                file = primary_span.path.to_string_lossy(),
                 line = primary_span.first_line.number,
                 column = primary_span.first_line.highlight_start_column,
                 padding = padding,
             );
 
             for (highlight, span) in self.highlights.iter().zip(&resolved_spans) {
-                if &span.filename != primary_file_name && highlight.role != Role::Primary {
+                if &span.path != primary_file_name && highlight.role != Role::Primary {
                     message += &format!(
                         "\n\
                         {padding} {bar}\n\
                         {padding} {arrow} {file}",
                         arrow = "~".bright_blue().bold(),
                         bar = bar,
-                        file = span.filename,
+                        file = span.path.to_string_lossy(),
                         padding = padding,
                     );
                 }
@@ -452,6 +451,10 @@ pub enum Code {
     E032,
     /// Invalid constructor.
     E033,
+    /// Invalid position of binder in pattern.
+    E034,
+    /// Type analysis
+    E035,
     /// Missing program entry.
     E050,
     /// Unregistered foreign binding.
@@ -464,4 +467,12 @@ pub enum Code {
     E063,
     /// Implicitness unimplemented.
     W001,
+}
+
+impl Code {
+    // @Task
+    #[allow(dead_code)]
+    pub const fn explain(self) -> &'static str {
+        loop {}
+    }
 }

@@ -6,9 +6,9 @@
 use std::{fmt, iter::once};
 
 use crate::{
-    diagnostic::{Code, Diagnostic, Diagnostics, Results},
+    ast::{self, Explicit, Identifier, Path},
+    diagnostic::{Code, Diagnostic, Diagnostics, Result, Results},
     hir::{self, decl, expr, pat, Pass},
-    parser::{self, Explicit, Identifier, Path},
     smallvec,
     span::{SourceMap, Spanning},
     support::{pluralize, release, InvalidFallback, ManyErrExt, TrySoftly},
@@ -21,9 +21,21 @@ pub enum Desugared {}
 impl Pass for Desugared {
     type Binder = Identifier;
     type ReferencedBinder = Path;
-    // @Temporary
-    type PatternBinder = Path;
     type ForeignApplicationBinder = !;
+    type Substitution = !;
+    type ShowLinchpin = ();
+
+    fn format_binding(
+        binder: &Self::ReferencedBinder,
+        (): &(),
+        f: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
+        write!(f, "{}", binder)
+    }
+
+    fn format_substitution(substitution: &!, _: &(), _: &mut fmt::Formatter<'_>) -> fmt::Result {
+        *substitution
+    }
 }
 
 pub struct Desugarer<'a> {
@@ -47,9 +59,9 @@ impl<'a> Desugarer<'a> {
     /// else.
     pub fn desugar_declaration(
         &mut self,
-        mut declaration: parser::Declaration,
+        mut declaration: ast::Declaration,
     ) -> Results<SmallVec<hir::Declaration<Desugared>, 1>> {
-        use parser::DeclarationKind::*;
+        use ast::DeclarationKind::*;
 
         let mut errors = Diagnostics::new();
 
@@ -205,19 +217,18 @@ impl<'a> Desugarer<'a> {
                         Some(declarations) => declarations,
                         None => {
                             use crate::{lexer::Lexer, parser::Parser, span};
-                            use std::path::Path;
 
-                            let path = Path::new(&module.file.name)
-                                .ancestors()
-                                .nth(1)
-                                .unwrap()
-                                .join(&format!("{}.{}", module.binder, crate::FILE_EXTENSION));
+                            let path = module.file.path.ancestors().nth(1).unwrap().join(&format!(
+                                "{}.{}",
+                                module.binder,
+                                crate::FILE_EXTENSION
+                            ));
 
                             let declaration_span = declaration.span;
 
                             let file = self
                                 .map
-                                .load(path.to_str().unwrap())
+                                .load(&path)
                                 .map_err(|error| match error {
                                     // @Task code
                                     span::Error::LoadFailure(_) => Diagnostic::error()
@@ -311,7 +322,7 @@ impl<'a> Desugarer<'a> {
             Use(use_) => {
                 use crate::span::Span;
 
-                use parser::{
+                use ast::{
                     Attributes,
                     UseBindings::{self, *},
                 };
@@ -324,10 +335,10 @@ impl<'a> Desugarer<'a> {
                     span: Span,
                     attributes: &Attributes,
                     declarations: &mut SmallVec<hir::Declaration<Desugared>, 1>,
-                ) {
+                ) -> Result<()> {
                     for binding in bindings {
                         match binding {
-                            parser::UseBindings::Single { target, binder } => {
+                            ast::UseBindings::Single { target, binder } => {
                                 // if the binder is not explicitly set, look for the most-specific/last/right-most
                                 // identifier of the target but if that one is `self`, look up the last identifier of
                                 // the parent path
@@ -335,24 +346,26 @@ impl<'a> Desugarer<'a> {
                                     Use[span][attributes.clone()] {
                                         binder: binder.or_else(|| if !target.is_self() { &target } else { &path }
                                             .last_identifier().cloned()),
-                                        target: path.clone().join(target),
+                                        target: path.clone().join(target)?,
                                     }
                                 });
                             }
-                            parser::UseBindings::Multiple {
+                            ast::UseBindings::Multiple {
                                 path: inner_path,
                                 bindings,
                             } => {
                                 desugar_multiple_use_bindings(
-                                    path.clone().join(inner_path),
+                                    path.clone().join(inner_path)?,
                                     bindings,
                                     span,
                                     attributes,
                                     declarations,
-                                );
+                                )?;
                             }
                         }
                     }
+
+                    Ok(())
                 };
 
                 match use_.bindings {
@@ -369,7 +382,8 @@ impl<'a> Desugarer<'a> {
                             declaration.span,
                             &declaration.attributes,
                             &mut declarations,
-                        );
+                        )
+                        .many_err()?;
                     }
                 }
 
@@ -379,8 +393,8 @@ impl<'a> Desugarer<'a> {
     }
 
     // @Task validate that attributes are unique (using Attribute::unique)
-    fn validate_attributes(declaration: &mut parser::Declaration) -> Results<()> {
-        use parser::{AttributeKind::*, DeclarationKind::*};
+    fn validate_attributes(declaration: &mut ast::Declaration) -> Results<()> {
+        use ast::{AttributeKind::*, DeclarationKind::*};
 
         let nonconforming = declaration
             .attributes
@@ -468,9 +482,9 @@ impl<'a> Desugarer<'a> {
     // @Task rewrite this returning Results<_> for future use (that work is a bit tedious)
     pub fn desugar_expression(
         &mut self,
-        expression: parser::Expression,
+        expression: ast::Expression,
     ) -> hir::Expression<Desugared> {
-        use parser::ExpressionKind::*;
+        use ast::ExpressionKind::*;
 
         match expression.kind {
             PiTypeLiteral(pi) => expr! {
@@ -587,10 +601,10 @@ impl<'a> Desugarer<'a> {
             }
             // @Beacon @Task
             UseIn(_use_in) => todo!("use/in expressions not supported yet"),
-            CaseAnalysis(case_analysis) => {
+            CaseAnalysis(analysis) => {
                 let mut cases = Vec::new();
 
-                for case_group in case_analysis.cases {
+                for case_group in analysis.cases {
                     cases.push(hir::Case {
                         pattern: self.desugar_pattern(case_group.pattern),
                         body: self.desugar_expression(case_group.expression.clone()),
@@ -599,7 +613,7 @@ impl<'a> Desugarer<'a> {
 
                 expr! {
                     CaseAnalysis[expression.span] {
-                        subject: self.desugar_expression(case_analysis.expression),
+                        subject: self.desugar_expression(analysis.expression),
                         cases,
                     }
                 }
@@ -609,8 +623,8 @@ impl<'a> Desugarer<'a> {
     }
 
     /// Lower a pattern from AST to HIR.
-    fn desugar_pattern(&mut self, pattern: parser::Pattern) -> hir::Pattern<Desugared> {
-        use parser::PatternKind::*;
+    fn desugar_pattern(&mut self, pattern: ast::Pattern) -> hir::Pattern<Desugared> {
+        use ast::PatternKind::*;
 
         match pattern.kind {
             NumberLiteral(literal) => pat! {
@@ -641,8 +655,8 @@ impl<'a> Desugarer<'a> {
     /// Lower annotated parameters from AST to HIR.
     fn desugar_parameters_to_annotated_ones(
         &mut self,
-        parameters: parser::Parameters,
-        type_annotation: parser::Expression,
+        parameters: ast::Parameters,
+        type_annotation: ast::Expression,
     ) -> Results<hir::Expression<Desugared>> {
         let mut expression = self.desugar_expression(type_annotation);
 

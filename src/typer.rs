@@ -1,23 +1,24 @@
 //! The type checker.
 
-mod types;
+pub mod interpreter;
 
 use crate::{
+    ast::{AttributeKind, Explicit},
     diagnostic::{Code, Diagnostic, Result, Results},
     hir::{self, *},
-    interpreter::{
-        self, ffi,
-        scope::{FunctionScope, Registration},
-        CrateScope, Form,
-    },
-    parser::{AttributeKind, Explicit},
-    resolver::{Identifier, Resolved},
-    support::{accumulate_errors::*, ManyErrExt, TransposeExt},
+    resolver::{CrateScope, Identifier, Resolved},
+    support::{accumulate_errors::*, DisplayWith, ManyErrExt, TransposeExt},
+};
+use interpreter::{
+    ffi,
+    scope::{FunctionScope, Registration},
+    Form,
 };
 use std::default::default;
 
 pub type Declaration = hir::Declaration<Resolved>;
 pub type Expression = hir::Expression<Resolved>;
+pub type Pattern = hir::Pattern<Resolved>;
 
 const TYPE: Expression = expr! { Type[] };
 
@@ -33,12 +34,17 @@ struct Environment {
     data: Option<Identifier>,
 }
 
+// @Beacon @Task restructure so that we have a Typer struct with a lot of information
+
 impl Declaration {
     /// Try to type check a declaration modifying the given scope.
     pub fn infer_type(&self, scope: &mut CrateScope) -> Results<()> {
+        let results_first_pass = self.infer_type_first_pass(scope, default());
+        let poisoned = results_first_pass.is_err();
+
         (
-            self.infer_type_first_pass(scope, default()),
-            scope.infer_type_of_out_of_order_bindings(),
+            results_first_pass,
+            scope.infer_type_of_out_of_order_bindings(poisoned),
         )
             .accumulate_err()?;
 
@@ -129,8 +135,7 @@ impl Declaration {
                     .collect::<Vec<_>>()
                     .transpose()?;
             }
-            Use(_) => {}
-            Invalid => {}
+            Use(_) | Invalid => {}
         }
 
         Ok(())
@@ -158,9 +163,15 @@ impl Registration {
                 recover_error!(
                     scope,
                     self;
-                    type_.clone().is_a_type(&(&*scope).into()),
+                    type_.clone().it_is_a_type(&(&*scope).into()),
                     actual = type_
                 );
+                let type_ = type_
+                    .evaluate(interpreter::Context {
+                        scope: &(&*scope).into(),
+                        form: Form::Normal, /* Form::WeakHeadNormal */
+                    })
+                    .many_err()?;
 
                 let infered_type = match value.clone().infer_type(&(&*scope).into()) {
                     Ok(expression) => expression,
@@ -184,7 +195,7 @@ impl Registration {
                 recover_error!(
                     scope,
                     self;
-                    type_.clone().is_actual(infered_type.clone(), &(&*scope).into()),
+                    type_.clone().it_is_actual(infered_type.clone(), &(&*scope).into()),
                     actual = value,
                     expected = type_
                 );
@@ -197,23 +208,20 @@ impl Registration {
                     .many_err()?;
             }
             DataBinding { binder, type_ } => {
+                recover_error!(
+                    scope,
+                    self;
+                    type_.clone().it_is_a_type(&(&*scope).into()),
+                    actual = type_
+                );
                 let type_ = type_
                     .evaluate(interpreter::Context {
                         scope: &(&*scope).into(),
                         form: Form::Normal, /* Form::WeakHeadNormal */
                     })
                     .many_err()?;
-                recover_error!(
-                    scope,
-                    self;
-                    type_.clone().is_a_type(&(&*scope).into()),
-                    actual = type_
-                );
 
-                // @Task diagnostic note: only `Type` can be extended
-                // @Note currently is: invalid constructor X
-                types::instance::assert_constructor_is_instance_of_type(type_.clone(), TYPE, scope)
-                    .many_err()?;
+                assert_constructor_is_instance_of_type(type_.clone(), TYPE, scope).many_err()?;
 
                 scope
                     .carry_out(Registration::DataBinding { binder, type_ })
@@ -224,20 +232,20 @@ impl Registration {
                 type_,
                 data,
             } => {
+                recover_error!(
+                    scope,
+                    self;
+                    type_.clone().it_is_a_type(&(&*scope).into()),
+                    actual = type_
+                );
                 let type_ = type_
                     .evaluate(interpreter::Context {
                         scope: &(&*scope).into(),
                         form: Form::Normal, /* Form::WeakHeadNormal */
                     })
                     .many_err()?;
-                recover_error!(
-                    scope,
-                    self;
-                    type_.clone().is_a_type(&(&*scope).into()),
-                    actual = type_
-                );
 
-                types::instance::assert_constructor_is_instance_of_type(
+                assert_constructor_is_instance_of_type(
                     type_.clone(),
                     data.clone().to_expression(),
                     scope,
@@ -253,18 +261,18 @@ impl Registration {
                     .many_err()?;
             }
             ForeignValueBinding { binder, type_ } => {
+                recover_error!(
+                    scope,
+                    self;
+                    type_.clone().it_is_a_type(&(&*scope).into()),
+                    actual = type_
+                );
                 let type_ = type_
                     .evaluate(interpreter::Context {
                         scope: &(&*scope).into(),
                         form: Form::Normal, /* Form::WeakHeadNormal */
                     })
                     .many_err()?;
-                recover_error!(
-                    scope,
-                    self;
-                    type_.clone().is_a_type(&(&*scope).into()),
-                    actual = type_
-                );
 
                 scope
                     .carry_out(Self::ForeignValueBinding { binder, type_ })
@@ -298,7 +306,7 @@ impl Registration {
                                 .with_code(Code::E032)
                                 .with_message(format!(
                                     "expected type `{}`, got type `{}`",
-                                    expected, actual
+                                    expected.with($scope), actual.with($scope)
                                 ))
                                 .with_labeled_span(
                                     &$actual_value,
@@ -318,7 +326,8 @@ impl Registration {
 }
 
 impl CrateScope {
-    fn infer_type_of_out_of_order_bindings(&mut self) -> Results<()> {
+    /// `poisoned`: Whether the previous pass failed
+    fn infer_type_of_out_of_order_bindings(&mut self, poisoned: bool) -> Results<()> {
         while !self.out_of_order_bindings.is_empty() {
             let bindings = std::mem::take(&mut self.out_of_order_bindings);
             let previous_amount = bindings.len();
@@ -328,12 +337,12 @@ impl CrateScope {
             }
 
             if previous_amount == self.out_of_order_bindings.len() {
-                // @Temporary
-                // @Note this case might occur when the bindings is its own type (like Type-in-Type)
-                // I don't know if there are any other cases
-                return Err(Diagnostic::error().with_message(
-                    "found equi-recursive? or circular thingy trying to type-check",
-                ))
+                if poisoned {
+                    return Ok(());
+                }
+
+                return Err(Diagnostic::bug()
+                    .with_message("found some weird circular binding during type checking"))
                 .many_err();
             }
         }
@@ -344,12 +353,12 @@ impl CrateScope {
 
 impl Expression {
     /// Try to infer the type of an expression.
-    // @Beacon @Beacon @Task verify and implement that all is_a_type and is_actual lead to good error messages
+    // @Beacon @Beacon @Task verify and implement that all it_is_a_type and it_is_actual lead to good error messages
     // and keep it DRY (try to abstract over error handling, find a good API)
     // @Task make independent (^^) type errors non-fatal in respect to each other, i.e. return more than one
     // type error in possible cases
     fn infer_type(self, scope: &FunctionScope<'_>) -> Result<Self, Error> {
-        use crate::interpreter::Substitution::*;
+        use crate::typer::interpreter::Substitution::*;
         use ExpressionKind::*;
 
         Ok(match self.kind {
@@ -367,15 +376,15 @@ impl Expression {
                 // ensure domain and codomain are are well-typed
                 // @Question why do we need to this? shouldn't this be already handled if
                 // `expression` (parameter of `infer_type`) has been normalized?
-                literal.domain.clone().is_a_type(scope)?;
+                literal.domain.clone().it_is_a_type(scope)?;
 
                 if literal.parameter.is_some() {
                     literal
                         .codomain
                         .clone()
-                        .is_a_type(&mut scope.extend_with_parameter(literal.domain.clone()))?;
+                        .it_is_a_type(&mut scope.extend_with_parameter(literal.domain.clone()))?;
                 } else {
-                    literal.codomain.clone().is_a_type(scope)?;
+                    literal.codomain.clone().it_is_a_type(scope)?;
                 }
 
                 TYPE
@@ -386,14 +395,14 @@ impl Expression {
                     .clone()
                     .ok_or_else(missing_annotation)?;
 
-                parameter_type.clone().is_a_type(scope)?;
+                parameter_type.clone().it_is_a_type(scope)?;
 
                 let scope = scope.extend_with_parameter(parameter_type.clone());
                 let infered_body_type = lambda.body.clone().infer_type(&scope)?;
 
                 if let Some(body_type_annotation) = lambda.body_type_annotation.clone() {
-                    body_type_annotation.clone().is_a_type(&scope)?;
-                    body_type_annotation.is_actual(infered_body_type.clone(), &scope)?;
+                    body_type_annotation.clone().it_is_a_type(&scope)?;
+                    body_type_annotation.it_is_actual(infered_body_type.clone(), &scope)?;
                 }
 
                 expr! {
@@ -422,13 +431,15 @@ impl Expression {
                         // down the call chain
                         pi.domain
                             .clone()
-                            .is_actual(argument_type, scope)
+                            .it_is_actual(argument_type, scope)
                             .map_err(|error| match error {
                                 Error::Unrecoverable(error) => error,
                                 Error::TypeMismatch { expected, actual } => Diagnostic::error()
+                                    .with_code(Code::E032)
                                     .with_message(format!(
                                         "expected type `{}`, got type `{}`",
-                                        expected, actual
+                                        expected.with(scope.crate_scope()),
+                                        actual.with(scope.crate_scope())
                                     ))
                                     .with_labeled_span(&application.argument, "has wrong type")
                                     .with_labeled_span(&expected, "expected due to this"),
@@ -446,18 +457,15 @@ impl Expression {
                         }
                     }
                     _ => {
-                        // @Task @Beacon @Beacon @Beacon improve error diagnostic
-                        // @Task add span
-                        return Err(Error::Unrecoverable(
-                            Diagnostic::error()
-                                .with_code(Code::E031)
-                                .with_message(format!(
-                                    "expected type `_ -> _`, got type `{}`",
-                                    type_of_callee
-                                ))
-                                .with_labeled_span(&application.callee, "has wrong type")
-                                .with_labeled_span(&application.argument, "applied to this"),
-                        ));
+                        return Err(Diagnostic::error()
+                            .with_code(Code::E031)
+                            .with_message(format!(
+                                "expected type `_ -> _`, got type `{}`",
+                                type_of_callee.with(scope.crate_scope())
+                            ))
+                            .with_labeled_span(&application.callee, "has wrong type")
+                            .with_labeled_span(&application.argument, "applied to this")
+                            .into());
                     }
                 }
             }
@@ -467,8 +475,8 @@ impl Expression {
                 .substitute(substitution.substitution.clone())
                 .infer_type(scope)?,
             UseIn => todo!("1stP infer type of use/in"),
-            CaseAnalysis(case_analysis) => {
-                let type_ = case_analysis
+            CaseAnalysis(analysis) => {
+                let subject_type = analysis
                     .subject
                     .clone()
                     .infer_type(scope)?
@@ -478,53 +486,116 @@ impl Expression {
                 // @Task verify that
                 // * patterns are of correct type (i.e. type_ is an ADT and the constructors are the valid ones)
                 // * all constructors are covered
-                // * all case_analysis.cases>>.expressions are of the same type
+                // * all analysis.cases>>.expressions are of the same type
 
-                match &type_.kind {
+                match &subject_type.clone().kind {
                     Binding(_) => {}
                     Application(_application) => todo!("polymorphic types in patterns"),
-                    _ => todo!("encountered unsupported type to be case-analysed"),
+                    _ if subject_type.clone().is_a_type(scope)? => {
+                        return Err(Diagnostic::error()
+                            .with_code(Code::E035)
+                            .with_message("attempt to analyze a type")
+                            .with_span(&self.span)
+                            .with_note("forbidden to uphold parametricity and type erasure")
+                            .into());
+                    }
+                    _ => todo!(
+                        "encountered unsupported type to be case-analysed type={}",
+                        subject_type.with(scope.crate_scope())
+                    ),
                 };
 
                 let mut type_of_previous_body = None::<Self>;
 
-                for case in case_analysis.cases.iter() {
+                for case in analysis.cases.iter() {
                     let mut types = Vec::new();
 
+                    let handle_type_mismatch = |error| match error {
+                        Error::TypeMismatch { expected, actual } => Diagnostic::error()
+                            .with_code(Code::E032)
+                            .with_message(format!(
+                                "expected type `{}`, got type `{}`",
+                                expected.with(scope.crate_scope()),
+                                actual.with(scope.crate_scope())
+                            ))
+                            .with_labeled_span(&case.pattern, "has wrong type")
+                            .with_labeled_span(&analysis.subject, "expected due to this")
+                            .into(),
+                        error => error,
+                    };
+
+                    use PatternKind::*;
+
+                    // @Task add help subdiagnostic when a constructor is (de)applied to too few arguments
+                    // @Update @Note or just replace the type mismatch error (hmm) with an arity mismatch error
+                    // not sure
                     match &case.pattern.kind {
-                        PatternKind::Number(number) => {
-                            type_.clone().is_actual(
-                                // @Bug @Beacon
-                                scope
-                                    .crate_scope()
-                                    .lookup_foreign_number_type(number, Some(case.pattern.span))?,
-                                scope,
-                            )?;
-                        }
-                        PatternKind::Text(_text) => {
-                            type_.clone().is_actual(
-                                scope.crate_scope().lookup_foreign_type(
-                                    ffi::Type::TEXT,
-                                    Some(case.pattern.span),
-                                )?,
-                                scope,
-                            )?;
-                        }
-                        PatternKind::Binding(binding) => {
-                            let type_of_constructor = scope.lookup_type(&binding.binder).unwrap();
-                            // @Note error message very general, could be specialized to constructors
-                            type_
+                        Number(number) => {
+                            let number_type = scope
+                                .crate_scope()
+                                .lookup_foreign_number_type(number, Some(case.pattern.span))?;
+                            subject_type
                                 .clone()
-                                .is_actual(type_of_constructor.clone(), scope)?;
+                                .it_is_actual(number_type, scope)
+                                .map_err(handle_type_mismatch)?;
                         }
-                        PatternKind::Binder(_) => {
-                            // @Temporary @Beacon error prone (once we try to impl deappl)
-                            types.push(type_.clone());
+                        Text(_) => {
+                            let text_type = scope
+                                .crate_scope()
+                                .lookup_foreign_type(ffi::Type::TEXT, Some(case.pattern.span))?;
+                            subject_type
+                                .clone()
+                                .it_is_actual(text_type, scope)
+                                .map_err(handle_type_mismatch)?
                         }
-                        PatternKind::Deapplication(_deapplication) => {
-                            todo!("handle deapplications in patterns")
+                        Binding(binding) => {
+                            let constructor_type = scope.lookup_type(&binding.binder).unwrap();
+                            subject_type
+                                .clone()
+                                .it_is_actual(constructor_type.clone(), scope)
+                                .map_err(handle_type_mismatch)?;
+                        }
+                        Binder(_) => {
+                            // @Temporary @Beacon @Bug error prone (once we try to impl deappl)
+                            // @Update @Note don't push the type of subject but the type of the binder
+                            types.push(subject_type.clone());
+                        }
+                        // @Task
+                        Deapplication(deapplication) => {
+                            // @Beacon @Task check that subject type is a pi type
+
+                            match (&deapplication.callee.kind, &deapplication.argument.kind) {
+                                // @Note should be an error obviously but does this need to be special-cased
+                                // or can we defer this to an it_is_actual call??
+                                (Number(_) | Text(_), _argument) => todo!(),
+                                (Binding(binding), _argument) => {
+                                    let constructor_type =
+                                        scope.lookup_type(&binding.binder).unwrap();
+                                    dbg!(
+                                        &subject_type.with(scope.crate_scope()),
+                                        deapplication.callee.with(scope.crate_scope()),
+                                        &constructor_type.with(scope.crate_scope())
+                                    );
+
+                                    todo!();
+                                }
+                                // @Task make error less fatal (keep processing next cases (match arms))
+                                (Binder(binder), _) => {
+                                    return Err(Diagnostic::error()
+                                        .with_code(Code::E034)
+                                        .with_message(format!(
+                                            "binder `{}` used in callee position inside pattern",
+                                            binder.binder
+                                        ))
+                                        .with_span(&binder.binder)
+                                        .with_help("consider refering to a concrete binding")
+                                        .into())
+                                }
+                                (Deapplication(_), _argument) => todo!(),
+                            };
                         }
                     }
+
                     let type_ = case
                         .body
                         .clone()
@@ -532,7 +603,7 @@ impl Expression {
 
                     match type_of_previous_body {
                         Some(ref previous_type) => {
-                            previous_type.clone().is_actual(type_, scope)?;
+                            previous_type.clone().it_is_actual(type_, scope)?;
                         }
                         None => {
                             type_of_previous_body = Some(type_);
@@ -540,17 +611,24 @@ impl Expression {
                     }
                 }
 
+                //  @Temporary unhandled case
                 type_of_previous_body.expect("caseless case analyses")
             }
-            ForeignApplication(_) => unreachable!(),
+            // @Beacon @Task
+            ForeignApplication(_) => todo!(),
             Invalid => self,
         })
     }
 
     /// Assert that an expression is of type `Type`.
-    fn is_a_type(self, scope: &FunctionScope<'_>) -> Result<(), Error> {
+    fn it_is_a_type(self, scope: &FunctionScope<'_>) -> Result<(), Error> {
         let type_ = self.infer_type(scope)?;
-        TYPE.is_actual(type_, scope)
+        TYPE.it_is_actual(type_, scope)
+    }
+
+    fn is_a_type(self, scope: &FunctionScope<'_>) -> Result<bool, Error> {
+        let type_ = self.infer_type(scope)?;
+        TYPE.is_actual(type_, scope).map_err(Into::into)
     }
 
     /// Assert that two expression are equal under evaluation/normalization.
@@ -558,7 +636,7 @@ impl Expression {
     // @Update that is because `equals` is called on 2 `Substitutions` but 2 of those are never
     // equal. I think they should be "killed" earlier. probably a bug
     // @Update this happens with Form::Normal, too. what a bummer
-    fn is_actual(self, actual: Self, scope: &FunctionScope<'_>) -> Result<(), Error> {
+    fn it_is_actual(self, actual: Self, scope: &FunctionScope<'_>) -> Result<(), Error> {
         let expected = self.clone().evaluate(interpreter::Context {
             scope,
             form: Form::Normal, /* Form::WeakHeadNormal */
@@ -577,11 +655,98 @@ impl Expression {
 
         Ok(())
     }
+
+    fn is_actual(self, actual: Self, scope: &FunctionScope<'_>) -> Result<bool> {
+        let expected = self.clone().evaluate(interpreter::Context {
+            scope,
+            form: Form::Normal, /* Form::WeakHeadNormal */
+        })?;
+        let actual = actual.evaluate(interpreter::Context {
+            scope,
+            form: Form::Normal, /* Form::WeakHeadNormal */
+        })?;
+
+        expected.clone().equals(actual.clone(), scope)
+    }
+
+    // @Question @Bug returns are type that might depend on parameters which we don't supply!!
+    // gets R in A -> B -> C -> R plus an environment b.c. R could depend on outer stuff
+    // @Note this function assumes that the expression has already been normalized!
+    fn result_type(self, scope: &FunctionScope<'_>) -> Self {
+        use ExpressionKind::*;
+
+        match self.kind {
+            PiType(literal) => {
+                if literal.parameter.is_some() {
+                    let scope = scope.extend_with_parameter(literal.domain.clone());
+                    literal.codomain.clone().result_type(&scope)
+                } else {
+                    literal.codomain.clone().result_type(scope)
+                }
+            }
+            Application(_)
+            | Type
+            | Binding(_) => self,
+            Lambda(_)
+            | Number(_)
+            | Text(_)
+            | UseIn
+            | CaseAnalysis(_)
+            // @Note not sure
+            | Substitution(_)
+            | ForeignApplication(_) => unreachable!(),
+            Invalid => self,
+        }
+    }
+
+    /// Returns the callee of an expression.
+    ///
+    /// Example: Returns the `f` in `f a b c`.
+    fn callee(mut self) -> Self {
+        loop {
+            self = match self.kind {
+                ExpressionKind::Application(application) => application.callee.clone(),
+                _ => return self,
+            }
+        }
+    }
+}
+
+/// Instance checking.
+///
+/// I.e. does a constructor of an algebraïc data type return a valid
+/// instance of the respective type?
+///
+/// Note: Currently, the checker does allow existential type parameters
+/// and specialized instances. This will complicate the implementation
+/// of case analysis. Of course, feature-complete Lushui shall support
+/// existentials and specialized instances but we first might want to
+/// feature-gate them.
+fn assert_constructor_is_instance_of_type(
+    constructor: Expression,
+    type_: Expression,
+    scope: &CrateScope,
+) -> Result<()> {
+    let result_type = constructor.result_type(&scope.into());
+    let callee = result_type.clone().callee();
+
+    if !type_.clone().equals(callee, &scope.into())? {
+        Err(Diagnostic::error()
+            .with_code(Code::E033)
+            .with_message(format!(
+                "`{}` is not an instance of `{}`",
+                result_type.with(scope),
+                type_.with(scope)
+            ))
+            .with_span(&result_type.span))
+    } else {
+        Ok(())
+    }
 }
 
 // @Note maybe we should redesign this as a trait (object) looking at those
 // methods mirroring the variants
-enum Error {
+pub enum Error {
     Unrecoverable(Diagnostic),
     OutOfOrderBinding,
     TypeMismatch {

@@ -1,0 +1,12 @@
+;; TEST ignore
+
+@foreign
+data Nat32: Type
+
+second (a b: Nat32): Nat32 = b
+
+identity (a: Nat32): Nat32 = a
+
+identity2 (x: Nat32): Nat32 = second x x
+
+main: Nat32 = identity (identity (second (second 6666#N32 23#N32) (second 1#N32 (identity2 100#N32))))

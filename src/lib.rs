@@ -10,26 +10,32 @@
     never_type,
     bool_to_option,
     default_free_fn,
-    const_generics
-    // untagged_unions
+    const_generics,
+    const_in_array_repeat_expressions,
+    or_patterns,
+    // untagged_unions,
 )]
 #![forbid(rust_2018_idioms, unused_must_use)]
 // @Note noted ^^ we will only do very basic stuff w/ const generics
 #![allow(incomplete_features)]
 
+pub mod compiler;
 pub mod desugar;
 pub mod diagnostic;
+pub mod documenter;
 mod entity;
 #[cfg(test)]
 mod golden;
+mod grow_array;
 mod hir;
-pub mod interpreter;
 pub mod lexer;
 pub mod parser;
 pub mod resolver;
 pub mod span;
 pub mod support;
 pub mod typer;
+
+use parser::ast;
 
 const FILE_EXTENSION: &str = "lushui";
 
@@ -60,7 +66,7 @@ fn has_file_extension(path: &Path, required_extension: &str) -> bool {
 
 use diagnostic::Diagnostic;
 
-pub fn parse_crate_name(file: impl AsRef<Path>) -> Result<parser::Identifier, Diagnostic> {
+pub fn parse_crate_name(file: impl AsRef<Path>) -> Result<ast::Identifier, Diagnostic> {
     let file = file.as_ref();
 
     if !has_file_extension(file.as_ref(), FILE_EXTENSION) {
@@ -79,5 +85,5 @@ pub fn parse_crate_name(file: impl AsRef<Path>) -> Result<parser::Identifier, Di
         ))
     })?;
 
-    Ok(parser::Identifier::new(atom, span::Span::SHAM))
+    Ok(ast::Identifier::new(atom, span::Span::SHAM))
 }
