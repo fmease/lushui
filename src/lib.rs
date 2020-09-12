@@ -10,14 +10,12 @@
     never_type,
     bool_to_option,
     default_free_fn,
-    const_generics,
+    min_const_generics,
     const_in_array_repeat_expressions,
     or_patterns,
-    // untagged_unions,
+    never_type_fallback
 )]
 #![forbid(rust_2018_idioms, unused_must_use)]
-// @Note noted ^^ we will only do very basic stuff w/ const generics
-#![allow(incomplete_features)]
 
 pub mod compiler;
 pub mod desugar;

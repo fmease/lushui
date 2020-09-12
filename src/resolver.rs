@@ -53,6 +53,7 @@ pub struct CrateScope {
     pub foreign_bindings: HashMap<&'static str, (usize, ffi::ForeignFunction)>,
     pub inherent_values: ffi::InherentValueMap,
     pub inherent_types: ffi::InherentTypeMap,
+    pub runners: IndexVec<ffi::IOIndex, ffi::IORunner>,
     // @Note this is very coarse-grained: as soon as we cannot resolve EITHER type annotation (for example)
     // OR actual value(s), we bail out and add this here. This might be too conversative (leading to more
     // "circular type" errors or whatever), we can just discriminate by creating sth like
@@ -70,14 +71,14 @@ impl CrateScope {
         CrateIndex(0)
     }
 
-    fn unwrap_namespace_scope(&self, index: CrateIndex) -> &Namespace {
+    fn unwrap_namespace(&self, index: CrateIndex) -> &Namespace {
         match &self.bindings[index].kind {
             EntityKind::Module(scope) | EntityKind::UntypedDataType(scope) => scope,
             _ => unreachable!(),
         }
     }
 
-    fn unwrap_namespace_scope_mut(&mut self, index: CrateIndex) -> &mut Namespace {
+    fn unwrap_namespace_mut(&mut self, index: CrateIndex) -> &mut Namespace {
         match &mut self.bindings[index].kind {
             EntityKind::Module(scope) | EntityKind::UntypedDataType(scope) => scope,
             _ => unreachable!(),
@@ -194,7 +195,7 @@ impl CrateScope {
     ) -> Result<CrateIndex> {
         if let Some(module) = module {
             if let Some(previous) = self
-                .unwrap_namespace_scope(module)
+                .unwrap_namespace(module)
                 .bindings
                 .iter()
                 .map(|&index| &self.bindings[index])
@@ -214,7 +215,7 @@ impl CrateScope {
         let index = self.bindings.push(binding);
 
         if let Some(module) = module {
-            self.unwrap_namespace_scope_mut(module).bindings.push(index);
+            self.unwrap_namespace_mut(module).bindings.push(index);
         }
 
         Ok(index)
@@ -280,35 +281,24 @@ impl CrateScope {
         namespace: CrateIndex,
         inquirer: Inquirer,
     ) -> Result<CrateIndex, Error> {
-        self.unwrap_namespace_scope(namespace)
+        self.unwrap_namespace(namespace)
             .bindings
             .iter()
-            .copied()
-            .find(|&index| &self.bindings[index].source == identifier)
-            .ok_or_else(|| {
-                let mut message = format!("binding `{}` is not defined in ", identifier);
-
-                match inquirer {
-                    Inquirer::User => message += "this scope",
-                    Inquirer::System => {
-                        match self.bindings[namespace].kind {
-                            EntityKind::Module(_) => message += "module",
-                            EntityKind::UntypedDataType(_) => message += "namespace",
-                            _ => unreachable!(),
-                        };
-                        message += " `";
-                        message += &self.absolute_path(namespace);
-                        message += "`";
-                    }
-                }
-
-                Diagnostic::error()
-                    .with_code(Code::E021)
-                    .with_message(message)
-                    .with_span(&identifier)
-                    .into()
+            .find(|&&index| &self.bindings[index].source == identifier)
+            .ok_or_else(|| Error::UnresolvedBinding {
+                identifier: identifier.clone(),
+                namespace,
+                inquirer,
             })
-            .and_then(|index| self.resolve_use(index))
+            .and_then(|&index| self.resolve_use(index))
+    }
+
+    fn find_similarly_named(&self, identifier: &str, namespace: &Namespace) -> Option<&str> {
+        namespace
+            .bindings
+            .iter()
+            .map(|&index| self.bindings[index].source.as_str())
+            .find(|&other_identifier| is_similar(identifier, other_identifier))
     }
 
     /// Resolve indirect uses aka chains of use bindings.
@@ -321,11 +311,12 @@ impl CrateScope {
         match self.bindings[index].kind {
             UntypedValue | Module(_) | UntypedDataType(_) => Ok(index),
             Use(reference) => Ok(reference),
-            UnresolvedUse => Err(Error::FoundUnresolvedUse),
+            UnresolvedUse => Err(Error::UnresolvedUseBinding),
             _ => unreachable!(),
         }
     }
 
+    // @Question please document what this is useful/used for, I always forget
     /// Resolve a single identifier (in contrast to a whole path).
     fn resolve_identifier<Target: ResolutionTarget>(
         &self,
@@ -334,7 +325,7 @@ impl CrateScope {
     ) -> Result<Target::Output> {
         let index = self
             .resolve_first_segment(identifier, module, Inquirer::System)
-            .map_err(Error::unwrap)?;
+            .map_err(|error| error.unwrap_diagnostic(self))?;
         Target::resolve_simple_path(identifier, &self.bindings[index].kind, index)
     }
 
@@ -352,7 +343,9 @@ impl CrateScope {
                         self.bindings[index].kind = EntityKind::Use(reference);
                     }
                     Err(Error::Unrecoverable(error)) => return Err(error).many_err(),
-                    Err(Error::FoundUnresolvedUse) => {
+                    // @Task verify this does not panic
+                    Err(Error::UnresolvedBinding { .. }) => unreachable!(),
+                    Err(Error::UnresolvedUseBinding) => {
                         unresolved_uses.insert(
                             index,
                             UnresolvedUse {
@@ -381,6 +374,46 @@ impl CrateScope {
 
         Ok(())
     }
+}
+
+fn unresolved_binding(
+    identifier: &ast::Identifier,
+    namespace: CrateIndex,
+    scope: &CrateScope,
+    inquirer: Inquirer,
+    lookalike: Option<&str>,
+) -> Diagnostic {
+    let mut message = format!("binding `{}` is not defined in ", identifier);
+
+    match inquirer {
+        Inquirer::User => message += "this scope",
+        Inquirer::System => {
+            message += match scope.bindings[namespace].kind {
+                EntityKind::Module(_) => "module",
+                EntityKind::UntypedDataType(_) => "namespace",
+                _ => unreachable!(),
+            };
+            message += " `";
+            message += &scope.absolute_path(namespace);
+            message += "`";
+        }
+    }
+
+    Diagnostic::error()
+        .with_code(Code::E021)
+        .with_message(message)
+        .with_span(&identifier)
+        .when_some(lookalike, |diagnostic, binding| {
+            diagnostic.with_help(format!(
+                "a binding with a similar name exists: `{}`",
+                binding
+            ))
+        })
+}
+
+fn is_similar(queried_identifier: &str, other_identifier: &str) -> bool {
+    strsim::levenshtein(other_identifier, queried_identifier)
+        <= std::cmp::max(queried_identifier.len(), 3) / 3
 }
 
 use crate::support::DisplayWith;
@@ -862,7 +895,7 @@ impl Expression<Desugared> {
                     }
                 }
             }
-            Substitution(_) | ForeignApplication(_) => unreachable!(),
+            Substitution(_) | ForeignApplication(_) | IO(_) => unreachable!(),
             Invalid => InvalidFallback::invalid(),
         };
 
@@ -1021,7 +1054,6 @@ impl Spanning for Identifier {
 
 use std::fmt;
 
-// @Task print whole path
 impl fmt::Display for Identifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.source)?;
@@ -1169,22 +1201,35 @@ impl<'a> FunctionScope<'a> {
         }
     }
 
+    /// Resolve a binding in a function scope given a depth.
     fn resolve_binding(&self, query: &Path, scope: &CrateScope) -> Result<Identifier> {
-        self.resolve_binding_with_depth(query, scope, 0)
+        self.resolve_binding_with_depth(query, scope, 0, self)
     }
 
+    /// Resolve a binding in a function scope given a depth.
+    ///
+    /// The `depth` is necessary for the recursion to successfully create DeBruijn-indices.
+    ///
+    /// The `origin` signifies the innermost function scope from where the resolution was first requested.
+    /// This information is used for diagnostics, namely typo flagging where we once again start at the origin
+    /// and walk back out.
     fn resolve_binding_with_depth(
         &self,
         query: &Path,
         scope: &CrateScope,
         depth: usize,
+        origin: &Self,
     ) -> Result<Identifier> {
         use FunctionScope::*;
 
         match self {
-            Module(module) => scope
-                .resolve_path::<OnlyValue>(query, *module, Inquirer::User)
-                .map_err(Error::unwrap),
+            &Module(module) => scope
+                .resolve_path::<OnlyValue>(query, module, Inquirer::User)
+                .map_err(|error| {
+                    error.unwrap_diagnostic_with(scope, |identifier: &str, _| {
+                        origin.find_similarly_named(identifier, scope)
+                    })
+                }),
             // @Note this looks ugly/complicated, use helper functions
             FunctionParameter { parent, binder } => {
                 if let Some(identifier) = query.first_identifier() {
@@ -1195,12 +1240,12 @@ impl<'a> FunctionScope<'a> {
 
                         Ok(Identifier::new(DebruijnIndex(depth), identifier.clone()))
                     } else {
-                        parent.resolve_binding_with_depth(query, scope, depth + 1)
+                        parent.resolve_binding_with_depth(query, scope, depth + 1, origin)
                     }
                 } else {
                     scope
                         .resolve_path::<OnlyValue>(query, parent.module(), Inquirer::User)
-                        .map_err(Error::unwrap)
+                        .map_err(|error| error.unwrap_diagnostic(scope))
                 }
             }
             // @Note this looks ugly/complicated, use helper functions
@@ -1222,14 +1267,45 @@ impl<'a> FunctionScope<'a> {
 
                             Ok(Identifier::new(DebruijnIndex(depth), identifier.clone()))
                         }
-                        None => {
-                            parent.resolve_binding_with_depth(query, scope, depth + binders.len())
-                        }
+                        None => parent.resolve_binding_with_depth(
+                            query,
+                            scope,
+                            depth + binders.len(),
+                            origin,
+                        ),
                     }
                 } else {
                     scope
                         .resolve_path::<OnlyValue>(query, parent.module(), Inquirer::User)
-                        .map_err(Error::unwrap)
+                        .map_err(|error| error.unwrap_diagnostic(scope))
+                }
+            }
+        }
+    }
+
+    fn find_similarly_named(&self, identifier: &str, scope: &'a CrateScope) -> Option<&str> {
+        use FunctionScope::*;
+
+        match self {
+            &Module(module) => {
+                scope.find_similarly_named(identifier, scope.unwrap_namespace(module))
+            }
+            FunctionParameter { parent, binder } => {
+                if is_similar(identifier, binder.as_str()) {
+                    Some(binder.as_str())
+                } else {
+                    parent.find_similarly_named(identifier, scope)
+                }
+            }
+            PatternBinders { parent, binders } => {
+                if let Some(binder) = binders
+                    .iter()
+                    .rev()
+                    .find(|binder| is_similar(identifier, binder.as_str()))
+                {
+                    Some(binder.as_str())
+                } else {
+                    parent.find_similarly_named(identifier, scope)
                 }
             }
         }
@@ -1248,13 +1324,39 @@ impl<'a> FunctionScope<'a> {
 
 enum Error {
     Unrecoverable(Diagnostic),
-    FoundUnresolvedUse,
+    UnresolvedBinding {
+        identifier: ast::Identifier,
+        namespace: CrateIndex,
+        inquirer: Inquirer,
+    },
+    UnresolvedUseBinding,
 }
 
 impl Error {
-    fn unwrap(self) -> Diagnostic {
+    fn unwrap_diagnostic(self, scope: &CrateScope) -> Diagnostic {
+        self.unwrap_diagnostic_with(scope, |identifier, namespace| {
+            scope.find_similarly_named(identifier, scope.unwrap_namespace(namespace))
+        })
+    }
+
+    fn unwrap_diagnostic_with<'s>(
+        self,
+        scope: &CrateScope,
+        lookalike_finder: impl FnOnce(&str, CrateIndex) -> Option<&'s str> + 's,
+    ) -> Diagnostic {
         match self {
             Self::Unrecoverable(error) => error,
+            Self::UnresolvedBinding {
+                identifier,
+                namespace,
+                inquirer,
+            } => unresolved_binding(
+                &identifier,
+                namespace,
+                scope,
+                inquirer,
+                lookalike_finder(identifier.as_str(), namespace),
+            ),
             _ => unreachable!(),
         }
     }
@@ -1266,9 +1368,7 @@ impl From<Diagnostic> for Error {
     }
 }
 
-// @Task make those functions error variants
-
-// @Question fatal?? and if non-fatal, it's probably ignored
+// @Task levenshtein-search for similar named bindings which are in fact a namespace and suggest the first one
 fn value_used_as_a_namespace(
     non_namespace: &ast::Identifier,
     subbinder: &ast::Identifier,
@@ -1280,6 +1380,7 @@ fn value_used_as_a_namespace(
         .with_labeled_span(non_namespace, "a value, not a namespace")
 }
 
+// @Task levenshtein-search for similar named bindings which are in fact values and suggest the first one
 fn module_used_as_a_value(span: Span) -> Diagnostic {
     Diagnostic::error()
         .with_code(Code::E023)

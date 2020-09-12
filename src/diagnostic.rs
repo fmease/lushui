@@ -112,6 +112,20 @@ impl Diagnostic {
         self
     }
 
+    pub fn when(self, condition: bool, builder: impl FnOnce(Self) -> Self) -> Self {
+        match condition {
+            true => builder(self),
+            false => self,
+        }
+    }
+
+    pub fn when_some<T>(self, value: Option<T>, builder: impl FnOnce(Self, T) -> Self) -> Self {
+        match value {
+            Some(value) => builder(self, value),
+            None => self,
+        }
+    }
+
     fn choose_role(&self) -> Role {
         if self.highlights.is_empty() {
             Role::Primary
