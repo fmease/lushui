@@ -616,6 +616,9 @@ impl Expression {
             }
             // @Beacon @Task
             ForeignApplication(_) => todo!(),
+            IO(_) => scope
+                .crate_scope()
+                .lookup_foreign_type(ffi::Type::IO, Some(self.span))?,
             Invalid => self,
         })
     }
@@ -692,6 +695,7 @@ impl Expression {
             | Text(_)
             | UseIn
             | CaseAnalysis(_)
+            | IO(_)
             // @Note not sure
             | Substitution(_)
             | ForeignApplication(_) => unreachable!(),

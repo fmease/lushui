@@ -147,6 +147,8 @@ pub enum ExpressionKind<P: Pass> {
     Substitution(Rc<P::Substitution>),
     // @Task move??? typer,interpreter
     ForeignApplication(Rc<ForeignApplication<P>>),
+    // @Task store "next: Expression" and prob  arguments: Vec<Expression>
+    IO(Rc<IO<P>>),
 }
 
 #[derive(Clone)]
@@ -185,14 +187,12 @@ pub struct CaseAnalysis<P: Pass> {
 }
 
 #[derive(Clone)]
-// @Task move??? this only exists in typer,interpreter
 pub struct Substitution<P: Pass> {
     pub substitution: crate::typer::interpreter::Substitution,
     pub expression: Expression<P>,
 }
 
 #[derive(Clone)]
-// @Task move??? typer,interpreter
 pub struct ForeignApplication<P: Pass> {
     pub callee: P::ForeignApplicationBinder,
     pub arguments: Vec<Expression<P>>,
@@ -202,6 +202,13 @@ impl<P: Pass> InvalidFallback for Expression<P> {
     fn invalid() -> Self {
         expr! { Invalid[] }
     }
+}
+
+#[derive(Clone)]
+pub struct IO<P: Pass> {
+    pub index: usize, // @Task IOIndex
+    pub arguments: Vec<Expression<P>>,
+    // @Task next: Option<Expression<P>>
 }
 
 #[derive(Clone)]
@@ -376,6 +383,15 @@ impl<P: Pass> DisplayWith for Expression<P> {
                 application.callee,
                 application
                     .arguments
+                    .iter()
+                    .map(|argument| argument.with(linchpin))
+                    .join_with(' ')
+            ),
+            IO(io) => write!(
+                f,
+                "<io {} {}>",
+                io.index,
+                io.arguments
                     .iter()
                     .map(|argument| argument.with(linchpin))
                     .join_with(' ')

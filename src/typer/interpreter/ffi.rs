@@ -94,20 +94,23 @@ pub enum Type {
     Option(Box<Type>),
 }
 
-impl Type {
-    // @Task rename so they have "name" in their names, or make them
-    // resolver::Identifiers (dummified)
-    pub const UNIT: &'static str = "Unit";
-    pub const BOOL: &'static str = "Bool";
-    pub const NAT: &'static str = "Nat";
-    pub const NAT32: &'static str = "Nat32";
-    pub const NAT64: &'static str = "Nat64";
-    pub const INT: &'static str = "Int";
-    pub const INT32: &'static str = "Int32";
-    pub const INT64: &'static str = "Int64";
-    pub const TEXT: &'static str = "Text";
-    pub const OPTION: &'static str = "Option";
+names! {
+    Type::{
+        UNIT = "Unit",
+        BOOL = "Bool",
+        NAT = "Nat",
+        NAT32 = "Nat32",
+        NAT64 = "Nat64",
+        INT = "Int",
+        INT32 = "Int32",
+        INT64 = "Int64",
+        TEXT = "Text",
+        OPTION = "Option",
+        IO = "IO",
+    }
+}
 
+impl Type {
     fn from_expression(expression: &Expression, scope: &super::CrateScope) -> Option<Self> {
         let types = &scope.inherent_types;
 
@@ -186,6 +189,7 @@ impl Type {
         })
     }
 }
+
 // @Task smh merge InherentTypeMap and InherentValueMap without creating too much boilerplate
 #[derive(Default)]
 pub struct InherentTypeMap {
@@ -211,17 +215,23 @@ pub enum Value {
         type_: Type,
         value: Option<Box<Value>>,
     },
+    IO {
+        index: usize,
+        arguments: Vec<Value>,
+    },
+}
+
+names! {
+    Value::{
+        UNIT = "unit",
+        FALSE = "false",
+        TRUE = "true",
+        NONE = "none",
+        SOME = "some",
+    }
 }
 
 impl Value {
-    // @Task rename so they have "name" in their names, or make them
-    // resolver::Identifiers (dummified)
-    pub const UNIT: &'static str = "unit";
-    pub const FALSE: &'static str = "false";
-    pub const TRUE: &'static str = "true";
-    pub const NONE: &'static str = "none";
-    pub const SOME: &'static str = "some";
-
     pub fn from_expression(expression: &Expression, scope: &super::CrateScope) -> Option<Self> {
         let values = &scope.inherent_values;
 
@@ -302,6 +312,14 @@ impl Value {
                     type_.into_expression(scope)?,
                 ),
             },
+            Self::IO { index, arguments } => expr! {
+                IO[] {
+                    index,
+                    arguments: arguments.into_iter()
+                        .map(|argument|argument.into_expression(scope))
+                        .collect::<Result<Vec<_>>>()?,
+                }
+            },
         })
     }
 }
@@ -313,6 +331,12 @@ pub struct InherentValueMap {
     pub true_: Option<Identifier>,
     pub none: Option<Identifier>,
     pub some: Option<Identifier>,
+}
+
+macro names($context:ident::{ $( $name:ident = $repr:literal ),+ $(,)? }) {
+    impl $context {
+        $( pub const $name: &'static str = $repr; )+
+    }
 }
 
 /// Rust types that can be mapped to FFI-compatible lushui types.
@@ -378,6 +402,20 @@ impl<V: IntoValue> IntoValue for Option<V> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IOIndex(usize);
+
+impl indexed_vec::Idx for IOIndex {
+    fn new(index: usize) -> Self {
+        Self(index)
+    }
+    fn index(self) -> usize {
+        self.0
+    }
+}
+
+pub type IORunner = fn(Vec<Value>) -> Value;
+
 use num_traits::ops::checked::{CheckedDiv, CheckedSub};
 
 pub fn register_foreign_bindings(scope: &mut CrateScope) {
@@ -388,6 +426,7 @@ pub fn register_foreign_bindings(scope: &mut CrateScope) {
     scope.register_foreign_type(Type::INT32);
     scope.register_foreign_type(Type::INT64);
     scope.register_foreign_type(Type::TEXT);
+    scope.register_foreign_type(Type::IO); // @Temporary
 
     // @Task make this module aware
 
@@ -406,6 +445,17 @@ pub fn register_foreign_bindings(scope: &mut CrateScope) {
     pure!(scope, "concat", |a: Text, b: Text| a + &b);
     // @Temporary until we can target specific modules
     pure!(scope, "add-nat32", |a: Nat32, b: Nat32| a + b);
+    // @Temporary
+    pure!(scope, "print", |message: Text| Value::IO {
+        index: 0,
+        arguments: vec![Value::Text(message)]
+    });
+
+    // @Beacon @Task write impure!/register_impure: add field to CrateScope: IndexVec<IOIndex, IO> with function (IO performer/runner)
+    // meaninh `IO` does not mean hir::IO here but IO { runner: IORunner } (...)
+    // then do the Value::IO { index: MOST_RECENT_INDEX, args } automatically
+    // @Note this function won't rely on a Display/Show trait for now
+    let _ = |_message: Value| print!("{}", todo!());
 
     // scope.insert_untyped_foreign_binding("panic", 2, |arguments| {
     //     let message = assume!(Text(&arguments[1]));
@@ -414,7 +464,7 @@ pub fn register_foreign_bindings(scope: &mut CrateScope) {
     // });
 }
 
-macro pure($scope:ident, $binder:literal, |$( $var:ident: $variant:ident ),*| $( $body:tt )+) {
+macro pure($scope:ident, $binder:literal, |$( $var:ident: $variant:ident ),*| $body:expr ) {
     $scope.register_pure_foreign_binding($binder, count!($( $var )*), |arguments| {
         let mut arguments = arguments.into_iter();
 
@@ -425,7 +475,7 @@ macro pure($scope:ident, $binder:literal, |$( $var:ident: $variant:ident ),*| $(
             };
         )+
 
-        (|| $( $body )+)().into()
+        (|| $body )().into()
     });
 }
 
@@ -444,6 +494,7 @@ fn application(callee: Expression, argument: Expression) -> Expression {
     }
 }
 
+// @Question @Bug unsound?? does this take the identifier index into account?
 fn matches(binder: &Identifier, inherent: &Option<Identifier>) -> Option<bool> {
     inherent.as_ref().map(|inherent| binder == inherent)
 }

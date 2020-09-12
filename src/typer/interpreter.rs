@@ -101,6 +101,9 @@ impl Expression {
                 .substitute(substitution0.substitution.clone())
                 .substitute(substitution1),
             (Type, _) | (Number(_), _) | (Text(_), _) => self,
+            // @Temporary @Note once we support next: Expression in IO, we prob. need to substitute
+            // the former
+            (IO(_), _) => self,
             (Application(application), substitution) => {
                 expr! {
                     Application[self.span] {
@@ -297,7 +300,7 @@ impl Expression {
                     _ => unreachable!(),
                 }
             }
-            Type | Number(_) | Text(_) => self,
+            Type | Number(_) | Text(_) | IO(_) => self,
             PiType(pi) => match context.form {
                 Form::Normal => {
                     let domain = pi.domain.clone().evaluate(context)?;
