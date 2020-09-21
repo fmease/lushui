@@ -28,6 +28,7 @@ const STANDARD_DECLARATION_DELIMITERS: [Delimiter; 3] = [
     Delimiter::Token(TokenKind::LineBreak),
 ];
 
+/// The state of the parser.
 pub struct Parser<'a> {
     file: Rc<SourceFile>,
     tokens: &'a [Token],
@@ -45,6 +46,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    #[allow(dead_code)]
     fn warn(&mut self, diagnostic: Diagnostic) {
         self.warnings.insert(diagnostic);
     }

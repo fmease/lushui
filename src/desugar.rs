@@ -38,6 +38,7 @@ impl Pass for Desugared {
     }
 }
 
+/// The state of the desugarer.
 pub struct Desugarer<'a> {
     map: &'a mut SourceMap,
     warnings: &'a mut Diagnostics,
@@ -48,6 +49,7 @@ impl<'a> Desugarer<'a> {
         Self { map, warnings }
     }
 
+    #[allow(dead_code)]
     fn warn(&mut self, diagnostic: Diagnostic) {
         self.warnings.insert(diagnostic);
     }
@@ -243,7 +245,7 @@ impl<'a> Desugarer<'a> {
                                 })
                                 .many_err()?;
 
-                            let tokens = Lexer::new(&file).lex()?;
+                            let tokens = Lexer::new(&file, &mut self.warnings).lex()?;
                             let node = Parser::new(file, &tokens, &mut self.warnings)
                                 .parse_top_level(module.binder.clone())
                                 .many_err()?;

@@ -8,12 +8,13 @@ mod test;
 mod token;
 
 use crate::{
+    diagnostic::Diagnostics,
     diagnostic::{Code, Diagnostic, Result, Results},
     span::{LocalByteIndex, LocalSpan, SourceFile, Span},
     support::ManyErrExt,
     Atom, INDENTATION_IN_SPACES,
 };
-use std::{iter::Peekable, str::CharIndices};
+use std::{iter::Peekable, path::PathBuf, str::CharIndices};
 pub use token::{
     is_punctuation, Number, Token,
     TokenKind::{self, *},
@@ -39,16 +40,20 @@ pub fn parse_identifier(source: String) -> Option<Atom> {
 }
 
 pub fn lex(source: String) -> Results<Vec<Token>> {
-    let file = SourceFile::new(
-        std::path::PathBuf::new(),
-        source,
-        crate::span::START_OF_FIRST_SOURCE_FILE,
+    Lexer::new(
+        &SourceFile::new(
+            PathBuf::new(),
+            source,
+            crate::span::START_OF_FIRST_SOURCE_FILE,
+        )
+        .ok()
+        .unwrap(),
+        &mut Default::default(),
     )
-    .ok()
-    .unwrap();
-    Lexer::new(&file).lex()
+    .lex()
 }
 
+/// The state of the lexer.
 pub struct Lexer<'a> {
     source: &'a SourceFile,
     characters: Peekable<CharIndices<'a>>,
@@ -56,18 +61,25 @@ pub struct Lexer<'a> {
     span: LocalSpan,
     indentation_in_spaces: usize,
     round_brackets: Vec<Span>,
+    warnings: &'a mut Diagnostics,
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(source: &'a SourceFile) -> Self {
+    pub fn new(source: &'a SourceFile, warnings: &'a mut Diagnostics) -> Self {
         Self {
             source,
+            warnings,
             characters: source.content().char_indices().peekable(),
             tokens: Vec::new(),
             span: LocalSpan::zero(),
             indentation_in_spaces: 0,
             round_brackets: Vec::new(),
         }
+    }
+
+    #[allow(dead_code)]
+    fn warn(&mut self, warning: Diagnostic) {
+        self.warnings.insert(warning);
     }
 
     /// Lex source code into an array of tokens

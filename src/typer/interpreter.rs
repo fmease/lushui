@@ -15,30 +15,13 @@ pub(crate) mod scope;
 use super::Expression;
 use crate::{
     ast::Explicit,
-    diagnostic::{Code, Diagnostic, Result},
+    diagnostic::{Code, Diagnostic, Diagnostics, Result},
     hir::*,
     resolver::CrateScope,
     span::Spanning,
     support::InvalidFallback,
 };
 use scope::{FunctionScope, ValueView};
-
-impl CrateScope {
-    /// Run the entry point of the crate.
-    pub fn run(&self) -> Result<Expression> {
-        if let Some(program_entry) = &self.program_entry {
-            program_entry.clone().to_expression().evaluate(Context {
-                scope: &self.into(),
-                // form: Form::Normal,
-                form: Form::WeakHeadNormal,
-            })
-        } else {
-            Err(Diagnostic::error()
-                .with_code(Code::E050)
-                .with_message("missing program entry"))
-        }
-    }
-}
 
 #[derive(Clone, Copy)]
 pub enum Form {
@@ -74,39 +57,81 @@ impl<'a> Context<'a> {
     }
 }
 
-impl Expression {
-    pub(crate) fn substitute(self, substitution: Substitution) -> Self {
+// @Task add recursion depth
+pub struct Interpreter<'a> {
+    scope: &'a CrateScope,
+    warnings: &'a mut Diagnostics,
+}
+
+impl<'a> Interpreter<'a> {
+    pub fn new(scope: &'a CrateScope, warnings: &'a mut Diagnostics) -> Self {
+        Self { scope, warnings }
+    }
+
+    #[allow(dead_code)]
+    fn warn(&mut self, warning: Diagnostic) {
+        self.warnings.insert(warning);
+    }
+
+    /// Run the entry point of the crate.
+    pub fn run(&mut self) -> Result<Expression> {
+        if let Some(program_entry) = &self.scope.program_entry {
+            self.evaluate_expression(
+                program_entry.clone().to_expression(),
+                Context {
+                    scope: &FunctionScope::CrateScope,
+                    // form: Form::Normal,
+                    form: Form::WeakHeadNormal,
+                },
+            )
+        } else {
+            // @Task this should be checked statically
+            Err(Diagnostic::error()
+                .with_code(Code::E050)
+                .with_message("missing program entry"))
+        }
+    }
+
+    pub(crate) fn substitute_expression(
+        &mut self,
+        expression: Expression,
+        substitution: Substitution,
+    ) -> Expression {
         use self::Substitution::*;
         use ExpressionKind::*;
 
-        match (&self.kind, substitution) {
+        match (&expression.kind, substitution) {
             (Binding(binding), Shift(amount)) => {
-                expr! { Binding[self.span] { binder: binding.binder.clone().shift(amount) } }
+                expr! { Binding[expression.span] { binder: binding.binder.clone().shift(amount) } }
             }
             // @Beacon @Beacon @Question @Bug
             (Binding(binding), Use(substitution, expression)) => {
                 if binding.binder.is_innermost() {
-                    expression.substitute(Shift(0))
+                    self.substitute_expression(expression, Shift(0))
                 } else {
                     {
-                        (expr! { Binding[self.span] { binder: binding.binder.clone().unshift() } })
-                            .substitute(*substitution)
+                        self.substitute_expression(
+                            expr! { Binding[expression.span] { binder: binding.binder.clone().unshift() } },
+                            *substitution
+                        )
                     }
                 }
             }
             // @Beacon @Beacon @Question @Bug
-            (Substitution(substitution0), substitution1) => substitution0
-                .expression
-                .clone()
-                .substitute(substitution0.substitution.clone())
-                .substitute(substitution1),
-            (Type, _) | (Number(_), _) | (Text(_), _) => self,
+            (Substitution(substitution0), substitution1) => {
+                let expression = self.substitute_expression(
+                    substitution0.expression.clone(),
+                    substitution0.substitution.clone(),
+                );
+                self.substitute_expression(expression, substitution1)
+            }
+            (Type, _) | (Number(_), _) | (Text(_), _) => expression,
             // @Temporary @Note once we support next: Expression in IO, we prob. need to substitute
             // the former
-            (IO(_), _) => self,
+            (IO(_), _) => expression,
             (Application(application), substitution) => {
                 expr! {
-                    Application[self.span] {
+                    Application[expression.span] {
                         callee: expr! {
                             Substitution[] {
                                 expression: application.callee.clone(),
@@ -149,7 +174,7 @@ impl Expression {
                 };
 
                 expr! {
-                    PiType[self.span] {
+                    PiType[expression.span] {
                         parameter: pi.parameter.clone(),
                         domain,
                         codomain,
@@ -198,7 +223,7 @@ impl Expression {
                 };
 
                 expr! {
-                    Lambda[self.span] {
+                    Lambda[expression.span] {
                         parameter: lambda.parameter.clone(),
                         parameter_type_annotation,
                         body_type_annotation,
@@ -209,7 +234,7 @@ impl Expression {
             }
             (CaseAnalysis(analysis), substitution) => {
                 expr! {
-                    CaseAnalysis[self.span] {
+                    CaseAnalysis[expression.span] {
                         cases: analysis.cases.iter().map(|case| Case {
                             pattern: case.pattern.clone(),
                             body: expr! {
@@ -230,7 +255,7 @@ impl Expression {
             }
             (UseIn, _) => todo!("substitute use/in"),
             (ForeignApplication(application), substitution) => expr! {
-                ForeignApplication[self.span] {
+                ForeignApplication[expression.span] {
                     callee: application.callee.clone(),
                     arguments: application.arguments.iter().map(|argument| expr! {
                         Substitution[argument.span] {
@@ -247,74 +272,88 @@ impl Expression {
     /// Try to evaluate an expression.
     ///
     /// This is beta-reduction I think.
-    pub fn evaluate(self, context: Context<'_>) -> Result<Self> {
+    pub fn evaluate_expression(
+        &mut self,
+        expression: Expression,
+        context: Context<'_>,
+    ) -> Result<Expression> {
         use self::Substitution::*;
         use ExpressionKind::*;
 
         // @Bug we currently don't support zero-arity foreign functions
-        Ok(match self.clone().kind {
-            Binding(binding) => match context.scope.lookup_value(&binding.binder) {
+        Ok(match expression.clone().kind {
+            Binding(binding) => match context.scope.lookup_value(&binding.binder, &self.scope) {
                 // @Question is this normalization necessary? I mean, yes, we got a new scope,
                 // but the thing in the previous was already normalized (well, it should have been
                 // at least). I guess it is necessary because it can contain parameters which could not
                 // be resolved yet but potentially can be now.
-                ValueView::Reducible(expression) => expression.evaluate(context)?,
-                ValueView::Neutral => self,
+                ValueView::Reducible(expression) => {
+                    self.evaluate_expression(expression, context)?
+                }
+                ValueView::Neutral => expression,
             },
             Application(application) => {
-                let callee = application.callee.clone().evaluate(context)?;
+                let callee = self.evaluate_expression(application.callee.clone(), context)?;
                 let argument = application.argument.clone();
                 match callee.kind {
-                    Lambda(lambda) => (expr! {
-                        Substitution[] {
-                            substitution: Use(Box::new(Shift(0)), argument),
-                            expression: lambda.body.clone(),
-                        }
-                    })
-                    .evaluate(context)?,
-                    Binding(binding) if context.scope.is_foreign(&binding.binder) => (expr! {
-                        ForeignApplication[self.span] {
-                            callee: binding.binder.clone(),
-                            arguments: extended(Vec::new(), argument),
+                    Lambda(lambda) => self.evaluate_expression(
+                        expr! {
+                            Substitution[] {
+                                substitution: Use(Box::new(Shift(0)), argument),
+                                expression: lambda.body.clone(),
+                            }
+                        },
+                        context,
+                    )?,
+                    Binding(binding) if context.scope.is_foreign(&binding.binder, &self.scope) => {
+                        self.evaluate_expression(
+                            expr! {
+                                ForeignApplication[expression.span] {
+                                    callee: binding.binder.clone(),
+                                    arguments: extended(Vec::new(), argument),
 
-                    }})
-                    .evaluate(context)?,
+                            }},
+                            context,
+                        )?
+                    }
                     Binding(_) | Application(_) => expr! {
-                        Application[self.span] {
+                        Application[expression.span] {
                             callee,
                             argument: match context.form {
                                 // Form::Normal => argument.evaluate(context)?,
                                 // Form::WeakHeadNormal => argument,
-                                _ => argument.evaluate(context)?,
+                                _ => self.evaluate_expression(argument, context)?,
                             },
                             explicitness: Explicit,
                         }
                     },
-                    ForeignApplication(application) => (expr! {
-                        ForeignApplication[self.span] {
-                            callee: application.callee.clone(),
-                            arguments: extended(application.arguments.clone(), argument),
-                        }
-                    })
-                    .evaluate(context)?,
+                    ForeignApplication(application) => self.evaluate_expression(
+                        expr! {
+                            ForeignApplication[expression.span] {
+                                callee: application.callee.clone(),
+                                arguments: extended(application.arguments.clone(), argument),
+                            }
+                        },
+                        context,
+                    )?,
                     _ => unreachable!(),
                 }
             }
-            Type | Number(_) | Text(_) | IO(_) => self,
+            Type | Number(_) | Text(_) | IO(_) => expression,
             PiType(pi) => match context.form {
                 Form::Normal => {
-                    let domain = pi.domain.clone().evaluate(context)?;
+                    let domain = self.evaluate_expression(pi.domain.clone(), context)?;
 
                     let codomain = if pi.parameter.is_some() {
                         // @Beacon @Beacon @Question whyy do we need type information here in *evaluate*???
                         let scope = context.scope.extend_with_parameter(domain.clone());
-                        pi.codomain.clone().evaluate(context.with_scope(&scope))?
+                        self.evaluate_expression(pi.codomain.clone(), context.with_scope(&scope))?
                     } else {
                         pi.codomain.clone()
                     };
 
                     expr! {
-                        PiType[self.span] {
+                        PiType[expression.span] {
                             parameter: pi.parameter.clone(),
                             domain,
                             codomain,
@@ -322,30 +361,33 @@ impl Expression {
                         }
                     }
                 }
-                Form::WeakHeadNormal => self,
+                Form::WeakHeadNormal => expression,
             },
             Lambda(lambda) => match context.form {
                 Form::Normal => {
-                    let parameter_type = lambda
-                        .parameter_type_annotation
-                        .clone()
-                        .ok_or_else(super::missing_annotation)?
-                        .evaluate(context)?;
+                    let parameter_type = self.evaluate_expression(
+                        lambda
+                            .parameter_type_annotation
+                            .clone()
+                            .ok_or_else(super::missing_annotation)?,
+                        context,
+                    )?;
                     let body_type = lambda
                         .body_type_annotation
                         .clone()
                         .map(|type_| {
                             // @Beacon @Beacon @Question whyy do we need type information here in *evaluate*???
                             let scope = context.scope.extend_with_parameter(parameter_type.clone());
-                            type_.evaluate(context.with_scope(&scope))
+                            self.evaluate_expression(type_, context.with_scope(&scope))
                         })
                         .transpose()?;
                     // @Beacon @Beacon @Question whyy do we need type information here in *evaluate*???
                     let scope = context.scope.extend_with_parameter(parameter_type.clone());
-                    let body = lambda.body.clone().evaluate(context.with_scope(&scope))?;
+                    let body =
+                        self.evaluate_expression(lambda.body.clone(), context.with_scope(&scope))?;
 
                     expr! {
-                        Lambda[self.span] {
+                        Lambda[expression.span] {
                             parameter: lambda.parameter.clone(),
                             parameter_type_annotation: Some(parameter_type),
                             body,
@@ -354,13 +396,15 @@ impl Expression {
                         }
                     }
                 }
-                Form::WeakHeadNormal => self,
+                Form::WeakHeadNormal => expression,
             },
-            Substitution(substitution) => substitution
-                .expression
-                .clone()
-                .substitute(substitution.substitution.clone())
-                .evaluate(context)?,
+            Substitution(substitution) => {
+                let expression = self.substitute_expression(
+                    substitution.expression.clone(),
+                    substitution.substitution.clone(),
+                );
+                self.evaluate_expression(expression, context)?
+            }
             UseIn => todo!("evaluate use/in"),
             // @Note partially applied constructors differ from normal values
             // I guess it's very likely that the first code we write will handle them incorrectly
@@ -368,7 +412,7 @@ impl Expression {
             // @Note how to handle them: just like functions: case analysis only wotks with a binder-case
             // (default case)
             CaseAnalysis(analysis) => {
-                let subject = analysis.subject.clone().evaluate(context)?;
+                let subject = self.evaluate_expression(analysis.subject.clone(), context)?;
 
                 // @Note we assume, subject is composed of only applications, bindings etc corresponding to the pattern types
                 // everything else should be impossible because of type checking but I might be wrong.
@@ -383,7 +427,8 @@ impl Expression {
                                 PatternKind::Binding(binding) => {
                                     if binding.binder == subject.binder {
                                         // @Task @Beacon extend with parameters when evaluating
-                                        return case.body.clone().evaluate(context);
+                                        return self
+                                            .evaluate_expression(case.body.clone(), context);
                                     }
                                 }
                                 PatternKind::Binder(_) => todo!(),
@@ -402,7 +447,8 @@ impl Expression {
                             match &case.pattern.kind {
                                 PatternKind::Number(literal1) => {
                                     if &literal0 == literal1 {
-                                        return case.body.clone().evaluate(context);
+                                        return self
+                                            .evaluate_expression(case.body.clone(), context);
                                     }
                                 }
                                 PatternKind::Text(_) => todo!(),
@@ -412,7 +458,10 @@ impl Expression {
                                     let scope = context
                                         .scope
                                         .extend_with_parameter(InvalidFallback::invalid());
-                                    return case.body.clone().evaluate(context.with_scope(&scope));
+                                    return self.evaluate_expression(
+                                        case.body.clone(),
+                                        context.with_scope(&scope),
+                                    );
                                 }
                                 PatternKind::Deapplication(_) => todo!(),
                             }
@@ -431,15 +480,13 @@ impl Expression {
                     .arguments
                     .clone()
                     .into_iter()
-                    .map(|argument| argument.evaluate(context))
+                    .map(|argument| self.evaluate_expression(argument, context))
                     .collect::<Result<Vec<_>, _>>()?;
-                context
-                    .scope
-                    .crate_scope()
+                self.scope
                     .apply_foreign_binding(application.callee.clone(), arguments.clone())?
                     .unwrap_or_else(|| {
                         expr! {
-                            ForeignApplication[self.span] {
+                            ForeignApplication[expression.span] {
                                 callee: application.callee.clone(),
                                 arguments,
                             }
@@ -451,27 +498,34 @@ impl Expression {
     }
 
     // @Question move into its own module?
-    fn _is_ffi_compatible(self) -> bool {
+    fn _is_ffi_compatible(&mut self, _expression: Expression) -> bool {
         todo!() // @Task
     }
 
     /// Dictates if two expressions are alpha-equivalent.
     // @Note this function is not powerful enough, it cannot handle equi-recursive types,
     // @Task write a unifier
-    pub(crate) fn equals(self, other: Self, scope: &FunctionScope<'_>) -> Result<bool> {
+    // @Task rename to expressions_equal
+    pub(crate) fn equals(
+        &mut self,
+        expression0: Expression,
+        expression1: Expression,
+        scope: &FunctionScope<'_>,
+    ) -> Result<bool> {
         use ExpressionKind::*;
 
-        Ok(match (self.kind, other.kind) {
+        Ok(match (expression0.kind, expression1.kind) {
             (Binding(binding0), Binding(binding1)) => binding0.binder == binding1.binder,
             (Application(application0), Application(application1)) => {
-                application0
-                    .callee
-                    .clone()
-                    .equals(application1.callee.clone(), scope)?
-                    && application0
-                        .argument
-                        .clone()
-                        .equals(application1.argument.clone(), scope)?
+                self.equals(
+                    application0.callee.clone(),
+                    application1.callee.clone(),
+                    scope,
+                )? && self.equals(
+                    application0.argument.clone(),
+                    application1.argument.clone(),
+                    scope,
+                )?
             }
             (Type, Type) => true,
             (Number(number0), Number(number1)) => number0 == number1,
@@ -480,21 +534,34 @@ impl Expression {
             (PiType(pi0), PiType(pi1)) => {
                 use self::Substitution::Shift;
 
-                pi0.domain.clone().equals(pi1.domain.clone(), scope)?
+                self.equals(pi0.domain.clone(), pi1.domain.clone(), scope)?
                     && match (pi0.parameter.clone(), pi1.parameter.clone()) {
-                        (Some(_), Some(_)) => pi0.codomain.clone().equals(
+                        (Some(_), Some(_)) => self.equals(
+                            pi0.codomain.clone(),
                             pi1.codomain.clone(),
                             &scope.extend_with_parameter(pi0.domain.clone()),
                         )?,
-                        (Some(_), None) => pi0.codomain.clone().equals(
-                            pi1.codomain.clone().substitute(Shift(1)),
-                            &scope.extend_with_parameter(pi0.domain.clone()),
-                        )?,
-                        (None, Some(_)) => pi1.codomain.clone().equals(
-                            pi0.codomain.clone().substitute(Shift(1)),
-                            &scope.extend_with_parameter(pi1.domain.clone()),
-                        )?,
-                        (None, None) => pi0.codomain.clone().equals(pi1.codomain.clone(), scope)?,
+                        (Some(_), None) => {
+                            let codomain1 =
+                                self.substitute_expression(pi1.codomain.clone(), Shift(1));
+                            self.equals(
+                                codomain1,
+                                pi0.codomain.clone(),
+                                &scope.extend_with_parameter(pi0.domain.clone()),
+                            )?
+                        }
+                        (None, Some(_)) => {
+                            let codomain0 =
+                                self.substitute_expression(pi0.codomain.clone(), Shift(1));
+                            self.equals(
+                                pi1.codomain.clone(),
+                                codomain0,
+                                &scope.extend_with_parameter(pi1.domain.clone()),
+                            )?
+                        }
+                        (None, None) => {
+                            self.equals(pi0.codomain.clone(), pi1.codomain.clone(), scope)?
+                        }
                     }
             }
             // @Question what about the body_type_annotation? what about explicitness?
@@ -508,13 +575,15 @@ impl Expression {
                     .clone()
                     .ok_or_else(super::missing_annotation)?;
 
-                parameter_type_annotation0
-                    .clone()
-                    .equals(parameter_type_annotation1, scope)?
-                    && lambda0.body.clone().equals(
-                        lambda1.body.clone(),
-                        &scope.extend_with_parameter(parameter_type_annotation0),
-                    )?
+                self.equals(
+                    parameter_type_annotation0.clone(),
+                    parameter_type_annotation1,
+                    scope,
+                )? && self.equals(
+                    lambda0.body.clone(),
+                    lambda1.body.clone(),
+                    &scope.extend_with_parameter(parameter_type_annotation0),
+                )?
             }
             (CaseAnalysis(_), CaseAnalysis(_)) => unreachable!(),
             (ForeignApplication(foreign0), ForeignApplication(foreign1)) => {
@@ -524,7 +593,7 @@ impl Expression {
                         .clone()
                         .into_iter()
                         .zip(foreign1.arguments.clone())
-                        .map(|(argument0, argument1)| argument0.equals(argument1, scope))
+                        .map(|(argument0, argument1)| self.equals(argument0, argument1, scope))
                         .fold(Ok(true), |all: Result<_>, this| Ok(all? && this?))?
             }
             (Invalid, _) | (_, Invalid) => panic!("trying to check equality on an invalid node"),

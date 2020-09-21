@@ -537,8 +537,7 @@ impl fmt::Debug for SourceFile {
     }
 }
 
-use std::io;
-use std::path::Path;
+use std::{io, path::Path};
 
 pub enum Error {
     OffsetOverflow,

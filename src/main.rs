@@ -3,13 +3,20 @@
 use lushui::{
     desugar::Desugarer,
     diagnostic::{Diagnostic, Diagnostics, Results},
+    documenter::Documenter,
     lexer::Lexer,
     parser::Parser,
     resolver,
     span::SourceMap,
     support::{pluralize, DisplayWith, ManyErrExt},
+    typer::Typer,
 };
-use std::path::{Path, PathBuf};
+use resolver::{CrateScope, Resolver};
+use std::{
+    fs::File,
+    io::BufWriter,
+    path::{Path, PathBuf},
+};
 use structopt::StructOpt;
 
 const VERSION: &str = concat!(
@@ -221,6 +228,8 @@ enum Command {
     },
 }
 
+// @Task add --engine|e=twi|bci
+
 fn main() {
     let arguments = Arguments::from_args();
 
@@ -247,7 +256,7 @@ fn main() {
 
         let crate_name = lushui::parse_crate_name(path).many_err()?;
 
-        let tokens = Lexer::new(&source_file).lex()?;
+        let tokens = Lexer::new(&source_file, &mut warnings).lex()?;
         if merged_arguments.print_tokens {
             eprintln!("{:#?}", tokens);
         }
@@ -255,11 +264,11 @@ fn main() {
             return Ok(());
         }
 
-        let node = Parser::new(source_file, &tokens, &mut warnings)
+        let declaration = Parser::new(source_file, &tokens, &mut warnings)
             .parse_top_level(crate_name.clone())
             .many_err()?;
         if merged_arguments.print_ast {
-            eprintln!("{:#?}", node);
+            eprintln!("{:#?}", declaration);
         }
         if merged_arguments.only_parse {
             return Ok(());
@@ -267,41 +276,52 @@ fn main() {
 
         match arguments.command {
             Command::Check { .. } | Command::Run { .. } | Command::Build { .. } => {
-                let node = Desugarer::new(&mut map, &mut warnings)
-                    .desugar_declaration(node)?
+                let declaration = Desugarer::new(&mut map, &mut warnings)
+                    .desugar_declaration(declaration)?
                     .pop()
                     .unwrap();
-                if merged_arguments.print_desugar_hir {
-                    eprintln!("{}", node.with(&()));
-                }
-                if merged_arguments.only_desugar {
-                    return Ok(());
+
+                {
+                    if merged_arguments.print_desugar_hir {
+                        eprintln!("{}", declaration.with(&()));
+                    }
+                    if merged_arguments.only_desugar {
+                        return Ok(());
+                    }
                 }
 
-                let mut scope = resolver::CrateScope::default();
-                let node = node.resolve(&mut scope)?;
-                if merged_arguments.print_resolver_hir {
-                    eprintln!("{}", node.with(&scope));
-                }
-                if merged_arguments.print_resolver_scope {
-                    eprintln!("{:#?}", scope);
-                }
-                if merged_arguments.only_resolve {
-                    return Ok(());
+                let mut scope = CrateScope::default();
+                let mut resolver = Resolver::new(&mut scope, &mut warnings);
+                let declaration = resolver.resolve_declaration(declaration)?;
+
+                {
+                    if merged_arguments.print_resolver_hir {
+                        eprintln!("{}", declaration.with(&scope));
+                    }
+                    if merged_arguments.print_resolver_scope {
+                        eprintln!("{:#?}", scope);
+                    }
+                    if merged_arguments.only_resolve {
+                        return Ok(());
+                    }
                 }
 
                 scope.register_foreign_bindings();
 
-                node.infer_type(&mut scope)?;
-                if merged_arguments.print_interpreter_scope {
-                    eprintln!("{:#?}", scope);
+                let mut typer = Typer::new(&mut scope, &mut warnings);
+                typer.infer_types_in_declaration(&declaration)?;
+
+                {
+                    if merged_arguments.print_interpreter_scope {
+                        eprintln!("{:#?}", typer.scope);
+                    }
                 }
 
                 // @Beacon @Task dont check for program_entry in scope.run() or compile_and_interp
                 // but here (a static error) (if the CLI dictates to run it)
 
                 if let Command::Run { .. } = arguments.command {
-                    let result = scope.run().many_err()?;
+                    let result = typer.interpreter().run().many_err()?;
 
                     println!("{}", result.with(&scope));
                 }
@@ -309,7 +329,7 @@ fn main() {
                 else if let Command::Build { .. } = arguments.command {
                     // @Temporary not just builds, also runs ^^
 
-                    lushui::compiler::compile_and_interpret_declaration(&node, &scope)
+                    lushui::compiler::compile_and_interpret_declaration(&declaration, &scope)
                         .unwrap_or_else(|_| panic!());
                 }
             }
@@ -318,15 +338,11 @@ fn main() {
                     .many_err()
             }
             Command::Document { .. } => {
-                use std::fs::File;
-                use std::io::BufWriter;
-
                 // @Task error handling
                 let mut file = BufWriter::new(File::create(path.with_extension("html")).unwrap());
-                let documenter =
-                    lushui::documenter::Documenter::new(&mut file, &map, &mut warnings);
+                let documenter = Documenter::new(&mut file, &map, &mut warnings);
                 // @Temporary @Task
-                documenter.document(&node).unwrap();
+                documenter.document(&declaration).unwrap();
             }
         }
 

@@ -183,7 +183,7 @@ impl Diagnostic {
                 .map(|highlight| map.resolve_span(highlight.span))
                 .collect();
 
-            let primary_file_name = &resolved_spans[primary_highlight].path;
+            let primary_span = &resolved_spans[primary_highlight];
 
             let largest_line_number = resolved_spans
                 .iter()
@@ -194,8 +194,6 @@ impl Diagnostic {
             let padding_len = largest_line_number.to_string().len();
             let padding = " ".repeat(padding_len);
             let bar = "|".bright_blue().bold();
-
-            let primary_span = &resolved_spans[primary_highlight];
 
             message += &format!(
                 "\n\
@@ -208,7 +206,9 @@ impl Diagnostic {
             );
 
             for (highlight, span) in self.highlights.iter().zip(&resolved_spans) {
-                if &span.path != primary_file_name && highlight.role != Role::Primary {
+                // @Question should we really compare 2 `Path`s here? isn't it more robust to
+                // compare SourceFile indices?
+                if span.path != primary_span.path && highlight.role != Role::Primary {
                     message += &format!(
                         "\n\
                         {padding} {bar}\n\
@@ -457,6 +457,8 @@ pub enum Code {
     E023,
     /// Circular declaration.
     E024,
+    /// Bare use of crate or super.
+    E025,
     /// Missing type annotation for lambda literal parameter or pattern.
     E030,
     /// Illegal function application.

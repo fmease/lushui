@@ -20,7 +20,7 @@ use crate::{
     desugar::Desugared,
     diagnostic::{Code, Diagnostic, Diagnostics, Result, Results},
     entity::{Entity, EntityKind},
-    hir::{self, decl, expr, Declaration, Expression, Pass},
+    hir::{self, decl, expr, Declaration, Expression, Pass, Pattern},
     span::{Span, Spanning},
     support::{
         accumulate_errors::*, release, DebugIsDisplay, InvalidFallback, ManyErrExt, TransposeExt,
@@ -30,7 +30,7 @@ use crate::{
 };
 use indexed_vec::IndexVec;
 use joinery::JoinableIterator;
-use std::{collections::HashMap, default::default, rc::Rc};
+use std::{collections::HashMap, rc::Rc};
 
 const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
 
@@ -405,7 +405,7 @@ fn unresolved_binding(
         .with_span(&identifier)
         .when_some(lookalike, |diagnostic, binding| {
             diagnostic.with_help(format!(
-                "a binding with a similar name exists: `{}`",
+                "a binding with a similar name exists in scope: `{}`",
                 binding
             ))
         })
@@ -518,27 +518,40 @@ enum Inquirer {
     System,
 }
 
-/// Some more additional information for resolving a declaration.
-///
-/// Grown out of the situation that constructors are represented as
-/// any other declaration thus lacking knowledge about its parent
-/// data declaration which is necessary for resolving.
-#[derive(Default)]
-struct Environment {
-    data: Option<CrateIndex>,
+/// The state of the resolver.
+pub struct Resolver<'a> {
+    scope: &'a mut CrateScope,
+    warnings: &'a mut Diagnostics,
+    parent_data_binding: Option<CrateIndex>,
 }
 
-impl Declaration<Desugared> {
+impl<'a> Resolver<'a> {
+    pub fn new(scope: &'a mut CrateScope, warnings: &'a mut Diagnostics) -> Self {
+        Self {
+            scope,
+            warnings,
+            parent_data_binding: None,
+        }
+    }
+
+    #[allow(dead_code)]
+    fn warn(&mut self, warning: Diagnostic) {
+        self.warnings.insert(warning);
+    }
+
     /// Resolve a desugar-HIR declaration to a resolver-HIR declaration.
     ///
     /// It performs three passes to resolve all possible out of order declarations.
     /// If the declaration passed is not a module, this function will panic as it
     /// requires a crate root which is defined through the root module.
-    pub fn resolve(self, scope: &mut CrateScope) -> Results<Declaration<Resolved>> {
-        self.resolve_first_pass(None, scope, default())?;
+    pub fn resolve_declaration(
+        &mut self,
+        declaration: Declaration<Desugared>,
+    ) -> Results<Declaration<Resolved>> {
+        self.start_resolve_declaration(&declaration, None)?;
         // @Bug creates fatal errors for use stuff (see tests/multiple-undefined1)
-        scope.resolve_unresolved_uses()?;
-        self.resolve_second_pass(None, scope, default())
+        self.scope.resolve_unresolved_uses()?;
+        self.finish_resolve_declaration(declaration, None)
     }
 
     /// Partially resolve a declaration merely registering declarations.
@@ -553,88 +566,89 @@ impl Declaration<Desugared> {
     /// In contrast to [Self::resolve_second_pass], this does not actually return a
     /// new intermediate HIR because of too much mapping and type-system boilerplate
     /// and it's just not worth it memory-wise.
-    fn resolve_first_pass(
-        &self,
+    fn start_resolve_declaration(
+        &mut self,
+        declaration: &Declaration<Desugared>,
         module: Option<CrateIndex>,
-        scope: &mut CrateScope,
-        environment: Environment,
     ) -> Results<()> {
         use hir::DeclarationKind::*;
 
-        match &self.kind {
-            Value(declaration) => {
+        match &declaration.kind {
+            Value(value) => {
                 let module = module.unwrap();
 
-                let index = scope
-                    .register_value_binding(&declaration.binder, module)
+                let index = self
+                    .scope
+                    .register_value_binding(&value.binder, module)
                     .many_err()?;
 
-                if scope.program_entry.is_none() && module == scope.root() {
-                    if declaration.binder.as_str() == PROGRAM_ENTRY_IDENTIFIER {
-                        scope.program_entry =
-                            Some(Identifier::new(index, declaration.binder.clone()));
+                if self.scope.program_entry.is_none() && module == self.scope.root() {
+                    if value.binder.as_str() == PROGRAM_ENTRY_IDENTIFIER {
+                        self.scope.program_entry =
+                            Some(Identifier::new(index, value.binder.clone()));
                     }
                 }
             }
-            Data(declaration) => {
+            Data(data) => {
                 let module = module.unwrap();
 
-                let index = scope
-                    .register_data_type_binding(&declaration.binder, module)
+                let index = self
+                    .scope
+                    .register_data_type_binding(&data.binder, module)
                     .many_err()?;
 
-                if let Some(constructors) = &declaration.constructors {
+                if let Some(constructors) = &data.constructors {
                     constructors
                         .iter()
                         .map(|constructor| {
-                            constructor.resolve_first_pass(
-                                Some(module),
-                                scope,
-                                Environment { data: Some(index) },
-                            )
+                            self.parent_data_binding = Some(index);
+                            let declaration =
+                                self.start_resolve_declaration(constructor, Some(module))?;
+                            self.parent_data_binding = None;
+                            Ok(declaration)
                         })
                         .collect::<Vec<_>>()
                         .transpose()?;
                 }
             }
-            Constructor(declaration) => {
-                scope
-                    .register_value_binding(&declaration.binder, environment.data.unwrap())
+            Constructor(constructor) => {
+                self.scope
+                    .register_value_binding(&constructor.binder, self.parent_data_binding.unwrap())
                     .many_err()?;
             }
-            Module(declaration) => {
+            Module(submodule) => {
                 // @Task @Beacon don't return early on error
                 // @Note you need to create a fake index for this (an index which points to
                 // a fake, nameless binding)
-                let index = scope
-                    .register_module_binding(&declaration.binder, module)
+                let index = self
+                    .scope
+                    .register_module_binding(&submodule.binder, module)
                     .many_err()?;
 
-                declaration
+                submodule
                     .declarations
                     .iter()
-                    .map(|declaration| {
-                        declaration.resolve_first_pass(Some(index), scope, default())
-                    })
+                    .map(|declaration| self.start_resolve_declaration(declaration, Some(index)))
                     .collect::<Vec<_>>()
                     .transpose()?;
             }
-            Use(declaration) => {
+            Use(use_) => {
                 let module = module.unwrap();
 
-                let binder = declaration
+                let binder = use_
                     .binder
                     .as_ref()
                     .ok_or_else(|| {
-                        // @Task add note why
                         Diagnostic::error()
+                            .with_code(Code::E025)
                             .with_message("`use` of bare `super` and `crate` disallowed")
-                            .with_span(self)
+                            .with_span(declaration)
+                            .with_help("add a name to it with `as`")
                     })
                     .many_err()?;
 
-                scope
-                    .register_use_binding(binder, &declaration.target, module)
+                self.scope
+                    .register_use_binding(binder, &use_.target, module)
                     .many_err()?;
             }
             Invalid => {}
@@ -650,39 +664,37 @@ impl Declaration<Desugared> {
     ///
     /// This is the second major pass (but the third in total including the middle minor
     /// use-declaration resolving one).
-    fn resolve_second_pass(
-        self,
+    fn finish_resolve_declaration(
+        &mut self,
+        declaration: Declaration<Desugared>,
         module: Option<CrateIndex>,
-        scope: &mut CrateScope,
-        environment: Environment,
     ) -> Results<Declaration<Resolved>> {
         use hir::DeclarationKind::*;
 
-        Ok(match self.kind {
+        Ok(match declaration.kind {
             Value(value) => {
                 let module = module.unwrap();
 
-                let type_annotation = value
-                    .type_annotation
-                    .resolve(&FunctionScope::Module(module), scope);
+                let type_annotation =
+                    self.resolve_expression(value.type_annotation, &FunctionScope::Module(module));
 
                 let expression = value
                     .expression
-                    .map(|expression| expression.resolve(&FunctionScope::Module(module), scope))
+                    .map(|expression| {
+                        self.resolve_expression(expression, &FunctionScope::Module(module))
+                    })
                     .transpose();
 
-                let binder = scope
+                let binder = self
+                    .scope
                     .resolve_identifier::<OnlyValue>(&value.binder, module)
                     .many_err()?;
-
-                let span = self.span;
-                let attributes = self.attributes;
 
                 let (type_annotation, expression) =
                     (type_annotation, expression).accumulate_err()?;
 
                 decl! {
-                    Value[span][attributes] {
+                    Value[declaration.span][declaration.attributes] {
                         binder,
                         type_annotation,
                         expression,
@@ -692,11 +704,11 @@ impl Declaration<Desugared> {
             Data(data) => {
                 let module = module.unwrap();
 
-                let type_annotation = data
-                    .type_annotation
-                    .resolve(&FunctionScope::Module(module), scope);
+                let type_annotation =
+                    self.resolve_expression(data.type_annotation, &FunctionScope::Module(module));
 
-                let binder = scope
+                let binder = self
+                    .scope
                     .resolve_identifier::<OnlyValue>(&data.binder, module)
                     .many_err()?;
 
@@ -704,13 +716,11 @@ impl Declaration<Desugared> {
                     constructors
                         .into_iter()
                         .map(|constructor| {
-                            constructor.resolve_second_pass(
-                                Some(module),
-                                scope,
-                                Environment {
-                                    data: Some(binder.crate_index().unwrap()),
-                                },
-                            )
+                            self.parent_data_binding = Some(binder.crate_index().unwrap());
+                            let declaration =
+                                self.finish_resolve_declaration(constructor, Some(module))?;
+                            self.parent_data_binding = None;
+                            Ok(declaration)
                         })
                         .collect()
                 });
@@ -719,7 +729,7 @@ impl Declaration<Desugared> {
                     (type_annotation, constructors.transpose()).accumulate_err()?;
 
                 decl! {
-                    Data[self.span][self.attributes] {
+                    Data[declaration.span][declaration.attributes] {
                         binder,
                         constructors,
                         type_annotation,
@@ -729,16 +739,21 @@ impl Declaration<Desugared> {
             Constructor(constructor) => {
                 let module = module.unwrap();
 
-                let type_annotation = constructor
-                    .type_annotation
-                    .resolve(&FunctionScope::Module(module), scope)?;
+                let type_annotation = self.resolve_expression(
+                    constructor.type_annotation,
+                    &FunctionScope::Module(module),
+                )?;
 
-                let binder = scope
-                    .resolve_identifier::<OnlyValue>(&constructor.binder, environment.data.unwrap())
+                let binder = self
+                    .scope
+                    .resolve_identifier::<OnlyValue>(
+                        &constructor.binder,
+                        self.parent_data_binding.unwrap(),
+                    )
                     .many_err()?;
 
                 decl! {
-                    Constructor[self.span][self.attributes] {
+                    Constructor[declaration.span][declaration.attributes] {
                         binder,
                         type_annotation,
                     }
@@ -748,23 +763,22 @@ impl Declaration<Desugared> {
                 // @Note ValueOrModule too general @Bug this might lead to
                 // values used as modules!! we should create OnlyModule
                 let index = match module {
-                    Some(module) => scope
+                    Some(module) => self
+                        .scope
                         .resolve_identifier::<ValueOrModule>(&submodule.binder, module)
                         .many_err()?,
-                    None => scope.root(),
+                    None => self.scope.root(),
                 };
 
                 let declarations = submodule
                     .declarations
                     .into_iter()
-                    .map(|declaration| {
-                        declaration.resolve_second_pass(Some(index), scope, default())
-                    })
+                    .map(|declaration| self.finish_resolve_declaration(declaration, Some(index)))
                     .collect::<Vec<_>>()
                     .transpose()?;
 
                 decl! {
-                    Module[self.span][self.attributes] {
+                    Module[declaration.span][declaration.attributes] {
                         binder: Identifier::new(index, submodule.binder),
                         file: submodule.file,
                         declarations,
@@ -775,12 +789,13 @@ impl Declaration<Desugared> {
                 let module = module.unwrap();
                 let binder = use_.binder.unwrap();
 
-                let index = scope
+                let index = self
+                    .scope
                     .resolve_identifier::<ValueOrModule>(&binder, module)
                     .many_err()?;
 
                 decl! {
-                    Use[self.span][self.attributes] {
+                    Use[declaration.span][declaration.attributes] {
                         binder: Some(Identifier::new(index, binder.clone())),
                         // @Temporary
                         target: Identifier::new(index, binder),
@@ -790,35 +805,33 @@ impl Declaration<Desugared> {
             Invalid => InvalidFallback::invalid(),
         })
     }
-}
 
-// @Task @Beacon use Rc::try_unwrap more instead of clone
-impl Expression<Desugared> {
-    fn resolve(
-        self,
+    // @Task @Beacon use Rc::try_unwrap more instead of clone
+    fn resolve_expression(
+        &mut self,
+        expression: Expression<Desugared>,
         scope: &FunctionScope<'_>,
-        crate_scope: &CrateScope,
     ) -> Results<Expression<Resolved>> {
         use hir::ExpressionKind::*;
 
         let mut errors = Diagnostics::new();
 
-        let expression = match self.kind {
+        let expression = match expression.kind {
             PiType(pi) => {
                 let (domain, codomain) = (
-                    pi.domain.clone().resolve(scope, crate_scope),
+                    self.resolve_expression(pi.domain.clone(), scope),
                     match pi.parameter.clone() {
-                        Some(parameter) => pi
-                            .codomain
-                            .clone()
-                            .resolve(&scope.extend_with_parameter(parameter), crate_scope),
-                        None => pi.codomain.clone().resolve(scope, crate_scope),
+                        Some(parameter) => self.resolve_expression(
+                            pi.codomain.clone(),
+                            &scope.extend_with_parameter(parameter),
+                        ),
+                        None => self.resolve_expression(pi.codomain.clone(), scope),
                     },
                 )
                     .accumulate_err()?;
 
                 return Ok(expr! {
-                    PiType[self.span] {
+                    PiType[expression.span] {
                         parameter: pi.parameter.clone()
                             .map(|parameter| Identifier::new(Index::DebruijnParameter, parameter.clone())),
                         domain,
@@ -829,67 +842,66 @@ impl Expression<Desugared> {
             }
             Application(application) => {
                 let (callee, argument) = (
-                    application.callee.clone().resolve(scope, crate_scope),
-                    application.argument.clone().resolve(scope, crate_scope),
+                    self.resolve_expression(application.callee.clone(), scope),
+                    self.resolve_expression(application.argument.clone(), scope),
                 )
                     .accumulate_err()?;
 
                 return Ok(expr! {
-                    Application[self.span] {
+                    Application[expression.span] {
                         callee,
                         argument,
                         explicitness: application.explicitness,
                     }
                 });
             }
-            Type => expr! { Type[self.span] },
+            Type => expr! { Type[expression.span] },
             Number(number) => expr! {
-                Number[self.span](number)
+                Number[expression.span](number)
             },
             Text(text) => expr! {
-                Text[self.span](text)
+                Text[expression.span](text)
             },
             Binding(binding) => expr! {
-                Binding[self.span] {
-                    binder: scope.resolve_binding(&binding.binder, crate_scope).many_err()?,
+                Binding[expression.span] {
+                    binder: scope.resolve_binding(&binding.binder, &self.scope).many_err()?,
                 }
             },
             // @Task @Beacon @Beacon don't use try_softly here: you don't need to: use
             // accumulate_err, the stuff here is independent! right??
             Lambda(lambda) => expr! {
-                Lambda[self.span] {
+                Lambda[expression.span] {
                     parameter: Identifier::new(Index::DebruijnParameter, lambda.parameter.clone()),
                     parameter_type_annotation: lambda.parameter_type_annotation.clone()
-                        .map(|type_| type_
-                            .resolve(scope, crate_scope)
+                        .map(|type_| self.resolve_expression(type_, scope)
                             .try_softly(&mut errors)),
                     body_type_annotation: lambda.body_type_annotation.clone()
-                        .map(|type_| type_
-                            .resolve(&scope.extend_with_parameter(lambda.parameter.clone()), crate_scope)
+                        .map(|type_| self.resolve_expression(type_,
+                            &scope.extend_with_parameter(lambda.parameter.clone()))
                             .try_softly(&mut errors)),
-                    body: lambda.body.clone()
-                        .resolve(&scope.extend_with_parameter(lambda.parameter.clone()), crate_scope)
+                    body: self.resolve_expression(lambda.body.clone(),
+                        &scope.extend_with_parameter(lambda.parameter.clone()))
                         .try_softly(&mut errors),
                     explicitness: lambda.explicitness,
                 }
             },
             UseIn => todo!("resolving use/in"),
             CaseAnalysis(analysis) => {
-                let subject = analysis.subject.clone().resolve(scope, crate_scope)?;
+                let subject = self.resolve_expression(analysis.subject.clone(), scope)?;
                 let mut cases = Vec::new();
 
                 for case in &analysis.cases {
-                    let (pattern, binders) = case.pattern.clone().resolve(scope, crate_scope)?;
-                    let body = case
-                        .body
-                        .clone()
-                        .resolve(&scope.extend_with_pattern_binders(binders), crate_scope)?;
+                    let (pattern, binders) = self.resolve_pattern(case.pattern.clone(), scope)?;
+                    let body = self.resolve_expression(
+                        case.body.clone(),
+                        &scope.extend_with_pattern_binders(binders),
+                    )?;
 
                     cases.push(hir::Case { pattern, body });
                 }
 
                 expr! {
-                    CaseAnalysis[self.span] {
+                    CaseAnalysis[expression.span] {
                         subject,
                         cases,
                     }
@@ -903,44 +915,40 @@ impl Expression<Desugared> {
 
         Ok(expression)
     }
-}
 
-use hir::Pattern;
-
-impl Pattern<Desugared> {
-    fn resolve(
-        self,
+    fn resolve_pattern(
+        &mut self,
+        pattern: Pattern<Desugared>,
         scope: &FunctionScope<'_>,
-        crate_scope: &CrateScope,
     ) -> Results<(Pattern<Resolved>, Vec<ast::Identifier>)> {
         use hir::{pat, PatternKind::*};
 
         let mut binders = Vec::new();
 
-        let pattern = match self.kind.clone() {
+        let pattern = match pattern.kind.clone() {
             Number(nat) => pat! {
-                Number[self.span](nat)
+                Number[pattern.span](nat)
             },
             Text(text) => pat! {
-                Text[self.span](text)
+                Text[pattern.span](text)
             },
             Binding(binding) => pat! {
-                Binding[self.span] {
-                    binder: scope.resolve_binding(&binding.binder, crate_scope).many_err()?,
+                Binding[pattern.span] {
+                    binder: scope.resolve_binding(&binding.binder, &self.scope).many_err()?,
                 }
             },
             Binder(binder) => {
                 binders.push(binder.binder.clone());
                 pat! {
-                    Binder[self.span] {
+                    Binder[pattern.span] {
                         binder: Identifier::new(Index::DebruijnParameter, unrc!(binder.binder)),
                     }
                 }
             }
             Deapplication(deapplication) => {
                 let ((callee, mut callee_binders), (argument, mut argument_binders)) = (
-                    deapplication.callee.clone().resolve(scope, crate_scope),
-                    deapplication.argument.clone().resolve(scope, crate_scope),
+                    self.resolve_pattern(deapplication.callee.clone(), scope),
+                    self.resolve_pattern(deapplication.argument.clone(), scope),
                 )
                     .accumulate_err()?;
 
@@ -948,7 +956,7 @@ impl Pattern<Desugared> {
                 binders.append(&mut argument_binders);
 
                 pat! {
-                    Deapplication[self.span] {
+                    Deapplication[pattern.span] {
                         callee,
                         argument,
                     }
@@ -1342,7 +1350,7 @@ impl Error {
     fn unwrap_diagnostic_with<'s>(
         self,
         scope: &CrateScope,
-        lookalike_finder: impl FnOnce(&str, CrateIndex) -> Option<&'s str> + 's,
+        lookalike_finder: impl FnOnce(&str, CrateIndex) -> Option<&'s str>,
     ) -> Diagnostic {
         match self {
             Self::Unrecoverable(error) => error,

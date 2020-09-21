@@ -455,6 +455,7 @@ pub fn register_foreign_bindings(scope: &mut CrateScope) {
     // meaninh `IO` does not mean hir::IO here but IO { runner: IORunner } (...)
     // then do the Value::IO { index: MOST_RECENT_INDEX, args } automatically
     // @Note this function won't rely on a Display/Show trait for now
+    #[allow(unreachable_code)]
     let _ = |_message: Value| print!("{}", todo!());
 
     // scope.insert_untyped_foreign_binding("panic", 2, |arguments| {

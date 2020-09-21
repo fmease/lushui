@@ -320,7 +320,7 @@ pub enum ValueView {
 
 /// The scope of bindings inside of a function.
 pub enum FunctionScope<'a> {
-    CrateScope(&'a CrateScope),
+    CrateScope,
     FunctionParameter {
         parent: &'a Self,
         type_: Expression,
@@ -347,22 +347,11 @@ impl<'a> FunctionScope<'a> {
         }
     }
 
-    pub fn crate_scope(&self) -> &CrateScope {
-        use FunctionScope::*;
-
-        match self {
-            CrateScope(scope) => scope,
-            FunctionParameter { parent, .. } | PatternBinders { parent, .. } => {
-                parent.crate_scope()
-            }
-        }
-    }
-
-    pub fn lookup_type(&self, binder: &Identifier) -> Option<Expression> {
+    pub fn lookup_type(&self, binder: &Identifier, scope: &CrateScope) -> Option<Expression> {
         use Index::*;
 
         match binder.index {
-            Crate(index) => self.crate_scope().lookup_type(index),
+            Crate(index) => scope.lookup_type(index),
             Debruijn(index) => Some(self.lookup_type_with_depth(index, 0)),
             DebruijnParameter => unreachable!(),
         }
@@ -399,33 +388,27 @@ impl<'a> FunctionScope<'a> {
                     None => parent.lookup_type_with_depth(index, depth + types.len()),
                 }
             }
-            Self::CrateScope(_) => unreachable!(),
+            Self::CrateScope => unreachable!(),
         }
     }
 
-    pub fn lookup_value(&self, binder: &Identifier) -> ValueView {
+    pub fn lookup_value(&self, binder: &Identifier, scope: &CrateScope) -> ValueView {
         use Index::*;
 
         match binder.index {
-            Crate(index) => self.crate_scope().lookup_value(index),
+            Crate(index) => scope.lookup_value(index),
             Debruijn(_) => ValueView::Neutral,
             DebruijnParameter => unreachable!(),
         }
     }
 
-    pub fn is_foreign(&self, binder: &Identifier) -> bool {
+    pub fn is_foreign(&self, binder: &Identifier, scope: &CrateScope) -> bool {
         use Index::*;
 
         match binder.index {
-            Crate(index) => self.crate_scope().is_foreign(index),
+            Crate(index) => scope.is_foreign(index),
             Debruijn(_) => false,
             DebruijnParameter => unreachable!(),
         }
-    }
-}
-
-impl<'a> From<&'a CrateScope> for FunctionScope<'a> {
-    fn from(scope: &'a CrateScope) -> Self {
-        Self::CrateScope(scope)
     }
 }
