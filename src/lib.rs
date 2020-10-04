@@ -11,7 +11,6 @@
     bool_to_option,
     default_free_fn,
     min_const_generics,
-    const_in_array_repeat_expressions,
     or_patterns,
     never_type_fallback
 )]

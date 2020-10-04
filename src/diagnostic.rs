@@ -33,7 +33,7 @@ impl DerefMut for Diagnostic {
     }
 }
 
-#[derive(Hash, PartialEq, Eq)]
+#[derive(Hash, PartialEq, Eq, Debug)]
 pub struct RawDiagnostic {
     level: Level,
     message: Option<CowStr>,
@@ -76,9 +76,11 @@ impl Diagnostic {
 
     pub fn with_span(mut self, spanning: &impl Spanning) -> Self {
         let role = self.choose_role();
+        let span = spanning.span();
 
+        self.check_span(span);
         self.highlights.push(Highlight {
-            span: spanning.span(),
+            span,
             label: None,
             role,
         });
@@ -87,13 +89,23 @@ impl Diagnostic {
 
     pub fn with_labeled_span(mut self, spanning: &impl Spanning, label: impl Into<CowStr>) -> Self {
         let role = self.choose_role();
+        let span = spanning.span();
 
+        self.check_span(span);
         self.highlights.push(Highlight {
-            span: spanning.span(),
+            span,
             label: Some(label.into()),
             role,
         });
         self
+    }
+
+    /// Verify that a span is not a sham.
+    fn check_span(&self, span: Span) {
+        #[cfg(debug_assertions)]
+        if span == Span::SHAM {
+            panic!("sham span added to diagnostic {:#?}", **self);
+        }
     }
 
     pub fn with_note(mut self, message: impl Into<CowStr>) -> Self {
@@ -315,7 +327,7 @@ impl Diagnostic {
     }
 }
 
-#[derive(Hash, PartialEq, Eq)]
+#[derive(Hash, PartialEq, Eq, Debug)]
 struct Subdiagnostic {
     kind: SubdiagnosticKind,
     message: CowStr,
@@ -327,7 +339,7 @@ impl fmt::Display for Subdiagnostic {
     }
 }
 
-#[derive(Hash, PartialEq, Eq, Clone, Copy)]
+#[derive(Hash, PartialEq, Eq, Clone, Copy, Debug)]
 enum SubdiagnosticKind {
     Note,
     Help,
@@ -348,7 +360,7 @@ impl fmt::Display for SubdiagnosticKind {
     }
 }
 
-#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
 pub enum Level {
     Bug,
     Error,
@@ -386,7 +398,7 @@ impl fmt::Display for Level {
     }
 }
 
-#[derive(PartialEq, Eq, Hash)]
+#[derive(PartialEq, Eq, Hash, Debug)]
 struct Highlight {
     span: Span,
     role: Role,
@@ -396,7 +408,7 @@ struct Highlight {
 // @Note multiple primaries don't merge right now but have undefined behavior/should be an error
 // @Note we have this design because we want to ergonomically sort by span (primary is not necessarily
 // the first to be previewed)
-#[derive(PartialEq, Eq, Hash)]
+#[derive(PartialEq, Eq, Hash, Debug)]
 enum Role {
     Primary,
     Secondary,
@@ -435,6 +447,12 @@ pub enum Code {
     E003,
     /// Unterminated text literal.
     E004,
+    /// Unreadable number literal.
+    E005,
+    /// Invalid number literal suffix.
+    E006,
+    /// Number literal does not fit type.
+    E007,
     /// Unexpected token.
     E010,
     /// Undefined attribute.
@@ -447,6 +465,8 @@ pub enum Code {
     E014,
     /// Missing mandatory type annotations.
     E015,
+    /// Unable to load external module.
+    E016,
     /// Duplicate definitions.
     E020,
     /// Undefined binding.
@@ -459,6 +479,8 @@ pub enum Code {
     E024,
     /// Bare use of crate or super.
     E025,
+    /// Crate or super inside nested path.
+    E026,
     /// Missing type annotation for lambda literal parameter or pattern.
     E030,
     /// Illegal function application.

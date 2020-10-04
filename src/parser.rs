@@ -7,8 +7,17 @@
 //! * crude error locations
 //! * cannot really handle optional indentation
 //! * ugly API
+//! * all syntax errors are fatal. instead, she should have a "poisoned" mode
 
 // @Task allow underscores in places where binders are allowed
+// @Task parse temporary
+// Lazy-Expression ::= "lazy" Expression
+// @Task parse do expression
+// Do-Expression ::= "do" Indentation Statement* Expression Line-Break Dedentation
+// Statement ::= Bind-Statement | Expression-Statement | Let-Statement
+// Bind-Statement ::= (#Identifier | "_") Type-Annotation? "<-" Expression Line-Break
+// (necessary? idths) Expression-Statement ::= Expression Line-Break
+// Let-Statement ::= "let" #Identifier Parameters Type-Annotation? "=" Expression Line-Break
 
 pub mod ast;
 
@@ -275,6 +284,7 @@ impl<'a> Parser<'a> {
             "deny" => Deny,
             "forbid" => Forbid,
             "unsafe" => Unsafe,
+            "shallow" => Shallow,
             _ => {
                 return Err(Diagnostic::error()
                     .with_code(Code::E011)
@@ -755,7 +765,7 @@ impl<'a> Parser<'a> {
                 Ok((Explicit, None, parameter))
             })?;
 
-        Ok(match self.consume(ThinArrow) {
+        Ok(match self.consume(ThinArrowRight) {
             Ok(_) => {
                 let expression = self.parse_pi_type_literal_or_lower()?;
                 span.merging(&expression);

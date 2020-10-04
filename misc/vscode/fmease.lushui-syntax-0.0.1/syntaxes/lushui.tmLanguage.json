@@ -1,4 +1,5 @@
 {
+    "__comment__": "@Task highlight `_` (differently)",
     "scopeName": "source.lushui",
     "name": "lushui",
     "patterns": [
@@ -61,7 +62,8 @@
                     "name": "keyword.operator.lushui"
                 },
                 {
-                    "match": "(?<![\\w\\-])case(?![\\w\\-])",
+                    "__comment__": "@Question do properly classified?",
+                    "match": "(?<![\\w\\-])(case|do)(?![\\w\\-])",
                     "name": "keyword.control.lushui"
                 },
                 {

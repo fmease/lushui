@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-    diagnostic::{Diagnostic, Result},
+    diagnostic::{Code, Diagnostic, Result},
     lexer::{Number, Token},
     smallvec,
     span::{PossiblySpanning, SourceFile, Span, Spanned, Spanning},
@@ -206,16 +206,17 @@ impl Attribute {
                 Targets::all()
             }
             Foreign => Targets::VALUE | Targets::DATA,
-            Inherent | Moving => Targets::DATA,
+            Inherent | Moving | Shallow => Targets::DATA,
             Unsafe => Targets::VALUE | Targets::CONSTRUCTOR,
         }
     }
 
+    // @Note in most cases (except documentation) because they have arguments/are parameterized
     pub fn unique(&self) -> bool {
         use AttributeKind::*;
 
         match self.kind {
-            Foreign | Inherent | Moving | Deprecated | Unstable | Unsafe => true,
+            Foreign | Inherent | Moving | Deprecated | Unstable | Unsafe | Shallow => true,
             Documentation | If | Allow | Warn | Deny | Forbid => false,
         }
     }
@@ -238,6 +239,7 @@ pub enum AttributeKind {
     Deny,
     Forbid,
     Unsafe,
+    Shallow,
 }
 
 impl AttributeKind {
@@ -255,6 +257,7 @@ impl AttributeKind {
             Self::Deny => "deny",
             Self::Forbid => "forbid",
             Self::Unsafe => "unsafe",
+            Self::Shallow => "shallow",
         }
     }
 }
@@ -578,8 +581,8 @@ impl Path {
     pub fn join(mut self, other: Self) -> Result<Self> {
         if let Some(head) = other.head {
             if !matches!(head.kind, HeadKind::Self_) {
-                // @Task code
                 return Err(Diagnostic::error()
+                    .with_code(Code::E026)
                     .with_message("`super` or `crate` not allowed in this position")
                     .with_span(&head));
             }

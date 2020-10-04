@@ -349,7 +349,7 @@ impl<'a> Interpreter<'a> {
                         let scope = context.scope.extend_with_parameter(domain.clone());
                         self.evaluate_expression(pi.codomain.clone(), context.with_scope(&scope))?
                     } else {
-                        pi.codomain.clone()
+                        self.evaluate_expression(pi.codomain.clone(), context)?
                     };
 
                     expr! {
@@ -595,6 +595,12 @@ impl<'a> Interpreter<'a> {
                         .zip(foreign1.arguments.clone())
                         .map(|(argument0, argument1)| self.equals(argument0, argument1, scope))
                         .fold(Ok(true), |all: Result<_>, this| Ok(all? && this?))?
+            }
+            // @Question is that what we want or should we just evaluate again?
+            (Substitution(_), Substitution(_)) => {
+                return Err(Diagnostic::bug()
+                    .with_message("attempt to check two substitutions for equivalence")
+                    .with_note("they should not exist in this part of the code but should have already been evaluated"))
             }
             (Invalid, _) | (_, Invalid) => panic!("trying to check equality on an invalid node"),
             _ => false,

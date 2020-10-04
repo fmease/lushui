@@ -549,6 +549,8 @@ impl Error {
         use io::ErrorKind::*;
 
         let mut message = path.map_or("referenced file ".into(), |path| {
+            // @Question should we canonicalize the path? this might be less confusing
+            // for users
             format!("file `{}` ", path.to_string_lossy())
         });
 

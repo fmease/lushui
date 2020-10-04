@@ -220,11 +220,13 @@ impl<'a> Desugarer<'a> {
                         None => {
                             use crate::{lexer::Lexer, parser::Parser, span};
 
-                            let path = module.file.path.ancestors().nth(1).unwrap().join(&format!(
-                                "{}.{}",
-                                module.binder,
-                                crate::FILE_EXTENSION
-                            ));
+                            let path = module
+                                .file
+                                .path
+                                .parent()
+                                .unwrap()
+                                .join(module.binder.as_str())
+                                .with_extension(crate::FILE_EXTENSION);
 
                             let declaration_span = declaration.span;
 
@@ -232,8 +234,8 @@ impl<'a> Desugarer<'a> {
                                 .map
                                 .load(&path)
                                 .map_err(|error| match error {
-                                    // @Task code
                                     span::Error::LoadFailure(_) => Diagnostic::error()
+                                        .with_code(Code::E016)
                                         .with_message(format!(
                                             "could not load module `{}`",
                                             module.binder

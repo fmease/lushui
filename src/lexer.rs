@@ -2,14 +2,22 @@
 //!
 //! It parses indentation and dedentation intwo two pseudo tokens:
 //! [TokenKind::Indentation] and [TokenKind::Dedentation] respectively.
+//!
+//! ## Issues
+//!
+//! * most lexical errors are fatal right now. we shouldn't make the lexer fail
+//!   on mismatching brackets, that should be the task of the parser (indeed also
+//!   keeping the bracket stack!), as well as invalid tokens: we should just
+//!   keep going having a new TokenKind, TokenKind::Invalid(..) (which is a cluster)
+//!   as a result, the parser can skip them and what not
+//!   (both things should not poison the lexer!)
 
 #[cfg(test)]
 mod test;
 mod token;
 
 use crate::{
-    diagnostic::Diagnostics,
-    diagnostic::{Code, Diagnostic, Result, Results},
+    diagnostic::{Code, Diagnostic, Diagnostics, Result, Results},
     span::{LocalByteIndex, LocalSpan, SourceFile, Span},
     support::ManyErrExt,
     Atom, INDENTATION_IN_SPACES,
@@ -354,15 +362,15 @@ impl<'a> Lexer<'a> {
         };
 
         if consecutive_primes {
-            // @Task code
             return Err(Diagnostic::error()
+                .with_code(Code::E005)
                 .with_message("consecutive primes in number literal")
                 .with_span(&self.span()));
         }
 
         if trailing_prime {
-            // @Task code
             return Err(Diagnostic::error()
+                .with_code(Code::E005)
                 .with_message("trailing prime in number literal")
                 .with_span(&self.span()));
         }
@@ -371,17 +379,17 @@ impl<'a> Lexer<'a> {
 
         let suffix = match suffix {
             Some(suffix) => suffix.parse().map_err(|_| {
-                // @Task code
                 Diagnostic::error()
+                    .with_code(Code::E006)
                     .with_message(format!("invalid number literal suffix `{}`", suffix))
                     .with_span(&self.span())
             })?,
             None => N,
         };
 
-        // @Task code
         let number = TokenData::parse_number(&number, suffix).map_err(|interval| {
             Diagnostic::error()
+                .with_code(Code::E007)
                 .with_message(format!(
                     "number literal `{}` does not fit type `{}`",
                     number,
