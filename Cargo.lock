@@ -135,6 +135,7 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "once_cell",
+ "rustc-hash",
  "smallvec",
  "string_cache",
  "strsim 0.10.0",
@@ -259,6 +260,12 @@ checksum = "2bdc6c187c65bca4260c9011c9e3132efe4909da44726bad24cf7572ae338d7f"
 dependencies = [
  "proc-macro2",
 ]
+
+[[package]]
+name = "rustc-hash"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
 name = "serde"

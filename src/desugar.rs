@@ -65,7 +65,7 @@ impl<'a> Desugarer<'a> {
     ) -> Results<SmallVec<hir::Declaration<Desugared>, 1>> {
         use ast::DeclarationKind::*;
 
-        let mut errors = Diagnostics::new();
+        let mut errors = Diagnostics::default();
 
         if let Err(attribute_errors) = Self::validate_attributes(&mut declaration) {
             errors.extend(attribute_errors);
@@ -664,7 +664,7 @@ impl<'a> Desugarer<'a> {
     ) -> Results<hir::Expression<Desugared>> {
         let mut expression = self.desugar_expression(type_annotation);
 
-        let mut errors = Diagnostics::new();
+        let mut errors = Diagnostics::default();
 
         for parameter_group in parameters.parameters.into_iter().rev() {
             let parameter_type_annotation = match parameter_group.type_annotation {

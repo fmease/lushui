@@ -1,9 +1,11 @@
 //! The diagnostic system.
 
-use crate::span::{SourceMap, Span, Spanning};
+use crate::{
+    span::{SourceMap, Span, Spanning},
+    HashSet,
+};
 use std::{
     borrow::Cow,
-    collections::HashSet,
     ops::{Deref, DerefMut},
 };
 

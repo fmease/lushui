@@ -26,10 +26,9 @@
 //!   don't use `${DIRECTORY}` but a local path
 //! * verify some unwraps and replace them if necessary
 
-use crate::{has_file_extension, span::SourceMap};
+use crate::{has_file_extension, span::SourceMap, HashMap};
 use colored::Colorize;
 use std::{
-    collections::HashMap,
     fmt,
     fs::{read_to_string, File},
     io::Write,
@@ -65,7 +64,7 @@ fn run() -> Result<(), Error> {
     let mut number_of_passed_tests = 0u32;
     let mut number_of_failed_tests = 0u32;
 
-    let mut failures: HashMap<String, Vec<Failure>> = HashMap::new();
+    let mut failures: HashMap<String, Vec<Failure>> = HashMap::default();
 
     for dir_entry in test_directory {
         let entry = dir_entry.map_err(Error::InvalidTestsDirectoryEntry)?;

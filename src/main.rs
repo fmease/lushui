@@ -248,7 +248,7 @@ fn main() {
         .unwrap_or_else(|_| unreachable!());
 
     let mut map = SourceMap::default();
-    let mut warnings = Diagnostics::new();
+    let mut warnings = Diagnostics::default();
 
     let result: Results<()> = (|| {
         let path = merged_arguments.file;

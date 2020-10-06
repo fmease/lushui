@@ -27,10 +27,11 @@ use crate::{
         TrySoftly,
     },
     typer::interpreter::{ffi, scope::Registration},
+    HashMap,
 };
 use indexed_vec::IndexVec;
 use joinery::JoinableIterator;
-use std::{collections::HashMap, rc::Rc};
+use std::rc::Rc;
 
 const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
 
@@ -331,7 +332,7 @@ impl CrateScope {
 
     fn resolve_unresolved_uses(&mut self) -> Results<()> {
         while !self.unresolved_uses.is_empty() {
-            let mut unresolved_uses = HashMap::new();
+            let mut unresolved_uses = HashMap::default();
 
             for (&index, item) in self.unresolved_uses.iter() {
                 match self.resolve_path::<ValueOrModule>(
@@ -814,7 +815,7 @@ impl<'a> Resolver<'a> {
     ) -> Results<Expression<Resolved>> {
         use hir::ExpressionKind::*;
 
-        let mut errors = Diagnostics::new();
+        let mut errors = Diagnostics::default();
 
         let expression = match expression.kind {
             PiType(pi) => {

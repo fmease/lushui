@@ -42,10 +42,10 @@ pub const INDENTATION_IN_SPACES: usize = 4;
 
 use num_bigint::BigInt as Int;
 use num_bigint::BigUint as Nat;
+use once_cell::sync::OnceCell;
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use smallvec::smallvec;
 use string_cache::DefaultAtom as Atom;
-
-use once_cell::sync::OnceCell;
 
 type SmallVec<T, const N: usize> = smallvec::SmallVec<[T; N]>;
 

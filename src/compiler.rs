@@ -16,6 +16,7 @@ use crate::{
     grow_array::GrowArray,
     resolver::CrateScope,
     typer::{Declaration, Expression},
+    HashMap,
 };
 use instruction::{Chunk, ChunkIndex, Instruction};
 
@@ -32,7 +33,6 @@ use instruction::{Chunk, ChunkIndex, Instruction};
 // }
 
 use crate::resolver::CrateIndex;
-use std::collections::HashMap;
 
 // future bytecode format:
 // [content hash] [version] [constant table] [entry-address] [chunks/instructions]
@@ -61,7 +61,7 @@ impl<'a> Compiler<'a> {
             constants: Vec::new(),
             lambda_amount: 0,
             entry: None,
-            declaration_mapping: HashMap::new(),
+            declaration_mapping: HashMap::default(),
             scope,
         }
     }
