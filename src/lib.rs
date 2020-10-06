@@ -12,7 +12,8 @@
     default_free_fn,
     min_const_generics,
     or_patterns,
-    never_type_fallback
+    never_type_fallback,
+    const_panic
 )]
 #![forbid(rust_2018_idioms, unused_must_use)]
 

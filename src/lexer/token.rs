@@ -28,8 +28,19 @@ impl Token {
         Self::with_data(Punctuation, TokenData::Identifier(atom), span)
     }
 
-    pub fn new_text_literal(text: String, span: Span) -> Self {
-        Self::with_data(TextLiteral, TokenData::TextLiteral(Box::new(text)), span)
+    pub fn new_text_literal(text: String, span: Span, terminated: bool) -> Self {
+        Self::with_data(
+            TextLiteral,
+            TokenData::TextLiteral {
+                content: Box::new(text),
+                terminated,
+            },
+            span,
+        )
+    }
+
+    pub fn new_illegal(character: char, span: Span) -> Self {
+        Self::with_data(Illegal, TokenData::Illegal(character), span)
     }
 
     /// Unwrap the data of an [Identifier]. Panics if it isn't one.
@@ -56,10 +67,26 @@ impl Token {
         }
     }
 
+    // @Note bad design
+    pub fn text_literal_is_terminated(&self) -> bool {
+        match self.data {
+            TokenData::TextLiteral { terminated, .. } => terminated,
+            _ => unreachable!(),
+        }
+    }
+
     /// Unwrap the data of a [TextLiteral]. Panics if it isn't one.
     pub fn text_literal(self) -> String {
         match self.data {
-            TokenData::TextLiteral(text) => *text,
+            TokenData::TextLiteral { content: text, .. } => *text,
+            _ => unreachable!(),
+        }
+    }
+
+    /// Unwrap the data of an [Illegal] character. Panics if it isn't one.
+    pub fn illegal(&self) -> char {
+        match self.data {
+            TokenData::Illegal(character) => character,
             _ => unreachable!(),
         }
     }
@@ -81,6 +108,9 @@ impl fmt::Debug for Token {
     }
 }
 
+// @Beacon @Update we should postpone all that parsing to actual Rust types to the parser
+// so that we can "recover" more parsing errors (and only store `Span`s and a small bit of
+// meta data)
 #[derive(Clone, PartialEq, Eq)]
 pub enum TokenData {
     None,
@@ -93,7 +123,13 @@ pub enum TokenData {
     Int64Literal(i64),
     // boxed to reduce overall size from 24 to 8 (on my 64bit arch ^^), bad cache behavior irrelevant
     // since it's not hot
-    TextLiteral(Box<String>),
+    // @Bug this payload is just gross and makes every single token large
+    // but this is only temporary
+    TextLiteral {
+        content: Box<String>,
+        terminated: bool,
+    },
+    Illegal(char),
 }
 
 impl TokenData {
@@ -119,13 +155,20 @@ impl fmt::Debug for TokenData {
         match self {
             Self::None => write!(f, ""),
             Self::Identifier(value) => write!(f, "{}", value),
-            Self::NatLiteral(value) => write!(f, "{}#N", value),
-            Self::Nat32Literal(value) => write!(f, "{}#N32", value),
-            Self::Nat64Literal(value) => write!(f, "{}#N63", value),
-            Self::IntLiteral(value) => write!(f, "{}#I", value),
-            Self::Int32Literal(value) => write!(f, "{}#I32", value),
-            Self::Int64Literal(value) => write!(f, "{}#I64", value),
-            Self::TextLiteral(value) => write!(f, "{:?}", value),
+            Self::NatLiteral(value) => write!(f, "{}_N", value),
+            Self::Nat32Literal(value) => write!(f, "{}_N32", value),
+            Self::Nat64Literal(value) => write!(f, "{}_N63", value),
+            Self::IntLiteral(value) => write!(f, "{}_I", value),
+            Self::Int32Literal(value) => write!(f, "{}_I32", value),
+            Self::Int64Literal(value) => write!(f, "{}_I64", value),
+            Self::TextLiteral {
+                content,
+                terminated,
+            } => match terminated {
+                true => write!(f, "{:?}", content),
+                false => write!(f, "{:?}_Unterminated", content),
+            },
+            &Self::Illegal(char) => write!(f, "U+{:04X}", char as u32),
         }
     }
 }
@@ -142,6 +185,7 @@ impl fmt::Debug for TokenData {
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(u8)] // as assertion
 pub enum TokenKind {
+    Comment,
     DocumentationComment,
     Identifier,
     Punctuation,
@@ -150,7 +194,6 @@ pub enum TokenKind {
     At,
     Backslash,
     QuestionMark,
-    ClosingRoundBracket,
     Colon,
     Comma,
     Dedentation,
@@ -159,6 +202,11 @@ pub enum TokenKind {
     Indentation,
     LineBreak,
     OpeningRoundBracket,
+    OpeningSquareBracket,
+    OpeningCurlyBracket,
+    ClosingRoundBracket,
+    ClosingSquareBracket,
+    ClosingCurlyBracket,
     ThinArrowRight,
     ThinArrowLeft,
     Underscore,
@@ -178,6 +226,7 @@ pub enum TokenKind {
     Type,
     Use,
     EndOfInput,
+    Illegal,
 }
 
 use TokenKind::*;
@@ -185,31 +234,40 @@ use TokenKind::*;
 impl fmt::Display for TokenKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         macro keyword($keyword:ident) {
-            concat!("keyword `", stringify!($keyword), "`")
+            concat!("keyword ", quoted!(stringify!($keyword)))
+        }
+        macro quoted($code:expr) {
+            concat!("`", $code, "`")
         }
 
         f.write_str(match self {
+            Comment => "comment",
             DocumentationComment => "documentation comment",
             Identifier => "identifier",
             Punctuation => "punctuation",
             NumberLiteral => "number literal",
             TextLiteral => "text literal",
-            At => "`@`",
-            Backslash => "`\\`",
-            QuestionMark => "`?`",
-            ClosingRoundBracket => "`)`",
-            Colon => "`:`",
-            Comma => "`,`",
+            At => quoted!("@"),
+            Backslash => quoted!(r"\"),
+            QuestionMark => quoted!("?"),
+            Colon => quoted!(":"),
+            Comma => quoted!(","),
             Dedentation => "dedentation",
-            Dot => "`.`",
-            Equals => "`=`",
+            Dot => quoted!("."),
+            Equals => quoted!("="),
             Indentation => "indentation",
             LineBreak => "line break",
-            OpeningRoundBracket => "`(`",
-            ThinArrowRight => "`->`",
-            ThinArrowLeft => "`<-`",
-            Underscore => "`_`",
-            WideArrow => "`=>`",
+            OpeningRoundBracket => quoted!("("),
+            OpeningSquareBracket => quoted!("["),
+            OpeningCurlyBracket => quoted!("{"),
+            ClosingRoundBracket => quoted!(")"),
+            ClosingSquareBracket => quoted!("]"),
+            ClosingCurlyBracket => quoted!("}"),
+            ThinArrowRight => quoted!("->"),
+            ThinArrowLeft => quoted!("<-"),
+            // @Task make it an identifier
+            Underscore => quoted!("_"),
+            WideArrow => quoted!("=>"),
             As => keyword!(as),
             Case => keyword!(case),
             Crate => keyword!(crate),
@@ -225,6 +283,7 @@ impl fmt::Display for TokenKind {
             Type => keyword!(Type),
             Use => keyword!(use),
             EndOfInput => "end of input",
+            Illegal => "illegal token",
         })
     }
 }

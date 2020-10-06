@@ -9,6 +9,8 @@
 //! * ugly API
 //! * all syntax errors are fatal. instead, she should have a "poisoned" mode
 
+// @Task parse sequence literals Sequence-Literal ::= "[" Expression* "]" ("_" #Identifier)?
+// (but no space between "]" and "_"!!)
 // @Task allow underscores in places where binders are allowed
 // @Task parse temporary
 // Lazy-Expression ::= "lazy" Expression
@@ -25,17 +27,20 @@ use crate::{
     diagnostic::{Code, Diagnostic, Diagnostics, Result},
     lexer::{self, Token, TokenKind},
     smallvec,
-    span::{SourceFile, Span, Spanned},
+    span::{SourceFile, Span, Spanned, Spanning},
     SmallVec,
 };
 use ast::*;
 use std::rc::Rc;
 
-const STANDARD_DECLARATION_DELIMITERS: [Delimiter; 3] = [
-    Delimiter::TypeAnnotationPrefix,
-    Delimiter::DefinitionPrefix,
-    Delimiter::Token(TokenKind::LineBreak),
-];
+const STANDARD_DECLARATION_DELIMITERS: [Delimiter; 3] = {
+    use Delimiter::*;
+    [
+        TypeAnnotationPrefix,
+        DefinitionPrefix,
+        Token(TokenKind::LineBreak),
+    ]
+};
 
 /// The state of the parser.
 pub struct Parser<'a> {
@@ -868,6 +873,11 @@ impl<'a> Parser<'a> {
             }
             TextLiteral => {
                 self.advance();
+
+                if !token.text_literal_is_terminated() {
+                    return Err(text_literal_is_not_terminated(&token));
+                }
+
                 expr! { TextLiteral[token.span](token.text_literal()) }
             }
             QuestionMark => {
@@ -1176,6 +1186,11 @@ impl<'a> Parser<'a> {
             }
             TextLiteral => {
                 self.advance();
+
+                if !token.text_literal_is_terminated() {
+                    return Err(text_literal_is_not_terminated(&token));
+                }
+
                 pat! { TextLiteral[token.span](token.text_literal()) }
             }
             Backslash => {
@@ -1360,7 +1375,17 @@ impl<'a> Expected<'a> {
     fn but_actual_is(self, actual: Token) -> Diagnostic {
         Diagnostic::error()
             .with_code(Code::E010)
-            .with_message(format!("found {}, but expected {}", actual.kind, self))
+            .with_message(format!(
+                "found {}, but expected {}",
+                match actual.kind {
+                    kind @ TokenKind::Illegal => {
+                        let character = actual.illegal();
+                        format!("{} U+{:04X} `{}`", kind, character as u32, character)
+                    }
+                    kind => kind.to_string(),
+                },
+                self
+            ))
             .with_span(&actual)
     }
 }
@@ -1433,4 +1458,11 @@ impl<'a> From<&'a Delimiter> for &'a TokenKind {
             Delimiter::Token(token) => token,
         }
     }
+}
+
+fn text_literal_is_not_terminated(span: &impl Spanning) -> Diagnostic {
+    Diagnostic::error()
+        .with_code(Code::E004)
+        .with_message("unterminated text literal")
+        .with_span(span)
 }

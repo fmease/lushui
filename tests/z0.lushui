@@ -9,4 +9,4 @@ identity (a: Nat32): Nat32 = a
 
 identity2 (x: Nat32): Nat32 = second x x
 
-main: Nat32 = identity (identity (second (second 6666#N32 23#N32) (second 1#N32 (identity2 100#N32))))
+main: Nat32 = identity (identity (second (second 6666_N32 23_N32) (second 1_N32 (identity2 100_N32))))

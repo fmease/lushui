@@ -6,4 +6,4 @@ data Nat32: Type
 @foreign
 add-nat32: Nat32 -> Nat32 -> Nat32
 
-main: Nat32 = add-nat32 1#N32 0#N32
+main: Nat32 = add-nat32 1_N32 0_N32

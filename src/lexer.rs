@@ -13,6 +13,7 @@
 //!   (both things should not poison the lexer!)
 
 #[cfg(test)]
+// @Beacon @Task update errors
 mod test;
 mod token;
 
@@ -61,6 +62,8 @@ pub fn lex(source: String) -> Results<Vec<Token>> {
     .lex()
 }
 
+const LITERAL_SUFFIX_SEPARATOR: char = '_';
+
 /// The state of the lexer.
 pub struct Lexer<'a> {
     source: &'a SourceFile,
@@ -90,6 +93,8 @@ impl<'a> Lexer<'a> {
         self.warnings.insert(warning);
     }
 
+    // @Task move balanced bracket validation out of lexer to the parser and
+    // also start supporting square and curly brachets for future use
     /// Lex source code into an array of tokens
     pub fn lex(mut self) -> Results<Vec<Token>> {
         while let Some(character) = self.peek() {
@@ -101,18 +106,7 @@ impl<'a> Lexer<'a> {
                 ';' => self.lex_comment(),
                 character if character.is_ascii_alphabetic() => self.lex_identifier().many_err()?,
                 '\n' => self.lex_indentation().many_err()?,
-                '-' => {
-                    self.advance();
-                    if self
-                        .peek()
-                        .map(|character| character.is_ascii_digit())
-                        .unwrap_or(false)
-                    {
-                        self.lex_number_literal().many_err()?;
-                    } else {
-                        self.lex_punctuation();
-                    }
-                }
+                '-' => self.lex_punctuation_or_number_literal()?,
                 character if character.is_ascii_digit() => {
                     self.advance();
                     self.lex_number_literal().many_err()?
@@ -125,14 +119,8 @@ impl<'a> Lexer<'a> {
                 '_' => self.lex_underscore(),
                 character => {
                     self.take();
-                    return Err(Diagnostic::error()
-                        .with_code(Code::E000)
-                        .with_message(format!(
-                            "illegal character U+{:04X} `{}`",
-                            character as u32, character
-                        ))
-                        .with_span(&self.span()))
-                    .many_err();
+                    self.advance();
+                    self.add_with(|span| Token::new_illegal(character, span))
                 }
             }
         }
@@ -171,6 +159,7 @@ impl<'a> Lexer<'a> {
     }
 
     // @Task merge consecutive documentation comments
+    // @Task emit TokenKind::Comment if asked
     fn lex_comment(&mut self) {
         self.advance();
 
@@ -204,6 +193,8 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    // @Task make trailing dashes part of punctutation (this removes the error condition)
+    // @Task make `_` a valid token for identifiers
     fn lex_identifier(&mut self) -> Result<()> {
         self.lex_identifier_segment();
         while self.peek() == Some('-') {
@@ -295,6 +286,20 @@ impl<'a> Lexer<'a> {
         Ok(())
     }
 
+    fn lex_punctuation_or_number_literal(&mut self) -> Results<()> {
+        self.advance();
+        if self
+            .peek()
+            .map(|character| character.is_ascii_digit())
+            .unwrap_or(false)
+        {
+            self.lex_number_literal().many_err()?;
+        } else {
+            self.lex_punctuation();
+        }
+        Ok(())
+    }
+
     fn lex_punctuation(&mut self) {
         self.take_while(token::is_punctuation);
 
@@ -308,28 +313,33 @@ impl<'a> Lexer<'a> {
     }
 
     // @Note the hash suffx syntax is only temporary until we decide to implement generic numbers
+    // @Task move validation logic out of the lexer
     fn lex_number_literal(&mut self) -> Result<()> {
+        const NUMERIC_SEPERATOR: char = '\'';
+
         let mut number = self.source[self.span].to_owned();
 
         let mut trailing_prime = false;
         let mut consecutive_primes = false;
 
         while let Some(character) = self.peek() {
-            if !(character.is_ascii_digit() || character == '\'') {
+            if !(character.is_ascii_digit() || character == NUMERIC_SEPERATOR) {
                 break;
             }
             self.take();
             self.advance();
 
-            if character != '\'' {
+            if character != NUMERIC_SEPERATOR {
                 number.push(character);
             } else {
-                if let Some('\'') = self.peek() {
+                if let Some(NUMERIC_SEPERATOR) = self.peek() {
                     consecutive_primes = true;
                 }
                 if self
                     .peek()
-                    .filter(|&character| character.is_ascii_digit() || character == '\'')
+                    .filter(|&character| {
+                        character.is_ascii_digit() || character == NUMERIC_SEPERATOR
+                    })
                     .is_none()
                 {
                     trailing_prime = true;
@@ -340,7 +350,7 @@ impl<'a> Lexer<'a> {
         let suffix = if let Some(character) = self.peek() {
             let mut suffix = String::new();
 
-            if character == '#' {
+            if character == LITERAL_SUFFIX_SEPARATOR {
                 self.take();
                 self.advance();
 
@@ -403,7 +413,9 @@ impl<'a> Lexer<'a> {
         Ok(())
     }
 
-    // @Task escape sequences
+    // @Task escape sequences @Update do them in the parser (or at least mark them as invalid
+    // and do the error reporting in the parser)
+    // @Task parse suffixes
     fn lex_text_literal(&mut self) -> Result<()> {
         let mut terminated = false;
         self.advance();
@@ -418,16 +430,9 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        if !terminated {
-            return Err(Diagnostic::error()
-                .with_code(Code::E004)
-                .with_message("unterminated text literal")
-                .with_span(&self.span()));
-        }
-
         // @Note once we implement escaping, this won't cut it and we need to build our own string
         let text = self.source[LocalSpan::new(self.span.start + 1, self.span.end - 1)].to_owned();
-        self.add_with(|span| Token::new_text_literal(text, span));
+        self.add_with(|span| Token::new_text_literal(text, span, terminated));
 
         Ok(())
     }

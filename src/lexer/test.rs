@@ -231,7 +231,7 @@ fn lex_number_literal() {
     );
 
     assert_ok_token(
-        lex(r#"334#N 1'000what 3'2'2'1"" 500#N32 10#I"" -23#I64"#.into()),
+        lex(r#"334_N 1'000what 3'2'2'1"" 500_N32 10_I"" -23_I64"#.into()),
         vec![
             Token::with_data(
                 NumberLiteral,
@@ -249,14 +249,14 @@ fn lex_number_literal() {
                 TokenData::NatLiteral(3221u32.into()),
                 span(17, 23),
             ),
-            Token::new_text_literal(String::new(), span(24, 25)),
+            Token::new_text_literal(String::new(), span(24, 25), true),
             Token::with_data(NumberLiteral, TokenData::Nat32Literal(500), span(27, 33)),
             Token::with_data(
                 NumberLiteral,
                 TokenData::IntLiteral(10.into()),
                 span(35, 38),
             ),
-            Token::new_text_literal(String::new(), span(39, 40)),
+            Token::new_text_literal(String::new(), span(39, 40), true),
             Token::with_data(NumberLiteral, TokenData::Int64Literal(-23), span(42, 48)),
             Token::new(EndOfInput, span(48, 48)),
         ],
@@ -266,8 +266,8 @@ fn lex_number_literal() {
     assert_err(lex("10' ".into()), &[&[span(1, 3)]]);
     assert_err(lex("10'".into()), &[&[span(1, 3)]]);
     assert_err(lex("-23".into()), &[&[span(1, 3)]]);
-    assert_err(lex("45#!".into()), &[&[span(1, 3)]]);
-    assert_err(lex("12#O33".into()), &[&[span(1, 6)]]);
+    assert_err(lex("45_!".into()), &[&[span(1, 3)]]);
+    assert_err(lex("12_O33".into()), &[&[span(1, 6)]]);
 }
 
 #[test]
@@ -284,6 +284,7 @@ fn lex_text_literal() {
   pha"
                 .into(),
                 span(1, 15),
+                true,
             ),
             Token::new(EndOfInput, span(15, 15)),
         ],

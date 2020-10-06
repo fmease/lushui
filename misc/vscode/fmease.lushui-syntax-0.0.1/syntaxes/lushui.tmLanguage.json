@@ -43,7 +43,7 @@
             "patterns": [
                 {
                     "name": "constant.numeric.integer.decimal.lushui",
-                    "match": "(-|\\b)[0-9]([0-9]|'[0-9])*\\b(#(N|N32|N64|I|I32|I64)\\b)?"
+                    "match": "(-|\\b)[0-9]([0-9]|'[0-9])*(_(N|N32|N64|I|I32|I64))?\\b"
                 }
             ]
         },
