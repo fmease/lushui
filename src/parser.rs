@@ -1110,8 +1110,8 @@ impl<'a> Parser<'a> {
                     Statement::Use(ast::Use { bindings })
                 }
                 _ => {
-                    if self.current_is(Identifier) && self.succeeding_is(Colon)
-                        || self.succeeding_is(ThinArrowLeft)
+                    if self.current_is(Identifier)
+                        && (self.succeeding_is(Colon) || self.succeeding_is(ThinArrowLeft))
                     {
                         self.advance();
                         let binder = ast::Identifier::from_token(token);
