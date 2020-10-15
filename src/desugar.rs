@@ -11,7 +11,7 @@ use crate::{
     hir::{self, decl, expr, pat, Pass},
     smallvec,
     span::{SourceMap, Spanning},
-    support::{pluralize, release, InvalidFallback, ManyErrExt, TrySoftly},
+    support::{accumulate_errors::*, pluralize, release, InvalidFallback, ManyErrExt, TrySoftly},
     SmallVec,
 };
 
@@ -87,10 +87,13 @@ impl<'a> Desugarer<'a> {
                 // partial moves, I hate those), use local bindings
                 let expression = match value.expression {
                     Some(expression) => {
-                        let mut expression = self.desugar_expression(expression);
+                        let mut expression =
+                            self.desugar_expression(expression).try_softly(&mut errors);
                         {
-                            let mut type_annotation =
-                                once(self.desugar_expression(declaration_type_annotation.clone()));
+                            let mut type_annotation = once(
+                                self.desugar_expression(declaration_type_annotation.clone())
+                                    .try_softly(&mut errors),
+                            );
 
                             for parameter_group in value.parameters.iter().rev() {
                                 let parameter_type_annotation =
@@ -104,8 +107,9 @@ impl<'a> Desugarer<'a> {
                                                 amount: parameter_group.parameters.len(),
                                             },
                                         ))
-                                        .try_softly(&mut errors),
-                                    };
+                                        .many_err(),
+                                    }
+                                    .try_softly(&mut errors);
 
                                 for binder in parameter_group.parameters.iter().rev() {
                                     expression = expr! {
@@ -217,6 +221,7 @@ impl<'a> Desugarer<'a> {
                 let declarations =
                     match module.declarations {
                         Some(declarations) => declarations,
+                        // @Bug @Task disallow external module declarations inside of non-file modules
                         None => {
                             use crate::{lexer::Lexer, parser::Parser, span};
 
@@ -466,7 +471,8 @@ impl<'a> Desugarer<'a> {
             (true, false) => Err(Diagnostic::error()
                 .with_code(Code::E012)
                 .with_message("declaration without a definition")
-                .with_span(declaration))
+                .with_span(declaration)
+                .with_help("provide a definition for the declaration: `= VALUE`"))
             .many_err(),
             (false, true) => {
                 // @Task make non-fatal, @Task improve message
@@ -483,22 +489,30 @@ impl<'a> Desugarer<'a> {
     }
 
     /// Lower an expression from AST to HIR.
-    // @Task rewrite this returning Results<_> for future use (that work is a bit tedious)
+    // @Question should we provide methods on Desugarer which abstract over TrySoftly?
     pub fn desugar_expression(
         &mut self,
         expression: ast::Expression,
-    ) -> hir::Expression<Desugared> {
+    ) -> Results<hir::Expression<Desugared>> {
         use ast::ExpressionKind::*;
 
-        match expression.kind {
-            PiTypeLiteral(pi) => expr! {
-                PiType[expression.span] {
-                    parameter: pi.binder.clone(),
-                    domain: self.desugar_expression(pi.parameter),
-                    codomain: self.desugar_expression(pi.expression),
-                    explicitness: pi.explicitness,
+        Ok(match expression.kind {
+            PiTypeLiteral(pi) => {
+                let (domain, codomain) = (
+                    self.desugar_expression(pi.parameter),
+                    self.desugar_expression(pi.expression),
+                )
+                    .accumulate_err()?;
+
+                expr! {
+                    PiType[expression.span] {
+                        parameter: pi.binder.clone(),
+                        domain,
+                        codomain,
+                        explicitness: pi.explicitness,
+                    }
                 }
-            },
+            }
             Application(application) => {
                 // @Temporary
                 if let Some(binder) = &application.binder {
@@ -509,10 +523,16 @@ impl<'a> Desugarer<'a> {
                     )
                 }
 
+                let (callee, argument) = (
+                    self.desugar_expression(application.callee),
+                    self.desugar_expression(application.argument),
+                )
+                    .accumulate_err()?;
+
                 expr! {
                     Application[expression.span] {
-                        callee: self.desugar_expression(application.callee),
-                        argument: self.desugar_expression(application.argument),
+                        callee,
+                        argument,
                         explicitness: application.explicitness,
                     }
                 }
@@ -529,18 +549,27 @@ impl<'a> Desugarer<'a> {
                 }
             },
             LambdaLiteral(lambda) => {
-                let mut expression = self.desugar_expression(lambda.body);
+                let mut errors = Diagnostics::default();
+
+                let mut expression = self.desugar_expression(lambda.body).try_softly(&mut errors);
 
                 let mut type_annotation = lambda
                     .body_type_annotation
-                    .map(|type_annotation| self.desugar_expression(type_annotation))
+                    .map(|type_annotation| {
+                        self.desugar_expression(type_annotation)
+                            .try_softly(&mut errors)
+                    })
                     .into_iter();
 
                 for parameter_group in lambda.parameters.iter().rev() {
-                    let parameter = parameter_group
-                        .type_annotation
-                        .clone()
-                        .map(|type_annotation| self.desugar_expression(type_annotation));
+                    let parameter =
+                        parameter_group
+                            .type_annotation
+                            .clone()
+                            .map(|type_annotation| {
+                                self.desugar_expression(type_annotation)
+                                    .try_softly(&mut errors)
+                            });
 
                     for binder in parameter_group.parameters.iter().rev() {
                         expression = expr! {
@@ -554,21 +583,31 @@ impl<'a> Desugarer<'a> {
                         };
                     }
                 }
+
+                release!(errors);
+
                 expression
             }
             LetIn(let_in) => {
-                let mut expression = self.desugar_expression(let_in.expression);
+                let mut errors = Diagnostics::default();
+
+                let mut expression = self
+                    .desugar_expression(let_in.expression)
+                    .try_softly(&mut errors);
 
                 let mut type_annotation = let_in
                     .type_annotation
-                    .map(|type_annotation| self.desugar_expression(type_annotation))
+                    .map(|type_annotation| {
+                        self.desugar_expression(type_annotation)
+                            .try_softly(&mut errors)
+                    })
                     .into_iter();
 
                 for parameter_group in let_in.parameters.iter().rev() {
-                    let parameter = parameter_group
-                        .type_annotation
-                        .clone()
-                        .map(|expression| self.desugar_expression(expression));
+                    let parameter = parameter_group.type_annotation.clone().map(|expression| {
+                        self.desugar_expression(expression).try_softly(&mut errors)
+                    });
+
                     for binder in parameter_group.parameters.iter().rev() {
                         expression = expr! {
                             Lambda[] {
@@ -581,6 +620,12 @@ impl<'a> Desugarer<'a> {
                         };
                     }
                 }
+
+                let body = self
+                    .desugar_expression(let_in.scope)
+                    .try_softly(&mut errors);
+
+                release!(errors);
 
                 expr! {
                     Application[] {
@@ -595,7 +640,7 @@ impl<'a> Desugarer<'a> {
                                 parameter_type_annotation: type_annotation.next(),
                                 explicitness: Explicit,
                                 body_type_annotation: None,
-                                body: self.desugar_expression(let_in.scope),
+                                body,
                             }
                         },
                         argument: expression,
@@ -606,24 +651,39 @@ impl<'a> Desugarer<'a> {
             // @Beacon @Task
             UseIn(_use_in) => todo!("use/in expressions not supported yet"),
             CaseAnalysis(analysis) => {
+                let mut errors = Diagnostics::default();
                 let mut cases = Vec::new();
 
                 for case_group in analysis.cases {
                     cases.push(hir::Case {
                         pattern: self.desugar_pattern(case_group.pattern),
-                        body: self.desugar_expression(case_group.expression.clone()),
+                        body: self
+                            .desugar_expression(case_group.expression.clone())
+                            .try_softly(&mut errors),
                     });
                 }
 
+                let subject = self
+                    .desugar_expression(analysis.expression)
+                    .try_softly(&mut errors);
+
+                release!(errors);
+
                 expr! {
                     CaseAnalysis[expression.span] {
-                        subject: self.desugar_expression(analysis.expression),
+                        subject,
                         cases,
                     }
                 }
             }
+            DoBlock(_block) => {
+                return Err(Diagnostic::bug()
+                    .with_message("do blocks not fully implemented yet")
+                    .with_span(&expression.span))
+                .many_err()
+            }
             Invalid => InvalidFallback::invalid(),
-        }
+        })
     }
 
     /// Lower a pattern from AST to HIR.
@@ -662,9 +722,11 @@ impl<'a> Desugarer<'a> {
         parameters: ast::Parameters,
         type_annotation: ast::Expression,
     ) -> Results<hir::Expression<Desugared>> {
-        let mut expression = self.desugar_expression(type_annotation);
-
         let mut errors = Diagnostics::default();
+
+        let mut expression = self
+            .desugar_expression(type_annotation)
+            .try_softly(&mut errors);
 
         for parameter_group in parameters.parameters.into_iter().rev() {
             let parameter_type_annotation = match parameter_group.type_annotation {
@@ -675,8 +737,9 @@ impl<'a> Desugarer<'a> {
                         amount: parameter_group.parameters.len(),
                     },
                 ))
-                .try_softly(&mut errors),
-            };
+                .many_err(),
+            }
+            .try_softly(&mut errors);
 
             for binder in parameter_group.parameters.iter().rev() {
                 expression = expr! {
@@ -704,6 +767,10 @@ fn missing_mandatory_type_annotation(
         .with_code(Code::E015)
         .with_message(format!("missing mandatory type annotation on {}", target))
         .with_span(spanning)
+        .with_help(format!(
+            "provide a type annotation for the {}: `: TYPE`",
+            target
+        ))
 }
 
 /// Used for error reporting.

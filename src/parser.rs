@@ -14,12 +14,6 @@
 // @Task allow underscores in places where binders are allowed
 // @Task parse temporary
 // Lazy-Expression ::= "lazy" Expression
-// @Task parse do expression
-// Do-Expression ::= "do" Indentation Statement* Expression Line-Break Dedentation
-// Statement ::= Bind-Statement | Expression-Statement | Let-Statement
-// Bind-Statement ::= (#Identifier | "_") Type-Annotation? "<-" Expression Line-Break
-// (necessary? idths) Expression-Statement ::= Expression Line-Break
-// Let-Statement ::= "let" #Identifier Parameters Type-Annotation? "=" Expression Line-Break
 
 pub mod ast;
 
@@ -399,7 +393,7 @@ impl<'a> Parser<'a> {
 
     /// Finish parsing module declaration.
     ///
-    /// This is either a module declaration or a file system module declaration.
+    /// This is either a module declaration or an external module declaration.
     ///
     /// ## Grammar
     ///
@@ -430,6 +424,7 @@ impl<'a> Parser<'a> {
         span.merging(&binder);
 
         if self.consumed(LineBreak) {
+            // it is an external module declaration
             return Ok(decl! {
                 Module[span] {
                     binder,
@@ -621,7 +616,7 @@ impl<'a> Parser<'a> {
                                 binder: Some(binder),
                             });
                         } else {
-                            // @Note this is really really fragile=non-extensible!
+                            // @Note @Bug this is really really fragile=non-extensible!
                             bindings.push(self.parse_use_bindings(&[
                                 OpeningRoundBracket.into(),
                                 ClosingRoundBracket.into(),
@@ -713,6 +708,7 @@ impl<'a> Parser<'a> {
     /// ```text
     /// Expression ::= Let-In | Use-In | Lambda-Literal | Case-Analysis | Pi-Literal-Or-Lower
     /// ```
+    // @Task parse sigma literals
     fn parse_expression(&mut self) -> Result<Expression> {
         use TokenKind::*;
         let token = self.current();
@@ -733,6 +729,10 @@ impl<'a> Parser<'a> {
             Case => {
                 self.advance();
                 self.finish_parse_case_analysis(token.span)
+            }
+            Do => {
+                self.advance();
+                self.finish_parse_do_block(token.span)
             }
             _ => self.parse_pi_type_literal_or_lower(),
         }
@@ -1055,6 +1055,95 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// Finish parsing a do block.
+    ///
+    /// The keyword `do` should have already been consumed.
+    ///
+    /// ## Grammar
+    ///
+    /// ```text
+    /// Do-Block ::= "do" Line-Break Indentation Statement+ Dedentation
+    /// Statement ::= Let-Statement | Use-Declaration | Bind-Statement | Expression-Statement
+    /// Let-Statement ::= "let" Value-Declaration
+    /// Bind-Statement ::= #Identifier Type-Annotation? "<-" Expression Line-Break
+    /// Expression-Statement ::= Expression Line-Break
+    /// ```
+    ///
+    /// Bind statements are the worst right now. We need to look ahead for `:` (type annotation)
+    /// or `<-` to differenciate them from expressions. Maybe there is prefix-oriented syntax
+    /// we could switch to like `!x = …` or `set x = …`. The latter look-ahead is not much of an
+    /// issue, `:` is a bad *but only in case* of adding type annotation expressions (not that likely
+    /// as they clash with other syntactic elements like pi literals).
+    fn finish_parse_do_block(&mut self, span_of_do: Span) -> Result<Expression> {
+        use TokenKind::*;
+        let mut span = span_of_do;
+        let mut statements = Vec::new();
+
+        self.consume(LineBreak)?;
+        self.consume(Indentation)?;
+
+        while !self.current_is(Dedentation) {
+            let token = self.current();
+
+            statements.push(match token.kind {
+                Let => {
+                    self.advance();
+                    let binder = self.consume_identifier()?;
+                    let parameters = self.parse_parameters(&[
+                        Delimiter::TypeAnnotationPrefix,
+                        Delimiter::DefinitionPrefix,
+                    ])?;
+                    let type_annotation = self.parse_optional_type_annotation()?;
+                    self.consume(TokenKind::Equals)?;
+                    let expression = self.parse_possibly_indented_terminated_expression()?;
+                    Statement::Let(LetStatement {
+                        binder,
+                        parameters,
+                        type_annotation,
+                        expression,
+                    })
+                }
+                Use => {
+                    self.advance();
+                    let bindings = self.parse_use_bindings(&[TokenKind::LineBreak.into()])?;
+                    self.consume(LineBreak)?;
+                    Statement::Use(ast::Use { bindings })
+                }
+                _ => {
+                    if self.current_is(Identifier) && self.succeeding_is(Colon)
+                        || self.succeeding_is(ThinArrowLeft)
+                    {
+                        self.advance();
+                        let binder = ast::Identifier::from_token(token);
+                        let type_annotation = self.parse_optional_type_annotation()?;
+                        self.consume(ThinArrowLeft)?;
+                        let expression = self.parse_possibly_indented_terminated_expression()?;
+                        Statement::Bind(BindStatement {
+                            binder,
+                            type_annotation,
+                            expression,
+                        })
+                    } else {
+                        // @Task improve error diagnostics for an unexpected token to not only mention an
+                        // expression was expected but also statements were
+                        let expression = self.parse_expression()?;
+                        self.consume(LineBreak)?;
+                        Statement::Expression(expression)
+                    }
+                }
+            });
+        }
+
+        span.merging(&self.current());
+        self.advance();
+
+        Ok(expr! {
+            DoBlock[span] {
+                statements,
+            }
+        })
+    }
+
     /// Parse parameters until one of the given delimiters is encountered.
     ///
     /// One needs to specify delimiters to allow for better error diagnostics.
@@ -1305,7 +1394,7 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```text
-    /// Terminated-Expression ::= Expression (Dedentation Line-Break)?
+    /// Terminated-Expression ::= Expression (<!Dedentation Line-Break)?
     /// ```
     fn parse_terminated_expression(&mut self) -> Result<Expression> {
         let expression = self.parse_expression()?;

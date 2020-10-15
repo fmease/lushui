@@ -70,8 +70,10 @@ pub enum DeclarationKind {
     Use(Box<Use>),
 }
 
-/// The syntax node of a value declaration.
-#[derive(Debug)]
+/// The syntax node of a value declaration or a let statement.
+///
+/// See [DeclarationKind::Value] and [Statement::Let].
+#[derive(Clone, Debug)]
 pub struct Value {
     pub binder: Identifier,
     pub parameters: Parameters,
@@ -124,8 +126,10 @@ pub struct Group {
     pub declarations: Vec<Declaration>,
 }
 
-/// The syntax node of a use declaration.
-#[derive(Debug)]
+/// The syntax node of a use declaration or statement.
+///
+/// See [DeclarationKind::Use] and [Statement::Use].
+#[derive(Clone, Debug)]
 pub struct Use {
     pub bindings: UseBindings,
 }
@@ -299,6 +303,7 @@ pub enum ExpressionKind {
     LetIn(Box<LetIn>),
     UseIn(Box<UseIn>),
     CaseAnalysis(Box<CaseAnalysis>),
+    DoBlock(Box<DoBlock>),
     /// See documentation on [crate::hir::Expression::Invalid].
     Invalid,
 }
@@ -341,13 +346,16 @@ pub struct LambdaLiteral {
     pub body: Expression,
 }
 
-/// The syntax-node of a let-in expression.
+/// The syntax-node of a let/in expression.
 #[derive(Debug, Clone)]
 pub struct LetIn {
     pub binder: Identifier,
     pub parameters: Parameters,
     pub type_annotation: Option<Expression>,
     // @Task improve upon naming
+    // @Note we could make this syntactically optional and then prove a beatiful error message
+    // in the desugarer (that's what we currently do for [DeclarationKind::Value] and plan to do
+    // for [LetStatement])
     pub expression: Expression,
     pub scope: Expression,
 }
@@ -363,6 +371,41 @@ pub struct UseIn {
 pub struct CaseAnalysis {
     pub expression: Expression,
     pub cases: Vec<Case>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DoBlock {
+    pub statements: Vec<Statement>,
+}
+
+// @Note we probably gonna need to make this spanning in the future (for diagnostics) just like
+// Expression, Pattern, Declaration.
+#[derive(Debug, Clone)]
+pub enum Statement {
+    // @Note we could make the definition syntactically optional and provide a good error message
+    // (missing definition) when desugaring
+    Let(LetStatement),
+    Use(Use),
+    // @Question should we rename this to Assign since we plan on not only desugaring
+    // to monads but also applicatives?
+    Bind(BindStatement),
+    Expression(Expression),
+}
+
+// @Note has a lot of overlap with [StatementKind::Value] (and a bit with [ExpressionKind::LetIn])
+#[derive(Debug, Clone)]
+pub struct LetStatement {
+    pub binder: Identifier,
+    pub parameters: Parameters,
+    pub type_annotation: Option<Expression>,
+    pub expression: Expression,
+}
+
+#[derive(Debug, Clone)]
+pub struct BindStatement {
+    pub binder: Identifier,
+    pub type_annotation: Option<Expression>,
+    pub expression: Expression,
 }
 
 impl InvalidFallback for Expression {

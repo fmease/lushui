@@ -15,6 +15,8 @@ pub type Result<T, E = Diagnostic> = std::result::Result<T, E>;
 // @Question bad name?
 pub type Results<T> = Result<T, Diagnostics>;
 
+// @Question should write a wrapper that does not allocate on the heap for one Diagnostic?
+// (many_err is a common occurence idk)
 pub type Diagnostics = HashSet<Diagnostic>;
 
 // @Question is this indirection actually worth it?
