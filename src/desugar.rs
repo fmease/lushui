@@ -333,21 +333,21 @@ impl<'a> Desugarer<'a> {
 
                 use ast::{
                     Attributes,
-                    UseBindings::{self, *},
+                    PathTree::{self, *},
                 };
 
                 let mut declarations = SmallVec::new();
 
-                fn desugar_multiple_use_bindings(
+                fn desugar_path_tree_multiple_paths(
                     path: Path,
-                    bindings: Vec<UseBindings>,
+                    bindings: Vec<PathTree>,
                     span: Span,
                     attributes: &Attributes,
                     declarations: &mut SmallVec<hir::Declaration<Desugared>, 1>,
                 ) -> Result<()> {
                     for binding in bindings {
                         match binding {
-                            ast::UseBindings::Single { target, binder } => {
+                            ast::PathTree::Single { target, binder } => {
                                 // if the binder is not explicitly set, look for the most-specific/last/right-most
                                 // identifier of the target but if that one is `self`, look up the last identifier of
                                 // the parent path
@@ -359,11 +359,11 @@ impl<'a> Desugarer<'a> {
                                     }
                                 });
                             }
-                            ast::UseBindings::Multiple {
+                            ast::PathTree::Multiple {
                                 path: inner_path,
                                 bindings,
                             } => {
-                                desugar_multiple_use_bindings(
+                                desugar_path_tree_multiple_paths(
                                     path.clone().join(inner_path)?,
                                     bindings,
                                     span,
@@ -385,7 +385,7 @@ impl<'a> Desugarer<'a> {
                         }
                     }),
                     Multiple { path, bindings } => {
-                        desugar_multiple_use_bindings(
+                        desugar_path_tree_multiple_paths(
                             path,
                             bindings,
                             declaration.span,
@@ -499,8 +499,8 @@ impl<'a> Desugarer<'a> {
         Ok(match expression.kind {
             PiTypeLiteral(pi) => {
                 let (domain, codomain) = (
-                    self.desugar_expression(pi.parameter),
-                    self.desugar_expression(pi.expression),
+                    self.desugar_expression(pi.domain),
+                    self.desugar_expression(pi.codomain),
                 )
                     .accumulate_err()?;
 
@@ -649,14 +649,21 @@ impl<'a> Desugarer<'a> {
                 }
             }
             // @Beacon @Task
-            UseIn(_use_in) => todo!("use/in expressions not supported yet"),
+            UseIn(_use_in) => {
+                return Err(Diagnostic::bug()
+                    .with_message("use/in expressions not supported yet")
+                    .with_span(&expression.span))
+                .many_err()
+            }
             CaseAnalysis(analysis) => {
                 let mut errors = Diagnostics::default();
                 let mut cases = Vec::new();
 
                 for case_group in analysis.cases {
                     cases.push(hir::Case {
-                        pattern: self.desugar_pattern(case_group.pattern),
+                        pattern: self
+                            .desugar_pattern(case_group.pattern)
+                            .try_softly(&mut errors),
                         body: self
                             .desugar_expression(case_group.expression.clone())
                             .try_softly(&mut errors),
@@ -682,15 +689,21 @@ impl<'a> Desugarer<'a> {
                     .with_span(&expression.span))
                 .many_err()
             }
+            SequenceLiteral(_sequence) => {
+                return Err(Diagnostic::bug()
+                    .with_message("sequence literals not fully implemented yet")
+                    .with_span(&expression.span))
+                .many_err();
+            }
             Invalid => InvalidFallback::invalid(),
         })
     }
 
     /// Lower a pattern from AST to HIR.
-    fn desugar_pattern(&mut self, pattern: ast::Pattern) -> hir::Pattern<Desugared> {
+    fn desugar_pattern(&mut self, pattern: ast::Pattern) -> Results<hir::Pattern<Desugared>> {
         use ast::PatternKind::*;
 
-        match pattern.kind {
+        Ok(match pattern.kind {
             NumberLiteral(literal) => pat! {
                 Number[pattern.span](literal)
             },
@@ -707,13 +720,36 @@ impl<'a> Desugarer<'a> {
                     binder: binding.binder,
                 }
             },
-            Deapplication(application) => pat! {
-                Deapplication[pattern.span] {
-                    callee: self.desugar_pattern(application.callee),
-                    argument: self.desugar_pattern(application.argument),
+            Deapplication(application) => {
+                // @Temporary
+                if let Some(binder) = &application.binder {
+                    self.warn(
+                        Diagnostic::warning()
+                            .with_message("named arguments not supported yet")
+                            .with_span(binder),
+                    )
                 }
-            },
-        }
+
+                let (callee, argument) = (
+                    self.desugar_pattern(application.callee),
+                    self.desugar_pattern(application.argument),
+                )
+                    .accumulate_err()?;
+
+                pat! {
+                    Deapplication[pattern.span] {
+                        callee,
+                        argument,
+                    }
+                }
+            }
+            SequenceLiteralPattern(_sequence) => {
+                return Err(Diagnostic::bug()
+                    .with_message("sequence literal patterns not supported yet")
+                    .with_span(&pattern.span))
+                .many_err()
+            }
+        })
     }
 
     /// Lower annotated parameters from AST to HIR.

@@ -88,6 +88,14 @@
                     "name": "punctuation.grouping.end.bracket.round.lushui meta.brace.round.lushui"
                 },
                 {
+                    "match": "\\[",
+                    "name": "punctuation.grouping.begin.bracket.square.lushui meta.brace.square.lushui"
+                },
+                {
+                    "match": "\\]",
+                    "name": "punctuation.grouping.end.bracket.square.lushui meta.brace.square.lushui"
+                },
+                {
                     "match": ",",
                     "name": "punctuation.lushui"
                 }

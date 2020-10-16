@@ -963,6 +963,7 @@ impl<'a> Resolver<'a> {
                     }
                 }
             }
+            Invalid => InvalidFallback::invalid(),
         };
 
         Ok((pattern, binders))

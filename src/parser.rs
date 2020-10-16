@@ -8,12 +8,31 @@
 //! * cannot really handle optional indentation
 //! * ugly API
 //! * all syntax errors are fatal. instead, she should have a "poisoned" mode
+//!
+//! ## Grammar Notation
+//!
+//! Most parsing functions in this module are accompanied by a grammar snippet.
+//! These snippets are written in an EBNF explained below:
+//!
+//! | Notation  | Name                 | Definition or Remarks |
+//! |-----------|----------------------|-----------------------|
+//! | `; C`     | Comment              | Stretches until the end of the line |
+//! | `N ::= R` | Definition           | Defines non-terminal `A` by rule `R` |
+//! | `A B`     | Sequence             | Rule `B` immediately followed by rule `A` modulo lexed tokens |
+//! | `(A)`     | Grouping             | To escape default precedence |
+//! | <code>A &vert; B</code> | Ordered Alternative | Either `A` or `B` first trying `A` then `B` |
+//! | `A?`      | Option               | `A` or nothing (&epsilon;) |
+//! | `A*`      | Kleene Star (Multiplicity) | Arbitrarily long sequence of `A`s |
+//! | `A+`      | Kleene Plus (Positive Multiplicity) | Arbitrarily long non-empty sequence of `A`s |
+//! | `"T"`     | Terminal             | Lexed token by textual content |
+//! | `#T`      | Named Terminal       | Lexed token by name   |
+//! | `!A`      | Associativity        | To the left of `::=`  |
+//! | `<!A`     | Negative Look-Behind |                       |
 
-// @Task parse sequence literals Sequence-Literal ::= "[" Expression* "]" ("_" #Identifier)?
-// (but no space between "]" and "_"!!)
 // @Task allow underscores in places where binders are allowed
-// @Task parse temporary
-// Lazy-Expression ::= "lazy" Expression
+// @Task parse temporary Lazy-Expression ::= "lazy" Expression
+// @Task update syntax of declaration attributes and parse
+// attributes on expressions, patterns and statements
 
 pub mod ast;
 
@@ -541,7 +560,7 @@ impl<'a> Parser<'a> {
     /// Use-Declaration ::= "use" Use-Bindings Line-Break
     /// ```
     fn finish_parse_use_declaration(&mut self, keyword_span: Span) -> Result<Declaration> {
-        let bindings = self.parse_use_bindings(&[TokenKind::LineBreak.into()])?;
+        let bindings = self.parse_path_tree(&[TokenKind::LineBreak.into()])?;
         self.consume(TokenKind::LineBreak)?;
 
         // @Task span info
@@ -552,43 +571,44 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// Parse use bindings.
+    /// Parse a path tree.
     ///
     /// ## Grammar
     ///
     /// ```text
-    /// Use-Bindings ::= @Task
+    /// Path-Tree ::= @Task
     /// ```
-    fn parse_use_bindings(&mut self, delimiters: &[Delimiter]) -> Result<UseBindings> {
+    fn parse_path_tree(&mut self, delimiters: &[Delimiter]) -> Result<PathTree> {
         use TokenKind::*;
         let token = self.current();
 
         match token.kind {
             Identifier | Punctuation => {
                 self.advance();
-                self.finish_parse_use_bindings(Path::new_identifier(token), delimiters)
+                self.finish_parse_path_tree(Path::new_identifier(token), delimiters)
             }
             Crate => {
                 self.advance();
-                self.finish_parse_use_bindings(Path::new_crate(token), delimiters)
+                self.finish_parse_path_tree(Path::new_crate(token), delimiters)
             }
             Super => {
                 self.advance();
-                self.finish_parse_use_bindings(Path::new_super(token), delimiters)
+                self.finish_parse_path_tree(Path::new_super(token), delimiters)
             }
             Self_ => {
                 self.advance();
-                self.finish_parse_use_bindings(Path::new_self(token), delimiters)
+                self.finish_parse_path_tree(Path::new_self(token), delimiters)
             }
             _ => return Err(Expected::Path.but_actual_is(token)),
         }
     }
 
-    fn finish_parse_use_bindings(
+    // @Task rewrite this following a simpler grammar mirroring expression applications
+    fn finish_parse_path_tree(
         &mut self,
         mut path: Path,
         delimiters: &[Delimiter],
-    ) -> Result<UseBindings> {
+    ) -> Result<PathTree> {
         use TokenKind::*;
 
         while self.consumed(Dot) {
@@ -606,18 +626,18 @@ impl<'a> Parser<'a> {
 
                     while !self.consumed(ClosingRoundBracket) {
                         if self.consumed(OpeningRoundBracket) {
-                            let target = self.parse_simple_path()?;
+                            let target = self.parse_path()?;
                             self.consume(As)?;
                             let binder = self.consume_general_identifier()?;
                             self.consume(ClosingRoundBracket)?;
 
-                            bindings.push(UseBindings::Single {
+                            bindings.push(PathTree::Single {
                                 target,
                                 binder: Some(binder),
                             });
                         } else {
                             // @Note @Bug this is really really fragile=non-extensible!
-                            bindings.push(self.parse_use_bindings(&[
+                            bindings.push(self.parse_path_tree(&[
                                 OpeningRoundBracket.into(),
                                 ClosingRoundBracket.into(),
                                 Identifier.into(),
@@ -627,7 +647,7 @@ impl<'a> Parser<'a> {
                         }
                     }
 
-                    return Ok(UseBindings::Multiple { path, bindings });
+                    return Ok(PathTree::Multiple { path, bindings });
                 }
                 _ => {
                     return Err(
@@ -652,7 +672,7 @@ impl<'a> Parser<'a> {
         };
 
         // @Task correct span info
-        Ok(UseBindings::Single {
+        Ok(PathTree::Single {
             target: path,
             binder,
         })
@@ -706,14 +726,146 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```text
-    /// Expression ::= Let-In | Use-In | Lambda-Literal | Case-Analysis | Pi-Literal-Or-Lower
+    /// Expression ::= Pi-Literal-Or-Lower
     /// ```
     // @Task parse sigma literals
     fn parse_expression(&mut self) -> Result<Expression> {
-        use TokenKind::*;
-        let token = self.current();
+        self.parse_pi_type_literal_or_lower()
+    }
 
+    /// Parse a pi-type literal or a lower expression.
+    ///
+    /// ## Grammar
+    ///
+    /// ```text
+    /// Pi-Literal-Or-Lower !right ::= (
+    ///     "(" Explicitness #Identifier Type-Annotation ")" |
+    ///     Application-Or-Lower)
+    ///         ("->" Pi-Literal-Or-Lower)*
+    /// ```
+    fn parse_pi_type_literal_or_lower(&mut self) -> Result<Expression> {
+        use TokenKind::*;
+        let mut span = Span::SHAM;
+
+        let (explicitness, binder, domain) = self
+            .reflect(|parser| {
+                span = parser.consume(TokenKind::OpeningRoundBracket)?.span;
+
+                let explicitness = parser.consume_explicitness_symbol();
+                let binder = parser.consume_identifier()?;
+                let parameter = parser.parse_type_annotation()?;
+
+                parser.consume(ClosingRoundBracket)?;
+
+                Ok((explicitness, Some(binder), parameter))
+            })
+            .or_else(|_| -> Result<_> {
+                let parameter = self.parse_application_or_lower()?;
+                span = parameter.span;
+                Ok((Explicit, None, parameter))
+            })?;
+
+        Ok(match self.consume(ThinArrowRight) {
+            Ok(_) => {
+                let codomain = self.parse_pi_type_literal_or_lower()?;
+                span.merging(&codomain);
+
+                expr! {
+                    PiTypeLiteral[span] {
+                        codomain,
+                        binder,
+                        domain,
+                        explicitness,
+                    }
+                }
+            }
+            Err(_) if binder.is_none() => domain,
+            Err(error) => return Err(error),
+        })
+    }
+
+    /// Parse an application or a lower expression.
+    ///
+    /// ## Grammar
+    ///
+    /// ```text
+    /// Application-Or-Lower !left ::=
+    ///     Lower-Expression
+    ///     (Lower-Expression | "(" Explicitness (#Identifier "=")? Expression ")")*
+    /// ```
+    fn parse_application_or_lower(&mut self) -> Result<Expression> {
+        self.parse_application_like_or_lower()
+    }
+
+    /// Parse a lower expression.
+    ///
+    /// ## Grammar
+    ///
+    /// ```text
+    /// Lower-Expression ::=
+    ///     | Path
+    ///     | "Type"
+    ///     | #Number-Literal
+    ///     | #Text-Literal
+    ///     | Typed-Hole
+    ///     | Let-In
+    ///     | Use-In
+    ///     | Lambda-Literal
+    ///     | Case-Analysis
+    ///     | Do-Block
+    ///     | Sequence-Literal
+    ///     | "(" Expression ")"
+    /// Typed-Hole ::= "?" #Identifier
+    /// Sequence-Literal ::= "[" Lower-Expression* "]"
+    /// ```
+    // @Task rename "lower expression" to sth more appropriate
+    fn parse_lower_expression(&mut self) -> Result<Expression> {
+        use TokenKind::*;
+
+        let token = self.current();
         match token.kind {
+            Identifier | Punctuation => {
+                self.advance();
+                self.finish_parse_path(Path::new_identifier(token))
+                    .map(Into::into)
+            }
+            Crate => {
+                self.advance();
+                self.finish_parse_path(Path::new_crate(token))
+                    .map(Into::into)
+            }
+            Super => {
+                self.advance();
+                self.finish_parse_path(Path::new_super(token))
+                    .map(Into::into)
+            }
+            Self_ => {
+                self.advance();
+                self.finish_parse_path(Path::new_self(token))
+                    .map(Into::into)
+            }
+            Type => {
+                self.advance();
+                Ok(expr! { TypeLiteral[token.span] })
+            }
+            NumberLiteral => {
+                self.advance();
+                Ok(expr! { NumberLiteral[token.span](token.number_literal()) })
+            }
+            TextLiteral => {
+                self.advance();
+
+                if !token.text_literal_is_terminated() {
+                    return Err(text_literal_is_not_terminated(&token));
+                }
+
+                Ok(expr! { TextLiteral[token.span](token.text_literal()) })
+            }
+            QuestionMark => {
+                self.advance();
+                self.consume_identifier()
+                    .map(|tag| expr! { TypedHole[token.span.merge(&tag)] { tag } })
+            }
             Let => {
                 self.advance();
                 self.finish_parse_let_in(token.span)
@@ -734,188 +886,67 @@ impl<'a> Parser<'a> {
                 self.advance();
                 self.finish_parse_do_block(token.span)
             }
-            _ => self.parse_pi_type_literal_or_lower(),
-        }
-    }
+            OpeningSquareBracket => {
+                let mut span = token.span;
 
-    /// Parse a pi-type literal or a lower expression.
-    ///
-    /// ## Grammar
-    ///
-    /// ```text
-    /// Pi-Literal-Or-Lower !right ::= (
-    ///     "(" Explicitness #Identifier Type-Annotation ")" |
-    ///     Application-Or-Lower)
-    ///         ("->" Pi-Literal-Or-Lower)*
-    /// ```
-    fn parse_pi_type_literal_or_lower(&mut self) -> Result<Expression> {
-        use TokenKind::*;
-        let mut span = Span::SHAM;
-
-        let (explicitness, binder, parameter) = self
-            .reflect(|parser| {
-                span = parser.consume(TokenKind::OpeningRoundBracket)?.span;
-
-                let explicitness = parser.consume_explicitness_symbol();
-                let binder = parser.consume_identifier()?;
-                let parameter = parser.parse_type_annotation()?;
-
-                parser.consume(ClosingRoundBracket)?;
-
-                Ok((explicitness, Some(binder), parameter))
-            })
-            .or_else(|_| -> Result<_> {
-                let parameter = self.parse_application_or_lower()?;
-                span = parameter.span;
-                Ok((Explicit, None, parameter))
-            })?;
-
-        Ok(match self.consume(ThinArrowRight) {
-            Ok(_) => {
-                let expression = self.parse_pi_type_literal_or_lower()?;
-                span.merging(&expression);
-
-                expr! {
-                    PiTypeLiteral[span] {
-                        expression,
-                        binder,
-                        parameter,
-                        explicitness,
-                    }
-                }
-            }
-            Err(_) if binder.is_none() => parameter,
-            Err(error) => return Err(error),
-        })
-    }
-
-    /// Parse an application or a lower expression.
-    ///
-    /// ## Grammar
-    ///
-    /// ```text
-    /// Application-Or-Lower !left ::=
-    ///     Lower-Expression
-    ///         (Lower-Expression | "(" Explicitness (#Identifier "=")? Expression ")")*
-    /// ```
-    fn parse_application_or_lower(&mut self) -> Result<Expression> {
-        use TokenKind::*;
-        let mut expression = self.reflect(Self::parse_lower_expression)?;
-        while let Ok((argument, explicitness, binder)) = self
-            .reflect(|parser| Ok((parser.parse_lower_expression()?, Explicit, None)))
-            .or_else(|_| -> Result<_> {
-                self.consume(OpeningRoundBracket)?;
-                let explicitness = self.consume_explicitness_symbol();
-                let binder = (self.current_is(TokenKind::Identifier)
-                    && self.succeeding_is(TokenKind::Equals))
-                .then(|| {
-                    let token = self.current();
-                    self.advance();
-                    self.advance();
-                    ast::Identifier::from_token(token)
-                });
-                let expression = self.parse_expression()?;
-                self.consume(ClosingRoundBracket)?;
-                Ok((expression, explicitness, binder))
-            })
-        {
-            expression = expr! {
-                Application[expression.span.merge(&argument)] {
-                    callee: expression,
-                    argument,
-                    explicitness,
-                    binder,
-                }
-            };
-        }
-        Ok(expression)
-    }
-
-    /// Parse a lower expression.
-    ///
-    /// ## Grammar
-    ///
-    /// ```text
-    /// Lower-Expression ::= Simple-Path | "Type" | #Number-Literal | #Text-Literal | "(" Expression ")"
-    /// Simple-Path ::= ("crate" | "super" | General-Identifier)? ("." General-Identifier)*
-    /// ```
-    fn parse_lower_expression(&mut self) -> Result<Expression> {
-        use TokenKind::*;
-
-        let token = self.current();
-        Ok(match token.kind {
-            Identifier | Punctuation => {
-                self.advance();
-                self.finish_parse_simple_path(Path::new_identifier(token))?
-                    .into()
-            }
-            Crate => {
-                self.advance();
-                self.finish_parse_simple_path(Path::new_crate(token))?
-                    .into()
-            }
-            Super => {
-                self.advance();
-                self.finish_parse_simple_path(Path::new_super(token))?
-                    .into()
-            }
-            Self_ => {
-                self.advance();
-                self.finish_parse_simple_path(Path::new_self(token))?.into()
-            }
-            Type => {
-                self.advance();
-                expr! { TypeLiteral[token.span] }
-            }
-            NumberLiteral => {
-                self.advance();
-                expr! { NumberLiteral[token.span](token.number_literal()) }
-            }
-            TextLiteral => {
                 self.advance();
 
-                if !token.text_literal_is_terminated() {
-                    return Err(text_literal_is_not_terminated(&token));
+                let mut elements = Vec::new();
+
+                while !self.current_is(ClosingSquareBracket) {
+                    elements.push(self.parse_lower_expression()?);
                 }
 
-                expr! { TextLiteral[token.span](token.text_literal()) }
-            }
-            QuestionMark => {
+                span.merging(&self.current());
                 self.advance();
-                let tag = self.consume_identifier()?;
-                expr! { TypedHole[token.span.merge(&tag)] { tag } }
+
+                Ok(expr! { SequenceLiteral[span] { elements } })
             }
             // @Task use advance_with//finish
-            OpeningRoundBracket => return self.parse_bracketed(Self::parse_expression),
-            _ => return Err(Expected::Expression.but_actual_is(token)),
-        })
+            OpeningRoundBracket => self.parse_bracketed(Self::parse_expression),
+            _ => Err(Expected::Expression.but_actual_is(token)),
+        }
     }
 
-    fn parse_simple_path(&mut self) -> Result<Path> {
+    /// Parse a path.
+    ///
+    /// ## Grammar
+    ///
+    /// ```text
+    /// Path ::=
+    ///     ("crate" | "super" | General-Identifier)?
+    ///     ("." General-Identifier)*
+    /// ```
+    fn parse_path(&mut self) -> Result<Path> {
         use TokenKind::*;
         let token = self.current();
         match token.kind {
             Identifier | Punctuation => {
                 self.advance();
-                self.finish_parse_simple_path(Path::new_identifier(token))
+                self.finish_parse_path(Path::new_identifier(token))
             }
             Crate => {
                 self.advance();
-                self.finish_parse_simple_path(Path::new_crate(token))
+                self.finish_parse_path(Path::new_crate(token))
             }
             Super => {
                 self.advance();
-                self.finish_parse_simple_path(Path::new_super(token))
+                self.finish_parse_path(Path::new_super(token))
             }
             Self_ => {
                 self.advance();
-                self.finish_parse_simple_path(Path::new_self(token))
+                self.finish_parse_path(Path::new_self(token))
             }
             _ => return Err(Expected::Path.but_actual_is(token)),
         }
     }
 
-    fn finish_parse_simple_path(&mut self, mut path: Path) -> Result<Path> {
+    /// Finish parsing a path.
+    ///
+    /// The first segment should have already been parsed.
+    ///
+    /// See [Self::parse_path] for the grammar.
+    fn finish_parse_path(&mut self, mut path: Path) -> Result<Path> {
         while self.consumed(TokenKind::Dot) {
             path.segments
                 .push(self.consume_general_identifier()?.into());
@@ -991,10 +1022,10 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```text
-    /// Use-In ::= "use" Use-Bindings "in" Line-Break? Expression
+    /// Use-In ::= "use" Path-Tree "in" Line-Break? Expression
     /// ```
     fn finish_parse_use_in(&mut self, span_of_use: Span) -> Result<Expression> {
-        let bindings = self.parse_use_bindings(&[TokenKind::In.into()])?;
+        let bindings = self.parse_path_tree(&[TokenKind::In.into()])?;
         self.consume(TokenKind::In)?;
         let _ = self.consumed(TokenKind::LineBreak);
         let scope = self.parse_expression()?;
@@ -1105,7 +1136,7 @@ impl<'a> Parser<'a> {
                 }
                 Use => {
                     self.advance();
-                    let bindings = self.parse_use_bindings(&[TokenKind::LineBreak.into()])?;
+                    let bindings = self.parse_path_tree(&[TokenKind::LineBreak.into()])?;
                     self.consume(LineBreak)?;
                     Statement::Use(ast::Use { bindings })
                 }
@@ -1235,22 +1266,42 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```text
-    /// Pattern !left ::= Lower-Pattern | Deapplication
-    /// Deapplication ::= Lower-Pattern+
+    /// Pattern !left ::=
+    ///     Lower-Pattern
+    ///     (Lower-Pattern | "(" Explicitness (#Identifier =)? Pattern ")")*
     /// ```
-    // @Task implicit application e.g. `foo (,bar)`
     fn parse_pattern(&mut self) -> Result<Pattern> {
-        let mut callee = self.reflect(Self::parse_lower_pattern)?;
+        self.parse_application_like_or_lower()
+    }
 
-        // @Note probably produces bad error messages, replace with delimiter-logic
-        while let Ok(argument) = self.reflect(Self::parse_lower_pattern) {
-            callee = pat! {
-                Deapplication[callee.span.merge(&argument)] {
-                    callee,
-                    argument,
-                }
-            };
+    /// Parse a (de)application or something lower.
+    fn parse_application_like_or_lower<EP: ExpressionOrPattern>(&mut self) -> Result<EP> {
+        use TokenKind::*;
+        let mut callee = self.reflect(EP::parse_lower)?;
+
+        while let Ok((argument, explicitness, binder)) = self
+            .reflect(|parser| Ok((EP::parse_lower(parser)?, Explicit, None)))
+            .or_else(|_| -> Result<_> {
+                self.consume(OpeningRoundBracket)?;
+                let explicitness = self.consume_explicitness_symbol();
+                let binder = (self.current_is(TokenKind::Identifier)
+                    && self.succeeding_is(TokenKind::Equals))
+                .then(|| {
+                    let token = self.current();
+                    self.advance();
+                    self.advance();
+                    ast::Identifier::from_token(token)
+                });
+                let argument = EP::parse_lower(self)?;
+                self.consume(ClosingRoundBracket)?;
+                Ok((argument, explicitness, binder))
+            })
+        {
+            let span = callee.span().merge(&argument);
+
+            callee = EP::new_application_like(callee, argument, explicitness, binder, span);
         }
+
         Ok(callee)
     }
 
@@ -1259,19 +1310,45 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```text
-    /// Lower-Pattern ::= #Number-Literal | #Text-Literal | Binder | Simple-Path | "(" Pattern ")"
+    /// Lower-Pattern ::=
+    ///     | Path
+    ///     | #Number-Literal
+    ///     | #Text-Literal
+    ///     | Binder
+    ///     | Sequence-Literal-Pattern
+    ///     | "(" Pattern ")"
     /// Binder ::= "\" #Identifier
-    /// Simple-Path ::= ("crate" | "super" | #Identifier)? ("." #Identifier)*
+    /// Sequence-Literal-Pattern ::= "[" Lower-Pattern* "]"
     /// ```
     fn parse_lower_pattern(&mut self) -> Result<Pattern> {
         let token = self.current();
 
         use TokenKind::*;
 
-        Ok(match token.kind {
+        match token.kind {
+            Identifier | Punctuation => {
+                self.advance();
+                self.finish_parse_path(Path::new_identifier(token))
+                    .map(Into::into)
+            }
+            Crate => {
+                self.advance();
+                self.finish_parse_path(Path::new_crate(token))
+                    .map(Into::into)
+            }
+            Super => {
+                self.advance();
+                self.finish_parse_path(Path::new_super(token))
+                    .map(Into::into)
+            }
+            Self_ => {
+                self.advance();
+                self.finish_parse_path(Path::new_self(token))
+                    .map(Into::into)
+            }
             NumberLiteral => {
                 self.advance();
-                pat! { NumberLiteral[token.span](token.number_literal()) }
+                Ok(pat! { NumberLiteral[token.span](token.number_literal()) })
             }
             TextLiteral => {
                 self.advance();
@@ -1280,36 +1357,33 @@ impl<'a> Parser<'a> {
                     return Err(text_literal_is_not_terminated(&token));
                 }
 
-                pat! { TextLiteral[token.span](token.text_literal()) }
+                Ok(pat! { TextLiteral[token.span](token.text_literal()) })
             }
             Backslash => {
                 self.advance();
-                let binder = self.consume_identifier()?;
-                pat! { Binder[token.span.merge(&binder)] { binder } }
+                self.consume_identifier()
+                    .map(|binder| pat! { Binder[token.span.merge(&binder)] { binder } })
             }
-            Identifier | Punctuation => {
+            OpeningSquareBracket => {
+                let mut span = token.span;
+
                 self.advance();
-                self.finish_parse_simple_path(Path::new_identifier(token))?
-                    .into()
-            }
-            Crate => {
+
+                let mut elements = Vec::new();
+
+                while !self.current_is(ClosingSquareBracket) {
+                    elements.push(self.parse_lower_pattern()?);
+                }
+
+                span.merging(&self.current());
                 self.advance();
-                self.finish_parse_simple_path(Path::new_crate(token))?
-                    .into()
-            }
-            Super => {
-                self.advance();
-                self.finish_parse_simple_path(Path::new_super(token))?
-                    .into()
-            }
-            Self_ => {
-                self.advance();
-                self.finish_parse_simple_path(Path::new_self(token))?.into()
+
+                Ok(pat! { SequenceLiteralPattern[span] { elements } })
             }
             // @Task @Beacon use a "finish"-parser
-            OpeningRoundBracket => return self.parse_bracketed(Self::parse_pattern),
-            _ => return Err(Expected::Pattern.but_actual_is(token)),
-        })
+            OpeningRoundBracket => self.parse_bracketed(Self::parse_pattern),
+            _ => Err(Expected::Pattern.but_actual_is(token)),
+        }
     }
 
     /// Parse a type annotation.
@@ -1438,6 +1512,55 @@ impl<'a> Parser<'a> {
         } else {
             Explicit
         }
+    }
+}
+
+/// Abstraction over expressions and patterns.
+trait ExpressionOrPattern: Sized + Spanning {
+    fn new_application_like(
+        callee: Self,
+        argument: Self,
+        explicitness: Explicitness,
+        binder: Option<Identifier>,
+        span: Span,
+    ) -> Self;
+    fn parse(parser: &mut Parser<'_>) -> Result<Self>;
+    fn parse_lower(parser: &mut Parser<'_>) -> Result<Self>;
+}
+
+impl ExpressionOrPattern for Expression {
+    fn new_application_like(
+        callee: Self,
+        argument: Self,
+        explicitness: Explicitness,
+        binder: Option<Identifier>,
+        span: Span,
+    ) -> Self {
+        expr! { Application[span] { callee, argument, explicitness, binder } }
+    }
+    fn parse(parser: &mut Parser<'_>) -> Result<Self> {
+        parser.parse_expression()
+    }
+    fn parse_lower(parser: &mut Parser<'_>) -> Result<Self> {
+        parser.parse_lower_expression()
+    }
+}
+
+impl ExpressionOrPattern for Pattern {
+    fn new_application_like(
+        callee: Self,
+        argument: Self,
+        explicitness: Explicitness,
+        binder: Option<Identifier>,
+        span: Span,
+    ) -> Self {
+        pat! { Deapplication[span] { callee, argument, explicitness, binder } }
+    }
+    fn parse(parser: &mut Parser<'_>) -> Result<Self> {
+        parser.parse_pattern()
+    }
+    fn parse_lower(parser: &mut Parser<'_>) -> Result<Self> {
+        parser.parse_lower_pattern()
     }
 }
 

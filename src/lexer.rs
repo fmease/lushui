@@ -115,6 +115,22 @@ impl<'a> Lexer<'a> {
                 '"' => self.lex_text_literal().many_err()?,
                 '(' => self.lex_opening_round_bracket(),
                 ')' => self.lex_closing_round_bracket().many_err()?,
+                '[' => {
+                    self.add(OpeningSquareBracket);
+                    self.advance();
+                }
+                ']' => {
+                    self.add(ClosingSquareBracket);
+                    self.advance();
+                }
+                '{' => {
+                    self.add(OpeningCurlyBracket);
+                    self.advance();
+                }
+                '}' => {
+                    self.add(ClosingCurlyBracket);
+                    self.advance();
+                }
                 ',' => self.lex_comma(),
                 '_' => self.lex_underscore(),
                 character => {
@@ -193,7 +209,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    // @Task make trailing dashes part of punctutation (this removes the error condition)
+    // @Task make trailing dashes part of punctuation (this removes the error condition)
     // @Task make `_` a valid token for identifiers
     fn lex_identifier(&mut self) -> Result<()> {
         self.lex_identifier_segment();

@@ -628,8 +628,10 @@ impl<'a> Typer<'a> {
                                         .into())
                                 }
                                 (Deapplication(_), _argument) => todo!(),
+                                (Invalid, _) => unreachable!(),
                             };
                         }
+                        Invalid => unreachable!(),
                     }
 
                     let type_ = self.infer_type_of_expression(

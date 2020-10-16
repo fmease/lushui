@@ -131,12 +131,12 @@ pub struct Group {
 /// See [DeclarationKind::Use] and [Statement::Use].
 #[derive(Clone, Debug)]
 pub struct Use {
-    pub bindings: UseBindings,
+    pub bindings: PathTree,
 }
 
 // @Task documentation, span information
 #[derive(Debug, Clone)]
-pub enum UseBindings {
+pub enum PathTree {
     Single {
         target: Path,
         binder: Option<Identifier>,
@@ -147,7 +147,7 @@ pub enum UseBindings {
     },
 }
 
-impl Spanning for UseBindings {
+impl Spanning for PathTree {
     fn span(&self) -> Span {
         match self {
             Self::Single { target, binder } => target.span().merge(binder),
@@ -304,6 +304,7 @@ pub enum ExpressionKind {
     UseIn(Box<UseIn>),
     CaseAnalysis(Box<CaseAnalysis>),
     DoBlock(Box<DoBlock>),
+    SequenceLiteral(Box<SequenceLiteral>),
     /// See documentation on [crate::hir::Expression::Invalid].
     Invalid,
 }
@@ -312,8 +313,8 @@ pub enum ExpressionKind {
 #[derive(Debug, Clone)]
 pub struct PiTypeLiteral {
     pub binder: Option<Identifier>,
-    pub parameter: Expression,
-    pub expression: Expression,
+    pub domain: Expression,
+    pub codomain: Expression,
     pub explicitness: Explicitness,
 }
 
@@ -363,7 +364,7 @@ pub struct LetIn {
 /// The syntax node of a use/in expression.
 #[derive(Debug, Clone)]
 pub struct UseIn {
-    pub bindings: UseBindings,
+    pub bindings: PathTree,
     pub scope: Expression,
 }
 
@@ -406,6 +407,11 @@ pub struct BindStatement {
     pub binder: Identifier,
     pub type_annotation: Option<Expression>,
     pub expression: Expression,
+}
+
+#[derive(Debug, Clone)]
+pub struct SequenceLiteral {
+    pub elements: Vec<Expression>,
 }
 
 impl InvalidFallback for Expression {
@@ -480,6 +486,8 @@ pub type Pattern = Spanned<PatternKind>;
 pub enum PatternKind {
     NumberLiteral(Box<Number>),
     TextLiteral(Box<String>),
+    // @Note unfortunate naming
+    SequenceLiteralPattern(Box<SequenceLiteralPattern>),
     Path(Box<Path>),
     Binder(Box<Binder>),
     Deapplication(Box<Deapplication>),
@@ -495,6 +503,13 @@ pub struct Binder {
 pub struct Deapplication {
     pub callee: Pattern,
     pub argument: Pattern,
+    pub explicitness: Explicitness,
+    pub binder: Option<Identifier>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SequenceLiteralPattern {
+    pub elements: Vec<Pattern>,
 }
 
 pub type Head = Spanned<HeadKind>;

@@ -433,6 +433,7 @@ impl<'a> Interpreter<'a> {
                                 }
                                 PatternKind::Binder(_) => todo!(),
                                 PatternKind::Deapplication(_) => todo!(),
+                                PatternKind::Invalid => unreachable!(),
                             }
                         }
                         // we should not be here
@@ -464,6 +465,7 @@ impl<'a> Interpreter<'a> {
                                     );
                                 }
                                 PatternKind::Deapplication(_) => todo!(),
+                                PatternKind::Invalid => unreachable!(),
                             }
                         }
                         // we should not be here

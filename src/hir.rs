@@ -226,6 +226,13 @@ pub enum PatternKind<P: Pass> {
     Binding(Rc<Binding<P>>),
     Binder(Rc<Binder<P>>),
     Deapplication(Rc<Deapplication<P>>),
+    Invalid,
+}
+
+impl<P: Pass> InvalidFallback for Pattern<P> {
+    fn invalid() -> Self {
+        pat! { Invalid[] }
+    }
 }
 
 /// A binder inside of a pattern.
@@ -470,6 +477,7 @@ impl<P: Pass> DisplayWith for Pattern<P> {
                 application.callee.with(linchpin),
                 application.argument.with(linchpin)
             ),
+            Invalid => write!(f, "<invalid>"),
         }
     }
 }
@@ -560,4 +568,7 @@ pub macro pat {
             PatternKind::$kind(Rc::from($value)),
         )
     },
+    ($kind:ident[$( $span:expr )?]) => {
+        Pattern::new(span!($( $span )?), PatternKind::$kind)
+    }
 }
