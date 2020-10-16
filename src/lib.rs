@@ -18,15 +18,14 @@
 #![forbid(rust_2018_idioms, unused_must_use)]
 
 pub mod compiler;
-pub mod desugar;
 pub mod diagnostic;
 pub mod documenter;
 mod entity;
 #[cfg(test)]
 mod golden;
 mod grow_array;
-mod hir;
 pub mod lexer;
+pub mod lowerer;
 pub mod parser;
 pub mod resolver;
 pub mod span;

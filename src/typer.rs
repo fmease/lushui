@@ -5,8 +5,10 @@ pub mod interpreter;
 use crate::{
     ast::{AttributeKind, Explicit},
     diagnostic::{Code, Diagnostic, Diagnostics, Result, Results},
-    hir::{self, *},
-    resolver::{CrateScope, Identifier, Resolved},
+    resolver::{
+        hir::{self, expr, Declaration, Expression},
+        CrateScope, Identifier,
+    },
     support::{accumulate_errors::*, DisplayWith, ManyErrExt, TransposeExt},
 };
 use interpreter::{
@@ -14,10 +16,6 @@ use interpreter::{
     scope::{FunctionScope, Registration},
     Form, Interpreter,
 };
-
-pub type Declaration = hir::Declaration<Resolved>;
-pub type Expression = hir::Expression<Resolved>;
-pub type Pattern = hir::Pattern<Resolved>;
 
 const TYPE: Expression = expr! { Type[] };
 
@@ -71,7 +69,7 @@ impl<'a> Typer<'a> {
     }
 
     fn start_infer_types_in_declaration(&mut self, declaration: &Declaration) -> Results<()> {
-        use DeclarationKind::*;
+        use hir::DeclarationKind::*;
 
         match &declaration.kind {
             Value(value) => {
@@ -389,8 +387,8 @@ impl<'a> Typer<'a> {
         expression: Expression,
         scope: &FunctionScope<'_>,
     ) -> Result<Expression, Error> {
-        use crate::typer::interpreter::Substitution::*;
-        use ExpressionKind::*;
+        use hir::ExpressionKind::*;
+        use interpreter::Substitution::*;
 
         Ok(match expression.kind {
             Binding(binding) => scope
@@ -560,7 +558,7 @@ impl<'a> Typer<'a> {
                         error => error,
                     };
 
-                    use PatternKind::*;
+                    use hir::PatternKind::*;
 
                     // @Task add help subdiagnostic when a constructor is (de)applied to too few arguments
                     // @Update @Note or just replace the type mismatch error (hmm) with an arity mismatch error
@@ -745,7 +743,7 @@ impl<'a> Typer<'a> {
     // gets R in A -> B -> C -> R plus an environment b.c. R could depend on outer stuff
     // @Note this function assumes that the expression has already been normalized!
     fn result_type(&mut self, expression: Expression, scope: &FunctionScope<'_>) -> Expression {
-        use ExpressionKind::*;
+        use hir::ExpressionKind::*;
 
         match expression.kind {
             PiType(literal) => {
@@ -778,7 +776,7 @@ impl<'a> Typer<'a> {
     fn callee(&mut self, mut expression: Expression) -> Expression {
         loop {
             expression = match expression.kind {
-                ExpressionKind::Application(application) => application.callee.clone(),
+                hir::ExpressionKind::Application(application) => application.callee.clone(),
                 _ => return expression,
             }
         }

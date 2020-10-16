@@ -1,11 +1,8 @@
 use std::fmt;
 
 use crate::{
-    resolver::{CrateIndex, Identifier, Namespace},
-    typer::{
-        interpreter::{ffi::ForeignFunction, scope::ValueView},
-        Expression,
-    },
+    resolver::{hir::Expression, CrateIndex, Identifier, Namespace},
+    typer::interpreter::{ffi::ForeignFunction, scope::ValueView},
 };
 
 #[derive(Clone)]
@@ -135,7 +132,7 @@ use crate::resolver::CrateScope;
 use crate::support::DisplayWith;
 
 impl DisplayWith for EntityKind {
-    type Linchpin = <crate::resolver::Resolved as crate::hir::Pass>::ShowLinchpin;
+    type Linchpin = CrateScope;
 
     fn format(&self, scope: &CrateScope, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use EntityKind::*;

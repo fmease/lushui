@@ -1,50 +1,31 @@
-//! The desugaring stage.
+//! The lowering stage.
 //!
-//! Additionally, this phase validates attributes and checks if the mandatory
+//! Higher-level syntactic constructs in the AST are simplified and rewritten
+//! in terms of lower-level language primitives.
+//!
+//! Additionally among other things, this phase validates attributes and checks if the mandatory
 //! type annotations are present.
 
-use std::{fmt, iter::once};
+pub mod lowered_ast;
 
 use crate::{
-    ast::{self, Explicit, Identifier, Path},
+    ast::{self, Explicit, Path},
     diagnostic::{Code, Diagnostic, Diagnostics, Result, Results},
-    hir::{self, decl, expr, pat, Pass},
     smallvec,
     span::{SourceMap, Spanning},
     support::{accumulate_errors::*, pluralize, release, InvalidFallback, ManyErrExt, TrySoftly},
     SmallVec,
 };
+use lowered_ast::{decl, expr, pat};
+use std::{fmt, iter::once};
 
-#[derive(Clone)]
-pub enum Desugared {}
-
-impl Pass for Desugared {
-    type Binder = Identifier;
-    type ReferencedBinder = Path;
-    type ForeignApplicationBinder = !;
-    type Substitution = !;
-    type ShowLinchpin = ();
-
-    fn format_binding(
-        binder: &Self::ReferencedBinder,
-        (): &(),
-        f: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result {
-        write!(f, "{}", binder)
-    }
-
-    fn format_substitution(substitution: &!, _: &(), _: &mut fmt::Formatter<'_>) -> fmt::Result {
-        *substitution
-    }
-}
-
-/// The state of the desugarer.
-pub struct Desugarer<'a> {
+/// The state of the lowering pass.
+pub struct Lowerer<'a> {
     map: &'a mut SourceMap,
     warnings: &'a mut Diagnostics,
 }
 
-impl<'a> Desugarer<'a> {
+impl<'a> Lowerer<'a> {
     pub fn new(map: &'a mut SourceMap, warnings: &'a mut Diagnostics) -> Self {
         Self { map, warnings }
     }
@@ -54,15 +35,15 @@ impl<'a> Desugarer<'a> {
         self.warnings.insert(diagnostic);
     }
 
-    /// Desugar a declaration from AST.
+    /// Lower a declaration.
     ///
     /// Also, filters documentation attributes and validates
     /// foreign attributes. Those checks should probably be moved somewhere
     /// else.
-    pub fn desugar_declaration(
+    pub fn lower_declaration(
         &mut self,
         mut declaration: ast::Declaration,
-    ) -> Results<SmallVec<hir::Declaration<Desugared>, 1>> {
+    ) -> Results<SmallVec<lowered_ast::Declaration, 1>> {
         use ast::DeclarationKind::*;
 
         let mut errors = Diagnostics::default();
@@ -82,16 +63,16 @@ impl<'a> Desugarer<'a> {
                     .try_softly(&mut errors),
                 };
 
-                // @Note type_annotation is currently desugared twice @Task remove duplicate work
+                // @Note type_annotation is currently lowered twice @Task remove duplicate work
                 // @Task find a way to use `Option::map` (currently does not work because of
                 // partial moves, I hate those), use local bindings
                 let expression = match value.expression {
                     Some(expression) => {
                         let mut expression =
-                            self.desugar_expression(expression).try_softly(&mut errors);
+                            self.lower_expression(expression).try_softly(&mut errors);
                         {
                             let mut type_annotation = once(
-                                self.desugar_expression(declaration_type_annotation.clone())
+                                self.lower_expression(declaration_type_annotation.clone())
                                     .try_softly(&mut errors),
                             );
 
@@ -99,7 +80,7 @@ impl<'a> Desugarer<'a> {
                                 let parameter_type_annotation =
                                     match &parameter_group.type_annotation {
                                         Some(type_annotation) => {
-                                            self.desugar_expression(type_annotation.clone())
+                                            self.lower_expression(type_annotation.clone())
                                         }
                                         None => Err(missing_mandatory_type_annotation(
                                             parameter_group,
@@ -130,7 +111,7 @@ impl<'a> Desugarer<'a> {
                 };
 
                 let type_annotation = self
-                    .desugar_parameters_to_annotated_ones(
+                    .lower_parameters_to_annotated_ones(
                         value.parameters,
                         declaration_type_annotation,
                     )
@@ -157,15 +138,14 @@ impl<'a> Desugarer<'a> {
                 };
 
                 let type_annotation = self
-                    .desugar_parameters_to_annotated_ones(data.parameters, data_type_annotation)
+                    .lower_parameters_to_annotated_ones(data.parameters, data_type_annotation)
                     .try_softly(&mut errors);
 
                 let constructors = data.constructors.map(|constructors| {
                     constructors
                         .into_iter()
                         .flat_map(|constructor| {
-                            self.desugar_declaration(constructor)
-                                .try_softly(&mut errors)
+                            self.lower_declaration(constructor).try_softly(&mut errors)
                         })
                         .collect()
                 });
@@ -191,7 +171,7 @@ impl<'a> Desugarer<'a> {
                 };
 
                 let type_annotation = self
-                    .desugar_parameters_to_annotated_ones(
+                    .lower_parameters_to_annotated_ones(
                         constructor.parameters,
                         constructor_type_annotation,
                     )
@@ -273,8 +253,7 @@ impl<'a> Desugarer<'a> {
                 let declarations = declarations
                     .into_iter()
                     .flat_map(|declaration| {
-                        self.desugar_declaration(declaration)
-                            .try_softly(&mut errors)
+                        self.lower_declaration(declaration).try_softly(&mut errors)
                     })
                     .collect();
 
@@ -319,8 +298,7 @@ impl<'a> Desugarer<'a> {
                         declaration
                     })
                     .flat_map(|declaration| {
-                        self.desugar_declaration(declaration)
-                            .try_softly(&mut errors)
+                        self.lower_declaration(declaration).try_softly(&mut errors)
                     })
                     .collect();
 
@@ -338,12 +316,12 @@ impl<'a> Desugarer<'a> {
 
                 let mut declarations = SmallVec::new();
 
-                fn desugar_path_tree_multiple_paths(
+                fn lower_path_tree_multiple_paths(
                     path: Path,
                     bindings: Vec<PathTree>,
                     span: Span,
                     attributes: &Attributes,
-                    declarations: &mut SmallVec<hir::Declaration<Desugared>, 1>,
+                    declarations: &mut SmallVec<lowered_ast::Declaration, 1>,
                 ) -> Result<()> {
                     for binding in bindings {
                         match binding {
@@ -363,7 +341,7 @@ impl<'a> Desugarer<'a> {
                                 path: inner_path,
                                 bindings,
                             } => {
-                                desugar_path_tree_multiple_paths(
+                                lower_path_tree_multiple_paths(
                                     path.clone().join(inner_path)?,
                                     bindings,
                                     span,
@@ -385,7 +363,7 @@ impl<'a> Desugarer<'a> {
                         }
                     }),
                     Multiple { path, bindings } => {
-                        desugar_path_tree_multiple_paths(
+                        lower_path_tree_multiple_paths(
                             path,
                             bindings,
                             declaration.span,
@@ -489,18 +467,18 @@ impl<'a> Desugarer<'a> {
     }
 
     /// Lower an expression from AST to HIR.
-    // @Question should we provide methods on Desugarer which abstract over TrySoftly?
-    pub fn desugar_expression(
+    // @Question should we provide methods on Lowerer which abstract over TrySoftly?
+    pub fn lower_expression(
         &mut self,
         expression: ast::Expression,
-    ) -> Results<hir::Expression<Desugared>> {
+    ) -> Results<lowered_ast::Expression> {
         use ast::ExpressionKind::*;
 
         Ok(match expression.kind {
             PiTypeLiteral(pi) => {
                 let (domain, codomain) = (
-                    self.desugar_expression(pi.domain),
-                    self.desugar_expression(pi.codomain),
+                    self.lower_expression(pi.domain),
+                    self.lower_expression(pi.codomain),
                 )
                     .accumulate_err()?;
 
@@ -524,8 +502,8 @@ impl<'a> Desugarer<'a> {
                 }
 
                 let (callee, argument) = (
-                    self.desugar_expression(application.callee),
-                    self.desugar_expression(application.argument),
+                    self.lower_expression(application.callee),
+                    self.lower_expression(application.argument),
                 )
                     .accumulate_err()?;
 
@@ -551,12 +529,12 @@ impl<'a> Desugarer<'a> {
             LambdaLiteral(lambda) => {
                 let mut errors = Diagnostics::default();
 
-                let mut expression = self.desugar_expression(lambda.body).try_softly(&mut errors);
+                let mut expression = self.lower_expression(lambda.body).try_softly(&mut errors);
 
                 let mut type_annotation = lambda
                     .body_type_annotation
                     .map(|type_annotation| {
-                        self.desugar_expression(type_annotation)
+                        self.lower_expression(type_annotation)
                             .try_softly(&mut errors)
                     })
                     .into_iter();
@@ -567,7 +545,7 @@ impl<'a> Desugarer<'a> {
                             .type_annotation
                             .clone()
                             .map(|type_annotation| {
-                                self.desugar_expression(type_annotation)
+                                self.lower_expression(type_annotation)
                                     .try_softly(&mut errors)
                             });
 
@@ -592,20 +570,20 @@ impl<'a> Desugarer<'a> {
                 let mut errors = Diagnostics::default();
 
                 let mut expression = self
-                    .desugar_expression(let_in.expression)
+                    .lower_expression(let_in.expression)
                     .try_softly(&mut errors);
 
                 let mut type_annotation = let_in
                     .type_annotation
                     .map(|type_annotation| {
-                        self.desugar_expression(type_annotation)
+                        self.lower_expression(type_annotation)
                             .try_softly(&mut errors)
                     })
                     .into_iter();
 
                 for parameter_group in let_in.parameters.iter().rev() {
                     let parameter = parameter_group.type_annotation.clone().map(|expression| {
-                        self.desugar_expression(expression).try_softly(&mut errors)
+                        self.lower_expression(expression).try_softly(&mut errors)
                     });
 
                     for binder in parameter_group.parameters.iter().rev() {
@@ -621,9 +599,7 @@ impl<'a> Desugarer<'a> {
                     }
                 }
 
-                let body = self
-                    .desugar_expression(let_in.scope)
-                    .try_softly(&mut errors);
+                let body = self.lower_expression(let_in.scope).try_softly(&mut errors);
 
                 release!(errors);
 
@@ -632,7 +608,7 @@ impl<'a> Desugarer<'a> {
                         callee: expr! {
                             Lambda[] {
                                 parameter: let_in.binder,
-                                // @Note we cannot simply desugar parameters and a type annotation because
+                                // @Note we cannot simply lower parameters and a type annotation because
                                 // in the chain (`->`) of parameters, there might always be one missing and
                                 // we don't support partial type annotations yet (using `'_`)
                                 // @Temporary @Update @Bug -gy because we ignore above message
@@ -660,18 +636,18 @@ impl<'a> Desugarer<'a> {
                 let mut cases = Vec::new();
 
                 for case_group in analysis.cases {
-                    cases.push(hir::Case {
+                    cases.push(lowered_ast::Case {
                         pattern: self
-                            .desugar_pattern(case_group.pattern)
+                            .lower_pattern(case_group.pattern)
                             .try_softly(&mut errors),
                         body: self
-                            .desugar_expression(case_group.expression.clone())
+                            .lower_expression(case_group.expression.clone())
                             .try_softly(&mut errors),
                     });
                 }
 
                 let subject = self
-                    .desugar_expression(analysis.expression)
+                    .lower_expression(analysis.expression)
                     .try_softly(&mut errors);
 
                 release!(errors);
@@ -700,7 +676,7 @@ impl<'a> Desugarer<'a> {
     }
 
     /// Lower a pattern from AST to HIR.
-    fn desugar_pattern(&mut self, pattern: ast::Pattern) -> Results<hir::Pattern<Desugared>> {
+    fn lower_pattern(&mut self, pattern: ast::Pattern) -> Results<lowered_ast::Pattern> {
         use ast::PatternKind::*;
 
         Ok(match pattern.kind {
@@ -731,8 +707,8 @@ impl<'a> Desugarer<'a> {
                 }
 
                 let (callee, argument) = (
-                    self.desugar_pattern(application.callee),
-                    self.desugar_pattern(application.argument),
+                    self.lower_pattern(application.callee),
+                    self.lower_pattern(application.argument),
                 )
                     .accumulate_err()?;
 
@@ -753,20 +729,20 @@ impl<'a> Desugarer<'a> {
     }
 
     /// Lower annotated parameters from AST to HIR.
-    fn desugar_parameters_to_annotated_ones(
+    fn lower_parameters_to_annotated_ones(
         &mut self,
         parameters: ast::Parameters,
         type_annotation: ast::Expression,
-    ) -> Results<hir::Expression<Desugared>> {
+    ) -> Results<lowered_ast::Expression> {
         let mut errors = Diagnostics::default();
 
         let mut expression = self
-            .desugar_expression(type_annotation)
+            .lower_expression(type_annotation)
             .try_softly(&mut errors);
 
         for parameter_group in parameters.parameters.into_iter().rev() {
             let parameter_type_annotation = match parameter_group.type_annotation {
-                Some(type_annotation) => self.desugar_expression(type_annotation),
+                Some(type_annotation) => self.lower_expression(type_annotation),
                 None => Err(missing_mandatory_type_annotation(
                     &parameter_group,
                     AnnotationTarget::Parameters {
@@ -826,7 +802,7 @@ impl fmt::Display for AnnotationTarget {
     }
 }
 
-impl InvalidFallback for SmallVec<hir::Declaration<Desugared>, 1> {
+impl InvalidFallback for SmallVec<lowered_ast::Declaration, 1> {
     fn invalid() -> Self {
         SmallVec::new()
     }

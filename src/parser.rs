@@ -442,8 +442,8 @@ impl<'a> Parser<'a> {
         let binder = self.consume_identifier()?;
         span.merging(&binder);
 
+        // it is an external module declaration
         if self.consumed(LineBreak) {
-            // it is an external module declaration
             return Ok(decl! {
                 Module[span] {
                     binder,

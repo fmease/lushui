@@ -4,9 +4,8 @@ use super::{ffi, Expression, Substitution::Shift};
 use crate::{
     diagnostic::{Code, Diagnostic, Result},
     entity::EntityKind,
-    hir::expr,
     lexer::Number,
-    resolver::{CrateIndex, CrateScope, DebruijnIndex, Identifier, Index},
+    resolver::{hir::expr, CrateIndex, CrateScope, DebruijnIndex, Identifier, Index},
     span::Span,
     support::DisplayIsDebug,
 };

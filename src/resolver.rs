@@ -15,12 +15,13 @@
 //! * handle module privacy (notably restricted exposure and good error messages)
 //! * handle crate declarations
 
+pub mod hir;
+
 use crate::{
     ast::{self, Path},
-    desugar::Desugared,
     diagnostic::{Code, Diagnostic, Diagnostics, Result, Results},
     entity::{Entity, EntityKind},
-    hir::{self, decl, expr, Declaration, Expression, Pass, Pattern},
+    lowerer::lowered_ast,
     span::{Span, Spanning},
     support::{
         accumulate_errors::*, release, DebugIsDisplay, InvalidFallback, ManyErrExt, TransposeExt,
@@ -29,6 +30,7 @@ use crate::{
     typer::interpreter::{ffi, scope::Registration},
     HashMap,
 };
+use hir::{decl, expr, pat};
 use indexed_vec::IndexVec;
 use joinery::JoinableIterator;
 use std::rc::Rc;
@@ -547,8 +549,8 @@ impl<'a> Resolver<'a> {
     /// requires a crate root which is defined through the root module.
     pub fn resolve_declaration(
         &mut self,
-        declaration: Declaration<Desugared>,
-    ) -> Results<Declaration<Resolved>> {
+        declaration: lowered_ast::Declaration,
+    ) -> Results<hir::Declaration> {
         self.start_resolve_declaration(&declaration, None)?;
         // @Bug creates fatal errors for use stuff (see tests/multiple-undefined1)
         self.scope.resolve_unresolved_uses()?;
@@ -569,10 +571,10 @@ impl<'a> Resolver<'a> {
     /// and it's just not worth it memory-wise.
     fn start_resolve_declaration(
         &mut self,
-        declaration: &Declaration<Desugared>,
+        declaration: &lowered_ast::Declaration,
         module: Option<CrateIndex>,
     ) -> Results<()> {
-        use hir::DeclarationKind::*;
+        use lowered_ast::DeclarationKind::*;
 
         match &declaration.kind {
             Value(value) => {
@@ -667,10 +669,10 @@ impl<'a> Resolver<'a> {
     /// use-declaration resolving one).
     fn finish_resolve_declaration(
         &mut self,
-        declaration: Declaration<Desugared>,
+        declaration: lowered_ast::Declaration,
         module: Option<CrateIndex>,
-    ) -> Results<Declaration<Resolved>> {
-        use hir::DeclarationKind::*;
+    ) -> Results<hir::Declaration> {
+        use lowered_ast::DeclarationKind::*;
 
         Ok(match declaration.kind {
             Value(value) => {
@@ -810,10 +812,10 @@ impl<'a> Resolver<'a> {
     // @Task @Beacon use Rc::try_unwrap more instead of clone
     fn resolve_expression(
         &mut self,
-        expression: Expression<Desugared>,
+        expression: lowered_ast::Expression,
         scope: &FunctionScope<'_>,
-    ) -> Results<Expression<Resolved>> {
-        use hir::ExpressionKind::*;
+    ) -> Results<hir::Expression> {
+        use lowered_ast::ExpressionKind::*;
 
         let mut errors = Diagnostics::default();
 
@@ -886,7 +888,12 @@ impl<'a> Resolver<'a> {
                     explicitness: lambda.explicitness,
                 }
             },
-            UseIn => todo!("resolving use/in"),
+            UseIn => {
+                return Err(Diagnostic::bug()
+                    .with_message("use/in expression not fully implemented yet")
+                    .with_span(&expression))
+                .many_err()
+            }
             CaseAnalysis(analysis) => {
                 let subject = self.resolve_expression(analysis.subject.clone(), scope)?;
                 let mut cases = Vec::new();
@@ -908,7 +915,6 @@ impl<'a> Resolver<'a> {
                     }
                 }
             }
-            Substitution(_) | ForeignApplication(_) | IO(_) => unreachable!(),
             Invalid => InvalidFallback::invalid(),
         };
 
@@ -919,10 +925,10 @@ impl<'a> Resolver<'a> {
 
     fn resolve_pattern(
         &mut self,
-        pattern: Pattern<Desugared>,
+        pattern: lowered_ast::Pattern,
         scope: &FunctionScope<'_>,
-    ) -> Results<(Pattern<Resolved>, Vec<ast::Identifier>)> {
-        use hir::{pat, PatternKind::*};
+    ) -> Results<(hir::Pattern, Vec<ast::Identifier>)> {
+        use lowered_ast::PatternKind::*;
 
         let mut binders = Vec::new();
 
@@ -1007,7 +1013,7 @@ impl Identifier {
         self.source.as_str()
     }
 
-    pub fn to_expression(self) -> Expression<Resolved> {
+    pub fn to_expression(self) -> hir::Expression {
         expr! { Binding[self.span()] { binder: self } }
     }
 
@@ -1082,38 +1088,6 @@ impl fmt::Display for Identifier {
 impl fmt::Debug for Identifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self)
-    }
-}
-
-#[derive(Clone)]
-pub enum Resolved {}
-
-impl Pass for Resolved {
-    type Binder = Identifier;
-    type ReferencedBinder = Self::Binder;
-    type ForeignApplicationBinder = Self::Binder;
-    type Substitution = hir::Substitution<Self>;
-    type ShowLinchpin = CrateScope;
-
-    fn format_binding(
-        binder: &Self::ReferencedBinder,
-        scope: &CrateScope,
-        f: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result {
-        write!(f, "{}", FunctionScope::absolute_path(binder, scope))
-    }
-
-    fn format_substitution(
-        substitution: &Self::Substitution,
-        linchpin: &Self::ShowLinchpin,
-        f: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result {
-        write!(
-            f,
-            "<substitution {} {}>",
-            substitution.substitution.with(linchpin),
-            substitution.expression.with(linchpin)
-        )
     }
 }
 

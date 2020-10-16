@@ -14,8 +14,10 @@ use indexed_vec::IndexVec;
 use crate::{
     diagnostic::Result,
     grow_array::GrowArray,
-    resolver::CrateScope,
-    typer::{Declaration, Expression},
+    resolver::{
+        hir::{self, Declaration, Expression},
+        CrateScope,
+    },
     HashMap,
 };
 use instruction::{Chunk, ChunkIndex, Instruction};
@@ -118,7 +120,7 @@ impl<'a> Compiler<'a> {
         &mut self,
         declaration: &Declaration,
     ) -> Result<(), CompilationError> {
-        use crate::hir::DeclarationKind::*;
+        use hir::DeclarationKind::*;
 
         match &declaration.kind {
             Value(value) => {
@@ -181,7 +183,7 @@ impl<'a> Compiler<'a> {
         expression: &Expression,
         parent: LambdaParent,
     ) -> Result<Vec<Instruction>, CompilationError> {
-        use crate::hir::ExpressionKind::*;
+        use hir::ExpressionKind::*;
 
         let mut instructions = Vec::new();
 

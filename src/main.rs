@@ -1,10 +1,10 @@
 #![forbid(rust_2018_idioms, unused_must_use)]
 
 use lushui::{
-    desugar::Desugarer,
     diagnostic::{Diagnostic, Diagnostics, Results},
     documenter::Documenter,
     lexer::Lexer,
+    lowerer::Lowerer,
     parser::Parser,
     resolver,
     span::SourceMap,
@@ -276,14 +276,14 @@ fn main() {
 
         match arguments.command {
             Command::Check { .. } | Command::Run { .. } | Command::Build { .. } => {
-                let declaration = Desugarer::new(&mut map, &mut warnings)
-                    .desugar_declaration(declaration)?
+                let declaration = Lowerer::new(&mut map, &mut warnings)
+                    .lower_declaration(declaration)?
                     .pop()
                     .unwrap();
 
                 {
                     if merged_arguments.print_desugar_hir {
-                        eprintln!("{}", declaration.with(&()));
+                        eprintln!("{}", declaration);
                     }
                     if merged_arguments.only_desugar {
                         return Ok(());

@@ -2,16 +2,15 @@ use super::{CrateScope, Expression};
 use crate::{
     ast::{Attribute, Explicit},
     diagnostic::{Code, Diagnostic, Result},
-    hir,
-    hir::{expr, ExpressionKind},
-    resolver::{Identifier, Resolved},
+    resolver::{
+        hir::{expr, Constructor, ExpressionKind},
+        Identifier,
+    },
     typer::Declaration,
     Int, Nat,
 };
 
 pub type ForeignFunction = fn(arguments: Vec<Value>) -> Value;
-
-type Constructor = hir::Constructor<Resolved>;
 
 pub fn register_inherent_bindings<'a>(
     binder: &Identifier,

@@ -16,8 +16,10 @@ use super::Expression;
 use crate::{
     ast::Explicit,
     diagnostic::{Code, Diagnostic, Diagnostics, Result},
-    hir::*,
-    resolver::CrateScope,
+    resolver::{
+        hir::{self, expr},
+        CrateScope,
+    },
     span::Spanning,
     support::InvalidFallback,
 };
@@ -98,7 +100,7 @@ impl<'a> Interpreter<'a> {
         substitution: Substitution,
     ) -> Expression {
         use self::Substitution::*;
-        use ExpressionKind::*;
+        use hir::ExpressionKind::*;
 
         match (&expression.kind, substitution) {
             (Binding(binding), Shift(amount)) => {
@@ -235,7 +237,7 @@ impl<'a> Interpreter<'a> {
             (CaseAnalysis(analysis), substitution) => {
                 expr! {
                     CaseAnalysis[expression.span] {
-                        cases: analysis.cases.iter().map(|case| Case {
+                        cases: analysis.cases.iter().map(|case| hir::Case {
                             pattern: case.pattern.clone(),
                             body: expr! {
                                 Substitution[] {
@@ -278,7 +280,7 @@ impl<'a> Interpreter<'a> {
         context: Context<'_>,
     ) -> Result<Expression> {
         use self::Substitution::*;
-        use ExpressionKind::*;
+        use hir::ExpressionKind::*;
 
         // @Bug we currently don't support zero-arity foreign functions
         Ok(match expression.clone().kind {
@@ -421,19 +423,21 @@ impl<'a> Interpreter<'a> {
                 match subject.kind {
                     Binding(subject) => {
                         for case in analysis.cases.iter() {
+                            use hir::PatternKind::*;
+
                             match &case.pattern.kind {
-                                PatternKind::Number(_) => todo!(),
-                                PatternKind::Text(_) => todo!(),
-                                PatternKind::Binding(binding) => {
+                                Number(_) => todo!(),
+                                Text(_) => todo!(),
+                                Binding(binding) => {
                                     if binding.binder == subject.binder {
                                         // @Task @Beacon extend with parameters when evaluating
                                         return self
                                             .evaluate_expression(case.body.clone(), context);
                                     }
                                 }
-                                PatternKind::Binder(_) => todo!(),
-                                PatternKind::Deapplication(_) => todo!(),
-                                PatternKind::Invalid => unreachable!(),
+                                Binder(_) => todo!(),
+                                Deapplication(_) => todo!(),
+                                Invalid => unreachable!(),
                             }
                         }
                         // we should not be here
@@ -445,16 +449,18 @@ impl<'a> Interpreter<'a> {
                     Application(_application) => todo!(),
                     Number(literal0) => {
                         for case in analysis.cases.iter() {
+                            use hir::PatternKind::*;
+
                             match &case.pattern.kind {
-                                PatternKind::Number(literal1) => {
+                                Number(literal1) => {
                                     if &literal0 == literal1 {
                                         return self
                                             .evaluate_expression(case.body.clone(), context);
                                     }
                                 }
-                                PatternKind::Text(_) => todo!(),
-                                PatternKind::Binding(_) => todo!(),
-                                PatternKind::Binder(_) => {
+                                Text(_) => todo!(),
+                                Binding(_) => todo!(),
+                                Binder(_) => {
                                     // @Beacon @Beacon @Question whyy do we need type information here in *evaluate*???
                                     let scope = context
                                         .scope
@@ -464,8 +470,8 @@ impl<'a> Interpreter<'a> {
                                         context.with_scope(&scope),
                                     );
                                 }
-                                PatternKind::Deapplication(_) => todo!(),
-                                PatternKind::Invalid => unreachable!(),
+                                Deapplication(_) => todo!(),
+                                Invalid => unreachable!(),
                             }
                         }
                         // we should not be here
@@ -514,7 +520,7 @@ impl<'a> Interpreter<'a> {
         expression1: Expression,
         scope: &FunctionScope<'_>,
     ) -> Result<bool> {
-        use ExpressionKind::*;
+        use hir::ExpressionKind::*;
 
         Ok(match (expression0.kind, expression1.kind) {
             (Binding(binding0), Binding(binding1)) => binding0.binder == binding1.binder,
