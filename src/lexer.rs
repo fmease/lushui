@@ -447,7 +447,15 @@ impl<'a> Lexer<'a> {
         }
 
         // @Note once we implement escaping, this won't cut it and we need to build our own string
-        let text = self.source[LocalSpan::new(self.span.start + 1, self.span.end - 1)].to_owned();
+        let text = self.source[LocalSpan::new(
+            self.span.start + 1,
+            if terminated {
+                self.span.end - 1
+            } else {
+                self.span.end
+            },
+        )]
+        .to_owned();
         self.add_with(|span| Token::new_text_literal(text, span, terminated));
 
         Ok(())

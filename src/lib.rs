@@ -5,7 +5,6 @@
 
 #![feature(
     decl_macro,
-    move_ref_pattern,
     associated_type_defaults,
     never_type,
     bool_to_option,
@@ -45,6 +44,8 @@ use once_cell::sync::OnceCell;
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use smallvec::smallvec;
 use string_cache::DefaultAtom as Atom;
+
+type Str = std::borrow::Cow<'static, str>;
 
 type SmallVec<T, const N: usize> = smallvec::SmallVec<[T; N]>;
 

@@ -1,5 +1,7 @@
 //! The bytecode instructions.
 
+use crate::Str;
+
 // #[repr(u8)]
 // enum Opcode {
 //     CLOSURE,
@@ -28,8 +30,6 @@ impl indexed_vec::Idx for ChunkIndex {
     }
 }
 
-type CowStr = std::borrow::Cow<'static, str>;
-
 #[derive(Debug, Clone)]
 pub enum Instruction {
     Closure {
@@ -46,7 +46,7 @@ pub enum Instruction {
 
 impl Instruction {
     // @Temporary
-    pub(super) fn print_with_constant_table(&self, constants: &[super::Value]) -> CowStr {
+    pub(super) fn print_with_constant_table(&self, constants: &[super::Value]) -> Str {
         match self {
             Self::Closure { chunk, captures } => {
                 format!("closure {:?}, {:?}", chunk, captures).into()

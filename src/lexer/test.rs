@@ -43,6 +43,8 @@ fn assert_err(actual: Results<Vec<Token>>, expected_spans: &[&[Span]]) {
     }
 }
 
+// @Task split multiple asserts per function apart into several functions
+
 #[test]
 fn lex_comment() {
     assert_ok_token(
@@ -57,7 +59,10 @@ fn lex_comment() {
             Token::new(EndOfInput, span(59, 59)),
         ],
     );
+}
 
+#[test]
+fn lex_documentation_comment() {
     assert_ok_token(
         lex("\
 alpha;;文本
@@ -81,7 +86,7 @@ alpha;;文本
 }
 
 #[test]
-fn lex_identifier() {
+fn lex_identifier_basic() {
     assert_ok_token(
         lex("alpha alpha' alpha'''".into()),
         vec![
@@ -91,7 +96,10 @@ fn lex_identifier() {
             Token::new(EndOfInput, span(21, 21)),
         ],
     );
+}
 
+#[test]
+fn lex_identifier_primes_dashes_digits() {
     assert_ok_token(
         lex("ALPH4-G4MM4 alpha'-gamma' d000''-e000''-z999".into()),
         vec![
@@ -101,7 +109,10 @@ fn lex_identifier() {
             Token::new(EndOfInput, span(44, 44)),
         ],
     );
+}
 
+#[test]
+fn lex_keywords() {
     assert_ok_token(
         lex("self   Type Type' Type-Type in".into()),
         vec![
@@ -113,9 +124,34 @@ fn lex_identifier() {
             Token::new(EndOfInput, span(30, 30)),
         ],
     );
+}
 
-    assert_err(lex("'".into()), &[&[span(1, 1)]]);
-    assert_err(lex("'alpha".into()), &[&[span(1, 1)]]);
+#[test]
+fn do_not_lex_identifier_single_prime() {
+    assert_ok_token(
+        lex("'".into()),
+        vec![
+            Token::new_illegal('\'', span(1, 1)),
+            Token::new(EndOfInput, span(1, 1)),
+        ],
+    );
+}
+
+#[test]
+fn do_not_lex_identifier_leading_prime() {
+    assert_ok_token(
+        lex("'alpha".into()),
+        vec![
+            Token::new_illegal('\'', span(1, 1)),
+            Token::new_identifier("alpha".into(), span(2, 6)),
+            Token::new(EndOfInput, span(6, 6)),
+        ],
+    );
+}
+
+// @Task split apart
+#[test]
+fn do_not_lex_identifier_weird() {
     assert_err(lex("alpha-".into()), &[&[span(6, 6)]]);
     assert_err(lex("alpha-'".into()), &[&[span(6, 6)]]);
     assert_err(lex("alpha-:".into()), &[&[span(6, 6)]]);
@@ -290,7 +326,13 @@ fn lex_text_literal() {
         ],
     );
 
-    assert_err(lex(r#""text message"#.into()), &[&[span(1, 13)]]);
+    assert_ok_token(
+        lex(r#""text message"#.into()),
+        vec![
+            Token::new_text_literal("text message".into(), span(1, 13), false),
+            Token::new(EndOfInput, span(13, 13)),
+        ],
+    );
 }
 
 #[test]
@@ -318,11 +360,44 @@ fn lex_other() {
 
 #[test]
 fn illegal() {
-    assert_err(lex("函数".into()), &[&[span(1, 3)]]);
-    assert_err(lex("  function 函数".into()), &[&[span(12, 14)]]);
-    assert_err(lex("`".into()), &[&[span(1, 1)]]);
-    assert_err(lex("1`".into()), &[&[span(2, 2)]]);
-    assert_err(lex("\t\t".into()), &[&[span(1, 1)]]);
-    assert_err(lex("prefix[]".into()), &[&[span(7, 7)]]);
-    assert_err(lex("{}".into()), &[&[span(1, 1)]]);
+    assert_ok_token(
+        lex("函数".into()),
+        vec![
+            Token::new_illegal('\u{51FD}', span(1, 3)),
+            Token::new_illegal('\u{6570}', span(4, 6)),
+            Token::new(EndOfInput, span(6, 6)),
+        ],
+    );
+    assert_ok_token(
+        lex("  function 函数".into()),
+        vec![
+            Token::new_identifier("function".into(), span(3, 10)),
+            Token::new_illegal('\u{51FD}', span(12, 14)),
+            Token::new_illegal('\u{6570}', span(15, 17)),
+            Token::new(EndOfInput, span(17, 17)),
+        ],
+    );
+    assert_ok_token(
+        lex("`".into()),
+        vec![
+            Token::new_illegal('`', span(1, 1)),
+            Token::new(EndOfInput, span(1, 1)),
+        ],
+    );
+    assert_ok_token(
+        lex("1`".into()),
+        vec![
+            Token::with_data(NumberLiteral, TokenData::NatLiteral(1u8.into()), span(1, 1)),
+            Token::new_illegal('`', span(2, 2)),
+            Token::new(EndOfInput, span(2, 2)),
+        ],
+    );
+    assert_ok_token(
+        lex("\t\t".into()),
+        vec![
+            Token::new_illegal('\t', span(1, 1)),
+            Token::new_illegal('\t', span(2, 2)),
+            Token::new(EndOfInput, span(2, 2)),
+        ],
+    );
 }

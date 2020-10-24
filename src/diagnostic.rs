@@ -2,14 +2,9 @@
 
 use crate::{
     span::{SourceMap, Span, Spanning},
-    HashSet,
+    HashSet, Str,
 };
-use std::{
-    borrow::Cow,
-    ops::{Deref, DerefMut},
-};
-
-type CowStr = Cow<'static, str>;
+use std::ops::{Deref, DerefMut};
 
 pub type Result<T, E = Diagnostic> = std::result::Result<T, E>;
 // @Question bad name?
@@ -40,7 +35,7 @@ impl DerefMut for Diagnostic {
 #[derive(Hash, PartialEq, Eq, Debug)]
 pub struct RawDiagnostic {
     level: Level,
-    message: Option<CowStr>,
+    message: Option<Str>,
     code: Option<Code>,
     highlights: Vec<Highlight>,
     subdiagnostics: Vec<Subdiagnostic>,
@@ -68,7 +63,7 @@ impl Diagnostic {
         Self::new(Level::Warning)
     }
 
-    pub fn with_message(mut self, message: impl Into<CowStr>) -> Self {
+    pub fn with_message(mut self, message: impl Into<Str>) -> Self {
         self.message = Some(message.into());
         self
     }
@@ -91,7 +86,7 @@ impl Diagnostic {
         self
     }
 
-    pub fn with_labeled_span(mut self, spanning: &impl Spanning, label: impl Into<CowStr>) -> Self {
+    pub fn with_labeled_span(mut self, spanning: &impl Spanning, label: impl Into<Str>) -> Self {
         let role = self.choose_role();
         let span = spanning.span();
 
@@ -112,7 +107,7 @@ impl Diagnostic {
         }
     }
 
-    pub fn with_note(mut self, message: impl Into<CowStr>) -> Self {
+    pub fn with_note(mut self, message: impl Into<Str>) -> Self {
         self.subdiagnostics.push(Subdiagnostic {
             kind: SubdiagnosticKind::Note,
             message: message.into(),
@@ -120,7 +115,7 @@ impl Diagnostic {
         self
     }
 
-    pub fn with_help(mut self, message: impl Into<CowStr>) -> Self {
+    pub fn with_help(mut self, message: impl Into<Str>) -> Self {
         self.subdiagnostics.push(Subdiagnostic {
             kind: SubdiagnosticKind::Help,
             message: message.into(),
@@ -334,7 +329,7 @@ impl Diagnostic {
 #[derive(Hash, PartialEq, Eq, Debug)]
 struct Subdiagnostic {
     kind: SubdiagnosticKind,
-    message: CowStr,
+    message: Str,
 }
 
 impl fmt::Display for Subdiagnostic {
@@ -406,7 +401,7 @@ impl fmt::Display for Level {
 struct Highlight {
     span: Span,
     role: Role,
-    label: Option<CowStr>,
+    label: Option<Str>,
 }
 
 // @Note multiple primaries don't merge right now but have undefined behavior/should be an error

@@ -17,7 +17,7 @@ use crate::{
     SmallVec,
 };
 use lowered_ast::{decl, expr, pat};
-use std::{fmt, iter::once};
+use std::iter::once;
 
 /// The state of the lowering pass.
 pub struct Lowerer<'a> {
@@ -77,20 +77,19 @@ impl<'a> Lowerer<'a> {
                             );
 
                             for parameter_group in value.parameters.iter().rev() {
-                                let parameter_type_annotation =
-                                    match &parameter_group.type_annotation {
-                                        Some(type_annotation) => {
-                                            self.lower_expression(type_annotation.clone())
-                                        }
-                                        None => Err(missing_mandatory_type_annotation(
-                                            parameter_group,
-                                            AnnotationTarget::Parameters {
-                                                amount: parameter_group.parameters.len(),
-                                            },
-                                        ))
-                                        .many_err(),
+                                let parameter_type_annotation = match &parameter_group
+                                    .type_annotation
+                                {
+                                    Some(type_annotation) => {
+                                        self.lower_expression(type_annotation.clone())
                                     }
-                                    .try_softly(&mut errors);
+                                    None => Err(missing_mandatory_type_annotation(
+                                        parameter_group,
+                                        AnnotationTarget::Parameters(&parameter_group.parameters),
+                                    ))
+                                    .many_err(),
+                                }
+                                .try_softly(&mut errors);
 
                                 for binder in parameter_group.parameters.iter().rev() {
                                     expression = expr! {
@@ -745,9 +744,7 @@ impl<'a> Lowerer<'a> {
                 Some(type_annotation) => self.lower_expression(type_annotation),
                 None => Err(missing_mandatory_type_annotation(
                     &parameter_group,
-                    AnnotationTarget::Parameters {
-                        amount: parameter_group.parameters.len(),
-                    },
+                    AnnotationTarget::Parameters(&parameter_group.parameters),
                 ))
                 .many_err(),
             }
@@ -771,33 +768,51 @@ impl<'a> Lowerer<'a> {
     }
 }
 
+use crate::Str;
+use joinery::JoinableIterator;
+
 fn missing_mandatory_type_annotation(
     spanning: &impl Spanning,
-    target: AnnotationTarget,
+    target: AnnotationTarget<'_>,
 ) -> Diagnostic {
+    let type_annotation_suggestion: Str = match target {
+        AnnotationTarget::Parameters(parameters) => {
+            format!("`({}: TYPE)`", parameters.iter().join_with(' ')).into()
+        }
+        AnnotationTarget::Declaration => "`: TYPE`".into(),
+    };
+
     Diagnostic::error()
         .with_code(Code::E015)
-        .with_message(format!("missing mandatory type annotation on {}", target))
+        .with_message(format!(
+            "missing mandatory type annotation on {}",
+            target.name()
+        ))
         .with_span(spanning)
         .with_help(format!(
-            "provide a type annotation for the {}: `: TYPE`",
-            target
+            "provide a type annotation for the {}: {}",
+            target.name(),
+            type_annotation_suggestion,
         ))
 }
 
-/// Used for error reporting.
-enum AnnotationTarget {
-    Parameters { amount: usize },
+/// A place in the AST which can have a syntactically optional type annotation.
+///
+/// Used for error reporting exclusively.
+enum AnnotationTarget<'a> {
+    Parameters(&'a [ast::Identifier]),
     Declaration,
 }
 
-impl fmt::Display for AnnotationTarget {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl AnnotationTarget<'_> {
+    fn name(&self) -> Str {
         match self {
-            Self::Parameters { amount } => {
-                write!(f, "{}", pluralize(*amount, "parameter", || "parameters"))
-            }
-            Self::Declaration => write!(f, "declaration"),
+            Self::Parameters(parameters) => format!(
+                "{}",
+                pluralize(parameters.len(), "parameter", || "parameters")
+            )
+            .into(),
+            Self::Declaration => "declaration".into(),
         }
     }
 }
