@@ -192,6 +192,7 @@ module result: Result failure success =
     use Result.(failure success)
 
 module list: List nil cons =
+    ;; @Task rename nil to empty and cons...cons to new, with, cell, idk
     data List (A: Type): Type =
         ;; @Note bad naming
         nil (A: Type): List A

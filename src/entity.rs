@@ -1,7 +1,9 @@
 use std::fmt;
 
 use crate::{
-    resolver::{hir::Expression, CrateIndex, Identifier, Namespace},
+    hir::Expression,
+    resolver::{CrateIndex, CrateScope, Identifier, Namespace},
+    support::DisplayWith,
     typer::interpreter::{ffi::ForeignFunction, scope::ValueView},
 };
 
@@ -15,22 +17,13 @@ pub struct Entity {
 }
 
 impl Entity {
-    pub fn is_untyped(&self) -> bool {
+    pub const fn is_untyped(&self) -> bool {
         matches!(self.kind, EntityKind::UntypedValue | EntityKind::UntypedDataType(_))
     }
 
-    pub fn is_value_without_value(&self) -> bool {
+    pub const fn is_value_without_value(&self) -> bool {
         matches!(self.kind, EntityKind::Value { expression: None, .. })
     }
-
-    // fn is_resolver_specific(&self) -> bool {
-    //     use EntityKind::*;
-
-    //     // @Note hmmmm.... shouldn't we include UntypedDataType?
-    //     // but then, tests/invalid-data-type-instances ICE's (from working)
-    //     // matches!(self.kind, UntypedValue | UntypedDataType(_) | Module(_) | Use(_) | UnresolvedUse)
-    //     matches!(self.kind, UntypedValue | Module(_) | Use(_) | UnresolvedUse)
-    // }
 
     pub fn type_(&self) -> Option<Expression> {
         use EntityKind::*;
@@ -100,11 +93,6 @@ pub enum EntityKind {
     UntypedValue,
     Module(Namespace),
     UntypedDataType(Namespace),
-    /// A use bindings means extra indirection. We don't just "clone" the value it gets
-    /// "assigned" to. We merely reference it. This way we don't need to reference-count
-    /// module scopes (to avoid deep copies). Also, once we merge this data structure with
-    /// the one from the interpreter, we can successfully alias constructors and still
-    /// pattern match on them!
     /// Invariant: The "target" is never a Use itself. There are no nested aliases
     Use(CrateIndex),
     UnresolvedUse,
@@ -127,9 +115,6 @@ pub enum EntityKind {
         function: ForeignFunction,
     },
 }
-
-use crate::resolver::CrateScope;
-use crate::support::DisplayWith;
 
 impl DisplayWith for EntityKind {
     type Linchpin = CrateScope;

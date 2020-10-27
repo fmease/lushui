@@ -15,7 +15,7 @@
 #[cfg(test)]
 // @Beacon @Task update errors
 mod test;
-mod token;
+pub mod token;
 
 use crate::{
     diagnostic::{Code, Diagnostic, Diagnostics, Result, Results},

@@ -15,17 +15,24 @@
 //! * handle module privacy (notably restricted exposure and good error messages)
 //! * handle crate declarations
 
+// @Beacon @Task emit N error messages if there are N binders with the same name (multiple declarations, same name)
+// and not N-1 as we currently do. this is the new design where for conflicting things, we emit a diagnostic each
+// where one time, the span is primary and all other times, it is secondary (this has already been implemented with
+// mututally exclusive attributes)
+// @Update @Task also print other duplicate/conflicting bindings with secondary role (not just the very first
+// binding)
+
 pub mod hir;
 
 use crate::{
     ast::{self, Path},
     diagnostic::{Code, Diagnostic, Diagnostics, Result, Results},
     entity::{Entity, EntityKind},
-    lowerer::lowered_ast,
+    lowered_ast::{self, Attributes},
     span::{Span, Spanning},
     support::{
-        accumulate_errors::*, release, DebugIsDisplay, InvalidFallback, ManyErrExt, TransposeExt,
-        TrySoftly,
+        accumulate_errors, release, DebugIsDisplay, InvalidFallback, ManyErrExt, TransposeExt,
+        TryIn,
     },
     typer::interpreter::{ffi, scope::Registration},
     HashMap,
@@ -231,19 +238,20 @@ impl CrateScope {
         module: CrateIndex,
         inquirer: Inquirer,
     ) -> Result<Target::Output, Error> {
-        use ast::HeadKind::*;
+        use ast::HangerKind::*;
         use EntityKind::*;
 
-        if let Some(head) = &path.head {
+        if let Some(hanger) = &path.hanger {
             if path.segments.is_empty() {
-                return Target::resolve_bare_super_and_crate(head.span, module).map_err(Into::into);
+                return Target::resolve_bare_super_and_crate(hanger.span, module)
+                    .map_err(Into::into);
             }
 
             return self.resolve_path::<Target>(
                 &path.tail(),
-                match head.kind {
+                match hanger.kind {
                     Crate => self.root(),
-                    Super => self.resolve_super(head, module)?,
+                    Super => self.resolve_super(hanger, module)?,
                     Self_ => module,
                 },
                 Inquirer::System,
@@ -253,7 +261,7 @@ impl CrateScope {
         let index = self.resolve_first_segment(&path.segments[0], module, inquirer)?;
         let binding = &self.bindings[index].kind;
 
-        match path.simple() {
+        match path.to_simple() {
             Some(identifier) => {
                 Target::resolve_simple_path(identifier, binding, index).map_err(Into::into)
             }
@@ -269,12 +277,12 @@ impl CrateScope {
         }
     }
 
-    fn resolve_super(&self, head: &ast::Head, module: CrateIndex) -> Result<CrateIndex> {
+    fn resolve_super(&self, hanger: &ast::Hanger, module: CrateIndex) -> Result<CrateIndex> {
         self.bindings[module].parent.ok_or_else(|| {
             Diagnostic::error()
                 .with_code(Code::E021)
                 .with_message("the crate root does not have a parent")
-                .with_span(head)
+                .with_span(hanger)
         })
     }
 
@@ -542,7 +550,7 @@ impl<'a> Resolver<'a> {
         self.warnings.insert(warning);
     }
 
-    /// Resolve a desugar-HIR declaration to a resolver-HIR declaration.
+    /// Resolve the names of a declaration.
     ///
     /// It performs three passes to resolve all possible out of order declarations.
     /// If the declaration passed is not a module, this function will panic as it
@@ -566,7 +574,7 @@ impl<'a> Resolver<'a> {
     ///
     /// This also searches the program entry and stores it when it finds it.
     ///
-    /// In contrast to [Self::resolve_second_pass], this does not actually return a
+    /// In contrast to [Self::finish_resolve_declaration], this does not actually return a
     /// new intermediate HIR because of too much mapping and type-system boilerplate
     /// and it's just not worth it memory-wise.
     fn start_resolve_declaration(
@@ -694,10 +702,12 @@ impl<'a> Resolver<'a> {
                     .many_err()?;
 
                 let (type_annotation, expression) =
-                    (type_annotation, expression).accumulate_err()?;
+                    accumulate_errors!(type_annotation, expression)?;
 
                 decl! {
-                    Value[declaration.span][declaration.attributes] {
+                    Value {
+                        declaration.attributes,
+                        declaration.span;
                         binder,
                         type_annotation,
                         expression,
@@ -729,10 +739,12 @@ impl<'a> Resolver<'a> {
                 });
 
                 let (type_annotation, constructors) =
-                    (type_annotation, constructors.transpose()).accumulate_err()?;
+                    accumulate_errors!(type_annotation, constructors.transpose())?;
 
                 decl! {
-                    Data[declaration.span][declaration.attributes] {
+                    Data {
+                        declaration.attributes,
+                        declaration.span;
                         binder,
                         constructors,
                         type_annotation,
@@ -756,7 +768,9 @@ impl<'a> Resolver<'a> {
                     .many_err()?;
 
                 decl! {
-                    Constructor[declaration.span][declaration.attributes] {
+                    Constructor {
+                        declaration.attributes,
+                        declaration.span;
                         binder,
                         type_annotation,
                     }
@@ -781,7 +795,9 @@ impl<'a> Resolver<'a> {
                     .transpose()?;
 
                 decl! {
-                    Module[declaration.span][declaration.attributes] {
+                    Module {
+                        declaration.attributes,
+                        declaration.span;
                         binder: Identifier::new(index, submodule.binder),
                         file: submodule.file,
                         declarations,
@@ -798,7 +814,9 @@ impl<'a> Resolver<'a> {
                     .many_err()?;
 
                 decl! {
-                    Use[declaration.span][declaration.attributes] {
+                    Use {
+                        declaration.attributes,
+                        declaration.span;
                         binder: Some(Identifier::new(index, binder.clone())),
                         // @Temporary
                         target: Identifier::new(index, binder),
@@ -821,7 +839,7 @@ impl<'a> Resolver<'a> {
 
         let expression = match expression.kind {
             PiType(pi) => {
-                let (domain, codomain) = (
+                let (domain, codomain) = accumulate_errors!(
                     self.resolve_expression(pi.domain.clone(), scope),
                     match pi.parameter.clone() {
                         Some(parameter) => self.resolve_expression(
@@ -830,11 +848,12 @@ impl<'a> Resolver<'a> {
                         ),
                         None => self.resolve_expression(pi.codomain.clone(), scope),
                     },
-                )
-                    .accumulate_err()?;
+                )?;
 
                 return Ok(expr! {
-                    PiType[expression.span] {
+                    PiType {
+                        expression.attributes,
+                        expression.span;
                         parameter: pi.parameter.clone()
                             .map(|parameter| Identifier::new(Index::DebruijnParameter, parameter.clone())),
                         domain,
@@ -844,47 +863,48 @@ impl<'a> Resolver<'a> {
                 });
             }
             Application(application) => {
-                let (callee, argument) = (
+                let (callee, argument) = accumulate_errors!(
                     self.resolve_expression(application.callee.clone(), scope),
                     self.resolve_expression(application.argument.clone(), scope),
-                )
-                    .accumulate_err()?;
+                )?;
 
                 return Ok(expr! {
-                    Application[expression.span] {
+                    Application {
+                        expression.attributes,
+                        expression.span;
                         callee,
                         argument,
                         explicitness: application.explicitness,
                     }
                 });
             }
-            Type => expr! { Type[expression.span] },
-            Number(number) => expr! {
-                Number[expression.span](number)
-            },
-            Text(text) => expr! {
-                Text[expression.span](text)
-            },
+            Type => expr! { Type { expression.attributes, expression.span } },
+            Number(number) => expr! { Number(expression.attributes, expression.span; number) },
+            Text(text) => expr! { Text(expression.attributes, expression.span; text) },
             Binding(binding) => expr! {
-                Binding[expression.span] {
+                Binding {
+                    expression.attributes,
+                    expression.span;
                     binder: scope.resolve_binding(&binding.binder, &self.scope).many_err()?,
                 }
             },
-            // @Task @Beacon @Beacon don't use try_softly here: you don't need to: use
+            // @Task @Beacon @Beacon don't use try_in here: you don't need to: use
             // accumulate_err, the stuff here is independent! right??
             Lambda(lambda) => expr! {
-                Lambda[expression.span] {
+                Lambda {
+                    expression.attributes,
+                    expression.span;
                     parameter: Identifier::new(Index::DebruijnParameter, lambda.parameter.clone()),
                     parameter_type_annotation: lambda.parameter_type_annotation.clone()
                         .map(|type_| self.resolve_expression(type_, scope)
-                            .try_softly(&mut errors)),
+                            .try_in(&mut errors)),
                     body_type_annotation: lambda.body_type_annotation.clone()
                         .map(|type_| self.resolve_expression(type_,
                             &scope.extend_with_parameter(lambda.parameter.clone()))
-                            .try_softly(&mut errors)),
+                            .try_in(&mut errors)),
                     body: self.resolve_expression(lambda.body.clone(),
                         &scope.extend_with_parameter(lambda.parameter.clone()))
-                        .try_softly(&mut errors),
+                        .try_in(&mut errors),
                     explicitness: lambda.explicitness,
                 }
             },
@@ -909,7 +929,9 @@ impl<'a> Resolver<'a> {
                 }
 
                 expr! {
-                    CaseAnalysis[expression.span] {
+                    CaseAnalysis {
+                        expression.attributes,
+                        expression.span;
                         subject,
                         cases,
                     }
@@ -933,37 +955,38 @@ impl<'a> Resolver<'a> {
         let mut binders = Vec::new();
 
         let pattern = match pattern.kind.clone() {
-            Number(nat) => pat! {
-                Number[pattern.span](nat)
-            },
-            Text(text) => pat! {
-                Text[pattern.span](text)
-            },
+            Number(number) => pat! { Number(pattern.attributes, pattern.span; number) },
+            Text(text) => pat! { Text(pattern.attributes, pattern.span; text) },
             Binding(binding) => pat! {
-                Binding[pattern.span] {
+                Binding {
+                    pattern.attributes,
+                    pattern.span;
                     binder: scope.resolve_binding(&binding.binder, &self.scope).many_err()?,
                 }
             },
             Binder(binder) => {
                 binders.push(binder.binder.clone());
                 pat! {
-                    Binder[pattern.span] {
+                    Binder {
+                        pattern.attributes,
+                        pattern.span;
                         binder: Identifier::new(Index::DebruijnParameter, unrc!(binder.binder)),
                     }
                 }
             }
             Deapplication(deapplication) => {
-                let ((callee, mut callee_binders), (argument, mut argument_binders)) = (
+                let ((callee, mut callee_binders), (argument, mut argument_binders)) = accumulate_errors!(
                     self.resolve_pattern(deapplication.callee.clone(), scope),
                     self.resolve_pattern(deapplication.argument.clone(), scope),
-                )
-                    .accumulate_err()?;
+                )?;
 
                 binders.append(&mut callee_binders);
                 binders.append(&mut argument_binders);
 
                 pat! {
-                    Deapplication[pattern.span] {
+                    Deapplication {
+                        pattern.attributes,
+                        pattern.span;
                         callee,
                         argument,
                     }
@@ -1014,7 +1037,7 @@ impl Identifier {
     }
 
     pub fn to_expression(self) -> hir::Expression {
-        expr! { Binding[self.span()] { binder: self } }
+        expr! { Binding { Attributes::default(), self.span(); binder: self } }
     }
 
     // @Note bad name

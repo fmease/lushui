@@ -3,13 +3,15 @@
 pub mod interpreter;
 
 use crate::{
-    ast::{AttributeKind, Explicit},
+    ast::Explicit,
     diagnostic::{Code, Diagnostic, Diagnostics, Result, Results},
+    lowered_ast::{AttributeKeys, Attributes},
     resolver::{
         hir::{self, expr, Declaration, Expression},
         CrateScope, Identifier,
     },
-    support::{accumulate_errors::*, DisplayWith, ManyErrExt, TransposeExt},
+    span::Span,
+    support::{accumulate_errors, DisplayWith, ManyErrExt, TransposeExt},
 };
 use interpreter::{
     ffi,
@@ -17,7 +19,8 @@ use interpreter::{
     Form, Interpreter,
 };
 
-const TYPE: Expression = expr! { Type[] };
+// @Temporary @Note we need to update the macros
+// const expr! { Type[] }: Expression = expr! { Type[] };
 
 pub(crate) fn missing_annotation() -> Diagnostic {
     // @Task add span
@@ -59,11 +62,10 @@ impl<'a> Typer<'a> {
         let results_of_first_pass = self.start_infer_types_in_declaration(declaration);
         self.poisoned = results_of_first_pass.is_err();
 
-        (
+        accumulate_errors!(
             results_of_first_pass,
             self.infer_types_of_out_of_order_bindings(),
-        )
-            .accumulate_err()?;
+        )?;
 
         Ok(())
     }
@@ -74,7 +76,7 @@ impl<'a> Typer<'a> {
         match &declaration.kind {
             Value(value) => {
                 self.evaluate_registration(
-                    if declaration.attributes.has(AttributeKind::Foreign) {
+                    if declaration.attributes.has(AttributeKeys::FOREIGN) {
                         Registration::ForeignValueBinding {
                             binder: value.binder.clone(),
                             type_: value.type_annotation.clone(),
@@ -95,7 +97,7 @@ impl<'a> Typer<'a> {
                     type_: data.type_annotation.clone(),
                 })?;
 
-                if declaration.attributes.has(AttributeKind::Foreign) {
+                if declaration.attributes.has(AttributeKeys::FOREIGN) {
                     self.evaluate_registration(Registration::ForeignDataBinding {
                         binder: data.binder.clone(),
                     })?;
@@ -103,7 +105,9 @@ impl<'a> Typer<'a> {
                     let constructors = data.constructors.as_ref().unwrap();
 
                     // @Task @Beacon move to resolver
-                    if let Some(inherent) = declaration.attributes.get(AttributeKind::Inherent) {
+                    if let Some(inherent) =
+                        declaration.attributes.get(AttributeKeys::INHERENT).next()
+                    {
                         ffi::register_inherent_bindings(
                             &data.binder,
                             constructors
@@ -239,8 +243,11 @@ impl<'a> Typer<'a> {
                     )
                     .many_err()?;
 
-                self.assert_constructor_is_instance_of_type(type_.clone(), TYPE)
-                    .many_err()?;
+                self.assert_constructor_is_instance_of_type(
+                    type_.clone(),
+                    expr! { Type { Attributes::default(), Span::SHAM } },
+                )
+                .many_err()?;
 
                 self.scope
                     .carry_out(Registration::DataBinding { binder, type_ })
@@ -394,7 +401,7 @@ impl<'a> Typer<'a> {
             Binding(binding) => scope
                 .lookup_type(&binding.binder, &self.scope)
                 .ok_or(Error::OutOfOrderBinding)?,
-            Type => TYPE,
+            Type => expr! { Type { Attributes::default(), Span::SHAM } },
             Number(number) => self
                 .scope
                 .lookup_foreign_number_type(&number, Some(expression.span))?,
@@ -416,7 +423,7 @@ impl<'a> Typer<'a> {
                     self.it_is_a_type(literal.codomain.clone(), scope)?;
                 }
 
-                TYPE
+                expr! { Type { Attributes::default(), Span::SHAM } }
             }
             Lambda(lambda) => {
                 let parameter_type: Expression = lambda
@@ -436,7 +443,9 @@ impl<'a> Typer<'a> {
                 }
 
                 expr! {
-                    PiType[expression.span] {
+                    PiType {
+                        expression.attributes,
+                        expression.span;
                         parameter: Some(lambda.parameter.clone()),
                         domain: parameter_type,
                         codomain: infered_body_type,
@@ -480,7 +489,9 @@ impl<'a> Typer<'a> {
 
                         match pi.parameter.clone() {
                             Some(_) => expr! {
-                                Substitution[] {
+                                Substitution {
+                                    Attributes::default(),
+                                    Span::SHAM;
                                     substitution: Use(Box::new(Shift(0)), application.argument.clone()),
                                     expression: pi.codomain.clone(),
                                 }
@@ -666,7 +677,11 @@ impl<'a> Typer<'a> {
         scope: &FunctionScope<'_>,
     ) -> Result<(), Error> {
         let type_ = self.infer_type_of_expression(expression, scope)?;
-        self.it_is_actual(TYPE, type_, scope)
+        self.it_is_actual(
+            expr! { Type { Attributes::default(), Span::SHAM } },
+            type_,
+            scope,
+        )
     }
 
     fn is_a_type(
@@ -675,7 +690,12 @@ impl<'a> Typer<'a> {
         scope: &FunctionScope<'_>,
     ) -> Result<bool, Error> {
         let type_ = self.infer_type_of_expression(expression, scope)?;
-        self.is_actual(TYPE, type_, scope).map_err(Into::into)
+        self.is_actual(
+            expr! { Type { Attributes::default(), Span::SHAM } },
+            type_,
+            scope,
+        )
+        .map_err(Into::into)
     }
 
     /// Assert that two expression are equal under evaluation/normalization.

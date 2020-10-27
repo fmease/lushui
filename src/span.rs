@@ -99,7 +99,7 @@ impl Sub<usize> for LocalByteIndex {
     }
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Spanned<K> {
     pub kind: K,
     pub span: Span,
@@ -179,11 +179,12 @@ impl Span {
         }
     }
 
-    pub fn merging(&mut self, other: &impl PossiblySpanning) {
-        if let Some(other) = other.possible_span() {
+    pub fn merging<S: PossiblySpanning>(&mut self, spanning: S) -> S {
+        if let Some(other) = spanning.possible_span() {
             self.assert_consecutive(other);
             self.end = other.end;
         }
+        spanning
     }
 
     #[inline(always)]
@@ -234,6 +235,16 @@ pub trait PossiblySpanning {
 impl<S: Spanning> PossiblySpanning for S {
     fn possible_span(&self) -> Option<Span> {
         Some(self.span())
+    }
+}
+
+impl<S: Spanning> PossiblySpanning for Vec<S> {
+    fn possible_span(&self) -> Option<Span> {
+        self.first().map(|item| {
+            let mut span = item.span();
+            span.merging(self.last());
+            span
+        })
     }
 }
 
@@ -549,8 +560,7 @@ impl Error {
         use io::ErrorKind::*;
 
         let mut message = path.map_or("referenced file ".into(), |path| {
-            // @Question should we canonicalize the path? this might be less confusing
-            // for users
+            // @Question should we canonicalize the path? this might be less confusing for users
             format!("file `{}` ", path.to_string_lossy())
         });
 

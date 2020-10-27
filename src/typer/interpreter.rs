@@ -16,11 +16,10 @@ use super::Expression;
 use crate::{
     ast::Explicit,
     diagnostic::{Code, Diagnostic, Diagnostics, Result},
-    resolver::{
-        hir::{self, expr},
-        CrateScope,
-    },
-    span::Spanning,
+    hir::{self, expr},
+    lowered_ast::Attributes,
+    resolver::CrateScope,
+    span::{Span, Spanning},
     support::InvalidFallback,
 };
 use scope::{FunctionScope, ValueView};
@@ -104,7 +103,13 @@ impl<'a> Interpreter<'a> {
 
         match (&expression.kind, substitution) {
             (Binding(binding), Shift(amount)) => {
-                expr! { Binding[expression.span] { binder: binding.binder.clone().shift(amount) } }
+                expr! {
+                    Binding {
+                        expression.attributes,
+                        expression.span;
+                        binder: binding.binder.clone().shift(amount)
+                    }
+                }
             }
             // @Beacon @Beacon @Question @Bug
             (Binding(binding), Use(substitution, expression)) => {
@@ -113,8 +118,14 @@ impl<'a> Interpreter<'a> {
                 } else {
                     {
                         self.substitute_expression(
-                            expr! { Binding[expression.span] { binder: binding.binder.clone().unshift() } },
-                            *substitution
+                            expr! {
+                                Binding {
+                                    expression.attributes,
+                                    expression.span;
+                                    binder: binding.binder.clone().unshift()
+                                }
+                            },
+                            *substitution,
                         )
                     }
                 }
@@ -133,15 +144,21 @@ impl<'a> Interpreter<'a> {
             (IO(_), _) => expression,
             (Application(application), substitution) => {
                 expr! {
-                    Application[expression.span] {
+                    Application {
+                        expression.attributes,
+                        expression.span;
                         callee: expr! {
-                            Substitution[] {
+                            Substitution {
+                                Attributes::default(),
+                                Span::SHAM;
                                 expression: application.callee.clone(),
                                 substitution: substitution.clone(),
                             }
                         },
                         argument: expr! {
-                            Substitution[] {
+                            Substitution {
+                                Attributes::default(),
+                                Span::SHAM;
                                 expression: application.argument.clone(),
                                 substitution,
                             }
@@ -152,22 +169,27 @@ impl<'a> Interpreter<'a> {
             }
             (PiType(pi), substitution) => {
                 let domain = expr! {
-                    Substitution[] {
+                    Substitution {
+                        Attributes::default(),
+                        Span::SHAM;
                         expression: pi.domain.clone(),
                         substitution: substitution.clone(),
                     }
                 };
 
                 let codomain = expr! {
-                    Substitution[] {
+                    Substitution {
+                        Attributes::default(),
+                        Span::SHAM;
                         expression: pi.codomain.clone(),
                         substitution: match &pi.parameter {
                             Some(parameter) => {
                                 let binder = parameter.as_innermost();
 
+                                // @Question what about the attributes of the binder?
                                 Use(
                                     Box::new(Shift(1).compose(substitution)),
-                                    expr! { Binding[binder.span()] { binder } }
+                                    expr! { Binding { Attributes::default(), binder.span(); binder } }
                                 )
                             }
                             None => substitution,
@@ -176,7 +198,9 @@ impl<'a> Interpreter<'a> {
                 };
 
                 expr! {
-                    PiType[expression.span] {
+                    PiType {
+                        expression.attributes,
+                        expression.span;
                         parameter: pi.parameter.clone(),
                         domain,
                         codomain,
@@ -188,7 +212,9 @@ impl<'a> Interpreter<'a> {
                 let parameter_type_annotation =
                     lambda.parameter_type_annotation.clone().map(|type_| {
                         expr! {
-                            Substitution[] {
+                            Substitution {
+                                Attributes::default(),
+                                Span::SHAM;
                                 expression: type_,
                                 substitution: substitution.clone(),
                             }
@@ -197,13 +223,16 @@ impl<'a> Interpreter<'a> {
 
                 let body_type_annotation = lambda.body_type_annotation.clone().map(|type_| {
                     expr! {
-                        Substitution[] {
+                        Substitution {
+                            Attributes::default(),
+                            Span::SHAM;
                             expression: type_,
                             substitution: {
                                 let binder = lambda.parameter.as_innermost();
+                                // @Question what about the attributes of the binder?
                                 Use(
                                     Box::new(Shift(1).compose(substitution.clone())),
-                                    expr! { Binding[binder.span()] { binder } }
+                                    expr! { Binding { Attributes::default(), binder.span(); binder } }
                                 )
                             }
                         }
@@ -211,21 +240,26 @@ impl<'a> Interpreter<'a> {
                 });
 
                 let body = expr! {
-                    Substitution[] {
+                    Substitution {
+                        Attributes::default(),
+                        Span::SHAM;
                         expression: lambda.body.clone(),
                         substitution: {
                                 let binder = lambda.parameter.as_innermost();
 
+                                // @Question what about the attributes of the binder?
                                 Use(
                                     Box::new(Shift(1).compose(substitution)),
-                                    expr! { Binding[binder.span()] { binder } }
+                                    expr! { Binding { Attributes::default(), binder.span(); binder } }
                                 )
                         },
                     }
                 };
 
                 expr! {
-                    Lambda[expression.span] {
+                    Lambda {
+                        expression.attributes,
+                        expression.span;
                         parameter: lambda.parameter.clone(),
                         parameter_type_annotation,
                         body_type_annotation,
@@ -236,18 +270,24 @@ impl<'a> Interpreter<'a> {
             }
             (CaseAnalysis(analysis), substitution) => {
                 expr! {
-                    CaseAnalysis[expression.span] {
+                    CaseAnalysis {
+                        expression.attributes,
+                        expression.span;
                         cases: analysis.cases.iter().map(|case| hir::Case {
                             pattern: case.pattern.clone(),
                             body: expr! {
-                                Substitution[] {
+                                Substitution {
+                                    Attributes::default(),
+                                    Span::SHAM;
                                     expression: case.body.clone(),
                                     substitution: substitution.clone(),
                                 }
                             },
                         }).collect(),
                         subject: expr! {
-                            Substitution[] {
+                            Substitution {
+                                Attributes::default(),
+                                Span::SHAM;
                                 expression: analysis.subject.clone(),
                                 substitution,
                             }
@@ -257,10 +297,14 @@ impl<'a> Interpreter<'a> {
             }
             (UseIn, _) => todo!("substitute use/in"),
             (ForeignApplication(application), substitution) => expr! {
-                ForeignApplication[expression.span] {
+                ForeignApplication {
+                    expression.attributes,
+                    expression.span;
                     callee: application.callee.clone(),
                     arguments: application.arguments.iter().map(|argument| expr! {
-                        Substitution[argument.span] {
+                        Substitution {
+                            argument.attributes.clone(),
+                            argument.span;
                             expression: argument.clone(),
                             substitution: substitution.clone(),
                         }
@@ -300,7 +344,9 @@ impl<'a> Interpreter<'a> {
                 match callee.kind {
                     Lambda(lambda) => self.evaluate_expression(
                         expr! {
-                            Substitution[] {
+                            Substitution {
+                                Attributes::default(),
+                                Span::SHAM;
                                 substitution: Use(Box::new(Shift(0)), argument),
                                 expression: lambda.body.clone(),
                             }
@@ -310,7 +356,9 @@ impl<'a> Interpreter<'a> {
                     Binding(binding) if context.scope.is_foreign(&binding.binder, &self.scope) => {
                         self.evaluate_expression(
                             expr! {
-                                ForeignApplication[expression.span] {
+                                ForeignApplication {
+                                    expression.attributes,
+                                    expression.span;
                                     callee: binding.binder.clone(),
                                     arguments: extended(Vec::new(), argument),
 
@@ -319,7 +367,9 @@ impl<'a> Interpreter<'a> {
                         )?
                     }
                     Binding(_) | Application(_) => expr! {
-                        Application[expression.span] {
+                        Application {
+                            expression.attributes,
+                            expression.span;
                             callee,
                             argument: match context.form {
                                 // Form::Normal => argument.evaluate(context)?,
@@ -331,7 +381,9 @@ impl<'a> Interpreter<'a> {
                     },
                     ForeignApplication(application) => self.evaluate_expression(
                         expr! {
-                            ForeignApplication[expression.span] {
+                            ForeignApplication {
+                                expression.attributes,
+                                    expression.span;
                                 callee: application.callee.clone(),
                                 arguments: extended(application.arguments.clone(), argument),
                             }
@@ -355,7 +407,9 @@ impl<'a> Interpreter<'a> {
                     };
 
                     expr! {
-                        PiType[expression.span] {
+                        PiType {
+                            expression.attributes,
+                            expression.span;
                             parameter: pi.parameter.clone(),
                             domain,
                             codomain,
@@ -389,7 +443,9 @@ impl<'a> Interpreter<'a> {
                         self.evaluate_expression(lambda.body.clone(), context.with_scope(&scope))?;
 
                     expr! {
-                        Lambda[expression.span] {
+                        Lambda {
+                            expression.attributes,
+                            expression.span;
                             parameter: lambda.parameter.clone(),
                             parameter_type_annotation: Some(parameter_type),
                             body,
@@ -494,7 +550,9 @@ impl<'a> Interpreter<'a> {
                     .apply_foreign_binding(application.callee.clone(), arguments.clone())?
                     .unwrap_or_else(|| {
                         expr! {
-                            ForeignApplication[expression.span] {
+                            ForeignApplication {
+                                expression.attributes,
+                                expression.span;
                                 callee: application.callee.clone(),
                                 arguments,
                             }
@@ -637,7 +695,9 @@ impl Substitution {
             (substitution0, Use(substitution1, expression)) => Use(
                 Box::new(substitution0.clone().compose(*substitution1)),
                 expr! {
-                    Substitution[] {
+                    Substitution {
+                        Attributes::default(),
+                        Span::SHAM;
                         substitution: substitution0,
                         expression,
                     }

@@ -5,7 +5,12 @@
 //! until I figure out how to handle errors best.
 // @Question should we move the Result helpers to crate::diagnostic?
 
-use crate::diagnostic::{Diagnostic, Diagnostics, Results};
+use joinery::JoinableIterator;
+
+use crate::{
+    diagnostic::{Diagnostic, Diagnostics, Result, Results},
+    SmallVec,
+};
 
 pub trait DisplayWith: Sized {
     type Linchpin;
@@ -37,51 +42,76 @@ impl<T: DisplayWith> fmt::Debug for WithLinchpin<'_, T> {
     }
 }
 
-pub mod accumulate_errors {
-    use super::*;
+/// Join results accumulating errors.
+pub macro accumulate_errors {
+    ($result0:expr, $result1:expr $(,)?) => { accumulate_errors2($result0, $result1) },
+    ($result0:expr, $result1:expr, $result2:expr $(,)?) => { accumulate_errors3($result0, $result1, $result2) },
+    ($result0:expr, $result1:expr, $result2:expr, $result3:expr, $(,)?) => { accumulate_errors4($result0, $result1, $result2, $result3) },
+}
 
-    pub trait Accumulate2Errors<A, B> {
-        fn accumulate_err(self) -> Results<(A, B)>;
-    }
-
-    pub trait Accumulate3Errors<A, B, C> {
-        fn accumulate_err(self) -> Results<(A, B, C)>;
-    }
-
-    impl<A, B> Accumulate2Errors<A, B> for (Results<A>, Results<B>) {
-        fn accumulate_err(self) -> Results<(A, B)> {
-            match (self.0, self.1) {
-                (Ok(okay0), Ok(okay1)) => Ok((okay0, okay1)),
-                (Err(error), Ok(_)) | (Ok(_), Err(error)) => Err(error),
-                (Err(error0), Err(error1)) => {
-                    let mut error = error0;
-                    error.extend(error1);
-                    Err(error)
-                }
-            }
-        }
-    }
-
-    impl<A, B, C> Accumulate3Errors<A, B, C> for (Results<A>, Results<B>, Results<C>) {
-        fn accumulate_err(self) -> Results<(A, B, C)> {
-            let result = (self.0, self.1).accumulate_err();
-            let ((okay0, okay1), okay2) = (result, self.2).accumulate_err()?;
-            Ok((okay0, okay1, okay2))
+pub fn accumulate_errors2<A, B>(result0: Results<A>, result1: Results<B>) -> Results<(A, B)> {
+    match (result0, result1) {
+        (Ok(okay0), Ok(okay1)) => Ok((okay0, okay1)),
+        (Err(error), Ok(_)) | (Ok(_), Err(error)) => Err(error),
+        (Err(error0), Err(error1)) => {
+            let mut error = error0;
+            error.extend(error1);
+            Err(error)
         }
     }
 }
 
+pub fn accumulate_errors3<A, B, C>(
+    result0: Results<A>,
+    result1: Results<B>,
+    result2: Results<C>,
+) -> Results<(A, B, C)> {
+    let result = accumulate_errors2(result0, result1);
+    let ((okay0, okay1), okay2) = accumulate_errors2(result, result2)?;
+    Ok((okay0, okay1, okay2))
+}
+
+pub fn accumulate_errors4<A, B, C, D>(
+    result0: Results<A>,
+    result1: Results<B>,
+    result2: Results<C>,
+    result3: Results<D>,
+) -> Results<(A, B, C, D)> {
+    let result = accumulate_errors3(result0, result1, result2);
+    let ((okay0, okay1, okay2), okay3) = accumulate_errors2(result, result3)?;
+    Ok((okay0, okay1, okay2, okay3))
+}
+
+// @Beacon @Task documentation
 pub trait InvalidFallback {
     fn invalid() -> Self;
 }
 
-/// Try to get a value falling back to something invalid logging errors.
-pub trait TrySoftly<T: InvalidFallback> {
-    fn try_softly(self, bag: &mut Diagnostics) -> T;
+impl<T, const N: usize> InvalidFallback for SmallVec<T, N> {
+    fn invalid() -> Self {
+        Self::default()
+    }
 }
 
-impl<T: InvalidFallback> TrySoftly<T> for Results<T> {
-    fn try_softly(self, bag: &mut Diagnostics) -> T {
+impl<T> InvalidFallback for Vec<T> {
+    fn invalid() -> Self {
+        Self::default()
+    }
+}
+
+impl InvalidFallback for () {
+    fn invalid() -> Self {
+        ()
+    }
+}
+
+/// Try to get a value falling back to something invalid logging errors.
+pub trait TryIn<T: InvalidFallback> {
+    fn try_in(self, bag: &mut Diagnostics) -> T;
+}
+
+impl<T: InvalidFallback> TryIn<T> for Results<T> {
+    fn try_in(self, bag: &mut Diagnostics) -> T {
         match self {
             Ok(okay) => okay,
             Err(errors) => {
@@ -92,8 +122,8 @@ impl<T: InvalidFallback> TrySoftly<T> for Results<T> {
     }
 }
 
-impl<T: InvalidFallback> TrySoftly<T> for Result<T, Diagnostic> {
-    fn try_softly(self, diagnostics: &mut Diagnostics) -> T {
+impl<T: InvalidFallback> TryIn<T> for Result<T> {
+    fn try_in(self, diagnostics: &mut Diagnostics) -> T {
         match self {
             Ok(okay) => okay,
             Err(error) => {
@@ -111,6 +141,17 @@ pub macro release($errors:expr) {{
     }
 }}
 
+// @Note bad name
+pub macro corelease($errors:expr) {{
+    let errors = $errors;
+    if !errors.is_empty() {
+        Err(errors)
+    } else {
+        Ok(())
+    }
+}}
+
+// @Task documentation
 pub trait TransposeExt<T> {
     fn transpose(self) -> Results<Vec<T>>;
 }
@@ -144,7 +185,36 @@ impl<T> ManyErrExt<T> for Result<T, Diagnostic> {
     }
 }
 
+pub fn listing<I>(items: I, conjunction: &str) -> String
+where
+    I: DoubleEndedIterator + Clone,
+    I::Item: fmt::Display + Clone,
+{
+    use std::iter::once;
+
+    let mut items = items.rev();
+    let last = items.next().unwrap();
+    let mut items = items.rev();
+
+    match items.next() {
+        Some(item) => format!(
+            "{} {} {}",
+            once(item).chain(items).join_with(", "),
+            conjunction,
+            last,
+        ),
+        None => last.to_string(),
+    }
+}
+
 use std::borrow::Cow;
+
+pub macro s_pluralize($amount:expr, $singular:literal) {
+    match $amount {
+        1 => $singular,
+        _ => concat!($singular, "s"),
+    }
+}
 
 pub fn pluralize<'a, S: Into<Cow<'a, str>>>(
     amount: usize,

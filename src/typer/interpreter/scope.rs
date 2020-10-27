@@ -4,8 +4,10 @@ use super::{ffi, Expression, Substitution::Shift};
 use crate::{
     diagnostic::{Code, Diagnostic, Result},
     entity::EntityKind,
+    hir::expr,
     lexer::Number,
-    resolver::{hir::expr, CrateIndex, CrateScope, DebruijnIndex, Identifier, Index},
+    lowered_ast::Attributes,
+    resolver::{CrateIndex, CrateScope, DebruijnIndex, Identifier, Index},
     span::Span,
     support::DisplayIsDebug,
 };
@@ -190,7 +192,9 @@ impl CrateScope {
     ) -> Result<Expression> {
         match self.foreign_types.get(binder) {
             Some(Some(binder)) => Ok(expr! {
-                Binding[] {
+                Binding {
+                    Attributes::default(),
+                    Span::SHAM;
                     binder: binder.clone(),
                 }
             }),
@@ -361,7 +365,9 @@ impl<'a> FunctionScope<'a> {
             Self::FunctionParameter { parent, type_ } => {
                 if depth == index.0 {
                     expr! {
-                        Substitution[] {
+                        Substitution {
+                            Attributes::default(),
+                            Span::SHAM;
                             substitution: Shift(depth + 1),
                             expression: type_.clone(),
                         }
@@ -378,7 +384,9 @@ impl<'a> FunctionScope<'a> {
                     .find(|(_, depth)| *depth == index.0)
                 {
                     Some((type_, depth)) => expr! {
-                        Substitution[] {
+                        Substitution {
+                            Attributes::default(),
+                            Span::SHAM;
                             // @Task verify this shift
                             substitution: Shift(depth + 1),
                             expression: type_.clone(),

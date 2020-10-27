@@ -4,7 +4,10 @@ use crate::{
     span::{SourceMap, Span, Spanning},
     HashSet, Str,
 };
-use std::ops::{Deref, DerefMut};
+use std::{
+    hash::Hash,
+    ops::{Deref, DerefMut},
+};
 
 pub type Result<T, E = Diagnostic> = std::result::Result<T, E>;
 // @Question bad name?
@@ -15,7 +18,7 @@ pub type Results<T> = Result<T, Diagnostics>;
 pub type Diagnostics = HashSet<Diagnostic>;
 
 // @Question is this indirection actually worth it?
-#[derive(Hash, PartialEq, Eq)]
+#[derive(Hash, PartialEq, Eq, Clone)]
 pub struct Diagnostic(Box<RawDiagnostic>);
 
 impl Deref for Diagnostic {
@@ -32,7 +35,7 @@ impl DerefMut for Diagnostic {
     }
 }
 
-#[derive(Hash, PartialEq, Eq, Debug)]
+#[derive(Hash, PartialEq, Eq, Debug, Clone)]
 pub struct RawDiagnostic {
     level: Level,
     message: Option<Str>,
@@ -61,6 +64,48 @@ impl Diagnostic {
 
     pub fn warning() -> Self {
         Self::new(Level::Warning)
+    }
+
+    pub fn multiple<'a, I, S>(
+        self,
+        spannings: I,
+        message: impl for<'x> Fn(&'x [I::Item]) -> S,
+    ) -> Diagnostics
+    where
+        I: Iterator,
+        I::Item: Spanning,
+        S: Into<Str>,
+    {
+        let spannings: Vec<_> = spannings.collect();
+
+        let diagnostic = self.with_message(message(&spannings));
+
+        (0..spannings.len())
+            .map(|primary| diagnostic.clone().with_spans(spannings.iter(), primary))
+            .collect()
+    }
+
+    pub fn multiple_labeled<S, Z>(
+        self,
+        spannings: Vec<S>,
+        label: impl Into<Str>,
+        message: impl for<'a> Fn(&'a [S]) -> Z,
+    ) -> Diagnostics
+    where
+        S: Spanning,
+        Z: Into<Str>,
+    {
+        let label = label.into();
+
+        let diagnostic = self.with_message(message(&spannings));
+
+        (0..spannings.len())
+            .map(|primary| {
+                diagnostic
+                    .clone()
+                    .with_labeled_spans(spannings.iter(), label.clone(), primary)
+            })
+            .collect()
     }
 
     pub fn with_message(mut self, message: impl Into<Str>) -> Self {
@@ -96,6 +141,51 @@ impl Diagnostic {
             label: Some(label.into()),
             role,
         });
+        self
+    }
+
+    pub fn with_spans<I>(mut self, spannings: I, primary: usize) -> Self
+    where
+        I: Iterator,
+        I::Item: Spanning,
+    {
+        self.highlights
+            .extend(spannings.enumerate().map(|(index, spanning)| {
+                let span = spanning.span();
+                // self.check_span(span); // @Task
+                Highlight {
+                    span,
+                    label: None,
+                    role: Role::primary(index == primary),
+                }
+            }));
+
+        self
+    }
+
+    pub fn with_labeled_spans<I>(
+        mut self,
+        spannings: I,
+        label: impl Into<Str>,
+        primary: usize,
+    ) -> Self
+    where
+        I: Iterator,
+        I::Item: Spanning,
+    {
+        let label = label.into();
+
+        self.highlights
+            .extend(spannings.enumerate().map(|(index, spanning)| {
+                let span = spanning.span();
+                // self.check_span(span); // @Task
+                Highlight {
+                    span,
+                    label: Some(label.clone()),
+                    role: Role::primary(index == primary),
+                }
+            }));
+
         self
     }
 
@@ -138,11 +228,7 @@ impl Diagnostic {
     }
 
     fn choose_role(&self) -> Role {
-        if self.highlights.is_empty() {
-            Role::Primary
-        } else {
-            Role::Secondary
-        }
+        Role::primary(self.highlights.is_empty())
     }
 
     pub fn spans<'a>(&'a self) -> Vec<Span> {
@@ -326,7 +412,7 @@ impl Diagnostic {
     }
 }
 
-#[derive(Hash, PartialEq, Eq, Debug)]
+#[derive(Hash, PartialEq, Eq, Debug, Clone)]
 struct Subdiagnostic {
     kind: SubdiagnosticKind,
     message: Str,
@@ -397,7 +483,7 @@ impl fmt::Display for Level {
     }
 }
 
-#[derive(PartialEq, Eq, Hash, Debug)]
+#[derive(PartialEq, Eq, Hash, Debug, Clone)]
 struct Highlight {
     span: Span,
     role: Role,
@@ -407,13 +493,20 @@ struct Highlight {
 // @Note multiple primaries don't merge right now but have undefined behavior/should be an error
 // @Note we have this design because we want to ergonomically sort by span (primary is not necessarily
 // the first to be previewed)
-#[derive(PartialEq, Eq, Hash, Debug)]
+#[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
 enum Role {
     Primary,
     Secondary,
 }
 
 impl Role {
+    const fn primary(condition: bool) -> Self {
+        match condition {
+            true => Self::Primary,
+            false => Self::Secondary,
+        }
+    }
+
     const fn color(&self, primary: Color) -> Color {
         match self {
             Self::Primary => primary,

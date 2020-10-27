@@ -3,20 +3,23 @@
 //! Higher-level syntactic constructs in the AST are simplified and rewritten
 //! in terms of lower-level language primitives.
 //!
-//! Additionally among other things, this phase validates attributes and checks if the mandatory
-//! type annotations are present.
+//! Additionally among other things, this phase parses and validates attributes and
+//! checks if the mandatory type annotations are present.
 
 pub mod lowered_ast;
 
 use crate::{
     ast::{self, Explicit, Path},
     diagnostic::{Code, Diagnostic, Diagnostics, Result, Results},
+    lowered_ast::{decl, expr, pat, AttributeKeys, Attributes},
     smallvec,
-    span::{SourceMap, Spanning},
-    support::{accumulate_errors::*, pluralize, release, InvalidFallback, ManyErrExt, TrySoftly},
+    span::{SourceMap, Span, Spanning},
+    support::listing,
+    support::{
+        accumulate_errors, corelease, release, s_pluralize, InvalidFallback, ManyErrExt, TryIn,
+    },
     SmallVec,
 };
-use lowered_ast::{decl, expr, pat};
 use std::iter::once;
 
 /// The state of the lowering pass.
@@ -42,17 +45,18 @@ impl<'a> Lowerer<'a> {
     /// else.
     pub fn lower_declaration(
         &mut self,
-        mut declaration: ast::Declaration,
+        declaration: ast::Declaration,
     ) -> Results<SmallVec<lowered_ast::Declaration, 1>> {
         use ast::DeclarationKind::*;
 
         let mut errors = Diagnostics::default();
 
-        if let Err(attribute_errors) = Self::validate_attributes(&mut declaration) {
-            errors.extend(attribute_errors);
-        }
+        let attributes = self
+            .lower_attributes(&declaration.attributes, &declaration)
+            .try_in(&mut errors);
 
-        Ok(match declaration.kind {
+        // @Task move the release!s to the end of the function again (where possible)
+        match declaration.kind {
             Value(value) => {
                 let declaration_type_annotation = match value.type_annotation {
                     Some(type_annotation) => type_annotation,
@@ -60,7 +64,7 @@ impl<'a> Lowerer<'a> {
                         &declaration.span,
                         AnnotationTarget::Declaration,
                     ))
-                    .try_softly(&mut errors),
+                    .try_in(&mut errors),
                 };
 
                 // @Note type_annotation is currently lowered twice @Task remove duplicate work
@@ -68,12 +72,11 @@ impl<'a> Lowerer<'a> {
                 // partial moves, I hate those), use local bindings
                 let expression = match value.expression {
                     Some(expression) => {
-                        let mut expression =
-                            self.lower_expression(expression).try_softly(&mut errors);
+                        let mut expression = self.lower_expression(expression).try_in(&mut errors);
                         {
                             let mut type_annotation = once(
                                 self.lower_expression(declaration_type_annotation.clone())
-                                    .try_softly(&mut errors),
+                                    .try_in(&mut errors),
                             );
 
                             for parameter_group in value.parameters.iter().rev() {
@@ -89,11 +92,13 @@ impl<'a> Lowerer<'a> {
                                     ))
                                     .many_err(),
                                 }
-                                .try_softly(&mut errors);
+                                .try_in(&mut errors);
 
                                 for binder in parameter_group.parameters.iter().rev() {
                                     expression = expr! {
-                                        Lambda[] {
+                                        Lambda {
+                                            Attributes::default(),
+                                            Span::SHAM;
                                             parameter: binder.clone(),
                                             parameter_type_annotation: Some(parameter_type_annotation.clone()),
                                             explicitness: parameter_group.explicitness,
@@ -114,17 +119,19 @@ impl<'a> Lowerer<'a> {
                         value.parameters,
                         declaration_type_annotation,
                     )
-                    .try_softly(&mut errors);
+                    .try_in(&mut errors);
 
                 release!(errors);
 
-                smallvec![decl! {
-                    Value[declaration.span][declaration.attributes] {
+                Ok(smallvec![decl! {
+                    Value {
+                        attributes,
+                        declaration.span;
                         binder: value.binder,
                         type_annotation,
                         expression,
                     }
-                }]
+                }])
             }
             Data(data) => {
                 let data_type_annotation = match data.type_annotation {
@@ -133,31 +140,33 @@ impl<'a> Lowerer<'a> {
                         &declaration.span,
                         AnnotationTarget::Declaration,
                     ))
-                    .try_softly(&mut errors),
+                    .try_in(&mut errors),
                 };
 
                 let type_annotation = self
                     .lower_parameters_to_annotated_ones(data.parameters, data_type_annotation)
-                    .try_softly(&mut errors);
+                    .try_in(&mut errors);
 
                 let constructors = data.constructors.map(|constructors| {
                     constructors
                         .into_iter()
                         .flat_map(|constructor| {
-                            self.lower_declaration(constructor).try_softly(&mut errors)
+                            self.lower_declaration(constructor).try_in(&mut errors)
                         })
                         .collect()
                 });
 
                 release!(errors);
 
-                smallvec![decl! {
-                    Data[declaration.span][declaration.attributes] {
+                Ok(smallvec![decl! {
+                    Data{
+                        attributes,
+                        declaration.span;
                         binder: data.binder,
                         type_annotation,
                         constructors,
                     }
-                }]
+                }])
             }
             Constructor(constructor) => {
                 let constructor_type_annotation = match constructor.type_annotation {
@@ -166,7 +175,7 @@ impl<'a> Lowerer<'a> {
                         &declaration.span,
                         AnnotationTarget::Declaration,
                     ))
-                    .try_softly(&mut errors),
+                    .try_in(&mut errors),
                 };
 
                 let type_annotation = self
@@ -174,11 +183,9 @@ impl<'a> Lowerer<'a> {
                         constructor.parameters,
                         constructor_type_annotation,
                     )
-                    .try_softly(&mut errors);
+                    .try_in(&mut errors);
 
-                // @Temporary
-                // @Task verify there is only a single constructor
-                // @Task implement
+                // @Temporary @Task verify there is only a single constructor, implement
                 if constructor.record {
                     errors.insert(
                         Diagnostic::bug()
@@ -189,12 +196,14 @@ impl<'a> Lowerer<'a> {
 
                 release!(errors);
 
-                smallvec![decl! {
-                    Constructor[declaration.span][declaration.attributes] {
+                Ok(smallvec![decl! {
+                    Constructor {
+                        attributes,
+                        declaration.span;
                         binder: constructor.binder,
                         type_annotation,
                     }
-                }]
+                }])
             }
             Module(module) => {
                 let declarations =
@@ -229,12 +238,20 @@ impl<'a> Lowerer<'a> {
                                     // @Task add context information
                                     error => error.into(),
                                 })
-                                .many_err()?;
+                                .map_err(|error| {
+                                    let mut errors = errors.clone();
+                                    errors.insert(error);
+                                    errors
+                                })?;
 
                             let tokens = Lexer::new(&file, &mut self.warnings).lex()?;
                             let node = Parser::new(file, &tokens, &mut self.warnings)
                                 .parse_top_level(module.binder.clone())
-                                .many_err()?;
+                                .map_err(|error| {
+                                    let mut errors = errors.clone();
+                                    errors.insert(error);
+                                    errors
+                                })?;
                             let module = match node.kind {
                                 Module(module) => module,
                                 _ => unreachable!(),
@@ -251,67 +268,64 @@ impl<'a> Lowerer<'a> {
 
                 let declarations = declarations
                     .into_iter()
-                    .flat_map(|declaration| {
-                        self.lower_declaration(declaration).try_softly(&mut errors)
-                    })
+                    .flat_map(|declaration| self.lower_declaration(declaration).try_in(&mut errors))
                     .collect();
 
                 release!(errors);
 
-                smallvec![decl! {
-                    Module[declaration.span][declaration.attributes] {
+                Ok(smallvec![decl! {
+                    Module {
+                        attributes,
+                        declaration.span;
                         binder: module.binder,
                         file: module.file,
                         declarations,
                     }
-                }]
+                }])
             }
             // @Temporary
             Crate(_) => {
-                return Err(Diagnostic::bug()
-                    .with_message("crate declarations not supported yet")
-                    .with_span(&declaration.span))
-                .many_err()
+                errors.insert(
+                    Diagnostic::bug()
+                        .with_message("crate declarations not supported yet")
+                        .with_span(&declaration.span),
+                );
+                Err(errors)
             }
             // @Beacon @Task merge information (exposure list and attributes) with parent module
             // (through a `Context`) and ensure it's the first declaration in the whole module
             Header(_) => {
-                return Err(Diagnostic::bug()
-                    .with_message("module headers not supported yet")
-                    .with_span(&declaration.span))
-                .many_err()
+                errors.insert(
+                    Diagnostic::bug()
+                        .with_message("module headers not supported yet")
+                        .with_span(&declaration.span),
+                );
+                Err(errors)
             }
             // @Question (language specification) should the overarching attributes be placed
             // *above* or *below* the subdeclaration attributes? (currently, it's above)
             // depends on the order of attribute evaluation we haven't offically specified yet
             Group(group) => {
-                let attributes = declaration.attributes.clone();
+                let group_attributes = declaration.attributes;
 
-                let declarations = group
+                let group = group
                     .declarations
                     .into_iter()
                     .map(|mut declaration| {
-                        let mut attributes = attributes.clone();
-                        attributes.append(&mut declaration.attributes);
-                        declaration.attributes = attributes;
+                        let mut group_attributes = group_attributes.clone();
+                        group_attributes.append(&mut declaration.attributes);
+                        declaration.attributes = group_attributes;
                         declaration
                     })
-                    .flat_map(|declaration| {
-                        self.lower_declaration(declaration).try_softly(&mut errors)
-                    })
+                    .flat_map(|declaration| self.lower_declaration(declaration).try_in(&mut errors))
                     .collect();
 
                 release!(errors);
 
-                declarations
+                Ok(group)
             }
             Use(use_) => {
-                use crate::span::Span;
-
-                use ast::{
-                    Attributes,
-                    PathTree::{self, *},
-                };
+                use ast::PathTree::{self, *};
 
                 let mut declarations = SmallVec::new();
 
@@ -319,7 +333,7 @@ impl<'a> Lowerer<'a> {
                     path: Path,
                     bindings: Vec<PathTree>,
                     span: Span,
-                    attributes: &Attributes,
+                    attributes: lowered_ast::Attributes,
                     declarations: &mut SmallVec<lowered_ast::Declaration, 1>,
                 ) -> Result<()> {
                     for binding in bindings {
@@ -329,7 +343,9 @@ impl<'a> Lowerer<'a> {
                                 // identifier of the target but if that one is `self`, look up the last identifier of
                                 // the parent path
                                 declarations.push(decl! {
-                                    Use[span][attributes.clone()] {
+                                    Use {
+                                        attributes.clone(),
+                                        span;
                                         binder: binder.or_else(|| if !target.is_self() { &target } else { &path }
                                             .last_identifier().cloned()),
                                         target: path.clone().join(target)?,
@@ -344,7 +360,7 @@ impl<'a> Lowerer<'a> {
                                     path.clone().join(inner_path)?,
                                     bindings,
                                     span,
-                                    attributes,
+                                    attributes.clone(),
                                     declarations,
                                 )?;
                             }
@@ -356,7 +372,9 @@ impl<'a> Lowerer<'a> {
 
                 match use_.bindings {
                     Single { target, binder } => declarations.push(decl! {
-                        Use[declaration.span][declaration.attributes] {
+                        Use {
+                            attributes,
+                            declaration.span;
                             binder: binder.or_else(|| target.last_identifier().cloned()),
                             target,
                         }
@@ -366,129 +384,53 @@ impl<'a> Lowerer<'a> {
                             path,
                             bindings,
                             declaration.span,
-                            &declaration.attributes,
+                            attributes,
                             &mut declarations,
                         )
-                        .many_err()?;
+                        .try_in(&mut errors);
                     }
                 }
 
-                declarations
+                release!(errors);
+
+                Ok(declarations)
             }
-        })
-    }
-
-    // @Task validate that attributes are unique (using Attribute::unique)
-    fn validate_attributes(declaration: &mut ast::Declaration) -> Results<()> {
-        use ast::{AttributeKind::*, DeclarationKind::*};
-
-        let nonconforming = declaration
-            .attributes
-            .nonconforming(declaration.as_attribute_target());
-
-        if !nonconforming.is_empty() {
-            return Err(nonconforming
-                .into_iter()
-                .map(|attribute| {
-                    Diagnostic::error()
-                        .with_code(Code::E013)
-                        .with_message(format!(
-                            "{} cannot be ascribed to a {} declaration",
-                            attribute.kind,
-                            declaration.kind_as_str()
-                        ))
-                        .with_labeled_span(attribute, "misplaced attribute")
-                        .with_labeled_span(declaration, "incompatible declaration")
-                })
-                .collect());
-        }
-
-        // not further used, unless in documenting mode (which is unimplemented)
-        declaration
-            .attributes
-            .retain(|attribute| !matches!(attribute.kind, Documentation));
-
-        // @Temporary
-        let unsupported = declaration.attributes.filter(|attribute| {
-            [Moving, Unstable, Deprecated, If, Allow, Warn, Deny, Forbid].contains(&attribute.kind)
-        });
-
-        if !unsupported.is_empty() {
-            return Err(unsupported
-                .into_iter()
-                .map(|attribute| {
-                    Diagnostic::error()
-                        .with_message(format!("{} is not supported yet", attribute.kind,))
-                        .with_span(attribute)
-                })
-                .collect());
-        }
-
-        let foreign = declaration.attributes.get(Foreign);
-        let inherent = declaration.attributes.get(Inherent);
-
-        if let (Some(foreign), Some(inherent)) = (foreign, inherent) {
-            use std::cmp::{max, min};
-
-            return Err(Diagnostic::error()
-                .with_code(Code::E014)
-                .with_message("attributes `foreign` and `inherent` are mutually exclusive")
-                .with_span(&max(foreign.span, inherent.span))
-                .with_span(&min(foreign.span, inherent.span)))
-            .many_err();
-        }
-
-        let abnormally_bodiless = match &declaration.kind {
-            Value(value) => value.expression.is_none(),
-            Data(data) => data.constructors.is_none(),
-            _ => false,
-        };
-
-        match (abnormally_bodiless, foreign.is_some()) {
-            (true, false) => Err(Diagnostic::error()
-                .with_code(Code::E012)
-                .with_message("declaration without a definition")
-                .with_span(declaration)
-                .with_help("provide a definition for the declaration: `= VALUE`"))
-            .many_err(),
-            (false, true) => {
-                // @Task make non-fatal, @Task improve message
-                // @Task add subdiagonstic note: foreign is one definition and
-                // explicit body is another
-                Err(Diagnostic::error()
-                    .with_code(Code::E020)
-                    .with_message("declaration has multiple definitions")
-                    .with_labeled_span(declaration, "is foreign and has a body"))
-                .many_err()
-            }
-            (true, true) | (false, false) => Ok(()),
         }
     }
 
-    /// Lower an expression from AST to HIR.
-    // @Question should we provide methods on Lowerer which abstract over TrySoftly?
+    /// Lower an expression.
+    // @Question should we provide methods on Lowerer which abstract over TryIn?
     pub fn lower_expression(
         &mut self,
         expression: ast::Expression,
     ) -> Results<lowered_ast::Expression> {
         use ast::ExpressionKind::*;
 
-        Ok(match expression.kind {
+        let mut errors = Diagnostics::default();
+
+        let attributes = self
+            .lower_attributes(&expression.attributes, &expression)
+            .try_in(&mut errors);
+
+        // @Task move the release!s to the end of the function again (where possible)
+        match expression.kind {
             PiTypeLiteral(pi) => {
-                let (domain, codomain) = (
+                let ((), domain, codomain) = accumulate_errors!(
+                    corelease!(errors),
                     self.lower_expression(pi.domain),
                     self.lower_expression(pi.codomain),
-                )
-                    .accumulate_err()?;
+                )?;
 
-                expr! {
-                    PiType[expression.span] {
+                Ok(expr! {
+                    PiType {
+                        attributes,
+                        expression.span;
                         parameter: pi.binder.clone(),
                         domain,
                         codomain,
                         explicitness: pi.explicitness,
                     }
-                }
+                })
             }
             Application(application) => {
                 // @Temporary
@@ -500,41 +442,61 @@ impl<'a> Lowerer<'a> {
                     )
                 }
 
-                let (callee, argument) = (
+                let ((), callee, argument) = accumulate_errors!(
+                    corelease!(errors),
                     self.lower_expression(application.callee),
                     self.lower_expression(application.argument),
-                )
-                    .accumulate_err()?;
+                )?;
 
-                expr! {
-                    Application[expression.span] {
+                Ok(expr! {
+                    Application {
+                        attributes,
+                        expression.span;
                         callee,
                         argument,
                         explicitness: application.explicitness,
                     }
-                }
+                })
             }
-            TypeLiteral => expr! { Type[expression.span] },
-            NumberLiteral(literal) => expr! { Number[expression.span](literal) },
-            TextLiteral(text) => expr! {
-                Text[expression.span](text)
-            },
-            TypedHole(_hole) => todo!("typed holes not supported yet"),
-            Path(path) => expr! {
-                Binding[expression.span] {
-                    binder: *path,
-                }
-            },
+            TypeLiteral => {
+                release!(errors);
+                Ok(expr! { Type { attributes, expression.span } })
+            }
+            NumberLiteral(literal) => {
+                release!(errors);
+                Ok(expr! { Number(attributes, expression.span; literal) })
+            }
+            TextLiteral(text) => {
+                release!(errors);
+                Ok(expr! {
+                    Text(attributes, expression.span; text)
+                })
+            }
+            TypedHole(_hole) => {
+                errors.insert(
+                    Diagnostic::bug()
+                        .with_message("typed holes not supported yet")
+                        .with_span(&expression.span),
+                );
+                Err(errors)
+            }
+            Path(path) => {
+                release!(errors);
+                Ok(expr! {
+                    Binding {
+                        attributes,
+                        expression.span;
+                        binder: *path,
+                    }
+                })
+            }
             LambdaLiteral(lambda) => {
-                let mut errors = Diagnostics::default();
-
-                let mut expression = self.lower_expression(lambda.body).try_softly(&mut errors);
+                let mut expression = self.lower_expression(lambda.body).try_in(&mut errors);
 
                 let mut type_annotation = lambda
                     .body_type_annotation
                     .map(|type_annotation| {
-                        self.lower_expression(type_annotation)
-                            .try_softly(&mut errors)
+                        self.lower_expression(type_annotation).try_in(&mut errors)
                     })
                     .into_iter();
 
@@ -544,13 +506,14 @@ impl<'a> Lowerer<'a> {
                             .type_annotation
                             .clone()
                             .map(|type_annotation| {
-                                self.lower_expression(type_annotation)
-                                    .try_softly(&mut errors)
+                                self.lower_expression(type_annotation).try_in(&mut errors)
                             });
 
                     for binder in parameter_group.parameters.iter().rev() {
                         expression = expr! {
-                            Lambda[] {
+                            Lambda {
+                                Attributes::default(),
+                                Span::SHAM;
                                 parameter: binder.clone(),
                                 parameter_type_annotation: parameter.clone(),
                                 explicitness: parameter_group.explicitness,
@@ -563,31 +526,29 @@ impl<'a> Lowerer<'a> {
 
                 release!(errors);
 
-                expression
+                Ok(expression)
             }
             LetIn(let_in) => {
-                let mut errors = Diagnostics::default();
-
-                let mut expression = self
-                    .lower_expression(let_in.expression)
-                    .try_softly(&mut errors);
+                let mut expression = self.lower_expression(let_in.expression).try_in(&mut errors);
 
                 let mut type_annotation = let_in
                     .type_annotation
                     .map(|type_annotation| {
-                        self.lower_expression(type_annotation)
-                            .try_softly(&mut errors)
+                        self.lower_expression(type_annotation).try_in(&mut errors)
                     })
                     .into_iter();
 
                 for parameter_group in let_in.parameters.iter().rev() {
-                    let parameter = parameter_group.type_annotation.clone().map(|expression| {
-                        self.lower_expression(expression).try_softly(&mut errors)
-                    });
+                    let parameter = parameter_group
+                        .type_annotation
+                        .clone()
+                        .map(|expression| self.lower_expression(expression).try_in(&mut errors));
 
                     for binder in parameter_group.parameters.iter().rev() {
                         expression = expr! {
-                            Lambda[] {
+                            Lambda {
+                                Attributes::default(),
+                                Span::SHAM;
                                 parameter: binder.clone(),
                                 parameter_type_annotation: parameter.clone(),
                                 explicitness: parameter_group.explicitness,
@@ -598,14 +559,18 @@ impl<'a> Lowerer<'a> {
                     }
                 }
 
-                let body = self.lower_expression(let_in.scope).try_softly(&mut errors);
+                let body = self.lower_expression(let_in.scope).try_in(&mut errors);
 
                 release!(errors);
 
-                expr! {
-                    Application[] {
+                Ok(expr! {
+                    Application {
+                        Attributes::default(),
+                        Span::SHAM;
                         callee: expr! {
-                            Lambda[] {
+                            Lambda {
+                                Attributes::default(),
+                                Span::SHAM;
                                 parameter: let_in.binder,
                                 // @Note we cannot simply lower parameters and a type annotation because
                                 // in the chain (`->`) of parameters, there might always be one missing and
@@ -621,80 +586,111 @@ impl<'a> Lowerer<'a> {
                         argument: expression,
                         explicitness: Explicit,
                     }
-                }
+                })
             }
             // @Beacon @Task
             UseIn(_use_in) => {
-                return Err(Diagnostic::bug()
-                    .with_message("use/in expressions not supported yet")
-                    .with_span(&expression.span))
-                .many_err()
+                errors.insert(
+                    Diagnostic::bug()
+                        .with_message("use/in expressions not supported yet")
+                        .with_span(&expression.span),
+                );
+                return Err(errors);
             }
             CaseAnalysis(analysis) => {
-                let mut errors = Diagnostics::default();
                 let mut cases = Vec::new();
 
                 for case_group in analysis.cases {
                     cases.push(lowered_ast::Case {
-                        pattern: self
-                            .lower_pattern(case_group.pattern)
-                            .try_softly(&mut errors),
+                        pattern: self.lower_pattern(case_group.pattern).try_in(&mut errors),
                         body: self
                             .lower_expression(case_group.expression.clone())
-                            .try_softly(&mut errors),
+                            .try_in(&mut errors),
                     });
                 }
 
                 let subject = self
                     .lower_expression(analysis.expression)
-                    .try_softly(&mut errors);
+                    .try_in(&mut errors);
 
                 release!(errors);
 
-                expr! {
-                    CaseAnalysis[expression.span] {
+                Ok(expr! {
+                    CaseAnalysis {
+                        attributes,
+                        expression.span;
                         subject,
                         cases,
                     }
-                }
+                })
             }
             DoBlock(_block) => {
-                return Err(Diagnostic::bug()
-                    .with_message("do blocks not fully implemented yet")
-                    .with_span(&expression.span))
-                .many_err()
+                errors.insert(
+                    Diagnostic::bug()
+                        .with_message("do blocks not fully implemented yet")
+                        .with_span(&expression.span),
+                );
+                Err(errors)
             }
             SequenceLiteral(_sequence) => {
-                return Err(Diagnostic::bug()
-                    .with_message("sequence literals not fully implemented yet")
-                    .with_span(&expression.span))
-                .many_err();
+                errors.insert(
+                    Diagnostic::bug()
+                        .with_message("sequence literals not fully implemented yet")
+                        .with_span(&expression.span),
+                );
+                Err(errors)
             }
-            Invalid => InvalidFallback::invalid(),
-        })
+            Invalid => {
+                release!(errors);
+                Ok(InvalidFallback::invalid())
+            }
+        }
     }
 
-    /// Lower a pattern from AST to HIR.
+    /// Lower a pattern.
     fn lower_pattern(&mut self, pattern: ast::Pattern) -> Results<lowered_ast::Pattern> {
         use ast::PatternKind::*;
 
-        Ok(match pattern.kind {
-            NumberLiteral(literal) => pat! {
-                Number[pattern.span](literal)
-            },
-            TextLiteral(literal) => pat! {
-                Text[pattern.span](literal)
-            },
-            Path(path) => pat! {
-                Binding[pattern.span] {
-                    binder: *path,
-                }
-            },
-            Binder(binding) => pat! {
-                Binder[pattern.span] {
-                    binder: binding.binder,
-                }
-            },
+        let mut errors = Diagnostics::default();
+
+        let attributes = self
+            .lower_attributes(&pattern.attributes, &pattern)
+            .try_in(&mut errors);
+
+        // @Task move the release!s to the end of the function again (where possible)
+        match pattern.kind {
+            NumberLiteral(literal) => {
+                release!(errors);
+                Ok(pat! {
+                    Number(attributes, pattern.span; literal)
+                })
+            }
+            TextLiteral(literal) => {
+                release!(errors);
+                Ok(pat! {
+                    Text(attributes, pattern.span; literal)
+                })
+            }
+            Path(path) => {
+                release!(errors);
+                Ok(pat! {
+                    Binding {
+                        attributes,
+                        pattern.span;
+                        binder: *path,
+                    }
+                })
+            }
+            Binder(binding) => {
+                release!(errors);
+                Ok(pat! {
+                    Binder {
+                        attributes,
+                        pattern.span;
+                        binder: binding.binder,
+                    }
+                })
+            }
             Deapplication(application) => {
                 // @Temporary
                 if let Some(binder) = &application.binder {
@@ -705,29 +701,190 @@ impl<'a> Lowerer<'a> {
                     )
                 }
 
-                let (callee, argument) = (
+                let ((), callee, argument) = accumulate_errors!(
+                    corelease!(errors),
                     self.lower_pattern(application.callee),
                     self.lower_pattern(application.argument),
-                )
-                    .accumulate_err()?;
+                )?;
 
-                pat! {
-                    Deapplication[pattern.span] {
+                Ok(pat! {
+                    Deapplication {
+                        attributes,
+                        pattern.span;
                         callee,
                         argument,
                     }
-                }
+                })
             }
             SequenceLiteralPattern(_sequence) => {
-                return Err(Diagnostic::bug()
-                    .with_message("sequence literal patterns not supported yet")
-                    .with_span(&pattern.span))
-                .many_err()
+                errors.insert(
+                    Diagnostic::bug()
+                        .with_message("sequence literal patterns not supported yet")
+                        .with_span(&pattern.span),
+                );
+                Err(errors)
             }
-        })
+        }
     }
 
-    /// Lower annotated parameters from AST to HIR.
+    /// Lower attributes.
+    fn lower_attributes(
+        &mut self,
+        attributes: &[ast::Attribute],
+        target: &impl ast::AttributeTarget,
+    ) -> Results<Attributes> {
+        use lowered_ast::Attribute;
+
+        let targets = target.as_attribute_targets();
+        let mut errors = Diagnostics::default();
+        let mut lowered_attributes = Vec::new();
+
+        for attribute in attributes {
+            // @Task move the parse function to this module? (maybe)
+            let attribute = match Attribute::parse(attribute) {
+                Ok(attribute) => attribute,
+                Err(parse_errors) => {
+                    errors.extend(parse_errors);
+                    continue;
+                }
+            };
+
+            // non-conforming attributes
+            if !attribute.kind.targets().contains(targets) {
+                errors.insert(
+                    Diagnostic::error()
+                        .with_code(Code::E013)
+                        .with_message(format!(
+                            "attribute {} cannot be ascribed to {}",
+                            attribute.kind.quoted_name(),
+                            target.name()
+                        ))
+                        .with_labeled_span(&attribute, "misplaced attribute")
+                        .with_labeled_span(target, "incompatible item")
+                        .with_note(format!(
+                            "attribute {} can only be ascribed to {}",
+                            attribute.kind.quoted_name(),
+                            attribute.kind.targets_as_str()
+                        )),
+                );
+                continue;
+            }
+
+            lowered_attributes.push(attribute);
+        }
+
+        let mut keys = AttributeKeys::empty();
+        let mut attributes = Vec::new();
+
+        // conflicting or duplicate attributes
+        for attribute in lowered_attributes.iter() {
+            let key = attribute.kind.key();
+            let coexistable = AttributeKeys::COEXISTABLE.contains(key);
+
+            if !keys.contains(key) || coexistable {
+                attributes.push(attribute.clone());
+            }
+
+            keys |= key;
+
+            if coexistable {
+                continue;
+            }
+
+            let matching_attributes: Vec<_> = lowered_attributes
+                .iter()
+                .filter(|attribute| attribute.matches(key))
+                .collect();
+
+            if matching_attributes.len() > 1 {
+                errors.extend(Diagnostic::error().multiple_labeled(
+                    matching_attributes,
+                    "duplicate or conflicting attribute",
+                    |faulty_attributes| {
+                        format!(
+                            "multiple {} attributes",
+                            faulty_attributes.first().unwrap().kind.quoted_name(),
+                        )
+                    },
+                ));
+            }
+        }
+
+        let attributes = Attributes {
+            keys,
+            data: attributes.into_boxed_slice(),
+        };
+
+        target.check_attributes(&attributes).try_in(&mut errors);
+
+        if attributes.keys.is_empty() {
+            release!(errors);
+            return Ok(attributes);
+        }
+
+        let check_mutual_exclusivity =
+            |mutually_exclusive_attributes: AttributeKeys| -> Result<(), Diagnostics> {
+                if (attributes.keys & mutually_exclusive_attributes)
+                    .bits()
+                    .count_ones()
+                    > 1
+                {
+                    return Err(Diagnostic::error().with_code(Code::E014).multiple_labeled(
+                        attributes.get(mutually_exclusive_attributes).collect(),
+                        "conflicting attribute",
+                        |faulty_attributes| {
+                            format!(
+                                "attributes {} are mutually exclusive",
+                                listing(
+                                    faulty_attributes
+                                        .iter()
+                                        .map(|attribute| attribute.kind.quoted_name()),
+                                    "and"
+                                )
+                            )
+                        },
+                    ));
+                }
+
+                Ok(())
+            };
+
+        check_mutual_exclusivity(AttributeKeys::FOREIGN | AttributeKeys::INHERENT)
+            .try_in(&mut errors);
+        check_mutual_exclusivity(AttributeKeys::MOVING | AttributeKeys::OPAQUE).try_in(&mut errors);
+        check_mutual_exclusivity(
+            AttributeKeys::INT
+                | AttributeKeys::INT32
+                | AttributeKeys::INT64
+                | AttributeKeys::NAT
+                | AttributeKeys::NAT32
+                | AttributeKeys::NAT64,
+        )
+        .try_in(&mut errors);
+        check_mutual_exclusivity(AttributeKeys::RUNE | AttributeKeys::TEXT).try_in(&mut errors);
+        check_mutual_exclusivity(AttributeKeys::LIST | AttributeKeys::VECTOR).try_in(&mut errors);
+
+        // @Temporary
+        let unsupported = AttributeKeys::all()
+            - (AttributeKeys::DOCUMENTATION | AttributeKeys::FOREIGN | AttributeKeys::INHERENT);
+
+        if attributes.within(unsupported) {
+            errors.extend(attributes.get(unsupported).map(|attribute| {
+                Diagnostic::bug()
+                    .with_message(format!(
+                        "attribute {} not supported yet",
+                        attribute.kind.quoted_name()
+                    ))
+                    .with_span(attribute)
+            }))
+        }
+
+        release!(errors);
+
+        Ok(attributes)
+    }
+
+    /// Lower annotated parameters.
     fn lower_parameters_to_annotated_ones(
         &mut self,
         parameters: ast::Parameters,
@@ -735,11 +892,9 @@ impl<'a> Lowerer<'a> {
     ) -> Results<lowered_ast::Expression> {
         let mut errors = Diagnostics::default();
 
-        let mut expression = self
-            .lower_expression(type_annotation)
-            .try_softly(&mut errors);
+        let mut expression = self.lower_expression(type_annotation).try_in(&mut errors);
 
-        for parameter_group in parameters.parameters.into_iter().rev() {
+        for parameter_group in parameters.into_iter().rev() {
             let parameter_type_annotation = match parameter_group.type_annotation {
                 Some(type_annotation) => self.lower_expression(type_annotation),
                 None => Err(missing_mandatory_type_annotation(
@@ -748,11 +903,13 @@ impl<'a> Lowerer<'a> {
                 ))
                 .many_err(),
             }
-            .try_softly(&mut errors);
+            .try_in(&mut errors);
 
             for binder in parameter_group.parameters.iter().rev() {
                 expression = expr! {
-                    PiType[] {
+                    PiType {
+                        Attributes::default(),
+                        Span::SHAM;
                         parameter: Some(binder.clone()),
                         domain: parameter_type_annotation.clone(),
                         codomain: expression,
@@ -790,7 +947,7 @@ fn missing_mandatory_type_annotation(
         ))
         .with_span(spanning)
         .with_help(format!(
-            "provide a type annotation for the {}: {}",
+            "provide a type annotation for the {} with {}",
             target.name(),
             type_annotation_suggestion,
         ))
@@ -805,20 +962,10 @@ enum AnnotationTarget<'a> {
 }
 
 impl AnnotationTarget<'_> {
-    fn name(&self) -> Str {
+    fn name(&self) -> &'static str {
         match self {
-            Self::Parameters(parameters) => format!(
-                "{}",
-                pluralize(parameters.len(), "parameter", || "parameters")
-            )
-            .into(),
-            Self::Declaration => "declaration".into(),
+            Self::Parameters(declarations) => s_pluralize!(declarations.len(), "parameter"),
+            Self::Declaration => "declaration",
         }
-    }
-}
-
-impl InvalidFallback for SmallVec<lowered_ast::Declaration, 1> {
-    fn invalid() -> Self {
-        SmallVec::new()
     }
 }

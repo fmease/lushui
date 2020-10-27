@@ -1,5 +1,5 @@
 {
-    "__comment__": "@Task highlight `_` (differently)",
+    "__comment__": "make underscores part of identifiers and remove number literal suffixes",
     "scopeName": "source.lushui",
     "name": "lushui",
     "patterns": [
@@ -7,10 +7,10 @@
             "include": "#comment"
         },
         {
-            "include": "#attribute"
+            "include": "#number-literal"
         },
         {
-            "include": "#number-literal"
+            "include": "#attribute"
         },
         {
             "include": "#punctuation"
@@ -62,7 +62,6 @@
                     "name": "keyword.operator.lushui"
                 },
                 {
-                    "__comment__": "@Question do properly classified?",
                     "match": "(?<![\\w\\-])(case|do)(?![\\w\\-])",
                     "name": "keyword.control.lushui"
                 },
@@ -116,7 +115,6 @@
             ]
         },
         "escape_sequence": {
-            "__comment__": "@Task verify",
             "name": "constant.character.escape.lushui",
             "match": "\\\\(u[0-9a-f]{4}|U[0-9a-f]{6}|\\\\|\")"
         },
@@ -134,9 +132,14 @@
             ]
         },
         "attribute": {
+            "__comment__": "make the second branch stricter: require the the first part inside the brackets to be a valid identifier",
             "patterns": [
                 {
-                    "match": "(?:^| {4})@\\w+.*",
+                    "match": "(?<![\\.:+~=<>*^!?|/\\\\&#%$@])@\\s*(?:[a-zA-Z][a-zA-Z0-9]*'*)(?:-[a-zA-Z][a-zA-Z0-9]*'*)*\\b",
+                    "name": "meta.attribute.lushui punctuation.definition.variable"
+                },
+                {
+                    "match": "(?<![\\.:+~=<>*^!?|/\\\\&#%$@])@\\s*\\(.+?\\)",
                     "name": "meta.attribute.lushui punctuation.definition.variable"
                 }
             ]

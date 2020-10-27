@@ -1,40 +1,23 @@
 //! The high-level intermediate representation.
 
 use crate::{
-    ast::{Attributes, Explicitness},
+    ast::Explicitness,
     lexer::Number,
+    lowered_ast::Item,
     resolver::{CrateScope, FunctionScope, Identifier},
-    span::{SourceFile, Span, Spanned, Spanning},
+    span::SourceFile,
     support::InvalidFallback,
     typer::interpreter,
 };
 use std::rc::Rc;
 
-pub struct Declaration {
-    pub kind: DeclarationKind,
-    pub span: Span,
-    pub attributes: Attributes,
-}
+pub type Declaration = Item<DeclarationKind>;
 
 impl Declaration {
     pub fn unwrap_constructor(&self) -> &Constructor {
         match &self.kind {
             DeclarationKind::Constructor(constructor) => constructor,
             _ => unreachable!(),
-        }
-    }
-}
-
-impl Spanning for Declaration {
-    fn span(&self) -> Span {
-        self.span
-    }
-}
-
-impl InvalidFallback for Declaration {
-    fn invalid() -> Self {
-        decl! {
-            Invalid[][Default::default()]
         }
     }
 }
@@ -46,6 +29,12 @@ pub enum DeclarationKind {
     Module(Box<Module>),
     Use(Box<Use>),
     Invalid,
+}
+
+impl InvalidFallback for DeclarationKind {
+    fn invalid() -> Self {
+        Self::Invalid
+    }
 }
 
 pub struct Value {
@@ -76,13 +65,7 @@ pub struct Use {
     pub target: Identifier,
 }
 
-pub type Expression = Spanned<ExpressionKind>;
-
-impl InvalidFallback for Expression {
-    fn invalid() -> Self {
-        expr! { Invalid[] }
-    }
-}
+pub type Expression = Item<ExpressionKind>;
 
 #[derive(Clone)]
 pub enum ExpressionKind {
@@ -99,6 +82,12 @@ pub enum ExpressionKind {
     ForeignApplication(Rc<ForeignApplication>),
     IO(Rc<IO>),
     Invalid,
+}
+
+impl InvalidFallback for ExpressionKind {
+    fn invalid() -> Self {
+        Self::Invalid
+    }
 }
 
 #[derive(Clone)]
@@ -161,13 +150,7 @@ pub struct Case {
     pub body: Expression,
 }
 
-pub type Pattern = Spanned<PatternKind>;
-
-impl InvalidFallback for Pattern {
-    fn invalid() -> Self {
-        pat! { Invalid[] }
-    }
-}
+pub type Pattern = Item<PatternKind>;
 
 #[derive(Clone)]
 pub enum PatternKind {
@@ -177,6 +160,12 @@ pub enum PatternKind {
     Binder(Rc<Binder>),
     Deapplication(Rc<Deapplication>),
     Invalid,
+}
+
+impl InvalidFallback for PatternKind {
+    fn invalid() -> Self {
+        Self::Invalid
+    }
 }
 
 /// A binder inside of a pattern.
@@ -461,63 +450,14 @@ impl DisplayWith for PossiblyWrapped<'_> {
     }
 }
 
-// @Beacon @Task generate these macros by a macro
-
-pub macro decl {
-    ($kind:ident[$( $span:expr )?][$attrs:expr] { $( $body:tt )+ }) => {
-        Declaration {
-            span: span!($( $span )?),
-            attributes: $attrs,
-            kind: DeclarationKind::$kind(Box::new(self::$kind { $( $body )+ })),
-        }
-    },
-    ($kind:ident[$( $span:expr )?][$attrs:expr]) => {
-        Declaration {
-            span: span!($( $span )?),
-            attributes: $attrs,
-            kind: DeclarationKind::$kind,
-        }
-    }
-
+pub macro decl($( $tree:tt )+) {
+    crate::item::item!(crate::hir, DeclarationKind, Box; $( $tree )+)
 }
 
-pub macro expr {
-    ($kind:ident[$( $span:expr )?] { $( $body:tt )+ }) => {
-        Expression::new(
-            span!($( $span )?),
-            ExpressionKind::$kind(Rc::new(self::$kind { $( $body )+ })),
-        )
-    },
-    ($kind:ident[$( $span:expr )?]($value:expr)) => {
-        Expression::new(
-            span!($( $span )?),
-            ExpressionKind::$kind(Rc::from($value)),
-        )
-    },
-    ($kind:ident[$( $span:expr )?]) => {
-        Expression::new(span!($( $span )?), ExpressionKind::$kind)
-    }
+pub macro expr($( $tree:tt )+) {
+    crate::item::item!(crate::hir, ExpressionKind, Rc; $( $tree )+)
 }
 
-macro span {
-    () => { Span::SHAM },
-    ($span:expr) => { $span },
-}
-
-pub macro pat {
-    ($kind:ident[$( $span:expr )?] { $( $body:tt )+ }) => {
-        Pattern::new(
-            span!($( $span )?),
-            PatternKind::$kind(Rc::new(self::$kind { $( $body )+ })),
-        )
-    },
-    ($kind:ident[$( $span:expr )?]($value:expr)) => {
-        Pattern::new(
-            span!($( $span )?),
-            PatternKind::$kind(Rc::from($value)),
-        )
-    },
-    ($kind:ident[$( $span:expr )?]) => {
-        Pattern::new(span!($( $span )?), PatternKind::$kind)
-    }
+pub macro pat($( $tree:tt )+) {
+    crate::item::item!(crate::hir, PatternKind, Rc; $( $tree )+)
 }

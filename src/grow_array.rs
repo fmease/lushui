@@ -13,9 +13,6 @@ pub struct GrowArray<T, const N: usize> {
 }
 
 impl<T, const N: usize> GrowArray<T, N> {
-    // @Bug this should be a const fn but we cannot currently write it as such because
-    // we are lacking const blocks https://github.com/rust-lang/rust/issues/76001
-    // and even the workaround does not work as assume_init is not const >:(
     pub fn new() -> Self {
         Self {
             // items: [const { MaybeUninit::uninit() }; N],
@@ -23,6 +20,13 @@ impl<T, const N: usize> GrowArray<T, N> {
             length: 0,
         }
     }
+
+    // pub const fn from_array(array: [T; N]) -> Self {
+    //     Self {
+    //         items: unsafe { std::mem::transmute(array) },
+    //         length: N,
+    //     }
+    // }
 
     pub const fn len(&self) -> usize {
         self.length

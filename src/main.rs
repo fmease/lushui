@@ -8,7 +8,7 @@ use lushui::{
     parser::Parser,
     resolver,
     span::SourceMap,
-    support::{pluralize, DisplayWith, ManyErrExt},
+    support::{pluralize, s_pluralize, DisplayWith, ManyErrExt},
     typer::Typer,
 };
 use resolver::{CrateScope, Resolver};
@@ -52,13 +52,13 @@ impl Arguments {
         let mut print_tokens_ = false;
         let mut only_parse_ = false;
         let mut print_ast_ = false;
-        let mut only_desugar_ = false;
-        let mut print_desugar_hir_ = false;
+        let mut only_lower_ = false;
+        let mut print_lowered_ast_ = false;
         let mut display_crate_indices_ = false;
         let mut only_resolve_ = false;
-        let mut print_resolver_hir_ = false;
-        let mut print_resolver_scope_ = false;
-        let mut print_interpreter_scope_ = false;
+        let mut print_hir_ = false;
+        let mut print_scope_ = false;
+        let mut print_typed_scope_ = false;
         let file_: &Path;
 
         match &self.command {
@@ -68,12 +68,12 @@ impl Arguments {
                 print_tokens,
                 only_parse,
                 print_ast,
-                only_desugar,
-                print_desugar_hir,
-                print_interpreter_scope,
+                only_lower,
+                print_lowered_ast,
+                print_typed_scope,
                 only_resolve,
-                print_resolver_hir,
-                print_resolver_scope,
+                print_hir,
+                print_scope,
                 display_crate_indices,
             } => {
                 file_ = file;
@@ -81,21 +81,21 @@ impl Arguments {
                 print_tokens_ = *print_tokens;
                 only_parse_ = *only_parse;
                 print_ast_ = *print_ast;
-                only_desugar_ = *only_desugar;
-                print_desugar_hir_ = *print_desugar_hir;
-                print_interpreter_scope_ = *print_interpreter_scope;
+                only_lower_ = *only_lower;
+                print_lowered_ast_ = *print_lowered_ast;
+                print_typed_scope_ = *print_typed_scope;
                 only_resolve_ = *only_resolve;
-                print_resolver_hir_ = *print_resolver_hir;
-                print_resolver_scope_ = *print_resolver_scope;
+                print_hir_ = *print_hir;
+                print_scope_ = *print_scope;
                 display_crate_indices_ = *display_crate_indices;
             }
             Command::Run {
                 file,
-                print_interpreter_scope,
+                print_scope: print_interpreter_scope,
                 display_crate_indices,
             } => {
                 file_ = file;
-                print_interpreter_scope_ = *print_interpreter_scope;
+                print_typed_scope_ = *print_interpreter_scope;
                 display_crate_indices_ = *display_crate_indices;
             }
             Command::Build { file } => {
@@ -114,13 +114,13 @@ impl Arguments {
             print_tokens: print_tokens_,
             only_parse: only_parse_,
             print_ast: print_ast_,
-            only_desugar: only_desugar_,
-            print_desugar_hir: print_desugar_hir_,
+            only_lower: only_lower_,
+            print_lowered_ast: print_lowered_ast_,
             display_crate_indices: display_crate_indices_,
             only_resolve: only_resolve_,
-            print_resolver_hir: print_resolver_hir_,
-            print_resolver_scope: print_resolver_scope_,
-            print_interpreter_scope: print_interpreter_scope_,
+            print_hir: print_hir_,
+            print_scope: print_scope_,
+            print_typed_scope: print_typed_scope_,
             file: file_,
         }
     }
@@ -131,13 +131,13 @@ struct MergedCommandArguments<'a> {
     print_tokens: bool,
     only_parse: bool,
     print_ast: bool,
-    only_desugar: bool,
-    print_desugar_hir: bool,
+    only_lower: bool,
+    print_lowered_ast: bool,
     display_crate_indices: bool,
     only_resolve: bool,
-    print_resolver_hir: bool,
-    print_resolver_scope: bool,
-    print_interpreter_scope: bool,
+    print_hir: bool,
+    print_scope: bool,
+    print_typed_scope: bool,
     file: &'a Path,
 }
 
@@ -162,13 +162,13 @@ enum Command {
         #[structopt(long)]
         print_ast: bool,
 
-        /// Only desugar
+        /// Only lower
         #[structopt(long)]
-        only_desugar: bool,
+        only_lower: bool,
 
-        /// Print the HIR emitted after desugaring
+        /// Print the lowered AST
         #[structopt(long)]
-        print_desugar_hir: bool,
+        print_lowered_ast: bool,
 
         /// Display crate indices when emitting a resolved HIR
         #[structopt(long)]
@@ -178,17 +178,17 @@ enum Command {
         #[structopt(long)]
         only_resolve: bool,
 
-        /// Print the HIR emitted by the resolver
+        /// Print the HIR
         #[structopt(long)]
-        print_resolver_hir: bool,
+        print_hir: bool,
 
-        /// Print the crate scope of the resolver
+        /// Print the crate scope after name resolution
         #[structopt(long)]
-        print_resolver_scope: bool,
+        print_scope: bool,
 
-        /// Print the crate scope of the interpreter
+        /// Print the crate scope after type checking
         #[structopt(long)]
-        print_interpreter_scope: bool,
+        print_typed_scope: bool,
 
         /// Set the source file
         #[structopt(name = "FILE")]
@@ -200,9 +200,9 @@ enum Command {
         #[structopt(long)]
         display_crate_indices: bool,
 
-        /// Print the crate scope of the interpreter
+        /// Print the crate scope after name resolution
         #[structopt(long)]
-        print_interpreter_scope: bool,
+        print_scope: bool,
 
         /// Set the source file
         #[structopt(name = "FILE")]
@@ -282,10 +282,10 @@ fn main() {
                     .unwrap();
 
                 {
-                    if merged_arguments.print_desugar_hir {
+                    if merged_arguments.print_lowered_ast {
                         eprintln!("{}", declaration);
                     }
-                    if merged_arguments.only_desugar {
+                    if merged_arguments.only_lower {
                         return Ok(());
                     }
                 }
@@ -295,10 +295,10 @@ fn main() {
                 let declaration = resolver.resolve_declaration(declaration)?;
 
                 {
-                    if merged_arguments.print_resolver_hir {
+                    if merged_arguments.print_hir {
                         eprintln!("{}", declaration.with(&scope));
                     }
-                    if merged_arguments.print_resolver_scope {
+                    if merged_arguments.print_scope {
                         eprintln!("{:#?}", scope);
                     }
                     if merged_arguments.only_resolve {
@@ -312,7 +312,7 @@ fn main() {
                 typer.infer_types_in_declaration(&declaration)?;
 
                 {
-                    if merged_arguments.print_interpreter_scope {
+                    if merged_arguments.print_typed_scope {
                         eprintln!("{:#?}", typer.scope);
                     }
                 }
@@ -361,7 +361,7 @@ fn main() {
                 .with_message(format!(
                     "emitted {} {}",
                     amount,
-                    pluralize(amount, "warning", || "warnings")
+                    s_pluralize!(amount, "warning")
                 ))
                 .emit(Some(&map));
         }

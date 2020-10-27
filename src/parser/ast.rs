@@ -1,61 +1,17 @@
-use std::{
-    fmt,
-    ops::{Deref, DerefMut},
-    rc::Rc,
-};
-
 use crate::{
-    diagnostic::{Code, Diagnostic, Result},
-    lexer::{Number, Token},
+    diagnostic::{Code, Diagnostic, Result, Results},
+    lexer::{Number, Token, TokenKind},
     smallvec,
     span::{PossiblySpanning, SourceFile, Span, Spanned, Spanning},
     support::InvalidFallback,
+    support::ManyErrExt,
     Atom, SmallVec,
 };
+use std::{convert::TryFrom, convert::TryInto, fmt, rc::Rc};
 
-#[derive(Debug)]
-pub struct Declaration {
-    pub kind: DeclarationKind,
-    pub span: Span,
-    pub attributes: Attributes,
-}
+pub type Item<Kind> = crate::item::Item<Kind, Attributes>;
 
-impl Declaration {
-    pub fn as_attribute_target(&self) -> Targets {
-        use DeclarationKind::*;
-
-        match &self.kind {
-            Value(_) => Targets::VALUE,
-            Data(_) => Targets::DATA,
-            Constructor(_) => Targets::CONSTRUCTOR,
-            Module(_) | Header(_) => Targets::MODULE,
-            Crate(_) => Targets::CRATE,
-            Group(_) => Targets::all(),
-            Use(_) => Targets::USE,
-        }
-    }
-
-    pub fn kind_as_str(&self) -> &'static str {
-        use DeclarationKind::*;
-
-        match &self.kind {
-            Value(_) => "value",
-            Data(_) => "data",
-            Constructor(_) => "constructor",
-            Module(_) => "module",
-            Crate(_) => "crate",
-            Header(_) => "module header",
-            Group(_) => "attribute group",
-            Use(_) => "use",
-        }
-    }
-}
-
-impl Spanning for Declaration {
-    fn span(&self) -> Span {
-        self.span
-    }
-}
+pub type Declaration = Item<DeclarationKind>;
 
 /// The syntax node of a declaration.
 #[derive(Debug)]
@@ -134,7 +90,6 @@ pub struct Use {
     pub bindings: PathTree,
 }
 
-// @Task documentation, span information
 #[derive(Debug, Clone)]
 pub enum PathTree {
     Single {
@@ -162,132 +117,39 @@ impl Spanning for PathTree {
 // @Task support for constructor (and field) exposures (paths + multipaths)
 type ExposureList = Vec<Identifier>;
 
-#[derive(Debug, Default, Clone)]
-pub struct Attributes(Vec<Attribute>);
+pub type Attributes = Vec<Attribute>;
 
-impl Attributes {
-    pub fn has(&self, query: AttributeKind) -> bool {
-        self.get(query).is_some()
-    }
+#[derive(Debug, Clone)]
+pub struct Attribute {
+    pub binder: Identifier,
+    pub arguments: SmallVec<AttributeArgument, 1>,
+    pub span: Span,
+}
 
-    pub fn get(&self, query: AttributeKind) -> Option<&Attribute> {
-        self.iter().find(|attribute| attribute.kind == query)
-    }
-
-    pub fn filter(&self, predicate: impl Fn(&Attribute) -> bool) -> Vec<&Attribute> {
-        self.iter()
-            .filter(|attribute| predicate(attribute))
-            .collect()
-    }
-
-    pub fn nonconforming(&self, targets: Targets) -> Vec<&Attribute> {
-        self.filter(|attribute| !attribute.targets().contains(targets))
+impl Spanning for Attribute {
+    fn span(&self) -> Span {
+        self.span
     }
 }
 
-impl Deref for Attributes {
-    type Target = Vec<Attribute>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
+// @Task add span information
+#[derive(Debug, Clone)]
+pub enum AttributeArgument {
+    NumberLiteral(Box<Number>),
+    TextLiteral(Box<String>),
+    /// To be able to lower documentation comments without immense memory wastage.
+    Generated,
+    Path(Box<Path>),
+    Named(Box<NamedAttributeArgument>),
 }
 
-impl DerefMut for Attributes {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
+#[derive(Debug, Clone)]
+pub struct NamedAttributeArgument {
+    pub binder: Identifier,
+    pub value: AttributeArgument,
 }
 
-pub type Attribute = Spanned<AttributeKind>;
-
-impl Attribute {
-    pub fn targets(&self) -> Targets {
-        use AttributeKind::*;
-
-        match self.kind {
-            Documentation | Deprecated | Unstable | If | Allow | Warn | Deny | Forbid => {
-                Targets::all()
-            }
-            Foreign => Targets::VALUE | Targets::DATA,
-            Inherent | Moving | Shallow => Targets::DATA,
-            Unsafe => Targets::VALUE | Targets::CONSTRUCTOR,
-        }
-    }
-
-    // @Note in most cases (except documentation) because they have arguments/are parameterized
-    pub fn unique(&self) -> bool {
-        use AttributeKind::*;
-
-        match self.kind {
-            Foreign | Inherent | Moving | Deprecated | Unstable | Unsafe | Shallow => true,
-            Documentation | If | Allow | Warn | Deny | Forbid => false,
-        }
-    }
-}
-
-// @Task add `include`, `provide`, … in the future
-// @Task add arguments
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AttributeKind {
-    Documentation,
-    Foreign,
-    /// Make bindings available for FFI. Opposite of `foreign`.
-    Inherent,
-    Moving,
-    Deprecated,
-    Unstable,
-    If,
-    Allow,
-    Warn,
-    Deny,
-    Forbid,
-    Unsafe,
-    Shallow,
-}
-
-impl AttributeKind {
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::Documentation => "documentation comment",
-            Self::Foreign => "foreign",
-            Self::Inherent => "inherent",
-            Self::Moving => "moving",
-            Self::Deprecated => "deprecated",
-            Self::Unstable => "unstable",
-            Self::If => "if",
-            Self::Allow => "allow",
-            Self::Warn => "warn",
-            Self::Deny => "deny",
-            Self::Forbid => "forbid",
-            Self::Unsafe => "unsafe",
-            Self::Shallow => "shallow",
-        }
-    }
-}
-
-impl fmt::Display for AttributeKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if *self == Self::Documentation {
-            return write!(f, "a {}", self.name());
-        }
-
-        write!(f, "attribute `{}`", self.name())
-    }
-}
-
-bitflags::bitflags! {
-    pub struct Targets: u8 {
-        const VALUE = 0b0000_0001;
-        const DATA = 0b0000_0010;
-        const CONSTRUCTOR = 0b0000_0100;
-        const MODULE = 0b0000_1000;
-        const CRATE = 0b0010_0000;
-        const USE = 0b0001_0000;
-    }
-}
-
-pub type Expression = Spanned<ExpressionKind>;
+pub type Expression = Item<ExpressionKind>;
 
 /// The syntax node of an expression.
 #[derive(Debug, Clone)]
@@ -305,8 +167,13 @@ pub enum ExpressionKind {
     CaseAnalysis(Box<CaseAnalysis>),
     DoBlock(Box<DoBlock>),
     SequenceLiteral(Box<SequenceLiteral>),
-    /// See documentation on [crate::hir::Expression::Invalid].
     Invalid,
+}
+
+impl InvalidFallback for ExpressionKind {
+    fn invalid() -> Self {
+        Self::Invalid
+    }
 }
 
 /// The syntax node of pi-type literals.
@@ -333,9 +200,9 @@ pub struct TypedHole {
     pub tag: Identifier,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Path {
-    pub head: Option<Head>,
+    pub hanger: Option<Hanger>,
     pub segments: SmallVec<Identifier, 1>,
 }
 
@@ -355,7 +222,7 @@ pub struct LetIn {
     pub type_annotation: Option<Expression>,
     // @Task improve upon naming
     // @Note we could make this syntactically optional and then prove a beatiful error message
-    // in the desugarer (that's what we currently do for [DeclarationKind::Value] and plan to do
+    // in the lowerer (that's what we currently do for [DeclarationKind::Value] and plan to do
     // for [LetStatement])
     pub expression: Expression,
     pub scope: Expression,
@@ -384,10 +251,10 @@ pub struct DoBlock {
 #[derive(Debug, Clone)]
 pub enum Statement {
     // @Note we could make the definition syntactically optional and provide a good error message
-    // (missing definition) when desugaring
+    // (missing definition) when lowering
     Let(LetStatement),
     Use(Use),
-    // @Question should we rename this to Assign since we plan on not only desugaring
+    // @Question should we rename this to Assign since we plan on not only lowering
     // to monads but also applicatives?
     Bind(BindStatement),
     Expression(Expression),
@@ -414,19 +281,12 @@ pub struct SequenceLiteral {
     pub elements: Vec<Expression>,
 }
 
-impl InvalidFallback for Expression {
-    fn invalid() -> Self {
-        expr! {
-            Invalid[Span::SHAM]
-        }
-    }
-}
-
 impl From<Path> for Expression {
     fn from(path: Path) -> Self {
         Expression {
             span: path.span(),
             kind: ExpressionKind::Path(Box::new(path)),
+            attributes: Attributes::default(),
         }
     }
 }
@@ -436,6 +296,7 @@ impl From<Path> for Pattern {
         Pattern {
             span: path.span(),
             kind: PatternKind::Path(Box::new(path)),
+            attributes: Attributes::default(),
         }
     }
 }
@@ -446,25 +307,7 @@ pub struct Case {
     pub expression: Expression,
 }
 
-#[derive(Debug, Clone)]
-pub struct Parameters {
-    pub parameters: Vec<ParameterGroup>,
-    pub span: Option<Span>,
-}
-
-impl PossiblySpanning for Parameters {
-    fn possible_span(&self) -> Option<Span> {
-        self.span
-    }
-}
-
-impl Deref for Parameters {
-    type Target = Vec<ParameterGroup>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.parameters
-    }
-}
+pub type Parameters = Vec<ParameterGroup>;
 
 #[derive(Debug, Clone)]
 pub struct ParameterGroup {
@@ -480,7 +323,7 @@ impl Spanning for ParameterGroup {
     }
 }
 
-pub type Pattern = Spanned<PatternKind>;
+pub type Pattern = Item<PatternKind>;
 
 #[derive(Debug, Clone)]
 pub enum PatternKind {
@@ -512,28 +355,41 @@ pub struct SequenceLiteralPattern {
     pub elements: Vec<Pattern>,
 }
 
-pub type Head = Spanned<HeadKind>;
+pub type Hanger = Spanned<HangerKind>;
 
-impl fmt::Display for Head {
+impl fmt::Display for Hanger {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "{}",
             match self.kind {
-                HeadKind::Crate => "crate",
-                HeadKind::Super => "super",
-                HeadKind::Self_ => "self",
+                HangerKind::Crate => "crate",
+                HangerKind::Super => "super",
+                HangerKind::Self_ => "self",
             }
         )
     }
 }
 
-/// The head of a path.
-#[derive(Clone, Debug)]
-pub enum HeadKind {
+/// The non-identifier head of a path.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum HangerKind {
     Crate,
     Super,
     Self_,
+}
+
+impl TryFrom<TokenKind> for HangerKind {
+    type Error = ();
+
+    fn try_from(kind: TokenKind) -> Result<Self, Self::Error> {
+        Ok(match kind {
+            TokenKind::Crate => Self::Crate,
+            TokenKind::Super => Self::Super,
+            TokenKind::Self_ => Self::Self_,
+            _ => return Err(()),
+        })
+    }
 }
 
 #[derive(Clone, Eq)]
@@ -608,37 +464,27 @@ impl fmt::Display for Identifier {
 }
 
 impl Path {
-    pub fn new_identifier(token: Token) -> Self {
+    /// Construct a single identifier segment path.
+    ///
+    /// May panic.
+    pub fn identifier(token: Token) -> Self {
         Self {
-            head: None,
+            hanger: None,
             segments: smallvec![Identifier::from_token(token).into()],
         }
     }
 
-    pub fn new_crate(token: Token) -> Self {
+    /// Construct a non-identifier-head-only path.
+    pub fn hanger(token: Token) -> Self {
         Self {
-            head: Some(Head::new(token.span, HeadKind::Crate)),
-            segments: SmallVec::new(),
-        }
-    }
-
-    pub fn new_super(token: Token) -> Self {
-        Self {
-            head: Some(Head::new(token.span, HeadKind::Super)),
-            segments: SmallVec::new(),
-        }
-    }
-
-    pub fn new_self(token: Token) -> Self {
-        Self {
-            head: Some(Head::new(token.span, HeadKind::Self_)),
+            hanger: Some(Hanger::new(token.span, token.kind.try_into().unwrap())),
             segments: SmallVec::new(),
         }
     }
 
     pub fn join(mut self, other: Self) -> Result<Self> {
-        if let Some(head) = other.head {
-            if !matches!(head.kind, HeadKind::Self_) {
+        if let Some(head) = other.hanger {
+            if !matches!(head.kind, HangerKind::Self_) {
                 return Err(Diagnostic::error()
                     .with_code(Code::E026)
                     .with_message("`super` or `crate` not allowed in this position")
@@ -651,16 +497,16 @@ impl Path {
 
     pub fn is_self(&self) -> bool {
         matches!(
-            self.head,
-            Some(Head {
-                kind: HeadKind::Self_,
+            self.hanger,
+            Some(Hanger {
+                kind: HangerKind::Self_,
                 ..
             })
         )
     }
 
     pub fn first_identifier(&self) -> Option<&Identifier> {
-        if self.head.is_some() {
+        if self.hanger.is_some() {
             return None;
         }
 
@@ -671,8 +517,11 @@ impl Path {
         self.segments.last()
     }
 
-    pub fn simple(&self) -> Option<&Identifier> {
-        if self.head.is_some() || self.segments.len() > 1 {
+    /// Try to debase a path to a single identifier.
+    ///
+    /// A path is _simple_ iff it has a single segment being the head which is not a hanger.
+    pub fn to_simple(&self) -> Option<&Identifier> {
+        if self.hanger.is_some() || self.segments.len() > 1 {
             return None;
         }
 
@@ -681,9 +530,9 @@ impl Path {
 
     pub fn tail(&self) -> Self {
         Self {
-            head: None,
+            hanger: None,
             // @Task avoid allocation, try to design it as a slice `&self.segments[1..]`
-            segments: if self.head.is_some() {
+            segments: if self.hanger.is_some() {
                 self.segments.clone()
             } else {
                 self.segments.iter().skip(1).cloned().collect()
@@ -696,7 +545,7 @@ impl Path {
     // @Task verify
     pub fn prefix(&self) -> Self {
         Self {
-            head: self.head.clone(),
+            hanger: self.hanger.clone(),
             segments: self.segments.iter().rev().skip(1).rev().cloned().collect(),
         }
     }
@@ -704,7 +553,7 @@ impl Path {
 
 impl Spanning for Path {
     fn span(&self) -> Span {
-        if let Some(head) = &self.head {
+        if let Some(head) = &self.hanger {
             head.span()
                 .merge(&self.segments.first())
                 .merge(&self.segments.last())
@@ -721,7 +570,7 @@ impl Spanning for Path {
 impl fmt::Display for Path {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fn display_path(
-            head: &Option<Head>,
+            head: &Option<Hanger>,
             segments: &[Identifier],
             f: &mut fmt::Formatter<'_>,
         ) -> fmt::Result {
@@ -740,7 +589,241 @@ impl fmt::Display for Path {
                     .collect::<String>()
             )
         }
-        display_path(&self.head, &self.segments, f)
+        display_path(&self.hanger, &self.segments, f)
+    }
+}
+
+/// Something attributes can be ascribed to.
+///
+/// This is the trait version of the struct [Item].
+pub trait AttributeTarget: Spanning {
+    /// Used in diagnostics.
+    fn name(&self) -> &'static str;
+    fn as_attribute_targets(&self) -> AttributeTargets;
+
+    /// Target-specific attribute checks
+    // @Note this is the wrong place, it should be in the lowerer, somehow
+    fn check_attributes(&self, _attributes: &crate::lowered_ast::Attributes) -> Results<()> {
+        Ok(())
+    }
+}
+
+impl AttributeTarget for Declaration {
+    fn name(&self) -> &'static str {
+        use DeclarationKind::*;
+
+        match self.kind {
+            Value(_) => "a value declaration",
+            Data(_) => "a data declaration",
+            Constructor(_) => "a constructor declaration",
+            Module(_) => "a module declaration",
+            Header(_) => "a module header declaraiton",
+            Crate(_) => "a crate declaration",
+            Group(_) => "an attribute group declaration",
+            Use(_) => "a use declaration",
+        }
+    }
+
+    fn as_attribute_targets(&self) -> AttributeTargets {
+        use DeclarationKind::*;
+
+        match self.kind {
+            Value(_) => AttributeTargets::VALUE_DECLARATION,
+            Data(_) => AttributeTargets::DATA_DECLARATION,
+            Constructor(_) => AttributeTargets::CONSTRUCTOR_DECLARATION,
+            Module(_) | Header(_) => AttributeTargets::MODULE_DECLARATION,
+            Crate(_) => AttributeTargets::CRATE_DECLARATION,
+            Group(_) => AttributeTargets::all(),
+            Use(_) => AttributeTargets::USE_DECLARATION,
+        }
+    }
+
+    fn check_attributes(&self, attributes: &crate::lowered_ast::Attributes) -> Results<()> {
+        use crate::lowered_ast::AttributeKeys;
+        use DeclarationKind::*;
+
+        let (body, binder) = match &self.kind {
+            Value(value) => (
+                value.expression.as_ref().map(|expression| expression.span),
+                &value.binder,
+            ),
+            // @Task instead of using the span of the whole data declaration for empty bodies
+            // (`=` but nothing else), find a way to return the span of the `=`
+            Data(data) => (
+                data.constructors
+                    .as_ref()
+                    .map(|constructors| constructors.possible_span().unwrap_or(self.span)),
+                &data.binder,
+            ),
+            _ => return Ok(()),
+        };
+
+        match (body, attributes.has(AttributeKeys::FOREIGN)) {
+            (None, false) => {
+                Err(Diagnostic::error()
+                    .with_code(Code::E012)
+                    .with_message(format!("declaration `{}` has no definition", binder))
+                    .with_span(self)
+                    // @Task make this less awkward for data declarations
+                    .with_help("provide a definition for the declaration with `= VALUE`"))
+            }
+            // @Task return two diagnostics
+            (Some(body), true) => Err(Diagnostic::error()
+                .with_code(Code::E020)
+                .with_message(format!(
+                    "`{}` is defined multiple times in this scope",
+                    binder
+                ))
+                .with_labeled_span(&body, "conflicting definition")
+                .with_labeled_span(
+                    &attributes.get(AttributeKeys::FOREIGN).next().unwrap(),
+                    "conflicting definition",
+                )
+                .with_note(
+                    "declaration is marked `foreign` but it also has a body introduced by `=`",
+                )),
+            _ => Ok(()),
+        }
+        .many_err()
+    }
+}
+
+impl AttributeTarget for Expression {
+    fn name(&self) -> &'static str {
+        use ExpressionKind::*;
+
+        match self.kind {
+            PiTypeLiteral(_) => "a pi type literal",
+            Application(_) => "an application",
+            TypeLiteral => "a type literal",
+            NumberLiteral(_) => "a number literal expression",
+            TextLiteral(_) => "a text literal expression",
+            TypedHole(_) => "a typed hole",
+            Path(_) => "a path expression",
+            LambdaLiteral(_) => "a lambda literal",
+            LetIn(_) => "a let/in expression",
+            UseIn(_) => "a use/in expression",
+            CaseAnalysis(_) => "a case analysis",
+            DoBlock(_) => "a do block",
+            SequenceLiteral(_) => "a sequence literal expression",
+            Invalid => "an invalid expression",
+        }
+    }
+
+    fn as_attribute_targets(&self) -> AttributeTargets {
+        use ExpressionKind::*;
+
+        match self.kind {
+            PiTypeLiteral(_) => AttributeTargets::PI_TYPE_LITERAL_EXPRESSION,
+            Application(_) => AttributeTargets::APPLICATION_EXPRESSION,
+            TypeLiteral => AttributeTargets::TYPE_LITERAL_EXPRESSION,
+            NumberLiteral(_) => AttributeTargets::NUMBER_LITERAL_EXPRESSION,
+            TextLiteral(_) => AttributeTargets::TEXT_LITERAL_EXPRESSION,
+            TypedHole(_) => AttributeTargets::TYPED_HOLE_EXPRESSION,
+            Path(_) => AttributeTargets::PATH_EXPRESSION,
+            LambdaLiteral(_) => AttributeTargets::LAMBDA_LITERAL_EXPRESSION,
+            LetIn(_) => AttributeTargets::LET_IN_EXPRESSION,
+            UseIn(_) => AttributeTargets::USE_IN_EXPRESSION,
+            CaseAnalysis(_) => AttributeTargets::CASE_ANALYSIS_EXPRESSION,
+            DoBlock(_) => AttributeTargets::DO_BLOCK_EXPRESSION,
+            SequenceLiteral(_) => AttributeTargets::SEQUENCE_LITERAL_EXPRESSION,
+            Invalid => AttributeTargets::empty(),
+        }
+    }
+}
+
+impl AttributeTarget for Pattern {
+    fn name(&self) -> &'static str {
+        use PatternKind::*;
+
+        match self.kind {
+            NumberLiteral(_) => "a number literal pattern",
+            TextLiteral(_) => "a text literal pattern",
+            SequenceLiteralPattern(_) => "a sequence literal pattern",
+            Path(_) => "a path pattern",
+            Binder(_) => "a binder pattern",
+            Deapplication(_) => "a deapplication",
+        }
+    }
+
+    fn as_attribute_targets(&self) -> AttributeTargets {
+        use PatternKind::*;
+
+        match self.kind {
+            NumberLiteral(_) => AttributeTargets::NUMBER_LITERAL_PATTERN,
+            TextLiteral(_) => AttributeTargets::TEXT_LITERAL_PATTERN,
+            SequenceLiteralPattern(_) => AttributeTargets::SEQUENCE_LITERAL_PATTERN,
+            Path(_) => AttributeTargets::PATH_PATTERN,
+            Binder(_) => AttributeTargets::BINDER_PATTERN,
+            Deapplication(_) => AttributeTargets::DEAPPLICATION_PATTERN,
+        }
+    }
+}
+
+// excluded: crate::ast::DeclarationKind::{Header, Group}
+// @Task somehow generate the explicit bits
+bitflags::bitflags! {
+    /// Attribute targets.
+    pub struct AttributeTargets: u32 {
+        const VALUE_DECLARATION = 1 << 0;
+        const DATA_DECLARATION = 1 << 1;
+        const CONSTRUCTOR_DECLARATION = 1 << 2;
+        const MODULE_DECLARATION = 1 << 3;
+        const CRATE_DECLARATION = 1 << 4;
+        const USE_DECLARATION = 1 << 5;
+
+        const DECLARATION = Self::VALUE_DECLARATION.bits
+            | Self::DATA_DECLARATION.bits
+            | Self::CONSTRUCTOR_DECLARATION.bits
+            | Self::MODULE_DECLARATION.bits
+            | Self::CRATE_DECLARATION.bits
+            | Self::USE_DECLARATION.bits;
+
+        const PI_TYPE_LITERAL_EXPRESSION = 1 << 6;
+        const APPLICATION_EXPRESSION = 1 << 7;
+        const TYPE_LITERAL_EXPRESSION = 1 << 8;
+        const NUMBER_LITERAL_EXPRESSION = 1 << 9;
+        const TEXT_LITERAL_EXPRESSION = 1 << 10;
+        const TYPED_HOLE_EXPRESSION = 1 << 11;
+        const PATH_EXPRESSION = 1 << 12;
+        const LAMBDA_LITERAL_EXPRESSION = 1 << 13;
+        const LET_IN_EXPRESSION = 1 << 14;
+        const USE_IN_EXPRESSION = 1 << 15;
+        const CASE_ANALYSIS_EXPRESSION = 1 << 16;
+        const DO_BLOCK_EXPRESSION = 1 << 17;
+        const SEQUENCE_LITERAL_EXPRESSION = 1 << 18;
+
+        const EXPRESSION = Self::PI_TYPE_LITERAL_EXPRESSION.bits
+            | Self::APPLICATION_EXPRESSION.bits
+            | Self::TYPE_LITERAL_EXPRESSION.bits
+            | Self::NUMBER_LITERAL_EXPRESSION.bits
+            | Self::TEXT_LITERAL_EXPRESSION.bits
+            | Self::TYPED_HOLE_EXPRESSION.bits
+            | Self::PATH_EXPRESSION.bits
+            | Self::LAMBDA_LITERAL_EXPRESSION.bits
+            | Self::LET_IN_EXPRESSION.bits
+            | Self::USE_IN_EXPRESSION.bits
+            | Self::CASE_ANALYSIS_EXPRESSION.bits
+            | Self::DO_BLOCK_EXPRESSION.bits
+            | Self::SEQUENCE_LITERAL_EXPRESSION.bits;
+
+        const NUMBER_LITERAL_PATTERN = 1 << 19;
+        const TEXT_LITERAL_PATTERN = 1 << 20;
+        const SEQUENCE_LITERAL_PATTERN = 1 << 21;
+        const PATH_PATTERN = 1 << 22;
+        const BINDER_PATTERN = 1 << 23;
+        const DEAPPLICATION_PATTERN = 1 << 24;
+
+        const PATTERN = Self::NUMBER_LITERAL_PATTERN.bits
+            | Self::TEXT_LITERAL_PATTERN.bits
+            | Self::SEQUENCE_LITERAL_PATTERN.bits
+            | Self::PATH_PATTERN.bits
+            | Self::BINDER_PATTERN.bits
+            | Self::DEAPPLICATION_PATTERN.bits;
+
+        const NUMBER_LITERAL = Self::NUMBER_LITERAL_EXPRESSION.bits | Self::NUMBER_LITERAL_PATTERN.bits;
+        const TEXT_LITERAL = Self::TEXT_LITERAL_EXPRESSION.bits | Self::TEXT_LITERAL_PATTERN.bits;
+        const SEQUENCE_LITERAL = Self::SEQUENCE_LITERAL_EXPRESSION.bits | Self::SEQUENCE_LITERAL_PATTERN.bits;
     }
 }
 
@@ -760,7 +843,7 @@ pub enum Explicitness {
 pub use Explicitness::*;
 
 impl Explicitness {
-    pub fn is_implicit(self) -> bool {
+    pub const fn is_implicit(self) -> bool {
         matches!(self, Implicit)
     }
 }
@@ -774,46 +857,14 @@ impl fmt::Display for Explicitness {
     }
 }
 
-pub macro decl($kind:ident[$span:expr] { $( $body:tt )+ }) {
-    Declaration {
-        span: $span,
-        attributes: Attributes::default(),
-        kind: DeclarationKind::$kind(Box::new(self::$kind { $( $body )+ })),
-    }
+pub macro decl($( $tree:tt )+) {
+    crate::item::item!(crate::ast, DeclarationKind, Box; $( $tree )+)
 }
 
-pub macro expr {
-    ($kind:ident[$span:expr] { $( $body:tt )+ }) => {
-        Expression::new(
-            $span,
-            ExpressionKind::$kind(Box::new(self::$kind { $( $body )+ })),
-        )
-    },
-    ($kind:ident[$span:expr]) => {
-        Expression::new(
-            $span,
-            ExpressionKind::$kind,
-        )
-    },
-    ($kind:ident[$span:expr]($value:expr)) => {
-        Expression::new(
-            $span,
-            ExpressionKind::$kind(Box::from($value)),
-        )
-    },
+pub macro expr($( $tree:tt )+) {
+    crate::item::item!(crate::ast, ExpressionKind, Box; $( $tree )+)
 }
 
-pub macro pat {
-    ($kind:ident[$span:expr] { $( $body:tt )+ }) => {
-        Pattern::new(
-            $span,
-            PatternKind::$kind(Box::new(self::$kind { $( $body )+ })),
-        )
-    },
-    ($kind:ident[$span:expr]($value:expr)) => {
-        Pattern::new(
-            $span,
-            PatternKind::$kind(Box::from($value)),
-        )
-    },
+pub macro pat($( $tree:tt )+) {
+    crate::item::item!(crate::ast, PatternKind, Box; $( $tree )+)
 }

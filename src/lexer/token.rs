@@ -47,7 +47,7 @@ impl Token {
     pub fn identifier(self) -> Atom {
         match self.data {
             TokenData::Identifier(atom) => atom,
-            _ => unreachable!(),
+            _ => unreachable!("{:?}", self.data),
         }
     }
 
@@ -227,6 +227,14 @@ pub enum TokenKind {
     Use,
     EndOfInput,
     Illegal,
+}
+
+impl TokenKind {
+    /// Test if the token may appear at the start of a [path](crate::ast::Path).
+    pub const fn is_path_head(self) -> bool {
+        use TokenKind::*;
+        matches!(self, Identifier | Punctuation | Crate | Super | Self_)
+    }
 }
 
 use TokenKind::*;

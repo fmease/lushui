@@ -1,11 +1,13 @@
 use super::{CrateScope, Expression};
 use crate::{
-    ast::{Attribute, Explicit},
+    ast::Explicit,
     diagnostic::{Code, Diagnostic, Result},
+    lowered_ast::{Attribute, Attributes},
     resolver::{
         hir::{expr, Constructor, ExpressionKind},
         Identifier,
     },
+    span::Span,
     typer::Declaration,
     Int, Nat,
 };
@@ -291,13 +293,13 @@ impl Value {
                     .clone()
                     .ok_or_else(missing_inherent)?,
             ),
-            Self::Text(value) => expr! { Text[](value) },
-            Self::Nat(value) => expr! { Number[](Nat(value)) },
-            Self::Nat32(value) => expr! { Number[](Nat32(value)) },
-            Self::Nat64(value) => expr! { Number[](Nat64(value)) },
-            Self::Int(value) => expr! { Number[](Int(value)) },
-            Self::Int32(value) => expr! { Number[](Int32(value)) },
-            Self::Int64(value) => expr! { Number[](Int64(value)) },
+            Self::Text(value) => expr! { Text(Attributes::default(), Span::SHAM; value) },
+            Self::Nat(value) => expr! { Number(Attributes::default(), Span::SHAM; Nat(value)) },
+            Self::Nat32(value) => expr! { Number(Attributes::default(), Span::SHAM; Nat32(value)) },
+            Self::Nat64(value) => expr! { Number(Attributes::default(), Span::SHAM; Nat64(value)) },
+            Self::Int(value) => expr! { Number(Attributes::default(), Span::SHAM; Int(value)) },
+            Self::Int32(value) => expr! { Number(Attributes::default(), Span::SHAM; Int32(value)) },
+            Self::Int64(value) => expr! { Number(Attributes::default(), Span::SHAM; Int64(value)) },
             Self::Option { type_, value } => match value {
                 Some(value) => application(
                     application(
@@ -312,7 +314,9 @@ impl Value {
                 ),
             },
             Self::IO { index, arguments } => expr! {
-                IO[] {
+                IO {
+                    Attributes::default(),
+                    Span::SHAM;
                     index,
                     arguments: arguments.into_iter()
                         .map(|argument|argument.into_expression(scope))
@@ -485,12 +489,18 @@ macro count {
 }
 
 fn binding(binder: Identifier) -> Expression {
-    expr! { Binding[] { binder } }
+    expr! { Binding { Attributes::default(), Span::SHAM; binder } }
 }
 
 fn application(callee: Expression, argument: Expression) -> Expression {
     expr! {
-        Application[] { callee, argument, explicitness: Explicit }
+        Application {
+            Attributes::default(),
+            Span::SHAM;
+            callee,
+            argument,
+            explicitness: Explicit
+        }
     }
 }
 

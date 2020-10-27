@@ -7,17 +7,16 @@
 // @Note naming swap out with name&concept bytecode
 mod instruction;
 // @Task move stuff from here to there
-mod interpreter;
+pub mod interpreter;
 
 use indexed_vec::IndexVec;
 
 use crate::{
     diagnostic::Result,
     grow_array::GrowArray,
-    resolver::{
-        hir::{self, Declaration, Expression},
-        CrateScope,
-    },
+    hir::{self, Declaration, Expression},
+    lowered_ast::AttributeKeys,
+    resolver::{CrateIndex, CrateScope},
     HashMap,
 };
 use instruction::{Chunk, ChunkIndex, Instruction};
@@ -33,8 +32,6 @@ use instruction::{Chunk, ChunkIndex, Instruction};
 
 //     Ok(compiler.chunks)
 // }
-
-use crate::resolver::CrateIndex;
 
 // future bytecode format:
 // [content hash] [version] [constant table] [entry-address] [chunks/instructions]
@@ -132,10 +129,7 @@ impl<'a> Compiler<'a> {
                     },
                 );
 
-                if declaration
-                    .attributes
-                    .has(crate::ast::AttributeKind::Foreign)
-                {
+                if declaration.attributes.has(AttributeKeys::FOREIGN) {
                     // @Bug can actually have arity > 1
                     // @Task handle currying/partial evaluation
                     // do nothing right now

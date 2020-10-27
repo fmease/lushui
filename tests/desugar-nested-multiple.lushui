@@ -1,4 +1,4 @@
-;; TEST pass check --only-desugar --print-desugar-hir
+;; TEST pass check --only-lower --print-lowered-ast
 
 use foocoo.()
 
