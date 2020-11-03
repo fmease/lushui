@@ -198,15 +198,15 @@ impl Attribute {
 // (or instead of)
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum AttributeKind {
-    /// Form: `allow <0:lint:Path>`
+    /// Form: `allow <0:lint:Path>`.
     Allow {
         lint: Lint,
     },
-    /// Form: `deny <0:lint:Path>`
+    /// Form: `deny <0:lint:Path>`.
     Deny {
         lint: Lint,
     },
-    /// Form: `deprecated <0:reason:Text-Literal> [<since:Version>] [<replacement:String>]`
+    /// Form: `deprecated <0:reason:Text-Literal> [<since:Version>] [<replacement:String>]`.
     Deprecated {
         reason: String,
         since: Option<Version>,
@@ -216,7 +216,7 @@ pub enum AttributeKind {
     Documentation {
         content: String,
     },
-    /// Form: `forbid <0:lint:Path>`
+    /// Form: `forbid <0:lint:Path>`.
     Forbid {
         lint: Lint,
     },
@@ -231,17 +231,21 @@ pub enum AttributeKind {
     Int32,
     Int64,
     List,
+    /// Form: `location <0:path:Path>`.
+    Location {
+        path: Path,
+    },
     Moving,
     Nat,
     Nat32,
     Nat64,
     Opaque,
-    /// Form: `public [<0:scope:Path>]`
+    /// Form: `public [<0:scope:Path>]`.
     // @Question rename `scope` to `up-to`?
     Public {
         scope: Option<ast::Path>,
     },
-    /// Form: `recursion-limit <0:depth:Number-Literal>`
+    /// Form: `recursion-limit <0:depth:Number-Literal>`.
     RecursionLimit {
         depth: usize,
     },
@@ -250,13 +254,13 @@ pub enum AttributeKind {
     Test,
     Text,
     Unsafe,
-    /// Form: `unstable <feature:Path> <reason:Text-Literal>`
+    /// Form: `unstable <feature:Path> <reason:Text-Literal>`.
     Unstable {
         feature: Feature,
         reason: String,
     },
     Vector,
-    /// Form: `warn <0:lint:Path>`
+    /// Form: `warn <0:lint:Path>`.
     Warn {
         lint: Lint,
     },
@@ -294,6 +298,25 @@ impl AttributeKind {
             "Int32" => Self::Int32,
             "Int64" => Self::Int64,
             "List" => Self::List,
+            "location" => Self::Location {
+                path: match &*attribute.arguments {
+                    [] => return Err(Error::TooFewArguments),
+                    [ast::AttributeArgument::Path(path)] => path.as_ref().clone(),
+                    [ast::AttributeArgument::Named(named)] => match &**named {
+                        ast::NamedAttributeArgument { binder, value }
+                            if binder.as_str() == "path" =>
+                        {
+                            match value {
+                                ast::AttributeArgument::Path(path) => path.as_ref().clone(),
+                                _ => return Err(Error::InvalidArgument),
+                            }
+                        }
+                        _ => return Err(Error::InvalidArgument),
+                    },
+                    [_] => return Err(Error::InvalidArgument),
+                    _ => return Err(Error::TooManyArguments),
+                },
+            },
             "moving" => Self::Moving,
             "Nat" => Self::Nat,
             "Nat32" => Self::Nat32,
@@ -388,6 +411,7 @@ impl AttributeKind {
             Self::Int32 => quoted!("Int32"),
             Self::Int64 => quoted!("Int64"),
             Self::List => quoted!("List"),
+            Self::Location { .. } => quoted!("location"),
             Self::Moving => quoted!("moving"),
             Self::Nat => quoted!("Nat"),
             Self::Nat32 => quoted!("Nat32"),
@@ -423,7 +447,7 @@ impl AttributeKind {
             List | Vector => Targets::SEQUENCE_LITERAL,
             // @Task but smh add extra diagnostic note saying they are public automatically
             Public { .. } => Targets::DECLARATION - Targets::CONSTRUCTOR_DECLARATION,
-            RecursionLimit { .. } => Targets::MODULE_DECLARATION,
+            Location { .. } | RecursionLimit { .. } => Targets::MODULE_DECLARATION,
             Test => Targets::VALUE_DECLARATION | Targets::MODULE_DECLARATION,
             Unsafe => {
                 Targets::VALUE_DECLARATION
@@ -450,7 +474,7 @@ impl AttributeKind {
             Int | Int32 | Int64 | Nat | Nat32 | Nat64 => "number literals",
             List | Vector => "sequence literals",
             Public { .. } => "any declaration except constructor ones",
-            RecursionLimit { .. } => "module declarations",
+            Location { .. } | RecursionLimit { .. } => "module declarations",
             Test => "value or module declarations",
             Unsafe => "value or constructor declarations, expressions or patterns",
         }
@@ -472,6 +496,7 @@ impl AttributeKind {
             Self::Int32 => AttributeKeys::INT32,
             Self::Int64 => AttributeKeys::INT64,
             Self::List => AttributeKeys::LIST,
+            Self::Location { .. } => AttributeKeys::LOCATION,
             Self::Moving => AttributeKeys::MOVING,
             Self::Nat => AttributeKeys::NAT,
             Self::Nat32 => AttributeKeys::NAT32,
@@ -507,21 +532,22 @@ bitflags::bitflags! {
         const INT32 = 1 << 11;
         const INT64 = 1 << 12;
         const LIST = 1 << 13;
-        const MOVING = 1 << 14;
-        const NAT = 1 << 15;
-        const NAT32 = 1 << 16;
-        const NAT64 = 1 << 17;
-        const OPAQUE = 1 << 18;
-        const PUBLIC = 1 << 19;
-        const RECURSION_LIMIT = 1 << 20;
-        const RUNE = 1 << 21;
-        const SHALLOW = 1 << 22;
-        const TEST = 1 << 23;
-        const TEXT = 1 << 24;
-        const UNSAFE = 1 << 25;
-        const UNSTABLE = 1 << 26;
-        const VECTOR = 1 << 27;
-        const WARN = 1 << 28;
+        const LOCATION = 1 << 14;
+        const MOVING = 1 << 15;
+        const NAT = 1 << 16;
+        const NAT32 = 1 << 17;
+        const NAT64 = 1 << 18;
+        const OPAQUE = 1 << 19;
+        const PUBLIC = 1 << 20;
+        const RECURSION_LIMIT = 1 << 21;
+        const RUNE = 1 << 22;
+        const SHALLOW = 1 << 23;
+        const TEST = 1 << 24;
+        const TEXT = 1 << 25;
+        const UNSAFE = 1 << 26;
+        const UNSTABLE = 1 << 27;
+        const VECTOR = 1 << 28;
+        const WARN = 1 << 29;
 
         const COEXISTABLE = Self::ALLOW.bits
             | Self::DENY.bits

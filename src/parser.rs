@@ -500,12 +500,8 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Module-Declaration ::=
     ///     | Header
-    ///     | "module" #Identifier
-    ///         (Line-Break |
-    ///         ":" Exposure-List Line-Break Indentation
-    ///             (Line-Break | Declaration)*
-    ///         Dedentation)
-    /// Header ::= "module" ":" Exposure-List Line-Break
+    ///     | "module" #Identifier (Line-Break | "=" Line-Break Indentation (Line-Break | Declaration)* Dedentation)
+    /// Header ::= "module" "=" Line-Break
     /// ```
     fn finish_parse_module_declaration(
         &mut self,
@@ -515,38 +511,39 @@ impl<'a> Parser<'a> {
         use TokenKind::*;
         let mut span = keyword_span;
 
-        if self.consumed(Colon) {
-            let exposures = self.parse_exposure_list()?;
-            self.consume(LineBreak)?;
-
+        if self.consumed(Equals) {
             return Ok(decl! {
                 Header {
                     attributes,
-                    span;
-                    exposures,
+                    span
                 }
             });
         }
 
         let binder = span.merging(self.consume_identifier()?);
 
-        // it is an external module declaration
-        if self.consumed(LineBreak) {
-            return Ok(decl! {
-                Module {
-                    attributes,
-                    span;
-                    binder,
-                    file: self.file.clone(),
-                    exposures: Vec::new(),
-                    declarations: None,
-                }
-            });
-        }
-
-        self.consume(Colon)?;
-        let exposures = self.parse_exposure_list()?;
-        self.consume(LineBreak)?;
+        match self.current_token_kind() {
+            // external module declaration
+            LineBreak => {
+                self.advance();
+                return Ok(decl! {
+                    Module {
+                        attributes,
+                        span;
+                        binder,
+                        file: self.file.clone(),
+                        declarations: None,
+                    }
+                });
+            }
+            Equals => {
+                self.advance();
+                self.consume(LineBreak)?;
+            }
+            _ => {
+                return Err(expected_one_of![LineBreak, Equals].but_actual_is(self.current_token()))
+            }
+        };
 
         let mut declarations = Vec::new();
 
@@ -562,7 +559,6 @@ impl<'a> Parser<'a> {
                 span;
                 binder,
                 file: self.file.clone(),
-                exposures,
                 declarations: Some(declarations),
             }
         })
@@ -594,7 +590,6 @@ impl<'a> Parser<'a> {
                         self.file.span;
                         binder,
                         file: self.file.clone(),
-                        exposures: Vec::new(),
                         declarations: Some(declarations)
                     }
                 });
@@ -602,23 +597,6 @@ impl<'a> Parser<'a> {
 
             declarations.push(self.parse_declaration()?);
         }
-    }
-
-    /// Parse an exposure list consuming the delimiter `=`.
-    ///
-    /// ## Grammar
-    ///
-    /// ```ebnf
-    /// Exposure-List ::= General-Identifier* "="
-    /// ```
-    fn parse_exposure_list(&mut self) -> Result<Vec<Identifier>> {
-        let mut exposures = Vec::new();
-
-        while !self.consumed(TokenKind::Equals) {
-            exposures.push(self.consume_general_identifier()?);
-        }
-
-        Ok(exposures)
     }
 
     // @Note this is fragile and ugly as heck
@@ -650,7 +628,7 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```ebnf
-    /// Use-Declaration ::= "use" Use-Bindings Line-Break
+    /// Use-Declaration ::= "use" Path-Tree Line-Break
     /// ```
     fn finish_parse_use_declaration(
         &mut self,

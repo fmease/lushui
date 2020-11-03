@@ -11,7 +11,7 @@ Alpha: Type = Type
 
 beta: Nat = 1000
 
-module capsule: =
+module capsule =
     use super.Nat
 
     data Nat: Type =

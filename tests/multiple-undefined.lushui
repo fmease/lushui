@@ -6,7 +6,7 @@ data Xoo (A: Non-Existent): Departed =
     x00: Slipped-Away
     x11: Lost-All-Along
 
-module realm: =
+module realm =
     Nothing: Type = Void
 
 data Thing: Type =

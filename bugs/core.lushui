@@ -1,8 +1,6 @@
 ;; TEST pass check
 
-;; @Task implement the concept of crates and make `core` (this) a crate
-;; @Task write module header
-;; module: identity constant compose flip void unit bool text nat nat32 nat64 int int32 int64 … =
+;; @Task make this a crate
 
 identity (A: Type) (a: A): A = a
 
@@ -14,20 +12,20 @@ compose (A B C: Type) (f: A -> B) (g: B -> C) (a: A): C =
 flip (A B C: Type) (f: A -> B -> C) (b: B) (a: A): C =
     f a b
 
-module void: Void =
+module void =
     data Void: Type =
 
     ;; absurd (A: Type) (v: Void): A = (case v of) A
 
 ;; @Question also `Unit.unit` next to `unit`?
-module unit: Unit unit =
+module unit =
     @inherent
     data Unit: Type =
         unit: Unit
     
     use Unit.unit
 
-module bool: Bool false true not =
+module bool =
     @inherent
     data Bool: Type =
         false: Bool
@@ -50,7 +48,7 @@ module bool: Bool false true not =
 
     ;; or (b c: Bool): Bool = if Bool b True c
 
-module text: Text concat ++ =
+module text =
     @foreign
     data Text: Type
 
@@ -59,8 +57,7 @@ module text: Text concat ++ =
     @foreign
     concat: Text -> Text -> Text
 
-;; @Task add the rest of the exposures once we support line breaks inside exposure lists
-module nat: Nat add + subtract - panicking-subtract -? multiply * divide / =
+module nat =
     use super.(option.Option bool.Bool text.Text)
 
     @foreign
@@ -138,40 +135,40 @@ module nat: Nat add + subtract - panicking-subtract -? multiply * divide / =
                 bool.true => ordering.less
                 bool.false => ordering.greater
 
-module nat32: Nat32 =
+module nat32 =
     @foreign
     data Nat32: Type
 
-module nat64: Nat64 =
+module nat64 =
     @foreign
     data Nat64: Type
 
-module int: Int =
+module int =
     @foreign
     data Int: Type
 
-module int32: Int32 =
+module int32 =
     @foreign
     data Int32: Type
 
-module int64: Int64 =
+module int64 =
     @foreign
     data Int64: Type
 
-module duple: Duple duple =
+module duple =
     ;; @Task make inherent as well
     data Duple (A B: Type): Type =
         duple (A B: Type): A -> B -> Duple A B
 
     use Duple.duple
 
-module triple: Triple triple =
+module triple =
     data Triple (A B C: Type): Type =
         triple (A B C: Type): A -> B -> C -> Triple A B C
 
     use Triple.triple
 
-module option: Option none some =
+module option =
     @inherent
     data Option (A: Type): Type =
         none (A: Type): Option A
@@ -184,14 +181,14 @@ module option: Option none some =
     ;;         some \_ \a => some B (f a)
     ;;         none \_ => none B
 
-module result: Result failure success =
+module result =
     data Result (A E: Type): Type =
         failure (A E: Type): E -> Result A E
         success (A E: Type): A -> Result A E
 
     use Result.(failure success)
 
-module list: List nil cons =
+module list =
     ;; @Task rename nil to empty and cons...cons to new, with, cell, idk
     data List (A: Type): Type =
         ;; @Note bad naming
@@ -201,7 +198,7 @@ module list: List nil cons =
     use List.(nil cons)
 
 ;; @Question tuple backed by List or by Vector in core (or both implementations)?
-module tuple: Tuple nil cons =
+module tuple =
     use super.list.(List self)
 
     data Tuple (L: List Type): Type =
@@ -211,7 +208,7 @@ module tuple: Tuple nil cons =
     use Tuple.(nil cons)
 
 ;; @Question tuple backed by List or by Vector in core (or both implementations)?
-module tuple': Tuple nil cons =
+module tuple' =
     use super.vector.(Vector self)
     use super.nat.(Nat +)
 
@@ -221,7 +218,7 @@ module tuple': Tuple nil cons =
 
     use Tuple.(nil cons)
 
-module vector: Vector nil cons =
+module vector =
     use super.nat.(Nat +)
 
     data Vector (n: Nat) (A: Type): Type =
@@ -231,7 +228,7 @@ module vector: Vector nil cons =
 
     use Vector.(nil cons)
 
-module ordering: Ordering less equal greater invert =
+module ordering =
     data Ordering: Type =
         less: Ordering
         equal: Ordering

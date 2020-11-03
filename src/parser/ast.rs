@@ -21,7 +21,7 @@ pub enum DeclarationKind {
     Constructor(Box<Constructor>),
     Module(Box<Module>),
     Crate(Box<Crate>),
-    Header(Box<Header>),
+    Header,
     Group(Box<Group>),
     Use(Box<Use>),
 }
@@ -60,7 +60,6 @@ pub struct Constructor {
 pub struct Module {
     pub binder: Identifier,
     pub file: Rc<SourceFile>,
-    pub exposures: ExposureList,
     pub declarations: Option<Vec<Declaration>>,
 }
 
@@ -68,12 +67,6 @@ pub struct Module {
 #[derive(Debug)]
 pub struct Crate {
     pub binder: Identifier,
-}
-
-/// The syntax node of a module header.
-#[derive(Debug)]
-pub struct Header {
-    pub exposures: ExposureList,
 }
 
 /// The syntax node of attribute groups.
@@ -112,10 +105,6 @@ impl Spanning for PathTree {
         }
     }
 }
-
-// @Temporary
-// @Task support for constructor (and field) exposures (paths + multipaths)
-type ExposureList = Vec<Identifier>;
 
 pub type Attributes = Vec<Attribute>;
 
@@ -617,7 +606,7 @@ impl AttributeTarget for Declaration {
             Data(_) => "a data declaration",
             Constructor(_) => "a constructor declaration",
             Module(_) => "a module declaration",
-            Header(_) => "a module header declaraiton",
+            Header => "a module header declaraiton",
             Crate(_) => "a crate declaration",
             Group(_) => "an attribute group declaration",
             Use(_) => "a use declaration",
@@ -631,7 +620,7 @@ impl AttributeTarget for Declaration {
             Value(_) => AttributeTargets::VALUE_DECLARATION,
             Data(_) => AttributeTargets::DATA_DECLARATION,
             Constructor(_) => AttributeTargets::CONSTRUCTOR_DECLARATION,
-            Module(_) | Header(_) => AttributeTargets::MODULE_DECLARATION,
+            Module(_) | Header => AttributeTargets::MODULE_DECLARATION,
             Crate(_) => AttributeTargets::CRATE_DECLARATION,
             Group(_) => AttributeTargets::all(),
             Use(_) => AttributeTargets::USE_DECLARATION,

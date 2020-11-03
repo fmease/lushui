@@ -1,7 +1,7 @@
 ;; TEST fail check
 
-module mu: =
+module mu =
     use super.nu.A
 
-module nu: =
+module nu =
     use super.mu.A

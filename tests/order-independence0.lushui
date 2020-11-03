@@ -1,20 +1,20 @@
 ;; TEST pass check
 
-module first: =
+module first =
     use alpha.alias
 
-    module alpha: =
+    module alpha =
         use beta.alias
-        module beta: =
+        module beta =
             alias: Type = Type
 
-module second: =
+module second =
     X: Type = Alpha
 
     data Alpha: Type =
         alpha: Alpha
 
-    module foo: =
+    module foo =
         use super.Alpha
         use super.Alpha.alpha
         what-every: Alpha = alpha
@@ -25,10 +25,10 @@ module second: =
 
 use alpha.Void
 
-module alpha: =
+module alpha =
     use super.V
 
-    module xoo: =
+    module xoo =
         W: Type = super.V
 
     data Void: Type =

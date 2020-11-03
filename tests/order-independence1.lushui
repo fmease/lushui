@@ -1,5 +1,4 @@
-;; TEST pass check --only-resolve
-;; @Bug the type checker cannot handle it yet (panics)
+;; TEST pass check
 
 Ty: Type = Type
 
@@ -17,5 +16,5 @@ data Gamma: Type =
 
 Gamma-Alias: Ty = Gamma
 
-module m0: =
+module m0 =
     T: super.Ty = Type

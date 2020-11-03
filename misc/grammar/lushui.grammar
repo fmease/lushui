@@ -51,18 +51,12 @@ Data-Declaration ::=
 
 Module-Declaration ::=
     | Header
-    | "module" #Identifier
-        (Line-Break |
-        ":" Exposure-List Line-Break Indentation
-            (Line-Break | Declaration)*
-        Dedentation)
-Header ::= "module" ":" Exposure-List Line-Break
+    | "module" #Identifier (Line-Break | "=" Line-Break Indentation (Line-Break | Declaration)* Dedentation)
+Header ::= "module" "=" Line-Break
 
 Top-Level ::= (Line-Break | Declaration)* #End-Of-Input
 
-Exposure-List ::= General-Identifier* "="
-
-Use-Declaration ::= "use" Use-Bindings Line-Break
+Use-Declaration ::= "use" Path-Tree Line-Break
 
 Path-Tree ::= Path "." "(" (Path-Tree | "(" Renaming ")")* ")" | Renaming
 Renaming ::= Path "as" General-Identifier

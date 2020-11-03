@@ -292,9 +292,9 @@ impl<'a> Lowerer<'a> {
                 );
                 Err(errors)
             }
-            // @Beacon @Task merge information (exposure list and attributes) with parent module
+            // @Beacon @Task merge attributes with parent module
             // (through a `Context`) and ensure it's the first declaration in the whole module
-            Header(_) => {
+            Header => {
                 errors.insert(
                     Diagnostic::bug()
                         .with_message("module headers not supported yet")

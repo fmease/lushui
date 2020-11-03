@@ -19,7 +19,7 @@ error[E020]: `beta` is defined multiple times in this scope
 error[E020]: `capsule` is defined multiple times in this scope
    > ${DIRECTORY}/duplicate-bindings.lushui:23:1
    |
-14 | module capsule: =
+14 | module capsule =
    |        ------- previous definition
    |
 23 | capsule: Nat = beta
