@@ -1,10 +1,25 @@
 //! The lowering stage.
 //!
 //! Higher-level syntactic constructs in the AST are simplified and rewritten
-//! in terms of lower-level language primitives.
+//! in terms of lower-level language primitives and undergo several checks since
+//! they might be more liberal than the intermediate languages allow.
 //!
-//! Additionally among other things, this phase parses and validates attributes and
-//! checks if the mandatory type annotations are present.
+//! This pass does the following:
+//!
+//! * lower let/in expressions to lambda literals
+//! * lower parameters to simple lambda literals
+//! * open external modules (this will probably move to the parser in the future
+//!   for parallel reading and independent error reporting)
+//! * simplifiy use declarations by unfolding path trees
+//! * apply attribute groups (unimplemented right now)
+//! * parse number literals according to their type indicated by attributes (unsure
+//!   if this is the right place or whether it should be moved to a later stage)
+//! * parses general attributes into concrete ones and
+//! * validates their location (item target), uniqueness if applicable,
+//!   exclusivity rules
+//! * checks if the mandatory type annotations on top-level declarations and their
+//!   parameters are present
+//! * gates a lot of unsupported features
 
 pub mod lowered_ast;
 
