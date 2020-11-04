@@ -25,7 +25,7 @@ use crate::{
 };
 use std::{iter::Peekable, path::PathBuf, str::CharIndices};
 pub use token::{
-    is_punctuation, Number, Token,
+    is_punctuation, Token,
     TokenKind::{self, *},
 };
 
@@ -61,8 +61,6 @@ pub fn lex(source: String) -> Results<Vec<Token>> {
     )
     .lex()
 }
-
-const LITERAL_SUFFIX_SEPARATOR: char = '_';
 
 /// The state of the lexer.
 pub struct Lexer<'a> {
@@ -328,12 +326,11 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    // @Note the hash suffx syntax is only temporary until we decide to implement generic numbers
     // @Task move validation logic out of the lexer
     fn lex_number_literal(&mut self) -> Result<()> {
         const NUMERIC_SEPERATOR: char = '\'';
 
-        let mut number = self.source[self.span].to_owned();
+        let mut number = self.source().to_owned();
 
         let mut trailing_prime = false;
         let mut consecutive_primes = false;
@@ -363,36 +360,18 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        let suffix = if let Some(character) = self.peek() {
-            let mut suffix = String::new();
+        // @Task emit an invalid identifier token if an identifier immedially follows
+        // a number literal (maybe)
 
-            if character == LITERAL_SUFFIX_SEPARATOR {
-                self.take();
-                self.advance();
-
-                while let Some(character) = self.peek() {
-                    if !character.is_ascii_alphanumeric() {
-                        break;
-                    }
-
-                    suffix.push(character);
-                    self.take();
-                    self.advance();
-                }
-                Some(suffix)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
+        // @Task return an invalid token instead
         if consecutive_primes {
             return Err(Diagnostic::error()
                 .with_code(Code::E005)
                 .with_message("consecutive primes in number literal")
                 .with_span(&self.span()));
         }
+
+        // @Task return an invalid token instead
 
         if trailing_prime {
             return Err(Diagnostic::error()
@@ -401,30 +380,7 @@ impl<'a> Lexer<'a> {
                 .with_span(&self.span()));
         }
 
-        use token::{NumberLiteralSuffix::*, TokenData};
-
-        let suffix = match suffix {
-            Some(suffix) => suffix.parse().map_err(|_| {
-                Diagnostic::error()
-                    .with_code(Code::E006)
-                    .with_message(format!("invalid number literal suffix `{}`", suffix))
-                    .with_span(&self.span())
-            })?,
-            None => N,
-        };
-
-        let number = TokenData::parse_number(&number, suffix).map_err(|interval| {
-            Diagnostic::error()
-                .with_code(Code::E007)
-                .with_message(format!(
-                    "number literal `{}` does not fit type `{}`",
-                    number,
-                    suffix.type_name()
-                ))
-                .with_span(&self.span())
-                .with_note(format!("values of this type must fit {}", interval))
-        })?;
-        self.add_with(|span| Token::with_data(TokenKind::NumberLiteral, number, span));
+        self.add_with(|span| Token::new_number_literal(number, span));
 
         Ok(())
     }
@@ -493,6 +449,10 @@ impl<'a> Lexer<'a> {
 
     fn span(&self) -> Span {
         Span::local(self.source, self.span)
+    }
+
+    fn source(&self) -> &str {
+        &self.source[self.span]
     }
 
     fn advance(&mut self) {

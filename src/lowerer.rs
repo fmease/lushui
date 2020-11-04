@@ -11,15 +11,16 @@ pub mod lowered_ast;
 use crate::{
     ast::{self, Explicit, Path},
     diagnostic::{Code, Diagnostic, Diagnostics, Result, Results},
-    lowered_ast::{decl, expr, pat, AttributeKeys, Attributes},
+    lowered_ast::{decl, expr, pat, AttributeKeys, Attributes, Number},
     smallvec,
     span::{SourceMap, Span, Spanning},
     support::listing,
     support::{
         accumulate_errors, corelease, release, s_pluralize, InvalidFallback, ManyErrExt, TryIn,
     },
-    SmallVec,
+    SmallVec, Str,
 };
+use joinery::JoinableIterator;
 use std::iter::once;
 
 /// The state of the lowering pass.
@@ -463,7 +464,12 @@ impl<'a> Lowerer<'a> {
                 Ok(expr! { Type { attributes, expression.span } })
             }
             NumberLiteral(literal) => {
-                release!(errors);
+                // @Note *very* awkward API!
+                let ((), literal) = accumulate_errors!(
+                    corelease!(errors),
+                    self.lower_number_literal(*literal, expression.span, &attributes)
+                )?;
+
                 Ok(expr! { Number(attributes, expression.span; literal) })
             }
             TextLiteral(text) => {
@@ -660,7 +666,12 @@ impl<'a> Lowerer<'a> {
         // @Task move the release!s to the end of the function again (where possible)
         match pattern.kind {
             NumberLiteral(literal) => {
-                release!(errors);
+                // @Note *very* awkward API!
+                let ((), literal) = accumulate_errors!(
+                    corelease!(errors),
+                    self.lower_number_literal(*literal, pattern.span, &attributes)
+                )?;
+
                 Ok(pat! {
                     Number(attributes, pattern.span; literal)
                 })
@@ -728,6 +739,7 @@ impl<'a> Lowerer<'a> {
     }
 
     /// Lower attributes.
+    // @Task use accumulate_errors instead of TryIn
     fn lower_attributes(
         &mut self,
         attributes: &[ast::Attribute],
@@ -864,12 +876,8 @@ impl<'a> Lowerer<'a> {
         check_mutual_exclusivity(AttributeKeys::RUNE | AttributeKeys::TEXT).try_in(&mut errors);
         check_mutual_exclusivity(AttributeKeys::LIST | AttributeKeys::VECTOR).try_in(&mut errors);
 
-        // @Temporary
-        let unsupported = AttributeKeys::all()
-            - (AttributeKeys::DOCUMENTATION | AttributeKeys::FOREIGN | AttributeKeys::INHERENT);
-
-        if attributes.within(unsupported) {
-            errors.extend(attributes.get(unsupported).map(|attribute| {
+        if attributes.within(AttributeKeys::UNSUPPORTED) {
+            errors.extend(attributes.get(AttributeKeys::UNSUPPORTED).map(|attribute| {
                 Diagnostic::bug()
                     .with_message(format!(
                         "attribute {} not supported yet",
@@ -882,6 +890,58 @@ impl<'a> Lowerer<'a> {
         release!(errors);
 
         Ok(attributes)
+    }
+
+    // @Question should this actually happen in the lowering stage?
+    fn lower_number_literal(
+        &mut self,
+        number: String,
+        span: Span,
+        attributes: &Attributes,
+    ) -> Results<Number> {
+        (if attributes.has(AttributeKeys::NAT32) {
+            number
+                .parse()
+                .map_err(|_| ("Nat32", "[0, 2^32-1]"))
+                .map(Number::Nat32)
+        } else if attributes.has(AttributeKeys::NAT64) {
+            number
+                .parse()
+                .map_err(|_| ("Nat64", "[0, 2^64-1]"))
+                .map(Number::Nat64)
+        } else if attributes.has(AttributeKeys::INT) {
+            Ok(Number::Int(number.parse().unwrap()))
+        } else if attributes.has(AttributeKeys::INT32) {
+            number
+                .parse()
+                .map_err(|_| ("Int32", "[-2^31, 2^31-1]"))
+                .map(Number::Int32)
+        } else if attributes.has(AttributeKeys::INT64) {
+            number
+                .parse()
+                .map_err(|_| ("Int64", "[-2^63, 2^63-1]"))
+                .map(Number::Int64)
+        } else {
+            // optionally attributes.has(AttributeKeys::NAT)
+            number
+                .parse()
+                .map_err(|_| ("Nat", "[0, infinity)"))
+                .map(Number::Nat)
+        })
+        .map_err(|(type_name, interval)| {
+            Diagnostic::error()
+                .with_code(Code::E007)
+                .with_message(format!(
+                    "number literal `{}` does not fit type `{}`",
+                    number, type_name
+                ))
+                .with_span(&span)
+                .with_note(format!(
+                    "values of this type must fit integer interval {}",
+                    interval
+                ))
+        })
+        .many_err()
     }
 
     /// Lower annotated parameters.
@@ -924,9 +984,6 @@ impl<'a> Lowerer<'a> {
         Ok(expression)
     }
 }
-
-use crate::Str;
-use joinery::JoinableIterator;
 
 fn missing_mandatory_type_annotation(
     spanning: &impl Spanning,

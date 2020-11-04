@@ -357,7 +357,7 @@ impl<'a> Parser<'a> {
             NumberLiteral => {
                 let token = self.current_token().clone();
                 self.advance();
-                AttributeArgument::NumberLiteral(Box::new(token.number_literal()))
+                AttributeArgument::NumberLiteral(Box::new(token.number_literal().unwrap()))
             }
             TextLiteral => {
                 let token = self.current_token().clone();
@@ -652,7 +652,7 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```ebnf
-    /// Path-Tree ::= Path "." "(" (Path-Tree | "(" Renaming ")")* ")" | Renaming
+    /// Path-Tree ::= Path | Path "." "(" (Path-Tree | "(" Renaming ")")* ")" | Renaming
     /// Renaming ::= Path "as" General-Identifier
     /// ```
     // @Task rewrite this following a simpler grammar mirroring expression applications
@@ -879,7 +879,11 @@ impl<'a> Parser<'a> {
 
         let mut span = self.current_token_span();
         match self.current_token_kind() {
-            kind if kind.is_path_head() => self.parse_path().map(Into::into),
+            kind if kind.is_path_head() => self.parse_path().map(|path| Expression {
+                span: path.span(),
+                kind: ExpressionKind::Path(Box::new(path)),
+                attributes,
+            }),
             Type => {
                 self.advance();
                 Ok(expr! { TypeLiteral { attributes, span } })
@@ -887,7 +891,9 @@ impl<'a> Parser<'a> {
             NumberLiteral => {
                 let token = self.current_token().clone();
                 self.advance();
-                Ok(expr! { NumberLiteral(attributes, token.span; token.number_literal()) })
+                Ok(expr! {
+                    NumberLiteral(attributes, token.span; token.number_literal().unwrap())
+                })
             }
             TextLiteral => {
                 let token = self.current_token().clone();
@@ -1377,11 +1383,17 @@ impl<'a> Parser<'a> {
 
         let mut span = self.current_token_span();
         match self.current_token_kind() {
-            kind if kind.is_path_head() => self.parse_path().map(Into::into),
+            kind if kind.is_path_head() => self.parse_path().map(|path| Pattern {
+                span: path.span(),
+                kind: PatternKind::Path(Box::new(path)),
+                attributes,
+            }),
             NumberLiteral => {
                 let token = self.current_token().clone();
                 self.advance();
-                Ok(pat! { NumberLiteral(attributes, token.span; token.number_literal()) })
+                Ok(pat! {
+                    NumberLiteral(attributes, token.span; token.number_literal().unwrap())
+                })
             }
             TextLiteral => {
                 let token = self.current_token().clone();

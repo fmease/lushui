@@ -58,7 +58,7 @@ Top-Level ::= (Line-Break | Declaration)* #End-Of-Input
 
 Use-Declaration ::= "use" Path-Tree Line-Break
 
-Path-Tree ::= Path "." "(" (Path-Tree | "(" Renaming ")")* ")" | Renaming
+Path-Tree ::= Path | Path "." "(" (Path-Tree | "(" Renaming ")")* ")" | Renaming
 Renaming ::= Path "as" General-Identifier
 
 Constructor ::=

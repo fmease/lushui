@@ -3,11 +3,10 @@
 use crate::{
     ast::{self, Explicitness, Identifier, Path},
     diagnostic::{Diagnostic, Results},
-    lexer::Number,
     span::{SourceFile, Spanned},
     support::{InvalidFallback, ManyErrExt},
 };
-use std::{convert::TryInto, fmt, rc::Rc};
+use std::{fmt, rc::Rc};
 
 pub type Item<Kind> = crate::item::Item<Kind, Attributes>;
 
@@ -355,12 +354,7 @@ impl AttributeKind {
                             {
                                 match value {
                                     ast::AttributeArgument::NumberLiteral(number) => {
-                                        match &**number {
-                                            Number::Nat(number) => number
-                                                .try_into()
-                                                .map_err(|_| Error::InvalidArgument)?,
-                                            _ => return Err(Error::InvalidArgument),
-                                        }
+                                        number.parse().map_err(|_| Error::InvalidArgument)?
                                     }
                                     _ => return Err(Error::InvalidArgument),
                                 }
@@ -554,6 +548,17 @@ bitflags::bitflags! {
             | Self::DOCUMENTATION.bits
             | Self::FORBID.bits
             | Self::WARN.bits;
+
+        const SUPPORTED = Self::DOCUMENTATION.bits
+            | Self::FOREIGN.bits
+            | Self::INHERENT.bits
+            | Self::INT.bits
+            | Self::INT32.bits
+            | Self::INT64.bits
+            | Self::NAT.bits
+            | Self::NAT32.bits
+            | Self::NAT64.bits;
+        const UNSUPPORTED = !Self::SUPPORTED.bits;
     }
 }
 
@@ -604,6 +609,29 @@ pub struct Condition;
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum Feature {
     Dummy,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Number {
+    Nat(crate::Nat),
+    Nat32(u32),
+    Nat64(u64),
+    Int(crate::Int),
+    Int32(i32),
+    Int64(i64),
+}
+
+impl fmt::Display for Number {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Nat(value) => write!(f, "{}", value),
+            Self::Nat32(value) => write!(f, "{}", value),
+            Self::Nat64(value) => write!(f, "{}", value),
+            Self::Int(value) => write!(f, "{}", value),
+            Self::Int32(value) => write!(f, "{}", value),
+            Self::Int64(value) => write!(f, "{}", value),
+        }
+    }
 }
 
 // @Task reduce amount of (String) allocations

@@ -539,8 +539,6 @@ pub enum Code {
     E004,
     /// Unreadable number literal.
     E005,
-    /// Invalid number literal suffix.
-    E006,
     /// Number literal does not fit type.
     E007,
     /// Unexpected token.

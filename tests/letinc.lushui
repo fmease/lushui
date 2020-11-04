@@ -6,7 +6,7 @@ data Nat32: Type
 second (x y: Nat32): Nat32 = y
 
 main: Nat32 =
-    let x: Nat32 = 23_N32 in
-    let y: Nat32 = 100_N32 in
+    let x: Nat32 = @Nat32 23 in
+    let y: Nat32 = @Nat32 100 in
     second x y
 

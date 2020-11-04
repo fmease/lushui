@@ -251,7 +251,7 @@ impl<'a> Compiler<'a> {
 #[derive(Debug, Clone)]
 // very @Temporary data structure (too much wasted memory)
 enum Value {
-    Number(crate::lexer::Number),
+    Number(crate::lowered_ast::Number),
     Text(String),
     Closure {
         chunk: ChunkIndex,
@@ -373,15 +373,15 @@ impl<'a> ByteCodeInterpreter<'a> {
                     let a = self.stack.pop().unwrap();
                     let b = self.stack.pop().unwrap();
                     let a = match a {
-                        Value::Number(crate::lexer::Number::Nat32(a)) => a,
+                        Value::Number(crate::lowered_ast::Number::Nat32(a)) => a,
                         _ => unreachable!(),
                     };
                     let b = match b {
-                        Value::Number(crate::lexer::Number::Nat32(b)) => b,
+                        Value::Number(crate::lowered_ast::Number::Nat32(b)) => b,
                         _ => unreachable!(),
                     };
                     self.stack
-                        .push(Value::Number(crate::lexer::Number::Nat32(a + b)));
+                        .push(Value::Number(crate::lowered_ast::Number::Nat32(a + b)));
                 }
             };
         }

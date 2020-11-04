@@ -1,6 +1,6 @@
 use crate::{
     diagnostic::{Code, Diagnostic, Result, Results},
-    lexer::{Number, Token, TokenKind},
+    lexer::{Token, TokenKind},
     smallvec,
     span::{PossiblySpanning, SourceFile, Span, Spanned, Spanning},
     support::InvalidFallback,
@@ -124,7 +124,7 @@ impl Spanning for Attribute {
 // @Task add span information
 #[derive(Debug, Clone)]
 pub enum AttributeArgument {
-    NumberLiteral(Box<Number>),
+    NumberLiteral(Box<String>),
     TextLiteral(Box<String>),
     /// To be able to lower documentation comments without immense memory wastage.
     Generated,
@@ -146,7 +146,7 @@ pub enum ExpressionKind {
     PiTypeLiteral(Box<PiTypeLiteral>),
     Application(Box<Application>),
     TypeLiteral,
-    NumberLiteral(Box<Number>),
+    NumberLiteral(Box<String>),
     TextLiteral(Box<String>),
     TypedHole(Box<TypedHole>),
     Path(Box<Path>),
@@ -270,26 +270,6 @@ pub struct SequenceLiteral {
     pub elements: Vec<Expression>,
 }
 
-impl From<Path> for Expression {
-    fn from(path: Path) -> Self {
-        Expression {
-            span: path.span(),
-            kind: ExpressionKind::Path(Box::new(path)),
-            attributes: Attributes::default(),
-        }
-    }
-}
-
-impl From<Path> for Pattern {
-    fn from(path: Path) -> Self {
-        Pattern {
-            span: path.span(),
-            kind: PatternKind::Path(Box::new(path)),
-            attributes: Attributes::default(),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Case {
     pub pattern: Pattern,
@@ -316,7 +296,7 @@ pub type Pattern = Item<PatternKind>;
 
 #[derive(Debug, Clone)]
 pub enum PatternKind {
-    NumberLiteral(Box<Number>),
+    NumberLiteral(Box<String>),
     TextLiteral(Box<String>),
     // @Note unfortunate naming
     SequenceLiteralPattern(Box<SequenceLiteralPattern>),

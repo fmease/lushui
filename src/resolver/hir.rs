@@ -2,8 +2,8 @@
 
 use crate::{
     ast::Explicitness,
-    lexer::Number,
     lowered_ast::Item,
+    lowered_ast::Number,
     resolver::{CrateScope, FunctionScope, Identifier},
     span::SourceFile,
     support::InvalidFallback,

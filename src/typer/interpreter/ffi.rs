@@ -241,7 +241,7 @@ impl Value {
         Some(match &expression.kind {
             Text(text) => Self::Text(text.as_ref().clone()),
             Number(number) => {
-                use crate::lexer::Number::*;
+                use crate::lowered_ast::Number::*;
 
                 match &**number {
                     Nat(nat) => Self::Nat(nat.clone()),
@@ -284,7 +284,7 @@ impl Value {
             Diagnostic::error().with_code(Code::E063)
         }
 
-        use crate::lexer::Number::*;
+        use crate::lowered_ast::Number::*;
 
         Ok(match self {
             Self::Unit => binding(values.unit.clone().ok_or_else(missing_inherent)?),
