@@ -37,16 +37,20 @@ module bool =
         false => true
         true => false
     
-    ;; @Note not lazy
-    ;; if (A: Type) (condition: Bool) (consequent alternate: A): A =
-    ;;     case condition of
-    ;;         false => alternate
-    ;;         true => consequent
+    use super.unit.(Unit unit)
+    use super.constant
 
-    ;; @Note not lazy
-    ;; and (b c: Bool): Bool = if Bool b c false
+    ;; @Temporary until laziness API
+    if (A: Type) (condition: Bool) (consequent alternate: Unit -> A): A =
+        case condition of
+            false => alternate unit
+            true => consequent unit
 
-    ;; or (b c: Bool): Bool = if Bool b True c
+    ;; @Temporary until laziness API
+    and (b: Bool) (c: Unit -> Bool): Bool = if Bool b c (constant Bool Unit false)
+
+    ;; @Temporary until laziness API
+    or (b: Bool) (c: Unit -> Bool): Bool = if Bool b (constant Bool Unit true) c
 
 module text =
     @foreign
@@ -89,18 +93,15 @@ module nat =
     @foreign
     divide: Nat -> Nat -> Option Nat
 
-    ;; @Note instead of all those foreign comparison function,
-    ;; we could just have a single foreign compare: Nat -> Nat -> Ordering
-    ;; except that Ordering would need to be inherent...I know the
-    ;; design of inherent (which basically just means "export"/"ffi-export"/"extern")
-    ;; is bad; somehow, we need to improve the API of registering inherent bindings!
-    ;; as a hacky alternative, we could make compare return an Int (-1, 0, 1) or even a Nat
-    ;; (0, 1, 2) and map it afterwards to Ordering
-
     use equal as ==
 
     @foreign
     equal: Nat -> Nat -> Bool
+
+    ;; equal (n m: Nat): Bool =
+    ;;     case duple Nat Nat n m of
+    ;;         duple Nat Nat \n n => true
+    ;;         \_ => false
 
     use less as <
 
@@ -127,7 +128,6 @@ module nat =
 
     use super.(bool ordering)
 
-    ;; @Temporary, see comment about foreign compare
     compare (n m: Nat): ordering.Ordering =
         case equal n m of
             bool.true => ordering.equal

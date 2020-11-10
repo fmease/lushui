@@ -31,8 +31,7 @@ use crate::{
     lowered_ast::{self, Attributes},
     span::{Span, Spanning},
     support::{
-        accumulate_errors, release, DebugIsDisplay, InvalidFallback, ManyErrExt, TransposeExt,
-        TryIn,
+        accumulate_errors, DebugIsDisplay, InvalidFallback, ManyErrExt, TransposeExt, TryIn,
     },
     typer::interpreter::{ffi, scope::Registration},
     HashMap,
@@ -81,20 +80,6 @@ impl CrateScope {
         CrateIndex(0)
     }
 
-    fn unwrap_namespace(&self, index: CrateIndex) -> &Namespace {
-        match &self.bindings[index].kind {
-            EntityKind::Module(scope) | EntityKind::UntypedDataType(scope) => scope,
-            _ => unreachable!(),
-        }
-    }
-
-    fn unwrap_namespace_mut(&mut self, index: CrateIndex) -> &mut Namespace {
-        match &mut self.bindings[index].kind {
-            EntityKind::Module(scope) | EntityKind::UntypedDataType(scope) => scope,
-            _ => unreachable!(),
-        }
-    }
-
     // @Task return Cow
     // @Task handle non-alphanums
     // @Note this prepends `crate`
@@ -110,89 +95,6 @@ impl CrateScope {
         }
     }
 
-    fn register_value_binding(
-        &mut self,
-        binder: &ast::Identifier,
-        module: CrateIndex,
-    ) -> Result<CrateIndex> {
-        self.register_binding(
-            binder,
-            Entity {
-                source: binder.clone(),
-                parent: Some(module),
-                kind: EntityKind::UntypedValue,
-            },
-            Some(module),
-        )
-    }
-
-    fn register_module_binding(
-        &mut self,
-        binder: &ast::Identifier,
-        module: Option<CrateIndex>,
-    ) -> Result<CrateIndex> {
-        self.register_binding(
-            binder,
-            Entity {
-                source: binder.clone(),
-                parent: module,
-                kind: EntityKind::Module(Namespace {
-                    // parent: module,
-                    bindings: Vec::new(),
-                }),
-            },
-            module,
-        )
-    }
-
-    fn register_data_type_binding(
-        &mut self,
-        binder: &ast::Identifier,
-        module: CrateIndex,
-    ) -> Result<CrateIndex> {
-        self.register_binding(
-            binder,
-            Entity {
-                source: binder.clone(),
-                parent: Some(module),
-                kind: EntityKind::UntypedDataType(Namespace {
-                    // parent: Some(module),
-                    bindings: Vec::new(),
-                }),
-            },
-            Some(module),
-        )
-    }
-
-    fn register_use_binding(
-        &mut self,
-        binder: &ast::Identifier,
-        reference: &Path,
-        module: CrateIndex,
-    ) -> Result<()> {
-        let index = self.register_binding(
-            binder,
-            Entity {
-                source: binder.clone(),
-                parent: Some(module),
-                kind: EntityKind::UnresolvedUse,
-            },
-            Some(module),
-        )?;
-
-        let old = self.unresolved_uses.insert(
-            index,
-            UnresolvedUse {
-                reference: reference.clone(),
-                module,
-            },
-        );
-
-        debug_assert!(old.is_none());
-
-        Ok(())
-    }
-
     /// Register a binding to a given entity.
     ///
     /// Apart from actually registering, mainly checks for name duplication.
@@ -200,12 +102,12 @@ impl CrateScope {
         &mut self,
         binder: &ast::Identifier,
         binding: Entity,
-        // or namespace in general
-        module: Option<CrateIndex>,
+        namespace: Option<CrateIndex>,
     ) -> Result<CrateIndex> {
-        if let Some(module) = module {
-            if let Some(previous) = self
-                .unwrap_namespace(module)
+        if let Some(namespace) = namespace {
+            if let Some(previous) = self.bindings[namespace]
+                .namespace()
+                .unwrap()
                 .bindings
                 .iter()
                 .map(|&index| &self.bindings[index])
@@ -224,26 +126,29 @@ impl CrateScope {
 
         let index = self.bindings.push(binding);
 
-        if let Some(module) = module {
-            self.unwrap_namespace_mut(module).bindings.push(index);
+        if let Some(module) = namespace {
+            self.bindings[module]
+                .namespace_mut()
+                .unwrap()
+                .bindings
+                .push(index);
         }
 
         Ok(index)
     }
 
-    /// Resolves a syntactic path given a module.
+    /// Resolves a syntactic path given a namespace.
     fn resolve_path<Target: ResolutionTarget>(
         &self,
         path: &Path,
-        module: CrateIndex,
+        namespace: CrateIndex,
         inquirer: Inquirer,
     ) -> Result<Target::Output, Error> {
         use ast::HangerKind::*;
-        use EntityKind::*;
 
         if let Some(hanger) = &path.hanger {
             if path.segments.is_empty() {
-                return Target::resolve_bare_super_and_crate(hanger.span, module)
+                return Target::resolve_bare_super_and_crate(hanger.span, namespace)
                     .map_err(Into::into);
             }
 
@@ -251,28 +156,23 @@ impl CrateScope {
                 &path.tail(),
                 match hanger.kind {
                     Crate => self.root(),
-                    Super => self.resolve_super(hanger, module)?,
-                    Self_ => module,
+                    Super => self.resolve_super(hanger, namespace)?,
+                    Self_ => namespace,
                 },
                 Inquirer::System,
             );
         }
 
-        let index = self.resolve_first_segment(&path.segments[0], module, inquirer)?;
-        let binding = &self.bindings[index].kind;
+        let index = self.resolve_first_segment(&path.segments[0], namespace, inquirer)?;
 
         match path.to_simple() {
             Some(identifier) => {
-                Target::resolve_simple_path(identifier, binding, index).map_err(Into::into)
+                Target::resolve_simple_path(identifier, &self.bindings[index].kind, index)
+                    .map_err(Into::into)
             }
-            None => match binding {
-                Module(_) | UntypedDataType(_) => {
-                    self.resolve_path::<Target>(&path.tail(), index, Inquirer::System)
-                }
-                UntypedValue => {
-                    Err(value_used_as_a_namespace(&path.segments[0], &path.segments[1]).into())
-                }
-                _ => unreachable!(),
+            None => match self.bindings[index].namespace() {
+                Some(_) => self.resolve_path::<Target>(&path.tail(), index, Inquirer::System),
+                None => Err(value_used_as_a_namespace(&path.segments[0], &path.segments[1]).into()),
             },
         }
     }
@@ -292,7 +192,9 @@ impl CrateScope {
         namespace: CrateIndex,
         inquirer: Inquirer,
     ) -> Result<CrateIndex, Error> {
-        self.unwrap_namespace(namespace)
+        self.bindings[namespace]
+            .namespace()
+            .unwrap()
             .bindings
             .iter()
             .find(|&&index| &self.bindings[index].source == identifier)
@@ -315,12 +217,12 @@ impl CrateScope {
     /// Resolve indirect uses aka chains of use bindings.
     ///
     /// Makes a lot of sense to be honest and it's just an arbitrary invariant
-    /// I created to make things easir to reason about during resolution.
+    /// created to make things easier to reason about during resolution.
     fn resolve_use(&self, index: CrateIndex) -> Result<CrateIndex, Error> {
         use EntityKind::*;
 
         match self.bindings[index].kind {
-            UntypedValue | Module(_) | UntypedDataType(_) => Ok(index),
+            UntypedValue | Module(_) | UntypedDataType(_) | UntypedConstructor(_) => Ok(index),
             Use(reference) => Ok(reference),
             UnresolvedUse => Err(Error::UnresolvedUseBinding),
             _ => unreachable!(),
@@ -336,7 +238,7 @@ impl CrateScope {
     ) -> Result<Target::Output> {
         let index = self
             .resolve_first_segment(identifier, module, Inquirer::System)
-            .map_err(|error| error.unwrap_diagnostic(self))?;
+            .map_err(|error| error.diagnostic(self).unwrap())?;
         Target::resolve_simple_path(identifier, &self.bindings[index].kind, index)
     }
 
@@ -394,6 +296,7 @@ fn unresolved_binding(
     inquirer: Inquirer,
     lookalike: Option<&str>,
 ) -> Diagnostic {
+    // @Question should we use the terminology "field" when the namespace is a record?
     let mut message = format!("binding `{}` is not defined in ", identifier);
 
     match inquirer {
@@ -401,7 +304,7 @@ fn unresolved_binding(
         Inquirer::System => {
             message += match scope.bindings[namespace].kind {
                 EntityKind::Module(_) => "module",
-                EntityKind::UntypedDataType(_) => "namespace",
+                EntityKind::UntypedDataType(_) | EntityKind::UntypedConstructor(_) => "namespace",
                 _ => unreachable!(),
             };
             message += " `";
@@ -495,7 +398,9 @@ impl ResolutionTarget for OnlyValue {
         use EntityKind::*;
 
         match binding {
-            UntypedValue | UntypedDataType(_) => Ok(Identifier::new(index, identifier.clone())),
+            UntypedValue | UntypedDataType(_) | UntypedConstructor(_) => {
+                Ok(Identifier::new(index, identifier.clone()))
+            }
             Module(_) => Err(module_used_as_a_value(identifier.span)),
             _ => unreachable!(),
         }
@@ -533,6 +438,7 @@ enum Inquirer {
 pub struct Resolver<'a> {
     scope: &'a mut CrateScope,
     warnings: &'a mut Diagnostics,
+    // @Task move into separate `Context` struct again to pass as an argument
     parent_data_binding: Option<CrateIndex>,
 }
 
@@ -590,7 +496,15 @@ impl<'a> Resolver<'a> {
 
                 let index = self
                     .scope
-                    .register_value_binding(&value.binder, module)
+                    .register_binding(
+                        &value.binder,
+                        Entity {
+                            source: value.binder.clone(),
+                            parent: Some(module),
+                            kind: EntityKind::UntypedValue,
+                        },
+                        Some(module),
+                    )
                     .many_err()?;
 
                 if self.scope.program_entry.is_none() && module == self.scope.root() {
@@ -603,16 +517,24 @@ impl<'a> Resolver<'a> {
             Data(data) => {
                 let module = module.unwrap();
 
-                let index = self
+                let namespace = self
                     .scope
-                    .register_data_type_binding(&data.binder, module)
+                    .register_binding(
+                        &data.binder,
+                        Entity {
+                            source: data.binder.clone(),
+                            parent: Some(module),
+                            kind: EntityKind::UntypedDataType(Namespace::default()),
+                        },
+                        Some(module),
+                    )
                     .many_err()?;
 
                 if let Some(constructors) = &data.constructors {
                     constructors
                         .iter()
                         .map(|constructor| {
-                            self.parent_data_binding = Some(index);
+                            self.parent_data_binding = Some(namespace);
                             let declaration =
                                 self.start_resolve_declaration(constructor, Some(module))?;
                             self.parent_data_binding = None;
@@ -622,10 +544,48 @@ impl<'a> Resolver<'a> {
                         .transpose()?;
                 }
             }
+            // @Task register fields
             Constructor(constructor) => {
-                self.scope
-                    .register_value_binding(&constructor.binder, self.parent_data_binding.unwrap())
+                let module = self.parent_data_binding.unwrap();
+
+                // @Task don't return early, see analoguous code for modules
+                let namespace = self
+                    .scope
+                    .register_binding(
+                        &constructor.binder,
+                        Entity {
+                            source: constructor.binder.clone(),
+                            parent: Some(module),
+                            kind: EntityKind::UntypedConstructor(Namespace::default()),
+                        },
+                        Some(module),
+                    )
                     .many_err()?;
+
+                let mut errors = Diagnostics::default();
+
+                let mut type_annotation = &constructor.type_annotation;
+
+                while let lowered_ast::ExpressionKind::PiType(pi) = &type_annotation.kind {
+                    if pi.is_field {
+                        let parameter = pi.parameter.as_ref().unwrap();
+
+                        if let Err(error) = self.scope.register_binding(
+                            parameter,
+                            Entity {
+                                source: parameter.clone(),
+                                parent: Some(namespace),
+                                kind: EntityKind::UntypedValue,
+                            },
+                            Some(namespace),
+                        ) {
+                            errors.insert(error);
+                        }
+                    }
+                    type_annotation = &pi.codomain;
+                }
+
+                errors.err_or(())?;
             }
             Module(submodule) => {
                 // @Task @Beacon don't return early on error
@@ -633,7 +593,15 @@ impl<'a> Resolver<'a> {
                 // a fake, nameless binding)
                 let index = self
                     .scope
-                    .register_module_binding(&submodule.binder, module)
+                    .register_binding(
+                        &submodule.binder,
+                        Entity {
+                            source: submodule.binder.clone(),
+                            parent: module,
+                            kind: EntityKind::Module(Namespace::default()),
+                        },
+                        module,
+                    )
                     .many_err()?;
 
                 submodule
@@ -658,9 +626,28 @@ impl<'a> Resolver<'a> {
                     })
                     .many_err()?;
 
-                self.scope
-                    .register_use_binding(binder, &use_.target, module)
+                let index = self
+                    .scope
+                    .register_binding(
+                        binder,
+                        Entity {
+                            source: binder.clone(),
+                            parent: Some(module),
+                            kind: EntityKind::UnresolvedUse,
+                        },
+                        Some(module),
+                    )
                     .many_err()?;
+
+                let old = self.scope.unresolved_uses.insert(
+                    index,
+                    UnresolvedUse {
+                        reference: use_.target.clone(),
+                        module,
+                    },
+                );
+
+                debug_assert!(old.is_none());
             }
             Invalid => {}
         }
@@ -940,9 +927,7 @@ impl<'a> Resolver<'a> {
             Invalid => InvalidFallback::invalid(),
         };
 
-        release!(errors);
-
-        Ok(expression)
+        errors.err_or(expression)
     }
 
     fn resolve_pattern(
@@ -1002,7 +987,7 @@ impl<'a> Resolver<'a> {
 /// A namespace can either be a module or a data type.
 /// A module contains any declarations (except constructors) and
 /// a data type their constructors.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Namespace {
     bindings: Vec<CrateIndex>,
 }
@@ -1233,9 +1218,11 @@ impl<'a> FunctionScope<'a> {
             &Module(module) => scope
                 .resolve_path::<OnlyValue>(query, module, Inquirer::User)
                 .map_err(|error| {
-                    error.unwrap_diagnostic_with(scope, |identifier: &str, _| {
-                        origin.find_similarly_named(identifier, scope)
-                    })
+                    error
+                        .diagnostic_with(scope, |identifier: &str, _| {
+                            origin.find_similarly_named(identifier, scope)
+                        })
+                        .unwrap()
                 }),
             // @Note this looks ugly/complicated, use helper functions
             FunctionParameter { parent, binder } => {
@@ -1252,7 +1239,7 @@ impl<'a> FunctionScope<'a> {
                 } else {
                     scope
                         .resolve_path::<OnlyValue>(query, parent.module(), Inquirer::User)
-                        .map_err(|error| error.unwrap_diagnostic(scope))
+                        .map_err(|error| error.diagnostic(scope).unwrap())
                 }
             }
             // @Note this looks ugly/complicated, use helper functions
@@ -1284,7 +1271,7 @@ impl<'a> FunctionScope<'a> {
                 } else {
                     scope
                         .resolve_path::<OnlyValue>(query, parent.module(), Inquirer::User)
-                        .map_err(|error| error.unwrap_diagnostic(scope))
+                        .map_err(|error| error.diagnostic(scope).unwrap())
                 }
             }
         }
@@ -1295,7 +1282,7 @@ impl<'a> FunctionScope<'a> {
 
         match self {
             &Module(module) => {
-                scope.find_similarly_named(identifier, scope.unwrap_namespace(module))
+                scope.find_similarly_named(identifier, scope.bindings[module].namespace().unwrap())
             }
             FunctionParameter { parent, binder } => {
                 if is_similar(identifier, binder.as_str()) {
@@ -1340,31 +1327,31 @@ enum Error {
 }
 
 impl Error {
-    fn unwrap_diagnostic(self, scope: &CrateScope) -> Diagnostic {
-        self.unwrap_diagnostic_with(scope, |identifier, namespace| {
-            scope.find_similarly_named(identifier, scope.unwrap_namespace(namespace))
+    fn diagnostic(self, scope: &CrateScope) -> Option<Diagnostic> {
+        self.diagnostic_with(scope, |identifier, namespace| {
+            scope.find_similarly_named(identifier, scope.bindings[namespace].namespace().unwrap())
         })
     }
 
-    fn unwrap_diagnostic_with<'s>(
+    fn diagnostic_with<'s>(
         self,
         scope: &CrateScope,
         lookalike_finder: impl FnOnce(&str, CrateIndex) -> Option<&'s str>,
-    ) -> Diagnostic {
+    ) -> Option<Diagnostic> {
         match self {
-            Self::Unrecoverable(error) => error,
+            Self::Unrecoverable(error) => Some(error),
             Self::UnresolvedBinding {
                 identifier,
                 namespace,
                 inquirer,
-            } => unresolved_binding(
+            } => Some(unresolved_binding(
                 &identifier,
                 namespace,
                 scope,
                 inquirer,
                 lookalike_finder(identifier.as_str(), namespace),
-            ),
-            _ => unreachable!(),
+            )),
+            _ => None,
         }
     }
 }

@@ -115,13 +115,6 @@ impl<'a> Parser<'a> {
             .map(Identifier::from_token)
     }
 
-    /// Try to turn the current token into an identifier.
-    ///
-    /// May panic if the token is neither an identifier nor punctuation.
-    fn current_token_into_identifier(&self) -> ast::Identifier {
-        ast::Identifier::from_token(self.current_token().clone())
-    }
-
     /// A general identifier includes (alphanumeric) identifiers and punctuation.
     ///
     /// ## Grammar
@@ -143,16 +136,33 @@ impl<'a> Parser<'a> {
 
     /// Indicate whether the given token was consumed.
     ///
-    /// This method is conceptually equivalent to [Self::consume] followed by
-    /// [Result::is_ok](std::result::Result::is_ok) except it (probably) is more memory-efficient.
+    /// Conceptually equivalent to `Self::consume(..).is_ok()` but more memory-efficient.
     #[must_use]
-    fn consumed(&mut self, kind: TokenKind) -> bool {
-        if self.current_token_is(kind) {
+    fn has_consumed(&mut self, kind: TokenKind) -> bool {
+        if self.current_token_kind() == kind {
             self.advance();
             true
         } else {
             false
         }
+    }
+
+    /// Conceptually equivalent to `Self::consume(..).map(Spanning::span).ok()` but more memory-efficient.
+    fn consume_span(&mut self, kind: TokenKind) -> Option<Span> {
+        if self.current_token_kind() == kind {
+            let span = self.current_token_span();
+            self.advance();
+            Some(span)
+        } else {
+            None
+        }
+    }
+
+    /// Try to turn the current token into an identifier.
+    ///
+    /// May panic if the token is neither an identifier nor punctuation.
+    fn current_token_into_identifier(&self) -> ast::Identifier {
+        ast::Identifier::from_token(self.current_token().clone())
     }
 
     fn advance(&mut self) {
@@ -172,19 +182,17 @@ impl<'a> Parser<'a> {
     }
 
     fn current_token_is_delimiter(&self, delimiters: &[Delimiter]) -> bool {
+        let queried_token_kind = self.current_token_kind();
+
         delimiters
             .iter()
             .map(|delimiter| <&TokenKind>::from(delimiter))
-            .find(|&token| token == &self.tokens[self.index].kind)
+            .find(|&&token| token == queried_token_kind)
             .is_some()
     }
 
-    fn current_token_is(&self, kind: TokenKind) -> bool {
-        self.tokens[self.index].kind == kind
-    }
-
-    fn succeeding_token_is(&self, kind: TokenKind) -> bool {
-        self.tokens[self.index + 1].kind == kind
+    fn succeeding_token_kind(&self) -> TokenKind {
+        self.tokens[self.index + 1].kind
     }
 
     /// Parse a declaration.
@@ -268,7 +276,7 @@ impl<'a> Parser<'a> {
                     self.advance();
                     let attribute = self.finish_parse_regular_attribute(span)?;
                     if matches!(skip_line_breaks, SkipLineBreaks::Yes) {
-                        while self.consumed(LineBreak) {}
+                        while self.has_consumed(LineBreak) {}
                     }
                     attribute
                 }
@@ -283,7 +291,7 @@ impl<'a> Parser<'a> {
                         arguments: smallvec![AttributeArgument::Generated],
                     };
                     if matches!(skip_line_breaks, SkipLineBreaks::Yes) {
-                        while self.consumed(LineBreak) {}
+                        while self.has_consumed(LineBreak) {}
                     }
                     attribute
                 }
@@ -322,7 +330,7 @@ impl<'a> Parser<'a> {
                 self.advance();
                 binder = self.consume_identifier()?;
 
-                while !self.current_token_is(ClosingRoundBracket) {
+                while self.current_token_kind() != ClosingRoundBracket {
                     arguments.push(self.parse_attribute_argument()?);
                 }
 
@@ -404,7 +412,7 @@ impl<'a> Parser<'a> {
         let parameters = span.merging(self.parse_parameters(&STANDARD_DECLARATION_DELIMITERS)?);
         let type_annotation = span.merging(self.parse_optional_type_annotation()?);
 
-        let expression = if self.consumed(Equals) {
+        let expression = if self.has_consumed(Equals) {
             Some(span.merging(self.parse_possibly_indented_terminated_expression()?))
         } else {
             self.consume(LineBreak)?;
@@ -511,7 +519,7 @@ impl<'a> Parser<'a> {
         use TokenKind::*;
         let mut span = keyword_span;
 
-        if self.consumed(Equals) {
+        if self.has_consumed(Equals) {
             return Ok(decl! {
                 Header {
                     attributes,
@@ -579,11 +587,11 @@ impl<'a> Parser<'a> {
         let mut declarations = Vec::new();
 
         loop {
-            if self.consumed(LineBreak) {
+            if self.has_consumed(LineBreak) {
                 continue;
             }
 
-            if self.consumed(EndOfInput) {
+            if self.has_consumed(EndOfInput) {
                 break Ok(decl! {
                     Module {
                         Attributes::new(),
@@ -603,9 +611,9 @@ impl<'a> Parser<'a> {
     fn parse_indented(&mut self, mut subparser: impl FnMut(&mut Self) -> Result<()>) -> Result<()> {
         use TokenKind::*;
 
-        while self.consumed(Indentation) {
-            while !self.current_token_is(Dedentation) {
-                if self.consumed(LineBreak) {
+        while self.has_consumed(Indentation) {
+            while self.current_token_kind() != Dedentation {
+                if self.has_consumed(LineBreak) {
                     continue;
                 }
 
@@ -614,7 +622,7 @@ impl<'a> Parser<'a> {
 
             self.consume(Dedentation)?;
 
-            while self.consumed(LineBreak) {}
+            while self.has_consumed(LineBreak) {}
         }
 
         Ok(())
@@ -661,7 +669,7 @@ impl<'a> Parser<'a> {
 
         let mut path = self.parse_first_path_segment()?;
 
-        while self.consumed(Dot) {
+        while self.has_consumed(Dot) {
             match self.current_token_kind() {
                 Identifier | Punctuation => {
                     let identifier = self.current_token_into_identifier();
@@ -673,8 +681,8 @@ impl<'a> Parser<'a> {
 
                     let mut bindings = Vec::new();
 
-                    while !self.consumed(ClosingRoundBracket) {
-                        if self.consumed(OpeningRoundBracket) {
+                    while !self.has_consumed(ClosingRoundBracket) {
+                        if self.has_consumed(OpeningRoundBracket) {
                             let target = self.parse_path()?;
                             self.consume(As)?;
                             let binder = self.consume_general_identifier()?;
@@ -711,7 +719,7 @@ impl<'a> Parser<'a> {
         // instead of a delimited one?
         let binder = if self.current_token_is_delimiter(delimiters) {
             None
-        } else if self.consumed(As) {
+        } else if self.has_consumed(As) {
             self.current_token();
             Some(self.consume_general_identifier()?)
         } else {
@@ -739,18 +747,11 @@ impl<'a> Parser<'a> {
     ///     (Attribute Line-Break*)*
     ///     #Identifier Parameters Type-Annotation? Line-Break
     /// ```
-    // @Task update syntax to latest record proposal
     fn parse_constructor(&mut self) -> Result<Declaration> {
         let attributes = self.parse_attributes(SkipLineBreaks::Yes)?;
 
-        let span = self
-            .consume(TokenKind::Record)
-            .ok()
-            .map(|record| record.span);
-        let record = span.is_some();
-
         let binder = self.consume_identifier()?;
-        let mut span = binder.span.merge_into(&span);
+        let mut span = binder.span;
 
         let parameters =
             span.merging(self.parse_parameters(&[
@@ -769,7 +770,6 @@ impl<'a> Parser<'a> {
                 binder,
                 parameters,
                 type_annotation,
-                record,
             }
         })
     }
@@ -800,22 +800,23 @@ impl<'a> Parser<'a> {
         use TokenKind::*;
         let mut span = Span::SHAM;
 
-        let (explicitness, binder, domain) = self
+        let (explicitness, fieldness, binder, domain) = self
             .reflect(|parser| {
-                span = parser.consume(TokenKind::OpeningRoundBracket)?.span;
+                span = parser.consume(OpeningRoundBracket)?.span;
 
                 let explicitness = parser.consume_explicitness_symbol();
+                let fieldness = parser.consume_span(Field);
                 let binder = parser.consume_identifier()?;
                 let parameter = parser.parse_type_annotation()?;
 
                 parser.consume(ClosingRoundBracket)?;
 
-                Ok((explicitness, Some(binder), parameter))
+                Ok((explicitness, fieldness, Some(binder), parameter))
             })
             .or_else(|_| -> Result<_> {
                 let parameter = self.parse_application_or_lower()?;
                 span = parameter.span;
-                Ok((Explicit, None, parameter))
+                Ok((Explicit, None, None, parameter))
             })?;
 
         Ok(match self.consume(ThinArrowRight) {
@@ -830,6 +831,7 @@ impl<'a> Parser<'a> {
                         binder,
                         domain,
                         explicitness,
+                        fieldness,
                     }
                 }
             }
@@ -935,7 +937,7 @@ impl<'a> Parser<'a> {
 
                 let mut elements = Vec::new();
 
-                while !self.current_token_is(ClosingSquareBracket) {
+                while self.current_token_kind() != ClosingSquareBracket {
                     elements.push(self.parse_lower_expression()?);
                 }
 
@@ -971,7 +973,7 @@ impl<'a> Parser<'a> {
     fn parse_path(&mut self) -> Result<Path> {
         let mut path = self.parse_first_path_segment()?;
 
-        while self.consumed(TokenKind::Dot) {
+        while self.has_consumed(TokenKind::Dot) {
             path.segments.push(self.consume_general_identifier()?);
         }
 
@@ -1046,7 +1048,7 @@ impl<'a> Parser<'a> {
         self.consume(TokenKind::Equals)?;
         let expression = self.parse_possibly_breakably_indented_expression()?;
         self.consume(TokenKind::In)?;
-        let _ = self.consumed(TokenKind::LineBreak);
+        let _ = self.has_consumed(TokenKind::LineBreak);
         let scope = span.merging(self.parse_expression()?);
 
         Ok(expr! {
@@ -1076,7 +1078,7 @@ impl<'a> Parser<'a> {
     ) -> Result<Expression> {
         let bindings = self.parse_path_tree(&[TokenKind::In.into()])?;
         self.consume(TokenKind::In)?;
-        let _ = self.consumed(TokenKind::LineBreak);
+        let _ = self.has_consumed(TokenKind::LineBreak);
         let scope = self.parse_expression()?;
 
         Ok(expr! {
@@ -1114,11 +1116,11 @@ impl<'a> Parser<'a> {
 
         let mut cases = Vec::new();
 
-        if self.current_token_is(LineBreak) && self.succeeding_token_is(Indentation) {
+        if self.current_token_kind() == LineBreak && self.succeeding_token_kind() == Indentation {
             self.advance();
             self.advance();
 
-            while !self.current_token_is(Dedentation) {
+            while self.current_token_kind() != Dedentation {
                 let pattern = self.parse_pattern()?;
                 self.consume(WideArrow)?;
                 let expression = self.parse_possibly_indented_terminated_expression()?;
@@ -1174,7 +1176,7 @@ impl<'a> Parser<'a> {
         self.consume(LineBreak)?;
         self.consume(Indentation)?;
 
-        while !self.current_token_is(Dedentation) {
+        while self.current_token_kind() != Dedentation {
             statements.push(match self.current_token_kind() {
                 Let => {
                     self.advance();
@@ -1200,9 +1202,8 @@ impl<'a> Parser<'a> {
                     Statement::Use(ast::Use { bindings })
                 }
                 _ => {
-                    if self.current_token_is(Identifier)
-                        && (self.succeeding_token_is(Colon)
-                            || self.succeeding_token_is(ThinArrowLeft))
+                    if self.current_token_kind() == Identifier
+                        && matches!(self.succeeding_token_kind(), Colon | ThinArrowLeft)
                     {
                         let binder = self.current_token_into_identifier();
                         self.advance();
@@ -1266,7 +1267,9 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```ebnf
-    /// Parameter-Group ::= #Identifier | "(" Explicitness #Identifier+ Type-Annotation? ")"
+    /// Parameter-Group ::=
+    ///     | #Identifier
+    ///     | "(" Explicitness "field"? #Identifier+ Type-Annotation? ")"
     /// ```
     fn parse_parameter_group(&mut self, delimiters: &[Delimiter]) -> Result<ParameterGroup> {
         use TokenKind::*;
@@ -1279,12 +1282,14 @@ impl<'a> Parser<'a> {
                     span,
                     parameters: smallvec![binder],
                     type_annotation: None,
+                    fieldness: None,
                     explicitness: Explicit,
                 })
             }
             OpeningRoundBracket => {
                 self.advance();
                 let explicitness = self.consume_explicitness_symbol();
+                let fieldness = self.consume_span(Field);
                 let mut parameters = SmallVec::new();
 
                 parameters.push(self.consume_identifier()?);
@@ -1303,6 +1308,7 @@ impl<'a> Parser<'a> {
                     parameters,
                     type_annotation,
                     explicitness,
+                    fieldness,
                     span,
                 })
             }
@@ -1340,14 +1346,14 @@ impl<'a> Parser<'a> {
             .or_else(|_| -> Result<_> {
                 self.consume(OpeningRoundBracket)?;
                 let explicitness = self.consume_explicitness_symbol();
-                let binder = (self.current_token_is(Identifier)
-                    && self.succeeding_token_is(Equals))
-                .then(|| {
-                    let binder = self.current_token_into_identifier();
-                    self.advance();
-                    self.advance();
-                    binder
-                });
+                let binder = (self.current_token_kind() == Identifier
+                    && self.succeeding_token_kind() == Equals)
+                    .then(|| {
+                        let binder = self.current_token_into_identifier();
+                        self.advance();
+                        self.advance();
+                        binder
+                    });
                 let argument = EP::parse_lower(self)?;
                 self.consume(ClosingRoundBracket)?;
                 Ok((argument, explicitness, binder))
@@ -1415,7 +1421,7 @@ impl<'a> Parser<'a> {
 
                 let mut elements = Vec::new();
 
-                while !self.current_token_is(ClosingSquareBracket) {
+                while self.current_token_kind() != ClosingSquareBracket {
                     elements.push(self.parse_lower_pattern()?);
                 }
 
@@ -1450,7 +1456,7 @@ impl<'a> Parser<'a> {
 
     /// Parse an optional type annotation.
     fn parse_optional_type_annotation(&mut self) -> Result<Option<Expression>> {
-        self.consumed(TokenKind::Colon)
+        self.has_consumed(TokenKind::Colon)
             .then(|| self.parse_expression())
             .transpose()
     }
@@ -1467,10 +1473,10 @@ impl<'a> Parser<'a> {
     fn parse_possibly_indented_terminated_expression(&mut self) -> Result<Expression> {
         use TokenKind::*;
 
-        if self.consumed(LineBreak) {
+        if self.has_consumed(LineBreak) {
             self.consume(Indentation)?;
             let expression = self.parse_expression()?;
-            let _ = self.consumed(LineBreak);
+            let _ = self.has_consumed(LineBreak);
             self.consume(Dedentation)?;
             Ok(expression)
         } else {
@@ -1499,10 +1505,10 @@ impl<'a> Parser<'a> {
     fn parse_possibly_breakably_indented_expression(&mut self) -> Result<Expression> {
         use TokenKind::*;
 
-        if self.consumed(LineBreak) {
+        if self.has_consumed(LineBreak) {
             self.consume(Indentation)?;
             let expression = self.parse_expression()?;
-            if self.consumed(LineBreak) {
+            if self.has_consumed(LineBreak) {
                 self.consume(Dedentation)?;
             }
             Ok(expression)
@@ -1523,7 +1529,7 @@ impl<'a> Parser<'a> {
     fn parse_terminated_expression(&mut self) -> Result<Expression> {
         let expression = self.parse_expression()?;
         // @Note special-casing is also called programming hackily
-        if !self.current_token_is(TokenKind::Dedentation) {
+        if self.current_token_kind() != TokenKind::Dedentation {
             self.consume(TokenKind::LineBreak)?;
         }
         Ok(expression)

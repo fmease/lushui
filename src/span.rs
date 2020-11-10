@@ -238,7 +238,19 @@ impl<S: Spanning> PossiblySpanning for S {
     }
 }
 
+// @Task generalize these two impls using DoubleEndedIterator
+
 impl<S: Spanning> PossiblySpanning for Vec<S> {
+    fn possible_span(&self) -> Option<Span> {
+        self.first().map(|item| {
+            let mut span = item.span();
+            span.merging(self.last());
+            span
+        })
+    }
+}
+
+impl<S: Spanning, const N: usize> PossiblySpanning for crate::SmallVec<S, N> {
     fn possible_span(&self) -> Option<Span> {
         self.first().map(|item| {
             let mut span = item.span();

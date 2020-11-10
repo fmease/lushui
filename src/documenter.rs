@@ -10,7 +10,7 @@ use crate::{
 };
 use std::io::Result;
 use std::io::Write;
-use v_htmlescape::escape;
+// use v_htmlescape::escape;
 // use typed_html::{dom::DOMTree, html, text};
 
 // @Note ideally, we wouldf perform some AST verification and desugaring *before* we try to document it

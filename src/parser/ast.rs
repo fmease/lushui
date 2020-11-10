@@ -52,7 +52,6 @@ pub struct Constructor {
     pub binder: Identifier,
     pub parameters: Parameters,
     pub type_annotation: Option<Expression>,
-    pub record: bool,
 }
 
 /// The syntax node of a module declaration.
@@ -172,6 +171,7 @@ pub struct PiTypeLiteral {
     pub domain: Expression,
     pub codomain: Expression,
     pub explicitness: Explicitness,
+    pub fieldness: Option<Span>,
 }
 
 /// The syntax node of function application.
@@ -235,8 +235,7 @@ pub struct DoBlock {
     pub statements: Vec<Statement>,
 }
 
-// @Note we probably gonna need to make this spanning in the future (for diagnostics) just like
-// Expression, Pattern, Declaration.
+// @Note we probably gonna need to make this an item at some time for diagnostics
 #[derive(Debug, Clone)]
 pub enum Statement {
     // @Note we could make the definition syntactically optional and provide a good error message
@@ -280,9 +279,12 @@ pub type Parameters = Vec<ParameterGroup>;
 
 #[derive(Debug, Clone)]
 pub struct ParameterGroup {
+    /// non-empty
+    // @Task make type-safe
     pub parameters: SmallVec<Identifier, 1>,
     pub type_annotation: Option<Expression>,
     pub explicitness: Explicitness,
+    pub fieldness: Option<Span>,
     pub span: Span,
 }
 

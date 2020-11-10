@@ -389,7 +389,7 @@ impl<'a> Lexer<'a> {
     // and do the error reporting in the parser)
     // @Task parse suffixes
     fn lex_text_literal(&mut self) -> Result<()> {
-        let mut terminated = false;
+        let mut is_terminated = false;
         self.advance();
 
         while let Some(character) = self.peek() {
@@ -397,7 +397,7 @@ impl<'a> Lexer<'a> {
             self.advance();
 
             if character == '"' {
-                terminated = true;
+                is_terminated = true;
                 break;
             }
         }
@@ -405,14 +405,14 @@ impl<'a> Lexer<'a> {
         // @Note once we implement escaping, this won't cut it and we need to build our own string
         let text = self.source[LocalSpan::new(
             self.span.start + 1,
-            if terminated {
+            if is_terminated {
                 self.span.end - 1
             } else {
                 self.span.end
             },
         )]
         .to_owned();
-        self.add_with(|span| Token::new_text_literal(text, span, terminated));
+        self.add_with(|span| Token::new_text_literal(text, span, is_terminated));
 
         Ok(())
     }

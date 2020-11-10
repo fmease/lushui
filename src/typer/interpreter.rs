@@ -139,6 +139,8 @@ impl<'a> Interpreter<'a> {
                 self.substitute_expression(expression, substitution1)
             }
             (Type, _) | (Number(_), _) | (Text(_), _) => expression,
+            // @Task verify
+            (Projection(_), _) => expression,
             // @Temporary @Note once we support next: Expression in IO, we prob. need to substitute
             // the former
             (IO(_), _) => expression,
@@ -394,6 +396,7 @@ impl<'a> Interpreter<'a> {
                 }
             }
             Type | Number(_) | Text(_) | IO(_) => expression,
+            Projection(_) => todo!(),
             PiType(pi) => match context.form {
                 Form::Normal => {
                     let domain = self.evaluate_expression(pi.domain.clone(), context)?;

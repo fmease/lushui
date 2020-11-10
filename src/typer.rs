@@ -11,13 +11,14 @@ use crate::{
         CrateScope, Identifier,
     },
     span::Span,
-    support::{accumulate_errors, DisplayWith, ManyErrExt, TransposeExt},
+    support::{accumulate_errors, s_pluralize, DisplayWith, ManyErrExt, TransposeExt},
 };
 use interpreter::{
     ffi,
     scope::{FunctionScope, Registration},
     Form, Interpreter,
 };
+use joinery::JoinableIterator;
 
 // @Temporary @Note we need to update the macros
 // const expr! { Type[] }: Expression = expr! { Type[] };
@@ -140,6 +141,8 @@ impl<'a> Typer<'a> {
                     type_: constructor.type_annotation.clone(),
                     data,
                 })?;
+
+                // @Beacon @Task register field projections
             }
             Module(module) => {
                 module
@@ -372,7 +375,18 @@ impl<'a> Typer<'a> {
                 }
 
                 return Err(Diagnostic::bug()
-                    .with_message("found some weird circular binding(s) during type checking"))
+                    .with_message(format!(
+                        "found unresolvable {} during type checking",
+                        s_pluralize!(previous_amount, "binding")
+                    ))
+                    .with_note(format!(
+                        "namely {}",
+                        self.scope
+                            .out_of_order_bindings
+                            .iter()
+                            .map(|binding| format!("`{}`", binding.with(&self.scope)))
+                            .join_with(", ")
+                    )))
                 .many_err();
             }
         }
@@ -663,6 +677,7 @@ impl<'a> Typer<'a> {
             }
             // @Beacon @Task
             ForeignApplication(_) => todo!(),
+            Projection(_) => todo!(),
             IO(_) => self
                 .scope
                 .lookup_foreign_type(ffi::Type::IO, Some(expression.span))?,
@@ -774,19 +789,7 @@ impl<'a> Typer<'a> {
                     self.result_type(literal.codomain.clone(), scope)
                 }
             }
-            Application(_)
-            | Type
-            | Binding(_) => expression,
-            Lambda(_)
-            | Number(_)
-            | Text(_)
-            | UseIn
-            | CaseAnalysis(_)
-            | IO(_)
-            // @Note not sure
-            | Substitution(_)
-            | ForeignApplication(_) => unreachable!(),
-            Invalid => expression,
+            _ => expression,
         }
     }
 

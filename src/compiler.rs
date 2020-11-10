@@ -241,7 +241,8 @@ impl<'a> Compiler<'a> {
             Invalid => todo!(),
             Substitution(_substitution) => todo!(),
             ForeignApplication(_application) => todo!(),
-            IO(_) => todo!(),
+            Projection(_projection) => todo!(),
+            IO(_io) => todo!(),
         };
 
         Ok(instructions)

@@ -2,8 +2,7 @@
 
 use crate::{
     ast::Explicitness,
-    lowered_ast::Item,
-    lowered_ast::Number,
+    lowered_ast::{Item, Number},
     resolver::{CrateScope, FunctionScope, Identifier},
     span::SourceFile,
     support::InvalidFallback,
@@ -80,6 +79,7 @@ pub enum ExpressionKind {
     CaseAnalysis(Rc<CaseAnalysis>),
     Substitution(Rc<Substitution>),
     ForeignApplication(Rc<ForeignApplication>),
+    Projection(Rc<Projection>),
     IO(Rc<IO>),
     Invalid,
 }
@@ -136,6 +136,11 @@ pub struct ForeignApplication {
     pub callee: Identifier,
     pub arguments: Vec<Expression>,
 }
+
+// @Temporary until we have better case analysis support to replace it with
+// @Task @Beacon
+#[derive(Clone)]
+pub struct Projection {}
 
 #[derive(Clone)]
 pub struct IO {
@@ -325,6 +330,8 @@ impl DisplayWith for Expression {
                     .map(|argument| argument.with(scope))
                     .join_with(' ')
             ),
+            // @Beacon @Temporary @Task just write out the path
+            Projection(_projection) => write!(f, "<projection>"),
             IO(io) => write!(
                 f,
                 "<io {} {}>",

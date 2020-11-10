@@ -18,7 +18,28 @@ pub struct Entity {
 
 impl Entity {
     pub const fn is_untyped(&self) -> bool {
-        matches!(self.kind, EntityKind::UntypedValue | EntityKind::UntypedDataType(_))
+        use EntityKind::*;
+        matches!(self.kind, UntypedValue | UntypedDataType(_) | UntypedConstructor(_))
+    }
+
+    pub fn namespace(&self) -> Option<&Namespace> {
+        use EntityKind::*;
+        match &self.kind {
+            Module(namespace) | UntypedDataType(namespace) | UntypedConstructor(namespace) => {
+                Some(namespace)
+            }
+            _ => None,
+        }
+    }
+
+    pub fn namespace_mut(&mut self) -> Option<&mut Namespace> {
+        use EntityKind::*;
+        match &mut self.kind {
+            Module(namespace) | UntypedDataType(namespace) | UntypedConstructor(namespace) => {
+                Some(namespace)
+            }
+            _ => None,
+        }
     }
 
     pub const fn is_value_without_value(&self) -> bool {
@@ -34,7 +55,7 @@ impl Entity {
                 DataType { type_, .. } => type_,
                 Constructor { type_, .. } => type_,
                 Foreign { type_, .. } => type_,
-                UntypedValue | UntypedDataType(_) => return None,
+                UntypedValue | UntypedDataType(_) | UntypedConstructor(_) => return None,
                 _ => unreachable!(),
             }
             .clone(),
@@ -53,13 +74,13 @@ impl Entity {
             Value {
                 expression: None, ..
             } => ValueView::Neutral,
-            // _ if self.is_resolver_specific() => unreachable!(),
-            UntypedValue | UntypedDataType(_) => unreachable!(),
-            // @Note below was/is necessary for tests/invalid_data_type_instances (until the current rewrite
-            // where typer::interpreter::_::evaluate returns Error instead of Diagnostic)
-            // UntypedDataType(_) => ValueView::Neutral,
-            Module(_) | Use(_) | UnresolvedUse => unreachable!(),
-            _ => ValueView::Neutral,
+            DataType { .. } | Constructor { .. } | Foreign { .. } => ValueView::Neutral,
+            UntypedValue
+            | UntypedDataType(_)
+            | UntypedConstructor(_)
+            | Module(_)
+            | Use(_)
+            | UnresolvedUse => unreachable!(),
         }
     }
 }
@@ -92,7 +113,10 @@ impl DisplayWith for Entity {
 pub enum EntityKind {
     UntypedValue,
     Module(Namespace),
+    /// Data types are not [Self::UntypedValue] as they are also namespaces containing constructors.
     UntypedDataType(Namespace),
+    /// Constructors are not [Self::UntypedValue] as they are also namespaces containing fields.
+    UntypedConstructor(Namespace),
     /// Invariant: The "target" is never a Use itself. There are no nested aliases
     Use(CrateIndex),
     UnresolvedUse,
@@ -124,8 +148,9 @@ impl DisplayWith for EntityKind {
 
         match self {
             UntypedValue => write!(f, "untyped value"),
-            Module(scope) => write!(f, "module: {:?}", scope),
-            UntypedDataType(scope) => write!(f, "untyped data type: {:?}", scope),
+            Module(namespace) => write!(f, "module: {:?}", namespace),
+            UntypedDataType(namespace) => write!(f, "untyped data type: {:?}", namespace),
+            UntypedConstructor(namespace) => write!(f, "untyped constructor: {:?}", namespace),
             Use(index) => write!(f, "use {:?}", index),
             UnresolvedUse => write!(f, "unresolved use"),
             Value { type_, expression } => match expression {

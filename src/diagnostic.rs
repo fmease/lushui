@@ -6,16 +6,60 @@ use crate::{
 };
 use std::{
     hash::Hash,
+    iter::FromIterator,
     ops::{Deref, DerefMut},
 };
 
 pub type Result<T, E = Diagnostic> = std::result::Result<T, E>;
-// @Question bad name?
 pub type Results<T> = Result<T, Diagnostics>;
 
-// @Question should write a wrapper that does not allocate on the heap for one Diagnostic?
-// (many_err is a common occurence idk)
-pub type Diagnostics = HashSet<Diagnostic>;
+#[derive(Default, Clone)]
+pub struct Diagnostics(HashSet<Diagnostic>);
+
+impl Diagnostics {
+    pub fn inserted(mut self, diagnostic: Diagnostic) -> Self {
+        self.insert(diagnostic);
+        self
+    }
+
+    pub fn err_or<T>(self, ok: T) -> Results<T> {
+        self.is_empty().then_some(ok).ok_or(self)
+    }
+
+    pub fn err_or_else<T, F: FnOnce() -> T>(self, ok: F) -> Results<T> {
+        self.is_empty().then(ok).ok_or(self)
+    }
+}
+
+impl IntoIterator for Diagnostics {
+    type Item = Diagnostic;
+
+    type IntoIter = std::collections::hash_set::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl FromIterator<Diagnostic> for Diagnostics {
+    fn from_iter<T: IntoIterator<Item = Diagnostic>>(iter: T) -> Self {
+        Self(iter.into_iter().collect())
+    }
+}
+
+impl Deref for Diagnostics {
+    type Target = HashSet<Diagnostic>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for Diagnostics {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 
 // @Question is this indirection actually worth it?
 #[derive(Hash, PartialEq, Eq, Clone)]
@@ -555,6 +599,8 @@ pub enum Code {
     E015,
     /// Unable to load external module.
     E016,
+    /// Field declared outside of constructor declaration.
+    E017,
     /// Duplicate definitions.
     E020,
     /// Undefined binding.
@@ -579,7 +625,7 @@ pub enum Code {
     E033,
     /// Invalid position of binder in pattern.
     E034,
-    /// Type analysis
+    /// Type analysis.
     E035,
     /// Missing program entry.
     E050,
@@ -599,6 +645,6 @@ impl Code {
     // @Task
     #[allow(dead_code)]
     pub const fn explain(self) -> &'static str {
-        loop {}
+        todo!()
     }
 }

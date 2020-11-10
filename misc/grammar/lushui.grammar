@@ -116,7 +116,9 @@ Expression-Statement ::= Expression Line-Break
 
 Parameters ::= Parameter-Group*
 
-Parameter-Group ::= #Identifier | "(" Explicitness #Identifier+ Type-Annotation? ")"
+Parameter-Group ::=
+    | #Identifier
+    | "(" Explicitness "field"? #Identifier+ Type-Annotation? ")"
 
 Pattern !left ::=
     Lower-Pattern

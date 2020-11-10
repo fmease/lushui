@@ -83,6 +83,7 @@ pub struct PiType {
     pub domain: Expression,
     pub codomain: Expression,
     pub explicitness: Explicitness,
+    pub is_field: bool,
 }
 
 #[derive(Clone)]
@@ -738,13 +739,33 @@ impl fmt::Display for Expression {
 
 impl fmt::Display for PiType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let domain_needs_brackets =
+            self.parameter.is_some() || self.explicitness.is_implicit() || self.is_field;
+
+        if domain_needs_brackets {
+            write!(f, "(")?;
+        }
+
+        write!(f, "{}", self.explicitness)?;
+
+        if self.is_field {
+            write!(f, "field ")?;
+        }
+
         if let Some(parameter) = &self.parameter {
-            write!(f, "({}{}: {})", self.explicitness, parameter, self.domain)?;
-        } else if self.explicitness.is_implicit() {
-            write!(f, "({}{})", self.explicitness, self.domain)?;
+            write!(f, "{}: ", parameter)?;
+        }
+
+        if domain_needs_brackets {
+            write!(f, "{}", self.domain)?;
         } else {
             write!(f, "{}", self.domain.wrap())?;
         }
+
+        if domain_needs_brackets {
+            write!(f, ")")?;
+        }
+
         write!(f, " -> {}", self.codomain.wrap())
     }
 }

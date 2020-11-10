@@ -41,7 +41,7 @@ impl Token {
             TextLiteral,
             TokenData::TextLiteral {
                 content: text,
-                terminated,
+                is_terminated: terminated,
             },
             span,
         )
@@ -69,7 +69,7 @@ impl Token {
     // @Note bad design
     pub fn text_literal_is_terminated(&self) -> bool {
         match self.data {
-            TokenData::TextLiteral { terminated, .. } => terminated,
+            TokenData::TextLiteral { is_terminated, .. } => is_terminated,
             _ => unreachable!(),
         }
     }
@@ -118,7 +118,10 @@ pub enum TokenData {
     NumberLiteral(String),
     // @Bug this payload is just gross and makes every single token large
     // but this is only temporary
-    TextLiteral { content: String, terminated: bool },
+    TextLiteral {
+        content: String,
+        is_terminated: bool,
+    },
     Illegal(char),
 }
 
@@ -130,11 +133,12 @@ impl fmt::Debug for TokenData {
             Self::NumberLiteral(value) => write!(f, "{}", value),
             Self::TextLiteral {
                 content,
-                terminated,
-            } => match terminated {
-                true => write!(f, "{:?}", content),
-                false => write!(f, "{:?}_Unterminated", content),
-            },
+                is_terminated: true,
+            } => write!(f, "{:?}", content),
+            Self::TextLiteral {
+                content,
+                is_terminated: false,
+            } => write!(f, "@unterminated {:?}", content),
             &Self::Illegal(char) => write!(f, "U+{:04X}", char as u32),
         }
     }
@@ -183,11 +187,12 @@ pub enum TokenKind {
     Crate,
     Data,
     Do,
+    // @Task make contextual
+    Field,
     In,
     Let,
     Module,
     Of,
-    Record,
     Self_,
     Super,
     Type,
@@ -248,11 +253,11 @@ impl fmt::Display for TokenKind {
             Crate => keyword!(crate),
             Data => keyword!(data),
             Do => keyword!(do),
+            Field => keyword!(field),
             In => keyword!(in),
             Let => keyword!(let),
             Module => keyword!(module),
             Of => keyword!(of),
-            Record => keyword!(record),
             Self_ => keyword!(self),
             Super => keyword!(super),
             Type => keyword!(Type),
@@ -303,11 +308,11 @@ pub fn parse_keyword(source: &str) -> Option<TokenKind> {
         "crate" => Crate,
         "data" => Data,
         "do" => Do,
+        "field" => Field,
         "in" => In,
         "let" => Let,
         "module" => Module,
         "of" => Of,
-        "record" => Record,
         "self" => Self_,
         "super" => Super,
         "Type" => Type,

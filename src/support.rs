@@ -134,23 +134,6 @@ impl<T: InvalidFallback> TryIn<T> for Result<T> {
     }
 }
 
-pub macro release($errors:expr) {{
-    let errors = $errors;
-    if !errors.is_empty() {
-        return Err(errors);
-    }
-}}
-
-// @Note bad name
-pub macro corelease($errors:expr) {{
-    let errors = $errors;
-    if !errors.is_empty() {
-        Err(errors)
-    } else {
-        Ok(())
-    }
-}}
-
 // @Task documentation
 pub trait TransposeExt<T> {
     fn transpose(self) -> Results<Vec<T>>;
