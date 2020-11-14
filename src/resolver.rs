@@ -100,8 +100,8 @@ impl CrateScope {
     /// Apart from actually registering, mainly checks for name duplication.
     fn register_binding(
         &mut self,
-        binder: &ast::Identifier,
-        binding: Entity,
+        binder: ast::Identifier,
+        binding: EntityKind,
         namespace: Option<CrateIndex>,
     ) -> Result<CrateIndex> {
         if let Some(namespace) = namespace {
@@ -111,7 +111,7 @@ impl CrateScope {
                 .bindings
                 .iter()
                 .map(|&index| &self.bindings[index])
-                .find(|binding| &binding.source == binder)
+                .find(|binding| binding.source == binder)
             {
                 return Err(Diagnostic::error()
                     .with_code(Code::E020)
@@ -124,10 +124,14 @@ impl CrateScope {
             }
         }
 
-        let index = self.bindings.push(binding);
+        let index = self.bindings.push(Entity {
+            source: binder,
+            kind: binding,
+            parent: namespace,
+        });
 
-        if let Some(module) = namespace {
-            self.bindings[module]
+        if let Some(namespace) = namespace {
+            self.bindings[namespace]
                 .namespace_mut()
                 .unwrap()
                 .bindings
@@ -496,15 +500,7 @@ impl<'a> Resolver<'a> {
 
                 let index = self
                     .scope
-                    .register_binding(
-                        &value.binder,
-                        Entity {
-                            source: value.binder.clone(),
-                            parent: Some(module),
-                            kind: EntityKind::UntypedValue,
-                        },
-                        Some(module),
-                    )
+                    .register_binding(value.binder.clone(), EntityKind::UntypedValue, Some(module))
                     .many_err()?;
 
                 if self.scope.program_entry.is_none() && module == self.scope.root() {
@@ -520,12 +516,8 @@ impl<'a> Resolver<'a> {
                 let namespace = self
                     .scope
                     .register_binding(
-                        &data.binder,
-                        Entity {
-                            source: data.binder.clone(),
-                            parent: Some(module),
-                            kind: EntityKind::UntypedDataType(Namespace::default()),
-                        },
+                        data.binder.clone(),
+                        EntityKind::untyped_data_type(),
                         Some(module),
                     )
                     .many_err()?;
@@ -552,12 +544,8 @@ impl<'a> Resolver<'a> {
                 let namespace = self
                     .scope
                     .register_binding(
-                        &constructor.binder,
-                        Entity {
-                            source: constructor.binder.clone(),
-                            parent: Some(module),
-                            kind: EntityKind::UntypedConstructor(Namespace::default()),
-                        },
+                        constructor.binder.clone(),
+                        EntityKind::untyped_constructor(),
                         Some(module),
                     )
                     .many_err()?;
@@ -571,12 +559,8 @@ impl<'a> Resolver<'a> {
                         let parameter = pi.parameter.as_ref().unwrap();
 
                         if let Err(error) = self.scope.register_binding(
-                            parameter,
-                            Entity {
-                                source: parameter.clone(),
-                                parent: Some(namespace),
-                                kind: EntityKind::UntypedValue,
-                            },
+                            parameter.clone(),
+                            EntityKind::UntypedValue,
                             Some(namespace),
                         ) {
                             errors.insert(error);
@@ -593,15 +577,7 @@ impl<'a> Resolver<'a> {
                 // a fake, nameless binding)
                 let index = self
                     .scope
-                    .register_binding(
-                        &submodule.binder,
-                        Entity {
-                            source: submodule.binder.clone(),
-                            parent: module,
-                            kind: EntityKind::Module(Namespace::default()),
-                        },
-                        module,
-                    )
+                    .register_binding(submodule.binder.clone(), EntityKind::module(), module)
                     .many_err()?;
 
                 submodule
@@ -628,15 +604,7 @@ impl<'a> Resolver<'a> {
 
                 let index = self
                     .scope
-                    .register_binding(
-                        binder,
-                        Entity {
-                            source: binder.clone(),
-                            parent: Some(module),
-                            kind: EntityKind::UnresolvedUse,
-                        },
-                        Some(module),
-                    )
+                    .register_binding(binder.clone(), EntityKind::UnresolvedUse, Some(module))
                     .many_err()?;
 
                 let old = self.scope.unresolved_uses.insert(
@@ -1081,7 +1049,10 @@ use std::fmt;
 impl fmt::Display for Identifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.source)?;
-        if crate::OPTIONS.get().unwrap().display_crate_indices {
+        if crate::OPTIONS
+            .get()
+            .map_or(false, |options| options.display_crate_indices)
+        {
             write!(f, "#")?;
             match self.index {
                 Index::Crate(index) => write!(f, "{:?}", index)?,
@@ -1126,7 +1097,7 @@ impl Index {
 
 /// Crate-local identifier for bindings defined through declarations.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct CrateIndex(usize);
+pub struct CrateIndex(pub(crate) usize);
 
 impl fmt::Debug for CrateIndex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

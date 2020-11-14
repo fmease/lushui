@@ -14,6 +14,7 @@ pub type Result<T, E = Diagnostic> = std::result::Result<T, E>;
 pub type Results<T> = Result<T, Diagnostics>;
 
 #[derive(Default, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq, Debug))]
 pub struct Diagnostics(HashSet<Diagnostic>);
 
 impl Diagnostics {
@@ -63,6 +64,7 @@ impl DerefMut for Diagnostics {
 
 // @Question is this indirection actually worth it?
 #[derive(Hash, PartialEq, Eq, Clone)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Diagnostic(Box<RawDiagnostic>);
 
 impl Deref for Diagnostic {

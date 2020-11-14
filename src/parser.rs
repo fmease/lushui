@@ -26,13 +26,14 @@
 //! | `A+`      | Kleene Plus (Positive Multiplicity) | Arbitrarily long non-empty sequence of `A`s                   |
 //! | `"T"`     | Terminal                            | Lexed token by textual content                                |
 //! | `#T`      | Named Terminal                      | Lexed token by name                                           |
-//! | `!A`      | Associativity                       | To the left of `::=`                                          |
 //! | `<!A`     | Negative Look-Behind                |                                                               |
 
 // @Task allow underscores in places where binders are allowed
 // @Task parse temporary Lazy-Expression ::= "lazy" Expression
 
 pub mod ast;
+#[cfg(test)]
+mod test;
 
 use crate::{
     diagnostic::{Code, Diagnostic, Diagnostics, Result},
@@ -779,7 +780,7 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```ebnf
-    /// Expression ::= Pi-Literal-Or-Lower
+    /// Expression ::= Pi-Type-Literal-Or-Lower
     /// ```
     // @Task parse sigma literals
     // @Task once that has been completed, inline parse_pi_literal_or_lower
@@ -792,9 +793,13 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```ebnf
-    /// Pi-Literal-Or-Lower !right ::=
+    /// ; among other things, the grammar for pretty-printers differs from the one for parsers
+    /// ; in that `Pi-Type-Literal-Or-Lower` also includes several complex (in the sense that they
+    /// ; contain further expressions) `Lower-Expression`s namely let/in, use/in, lambda literals,
+    /// ; case analyses and do blocks (not sure about sequence literals)
+    /// Pi-Type-Literal-Or-Lower ::=
     ///     ("(" Explicitness #Identifier Type-Annotation ")" | Application-Or-Lower)
-    ///     ("->" Pi-Literal-Or-Lower)*
+    ///     "->" Pi-Type-Literal-Or-Lower
     /// ```
     fn parse_pi_type_literal_or_lower(&mut self) -> Result<Expression> {
         use TokenKind::*;
@@ -845,9 +850,16 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```ebnf
-    /// Application-Or-Lower !left ::=
+    /// Application-Or-Lower ::=
     ///     Lower-Expression
     ///     (Lower-Expression | "(" Explicitness (#Identifier "=")? Expression ")")*
+    ///
+    /// ; ; left-recursive version unsuitable for the recursive descent parser
+    /// ; ; but indeed usable for pretty-printers:
+    /// ;
+    /// ; Application-Or-Lower ::=
+    /// ;     Application-Or-Lower?
+    /// ;     (Lower-Expression | "(" Explicitness (#Identifier "=")? Expression ")")*
     /// ```
     fn parse_application_or_lower(&mut self) -> Result<Expression> {
         self.parse_application_like_or_lower()
@@ -881,10 +893,8 @@ impl<'a> Parser<'a> {
 
         let mut span = self.current_token_span();
         match self.current_token_kind() {
-            kind if kind.is_path_head() => self.parse_path().map(|path| Expression {
-                span: path.span(),
-                kind: ExpressionKind::Path(Box::new(path)),
-                attributes,
+            kind if kind.is_path_head() => self.parse_path().map(|path| {
+                expr! { Path(attributes, path.span(); path) }
             }),
             Type => {
                 self.advance();
@@ -1328,9 +1338,9 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```ebnf
-    /// Pattern !left ::=
+    /// Pattern ::=
     ///     Lower-Pattern
-    ///     (Lower-Pattern | "(" Explicitness (#Identifier =)? Pattern ")")*
+    ///     (Lower-Pattern | "(" Explicitness (#Identifier "=")? Pattern ")")*
     /// ```
     fn parse_pattern(&mut self) -> Result<Pattern> {
         self.parse_application_like_or_lower()
@@ -1389,10 +1399,8 @@ impl<'a> Parser<'a> {
 
         let mut span = self.current_token_span();
         match self.current_token_kind() {
-            kind if kind.is_path_head() => self.parse_path().map(|path| Pattern {
-                span: path.span(),
-                kind: PatternKind::Path(Box::new(path)),
-                attributes,
+            kind if kind.is_path_head() => self.parse_path().map(|path| {
+                pat! { Path(attributes, path.span(); path) }
             }),
             NumberLiteral => {
                 let token = self.current_token().clone();

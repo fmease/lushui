@@ -1,7 +1,11 @@
 //! The lowered AST.
 
 use crate::{
-    ast::{self, Explicitness, Identifier, Path},
+    ast::{
+        self,
+        Explicitness::{self, *},
+        Identifier, Path,
+    },
     diagnostic::{Diagnostic, Results},
     span::{SourceFile, Spanned},
     support::{InvalidFallback, ManyErrExt},
@@ -712,10 +716,9 @@ impl fmt::Display for Expression {
             PiType(literal) => write!(f, "{}", literal),
             Application(application) => {
                 write!(f, "{} ", application.callee.wrap())?;
-                if application.explicitness.is_implicit() {
-                    write!(f, "({}{})", application.explicitness, application.argument)
-                } else {
-                    write!(f, "{}", application.argument.wrap())
+                match application.explicitness {
+                    Explicit => write!(f, "{}", application.argument.wrap()),
+                    Implicit => write!(f, "({}{})", application.explicitness, application.argument),
                 }
             }
             Type => write!(f, "Type"),
@@ -740,7 +743,7 @@ impl fmt::Display for Expression {
 impl fmt::Display for PiType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let domain_needs_brackets =
-            self.parameter.is_some() || self.explicitness.is_implicit() || self.is_field;
+            self.parameter.is_some() || self.explicitness == Implicit || self.is_field;
 
         if domain_needs_brackets {
             write!(f, "(")?;

@@ -1,0 +1,28 @@
+{
+    "name": "grammar-syntax",
+    "displayName": "Grammar Syntax",
+    "description": "Some EBNF grammar syntax highlighting",
+    "publisher": "fmease",
+    "version": "0.0.1",
+    "engines": {
+        "vscode": "^1.22.0"
+    },
+    "contributes": {
+        "languages": [
+            {
+                "id": "grammar",
+                "extensions": [
+                    ".grammar"
+                ],
+                "configuration": "./language-configuration.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "grammar",
+                "scopeName": "source.grammar",
+                "path": "./syntaxes/grammar.tmLanguage.json"
+            }
+        ]
+    }
+}

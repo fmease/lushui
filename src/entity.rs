@@ -140,6 +140,20 @@ pub enum EntityKind {
     },
 }
 
+impl EntityKind {
+    pub fn module() -> Self {
+        Self::Module(Namespace::default())
+    }
+
+    pub fn untyped_constructor() -> Self {
+        Self::UntypedConstructor(Namespace::default())
+    }
+
+    pub fn untyped_data_type() -> Self {
+        Self::UntypedDataType(Namespace::default())
+    }
+}
+
 impl DisplayWith for EntityKind {
     type Linchpin = CrateScope;
 

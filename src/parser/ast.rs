@@ -78,11 +78,13 @@ pub struct Group {
 ///
 /// See [DeclarationKind::Use] and [Statement::Use].
 #[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Use {
     pub bindings: PathTree,
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub enum PathTree {
     Single {
         target: Path,
@@ -108,6 +110,7 @@ impl Spanning for PathTree {
 pub type Attributes = Vec<Attribute>;
 
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Attribute {
     pub binder: Identifier,
     pub arguments: SmallVec<AttributeArgument, 1>,
@@ -122,6 +125,7 @@ impl Spanning for Attribute {
 
 // @Task add span information
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub enum AttributeArgument {
     NumberLiteral(Box<String>),
     TextLiteral(Box<String>),
@@ -132,6 +136,7 @@ pub enum AttributeArgument {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct NamedAttributeArgument {
     pub binder: Identifier,
     pub value: AttributeArgument,
@@ -141,6 +146,7 @@ pub type Expression = Item<ExpressionKind>;
 
 /// The syntax node of an expression.
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub enum ExpressionKind {
     PiTypeLiteral(Box<PiTypeLiteral>),
     Application(Box<Application>),
@@ -166,6 +172,7 @@ impl InvalidFallback for ExpressionKind {
 
 /// The syntax node of pi-type literals.
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct PiTypeLiteral {
     pub binder: Option<Identifier>,
     pub domain: Expression,
@@ -176,6 +183,7 @@ pub struct PiTypeLiteral {
 
 /// The syntax node of function application.
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Application {
     pub callee: Expression,
     pub argument: Expression,
@@ -185,6 +193,7 @@ pub struct Application {
 
 /// The syntax node of a typed hole.
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct TypedHole {
     pub tag: Identifier,
 }
@@ -197,6 +206,7 @@ pub struct Path {
 
 /// The syntax node of a lambda literal expression.
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct LambdaLiteral {
     pub parameters: Parameters,
     pub body_type_annotation: Option<Expression>,
@@ -205,6 +215,7 @@ pub struct LambdaLiteral {
 
 /// The syntax-node of a let/in expression.
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct LetIn {
     pub binder: Identifier,
     pub parameters: Parameters,
@@ -219,24 +230,28 @@ pub struct LetIn {
 
 /// The syntax node of a use/in expression.
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct UseIn {
     pub bindings: PathTree,
     pub scope: Expression,
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct CaseAnalysis {
     pub expression: Expression,
     pub cases: Vec<Case>,
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct DoBlock {
     pub statements: Vec<Statement>,
 }
 
 // @Note we probably gonna need to make this an item at some time for diagnostics
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub enum Statement {
     // @Note we could make the definition syntactically optional and provide a good error message
     // (missing definition) when lowering
@@ -250,6 +265,7 @@ pub enum Statement {
 
 // @Note has a lot of overlap with [StatementKind::Value] (and a bit with [ExpressionKind::LetIn])
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct LetStatement {
     pub binder: Identifier,
     pub parameters: Parameters,
@@ -258,6 +274,7 @@ pub struct LetStatement {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct BindStatement {
     pub binder: Identifier,
     pub type_annotation: Option<Expression>,
@@ -265,11 +282,13 @@ pub struct BindStatement {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct SequenceLiteral {
     pub elements: Vec<Expression>,
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Case {
     pub pattern: Pattern,
     pub expression: Expression,
@@ -278,6 +297,7 @@ pub struct Case {
 pub type Parameters = Vec<ParameterGroup>;
 
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct ParameterGroup {
     /// non-empty
     // @Task make type-safe
@@ -297,6 +317,7 @@ impl Spanning for ParameterGroup {
 pub type Pattern = Item<PatternKind>;
 
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub enum PatternKind {
     NumberLiteral(Box<String>),
     TextLiteral(Box<String>),
@@ -309,11 +330,13 @@ pub enum PatternKind {
 
 /// A binder inside of a pattern.
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Binder {
     pub binder: Identifier,
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Deapplication {
     pub callee: Pattern,
     pub argument: Pattern,
@@ -322,6 +345,7 @@ pub struct Deapplication {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct SequenceLiteralPattern {
     pub elements: Vec<Pattern>,
 }
@@ -396,6 +420,19 @@ impl Identifier {
             ..self
         }
     }
+
+    pub fn to_path(self) -> Path {
+        Path {
+            hanger: None,
+            segments: smallvec![self],
+        }
+    }
+
+    pub fn to_expression(self) -> Expression {
+        expr! {
+            Path(Attributes::default(), self.span; self.to_path())
+        }
+    }
 }
 
 impl Spanning for Identifier {
@@ -439,10 +476,7 @@ impl Path {
     ///
     /// May panic.
     pub fn identifier(token: Token) -> Self {
-        Self {
-            hanger: None,
-            segments: smallvec![Identifier::from_token(token).into()],
-        }
+        Identifier::from_token(token).to_path()
     }
 
     /// Construct a non-identifier-head-only path.
@@ -805,19 +839,13 @@ bitflags::bitflags! {
 ///
 /// In the context of applications, [Implicit] means that the argument is passed explicitly
 /// even though the parameter is marked implicit.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Explicitness {
     Implicit,
     Explicit,
 }
 
 pub use Explicitness::*;
-
-impl Explicitness {
-    pub const fn is_implicit(self) -> bool {
-        matches!(self, Implicit)
-    }
-}
 
 impl fmt::Display for Explicitness {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

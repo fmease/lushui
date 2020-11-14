@@ -200,6 +200,11 @@ impl Span {
     }
 }
 
+#[cfg(test)]
+pub(crate) fn span(start: u32, end: u32) -> Span {
+    Span::new(ByteIndex::new(start), ByteIndex::new(end))
+}
+
 impl fmt::Debug for Span {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "[{}..{}]", self.start.0, self.end.0)
@@ -527,6 +532,12 @@ pub struct SourceFile {
 }
 
 impl SourceFile {
+    pub(crate) fn fake(source: String) -> Self {
+        Self::new(PathBuf::new(), source, START_OF_FIRST_SOURCE_FILE)
+            .ok()
+            .unwrap()
+    }
+
     pub fn new(path: PathBuf, content: String, start: ByteIndex) -> Result<Self, Error> {
         use std::convert::TryFrom;
 

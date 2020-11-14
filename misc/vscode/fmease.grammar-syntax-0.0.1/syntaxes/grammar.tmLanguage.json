@@ -1,0 +1,85 @@
+{
+    "scopeName": "source.grammar",
+    "name": "grammar",
+    "__comment__": "@Task named entities as constants",
+    "patterns": [
+        {
+            "include": "#comment"
+        },
+        {
+            "include": "#punctuation"
+        },
+        {
+            "include": "#keyword"
+        },
+        {
+            "include": "#text-literal"
+        },
+        {
+            "include": "#entity"
+        },
+        {
+            "include": "#named-terminal"
+        }
+    ],
+    "repository": {
+        "comment": {
+            "patterns": [
+                {
+                    "name": "comment.line.semicolon.grammar",
+                    "match": ";.*"
+                }
+            ]
+        },
+        "punctuation": {
+            "patterns": [
+                {
+                    "match": "\\(",
+                    "name": "punctuation.grouping.begin.bracket.round.grammar meta.brace.round.grammar"
+                },
+                {
+                    "match": "\\)",
+                    "name": "punctuation.grouping.end.bracket.round.grammar meta.brace.round.grammar"
+                }
+            ]
+        },
+        "keyword": {
+            "patterns": [
+                {
+                    "name": "keyword.operator.grammar",
+                    "match": "(?:[|?*+]|::=|<!)"
+                }
+            ]
+        },
+        "text-literal": {
+            "__comment__": "@Task allow two consecutive double quotes to escape double quotes",
+            "patterns": [
+                {
+                    "name": "string.quoted.double.grammar",
+                    "begin": "\"",
+                    "end": "\""
+                }
+            ]
+        },
+        "entity": {
+            "patterns": [
+                {
+                    "match": "\\b((?:[a-zA-Z_]\\w*)(?:-[a-zA-Z_]\\w*)*)\\s*(?=::=[\\w\\s])",
+                    "captures": {
+                        "1": {
+                            "name": "entity.name.function.grammar"
+                        }
+                    }
+                }
+            ]
+        },
+        "named-terminal": {
+            "patterns": [
+                {
+                    "name": "variable.other.constant.grammar",
+                    "match": "#(?:[a-zA-Z_]\\w*)(?:-[a-zA-Z_]\\w*)*\\b"
+                }
+            ]
+        }
+    }
+}

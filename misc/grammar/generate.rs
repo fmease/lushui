@@ -32,7 +32,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for line in parser.lines() {
         let line = line.trim_start();
-        if let Some(line) = line.strip_prefix("/// ") {
+        if let Some(line) = line.strip_prefix("///") {
+            let line = line.strip_prefix(" ").unwrap_or(line);
+
             match line.strip_prefix("```") {
                 Some(line) => {
                     snippet_state = if line.contains("ebnf") {

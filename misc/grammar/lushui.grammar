@@ -16,7 +16,6 @@
 ; | `A+`      | Kleene Plus (Positive Multiplicity) | Arbitrarily long non-empty sequence of `A`s                   |
 ; | `"T"`     | Terminal                            | Lexed token by textual content                                |
 ; | `#T`      | Named Terminal                      | Lexed token by name                                           |
-; | `!A`      | Associativity                       | To the left of `::=`                                          |
 ; | `<!A`     | Negative Look-Behind                |                                                               |
 
 General-Identifier ::= #Identifier | #Punctuation
@@ -65,15 +64,26 @@ Constructor ::=
     (Attribute Line-Break*)*
     #Identifier Parameters Type-Annotation? Line-Break
 
-Expression ::= Pi-Literal-Or-Lower
+Expression ::= Pi-Type-Literal-Or-Lower
 
-Pi-Literal-Or-Lower !right ::=
+; among other things, the grammar for pretty-printers differs from the one for parsers
+; in that `Pi-Type-Literal-Or-Lower` also includes several complex (in the sense that they
+; contain further expressions) `Lower-Expression`s namely let/in, use/in, lambda literals,
+; case analyses and do blocks (not sure about sequence literals)
+Pi-Type-Literal-Or-Lower ::=
     ("(" Explicitness #Identifier Type-Annotation ")" | Application-Or-Lower)
-    ("->" Pi-Literal-Or-Lower)*
+    "->" Pi-Type-Literal-Or-Lower
 
-Application-Or-Lower !left ::=
+Application-Or-Lower ::=
     Lower-Expression
     (Lower-Expression | "(" Explicitness (#Identifier "=")? Expression ")")*
+
+; ; left-recursive version unsuitable for the recursive descent parser
+; ; but indeed usable for pretty-printers:
+;
+; Application-Or-Lower ::=
+;     Application-Or-Lower?
+;     (Lower-Expression | "(" Explicitness (#Identifier "=")? Expression ")")*
 
 Lower-Expression ::= Attribute* Naked-Lower-Expression
 Naked-Lower-Expression ::=
@@ -120,9 +130,9 @@ Parameter-Group ::=
     | #Identifier
     | "(" Explicitness "field"? #Identifier+ Type-Annotation? ")"
 
-Pattern !left ::=
+Pattern ::=
     Lower-Pattern
-    (Lower-Pattern | "(" Explicitness (#Identifier =)? Pattern ")")*
+    (Lower-Pattern | "(" Explicitness (#Identifier "=")? Pattern ")")*
 
 Lower-Pattern ::= Attribute* Naked-Lower-Pattern
 Naked-Lower-Pattern ::=

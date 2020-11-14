@@ -5,6 +5,7 @@ use crate::{
 
 /// Something with a source location and attributes.
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Item<Kind, Attributes> {
     pub kind: Kind,
     pub span: Span,
@@ -49,7 +50,7 @@ pub macro item {
             $item_kind::$kind $( ($indirection::new(loc::$kind { $( $body )+ })) )?,
         )
     }},
-    ($loc:path, $item_kind:ident, $indirection:ident; $kind:ident($attrs:expr, $span:expr; $value:expr)) => {
+    ($loc:path, $item_kind:ident, $indirection:ident; $kind:ident($attrs:expr, $span:expr; $value:expr $(,)?)) => {
         Item::new(
             $attrs,
             $span,

@@ -23,11 +23,19 @@ use crate::{
     support::ManyErrExt,
     Atom, INDENTATION_IN_SPACES,
 };
-use std::{iter::Peekable, path::PathBuf, str::CharIndices};
+use std::{iter::Peekable, str::CharIndices};
 pub use token::{
     is_punctuation, Token,
     TokenKind::{self, *},
 };
+
+fn lex(source: String) -> Results<Vec<Token>> {
+    Lexer::new(
+        &SourceFile::fake(source.to_owned()),
+        &mut Default::default(),
+    )
+    .lex()
+}
 
 /// Utility to parse identifiers from a string slice.
 ///
@@ -46,20 +54,6 @@ pub fn parse_identifier(source: String) -> Option<Atom> {
         })] => Some(atom),
         _ => None,
     }
-}
-
-pub fn lex(source: String) -> Results<Vec<Token>> {
-    Lexer::new(
-        &SourceFile::new(
-            PathBuf::new(),
-            source,
-            crate::span::START_OF_FIRST_SOURCE_FILE,
-        )
-        .ok()
-        .unwrap(),
-        &mut Default::default(),
-    )
-    .lex()
 }
 
 /// The state of the lexer.

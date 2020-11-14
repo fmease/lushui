@@ -1,14 +1,15 @@
 //! The high-level intermediate representation.
 
 use crate::{
-    ast::Explicitness,
+    ast::Explicitness::{self, *},
     lowered_ast::{Item, Number},
     resolver::{CrateScope, FunctionScope, Identifier},
     span::SourceFile,
     support::InvalidFallback,
     typer::interpreter,
 };
-use std::rc::Rc;
+use joinery::JoinableIterator;
+use std::{fmt, rc::Rc};
 
 pub type Declaration = Item<DeclarationKind>;
 
@@ -146,7 +147,7 @@ pub struct Projection {}
 pub struct IO {
     pub index: usize, // @Task IOIndex
     pub arguments: Vec<Expression>,
-    // @Task next: Option<Expression>
+    // @Task continuation: Option<Expression>
 }
 
 #[derive(Clone)]
@@ -254,7 +255,7 @@ impl Declaration {
                 constructor.type_annotation.with(scope)
             ),
             Module(declaration) => {
-                writeln!(f, "module {}: =", declaration.binder)?;
+                writeln!(f, "module {} =", declaration.binder)?;
                 for declaration in &declaration.declarations {
                     let depth = depth + 1;
                     write!(f, "{}", " ".repeat(depth * INDENTATION_IN_SPACES))?;
@@ -266,138 +267,184 @@ impl Declaration {
                 Some(binder) => writeln!(f, "use {} as {}", declaration.target, binder),
                 None => writeln!(f, "use {}", declaration.target),
             },
-            Invalid => writeln!(f, "<invalid>"),
+            Invalid => writeln!(f, "?(invalid)"),
         }
     }
 }
 
-// @Task display fewer round brackets by making use of precedence
 // @Note many wasted allocations (intermediate Strings)
 impl DisplayWith for Expression {
     type Linchpin = CrateScope;
 
     fn format(&self, scope: &CrateScope, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use joinery::JoinableIterator;
-        use ExpressionKind::*;
+        format_pi_type_literal_or_lower(self, scope, f)
+    }
+}
 
-        match &self.kind {
-            PiType(literal) => write!(f, "{}", literal.with(scope)),
-            Application(application) => {
-                write!(f, "{} ", application.callee.wrap().with(scope))?;
-                if application.explicitness.is_implicit() {
-                    write!(
-                        f,
-                        "({}{})",
-                        application.explicitness,
-                        application.argument.with(scope)
-                    )
-                } else {
-                    write!(f, "{}", application.argument.wrap().with(scope))
-                }
+fn format_pi_type_literal_or_lower(
+    expression: &Expression,
+    scope: &CrateScope,
+    f: &mut fmt::Formatter<'_>,
+) -> fmt::Result {
+    use ExpressionKind::*;
+
+    // In here, we format `Lambda`, `UseIn` and `CaseAnalysis` as a pi-type-literal-or-lower instead of
+    // a lowered expression — which you might have expected from reading through the grammar and the parser.
+    // The reason for this is the way we treat bracketed expressions: We do not represent them in the AST
+    // (as their own nodes).
+    // We could add more checks in the implementation of the pretty-printer since we "lost" information.
+    // But actually, we do not need extra checks if we use a different grammar from the parser's.
+    // Note that, syntactically, applications in lushui are so flexible that they actually
+    // allow bare complex expressions as arguments e.g. `call \x => x` and `call do pure unit`.
+    // Haskell adopted this change at some point, too, with the extension `BlockArguments`.
+    // Read https://typeclasses.com/ghc/block-arguments and/or
+    // https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/block_arguments.html?highlight=xblockarguments.
+    // This leads to the phenomenon that `(read \this => this) alpha` and `read (\this => this) alpha`
+    // parse to the identical AST modulo spans.
+    // However for pretty-printing, we only use the last form — `read (\this => this) alpha` — to avoid
+    // extra checks. For the case above, this decision is neither liberal nor conservate resulting in
+    // an equal amount of brackets (that being one). This is not the case for `crate.take (\it => it)` where
+    // which we *might* want to print as `crate.take \it => it`. This would probably require passing some flags to
+    // the formatting functions and adding more checks.
+    //
+    // Also see `crate::parser::test::application_lambda_literal_argument_{lax,strict}_grouping` and the
+    // comment at the grammar definition of `Pi-Type-Literal-Or-Lower` (in `misc/grammar/lushui.grammar`)
+    // for further details.
+    match &expression.kind {
+        PiType(pi) => {
+            if let Some(parameter) = &pi.parameter {
+                write!(
+                    f,
+                    "({}{}: {})",
+                    pi.explicitness,
+                    parameter,
+                    pi.domain.with(scope)
+                )?;
+            } else {
+                format_application_or_lower(&pi.domain, scope, f)?;
             }
-            Type => write!(f, "Type"),
-            Number(literal) => write!(f, "{}", literal),
-            Text(literal) => write!(f, "{:?}", literal),
-            Binding(binding) => write!(
-                f,
-                "{}",
-                FunctionScope::absolute_path(&binding.binder, scope)
-            ),
-            Lambda(lambda) => write!(f, "{}", lambda.with(scope)),
-            UseIn => todo!(),
-            // @Task fix indentation
-            CaseAnalysis(analysis) => {
-                writeln!(f, "case {} of", analysis.subject.with(scope))?;
-                for case in &analysis.cases {
-                    write!(f, "{}", case.with(scope))?;
+            write!(f, " -> ")?;
+            format_pi_type_literal_or_lower(&pi.codomain, scope, f)
+        }
+        Lambda(lambda) => {
+            write!(f, r"\")?;
+            if lambda.explicitness == Implicit || lambda.parameter_type_annotation.is_some() {
+                write!(f, "({}{}", lambda.explicitness, lambda.parameter)?;
+                if let Some(annotation) = &lambda.parameter_type_annotation {
+                    write!(f, ": {}", annotation.with(scope))?;
                 }
-                Ok(())
+                write!(f, ")")?;
+            } else {
+                write!(f, "{}", lambda.parameter)?;
             }
-            Invalid => write!(f, "<invalid>"),
-            Substitution(substitution) => write!(
-                f,
-                "<substitution {} {}>",
-                substitution.substitution.with(scope),
-                substitution.expression.with(scope)
-            ),
-            ForeignApplication(application) => write!(
-                f,
-                "{} {}",
-                application.callee,
-                application
-                    .arguments
-                    .iter()
-                    .map(|argument| argument.with(scope))
-                    .join_with(' ')
-            ),
-            // @Beacon @Temporary @Task just write out the path
-            Projection(_projection) => write!(f, "<projection>"),
-            IO(io) => write!(
-                f,
-                "<io {} {}>",
-                io.index,
-                io.arguments
-                    .iter()
-                    .map(|argument| argument.with(scope))
-                    .join_with(' ')
-            ),
+
+            if let Some(annotation) = &lambda.body_type_annotation {
+                write!(f, ": {}", annotation.with(scope))?;
+            }
+
+            write!(f, " => {}", lambda.body.with(scope))
         }
+        UseIn => todo!(),
+        // @Task fix indentation
+        CaseAnalysis(analysis) => {
+            writeln!(f, "case {} of", analysis.subject.with(scope))?;
+            for case in &analysis.cases {
+                writeln!(
+                    f,
+                    "{} => {}",
+                    case.pattern.with(scope),
+                    case.body.with(scope)
+                )?;
+            }
+            Ok(())
+        }
+        _ => format_application_or_lower(expression, scope, f),
     }
 }
 
-use std::fmt;
+// @Task write named arguments
+fn format_application_or_lower(
+    expression: &Expression,
+    scope: &CrateScope,
+    f: &mut fmt::Formatter<'_>,
+) -> fmt::Result {
+    use ExpressionKind::*;
 
-impl DisplayWith for PiType {
-    type Linchpin = CrateScope;
-
-    fn format(&self, scope: &CrateScope, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(parameter) = &self.parameter {
-            write!(
-                f,
-                "({}{}: {})",
-                self.explicitness,
-                parameter,
-                self.domain.with(scope)
-            )?;
-        } else if self.explicitness.is_implicit() {
-            write!(f, "({}{})", self.explicitness, self.domain.with(scope))?;
-        } else {
-            write!(f, "{}", self.domain.wrap().with(scope))?;
+    match &expression.kind {
+        Application(application) => {
+            format_application_or_lower(&application.callee, scope, f)?;
+            write!(f, " ")?;
+            if application.explicitness == Implicit
+            /*|| application.binder.is_some()*/
+            {
+                write!(
+                    f,
+                    "({}{})",
+                    application.explicitness,
+                    application.argument.with(scope)
+                )
+            } else {
+                format_lower_expression(&application.argument, scope, f)
+            }
         }
-        write!(f, " -> {}", self.codomain.wrap().with(scope))
+        ForeignApplication(application) => {
+            write!(f, "{}", application.callee)?;
+
+            for argument in &application.arguments {
+                write!(f, " ")?;
+                format_lower_expression(argument, scope, f)?;
+            }
+
+            Ok(())
+        }
+        _ => format_lower_expression(expression, scope, f),
     }
 }
 
-impl DisplayWith for Lambda {
-    type Linchpin = CrateScope;
+fn format_lower_expression(
+    expression: &Expression,
+    scope: &CrateScope,
+    f: &mut fmt::Formatter<'_>,
+) -> fmt::Result {
+    // @Beacon @Task also print attributes!!!
 
-    fn format(&self, scope: &CrateScope, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "\\({}{}", self.explicitness, self.parameter)?;
-        if let Some(annotation) = &self.parameter_type_annotation {
-            write!(f, ": {}", annotation.wrap().with(scope))?;
-        }
-        write!(f, ")")?;
-        if let Some(annotation) = &self.body_type_annotation {
-            write!(f, ": {}", annotation.wrap().with(scope))?;
-        }
-        write!(f, " => {}", self.body.wrap().with(scope))
-    }
-}
+    use ExpressionKind::*;
 
-impl DisplayWith for Case {
-    type Linchpin = CrateScope;
-
-    fn format(&self, scope: &CrateScope, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(
+    match &expression.kind {
+        Type => write!(f, "Type"),
+        Number(literal) => write!(f, "{}", literal),
+        // @Bug this uses Rust's way of printing strings, not Lushui's:
+        // The escape sequences differ
+        // @Task use custom escaping logic
+        Text(literal) => write!(f, "{:?}", literal),
+        Binding(binding) => write!(
             f,
-            "{} => {}",
-            self.pattern.with(scope),
-            self.body.with(scope)
-        )
+            "{}",
+            FunctionScope::absolute_path(&binding.binder, scope)
+        ),
+        // @Beacon @Temporary @Task just write out the path
+        Projection(_projection) => write!(f, "?(projection)"),
+        IO(io) => write!(
+            f,
+            "?(io {} {})",
+            io.index,
+            io.arguments
+                .iter()
+                .map(|argument| argument.with(scope))
+                .join_with(' ')
+        ),
+        Substitution(substitution) => write!(
+            f,
+            "?(substitution {} {})",
+            substitution.substitution.with(scope),
+            substitution.expression.with(scope)
+        ),
+        Invalid => write!(f, "?(invalid)"),
+        _ => write!(f, "({})", expression.with(scope)),
     }
 }
 
-// @Task update bracket business
+// @Task @Beacon update bracket business
 impl DisplayWith for Pattern {
     type Linchpin = CrateScope;
 
@@ -425,35 +472,593 @@ impl DisplayWith for Pattern {
     }
 }
 
-trait WrapExpression {
-    fn wrap<'a>(&'a self) -> PossiblyWrapped<'a>;
-}
+#[cfg(test)]
+mod test {
+    // @Beacon @Task add more tests for expressions and attributes once we print them.
 
-impl WrapExpression for Expression {
-    fn wrap<'a>(&'a self) -> PossiblyWrapped<'a> {
-        PossiblyWrapped(self)
-    }
-}
+    use super::{expr, Expression};
+    use crate::{
+        ast::{self, Explicitness::*},
+        entity::{Entity, EntityKind},
+        lowered_ast::{Attributes, Number},
+        resolver::{CrateScope, Identifier, Index},
+        span::Span,
+        support::DisplayWith,
+    };
 
-struct PossiblyWrapped<'a>(&'a Expression);
-
-impl PossiblyWrapped<'_> {
-    fn needs_brackets_conservative(&self) -> bool {
-        use ExpressionKind::*;
-
-        !matches!(&self.0.kind, Type | Number(_) | Text(_) | Binding(_) | Invalid | Substitution(_))
-    }
-}
-
-impl DisplayWith for PossiblyWrapped<'_> {
-    type Linchpin = CrateScope;
-
-    fn format(&self, scope: &CrateScope, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.needs_brackets_conservative() {
-            write!(f, "({})", self.0.with(scope))
-        } else {
-            write!(f, "{}", self.0.with(scope))
+    impl CrateScope {
+        fn new() -> Self {
+            let mut scope = Self::default();
+            scope.bindings.push(Entity {
+                source: ast::Identifier::new("test".into(), Span::SHAM),
+                parent: None,
+                kind: EntityKind::module(),
+            });
+            scope
         }
+
+        // @Task add way to specify the module
+        fn add(&mut self, name: &'static str, kind: EntityKind) -> Identifier {
+            let identifier = ast::Identifier::new(name.into(), Span::SHAM);
+            let entity = Entity {
+                source: identifier.clone(),
+                parent: Some(self.root()),
+                kind,
+            };
+            let index = self.bindings.push(entity);
+            Identifier::new(index, identifier)
+        }
+    }
+
+    fn type_() -> Expression {
+        expr! {
+            Type {
+                Attributes::default(), Span::SHAM
+            }
+        }
+    }
+
+    impl Identifier {
+        fn parameter(name: &'static str) -> Self {
+            Identifier::new(
+                Index::DebruijnParameter,
+                ast::Identifier::new(name.into(), Span::SHAM),
+            )
+        }
+    }
+
+    #[test]
+    fn pi_type_application_argument() {
+        let mut scope = CrateScope::new();
+
+        let array = scope
+            .add("Array", EntityKind::untyped_data_type())
+            .to_expression();
+        let int = scope
+            .add("Int", EntityKind::untyped_data_type())
+            .to_expression();
+
+        assert_eq!(
+            "crate.Array crate.Int -> Type",
+            (expr! {
+                PiType {
+                    Attributes::default(), Span::SHAM;
+                    parameter: None,
+                    domain: expr! {
+                        Application {
+                            Attributes::default(), Span::SHAM;
+                            callee: array,
+                            argument: int,
+                            explicitness: Explicit,
+                        }
+                    },
+                    codomain: type_(),
+                    explicitness: Explicit,
+                }
+            })
+            .with(&scope)
+            .to_string(),
+        );
+    }
+
+    #[test]
+    fn pi_type_named_parameter() {
+        let mut scope = CrateScope::new();
+
+        let array = scope.add("Array", EntityKind::untyped_data_type());
+        let int = scope.add("Int", EntityKind::untyped_data_type());
+        let container = scope.add("Container", EntityKind::untyped_data_type());
+        let alpha = Identifier::parameter("alpha");
+
+        assert_eq!(
+            "(alpha: crate.Array crate.Int) -> crate.Container alpha",
+            (expr! {
+                PiType {
+                    Attributes::default(), Span::SHAM;
+                    parameter: Some(alpha.clone()),
+                    domain: expr! {
+                        Application {
+                            Attributes::default(), Span::SHAM;
+                            callee: array.to_expression(),
+                            argument: int.to_expression(),
+                            explicitness: Explicit,
+                        }
+                    },
+                    codomain: expr! {
+                        Application {
+                            Attributes::default(), Span::SHAM;
+                            callee: container.to_expression(),
+                            argument: alpha.to_expression(),
+                            explicitness: Explicit,
+                        }
+                    },
+                    explicitness: Explicit,
+                }
+            })
+            .with(&scope)
+            .to_string(),
+        );
+    }
+
+    #[test]
+    fn pi_type_implicit_parameter() {
+        let scope = CrateScope::new();
+
+        assert_eq!(
+            "(,whatever: Type) -> Type",
+            (expr! {
+                PiType {
+                    Attributes::default(), Span::SHAM;
+                    parameter: Some(Identifier::parameter("whatever")),
+                    domain: type_(),
+                    codomain: type_(),
+                    explicitness: Implicit,
+                }
+            })
+            .with(&scope)
+            .to_string(),
+        );
+    }
+
+    /// Compare with [pi_type_two_curried_arguments].
+    #[test]
+    fn pi_type_higher_order_argument() {
+        let mut scope = CrateScope::new();
+        let int = scope
+            .add("Int", EntityKind::untyped_data_type())
+            .to_expression();
+
+        assert_eq!(
+            "(crate.Int -> crate.Int) -> crate.Int",
+            (expr! {
+                PiType {
+                    Attributes::default(), Span::SHAM;
+                    parameter: None,
+                    domain: expr! {
+                        PiType {
+                            Attributes::default(), Span::SHAM;
+                            parameter: None,
+                            domain: int.clone(),
+                            codomain: int.clone(),
+                            explicitness: Explicit,
+                        }
+                    },
+                    codomain: int,
+                    explicitness: Explicit,
+                }
+            })
+            .with(&scope)
+            .to_string(),
+        );
+    }
+
+    /// Compare with [pi_type_higher_order_argument].
+    #[test]
+    fn pi_type_two_curried_arguments() {
+        let mut scope = CrateScope::new();
+        let int = scope
+            .add("Int", EntityKind::untyped_data_type())
+            .to_expression();
+        let text = scope
+            .add("Text", EntityKind::untyped_data_type())
+            .to_expression();
+
+        assert_eq!(
+            "crate.Int -> crate.Text -> Type",
+            (expr! {
+                PiType {
+                    Attributes::default(), Span::SHAM;
+                    parameter: None,
+                    domain: int,
+                    codomain: expr! {
+                        PiType {
+                            Attributes::default(), Span::SHAM;
+                            parameter: None,
+                            domain: text,
+                            codomain: expr! {
+                                Type {
+                                    Attributes::default(), Span::SHAM
+                                }
+                            },
+                            explicitness: Explicit,
+                        }
+                    },
+                    explicitness: Explicit,
+                }
+            })
+            .with(&scope)
+            .to_string(),
+        );
+    }
+
+    /// Compare with [lambda_pi_type_body].
+    #[test]
+    fn pi_type_lambda_domain() {
+        let scope = CrateScope::new();
+
+        let x = Identifier::parameter("x");
+
+        assert_eq!(
+            r"(\x => x) -> Type",
+            (expr! {
+                PiType {
+                    Attributes::default(), Span::SHAM;
+                    parameter: None,
+                    domain: expr! {
+                        Lambda {
+                            Attributes::default(), Span::SHAM;
+                            parameter: x.clone(),
+                            parameter_type_annotation: None,
+                            body_type_annotation: None,
+                            body: x.to_expression(),
+                            explicitness: Explicit,
+                        }
+                    },
+                    codomain: type_(),
+                    explicitness: Explicit,
+                }
+            })
+            .with(&scope)
+            .to_string()
+        );
+    }
+
+    #[test]
+    fn application_three_curried_arguments() {
+        let mut scope = CrateScope::new();
+
+        let beta = scope.add("beta", EntityKind::UntypedValue);
+
+        assert_eq!(
+            "alpha crate.beta (gamma Type) 0",
+            (expr! {
+                Application {
+                    Attributes::default(), Span::SHAM;
+                    callee: expr! {
+                        Application {
+                            Attributes::default(), Span::SHAM;
+                            callee: expr! {
+                                Application {
+                                    Attributes::default(), Span::SHAM;
+                                    callee: Identifier::parameter("alpha").to_expression(),
+                                    argument: beta.to_expression(),
+                                    explicitness: Explicit,
+                                }
+                            },
+                            argument: expr! {
+                                Application {
+                                    Attributes::default(), Span::SHAM;
+                                    callee: Identifier::parameter("gamma").to_expression(),
+                                    argument: type_(),
+                                    explicitness: Explicit,
+                                }
+                            },
+                            explicitness: Explicit,
+                        }
+                    },
+                    argument: expr! {
+                        Number(Attributes::default(), Span::SHAM; Number::Nat(0u8.into()))
+                    },
+                    explicitness: Explicit,
+                }
+            })
+            .with(&scope)
+            .to_string()
+        );
+    }
+
+    /// Compare with [application_lambda_argument].
+    #[test]
+    fn application_lambda_last_argument() {
+        let mut scope = CrateScope::new();
+
+        let take = scope.add("take", EntityKind::UntypedValue);
+        let it = Identifier::parameter("it");
+
+        // we might want to format this special case as `crate.take \it => it` in the future
+        assert_eq!(
+            r"crate.take (\it => it)",
+            (expr! {
+                Application {
+                    Attributes::default(), Span::SHAM;
+                    callee: take.to_expression(),
+                    argument: expr! {
+                        Lambda {
+                            Attributes::default(), Span::SHAM;
+                            parameter: it.clone(),
+                            parameter_type_annotation: None,
+                            body_type_annotation: None,
+                            body: it.to_expression(),
+                            explicitness: Explicit,
+                        }
+                    },
+                    explicitness: Explicit,
+                }
+            })
+            .with(&scope)
+            .to_string(),
+        );
+    }
+
+    /// Compare with [application_lambda_last_argument].
+    #[test]
+    fn application_lambda_argument() {
+        let mut scope = CrateScope::new();
+
+        let take = scope.add("take", EntityKind::UntypedValue);
+        let it = Identifier::parameter("it");
+
+        assert_eq!(
+            r#"crate.take (\it => it) "who""#,
+            (expr! {
+                Application {
+                    Attributes::default(), Span::SHAM;
+                    callee: expr! {
+                        Application {
+                            Attributes::default(), Span::SHAM;
+                            callee: take.to_expression(),
+                            argument: expr! {
+                                Lambda {
+                                    Attributes::default(), Span::SHAM;
+                                    parameter: it.clone(),
+                                    parameter_type_annotation: None,
+                                    body_type_annotation: None,
+                                    body: it.to_expression(),
+                                    explicitness: Explicit,
+                                }
+                            },
+                            explicitness: Explicit,
+                        }
+                    },
+                    argument: expr! {
+                        Text(
+                            Attributes::default(), Span::SHAM;
+                            String::from("who"),
+                        )
+                    },
+                    explicitness: Explicit,
+                }
+            })
+            .with(&scope)
+            .to_string(),
+        );
+    }
+
+    #[test]
+    fn application_implicit_argument() {
+        let mut scope = CrateScope::new();
+
+        let identity = scope.add("identity", EntityKind::UntypedValue);
+
+        assert_eq!(
+            r"crate.identity (,Type)",
+            (expr! {
+                Application {
+                    Attributes::default(), Span::SHAM;
+                    callee: identity.to_expression(),
+                    argument: type_(),
+                    explicitness: Implicit,
+                }
+            })
+            .with(&scope)
+            .to_string(),
+        );
+    }
+
+    #[test]
+    fn application_foreign_application_callee() {
+        let scope = CrateScope::new();
+
+        assert_eq!(
+            "eta 10 omicron",
+            (expr! {
+                Application {
+                    Attributes::default(), Span::SHAM;
+                    callee: expr! {
+                        ForeignApplication {
+                            Attributes::default(), Span::SHAM;
+                            callee: Identifier::parameter("eta"),
+                            arguments: vec![
+                                expr! {
+                                    Number(Attributes::default(), Span::SHAM; Number::Nat(10u8.into()))
+                                }
+                            ],
+                        }
+                    },
+                    argument: Identifier::parameter("omicron").to_expression(),
+                    explicitness: Explicit,
+                }
+            }).with(&scope).to_string(),
+        );
+    }
+
+    #[test]
+    fn lambda_body_type_annotation() {
+        let mut scope = CrateScope::new();
+
+        let output = scope.add("Output", EntityKind::untyped_data_type());
+
+        assert_eq!(
+            r"\input: crate.Output => 0",
+            (expr! {
+                Lambda {
+                    Attributes::default(), Span::SHAM;
+                    parameter: Identifier::parameter("input"),
+                    parameter_type_annotation: None,
+                    body_type_annotation: Some(output.to_expression()),
+                    body: expr! {
+                        Number(Attributes::default(), Span::SHAM; Number::Nat(0u8.into()))
+                    },
+                    explicitness: Explicit,
+                }
+            })
+            .with(&scope)
+            .to_string(),
+        );
+    }
+
+    #[test]
+    fn lambda_parameter_type_annotation_body_type_annotation() {
+        let mut scope = CrateScope::new();
+
+        let input = scope.add("Input", EntityKind::untyped_data_type());
+        let output = scope.add("Output", EntityKind::untyped_data_type());
+
+        assert_eq!(
+            r"\(input: crate.Input): crate.Output => Type",
+            (expr! {
+                Lambda {
+                    Attributes::default(), Span::SHAM;
+                    parameter: Identifier::parameter("input"),
+                    parameter_type_annotation: Some(input.to_expression()),
+                    body_type_annotation: Some(output.to_expression()),
+                    body: type_(),
+                    explicitness: Explicit,
+                }
+            })
+            .with(&scope)
+            .to_string(),
+        );
+    }
+
+    #[test]
+    fn lambda_implicit_parameter() {
+        let scope = CrateScope::new();
+
+        assert_eq!(
+            r"\(,Input: Type) => Type",
+            (expr! {
+                Lambda {
+                    Attributes::default(), Span::SHAM;
+                    parameter: Identifier::parameter("Input"),
+                    parameter_type_annotation: Some(type_()),
+                    body_type_annotation: None,
+                    body: type_(),
+                    explicitness: Implicit,
+                }
+            })
+            .with(&scope)
+            .to_string(),
+        );
+    }
+
+    /// Compare with [pi_type_lambda_domain].
+    #[test]
+    fn lambda_pi_type_body() {
+        let scope = CrateScope::new();
+
+        let x = Identifier::parameter("x");
+
+        assert_eq!(
+            r"\x => x -> Type",
+            (expr! {
+                Lambda {
+                    Attributes::default(), Span::SHAM;
+                    parameter: x.clone(),
+                    parameter_type_annotation: None,
+                    body_type_annotation: None,
+                    body: expr! {
+                        PiType {
+                            Attributes::default(), Span::SHAM;
+                            parameter: None,
+                            domain: x.to_expression(),
+                            codomain: type_(),
+                            explicitness: Explicit,
+                        }
+                    },
+                    explicitness: Explicit,
+                }
+            })
+            .with(&scope)
+            .to_string(),
+        );
+    }
+
+    #[test]
+    fn foreign_application_no_arguments() {
+        let mut scope = CrateScope::new();
+
+        let add = scope.add("add", EntityKind::UntypedValue);
+
+        assert_eq!(
+            "add",
+            (expr! {
+                ForeignApplication {
+                    Attributes::default(), Span::SHAM;
+                    callee: add,
+                    arguments: Vec::new(),
+                }
+            })
+            .with(&scope)
+            .to_string(),
+        );
+    }
+
+    #[test]
+    fn foreign_application_two_arguments() {
+        let mut scope = CrateScope::new();
+
+        let add = scope.add("add", EntityKind::UntypedValue);
+
+        assert_eq!(
+            "add (add 1 3000) 0",
+            (expr! {
+                ForeignApplication {
+                    Attributes::default(), Span::SHAM;
+                    callee: add.clone(),
+                    arguments: vec![
+                        expr! {
+                            ForeignApplication {
+                                Attributes::default(), Span::SHAM;
+                                callee: add,
+                                arguments: vec![
+                                    expr! {
+                                        Number(
+                                            Attributes::default(), Span::SHAM;
+                                            Number::Nat(1u8.into()),
+                                        )
+                                    },
+                                    expr! {
+                                        Number(
+                                            Attributes::default(), Span::SHAM;
+                                            Number::Nat(3000u16.into()),
+                                        )
+                                    },
+                                ],
+                            }
+                        },
+                        expr! {
+                            Number(
+                                Attributes::default(), Span::SHAM;
+                                Number::Nat(0u8.into()),
+                            )
+                        },
+                    ],
+                }
+            })
+            .with(&scope)
+            .to_string(),
+        );
     }
 }
 
