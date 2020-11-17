@@ -99,7 +99,7 @@ use diagnostic::Diagnostic;
 pub fn parse_crate_name(file: impl AsRef<Path>) -> Result<ast::Identifier, Diagnostic> {
     let file = file.as_ref();
 
-    if !has_file_extension(file.as_ref(), FILE_EXTENSION) {
+    if !has_file_extension(file, FILE_EXTENSION) {
         Diagnostic::warning()
             .with_message("missing or non-standard file extension")
             .emit(None);

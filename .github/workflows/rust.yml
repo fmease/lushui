@@ -24,9 +24,7 @@ jobs:
     - name: Build
       uses: actions-rs/cargo@v1
       with:
-        # we actually `build` instead of just `check`ing since the golden test runner
-        # currently requires the resulting executable to function
-        command: build
+        command: check
     - name: Run tests
       uses: actions-rs/cargo@v1
       with:

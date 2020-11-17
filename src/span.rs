@@ -335,9 +335,9 @@ impl SourceMap {
 
     // @Note this could instead return an index, and index into an IndexVec of
     // SourceFiles
-    pub fn load(&mut self, path: &Path) -> Result<Rc<SourceFile>, Error> {
-        let source = std::fs::read_to_string(path).map_err(Error::LoadFailure)?;
-        self.add(path.to_owned(), source)
+    pub fn load(&mut self, path: impl AsRef<Path>) -> Result<Rc<SourceFile>, Error> {
+        let source = std::fs::read_to_string(&path).map_err(Error::LoadFailure)?;
+        self.add(path.as_ref().to_owned(), source)
     }
 
     fn add(&mut self, path: PathBuf, source: String) -> Result<Rc<SourceFile>, Error> {
