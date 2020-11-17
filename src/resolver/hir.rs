@@ -486,6 +486,17 @@ mod test {
         support::DisplayWith,
     };
 
+    fn assert_eq(expected: &str, actual: impl AsRef<str>) {
+        let actual = actual.as_ref();
+
+        if actual != expected {
+            panic!(
+                "the actual textual representation of the HIR node does not match the expected one:\n{}",
+                difference::Changeset::new(expected, actual, "")
+            );
+        }
+    }
+
     impl CrateScope {
         fn new() -> Self {
             let mut scope = Self::default();
@@ -538,7 +549,7 @@ mod test {
             .add("Int", EntityKind::untyped_data_type())
             .to_expression();
 
-        assert_eq!(
+        assert_eq(
             "crate.Array crate.Int -> Type",
             (expr! {
                 PiType {
@@ -570,7 +581,7 @@ mod test {
         let container = scope.add("Container", EntityKind::untyped_data_type());
         let alpha = Identifier::parameter("alpha");
 
-        assert_eq!(
+        assert_eq(
             "(alpha: crate.Array crate.Int) -> crate.Container alpha",
             (expr! {
                 PiType {
@@ -604,7 +615,7 @@ mod test {
     fn pi_type_implicit_parameter() {
         let scope = CrateScope::new();
 
-        assert_eq!(
+        assert_eq(
             "(,whatever: Type) -> Type",
             (expr! {
                 PiType {
@@ -628,7 +639,7 @@ mod test {
             .add("Int", EntityKind::untyped_data_type())
             .to_expression();
 
-        assert_eq!(
+        assert_eq(
             "(crate.Int -> crate.Int) -> crate.Int",
             (expr! {
                 PiType {
@@ -663,7 +674,7 @@ mod test {
             .add("Text", EntityKind::untyped_data_type())
             .to_expression();
 
-        assert_eq!(
+        assert_eq(
             "crate.Int -> crate.Text -> Type",
             (expr! {
                 PiType {
@@ -698,7 +709,7 @@ mod test {
 
         let x = Identifier::parameter("x");
 
-        assert_eq!(
+        assert_eq(
             r"(\x => x) -> Type",
             (expr! {
                 PiType {
@@ -719,7 +730,7 @@ mod test {
                 }
             })
             .with(&scope)
-            .to_string()
+            .to_string(),
         );
     }
 
@@ -729,7 +740,7 @@ mod test {
 
         let beta = scope.add("beta", EntityKind::UntypedValue);
 
-        assert_eq!(
+        assert_eq(
             "alpha crate.beta (gamma Type) 0",
             (expr! {
                 Application {
@@ -763,7 +774,7 @@ mod test {
                 }
             })
             .with(&scope)
-            .to_string()
+            .to_string(),
         );
     }
 
@@ -776,7 +787,7 @@ mod test {
         let it = Identifier::parameter("it");
 
         // we might want to format this special case as `crate.take \it => it` in the future
-        assert_eq!(
+        assert_eq(
             r"crate.take (\it => it)",
             (expr! {
                 Application {
@@ -808,7 +819,7 @@ mod test {
         let take = scope.add("take", EntityKind::UntypedValue);
         let it = Identifier::parameter("it");
 
-        assert_eq!(
+        assert_eq(
             r#"crate.take (\it => it) "who""#,
             (expr! {
                 Application {
@@ -850,7 +861,7 @@ mod test {
 
         let identity = scope.add("identity", EntityKind::UntypedValue);
 
-        assert_eq!(
+        assert_eq(
             r"crate.identity (,Type)",
             (expr! {
                 Application {
@@ -869,7 +880,7 @@ mod test {
     fn application_foreign_application_callee() {
         let scope = CrateScope::new();
 
-        assert_eq!(
+        assert_eq(
             "eta 10 omicron",
             (expr! {
                 Application {
@@ -898,7 +909,7 @@ mod test {
 
         let output = scope.add("Output", EntityKind::untyped_data_type());
 
-        assert_eq!(
+        assert_eq(
             r"\input: crate.Output => 0",
             (expr! {
                 Lambda {
@@ -924,7 +935,7 @@ mod test {
         let input = scope.add("Input", EntityKind::untyped_data_type());
         let output = scope.add("Output", EntityKind::untyped_data_type());
 
-        assert_eq!(
+        assert_eq(
             r"\(input: crate.Input): crate.Output => Type",
             (expr! {
                 Lambda {
@@ -945,7 +956,7 @@ mod test {
     fn lambda_implicit_parameter() {
         let scope = CrateScope::new();
 
-        assert_eq!(
+        assert_eq(
             r"\(,Input: Type) => Type",
             (expr! {
                 Lambda {
@@ -969,7 +980,7 @@ mod test {
 
         let x = Identifier::parameter("x");
 
-        assert_eq!(
+        assert_eq(
             r"\x => x -> Type",
             (expr! {
                 Lambda {
@@ -1000,7 +1011,7 @@ mod test {
 
         let add = scope.add("add", EntityKind::UntypedValue);
 
-        assert_eq!(
+        assert_eq(
             "add",
             (expr! {
                 ForeignApplication {
@@ -1020,7 +1031,7 @@ mod test {
 
         let add = scope.add("add", EntityKind::UntypedValue);
 
-        assert_eq!(
+        assert_eq(
             "add (add 1 3000) 0",
             (expr! {
                 ForeignApplication {

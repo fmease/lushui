@@ -23,6 +23,9 @@
 //! GILD_ALL_FAILING= cargo t golden -- --show-output
 //! ```
 //!
+//! Gilding is the same as manually deleting the stderr and stdout files and afterwards re-running
+//! the golden tester to let it generate the files with up to date content.
+//!
 //! ## Writing Tests
 //!
 //! A test in the context of this golden test runner is a lushui source file placed into `tests/` or
@@ -329,7 +332,7 @@ impl fmt::Display for Failure {
             } => {
                 writeln!(
                     f,
-                    "{stream} of the compiler does not match the golden {stream}",
+                    "{stream} of the compiler does not match the golden {stream}:",
                     stream = stream
                 )?;
 

@@ -245,7 +245,6 @@ impl fmt::Display for TokenKind {
             ClosingCurlyBracket => quoted!("}"),
             ThinArrowRight => quoted!("->"),
             ThinArrowLeft => quoted!("<-"),
-            // @Task make it an identifier
             Underscore => quoted!("_"),
             WideArrow => quoted!("=>"),
             As => keyword!(as),
@@ -274,35 +273,26 @@ impl fmt::Debug for TokenKind {
     }
 }
 
-pub const PRIME: char = '\'';
-
-pub fn is_punctuation(character: char) -> bool {
+pub const fn is_punctuation(character: char) -> bool {
+    #[rustfmt::skip]
     matches!(
         character,
-        '.' | ':'
-            | '+'
-            | '-'
-            | '~'
-            | '='
-            | '<'
-            | '>'
-            | '*'
-            | '^'
-            | '!'
-            | '?'
-            | '|'
-            | '/'
-            | '\\'
-            | '&'
-            | '#'
-            | '%'
-            | '$'
-            | '@'
+        '.' | ':' | '+' | '-' | '~' | '=' | '<' | '>' | '*' | '^' |
+        '!' | '?' | '|' | '/' | '\\' | '&' | '#' | '%' | '$' | '@'
     )
+}
+
+pub const fn is_identifier_segment_start(character: char) -> bool {
+    character.is_ascii_alphabetic() || character == '_'
+}
+
+pub const fn is_identifier_segment_middle(character: char) -> bool {
+    character.is_ascii_alphanumeric() || character == '_'
 }
 
 pub fn parse_keyword(source: &str) -> Option<TokenKind> {
     Some(match source {
+        "_" => Underscore,
         "as" => As,
         "case" => Case,
         "crate" => Crate,

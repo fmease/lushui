@@ -208,7 +208,7 @@ module tuple =
     use Tuple.(nil cons)
 
 ;; @Question tuple backed by List or by Vector in core (or both implementations)?
-module tuple' =
+module tuple_ =
     use super.vector.(Vector self)
     use super.nat.(Nat +)
 

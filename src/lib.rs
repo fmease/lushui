@@ -44,7 +44,8 @@
     or_patterns,
     never_type_fallback,
     const_panic,
-    map_first_last
+    map_first_last,
+    stmt_expr_attributes
 )]
 #![forbid(rust_2018_idioms, unused_must_use)]
 

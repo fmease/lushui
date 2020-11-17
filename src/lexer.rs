@@ -96,7 +96,9 @@ impl<'a> Lexer<'a> {
                 // (SOI should act as a line break)
                 ' ' => self.lex_whitespace(),
                 ';' => self.lex_comment(),
-                character if character.is_ascii_alphabetic() => self.lex_identifier().many_err()?,
+                character if token::is_identifier_segment_start(character) => {
+                    self.lex_identifier().many_err()?
+                }
                 '\n' => self.lex_indentation().many_err()?,
                 '-' => self.lex_punctuation_or_number_literal()?,
                 character if character.is_ascii_digit() => {
@@ -124,7 +126,6 @@ impl<'a> Lexer<'a> {
                     self.advance();
                 }
                 ',' => self.lex_comma(),
-                '_' => self.lex_underscore(),
                 character => {
                     self.take();
                     self.advance();
@@ -202,7 +203,6 @@ impl<'a> Lexer<'a> {
     }
 
     // @Task make trailing dashes part of punctuation (this removes the error condition)
-    // @Task make `_` a valid token for identifiers
     fn lex_identifier(&mut self) -> Result<()> {
         self.lex_identifier_segment();
         while self.peek() == Some('-') {
@@ -232,11 +232,10 @@ impl<'a> Lexer<'a> {
 
     fn lex_identifier_segment(&mut self) {
         if let Some(character) = self.peek() {
-            if character.is_ascii_alphabetic() {
+            if token::is_identifier_segment_start(character) {
                 self.take();
                 self.advance();
-                self.take_while(|character| character.is_ascii_alphanumeric());
-                self.take_while(|character| character == token::PRIME);
+                self.take_while(token::is_identifier_segment_middle);
             }
         }
     }
@@ -381,7 +380,6 @@ impl<'a> Lexer<'a> {
 
     // @Task escape sequences @Update do them in the parser (or at least mark them as invalid
     // and do the error reporting in the parser)
-    // @Task parse suffixes
     fn lex_text_literal(&mut self) -> Result<()> {
         let mut is_terminated = false;
         self.advance();
@@ -433,11 +431,6 @@ impl<'a> Lexer<'a> {
 
     fn lex_comma(&mut self) {
         self.add(Comma);
-        self.advance();
-    }
-
-    fn lex_underscore(&mut self) {
-        self.add(Underscore);
         self.advance();
     }
 

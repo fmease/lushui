@@ -13,8 +13,12 @@ fn assert_ok_token(actual: Results<Vec<Token>>, expected: Vec<Token>) {
         Ok(actual) => {
             if actual != expected {
                 panic!(
-                    "expected the tokens `{:#?}` but got the tokens `{:#?}`",
-                    expected, actual
+                    "the actual tokens outputted by the lexer do not match the expected ones:\n{}",
+                    difference::Changeset::new(
+                        &format!("{:#?}", expected),
+                        &format!("{:#?}", actual),
+                        "\n"
+                    )
                 );
             }
         }
@@ -42,8 +46,6 @@ fn assert_err(actual: Results<Vec<Token>>, expected_spans: &[&[Span]]) {
         }
     }
 }
-
-// @Task split multiple asserts per function apart into several functions
 
 #[test]
 fn lex_comment() {
@@ -80,27 +82,28 @@ alpha;;文本
 }
 
 #[test]
-fn lex_identifier_basic() {
+fn lex_identifier() {
     assert_ok_token(
-        lex("alpha alpha' alpha'''"),
+        lex("alpha alpha0 _alpha al6ha_beta_"),
         vec![
             Token::new_identifier("alpha".into(), span(1, 5)),
-            Token::new_identifier("alpha'".into(), span(7, 12)),
-            Token::new_identifier("alpha'''".into(), span(14, 21)),
-            Token::new(EndOfInput, span(21, 21)),
+            Token::new_identifier("alpha0".into(), span(7, 12)),
+            Token::new_identifier("_alpha".into(), span(14, 19)),
+            Token::new_identifier("al6ha_beta_".into(), span(21, 31)),
+            Token::new(EndOfInput, span(31, 31)),
         ],
     );
 }
 
 #[test]
-fn lex_identifier_primes_dashes_digits() {
+fn lex_identifier_dashes() {
     assert_ok_token(
-        lex("ALPH4-G4MM4 alpha'-gamma' d000''-e000''-z999"),
+        lex("ALPH4-G4MM4 alpha-gamma _-_"),
         vec![
             Token::new_identifier("ALPH4-G4MM4".into(), span(1, 11)),
-            Token::new_identifier("alpha'-gamma'".into(), span(13, 25)),
-            Token::new_identifier("d000''-e000''-z999".into(), span(27, 44)),
-            Token::new(EndOfInput, span(44, 44)),
+            Token::new_identifier("alpha-gamma".into(), span(13, 23)),
+            Token::new_identifier("_-_".into(), span(25, 27)),
+            Token::new(EndOfInput, span(27, 27)),
         ],
     );
 }
@@ -108,14 +111,15 @@ fn lex_identifier_primes_dashes_digits() {
 #[test]
 fn lex_keywords() {
     assert_ok_token(
-        lex("self   Type Type' Type-Type in"),
+        lex("self   Type Type_ Type-Type in _"),
         vec![
             Token::new(Self_, span(1, 4)),
             Token::new(Type, span(8, 11)),
-            Token::new_identifier("Type'".into(), span(13, 17)),
+            Token::new_identifier("Type_".into(), span(13, 17)),
             Token::new_identifier("Type-Type".into(), span(19, 27)),
             Token::new(In, span(29, 30)),
-            Token::new(EndOfInput, span(30, 30)),
+            Token::new(Underscore, span(32, 32)),
+            Token::new(EndOfInput, span(32, 32)),
         ],
     );
 }
@@ -143,13 +147,23 @@ fn do_not_lex_identifier_leading_prime() {
     );
 }
 
-// @Task split apart
 #[test]
-fn do_not_lex_identifier_weird() {
+fn do_not_lex_identifier_trailing_dash() {
     assert_err(lex("alpha-"), &[&[span(6, 6)]]);
-    assert_err(lex("alpha-'"), &[&[span(6, 6)]]);
+}
+
+#[test]
+fn do_not_lex_identifier_trailing_dash_punctuation() {
     assert_err(lex("alpha-:"), &[&[span(6, 6)]]);
+}
+
+#[test]
+fn do_not_lex_identifier_trailing_dash_number_literal() {
     assert_err(lex("alpha-0"), &[&[span(6, 6)]]);
+}
+
+#[test]
+fn do_not_lex_identifier_consecutive_dashes() {
     assert_err(lex("alpha--gamma"), &[&[span(6, 6)]]);
 }
 
@@ -202,12 +216,19 @@ beta
             Token::new(EndOfInput, span(77, 77)),
         ],
     );
+}
 
+#[test]
+fn do_not_lex_too_shallow_indentation() {
     assert_err(
         lex("
   ="),
         &[&[span(2, 3)]],
     );
+}
+
+#[test]
+fn do_not_lex_too_deep_indentation() {
     assert_err(
         lex("
         |
@@ -235,7 +256,7 @@ fn lex_punctuation() {
 }
 
 #[test]
-fn lex_number_literal() {
+fn lex_number_literals() {
     assert_ok_token(
         lex("1001409409220293022239833211 01"),
         vec![
@@ -244,7 +265,10 @@ fn lex_number_literal() {
             Token::new(EndOfInput, span(31, 31)),
         ],
     );
+}
 
+#[test]
+fn lex_number_literals_with_separators() {
     assert_ok_token(
         lex(r#"334 1'000what 3'2'2'1"" 500 10"" -23"#),
         vec![
@@ -260,9 +284,20 @@ fn lex_number_literal() {
             Token::new(EndOfInput, span(36, 36)),
         ],
     );
+}
 
+#[test]
+fn do_no_lex_number_literal_with_consecutive_separators() {
     assert_err(lex("3''100"), &[&[span(1, 6)]]);
+}
+
+#[test]
+fn do_not_lex_number_literal_with_trailing_separator() {
     assert_err(lex("10' "), &[&[span(1, 3)]]);
+}
+
+#[test]
+fn do_not_lex_number_literal_with_trailing_separator_right_before_eoi() {
     assert_err(lex("10'"), &[&[span(1, 3)]]);
 }
 
@@ -284,7 +319,10 @@ fn lex_text_literal() {
             Token::new(EndOfInput, span(15, 15)),
         ],
     );
+}
 
+#[test]
+fn lex_unterminated_text_literal() {
     assert_ok_token(
         lex(r#""text message"#),
         vec![
@@ -295,30 +333,33 @@ fn lex_text_literal() {
 }
 
 #[test]
-fn lex_other() {
+fn lex_brackets() {
     assert_ok_token(
-        lex("___ _ (( )( ))"),
+        lex("(( )( ))"),
         vec![
-            Token::new(Underscore, span(1, 1)),
-            Token::new(Underscore, span(2, 2)),
-            Token::new(Underscore, span(3, 3)),
-            Token::new(Underscore, span(5, 5)),
-            Token::new(OpeningRoundBracket, span(7, 7)),
-            Token::new(OpeningRoundBracket, span(8, 8)),
-            Token::new(ClosingRoundBracket, span(10, 10)),
-            Token::new(OpeningRoundBracket, span(11, 11)),
-            Token::new(ClosingRoundBracket, span(13, 13)),
-            Token::new(ClosingRoundBracket, span(14, 14)),
-            Token::new(EndOfInput, span(14, 14)),
+            Token::new(OpeningRoundBracket, span(1, 1)),
+            Token::new(OpeningRoundBracket, span(2, 2)),
+            Token::new(ClosingRoundBracket, span(4, 4)),
+            Token::new(OpeningRoundBracket, span(5, 5)),
+            Token::new(ClosingRoundBracket, span(7, 7)),
+            Token::new(ClosingRoundBracket, span(8, 8)),
+            Token::new(EndOfInput, span(8, 8)),
         ],
     );
+}
 
+#[test]
+fn do_not_lex_unbalanced_round_brackets_too_few_closing() {
     assert_err(lex("(("), &[&[span(1, 1)], &[span(2, 2)]]);
+}
+
+#[test]
+fn do_not_lex_unbalanced_round_brackets_too_few_opening() {
     assert_err(lex(")))"), &[&[span(1, 1)]]);
 }
 
 #[test]
-fn illegal() {
+fn lex_bare_non_ascii_as_illegal() {
     assert_ok_token(
         lex("函数"),
         vec![
@@ -327,15 +368,23 @@ fn illegal() {
             Token::new(EndOfInput, span(6, 6)),
         ],
     );
+}
+
+#[test]
+fn lex_bare_non_ascii_as_illegal_and_keep_lexing() {
     assert_ok_token(
-        lex("  function 函数"),
+        lex(" 函数 function"),
         vec![
-            Token::new_identifier("function".into(), span(3, 10)),
-            Token::new_illegal('\u{51FD}', span(12, 14)),
-            Token::new_illegal('\u{6570}', span(15, 17)),
-            Token::new(EndOfInput, span(17, 17)),
+            Token::new_illegal('\u{51FD}', span(2, 4)),
+            Token::new_illegal('\u{6570}', span(5, 7)),
+            Token::new_identifier("function".into(), span(9, 16)),
+            Token::new(EndOfInput, span(16, 16)),
         ],
     );
+}
+
+#[test]
+fn lex_backtick_as_illegal() {
     assert_ok_token(
         lex("`"),
         vec![
@@ -343,6 +392,10 @@ fn illegal() {
             Token::new(EndOfInput, span(1, 1)),
         ],
     );
+}
+
+#[test]
+fn lex_backtick_as_illegal_right_after_number_literal() {
     assert_ok_token(
         lex("1`"),
         vec![
@@ -351,6 +404,10 @@ fn illegal() {
             Token::new(EndOfInput, span(2, 2)),
         ],
     );
+}
+
+#[test]
+fn lex_tabs_as_illegal() {
     assert_ok_token(
         lex("\t\t"),
         vec![

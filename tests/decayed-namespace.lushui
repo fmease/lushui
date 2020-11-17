@@ -7,6 +7,6 @@ use Alpha as A
 
 x: Alpha = A.alpha
 
-A': Type = Alpha
+A_: Type = Alpha
 
-y: Alpha = A'.alpha
+y: Alpha = A_.alpha
