@@ -8,6 +8,8 @@
 ;; @Update
 ;; it goes from 4 to 3 errors putting `module core` between the `take` and `t`
 ;; declaration: the type error in `take 44` is not shown in this case
+
+@(location "../libs/core/core")
 module core
 
 data X: Type =

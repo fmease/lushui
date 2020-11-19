@@ -1,0 +1,7 @@
+@foreign
+data Text: Type
+
+use concat as ++
+
+@foreign
+concat: Text -> Text -> Text

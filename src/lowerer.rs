@@ -232,57 +232,73 @@ impl<'a> Lowerer<'a> {
                 }])
             }
             Module(module) => {
-                let declarations =
-                    match module.declarations {
-                        Some(declarations) => declarations,
-                        // @Bug @Task disallow external module declarations inside of non-file modules
-                        None => {
-                            use crate::{lexer::Lexer, parser::Parser, span};
+                let declarations = match module.declarations {
+                    Some(declarations) => declarations,
+                    // @Bug @Task disallow external module declarations inside of non-file modules
+                    None => {
+                        use crate::{lexer::Lexer, parser::Parser, span};
 
-                            let path = module
-                                .file
-                                .path
-                                .parent()
-                                .unwrap()
-                                .join(module.binder.as_str())
-                                .with_extension(crate::FILE_EXTENSION);
+                        // @Note the attribute API sucks big time rn
+                        // @Task warn on/disallow relative paths pointing "outside" of the project directory
+                        // (ofc we would also need to disallow symbolic links to fully(?) guarantee some definition
+                        // of source code portability)
+                        let relative_path = if attributes.has(AttributeKeys::LOCATION) {
+                            let location = attributes.get(AttributeKeys::LOCATION).next().unwrap();
 
-                            let declaration_span = declaration.span;
-
-                            let file = self
-                                .map
-                                .load(&path)
-                                .map_err(|error| match error {
-                                    span::Error::LoadFailure(_) => Diagnostic::error()
-                                        .with_code(Code::E016)
-                                        .with_message(format!(
-                                            "could not load module `{}`",
-                                            module.binder
-                                        ))
-                                        .with_span(&declaration_span)
-                                        .with_note(error.message(Some(&path))),
-                                    // @Task add context information
-                                    error => error.into(),
-                                })
-                                .map_err(|error| errors.clone().inserted(error))?;
-
-                            let tokens = Lexer::new(&file, &mut self.warnings).lex()?;
-                            let node = Parser::new(file, &tokens, &mut self.warnings)
-                                .parse_top_level(module.binder.clone())
-                                .map_err(|error| errors.clone().inserted(error))?;
-                            let module = match node.kind {
-                                Module(module) => module,
+                            match &location.kind {
+                                lowered_ast::AttributeKind::Location { path } => path,
                                 _ => unreachable!(),
-                            };
-                            // @Temporary
-                            if !node.attributes.is_empty() {
-                                self.warn(Diagnostic::warning().with_message(
-                                    "attributes on module headers are ignored right now",
-                                ))
                             }
-                            module.declarations.unwrap()
+                        } else {
+                            module.binder.as_str()
+                        };
+
+                        let path = module
+                            .file
+                            .path
+                            .parent()
+                            .unwrap()
+                            .join(relative_path)
+                            .with_extension(crate::FILE_EXTENSION);
+
+                        let declaration_span = declaration.span;
+
+                        let file = self
+                            .map
+                            .load(&path)
+                            .map_err(|error| match error {
+                                span::Error::LoadFailure(_) => Diagnostic::error()
+                                    .with_code(Code::E016)
+                                    .with_message(format!(
+                                        "could not load module `{}`",
+                                        module.binder
+                                    ))
+                                    .with_span(&declaration_span)
+                                    .with_note(error.message(Some(&path))),
+                                // @Task add context information
+                                error => error.into(),
+                            })
+                            .map_err(|error| errors.clone().inserted(error))?;
+
+                        let tokens = Lexer::new(&file, &mut self.warnings).lex()?;
+                        let node = Parser::new(file, &tokens, &mut self.warnings)
+                            .parse_top_level(module.binder.clone())
+                            .map_err(|error| errors.clone().inserted(error))?;
+                        let module = match node.kind {
+                            Module(module) => module,
+                            _ => unreachable!(),
+                        };
+                        // @Temporary
+                        if !node.attributes.is_empty() {
+                            self.warn(
+                                Diagnostic::warning().with_message(
+                                    "attributes on module headers are ignored right now",
+                                ),
+                            )
                         }
-                    };
+                        module.declarations.unwrap()
+                    }
+                };
 
                 let declarations = declarations
                     .into_iter()

@@ -1,0 +1,11 @@
+@inherent
+data Option (A: Type): Type =
+    none (A: Type): Option A
+    some (A: Type): A -> Option A
+
+use Option.(none some)
+
+;; map (A B: Type) (f: A -> B) (a: Option A): Option B =
+;;     case a of
+;;         some \_ \a => some B (f a)
+;;         none \_ => none B

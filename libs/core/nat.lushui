@@ -1,0 +1,72 @@
+use super.(option.Option bool.Bool text.Text)
+
+@foreign
+data Nat: Type
+
+use add as +
+
+@foreign
+add: Nat -> Nat -> Nat
+
+use subtract as -
+
+@foreign
+subtract: Nat -> Nat -> Option Nat
+
+use panicking-subtract as -?
+
+;; @Temporary
+@foreign
+panicking-subtract: Nat -> Nat -> Nat
+
+use multiply as *
+
+@foreign
+multiply: Nat -> Nat -> Nat
+
+use divide as /
+
+@foreign
+divide: Nat -> Nat -> Option Nat
+
+use equal as ==
+
+@foreign
+equal: Nat -> Nat -> Bool
+
+;; equal (n m: Nat): Bool =
+;;     case duple Nat Nat n m of
+;;         duple Nat Nat \n n => true
+;;         \_ => false
+
+use less as <
+
+@foreign
+less: Nat -> Nat -> Bool
+
+use less-equal as =<
+
+@foreign
+less-equal: Nat -> Nat -> Bool
+
+use greater as >
+
+@foreign
+greater: Nat -> Nat -> Bool
+
+use greater-equal as >=
+
+@foreign
+greater-equal: Nat -> Nat -> Bool
+
+@foreign
+display: Nat -> Text
+
+use super.(bool ordering)
+
+compare (n m: Nat): ordering.Ordering =
+    case equal n m of
+        bool.true => ordering.equal
+        bool.false => case less n m of
+            bool.true => ordering.less
+            bool.false => ordering.greater

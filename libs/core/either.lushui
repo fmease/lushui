@@ -1,0 +1,7 @@
+;; @Task better name for this type, module and constructors!
+
+data Either (A B: Type): Type =
+    first (A B: Type): A -> Either A B
+    second (A B: Type): B -> Either A B
+
+use Either.(first second)

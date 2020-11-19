@@ -1,5 +1,6 @@
 ;; TEST pass check
 
+@(location "../libs/core/core")
 module core
 
 data Equals (A B: Type): Type =

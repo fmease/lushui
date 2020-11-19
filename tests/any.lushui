@@ -1,8 +1,9 @@
 ;; TEST pass check
 
+@(location "../libs/core/core")
 module core
 
-use core.(list.(List nil cons) bool.(Bool false true) unit.(Unit unit))
+use core.(list.(List empty cons) bool.(Bool false true) unit.(Unit unit))
 
 data Any: Type =
     any: (A: Type) -> A -> Any
@@ -10,7 +11,7 @@ data Any: Type =
 use Any.any
 
 foo: List Bool =
-    cons Bool false (cons Bool true (nil Bool))
+    cons Bool false (cons Bool true (empty Bool))
 
 bar: List Any =
-    cons Any (any Unit unit) (cons Any (any Bool false) (nil Any))
+    cons Any (any Unit unit) (cons Any (any Bool false) (empty Any))

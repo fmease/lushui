@@ -1,0 +1,12 @@
+data Ordering: Type =
+    less: Ordering
+    equal: Ordering
+    greater: Ordering
+
+use Ordering.(less equal greater)
+
+invert (o: Ordering): Ordering =
+    case o of
+        less => greater
+        equal => equal
+        greater => less

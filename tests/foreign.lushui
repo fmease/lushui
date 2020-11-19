@@ -1,5 +1,6 @@
 ;; TEST pass run
 
+@(location "../libs/core/core")
 module core
 
 use core.(nat.(self Nat) bool.Bool duple.(Duple duple))

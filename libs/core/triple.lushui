@@ -1,0 +1,4 @@
+data Triple (A B C: Type): Type =
+    triple (A B C: Type): A -> B -> C -> Triple A B C
+
+use Triple.triple

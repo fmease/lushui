@@ -61,6 +61,8 @@ use std::{
 const TEST_DIRECTORY_NAME: &str = "tests";
 const GOLDEN_STDERR_VARIABLE_DIRECTORY: &str = "${DIRECTORY}";
 
+// @Beacon @Task test all libraries in "libs/": core etc.
+
 #[test]
 fn run() -> Result<(), Error> {
     let gild_all_failing = std::env::var("GILD_ALL_FAILING").is_ok();

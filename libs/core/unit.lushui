@@ -1,0 +1,5 @@
+@inherent
+data Unit: Type =
+    unit: Unit
+    
+use Unit.unit

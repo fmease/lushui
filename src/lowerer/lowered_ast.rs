@@ -168,6 +168,8 @@ impl Attributes {
         keys.contains(self.keys)
     }
 
+    // @Note @Beacon this API is flawed for attributes with arguments since we *redundantly* need to
+    // match on `AttributeKind` again after already having specified `AttributeKeys`
     pub fn get(&self, keys: AttributeKeys) -> impl DoubleEndedIterator<Item = &Attribute> + Clone {
         self.data
             .iter()
@@ -195,6 +197,12 @@ impl Attribute {
 
     pub fn matches(&self, keys: AttributeKeys) -> bool {
         keys.contains(self.kind.key())
+    }
+}
+
+impl fmt::Display for Attribute {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.kind.fmt(f)
     }
 }
 
@@ -235,9 +243,9 @@ pub enum AttributeKind {
     Int32,
     Int64,
     List,
-    /// Form: `location <0:path:Path>`.
+    /// Form: `location <0:path:Text-Literal>`.
     Location {
-        path: Path,
+        path: String,
     },
     Moving,
     Nat,
@@ -280,12 +288,8 @@ impl AttributeKind {
             "deny" => Self::Deny {
                 lint: Lint::parse(&attribute.arguments)?,
             },
-            // @Bug @Temporary
-            "deprecated" => Self::Deprecated {
-                reason: String::from("xxx"),
-                since: None,
-                replacement: None,
-            },
+            // @Temporary
+            "deprecated" => todo!(),
             "documentation" => Self::Documentation {
                 // @Beacon @Temporary @Bug
                 content: String::new(),
@@ -305,13 +309,13 @@ impl AttributeKind {
             "location" => Self::Location {
                 path: match &*attribute.arguments {
                     [] => return Err(Error::TooFewArguments),
-                    [ast::AttributeArgument::Path(path)] => path.as_ref().clone(),
+                    [ast::AttributeArgument::TextLiteral(path)] => path.as_ref().clone(),
                     [ast::AttributeArgument::Named(named)] => match &**named {
                         ast::NamedAttributeArgument { binder, value }
                             if binder.as_str() == "path" =>
                         {
                             match value {
-                                ast::AttributeArgument::Path(path) => path.as_ref().clone(),
+                                ast::AttributeArgument::TextLiteral(path) => path.as_ref().clone(),
                                 _ => return Err(Error::InvalidArgument),
                             }
                         }
@@ -377,10 +381,7 @@ impl AttributeKind {
             "Text" => Self::Text,
             "unsafe" => Self::Unsafe,
             // @Bug @Temporary
-            "unstable" => Self::Unstable {
-                feature: Feature::Dummy,
-                reason: String::new(),
-            },
+            "unstable" => todo!(),
             "Vector" => Self::Vector,
             "warn" => Self::Warn {
                 lint: Lint::parse(&attribute.arguments)?,
@@ -515,6 +516,51 @@ impl AttributeKind {
     }
 }
 
+impl fmt::Display for AttributeKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Allow { lint } => write!(f, "(allow {})", lint),
+            Self::Deny { lint } => write!(f, "(deny {})", lint),
+            Self::Deprecated {
+                reason,
+                since,
+                replacement,
+            } => write!(f, "(deprecated {:?} {:?} {:?})", reason, since, replacement),
+            // Self::Documentation { content } => writeln!(f, ";{:?}", content),
+            Self::Documentation { content } => write!(f, "(documentation {:?})", content),
+            Self::Forbid { lint } => write!(f, "(forbid {})", lint),
+            Self::Foreign => write!(f, "foreign"),
+            Self::If { condition } => write!(f, "(if {})", condition),
+            Self::Ignore => write!(f, "ignore"),
+            Self::Include => write!(f, "include"),
+            Self::Inherent => write!(f, "inherent"),
+            Self::Int => write!(f, "Int"),
+            Self::Int32 => write!(f, "Int32"),
+            Self::Int64 => write!(f, "Int64"),
+            Self::List => write!(f, "List"),
+            Self::Location { path } => write!(f, "(location {})", path),
+            Self::Moving => write!(f, "moving"),
+            Self::Nat => write!(f, "Nat"),
+            Self::Nat32 => write!(f, "Nat32"),
+            Self::Nat64 => write!(f, "Nat64"),
+            Self::Opaque => write!(f, "opaque"),
+            Self::Public { scope } => match scope {
+                Some(scope) => write!(f, "(scope {})", scope),
+                None => write!(f, "public"),
+            },
+            Self::RecursionLimit { depth } => write!(f, "(recursion-limit {})", depth),
+            Self::Rune => write!(f, "Rune"),
+            Self::Shallow => write!(f, "shallow"),
+            Self::Test => write!(f, "test"),
+            Self::Text => write!(f, "Text"),
+            Self::Unsafe => write!(f, "unsafe"),
+            Self::Unstable { feature, reason } => write!(f, "(feature {} {:?})", feature, reason),
+            Self::Vector => write!(f, "Vector"),
+            Self::Warn { lint } => write!(f, "(wARN {})", lint),
+        }
+    }
+}
+
 bitflags::bitflags! {
     pub struct AttributeKeys: u64 {
         const ALLOW = 1 << 0;
@@ -560,6 +606,7 @@ bitflags::bitflags! {
             | Self::INT.bits
             | Self::INT32.bits
             | Self::INT64.bits
+            | Self::LOCATION.bits
             | Self::NAT.bits
             | Self::NAT32.bits
             | Self::NAT64.bits;
@@ -605,15 +652,31 @@ impl Lint {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
-pub struct Version;
+impl fmt::Display for Lint {
+    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {}
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub enum Version {}
 
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub struct Condition;
+pub enum Condition {}
+
+impl fmt::Display for Condition {
+    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {}
+    }
+}
 
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub enum Feature {
-    Dummy,
+pub enum Feature {}
+
+impl fmt::Display for Feature {
+    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {}
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

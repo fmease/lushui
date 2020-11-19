@@ -1,5 +1,6 @@
 ;; TEST pass run
 
+@(location "../libs/core/core")
 module core
 
 use core.text.(concat Text)

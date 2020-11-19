@@ -1,0 +1,26 @@
+@inherent
+data Bool: Type =
+    false: Bool
+    true: Bool
+
+use Bool.(false true)
+
+not (b: Bool): Bool =
+    case b of
+        false => true
+        true => false
+
+use super.unit.(Unit unit)
+use super.constant
+
+;; @Temporary until laziness API
+if (A: Type) (condition: Bool) (consequent alternate: Unit -> A): A =
+    case condition of
+        false => alternate unit
+        true => consequent unit
+
+;; @Temporary until laziness API
+and (b: Bool) (c: Unit -> Bool): Bool = if Bool b c (constant Bool Unit false)
+
+;; @Temporary until laziness API
+or (b: Bool) (c: Unit -> Bool): Bool = if Bool b (constant Bool Unit true) c

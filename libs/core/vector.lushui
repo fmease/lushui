@@ -1,0 +1,8 @@
+use super.nat.(Nat +)
+
+data Vector (n: Nat) (A: Type): Type =
+    empty (A: Type): Vector 0 A
+    ;; @Task rename "cons" to something more descriptive
+    cons (n: Nat) (A: Type): A -> Vector n A -> Vector (+ n 1) A
+
+use Vector.(empty cons)

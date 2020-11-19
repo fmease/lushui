@@ -1,46 +1,46 @@
 error[E020]: `Alpha` is defined multiple times in this scope
-   > ${DIRECTORY}/duplicate-bindings.lushui:10:1
+   > ${DIRECTORY}/duplicate-bindings.lushui:11:1
    |
- 7 | data Alpha: Type =
+ 8 | data Alpha: Type =
    |      ----- previous definition
    |
-10 | Alpha: Type = Type
+11 | Alpha: Type = Type
    | ^^^^^ redefinition
 
 error[E020]: `beta` is defined multiple times in this scope
-   > ${DIRECTORY}/duplicate-bindings.lushui:21:1
+   > ${DIRECTORY}/duplicate-bindings.lushui:22:1
    |
-12 | beta: Nat = 1000
+13 | beta: Nat = 1000
    | ---- previous definition
    |
-21 | beta (x y: Nat): Nat = y
+22 | beta (x y: Nat): Nat = y
    | ^^^^ redefinition
 
 error[E020]: `capsule` is defined multiple times in this scope
-   > ${DIRECTORY}/duplicate-bindings.lushui:23:1
+   > ${DIRECTORY}/duplicate-bindings.lushui:24:1
    |
-14 | module capsule =
+15 | module capsule =
    |        ------- previous definition
    |
-23 | capsule: Nat = beta
+24 | capsule: Nat = beta
    | ^^^^^^^ redefinition
 
 error[E020]: `Nat` is defined multiple times in this scope
-   > ${DIRECTORY}/duplicate-bindings.lushui:17:10
+   > ${DIRECTORY}/duplicate-bindings.lushui:18:10
    |
-15 |     use super.Nat
+16 |     use super.Nat
    |               --- previous definition
    |
-17 |     data Nat: Type =
+18 |     data Nat: Type =
    |          ^^^ redefinition
 
 error[E020]: `zero` is defined multiple times in this scope
-   > ${DIRECTORY}/duplicate-bindings.lushui:30:13
+   > ${DIRECTORY}/duplicate-bindings.lushui:31:13
    |
-28 | zero: Nat = 0
+29 | zero: Nat = 0
    | ---- previous definition
    |
-30 | use capsule.zero
+31 | use capsule.zero
    |             ^^^^ redefinition
 
 error: aborting due to 5 previous errors

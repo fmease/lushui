@@ -1,0 +1,3 @@
+data Void: Type =
+
+;; absurd (A: Type) (v: Void): A = (case v of) A

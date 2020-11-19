@@ -1,5 +1,6 @@
 ;; TEST fail check
 
+@(location "../libs/core/core")
 module core
 
 use core.nat.Nat
