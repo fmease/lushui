@@ -70,3 +70,6 @@ compare (n m: Nat): ordering.Ordering =
         bool.false => case less n m of
             bool.true => ordering.less
             bool.false => ordering.greater
+
+;; @foreign
+;; to-int: Nat -> Nat -> core.int.Int

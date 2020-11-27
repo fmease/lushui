@@ -1,4 +1,5 @@
 ;; @Task make this a crate
+;; @Beacon @Note *never* use `crate` in here: this is not a crate yet but merely a module!
 
 identity (A: Type) (a: A): A = a
 

@@ -650,3 +650,12 @@ impl Code {
         todo!()
     }
 }
+
+pub trait Warn {
+    fn diagnostics(&mut self) -> &mut Diagnostics;
+
+    fn warn(&mut self, mut diagnostic: Diagnostic) {
+        diagnostic.level = Level::Warning;
+        self.diagnostics().insert(diagnostic);
+    }
+}

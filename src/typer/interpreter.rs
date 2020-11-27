@@ -15,6 +15,7 @@ pub(crate) mod scope;
 use super::Expression;
 use crate::{
     ast::Explicit,
+    diagnostic::Warn,
     diagnostic::{Code, Diagnostic, Diagnostics, Result},
     hir::{self, expr},
     lowered_ast::Attributes,
@@ -67,11 +68,6 @@ pub struct Interpreter<'a> {
 impl<'a> Interpreter<'a> {
     pub fn new(scope: &'a CrateScope, warnings: &'a mut Diagnostics) -> Self {
         Self { scope, warnings }
-    }
-
-    #[allow(dead_code)]
-    fn warn(&mut self, warning: Diagnostic) {
-        self.warnings.insert(warning);
     }
 
     /// Run the entry point of the crate.
@@ -677,6 +673,13 @@ impl<'a> Interpreter<'a> {
     }
 }
 
+impl Warn for Interpreter<'_> {
+    fn diagnostics(&mut self) -> &mut Diagnostics {
+        &mut self.warnings
+    }
+}
+
+// @Task move
 fn extended<T>(mut vec: Vec<T>, value: T) -> Vec<T> {
     vec.push(value);
     vec

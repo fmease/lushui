@@ -62,7 +62,8 @@ Renaming ::= Path "as" General-Identifier
 
 Constructor ::=
     (Attribute Line-Break*)*
-    #Identifier Parameters Type-Annotation? Line-Break
+    #Identifier Parameters Type-Annotation?
+    ("=" Possibly-Indented-Terminated-Expression)? Line-Break
 
 Expression ::= Pi-Type-Literal-Or-Lower
 

@@ -36,7 +36,7 @@ pub mod ast;
 mod test;
 
 use crate::{
-    diagnostic::{Code, Diagnostic, Diagnostics, Result},
+    diagnostic::{Code, Diagnostic, Diagnostics, Result, Warn},
     lexer::{Token, TokenKind},
     smallvec,
     span::{SourceFile, Span, Spanning},
@@ -73,11 +73,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    #[allow(dead_code)]
-    fn warn(&mut self, diagnostic: Diagnostic) {
-        self.warnings.insert(diagnostic);
-    }
-
     /// Parse in a sandboxed way.
     ///
     /// Used for arbitrary look-ahead. Restores the old cursor on failure.
@@ -105,8 +100,28 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn expect_among_others(&self, expected: TokenKind, other_expected: Expected) -> Result<Token> {
+        let token = self.current_token();
+        if token.kind == expected {
+            Ok(token.clone())
+        } else {
+            Err(other_expected.added(expected).but_actual_is(token))
+        }
+    }
+
     fn consume(&mut self, token_kind: TokenKind) -> Result<Token> {
         let token = self.expect(token_kind)?;
+        self.advance();
+        Ok(token)
+    }
+
+    // @Note bad name
+    fn consume_after_expecting(
+        &mut self,
+        token_kind: TokenKind,
+        other_expected: Expected,
+    ) -> Result<Token> {
+        let token = self.expect_among_others(token_kind, other_expected)?;
         self.advance();
         Ok(token)
     }
@@ -413,7 +428,7 @@ impl<'a> Parser<'a> {
         let parameters = span.merging(self.parse_parameters(&STANDARD_DECLARATION_DELIMITERS)?);
         let type_annotation = span.merging(self.parse_optional_type_annotation()?);
 
-        let expression = if self.has_consumed(Equals) {
+        let body = if self.has_consumed(Equals) {
             Some(span.merging(self.parse_possibly_indented_terminated_expression()?))
         } else {
             self.consume(LineBreak)?;
@@ -427,7 +442,7 @@ impl<'a> Parser<'a> {
                 binder,
                 parameters,
                 type_annotation,
-                expression,
+                body,
             }
         })
     }
@@ -724,10 +739,8 @@ impl<'a> Parser<'a> {
             self.current_token();
             Some(self.consume_general_identifier()?)
         } else {
-            return Err(
-                Expected::OneOf(&delimiters_with_expected(delimiters, Some(As.into())))
-                    .but_actual_is(self.current_token()),
-            );
+            return Err(delimiters_with_expected(delimiters, Some(As.into()))
+                .but_actual_is(self.current_token()));
         };
 
         // @Task correct span info
@@ -746,23 +759,27 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Constructor ::=
     ///     (Attribute Line-Break*)*
-    ///     #Identifier Parameters Type-Annotation? Line-Break
+    ///     #Identifier Parameters Type-Annotation?
+    ///     ("=" Possibly-Indented-Terminated-Expression)? Line-Break
     /// ```
     fn parse_constructor(&mut self) -> Result<Declaration> {
+        use TokenKind::*;
+
         let attributes = self.parse_attributes(SkipLineBreaks::Yes)?;
 
         let binder = self.consume_identifier()?;
         let mut span = binder.span;
 
-        let parameters =
-            span.merging(self.parse_parameters(&[
-                Delimiter::TypeAnnotationPrefix,
-                TokenKind::LineBreak.into(),
-            ])?);
+        let parameters = span.merging(self.parse_parameters(&STANDARD_DECLARATION_DELIMITERS)?);
 
         let type_annotation = span.merging(self.parse_optional_type_annotation()?);
 
-        self.consume(TokenKind::LineBreak)?;
+        let body = if self.has_consumed(Equals) {
+            Some(span.merging(self.parse_possibly_indented_terminated_expression()?))
+        } else {
+            self.consume(LineBreak)?;
+            None
+        };
 
         Ok(decl! {
             Constructor {
@@ -771,6 +788,7 @@ impl<'a> Parser<'a> {
                 binder,
                 parameters,
                 type_annotation,
+                body,
             }
         })
     }
@@ -783,7 +801,7 @@ impl<'a> Parser<'a> {
     /// Expression ::= Pi-Type-Literal-Or-Lower
     /// ```
     // @Task parse sigma literals
-    // @Task once that has been completed, inline parse_pi_literal_or_lower
+    // @Task once that has been completed, inline Self::parse_pi_type_literal_or_lower
     fn parse_expression(&mut self) -> Result<Expression> {
         self.parse_pi_type_literal_or_lower()
     }
@@ -805,6 +823,7 @@ impl<'a> Parser<'a> {
         use TokenKind::*;
         let mut span = Span::SHAM;
 
+        // @Note we can actually get rid of reflect by carefully transforming it!
         let (explicitness, fieldness, binder, domain) = self
             .reflect(|parser| {
                 span = parser.consume(OpeningRoundBracket)?.span;
@@ -812,7 +831,9 @@ impl<'a> Parser<'a> {
                 let explicitness = parser.consume_explicitness_symbol();
                 let fieldness = parser.consume_span(Field);
                 let binder = parser.consume_identifier()?;
-                let parameter = parser.parse_type_annotation()?;
+                // @Question maybe .map_err(|error| error.fatal()) to mark this one fatal
+                // (in respect to error reflecting)
+                let parameter = parser.parse_type_annotation(ClosingRoundBracket.into())?;
 
                 parser.consume(ClosingRoundBracket)?;
 
@@ -824,6 +845,7 @@ impl<'a> Parser<'a> {
                 Ok((Explicit, None, None, parameter))
             })?;
 
+        // @Task restructure to test for binder.is_none() && !self.consumed(ThinArrowRight)
         Ok(match self.consume(ThinArrowRight) {
             Ok(_) => {
                 let codomain = span.merging(self.parse_pi_type_literal_or_lower()?);
@@ -1324,11 +1346,10 @@ impl<'a> Parser<'a> {
             }
 
             _ => {
-                return Err(Expected::OneOf(&delimiters_with_expected(
-                    delimiters,
-                    Some(Expected::Parameter),
-                ))
-                .but_actual_is(self.current_token()));
+                return Err(
+                    delimiters_with_expected(delimiters, Some(Expected::Parameter))
+                        .but_actual_is(self.current_token()),
+                );
             }
         }
     }
@@ -1353,6 +1374,7 @@ impl<'a> Parser<'a> {
 
         while let Ok((argument, explicitness, binder)) = self
             .reflect(|parser| Ok((EP::parse_lower(parser)?, Explicit, None)))
+            // @Question shouldn't this closure be reflected, too?
             .or_else(|_| -> Result<_> {
                 self.consume(OpeningRoundBracket)?;
                 let explicitness = self.consume_explicitness_symbol();
@@ -1457,8 +1479,12 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Type-Annotation ::= ":" Expression
     /// ```
-    fn parse_type_annotation(&mut self) -> Result<Expression> {
-        self.consume(TokenKind::Colon)?;
+    fn parse_type_annotation(&mut self, other_expected: Expected) -> Result<Expression> {
+        // @Note that the error message that can be thrown by this method will actually
+        // very likely to certainly not show up in the final report since it gets swallowed
+        // by reflect (the branch do-not-reflect experiments with this stuff and makes the
+        // below actually show up)
+        self.consume_after_expecting(TokenKind::Colon, other_expected)?;
         self.reflect(Self::parse_expression)
     }
 
@@ -1567,6 +1593,12 @@ impl<'a> Parser<'a> {
     }
 }
 
+impl Warn for Parser<'_> {
+    fn diagnostics(&mut self) -> &mut Diagnostics {
+        &mut self.warnings
+    }
+}
+
 /// Abstraction over expressions and patterns.
 trait ExpressionOrPattern: Sized + Spanning {
     fn application_like(
@@ -1616,7 +1648,7 @@ impl ExpressionOrPattern for Pattern {
     }
 }
 
-enum Expected<'a> {
+enum Expected {
     Token(TokenKind),
     Path,
     Declaration,
@@ -1625,24 +1657,39 @@ enum Expected<'a> {
     Parameter,
     AttributeArgument,
     Delimiter(Delimiter),
-    OneOf(&'a [Self]),
+    // @Bug nested OneOf's
+    OneOf(Vec<Self>),
 }
 
-// because we cannot collect into an array yet (std library lacks lots of const generic functionality)
+impl Expected {
+    fn added(mut self, extra: impl Into<Self>) -> Self {
+        let extra = extra.into();
+
+        if let Self::OneOf(expected) = &mut self {
+            expected.push(extra);
+        } else {
+            self = Self::OneOf(vec![self, extra])
+        }
+
+        self
+    }
+}
+
+// @Task improve API
 macro expected_one_of($( $expected:expr ),+ $(,)?) {
-    Expected::OneOf(&[$( $expected.into() ),+])
+    Expected::OneOf(vec![$( $expected.into() ),+])
 }
 
-// @Task return a Expected::OneOf straight away
-fn delimiters_with_expected<'a>(
+// @Task impprove API
+fn delimiters_with_expected(
     delimiters: &[Delimiter],
-    expected: impl IntoIterator<Item = Expected<'a>>,
-) -> Vec<Expected<'a>> {
+    expected: impl IntoIterator<Item = Expected>,
+) -> Expected {
     let delimiters = delimiters.iter().copied().map(Expected::Delimiter);
-    expected.into_iter().chain(delimiters).collect()
+    Expected::OneOf(expected.into_iter().chain(delimiters).collect())
 }
 
-impl<'a> Expected<'a> {
+impl Expected {
     fn but_actual_is(self, actual: &Token) -> Diagnostic {
         Diagnostic::error()
             .with_code(Code::E010)
@@ -1661,13 +1708,13 @@ impl<'a> Expected<'a> {
     }
 }
 
-impl From<TokenKind> for Expected<'_> {
+impl From<TokenKind> for Expected {
     fn from(token: TokenKind) -> Self {
         Self::Token(token)
     }
 }
 
-impl From<Delimiter> for Expected<'_> {
+impl From<Delimiter> for Expected {
     fn from(delimiter: Delimiter) -> Self {
         Self::Delimiter(delimiter)
     }
@@ -1675,7 +1722,7 @@ impl From<Delimiter> for Expected<'_> {
 
 use std::fmt;
 
-impl fmt::Display for Expected<'_> {
+impl fmt::Display for Expected {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Expected::*;
 

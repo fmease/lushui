@@ -4,7 +4,7 @@ pub mod interpreter;
 
 use crate::{
     ast::Explicit,
-    diagnostic::{Code, Diagnostic, Diagnostics, Result, Results},
+    diagnostic::{Code, Diagnostic, Diagnostics, Result, Results, Warn},
     lowered_ast::{AttributeKeys, Attributes},
     resolver::{
         hir::{self, expr, Declaration, Expression},
@@ -19,9 +19,6 @@ use interpreter::{
     Form, Interpreter,
 };
 use joinery::JoinableIterator;
-
-// @Temporary @Note we need to update the macros
-// const expr! { Type[] }: Expression = expr! { Type[] };
 
 pub(crate) fn missing_annotation() -> Diagnostic {
     // @Task add span
@@ -48,11 +45,6 @@ impl<'a> Typer<'a> {
             parent_data_binding: None,
             poisoned: false,
         }
-    }
-
-    #[allow(dead_code)]
-    fn warn(&mut self, warning: Diagnostic) {
-        self.warnings.insert(warning);
     }
 
     pub fn interpreter(&mut self) -> Interpreter<'_> {
@@ -838,6 +830,12 @@ impl<'a> Typer<'a> {
         } else {
             Ok(())
         }
+    }
+}
+
+impl Warn for Typer<'_> {
+    fn diagnostics(&mut self) -> &mut Diagnostics {
+        &mut self.warnings
     }
 }
 

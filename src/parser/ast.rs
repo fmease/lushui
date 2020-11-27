@@ -34,7 +34,7 @@ pub struct Value {
     pub binder: Identifier,
     pub parameters: Parameters,
     pub type_annotation: Option<Expression>,
-    pub expression: Option<Expression>,
+    pub body: Option<Expression>,
 }
 
 /// The syntax node of a data declaration.
@@ -52,6 +52,9 @@ pub struct Constructor {
     pub binder: Identifier,
     pub parameters: Parameters,
     pub type_annotation: Option<Expression>,
+    /// Explicit bodies are only syntactically legal for constructors,
+    /// not semantically.
+    pub body: Option<Expression>,
 }
 
 /// The syntax node of a module declaration.
@@ -649,7 +652,7 @@ impl AttributeTarget for Declaration {
 
         let (body, binder) = match &self.kind {
             Value(value) => (
-                value.expression.as_ref().map(|expression| expression.span),
+                value.body.as_ref().map(|expression| expression.span),
                 &value.binder,
             ),
             // @Task instead of using the span of the whole data declaration for empty bodies

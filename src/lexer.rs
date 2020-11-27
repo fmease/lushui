@@ -18,7 +18,7 @@ mod test;
 pub mod token;
 
 use crate::{
-    diagnostic::{Code, Diagnostic, Diagnostics, Result, Results},
+    diagnostic::{Code, Diagnostic, Diagnostics, Result, Results, Warn},
     span::{LocalByteIndex, LocalSpan, SourceFile, Span},
     support::ManyErrExt,
     Atom, INDENTATION_IN_SPACES,
@@ -78,11 +78,6 @@ impl<'a> Lexer<'a> {
             indentation_in_spaces: 0,
             round_brackets: Vec::new(),
         }
-    }
-
-    #[allow(dead_code)]
-    fn warn(&mut self, warning: Diagnostic) {
-        self.warnings.insert(warning);
     }
 
     // @Task move balanced bracket validation out of lexer to the parser and
@@ -497,5 +492,11 @@ impl<'a> Lexer<'a> {
             .take(amount_of_spaces / INDENTATION_IN_SPACES);
 
         self.tokens.extend(extension);
+    }
+}
+
+impl Warn for Lexer<'_> {
+    fn diagnostics(&mut self) -> &mut Diagnostics {
+        &mut self.warnings
     }
 }

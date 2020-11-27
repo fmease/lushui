@@ -21,6 +21,8 @@ fn parse_expression(source: &str) -> Results<Expression> {
     parser.parse_expression().many_err()
 }
 
+// @Question maybe create builders for the elements?
+
 /// Compare with [application_lambda_literal_argument_strict_grouping].
 /// They parse to the same AST modulo spans.
 #[test]
@@ -98,6 +100,56 @@ fn application_lambda_literal_argument_strict_grouping() {
                 argument: Identifier::new("alpha".into(), span(22, 26)).to_expression(),
                 binder: None,
                 explicitness: Explicit,
+            }
+        })
+    );
+}
+
+#[test]
+fn pi_type_literal_application_bracketed_argument_domain() {
+    assert_eq!(
+        parse_expression("Alpha (Beta) -> Gamma"),
+        Ok(expr! {
+            PiTypeLiteral {
+                Attributes::default(), span(1, 21);
+                binder: None,
+                domain: expr! {
+                    Application {
+                        Attributes::default(), span(1, 12);
+                        callee: Identifier::new("Alpha".into(), span(1, 5)).to_expression(),
+                        argument: Identifier::new("Beta".into(), span(7, 12)).to_expression(),
+                        explicitness: Explicit,
+                        binder: None,
+                    }
+                },
+                codomain: Identifier::new("Gamma".into(), span(17, 21)).to_expression(),
+                explicitness: Explicit,
+                fieldness: None,
+            }
+        })
+    );
+}
+
+#[test]
+fn bracketed_pi_type_literal_application_bracketed_argument_domain() {
+    assert_eq!(
+        parse_expression("(Alpha (Beta) -> Gamma)"),
+        Ok(expr! {
+            PiTypeLiteral {
+                Attributes::default(), span(1, 23);
+                binder: None,
+                domain: expr! {
+                    Application {
+                        Attributes::default(), span(2, 13);
+                        callee: Identifier::new("Alpha".into(), span(2, 6)).to_expression(),
+                        argument: Identifier::new("Beta".into(), span(8, 13)).to_expression(),
+                        explicitness: Explicit,
+                        binder: None,
+                    }
+                },
+                codomain: Identifier::new("Gamma".into(), span(18, 22)).to_expression(),
+                explicitness: Explicit,
+                fieldness: None,
             }
         })
     );

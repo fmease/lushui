@@ -28,12 +28,11 @@ pub mod lowered_ast;
 
 use crate::{
     ast::{self, Explicit, Path},
-    diagnostic::{Code, Diagnostic, Diagnostics, Result, Results},
+    diagnostic::{Code, Diagnostic, Diagnostics, Result, Results, Warn},
     lowered_ast::{decl, expr, pat, AttributeKeys, Attributes, Number},
     smallvec,
     span::{SourceMap, Span, Spanning},
-    support::listing,
-    support::{accumulate_errors, s_pluralize, InvalidFallback, ManyErrExt, TryIn},
+    support::{accumulate_errors, listing, s_pluralize, InvalidFallback, ManyErrExt, TryIn},
     SmallVec, Str,
 };
 use joinery::JoinableIterator;
@@ -65,11 +64,6 @@ impl<'a> Lowerer<'a> {
         Self { map, warnings }
     }
 
-    #[allow(dead_code)]
-    fn warn(&mut self, diagnostic: Diagnostic) {
-        self.warnings.insert(diagnostic);
-    }
-
     /// Lower a declaration.
     pub fn lower_declaration(
         &mut self,
@@ -99,11 +93,9 @@ impl<'a> Lowerer<'a> {
                 // @Note type_annotation is currently lowered twice @Task remove duplicate work
                 // @Task find a way to use `Option::map` (currently does not work because of
                 // partial moves, I hate those), use local bindings
-                let expression = match value.expression {
-                    Some(expression) => {
-                        let mut expression = self
-                            .lower_expression(expression, context)
-                            .try_in(&mut errors);
+                let body = match value.body {
+                    Some(body) => {
+                        let mut body = self.lower_expression(body, context).try_in(&mut errors);
                         {
                             let mut type_annotation = once(
                                 self.lower_expression(declaration_type_annotation.clone(), context)
@@ -126,7 +118,7 @@ impl<'a> Lowerer<'a> {
                                 .try_in(&mut errors);
 
                                 for binder in parameter_group.parameters.iter().rev() {
-                                    expression = expr! {
+                                    body = expr! {
                                         Lambda {
                                             Attributes::default(),
                                             Span::SHAM;
@@ -134,13 +126,13 @@ impl<'a> Lowerer<'a> {
                                             parameter_type_annotation: Some(parameter_type_annotation.clone()),
                                             explicitness: parameter_group.explicitness,
                                             body_type_annotation: type_annotation.next(),
-                                            body: expression,
+                                            body,
                                         }
                                     }
                                 }
                             }
                         }
-                        Some(expression)
+                        Some(body)
                     }
                     None => None,
                 };
@@ -159,7 +151,7 @@ impl<'a> Lowerer<'a> {
                         declaration.span;
                         binder: value.binder,
                         type_annotation,
-                        expression,
+                        expression: body,
                     }
                 }])
             }
@@ -221,6 +213,25 @@ impl<'a> Lowerer<'a> {
                         },
                     )
                     .try_in(&mut errors);
+
+                if let Some(body) = constructor.body {
+                    let body = self
+                        .lower_expression(body, Context::new(declaration.span))
+                        .try_in(&mut errors);
+
+                    errors.insert(
+                        Diagnostic::error()
+                            .with_code(Code::E020)
+                            .with_message(format!(
+                                "`{}` is defined multiple times in this scope",
+                                constructor.binder
+                            ))
+                            .with_labeled_span(&body, "conflicting definition")
+                            .with_note(
+                                "the body of the constructor is implied but it also has a body introduced by `=`",
+                            ),
+                    );
+                }
 
                 errors.err_or(smallvec![decl! {
                     Constructor {
@@ -992,6 +1003,12 @@ impl<'a> Lowerer<'a> {
         }
 
         Ok(())
+    }
+}
+
+impl Warn for Lowerer<'_> {
+    fn diagnostics(&mut self) -> &mut Diagnostics {
+        &mut self.warnings
     }
 }
 

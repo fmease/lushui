@@ -68,6 +68,8 @@ fn run() -> Result<(), Error> {
     let gild_all_failing = std::env::var("GILD_ALL_FAILING").is_ok();
     let files_to_be_gilded = std::env::var("GILD").unwrap_or_default();
     let files_to_be_gilded = files_to_be_gilded.split(',').collect::<Vec<_>>();
+    // @Task add filtering via env "FILTER=thing0,thing1,..." and think about its
+    // relatation with GILD and GILD_ALL_FAILING
 
     let mut map = SourceMap::default();
 
