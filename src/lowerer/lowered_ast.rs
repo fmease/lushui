@@ -6,9 +6,9 @@ use crate::{
         Explicitness::{self, *},
         Identifier, Path,
     },
-    diagnostic::{Diagnostic, Results},
+    diagnostic::Results,
     span::{SourceFile, Spanned},
-    support::{InvalidFallback, ManyErrExt},
+    support::InvalidFallback,
 };
 use std::{fmt, rc::Rc};
 
@@ -160,6 +160,19 @@ pub struct Attributes {
 }
 
 impl Attributes {
+    pub fn new(attributes: Vec<Attribute>) -> Self {
+        let mut keys = AttributeKeys::empty();
+
+        for attribute in &attributes {
+            keys |= attribute.kind.key();
+        }
+
+        Self {
+            data: attributes.into_boxed_slice(),
+            keys,
+        }
+    }
+
     pub fn has(&self, keys: AttributeKeys) -> bool {
         self.keys.contains(keys)
     }
@@ -175,6 +188,10 @@ impl Attributes {
             .iter()
             .filter(move |attribute| attribute.matches(keys))
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Attribute> {
+        self.data.iter()
+    }
 }
 
 impl InvalidFallback for Attributes {
@@ -189,20 +206,12 @@ impl Attribute {
     pub fn parse(attribute: &ast::Attribute) -> Results<Self> {
         Ok(Attribute::new(
             attribute.span,
-            AttributeKind::parse(attribute)
-                .map_err(Into::into) // @Temporary cuz the Error ty
-                .many_err()?,
+            AttributeKind::parse(attribute)?,
         ))
     }
 
     pub fn matches(&self, keys: AttributeKeys) -> bool {
         keys.contains(self.kind.key())
-    }
-}
-
-impl fmt::Display for Attribute {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.kind.fmt(f)
     }
 }
 
@@ -258,11 +267,13 @@ pub enum AttributeKind {
         scope: Option<ast::Path>,
     },
     /// Form: `recursion-limit <0:depth:Number-Literal>`.
+    // @Task define allowed range
     RecursionLimit {
-        depth: usize,
+        depth: u32,
     },
     Rune,
     Shallow,
+    Static,
     Test,
     Text,
     Unsafe,
@@ -279,117 +290,6 @@ pub enum AttributeKind {
 }
 
 impl AttributeKind {
-    // @Question move to lowerer?
-    pub fn parse(attribute: &ast::Attribute) -> Result<Self, Error> {
-        Ok(match attribute.binder.as_str() {
-            "allow" => Self::Allow {
-                lint: Lint::parse(&attribute.arguments)?,
-            },
-            "deny" => Self::Deny {
-                lint: Lint::parse(&attribute.arguments)?,
-            },
-            // @Temporary
-            "deprecated" => todo!(),
-            "documentation" => Self::Documentation {
-                // @Beacon @Temporary @Bug
-                content: String::new(),
-            },
-            "forbid" => Self::Forbid {
-                lint: Lint::parse(&attribute.arguments)?,
-            },
-            "foreign" => Self::Foreign,
-            "if" => todo!(),
-            "ignore" => Self::Ignore,
-            "include" => Self::Include,
-            "inherent" => Self::Inherent,
-            "Int" => Self::Int,
-            "Int32" => Self::Int32,
-            "Int64" => Self::Int64,
-            "List" => Self::List,
-            "location" => Self::Location {
-                path: match &*attribute.arguments {
-                    [] => return Err(Error::TooFewArguments),
-                    [ast::AttributeArgument::TextLiteral(path)] => path.as_ref().clone(),
-                    [ast::AttributeArgument::Named(named)] => match &**named {
-                        ast::NamedAttributeArgument { binder, value }
-                            if binder.as_str() == "path" =>
-                        {
-                            match value {
-                                ast::AttributeArgument::TextLiteral(path) => path.as_ref().clone(),
-                                _ => return Err(Error::InvalidArgument),
-                            }
-                        }
-                        _ => return Err(Error::InvalidArgument),
-                    },
-                    [_] => return Err(Error::InvalidArgument),
-                    _ => return Err(Error::TooManyArguments),
-                },
-            },
-            "moving" => Self::Moving,
-            "Nat" => Self::Nat,
-            "Nat32" => Self::Nat32,
-            "Nat64" => Self::Nat64,
-            "opaque" => Self::Opaque,
-            "public" => Self::Public {
-                scope: match &*attribute.arguments {
-                    [] => None,
-                    [ast::AttributeArgument::Path(path)] => Some(path.as_ref().clone()),
-                    [ast::AttributeArgument::Named(named)] => match &**named {
-                        ast::NamedAttributeArgument { binder, value }
-                            if binder.as_str() == "scope" =>
-                        {
-                            match value {
-                                ast::AttributeArgument::Path(path) => Some(path.as_ref().clone()),
-                                _ => return Err(Error::InvalidArgument),
-                            }
-                        }
-                        _ => return Err(Error::InvalidArgument),
-                    },
-                    [_] => return Err(Error::InvalidArgument),
-                    _ => return Err(Error::TooManyArguments),
-                },
-            },
-            // @Task create a high-level API for this
-            "recursion-limit" => {
-                #[allow(unreachable_code)]
-                Self::RecursionLimit {
-                    depth: match &*attribute.arguments {
-                        // @Task say which ones are missing
-                        [] => return Err(Error::TooFewArguments),
-                        [ast::AttributeArgument::NumberLiteral(_number)] => todo!(),
-                        [ast::AttributeArgument::Named(named)] => match &**named {
-                            ast::NamedAttributeArgument { binder, value }
-                                if binder.as_str() == "depth" =>
-                            {
-                                match value {
-                                    ast::AttributeArgument::NumberLiteral(number) => {
-                                        number.parse().map_err(|_| Error::InvalidArgument)?
-                                    }
-                                    _ => return Err(Error::InvalidArgument),
-                                }
-                            }
-                            _ => return Err(Error::InvalidArgument),
-                        },
-                        [_] => return Err(Error::InvalidArgument),
-                        _ => return Err(Error::TooManyArguments),
-                    },
-                }
-            }
-            "Rune" => Self::Rune,
-            "shallow" => Self::Shallow,
-            "test" => Self::Test,
-            "Text" => Self::Text,
-            "unsafe" => Self::Unsafe,
-            // @Bug @Temporary
-            "unstable" => todo!(),
-            "Vector" => Self::Vector,
-            "warn" => Self::Warn {
-                lint: Lint::parse(&attribute.arguments)?,
-            },
-            _binder => return Err(Error::UndefinedAttribute), // @Temporary
-        })
-    }
-
     // @Question is outputting "attribute `documentation`" bad output for documentation comments?
     pub const fn quoted_name(&self) -> &'static str {
         macro quoted($name:literal) {
@@ -421,6 +321,7 @@ impl AttributeKind {
             Self::RecursionLimit { .. } => quoted!("recursion-limit"),
             Self::Rune => quoted!("Rune"),
             Self::Shallow => quoted!("shallow"),
+            Self::Static => quoted!("static"),
             Self::Test => quoted!("test"),
             Self::Text => quoted!("Text"),
             Self::Unsafe => quoted!("unsafe"),
@@ -449,6 +350,7 @@ impl AttributeKind {
             Public { .. } => Targets::DECLARATION - Targets::CONSTRUCTOR_DECLARATION,
             Location { .. } | RecursionLimit { .. } => Targets::MODULE_DECLARATION,
             Test => Targets::VALUE_DECLARATION | Targets::MODULE_DECLARATION,
+            Static => Targets::EXPRESSION,
             Unsafe => {
                 Targets::VALUE_DECLARATION
                     | Targets::CONSTRUCTOR_DECLARATION
@@ -476,6 +378,7 @@ impl AttributeKind {
             Public { .. } => "any declaration except constructor ones",
             Location { .. } | RecursionLimit { .. } => "module declarations",
             Test => "value or module declarations",
+            Static => "expressions",
             Unsafe => "value or constructor declarations, expressions or patterns",
         }
     }
@@ -506,6 +409,7 @@ impl AttributeKind {
             Self::RecursionLimit { .. } => AttributeKeys::RECURSION_LIMIT,
             Self::Rune => AttributeKeys::RUNE,
             Self::Shallow => AttributeKeys::SHALLOW,
+            Self::Static => AttributeKeys::STATIC,
             Self::Test => AttributeKeys::TEST,
             Self::Text => AttributeKeys::TEXT,
             Self::Unsafe => AttributeKeys::UNSAFE,
@@ -518,6 +422,8 @@ impl AttributeKind {
 
 impl fmt::Display for AttributeKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "@")?;
+
         match self {
             Self::Allow { lint } => write!(f, "(allow {})", lint),
             Self::Deny { lint } => write!(f, "(deny {})", lint),
@@ -551,12 +457,13 @@ impl fmt::Display for AttributeKind {
             Self::RecursionLimit { depth } => write!(f, "(recursion-limit {})", depth),
             Self::Rune => write!(f, "Rune"),
             Self::Shallow => write!(f, "shallow"),
+            Self::Static => write!(f, "static"),
             Self::Test => write!(f, "test"),
             Self::Text => write!(f, "Text"),
             Self::Unsafe => write!(f, "unsafe"),
             Self::Unstable { feature, reason } => write!(f, "(feature {} {:?})", feature, reason),
             Self::Vector => write!(f, "Vector"),
-            Self::Warn { lint } => write!(f, "(wARN {})", lint),
+            Self::Warn { lint } => write!(f, "(warn {})", lint),
         }
     }
 }
@@ -587,12 +494,13 @@ bitflags::bitflags! {
         const RECURSION_LIMIT = 1 << 21;
         const RUNE = 1 << 22;
         const SHALLOW = 1 << 23;
-        const TEST = 1 << 24;
-        const TEXT = 1 << 25;
-        const UNSAFE = 1 << 26;
-        const UNSTABLE = 1 << 27;
-        const VECTOR = 1 << 28;
-        const WARN = 1 << 29;
+        const STATIC = 1 << 24;
+        const TEST = 1 << 25;
+        const TEXT = 1 << 26;
+        const UNSAFE = 1 << 27;
+        const UNSTABLE = 1 << 28;
+        const VECTOR = 1 << 29;
+        const WARN = 1 << 30;
 
         const COEXISTABLE = Self::ALLOW.bits
             | Self::DENY.bits
@@ -620,37 +528,8 @@ impl Default for AttributeKeys {
     }
 }
 
-// @Task payloads
-pub enum Error {
-    UndefinedAttribute,
-    UndefinedLint,
-    TooFewArguments,
-    InvalidArgument,
-    TooManyArguments,
-}
-
-// @Beacon @Task more information, esp. span information
-impl From<Error> for Diagnostic {
-    fn from(error: Error) -> Self {
-        let message = match error {
-            Error::UndefinedAttribute => "undefined attribute",
-            Error::UndefinedLint => "undefined lint",
-            Error::TooFewArguments => "too few arguments in attribute",
-            Error::InvalidArgument => "invalid arguments in attribute",
-            Error::TooManyArguments => "too many arguments in attribute",
-        };
-        Diagnostic::error().with_message(message)
-    }
-}
-
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum Lint {}
-
-impl Lint {
-    fn parse(_arguments: &[ast::AttributeArgument]) -> Result<Self, Error> {
-        Err(Error::UndefinedLint)
-    }
-}
 
 impl fmt::Display for Lint {
     fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -758,7 +637,7 @@ impl Declaration {
                 Some(binder) => writeln!(f, "use {} as {}", declaration.target, binder),
                 None => writeln!(f, "use {}", declaration.target),
             },
-            Invalid => writeln!(f, "<invalid>"),
+            Invalid => write!(f, "?(invalid)"),
         }
     }
 }
@@ -798,7 +677,7 @@ impl fmt::Display for Expression {
                 }
                 Ok(())
             }
-            Invalid => write!(f, "<invalid>"),
+            Invalid => write!(f, "?(invalid)"),
         }
     }
 }
@@ -869,7 +748,7 @@ impl fmt::Display for Pattern {
             Deapplication(application) => {
                 write!(f, "({}) ({})", application.callee, application.argument)
             }
-            Invalid => write!(f, "<invalid>"),
+            Invalid => write!(f, "?(invalid)"),
         }
     }
 }

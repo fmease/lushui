@@ -406,9 +406,11 @@ fn format_lower_expression(
     scope: &CrateScope,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
-    // @Beacon @Task also print attributes!!!
-
     use ExpressionKind::*;
+
+    for attribute in expression.attributes.iter() {
+        write!(f, "{} ", attribute)?;
+    }
 
     match &expression.kind {
         Type => write!(f, "Type"),
@@ -467,20 +469,20 @@ impl DisplayWith for Pattern {
                 application.callee.with(scope),
                 application.argument.with(scope)
             ),
-            Invalid => write!(f, "<invalid>"),
+            Invalid => write!(f, "?(invalid)"),
         }
     }
 }
 
 #[cfg(test)]
 mod test {
-    // @Beacon @Task add more tests for expressions and attributes once we print them.
+    // @Beacon @Task add more tests
 
     use super::{expr, Expression};
     use crate::{
         ast::{self, Explicitness::*},
         entity::{Entity, EntityKind},
-        lowered_ast::{Attributes, Number},
+        lowered_ast::{Attribute, AttributeKind, Attributes, Number},
         resolver::{CrateScope, Identifier, Index},
         span::Span,
         support::DisplayWith,
@@ -535,6 +537,12 @@ mod test {
                 Index::DebruijnParameter,
                 ast::Identifier::new(name.into(), Span::SHAM),
             )
+        }
+    }
+
+    impl Attribute {
+        const fn sham(kind: AttributeKind) -> Self {
+            Self::new(Span::SHAM, kind)
         }
     }
 
@@ -1070,6 +1078,50 @@ mod test {
             .with(&scope)
             .to_string(),
         );
+    }
+
+    #[test]
+    fn attributes() {
+        let scope = CrateScope::new();
+
+        assert_eq(
+            "= @static @unsafe 3 @static (increment 1)",
+            (expr! {
+                Application {
+                    Attributes::default(), Span::SHAM;
+                    callee: expr! {
+                        Application {
+                            Attributes::default(), Span::SHAM;
+                            callee: Identifier::parameter("=").to_expression(),
+                            argument: expr! {
+                                Number(
+                                    Attributes::new(vec![
+                                        Attribute::sham(AttributeKind::Static),
+                                        Attribute::sham(AttributeKind::Unsafe)
+                                    ]),
+                                    Span::SHAM;
+                                    Number::Nat(3u8.into()),
+                                )
+                            },
+                            explicitness: Explicit,
+                        }
+                    },
+                    argument: expr! {
+                        Application {
+                            Attributes::new(vec![Attribute::sham(AttributeKind::Static)]), Span::SHAM;
+                            callee: Identifier::parameter("increment").to_expression(),
+                            argument: expr! {
+                                Number(Attributes::default(), Span::SHAM; Number::Nat(1u8.into()))
+                            },
+                            explicitness: Explicit,
+                        }
+                    },
+                    explicitness: Explicit,
+                }
+            })
+            .with(&scope)
+            .to_string(),
+        )
     }
 }
 

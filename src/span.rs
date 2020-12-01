@@ -117,6 +117,12 @@ impl<K: fmt::Debug> fmt::Debug for Spanned<K> {
     }
 }
 
+impl<K: fmt::Display> fmt::Display for Spanned<K> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.kind.fmt(f)
+    }
+}
+
 /// Global byte span of source code.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Span {
@@ -207,7 +213,7 @@ pub(crate) fn span(start: u32, end: u32) -> Span {
 
 impl fmt::Debug for Span {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{}..{}]", self.start.0, self.end.0)
+        write!(f, "{}..{}", self.start.0, self.end.0)
     }
 }
 

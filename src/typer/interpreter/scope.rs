@@ -281,7 +281,7 @@ impl crate::support::DisplayWith for Registration {
                     .field("type", &DisplayIsDebug(&type_.with(scope)));
                 match value {
                     Some(value) => compound.field("value", &DisplayIsDebug(&value.with(scope))),
-                    None => compound.field("value", &"<none>"),
+                    None => compound.field("value", &"?(none)"),
                 }
                 .finish()
             }

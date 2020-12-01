@@ -304,7 +304,10 @@ impl<'a> Parser<'a> {
                             Span::SHAM,
                         ),
                         span,
-                        arguments: smallvec![AttributeArgument::Generated],
+                        arguments: smallvec![AttributeArgument::new(
+                            Span::SHAM,
+                            AttributeArgumentKind::Generated
+                        )],
                     };
                     if matches!(skip_line_breaks, SkipLineBreaks::Yes) {
                         while self.has_consumed(LineBreak) {}
@@ -377,28 +380,30 @@ impl<'a> Parser<'a> {
     fn parse_attribute_argument(&mut self) -> Result<AttributeArgument> {
         use TokenKind::*;
         Ok(match self.current_token_kind() {
-            kind if kind.is_path_head() => AttributeArgument::Path(Box::new(self.parse_path()?)),
+            kind if kind.is_path_head() => {
+                let path = self.parse_path()?;
+                attrarg! { Path(path.span(); path) }
+            }
             NumberLiteral => {
                 let token = self.current_token().clone();
                 self.advance();
-                AttributeArgument::NumberLiteral(Box::new(token.number_literal().unwrap()))
+                attrarg! { NumberLiteral(token.span; token.number_literal().unwrap()) }
             }
             TextLiteral => {
                 let token = self.current_token().clone();
-
-                if !token.text_literal_is_terminated() {
-                    return Err(text_literal_is_not_terminated(&token));
-                }
+                let span = token.span;
+                let text_literal = token.text_literal().unwrap()?;
 
                 self.advance();
-                AttributeArgument::TextLiteral(Box::new(token.text_literal()))
+                attrarg! { TextLiteral(span; text_literal) }
             }
             OpeningRoundBracket => {
+                let mut span = self.current_token_span();
                 self.advance();
                 let binder = self.consume_identifier()?;
                 let value = self.parse_attribute_argument()?;
-                self.consume(ClosingRoundBracket)?;
-                AttributeArgument::Named(Box::new(NamedAttributeArgument { binder, value }))
+                span.merging(&self.consume(ClosingRoundBracket)?);
+                attrarg! { Named(span; NamedAttributeArgument { binder, value }) }
             }
             _ => return Err(Expected::AttributeArgument.but_actual_is(self.current_token())),
         })
@@ -933,11 +938,10 @@ impl<'a> Parser<'a> {
                 let token = self.current_token().clone();
                 self.advance();
 
-                if !token.text_literal_is_terminated() {
-                    return Err(text_literal_is_not_terminated(&token));
-                }
+                let span = token.span;
+                let text_literal = token.text_literal().unwrap()?;
 
-                Ok(expr! { TextLiteral(attributes, token.span; token.text_literal()) })
+                Ok(expr! { TextLiteral(attributes, span; text_literal) })
             }
             QuestionMark => {
                 self.advance();
@@ -1434,12 +1438,10 @@ impl<'a> Parser<'a> {
             TextLiteral => {
                 let token = self.current_token().clone();
                 self.advance();
+                let span = token.span;
+                let text_literal = token.text_literal().unwrap()?;
 
-                if !token.text_literal_is_terminated() {
-                    return Err(text_literal_is_not_terminated(&token));
-                }
-
-                Ok(pat! { TextLiteral(attributes, token.span; token.text_literal()) })
+                Ok(pat! { TextLiteral(attributes, span; text_literal) })
             }
             Backslash => {
                 self.advance();
@@ -1772,13 +1774,6 @@ impl<'a> From<&'a Delimiter> for &'a TokenKind {
             Delimiter::Token(token) => token,
         }
     }
-}
-
-fn text_literal_is_not_terminated(span: &impl Spanning) -> Diagnostic {
-    Diagnostic::error()
-        .with_code(Code::E004)
-        .with_message("unterminated text literal")
-        .with_span(span)
 }
 
 enum SkipLineBreaks {

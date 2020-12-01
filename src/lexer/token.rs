@@ -1,4 +1,5 @@
 use crate::{
+    diagnostic::{Code, Diagnostic, Result},
     span::{Span, Spanning},
     Atom,
 };
@@ -66,19 +67,21 @@ impl Token {
         }
     }
 
-    // @Note bad design
-    pub fn text_literal_is_terminated(&self) -> bool {
+    /// Unwrap the data of a [TextLiteral].
+    pub fn text_literal(self) -> Option<Result<String>> {
         match self.data {
-            TokenData::TextLiteral { is_terminated, .. } => is_terminated,
-            _ => unreachable!(),
-        }
-    }
-
-    /// Unwrap the data of a [TextLiteral]. Panics if it isn't one.
-    pub fn text_literal(self) -> String {
-        match self.data {
-            TokenData::TextLiteral { content: text, .. } => text,
-            _ => unreachable!(),
+            TokenData::TextLiteral {
+                content: text,
+                is_terminated,
+            } => Some(if is_terminated {
+                Ok(text)
+            } else {
+                Err(Diagnostic::error()
+                    .with_code(Code::E004)
+                    .with_message("unterminated text literal")
+                    .with_span(&self.span))
+            }),
+            _ => None,
         }
     }
 

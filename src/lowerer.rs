@@ -898,30 +898,30 @@ impl<'a> Lowerer<'a> {
         (if attributes.has(AttributeKeys::NAT32) {
             number
                 .parse()
-                .map_err(|_| ("Nat32", "[0, 2^32-1]"))
+                .map_err(|_| ("Nat32", NAT32_INTERVAL_REPRESENTATION))
                 .map(Number::Nat32)
         } else if attributes.has(AttributeKeys::NAT64) {
             number
                 .parse()
-                .map_err(|_| ("Nat64", "[0, 2^64-1]"))
+                .map_err(|_| ("Nat64", NAT64_INTERVAL_REPRESENTATION))
                 .map(Number::Nat64)
         } else if attributes.has(AttributeKeys::INT) {
             Ok(Number::Int(number.parse().unwrap()))
         } else if attributes.has(AttributeKeys::INT32) {
             number
                 .parse()
-                .map_err(|_| ("Int32", "[-2^31, 2^31-1]"))
+                .map_err(|_| ("Int32", INT32_INTERVAL_REPRESENTATION))
                 .map(Number::Int32)
         } else if attributes.has(AttributeKeys::INT64) {
             number
                 .parse()
-                .map_err(|_| ("Int64", "[-2^63, 2^63-1]"))
+                .map_err(|_| ("Int64", INT64_INTERVAL_REPRESENTATION))
                 .map(Number::Int64)
         } else {
             // optionally attributes.has(AttributeKeys::NAT)
             number
                 .parse()
-                .map_err(|_| ("Nat", "[0, infinity)"))
+                .map_err(|_| ("Nat", NAT_INTERVAL_REPRESENTATION))
                 .map(Number::Nat)
         })
         .map_err(|(type_name, interval)| {
@@ -1009,6 +1009,268 @@ impl<'a> Lowerer<'a> {
 impl Warn for Lowerer<'_> {
     fn diagnostics(&mut self) -> &mut Diagnostics {
         &mut self.warnings
+    }
+}
+
+const NAT32_INTERVAL_REPRESENTATION: &str = "[0, 2^32-1]";
+const NAT64_INTERVAL_REPRESENTATION: &str = "[0, 2^64-1]";
+const NAT_INTERVAL_REPRESENTATION: &str = "[0, infinity)";
+const INT32_INTERVAL_REPRESENTATION: &str = "[-2^31, 2^31-1]";
+const INT64_INTERVAL_REPRESENTATION: &str = "[-2^63, 2^63-1]";
+
+impl lowered_ast::AttributeKind {
+    // @Task allow unordered named attributes e.g. `@(unstable (reason "x") (feature thing))`
+    // @Task move to Lowerer
+    pub fn parse(attribute: &ast::Attribute) -> Results<Self> {
+        let arguments = &mut &*attribute.arguments;
+
+        fn optional_argument<'a>(
+            arguments: &mut &'a [ast::AttributeArgument],
+        ) -> Option<&'a ast::AttributeArgument> {
+            let argument = arguments.first();
+            *arguments = &arguments[1..];
+            argument
+        };
+
+        // @Task improve API
+        fn argument<'a>(
+            arguments: &mut &'a [ast::AttributeArgument],
+            span: Span,
+        ) -> Result<&'a ast::AttributeArgument> {
+            let argument = arguments.first().ok_or_else(|| {
+                // @Task add more information about the arity and the argument types
+                Diagnostic::error()
+                    .with_code(Code::E019)
+                    .with_message("too few attribute arguments provided")
+                    .with_span(&span)
+            })?;
+            *arguments = &arguments[1..];
+            Ok(argument)
+        };
+
+        let attribute = (|| {
+            Ok(match attribute.binder.as_str() {
+                "allow" => Self::Allow {
+                    lint: lowered_ast::Lint::parse(
+                        argument(arguments, attribute.span)?.path(Some("lint"))?,
+                    )?,
+                },
+                "deny" => Self::Deny {
+                    lint: lowered_ast::Lint::parse(
+                        argument(arguments, attribute.span)?.path(Some("lint"))?,
+                    )?,
+                },
+                "deprecated" => {
+                    // @Temporary
+                    return Err(Diagnostic::bug()
+                        .with_message("attribute `deprecated` not implemented yet")
+                        .with_span(&attribute)
+                        .into());
+                }
+                "documentation" => Self::Documentation {
+                    // @Beacon @Temporary @Bug
+                    content: String::new(),
+                },
+                "forbid" => Self::Forbid {
+                    lint: lowered_ast::Lint::parse(
+                        argument(arguments, attribute.span)?.path(Some("lint"))?,
+                    )?,
+                },
+                "foreign" => Self::Foreign,
+                "if" => {
+                    // @Temporary
+                    return Err(Diagnostic::bug()
+                        .with_message("attribute `if` not implemented yet")
+                        .with_span(&attribute)
+                        .into());
+                }
+                "ignore" => Self::Ignore,
+                "include" => Self::Include,
+                "inherent" => Self::Inherent,
+                "Int" => Self::Int,
+                "Int32" => Self::Int32,
+                "Int64" => Self::Int64,
+                "List" => Self::List,
+                "location" => {
+                    let path = argument(arguments, attribute.span)?.text_literal(Some("path"))?;
+
+                    Self::Location { path }
+                }
+                "moving" => Self::Moving,
+                "Nat" => Self::Nat,
+                "Nat32" => Self::Nat32,
+                "Nat64" => Self::Nat64,
+                "opaque" => Self::Opaque,
+                "public" => {
+                    let scope = optional_argument(arguments)
+                        .map(|argument| argument.path(Some("scope")))
+                        .transpose()?;
+
+                    Self::Public { scope }
+                }
+                "recursion-limit" => {
+                    let depth = argument(arguments, attribute.span)?;
+                    let depth = depth
+                        .number_literal(Some("depth"))?
+                        .parse::<u32>()
+                        .map_err(|_| {
+                            Diagnostic::error()
+                                .with_code(Code::E008)
+                                .with_message(format!(
+                                    "attribute argument does not fit integer interval {}",
+                                    NAT32_INTERVAL_REPRESENTATION
+                                ))
+                                .with_span(&depth)
+                        })?;
+
+                    Self::RecursionLimit { depth }
+                }
+                "Rune" => Self::Rune,
+                "shallow" => Self::Shallow,
+                "static" => Self::Static,
+                "test" => Self::Test,
+                "Text" => Self::Text,
+                "unsafe" => Self::Unsafe,
+                "unstable" => {
+                    // @Temporary
+                    return Err(Diagnostic::bug()
+                        .with_message("attribute `unstable` not implemented yet")
+                        .with_span(&attribute)
+                        .into());
+                }
+                "Vector" => Self::Vector,
+                "warn" => Self::Warn {
+                    lint: lowered_ast::Lint::parse(
+                        argument(arguments, attribute.span)?.path(Some("lint"))?,
+                    )?,
+                },
+                _ => return Err(Error::UndefinedAttribute(attribute.binder.clone())),
+            })
+        })();
+
+        enum Error {
+            Unrecoverable(Diagnostic),
+            UndefinedAttribute(ast::Identifier),
+        }
+
+        impl From<Diagnostic> for Error {
+            fn from(error: Diagnostic) -> Self {
+                Self::Unrecoverable(error)
+            }
+        }
+
+        impl From<Error> for Diagnostic {
+            fn from(error: Error) -> Self {
+                match error {
+                    Error::Unrecoverable(error) => error,
+                    Error::UndefinedAttribute(binder) => Diagnostic::error()
+                        .with_code(Code::E011)
+                        .with_message(format!("attribute `{}` does not exist", binder))
+                        .with_span(&binder),
+                }
+            }
+        }
+
+        let remaining_arguments = match arguments.first() {
+            Some(argument) if !matches!(attribute, Err(Error::UndefinedAttribute(_))) => {
+                Err(Diagnostic::error()
+                    .with_code(Code::E019)
+                    .with_message("too many attribute arguments provided")
+                    .with_span(&argument.span.merge(&arguments.last())))
+            }
+            _ => Ok(()),
+        }
+        .many_err();
+
+        let (attribute, _) = accumulate_errors!(
+            attribute.map_err(Into::into).many_err(),
+            remaining_arguments
+        )?;
+
+        Ok(attribute)
+    }
+}
+
+impl ast::AttributeArgument {
+    extractor!(number_literal "number literal": NumberLiteral => String);
+    extractor!(text_literal "text literal": TextLiteral => String);
+    extractor!(path "path": Path => Path);
+}
+
+// @Note not that extensible and well worked out API
+macro extractor($name:ident $repr:literal: $variant:ident => $ty:ty) {
+    fn $name(&self, name: Option<&'static str>) -> Result<$ty> {
+        match &self.kind {
+            ast::AttributeArgumentKind::$variant(literal) => Ok(literal.as_ref().clone()),
+            ast::AttributeArgumentKind::Named(named) => {
+                named.handle(name, |argument| match &argument.kind {
+                    ast::AttributeArgumentKind::$variant(literal) => Ok(literal.as_ref().clone()),
+                    kind => Err(invalid_attribute_argument_type(
+                        (argument.span, kind.name()),
+                        $repr,
+                    )),
+                })
+            }
+            kind => Err(invalid_attribute_argument_type(
+                (self.span, kind.name()),
+                concat!("positional or named ", $repr),
+            )),
+        }
+    }
+}
+
+// @Temporary signature
+fn unexpected_named_attribute_argument(
+    actual: &ast::Identifier,
+    expected: &'static str,
+) -> Diagnostic {
+    Diagnostic::error()
+        .with_code(Code::E028)
+        .with_message(format!(
+            "found named argument `{}`, but expected {}",
+            actual, expected
+        ))
+        .with_span(actual)
+}
+
+// @Temporary signature
+fn invalid_attribute_argument_type(
+    actual: (Span, &'static str),
+    expected: &'static str,
+) -> Diagnostic {
+    Diagnostic::error()
+        .with_code(Code::E027)
+        .with_message(format!("found {}, but expected {}", actual.1, expected))
+        .with_span(&actual.0)
+}
+
+impl ast::NamedAttributeArgument {
+    fn handle<T>(
+        &self,
+        name: Option<&'static str>,
+        handle: impl FnOnce(&ast::AttributeArgument) -> Result<T>,
+    ) -> Result<T> {
+        match name {
+            Some(name) => {
+                if self.binder.as_str() == name {
+                    handle(&self.value)
+                } else {
+                    Err(unexpected_named_attribute_argument(&self.binder, name))
+                }
+            }
+            // @Task span
+            None => Err(Diagnostic::error().with_message("unexpected named attribute argument")),
+        }
+    }
+}
+
+// @Task move to Lowerer
+impl lowered_ast::Lint {
+    fn parse(binder: Path) -> Result<Self> {
+        Err(Diagnostic::error()
+            .with_code(Code::E018)
+            .with_message(format!("lint `{}` does not exist", binder))
+            .with_span(&binder.span()))
     }
 }
 

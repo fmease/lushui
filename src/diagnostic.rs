@@ -587,6 +587,8 @@ pub enum Code {
     E005,
     /// Number literal does not fit type.
     E007,
+    /// Number literal does not fit.
+    E008,
     /// Unexpected token.
     E010,
     /// Undefined attribute.
@@ -603,6 +605,10 @@ pub enum Code {
     E016,
     /// Field declared outside of constructor declaration.
     E017,
+    /// Undefined lint.
+    E018,
+    /// Attribute arguments arity mismatch.
+    E019,
     /// Duplicate definitions.
     E020,
     /// Undefined binding.
@@ -617,6 +623,10 @@ pub enum Code {
     E025,
     /// Crate or super inside nested path.
     E026,
+    /// Attribute argument type mismatch.
+    E027,
+    /// Unexpected named attribute argument.
+    E028,
     /// Missing type annotation for lambda literal parameter or pattern.
     E030,
     /// Illegal function application.

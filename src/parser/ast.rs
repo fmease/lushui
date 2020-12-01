@@ -126,16 +126,30 @@ impl Spanning for Attribute {
     }
 }
 
+pub type AttributeArgument = Spanned<AttributeArgumentKind>;
+
 // @Task add span information
 #[derive(Debug, Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
-pub enum AttributeArgument {
+pub enum AttributeArgumentKind {
     NumberLiteral(Box<String>),
     TextLiteral(Box<String>),
     /// To be able to lower documentation comments without immense memory wastage.
     Generated,
     Path(Box<Path>),
     Named(Box<NamedAttributeArgument>),
+}
+
+impl AttributeArgumentKind {
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::NumberLiteral(_) => "number literal",
+            Self::TextLiteral(_) => "text literal",
+            Self::Generated => "generated text",
+            Self::Path(_) => "path",
+            Self::Named(_) => "named argument",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -869,4 +883,11 @@ pub macro expr($( $tree:tt )+) {
 
 pub macro pat($( $tree:tt )+) {
     crate::item::item!(crate::ast, PatternKind, Box; $( $tree )+)
+}
+
+pub macro attrarg($kind:ident($span:expr; $value:expr $(,)?)) {
+    crate::ast::AttributeArgument::new(
+        $span,
+        crate::ast::AttributeArgumentKind::$kind(Box::new($value)),
+    )
 }
