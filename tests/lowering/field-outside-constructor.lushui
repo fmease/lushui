@@ -1,0 +1,4 @@
+;; TEST fail check
+
+data X (field A: Type): (field m: M) -> X =
+

@@ -1,0 +1,5 @@
+;; TEST fail check
+
+data Container: Type =
+    container = attachment
+    attachment: Container = container

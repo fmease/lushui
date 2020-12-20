@@ -1,0 +1,12 @@
+error[E035]: attempt to analyze a type
+  >>> ${DIRECTORY}/analyze-types.lushui:9:5
+   |
+ 9 |       case A of
+...   _____^
+12 | |         \else => false
+   | |______________________^ 
+   |
+  note: forbidden to uphold parametricity and type erasure
+
+error: aborting due to previous error
+

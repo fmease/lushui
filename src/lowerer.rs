@@ -10,7 +10,7 @@
 //! * lower parameters to simple lambda literals
 //! * open external modules (this will probably move to the parser in the future
 //!   for parallel reading and independent error reporting)
-//! * simplifiy use declarations by unfolding path trees
+//! * simplify use declarations by unfolding use path trees
 //! * apply attribute groups (unimplemented right now)
 //! * parse number literals according to their type indicated by attributes (unsure
 //!   if this is the right place or whether it should be moved to a later stage)
@@ -28,11 +28,14 @@ pub mod lowered_ast;
 
 use crate::{
     ast::{self, Explicit, Path},
-    diagnostic::{Code, Diagnostic, Diagnostics, Result, Results, Warn},
+    diagnostics::{Code, Diagnostic, Diagnostics, Result, Results, Warn},
     lowered_ast::{decl, expr, pat, AttributeKeys, Attributes, Number},
     smallvec,
     span::{SourceMap, Span, Spanning},
-    support::{accumulate_errors, listing, s_pluralize, InvalidFallback, ManyErrExt, TryIn},
+    support::{
+        accumulate_errors, ordered_listing, s_pluralize, Conjunction, InvalidFallback, ManyErrExt,
+        QuoteExt, TryIn,
+    },
     SmallVec, Str,
 };
 use joinery::JoinableIterator;
@@ -85,7 +88,7 @@ impl<'a> Lowerer<'a> {
                     Some(type_annotation) => type_annotation,
                     None => Err(missing_mandatory_type_annotation(
                         &declaration.span,
-                        AnnotationTarget::Declaration,
+                        AnnotationTarget::Declaration(&value.binder),
                     ))
                     .try_in(&mut errors),
                 };
@@ -160,7 +163,7 @@ impl<'a> Lowerer<'a> {
                     Some(type_annotation) => type_annotation,
                     None => Err(missing_mandatory_type_annotation(
                         &declaration.span,
-                        AnnotationTarget::Declaration,
+                        AnnotationTarget::Declaration(&data.binder),
                     ))
                     .try_in(&mut errors),
                 };
@@ -198,7 +201,7 @@ impl<'a> Lowerer<'a> {
                     Some(type_annotation) => type_annotation,
                     None => Err(missing_mandatory_type_annotation(
                         &declaration.span,
-                        AnnotationTarget::Declaration,
+                        AnnotationTarget::Declaration(&constructor.binder),
                     ))
                     .try_in(&mut errors),
                 };
@@ -226,7 +229,7 @@ impl<'a> Lowerer<'a> {
                                 "`{}` is defined multiple times in this scope",
                                 constructor.binder
                             ))
-                            .with_labeled_span(&body, "conflicting definition")
+                            .with_labeled_primary_span(&body, "conflicting definition")
                             .with_note(
                                 "the body of the constructor is implied but it also has a body introduced by `=`",
                             ),
@@ -274,6 +277,8 @@ impl<'a> Lowerer<'a> {
 
                         let declaration_span = declaration.span;
 
+                        // @Task instead of a note saying the error, print a help message
+                        // saying to create the missing file or change the access rights etc.
                         let file = self
                             .map
                             .load(&path)
@@ -284,17 +289,17 @@ impl<'a> Lowerer<'a> {
                                         "could not load module `{}`",
                                         module.binder
                                     ))
-                                    .with_span(&declaration_span)
+                                    .with_primary_span(&declaration_span)
                                     .with_note(error.message(Some(&path))),
                                 // @Task add context information
                                 error => error.into(),
                             })
-                            .map_err(|error| errors.clone().inserted(error))?;
+                            .map_err(|error| errors.take().inserted(error))?;
 
                         let tokens = Lexer::new(&file, &mut self.warnings).lex()?;
                         let node = Parser::new(file, &tokens, &mut self.warnings)
-                            .parse_top_level(module.binder.clone())
-                            .map_err(|error| errors.clone().inserted(error))?;
+                            .parse(module.binder.clone())
+                            .map_err(|error| errors.take().extended(error))?;
                         let module = match node.kind {
                             Module(module) => module,
                             _ => unreachable!(),
@@ -328,16 +333,13 @@ impl<'a> Lowerer<'a> {
             }
             // @Temporary
             Crate(_) => Err(errors.inserted(
-                Diagnostic::bug()
-                    .with_message("crate declarations not supported yet")
-                    .with_span(&declaration.span),
+                Diagnostic::unimplemented("crate declarations")
+                    .with_primary_span(&declaration.span),
             )),
             // @Beacon @Task merge attributes with parent module
             // (through a `Context`) and ensure it's the first declaration in the whole module
             Header => Err(errors.inserted(
-                Diagnostic::bug()
-                    .with_message("module headers not supported yet")
-                    .with_span(&declaration.span),
+                Diagnostic::unimplemented("module headers").with_primary_span(&declaration.span),
             )),
             // overarching attributes be placed *above* the subdeclaration attributes
             Group(group) => {
@@ -357,21 +359,24 @@ impl<'a> Lowerer<'a> {
 
                 errors.err_or(group)
             }
+            // @Task verify that the resulting spans are correct
             Use(use_) => {
-                use ast::PathTree::{self, *};
+                use ast::{PathTreeKind::*, UsePathTree};
 
                 let mut declarations = SmallVec::new();
 
                 fn lower_path_tree_multiple_paths(
                     path: Path,
-                    bindings: Vec<PathTree>,
+                    bindings: Vec<UsePathTree>,
                     span: Span,
                     attributes: lowered_ast::Attributes,
                     declarations: &mut SmallVec<lowered_ast::Declaration, 1>,
-                ) -> Result<()> {
+                ) -> Results<()> {
+                    let mut errors = Diagnostics::default();
+
                     for binding in bindings {
-                        match binding {
-                            ast::PathTree::Single { target, binder } => {
+                        match binding.kind {
+                            Single { target, binder } => {
                                 // if the binder is not explicitly set, look for the most-specific/last/right-most
                                 // identifier of the target but if that one is `self`, look up the last identifier of
                                 // the parent path
@@ -381,16 +386,28 @@ impl<'a> Lowerer<'a> {
                                         span;
                                         binder: binder.or_else(|| if !target.is_self() { &target } else { &path }
                                             .last_identifier().cloned()),
-                                        target: path.clone().join(target)?,
+                                        target: match path.clone().join(target) {
+                                            Ok(target) => target,
+                                            Err(error) => {
+                                                errors.insert(error);
+                                                continue
+                                            }
+                                        },
                                     }
                                 });
                             }
-                            ast::PathTree::Multiple {
+                            Multiple {
                                 path: inner_path,
                                 bindings,
                             } => {
                                 lower_path_tree_multiple_paths(
-                                    path.clone().join(inner_path)?,
+                                    match path.clone().join(inner_path) {
+                                        Ok(path) => path,
+                                        Err(error) => {
+                                            errors.insert(error);
+                                            continue;
+                                        }
+                                    },
                                     bindings,
                                     span,
                                     attributes.clone(),
@@ -400,10 +417,10 @@ impl<'a> Lowerer<'a> {
                         }
                     }
 
-                    Ok(())
+                    errors.err_or(())
                 };
 
-                match use_.bindings {
+                match use_.bindings.kind {
                     Single { target, binder } => declarations.push(decl! {
                         Use {
                             attributes,
@@ -469,11 +486,9 @@ impl<'a> Lowerer<'a> {
             Application(application) => {
                 // @Temporary
                 if let Some(binder) = &application.binder {
-                    self.warn(
-                        Diagnostic::warning()
-                            .with_message("named arguments not supported yet")
-                            .with_span(binder),
-                    )
+                    errors.insert(
+                        Diagnostic::unimplemented("named arguments").with_primary_span(binder),
+                    );
                 }
 
                 let ((), callee, argument) = accumulate_errors!(
@@ -506,9 +521,7 @@ impl<'a> Lowerer<'a> {
                 Text(attributes, expression.span; text)
             }),
             TypedHole(_hole) => Err(errors.inserted(
-                Diagnostic::bug()
-                    .with_message("typed holes not supported yet")
-                    .with_span(&expression.span),
+                Diagnostic::unimplemented("typed holes").with_primary_span(&expression.span),
             )),
             Path(path) => errors.err_or(expr! {
                 Binding {
@@ -622,9 +635,7 @@ impl<'a> Lowerer<'a> {
             }
             // @Beacon @Task
             UseIn(_use_in) => Err(errors.inserted(
-                Diagnostic::bug()
-                    .with_message("use/in expressions not supported yet")
-                    .with_span(&expression.span),
+                Diagnostic::unimplemented("use/in expressions").with_primary_span(&expression.span),
             )),
             CaseAnalysis(analysis) => {
                 let mut cases = Vec::new();
@@ -652,14 +663,10 @@ impl<'a> Lowerer<'a> {
                 })
             }
             DoBlock(_block) => Err(errors.inserted(
-                Diagnostic::bug()
-                    .with_message("do blocks not fully implemented yet")
-                    .with_span(&expression.span),
+                Diagnostic::unimplemented("do blocks").with_primary_span(&expression.span),
             )),
             SequenceLiteral(_sequence) => Err(errors.inserted(
-                Diagnostic::bug()
-                    .with_message("sequence literals not fully implemented yet")
-                    .with_span(&expression.span),
+                Diagnostic::unimplemented("sequence literals").with_primary_span(&expression.span),
             )),
             Invalid => errors.err_or(InvalidFallback::invalid()),
         }
@@ -707,11 +714,9 @@ impl<'a> Lowerer<'a> {
             Deapplication(application) => {
                 // @Temporary
                 if let Some(binder) = &application.binder {
-                    self.warn(
-                        Diagnostic::warning()
-                            .with_message("named arguments not supported yet")
-                            .with_span(binder),
-                    )
+                    errors.insert(
+                        Diagnostic::unimplemented("named arguments").with_primary_span(binder),
+                    );
                 }
 
                 let ((), callee, argument) = accumulate_errors!(
@@ -730,9 +735,8 @@ impl<'a> Lowerer<'a> {
                 })
             }
             SequenceLiteralPattern(_sequence) => Err(errors.inserted(
-                Diagnostic::bug()
-                    .with_message("sequence literal patterns not supported yet")
-                    .with_span(&pattern.span),
+                Diagnostic::unimplemented("sequence literal patterns")
+                    .with_primary_span(&pattern.span),
             )),
         }
     }
@@ -770,12 +774,12 @@ impl<'a> Lowerer<'a> {
                             attribute.kind.quoted_name(),
                             target.name()
                         ))
-                        .with_labeled_span(&attribute, "misplaced attribute")
-                        .with_labeled_span(target, "incompatible item")
+                        .with_labeled_primary_span(&attribute, "misplaced attribute")
+                        .with_labeled_secondary_span(target, "incompatible item")
                         .with_note(format!(
                             "attribute {} can only be ascribed to {}",
                             attribute.kind.quoted_name(),
-                            attribute.kind.targets_as_str()
+                            attribute.kind.target_names()
                         )),
                 );
                 continue;
@@ -808,16 +812,20 @@ impl<'a> Lowerer<'a> {
                 .collect();
 
             if matching_attributes.len() > 1 {
-                errors.extend(Diagnostic::error().multiple_labeled(
-                    matching_attributes,
-                    "duplicate or conflicting attribute",
-                    |faulty_attributes| {
-                        format!(
+                let faulty_attributes = matching_attributes;
+
+                errors.insert(
+                    Diagnostic::error()
+                        .with_code(Code::E006)
+                        .with_message(format!(
                             "multiple {} attributes",
                             faulty_attributes.first().unwrap().kind.quoted_name(),
-                        )
-                    },
-                ));
+                        ))
+                        .with_labeled_primary_spans(
+                            faulty_attributes.into_iter(),
+                            "duplicate or conflicting attribute",
+                        ),
+                );
             }
         }
 
@@ -833,27 +841,28 @@ impl<'a> Lowerer<'a> {
         }
 
         let check_mutual_exclusivity =
-            |mutually_exclusive_attributes: AttributeKeys| -> Result<(), Diagnostics> {
+            |mutually_exclusive_attributes: AttributeKeys| -> Result<(), Diagnostic> {
                 if (attributes.keys & mutually_exclusive_attributes)
                     .bits()
                     .count_ones()
                     > 1
                 {
-                    return Err(Diagnostic::error().with_code(Code::E014).multiple_labeled(
-                        attributes.get(mutually_exclusive_attributes).collect(),
-                        "conflicting attribute",
-                        |faulty_attributes| {
-                            format!(
-                                "attributes {} are mutually exclusive",
-                                listing(
-                                    faulty_attributes
-                                        .iter()
-                                        .map(|attribute| attribute.kind.quoted_name()),
-                                    "and"
-                                )
-                            )
-                        },
-                    ));
+                    let faulty_attributes = attributes
+                        .get(mutually_exclusive_attributes)
+                        .collect::<Vec<_>>();
+                    let listing = ordered_listing(
+                        faulty_attributes
+                            .iter()
+                            .map(|attribute| attribute.kind.quoted_name()),
+                        Conjunction::And,
+                    );
+                    return Err(Diagnostic::error()
+                        .with_code(Code::E014)
+                        .with_message(format!("attributes {} are mutually exclusive", listing))
+                        .with_labeled_primary_spans(
+                            faulty_attributes.into_iter(),
+                            "conflicting attribute",
+                        ));
                 }
 
                 Ok(())
@@ -876,12 +885,8 @@ impl<'a> Lowerer<'a> {
 
         if attributes.within(AttributeKeys::UNSUPPORTED) {
             errors.extend(attributes.get(AttributeKeys::UNSUPPORTED).map(|attribute| {
-                Diagnostic::bug()
-                    .with_message(format!(
-                        "attribute {} not supported yet",
-                        attribute.kind.quoted_name()
-                    ))
-                    .with_span(attribute)
+                Diagnostic::unimplemented(format!("attribute {}", attribute.kind.quoted_name()))
+                    .with_primary_span(attribute)
             }))
         }
 
@@ -931,7 +936,7 @@ impl<'a> Lowerer<'a> {
                     "number literal `{}` does not fit type `{}`",
                     number, type_name
                 ))
-                .with_span(&span)
+                .with_primary_span(&span)
                 .with_note(format!(
                     "values of this type must fit integer interval {}",
                     interval
@@ -997,8 +1002,8 @@ impl<'a> Lowerer<'a> {
                 return Err(Diagnostic::error()
                     .with_code(Code::E017)
                     .with_message("`field` used outside of a constructor declaration")
-                    .with_span(&field)
-                    .with_labeled_span(&context.declaration, "not a constructor"));
+                    .with_primary_span(&field)
+                    .with_labeled_secondary_span(&context.declaration, "not a constructor"));
             }
         }
 
@@ -1020,16 +1025,16 @@ const INT64_INTERVAL_REPRESENTATION: &str = "[-2^63, 2^63-1]";
 
 impl lowered_ast::AttributeKind {
     // @Task allow unordered named attributes e.g. `@(unstable (reason "x") (feature thing))`
-    // @Task move to Lowerer
     pub fn parse(attribute: &ast::Attribute) -> Results<Self> {
         let arguments = &mut &*attribute.arguments;
 
         fn optional_argument<'a>(
             arguments: &mut &'a [ast::AttributeArgument],
         ) -> Option<&'a ast::AttributeArgument> {
-            let argument = arguments.first();
-            *arguments = &arguments[1..];
-            argument
+            arguments.first().map(|argument| {
+                *arguments = &arguments[1..];
+                argument
+            })
         };
 
         // @Task improve API
@@ -1042,7 +1047,7 @@ impl lowered_ast::AttributeKind {
                 Diagnostic::error()
                     .with_code(Code::E019)
                     .with_message("too few attribute arguments provided")
-                    .with_span(&span)
+                    .with_primary_span(&span)
             })?;
             *arguments = &arguments[1..];
             Ok(argument)
@@ -1062,15 +1067,17 @@ impl lowered_ast::AttributeKind {
                 },
                 "deprecated" => {
                     // @Temporary
-                    return Err(Diagnostic::bug()
-                        .with_message("attribute `deprecated` not implemented yet")
-                        .with_span(&attribute)
+                    return Err(Diagnostic::unimplemented("attribute `deprecated")
+                        .with_primary_span(&attribute)
                         .into());
                 }
-                "documentation" => Self::Documentation {
-                    // @Beacon @Temporary @Bug
-                    content: String::new(),
-                },
+                // @Beacon @Temporary @Bug the whole code for this
+                "documentation" => {
+                    let _ = argument(arguments, attribute.span)?;
+                    Self::Documentation {
+                        content: String::new(),
+                    }
+                }
                 "forbid" => Self::Forbid {
                     lint: lowered_ast::Lint::parse(
                         argument(arguments, attribute.span)?.path(Some("lint"))?,
@@ -1079,9 +1086,8 @@ impl lowered_ast::AttributeKind {
                 "foreign" => Self::Foreign,
                 "if" => {
                     // @Temporary
-                    return Err(Diagnostic::bug()
-                        .with_message("attribute `if` not implemented yet")
-                        .with_span(&attribute)
+                    return Err(Diagnostic::unimplemented("attribute `if`")
+                        .with_primary_span(&attribute)
                         .into());
                 }
                 "ignore" => Self::Ignore,
@@ -1120,22 +1126,20 @@ impl lowered_ast::AttributeKind {
                                     "attribute argument does not fit integer interval {}",
                                     NAT32_INTERVAL_REPRESENTATION
                                 ))
-                                .with_span(&depth)
+                                .with_primary_span(&depth)
                         })?;
 
                     Self::RecursionLimit { depth }
                 }
                 "Rune" => Self::Rune,
-                "shallow" => Self::Shallow,
                 "static" => Self::Static,
                 "test" => Self::Test,
                 "Text" => Self::Text,
                 "unsafe" => Self::Unsafe,
                 "unstable" => {
                     // @Temporary
-                    return Err(Diagnostic::bug()
-                        .with_message("attribute `unstable` not implemented yet")
-                        .with_span(&attribute)
+                    return Err(Diagnostic::unimplemented("attribute `unstable`")
+                        .with_primary_span(&attribute)
                         .into());
                 }
                 "Vector" => Self::Vector,
@@ -1166,7 +1170,7 @@ impl lowered_ast::AttributeKind {
                     Error::UndefinedAttribute(binder) => Diagnostic::error()
                         .with_code(Code::E011)
                         .with_message(format!("attribute `{}` does not exist", binder))
-                        .with_span(&binder),
+                        .with_primary_span(&binder),
                 }
             }
         }
@@ -1176,7 +1180,7 @@ impl lowered_ast::AttributeKind {
                 Err(Diagnostic::error()
                     .with_code(Code::E019)
                     .with_message("too many attribute arguments provided")
-                    .with_span(&argument.span.merge(&arguments.last())))
+                    .with_primary_span(&argument.span.merge(&arguments.last())))
             }
             _ => Ok(()),
         }
@@ -1193,6 +1197,7 @@ impl lowered_ast::AttributeKind {
 
 impl ast::AttributeArgument {
     extractor!(number_literal "number literal": NumberLiteral => String);
+    // @Bug does not handle AttributeArgumentKind::Generated
     extractor!(text_literal "text literal": TextLiteral => String);
     extractor!(path "path": Path => Path);
 }
@@ -1227,10 +1232,10 @@ fn unexpected_named_attribute_argument(
     Diagnostic::error()
         .with_code(Code::E028)
         .with_message(format!(
-            "found named argument `{}`, but expected {}",
+            "found named argument `{}`, but expected `{}`",
             actual, expected
         ))
-        .with_span(actual)
+        .with_primary_span(actual)
 }
 
 // @Temporary signature
@@ -1241,7 +1246,7 @@ fn invalid_attribute_argument_type(
     Diagnostic::error()
         .with_code(Code::E027)
         .with_message(format!("found {}, but expected {}", actual.1, expected))
-        .with_span(&actual.0)
+        .with_primary_span(&actual.0)
 }
 
 impl ast::NamedAttributeArgument {
@@ -1258,19 +1263,18 @@ impl ast::NamedAttributeArgument {
                     Err(unexpected_named_attribute_argument(&self.binder, name))
                 }
             }
-            // @Task span
+            // @Beacon @Task span
             None => Err(Diagnostic::error().with_message("unexpected named attribute argument")),
         }
     }
 }
 
-// @Task move to Lowerer
 impl lowered_ast::Lint {
     fn parse(binder: Path) -> Result<Self> {
         Err(Diagnostic::error()
             .with_code(Code::E018)
             .with_message(format!("lint `{}` does not exist", binder))
-            .with_span(&binder.span()))
+            .with_primary_span(&binder.span()))
     }
 }
 
@@ -1278,20 +1282,28 @@ fn missing_mandatory_type_annotation(
     spanning: &impl Spanning,
     target: AnnotationTarget<'_>,
 ) -> Diagnostic {
+    use AnnotationTarget::*;
+
     let type_annotation_suggestion: Str = match target {
-        AnnotationTarget::Parameters(parameters) => {
-            format!("`({}: TYPE)`", parameters.iter().join_with(' ')).into()
+        Parameters(parameters) => format!("`({}: TYPE)`", parameters.iter().join_with(' ')).into(),
+        Declaration(_) => "`: TYPE`".into(),
+    };
+
+    let binders = match target {
+        Parameters(parameters) => {
+            ordered_listing(parameters.iter().map(QuoteExt::quote), Conjunction::And)
         }
-        AnnotationTarget::Declaration => "`: TYPE`".into(),
+        Declaration(binder) => binder.quote(),
     };
 
     Diagnostic::error()
         .with_code(Code::E015)
         .with_message(format!(
-            "missing mandatory type annotation on {}",
-            target.name()
+            "missing mandatory type annotation on {} {}",
+            target.name(),
+            binders,
         ))
-        .with_span(spanning)
+        .with_primary_span(spanning)
         .with_help(format!(
             "provide a type annotation for the {} with {}",
             target.name(),
@@ -1304,14 +1316,14 @@ fn missing_mandatory_type_annotation(
 /// Used for error reporting exclusively.
 enum AnnotationTarget<'a> {
     Parameters(&'a [ast::Identifier]),
-    Declaration,
+    Declaration(&'a ast::Identifier),
 }
 
 impl AnnotationTarget<'_> {
     fn name(&self) -> &'static str {
         match self {
             Self::Parameters(declarations) => s_pluralize!(declarations.len(), "parameter"),
-            Self::Declaration => "declaration",
+            Self::Declaration(_) => "declaration",
         }
     }
 }

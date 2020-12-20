@@ -18,7 +18,7 @@ mod test;
 pub mod token;
 
 use crate::{
-    diagnostic::{Code, Diagnostic, Diagnostics, Result, Results, Warn},
+    diagnostics::{Code, Diagnostic, Diagnostics, Result, Results, Warn},
     span::{LocalByteIndex, LocalSpan, SourceFile, Span},
     support::ManyErrExt,
     Atom, INDENTATION_IN_SPACES,
@@ -137,7 +137,7 @@ impl<'a> Lexer<'a> {
                     Diagnostic::error()
                         .with_code(Code::E001)
                         .with_message("unbalanced brackets")
-                        .with_labeled_span(&bracket, "has no matching closing bracket")
+                        .with_labeled_primary_span(&bracket, "has no matching closing bracket")
                 })
                 .collect());
         }
@@ -210,7 +210,7 @@ impl<'a> Lexer<'a> {
                 return Err(Diagnostic::error()
                     .with_code(Code::E002)
                     .with_message("trailing dash on identifier")
-                    .with_span(&Span::local(self.source, dash.into())));
+                    .with_primary_span(&Span::local(self.source, dash.into())));
             }
         }
 
@@ -269,7 +269,7 @@ impl<'a> Lexer<'a> {
                     "invalid indentation consisting of {} spaces",
                     absolute_difference
                 ))
-                .with_span(&self.span())
+                .with_primary_span(&self.span())
                 .with_note(format!(
                     "indentation needs to be a multiple of {}",
                     INDENTATION_IN_SPACES
@@ -356,7 +356,7 @@ impl<'a> Lexer<'a> {
             return Err(Diagnostic::error()
                 .with_code(Code::E005)
                 .with_message("consecutive primes in number literal")
-                .with_span(&self.span()));
+                .with_primary_span(&self.span()));
         }
 
         // @Task return an invalid token instead
@@ -365,7 +365,7 @@ impl<'a> Lexer<'a> {
             return Err(Diagnostic::error()
                 .with_code(Code::E005)
                 .with_message("trailing prime in number literal")
-                .with_span(&self.span()));
+                .with_primary_span(&self.span()));
         }
 
         self.add_with(|span| Token::new_number_literal(number, span));
@@ -416,7 +416,7 @@ impl<'a> Lexer<'a> {
             return Err(Diagnostic::error()
                 .with_code(Code::E001)
                 .with_message("unbalanced brackets")
-                .with_labeled_span(&self.span(), "has no matching opening bracket"));
+                .with_labeled_primary_span(&self.span(), "has no matching opening bracket"));
         }
         self.round_brackets.pop();
         self.advance();

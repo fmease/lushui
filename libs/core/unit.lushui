@@ -3,3 +3,6 @@ data Unit: Type =
     unit: Unit
     
 use Unit.unit
+
+force (A: Type) (thunk: Unit -> A): A = thunk unit
+

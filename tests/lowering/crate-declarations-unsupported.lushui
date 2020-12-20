@@ -1,0 +1,6 @@
+;; TEST fail check
+
+crate gateway
+
+; another one
+crate gate-way

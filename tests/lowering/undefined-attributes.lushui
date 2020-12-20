@@ -1,0 +1,6 @@
+;; TEST fail check
+
+@one-can-only-dream
+module reality =
+
+    T: @eliminate Type = @(elaborated attempt) 0

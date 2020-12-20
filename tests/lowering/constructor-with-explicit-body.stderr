@@ -1,0 +1,26 @@
+error[E015]: missing mandatory type annotation on declaration `container`
+ >>> ${DIRECTORY}/lowering/constructor-with-explicit-body.lushui:4:5
+  |
+4 |     container = attachment
+  |     ^^^^^^^^^^^^^^^^^^^^^^ 
+  |
+ help: provide a type annotation for the declaration with `: TYPE`
+
+error[E020]: `container` is defined multiple times in this scope
+ >>> ${DIRECTORY}/lowering/constructor-with-explicit-body.lushui:4:17
+  |
+4 |     container = attachment
+  |                 ^^^^^^^^^^ conflicting definition
+  |
+ note: the body of the constructor is implied but it also has a body introduced by `=`
+
+error[E020]: `attachment` is defined multiple times in this scope
+ >>> ${DIRECTORY}/lowering/constructor-with-explicit-body.lushui:5:29
+  |
+5 |     attachment: Container = container
+  |                             ^^^^^^^^^ conflicting definition
+  |
+ note: the body of the constructor is implied but it also has a body introduced by `=`
+
+error: aborting due to 3 previous errors
+

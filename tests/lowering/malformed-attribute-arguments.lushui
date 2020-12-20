@@ -1,0 +1,12 @@
+;; TEST fail check
+
+@(allow never-gonna-be-implied)
+module m =
+
+@(allow "my lint")
+@(forbid (lint "my other one"))
+@deny
+data Void: Type =
+
+@(public (skope path) "hello")
+base: Base = @(Rune 0) "X"

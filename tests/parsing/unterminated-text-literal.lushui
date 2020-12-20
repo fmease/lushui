@@ -1,0 +1,6 @@
+;; TEST fail check
+
+value: Text = "open end
+
+data Field: Type =
+    field: Res -> Field

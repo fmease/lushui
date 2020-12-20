@@ -1,5 +1,9 @@
+//! The abstract syntax tree (AST).
+//!
+//! The most important definitions are [Declaration], [Expression] and [Pattern].
+
 use crate::{
-    diagnostic::{Code, Diagnostic, Result, Results},
+    diagnostics::{Code, Diagnostic, Result, Results},
     lexer::{Token, TokenKind},
     smallvec,
     span::{PossiblySpanning, SourceFile, Span, Spanned, Spanning},
@@ -14,7 +18,7 @@ pub type Item<Kind> = crate::item::Item<Kind, Attributes>;
 pub type Declaration = Item<DeclarationKind>;
 
 /// The syntax node of a declaration.
-#[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub enum DeclarationKind {
     Value(Box<Value>),
     Data(Box<Data>),
@@ -26,10 +30,26 @@ pub enum DeclarationKind {
     Use(Box<Use>),
 }
 
+impl fmt::Debug for DeclarationKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Value(declaration) => declaration.fmt(f),
+            Self::Data(declaration) => declaration.fmt(f),
+            Self::Constructor(declaration) => declaration.fmt(f),
+            Self::Module(declaration) => declaration.fmt(f),
+            Self::Crate(declaration) => declaration.fmt(f),
+            Self::Header => write!(f, "Header"),
+            Self::Group(declaration) => declaration.fmt(f),
+            Self::Use(declaration) => declaration.fmt(f),
+        }
+    }
+}
+
 /// The syntax node of a value declaration or a let statement.
 ///
 /// See [DeclarationKind::Value] and [Statement::Let].
 #[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Value {
     pub binder: Identifier,
     pub parameters: Parameters,
@@ -39,6 +59,7 @@ pub struct Value {
 
 /// The syntax node of a data declaration.
 #[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Data {
     pub binder: Identifier,
     pub parameters: Parameters,
@@ -48,6 +69,7 @@ pub struct Data {
 
 /// The syntax node of a constructor.
 #[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Constructor {
     pub binder: Identifier,
     pub parameters: Parameters,
@@ -59,6 +81,7 @@ pub struct Constructor {
 
 /// The syntax node of a module declaration.
 #[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Module {
     pub binder: Identifier,
     pub file: Rc<SourceFile>,
@@ -67,12 +90,14 @@ pub struct Module {
 
 /// The syntax node of a crate declaration.
 #[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Crate {
     pub binder: Identifier,
 }
 
 /// The syntax node of attribute groups.
 #[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Group {
     pub declarations: Vec<Declaration>,
 }
@@ -83,31 +108,22 @@ pub struct Group {
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Use {
-    pub bindings: PathTree,
+    pub bindings: UsePathTree,
 }
+
+pub type UsePathTree = Spanned<PathTreeKind>;
 
 #[derive(Debug, Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
-pub enum PathTree {
+pub enum PathTreeKind {
     Single {
         target: Path,
         binder: Option<Identifier>,
     },
     Multiple {
         path: Path,
-        bindings: Vec<Self>,
+        bindings: Vec<UsePathTree>,
     },
-}
-
-impl Spanning for PathTree {
-    fn span(&self) -> Span {
-        match self {
-            Self::Single { target, binder } => target.span().merge(binder),
-            Self::Multiple { path, bindings } => {
-                path.span().merge(&bindings.first()).merge(&bindings.last())
-            }
-        }
-    }
 }
 
 pub type Attributes = Vec<Attribute>;
@@ -128,7 +144,6 @@ impl Spanning for Attribute {
 
 pub type AttributeArgument = Spanned<AttributeArgumentKind>;
 
-// @Task add span information
 #[derive(Debug, Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub enum AttributeArgumentKind {
@@ -162,7 +177,7 @@ pub struct NamedAttributeArgument {
 pub type Expression = Item<ExpressionKind>;
 
 /// The syntax node of an expression.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub enum ExpressionKind {
     PiTypeLiteral(Box<PiTypeLiteral>),
@@ -179,6 +194,27 @@ pub enum ExpressionKind {
     DoBlock(Box<DoBlock>),
     SequenceLiteral(Box<SequenceLiteral>),
     Invalid,
+}
+
+impl fmt::Debug for ExpressionKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::PiTypeLiteral(expression) => expression.fmt(f),
+            Self::Application(expression) => expression.fmt(f),
+            Self::TypeLiteral => write!(f, "TypeLiteral"),
+            Self::NumberLiteral(expression) => expression.fmt(f),
+            Self::TextLiteral(expression) => expression.fmt(f),
+            Self::TypedHole(expression) => expression.fmt(f),
+            Self::Path(expression) => expression.fmt(f),
+            Self::LambdaLiteral(expression) => expression.fmt(f),
+            Self::LetIn(expression) => expression.fmt(f),
+            Self::UseIn(expression) => expression.fmt(f),
+            Self::CaseAnalysis(expression) => expression.fmt(f),
+            Self::DoBlock(expression) => expression.fmt(f),
+            Self::SequenceLiteral(expression) => expression.fmt(f),
+            Self::Invalid => write!(f, "Invalid"),
+        }
+    }
 }
 
 impl InvalidFallback for ExpressionKind {
@@ -221,6 +257,147 @@ pub struct Path {
     pub segments: SmallVec<Identifier, 1>,
 }
 
+impl Path {
+    /// Construct a single identifier segment path.
+    ///
+    /// May panic.
+    pub fn try_from_token(token: Token) -> Option<Self> {
+        Some(Identifier::try_from(token).ok()?.into())
+    }
+
+    /// Construct a non-identifier-head-only path.
+    pub fn hanger(token: Token) -> Self {
+        Self {
+            hanger: Some(Hanger::new(token.span, token.kind.try_into().unwrap())),
+            segments: SmallVec::new(),
+        }
+    }
+
+    pub fn join(mut self, other: Self) -> Result<Self> {
+        if let Some(hanger) = other.hanger {
+            if !matches!(hanger.kind, HangerKind::Self_) {
+                return Err(Diagnostic::error()
+                    .with_code(Code::E026)
+                    .with_message(format!(
+                        "path hanger `{}` not allowed in this position",
+                        hanger
+                    ))
+                    .with_primary_span(&hanger)
+                    .with_help("consider moving this path to its own separate use declaration"));
+            }
+        }
+        self.segments.extend(other.segments);
+        Ok(self)
+    }
+
+    pub fn is_self(&self) -> bool {
+        matches!(
+            self.hanger,
+            Some(Hanger {
+                kind: HangerKind::Self_,
+                ..
+            })
+        )
+    }
+
+    /// Return the path head if it is an identifier.
+    pub fn identifier_head(&self) -> Option<&Identifier> {
+        if self.hanger.is_some() {
+            return None;
+        }
+
+        Some(&self.segments[0])
+    }
+
+    pub fn last_identifier(&self) -> Option<&Identifier> {
+        self.segments.last()
+    }
+
+    /// Try to debase a path to a single identifier.
+    ///
+    /// A path is _simple_ iff it has a single segment being the head which is not a hanger.
+    pub fn to_simple(&self) -> Option<&Identifier> {
+        if self.hanger.is_some() || self.segments.len() > 1 {
+            return None;
+        }
+
+        Some(&self.segments[0])
+    }
+
+    pub fn tail(&self) -> Self {
+        Self {
+            hanger: None,
+            // @Task avoid allocation, try to design it as a slice `&self.segments[1..]`
+            segments: if self.hanger.is_some() {
+                self.segments.clone()
+            } else {
+                self.segments.iter().skip(1).cloned().collect()
+            },
+        }
+    }
+
+    // @Task avoid allocation, try to design it as a slice `&self.segments[..LEN - 1]`
+    /// Path consisting of segments 0 to n-1
+    // @Task verify
+    pub fn prefix(&self) -> Self {
+        Self {
+            hanger: self.hanger.clone(),
+            segments: self.segments.iter().rev().skip(1).rev().cloned().collect(),
+        }
+    }
+}
+
+impl From<Identifier> for Path {
+    fn from(identifier: Identifier) -> Self {
+        Self {
+            hanger: None,
+            segments: smallvec![identifier],
+        }
+    }
+}
+
+impl Spanning for Path {
+    fn span(&self) -> Span {
+        if let Some(head) = &self.hanger {
+            head.span()
+                .merge(&self.segments.first())
+                .merge(&self.segments.last())
+        } else {
+            self.segments
+                .first()
+                .unwrap()
+                .span
+                .merge(&self.segments.last().unwrap())
+        }
+    }
+}
+
+impl fmt::Display for Path {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fn display_path(
+            head: &Option<Hanger>,
+            segments: &[Identifier],
+            f: &mut fmt::Formatter<'_>,
+        ) -> fmt::Result {
+            let mut segments = segments.iter();
+
+            match head {
+                Some(head) => write!(f, "{}", head)?,
+                None => write!(f, "{}", segments.next().unwrap())?,
+            }
+
+            write!(
+                f,
+                "{}",
+                segments
+                    .map(|segment| format!(".{}", segment))
+                    .collect::<String>()
+            )
+        }
+        display_path(&self.hanger, &self.segments, f)
+    }
+}
+
 /// The syntax node of a lambda literal expression.
 #[derive(Debug, Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
@@ -249,7 +426,7 @@ pub struct LetIn {
 #[derive(Debug, Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct UseIn {
-    pub bindings: PathTree,
+    pub bindings: UsePathTree,
     pub scope: Expression,
 }
 
@@ -415,14 +592,6 @@ impl Identifier {
         Self { atom, span }
     }
 
-    /// Panics if the token is not an identifier.
-    pub fn from_token(token: Token) -> Self {
-        Self {
-            span: token.span,
-            atom: token.identifier(),
-        }
-    }
-
     pub fn is_punctuation(&self) -> bool {
         crate::lexer::is_punctuation(self.atom.chars().next().unwrap())
     }
@@ -437,17 +606,23 @@ impl Identifier {
             ..self
         }
     }
+}
 
-    pub fn to_path(self) -> Path {
-        Path {
-            hanger: None,
-            segments: smallvec![self],
-        }
+impl TryFrom<Token> for Identifier {
+    type Error = ();
+
+    fn try_from(token: Token) -> Result<Self, Self::Error> {
+        Ok(Self {
+            span: token.span,
+            atom: token.identifier().ok_or(())?,
+        })
     }
+}
 
-    pub fn to_expression(self) -> Expression {
+impl From<Identifier> for Expression {
+    fn from(identifier: Identifier) -> Self {
         expr! {
-            Path(Attributes::default(), self.span; self.to_path())
+            Path(Attributes::default(), identifier.span; Path::from(identifier))
         }
     }
 }
@@ -476,7 +651,6 @@ impl fmt::Debug for Identifier {
     }
 }
 
-// @Temporary
 impl fmt::Display for Identifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -485,133 +659,6 @@ impl fmt::Display for Identifier {
             self.atom,
             width = f.width().unwrap_or_default()
         )
-    }
-}
-
-impl Path {
-    /// Construct a single identifier segment path.
-    ///
-    /// May panic.
-    pub fn identifier(token: Token) -> Self {
-        Identifier::from_token(token).to_path()
-    }
-
-    /// Construct a non-identifier-head-only path.
-    pub fn hanger(token: Token) -> Self {
-        Self {
-            hanger: Some(Hanger::new(token.span, token.kind.try_into().unwrap())),
-            segments: SmallVec::new(),
-        }
-    }
-
-    pub fn join(mut self, other: Self) -> Result<Self> {
-        if let Some(head) = other.hanger {
-            if !matches!(head.kind, HangerKind::Self_) {
-                return Err(Diagnostic::error()
-                    .with_code(Code::E026)
-                    .with_message("`super` or `crate` not allowed in this position")
-                    .with_span(&head));
-            }
-        }
-        self.segments.extend(other.segments);
-        Ok(self)
-    }
-
-    pub fn is_self(&self) -> bool {
-        matches!(
-            self.hanger,
-            Some(Hanger {
-                kind: HangerKind::Self_,
-                ..
-            })
-        )
-    }
-
-    pub fn first_identifier(&self) -> Option<&Identifier> {
-        if self.hanger.is_some() {
-            return None;
-        }
-
-        Some(&self.segments[0])
-    }
-
-    pub fn last_identifier(&self) -> Option<&Identifier> {
-        self.segments.last()
-    }
-
-    /// Try to debase a path to a single identifier.
-    ///
-    /// A path is _simple_ iff it has a single segment being the head which is not a hanger.
-    pub fn to_simple(&self) -> Option<&Identifier> {
-        if self.hanger.is_some() || self.segments.len() > 1 {
-            return None;
-        }
-
-        Some(&self.segments[0])
-    }
-
-    pub fn tail(&self) -> Self {
-        Self {
-            hanger: None,
-            // @Task avoid allocation, try to design it as a slice `&self.segments[1..]`
-            segments: if self.hanger.is_some() {
-                self.segments.clone()
-            } else {
-                self.segments.iter().skip(1).cloned().collect()
-            },
-        }
-    }
-
-    // @Task avoid allocation, try to design it as a slice `&self.segments[..LEN - 1]`
-    /// Path consisting of segments 0 to n-1
-    // @Task verify
-    pub fn prefix(&self) -> Self {
-        Self {
-            hanger: self.hanger.clone(),
-            segments: self.segments.iter().rev().skip(1).rev().cloned().collect(),
-        }
-    }
-}
-
-impl Spanning for Path {
-    fn span(&self) -> Span {
-        if let Some(head) = &self.hanger {
-            head.span()
-                .merge(&self.segments.first())
-                .merge(&self.segments.last())
-        } else {
-            self.segments
-                .first()
-                .unwrap()
-                .span
-                .merge(&self.segments.last().unwrap())
-        }
-    }
-}
-
-impl fmt::Display for Path {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fn display_path(
-            head: &Option<Hanger>,
-            segments: &[Identifier],
-            f: &mut fmt::Formatter<'_>,
-        ) -> fmt::Result {
-            let mut segments = segments.iter();
-
-            match head {
-                Some(head) => write!(f, "{}", head)?,
-                None => write!(f, "{}", segments.next().unwrap())?,
-            }
-
-            write!(
-                f,
-                "{}",
-                segments
-                    .map(|segment| format!(".{}", segment))
-                    .collect::<String>()
-            )
-        }
-        display_path(&self.hanger, &self.segments, f)
     }
 }
 
@@ -685,19 +732,18 @@ impl AttributeTarget for Declaration {
                 Err(Diagnostic::error()
                     .with_code(Code::E012)
                     .with_message(format!("declaration `{}` has no definition", binder))
-                    .with_span(self)
+                    .with_primary_span(self)
                     // @Task make this less awkward for data declarations
                     .with_help("provide a definition for the declaration with `= VALUE`"))
             }
-            // @Task return two diagnostics
             (Some(body), true) => Err(Diagnostic::error()
                 .with_code(Code::E020)
                 .with_message(format!(
                     "`{}` is defined multiple times in this scope",
                     binder
                 ))
-                .with_labeled_span(&body, "conflicting definition")
-                .with_labeled_span(
+                .with_labeled_primary_span(&body, "conflicting definition")
+                .with_labeled_secondary_span(
                     &attributes.get(AttributeKeys::FOREIGN).next().unwrap(),
                     "conflicting definition",
                 )

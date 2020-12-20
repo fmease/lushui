@@ -1,0 +1,7 @@
+;; TEST fail check
+
+receiver: Receiver (A = Type) = engender (material = X)
+
+analyze: Unit =
+    case scrutinee of
+        Tag (named = thing) => void

@@ -1,0 +1,9 @@
+;; TEST fail check
+;; the span information suck ... we should move the validator from the
+;; name resolver to the lowerer which has more information (the pre-lowered form)
+
+use super
+use crate
+use other
+
+use crate.(self hello)

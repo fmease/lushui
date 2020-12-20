@@ -6,7 +6,7 @@ use crate::{
         Explicitness::{self, *},
         Identifier, Path,
     },
-    diagnostic::Results,
+    diagnostics::Results,
     span::{SourceFile, Spanned},
     support::InvalidFallback,
 };
@@ -215,78 +215,160 @@ impl Attribute {
     }
 }
 
-// @Question should we provide a bitset of nullary attributes, next to a Vec<Attribute>?
-// (or instead of)
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum AttributeKind {
-    /// Form: `allow <0:lint:Path>`.
-    Allow {
-        lint: Lint,
-    },
-    /// Form: `deny <0:lint:Path>`.
-    Deny {
-        lint: Lint,
-    },
-    /// Form: `deprecated <0:reason:Text-Literal> [<since:Version>] [<replacement:String>]`.
+    /// Allow a [lint](Lint).
+    ///
+    /// ## Form
+    ///
+    /// ```text
+    /// allow <0:lint:Path>
+    /// ```
+    Allow { lint: Lint },
+    /// Deny a [lint](Lint).
+    ///
+    /// ## Form
+    ///
+    /// ```text
+    /// deny <0:lint:Path>
+    /// ```
+    Deny { lint: Lint },
+    /// Deprecate a binding providing a reason.
+    ///
+    /// … and optionally a [version](Version) marking the start of the deprecation,
+    /// one to mark the (future) version where the binding is no longer going to be present
+    /// in the public API.
+    /// Lastly, a description on how one can replace the deprecated binding. Ideally, this
+    /// should not be a text literal but something structured which IDEs etc. can read.
+    ///
+    /// ## Form
+    ///
+    /// ```text
+    /// deprecated <0:reason:Text-Literal> [<since:Version>] [<replacement:Text-Literal>]
+    /// ```
     Deprecated {
         reason: String,
         since: Option<Version>,
+        until: Option<Version>,
         replacement: Option<String>,
     },
-    // @Note only maybe String
-    Documentation {
-        content: String,
-    },
-    /// Form: `forbid <0:lint:Path>`.
-    Forbid {
-        lint: Lint,
-    },
+    /// Documentation of a binding.
+    ///
+    /// The format of text is not decided yet. I'd like to have something better than
+    /// markdown. There are plenty of options.
+    ///
+    /// ## Form
+    ///
+    /// ```text
+    /// documentation <0:content:Text-Literal>
+    /// ```
+    // @Task change to enum { (String), (Span) }
+    Documentation { content: String },
+    /// Forbid a [lint](Lint).
+    ///
+    /// ## Form
+    ///
+    /// ```text
+    /// forbid <0:lint:Path>
+    /// ```
+    Forbid { lint: Lint },
+    /// Mark a binding as having a definition outside of this language.
     Foreign,
-    If {
-        condition: Condition,
-    },
+    /// Make the inclusion of the attribute target dependent on a [condition](Condition).
+    ///
+    /// Aka conditional compilation.
+    ///
+    /// ## Form
+    ///
+    /// ```text
+    /// if <0:condition:Condition>
+    /// ```
+    If { condition: Condition },
+    /// Exclude the attribute target from further processing.
+    ///
+    /// Basically `@(if false)` but `if` won't be implemented anytime soon.
     Ignore,
+    /// Statically include the contents of file given by path.
     Include,
+    /// Declare a binding Rust FFI compatible for the TWI.
+    ///
+    /// This is an implementation detail right now and will likely removed
+    /// once our FFI story grows stronger.
     Inherent,
+    /// Specify the concrete type of a number literal to be `Int`.
     Int,
+    /// Specify the concrete type of a number literal to be `Int32`.
     Int32,
+    /// Specify the concrete type of a number literal to be `Int64`.
     Int64,
+    /// Specify the concrete type of a sequence literal to be `List`.
     List,
-    /// Form: `location <0:path:Text-Literal>`.
-    Location {
-        path: String,
-    },
+    /// Change the path where the external module resides.
+    ///
+    /// ## Form
+    ///
+    /// ```text
+    /// location <0:path:Text-Literal>
+    /// ```
+    Location { path: String },
+    /// Mark a data type binding to be likely expanded in the number of constructors.
     Moving,
+    /// Specify the concrete type of a number literal to be `Nat`.
     Nat,
+    /// Specify the concrete type of a number literal to be `Nat32`.
     Nat32,
+    /// Specify the concrete type of a number literal to be `Nat64`.
     Nat64,
+    /// Hide the constructors/implementation details of a (public) data type binding.
     Opaque,
-    /// Form: `public [<0:scope:Path>]`.
+    /// Make the binding part of the public API or at least visible in modules higher up.
+    ///
+    /// If no `scope` is given, the binding is marked as exposed to any other crates.
+    ///
+    /// ## Form
+    ///
+    /// ```text
+    /// public [<0:scope:Path>]
+    ///
     // @Question rename `scope` to `up-to`?
-    Public {
-        scope: Option<ast::Path>,
-    },
-    /// Form: `recursion-limit <0:depth:Number-Literal>`.
+    Public { scope: Option<ast::Path> },
+    /// Define the recursion limit of the TWI.
+    ///
+    /// ## Form
+    ///
+    /// ```text
+    /// recursion-limit <0:depth:Number-Literal>
+    /// ```
     // @Task define allowed range
-    RecursionLimit {
-        depth: u32,
-    },
+    RecursionLimit { depth: u32 },
+    /// Specify the concrete type of a text literal to be `Rune`.
     Rune,
-    Shallow,
+    /// Force an expression to be evaluated at compile-time.
     Static,
+    /// Mark a function as a unit test.
     Test,
+    /// Specify the concrete type of a text literal to be `Text`.
     Text,
+    /// Mark a binding or expression as "unsafe".
     Unsafe,
-    /// Form: `unstable <feature:Path> <reason:Text-Literal>`.
-    Unstable {
-        feature: Feature,
-        reason: String,
-    },
+    /// Mark a binding as an unstable part of the public API.
+    ///
+    /// ## Form
+    ///
+    /// ```text
+    /// unstable <feature:Path> <reason:Text-Literal>
+    /// ```
+    Unstable { feature: Feature, reason: String },
+    /// Specify the concrete type of a sequence literal to be `Vector`.
     Vector,
-    /// Form: `warn <0:lint:Path>`.
-    Warn {
-        lint: Lint,
-    },
+    /// Warn on a [lint](Lint).
+    ///
+    /// ## Form
+    ///
+    /// ```text
+    /// warn <0:lint:Path>
+    /// ```
+    Warn { lint: Lint },
 }
 
 impl AttributeKind {
@@ -320,7 +402,6 @@ impl AttributeKind {
             Self::Public { .. } => quoted!("public"),
             Self::RecursionLimit { .. } => quoted!("recursion-limit"),
             Self::Rune => quoted!("Rune"),
-            Self::Shallow => quoted!("shallow"),
             Self::Static => quoted!("static"),
             Self::Test => quoted!("test"),
             Self::Text => quoted!("Text"),
@@ -331,7 +412,7 @@ impl AttributeKind {
         }
     }
 
-    // keep this in sync with Self::targets_as_str
+    // keep this in sync with Self::target_names
     pub fn targets(&self) -> ast::AttributeTargets {
         use ast::AttributeTargets as Targets;
         use AttributeKind::*;
@@ -343,7 +424,7 @@ impl AttributeKind {
             }
             Foreign => Targets::VALUE_DECLARATION | Targets::DATA_DECLARATION,
             Include | Rune | Text => Targets::TEXT_LITERAL,
-            Inherent | Moving | Shallow | Opaque => Targets::DATA_DECLARATION,
+            Inherent | Moving | Opaque => Targets::DATA_DECLARATION,
             Int | Int32 | Int64 | Nat | Nat32 | Nat64 => Targets::NUMBER_LITERAL,
             List | Vector => Targets::SEQUENCE_LITERAL,
             // @Task but smh add extra diagnostic note saying they are public automatically
@@ -362,7 +443,7 @@ impl AttributeKind {
 
     // keep this in sync with Self::targets!
     // @Task find a way to get around this manual work
-    pub fn targets_as_str(&self) -> &'static str {
+    pub fn target_names(&self) -> &'static str {
         use AttributeKind::*;
 
         match self {
@@ -372,10 +453,10 @@ impl AttributeKind {
             }
             Foreign => "value or data declarations",
             Include | Rune | Text => "text literals",
-            Inherent | Moving | Shallow | Opaque => "data declarations",
+            Inherent | Moving | Opaque => "data declarations",
             Int | Int32 | Int64 | Nat | Nat32 | Nat64 => "number literals",
             List | Vector => "sequence literals",
-            Public { .. } => "any declaration except constructor ones",
+            Public { .. } => "declarations except constructors",
             Location { .. } | RecursionLimit { .. } => "module declarations",
             Test => "value or module declarations",
             Static => "expressions",
@@ -408,7 +489,6 @@ impl AttributeKind {
             Self::Public { .. } => AttributeKeys::PUBLIC,
             Self::RecursionLimit { .. } => AttributeKeys::RECURSION_LIMIT,
             Self::Rune => AttributeKeys::RUNE,
-            Self::Shallow => AttributeKeys::SHALLOW,
             Self::Static => AttributeKeys::STATIC,
             Self::Test => AttributeKeys::TEST,
             Self::Text => AttributeKeys::TEXT,
@@ -430,8 +510,13 @@ impl fmt::Display for AttributeKind {
             Self::Deprecated {
                 reason,
                 since,
+                until,
                 replacement,
-            } => write!(f, "(deprecated {:?} {:?} {:?})", reason, since, replacement),
+            } => write!(
+                f,
+                "(deprecated (reason {:?}) (since {:?}) (until {:?}) (replacement {:?}))",
+                reason, since, until, replacement
+            ),
             // Self::Documentation { content } => writeln!(f, ";{:?}", content),
             Self::Documentation { content } => write!(f, "(documentation {:?})", content),
             Self::Forbid { lint } => write!(f, "(forbid {})", lint),
@@ -456,7 +541,6 @@ impl fmt::Display for AttributeKind {
             },
             Self::RecursionLimit { depth } => write!(f, "(recursion-limit {})", depth),
             Self::Rune => write!(f, "Rune"),
-            Self::Shallow => write!(f, "shallow"),
             Self::Static => write!(f, "static"),
             Self::Test => write!(f, "test"),
             Self::Text => write!(f, "Text"),
@@ -493,14 +577,13 @@ bitflags::bitflags! {
         const PUBLIC = 1 << 20;
         const RECURSION_LIMIT = 1 << 21;
         const RUNE = 1 << 22;
-        const SHALLOW = 1 << 23;
-        const STATIC = 1 << 24;
-        const TEST = 1 << 25;
-        const TEXT = 1 << 26;
-        const UNSAFE = 1 << 27;
-        const UNSTABLE = 1 << 28;
-        const VECTOR = 1 << 29;
-        const WARN = 1 << 30;
+        const STATIC = 1 << 23;
+        const TEST = 1 << 24;
+        const TEXT = 1 << 25;
+        const UNSAFE = 1 << 26;
+        const UNSTABLE = 1 << 27;
+        const VECTOR = 1 << 28;
+        const WARN = 1 << 29;
 
         const COEXISTABLE = Self::ALLOW.bits
             | Self::DENY.bits

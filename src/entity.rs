@@ -1,12 +1,28 @@
+//! The entity system: Information about bindings for the name resolver _and_ the type checker.
+//!
+//! Just like [CrateScope], [Entity] is a resource shared by those two passes.
+
 use std::fmt;
 
 use crate::{
     hir::Expression,
     resolver::{CrateIndex, CrateScope, Identifier, Namespace},
     support::DisplayWith,
-    typer::interpreter::{ffi::ForeignFunction, scope::ValueView},
+    typer::interpreter::{ffi::NakedForeignFunction, scope::ValueView},
 };
 
+/// Something that can be bound to an identifier.
+///
+/// The second component of a binding where a _binding_ is a pair of a binder
+/// and an entity. Where _binder_ is synonym for identifier.
+///
+/// This generalizes the notion of a "value" or an "expression" by including
+/// standard _values_ or _expressions_ defined as (in case of values: a normalized
+/// form of) something that can have _type_ (in the semantic sense) **but also**
+/// second-class things like modules, use "links", atomic data types, constructors and foreign functions.
+///
+/// Most of them are just as well expressions, as can be seen by [Entity::value] which
+/// panics on those that are not.
 #[derive(Clone)]
 pub struct Entity {
     /// Source information of the definition site.
@@ -63,6 +79,12 @@ impl Entity {
     }
 
     /// Retrieve the value of an entity
+    ///
+    /// ## Panics
+    ///
+    /// Panics if the entity can not be represented as an expression/value like modules
+    /// (because they are second-class by specification) or untyped entities which are
+    /// not ready yet.
     pub fn value(&self) -> ValueView {
         use EntityKind::*;
 
@@ -136,7 +158,7 @@ pub enum EntityKind {
     Foreign {
         type_: Expression,
         arity: usize,
-        function: ForeignFunction,
+        function: NakedForeignFunction,
     },
 }
 

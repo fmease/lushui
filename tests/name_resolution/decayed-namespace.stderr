@@ -1,0 +1,14 @@
+error[E022]: value `A_` is not a namespace
+  >>> ${DIRECTORY}/name_resolution/decayed-namespace.lushui:12:12
+   |
+12 | y: Alpha = A_.alpha
+   |            -- a value, not a namespace
+   |
+  >>> ${DIRECTORY}/name_resolution/decayed-namespace.lushui:12:15
+   |
+12 | y: Alpha = A_.alpha
+   |               ^^^^^ reference to a subdeclaration
+   |
+
+error: aborting due to previous error
+

@@ -36,15 +36,17 @@ pub mod ast;
 mod test;
 
 use crate::{
-    diagnostic::{Code, Diagnostic, Diagnostics, Result, Warn},
+    diagnostics::{Code, Diagnostic, Diagnostics, Results, Warn},
     lexer::{Token, TokenKind},
     smallvec,
     span::{SourceFile, Span, Spanning},
-    support::listing,
+    support::{ordered_listing, Conjunction},
     SmallVec,
 };
 use ast::*;
-use std::rc::Rc;
+use std::{cell::RefCell, convert::TryInto, default::default, rc::Rc};
+
+type Result<T, E = ()> = std::result::Result<T, E>;
 
 const STANDARD_DECLARATION_DELIMITERS: [Delimiter; 3] = {
     use Delimiter::*;
@@ -59,7 +61,10 @@ const STANDARD_DECLARATION_DELIMITERS: [Delimiter; 3] = {
 pub struct Parser<'a> {
     file: Rc<SourceFile>,
     tokens: &'a [Token],
+    // @Task make it a RefCell, too
     warnings: &'a mut Diagnostics,
+    errors: RefCell<Diagnostics>,
+    reflection_depth: u16,
     index: usize,
 }
 
@@ -69,6 +74,8 @@ impl<'a> Parser<'a> {
             file,
             tokens,
             warnings,
+            errors: default(),
+            reflection_depth: 0,
             index: 0,
         }
     }
@@ -80,15 +87,38 @@ impl<'a> Parser<'a> {
     // but never emitted/wasted
     // @Task "restore" old warnings state on Err, so we don't get false positive warnings
     // when looking arbitrarily far ahead
-    fn reflect<Node>(&mut self, parser: impl FnOnce(&mut Self) -> Result<Node>) -> Result<Node> {
-        let saved_index = self.index;
-        let result = parser(self);
+    fn reflect<T>(&mut self, parser: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
+        let index = self.index;
+        let result = self.manually_reflect(parser);
 
         if result.is_err() {
-            self.index = saved_index;
+            self.index = index;
         }
 
         result
+    }
+
+    fn manually_reflect<T>(&mut self, handler: impl FnOnce(&mut Self) -> T) -> T {
+        self.reflection_depth += 1;
+        let result = handler(self);
+        self.reflection_depth -= 1;
+        result
+    }
+
+    fn reflecting(&self) -> bool {
+        self.reflection_depth != 0
+    }
+
+    fn error<T, D: FnOnce() -> Diagnostic>(&self, diagnostic: D) -> Result<T> {
+        fn error<D: FnOnce() -> Diagnostic>(parser: &Parser<'_>, diagnostic: D) -> Result<!> {
+            if !parser.reflecting() {
+                parser.errors.borrow_mut().insert(diagnostic());
+            }
+
+            Err(())
+        }
+
+        error(self, diagnostic).map(|okay| okay)
     }
 
     fn expect(&self, expected: TokenKind) -> Result<Token> {
@@ -96,7 +126,7 @@ impl<'a> Parser<'a> {
         if token.kind == expected {
             Ok(token.clone())
         } else {
-            Err(Expected::Token(expected).but_actual_is(token))
+            self.error(|| Expected::Token(expected).but_actual_is(token))
         }
     }
 
@@ -105,7 +135,7 @@ impl<'a> Parser<'a> {
         if token.kind == expected {
             Ok(token.clone())
         } else {
-            Err(other_expected.added(expected).but_actual_is(token))
+            self.error(|| other_expected.added(expected).but_actual_is(token))
         }
     }
 
@@ -128,7 +158,7 @@ impl<'a> Parser<'a> {
 
     fn consume_identifier(&mut self) -> Result<Identifier> {
         self.consume(TokenKind::Identifier)
-            .map(Identifier::from_token)
+            .map(|identifier| identifier.try_into().unwrap())
     }
 
     /// A general identifier includes (alphanumeric) identifiers and punctuation.
@@ -146,13 +176,16 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Ok(identifier)
             }
-            _ => Err(expected_one_of![Identifier, Punctuation].but_actual_is(self.current_token())),
+            _ => self.error(|| {
+                expected_one_of![Identifier, Punctuation].but_actual_is(self.current_token())
+            }),
         }
     }
 
     /// Indicate whether the given token was consumed.
     ///
-    /// Conceptually equivalent to `Self::consume(..).is_ok()` but more memory-efficient.
+    /// Conceptually equivalent to `self.manually_reflect(|this| this.consume(..)).is_ok()`
+    /// but more memory-efficient as it does not clone the consumed token.
     #[must_use]
     fn has_consumed(&mut self, kind: TokenKind) -> bool {
         if self.current_token_kind() == kind {
@@ -163,7 +196,8 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Conceptually equivalent to `Self::consume(..).map(Spanning::span).ok()` but more memory-efficient.
+    /// Conceptually equivalent to `Self::consume(..).map(Spanning::span).ok()` but more memory-efficient as
+    /// it neither constructs a [crate::diagnostics::Diagnostic] nor clones the consumed token.
     fn consume_span(&mut self, kind: TokenKind) -> Option<Span> {
         if self.current_token_kind() == kind {
             let span = self.current_token_span();
@@ -178,7 +212,7 @@ impl<'a> Parser<'a> {
     ///
     /// May panic if the token is neither an identifier nor punctuation.
     fn current_token_into_identifier(&self) -> ast::Identifier {
-        ast::Identifier::from_token(self.current_token().clone())
+        self.current_token().clone().try_into().unwrap()
     }
 
     fn advance(&mut self) {
@@ -203,8 +237,7 @@ impl<'a> Parser<'a> {
         delimiters
             .iter()
             .map(|delimiter| <&TokenKind>::from(delimiter))
-            .find(|&&token| token == queried_token_kind)
-            .is_some()
+            .any(|&token| token == queried_token_kind)
     }
 
     fn succeeding_token_kind(&self) -> TokenKind {
@@ -265,12 +298,14 @@ impl<'a> Parser<'a> {
             }
             Indentation => {
                 self.advance();
-                Err(Diagnostic::bug()
-                    .with_message("attribute groups not support yet")
-                    .with_span(&span))
+                self.error(|| {
+                    Diagnostic::bug()
+                        .with_message("attribute groups not support yet")
+                        .with_primary_span(&span)
+                })
                 // self.consume(Dedentation)?;
             }
-            _ => Err(Expected::Declaration.but_actual_is(self.current_token())),
+            _ => self.error(|| Expected::Declaration.but_actual_is(self.current_token())),
         }
     }
 
@@ -353,12 +388,15 @@ impl<'a> Parser<'a> {
                     arguments.push(self.parse_attribute_argument()?);
                 }
 
-                span.merging(self.consume(ClosingRoundBracket)?);
+                // @Note constructs and wastes a diagnostic
+                span.merging(self.consume(ClosingRoundBracket).unwrap());
             }
             _ => {
-                return Err(expected_one_of![Identifier, OpeningRoundBracket]
-                    .but_actual_is(self.current_token())
-                    .with_note("`@` introduces attributes"));
+                return self.error(|| {
+                    expected_one_of![Identifier, OpeningRoundBracket]
+                        .but_actual_is(self.current_token())
+                        .with_note("`@` introduces attributes")
+                });
             }
         }
 
@@ -392,7 +430,10 @@ impl<'a> Parser<'a> {
             TextLiteral => {
                 let token = self.current_token().clone();
                 let span = token.span;
-                let text_literal = token.text_literal().unwrap()?;
+                let text_literal = token
+                    .text_literal()
+                    .unwrap()
+                    .or_else(|error| self.error(|| error))?;
 
                 self.advance();
                 attrarg! { TextLiteral(span; text_literal) }
@@ -405,7 +446,10 @@ impl<'a> Parser<'a> {
                 span.merging(&self.consume(ClosingRoundBracket)?);
                 attrarg! { Named(span; NamedAttributeArgument { binder, value }) }
             }
-            _ => return Err(Expected::AttributeArgument.but_actual_is(self.current_token())),
+            _ => {
+                return self
+                    .error(|| Expected::AttributeArgument.but_actual_is(self.current_token()))
+            }
         })
     }
 
@@ -485,8 +529,8 @@ impl<'a> Parser<'a> {
 
                 let mut constructors = Vec::new();
 
-                self.parse_indented(|parser| {
-                    constructors.push(parser.parse_constructor()?);
+                self.parse_indented(|this| {
+                    constructors.push(this.parse_constructor()?);
                     Ok(())
                 })?;
 
@@ -499,12 +543,10 @@ impl<'a> Parser<'a> {
                 None
             }
             _ => {
-                return Err(expected_one_of![
-                    Delimiter::DefinitionPrefix,
-                    LineBreak,
-                    Expected::Expression
-                ]
-                .but_actual_is(self.current_token()));
+                return self.error(|| {
+                    expected_one_of![Delimiter::DefinitionPrefix, LineBreak, Expected::Expression]
+                        .but_actual_is(self.current_token())
+                });
             }
         };
 
@@ -570,14 +612,16 @@ impl<'a> Parser<'a> {
                 self.consume(LineBreak)?;
             }
             _ => {
-                return Err(expected_one_of![LineBreak, Equals].but_actual_is(self.current_token()))
+                return self.error(|| {
+                    expected_one_of![LineBreak, Equals].but_actual_is(self.current_token())
+                })
             }
         };
 
         let mut declarations = Vec::new();
 
-        self.parse_indented(|parser| {
-            declarations.push(parser.parse_declaration()?);
+        self.parse_indented(|this| {
+            declarations.push(this.parse_declaration()?);
             Ok(())
         })?;
 
@@ -593,6 +637,13 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// Parse a file module.
+    ///
+    /// It takes the identifier of the module as an argument.
+    pub fn parse(&mut self, binder: Identifier) -> Results<Declaration> {
+        self.parse_top_level(binder).map_err(|_| self.errors.take())
+    }
+
     /// Parse the "top level" aka the body of a module file.
     ///
     /// It takes the identifier of the module as an argument.
@@ -602,7 +653,7 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Top-Level ::= (Line-Break | Declaration)* #End-Of-Input
     /// ```
-    pub fn parse_top_level(&mut self, binder: Identifier) -> Result<Declaration> {
+    fn parse_top_level(&mut self, binder: Identifier) -> Result<Declaration> {
         use TokenKind::*;
 
         let mut declarations = Vec::new();
@@ -657,14 +708,14 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```ebnf
-    /// Use-Declaration ::= "use" Path-Tree Line-Break
+    /// Use-Declaration ::= "use" Use-Path-Tree Line-Break
     /// ```
     fn finish_parse_use_declaration(
         &mut self,
         keyword_span: Span,
         attributes: Attributes,
     ) -> Result<Declaration> {
-        let bindings = self.parse_path_tree(&[TokenKind::LineBreak.into()])?;
+        let bindings = self.parse_use_path_tree(&[TokenKind::LineBreak.into()])?;
         self.consume(TokenKind::LineBreak)?;
 
         Ok(decl! {
@@ -676,16 +727,19 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// Parse a path tree.
+    /// Parse a use path tree.
     ///
     /// ## Grammar
     ///
     /// ```ebnf
-    /// Path-Tree ::= Path | Path "." "(" (Path-Tree | "(" Renaming ")")* ")" | Renaming
+    /// Use-Path-Tree ::=
+    ///     | Path
+    ///     | Path "." "(" (Use-Path-Tree | "(" Renaming ")")* ")"
+    ///     | Renaming
     /// Renaming ::= Path "as" General-Identifier
     /// ```
     // @Task rewrite this following a simpler grammar mirroring expression applications
-    fn parse_path_tree(&mut self, delimiters: &[Delimiter]) -> Result<PathTree> {
+    fn parse_use_path_tree(&mut self, delimiters: &[Delimiter]) -> Result<UsePathTree> {
         use TokenKind::*;
 
         let mut path = self.parse_first_path_segment()?;
@@ -698,40 +752,56 @@ impl<'a> Parser<'a> {
                     path.segments.push(identifier);
                 }
                 OpeningRoundBracket => {
+                    let mut span = self.current_token_span();
                     self.advance();
 
                     let mut bindings = Vec::new();
 
-                    while !self.has_consumed(ClosingRoundBracket) {
-                        if self.has_consumed(OpeningRoundBracket) {
+                    while self.current_token_kind() != ClosingRoundBracket {
+                        if let Ok(bracket) =
+                            self.manually_reflect(|this| this.consume(OpeningRoundBracket))
+                        {
+                            let mut span = bracket.span;
+
                             let target = self.parse_path()?;
                             self.consume(As)?;
                             let binder = self.consume_general_identifier()?;
-                            self.consume(ClosingRoundBracket)?;
+                            span.merging(&self.consume(ClosingRoundBracket)?);
 
-                            bindings.push(PathTree::Single {
-                                target,
-                                binder: Some(binder),
-                            });
+                            bindings.push(UsePathTree::new(
+                                span,
+                                PathTreeKind::Single {
+                                    target,
+                                    binder: Some(binder),
+                                },
+                            ));
                         } else {
                             // @Note @Bug this is really really fragile=non-extensible!
-                            bindings.push(self.parse_path_tree(&[
+                            bindings.push(self.parse_use_path_tree(&[
                                 OpeningRoundBracket.into(),
                                 ClosingRoundBracket.into(),
                                 Identifier.into(),
                                 Punctuation.into(),
                                 Self_.into(),
+                                Super.into(),
+                                Crate.into(),
                             ])?);
                         }
                     }
 
-                    return Ok(PathTree::Multiple { path, bindings });
+                    // @Note constructs and wastes a diagnostic
+                    span.merging(&self.consume(ClosingRoundBracket).unwrap());
+
+                    return Ok(UsePathTree::new(
+                        path.span().merge(&span),
+                        PathTreeKind::Multiple { path, bindings },
+                    ));
                 }
                 _ => {
-                    return Err(
+                    return self.error(|| {
                         expected_one_of![Identifier, Punctuation, OpeningRoundBracket]
-                            .but_actual_is(self.current_token()),
-                    )
+                            .but_actual_is(self.current_token())
+                    })
                 }
             }
         }
@@ -744,15 +814,19 @@ impl<'a> Parser<'a> {
             self.current_token();
             Some(self.consume_general_identifier()?)
         } else {
-            return Err(delimiters_with_expected(delimiters, Some(As.into()))
-                .but_actual_is(self.current_token()));
+            return self.error(|| {
+                delimiters_with_expected(delimiters, Some(As.into()))
+                    .but_actual_is(self.current_token())
+            });
         };
 
-        // @Task correct span info
-        Ok(PathTree::Single {
-            target: path,
-            binder,
-        })
+        Ok(UsePathTree::new(
+            path.span().merge(&binder),
+            PathTreeKind::Single {
+                target: path,
+                binder,
+            },
+        ))
     }
 
     /// Parse a (value) constructor.
@@ -828,19 +902,18 @@ impl<'a> Parser<'a> {
         use TokenKind::*;
         let mut span = Span::SHAM;
 
-        // @Note we can actually get rid of reflect by carefully transforming it!
         let (explicitness, fieldness, binder, domain) = self
-            .reflect(|parser| {
-                span = parser.consume(OpeningRoundBracket)?.span;
+            .reflect(|this| {
+                span = this.consume(OpeningRoundBracket)?.span;
 
-                let explicitness = parser.consume_explicitness_symbol();
-                let fieldness = parser.consume_span(Field);
-                let binder = parser.consume_identifier()?;
+                let explicitness = this.consume_explicitness_symbol();
+                let fieldness = this.consume_span(Field);
+                let binder = this.consume_identifier()?;
                 // @Question maybe .map_err(|error| error.fatal()) to mark this one fatal
                 // (in respect to error reflecting)
-                let parameter = parser.parse_type_annotation(ClosingRoundBracket.into())?;
+                let parameter = this.parse_type_annotation(ClosingRoundBracket.into())?;
 
-                parser.consume(ClosingRoundBracket)?;
+                span.merging(&this.consume(ClosingRoundBracket)?);
 
                 Ok((explicitness, fieldness, Some(binder), parameter))
             })
@@ -850,26 +923,31 @@ impl<'a> Parser<'a> {
                 Ok((Explicit, None, None, parameter))
             })?;
 
-        // @Task restructure to test for binder.is_none() && !self.consumed(ThinArrowRight)
-        Ok(match self.consume(ThinArrowRight) {
-            Ok(_) => {
-                let codomain = span.merging(self.parse_pi_type_literal_or_lower()?);
+        if self.current_token_kind() == ThinArrowRight {
+            self.advance();
 
-                expr! {
-                    PiTypeLiteral {
-                        Attributes::new(),
-                        span;
-                        codomain,
-                        binder,
-                        domain,
-                        explicitness,
-                        fieldness,
-                    }
+            let codomain = span.merging(self.parse_pi_type_literal_or_lower()?);
+
+            Ok(expr! {
+                PiTypeLiteral {
+                    Attributes::new(),
+                    span;
+                    codomain,
+                    binder,
+                    domain,
+                    explicitness,
+                    fieldness,
                 }
-            }
-            Err(_) if binder.is_none() => domain,
-            Err(error) => return Err(error),
-        })
+            })
+        } else if binder.is_none() {
+            Ok(domain)
+        } else {
+            self.error(|| {
+                Expected::Token(ThinArrowRight)
+                    .but_actual_is(self.current_token())
+                    .with_labeled_secondary_span(&span, "the start of a pi type literal")
+            })
+        }
     }
 
     /// Parse an application or a lower expression.
@@ -939,7 +1017,10 @@ impl<'a> Parser<'a> {
                 self.advance();
 
                 let span = token.span;
-                let text_literal = token.text_literal().unwrap()?;
+                let text_literal = token
+                    .text_literal()
+                    .unwrap()
+                    .or_else(|error| self.error(|| error))?;
 
                 Ok(expr! { TextLiteral(attributes, span; text_literal) })
             }
@@ -993,7 +1074,7 @@ impl<'a> Parser<'a> {
 
                 Ok(expression)
             }
-            _ => Err(Expected::Expression.but_actual_is(self.current_token())),
+            _ => self.error(|| Expected::Expression.but_actual_is(self.current_token())),
         }
     }
 
@@ -1020,9 +1101,9 @@ impl<'a> Parser<'a> {
     fn parse_first_path_segment(&mut self) -> Result<Path> {
         use TokenKind::*;
         let path = match self.current_token_kind() {
-            Identifier | Punctuation => Path::identifier(self.current_token().clone()),
+            Identifier | Punctuation => Path::try_from_token(self.current_token().clone()).unwrap(),
             Crate | Super | Self_ => Path::hanger(self.current_token().clone()),
-            _ => return Err(Expected::Path.but_actual_is(self.current_token())),
+            _ => return self.error(|| Expected::Path.but_actual_is(self.current_token())),
         };
         self.advance();
         Ok(path)
@@ -1105,14 +1186,14 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```ebnf
-    /// Use-In ::= "use" Path-Tree "in" Line-Break? Expression
+    /// Use-In ::= "use" Use-Path-Tree "in" Line-Break? Expression
     /// ```
     fn finish_parse_use_in(
         &mut self,
         span_of_use: Span,
         attributes: Attributes,
     ) -> Result<Expression> {
-        let bindings = self.parse_path_tree(&[TokenKind::In.into()])?;
+        let bindings = self.parse_use_path_tree(&[TokenKind::In.into()])?;
         self.consume(TokenKind::In)?;
         let _ = self.has_consumed(TokenKind::LineBreak);
         let scope = self.parse_expression()?;
@@ -1233,7 +1314,7 @@ impl<'a> Parser<'a> {
                 }
                 Use => {
                     self.advance();
-                    let bindings = self.parse_path_tree(&[TokenKind::LineBreak.into()])?;
+                    let bindings = self.parse_use_path_tree(&[TokenKind::LineBreak.into()])?;
                     self.consume(LineBreak)?;
                     Statement::Use(ast::Use { bindings })
                 }
@@ -1349,12 +1430,10 @@ impl<'a> Parser<'a> {
                 })
             }
 
-            _ => {
-                return Err(
-                    delimiters_with_expected(delimiters, Some(Expected::Parameter))
-                        .but_actual_is(self.current_token()),
-                );
-            }
+            _ => self.error(|| {
+                delimiters_with_expected(delimiters, Some(Expected::Parameter))
+                    .but_actual_is(self.current_token())
+            }),
         }
     }
 
@@ -1374,25 +1453,26 @@ impl<'a> Parser<'a> {
     /// Parse a (de)application or something lower.
     fn parse_application_like_or_lower<EP: ExpressionOrPattern>(&mut self) -> Result<EP> {
         use TokenKind::*;
-        let mut callee = self.reflect(EP::parse_lower)?;
+        let mut callee = EP::parse_lower(self)?;
 
         while let Ok((argument, explicitness, binder)) = self
-            .reflect(|parser| Ok((EP::parse_lower(parser)?, Explicit, None)))
-            // @Question shouldn't this closure be reflected, too?
+            .reflect(|this| Ok((EP::parse_lower(this)?, Explicit, None)))
             .or_else(|_| -> Result<_> {
-                self.consume(OpeningRoundBracket)?;
-                let explicitness = self.consume_explicitness_symbol();
-                let binder = (self.current_token_kind() == Identifier
-                    && self.succeeding_token_kind() == Equals)
-                    .then(|| {
-                        let binder = self.current_token_into_identifier();
-                        self.advance();
-                        self.advance();
-                        binder
-                    });
-                let argument = EP::parse_lower(self)?;
-                self.consume(ClosingRoundBracket)?;
-                Ok((argument, explicitness, binder))
+                self.reflect(|this| {
+                    this.consume(OpeningRoundBracket)?;
+                    let explicitness = this.consume_explicitness_symbol();
+                    let binder = (this.current_token_kind() == Identifier
+                        && this.succeeding_token_kind() == Equals)
+                        .then(|| {
+                            let binder = this.current_token_into_identifier();
+                            this.advance();
+                            this.advance();
+                            binder
+                        });
+                    let argument = EP::parse_lower(this)?;
+                    this.consume(ClosingRoundBracket)?;
+                    Ok((argument, explicitness, binder))
+                })
             })
         {
             let span = callee.span().merge(&argument);
@@ -1439,7 +1519,10 @@ impl<'a> Parser<'a> {
                 let token = self.current_token().clone();
                 self.advance();
                 let span = token.span;
-                let text_literal = token.text_literal().unwrap()?;
+                let text_literal = token
+                    .text_literal()
+                    .unwrap()
+                    .or_else(|error| self.error(|| error))?;
 
                 Ok(pat! { TextLiteral(attributes, span; text_literal) })
             }
@@ -1465,12 +1548,12 @@ impl<'a> Parser<'a> {
             OpeningRoundBracket => {
                 self.advance();
                 let mut pattern = self.parse_pattern()?;
-                span.merging(self.consume(TokenKind::ClosingRoundBracket)?);
+                span.merging(self.consume(ClosingRoundBracket)?);
                 pattern.span = span;
                 pattern.attributes.extend(attributes);
                 Ok(pattern)
             }
-            _ => Err(Expected::Pattern.but_actual_is(self.current_token())),
+            _ => self.error(|| Expected::Pattern.but_actual_is(self.current_token())),
         }
     }
 
@@ -1579,19 +1662,21 @@ impl<'a> Parser<'a> {
     /// Explicitness ::= ","?
     /// ```
     fn consume_explicitness_symbol(&mut self) -> Explicitness {
-        if let Ok(token) = self.consume(TokenKind::Comma) {
-            // @Note there might be false positives (through arbitrary look-ahead)
-            // (current issue of Self::reflect)
-            self.warn(
-                Diagnostic::warning()
-                    .with_code(Code::W001)
-                    .with_message("implicitness markers are currently ignored")
-                    .with_span(&token),
-            );
-            Implicit
-        } else {
-            Explicit
-        }
+        self.manually_reflect(|this| {
+            if let Ok(token) = this.consume(TokenKind::Comma) {
+                // @Note there might be false positives (through arbitrary look-ahead)
+                // (current issue of Self::reflect)
+                this.warn(
+                    Diagnostic::warning()
+                        .with_code(Code::W001)
+                        .with_message("implicitness markers are currently ignored")
+                        .with_primary_span(&token),
+                );
+                Implicit
+            } else {
+                Explicit
+            }
+        })
     }
 }
 
@@ -1706,7 +1791,7 @@ impl Expected {
                 },
                 self
             ))
-            .with_span(actual)
+            .with_labeled_primary_span(actual, "unexpected token")
     }
 }
 
@@ -1737,7 +1822,7 @@ impl fmt::Display for Expected {
             Parameter => write!(f, "parameter"),
             AttributeArgument => write!(f, "attribute argument"),
             Delimiter(delimiter) => write!(f, "{}", delimiter),
-            OneOf(expected) => write!(f, "{}", listing(expected.iter(), "or")),
+            OneOf(expected) => write!(f, "{}", ordered_listing(expected.iter(), Conjunction::Or)),
         }
     }
 }

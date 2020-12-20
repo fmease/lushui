@@ -1,0 +1,5 @@
+;; TEST fail check
+
+blank: Declaration
+
+data Blank

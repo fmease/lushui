@@ -10,17 +10,18 @@ not (b: Bool): Bool =
         false => true
         true => false
 
-use super.unit.(Unit unit)
+use super.unit.(Unit force)
 use super.constant
 
 ;; @Temporary until laziness API
 if (A: Type) (condition: Bool) (consequent alternate: Unit -> A): A =
     case condition of
-        false => alternate unit
-        true => consequent unit
+        false => force A alternate
+        true => force A consequent
 
 ;; @Temporary until laziness API
 and (b: Bool) (c: Unit -> Bool): Bool = if Bool b c (constant Bool Unit false)
 
 ;; @Temporary until laziness API
 or (b: Bool) (c: Unit -> Bool): Bool = if Bool b (constant Bool Unit true) c
+

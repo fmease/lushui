@@ -1,0 +1,4 @@
+;; TEST fail check
+
+@foreign @inherent
+data Typ: const Type @Int @Int32 (@Nat 12)

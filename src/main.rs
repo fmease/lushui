@@ -1,7 +1,7 @@
 #![forbid(rust_2018_idioms, unused_must_use)]
 
 use lushui::{
-    diagnostic::{Diagnostic, Diagnostics, Results},
+    diagnostics::{Diagnostic, Diagnostics, Results},
     documenter::Documenter,
     lexer::Lexer,
     lowerer::Lowerer,
@@ -29,6 +29,7 @@ const VERSION: &str = concat!(
 );
 
 // @Beacon @Task rewrite the argument parsing logic to be less DRY
+// and also move it to a file module
 
 #[derive(StructOpt)]
 #[structopt(version = VERSION, author, about)]
@@ -264,9 +265,8 @@ fn main() {
             return Ok(());
         }
 
-        let declaration = Parser::new(source_file, &tokens, &mut warnings)
-            .parse_top_level(crate_name.clone())
-            .many_err()?;
+        let declaration =
+            Parser::new(source_file, &tokens, &mut warnings).parse(crate_name.clone())?;
         if merged_arguments.print_ast {
             eprintln!("{:#?}", declaration);
         }
@@ -334,8 +334,7 @@ fn main() {
                 }
             }
             Command::Highlight { .. } => {
-                return Err(Diagnostic::error().with_message("operation not supported yet"))
-                    .many_err()
+                return Err(Diagnostic::unimplemented("operation")).many_err()
             }
             Command::Document { .. } => {
                 // @Task error handling
@@ -350,8 +349,7 @@ fn main() {
     })();
 
     if !warnings.is_empty() {
-        let amount = warnings.len();
-        emit_diagnostics(warnings, &mut map, arguments.sort_diagnostics);
+        let amount = emit_diagnostics(warnings, &mut map, arguments.sort_diagnostics);
 
         const MINIMUM_AMOUNT_WARNINGS_FOR_SUMMARY: usize = 0;
 
@@ -363,19 +361,18 @@ fn main() {
                     amount,
                     s_pluralize!(amount, "warning")
                 ))
-                .emit(Some(&map));
+                .emit_to_stderr(Some(&map));
         }
     }
 
     if let Err(errors) = result {
-        let amount = errors.len();
-        emit_diagnostics(errors, &mut map, arguments.sort_diagnostics);
+        let amount = emit_diagnostics(errors, &mut map, arguments.sort_diagnostics);
 
         Diagnostic::error()
             .with_message(pluralize(amount, "aborting due to previous error", || {
                 format!("aborting due to {} previous errors", amount)
             }))
-            .emit(Some(&map));
+            .emit_to_stderr(Some(&map));
 
         // @Task instead of this using this function, return a std::process::ExitCode
         // from main once stable again. I am not sure but it could be that right now,
@@ -384,19 +381,22 @@ fn main() {
     }
 }
 
-// @Task
-fn emit_diagnostics(diagnostics: Diagnostics, map: &mut SourceMap, sort: bool) {
+fn emit_diagnostics(diagnostics: Diagnostics, map: &mut SourceMap, sort: bool) -> usize {
     if sort {
         let mut diagnostics: Vec<_> = diagnostics.into_iter().collect();
-        diagnostics.sort_by_key(|error| error.spans());
+        diagnostics.sort_by_key(|error| error.sorted_spans());
 
-        for diagnostic in diagnostics {
-            diagnostic.emit(Some(&map));
-        }
+        diagnostics
+            .into_iter()
+            .map(|diagnostic| diagnostic.emit_to_stderr(Some(&map)))
+            .filter(|&emitted| emitted)
+            .count()
     } else {
-        for diagnostic in diagnostics {
-            diagnostic.emit(Some(&map));
-        }
+        diagnostics
+            .into_iter()
+            .map(|diagnostic| diagnostic.emit_to_stderr(Some(&map)))
+            .filter(|&emitted| emitted)
+            .count()
     }
 }
 
@@ -415,6 +415,6 @@ fn set_panic_hook() {
             message += &format!(" at {}", location);
         }
 
-        Diagnostic::bug().with_message(message).emit(None);
+        Diagnostic::bug().with_message(message).emit_to_stderr(None);
     }));
 }

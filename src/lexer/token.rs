@@ -1,5 +1,5 @@
 use crate::{
-    diagnostic::{Code, Diagnostic, Result},
+    diagnostics::{Code, Diagnostic, Result},
     span::{Span, Spanning},
     Atom,
 };
@@ -52,11 +52,10 @@ impl Token {
         Self::with_data(Illegal, TokenData::Illegal(character), span)
     }
 
-    /// Unwrap the data of an [Identifier]. Panics if it isn't one.
-    pub fn identifier(self) -> Atom {
+    pub fn identifier(self) -> Option<Atom> {
         match self.data {
-            TokenData::Identifier(atom) => atom,
-            _ => unreachable!("{:?}", self.data),
+            TokenData::Identifier(atom) => Some(atom),
+            _ => None,
         }
     }
 
@@ -79,7 +78,7 @@ impl Token {
                 Err(Diagnostic::error()
                     .with_code(Code::E004)
                     .with_message("unterminated text literal")
-                    .with_span(&self.span))
+                    .with_primary_span(&self.span))
             }),
             _ => None,
         }

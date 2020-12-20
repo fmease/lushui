@@ -1,4 +1,6 @@
 ;; TEST ignore
+;; small program which I used to start developing the code generator – what I should continue on doing
+;; – after finally implementing the bidirectional type checker with implicit arguments, sigh!
 
 @foreign
 data Nat32: Type
@@ -9,4 +11,4 @@ identity (a: Nat32): Nat32 = a
 
 identity2 (x: Nat32): Nat32 = second x x
 
-main: Nat32 = identity (identity (second (second 6666_N32 23_N32) (second 1_N32 (identity2 100_N32))))
+main: Nat32 = identity (identity (second (second @Nat32 6666 @Nat32 23) (second @Nat32 1 (identity2 @Nat32 100))))

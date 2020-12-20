@@ -1,12 +1,16 @@
-use crate::diagnostic::{Diagnostic, Result};
-use std::{convert::TryInto, fmt, ops::RangeInclusive, path::PathBuf, rc::Rc};
+//! Data structures and procedures for handling source locations.
+
+use crate::diagnostics::{Diagnostic, Result};
+use std::{convert::TryInto, fmt, mem::size_of, ops::RangeInclusive, path::PathBuf, rc::Rc};
 use unicode_width::UnicodeWidthStr;
 
 // @Beacon @Task The API of [Span], [LocalSpan], [ByteIndex], [LocalByteIndex] is
 // utter trash!! ugly, inconvenient, confusing, unsafe (trying to prevent overflow
 // panics but they still gonna happen!)
 
-/// Global byte index.
+/// A global byte index.
+///
+/// Here, "global" means local relative to a [source map](SourceMap).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct ByteIndex(u32);
 
@@ -15,7 +19,7 @@ impl ByteIndex {
         Self(index)
     }
 
-    /// Map local byte index to global global one.
+    /// Map a local byte index to global global one.
     ///
     /// ## Panics
     ///
@@ -31,7 +35,10 @@ impl ByteIndex {
     }
 }
 
-/// File-local byte index.
+/// A file-local byte index.
+///
+/// It _does not_ store information about the file. Hence, it is not
+/// [global](ByteIndex).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub struct LocalByteIndex(u32);
 
@@ -40,7 +47,7 @@ impl LocalByteIndex {
         Self(index)
     }
 
-    /// Create new file-local byte index.
+    /// Create a new file-local byte index.
     ///
     /// ## Panics
     ///
@@ -123,7 +130,11 @@ impl<K: fmt::Display> fmt::Display for Spanned<K> {
     }
 }
 
-/// Global byte span of source code.
+const _: () = assert!(size_of::<Span>() == 8);
+// const _: () = assert!(size_of::<Option<Span>>() == 8); // @Task
+
+/// A global byte span of source code.
+// @Task re-model with Option and NonZeroU32
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Span {
     pub start: ByteIndex,
@@ -131,7 +142,10 @@ pub struct Span {
 }
 
 impl Span {
-    /// Invalid span used for expressions etc. without a source location.
+    /// Invalid span used for things without a source location.
+    ///
+    /// … but where the API requires it.
+    // @Task remove and replace with None once we change the whole code base
     pub const SHAM: Self = Self {
         start: ByteIndex::new(0),
         end: ByteIndex::new(0),
@@ -280,7 +294,10 @@ where
     }
 }
 
-/// Span inside a single source file.
+/// A span inside a single source file.
+///
+/// This _does not_ include information about the file. Thus, it is not
+/// [global](Span).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct LocalSpan {
     pub start: LocalByteIndex,
@@ -326,6 +343,10 @@ impl Sub<LocalByteIndex> for LocalSpan {
 
 pub const START_OF_FIRST_SOURCE_FILE: ByteIndex = ByteIndex::new(1);
 
+/// A mapping from an index or offset to source files.
+///
+/// Most prominently, the offset is used to define [Span]s.
+// @Task use indices to enable unloading source file when they are not needed
 #[derive(Default)]
 pub struct SourceMap {
     files: Vec<Rc<SourceFile>>,
@@ -531,6 +552,8 @@ pub struct LineInformation<'a> {
     pub highlight_start_column: usize,
 }
 
+/// A file, its contents and [its span](SourceMap).
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct SourceFile {
     pub path: PathBuf,
     content: String,
@@ -538,6 +561,10 @@ pub struct SourceFile {
 }
 
 impl SourceFile {
+    /// A fake source file.
+    ///
+    /// "Fake" in the sense that is does not actually correspond to a
+    /// file in the file system of the user.
     pub(crate) fn fake(source: String) -> Self {
         Self::new(PathBuf::new(), source, START_OF_FIRST_SOURCE_FILE)
             .ok()

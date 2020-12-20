@@ -123,6 +123,7 @@ dependencies = [
  "once_cell",
  "rustc-hash",
  "smallvec",
+ "static_assertions",
  "string_cache",
  "strsim 0.10.0",
  "structopt",
@@ -277,6 +278,12 @@ name = "smallvec"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fbee7696b84bbf3d89a1c2eccff0850e3047ed46bfcd2e92c29a2d074d57e252"
+
+[[package]]
+name = "static_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "string_cache"

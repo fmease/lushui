@@ -1,0 +1,26 @@
+error[E025]: `use` of bare `super` and `crate`
+ >>> ${DIRECTORY}/name_resolution/bare-use-super-or-crate.lushui:5:1
+  |
+5 | use super
+  | ^^^^^^^^^ 
+  |
+ help: add a name to it with `as`
+
+error[E025]: `use` of bare `super` and `crate`
+ >>> ${DIRECTORY}/name_resolution/bare-use-super-or-crate.lushui:6:1
+  |
+6 | use crate
+  | ^^^^^^^^^ 
+  |
+ help: add a name to it with `as`
+
+error[E025]: `use` of bare `super` and `crate`
+ >>> ${DIRECTORY}/name_resolution/bare-use-super-or-crate.lushui:9:1
+  |
+9 | use crate.(self hello)
+  | ^^^^^^^^^^^^^^^^^^^^^^ 
+  |
+ help: add a name to it with `as`
+
+error: aborting due to 3 previous errors
+

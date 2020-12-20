@@ -1,17 +1,32 @@
-// @Task module-level documentation
+//! Scope data structures used for name resolution.
+//!
+//! There are two types of scopes:
+//!
+//! * [CrateScope] for module-level bindings (may be out of order and recursive)
+//!   i.e. bindings defined by declarations in modules, data types and constructors
+//! * [FunctionScope] for bindings defined inside of expressions or functions (order matters)
+//!   like parameters, let/in binders and case analysis binders
+//!
+//! The most important functions are [FunctionScope::resolve_binding] and [CrateScope::resolve_path]
+//! (used by `resolve_binding`).
+//!
+//! The equivalent in the type checker is [crate::typer::interpreter::scope].
 
 use crate::{
     ast::{self, Path},
-    diagnostic::{Code, Diagnostic, Result, Results},
+    diagnostics::{Code, Diagnostic, Diagnostics, Result, Results},
     entity::{Entity, EntityKind},
+    smallvec,
     span::{Span, Spanning},
-    support::{DebugIsDisplay, DisplayWith, ManyErrExt},
+    support::{
+        unordered_listing, AsDebug, AsDisplay, Conjunction, DisplayWith, ManyErrExt, QuoteExt,
+    },
     typer::interpreter::{ffi, scope::Registration},
-    HashMap,
+    HashMap, HashSet, SmallVec,
 };
 use indexed_vec::IndexVec;
 use joinery::JoinableIterator;
-use std::fmt;
+use std::{fmt, iter::once};
 
 type Bindings = IndexVec<CrateIndex, Entity>;
 
@@ -23,21 +38,27 @@ pub struct CrateScope {
     pub(crate) program_entry: Option<Identifier>,
     /// All bindings inside of a crate.
     ///
-    /// The first element will always be the root module.
+    /// The first element must always be the root module.
     pub(crate) bindings: Bindings,
     /// For resolving out of order use declarations.
     unresolved_uses: HashMap<CrateIndex, UnresolvedUse>,
+    /// Used for grouping circular bindings in diagnostics
+    // @Question can we smh unify this with `unresolved_uses`?
+    unresolved_uses_grouped: Vec<HashSet<CrateIndex>>,
+    /// For error reporting.
+    pub(super) duplicate_definitions: HashMap<CrateIndex, DuplicateDefinition>,
     // @Note ugly types!
-    pub foreign_types: HashMap<&'static str, Option<Identifier>>,
-    pub foreign_bindings: HashMap<&'static str, (usize, ffi::ForeignFunction)>,
-    pub inherent_values: ffi::InherentValueMap,
-    pub inherent_types: ffi::InherentTypeMap,
-    pub runners: IndexVec<ffi::IOIndex, ffi::IORunner>,
+    pub(crate) foreign_types: HashMap<&'static str, Option<Identifier>>,
+    pub(crate) foreign_bindings: HashMap<&'static str, ffi::ForeignFunction>,
+    pub(crate) inherent_values: ffi::InherentValueMap,
+    pub(crate) inherent_types: ffi::InherentTypeMap,
+    pub(crate) _runners: IndexVec<ffi::IOIndex, ffi::IORunner>,
     // @Note this is very coarse-grained: as soon as we cannot resolve EITHER type annotation (for example)
     // OR actual value(s), we bail out and add this here. This might be too conversative (leading to more
     // "circular type" errors or whatever), we can just discriminate by creating sth like
     // UnresolvedThingy/WorlistItem { index: CrateIndex, expression: TypeAnnotation|Value|Both|... }
-    pub out_of_order_bindings: Vec<Registration>,
+    // for the typer only!
+    pub(crate) out_of_order_bindings: Vec<Registration>,
 }
 
 impl CrateScope {
@@ -50,9 +71,10 @@ impl CrateScope {
         CrateIndex(0)
     }
 
-    // @Task return Cow
-    // @Task handle non-alphanums
-    // @Note this prepends `crate`
+    /// Build a textual representation of the absolute path of a binding.
+    ///
+    /// This procedure always prepends `crate.` to every path.
+    // @Task handle punctuation segments correctly!
     pub fn absolute_path(&self, index: CrateIndex) -> String {
         let entity = &self.bindings[index];
         if let Some(parent) = entity.parent {
@@ -61,43 +83,41 @@ impl CrateScope {
             parent += entity.source.as_str();
             parent
         } else {
-            String::from("crate")
+            "crate".into()
         }
     }
 
     /// Register a binding to a given entity.
     ///
-    /// Apart from actually registering, mainly checks for name duplication.
+    /// Apart from actually registering, it mainly checks for name duplication.
+    // @Note the way we handle errors here is a mess but it takes time and understanding
+    // to design a better API meeting all/most of our requirements!
     pub(super) fn register_binding(
         &mut self,
         binder: ast::Identifier,
         binding: EntityKind,
         namespace: Option<CrateIndex>,
-    ) -> Result<CrateIndex> {
-        // @Beacon @Task emit N error messages if there are N binders with the same name (multiple declarations, same name)
-        // and not N-1 as we currently do. this is the new design where for conflicting things, we emit a diagnostic each
-        // where one time, the span is primary and all other times, it is secondary (this has already been implemented with
-        // mututally exclusive attributes)
-        // @Update @Task also print other duplicate/conflicting bindings with secondary role (not just the very first
-        // binding)
-
+    ) -> Result<CrateIndex, RegistrationError> {
         if let Some(namespace) = namespace {
-            if let Some(previous) = self.bindings[namespace]
+            if let Some(&index) = self.bindings[namespace]
                 .namespace()
                 .unwrap()
                 .bindings
                 .iter()
-                .map(|&index| &self.bindings[index])
-                .find(|binding| binding.source == binder)
+                .find(|&&index| self.bindings[index].source == binder)
             {
-                return Err(Diagnostic::error()
-                    .with_code(Code::E020)
-                    .with_message(format!(
-                        "`{}` is defined multiple times in this scope",
-                        binder
-                    ))
-                    .with_labeled_span(&binder, "redefinition")
-                    .with_labeled_span(&previous.source, "previous definition"));
+                let previous = &self.bindings[index].source;
+
+                self.duplicate_definitions
+                    .entry(index)
+                    .or_insert(DuplicateDefinition {
+                        binder: previous.to_string(),
+                        occurrences: smallvec![previous.span],
+                    })
+                    .occurrences
+                    .push(binder.span);
+
+                return Err(RegistrationError::DuplicateDefinition);
             }
         }
 
@@ -131,13 +151,13 @@ impl CrateScope {
         debug_assert!(previous.is_none());
     }
 
-    /// Resolves a syntactic path given a namespace.
+    /// Resolve a syntactic path given a namespace.
     fn resolve_path<Target: ResolutionTarget>(
         &self,
         path: &Path,
         namespace: CrateIndex,
         inquirer: Inquirer,
-    ) -> Result<Target::Output, Error> {
+    ) -> Result<Target::Output, ResolutionError> {
         use ast::HangerKind::*;
 
         if let Some(hanger) = &path.hanger {
@@ -176,28 +196,29 @@ impl CrateScope {
             Diagnostic::error()
                 .with_code(Code::E021)
                 .with_message("the crate root does not have a parent")
-                .with_span(hanger)
+                .with_primary_span(hanger)
         })
     }
 
+    /// Resolve the first identifier segment of a path.
     fn resolve_first_segment(
         &self,
         identifier: &ast::Identifier,
         namespace: CrateIndex,
         inquirer: Inquirer,
-    ) -> Result<CrateIndex, Error> {
+    ) -> Result<CrateIndex, ResolutionError> {
         self.bindings[namespace]
             .namespace()
             .unwrap()
             .bindings
             .iter()
             .find(|&&index| &self.bindings[index].source == identifier)
-            .ok_or_else(|| Error::UnresolvedBinding {
+            .ok_or_else(|| ResolutionError::UnresolvedBinding {
                 identifier: identifier.clone(),
                 namespace,
                 inquirer,
             })
-            .and_then(|&index| self.resolve_use(index))
+            .and_then(|&index| self.collapse_use_chains(index))
     }
 
     fn find_similarly_named(&self, identifier: &str, namespace: &Namespace) -> Option<&str> {
@@ -208,23 +229,37 @@ impl CrateScope {
             .find(|&other_identifier| is_similar(identifier, other_identifier))
     }
 
-    /// Resolve indirect uses aka chains of use bindings.
+    /// Collapse chains of use bindings aka indirect uses.
     ///
-    /// Makes a lot of sense to be honest and it's just an arbitrary invariant
-    /// created to make things easier to reason about during resolution.
-    fn resolve_use(&self, index: CrateIndex) -> Result<CrateIndex, Error> {
+    /// This is an invariant established to to make things easier to reason about during resolution.
+    fn collapse_use_chains(&self, index: CrateIndex) -> Result<CrateIndex, ResolutionError> {
         use EntityKind::*;
 
         match self.bindings[index].kind {
             UntypedValue | Module(_) | UntypedDataType(_) | UntypedConstructor(_) => Ok(index),
             Use(reference) => Ok(reference),
-            UnresolvedUse => Err(Error::UnresolvedUseBinding),
+            UnresolvedUse => Err(ResolutionError::UnresolvedUseBinding {
+                inquirer_index: index,
+            }),
             _ => unreachable!(),
         }
     }
 
-    // @Question please document what this is useful/used for, I always forget
     /// Resolve a single identifier (in contrast to a whole path).
+    ///
+    /// Used in [super::Resolver::finish_resolve_declaration], the last pass of the
+    /// name resolver, to re-gain some information (the [Identifier]s) collected during the first pass.
+    ///
+    /// This way, [super::Resolver::start_resolve_declaration] does not need to return
+    /// a new intermediate representation being a representation between the
+    /// lowered AST and the HIR where all the _binders_ of declarations are resolved
+    /// (i.e. are [Identifier]s) but all _bindings_ (in type annotations, expressions, …)
+    /// are still unresolved (i.e. are [crate::ast::Identifier]s).
+    ///
+    /// Such an IR would imply writing a lot of boilerplate if we were to duplicate
+    /// definitions & mappings or – if even possible – creating a totally complicated
+    /// parameterized lowered AST with complicated traits having many associated types
+    /// (painfully learned through previous experiences).
     pub(super) fn resolve_identifier<Target: ResolutionTarget>(
         &self,
         identifier: &ast::Identifier,
@@ -236,6 +271,14 @@ impl CrateScope {
         Target::resolve_simple_path(identifier, &self.bindings[index].kind, index)
     }
 
+    /// Resolve unresolved uses.
+    ///
+    /// This is the second pass of three of the name resolver.
+    ///
+    /// This uses a queue to resolve use bindings over and over until
+    /// all out of order use bindings are successfully resolved or until
+    /// no progress can be made anymore in which case all remaining
+    /// use bindings are actually circular and are thus reported.
     pub(super) fn resolve_unresolved_uses(&mut self) -> Results<()> {
         while !self.unresolved_uses.is_empty() {
             let mut unresolved_uses = HashMap::default();
@@ -249,10 +292,15 @@ impl CrateScope {
                     Ok(reference) => {
                         self.bindings[index].kind = EntityKind::Use(reference);
                     }
-                    Err(error @ (Error::UnresolvedBinding { .. } | Error::Unrecoverable(_))) => {
-                        return Err(error.diagnostic(self).unwrap()).many_err()
-                    }
-                    Err(Error::UnresolvedUseBinding) => {
+                    Err(
+                        error
+                        @
+                        (ResolutionError::UnresolvedBinding { .. }
+                        | ResolutionError::Unrecoverable(_)),
+                    ) => return Err(error.diagnostic(self).unwrap()).many_err(),
+                    Err(ResolutionError::UnresolvedUseBinding {
+                        inquirer_index: _og_index,
+                    }) => {
                         unresolved_uses.insert(
                             index,
                             UnresolvedUse {
@@ -260,18 +308,55 @@ impl CrateScope {
                                 module: item.module,
                             },
                         );
+                        // @Beacon @Beacon @Question would it change if we were
+                        // to add it to a intially empty local definition `unresolved_uses_grouped`
+                        // just like `unresolved_uses` (c.f. `self.unresolved_uses`)
+                        // and adding to it and updating it after the "stalling" check
+                        // does it remove non-circular bindings over time? or is it just like
+                        // today's version?? check this with playground/somecirc.lushui
+                        if let Some(indices) = self
+                            .unresolved_uses_grouped
+                            .iter_mut()
+                            .filter(|indices| indices.contains(&_og_index))
+                            .next()
+                        {
+                            indices.insert(index);
+                        } else {
+                            let mut indices = HashSet::default();
+                            indices.insert(index);
+                            self.unresolved_uses_grouped.push(indices);
+                        }
                     }
                 }
             }
 
+            // resolution stalled; therefore there are circular bindings
             if unresolved_uses.len() == self.unresolved_uses.len() {
-                return Err(unresolved_uses
-                    .keys()
-                    .map(|&index| {
+                return Err(self
+                    .unresolved_uses_grouped
+                    .iter()
+                    .filter(|indices| {
+                        indices
+                            .iter()
+                            .any(|index| unresolved_uses.contains_key(index))
+                    })
+                    .map(|indices| -> Diagnostic {
                         Diagnostic::error()
                             .with_code(Code::E024)
-                            .with_message("this declaration is circular")
-                            .with_span(&self.bindings[index].source)
+                            .with_message(format!(
+                                "declarations {} are circular",
+                                unordered_listing(
+                                    indices
+                                        .iter()
+                                        .map(|&index| self.absolute_path(index).quote()),
+                                    Conjunction::And
+                                ),
+                            ))
+                            .with_primary_spans(
+                                indices
+                                    .iter()
+                                    .map(|&index| self.bindings[index].source.span),
+                            )
                     })
                     .collect());
             }
@@ -285,25 +370,47 @@ impl CrateScope {
 
 impl fmt::Debug for CrateScope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use crate::support::DisplayIsDebug;
-
-        f.debug_struct("resolver::CrateScope")
+        f.debug_struct("CrateScope")
             .field(
                 "bindings",
-                &DisplayIsDebug(
-                    &self
-                        .bindings
-                        .iter_enumerated()
-                        .map(|(index, binding)| {
-                            format!("\n    {:?}: {}", index, binding.with(self))
-                        })
-                        .collect::<String>(),
-                ),
+                &self
+                    .bindings
+                    .iter_enumerated()
+                    .map(|(index, binding)| format!("\n    {:?}: {}", index, binding.with(self)))
+                    .collect::<String>()
+                    .as_debug(),
             )
             // @Bug debug out broken: missing newline: we need to do it manually without debug_struct
             .field("unresolved_uses", &self.unresolved_uses)
             // .field("out_of_order_bindings", &self.out_of_order_bindings)
             .finish()
+    }
+}
+
+/// Duplicate definition diagnostic.
+pub(super) struct DuplicateDefinition {
+    binder: String,
+    occurrences: SmallVec<Span, 2>,
+}
+
+impl From<DuplicateDefinition> for Diagnostic {
+    fn from(definition: DuplicateDefinition) -> Self {
+        Diagnostic::error()
+            .with_code(Code::E020)
+            .with_message(format!(
+                "`{}` is defined multiple times in this scope",
+                definition.binder
+            ))
+            .with_labeled_primary_spans(
+                definition.occurrences.into_iter(),
+                "conflicting definition",
+            )
+    }
+}
+
+impl From<HashMap<CrateIndex, DuplicateDefinition>> for Diagnostics {
+    fn from(definitions: HashMap<CrateIndex, DuplicateDefinition>) -> Self {
+        definitions.into_values().map(Into::into).collect()
     }
 }
 
@@ -381,15 +488,24 @@ enum Inquirer {
 }
 
 /// Partially resolved use binding.
-#[derive(Debug)]
 struct UnresolvedUse {
     reference: Path,
     module: CrateIndex,
 }
 
+impl fmt::Debug for UnresolvedUse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("UnresolvedUse")
+            .field("reference", &self.reference.as_debug())
+            .field("module", &self.module)
+            .finish()
+    }
+}
+
 /// A namespace can either be a module or a data type.
 /// A module contains any declarations (except constructors) and
 /// a data type their constructors.
+// @Task update documentation
 #[derive(Clone, Default)]
 pub struct Namespace {
     bindings: Vec<CrateIndex>,
@@ -400,11 +516,15 @@ impl fmt::Debug for Namespace {
         write!(
             f,
             "{}",
-            self.bindings.iter().map(DebugIsDisplay).join_with(" ")
+            self.bindings
+                .iter()
+                .map(|binding| binding.as_display())
+                .join_with(" ")
         )
     }
 }
 
+// @Question move to resolver/hir.rs?
 #[derive(Clone, PartialEq)]
 pub struct Identifier {
     /// Source at the use-site/call-site or def-site if definition.
@@ -628,14 +748,14 @@ impl<'a> FunctionScope<'a> {
                 .resolve_path::<OnlyValue>(query, module, Inquirer::User)
                 .map_err(|error| {
                     error
-                        .diagnostic_with(scope, |identifier: &str, _| {
+                        .diagnostic_with(scope, |identifier, _| {
                             origin.find_similarly_named(identifier, scope)
                         })
                         .unwrap()
                 }),
             // @Note this looks ugly/complicated, use helper functions
             FunctionParameter { parent, binder } => {
-                if let Some(identifier) = query.first_identifier() {
+                if let Some(identifier) = query.identifier_head() {
                     if binder == identifier {
                         if query.segments.len() > 1 {
                             return Err(value_used_as_a_namespace(identifier, &query.segments[1]));
@@ -653,7 +773,7 @@ impl<'a> FunctionScope<'a> {
             }
             // @Note this looks ugly/complicated, use helper functions
             PatternBinders { parent, binders } => {
-                if let Some(identifier) = query.first_identifier() {
+                if let Some(identifier) = query.identifier_head() {
                     match binders
                         .iter()
                         .rev()
@@ -738,29 +858,36 @@ fn value_used_as_a_namespace(
     Diagnostic::error()
         .with_code(Code::E022)
         .with_message(format!("value `{}` is not a namespace", non_namespace))
-        .with_labeled_span(subbinder, "reference to a subdeclaration")
-        .with_labeled_span(non_namespace, "a value, not a namespace")
+        .with_labeled_primary_span(subbinder, "reference to a subdeclaration")
+        .with_labeled_secondary_span(non_namespace, "a value, not a namespace")
 }
 
 // @Task levenshtein-search for similar named bindings which are in fact values and suggest the first one
+// @Task print absolute path of the module in question and use highlight the entire path, not just the last
+// segment
 fn module_used_as_a_value(span: Span) -> Diagnostic {
     Diagnostic::error()
         .with_code(Code::E023)
         .with_message("module used as if it was a value")
-        .with_span(&span)
+        .with_primary_span(&span)
+        .with_help("modules are not first-class citizens, consider utilizing records for such cases instead")
 }
 
-enum Error {
+/// A possibly recoverable error that cab emerge during resolution.
+enum ResolutionError {
     Unrecoverable(Diagnostic),
     UnresolvedBinding {
         identifier: ast::Identifier,
         namespace: CrateIndex,
         inquirer: Inquirer,
     },
-    UnresolvedUseBinding,
+    UnresolvedUseBinding {
+        // @Note I don't know if this name makes sense at all
+        inquirer_index: CrateIndex,
+    },
 }
 
-impl Error {
+impl ResolutionError {
     fn diagnostic(self, scope: &CrateScope) -> Option<Diagnostic> {
         self.diagnostic_with(scope, |identifier, namespace| {
             scope.find_similarly_named(identifier, scope.bindings[namespace].namespace().unwrap())
@@ -802,7 +929,7 @@ impl Error {
                     Diagnostic::error()
                         .with_code(Code::E021)
                         .with_message(message)
-                        .with_span(&identifier)
+                        .with_primary_span(&identifier)
                         .when_some(
                             find_lookalike(identifier.as_str(), namespace),
                             |diagnostic, binding| {
@@ -819,8 +946,69 @@ impl Error {
     }
 }
 
-impl From<Diagnostic> for Error {
+impl From<Diagnostic> for ResolutionError {
     fn from(error: Diagnostic) -> Self {
         Self::Unrecoverable(error)
+    }
+}
+
+pub(super) enum RegistrationError {
+    Unrecoverable(Diagnostics),
+    /// Duplicate definitions found.
+    ///
+    /// Details about this error are **not stored here** but as
+    /// [DuplicateDefinition]s in the [super::Resolver] so they can
+    /// be easily grouped.
+    DuplicateDefinition,
+}
+
+impl RegistrationError {
+    pub(super) fn diagnostics(
+        self,
+        duplicate_definitions: HashMap<CrateIndex, DuplicateDefinition>,
+    ) -> Diagnostics {
+        duplicate_definitions
+            .into_values()
+            .map(Into::into)
+            .chain(self)
+            .collect()
+    }
+}
+
+impl From<Diagnostic> for RegistrationError {
+    fn from(diagnostic: Diagnostic) -> Self {
+        Self::Unrecoverable(once(diagnostic).collect())
+    }
+}
+
+// @Note not entirely happy that we need to implement this
+// this undermines the safety of this type: We only want you
+// to be able to access the unrecoverable diagnostics if you
+// give us duplicate_definitions: HashMap<CrateIndex, DuplicateDefinition>,
+// but now, this is not true anymore
+impl IntoIterator for RegistrationError {
+    type Item = Diagnostic;
+
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        match self {
+            Self::Unrecoverable(diagnostics) => diagnostics.into_iter(),
+            Self::DuplicateDefinition => Diagnostics::default().into_iter(),
+        }
+    }
+}
+
+// @Note uggllyyy!!!
+impl Extend<Diagnostic> for RegistrationError {
+    fn extend<T: IntoIterator<Item = Diagnostic>>(&mut self, iter: T) {
+        if let Self::DuplicateDefinition = self {
+            *self = Self::Unrecoverable(Diagnostics::default());
+        };
+
+        match self {
+            Self::Unrecoverable(diagnostics) => diagnostics.extend(iter),
+            Self::DuplicateDefinition => unreachable!(),
+        };
     }
 }

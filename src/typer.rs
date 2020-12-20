@@ -4,14 +4,14 @@ pub mod interpreter;
 
 use crate::{
     ast::Explicit,
-    diagnostic::{Code, Diagnostic, Diagnostics, Result, Results, Warn},
+    diagnostics::{Code, Diagnostic, Diagnostics, Result, Results, Warn},
     lowered_ast::{AttributeKeys, Attributes},
     resolver::{
         hir::{self, expr, Declaration, Expression},
         CrateScope, Identifier,
     },
     span::Span,
-    support::{accumulate_errors, s_pluralize, DisplayWith, ManyErrExt, TransposeExt},
+    support::{accumulate_errors, s_pluralize, DisplayWith, ManyErrExt, QuoteExt, TransposeExt},
 };
 use interpreter::{
     ffi,
@@ -27,12 +27,16 @@ pub(crate) fn missing_annotation() -> Diagnostic {
         .with_message("currently lambda literal parameters and patterns must be type-annotated")
 }
 
+#[derive(Default)]
+struct Context {
+    parent_data_binding: Option<Identifier>,
+}
+
 /// The state of the typer.
 // @Task add recursion depth field
 pub struct Typer<'a> {
     pub scope: &'a mut CrateScope,
     warnings: &'a mut Diagnostics,
-    parent_data_binding: Option<Identifier>,
     /// Whether the first type inference pass failed.
     poisoned: bool,
 }
@@ -42,7 +46,6 @@ impl<'a> Typer<'a> {
         Self {
             scope,
             warnings,
-            parent_data_binding: None,
             poisoned: false,
         }
     }
@@ -52,7 +55,8 @@ impl<'a> Typer<'a> {
     }
 
     pub fn infer_types_in_declaration(&mut self, declaration: &Declaration) -> Results<()> {
-        let results_of_first_pass = self.start_infer_types_in_declaration(declaration);
+        let results_of_first_pass =
+            self.start_infer_types_in_declaration(declaration, Context::default());
         self.poisoned = results_of_first_pass.is_err();
 
         accumulate_errors!(
@@ -63,7 +67,12 @@ impl<'a> Typer<'a> {
         Ok(())
     }
 
-    fn start_infer_types_in_declaration(&mut self, declaration: &Declaration) -> Results<()> {
+    // @Task documentation
+    fn start_infer_types_in_declaration(
+        &mut self,
+        declaration: &Declaration,
+        mut context: Context,
+    ) -> Results<()> {
         use hir::DeclarationKind::*;
 
         match &declaration.kind {
@@ -116,17 +125,18 @@ impl<'a> Typer<'a> {
                     constructors
                         .iter()
                         .map(|constructor| {
-                            self.parent_data_binding = Some(data.binder.clone());
-                            self.start_infer_types_in_declaration(constructor)?;
-                            self.parent_data_binding = None;
-                            Ok(())
+                            self.start_infer_types_in_declaration(
+                                constructor,
+                                Context {
+                                    parent_data_binding: Some(data.binder.clone()),
+                                },
+                            )
                         })
-                        .collect::<Vec<_>>()
                         .transpose()?;
                 }
             }
             Constructor(constructor) => {
-                let data = self.parent_data_binding.take().unwrap();
+                let data = context.parent_data_binding.take().unwrap();
 
                 self.evaluate_registration(Registration::ConstructorBinding {
                     binder: constructor.binder.clone(),
@@ -140,8 +150,9 @@ impl<'a> Typer<'a> {
                 module
                     .declarations
                     .iter()
-                    .map(|declaration| self.start_infer_types_in_declaration(declaration))
-                    .collect::<Vec<_>>()
+                    .map(|declaration| {
+                        self.start_infer_types_in_declaration(declaration, Context::default())
+                    })
                     .transpose()?;
             }
             Use(_) | Invalid => {}
@@ -199,7 +210,16 @@ impl<'a> Typer<'a> {
                                     value: None,
                                 })
                             }
-                            Error::TypeMismatch { .. } => unreachable!(),
+                            // @Task abstract over explicit diagnostic building
+                            Error::TypeMismatch { expected, actual } => Err(Diagnostic::error()
+                                .with_code(Code::E032)
+                                .with_message(format!(
+                                    "expected type `{}`, got type `{}`",
+                                    expected.with(&self.scope),
+                                    actual.with(&self.scope)
+                                ))
+                                .with_labeled_primary_span(&actual, "has wrong type")
+                                .with_labeled_secondary_span(&expected, "expected due to this")),
                         }
                         .many_err();
                     }
@@ -336,11 +356,11 @@ impl<'a> Typer<'a> {
                                     "expected type `{}`, got type `{}`",
                                     expected.with($scope), actual.with($scope)
                                 ))
-                                .with_labeled_span(
+                                .with_labeled_primary_span(
                                     &$actual_value,
                                     "has wrong type",
                                 )
-                                $( .with_labeled_span(&$expected_reason, "expected due to this") )?
+                                $( .with_labeled_secondary_span(&$expected_reason, "expected due to this") )?
                             )
                         }
                     }
@@ -376,7 +396,7 @@ impl<'a> Typer<'a> {
                         self.scope
                             .out_of_order_bindings
                             .iter()
-                            .map(|binding| format!("`{}`", binding.with(&self.scope)))
+                            .map(|binding| binding.with(&self.scope).quote())
                             .join_with(", ")
                     )))
                 .many_err();
@@ -488,8 +508,11 @@ impl<'a> Typer<'a> {
                                         expected.with(self.scope),
                                         actual.with(self.scope)
                                     ))
-                                    .with_labeled_span(&application.argument, "has wrong type")
-                                    .with_labeled_span(&expected, "expected due to this"),
+                                    .with_labeled_primary_span(
+                                        &application.argument,
+                                        "has wrong type",
+                                    )
+                                    .with_labeled_secondary_span(&expected, "expected due to this"),
                                 _ => unreachable!(),
                             })?;
 
@@ -512,8 +535,8 @@ impl<'a> Typer<'a> {
                                 "expected type `_ -> _`, got type `{}`",
                                 type_of_callee.with(self.scope)
                             ))
-                            .with_labeled_span(&application.callee, "has wrong type")
-                            .with_labeled_span(&application.argument, "applied to this")
+                            .with_labeled_primary_span(&application.callee, "has wrong type")
+                            .with_labeled_secondary_span(&application.argument, "applied to this")
                             .into());
                     }
                 }
@@ -546,7 +569,7 @@ impl<'a> Typer<'a> {
                         return Err(Diagnostic::error()
                             .with_code(Code::E035)
                             .with_message("attempt to analyze a type")
-                            .with_span(&expression.span)
+                            .with_primary_span(&expression.span)
                             .with_note("forbidden to uphold parametricity and type erasure")
                             .into());
                     }
@@ -569,8 +592,8 @@ impl<'a> Typer<'a> {
                                 expected.with(scope),
                                 actual.with(scope)
                             ))
-                            .with_labeled_span(&case.pattern, "has wrong type")
-                            .with_labeled_span(&analysis.subject, "expected due to this")
+                            .with_labeled_primary_span(&case.pattern, "has wrong type")
+                            .with_labeled_secondary_span(&analysis.subject, "expected due to this")
                             .into(),
                         error => error,
                     };
@@ -638,7 +661,7 @@ impl<'a> Typer<'a> {
                                             "binder `{}` used in callee position inside pattern",
                                             binder.binder
                                         ))
-                                        .with_span(&binder.binder)
+                                        .with_primary_span(&binder.binder)
                                         .with_help("consider refering to a concrete binding")
                                         .into())
                                 }
@@ -826,7 +849,7 @@ impl<'a> Typer<'a> {
                     result_type.with(&self.scope),
                     type_.with(&self.scope)
                 ))
-                .with_span(&result_type.span))
+                .with_primary_span(&result_type.span))
         } else {
             Ok(())
         }

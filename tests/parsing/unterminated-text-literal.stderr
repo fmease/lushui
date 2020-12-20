@@ -1,0 +1,11 @@
+error[E004]: unterminated text literal
+ >>> ${DIRECTORY}/parsing/unterminated-text-literal.lushui:3:15
+  |
+3 |   value: Text = "open end
+...  _______________^
+6 | |     field: Res -> Field
+  | |_______________________^ 
+  |
+
+error: aborting due to previous error
+

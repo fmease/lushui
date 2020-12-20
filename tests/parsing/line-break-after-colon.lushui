@@ -1,0 +1,7 @@
+;; TEST fail check
+;; this should be supported eventually #ImprovedIndentationSystem
+
+Definition:
+    Type =
+    Type
+

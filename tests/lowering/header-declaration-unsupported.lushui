@@ -1,0 +1,9 @@
+;; TEST fail check
+
+; module-level
+; documentation
+; here
+module =
+
+@foreign
+module =

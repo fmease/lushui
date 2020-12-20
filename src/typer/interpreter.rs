@@ -15,8 +15,7 @@ pub(crate) mod scope;
 use super::Expression;
 use crate::{
     ast::Explicit,
-    diagnostic::Warn,
-    diagnostic::{Code, Diagnostic, Diagnostics, Result},
+    diagnostics::{Code, Diagnostic, Diagnostics, Result, Warn},
     hir::{self, expr},
     lowered_ast::Attributes,
     resolver::CrateScope,
@@ -134,7 +133,7 @@ impl<'a> Interpreter<'a> {
                 );
                 self.substitute_expression(expression, substitution1)
             }
-            (Type, _) | (Number(_), _) | (Text(_), _) => expression,
+            (Type | Number(_) | Text(_), _) => expression,
             // @Task verify
             (Projection(_), _) => expression,
             // @Temporary @Note once we support next: Expression in IO, we prob. need to substitute
@@ -358,7 +357,7 @@ impl<'a> Interpreter<'a> {
                                     expression.attributes,
                                     expression.span;
                                     callee: binding.binder.clone(),
-                                    arguments: extended(Vec::new(), argument),
+                                    arguments: vec![argument],
 
                             }},
                             context,
@@ -383,7 +382,11 @@ impl<'a> Interpreter<'a> {
                                 expression.attributes,
                                     expression.span;
                                 callee: application.callee.clone(),
-                                arguments: extended(application.arguments.clone(), argument),
+                                arguments: {
+                                    let mut arguments = application.arguments.clone();
+                                    arguments.push(argument);
+                                    arguments
+                                }
                             }
                         },
                         context,
@@ -468,6 +471,8 @@ impl<'a> Interpreter<'a> {
             // because the code will not check for the arity of the neutral application
             // @Note how to handle them: just like functions: case analysis only wotks with a binder-case
             // (default case)
+            // @Bug panics if the subject reduces to a neutral identifier (i.e. lambda parameter)
+            // contains one
             CaseAnalysis(analysis) => {
                 let subject = self.evaluate_expression(analysis.subject.clone(), context)?;
 
@@ -495,6 +500,7 @@ impl<'a> Interpreter<'a> {
                                 Invalid => unreachable!(),
                             }
                         }
+
                         // we should not be here
                         // @Note this is currently reachable because we don't do a check for
                         // exhaustiveness in `infer_type`, just fyi
@@ -677,12 +683,6 @@ impl Warn for Interpreter<'_> {
     fn diagnostics(&mut self) -> &mut Diagnostics {
         &mut self.warnings
     }
-}
-
-// @Task move
-fn extended<T>(mut vec: Vec<T>, value: T) -> Vec<T> {
-    vec.push(value);
-    vec
 }
 
 #[derive(Clone)]

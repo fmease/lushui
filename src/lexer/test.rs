@@ -1,6 +1,6 @@
 use super::{Token, TokenKind::*};
 use crate::{
-    diagnostic::Results,
+    diagnostics::Results,
     span::{span, Span},
 };
 
@@ -31,8 +31,11 @@ fn assert_err(actual: Results<Vec<Token>>, expected_spans: &[&[Span]]) {
         Ok(actual) => panic!("expected an `Err` but got the tokens `{:?}`", actual),
         Err(diagnostics) => {
             let mut actual_spans: Vec<Vec<Span>> = diagnostics
-                .iter()
-                .map(|diagnostic| diagnostic.spans())
+                .into_iter()
+                .map(|mut diagnostic| {
+                    diagnostic.cancel();
+                    diagnostic.sorted_spans()
+                })
                 .collect();
 
             actual_spans.sort();

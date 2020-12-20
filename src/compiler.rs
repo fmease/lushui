@@ -12,7 +12,7 @@ pub mod interpreter;
 use indexed_vec::IndexVec;
 
 use crate::{
-    diagnostic::Result,
+    diagnostics::Result,
     grow_array::GrowArray,
     hir::{self, Declaration, Expression},
     lowered_ast::AttributeKeys,

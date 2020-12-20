@@ -1,0 +1,14 @@
+error[E010]: found `=`, but expected `->`
+ >>> ${DIRECTORY}/parsing/unterminated-pi-type-literal.lushui:3:19
+  |
+3 | data X (A: Type): (m: M) =
+  |                   ------ the start of a pi type literal
+  |
+ >>> ${DIRECTORY}/parsing/unterminated-pi-type-literal.lushui:3:26
+  |
+3 | data X (A: Type): (m: M) =
+  |                          ^ unexpected token
+  |
+
+error: aborting due to previous error
+

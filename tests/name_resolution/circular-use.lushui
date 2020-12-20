@@ -1,0 +1,18 @@
+;; TEST fail check
+
+use fake-my-dude.alpha0.((self as alpha1))
+
+module fake-my-dude =
+    use beta0 as beta1
+
+    use super.alpha1 as alpha0
+
+    use beta1 as beta2
+
+    use self.beta2 as beta0
+
+    use omega0 as omega1
+
+    use Omega as omega0
+
+    Omega: Type = Type

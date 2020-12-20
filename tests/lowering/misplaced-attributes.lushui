@@ -1,0 +1,20 @@
+;; TEST fail check
+
+@foreign
+@foreign @Int32
+use self.()
+
+@foreign @opaque @(location "/")
+use something.substantial.(root0 root1)
+
+@include
+binding: Binding =
+    @foreign @Text make-binding @(public super) resource
+
+data Manifest: Type =
+    @public manifest
+
+Platform: Type =
+    case x of
+        @static box => it
+        \__ => unboxed

@@ -1,0 +1,62 @@
+error[E020]: `Alpha` is defined multiple times in this scope
+  >>> ${DIRECTORY}/name_resolution/duplicate-bindings.lushui:8:6
+   |
+ 8 | data Alpha: Type =
+   |      ^^^^^ conflicting definition
+   |
+  >>> ${DIRECTORY}/name_resolution/duplicate-bindings.lushui:11:1
+   |
+11 | Alpha: Type = Type
+   | ^^^^^ conflicting definition
+   |
+
+error[E020]: `beta` is defined multiple times in this scope
+  >>> ${DIRECTORY}/name_resolution/duplicate-bindings.lushui:13:1
+   |
+13 | beta: Nat = 1000
+   | ^^^^ conflicting definition
+   |
+  >>> ${DIRECTORY}/name_resolution/duplicate-bindings.lushui:22:1
+   |
+22 | beta (x y: Nat): Nat = y
+   | ^^^^ conflicting definition
+   |
+
+error[E020]: `capsule` is defined multiple times in this scope
+  >>> ${DIRECTORY}/name_resolution/duplicate-bindings.lushui:15:8
+   |
+15 | module capsule =
+   |        ^^^^^^^ conflicting definition
+   |
+  >>> ${DIRECTORY}/name_resolution/duplicate-bindings.lushui:24:1
+   |
+24 | capsule: Nat = beta
+   | ^^^^^^^ conflicting definition
+   |
+
+error[E020]: `Nat` is defined multiple times in this scope
+  >>> ${DIRECTORY}/name_resolution/duplicate-bindings.lushui:16:15
+   |
+16 |     use super.Nat
+   |               ^^^ conflicting definition
+   |
+  >>> ${DIRECTORY}/name_resolution/duplicate-bindings.lushui:18:10
+   |
+18 |     data Nat: Type =
+   |          ^^^ conflicting definition
+   |
+
+error[E020]: `zero` is defined multiple times in this scope
+  >>> ${DIRECTORY}/name_resolution/duplicate-bindings.lushui:29:1
+   |
+29 | zero: Nat = 0
+   | ^^^^ conflicting definition
+   |
+  >>> ${DIRECTORY}/name_resolution/duplicate-bindings.lushui:31:13
+   |
+31 | use capsule.zero
+   |             ^^^^ conflicting definition
+   |
+
+error: aborting due to 5 previous errors
+

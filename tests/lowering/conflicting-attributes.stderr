@@ -1,0 +1,40 @@
+error: attribute `unsafe` not supported yet
+ >>> ${DIRECTORY}/lowering/conflicting-attributes.lushui:3:1
+  |
+3 | @unsafe @ignore
+  | ^^^^^^^ 
+  |
+
+error[E006]: multiple `unsafe` attributes
+ >>> ${DIRECTORY}/lowering/conflicting-attributes.lushui:3:1
+  |
+3 | @unsafe @ignore
+  | ^^^^^^^ duplicate or conflicting attribute
+  |
+ >>> ${DIRECTORY}/lowering/conflicting-attributes.lushui:4:1
+  |
+4 | @unsafe
+  | ^^^^^^^ duplicate or conflicting attribute
+  |
+
+error: attribute `ignore` not supported yet
+ >>> ${DIRECTORY}/lowering/conflicting-attributes.lushui:3:9
+  |
+3 | @unsafe @ignore
+  |         ^^^^^^^ 
+  |
+
+error[E006]: multiple `ignore` attributes
+ >>> ${DIRECTORY}/lowering/conflicting-attributes.lushui:3:9
+  |
+3 | @unsafe @ignore
+  |         ^^^^^^^ duplicate or conflicting attribute
+  |
+ >>> ${DIRECTORY}/lowering/conflicting-attributes.lushui:5:1
+  |
+5 | @ignore
+  | ^^^^^^^ duplicate or conflicting attribute
+  |
+
+error: aborting due to 4 previous errors
+

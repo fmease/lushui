@@ -1,7 +1,7 @@
 use super::{CrateScope, Expression};
 use crate::{
     ast::Explicit,
-    diagnostic::{Code, Diagnostic, Result},
+    diagnostics::{Code, Diagnostic, Result},
     lowered_ast::{Attribute, Attributes},
     resolver::{
         hir::{expr, Constructor, ExpressionKind},
@@ -12,7 +12,12 @@ use crate::{
     Int, Nat,
 };
 
-pub type ForeignFunction = fn(arguments: Vec<Value>) -> Value;
+pub type NakedForeignFunction = fn(arguments: Vec<Value>) -> Value;
+
+pub struct ForeignFunction {
+    pub(super) arity: usize,
+    pub(super) function: NakedForeignFunction,
+}
 
 pub fn register_inherent_bindings<'a>(
     binder: &Identifier,
@@ -29,7 +34,7 @@ pub fn register_inherent_bindings<'a>(
                 "`{}` is defined multiple times as inherent",
                 binder
             ))
-            .with_span(declaration)
+            .with_primary_span(declaration)
     };
 
     let mut find = |value_name, inherent: &mut Option<_>| {
@@ -71,8 +76,8 @@ pub fn register_inherent_bindings<'a>(
             return Err(Diagnostic::error()
                 .with_code(Code::E062)
                 .with_message(format!("`{}` is not an inherent type", binder))
-                .with_span(attribute)
-                .with_labeled_span(declaration, "ascribed to this declaration"))
+                .with_primary_span(attribute)
+                .with_labeled_secondary_span(declaration, "ascribed to this declaration"))
         }
     }
 

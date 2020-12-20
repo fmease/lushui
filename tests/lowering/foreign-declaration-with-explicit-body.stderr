@@ -1,0 +1,36 @@
+error[E020]: `Void` is defined multiple times in this scope
+ >>> ${DIRECTORY}/lowering/foreign-declaration-with-explicit-body.lushui:3:1
+  |
+3 | @foreign
+  | -------- conflicting definition
+  |
+ >>> ${DIRECTORY}/lowering/foreign-declaration-with-explicit-body.lushui:4:1
+  |
+4 | data Void: Type =
+  | ^^^^^^^^^^^^^^^^^ conflicting definition
+  |
+ note: declaration is marked `foreign` but it also has a body introduced by `=`
+
+error[E020]: `thing` is defined multiple times in this scope
+ >>> ${DIRECTORY}/lowering/foreign-declaration-with-explicit-body.lushui:6:1
+  |
+6 | @foreign thing = 0
+  | -------- conflicting definition
+  |
+ >>> ${DIRECTORY}/lowering/foreign-declaration-with-explicit-body.lushui:6:18
+  |
+6 | @foreign thing = 0
+  |                  ^ conflicting definition
+  |
+ note: declaration is marked `foreign` but it also has a body introduced by `=`
+
+error[E015]: missing mandatory type annotation on declaration `thing`
+ >>> ${DIRECTORY}/lowering/foreign-declaration-with-explicit-body.lushui:6:10
+  |
+6 | @foreign thing = 0
+  |          ^^^^^^^^^ 
+  |
+ help: provide a type annotation for the declaration with `: TYPE`
+
+error: aborting due to 3 previous errors
+

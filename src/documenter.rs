@@ -5,7 +5,7 @@
 
 use crate::{
     ast::{Declaration, DeclarationKind},
-    diagnostic::Diagnostics,
+    diagnostics::Diagnostics,
     span::SourceMap,
 };
 use std::io::Result;

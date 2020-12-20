@@ -20,7 +20,7 @@ mod scope;
 
 use crate::{
     ast,
-    diagnostic::{Code, Diagnostic, Diagnostics, Results, Warn},
+    diagnostics::{Code, Diagnostic, Diagnostics, Results, Warn},
     entity::EntityKind,
     lowered_ast,
     support::{accumulate_errors, InvalidFallback, ManyErrExt, TransposeExt, TryIn},
@@ -29,26 +29,26 @@ use hir::{decl, expr, pat};
 pub use scope::{
     CrateIndex, CrateScope, DebruijnIndex, FunctionScope, Identifier, Index, Namespace,
 };
-use scope::{OnlyValue, ValueOrModule};
-use std::rc::Rc;
+use scope::{OnlyValue, RegistrationError, ValueOrModule};
+use std::{mem, rc::Rc};
 
 const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
+
+/// Additional context for name resolution.
+#[derive(Default)]
+struct Context {
+    parent_data_binding: Option<CrateIndex>,
+}
 
 /// The state of the resolver.
 pub struct Resolver<'a> {
     scope: &'a mut CrateScope,
     warnings: &'a mut Diagnostics,
-    // @Task move into separate `Context` struct again to pass as an argument
-    parent_data_binding: Option<CrateIndex>,
 }
 
 impl<'a> Resolver<'a> {
     pub fn new(scope: &'a mut CrateScope, warnings: &'a mut Diagnostics) -> Self {
-        Self {
-            scope,
-            warnings,
-            parent_data_binding: None,
-        }
+        Self { scope, warnings }
     }
 
     /// Resolve the names of a declaration.
@@ -60,10 +60,13 @@ impl<'a> Resolver<'a> {
         &mut self,
         declaration: lowered_ast::Declaration,
     ) -> Results<hir::Declaration> {
-        self.start_resolve_declaration(&declaration, None)?;
+        // @Note awkward manual error propagation, very error prone
+        // topic: horrible error handling APIs
+        self.start_resolve_declaration(&declaration, None, Context::default())
+            .map_err(|error| error.diagnostics(mem::take(&mut self.scope.duplicate_definitions)))?;
         // @Bug creates fatal errors for use stuff (see tests/multiple-undefined1)
         self.scope.resolve_unresolved_uses()?;
-        self.finish_resolve_declaration(declaration, None)
+        self.finish_resolve_declaration(declaration, None, Context::default())
     }
 
     /// Partially resolve a declaration merely registering declarations.
@@ -78,21 +81,25 @@ impl<'a> Resolver<'a> {
     /// In contrast to [Self::finish_resolve_declaration], this does not actually return a
     /// new intermediate HIR because of too much mapping and type-system boilerplate
     /// and it's just not worth it memory-wise.
+    /// For more on this, see [CrateScope::resolve_identifier].
+    // @Question instead of Err==(), should we have Err==enum { Other /* for duplicate defs */, Diagnostics(Diagnostics) }?
     fn start_resolve_declaration(
         &mut self,
         declaration: &lowered_ast::Declaration,
         module: Option<CrateIndex>,
-    ) -> Results<()> {
+        context: Context,
+    ) -> Result<(), RegistrationError> {
         use lowered_ast::DeclarationKind::*;
 
         match &declaration.kind {
             Value(value) => {
                 let module = module.unwrap();
 
-                let index = self
-                    .scope
-                    .register_binding(value.binder.clone(), EntityKind::UntypedValue, Some(module))
-                    .many_err()?;
+                let index = self.scope.register_binding(
+                    value.binder.clone(),
+                    EntityKind::UntypedValue,
+                    Some(module),
+                )?;
 
                 if self.scope.program_entry.is_none() && module == self.scope.root() {
                     if value.binder.as_str() == PROGRAM_ENTRY_IDENTIFIER {
@@ -104,44 +111,40 @@ impl<'a> Resolver<'a> {
             Data(data) => {
                 let module = module.unwrap();
 
-                let namespace = self
-                    .scope
-                    .register_binding(
-                        data.binder.clone(),
-                        EntityKind::untyped_data_type(),
-                        Some(module),
-                    )
-                    .many_err()?;
+                // @Task don't return early, see analoguous code for modules
+                let namespace = self.scope.register_binding(
+                    data.binder.clone(),
+                    EntityKind::untyped_data_type(),
+                    Some(module),
+                )?;
 
                 if let Some(constructors) = &data.constructors {
                     constructors
                         .iter()
                         .map(|constructor| {
-                            self.parent_data_binding = Some(namespace);
-                            let declaration =
-                                self.start_resolve_declaration(constructor, Some(module))?;
-                            self.parent_data_binding = None;
-                            Ok(declaration)
+                            self.start_resolve_declaration(
+                                constructor,
+                                Some(module),
+                                Context {
+                                    parent_data_binding: Some(namespace),
+                                },
+                            )
                         })
-                        .collect::<Vec<_>>()
                         .transpose()?;
                 }
             }
             // @Task register fields
             Constructor(constructor) => {
-                let module = self.parent_data_binding.unwrap();
+                let module = context.parent_data_binding.unwrap();
 
                 // @Task don't return early, see analoguous code for modules
-                let namespace = self
-                    .scope
-                    .register_binding(
-                        constructor.binder.clone(),
-                        EntityKind::untyped_constructor(),
-                        Some(module),
-                    )
-                    .many_err()?;
+                let namespace = self.scope.register_binding(
+                    constructor.binder.clone(),
+                    EntityKind::untyped_constructor(),
+                    Some(module),
+                )?;
 
-                let mut errors = Diagnostics::default();
+                let mut overall_result = Ok(());
 
                 let mut type_annotation = &constructor.type_annotation;
 
@@ -149,54 +152,57 @@ impl<'a> Resolver<'a> {
                     if pi.is_field {
                         let parameter = pi.parameter.as_ref().unwrap();
 
-                        if let Err(error) = self.scope.register_binding(
-                            parameter.clone(),
-                            EntityKind::UntypedValue,
-                            Some(namespace),
-                        ) {
-                            errors.insert(error);
-                        }
+                        overall_result = self
+                            .scope
+                            .register_binding(
+                                parameter.clone(),
+                                EntityKind::UntypedValue,
+                                Some(namespace),
+                            )
+                            .map(|_| ());
                     }
                     type_annotation = &pi.codomain;
                 }
 
-                errors.err_or(())?;
+                overall_result?;
             }
             Module(submodule) => {
                 // @Task @Beacon don't return early on error
                 // @Note you need to create a fake index for this (an index which points to
                 // a fake, nameless binding)
-                let index = self
-                    .scope
-                    .register_binding(submodule.binder.clone(), EntityKind::module(), module)
-                    .many_err()?;
+                let index = self.scope.register_binding(
+                    submodule.binder.clone(),
+                    EntityKind::module(),
+                    module,
+                )?;
 
                 submodule
                     .declarations
                     .iter()
-                    .map(|declaration| self.start_resolve_declaration(declaration, Some(index)))
-                    .collect::<Vec<_>>()
+                    .map(|declaration| {
+                        self.start_resolve_declaration(declaration, Some(index), Context::default())
+                    })
                     .transpose()?;
             }
             Use(use_) => {
                 let module = module.unwrap();
 
-                let binder = use_
-                    .binder
-                    .as_ref()
-                    .ok_or_else(|| {
-                        Diagnostic::error()
-                            .with_code(Code::E025)
-                            .with_message("`use` of bare `super` and `crate` disallowed")
-                            .with_span(declaration)
-                            .with_help("add a name to it with `as`")
-                    })
-                    .many_err()?;
+                let binder = use_.binder.as_ref().ok_or_else(|| {
+                    // @Task only mention *either* `super` or `crate`
+                    // @Note the span is not great, consider `use crate.(self hello)`
+                    // I think this is handled best in the lowerer
+                    Diagnostic::error()
+                        .with_code(Code::E025)
+                        .with_message("`use` of bare `super` and `crate`")
+                        .with_primary_span(declaration)
+                        .with_help("add a name to it with `as`")
+                })?;
 
-                let index = self
-                    .scope
-                    .register_binding(binder.clone(), EntityKind::UnresolvedUse, Some(module))
-                    .many_err()?;
+                let index = self.scope.register_binding(
+                    binder.clone(),
+                    EntityKind::UnresolvedUse,
+                    Some(module),
+                )?;
 
                 self.scope
                     .register_unresolved_use(index, use_.target.clone(), module);
@@ -218,6 +224,7 @@ impl<'a> Resolver<'a> {
         &mut self,
         declaration: lowered_ast::Declaration,
         module: Option<CrateIndex>,
+        context: Context,
     ) -> Results<hir::Declaration> {
         use lowered_ast::DeclarationKind::*;
 
@@ -268,11 +275,13 @@ impl<'a> Resolver<'a> {
                     constructors
                         .into_iter()
                         .map(|constructor| {
-                            self.parent_data_binding = Some(binder.crate_index().unwrap());
-                            let declaration =
-                                self.finish_resolve_declaration(constructor, Some(module))?;
-                            self.parent_data_binding = None;
-                            Ok(declaration)
+                            self.finish_resolve_declaration(
+                                constructor,
+                                Some(module),
+                                Context {
+                                    parent_data_binding: Some(binder.crate_index().unwrap()),
+                                },
+                            )
                         })
                         .collect()
                 });
@@ -302,7 +311,7 @@ impl<'a> Resolver<'a> {
                     .scope
                     .resolve_identifier::<OnlyValue>(
                         &constructor.binder,
-                        self.parent_data_binding.unwrap(),
+                        context.parent_data_binding.unwrap(),
                     )
                     .many_err()?;
 
@@ -329,8 +338,13 @@ impl<'a> Resolver<'a> {
                 let declarations = submodule
                     .declarations
                     .into_iter()
-                    .map(|declaration| self.finish_resolve_declaration(declaration, Some(index)))
-                    .collect::<Vec<_>>()
+                    .map(|declaration| {
+                        self.finish_resolve_declaration(
+                            declaration,
+                            Some(index),
+                            Context::default(),
+                        )
+                    })
                     .transpose()?;
 
                 decl! {
@@ -351,14 +365,14 @@ impl<'a> Resolver<'a> {
                     .scope
                     .resolve_identifier::<ValueOrModule>(&binder, module)
                     .many_err()?;
+                let binder = Identifier::new(index, binder);
 
                 decl! {
                     Use {
                         declaration.attributes,
                         declaration.span;
-                        binder: Some(Identifier::new(index, binder.clone())),
-                        // @Temporary
-                        target: Identifier::new(index, binder),
+                        binder: Some(binder.clone()),
+                        target: binder,
                     }
                 }
             }
@@ -450,7 +464,7 @@ impl<'a> Resolver<'a> {
             UseIn => {
                 return Err(Diagnostic::bug()
                     .with_message("use/in expression not fully implemented yet")
-                    .with_span(&expression))
+                    .with_primary_span(&expression))
                 .many_err()
             }
             CaseAnalysis(analysis) => {

@@ -1,0 +1,6 @@
+;; TEST fail check
+
+@unsafe @ignore
+@unsafe
+@ignore
+coerce: Input -> Output = coerce

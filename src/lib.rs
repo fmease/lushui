@@ -17,11 +17,11 @@
 //!
 //! | Engine | Passes and Outputs |
 //! |--------|--------------------|
-//! | <abbr title="tree-walk interpreter">TWI</abbr> | [**lexing**][0]: [tokens][1] → [**parsing**][2]: [AST][3] → [**lowering**][4]: [desugared AST][5] → [**name resolution**][6]: [HIR][7] → [**type checking**][8]: [HIR][7] → [**interpreting**](typer::interpreter): [HIR][7] |
-//! | <abbr title="byte code interpreter">BCI</abbr> | [**lexing**][0]: [tokens][1] → [**parsing**][2]: [AST][3] → [**lowering**][4]: [desugared AST][5] → [**name resolution**][6]: [HIR][7] → [**type checking**][8]: [HIR][7] → [**compiling**](compiler): ? → [**interpreting**](compiler::interpreter): ? |
+//! | <abbr title="tree-walk interpreter">TWI</abbr> | [**lexing**][0]: [tokens][1] → [**parsing**][2]: [AST][3] → [**lowering**][4]: [lowered AST][5] <br> → [**name resolution**][6]: [HIR][7] → [**type checking**][8]: [HIR][7] <br> → [**interpreting**](typer::interpreter): [HIR][7] |
+//! | <abbr title="byte code interpreter">BCI</abbr> | [**lexing**][0]: [tokens][1] → [**parsing**][2]: [AST][3] → [**lowering**][4]: [lowered AST][5] <br> → [**name resolution**][6]: [HIR][7] → [**type checking**][8]: [HIR][7] <br> → [**compiling**](compiler): ? → [**interpreting**](compiler::interpreter): ? |
 //! | Documenter | ? → [**documenter**](documenter): HTML |
 //! | Formatter | ? |
-//! | Highligher | ? |
+//! | Highlighter | ? |
 //! | REPL | ? |
 //!
 //! [0]: lexer
@@ -38,19 +38,21 @@
     decl_macro,
     associated_type_defaults,
     never_type,
-    bool_to_option,
     default_free_fn,
     min_const_generics,
     or_patterns,
     never_type_fallback,
     const_panic,
     map_first_last,
-    stmt_expr_attributes
+    stmt_expr_attributes,
+    map_into_keys_values,
+    format_args_capture,
+    associated_type_bounds
 )]
 #![forbid(rust_2018_idioms, unused_must_use)]
 
 pub mod compiler;
-pub mod diagnostic;
+pub mod diagnostics;
 pub mod documenter;
 mod entity;
 #[cfg(test)]
@@ -95,7 +97,7 @@ fn has_file_extension(path: &Path, required_extension: &str) -> bool {
     path.extension().and_then(|extension| extension.to_str()) == Some(required_extension)
 }
 
-use diagnostic::Diagnostic;
+use diagnostics::Diagnostic;
 
 pub fn parse_crate_name(file: impl AsRef<Path>) -> Result<ast::Identifier, Diagnostic> {
     let file = file.as_ref();
@@ -103,7 +105,7 @@ pub fn parse_crate_name(file: impl AsRef<Path>) -> Result<ast::Identifier, Diagn
     if !has_file_extension(file, FILE_EXTENSION) {
         Diagnostic::warning()
             .with_message("missing or non-standard file extension")
-            .emit(None);
+            .emit_to_stderr(None);
     }
 
     // @Question does unwrap ever fail in a real-world example?

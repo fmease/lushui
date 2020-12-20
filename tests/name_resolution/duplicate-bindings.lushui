@@ -1,0 +1,31 @@
+;; TEST fail check
+
+@(location "../../libs/core/core")
+module core
+
+use core.nat.Nat
+
+data Alpha: Type =
+    alpha (beta: Alpha): Alpha
+
+Alpha: Type = Type
+
+beta: Nat = 1000
+
+module capsule =
+    use super.Nat
+
+    data Nat: Type =
+        zero: Nat
+        successor: Nat -> Nat
+
+beta (x y: Nat): Nat = y
+
+capsule: Nat = beta
+
+data ALIKE: Type =
+    ALIKE: ALIKE
+
+zero: Nat = 0
+
+use capsule.zero

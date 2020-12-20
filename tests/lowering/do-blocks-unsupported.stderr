@@ -1,0 +1,11 @@
+error: do blocks not supported yet
+ >>> ${DIRECTORY}/lowering/do-blocks-unsupported.lushui:4:5
+  |
+4 |       do
+...  _____^
+8 | |         pure (goal beta)
+  | |________________________^ 
+  |
+
+error: aborting due to previous error
+

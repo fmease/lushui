@@ -1,14 +1,19 @@
 //! Helper "support" bindings for every module.
 //!
 //! All of those items are about error handling. They want a home.
-//! `crate::diagnostic` might not be it. It's still some way to go
+//! `crate::diagnostics` might not be it. It's still some way to go
 //! until I figure out how to handle errors best.
-// @Question should we move the Result helpers to crate::diagnostic?
+//!
+//! Read documention of [crate::diagnostics] for more information on
+//! the error handling APIs found in this module
+// @Task rename this module in utilities and move formatting (`WithDisplay`, pluralize)
+// into separate module
+// @Task move error handling APIs to separate module `errors`
 
 use joinery::JoinableIterator;
 
 use crate::{
-    diagnostic::{Diagnostic, Diagnostics, Result, Results},
+    diagnostics::{Diagnostic, Diagnostics, Result, Results},
     SmallVec,
 };
 
@@ -100,9 +105,7 @@ impl<T> InvalidFallback for Vec<T> {
 }
 
 impl InvalidFallback for () {
-    fn invalid() -> Self {
-        ()
-    }
+    fn invalid() -> Self {}
 }
 
 /// Try to get a value falling back to something invalid logging errors.
@@ -135,12 +138,16 @@ impl<T: InvalidFallback> TryIn<T> for Result<T> {
 }
 
 // @Task documentation
-pub trait TransposeExt<T> {
-    fn transpose(self) -> Results<Vec<T>>;
+pub trait TransposeExt<T, E> {
+    fn transpose(self) -> Result<Vec<T>, E>;
 }
 
-impl<T> TransposeExt<T> for Vec<Results<T>> {
-    fn transpose(self) -> Results<Vec<T>> {
+impl<I, T, E> TransposeExt<T, E> for I
+where
+    I: Iterator<Item = Result<T, E>>,
+    E: Extend<Diagnostic> + IntoIterator<Item = Diagnostic>,
+{
+    fn transpose(self) -> Result<Vec<T>, E> {
         let mut final_result = Ok(Vec::new());
         for result in self {
             match final_result {
@@ -168,10 +175,9 @@ impl<T> ManyErrExt<T> for Result<T, Diagnostic> {
     }
 }
 
-pub fn listing<I>(items: I, conjunction: &str) -> String
+pub fn ordered_listing<I>(items: I, conjunction: Conjunction) -> String
 where
-    I: DoubleEndedIterator + Clone,
-    I::Item: fmt::Display + Clone,
+    I: DoubleEndedIterator<Item: fmt::Display + Clone> + Clone,
 {
     use std::iter::once;
 
@@ -180,13 +186,45 @@ where
     let mut items = items.rev();
 
     match items.next() {
-        Some(item) => format!(
-            "{} {} {}",
-            once(item).chain(items).join_with(", "),
-            conjunction,
-            last,
-        ),
+        Some(item) => {
+            let body = once(item).chain(items).join_with(", ");
+            let conjunction = conjunction.name();
+            format!("{body} {conjunction} {last}")
+        }
         None => last.to_string(),
+    }
+}
+
+pub fn unordered_listing<I>(mut items: I, conjunction: Conjunction) -> String
+where
+    I: Iterator<Item: Clone + fmt::Display> + Clone,
+{
+    use std::iter::once;
+
+    let last = items.next().unwrap();
+
+    match items.next() {
+        Some(item) => {
+            let body = once(item).chain(items).join_with(", ");
+            let conjunction = conjunction.name();
+            format!("{body} {conjunction} {last}")
+        }
+        None => last.to_string(),
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum Conjunction {
+    And,
+    Or,
+}
+
+impl Conjunction {
+    const fn name(self) -> &'static str {
+        match self {
+            Self::And => "and",
+            Self::Or => "or",
+        }
     }
 }
 
@@ -210,9 +248,28 @@ pub fn pluralize<'a, S: Into<Cow<'a, str>>>(
     }
 }
 
+pub trait QuoteExt {
+    fn quote(self) -> String;
+}
+
+impl<D: fmt::Display> QuoteExt for D {
+    fn quote(self) -> String {
+        // @Task optimize
+        format!("`{}`", self)
+    }
+}
+
 use std::fmt;
 
-pub struct DisplayIsDebug<'a, T: fmt::Display>(pub &'a T);
+pub trait AsDebug: fmt::Display + Sized {
+    fn as_debug(&self) -> DisplayIsDebug<'_, Self> {
+        DisplayIsDebug(self)
+    }
+}
+
+impl<T: fmt::Display> AsDebug for T {}
+
+pub struct DisplayIsDebug<'a, T: fmt::Display>(&'a T);
 
 impl<T: fmt::Display> fmt::Debug for DisplayIsDebug<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -220,7 +277,15 @@ impl<T: fmt::Display> fmt::Debug for DisplayIsDebug<'_, T> {
     }
 }
 
-pub struct DebugIsDisplay<'a, T: fmt::Debug>(pub &'a T);
+pub trait AsDisplay: fmt::Debug + Sized {
+    fn as_display(&self) -> DebugIsDisplay<'_, Self> {
+        DebugIsDisplay(self)
+    }
+}
+
+impl<T: fmt::Debug> AsDisplay for T {}
+
+pub struct DebugIsDisplay<'a, T: fmt::Debug>(&'a T);
 
 impl<T: fmt::Debug> fmt::Display for DebugIsDisplay<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

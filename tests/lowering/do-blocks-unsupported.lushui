@@ -1,0 +1,8 @@
+;; TEST fail check
+
+main: IO Unit =
+    do
+        alpha <- make-alpha
+        let helper = alpha resource
+        beta <- random unit
+        pure (goal beta)

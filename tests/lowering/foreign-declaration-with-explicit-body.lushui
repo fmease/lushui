@@ -1,0 +1,6 @@
+;; TEST fail check
+
+@foreign
+data Void: Type =
+
+@foreign thing = 0

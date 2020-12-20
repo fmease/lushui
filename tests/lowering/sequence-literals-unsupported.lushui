@@ -1,0 +1,9 @@
+;; TEST fail check
+
+construct: List = @List [1 3 100 @Nat32 0]
+
+
+destruct: X =
+    case source of
+        [\x \y @Text "X"] => always
+        \__ => forever

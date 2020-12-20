@@ -1,0 +1,23 @@
+error[E011]: attribute `one-can-only-dream` does not exist
+ >>> ${DIRECTORY}/lowering/undefined-attributes.lushui:3:2
+  |
+3 | @one-can-only-dream
+  |  ^^^^^^^^^^^^^^^^^^ 
+  |
+
+error[E011]: attribute `eliminate` does not exist
+ >>> ${DIRECTORY}/lowering/undefined-attributes.lushui:6:9
+  |
+6 |     T: @eliminate Type = @(elaborated attempt) 0
+  |         ^^^^^^^^^ 
+  |
+
+error[E011]: attribute `elaborated` does not exist
+ >>> ${DIRECTORY}/lowering/undefined-attributes.lushui:6:28
+  |
+6 |     T: @eliminate Type = @(elaborated attempt) 0
+  |                            ^^^^^^^^^^ 
+  |
+
+error: aborting due to 3 previous errors
+

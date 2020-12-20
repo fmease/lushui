@@ -55,9 +55,12 @@ Header ::= "module" "=" Line-Break
 
 Top-Level ::= (Line-Break | Declaration)* #End-Of-Input
 
-Use-Declaration ::= "use" Path-Tree Line-Break
+Use-Declaration ::= "use" Use-Path-Tree Line-Break
 
-Path-Tree ::= Path | Path "." "(" (Path-Tree | "(" Renaming ")")* ")" | Renaming
+Use-Path-Tree ::=
+    | Path
+    | Path "." "(" (Use-Path-Tree | "(" Renaming ")")* ")"
+    | Renaming
 Renaming ::= Path "as" General-Identifier
 
 Constructor ::=
@@ -113,7 +116,7 @@ Let-In ::=
     "let" #Identifier Parameters Type_Annotation? "="
     Possibly-Breakably-Indented-Expression "in" Line-Break? Expression
 
-Use-In ::= "use" Path-Tree "in" Line-Break? Expression
+Use-In ::= "use" Use-Path-Tree "in" Line-Break? Expression
 
 Case-Analysis ::= "case" Possibly-Breakably-Indented-Expression "of"
     (Line-Break (Indentation Case* Dedentation)?)?

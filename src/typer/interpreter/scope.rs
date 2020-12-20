@@ -2,13 +2,13 @@
 
 use super::{ffi, Expression, Substitution::Shift};
 use crate::{
-    diagnostic::{Code, Diagnostic, Result},
+    diagnostics::{Code, Diagnostic, Result},
     entity::EntityKind,
     hir::expr,
     lowered_ast::{Attributes, Number},
     resolver::{CrateIndex, CrateScope, DebruijnIndex, Identifier, Index},
     span::Span,
-    support::DisplayIsDebug,
+    support::AsDebug,
 };
 
 /// Many methods of module scope panic instead of returning a `Result` because
@@ -125,7 +125,7 @@ impl CrateScope {
                 debug_assert!(self.bindings[index].is_untyped());
 
                 self.bindings[index].kind = match &self.foreign_bindings.remove(binder.as_str()) {
-                    Some((arity, function)) => EntityKind::Foreign {
+                    Some(ffi::ForeignFunction { arity, function }) => EntityKind::Foreign {
                         type_,
                         arity: *arity,
                         function: *function,
@@ -135,7 +135,7 @@ impl CrateScope {
                         return Err(Diagnostic::error()
                             .with_code(Code::E060)
                             .with_message(format!("foreign binding `{}` is not registered", binder))
-                            .with_span(&binder));
+                            .with_primary_span(&binder));
                     }
                 };
             }
@@ -148,7 +148,7 @@ impl CrateScope {
                     return Err(Diagnostic::error()
                         .with_code(Code::E060)
                         .with_message(format!("foreign data type `{}` is not registered", binder))
-                        .with_span(&binder))
+                        .with_primary_span(&binder))
                 }
             },
         })
@@ -163,9 +163,11 @@ impl CrateScope {
         &mut self,
         binder: &'static str,
         arity: usize,
-        function: ffi::ForeignFunction,
+        function: ffi::NakedForeignFunction,
     ) {
-        let old = self.foreign_bindings.insert(binder, (arity, function));
+        let old = self
+            .foreign_bindings
+            .insert(binder, ffi::ForeignFunction { arity, function });
 
         debug_assert!(old.is_none());
     }
@@ -207,7 +209,7 @@ impl CrateScope {
                     ));
                 Err(match expression_span {
                     Some(span) => {
-                        diagnostic.with_labeled_span(&span, "the type of this expression")
+                        diagnostic.with_labeled_primary_span(&span, "the type of this expression")
                     }
                     None => diagnostic,
                 })
@@ -278,9 +280,9 @@ impl crate::support::DisplayWith for Registration {
                 let mut compound = f.debug_struct("ValueBinding");
                 compound
                     .field("binder", binder)
-                    .field("type", &DisplayIsDebug(&type_.with(scope)));
+                    .field("type", &type_.with(scope).as_debug());
                 match value {
-                    Some(value) => compound.field("value", &DisplayIsDebug(&value.with(scope))),
+                    Some(value) => compound.field("value", &value.with(scope).as_debug()),
                     None => compound.field("value", &"?(none)"),
                 }
                 .finish()
@@ -288,7 +290,7 @@ impl crate::support::DisplayWith for Registration {
             DataBinding { binder, type_ } => f
                 .debug_struct("DataBinding")
                 .field("binder", binder)
-                .field("type", &DisplayIsDebug(&type_.with(scope)))
+                .field("type", &type_.with(scope).as_debug())
                 .finish(),
             ConstructorBinding {
                 binder,
@@ -297,13 +299,13 @@ impl crate::support::DisplayWith for Registration {
             } => f
                 .debug_struct("ConstructorBinding")
                 .field("binder", binder)
-                .field("type", &DisplayIsDebug(&type_.with(scope)))
+                .field("type", &type_.with(scope).as_debug())
                 .field("data", data)
                 .finish(),
             ForeignValueBinding { binder, type_ } => f
                 .debug_struct("ForeignValueBinding")
                 .field("binder", binder)
-                .field("type", &DisplayIsDebug(&type_.with(scope)))
+                .field("type", &type_.with(scope).as_debug())
                 .finish(),
             ForeignDataBinding { binder } => f
                 .debug_struct("ForeignDataBinding")

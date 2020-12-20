@@ -1,3 +1,5 @@
+//! Abstractions for working with things that have a source location and can have attributes.
+
 use crate::{
     span::{Span, Spanning},
     support::InvalidFallback,
@@ -38,6 +40,7 @@ impl<Kind: InvalidFallback, Attributes: Default> InvalidFallback for Item<Kind, 
     }
 }
 
+/// Construct an [Item].
 // @Note several hacks going on because apparently, one cannot use a $loc:path directly and concatenate it
 // to the rest of another path. $($seg)::+ does not work either
 pub macro item {
