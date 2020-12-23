@@ -1,0 +1,12 @@
+;; TEST fail check
+
+use super
+use crate
+use other
+use self
+
+use crate.(space self space)
+
+use crate.(self.(self.thing super))
+
+use exists.(self)

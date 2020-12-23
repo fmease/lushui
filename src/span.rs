@@ -106,7 +106,7 @@ impl Sub<usize> for LocalByteIndex {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Spanned<K> {
     pub kind: K,
     pub span: Span,

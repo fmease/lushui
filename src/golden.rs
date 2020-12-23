@@ -39,14 +39,14 @@
 //!
 //! ## Pending Tasks
 //!
-//! * fix the output for a mismatch between golden and actual output: We print
-//!   an extra line break which is not part of the content
 //! * improve error reporting (printing `Error`s)
 //! * make it possible to escape dollar signs in golden stderr files
 //! * (not strictly related to this runner) create more relevant tests
 //! * somehow prevent test writers from adding golden stderr files which
 //!   don't use `${DIRECTORY}` but a local path
-//! * verify some unwraps and replace them if necessary
+//! * print information after each golden file for increased responsiveness
+//! * maybe implement filtering golden directories and files
+//! * use `rayon` to test in parallel
 
 use crate::{has_file_extension, span::SourceMap, HashMap};
 use colored::Colorize;
@@ -60,8 +60,6 @@ use std::{
 
 const TEST_DIRECTORY_NAME: &str = "tests";
 const GOLDEN_STDERR_VARIABLE_DIRECTORY: &str = "${DIRECTORY}";
-
-// @Beacon @Task test all libraries in "libs/": core etc.
 
 #[test]
 fn run() -> Result<(), Error> {

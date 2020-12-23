@@ -6,7 +6,7 @@ use crate::{
     entity::EntityKind,
     hir::expr,
     lowered_ast::{Attributes, Number},
-    resolver::{CrateIndex, CrateScope, DebruijnIndex, Identifier, Index},
+    resolver::{CrateIndex, CrateScope, DeBruijnIndex, Identifier, Index},
     span::Span,
     support::AsDebug,
 };
@@ -56,7 +56,7 @@ impl CrateScope {
 
                 // @Task tidy up with iterator combinators
                 for argument in arguments {
-                    if let Some(argument) = ffi::Value::from_expression(&argument, self) {
+                    if let Some(argument) = ffi::Value::from_expression(&argument, &self.ffi) {
                         value_arguments.push(argument);
                     } else {
                         return Ok(None);
@@ -124,7 +124,8 @@ impl CrateScope {
                 let index = binder.crate_index().unwrap();
                 debug_assert!(self.bindings[index].is_untyped());
 
-                self.bindings[index].kind = match &self.foreign_bindings.remove(binder.as_str()) {
+                self.bindings[index].kind = match &self.ffi.foreign_bindings.remove(binder.as_str())
+                {
                     Some(ffi::ForeignFunction { arity, function }) => EntityKind::Foreign {
                         type_,
                         arity: *arity,
@@ -139,18 +140,23 @@ impl CrateScope {
                     }
                 };
             }
-            ForeignDataBinding { binder } => match self.foreign_types.get_mut(binder.as_str()) {
-                Some(index @ None) => {
-                    *index = Some(binder.clone());
+            ForeignDataBinding { binder } => {
+                match self.ffi.foreign_types.get_mut(binder.as_str()) {
+                    Some(index @ None) => {
+                        *index = Some(binder.clone());
+                    }
+                    Some(Some(_)) => unreachable!(),
+                    None => {
+                        return Err(Diagnostic::error()
+                            .with_code(Code::E060)
+                            .with_message(format!(
+                                "foreign data type `{}` is not registered",
+                                binder
+                            ))
+                            .with_primary_span(&binder))
+                    }
                 }
-                Some(Some(_)) => unreachable!(),
-                None => {
-                    return Err(Diagnostic::error()
-                        .with_code(Code::E060)
-                        .with_message(format!("foreign data type `{}` is not registered", binder))
-                        .with_primary_span(&binder))
-                }
-            },
+            }
         })
     }
 
@@ -166,6 +172,7 @@ impl CrateScope {
         function: ffi::NakedForeignFunction,
     ) {
         let old = self
+            .ffi
             .foreign_bindings
             .insert(binder, ffi::ForeignFunction { arity, function });
 
@@ -178,7 +185,7 @@ impl CrateScope {
     }
 
     pub fn register_foreign_type(&mut self, binder: &'static str) {
-        let old = self.foreign_types.insert(binder, None);
+        let old = self.ffi.foreign_types.insert(binder, None);
         debug_assert!(old.is_none());
     }
 
@@ -191,7 +198,7 @@ impl CrateScope {
         binder: &'static str,
         expression_span: Option<Span>,
     ) -> Result<Expression> {
-        match self.foreign_types.get(binder) {
+        match self.ffi.foreign_types.get(binder) {
             Some(Some(binder)) => Ok(expr! {
                 Binding {
                     Attributes::default(),
@@ -356,12 +363,12 @@ impl<'a> FunctionScope<'a> {
 
         match binder.index {
             Crate(index) => scope.lookup_type(index),
-            Debruijn(index) => Some(self.lookup_type_with_depth(index, 0)),
-            DebruijnParameter => unreachable!(),
+            DeBruijn(index) => Some(self.lookup_type_with_depth(index, 0)),
+            DeBruijnParameter => unreachable!(),
         }
     }
 
-    fn lookup_type_with_depth(&self, index: DebruijnIndex, depth: usize) -> Expression {
+    fn lookup_type_with_depth(&self, index: DeBruijnIndex, depth: usize) -> Expression {
         match self {
             Self::FunctionParameter { parent, type_ } => {
                 if depth == index.0 {
@@ -405,8 +412,8 @@ impl<'a> FunctionScope<'a> {
 
         match binder.index {
             Crate(index) => scope.lookup_value(index),
-            Debruijn(_) => ValueView::Neutral,
-            DebruijnParameter => unreachable!(),
+            DeBruijn(_) => ValueView::Neutral,
+            DeBruijnParameter => unreachable!(),
         }
     }
 
@@ -415,8 +422,8 @@ impl<'a> FunctionScope<'a> {
 
         match binder.index {
             Crate(index) => scope.is_foreign(index),
-            Debruijn(_) => false,
-            DebruijnParameter => unreachable!(),
+            DeBruijn(_) => false,
+            DeBruijnParameter => unreachable!(),
         }
     }
 }

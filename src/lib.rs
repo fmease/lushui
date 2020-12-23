@@ -47,7 +47,8 @@
     stmt_expr_attributes,
     map_into_keys_values,
     format_args_capture,
-    associated_type_bounds
+    associated_type_bounds,
+    label_break_value
 )]
 #![forbid(rust_2018_idioms, unused_must_use)]
 

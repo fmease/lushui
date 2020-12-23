@@ -110,16 +110,17 @@ impl<'a> Typer<'a> {
                     if let Some(inherent) =
                         declaration.attributes.get(AttributeKeys::INHERENT).next()
                     {
-                        ffi::register_inherent_bindings(
-                            &data.binder,
-                            constructors
-                                .iter()
-                                .map(|constructor| constructor.unwrap_constructor()),
-                            declaration,
-                            inherent,
-                            self.scope,
-                        )
-                        .many_err()?;
+                        self.scope
+                            .ffi
+                            .register_inherent_bindings(
+                                &data.binder,
+                                constructors
+                                    .iter()
+                                    .map(|constructor| constructor.unwrap_constructor()),
+                                declaration,
+                                inherent,
+                            )
+                            .many_err()?;
                     }
 
                     constructors

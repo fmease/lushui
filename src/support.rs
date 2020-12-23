@@ -292,3 +292,13 @@ impl<T: fmt::Debug> fmt::Display for DebugIsDisplay<'_, T> {
         self.0.fmt(f)
     }
 }
+
+pub macro try_or($subject:expr, $continuation:expr, buffer = $buffer:expr) {
+    match $subject {
+        Ok(subject) => subject,
+        Err(error) => {
+            $buffer.insert(error);
+            $continuation
+        }
+    }
+}

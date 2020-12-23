@@ -365,7 +365,7 @@ impl<'a> Lowerer<'a> {
 
                 let mut declarations = SmallVec::new();
 
-                fn lower_path_tree_multiple_paths(
+                fn lower_use_path_tree(
                     path: Path,
                     bindings: Vec<UsePathTree>,
                     span: Span,
@@ -374,25 +374,38 @@ impl<'a> Lowerer<'a> {
                 ) -> Results<()> {
                     let mut errors = Diagnostics::default();
 
+                    macro try_or($subject:expr, $continuation:expr) {
+                        crate::support::try_or!($subject, $continuation, buffer = errors)
+                    }
+
                     for binding in bindings {
                         match binding.kind {
                             Single { target, binder } => {
+                                let combined_target =
+                                    try_or!(path.clone().join(target.clone()), continue);
+
                                 // if the binder is not explicitly set, look for the most-specific/last/right-most
                                 // identifier of the target but if that one is `self`, look up the last identifier of
                                 // the parent path
+                                let binder = binder
+                                    .or_else(|| {
+                                        if target.is_self() { &path } else { &target }
+                                            .last_identifier()
+                                            .cloned()
+                                    })
+                                    .ok_or_else(|| {
+                                        // @Task improve the message for `use crate.(self)`: hint that `self`
+                                        // is effectively unnamed because `crate` is unnamed
+                                        invalid_unnamed_path_hanger(target.hanger.unwrap())
+                                    });
+                                let binder = try_or!(binder, continue);
+
                                 declarations.push(decl! {
                                     Use {
                                         attributes.clone(),
                                         span;
-                                        binder: binder.or_else(|| if !target.is_self() { &target } else { &path }
-                                            .last_identifier().cloned()),
-                                        target: match path.clone().join(target) {
-                                            Ok(target) => target,
-                                            Err(error) => {
-                                                errors.insert(error);
-                                                continue
-                                            }
-                                        },
+                                        binder,
+                                        target: combined_target,
                                     }
                                 });
                             }
@@ -400,14 +413,8 @@ impl<'a> Lowerer<'a> {
                                 path: inner_path,
                                 bindings,
                             } => {
-                                lower_path_tree_multiple_paths(
-                                    match path.clone().join(inner_path) {
-                                        Ok(path) => path,
-                                        Err(error) => {
-                                            errors.insert(error);
-                                            continue;
-                                        }
-                                    },
+                                lower_use_path_tree(
+                                    try_or!(path.clone().join(inner_path), continue),
                                     bindings,
                                     span,
                                     attributes.clone(),
@@ -420,25 +427,48 @@ impl<'a> Lowerer<'a> {
                     errors.err_or(())
                 };
 
-                match use_.bindings.kind {
-                    Single { target, binder } => declarations.push(decl! {
-                        Use {
-                            attributes,
-                            declaration.span;
-                            binder: binder.or_else(|| target.last_identifier().cloned()),
-                            target,
+                'discriminate: {
+                    match use_.bindings.kind {
+                        Single { target, binder } => {
+                            let binder = binder.or_else(|| target.last_identifier().cloned());
+                            let binder = match binder {
+                                Some(binder) => binder,
+                                None => {
+                                    errors.insert(invalid_unnamed_path_hanger(
+                                        target.hanger.unwrap(),
+                                    ));
+                                    break 'discriminate;
+                                }
+                            };
+
+                            declarations.push(decl! {
+                                Use {
+                                    attributes,
+                                    declaration.span;
+                                    binder,
+                                    target,
+                                }
+                            })
                         }
-                    }),
-                    Multiple { path, bindings } => {
-                        lower_path_tree_multiple_paths(
-                            path,
-                            bindings,
-                            declaration.span,
-                            attributes,
-                            &mut declarations,
-                        )
-                        .try_in(&mut errors);
+                        Multiple { path, bindings } => {
+                            lower_use_path_tree(
+                                path,
+                                bindings,
+                                declaration.span,
+                                attributes,
+                                &mut declarations,
+                            )
+                            .try_in(&mut errors);
+                        }
                     }
+                }
+
+                fn invalid_unnamed_path_hanger(hanger: ast::Hanger) -> Diagnostic {
+                    Diagnostic::error()
+                        .with_code(Code::E025)
+                        .with_message(format!("`use` of unnamed `{hanger}`"))
+                        .with_primary_span(&hanger)
+                        .with_help("bind the path to a name with `as`")
                 }
 
                 errors.err_or(declarations)

@@ -47,12 +47,7 @@ pub struct CrateScope {
     unresolved_uses_grouped: Vec<HashSet<CrateIndex>>,
     /// For error reporting.
     pub(super) duplicate_definitions: HashMap<CrateIndex, DuplicateDefinition>,
-    // @Note ugly types!
-    pub(crate) foreign_types: HashMap<&'static str, Option<Identifier>>,
-    pub(crate) foreign_bindings: HashMap<&'static str, ffi::ForeignFunction>,
-    pub(crate) inherent_values: ffi::InherentValueMap,
-    pub(crate) inherent_types: ffi::InherentTypeMap,
-    pub(crate) _runners: IndexVec<ffi::IOIndex, ffi::IORunner>,
+    pub(crate) ffi: ffi::Scope,
     // @Note this is very coarse-grained: as soon as we cannot resolve EITHER type annotation (for example)
     // OR actual value(s), we bail out and add this here. This might be too conversative (leading to more
     // "circular type" errors or whatever), we can just discriminate by creating sth like
@@ -525,6 +520,7 @@ impl fmt::Debug for Namespace {
 }
 
 // @Question move to resolver/hir.rs?
+/// A name-resolved identifier.
 #[derive(Clone, PartialEq)]
 pub struct Identifier {
     /// Source at the use-site/call-site or def-site if definition.
@@ -555,7 +551,7 @@ impl Identifier {
 
     // @Note bad name
     pub fn as_innermost(&self) -> Self {
-        Self::new(DebruijnIndex(0), self.source.clone())
+        Self::new(DeBruijnIndex(0), self.source.clone())
     }
 
     pub fn stripped(self) -> Self {
@@ -566,7 +562,7 @@ impl Identifier {
     }
 
     pub fn is_innermost(&self) -> bool {
-        self.index == DebruijnIndex(0).into()
+        self.index == DeBruijnIndex(0).into()
     }
 
     pub fn shift(self, amount: usize) -> Self {
@@ -590,9 +586,9 @@ impl Identifier {
         }
     }
 
-    pub fn debruijn_index(&self) -> Option<DebruijnIndex> {
+    pub fn de_bruijn_index(&self) -> Option<DeBruijnIndex> {
         match self.index {
-            Index::Debruijn(index) => Some(index),
+            Index::DeBruijn(index) => Some(index),
             _ => None,
         }
     }
@@ -614,8 +610,8 @@ impl fmt::Display for Identifier {
             write!(f, "#")?;
             match self.index {
                 Index::Crate(index) => write!(f, "{:?}", index)?,
-                Index::Debruijn(index) => write!(f, "{}D", index.0)?,
-                Index::DebruijnParameter => write!(f, "P")?,
+                Index::DeBruijn(index) => write!(f, "{}D", index.0)?,
+                Index::DeBruijnParameter => write!(f, "P")?,
             }
         }
         Ok(())
@@ -631,24 +627,24 @@ impl fmt::Debug for Identifier {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Index {
     Crate(CrateIndex),
-    Debruijn(DebruijnIndex),
-    DebruijnParameter,
+    DeBruijn(DeBruijnIndex),
+    DeBruijnParameter,
 }
 
 impl Index {
     fn shift(self, amount: usize) -> Self {
         match self {
             Self::Crate(_) => self,
-            Self::Debruijn(index) => DebruijnIndex(index.0 + amount).into(),
-            Self::DebruijnParameter => unreachable!(),
+            Self::DeBruijn(index) => DeBruijnIndex(index.0 + amount).into(),
+            Self::DeBruijnParameter => unreachable!(),
         }
     }
 
     fn unshift(self) -> Self {
         match self {
             Self::Crate(_) => self,
-            Self::Debruijn(index) => DebruijnIndex(index.0.saturating_sub(1)).into(),
-            Self::DebruijnParameter => unreachable!(),
+            Self::DeBruijn(index) => DeBruijnIndex(index.0.saturating_sub(1)).into(),
+            Self::DeBruijnParameter => unreachable!(),
         }
     }
 }
@@ -678,13 +674,13 @@ impl indexed_vec::Idx for CrateIndex {
     }
 }
 
-/// Identifier for bindings defined through function parameters.
+/// De Bruijn index — index for bindings defined by function parameters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct DebruijnIndex(pub usize);
+pub struct DeBruijnIndex(pub usize);
 
-impl From<DebruijnIndex> for Index {
-    fn from(index: DebruijnIndex) -> Self {
-        Self::Debruijn(index)
+impl From<DeBruijnIndex> for Index {
+    fn from(index: DeBruijnIndex) -> Self {
+        Self::DeBruijn(index)
     }
 }
 
@@ -718,7 +714,7 @@ impl<'a> FunctionScope<'a> {
     pub fn absolute_path(binder: &Identifier, scope: &CrateScope) -> String {
         match binder.index {
             Index::Crate(index) => scope.absolute_path(index),
-            Index::Debruijn(_) | Index::DebruijnParameter => binder.as_str().into(),
+            Index::DeBruijn(_) | Index::DeBruijnParameter => binder.as_str().into(),
         }
     }
 
@@ -761,7 +757,7 @@ impl<'a> FunctionScope<'a> {
                             return Err(value_used_as_a_namespace(identifier, &query.segments[1]));
                         }
 
-                        Ok(Identifier::new(DebruijnIndex(depth), identifier.clone()))
+                        Ok(Identifier::new(DeBruijnIndex(depth), identifier.clone()))
                     } else {
                         parent.resolve_binding_with_depth(query, scope, depth + 1, origin)
                     }
@@ -788,7 +784,7 @@ impl<'a> FunctionScope<'a> {
                                 ));
                             }
 
-                            Ok(Identifier::new(DebruijnIndex(depth), identifier.clone()))
+                            Ok(Identifier::new(DeBruijnIndex(depth), identifier.clone()))
                         }
                         None => parent.resolve_binding_with_depth(
                             query,

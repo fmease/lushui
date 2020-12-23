@@ -55,7 +55,7 @@ pub struct Module {
 }
 
 pub struct Use {
-    pub binder: Option<Identifier>,
+    pub binder: Identifier,
     pub target: Path,
 }
 
@@ -716,10 +716,7 @@ impl Declaration {
                 }
                 Ok(())
             }
-            Use(declaration) => match &declaration.binder {
-                Some(binder) => writeln!(f, "use {} as {}", declaration.target, binder),
-                None => writeln!(f, "use {}", declaration.target),
-            },
+            Use(declaration) => writeln!(f, "use {} as {}", declaration.target, declaration.binder),
             Invalid => write!(f, "?(invalid)"),
         }
     }

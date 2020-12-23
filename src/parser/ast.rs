@@ -273,6 +273,7 @@ impl Path {
         }
     }
 
+    // @Task make this Option<Self> and move diagnostic construction into lowerer
     pub fn join(mut self, other: Self) -> Result<Self> {
         if let Some(hanger) = other.hanger {
             if !matches!(hanger.kind, HangerKind::Self_) {
@@ -291,13 +292,23 @@ impl Path {
     }
 
     pub fn is_self(&self) -> bool {
-        matches!(
-            self.hanger,
-            Some(Hanger {
-                kind: HangerKind::Self_,
-                ..
-            })
-        )
+        self.hanger
+            .map_or(false, |hanger| hanger.kind == HangerKind::Self_)
+            && self.segments.is_empty()
+    }
+
+    // @Temporary
+    pub fn is_super(&self) -> bool {
+        self.hanger
+            .map_or(false, |hanger| hanger.kind == HangerKind::Super)
+            && self.segments.is_empty()
+    }
+
+    // @Temporary
+    pub fn is_crate(&self) -> bool {
+        self.hanger
+            .map_or(false, |hanger| hanger.kind == HangerKind::Crate)
+            && self.segments.is_empty()
     }
 
     /// Return the path head if it is an identifier.
@@ -561,7 +572,7 @@ impl fmt::Display for Hanger {
 }
 
 /// The non-identifier head of a path.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum HangerKind {
     Crate,
     Super,

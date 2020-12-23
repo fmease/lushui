@@ -787,7 +787,7 @@ pub enum Code {
     E023,
     /// Circular declaration.
     E024,
-    /// Bare use of crate or super.
+    /// Invalid unnamed path hanger.
     E025,
     /// Crate or super inside nested path.
     E026,

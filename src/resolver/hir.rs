@@ -534,7 +534,7 @@ mod test {
     impl Identifier {
         fn parameter(name: &'static str) -> Self {
             Identifier::new(
-                Index::DebruijnParameter,
+                Index::DeBruijnParameter,
                 ast::Identifier::new(name.into(), Span::SHAM),
             )
         }

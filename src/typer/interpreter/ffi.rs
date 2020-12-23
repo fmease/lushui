@@ -9,79 +9,96 @@ use crate::{
     },
     span::Span,
     typer::Declaration,
-    Int, Nat,
+    HashMap, Int, Nat,
 };
+use indexed_vec::IndexVec;
+
+// @Note ugly data structures in use
+#[derive(Default)]
+pub struct Scope {
+    /// Foreign types (`@foreign data`).
+    pub(super) foreign_types: HashMap<&'static str, Option<Identifier>>,
+    /// Foreign bindings (`@foreign`).
+    pub(super) foreign_bindings: HashMap<&'static str, ForeignFunction>,
+    /// Inherent values (`@inherent`)
+    pub(super) inherent_values: InherentValueMap,
+    /// Inherent types (`@inherent`)
+    pub(super) inherent_types: InherentTypeMap,
+    pub(super) _runners: IndexVec<IOIndex, IORunner>,
+}
+
+impl Scope {
+    pub(in crate::typer) fn register_inherent_bindings<'a>(
+        &mut self,
+        binder: &Identifier,
+        mut constructors: impl Iterator<Item = &'a Constructor>,
+        declaration: &Declaration,
+        attribute: &Attribute,
+    ) -> Result<()> {
+        // @Task link to previous definition
+        let duplicate = || {
+            Diagnostic::error()
+                .with_code(Code::E020)
+                .with_message(format!(
+                    "`{}` is defined multiple times as inherent",
+                    binder
+                ))
+                .with_primary_span(declaration)
+        };
+
+        let mut find = |value_name, inherent: &mut Option<_>| {
+            if let Some(constructor) =
+                constructors.find(|constructor| constructor.binder.as_str() == value_name)
+            {
+                *inherent = Some(constructor.binder.clone().stripped());
+            }
+        };
+
+        match binder.as_str() {
+            Type::UNIT => {
+                if self.inherent_types.unit.is_some() {
+                    return Err(duplicate());
+                }
+
+                self.inherent_types.unit = Some(binder.clone().stripped());
+                find(Value::UNIT, &mut self.inherent_values.unit);
+            }
+            Type::BOOL => {
+                if self.inherent_types.bool.is_some() {
+                    return Err(duplicate());
+                }
+
+                self.inherent_types.bool = Some(binder.clone().stripped());
+                find(Value::FALSE, &mut self.inherent_values.false_);
+                find(Value::TRUE, &mut self.inherent_values.true_);
+            }
+            Type::OPTION => {
+                if self.inherent_types.option.is_some() {
+                    return Err(duplicate());
+                }
+
+                self.inherent_types.option = Some(binder.clone().stripped());
+                find(Value::NONE, &mut self.inherent_values.none);
+                find(Value::SOME, &mut self.inherent_values.some);
+            }
+            _ => {
+                return Err(Diagnostic::error()
+                    .with_code(Code::E062)
+                    .with_message(format!("`{}` is not an inherent type", binder))
+                    .with_primary_span(attribute)
+                    .with_labeled_secondary_span(declaration, "ascribed to this declaration"))
+            }
+        }
+
+        Ok(())
+    }
+}
 
 pub type NakedForeignFunction = fn(arguments: Vec<Value>) -> Value;
 
 pub struct ForeignFunction {
     pub(super) arity: usize,
     pub(super) function: NakedForeignFunction,
-}
-
-pub fn register_inherent_bindings<'a>(
-    binder: &Identifier,
-    mut constructors: impl Iterator<Item = &'a Constructor>,
-    declaration: &Declaration,
-    attribute: &Attribute,
-    scope: &mut CrateScope,
-) -> Result<()> {
-    // @Task link to previous definition
-    let duplicate = || {
-        Diagnostic::error()
-            .with_code(Code::E020)
-            .with_message(format!(
-                "`{}` is defined multiple times as inherent",
-                binder
-            ))
-            .with_primary_span(declaration)
-    };
-
-    let mut find = |value_name, inherent: &mut Option<_>| {
-        if let Some(constructor) =
-            constructors.find(|constructor| constructor.binder.as_str() == value_name)
-        {
-            *inherent = Some(constructor.binder.clone().stripped());
-        }
-    };
-
-    match binder.as_str() {
-        Type::UNIT => {
-            if scope.inherent_types.unit.is_some() {
-                return Err(duplicate());
-            }
-
-            scope.inherent_types.unit = Some(binder.clone().stripped());
-            find(Value::UNIT, &mut scope.inherent_values.unit);
-        }
-        Type::BOOL => {
-            if scope.inherent_types.bool.is_some() {
-                return Err(duplicate());
-            }
-
-            scope.inherent_types.bool = Some(binder.clone().stripped());
-            find(Value::FALSE, &mut scope.inherent_values.false_);
-            find(Value::TRUE, &mut scope.inherent_values.true_);
-        }
-        Type::OPTION => {
-            if scope.inherent_types.option.is_some() {
-                return Err(duplicate());
-            }
-
-            scope.inherent_types.option = Some(binder.clone().stripped());
-            find(Value::NONE, &mut scope.inherent_values.none);
-            find(Value::SOME, &mut scope.inherent_values.some);
-        }
-        _ => {
-            return Err(Diagnostic::error()
-                .with_code(Code::E062)
-                .with_message(format!("`{}` is not an inherent type", binder))
-                .with_primary_span(attribute)
-                .with_labeled_secondary_span(declaration, "ascribed to this declaration"))
-        }
-    }
-
-    Ok(())
 }
 
 /// An FFI-compatible type.
@@ -117,7 +134,7 @@ names! {
 }
 
 impl Type {
-    fn from_expression(expression: &Expression, scope: &super::CrateScope) -> Option<Self> {
+    fn from_expression(expression: &Expression, scope: &Scope) -> Option<Self> {
         let types = &scope.inherent_types;
 
         use ExpressionKind::*;
@@ -170,8 +187,8 @@ impl Type {
         })
     }
 
-    fn into_expression(self, scope: &super::CrateScope) -> Result<Expression> {
-        let types = &scope.inherent_types;
+    fn into_expression(self, scope: &CrateScope) -> Result<Expression> {
+        let types = &scope.ffi.inherent_types;
 
         fn missing_inherent() -> Diagnostic {
             // @Task message
@@ -238,7 +255,7 @@ names! {
 }
 
 impl Value {
-    pub fn from_expression(expression: &Expression, scope: &super::CrateScope) -> Option<Self> {
+    pub fn from_expression(expression: &Expression, scope: &Scope) -> Option<Self> {
         let values = &scope.inherent_values;
 
         use ExpressionKind::*;
@@ -281,11 +298,11 @@ impl Value {
         })
     }
 
-    pub fn into_expression(self, scope: &super::CrateScope) -> Result<Expression> {
-        let values = &scope.inherent_values;
+    pub fn into_expression(self, scope: &CrateScope) -> Result<Expression> {
+        let values = &scope.ffi.inherent_values;
 
         fn missing_inherent() -> Diagnostic {
-            // @Task message
+            // @Task message, span
             Diagnostic::error().with_code(Code::E063)
         }
 

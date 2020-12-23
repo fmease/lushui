@@ -1,10 +1,10 @@
 //! The name resolver.
 //!
-//! It traverses the desugared AST (aka desugar-HIR) and registers bindings
+//! It traverses the [lowered AST](lowered_ast) and registers bindings
 //! defined both at module-level using declarations and at function
 //! and pattern level as parameters. Furthermore, it resolves all paths inside
-//! expressions and patterns to resolver identifiers [Identifier] which
-//! either links to a crate-local index [CrateIndex] or a Debruijn-index [DebruijnIndex]
+//! expressions and patterns to [resolved identifiers](Identifier) which
+//! links to a [crate-local index](CrateIndex) or a [de Bruijn index](DeBruijnIndex)
 //! respectively.
 //!
 //! It does two main passes and a (hopefully) small one for use declarations to support
@@ -20,14 +20,14 @@ mod scope;
 
 use crate::{
     ast,
-    diagnostics::{Code, Diagnostic, Diagnostics, Results, Warn},
+    diagnostics::{Diagnostic, Diagnostics, Results, Warn},
     entity::EntityKind,
     lowered_ast,
     support::{accumulate_errors, InvalidFallback, ManyErrExt, TransposeExt, TryIn},
 };
 use hir::{decl, expr, pat};
 pub use scope::{
-    CrateIndex, CrateScope, DebruijnIndex, FunctionScope, Identifier, Index, Namespace,
+    CrateIndex, CrateScope, DeBruijnIndex, FunctionScope, Identifier, Index, Namespace,
 };
 use scope::{OnlyValue, RegistrationError, ValueOrModule};
 use std::{mem, rc::Rc};
@@ -82,7 +82,6 @@ impl<'a> Resolver<'a> {
     /// new intermediate HIR because of too much mapping and type-system boilerplate
     /// and it's just not worth it memory-wise.
     /// For more on this, see [CrateScope::resolve_identifier].
-    // @Question instead of Err==(), should we have Err==enum { Other /* for duplicate defs */, Diagnostics(Diagnostics) }?
     fn start_resolve_declaration(
         &mut self,
         declaration: &lowered_ast::Declaration,
@@ -187,19 +186,8 @@ impl<'a> Resolver<'a> {
             Use(use_) => {
                 let module = module.unwrap();
 
-                let binder = use_.binder.as_ref().ok_or_else(|| {
-                    // @Task only mention *either* `super` or `crate`
-                    // @Note the span is not great, consider `use crate.(self hello)`
-                    // I think this is handled best in the lowerer
-                    Diagnostic::error()
-                        .with_code(Code::E025)
-                        .with_message("`use` of bare `super` and `crate`")
-                        .with_primary_span(declaration)
-                        .with_help("add a name to it with `as`")
-                })?;
-
                 let index = self.scope.register_binding(
-                    binder.clone(),
+                    use_.binder.clone(),
                     EntityKind::UnresolvedUse,
                     Some(module),
                 )?;
@@ -213,7 +201,7 @@ impl<'a> Resolver<'a> {
         Ok(())
     }
 
-    /// Completely resolve a desugar-HIR declaration to a resolver-HIR declaration.
+    /// Completely resolve a lowered declaration to a declaration of the HIR.
     ///
     /// Tries to resolve all expressions and patterns contained within all declarations
     /// and actually builds the new HIR.
@@ -359,13 +347,13 @@ impl<'a> Resolver<'a> {
             }
             Use(use_) => {
                 let module = module.unwrap();
-                let binder = use_.binder.unwrap();
 
-                let index = self
-                    .scope
-                    .resolve_identifier::<ValueOrModule>(&binder, module)
-                    .many_err()?;
-                let binder = Identifier::new(index, binder);
+                let binder = Identifier::new(
+                    self.scope
+                        .resolve_identifier::<ValueOrModule>(&use_.binder, module)
+                        .many_err()?,
+                    use_.binder,
+                );
 
                 decl! {
                     Use {
@@ -408,7 +396,7 @@ impl<'a> Resolver<'a> {
                         expression.attributes,
                         expression.span;
                         parameter: pi.parameter.clone()
-                            .map(|parameter| Identifier::new(Index::DebruijnParameter, parameter.clone())),
+                            .map(|parameter| Identifier::new(Index::DeBruijnParameter, parameter.clone())),
                         domain,
                         codomain,
                         explicitness: pi.explicitness,
@@ -447,7 +435,7 @@ impl<'a> Resolver<'a> {
                 Lambda {
                     expression.attributes,
                     expression.span;
-                    parameter: Identifier::new(Index::DebruijnParameter, lambda.parameter.clone()),
+                    parameter: Identifier::new(Index::DeBruijnParameter, lambda.parameter.clone()),
                     parameter_type_annotation: lambda.parameter_type_annotation.clone()
                         .map(|type_| self.resolve_expression(type_, scope)
                             .try_in(&mut errors)),
@@ -521,7 +509,7 @@ impl<'a> Resolver<'a> {
                     Binder {
                         pattern.attributes,
                         pattern.span;
-                        binder: Identifier::new(Index::DebruijnParameter, unrc!(binder.binder)),
+                        binder: Identifier::new(Index::DeBruijnParameter, unrc!(binder.binder)),
                     }
                 }
             }
