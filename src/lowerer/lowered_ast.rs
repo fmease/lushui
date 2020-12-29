@@ -1,16 +1,18 @@
-//! The lowered AST.
+//! The lowered abstract syntax tree (lowered AST).
+
+// @Task rename a bunch of syntax node to make them more like the ones of the AST
+// i.e. not Number but NumberLiteral etc
+
+mod format;
 
 use crate::{
-    ast::{
-        self,
-        Explicitness::{self, *},
-        Identifier, Path,
-    },
+    ast::{self, Explicitness, Identifier, Path},
     diagnostics::Results,
-    span::{SourceFile, Spanned},
+    parser::ast::ParameterAspect,
+    span::{SourceFile, Span, Spanned},
     support::InvalidFallback,
 };
-use std::{fmt, rc::Rc};
+use std::rc::Rc;
 
 pub type Item<Kind> = crate::item::Item<Kind, Attributes>;
 
@@ -83,11 +85,13 @@ impl InvalidFallback for ExpressionKind {
 
 #[derive(Clone)]
 pub struct PiType {
+    // @Question should we move `aspect`, `parameter` and `domain` to
+    // separate `Domain` type like in `crate::ast` or should we keep it
+    // flat and also inline `Domain` in the non-lowered AST?
+    pub aspect: ParameterAspect,
     pub parameter: Option<Identifier>,
     pub domain: Expression,
     pub codomain: Expression,
-    pub explicitness: Explicitness,
-    pub is_field: bool,
 }
 
 #[derive(Clone)]
@@ -107,6 +111,8 @@ pub struct Lambda {
     pub parameter: Identifier,
     pub parameter_type_annotation: Option<Expression>,
     pub explicitness: Explicitness,
+    // @Temporary
+    pub laziness: Option<Span>,
     pub body_type_annotation: Option<Expression>,
     pub body: Expression,
 }
@@ -500,58 +506,6 @@ impl AttributeKind {
     }
 }
 
-impl fmt::Display for AttributeKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "@")?;
-
-        match self {
-            Self::Allow { lint } => write!(f, "(allow {})", lint),
-            Self::Deny { lint } => write!(f, "(deny {})", lint),
-            Self::Deprecated {
-                reason,
-                since,
-                until,
-                replacement,
-            } => write!(
-                f,
-                "(deprecated (reason {:?}) (since {:?}) (until {:?}) (replacement {:?}))",
-                reason, since, until, replacement
-            ),
-            // Self::Documentation { content } => writeln!(f, ";{:?}", content),
-            Self::Documentation { content } => write!(f, "(documentation {:?})", content),
-            Self::Forbid { lint } => write!(f, "(forbid {})", lint),
-            Self::Foreign => write!(f, "foreign"),
-            Self::If { condition } => write!(f, "(if {})", condition),
-            Self::Ignore => write!(f, "ignore"),
-            Self::Include => write!(f, "include"),
-            Self::Inherent => write!(f, "inherent"),
-            Self::Int => write!(f, "Int"),
-            Self::Int32 => write!(f, "Int32"),
-            Self::Int64 => write!(f, "Int64"),
-            Self::List => write!(f, "List"),
-            Self::Location { path } => write!(f, "(location {})", path),
-            Self::Moving => write!(f, "moving"),
-            Self::Nat => write!(f, "Nat"),
-            Self::Nat32 => write!(f, "Nat32"),
-            Self::Nat64 => write!(f, "Nat64"),
-            Self::Opaque => write!(f, "opaque"),
-            Self::Public { scope } => match scope {
-                Some(scope) => write!(f, "(scope {})", scope),
-                None => write!(f, "public"),
-            },
-            Self::RecursionLimit { depth } => write!(f, "(recursion-limit {})", depth),
-            Self::Rune => write!(f, "Rune"),
-            Self::Static => write!(f, "static"),
-            Self::Test => write!(f, "test"),
-            Self::Text => write!(f, "Text"),
-            Self::Unsafe => write!(f, "unsafe"),
-            Self::Unstable { feature, reason } => write!(f, "(feature {} {:?})", feature, reason),
-            Self::Vector => write!(f, "Vector"),
-            Self::Warn { lint } => write!(f, "(warn {})", lint),
-        }
-    }
-}
-
 bitflags::bitflags! {
     pub struct AttributeKeys: u64 {
         const ALLOW = 1 << 0;
@@ -614,32 +568,14 @@ impl Default for AttributeKeys {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum Lint {}
 
-impl fmt::Display for Lint {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {}
-    }
-}
-
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Version {}
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum Condition {}
 
-impl fmt::Display for Condition {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {}
-    }
-}
-
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum Feature {}
-
-impl fmt::Display for Feature {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {}
-    }
-}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Number {
@@ -649,218 +585,6 @@ pub enum Number {
     Int(crate::Int),
     Int32(i32),
     Int64(i64),
-}
-
-impl fmt::Display for Number {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Nat(value) => write!(f, "{}", value),
-            Self::Nat32(value) => write!(f, "{}", value),
-            Self::Nat64(value) => write!(f, "{}", value),
-            Self::Int(value) => write!(f, "{}", value),
-            Self::Int32(value) => write!(f, "{}", value),
-            Self::Int64(value) => write!(f, "{}", value),
-        }
-    }
-}
-
-// @Task reduce amount of (String) allocations
-// @Bug indentation not correctly handled
-// @Task display attributes
-impl Declaration {
-    fn format_with_depth(&self, depth: usize, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use crate::INDENTATION_IN_SPACES;
-        use DeclarationKind::*;
-
-        match &self.kind {
-            Value(declaration) => {
-                write!(f, "{}: {}", declaration.binder, declaration.type_annotation)?;
-                if let Some(expression) = &declaration.expression {
-                    write!(f, " = {}", expression)?;
-                }
-                writeln!(f)
-            }
-            Data(declaration) => match &declaration.constructors {
-                Some(constructors) => {
-                    writeln!(
-                        f,
-                        "data {}: {} =",
-                        declaration.binder, declaration.type_annotation
-                    )?;
-                    for constructor in constructors {
-                        let depth = depth + 1;
-                        write!(
-                            f,
-                            "{}{}",
-                            " ".repeat(depth * INDENTATION_IN_SPACES),
-                            constructor
-                        )?;
-                    }
-                    Ok(())
-                }
-                None => writeln!(
-                    f,
-                    "data {}: {}",
-                    declaration.binder, declaration.type_annotation
-                ),
-            },
-            Constructor(constructor) => {
-                writeln!(f, "{}: {}", constructor.binder, constructor.type_annotation)
-            }
-            Module(declaration) => {
-                writeln!(f, "module {}: =", declaration.binder)?;
-                for declaration in &declaration.declarations {
-                    let depth = depth + 1;
-                    write!(f, "{}", " ".repeat(depth * INDENTATION_IN_SPACES))?;
-                    declaration.format_with_depth(depth, f)?;
-                }
-                Ok(())
-            }
-            Use(declaration) => writeln!(f, "use {} as {}", declaration.target, declaration.binder),
-            Invalid => write!(f, "?(invalid)"),
-        }
-    }
-}
-
-impl fmt::Display for Declaration {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.format_with_depth(0, f)
-    }
-}
-
-// @Task display fewer round brackets by making use of precedence
-// @Note many wasted allocations (intermediate Strings)
-impl fmt::Display for Expression {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use ExpressionKind::*;
-
-        match &self.kind {
-            PiType(literal) => write!(f, "{}", literal),
-            Application(application) => {
-                write!(f, "{} ", application.callee.wrap())?;
-                match application.explicitness {
-                    Explicit => write!(f, "{}", application.argument.wrap()),
-                    Implicit => write!(f, "({}{})", application.explicitness, application.argument),
-                }
-            }
-            Type => write!(f, "Type"),
-            Number(literal) => write!(f, "{}", literal),
-            Text(literal) => write!(f, "{:?}", literal),
-            Binding(binding) => write!(f, "{}", binding.binder),
-            Lambda(lambda) => write!(f, "{}", lambda),
-            UseIn => todo!(),
-            // @Task fix indentation
-            CaseAnalysis(analysis) => {
-                writeln!(f, "case {} of", analysis.subject)?;
-                for case in &analysis.cases {
-                    write!(f, "{}", case)?;
-                }
-                Ok(())
-            }
-            Invalid => write!(f, "?(invalid)"),
-        }
-    }
-}
-
-impl fmt::Display for PiType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let domain_needs_brackets =
-            self.parameter.is_some() || self.explicitness == Implicit || self.is_field;
-
-        if domain_needs_brackets {
-            write!(f, "(")?;
-        }
-
-        write!(f, "{}", self.explicitness)?;
-
-        if self.is_field {
-            write!(f, "field ")?;
-        }
-
-        if let Some(parameter) = &self.parameter {
-            write!(f, "{}: ", parameter)?;
-        }
-
-        if domain_needs_brackets {
-            write!(f, "{}", self.domain)?;
-        } else {
-            write!(f, "{}", self.domain.wrap())?;
-        }
-
-        if domain_needs_brackets {
-            write!(f, ")")?;
-        }
-
-        write!(f, " -> {}", self.codomain.wrap())
-    }
-}
-
-impl fmt::Display for Lambda {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "\\({}{}", self.explicitness, self.parameter)?;
-        if let Some(annotation) = &self.parameter_type_annotation {
-            write!(f, ": {}", annotation.wrap())?;
-        }
-        write!(f, ")")?;
-        if let Some(annotation) = &self.body_type_annotation {
-            write!(f, ": {}", annotation.wrap())?;
-        }
-        write!(f, " => {}", self.body.wrap())
-    }
-}
-
-impl fmt::Display for Case {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{} => {}", self.pattern, self.body)
-    }
-}
-
-// @Task update bracket business
-impl fmt::Display for Pattern {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use PatternKind::*;
-
-        match &self.kind {
-            Number(number) => write!(f, "{}", number),
-            Text(text) => write!(f, "{:?}", text),
-            Binding(binding) => write!(f, "{}", binding.binder),
-            Binder(binder) => write!(f, "\\{}", binder.binder),
-            Deapplication(application) => {
-                write!(f, "({}) ({})", application.callee, application.argument)
-            }
-            Invalid => write!(f, "?(invalid)"),
-        }
-    }
-}
-
-trait WrapExpression {
-    fn wrap<'a>(&'a self) -> PossiblyWrapped<'a>;
-}
-
-impl WrapExpression for Expression {
-    fn wrap<'a>(&'a self) -> PossiblyWrapped<'a> {
-        PossiblyWrapped(self)
-    }
-}
-
-struct PossiblyWrapped<'a>(&'a Expression);
-
-impl PossiblyWrapped<'_> {
-    fn needs_brackets_conservative(&self) -> bool {
-        use ExpressionKind::*;
-
-        !matches!(&self.0.kind, Type | Number(_) | Text(_) | Binding(_) | Invalid)
-    }
-}
-
-impl fmt::Display for PossiblyWrapped<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.needs_brackets_conservative() {
-            write!(f, "({})", self.0)
-        } else {
-            write!(f, "{}", self.0)
-        }
-    }
 }
 
 pub macro decl($( $tree:tt )+) {

@@ -524,8 +524,8 @@ impl fmt::Debug for Namespace {
 #[derive(Clone, PartialEq)]
 pub struct Identifier {
     /// Source at the use-site/call-site or def-site if definition.
-    pub source: ast::Identifier,
-    pub index: Index,
+    pub(crate) source: ast::Identifier,
+    pub(crate) index: Index,
 }
 
 impl Identifier {
@@ -534,6 +534,13 @@ impl Identifier {
             index: index.into(),
             source,
         }
+    }
+
+    pub(crate) fn parameter(name: &str) -> Self {
+        Identifier::new(
+            Index::DeBruijnParameter,
+            ast::Identifier::new(name.into(), Span::SHAM),
+        )
     }
 
     pub fn as_str(&self) -> &str {

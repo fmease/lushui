@@ -127,7 +127,8 @@ impl<'a> Lowerer<'a> {
                                             Span::SHAM;
                                             parameter: binder.clone(),
                                             parameter_type_annotation: Some(parameter_type_annotation.clone()),
-                                            explicitness: parameter_group.explicitness,
+                                            explicitness: parameter_group.aspect.explicitness,
+                                            laziness: parameter_group.aspect.laziness,
                                             body_type_annotation: type_annotation.next(),
                                             body,
                                         }
@@ -361,7 +362,7 @@ impl<'a> Lowerer<'a> {
             }
             // @Task verify that the resulting spans are correct
             Use(use_) => {
-                use ast::{PathTreeKind::*, UsePathTree};
+                use ast::{UsePathTree, UsePathTreeKind::*};
 
                 let mut declarations = SmallVec::new();
 
@@ -492,12 +493,12 @@ impl<'a> Lowerer<'a> {
 
         match expression.kind {
             PiTypeLiteral(pi) => {
-                self.check_fieldness_location(pi.fieldness, context)
+                self.check_fieldness_location(pi.domain.aspect.fieldness, context)
                     .try_in(&mut errors);
 
                 let ((), domain, codomain) = accumulate_errors!(
                     errors.err_or(()),
-                    self.lower_expression(pi.domain, context),
+                    self.lower_expression(pi.domain.expression, context),
                     self.lower_expression(pi.codomain, context),
                 )?;
 
@@ -505,11 +506,10 @@ impl<'a> Lowerer<'a> {
                     PiType {
                         attributes,
                         expression.span;
-                        parameter: pi.binder.clone(),
+                        aspect: pi.domain.aspect,
+                        parameter: pi.domain.binder.clone(),
                         domain,
                         codomain,
-                        explicitness: pi.explicitness,
-                        is_field: pi.fieldness.is_some(),
                     }
                 })
             }
@@ -560,6 +560,8 @@ impl<'a> Lowerer<'a> {
                     binder: *path,
                 }
             }),
+            // @Beacon @Beacon @Task lower `laziness` to Lambda as well!!
+            // ass field for Lambda in lowered_ast and HIR!!!
             LambdaLiteral(lambda) => {
                 let mut expression = self
                     .lower_expression(lambda.body, context)
@@ -590,7 +592,8 @@ impl<'a> Lowerer<'a> {
                                 Span::SHAM;
                                 parameter: binder.clone(),
                                 parameter_type_annotation: parameter.clone(),
-                                explicitness: parameter_group.explicitness,
+                                explicitness: parameter_group.aspect.explicitness,
+                                laziness: parameter_group.aspect.laziness,
                                 body_type_annotation: type_annotation.next(),
                                 body: expression,
                             }
@@ -622,11 +625,11 @@ impl<'a> Lowerer<'a> {
                     for binder in parameter_group.parameters.iter().rev() {
                         expression = expr! {
                             Lambda {
-                                Attributes::default(),
-                                Span::SHAM;
+                                Attributes::default(), Span::SHAM;
                                 parameter: binder.clone(),
                                 parameter_type_annotation: parameter.clone(),
-                                explicitness: parameter_group.explicitness,
+                                explicitness: parameter_group.aspect.explicitness,
+                                laziness: parameter_group.aspect.laziness,
                                 body_type_annotation: type_annotation.next(),
                                 body: expression,
                             }
@@ -640,12 +643,10 @@ impl<'a> Lowerer<'a> {
 
                 errors.err_or(expr! {
                     Application {
-                        Attributes::default(),
-                        Span::SHAM;
+                        Attributes::default(), Span::SHAM;
                         callee: expr! {
                             Lambda {
-                                Attributes::default(),
-                                Span::SHAM;
+                                Attributes::default(), Span::SHAM;
                                 parameter: let_in.binder,
                                 // @Note we cannot simply lower parameters and a type annotation because
                                 // in the chain (`->`) of parameters, there might always be one missing and
@@ -654,6 +655,7 @@ impl<'a> Lowerer<'a> {
                                 // @Task verify correct semantics
                                 parameter_type_annotation: type_annotation.next(),
                                 explicitness: Explicit,
+                                laziness: None,
                                 body_type_annotation: None,
                                 body,
                             }
@@ -674,13 +676,13 @@ impl<'a> Lowerer<'a> {
                     cases.push(lowered_ast::Case {
                         pattern: self.lower_pattern(case_group.pattern).try_in(&mut errors),
                         body: self
-                            .lower_expression(case_group.expression.clone(), context)
+                            .lower_expression(case_group.body.clone(), context)
                             .try_in(&mut errors),
                     });
                 }
 
                 let subject = self
-                    .lower_expression(analysis.expression, context)
+                    .lower_expression(analysis.scrutinee, context)
                     .try_in(&mut errors);
 
                 errors.err_or(expr! {
@@ -999,7 +1001,7 @@ impl<'a> Lowerer<'a> {
             }
             .try_in(&mut errors);
 
-            self.check_fieldness_location(parameter_group.fieldness, context)
+            self.check_fieldness_location(parameter_group.aspect.fieldness, context)
                 .try_in(&mut errors);
 
             for binder in parameter_group.parameters.iter().rev() {
@@ -1007,11 +1009,10 @@ impl<'a> Lowerer<'a> {
                     PiType {
                         Attributes::default(),
                         Span::SHAM;
+                        aspect: parameter_group.aspect,
                         parameter: Some(binder.clone()),
                         domain: parameter_type_annotation.clone(),
                         codomain: expression,
-                        explicitness: parameter_group.explicitness,
-                        is_field: parameter_group.fieldness.is_some(),
                     }
                 };
             }

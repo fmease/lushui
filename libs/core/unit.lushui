@@ -4,5 +4,6 @@ data Unit: Type =
     
 use Unit.unit
 
-force (A: Type) (thunk: Unit -> A): A = thunk unit
+Thunk (A: Type): Type = Unit -> A
 
+force (A: Type) (thunk: Thunk A): A = thunk unit

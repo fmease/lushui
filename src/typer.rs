@@ -3,7 +3,7 @@
 pub mod interpreter;
 
 use crate::{
-    ast::Explicit,
+    ast::ParameterAspect,
     diagnostics::{Code, Diagnostic, Diagnostics, Result, Results, Warn},
     lowered_ast::{AttributeKeys, Attributes},
     resolver::{
@@ -19,6 +19,7 @@ use interpreter::{
     Form, Interpreter,
 };
 use joinery::JoinableIterator;
+use std::default::default;
 
 pub(crate) fn missing_annotation() -> Diagnostic {
     // @Task add span
@@ -469,14 +470,21 @@ impl<'a> Typer<'a> {
                     self.it_is_actual(body_type_annotation, infered_body_type.clone(), &scope)?;
                 }
 
+                let aspect = ParameterAspect {
+                    laziness: lambda.laziness,
+                    ..default()
+                };
+
                 expr! {
                     PiType {
                         expression.attributes,
                         expression.span;
+                        // @Temporary
+                        // aspect: ParameterAspect { laziness: lambda.laziness, ..default() },
+                        aspect,
                         parameter: Some(lambda.parameter.clone()),
                         domain: parameter_type,
                         codomain: infered_body_type,
-                        explicitness: Explicit,
                     }
                 }
             }
@@ -494,12 +502,28 @@ impl<'a> Typer<'a> {
                 )?;
 
                 match &type_of_callee.kind {
+                    // @Beacon @Task handle `lazy`
                     PiType(pi) => {
                         let argument_type =
                             self.infer_type_of_expression(application.argument.clone(), scope)?;
-                        // @Bug this error handling might *steal* the error from other handlers further
-                        // down the call chain
+
+                        let argument_type = if pi.aspect.laziness.is_some() {
+                            expr! {
+                                PiType {
+                                    Attributes::default(), argument_type.span;
+                                    aspect: default(),
+                                    parameter: None,
+                                    domain: self.scope.lookup_unit_type(Some(application.callee.span))?,
+                                    codomain: argument_type,
+                                }
+                            }
+                        } else {
+                            argument_type
+                        };
+
                         self.it_is_actual(pi.domain.clone(), argument_type, scope)
+                            // @Bug this error handling might *steal* the error from other handlers further
+                            // down the call chain
                             .map_err(|error| match error {
                                 Error::Unrecoverable(error) => error,
                                 Error::TypeMismatch { expected, actual } => Diagnostic::error()

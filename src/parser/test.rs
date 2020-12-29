@@ -10,8 +10,8 @@ use std::rc::Rc;
 
 use super::{
     ast::{
-        decl, expr, Attributes, Declaration, Explicitness::*, Expression, Identifier, Item,
-        ParameterGroup, Path, PathTreeKind, UsePathTree,
+        decl, expr, Attributes, Declaration, Domain, Explicitness::*, Expression, Format,
+        Identifier, Item, ParameterGroup, Path, UsePathTree, UsePathTreeKind,
     },
     Parser, Result,
 };
@@ -21,6 +21,7 @@ use crate::{
     smallvec,
     span::{span, SourceFile, Span},
 };
+use std::default::default;
 
 fn parse_expression(source: &str) -> Result<Expression> {
     let mut diagnostics = Diagnostics::default();
@@ -52,7 +53,7 @@ fn test_module_name() -> Identifier {
 
 fn assert_eq<ItemKind>(actual: Result<Item<ItemKind>>, expected: Result<Item<ItemKind>>)
 where
-    ItemKind: Eq + std::fmt::Debug,
+    ItemKind: Eq + Format + std::fmt::Debug,
 {
     match (expected, actual) {
         (Ok(expected), Ok(actual)) => {
@@ -60,9 +61,9 @@ where
                 panic!(
                     "the actual output of the parser does not match the expected one:\n{}",
                     difference::Changeset::new(
-                        &format!("{:#?}", expected),
-                        &format!("{:#?}", actual),
-                        " "
+                        &format!("{:?}", expected),
+                        &format!("{:?}", actual),
+                        "\n"
                     ),
                 );
             }
@@ -72,7 +73,7 @@ where
                 "expected the parser to successfully parse the input\n\
                 {:?}\n\
                 but it failed with the following diagnostics:\n\
-                {:#?}",
+                {:?}",
                 expected, error
             )
         }
@@ -98,8 +99,7 @@ fn application_lambda_literal_argument_lax_grouping() {
                                 Attributes::default(), span(7, 19);
                                 parameters: vec![
                                     ParameterGroup {
-                                        explicitness: Explicit,
-                                        fieldness: None,
+                                        aspect: default(),
                                         parameters: smallvec![Identifier::new("this".into(), span(8, 11))],
                                         type_annotation: None,
                                         span: span(8, 11),
@@ -139,8 +139,7 @@ fn application_lambda_literal_argument_strict_grouping() {
                                 Attributes::default(), span(6, 20);
                                 parameters: vec![
                                     ParameterGroup {
-                                        explicitness: Explicit,
-                                        fieldness: None,
+                                        aspect: default(),
                                         parameters: smallvec![Identifier::new("this".into(), span(8, 11))],
                                         type_annotation: None,
                                         span: span(8, 11),
@@ -169,19 +168,18 @@ fn pi_type_literal_application_bracketed_argument_domain() {
         Ok(expr! {
             PiTypeLiteral {
                 Attributes::default(), span(1, 21);
-                binder: None,
-                domain: expr! {
-                    Application {
-                        Attributes::default(), span(1, 12);
-                        callee: Identifier::new("Alpha".into(), span(1, 5)).into(),
-                        argument: Identifier::new("Beta".into(), span(7, 12)).into(),
-                        explicitness: Explicit,
-                        binder: None,
-                    }
-                },
+                domain: Domain::simple(
+                    expr! {
+                        Application {
+                            Attributes::default(), span(1, 12);
+                            callee: Identifier::new("Alpha".into(), span(1, 5)).into(),
+                            argument: Identifier::new("Beta".into(), span(7, 12)).into(),
+                            explicitness: Explicit,
+                            binder: None,
+                        }
+                    },
+                ),
                 codomain: Identifier::new("Gamma".into(), span(17, 21)).into(),
-                explicitness: Explicit,
-                fieldness: None,
             }
         }),
     );
@@ -194,8 +192,7 @@ fn bracketed_pi_type_literal_application_bracketed_argument_domain() {
         Ok(expr! {
             PiTypeLiteral {
                 Attributes::default(), span(1, 23);
-                binder: None,
-                domain: expr! {
+                domain: Domain::simple(expr! {
                     Application {
                         Attributes::default(), span(2, 13);
                         callee: Identifier::new("Alpha".into(), span(2, 6)).into(),
@@ -203,10 +200,8 @@ fn bracketed_pi_type_literal_application_bracketed_argument_domain() {
                         explicitness: Explicit,
                         binder: None,
                     }
-                },
+                }),
                 codomain: Identifier::new("Gamma".into(), span(18, 22)).into(),
-                explicitness: Explicit,
-                fieldness: None,
             }
         }),
     );
@@ -230,7 +225,7 @@ fn use_as_plain() {
                             Attributes::default(), span(1, 23);
                             bindings: UsePathTree::new(
                                 span(5, 23),
-                                PathTreeKind::Single {
+                                UsePathTreeKind::Single {
                                     target: Path {
                                         hanger: None,
                                         segments: smallvec![
@@ -267,12 +262,12 @@ fn use_as_double_brackets() {
                             Attributes::default(), span(1, 27);
                             bindings: UsePathTree::new(
                                 span(5, 27),
-                                PathTreeKind::Multiple {
+                                UsePathTreeKind::Multiple {
                                     path: Identifier::new("alpha".into(), span(5, 9)).into(),
                                     bindings: vec![
                                         UsePathTree::new(
                                             span(12, 26),
-                                            PathTreeKind::Single {
+                                            UsePathTreeKind::Single {
                                                 target:  Identifier::new("beta".into(), span(13, 16)).into(),
                                                 binder: Some(Identifier::new("gamma".into(),span(21, 25))),
                                             }

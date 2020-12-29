@@ -51,6 +51,7 @@
 use crate::{has_file_extension, span::SourceMap, HashMap};
 use colored::Colorize;
 use std::{
+    default::default,
     fmt,
     fs::{read_to_string, File},
     io::Write,
@@ -79,7 +80,7 @@ fn run() -> Result<(), Error> {
     let mut number_of_passed_tests = 0u32;
     let mut number_of_failed_tests = 0u32;
 
-    let mut failures: HashMap<String, Vec<Failure>> = HashMap::default();
+    let mut failures: HashMap<String, Vec<Failure>> = default();
 
     let test_directory_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(TEST_DIRECTORY_NAME);
     let readable_test_directory_path = test_directory_path.to_str().unwrap();

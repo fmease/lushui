@@ -2,6 +2,8 @@
 //!
 //! The most important definitions are [Declaration], [Expression] and [Pattern].
 
+mod format;
+
 use crate::{
     diagnostics::{Code, Diagnostic, Result, Results},
     lexer::{Token, TokenKind},
@@ -11,7 +13,9 @@ use crate::{
     support::ManyErrExt,
     Atom, SmallVec,
 };
-use std::{convert::TryFrom, convert::TryInto, fmt, rc::Rc};
+use std::{convert::TryFrom, convert::TryInto, default::default, rc::Rc};
+
+pub use format::Format;
 
 pub type Item<Kind> = crate::item::Item<Kind, Attributes>;
 
@@ -30,25 +34,10 @@ pub enum DeclarationKind {
     Use(Box<Use>),
 }
 
-impl fmt::Debug for DeclarationKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Value(declaration) => declaration.fmt(f),
-            Self::Data(declaration) => declaration.fmt(f),
-            Self::Constructor(declaration) => declaration.fmt(f),
-            Self::Module(declaration) => declaration.fmt(f),
-            Self::Crate(declaration) => declaration.fmt(f),
-            Self::Header => write!(f, "Header"),
-            Self::Group(declaration) => declaration.fmt(f),
-            Self::Use(declaration) => declaration.fmt(f),
-        }
-    }
-}
-
 /// The syntax node of a value declaration or a let statement.
 ///
 /// See [DeclarationKind::Value] and [Statement::Let].
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Value {
     pub binder: Identifier,
@@ -58,7 +47,6 @@ pub struct Value {
 }
 
 /// The syntax node of a data declaration.
-#[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Data {
     pub binder: Identifier,
@@ -68,7 +56,6 @@ pub struct Data {
 }
 
 /// The syntax node of a constructor.
-#[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Constructor {
     pub binder: Identifier,
@@ -80,7 +67,6 @@ pub struct Constructor {
 }
 
 /// The syntax node of a module declaration.
-#[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Module {
     pub binder: Identifier,
@@ -89,14 +75,12 @@ pub struct Module {
 }
 
 /// The syntax node of a crate declaration.
-#[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Crate {
     pub binder: Identifier,
 }
 
 /// The syntax node of attribute groups.
-#[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Group {
     pub declarations: Vec<Declaration>,
@@ -105,17 +89,17 @@ pub struct Group {
 /// The syntax node of a use declaration or statement.
 ///
 /// See [DeclarationKind::Use] and [Statement::Use].
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Use {
     pub bindings: UsePathTree,
 }
 
-pub type UsePathTree = Spanned<PathTreeKind>;
+pub type UsePathTree = Spanned<UsePathTreeKind>;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
-pub enum PathTreeKind {
+pub enum UsePathTreeKind {
     Single {
         target: Path,
         binder: Option<Identifier>,
@@ -128,7 +112,7 @@ pub enum PathTreeKind {
 
 pub type Attributes = Vec<Attribute>;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Attribute {
     pub binder: Identifier,
@@ -144,7 +128,7 @@ impl Spanning for Attribute {
 
 pub type AttributeArgument = Spanned<AttributeArgumentKind>;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub enum AttributeArgumentKind {
     NumberLiteral(Box<String>),
@@ -167,7 +151,7 @@ impl AttributeArgumentKind {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct NamedAttributeArgument {
     pub binder: Identifier,
@@ -196,46 +180,71 @@ pub enum ExpressionKind {
     Invalid,
 }
 
-impl fmt::Debug for ExpressionKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::PiTypeLiteral(expression) => expression.fmt(f),
-            Self::Application(expression) => expression.fmt(f),
-            Self::TypeLiteral => write!(f, "TypeLiteral"),
-            Self::NumberLiteral(expression) => expression.fmt(f),
-            Self::TextLiteral(expression) => expression.fmt(f),
-            Self::TypedHole(expression) => expression.fmt(f),
-            Self::Path(expression) => expression.fmt(f),
-            Self::LambdaLiteral(expression) => expression.fmt(f),
-            Self::LetIn(expression) => expression.fmt(f),
-            Self::UseIn(expression) => expression.fmt(f),
-            Self::CaseAnalysis(expression) => expression.fmt(f),
-            Self::DoBlock(expression) => expression.fmt(f),
-            Self::SequenceLiteral(expression) => expression.fmt(f),
-            Self::Invalid => write!(f, "Invalid"),
-        }
-    }
-}
-
 impl InvalidFallback for ExpressionKind {
     fn invalid() -> Self {
         Self::Invalid
     }
 }
 
-/// The syntax node of pi-type literals.
-#[derive(Debug, Clone)]
+/// The syntax node of a pi type literal.
+#[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct PiTypeLiteral {
-    pub binder: Option<Identifier>,
-    pub domain: Expression,
+    pub domain: Domain,
     pub codomain: Expression,
+}
+
+/// The domain of a [pi type literal](PiTypeLiteral).
+#[derive(Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
+pub struct Domain {
+    pub aspect: ParameterAspect,
+    pub binder: Option<Identifier>,
+    pub expression: Expression,
+}
+
+impl Domain {
+    pub(super) fn simple(expression: Expression) -> Self {
+        Self {
+            aspect: default(),
+            binder: None,
+            expression,
+        }
+    }
+}
+
+/// The extra qualities a parameter of a pi type can posses.
+// @Task change types to Spanned<Explicitness>, Spanned<Laziness>,
+// Spanned<Fieldness>, @Update maybe??? whould the span be SHAM if ~None?
+// hmm not that great
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ParameterAspect {
     pub explicitness: Explicitness,
+    pub laziness: Option<Span>,
     pub fieldness: Option<Span>,
 }
 
+impl ParameterAspect {
+    pub const fn is_lazy(self) -> bool {
+        self.laziness.is_some()
+    }
+
+    pub const fn is_field(self) -> bool {
+        self.fieldness.is_some()
+    }
+}
+
+impl From<Explicitness> for ParameterAspect {
+    fn from(explicitness: Explicitness) -> Self {
+        Self {
+            explicitness,
+            ..default()
+        }
+    }
+}
+
 /// The syntax node of function application.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Application {
     pub callee: Expression,
@@ -245,13 +254,13 @@ pub struct Application {
 }
 
 /// The syntax node of a typed hole.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct TypedHole {
     pub tag: Identifier,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Path {
     pub hanger: Option<Hanger>,
     pub segments: SmallVec<Identifier, 1>,
@@ -294,20 +303,6 @@ impl Path {
     pub fn is_self(&self) -> bool {
         self.hanger
             .map_or(false, |hanger| hanger.kind == HangerKind::Self_)
-            && self.segments.is_empty()
-    }
-
-    // @Temporary
-    pub fn is_super(&self) -> bool {
-        self.hanger
-            .map_or(false, |hanger| hanger.kind == HangerKind::Super)
-            && self.segments.is_empty()
-    }
-
-    // @Temporary
-    pub fn is_crate(&self) -> bool {
-        self.hanger
-            .map_or(false, |hanger| hanger.kind == HangerKind::Crate)
             && self.segments.is_empty()
     }
 
@@ -383,34 +378,8 @@ impl Spanning for Path {
     }
 }
 
-impl fmt::Display for Path {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fn display_path(
-            head: &Option<Hanger>,
-            segments: &[Identifier],
-            f: &mut fmt::Formatter<'_>,
-        ) -> fmt::Result {
-            let mut segments = segments.iter();
-
-            match head {
-                Some(head) => write!(f, "{}", head)?,
-                None => write!(f, "{}", segments.next().unwrap())?,
-            }
-
-            write!(
-                f,
-                "{}",
-                segments
-                    .map(|segment| format!(".{}", segment))
-                    .collect::<String>()
-            )
-        }
-        display_path(&self.hanger, &self.segments, f)
-    }
-}
-
 /// The syntax node of a lambda literal expression.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct LambdaLiteral {
     pub parameters: Parameters,
@@ -419,7 +388,7 @@ pub struct LambdaLiteral {
 }
 
 /// The syntax-node of a let/in expression.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct LetIn {
     pub binder: Identifier,
@@ -434,28 +403,28 @@ pub struct LetIn {
 }
 
 /// The syntax node of a use/in expression.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct UseIn {
     pub bindings: UsePathTree,
     pub scope: Expression,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct CaseAnalysis {
-    pub expression: Expression,
+    pub scrutinee: Expression,
     pub cases: Vec<Case>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct DoBlock {
     pub statements: Vec<Statement>,
 }
 
 // @Note we probably gonna need to make this an item at some time for diagnostics
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub enum Statement {
     // @Note we could make the definition syntactically optional and provide a good error message
@@ -469,7 +438,7 @@ pub enum Statement {
 }
 
 // @Note has a lot of overlap with [StatementKind::Value] (and a bit with [ExpressionKind::LetIn])
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct LetStatement {
     pub binder: Identifier,
@@ -478,7 +447,7 @@ pub struct LetStatement {
     pub expression: Expression,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct BindStatement {
     pub binder: Identifier,
@@ -486,30 +455,29 @@ pub struct BindStatement {
     pub expression: Expression,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct SequenceLiteral {
     pub elements: Vec<Expression>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Case {
     pub pattern: Pattern,
-    pub expression: Expression,
+    pub body: Expression,
 }
 
 pub type Parameters = Vec<ParameterGroup>;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct ParameterGroup {
+    pub aspect: ParameterAspect,
     /// non-empty
     // @Task make type-safe
     pub parameters: SmallVec<Identifier, 1>,
     pub type_annotation: Option<Expression>,
-    pub explicitness: Explicitness,
-    pub fieldness: Option<Span>,
     pub span: Span,
 }
 
@@ -521,7 +489,7 @@ impl Spanning for ParameterGroup {
 
 pub type Pattern = Item<PatternKind>;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub enum PatternKind {
     NumberLiteral(Box<String>),
@@ -534,13 +502,13 @@ pub enum PatternKind {
 }
 
 /// A binder inside of a pattern.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Binder {
     pub binder: Identifier,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Deapplication {
     pub callee: Pattern,
@@ -549,7 +517,7 @@ pub struct Deapplication {
     pub binder: Option<Identifier>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct SequenceLiteralPattern {
     pub elements: Vec<Pattern>,
@@ -557,26 +525,22 @@ pub struct SequenceLiteralPattern {
 
 pub type Hanger = Spanned<HangerKind>;
 
-impl fmt::Display for Hanger {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self.kind {
-                HangerKind::Crate => "crate",
-                HangerKind::Super => "super",
-                HangerKind::Self_ => "self",
-            }
-        )
-    }
-}
-
 /// The non-identifier head of a path.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HangerKind {
     Crate,
     Super,
     Self_,
+}
+
+impl HangerKind {
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Crate => "crate",
+            Self::Super => "super",
+            Self::Self_ => "self",
+        }
+    }
 }
 
 impl TryFrom<TokenKind> for HangerKind {
@@ -653,23 +617,6 @@ impl PartialEq for Identifier {
 impl std::hash::Hash for Identifier {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.atom.hash(state);
-    }
-}
-
-impl fmt::Debug for Identifier {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Identifier ({}) {:?}", self.atom, self.span)
-    }
-}
-
-impl fmt::Display for Identifier {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{:width$}",
-            self.atom,
-            width = f.width().unwrap_or_default()
-        )
     }
 }
 
@@ -906,6 +853,8 @@ bitflags::bitflags! {
     }
 }
 
+pub use Explicitness::*;
+
 /// The explicitness of a parameter or argument.
 ///
 /// In the context of parameters, this specifies whether in an application, the corresponding argument has
@@ -919,14 +868,9 @@ pub enum Explicitness {
     Explicit,
 }
 
-pub use Explicitness::*;
-
-impl fmt::Display for Explicitness {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Implicit => write!(f, ","),
-            Explicit => write!(f, ""),
-        }
+impl Default for Explicitness {
+    fn default() -> Self {
+        Explicit
     }
 }
 

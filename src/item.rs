@@ -6,7 +6,7 @@ use crate::{
 };
 
 /// Something with a source location and attributes.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Item<Kind, Attributes> {
     pub kind: Kind,

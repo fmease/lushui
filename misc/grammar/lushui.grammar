@@ -75,8 +75,13 @@ Expression ::= Pi-Type-Literal-Or-Lower
 ; contain further expressions) `Lower-Expression`s namely let/in, use/in, lambda literals,
 ; case analyses and do blocks (not sure about sequence literals)
 Pi-Type-Literal-Or-Lower ::=
-    ("(" Explicitness #Identifier Type-Annotation ")" | Application-Or-Lower)
+    (Complex-Pi-Type-Domain | Application-Or-Lower)
     "->" Pi-Type-Literal-Or-Lower
+Complex-Pi-Type-Domain ::= "(" Parameter-Aspect #Identifier Type-Annotation ")"
+
+Parameter-Aspect ::= Explicitness Laziness Fieldness
+Laziness ::= "lazy"?
+Fieldness ::= "field"?
 
 Application-Or-Lower ::=
     Lower-Expression
@@ -132,7 +137,7 @@ Parameters ::= Parameter-Group*
 
 Parameter-Group ::=
     | #Identifier
-    | "(" Explicitness "field"? #Identifier+ Type-Annotation? ")"
+    | "(" Pi-Type-Parameter-Aspect #Identifier+ Type-Annotation? ")"
 
 Pattern ::=
     Lower-Pattern

@@ -811,11 +811,11 @@ pub enum Code {
     E050,
     /// Unregistered foreign binding.
     E060,
-    /// Foreign type not declared.
+    /// Undefined foreign type.
     E061,
     /// Invalid inherent type.
     E062,
-    /// Inherent type not declared.
+    /// Undefined inherent type.
     E063,
     /// Implicitness unimplemented.
     W001,

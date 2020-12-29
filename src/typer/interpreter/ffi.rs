@@ -21,9 +21,9 @@ pub struct Scope {
     /// Foreign bindings (`@foreign`).
     pub(super) foreign_bindings: HashMap<&'static str, ForeignFunction>,
     /// Inherent values (`@inherent`)
-    pub(super) inherent_values: InherentValueMap,
+    pub(in crate::typer) inherent_values: InherentValueMap,
     /// Inherent types (`@inherent`)
-    pub(super) inherent_types: InherentTypeMap,
+    pub(in crate::typer) inherent_types: InherentTypeMap,
     pub(super) _runners: IndexVec<IOIndex, IORunner>,
 }
 
@@ -188,33 +188,26 @@ impl Type {
     }
 
     fn into_expression(self, scope: &CrateScope) -> Result<Expression> {
-        let types = &scope.ffi.inherent_types;
-
-        fn missing_inherent() -> Diagnostic {
-            // @Task message
-            Diagnostic::error().with_code(Code::E063)
-        }
-
-        Ok(match self {
-            Self::Unit => binding(types.unit.clone().ok_or_else(missing_inherent)?),
-            Self::Bool => binding(types.bool.clone().ok_or_else(missing_inherent)?),
-            Self::Nat => scope.lookup_foreign_type(Type::NAT, None)?,
-            Self::Nat32 => scope.lookup_foreign_type(Type::NAT32, None)?,
-            Self::Nat64 => scope.lookup_foreign_type(Type::NAT64, None)?,
-            Self::Int => scope.lookup_foreign_type(Type::INT, None)?,
-            Self::Int32 => scope.lookup_foreign_type(Type::INT32, None)?,
-            Self::Int64 => scope.lookup_foreign_type(Type::INT64, None)?,
-            Self::Text => scope.lookup_foreign_type(Type::TEXT, None)?,
-            Self::Option(type_) => application(
-                binding(types.option.clone().ok_or_else(missing_inherent)?),
+        match self {
+            Self::Unit => scope.lookup_unit_type(None),
+            Self::Bool => scope.lookup_bool_type(None),
+            Self::Nat => scope.lookup_foreign_type(Type::NAT, None),
+            Self::Nat32 => scope.lookup_foreign_type(Type::NAT32, None),
+            Self::Nat64 => scope.lookup_foreign_type(Type::NAT64, None),
+            Self::Int => scope.lookup_foreign_type(Type::INT, None),
+            Self::Int32 => scope.lookup_foreign_type(Type::INT32, None),
+            Self::Int64 => scope.lookup_foreign_type(Type::INT64, None),
+            Self::Text => scope.lookup_foreign_type(Type::TEXT, None),
+            Self::Option(type_) => Ok(application(
+                scope.lookup_option_type(None)?,
                 type_.into_expression(scope)?,
-            ),
-        })
+            )),
+        }
     }
 }
 
 // @Task smh merge InherentTypeMap and InherentValueMap without creating too much boilerplate
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct InherentTypeMap {
     pub unit: Option<Identifier>,
     pub bool: Option<Identifier>,
@@ -309,12 +302,15 @@ impl Value {
         use crate::lowered_ast::Number::*;
 
         Ok(match self {
-            Self::Unit => binding(values.unit.clone().ok_or_else(missing_inherent)?),
-            Self::Bool(value) => binding(
-                if value { &values.true_ } else { &values.false_ }
-                    .clone()
-                    .ok_or_else(missing_inherent)?,
-            ),
+            Self::Unit => values
+                .unit
+                .clone()
+                .ok_or_else(missing_inherent)?
+                .to_expression(),
+            Self::Bool(value) => (if value { &values.true_ } else { &values.false_ }
+                .clone()
+                .ok_or_else(missing_inherent)?)
+            .to_expression(),
             Self::Text(value) => expr! { Text(Attributes::default(), Span::SHAM; value) },
             Self::Nat(value) => expr! { Number(Attributes::default(), Span::SHAM; Nat(value)) },
             Self::Nat32(value) => expr! { Number(Attributes::default(), Span::SHAM; Nat32(value)) },
@@ -325,13 +321,21 @@ impl Value {
             Self::Option { type_, value } => match value {
                 Some(value) => application(
                     application(
-                        binding(values.some.clone().ok_or_else(missing_inherent)?),
+                        values
+                            .some
+                            .clone()
+                            .ok_or_else(missing_inherent)?
+                            .to_expression(),
                         type_.into_expression(scope)?,
                     ),
                     value.into_expression(scope)?,
                 ),
                 None => application(
-                    binding(values.none.clone().ok_or_else(missing_inherent)?),
+                    values
+                        .none
+                        .clone()
+                        .ok_or_else(missing_inherent)?
+                        .to_expression(),
                     type_.into_expression(scope)?,
                 ),
             },
@@ -508,10 +512,6 @@ macro pure($scope:ident, $binder:literal, |$( $var:ident: $variant:ident ),*| $b
 macro count {
     () => { 0 },
     ($var:ident $( $rest:tt )*) => { 1 + count!($( $rest )*) },
-}
-
-fn binding(binder: Identifier) -> Expression {
-    expr! { Binding { Attributes::default(), Span::SHAM; binder } }
 }
 
 fn application(callee: Expression, argument: Expression) -> Expression {

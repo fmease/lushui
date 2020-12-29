@@ -148,7 +148,7 @@ impl<'a> Resolver<'a> {
                 let mut type_annotation = &constructor.type_annotation;
 
                 while let lowered_ast::ExpressionKind::PiType(pi) = &type_annotation.kind {
-                    if pi.is_field {
+                    if pi.aspect.is_field() {
                         let parameter = pi.parameter.as_ref().unwrap();
 
                         overall_result = self
@@ -395,11 +395,11 @@ impl<'a> Resolver<'a> {
                     PiType {
                         expression.attributes,
                         expression.span;
+                        aspect: pi.aspect,
                         parameter: pi.parameter.clone()
                             .map(|parameter| Identifier::new(Index::DeBruijnParameter, parameter.clone())),
                         domain,
                         codomain,
-                        explicitness: pi.explicitness,
                     }
                 });
             }
@@ -447,6 +447,7 @@ impl<'a> Resolver<'a> {
                         &scope.extend_with_parameter(lambda.parameter.clone()))
                         .try_in(&mut errors),
                     explicitness: lambda.explicitness,
+                    laziness: lambda.laziness,
                 }
             },
             UseIn => {

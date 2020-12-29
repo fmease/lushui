@@ -1,0 +1,9 @@
+error[E010]: found `->`, but expected parameter, type annotation or `=>`
+ >>> ${DIRECTORY}/parsing/lambda-thin-arrow.lushui:3:27
+  |
+3 | f: Nat -> Nat = \(x: Nat) -> * 2 x
+  |                           ^^ unexpected token
+  |
+
+error: aborting due to previous error
+

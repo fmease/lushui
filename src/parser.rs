@@ -299,9 +299,7 @@ impl<'a> Parser<'a> {
             Indentation => {
                 self.advance();
                 self.error(|| {
-                    Diagnostic::bug()
-                        .with_message("attribute groups not support yet")
-                        .with_primary_span(&span)
+                    Diagnostic::unimplemented("attribute groups").with_primary_span(&span)
                 })
                 // self.consume(Dedentation)?;
             }
@@ -770,7 +768,7 @@ impl<'a> Parser<'a> {
 
                             bindings.push(UsePathTree::new(
                                 span,
-                                PathTreeKind::Single {
+                                UsePathTreeKind::Single {
                                     target,
                                     binder: Some(binder),
                                 },
@@ -794,7 +792,7 @@ impl<'a> Parser<'a> {
 
                     return Ok(UsePathTree::new(
                         path.span().merge(&span),
-                        PathTreeKind::Multiple { path, bindings },
+                        UsePathTreeKind::Multiple { path, bindings },
                     ));
                 }
                 _ => {
@@ -822,7 +820,7 @@ impl<'a> Parser<'a> {
 
         Ok(UsePathTree::new(
             path.span().merge(&binder),
-            PathTreeKind::Single {
+            UsePathTreeKind::Single {
                 target: path,
                 binder,
             },
@@ -895,32 +893,40 @@ impl<'a> Parser<'a> {
     /// ; contain further expressions) `Lower-Expression`s namely let/in, use/in, lambda literals,
     /// ; case analyses and do blocks (not sure about sequence literals)
     /// Pi-Type-Literal-Or-Lower ::=
-    ///     ("(" Explicitness #Identifier Type-Annotation ")" | Application-Or-Lower)
+    ///     (Complex-Pi-Type-Domain | Application-Or-Lower)
     ///     "->" Pi-Type-Literal-Or-Lower
+    /// Complex-Pi-Type-Domain ::= "(" Parameter-Aspect #Identifier Type-Annotation ")"
     /// ```
     fn parse_pi_type_literal_or_lower(&mut self) -> Result<Expression> {
         use TokenKind::*;
         let mut span = Span::SHAM;
 
-        let (explicitness, fieldness, binder, domain) = self
+        let domain = self
             .reflect(|this| {
                 span = this.consume(OpeningRoundBracket)?.span;
 
-                let explicitness = this.consume_explicitness_symbol();
-                let fieldness = this.consume_span(Field);
+                let aspect = this.parse_parameter_aspect();
+
                 let binder = this.consume_identifier()?;
                 // @Question maybe .map_err(|error| error.fatal()) to mark this one fatal
                 // (in respect to error reflecting)
-                let parameter = this.parse_type_annotation(ClosingRoundBracket.into())?;
+                let domain = this.parse_type_annotation(ClosingRoundBracket.into())?;
 
                 span.merging(&this.consume(ClosingRoundBracket)?);
 
-                Ok((explicitness, fieldness, Some(binder), parameter))
+                // Ok((explicitness, laziness, fieldness, Some(binder), parameter))
+                Ok(Domain {
+                    aspect,
+                    binder: Some(binder),
+                    expression: domain,
+                })
             })
             .or_else(|_| -> Result<_> {
-                let parameter = self.parse_application_or_lower()?;
-                span = parameter.span;
-                Ok((Explicit, None, None, parameter))
+                // @Question should we parse `lazy` here too to allow for unnamed laziness
+                // which is reasonable?
+                let domain = self.parse_application_or_lower()?;
+                span = domain.span;
+                Ok(Domain::simple(domain))
             })?;
 
         if self.current_token_kind() == ThinArrowRight {
@@ -932,21 +938,49 @@ impl<'a> Parser<'a> {
                 PiTypeLiteral {
                     Attributes::new(),
                     span;
-                    codomain,
-                    binder,
                     domain,
-                    explicitness,
-                    fieldness,
+                    codomain,
                 }
             })
-        } else if binder.is_none() {
-            Ok(domain)
+        }
+        // the case where we don't actually have a pi type literal but merely
+        // an application or lower
+        else if domain.binder.is_none() {
+            Ok(domain.expression)
         } else {
             self.error(|| {
                 Expected::Token(ThinArrowRight)
                     .but_actual_is(self.current_token())
                     .with_labeled_secondary_span(&span, "the start of a pi type literal")
             })
+        }
+    }
+
+    /// Parse the aspect of a pi type parameter.
+    ///
+    /// ## Grammar
+    ///
+    /// ```ebnf
+    /// Parameter-Aspect ::= Explicitness Laziness Fieldness
+    /// Laziness ::= "lazy"?
+    /// Fieldness ::= "field"?
+    /// ```
+    fn parse_parameter_aspect(&mut self) -> ParameterAspect {
+        use TokenKind::*;
+
+        let explicitness = self.consume_explicitness_symbol();
+        // @Task allow `lazy` and `field` to appear in any order
+        // relative to each other. that flexibility should only be
+        // allow syntactically not semantically and we should
+        // @Task check the order `laziness < fieldness` in the lowerer
+        // and generate a good error message
+        let laziness = self.consume_span(Lazy);
+        let fieldness = self.consume_span(Field);
+
+        ParameterAspect {
+            explicitness,
+            laziness,
+            fieldness,
         }
     }
 
@@ -1228,7 +1262,7 @@ impl<'a> Parser<'a> {
         use TokenKind::*;
         let mut span = span_of_case;
 
-        let expression = self.parse_possibly_breakably_indented_expression()?;
+        let scrutinee = self.parse_possibly_breakably_indented_expression()?;
         span.merging(self.consume(Of)?);
 
         let mut cases = Vec::new();
@@ -1244,7 +1278,7 @@ impl<'a> Parser<'a> {
 
                 cases.push(ast::Case {
                     pattern,
-                    expression,
+                    body: expression,
                 });
             }
 
@@ -1256,7 +1290,7 @@ impl<'a> Parser<'a> {
             CaseAnalysis {
                 attributes,
                 span;
-                expression,
+                scrutinee,
                 cases,
             }
         })
@@ -1386,7 +1420,7 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Parameter-Group ::=
     ///     | #Identifier
-    ///     | "(" Explicitness "field"? #Identifier+ Type-Annotation? ")"
+    ///     | "(" Pi-Type-Parameter-Aspect #Identifier+ Type-Annotation? ")"
     /// ```
     fn parse_parameter_group(&mut self, delimiters: &[Delimiter]) -> Result<ParameterGroup> {
         use TokenKind::*;
@@ -1396,17 +1430,15 @@ impl<'a> Parser<'a> {
                 let binder = self.current_token_into_identifier();
                 self.advance();
                 Ok(ParameterGroup {
-                    span,
+                    aspect: default(),
                     parameters: smallvec![binder],
                     type_annotation: None,
-                    fieldness: None,
-                    explicitness: Explicit,
+                    span,
                 })
             }
             OpeningRoundBracket => {
                 self.advance();
-                let explicitness = self.consume_explicitness_symbol();
-                let fieldness = self.consume_span(Field);
+                let aspect = self.parse_parameter_aspect();
                 let mut parameters = SmallVec::new();
 
                 parameters.push(self.consume_identifier()?);
@@ -1422,10 +1454,9 @@ impl<'a> Parser<'a> {
                 span.merging(self.consume(ClosingRoundBracket)?);
 
                 Ok(ParameterGroup {
+                    aspect,
                     parameters,
                     type_annotation,
-                    explicitness,
-                    fieldness,
                     span,
                 })
             }

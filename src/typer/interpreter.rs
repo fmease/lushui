@@ -8,6 +8,9 @@
 //! * full case analysis not implemented
 //! * non-trivial type inference not done
 //! * untyped/unkinded AST-transformations
+//! * does not use weak-head normal form
+
+// @Beacon @Task use weak-normal form extensively again!!!
 
 pub(crate) mod ffi;
 pub(crate) mod scope;
@@ -20,9 +23,10 @@ use crate::{
     lowered_ast::Attributes,
     resolver::CrateScope,
     span::{Span, Spanning},
-    support::InvalidFallback,
+    support::{DisplayWith, InvalidFallback},
 };
 use scope::{FunctionScope, ValueView};
+use std::fmt;
 
 #[derive(Clone, Copy)]
 pub enum Form {
@@ -198,10 +202,10 @@ impl<'a> Interpreter<'a> {
                     PiType {
                         expression.attributes,
                         expression.span;
+                        aspect: pi.aspect,
                         parameter: pi.parameter.clone(),
                         domain,
                         codomain,
-                        explicitness: pi.explicitness,
                     }
                 }
             }
@@ -262,6 +266,7 @@ impl<'a> Interpreter<'a> {
                         body_type_annotation,
                         body,
                         explicitness: lambda.explicitness,
+                        laziness: lambda.laziness,
                     }
                 }
             }
@@ -339,17 +344,48 @@ impl<'a> Interpreter<'a> {
                 let callee = self.evaluate_expression(application.callee.clone(), context)?;
                 let argument = application.argument.clone();
                 match callee.kind {
-                    Lambda(lambda) => self.evaluate_expression(
-                        expr! {
-                            Substitution {
-                                Attributes::default(),
-                                Span::SHAM;
-                                substitution: Use(Box::new(Shift(0)), argument),
-                                expression: lambda.body.clone(),
+                    Lambda(lambda) => {
+                        // @Bug because we don't reduce to weak-head normal form anywhere,
+                        // diverging expressions are still going to diverge even if "lazy"/
+                        // auto-closured to thunks since the body always gets evaluated to
+                        // normal form
+                        let argument = if lambda.laziness.is_some() {
+                            expr! {
+                                Lambda {
+                                    Attributes::default(), argument.span;
+                                    // @Bug we should not create a fake identifier at all!!
+                                    // @Note this problem is solved once we allow identifier to be
+                                    // an Option<_> (that's gonna happen when we finally implement
+                                    // the discarding identifier `_`)
+                                    parameter: crate::resolver::Identifier::parameter("__"),
+                                    parameter_type_annotation: Some(self.scope.lookup_unit_type(None)?),
+                                    body_type_annotation: None,
+                                    body: expr! {
+                                        Substitution {
+                                            Attributes::default(), Span::SHAM;
+                                            substitution: Shift(1),
+                                            expression: argument,
+                                        }
+                                    },
+                                    explicitness: Explicit,
+                                    laziness: None,
+                                }
                             }
-                        },
-                        context,
-                    )?,
+                        } else {
+                            argument
+                        };
+
+                        self.evaluate_expression(
+                            expr! {
+                                Substitution {
+                                    Attributes::default(), Span::SHAM;
+                                    substitution: Use(Box::new(Shift(0)), argument),
+                                    expression: lambda.body.clone(),
+                                }
+                            },
+                            context,
+                        )?
+                    }
                     Binding(binding) if context.scope.is_foreign(&binding.binder, &self.scope) => {
                         self.evaluate_expression(
                             expr! {
@@ -412,10 +448,10 @@ impl<'a> Interpreter<'a> {
                         PiType {
                             expression.attributes,
                             expression.span;
+                            aspect: pi.aspect,
                             parameter: pi.parameter.clone(),
                             domain,
                             codomain,
-                            explicitness: Explicit,
                         }
                     }
                 }
@@ -453,6 +489,7 @@ impl<'a> Interpreter<'a> {
                             body,
                             body_type_annotation: body_type,
                             explicitness: Explicit,
+                            laziness: lambda.laziness,
                         }
                     }
                 }
@@ -712,9 +749,6 @@ impl Substitution {
         }
     }
 }
-
-use crate::support::DisplayWith;
-use std::fmt;
 
 impl DisplayWith for Substitution {
     type Linchpin = CrateScope;

@@ -598,12 +598,6 @@ impl std::ops::Index<LocalSpan> for SourceFile {
     }
 }
 
-impl fmt::Debug for SourceFile {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "SourceFile {:?} {:?}", self.path, self.span)
-    }
-}
-
 use std::{io, path::Path};
 
 pub enum Error {

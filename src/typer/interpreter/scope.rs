@@ -199,28 +199,13 @@ impl CrateScope {
         expression_span: Option<Span>,
     ) -> Result<Expression> {
         match self.ffi.foreign_types.get(binder) {
-            Some(Some(binder)) => Ok(expr! {
-                Binding {
-                    Attributes::default(),
-                    Span::SHAM;
-                    binder: binder.clone(),
-                }
-            }),
-            // @Task better message
-            Some(None) => {
-                let diagnostic = Diagnostic::error()
-                    .with_code(Code::E061)
-                    .with_message(format!(
-                        "the foreign type `{}` has not been declared",
-                        binder
-                    ));
-                Err(match expression_span {
-                    Some(span) => {
-                        diagnostic.with_labeled_primary_span(&span, "the type of this expression")
-                    }
-                    None => diagnostic,
-                })
-            }
+            Some(Some(binder)) => Ok(binder.clone().to_expression()),
+            Some(None) => Err(Diagnostic::error()
+                .with_code(Code::E061)
+                .with_message(format!("foreign type `{}` is not defined", binder))
+                .when_some(expression_span, |diagnostic, span| {
+                    diagnostic.with_labeled_primary_span(&span, "the type of this expression")
+                })),
             None => unreachable!(),
         }
     }
@@ -242,6 +227,45 @@ impl CrateScope {
             expression_span,
         )
     }
+
+    pub fn lookup_unit_type(&self, expression_span: Option<Span>) -> Result<Expression> {
+        Ok(self
+            .ffi
+            .inherent_types
+            .unit
+            .clone()
+            .ok_or_else(|| undefined_inherent_type("Unit", expression_span))?
+            .to_expression())
+    }
+
+    pub fn lookup_bool_type(&self, expression_span: Option<Span>) -> Result<Expression> {
+        Ok(self
+            .ffi
+            .inherent_types
+            .bool
+            .clone()
+            .ok_or_else(|| undefined_inherent_type("Bool", expression_span))?
+            .to_expression())
+    }
+
+    pub fn lookup_option_type(&self, expression_span: Option<Span>) -> Result<Expression> {
+        Ok(self
+            .ffi
+            .inherent_types
+            .option
+            .clone()
+            .ok_or_else(|| undefined_inherent_type("Option", expression_span))?
+            .to_expression())
+    }
+}
+
+fn undefined_inherent_type(name: &'static str, expression_span: Option<Span>) -> Diagnostic {
+    Diagnostic::error()
+        .with_code(Code::E063)
+        .with_message(format!("inherent type `{}` is not defined", name))
+        .when_some(expression_span, |diagnostic, span| {
+            diagnostic.with_labeled_primary_span(&span, "the type of this expression")
+        })
 }
 
 // @Question too big?

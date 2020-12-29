@@ -10,18 +10,20 @@ not (b: Bool): Bool =
         false => true
         true => false
 
-use super.unit.(Unit force)
-use super.constant
+use super.unit.(Unit Thunk (force as !))
 
-;; @Temporary until laziness API
-if (A: Type) (condition: Bool) (consequent alternate: Unit -> A): A =
+if (A: Type) (condition: Bool) (lazy consequent alternate: Thunk A): A =
     case condition of
-        false => force A alternate
-        true => force A consequent
+        false => ! A alternate
+        true => ! A consequent
 
-;; @Temporary until laziness API
-and (b: Bool) (c: Unit -> Bool): Bool = if Bool b c (constant Bool Unit false)
+;; @Question or `&&`?
+use and as &
 
-;; @Temporary until laziness API
-or (b: Bool) (c: Unit -> Bool): Bool = if Bool b (constant Bool Unit true) c
+and (b: Bool) (lazy c: Thunk Bool): Bool = if Bool b (! Bool c) false
+
+;; @Question or `||`?
+use or as |
+
+or (b: Bool) (lazy c: Thunk Bool): Bool = if Bool b true (! Bool c)
 

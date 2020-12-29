@@ -2,7 +2,7 @@
 //!
 //! Just like [CrateScope], [Entity] is a resource shared by those two passes.
 
-use std::fmt;
+use std::{default::default, fmt};
 
 use crate::{
     hir::Expression,
@@ -35,7 +35,10 @@ pub struct Entity {
 impl Entity {
     pub const fn is_untyped(&self) -> bool {
         use EntityKind::*;
-        matches!(self.kind, UntypedValue | UntypedDataType(_) | UntypedConstructor(_))
+        matches!(
+            self.kind,
+            UntypedValue | UntypedDataType(_) | UntypedConstructor(_)
+        )
     }
 
     pub fn namespace(&self) -> Option<&Namespace> {
@@ -59,7 +62,13 @@ impl Entity {
     }
 
     pub const fn is_value_without_value(&self) -> bool {
-        matches!(self.kind, EntityKind::Value { expression: None, .. })
+        matches!(
+            self.kind,
+            EntityKind::Value {
+                expression: None,
+                ..
+            }
+        )
     }
 
     pub fn type_(&self) -> Option<Expression> {
@@ -164,15 +173,15 @@ pub enum EntityKind {
 
 impl EntityKind {
     pub fn module() -> Self {
-        Self::Module(Namespace::default())
+        Self::Module(default())
     }
 
     pub fn untyped_constructor() -> Self {
-        Self::UntypedConstructor(Namespace::default())
+        Self::UntypedConstructor(default())
     }
 
     pub fn untyped_data_type() -> Self {
-        Self::UntypedDataType(Namespace::default())
+        Self::UntypedDataType(default())
     }
 }
 

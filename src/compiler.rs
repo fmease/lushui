@@ -9,6 +9,8 @@ mod instruction;
 // @Task move stuff from here to there
 pub mod interpreter;
 
+use std::default::default;
+
 use indexed_vec::IndexVec;
 
 use crate::{
@@ -60,7 +62,7 @@ impl<'a> Compiler<'a> {
             constants: Vec::new(),
             lambda_amount: 0,
             entry: None,
-            declaration_mapping: HashMap::default(),
+            declaration_mapping: default(),
             scope,
         }
     }
