@@ -7,6 +7,7 @@ use crate::{
 use colored::{Color, Colorize};
 use format_struct::FormatStruct;
 pub use indentation::Indentation;
+use joinery::JoinableIterator;
 use std::fmt::{self, Debug, Formatter, Result};
 
 use super::{Explicitness, Identifier};
@@ -17,6 +18,7 @@ const SPECIAL_SYMBOL_COLOR: Color = Color::BrightCyan;
 const VERBATIM_COLOR: Color = Color::Yellow;
 const ELLIPSIS_COLOR: Color = Color::BrightRed;
 const SPAN_COLOR: Color = Color::BrightBlack;
+const FIELD_COLOR: Color = Color::BrightWhite;
 
 mod indentation {
     use std::fmt;
@@ -45,7 +47,7 @@ mod indentation {
 }
 
 mod format_struct {
-    use super::{Format, Formatter, Indentation, Result};
+    use super::{Format, Formatter, Indentation, Result, FIELD_COLOR};
     use colored::Colorize;
 
     pub(super) struct FormatStruct<'f, 'v> {
@@ -103,7 +105,7 @@ mod format_struct {
                     write!(self.formatter, "{}", self.indentation)?;
                 }
 
-                write!(self.formatter, "{}: ", name.bright_white())?;
+                write!(self.formatter, "{}: ", name.color(FIELD_COLOR))?;
                 field.format(self.formatter, self.indentation)
             });
 
@@ -130,17 +132,18 @@ fn format_text_literal(content: &str, f: &mut Formatter<'_>) -> Result {
         let length_left = MAXIMUM_LENGTH / 2;
         let length_right = length - MAXIMUM_LENGTH / 2;
 
-        let left = content[..length_left].color(VERBATIM_COLOR);
+        let left = &content[..length_left];
         let ellipsis = "....".black().on_color(ELLIPSIS_COLOR);
-        let right = content[length_right..].color(VERBATIM_COLOR);
+        let right = &content[length_right..];
 
         format!("{left}{ellipsis}{right}")
     };
 
-    let content = content.replace(
-        "\n",
-        &"\u{21b5}".black().on_color(ELLIPSIS_COLOR).to_string(),
-    );
+    // `str::replace` would not work here since it breaks the fragile `ColoredString`s
+    let content = content
+        .split('\n')
+        .map(|segment| segment.color(VERBATIM_COLOR))
+        .join_with("\u{21b5}".black().on_color(ELLIPSIS_COLOR));
 
     write!(f, "{}", content)
 }
@@ -188,7 +191,7 @@ impl<T: Format, const N: usize> Format for SmallVec<T, N> {
 
 impl Format for Span {
     fn format(&self, f: &mut Formatter<'_>, _: Indentation) -> Result {
-        // @Beacon @Task don't use colored here, too many wasted allocations!!
+        // @Beacon @Task don't use `colored` here, too many wasted allocations!!
         write!(f, "{}", format!("{self:?}").color(SPAN_COLOR))
     }
 }
@@ -203,11 +206,17 @@ impl<K: Format> Format for Spanned<K> {
 
 impl<I: Format> Format for super::Item<I> {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
-        // @Beacon @Beacon @Beacon @Task attributes
-
         self.span.format(f, indentation)?;
         write!(f, " ")?;
-        self.kind.format(f, indentation)
+        self.kind.format(f, indentation)?;
+
+        if !self.attributes.is_empty() {
+            let indentation = indentation.increased();
+            write!(f, "\n{indentation}{}:", "attributes".color(FIELD_COLOR))?;
+            self.attributes.format(f, indentation)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -554,30 +563,17 @@ impl Format for super::ParameterGroup {
     }
 }
 
-// @Task improve
 impl fmt::Display for super::Path {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        fn display_path(
-            head: &Option<super::Hanger>,
-            segments: &[Identifier],
-            f: &mut fmt::Formatter<'_>,
-        ) -> fmt::Result {
-            let mut segments = segments.iter();
+        if let Some(hanger) = &self.hanger {
+            write!(f, "{}", hanger)?;
 
-            match head {
-                Some(head) => write!(f, "{}", head)?,
-                None => write!(f, "{}", segments.next().unwrap())?,
+            if !self.segments.is_empty() {
+                write!(f, ".")?;
             }
-
-            write!(
-                f,
-                "{}",
-                segments
-                    .map(|segment| format!(".{}", segment))
-                    .collect::<String>()
-            )
         }
-        display_path(&self.hanger, &self.segments, f)
+
+        write!(f, "{}", self.segments.iter().join_with("."))
     }
 }
 
@@ -718,5 +714,51 @@ impl fmt::Display for Explicitness {
             Self::Implicit => write!(f, ","),
             Self::Explicit => write!(f, ""),
         }
+    }
+}
+
+impl Format for super::Attribute {
+    fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
+        self.span.format(f, indentation)?;
+        write!(f, " ")?;
+
+        FormatStruct::new(f, indentation)
+            .name("Attribute")
+            .field("binder", &self.binder)
+            .field("arguments", &self.arguments)
+            .finish()
+    }
+}
+
+impl Format for super::AttributeArgumentKind {
+    fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
+        match self {
+            Self::NumberLiteral(number) => {
+                FormatStruct::new(f, indentation)
+                    .name("Number-Literal")
+                    .finish()?;
+                write!(f, " {}", number.color(VERBATIM_COLOR))
+            }
+            Self::TextLiteral(text) => {
+                FormatStruct::new(f, indentation)
+                    .name("Text-Literal")
+                    .finish()?;
+                write!(f, " ")?;
+                format_text_literal(text, f)
+            }
+            Self::Generated => write!(f, "{}", "generated".color(SPECIAL_SYMBOL_COLOR)),
+            Self::Path(path) => path.format(f, indentation),
+            Self::Named(named) => named.format(f, indentation),
+        }
+    }
+}
+
+impl Format for super::NamedAttributeArgument {
+    fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
+        FormatStruct::new(f, indentation)
+            .name("Named-Attribute-Argument")
+            .field("binder", &self.binder)
+            .field("value", &self.value)
+            .finish()
     }
 }

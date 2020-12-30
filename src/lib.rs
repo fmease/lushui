@@ -39,7 +39,6 @@
     associated_type_defaults,
     never_type,
     default_free_fn,
-    min_const_generics,
     or_patterns,
     never_type_fallback,
     const_panic,
