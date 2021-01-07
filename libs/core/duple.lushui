@@ -1,4 +1,6 @@
+@public
 data Duple (A B: Type): Type =
     duple (A B: Type): A -> B -> Duple A B
 
+@public
 use Duple.duple

@@ -1,222 +1,272 @@
 //! Data structures and procedures for handling source locations.
 
-use crate::diagnostics::{Diagnostic, Result};
-use std::{convert::TryInto, fmt, mem::size_of, ops::RangeInclusive, path::PathBuf, rc::Rc};
-use unicode_width::UnicodeWidthStr;
+use crate::diagnostics::Diagnostic;
+use std::{io, path::Path};
 
 // @Beacon @Task The API of [Span], [LocalSpan], [ByteIndex], [LocalByteIndex] is
 // utter trash!! ugly, inconvenient, confusing, unsafe (trying to prevent overflow
 // panics but they still gonna happen!)
 
-/// A global byte index.
-///
-/// Here, "global" means local relative to a [source map](SourceMap).
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
-pub struct ByteIndex(u32);
+pub use index::{ByteIndex, LocalByteIndex};
+pub use source_file::SourceFile;
+pub use source_map::SourceMap;
+pub use span::{LocalSpan, Span};
+pub use spanned::Spanned;
+pub use spanning::{PossiblySpanning, Spanning};
 
-impl ByteIndex {
-    pub const fn new(index: u32) -> Self {
-        Self(index)
-    }
-
-    /// Map a local byte index to global global one.
-    ///
-    /// ## Panics
-    ///
-    /// Panics on addition overflow.
-    pub fn local(source: &SourceFile, index: LocalByteIndex) -> Self {
-        Self::new(source.span.start.0 + index.0)
-    }
-
-    fn offset(self, offset: u32) -> Result<Self, Error> {
-        let sum = self.0.checked_add(offset).ok_or(Error::OffsetOverflow)?;
-
-        Ok(Self::new(sum))
-    }
-}
-
-/// A file-local byte index.
-///
-/// It _does not_ store information about the file. Hence, it is not
-/// [global](ByteIndex).
-#[derive(Clone, Copy, PartialEq, Eq, Debug, PartialOrd, Ord)]
-pub struct LocalByteIndex(u32);
-
-impl LocalByteIndex {
-    pub const fn new(index: u32) -> Self {
-        Self(index)
-    }
-
-    /// Create a new file-local byte index.
-    ///
-    /// ## Panics
-    ///
-    /// Panics if `index` does not fit into `u32`.
-    // @Task get rid of this method
-    pub fn from_usize(index: usize) -> Self {
-        Self::new(index.try_into().unwrap())
-    }
-
-    pub fn global(source: &SourceFile, index: ByteIndex) -> Self {
-        Self::new(index.0 - source.span.start.0)
-    }
-
-    pub fn saturating_sub(self, offset: u32) -> Self {
-        Self::new(self.0.saturating_sub(offset))
-    }
-}
-
-impl From<LocalByteIndex> for usize {
-    fn from(index: LocalByteIndex) -> Self {
-        index.0 as _
-    }
-}
-
-use std::ops::{Add, Sub};
-
-impl Add<usize> for LocalByteIndex {
-    type Output = Self;
-
-    fn add(self, offset: usize) -> Self::Output {
-        Self::new(self.0 + LocalByteIndex::from_usize(offset).0)
-    }
-}
-
-impl Add<char> for LocalByteIndex {
-    type Output = Self;
-
-    fn add(self, character: char) -> Self::Output {
-        self + character.len_utf8() - 1
-    }
-}
-
-impl Sub for LocalByteIndex {
-    type Output = Self;
-
-    fn sub(self, other: Self) -> Self::Output {
-        Self::new(self.0 - other.0)
-    }
-}
-
-impl Sub<usize> for LocalByteIndex {
-    type Output = Self;
-
-    fn sub(self, offset: usize) -> Self::Output {
-        self - LocalByteIndex::from_usize(offset)
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Spanned<K> {
-    pub kind: K,
-    pub span: Span,
-}
-
-impl<K> Spanned<K> {
-    pub const fn new(span: Span, kind: K) -> Self {
-        Self { kind, span }
-    }
-}
-
-impl<K: fmt::Debug> fmt::Debug for Spanned<K> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?} {:?}", self.kind, self.span)
-    }
-}
-
-impl<K: fmt::Display> fmt::Display for Spanned<K> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.kind.fmt(f)
-    }
-}
-
-const _: () = assert!(size_of::<Span>() == 8);
-// const _: () = assert!(size_of::<Option<Span>>() == 8); // @Task
-
-/// A global byte span of source code.
-// @Task re-model with Option and NonZeroU32
-#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Span {
-    pub start: ByteIndex,
-    pub end: ByteIndex,
-}
-
-impl Span {
-    /// Invalid span used for things without a source location.
-    ///
-    /// … but where the API requires it.
-    // @Task remove and replace with None once we change the whole code base
-    pub const SHAM: Self = Self {
-        start: ByteIndex::new(0),
-        end: ByteIndex::new(0),
+mod index {
+    use super::{Error, SourceFile};
+    use std::{
+        convert::TryInto,
+        ops::{Add, Sub},
     };
 
-    pub fn new(start: ByteIndex, end: ByteIndex) -> Self {
-        debug_assert!(start <= end);
+    /// A global byte index.
+    ///
+    /// Here, "global" means local relative to a [source map](super::SourceMap).
+    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+    pub struct ByteIndex(pub(super) u32);
 
-        Self { start, end }
-    }
+    impl ByteIndex {
+        pub const fn new(index: u32) -> Self {
+            Self(index)
+        }
 
-    pub fn length(self) -> u32 {
-        self.end.0 + 1 - self.start.0
-    }
+        /// Map a local byte index to global global one.
+        ///
+        /// ## Panics
+        ///
+        /// Panics on addition overflow.
+        pub fn local(source: &SourceFile, index: LocalByteIndex) -> Self {
+            Self::new(source.span.start.0 + index.0)
+        }
 
-    pub fn trim_start(self, amount: u32) -> Self {
-        debug_assert!(amount < self.length());
+        pub(super) fn offset(self, offset: u32) -> Result<Self, Error> {
+            let sum = self.0.checked_add(offset).ok_or(Error::OffsetOverflow)?;
 
-        Self {
-            start: ByteIndex::new(self.start.0 + amount),
-            end: self.end,
+            Ok(Self::new(sum))
         }
     }
 
-    pub fn local(source: &SourceFile, span: LocalSpan) -> Self {
-        Self::new(
-            ByteIndex::local(source, span.start),
-            ByteIndex::local(source, span.end),
-        )
-    }
+    /// A file-local byte index.
+    ///
+    /// It _does not_ store information about the file. Hence, it is not
+    /// [global](ByteIndex).
+    #[derive(Clone, Copy, PartialEq, Eq, Debug, PartialOrd, Ord)]
+    pub struct LocalByteIndex(pub(super) u32);
 
-    pub fn contains_index(self, index: ByteIndex) -> bool {
-        self.start <= index && index <= self.end
-    }
+    impl LocalByteIndex {
+        pub const fn new(index: u32) -> Self {
+            Self(index)
+        }
 
-    pub fn merge(self, other: &impl PossiblySpanning) -> Self {
-        if let Some(other) = other.possible_span() {
-            self.assert_consecutive(other);
-            Self::new(self.start, other.end)
-        } else {
-            self
+        /// Create a new file-local byte index.
+        ///
+        /// ## Panics
+        ///
+        /// Panics if `index` does not fit into `u32`.
+        // @Task get rid of this method
+        pub fn from_usize(index: usize) -> Self {
+            Self::new(index.try_into().unwrap())
+        }
+
+        pub fn global(source: &SourceFile, index: ByteIndex) -> Self {
+            Self::new(index.0 - source.span.start.0)
+        }
+
+        pub fn saturating_sub(self, offset: u32) -> Self {
+            Self::new(self.0.saturating_sub(offset))
         }
     }
 
-    pub fn merge_into(self, other: &impl PossiblySpanning) -> Self {
-        if let Some(other) = other.possible_span() {
-            other.assert_consecutive(self);
-            Self::new(other.start, self.end)
-        } else {
-            self
+    impl From<LocalByteIndex> for usize {
+        fn from(index: LocalByteIndex) -> Self {
+            index.0 as _
         }
     }
 
-    pub fn merging<S: PossiblySpanning>(&mut self, spanning: S) -> S {
-        if let Some(other) = spanning.possible_span() {
-            self.assert_consecutive(other);
-            self.end = other.end;
+    impl Add<usize> for LocalByteIndex {
+        type Output = Self;
+
+        fn add(self, offset: usize) -> Self::Output {
+            Self::new(self.0 + LocalByteIndex::from_usize(offset).0)
         }
-        spanning
     }
 
-    #[inline(always)]
-    fn assert_consecutive(self, other: Span) {
-        debug_assert!(
-            self.start <= other.start && self.end <= other.end,
-            "assertion failed: {:?} <= {:?} && {:?} <= {:?} , start <= start' && end <= end'",
-            self.start,
-            other.start,
-            self.end,
-            other.end
-        );
+    impl Add<char> for LocalByteIndex {
+        type Output = Self;
+
+        fn add(self, character: char) -> Self::Output {
+            self + character.len_utf8() - 1
+        }
+    }
+
+    impl Sub for LocalByteIndex {
+        type Output = Self;
+
+        fn sub(self, other: Self) -> Self::Output {
+            Self::new(self.0 - other.0)
+        }
+    }
+
+    impl Sub<usize> for LocalByteIndex {
+        type Output = Self;
+
+        fn sub(self, offset: usize) -> Self::Output {
+            self - LocalByteIndex::from_usize(offset)
+        }
+    }
+}
+
+mod span {
+    use super::{ByteIndex, LocalByteIndex, PossiblySpanning, SourceFile};
+    use std::{
+        fmt,
+        mem::size_of,
+        ops::{RangeInclusive, Sub},
+    };
+
+    /// A global byte span of source code.
+    // @Task re-model with Option and NonZeroU32
+    #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+    pub struct Span {
+        pub(super) start: ByteIndex,
+        pub(super) end: ByteIndex,
+    }
+
+    const _: () = assert!(size_of::<Span>() == 8);
+    // const _: () = assert!(size_of::<Option<Span>>() == 8); // @Task
+
+    impl Span {
+        /// Invalid span used for things without a source location.
+        ///
+        /// … but where the API requires it.
+        // @Task remove and replace with None once we change the whole code base
+        pub const SHAM: Self = Self {
+            start: ByteIndex::new(0),
+            end: ByteIndex::new(0),
+        };
+
+        pub fn new(start: ByteIndex, end: ByteIndex) -> Self {
+            debug_assert!(start <= end);
+
+            Self { start, end }
+        }
+
+        pub fn length(self) -> u32 {
+            self.end.0 + 1 - self.start.0
+        }
+
+        pub fn trim_start(self, amount: u32) -> Self {
+            debug_assert!(amount < self.length());
+
+            Self {
+                start: ByteIndex::new(self.start.0 + amount),
+                end: self.end,
+            }
+        }
+
+        pub fn local(source: &SourceFile, span: LocalSpan) -> Self {
+            Self::new(
+                ByteIndex::local(source, span.start),
+                ByteIndex::local(source, span.end),
+            )
+        }
+
+        pub fn contains_index(self, index: ByteIndex) -> bool {
+            self.start <= index && index <= self.end
+        }
+
+        pub fn merge(self, other: &impl PossiblySpanning) -> Self {
+            if let Some(other) = other.possible_span() {
+                self.assert_consecutive(other);
+                Self::new(self.start, other.end)
+            } else {
+                self
+            }
+        }
+
+        pub fn merge_into(self, other: &impl PossiblySpanning) -> Self {
+            if let Some(other) = other.possible_span() {
+                other.assert_consecutive(self);
+                Self::new(other.start, self.end)
+            } else {
+                self
+            }
+        }
+
+        pub fn merging<S: PossiblySpanning>(&mut self, spanning: S) -> S {
+            if let Some(other) = spanning.possible_span() {
+                self.assert_consecutive(other);
+                self.end = other.end;
+            }
+            spanning
+        }
+
+        #[inline(always)]
+        fn assert_consecutive(self, other: Span) {
+            debug_assert!(
+                self.start <= other.start && self.end <= other.end,
+                "assertion failed: {:?} <= {:?} && {:?} <= {:?} , start <= start' && end <= end'",
+                self.start,
+                other.start,
+                self.end,
+                other.end
+            );
+        }
+    }
+
+    impl fmt::Debug for Span {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}..{}", self.start.0, self.end.0)
+        }
+    }
+
+    /// A span inside a single source file.
+    ///
+    /// This _does not_ include information about the file. Thus, it is not
+    /// [global](Span).
+    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+    pub struct LocalSpan {
+        pub(crate) start: LocalByteIndex,
+        pub(crate) end: LocalByteIndex,
+    }
+
+    impl LocalSpan {
+        pub fn new(start: LocalByteIndex, end: LocalByteIndex) -> Self {
+            Self { start, end }
+        }
+
+        pub fn zero() -> Self {
+            Self::from(LocalByteIndex::new(0))
+        }
+
+        pub fn global(source: &SourceFile, span: Span) -> Self {
+            Self::new(
+                LocalByteIndex::global(source, span.start),
+                LocalByteIndex::global(source, span.end),
+            )
+        }
+    }
+
+    impl From<LocalByteIndex> for LocalSpan {
+        fn from(index: LocalByteIndex) -> Self {
+            Self::new(index, index)
+        }
+    }
+
+    impl From<LocalSpan> for RangeInclusive<usize> {
+        fn from(span: LocalSpan) -> Self {
+            span.start.into()..=span.end.into()
+        }
+    }
+
+    impl Sub<LocalByteIndex> for LocalSpan {
+        type Output = Self;
+
+        fn sub(self, offset: LocalByteIndex) -> Self::Output {
+            Self::new(self.start - offset, self.end - offset)
+        }
     }
 }
 
@@ -225,380 +275,371 @@ pub(crate) fn span(start: u32, end: u32) -> Span {
     Span::new(ByteIndex::new(start), ByteIndex::new(end))
 }
 
-impl fmt::Debug for Span {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}..{}", self.start.0, self.end.0)
+mod spanning {
+    use super::{Span, Spanned};
+
+    pub trait Spanning {
+        fn span(&self) -> Span;
+    }
+
+    impl Spanning for Span {
+        fn span(&self) -> Span {
+            *self
+        }
+    }
+
+    impl<S> Spanning for Spanned<S> {
+        fn span(&self) -> Span {
+            self.span
+        }
+    }
+
+    impl<S: Spanning> Spanning for &S {
+        fn span(&self) -> Span {
+            (*self).span()
+        }
+    }
+
+    pub trait PossiblySpanning {
+        fn possible_span(&self) -> Option<Span>;
+    }
+
+    impl<S: Spanning> PossiblySpanning for S {
+        fn possible_span(&self) -> Option<Span> {
+            Some(self.span())
+        }
+    }
+
+    // @Task generalize these two impls using DoubleEndedIterator
+
+    impl<S: Spanning> PossiblySpanning for Vec<S> {
+        fn possible_span(&self) -> Option<Span> {
+            self.first().map(|item| {
+                let mut span = item.span();
+                span.merging(self.last());
+                span
+            })
+        }
+    }
+
+    impl<S: Spanning, const N: usize> PossiblySpanning for crate::SmallVec<S, N> {
+        fn possible_span(&self) -> Option<Span> {
+            self.first().map(|item| {
+                let mut span = item.span();
+                span.merging(self.last());
+                span
+            })
+        }
+    }
+
+    impl<S> PossiblySpanning for Option<S>
+    where
+        S: Spanning,
+    {
+        fn possible_span(&self) -> Option<Span> {
+            self.as_ref().map(<_>::span)
+        }
     }
 }
 
-pub trait Spanning {
-    fn span(&self) -> Span;
-}
+mod spanned {
+    use super::Span;
+    use std::fmt;
 
-impl Spanning for Span {
-    fn span(&self) -> Span {
-        *self
+    #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+    pub struct Spanned<K> {
+        pub kind: K,
+        pub span: Span,
+    }
+
+    impl<K> Spanned<K> {
+        pub const fn new(span: Span, kind: K) -> Self {
+            Self { kind, span }
+        }
+    }
+
+    impl<K: fmt::Debug> fmt::Debug for Spanned<K> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{:?} {:?}", self.kind, self.span)
+        }
+    }
+
+    impl<K: fmt::Display> fmt::Display for Spanned<K> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.kind.fmt(f)
+        }
     }
 }
 
-impl<S> Spanning for Spanned<S> {
-    fn span(&self) -> Span {
-        self.span
-    }
-}
+const START_OF_FIRST_SOURCE_FILE: ByteIndex = ByteIndex::new(1);
 
-impl<S: Spanning> Spanning for &S {
-    fn span(&self) -> Span {
-        (*self).span()
-    }
-}
+mod source_map {
+    use super::{ByteIndex, Error, LocalByteIndex, LocalSpan, SourceFile, Span};
+    use std::{
+        path::{Path, PathBuf},
+        rc::Rc,
+    };
+    use unicode_width::UnicodeWidthStr;
 
-pub trait PossiblySpanning {
-    fn possible_span(&self) -> Option<Span>;
-}
-
-impl<S: Spanning> PossiblySpanning for S {
-    fn possible_span(&self) -> Option<Span> {
-        Some(self.span())
-    }
-}
-
-// @Task generalize these two impls using DoubleEndedIterator
-
-impl<S: Spanning> PossiblySpanning for Vec<S> {
-    fn possible_span(&self) -> Option<Span> {
-        self.first().map(|item| {
-            let mut span = item.span();
-            span.merging(self.last());
-            span
-        })
-    }
-}
-
-impl<S: Spanning, const N: usize> PossiblySpanning for crate::SmallVec<S, N> {
-    fn possible_span(&self) -> Option<Span> {
-        self.first().map(|item| {
-            let mut span = item.span();
-            span.merging(self.last());
-            span
-        })
-    }
-}
-
-impl<S> PossiblySpanning for Option<S>
-where
-    S: Spanning,
-{
-    fn possible_span(&self) -> Option<Span> {
-        self.as_ref().map(<_>::span)
-    }
-}
-
-/// A span inside a single source file.
-///
-/// This _does not_ include information about the file. Thus, it is not
-/// [global](Span).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct LocalSpan {
-    pub start: LocalByteIndex,
-    pub end: LocalByteIndex,
-}
-
-impl LocalSpan {
-    pub fn new(start: LocalByteIndex, end: LocalByteIndex) -> Self {
-        Self { start, end }
-    }
-
-    pub fn zero() -> Self {
-        Self::from(LocalByteIndex::new(0))
-    }
-
-    pub fn global(source: &SourceFile, span: Span) -> Self {
-        Self::new(
-            LocalByteIndex::global(source, span.start),
-            LocalByteIndex::global(source, span.end),
-        )
-    }
-}
-
-impl From<LocalByteIndex> for LocalSpan {
-    fn from(index: LocalByteIndex) -> Self {
-        Self::new(index, index)
-    }
-}
-
-impl From<LocalSpan> for RangeInclusive<usize> {
-    fn from(span: LocalSpan) -> Self {
-        span.start.into()..=span.end.into()
-    }
-}
-
-impl Sub<LocalByteIndex> for LocalSpan {
-    type Output = Self;
-
-    fn sub(self, offset: LocalByteIndex) -> Self::Output {
-        Self::new(self.start - offset, self.end - offset)
-    }
-}
-
-pub const START_OF_FIRST_SOURCE_FILE: ByteIndex = ByteIndex::new(1);
-
-/// A mapping from an index or offset to source files.
-///
-/// Most prominently, the offset is used to define [Span]s.
-// @Task use indices to enable unloading source file when they are not needed
-#[derive(Default)]
-pub struct SourceMap {
-    files: Vec<Rc<SourceFile>>,
-}
-
-impl SourceMap {
-    fn next_offset(&self) -> Result<ByteIndex, Error> {
-        self.files
-            .last()
-            .map(|file| file.span.end.offset(1))
-            .unwrap_or(Ok(START_OF_FIRST_SOURCE_FILE))
-    }
-
-    // @Note this could instead return an index, and index into an IndexVec of
-    // SourceFiles
-    pub fn load(&mut self, path: impl AsRef<Path>) -> Result<Rc<SourceFile>, Error> {
-        let source = std::fs::read_to_string(&path).map_err(Error::LoadFailure)?;
-        self.add(path.as_ref().to_owned(), source)
-    }
-
-    fn add(&mut self, path: PathBuf, source: String) -> Result<Rc<SourceFile>, Error> {
-        let file = Rc::new(SourceFile::new(path, source, self.next_offset()?)?);
-        self.files.push(file.clone());
-
-        Ok(file)
-    }
-
-    /// Panics if span is a sham.
-    fn resolve_span_to_file(&self, span: Span) -> &SourceFile {
-        debug_assert!(span != Span::SHAM);
-
-        self.files
-            .iter()
-            .find(|file| file.span.contains_index(span.start))
-            .unwrap()
-
-        // @Bug panics @Beacon @Task find out why and adjust
-        // let index = self
-        //     .files
-        //     .binary_search_by(|file| file.span.cmp(&span))
-        //     .unwrap();
-
-        // self.files[index].clone()
-    }
-
-    /// Resolve a span to the string content it points to.
+    /// A mapping from an index or offset to source files.
     ///
-    /// This treats line breaks verbatim.
-    pub fn resolve_span_to_snippet(&self, span: Span) -> &str {
-        let file = self.resolve_span_to_file(span);
-        let span = LocalSpan::global(&file, span);
-        &file[span]
+    /// Most prominently, the offset is used to define [Span]s.
+    // @Task use indices to enable unloading source file when they are not needed
+    #[derive(Default)]
+    pub struct SourceMap {
+        files: Vec<Rc<SourceFile>>,
     }
 
-    // @Task improve documentation, @Note bad name of the method
-    /// Resolve a span to various information useful for highlighting.
-    ///
-    /// This procedure is line-break-aware.
-    pub fn resolve_span(&self, span: Span) -> ResolvedSpan<'_> {
-        let file = self.resolve_span_to_file(span);
-        let span = LocalSpan::global(&file, span);
+    impl SourceMap {
+        fn next_offset(&self) -> Result<ByteIndex, Error> {
+            self.files
+                .last()
+                .map(|file| file.span.end.offset(1))
+                .unwrap_or(Ok(super::START_OF_FIRST_SOURCE_FILE))
+        }
 
-        let mut first_line = None;
-        let mut final_line = None;
+        // @Note this could instead return an index, and index into an IndexVec of
+        // SourceFiles
+        pub fn load(&mut self, path: impl AsRef<Path>) -> Result<Rc<SourceFile>, Error> {
+            let source = std::fs::read_to_string(&path).map_err(Error::LoadFailure)?;
+            self.add(path.as_ref().to_owned(), source)
+        }
 
-        let mut line = Line {
-            number: 1,
-            start: None,
-            end: None,
-            highlight: None,
-        };
+        fn add(&mut self, path: PathBuf, source: String) -> Result<Rc<SourceFile>, Error> {
+            let file = Rc::new(SourceFile::new(path, source, self.next_offset()?)?);
+            self.files.push(file.clone());
 
-        for (index, character) in file
-            .content()
-            .char_indices()
-            .map(|(index, character)| (LocalByteIndex::from_usize(index), character))
-        {
-            if line.start.is_none() {
-                line.start = Some(index);
-                if first_line.is_some() {
+            Ok(file)
+        }
+
+        /// Panics if span is a sham.
+        fn resolve_span_to_file(&self, span: Span) -> &SourceFile {
+            debug_assert!(span != Span::SHAM);
+
+            self.files
+                .iter()
+                .find(|file| file.span.contains_index(span.start))
+                .unwrap()
+
+            // @Bug panics @Beacon @Task find out why and adjust
+            // let index = self
+            //     .files
+            //     .binary_search_by(|file| file.span.cmp(&span))
+            //     .unwrap();
+
+            // self.files[index].clone()
+        }
+
+        /// Resolve a span to the string content it points to.
+        ///
+        /// This treats line breaks verbatim.
+        pub fn resolve_span_to_snippet(&self, span: Span) -> &str {
+            let file = self.resolve_span_to_file(span);
+            let span = LocalSpan::global(&file, span);
+            &file[span]
+        }
+
+        // @Task improve documentation, @Note bad name of the method
+        /// Resolve a span to various information useful for highlighting.
+        ///
+        /// This procedure is line-break-aware.
+        pub fn resolve_span(&self, span: Span) -> ResolvedSpan<'_> {
+            let file = self.resolve_span_to_file(span);
+            let span = LocalSpan::global(&file, span);
+
+            let mut first_line = None;
+            let mut final_line = None;
+
+            let mut line = Line {
+                number: 1,
+                start: None,
+                end: None,
+                highlight: None,
+            };
+
+            for (index, character) in file
+                .content()
+                .char_indices()
+                .map(|(index, character)| (LocalByteIndex::from_usize(index), character))
+            {
+                if line.start.is_none() {
+                    line.start = Some(index);
+                    if first_line.is_some() {
+                        line.highlight = Some(Highlight {
+                            start: index,
+                            end: None,
+                        });
+                    }
+                }
+
+                if index == span.start && line.highlight.is_none() {
                     line.highlight = Some(Highlight {
                         start: index,
                         end: None,
                     });
                 }
-            }
 
-            if index == span.start && line.highlight.is_none() {
-                line.highlight = Some(Highlight {
-                    start: index,
-                    end: None,
-                });
-            }
-
-            if index + character == span.end {
-                if let Some(highlight) = &mut line.highlight {
-                    highlight.end = Some(index + character);
-                }
-            }
-
-            if character == '\n' {
-                line.end = Some(index);
-
-                if first_line.is_none() {
+                if index + character == span.end {
                     if let Some(highlight) = &mut line.highlight {
-                        let number = line.number;
+                        highlight.end = Some(index + character);
+                    }
+                }
 
-                        if highlight.end.is_none() {
-                            highlight.end = line.end;
+                if character == '\n' {
+                    line.end = Some(index);
+
+                    if first_line.is_none() {
+                        if let Some(highlight) = &mut line.highlight {
+                            let number = line.number;
+
+                            if highlight.end.is_none() {
+                                highlight.end = line.end;
+                            }
+
+                            first_line = Some(line);
+
+                            line = Line {
+                                number,
+                                start: None,
+                                end: None,
+                                highlight: None,
+                            };
                         }
+                    }
 
-                        first_line = Some(line);
+                    if let Some(highlight) = &mut line.highlight {
+                        if highlight.end.is_some() {
+                            final_line = Some(line);
+                            break;
+                        }
+                    }
 
-                        line = Line {
-                            number,
-                            start: None,
-                            end: None,
-                            highlight: None,
+                    line.start = None;
+                    line.number += 1;
+                }
+            }
+
+            struct Line {
+                number: u32,
+                start: Option<LocalByteIndex>,
+                end: Option<LocalByteIndex>,
+                highlight: Option<Highlight>,
+            }
+
+            impl Line {
+                fn extract_information(self, file: &SourceFile) -> Option<LineInformation<'_>> {
+                    let start = self.start?;
+                    let highlight = self.highlight?;
+
+                    // @Question should we instead map all 0s to 1s?
+                    let highlight_width =
+                        match &file[LocalSpan::new(highlight.start, highlight.end?)] {
+                            "\n" => 1,
+                            snippet => snippet.width(),
                         };
-                    }
-                }
 
-                if let Some(highlight) = &mut line.highlight {
-                    if highlight.end.is_some() {
-                        final_line = Some(line);
-                        break;
-                    }
+                    Some(LineInformation {
+                        number: self.number,
+                        content: &file[LocalSpan::new(start, self.end?)],
+                        highlight_width,
+                        highlight_prefix_width: if start < highlight.start {
+                            file[LocalSpan::new(start, highlight.start - 1)].width()
+                        } else {
+                            0
+                        },
+                        highlight_start_column: (highlight.start + 1 - start).into(),
+                    })
                 }
+            }
 
-                line.start = None;
-                line.number += 1;
+            struct Highlight {
+                start: LocalByteIndex,
+                end: Option<LocalByteIndex>,
+            }
+
+            ResolvedSpan {
+                path: &file.path,
+                first_line: first_line.unwrap().extract_information(file).unwrap(),
+                final_line: final_line.map(|line| line.extract_information(file).unwrap()),
             }
         }
+    }
 
-        struct Line {
-            number: u32,
-            start: Option<LocalByteIndex>,
-            end: Option<LocalByteIndex>,
-            highlight: Option<Highlight>,
+    #[derive(Debug)]
+    pub struct ResolvedSpan<'a> {
+        pub path: &'a Path,
+        pub first_line: LineInformation<'a>,
+        /// This is `None` if the last is the first line.
+        pub final_line: Option<LineInformation<'a>>,
+    }
+
+    #[derive(Debug)]
+    pub struct LineInformation<'a> {
+        pub number: u32,
+        /// The content of the entire line that contains the to-be-highlighted snippet.
+        ///
+        /// It may contain the whole snippet or only the starting or the ending part of it
+        /// if the snippet spans multiple lines.
+        pub content: &'a str,
+        /// In most cases the Unicode width of the to-be-highlighted snippet.
+        ///
+        /// The exception is the line break character (U+000A) which following the Unicode
+        /// recommendations has a width of 0 but in our case has a width of 1. This allows
+        /// us to actually point at the "invisible" character (by e.g. placing a caret below it).
+        pub highlight_width: usize,
+        pub highlight_prefix_width: usize,
+        pub highlight_start_column: usize,
+    }
+}
+
+mod source_file {
+    use super::{ByteIndex, Error, LocalSpan, Span};
+    use std::{convert::TryFrom, ops::RangeInclusive, path::PathBuf};
+
+    /// A file, its contents and [its span](super::SourceMap).
+    #[cfg_attr(test, derive(PartialEq, Eq))]
+    pub struct SourceFile {
+        pub path: PathBuf,
+        content: String,
+        pub span: Span,
+    }
+
+    impl SourceFile {
+        /// A fake source file.
+        ///
+        /// "Fake" in the sense that is does not actually correspond to a
+        /// file in the file system of the user.
+        pub(crate) fn fake(source: String) -> Self {
+            Self::new(PathBuf::new(), source, super::START_OF_FIRST_SOURCE_FILE)
+                .ok()
+                .unwrap()
         }
 
-        impl Line {
-            fn extract_information(self, file: &SourceFile) -> Option<LineInformation<'_>> {
-                let start = self.start?;
-                let highlight = self.highlight?;
+        pub fn new(path: PathBuf, content: String, start: ByteIndex) -> Result<Self, Error> {
+            let offset = u32::try_from(content.len())
+                .map_err(|_| Error::OffsetOverflow)?
+                .saturating_sub(1);
 
-                // @Question should we instead map all 0s to 1s?
-                let highlight_width = match &file[LocalSpan::new(highlight.start, highlight.end?)] {
-                    "\n" => 1,
-                    snippet => snippet.width(),
-                };
-
-                Some(LineInformation {
-                    number: self.number,
-                    content: &file[LocalSpan::new(start, self.end?)],
-                    highlight_width,
-                    highlight_prefix_width: if start < highlight.start {
-                        file[LocalSpan::new(start, highlight.start - 1)].width()
-                    } else {
-                        0
-                    },
-                    highlight_start_column: (highlight.start + 1 - start).into(),
-                })
-            }
+            Ok(Self {
+                path,
+                content,
+                span: Span::new(start, start.offset(offset)?),
+            })
         }
 
-        struct Highlight {
-            start: LocalByteIndex,
-            end: Option<LocalByteIndex>,
+        pub fn content(&self) -> &str {
+            &self.content
         }
+    }
 
-        ResolvedSpan {
-            path: &file.path,
-            first_line: first_line.unwrap().extract_information(file).unwrap(),
-            final_line: final_line.map(|line| line.extract_information(file).unwrap()),
+    impl std::ops::Index<LocalSpan> for SourceFile {
+        type Output = str;
+
+        fn index(&self, index: LocalSpan) -> &Self::Output {
+            &self.content[RangeInclusive::from(index)]
         }
     }
 }
-
-#[derive(Debug)]
-pub struct ResolvedSpan<'a> {
-    pub path: &'a Path,
-    pub first_line: LineInformation<'a>,
-    /// This is `None` if the last is the first line.
-    pub final_line: Option<LineInformation<'a>>,
-}
-
-#[derive(Debug)]
-pub struct LineInformation<'a> {
-    pub number: u32,
-    /// The content of the entire line that contains the to-be-highlighted snippet.
-    ///
-    /// It may contain the whole snippet or only the starting or the ending part of it
-    /// if the snippet spans multiple lines.
-    pub content: &'a str,
-    /// In most cases the Unicode width of the to-be-highlighted snippet.
-    ///
-    /// The exception is the line break character (U+000A) which following the Unicode
-    /// recommendations has a width of 0 but in our case has a width of 1. This allows
-    /// us to actually point at the "invisible" character (by e.g. placing a caret below it).
-    pub highlight_width: usize,
-    pub highlight_prefix_width: usize,
-    pub highlight_start_column: usize,
-}
-
-/// A file, its contents and [its span](SourceMap).
-#[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct SourceFile {
-    pub path: PathBuf,
-    content: String,
-    pub span: Span,
-}
-
-impl SourceFile {
-    /// A fake source file.
-    ///
-    /// "Fake" in the sense that is does not actually correspond to a
-    /// file in the file system of the user.
-    pub(crate) fn fake(source: String) -> Self {
-        Self::new(PathBuf::new(), source, START_OF_FIRST_SOURCE_FILE)
-            .ok()
-            .unwrap()
-    }
-
-    pub fn new(path: PathBuf, content: String, start: ByteIndex) -> Result<Self, Error> {
-        use std::convert::TryFrom;
-
-        let offset = u32::try_from(content.len())
-            .map_err(|_| Error::OffsetOverflow)?
-            .saturating_sub(1);
-
-        Ok(Self {
-            path,
-            content,
-            span: Span::new(start, start.offset(offset)?),
-        })
-    }
-
-    pub fn content(&self) -> &str {
-        &self.content
-    }
-}
-
-impl std::ops::Index<LocalSpan> for SourceFile {
-    type Output = str;
-
-    fn index(&self, index: LocalSpan) -> &Self::Output {
-        &self.content[RangeInclusive::from(index)]
-    }
-}
-
-use std::{io, path::Path};
 
 pub enum Error {
     OffsetOverflow,
@@ -615,8 +656,8 @@ impl Error {
         });
 
         message += match self {
-            Error::OffsetOverflow => "is too large",
-            Error::LoadFailure(error) => match error.kind() {
+            Self::OffsetOverflow => "is too large",
+            Self::LoadFailure(error) => match error.kind() {
                 NotFound => "does not exist",
                 PermissionDenied => "does not have required permissions",
                 InvalidData => "contains invalid UTF-8",

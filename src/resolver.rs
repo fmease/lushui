@@ -12,8 +12,7 @@
 //!
 //! ## Future Features
 //!
-//! * handle module privacy (notably restricted exposure and good error messages)
-//! * handle crate declarations
+//! * crate system
 
 pub mod hir;
 mod scope;
@@ -22,12 +21,12 @@ use crate::{
     ast,
     diagnostics::{Diagnostic, Diagnostics, Results, Warn},
     entity::EntityKind,
-    lowered_ast,
+    lowered_ast::{self, AttributeKeys},
     support::{accumulate_errors, InvalidFallback, ManyErrExt, TransposeExt, TryIn},
 };
 use hir::{decl, expr, pat};
 pub use scope::{
-    CrateIndex, CrateScope, DeBruijnIndex, FunctionScope, Identifier, Index, Namespace,
+    CrateIndex, CrateScope, DeBruijnIndex, Exposure, FunctionScope, Identifier, Index, Namespace,
 };
 use scope::{OnlyValue, RegistrationError, ValueOrModule};
 use std::{mem, rc::Rc};
@@ -35,9 +34,29 @@ use std::{mem, rc::Rc};
 const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
 
 /// Additional context for name resolution.
+// @Task split context for start|finish resolve second does not store info about opacity
 #[derive(Default)]
 struct Context {
-    parent_data_binding: Option<CrateIndex>,
+    // @Note if we were to rewrite/refactor the lowered AST to use indices for nested
+    // declarations, then we could simply loop up the AST node and wouldn't need
+    // `Opacity`
+    parent_data_binding: Option<(CrateIndex, Option<Opacity>)>,
+}
+
+enum Opacity {
+    Transparent,
+    Opaque,
+}
+
+// @Bug remove @Beacon @Note it should be @(public super) not @public (==Exposed)
+// (for constructors)
+impl From<Opacity> for Exposure {
+    fn from(opacity: Opacity) -> Self {
+        match opacity {
+            Opacity::Transparent => Self::Exposed,
+            Opacity::Opaque => Self::Inherited,
+        }
+    }
 }
 
 /// The state of the resolver.
@@ -90,12 +109,20 @@ impl<'a> Resolver<'a> {
     ) -> Result<(), RegistrationError> {
         use lowered_ast::DeclarationKind::*;
 
+        // @Task handle restricted exposure
+        let exposure = if declaration.attributes.has(AttributeKeys::PUBLIC) {
+            Exposure::Exposed
+        } else {
+            Exposure::Inherited
+        };
+
         match &declaration.kind {
             Value(value) => {
                 let module = module.unwrap();
 
                 let index = self.scope.register_binding(
                     value.binder.clone(),
+                    exposure,
                     EntityKind::UntypedValue,
                     Some(module),
                 )?;
@@ -113,6 +140,7 @@ impl<'a> Resolver<'a> {
                 // @Task don't return early, see analoguous code for modules
                 let namespace = self.scope.register_binding(
                     data.binder.clone(),
+                    exposure,
                     EntityKind::untyped_data_type(),
                     Some(module),
                 )?;
@@ -121,11 +149,17 @@ impl<'a> Resolver<'a> {
                     constructors
                         .iter()
                         .map(|constructor| {
+                            let opacity = if declaration.attributes.has(AttributeKeys::OPAQUE) {
+                                Opacity::Opaque
+                            } else {
+                                Opacity::Transparent
+                            };
+
                             self.start_resolve_declaration(
                                 constructor,
                                 Some(module),
                                 Context {
-                                    parent_data_binding: Some(namespace),
+                                    parent_data_binding: Some((namespace, Some(opacity))),
                                 },
                             )
                         })
@@ -134,11 +168,12 @@ impl<'a> Resolver<'a> {
             }
             // @Task register fields
             Constructor(constructor) => {
-                let module = context.parent_data_binding.unwrap();
+                let (module, module_opacity) = context.parent_data_binding.unwrap();
 
                 // @Task don't return early, see analoguous code for modules
                 let namespace = self.scope.register_binding(
                     constructor.binder.clone(),
+                    module_opacity.unwrap().into(),
                     EntityKind::untyped_constructor(),
                     Some(module),
                 )?;
@@ -151,10 +186,12 @@ impl<'a> Resolver<'a> {
                     if pi.aspect.is_field() {
                         let parameter = pi.parameter.as_ref().unwrap();
 
+                        // @Temporary fields are public by default
                         overall_result = self
                             .scope
                             .register_binding(
                                 parameter.clone(),
+                                Exposure::Exposed,
                                 EntityKind::UntypedValue,
                                 Some(namespace),
                             )
@@ -171,6 +208,7 @@ impl<'a> Resolver<'a> {
                 // a fake, nameless binding)
                 let index = self.scope.register_binding(
                     submodule.binder.clone(),
+                    exposure,
                     EntityKind::module(),
                     module,
                 )?;
@@ -188,6 +226,7 @@ impl<'a> Resolver<'a> {
 
                 let index = self.scope.register_binding(
                     use_.binder.clone(),
+                    exposure,
                     EntityKind::UnresolvedUse,
                     Some(module),
                 )?;
@@ -267,7 +306,10 @@ impl<'a> Resolver<'a> {
                                 constructor,
                                 Some(module),
                                 Context {
-                                    parent_data_binding: Some(binder.crate_index().unwrap()),
+                                    parent_data_binding: Some((
+                                        binder.crate_index().unwrap(),
+                                        None,
+                                    )),
                                 },
                             )
                         })
@@ -299,7 +341,7 @@ impl<'a> Resolver<'a> {
                     .scope
                     .resolve_identifier::<OnlyValue>(
                         &constructor.binder,
-                        context.parent_data_binding.unwrap(),
+                        context.parent_data_binding.unwrap().0,
                     )
                     .many_err()?;
 
@@ -451,9 +493,9 @@ impl<'a> Resolver<'a> {
                 }
             },
             UseIn => {
-                return Err(Diagnostic::bug()
-                    .with_message("use/in expression not fully implemented yet")
-                    .with_primary_span(&expression))
+                return Err(
+                    Diagnostic::unimplemented("use/in expression").with_primary_span(&expression)
+                )
                 .many_err()
             }
             CaseAnalysis(analysis) => {

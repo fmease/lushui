@@ -6,9 +6,8 @@
 mod format;
 
 use crate::{
-    ast::{self, Explicitness, Identifier, Path},
+    ast::{self, Explicitness, Identifier, ParameterAspect, Path},
     diagnostics::Results,
-    parser::ast::ParameterAspect,
     span::{SourceFile, Span, Spanned},
     support::InvalidFallback,
 };
@@ -554,7 +553,10 @@ bitflags::bitflags! {
             | Self::LOCATION.bits
             | Self::NAT.bits
             | Self::NAT32.bits
-            | Self::NAT64.bits;
+            | Self::NAT64.bits
+            // @Note wip
+            | Self::OPAQUE.bits
+            | Self::PUBLIC.bits;
         const UNSUPPORTED = !Self::SUPPORTED.bits;
     }
 }

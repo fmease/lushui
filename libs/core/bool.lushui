@@ -1,10 +1,12 @@
-@inherent
+@public @inherent
 data Bool: Type =
     false: Bool
     true: Bool
 
+@public
 use Bool.(false true)
 
+@public
 not (b: Bool): Bool =
     case b of
         false => true
@@ -12,18 +14,23 @@ not (b: Bool): Bool =
 
 use super.unit.(Unit Thunk (force as !))
 
+@public
 if (A: Type) (condition: Bool) (lazy consequent alternate: Thunk A): A =
     case condition of
         false => ! A alternate
         true => ! A consequent
 
 ;; @Question or `&&`?
+@public
 use and as &
 
+@public
 and (b: Bool) (lazy c: Thunk Bool): Bool = if Bool b (! Bool c) false
 
+@public
 ;; @Question or `||`?
 use or as |
 
+@public
 or (b: Bool) (lazy c: Thunk Bool): Bool = if Bool b true (! Bool c)
 

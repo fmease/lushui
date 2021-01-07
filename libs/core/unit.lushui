@@ -1,9 +1,12 @@
-@inherent
+@public@inherent
 data Unit: Type =
     unit: Unit
-    
+
+@public   
 use Unit.unit
 
+@public
 Thunk (A: Type): Type = Unit -> A
 
+@public
 force (A: Type) (thunk: Thunk A): A = thunk unit

@@ -339,7 +339,7 @@ impl<'a> Parser<'a> {
                         span,
                         arguments: smallvec![AttributeArgument::new(
                             Span::SHAM,
-                            AttributeArgumentKind::Generated
+                            AttributeArgumentKind::TextEncodedInSpan,
                         )],
                     };
                     if matches!(skip_line_breaks, SkipLineBreaks::Yes) {

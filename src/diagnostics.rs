@@ -115,6 +115,7 @@ impl Diagnostics {
 impl IntoIterator for Diagnostics {
     type Item = Diagnostic;
 
+    // @Note we are laying bare implementation details, not good
     type IntoIter = std::vec::IntoIter<Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -141,7 +142,7 @@ struct UnboxedDiagnostic {
     message: Option<Str>,
     highlights: Vec<Highlight>,
     subdiagnostics: Vec<Subdiagnostic>,
-    cancelled: bool,
+    is_cancelled: bool,
 }
 
 // We don't want to pollute the stack with a humonguously big error
@@ -170,11 +171,11 @@ impl Diagnostic {
             message: None,
             highlights: Vec::new(),
             subdiagnostics: Vec::new(),
-            cancelled: false,
+            is_cancelled: false,
         }))
     }
 
-    /// Diagnostic of an internal compiler error or an unimplemented feature.
+    /// Diagnostic of an internal compiler error.
     pub fn bug() -> Self {
         Self::new(Level::Bug)
     }
@@ -184,27 +185,32 @@ impl Diagnostic {
         Self::new(Level::Error)
     }
 
+    /// Diagnostic of a warning.
     pub fn warning() -> Self {
         Self::new(Level::Warning)
     }
 
+    /// Diagnostic of an auxiliary note.
     pub fn note() -> Self {
         Self::new(Level::Note)
     }
 
+    /// Diagnostic of steps to solve an issue.
     pub fn help() -> Self {
         Self::new(Level::Help)
     }
 
+    /// Diagnostic of an internal debugging message.
     pub fn debug() -> Self {
         Self::new(Level::Debug)
     }
 
+    /// Diagnostic of an unimplemented language feature.
     pub fn unimplemented(message: impl Into<Str>) -> Self {
         Self::error().with_message(format!("{} not supported yet", message.into()))
     }
 
-    /// Cancel (disable) a diagnostic.
+    /// Cancel (disable) the diagnostic.
     ///
     /// With this, you acknowledge that the diagnostic was constructed but
     /// is never going to be emitted. This prevents a panic on drop.
@@ -212,11 +218,14 @@ impl Diagnostic {
     /// Prefer not constructing the diagnostic in the first place as it is
     /// expensive in terms of memory.
     pub fn cancel(&mut self) {
-        self.0.cancelled = true;
+        self.0.is_cancelled = true;
     }
 
+    /// Indicate whether the diagnostic was cancelled (disabled).
+    ///
+    /// The diagnostic will no longer be emitted.
     pub fn is_cancelled(&self) -> bool {
-        self.0.cancelled
+        self.0.is_cancelled
     }
 
     /// Add a suitable code to the diagnostic.
@@ -337,6 +346,11 @@ impl Diagnostic {
         self.with_subdiagnostic(Level::Help, message.into())
     }
 
+    /// Add an internal debugging message.
+    pub fn with_debug(self, message: impl Into<Str>) -> Self {
+        self.with_subdiagnostic(Level::Debug, message.into())
+    }
+
     /// Add to the diagnostic depending on a boolean condition.
     pub fn when(self, condition: bool, builder: impl FnOnce(Self) -> Self) -> Self {
         match condition {
@@ -372,6 +386,9 @@ impl Diagnostic {
     }
 
     /// Emit the diagnostic to stderr.
+    ///
+    /// If the diagnostic [was cancelled](Self::cancel), it does not emit it and returns `false`
+    /// instead of `true`.
     ///
     /// ## Panics
     ///
@@ -795,6 +812,8 @@ pub enum Code {
     E027,
     /// Unexpected named attribute argument.
     E028,
+    /// Use of private binding.
+    E029,
     /// Missing type annotation for lambda literal parameter or pattern.
     E030,
     /// Illegal function application.

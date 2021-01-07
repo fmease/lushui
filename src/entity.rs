@@ -6,7 +6,7 @@ use std::{default::default, fmt};
 
 use crate::{
     hir::Expression,
-    resolver::{CrateIndex, CrateScope, Identifier, Namespace},
+    resolver::{CrateIndex, CrateScope, Exposure, Identifier, Namespace},
     support::DisplayWith,
     typer::interpreter::{ffi::NakedForeignFunction, scope::ValueView},
 };
@@ -29,6 +29,7 @@ pub struct Entity {
     pub source: crate::ast::Identifier,
     /// The namespace this entity is a member of.
     pub parent: Option<CrateIndex>,
+    pub exposure: Exposure,
     pub kind: EntityKind,
 }
 
@@ -125,18 +126,16 @@ impl DisplayWith for Entity {
     fn format(&self, scope: &CrateScope, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use std::borrow::Cow;
 
-        write!(
-            f,
-            "{:>11}.{:20} |-> {}",
-            self.parent
-                .map_or(Cow::Borrowed(BEYOND_CRATE_ROOT), |parent| format!(
-                    "{:?}",
-                    parent
-                )
-                .into()),
-            self.source,
-            self.kind.with(scope)
-        )
+        let parent = self
+            .parent
+            .map_or(Cow::Borrowed(BEYOND_CRATE_ROOT), |parent| {
+                format!("{:?}", parent).into()
+            });
+        let source = &self.source;
+        let exposure = &self.exposure;
+        let kind = self.kind.with(scope);
+
+        write!(f, "{parent:>11}.{source:20} {exposure:?} |-> {kind}")
     }
 }
 

@@ -1,2 +1,2 @@
-@foreign
+@public @foreign
 data Int32: Type

@@ -120,6 +120,7 @@ mod format_struct {
 
 // @Task only shorten if we are printing to a tty but how can we check that? even with `atty::is` that is
 // impossible since we are so disconnected from printing, we are only writing to an arbitrary writer.
+// @Task make whitespace visible
 fn format_text_literal(content: &str, f: &mut Formatter<'_>) -> Result {
     const MAXIMUM_LENGTH: usize = 20;
     const _: () = assert!(MAXIMUM_LENGTH % 2 == 0);
@@ -746,7 +747,9 @@ impl Format for super::AttributeArgumentKind {
                 write!(f, " ")?;
                 format_text_literal(text, f)
             }
-            Self::Generated => write!(f, "{}", "generated".color(SPECIAL_SYMBOL_COLOR)),
+            Self::TextEncodedInSpan => FormatStruct::new(f, indentation)
+                .name("Text-Encoded-In-Span")
+                .finish(),
             Self::Path(path) => path.format(f, indentation),
             Self::Named(named) => named.format(f, indentation),
         }

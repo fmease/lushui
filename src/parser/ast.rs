@@ -134,7 +134,7 @@ pub enum AttributeArgumentKind {
     NumberLiteral(Box<String>),
     TextLiteral(Box<String>),
     /// To be able to lower documentation comments without immense memory wastage.
-    Generated,
+    TextEncodedInSpan,
     Path(Box<Path>),
     Named(Box<NamedAttributeArgument>),
 }
@@ -143,8 +143,7 @@ impl AttributeArgumentKind {
     pub const fn name(&self) -> &'static str {
         match self {
             Self::NumberLiteral(_) => "number literal",
-            Self::TextLiteral(_) => "text literal",
-            Self::Generated => "generated text",
+            Self::TextLiteral(_) | Self::TextEncodedInSpan => "text literal",
             Self::Path(_) => "path",
             Self::Named(_) => "named argument",
         }

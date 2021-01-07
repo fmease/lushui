@@ -3,17 +3,20 @@
 use super.list.(List self)
 
 ;; @Note backed by List
+@public
 data Tuple (L: List Type): Type =
     empty: Tuple (list.empty Type)
     ;; @Task rename "cons" to sth more descriptive
     cons (A: Type) (L: List Type): A -> Tuple L -> Tuple (list.cons Type A L)
 
+@public
 use Tuple.(empty cons)
 
 use super.vector.(Vector self)
 use super.nat.(Nat +)
 
 ;; @Note backed by Vector
+@public
 data Tuple_ (n: Nat) (L: Vector n Type): Type =
     empty: Tuple_ 0 (vector.empty Type)
     ;; @Task rename "cons" to sth more descriptive

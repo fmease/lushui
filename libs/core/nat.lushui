@@ -1,37 +1,43 @@
 use super.(option.Option bool.Bool text.Text)
 
-@foreign
+@public @foreign
 data Nat: Type
 
+@public
 use add as +
 
-@foreign
+@public @foreign
 add: Nat -> Nat -> Nat
 
+@public
 use subtract as -
 
-@foreign
+@public @foreign
 subtract: Nat -> Nat -> Option Nat
 
+@public
 use panicking-subtract as -?
 
 ;; @Temporary
-@foreign
+@public @foreign
 panicking-subtract: Nat -> Nat -> Nat
 
+@public
 use multiply as *
 
-@foreign
+@public @foreign
 multiply: Nat -> Nat -> Nat
 
+@public
 use divide as /
 
-@foreign
+@public @foreign
 divide: Nat -> Nat -> Option Nat
 
+@public
 use equal as ==
 
-@foreign
+@public @foreign
 equal: Nat -> Nat -> Bool
 
 ;; equal (n m: Nat): Bool =
@@ -39,31 +45,37 @@ equal: Nat -> Nat -> Bool
 ;;         duple Nat Nat \n n => true
 ;;         \_ => false
 
+@public
 use less as <
 
-@foreign
+@public @foreign
 less: Nat -> Nat -> Bool
 
+@public
 use less-equal as =<
 
-@foreign
+@public @foreign
 less-equal: Nat -> Nat -> Bool
 
+@public
 use greater as >
 
-@foreign
+@public @foreign
 greater: Nat -> Nat -> Bool
 
+@public
 use greater-equal as >=
 
-@foreign
+@public @foreign
 greater-equal: Nat -> Nat -> Bool
 
-@foreign
+@public @foreign
 display: Nat -> Text
 
+@public
 use super.(bool ordering)
 
+@public
 compare (n m: Nat): ordering.Ordering =
     case equal n m of
         bool.true => ordering.equal
@@ -71,5 +83,5 @@ compare (n m: Nat): ordering.Ordering =
             bool.true => ordering.less
             bool.false => ordering.greater
 
-;; @foreign
+;; @public @foreign
 ;; to-int: Nat -> Nat -> core.int.Int

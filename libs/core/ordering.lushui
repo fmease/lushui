@@ -1,10 +1,13 @@
+@public
 data Ordering: Type =
     less: Ordering
     equal: Ordering
     greater: Ordering
 
+@public
 use Ordering.(less equal greater)
 
+@public
 invert (o: Ordering): Ordering =
     case o of
         less => greater
@@ -15,16 +18,19 @@ use super.unit.(unit Unit)
 use super.int.Int
 
 ;; @Temporary until laziness API
+@public
 then (o: Ordering) (p: Unit -> Ordering): Ordering =
     case o of
         equal => p unit
         \o => o
 
+@public
 then_ (o p: Ordering): Ordering =
     case o of
         equal => p
         \o => o
 
+@public
 to-int (o: Ordering): Int =
     case o of
         less => @Int -1

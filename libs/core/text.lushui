@@ -1,7 +1,8 @@
-@foreign
+@public @foreign
 data Text: Type
 
+@public
 use concat as ++
 
-@foreign
+@public @foreign
 concat: Text -> Text -> Text

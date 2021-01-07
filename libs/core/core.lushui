@@ -1,50 +1,74 @@
 ;; @Task make this a crate
 ;; @Beacon @Note *never* use `crate` in here: this is not a crate yet but merely a module!
 
+@public
 identity (A: Type) (a: A): A = a
 
+@public
 constant (A B: Type) (a: A) (b: B): A = a
 
+;; @Task write a more general version (wrt dependent typing)
+@public
 compose (A B C: Type) (f: A -> B) (g: B -> C) (a: A): C =
     g (f a)
 
+@public
 flip (A B C: Type) (f: A -> B -> C) (b: B) (a: A): C =
     f a b
 
+@public
 module void
 
+@public
 module unit
 
+@public
 module bool
 
+@public
 module text
 
+@public
 module nat
 
+@public
 module nat32
 
+@public
 module nat64
 
+@public
 module int
 
+@public
 module int32
 
+@public
 module int64
 
+@public
 module duple
 
+@public
 module triple
 
+@public
 module option
 
+@public
 module either
 
+@public
 module result
 
+@public
 module list
 
+@public
 module tuple
 
+@public
 module vector
 
+@public
 module ordering

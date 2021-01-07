@@ -1,7 +1,9 @@
 ;; @Task better name for this type, module and constructors!
 
+@public
 data Either (A B: Type): Type =
     first (A B: Type): A -> Either A B
     second (A B: Type): B -> Either A B
 
+@public
 use Either.(first second)

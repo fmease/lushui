@@ -12,6 +12,9 @@
 //!
 //! The equivalent in the type checker is [crate::typer::interpreter::scope].
 
+// @Task don't report *hidden* similarily named bindings!
+// @Beacon @Task implement the punctuation exposure rules!!!
+
 use crate::{
     ast::{self, Path},
     diagnostics::{Code, Diagnostic, Diagnostics, Result, Results},
@@ -90,6 +93,7 @@ impl CrateScope {
     pub(super) fn register_binding(
         &mut self,
         binder: ast::Identifier,
+        exposure: Exposure,
         binding: EntityKind,
         namespace: Option<CrateIndex>,
     ) -> Result<CrateIndex, RegistrationError> {
@@ -119,6 +123,7 @@ impl CrateScope {
         let index = self.bindings.push(Entity {
             source: binder,
             kind: binding,
+            exposure,
             parent: namespace,
         });
 
@@ -153,6 +158,19 @@ impl CrateScope {
         namespace: CrateIndex,
         inquirer: Inquirer,
     ) -> Result<Target::Output, ResolutionError> {
+        self.resolve_path_with_origin::<Target>(path, namespace, namespace, inquirer)
+    }
+
+    /// Resolve a syntactic path given a namespace with an explicit origin.
+    // @Beacon @Beacon @Task remove whole concept of Inquirer and replace it with
+    // check namespace != origin_namespace (corresp. to Inquirer::System)
+    fn resolve_path_with_origin<Target: ResolutionTarget>(
+        &self,
+        path: &Path,
+        namespace: CrateIndex,
+        origin_namespace: CrateIndex,
+        inquirer: Inquirer,
+    ) -> Result<Target::Output, ResolutionError> {
         use ast::HangerKind::*;
 
         if let Some(hanger) = &path.hanger {
@@ -161,18 +179,20 @@ impl CrateScope {
                     .map_err(Into::into);
             }
 
-            return self.resolve_path::<Target>(
+            return self.resolve_path_with_origin::<Target>(
                 &path.tail(),
                 match hanger.kind {
                     Crate => self.root(),
                     Super => self.resolve_super(hanger, namespace)?,
                     Self_ => namespace,
                 },
+                origin_namespace,
                 Inquirer::System,
             );
         }
 
-        let index = self.resolve_first_segment(&path.segments[0], namespace, inquirer)?;
+        let index =
+            self.resolve_first_segment(&path.segments[0], namespace, origin_namespace, inquirer)?;
 
         match path.to_simple() {
             Some(identifier) => {
@@ -180,7 +200,12 @@ impl CrateScope {
                     .map_err(Into::into)
             }
             None => match self.bindings[index].namespace() {
-                Some(_) => self.resolve_path::<Target>(&path.tail(), index, Inquirer::System),
+                Some(_) => self.resolve_path_with_origin::<Target>(
+                    &path.tail(),
+                    index,
+                    origin_namespace,
+                    Inquirer::System,
+                ),
                 None => Err(value_used_as_a_namespace(&path.segments[0], &path.segments[1]).into()),
             },
         }
@@ -196,10 +221,13 @@ impl CrateScope {
     }
 
     /// Resolve the first identifier segment of a path.
+    // @Question do we need the orgin (orginal path) as a parameter to successfully
+    // infer the use-site index??
     fn resolve_first_segment(
         &self,
         identifier: &ast::Identifier,
         namespace: CrateIndex,
+        origin_namespace: CrateIndex,
         inquirer: Inquirer,
     ) -> Result<CrateIndex, ResolutionError> {
         self.bindings[namespace]
@@ -207,15 +235,73 @@ impl CrateScope {
             .unwrap()
             .bindings
             .iter()
-            .find(|&&index| &self.bindings[index].source == identifier)
+            .copied()
+            .find(|&index| &self.bindings[index].source == identifier)
             .ok_or_else(|| ResolutionError::UnresolvedBinding {
                 identifier: identifier.clone(),
                 namespace,
                 inquirer,
             })
-            .and_then(|&index| self.collapse_use_chains(index))
+            .and_then(|index| self.handle_exposure(index, identifier, origin_namespace))
+            .and_then(|index| self.collapse_use_chain(index))
     }
 
+    // @Task @Temporary
+    // @Bug this error is always fatal rn, we need to return a "recoverable" error
+    // and make it not-fatal upstream
+
+    fn handle_exposure(
+        &self,
+        index: CrateIndex,
+        identifier: &ast::Identifier,
+        origin_namespace: CrateIndex,
+    ) -> Result<CrateIndex, ResolutionError> {
+        // eprintln!("path: {}", self.absolute_path(index));
+        // eprintln!("namespace: {:?}", origin_namespace);
+        // eprintln!("parent: {:?}", self.bindings[index].parent);
+        // eprintln!("use-site index: {:?}", ());
+        // eprintln!("def-site index: {:?}", index);
+        // eprintln!();
+
+        if self.bindings[index].exposure == Exposure::Inherited
+            && !self.is_allowed_to_access(origin_namespace, self.bindings[index].parent)
+        {
+            // @Task improve message
+            return Err(Diagnostic::error()
+                .with_code(Code::E029)
+                .with_message(format!(
+                    "use of private binding `{}`",
+                    self.absolute_path(index)
+                ))
+                .with_primary_span(identifier)
+                .into());
+        }
+
+        Ok(index)
+    }
+
+    // @Temporary
+    // @Temporary handle restricted exposure
+    // @Task think anout parent==NOne
+    /// Indicate if the definition-site namespace can be accessed from the given namespace.
+    fn is_allowed_to_access(
+        &self,
+        namespace: CrateIndex,
+        definition_site_namespace: Option<CrateIndex>,
+    ) -> bool {
+        definition_site_namespace.map_or(true, |definition_site_namespace| {
+            definition_site_namespace == namespace
+                || self.bindings[namespace].parent.map_or(false, |namespace| {
+                    self.is_allowed_to_access(namespace, Some(definition_site_namespace))
+                })
+        })
+    }
+
+    /// Find a similarly named binding in the same namespace.
+    ///
+    /// Used for error reporting when an undefined binding was encountered.
+    /// In the future, we might decide to find not one but several similar names
+    /// but that would be computationally heavier.
     fn find_similarly_named(&self, identifier: &str, namespace: &Namespace) -> Option<&str> {
         namespace
             .bindings
@@ -224,10 +310,10 @@ impl CrateScope {
             .find(|&other_identifier| is_similar(identifier, other_identifier))
     }
 
-    /// Collapse chains of use bindings aka indirect uses.
+    /// Collapse chain of use bindings aka indirect uses.
     ///
     /// This is an invariant established to to make things easier to reason about during resolution.
-    fn collapse_use_chains(&self, index: CrateIndex) -> Result<CrateIndex, ResolutionError> {
+    fn collapse_use_chain(&self, index: CrateIndex) -> Result<CrateIndex, ResolutionError> {
         use EntityKind::*;
 
         match self.bindings[index].kind {
@@ -255,13 +341,14 @@ impl CrateScope {
     /// definitions & mappings or – if even possible – creating a totally complicated
     /// parameterized lowered AST with complicated traits having many associated types
     /// (painfully learned through previous experiences).
+    // @Question We don't need to check exposure here, right?
     pub(super) fn resolve_identifier<Target: ResolutionTarget>(
         &self,
         identifier: &ast::Identifier,
         module: CrateIndex,
     ) -> Result<Target::Output> {
         let index = self
-            .resolve_first_segment(identifier, module, Inquirer::System)
+            .resolve_first_segment(identifier, module, module, Inquirer::System)
             .map_err(|error| error.diagnostic(self).unwrap())?;
         Target::resolve_simple_path(identifier, &self.bindings[index].kind, index)
     }
@@ -274,6 +361,7 @@ impl CrateScope {
     /// all out of order use bindings are successfully resolved or until
     /// no progress can be made anymore in which case all remaining
     /// use bindings are actually circular and are thus reported.
+    // @Task handle exposure
     pub(super) fn resolve_unresolved_uses(&mut self) -> Results<()> {
         while !self.unresolved_uses.is_empty() {
             let mut unresolved_uses = HashMap::default();
@@ -379,6 +467,25 @@ impl fmt::Debug for CrateScope {
             .field("unresolved_uses", &self.unresolved_uses)
             // .field("out_of_order_bindings", &self.out_of_order_bindings)
             .finish()
+    }
+}
+
+// @Temporary location, definition @Task incorporate exposure scope (restricted exposure)
+// @Note @Beacon we don't need an enum, just a struct ExposureScope(Path/Identifier/CrateIndex idk)
+// because not having `@public` just means `@(public self)` where self is resolved to the
+// actual index
+#[derive(Clone, PartialEq, Eq)]
+pub enum Exposure {
+    Inherited,
+    Exposed,
+}
+
+impl fmt::Debug for Exposure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Inherited => write!(f, "{}", "inherited"),
+            Self::Exposed => write!(f, "{}", "exposed"),
+        }
     }
 }
 
@@ -809,6 +916,14 @@ impl<'a> FunctionScope<'a> {
         }
     }
 
+    /// Find a similarly named binding in the scope.
+    ///
+    /// With "scope", it is meant to include parent scopes, too.
+    ///
+    /// Used for error reporting when an undefined binding was encountered.
+    /// In the future, we might decide to find not one but several similar names
+    /// but that would be computationally heavier and we would need to be careful
+    /// and consider the effects of shadowing.
     fn find_similarly_named(&self, identifier: &str, scope: &'a CrateScope) -> Option<&str> {
         use FunctionScope::*;
 

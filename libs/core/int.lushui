@@ -1,9 +1,9 @@
-@foreign
+@public @foreign
 data Int: Type
 
-;; @foreign
+;; @public @foreign
 ;; to-nat: Int -> Option super.nat.Nat
 
-;; @foreign
+;; @public @foreign
 ;; absolute: Int -> super.nat.Nat
 
