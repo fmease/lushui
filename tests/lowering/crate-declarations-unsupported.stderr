@@ -1,12 +1,12 @@
 error: crate declarations not supported yet
- >>> ${DIRECTORY}/lowering/crate-declarations-unsupported.lushui:3:1
+ --> ${DIRECTORY}/lowering/crate-declarations-unsupported.lushui:3:1
   |
 3 | crate gateway
   | ^^^^^^^^^^^^^ 
   |
 
 error: crate declarations not supported yet
- >>> ${DIRECTORY}/lowering/crate-declarations-unsupported.lushui:6:1
+ --> ${DIRECTORY}/lowering/crate-declarations-unsupported.lushui:6:1
   |
 6 | crate gate-way
   | ^^^^^^^^^^^^^^ 

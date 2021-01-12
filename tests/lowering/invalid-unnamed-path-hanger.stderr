@@ -1,5 +1,5 @@
 error[E025]: `use` of unnamed `super`
- >>> ${DIRECTORY}/lowering/invalid-unnamed-path-hanger.lushui:3:5
+ --> ${DIRECTORY}/lowering/invalid-unnamed-path-hanger.lushui:3:5
   |
 3 | use super
   |     ^^^^^ 
@@ -7,7 +7,7 @@ error[E025]: `use` of unnamed `super`
  help: bind the path to a name with `as`
 
 error[E025]: `use` of unnamed `crate`
- >>> ${DIRECTORY}/lowering/invalid-unnamed-path-hanger.lushui:4:5
+ --> ${DIRECTORY}/lowering/invalid-unnamed-path-hanger.lushui:4:5
   |
 4 | use crate
   |     ^^^^^ 
@@ -15,7 +15,7 @@ error[E025]: `use` of unnamed `crate`
  help: bind the path to a name with `as`
 
 error[E025]: `use` of unnamed `self`
- >>> ${DIRECTORY}/lowering/invalid-unnamed-path-hanger.lushui:6:5
+ --> ${DIRECTORY}/lowering/invalid-unnamed-path-hanger.lushui:6:5
   |
 6 | use self
   |     ^^^^ 
@@ -23,7 +23,7 @@ error[E025]: `use` of unnamed `self`
  help: bind the path to a name with `as`
 
 error[E025]: `use` of unnamed `self`
- >>> ${DIRECTORY}/lowering/invalid-unnamed-path-hanger.lushui:8:18
+ --> ${DIRECTORY}/lowering/invalid-unnamed-path-hanger.lushui:8:18
   |
 8 | use crate.(space self space)
   |                  ^^^^ 
@@ -31,7 +31,7 @@ error[E025]: `use` of unnamed `self`
  help: bind the path to a name with `as`
 
 error[E026]: path hanger `super` not allowed in this position
-  >>> ${DIRECTORY}/lowering/invalid-unnamed-path-hanger.lushui:10:29
+  --> ${DIRECTORY}/lowering/invalid-unnamed-path-hanger.lushui:10:29
    |
 10 | use crate.(self.(self.thing super))
    |                             ^^^^^ 

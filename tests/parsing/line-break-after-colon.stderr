@@ -1,5 +1,5 @@
 error[E010]: found line break, but expected expression
- >>> ${DIRECTORY}/parsing/line-break-after-colon.lushui:4:12
+ --> ${DIRECTORY}/parsing/line-break-after-colon.lushui:4:12
   |
 4 | Definition:
   |            ^ unexpected token

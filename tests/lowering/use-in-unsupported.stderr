@@ -1,5 +1,5 @@
 error: use/in expressions not supported yet
- >>> ${DIRECTORY}/lowering/use-in-unsupported.lushui:4:5
+ --> ${DIRECTORY}/lowering/use-in-unsupported.lushui:4:5
   |
 4 |       use qualified.thing as matter in
   |  _____^

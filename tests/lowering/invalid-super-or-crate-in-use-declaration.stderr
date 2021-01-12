@@ -1,5 +1,5 @@
 error[E026]: path hanger `super` not allowed in this position
- >>> ${DIRECTORY}/lowering/invalid-super-or-crate-in-use-declaration.lushui:3:14
+ --> ${DIRECTORY}/lowering/invalid-super-or-crate-in-use-declaration.lushui:3:14
   |
 3 | use foo.bar.(super.ban crate self)
   |              ^^^^^ 
@@ -7,7 +7,7 @@ error[E026]: path hanger `super` not allowed in this position
  help: consider moving this path to its own separate use declaration
 
 error[E026]: path hanger `crate` not allowed in this position
- >>> ${DIRECTORY}/lowering/invalid-super-or-crate-in-use-declaration.lushui:3:24
+ --> ${DIRECTORY}/lowering/invalid-super-or-crate-in-use-declaration.lushui:3:24
   |
 3 | use foo.bar.(super.ban crate self)
   |                        ^^^^^ 

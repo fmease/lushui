@@ -1,12 +1,12 @@
 warning[W001]: implicitness markers are currently ignored
- >>> ${DIRECTORY}/equals.lushui:7:17
+ --> ${DIRECTORY}/equals.lushui:7:17
   |
 7 |     reflective (,A: Type): Equals A A
   |                 ^ 
   |
 
 warning[W001]: implicitness markers are currently ignored
- >>> ${DIRECTORY}/equals.lushui:9:58
+ --> ${DIRECTORY}/equals.lushui:9:58
   |
 9 | a: Equals core.nat.Nat core.nat.Nat = Equals.reflective (,core.nat.Nat)
   |                                                          ^ 

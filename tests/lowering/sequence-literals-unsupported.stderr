@@ -1,19 +1,19 @@
 error: attribute `List` not supported yet
- >>> ${DIRECTORY}/lowering/sequence-literals-unsupported.lushui:3:19
+ --> ${DIRECTORY}/lowering/sequence-literals-unsupported.lushui:3:19
   |
 3 | construct: List = @List [1 3 100 @Nat32 0]
   |                   ^^^^^ 
   |
 
 error: sequence literals not supported yet
- >>> ${DIRECTORY}/lowering/sequence-literals-unsupported.lushui:3:25
+ --> ${DIRECTORY}/lowering/sequence-literals-unsupported.lushui:3:25
   |
 3 | construct: List = @List [1 3 100 @Nat32 0]
   |                         ^^^^^^^^^^^^^^^^^^ 
   |
 
 error: sequence literal patterns not supported yet
- >>> ${DIRECTORY}/lowering/sequence-literals-unsupported.lushui:8:9
+ --> ${DIRECTORY}/lowering/sequence-literals-unsupported.lushui:8:9
   |
 8 |         [\x \y @Text "X"] => always
   |         ^^^^^^^^^^^^^^^^^ 

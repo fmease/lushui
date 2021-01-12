@@ -1,5 +1,5 @@
 error[E035]: attempt to analyze a type
-  >>> ${DIRECTORY}/analyze-types.lushui:9:5
+  --> ${DIRECTORY}/analyze-types.lushui:9:5
    |
  9 |       case A of
 ...   _____^

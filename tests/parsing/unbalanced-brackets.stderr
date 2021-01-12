@@ -1,5 +1,5 @@
 error[E010]: found `]`, but expected line break
- >>> ${DIRECTORY}/parsing/unbalanced-brackets.lushui:4:6
+ --> ${DIRECTORY}/parsing/unbalanced-brackets.lushui:4:6
   |
 4 | x: X ] X [
   |      ^ unexpected token

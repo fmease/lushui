@@ -499,7 +499,7 @@ impl Diagnostic {
             for (highlight, resolved_span) in self.0.highlights.iter().zip(resolved_spans) {
                 // path, line number and column
                 {
-                    let arrow = ">>>".color(FRAME_COLOR).bold();
+                    let arrow = "-->".color(FRAME_COLOR).bold();
                     message += &format!("\n{padding}{arrow} ");
 
                     let file = resolved_span.path.to_string_lossy();

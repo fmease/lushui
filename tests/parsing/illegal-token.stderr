@@ -1,5 +1,5 @@
 error[E010]: found illegal token U+95F4 `间`, but expected parameter, type annotation, definition with `=` or line break
- >>> ${DIRECTORY}/parsing/illegal-token.lushui:3:13
+ --> ${DIRECTORY}/parsing/illegal-token.lushui:3:13
   |
 3 | data System 间: 时
   |             ^^ unexpected token
