@@ -108,8 +108,10 @@ impl<'a> Typer<'a> {
                     let constructors = data.constructors.as_ref().unwrap();
 
                     // @Task @Beacon move to resolver
-                    if let Some(inherent) =
-                        declaration.attributes.get(AttributeKeys::INHERENT).next()
+                    if let Some(inherent) = declaration
+                        .attributes
+                        .filter(AttributeKeys::INHERENT)
+                        .next()
                     {
                         self.scope
                             .ffi

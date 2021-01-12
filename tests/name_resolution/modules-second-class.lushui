@@ -5,6 +5,7 @@ RECORD: Type = Type
 r0: RECORD = am-i-a-record
 
 module am-i-a-record =
+    @public
     module am-i-a-record-too =
 
 r1: RECORD = am-i-a-record.am-i-a-record-too

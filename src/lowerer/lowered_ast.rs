@@ -186,12 +186,23 @@ impl Attributes {
         keys.contains(self.keys)
     }
 
-    // @Note @Beacon this API is flawed for attributes with arguments since we *redundantly* need to
-    // match on `AttributeKind` again after already having specified `AttributeKeys`
-    pub fn get(&self, keys: AttributeKeys) -> impl DoubleEndedIterator<Item = &Attribute> + Clone {
+    pub fn filter(
+        &self,
+        keys: AttributeKeys,
+    ) -> impl DoubleEndedIterator<Item = &Attribute> + Clone {
         self.data
             .iter()
             .filter(move |attribute| attribute.matches(keys))
+    }
+
+    pub fn get<'a, R: ?Sized>(
+        &'a self,
+        mut predicate: impl FnMut(&'a AttributeKind) -> Option<&'a R>,
+    ) -> &'a R {
+        self.data
+            .iter()
+            .find_map(|attribute| predicate(&attribute.kind))
+            .unwrap()
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Attribute> {
@@ -328,15 +339,14 @@ pub enum AttributeKind {
     Opaque,
     /// Make the binding part of the public API or at least visible in modules higher up.
     ///
-    /// If no `scope` is given, the binding is marked as exposed to any other crates.
+    /// If no `reach` is given, the binding is exposed to other crates.
     ///
     /// ## Form
     ///
     /// ```text
-    /// public [<0:scope:Path>]
+    /// public [<0:reach:Path>]
     ///
-    // @Question rename `scope` to `up-to`?
-    Public { scope: Option<ast::Path> },
+    Public { reach: Option<ast::Path> },
     /// Define the recursion limit of the TWI.
     ///
     /// ## Form
@@ -554,7 +564,6 @@ bitflags::bitflags! {
             | Self::NAT.bits
             | Self::NAT32.bits
             | Self::NAT64.bits
-            // @Note wip
             | Self::OPAQUE.bits
             | Self::PUBLIC.bits;
         const UNSUPPORTED = !Self::SUPPORTED.bits;

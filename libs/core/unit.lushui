@@ -1,4 +1,4 @@
-@public@inherent
+@public @inherent
 data Unit: Type =
     unit: Unit
 

@@ -103,7 +103,7 @@ pub fn parse_crate_name(file: impl AsRef<Path>) -> Result<ast::Identifier, Diagn
     let file = file.as_ref();
 
     if !has_file_extension(file, FILE_EXTENSION) {
-        Diagnostic::warning()
+        let _ = Diagnostic::warning()
             .with_message("missing or non-standard file extension")
             .emit_to_stderr(None);
     }

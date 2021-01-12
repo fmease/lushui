@@ -4,8 +4,11 @@ module first =
     use alpha.alias
 
     module alpha =
+        @public
         use beta.alias
+
         module beta =
+            @public
             alias: Type = Type
 
 module second =
@@ -31,6 +34,7 @@ module alpha =
     module xoo =
         W: Type = super.V
 
+    @public
     data Void: Type =
 
 V: Type = Void

@@ -355,7 +355,7 @@ fn main() {
 
         // @Question should we print this at all?
         if amount >= MINIMUM_AMOUNT_WARNINGS_FOR_SUMMARY {
-            Diagnostic::warning()
+            let _ = Diagnostic::warning()
                 .with_message(format!(
                     "emitted {} {}",
                     amount,
@@ -368,7 +368,7 @@ fn main() {
     if let Err(errors) = result {
         let amount = emit_diagnostics(errors, &mut map, arguments.sort_diagnostics);
 
-        Diagnostic::error()
+        let _ = Diagnostic::error()
             .with_message(pluralize(amount, "aborting due to previous error", || {
                 format!("aborting due to {} previous errors", amount)
             }))
@@ -415,6 +415,6 @@ fn set_panic_hook() {
             message += &format!(" at {}", location);
         }
 
-        Diagnostic::bug().with_message(message).emit_to_stderr(None);
+        let _ = Diagnostic::bug().with_message(message).emit_to_stderr(None);
     }));
 }

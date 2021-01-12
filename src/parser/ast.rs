@@ -701,7 +701,7 @@ impl AttributeTarget for Declaration {
                 ))
                 .with_labeled_primary_span(&body, "conflicting definition")
                 .with_labeled_secondary_span(
-                    &attributes.get(AttributeKeys::FOREIGN).next().unwrap(),
+                    &attributes.filter(AttributeKeys::FOREIGN).next().unwrap(),
                     "conflicting definition",
                 )
                 .with_note(

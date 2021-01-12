@@ -41,8 +41,8 @@ impl fmt::Display for super::AttributeKind {
             Self::Nat32 => write!(f, "Nat32"),
             Self::Nat64 => write!(f, "Nat64"),
             Self::Opaque => write!(f, "opaque"),
-            Self::Public { scope } => match scope {
-                Some(scope) => write!(f, "(scope {})", scope),
+            Self::Public { reach } => match reach {
+                Some(reach) => write!(f, "(public {})", reach),
                 None => write!(f, "public"),
             },
             Self::RecursionLimit { depth } => write!(f, "(recursion-limit {})", depth),

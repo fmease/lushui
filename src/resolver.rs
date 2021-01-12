@@ -21,8 +21,8 @@ use crate::{
     ast,
     diagnostics::{Diagnostic, Diagnostics, Results, Warn},
     entity::EntityKind,
-    lowered_ast::{self, AttributeKeys},
-    support::{accumulate_errors, InvalidFallback, ManyErrExt, TransposeExt, TryIn},
+    lowered_ast::{self, AttributeKeys, AttributeKind},
+    support::{accumulate_errors, obtain, InvalidFallback, ManyErrExt, TransposeExt, TryIn},
 };
 use hir::{decl, expr, pat};
 pub use scope::{
@@ -46,17 +46,6 @@ struct Context {
 enum Opacity {
     Transparent,
     Opaque,
-}
-
-// @Bug remove @Beacon @Note it should be @(public super) not @public (==Exposed)
-// (for constructors)
-impl From<Opacity> for Exposure {
-    fn from(opacity: Opacity) -> Self {
-        match opacity {
-            Opacity::Transparent => Self::Exposed,
-            Opacity::Opaque => Self::Inherited,
-        }
-    }
 }
 
 /// The state of the resolver.
@@ -101,6 +90,7 @@ impl<'a> Resolver<'a> {
     /// new intermediate HIR because of too much mapping and type-system boilerplate
     /// and it's just not worth it memory-wise.
     /// For more on this, see [CrateScope::resolve_identifier].
+    // @Task allow for non-fatal errors inside of here!!!
     fn start_resolve_declaration(
         &mut self,
         declaration: &lowered_ast::Declaration,
@@ -109,11 +99,18 @@ impl<'a> Resolver<'a> {
     ) -> Result<(), RegistrationError> {
         use lowered_ast::DeclarationKind::*;
 
-        // @Task handle restricted exposure
         let exposure = if declaration.attributes.has(AttributeKeys::PUBLIC) {
-            Exposure::Exposed
-        } else {
-            Exposure::Inherited
+            match declaration
+                .attributes
+                .get(|kind| obtain!(kind, AttributeKind::Public { reach } => reach))
+            {
+                Some(reach) => Exposure::unresolved_restricted(reach.clone()),
+                None => Exposure::Unrestricted,
+            }
+        }
+        // no `@public` means private i.e. restricted to `self` i.e. `@(public self)`
+        else {
+            Exposure::resolved_restricted(module.unwrap_or(self.scope.root()))
         };
 
         match &declaration.kind {
@@ -166,16 +163,22 @@ impl<'a> Resolver<'a> {
                         .transpose()?;
                 }
             }
-            // @Task register fields
             Constructor(constructor) => {
-                let (module, module_opacity) = context.parent_data_binding.unwrap();
+                let module = module.unwrap();
+                let (namespace, module_opacity) = context.parent_data_binding.unwrap();
+
+                let exposure = match module_opacity.unwrap() {
+                    Opacity::Transparent => self.scope.bindings[namespace].exposure.clone(),
+                    // as if a @(public super) was attached to the constructor
+                    Opacity::Opaque => Exposure::resolved_restricted(module),
+                };
 
                 // @Task don't return early, see analoguous code for modules
                 let namespace = self.scope.register_binding(
                     constructor.binder.clone(),
-                    module_opacity.unwrap().into(),
+                    exposure,
                     EntityKind::untyped_constructor(),
-                    Some(module),
+                    Some(namespace),
                 )?;
 
                 let mut overall_result = Ok(());
@@ -186,12 +189,11 @@ impl<'a> Resolver<'a> {
                     if pi.aspect.is_field() {
                         let parameter = pi.parameter.as_ref().unwrap();
 
-                        // @Temporary fields are public by default
                         overall_result = self
                             .scope
                             .register_binding(
                                 parameter.clone(),
-                                Exposure::Exposed,
+                                Exposure::Unrestricted, // @Temporary
                                 EntityKind::UntypedValue,
                                 Some(namespace),
                             )
@@ -271,8 +273,7 @@ impl<'a> Resolver<'a> {
 
                 let binder = self
                     .scope
-                    .resolve_identifier::<OnlyValue>(&value.binder, module)
-                    .many_err()?;
+                    .reobtain_resolved_identifier::<OnlyValue>(&value.binder, module);
 
                 let (type_annotation, expression) =
                     accumulate_errors!(type_annotation, expression)?;
@@ -295,8 +296,7 @@ impl<'a> Resolver<'a> {
 
                 let binder = self
                     .scope
-                    .resolve_identifier::<OnlyValue>(&data.binder, module)
-                    .many_err()?;
+                    .reobtain_resolved_identifier::<OnlyValue>(&data.binder, module);
 
                 let constructors = data.constructors.map(|constructors| {
                     constructors
@@ -337,13 +337,10 @@ impl<'a> Resolver<'a> {
                     &FunctionScope::Module(module),
                 )?;
 
-                let binder = self
-                    .scope
-                    .resolve_identifier::<OnlyValue>(
-                        &constructor.binder,
-                        context.parent_data_binding.unwrap().0,
-                    )
-                    .many_err()?;
+                let binder = self.scope.reobtain_resolved_identifier::<OnlyValue>(
+                    &constructor.binder,
+                    context.parent_data_binding.unwrap().0,
+                );
 
                 decl! {
                     Constructor {
@@ -355,13 +352,11 @@ impl<'a> Resolver<'a> {
                 }
             }
             Module(submodule) => {
-                // @Note ValueOrModule too general @Bug this might lead to
-                // values used as modules!! we should create OnlyModule
+                // @Task use OnlyModule once we define it
                 let index = match module {
                     Some(module) => self
                         .scope
-                        .resolve_identifier::<ValueOrModule>(&submodule.binder, module)
-                        .many_err()?,
+                        .reobtain_resolved_identifier::<ValueOrModule>(&submodule.binder, module),
                     None => self.scope.root(),
                 };
 
@@ -392,8 +387,7 @@ impl<'a> Resolver<'a> {
 
                 let binder = Identifier::new(
                     self.scope
-                        .resolve_identifier::<ValueOrModule>(&use_.binder, module)
-                        .many_err()?,
+                        .reobtain_resolved_identifier::<ValueOrModule>(&use_.binder, module),
                     use_.binder,
                 );
 

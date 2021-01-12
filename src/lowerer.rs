@@ -29,12 +29,12 @@ pub mod lowered_ast;
 use crate::{
     ast::{self, Explicit, Path},
     diagnostics::{Code, Diagnostic, Diagnostics, Result, Results, Warn},
-    lowered_ast::{decl, expr, pat, AttributeKeys, Attributes, Number},
+    lowered_ast::{decl, expr, pat, AttributeKeys, AttributeKind, Attributes, Number},
     smallvec,
     span::{SourceMap, Span, Spanning},
     support::{
-        accumulate_errors, ordered_listing, s_pluralize, Conjunction, InvalidFallback, ManyErrExt,
-        QuoteExt, TryIn,
+        accumulate_errors, obtain, ordered_listing, s_pluralize, Conjunction, InvalidFallback,
+        ManyErrExt, QuoteExt, TryIn,
     },
     SmallVec, Str,
 };
@@ -253,17 +253,12 @@ impl<'a> Lowerer<'a> {
                     None => {
                         use crate::{lexer::Lexer, parser::Parser, span};
 
-                        // @Note the attribute API sucks big time rn
                         // @Task warn on/disallow relative paths pointing "outside" of the project directory
                         // (ofc we would also need to disallow symbolic links to fully(?) guarantee some definition
                         // of source code portability)
                         let relative_path = if attributes.has(AttributeKeys::LOCATION) {
-                            let location = attributes.get(AttributeKeys::LOCATION).next().unwrap();
-
-                            match &location.kind {
-                                lowered_ast::AttributeKind::Location { path } => path,
-                                _ => unreachable!(),
-                            }
+                            attributes
+                                .get(|kind| obtain!(kind, AttributeKind::Location { path } => path))
                         } else {
                             module.binder.as_str()
                         };
@@ -880,7 +875,7 @@ impl<'a> Lowerer<'a> {
                     > 1
                 {
                     let faulty_attributes = attributes
-                        .get(mutually_exclusive_attributes)
+                        .filter(mutually_exclusive_attributes)
                         .collect::<Vec<_>>();
                     let listing = ordered_listing(
                         faulty_attributes
@@ -916,10 +911,17 @@ impl<'a> Lowerer<'a> {
         check_mutual_exclusivity(AttributeKeys::LIST | AttributeKeys::VECTOR).try_in(&mut errors);
 
         if attributes.within(AttributeKeys::UNSUPPORTED) {
-            errors.extend(attributes.get(AttributeKeys::UNSUPPORTED).map(|attribute| {
-                Diagnostic::unimplemented(format!("attribute {}", attribute.kind.quoted_name()))
-                    .with_primary_span(attribute)
-            }))
+            errors.extend(
+                attributes
+                    .filter(AttributeKeys::UNSUPPORTED)
+                    .map(|attribute| {
+                        Diagnostic::unimplemented(format!(
+                            "attribute {}",
+                            attribute.kind.quoted_name()
+                        ))
+                        .with_primary_span(attribute)
+                    }),
+            )
         }
 
         errors.err_or(attributes)
@@ -1139,11 +1141,11 @@ impl lowered_ast::AttributeKind {
                 "Nat64" => Self::Nat64,
                 "opaque" => Self::Opaque,
                 "public" => {
-                    let scope = optional_argument(arguments)
-                        .map(|argument| argument.path(Some("scope")))
+                    let reach = optional_argument(arguments)
+                        .map(|argument| argument.path(Some("reach")))
                         .transpose()?;
 
-                    Self::Public { scope }
+                    Self::Public { reach }
                 }
                 "recursion-limit" => {
                     let depth = argument(arguments, attribute.span)?;

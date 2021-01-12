@@ -12,8 +12,10 @@
 //!
 //! The equivalent in the type checker is [crate::typer::interpreter::scope].
 
-// @Task don't report *hidden* similarily named bindings!
+// @Task don't report similarily named *private* bindings!
 // @Beacon @Task implement the punctuation exposure rules!!!
+// @Task recognize leaks of private types!
+// @Task add tests around exposure!!!
 
 use crate::{
     ast::{self, Path},
@@ -29,7 +31,7 @@ use crate::{
 };
 use indexed_vec::IndexVec;
 use joinery::JoinableIterator;
-use std::{fmt, iter::once};
+use std::{cell::RefCell, fmt, iter::once, usize};
 
 type Bindings = IndexVec<CrateIndex, Entity>;
 
@@ -174,21 +176,22 @@ impl CrateScope {
         use ast::HangerKind::*;
 
         if let Some(hanger) = &path.hanger {
-            if path.segments.is_empty() {
-                return Target::resolve_bare_super_and_crate(hanger.span, namespace)
-                    .map_err(Into::into);
-            }
+            let namespace = match hanger.kind {
+                Crate => self.root(),
+                Super => self.resolve_super(hanger, namespace)?,
+                Self_ => namespace,
+            };
 
-            return self.resolve_path_with_origin::<Target>(
-                &path.tail(),
-                match hanger.kind {
-                    Crate => self.root(),
-                    Super => self.resolve_super(hanger, namespace)?,
-                    Self_ => namespace,
-                },
-                origin_namespace,
-                Inquirer::System,
-            );
+            return if path.segments.is_empty() {
+                Target::handle_bare_super_and_crate(hanger.span, namespace).map_err(Into::into)
+            } else {
+                self.resolve_path_with_origin::<Target>(
+                    &path.tail(),
+                    namespace,
+                    origin_namespace,
+                    Inquirer::System,
+                )
+            };
         }
 
         let index =
@@ -212,17 +215,15 @@ impl CrateScope {
     }
 
     fn resolve_super(&self, hanger: &ast::Hanger, module: CrateIndex) -> Result<CrateIndex> {
-        self.bindings[module].parent.ok_or_else(|| {
+        self.parent_of(module).ok_or_else(|| {
             Diagnostic::error()
-                .with_code(Code::E021)
+                .with_code(Code::E021) // @Question have a specific code?
                 .with_message("the crate root does not have a parent")
                 .with_primary_span(hanger)
         })
     }
 
     /// Resolve the first identifier segment of a path.
-    // @Question do we need the orgin (orginal path) as a parameter to successfully
-    // infer the use-site index??
     fn resolve_first_segment(
         &self,
         identifier: &ast::Identifier,
@@ -246,55 +247,108 @@ impl CrateScope {
             .and_then(|index| self.collapse_use_chain(index))
     }
 
-    // @Task @Temporary
-    // @Bug this error is always fatal rn, we need to return a "recoverable" error
+    // @Beacon @Bug this error is always fatal rn, we need to return a "recoverable" error
     // and make it not-fatal upstream
-
+    // @Task check punctuation exposure rules
     fn handle_exposure(
         &self,
         index: CrateIndex,
         identifier: &ast::Identifier,
         origin_namespace: CrateIndex,
     ) -> Result<CrateIndex, ResolutionError> {
-        // eprintln!("path: {}", self.absolute_path(index));
-        // eprintln!("namespace: {:?}", origin_namespace);
-        // eprintln!("parent: {:?}", self.bindings[index].parent);
-        // eprintln!("use-site index: {:?}", ());
-        // eprintln!("def-site index: {:?}", index);
-        // eprintln!();
+        let binding = &self.bindings[index];
 
-        if self.bindings[index].exposure == Exposure::Inherited
-            && !self.is_allowed_to_access(origin_namespace, self.bindings[index].parent)
-        {
-            // @Task improve message
-            return Err(Diagnostic::error()
-                .with_code(Code::E029)
-                .with_message(format!(
-                    "use of private binding `{}`",
-                    self.absolute_path(index)
-                ))
-                .with_primary_span(identifier)
-                .into());
+        if let Exposure::Restricted(exposure) = &binding.exposure {
+            let definition_site_namespace = binding.parent.unwrap();
+
+            let exposure_ = exposure.borrow();
+            let reach = match &*exposure_ {
+                RestrictedExposure::Unresolved {
+                    reach: unresolved_reach,
+                } => {
+                    // @Task protect against non-modules, we need OnlyModule!
+                    // @Task make this non-fatal (upstream)
+                    let reach = self.resolve_path::<ValueOrModule>(
+                        unresolved_reach,
+                        definition_site_namespace,
+                        Inquirer::System,
+                    )?;
+
+                    let reach_is_ancestor = self
+                        .some_ancestor_satisfies(definition_site_namespace, |namespace| {
+                            namespace == reach
+                        });
+                    // @Task improve message text, add code, add note about the definition_site_namespace
+                    if !reach_is_ancestor {
+                        return Err(Diagnostic::error()
+                            .with_message("exposure can only be restricted to ancestor modules")
+                            .with_primary_span(unresolved_reach)
+                            .into());
+                    }
+
+                    drop(exposure_);
+                    *exposure.borrow_mut() = RestrictedExposure::Resolved { reach };
+
+                    reach
+                }
+                &RestrictedExposure::Resolved { reach } => reach,
+            };
+
+            if !self.is_allowed_to_access(origin_namespace, definition_site_namespace, reach) {
+                // @Task improve message
+                return Err(Diagnostic::error()
+                    .with_code(Code::E029)
+                    .with_message(format!(
+                        "use of private binding `{}`",
+                        self.absolute_path(index)
+                    ))
+                    .with_primary_span(identifier)
+                    .into());
+            }
         }
 
         Ok(index)
     }
 
-    // @Temporary
-    // @Temporary handle restricted exposure
-    // @Task think anout parent==NOne
     /// Indicate if the definition-site namespace can be accessed from the given namespace.
     fn is_allowed_to_access(
         &self,
         namespace: CrateIndex,
-        definition_site_namespace: Option<CrateIndex>,
+        definition_site_namespace: CrateIndex,
+        reach: CrateIndex,
     ) -> bool {
-        definition_site_namespace.map_or(true, |definition_site_namespace| {
-            definition_site_namespace == namespace
-                || self.bindings[namespace].parent.map_or(false, |namespace| {
-                    self.is_allowed_to_access(namespace, Some(definition_site_namespace))
-                })
-        })
+        let access_from_same_namespace_or_below = self
+            .some_ancestor_satisfies(namespace, |namespace| {
+                namespace == definition_site_namespace
+            });
+
+        let access_from_above_in_reach =
+            || self.some_ancestor_satisfies(namespace, |namespace| namespace == reach);
+
+        access_from_same_namespace_or_below || access_from_above_in_reach()
+    }
+
+    fn some_ancestor_satisfies(
+        &self,
+        namespace: CrateIndex,
+        predicate: impl Fn(CrateIndex) -> bool,
+    ) -> bool {
+        let mut namespace = namespace;
+
+        loop {
+            if predicate(namespace) {
+                break true;
+            }
+
+            namespace = match self.parent_of(namespace) {
+                Some(parent) => parent,
+                None => break false,
+            }
+        }
+    }
+
+    fn parent_of(&self, index: CrateIndex) -> Option<CrateIndex> {
+        self.bindings[index].parent
     }
 
     /// Find a similarly named binding in the same namespace.
@@ -326,7 +380,7 @@ impl CrateScope {
         }
     }
 
-    /// Resolve a single identifier (in contrast to a whole path).
+    /// Reabotain the resolved identifier.
     ///
     /// Used in [super::Resolver::finish_resolve_declaration], the last pass of the
     /// name resolver, to re-gain some information (the [Identifier]s) collected during the first pass.
@@ -341,16 +395,27 @@ impl CrateScope {
     /// definitions & mappings or – if even possible – creating a totally complicated
     /// parameterized lowered AST with complicated traits having many associated types
     /// (painfully learned through previous experiences).
-    // @Question We don't need to check exposure here, right?
-    pub(super) fn resolve_identifier<Target: ResolutionTarget>(
+    // @Task add to documentation that this panics on unresolved and does not check exposure,
+    // also it does not check the resolution target etc
+    pub(super) fn reobtain_resolved_identifier<Target: ResolutionTarget>(
         &self,
         identifier: &ast::Identifier,
-        module: CrateIndex,
-    ) -> Result<Target::Output> {
+        namespace: CrateIndex,
+    ) -> Target::Output {
+        let index = self.bindings[namespace]
+            .namespace()
+            .unwrap()
+            .bindings
+            .iter()
+            .copied()
+            .find(|&index| &self.bindings[index].source == identifier)
+            .unwrap();
+
         let index = self
-            .resolve_first_segment(identifier, module, module, Inquirer::System)
-            .map_err(|error| error.diagnostic(self).unwrap())?;
-        Target::resolve_simple_path(identifier, &self.bindings[index].kind, index)
+            .collapse_use_chain(index)
+            .unwrap_or_else(|_| unreachable!());
+
+        Target::output(index, identifier)
     }
 
     /// Resolve unresolved uses.
@@ -367,6 +432,8 @@ impl CrateScope {
             let mut unresolved_uses = HashMap::default();
 
             for (&index, item) in self.unresolved_uses.iter() {
+                use ResolutionError::*;
+
                 match self.resolve_path::<ValueOrModule>(
                     &item.reference,
                     item.module,
@@ -375,15 +442,10 @@ impl CrateScope {
                     Ok(reference) => {
                         self.bindings[index].kind = EntityKind::Use(reference);
                     }
-                    Err(
-                        error
-                        @
-                        (ResolutionError::UnresolvedBinding { .. }
-                        | ResolutionError::Unrecoverable(_)),
-                    ) => return Err(error.diagnostic(self).unwrap()).many_err(),
-                    Err(ResolutionError::UnresolvedUseBinding {
-                        inquirer_index: _og_index,
-                    }) => {
+                    Err(error @ (UnresolvedBinding { .. } | Unrecoverable(_))) => {
+                        return Err(error.diagnostic(self).unwrap()).many_err()
+                    }
+                    Err(UnresolvedUseBinding { inquirer_index }) => {
                         unresolved_uses.insert(
                             index,
                             UnresolvedUse {
@@ -400,7 +462,7 @@ impl CrateScope {
                         if let Some(indices) = self
                             .unresolved_uses_grouped
                             .iter_mut()
-                            .filter(|indices| indices.contains(&_og_index))
+                            .filter(|indices| indices.contains(&inquirer_index))
                             .next()
                         {
                             indices.insert(index);
@@ -470,21 +532,42 @@ impl fmt::Debug for CrateScope {
     }
 }
 
-// @Temporary location, definition @Task incorporate exposure scope (restricted exposure)
-// @Note @Beacon we don't need an enum, just a struct ExposureScope(Path/Identifier/CrateIndex idk)
-// because not having `@public` just means `@(public self)` where self is resolved to the
-// actual index
 #[derive(Clone, PartialEq, Eq)]
 pub enum Exposure {
-    Inherited,
-    Exposed,
+    Unrestricted,
+    Restricted(RefCell<RestrictedExposure>),
+}
+
+impl Exposure {
+    pub(super) fn unresolved_restricted(reach: Path) -> Self {
+        Self::Restricted(RefCell::new(RestrictedExposure::Unresolved { reach }))
+    }
+
+    pub(super) fn resolved_restricted(reach: CrateIndex) -> Self {
+        Self::Restricted(RefCell::new(RestrictedExposure::Resolved { reach }))
+    }
 }
 
 impl fmt::Debug for Exposure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Inherited => write!(f, "{}", "inherited"),
-            Self::Exposed => write!(f, "{}", "exposed"),
+            Self::Unrestricted => write!(f, "{}", "unrestricted exposure"),
+            Self::Restricted(reach) => write!(f, "restricted {reach:?} exposure"),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub enum RestrictedExposure {
+    Unresolved { reach: Path },
+    Resolved { reach: CrateIndex },
+}
+
+impl fmt::Debug for RestrictedExposure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unresolved { reach } => write!(f, "unresolved {reach}"),
+            Self::Resolved { reach } => write!(f, "resolved {reach:?}"),
         }
     }
 }
@@ -516,14 +599,38 @@ impl From<HashMap<CrateIndex, DuplicateDefinition>> for Diagnostics {
     }
 }
 
+/// Specifies behavior for resolving different sorts of entities.
+///
+/// Right now, it's only about the difference between values and modules
+/// since modules are not values (non-first-class). As such, this trait
+/// allows to implementors to define what should happen with the resolved entity
+/// if it appears in a specific location
+pub(super) trait ResolutionTarget {
+    type Output;
+
+    fn output(index: CrateIndex, identifier: &ast::Identifier) -> Self::Output;
+
+    fn handle_bare_super_and_crate(span: Span, namespace: CrateIndex) -> Result<Self::Output>;
+
+    fn resolve_simple_path(
+        identifier: &ast::Identifier,
+        binding: &EntityKind,
+        index: CrateIndex,
+    ) -> Result<Self::Output>;
+}
+
 /// Marker to specify it's okay to resolve to either value or module.
 pub(super) enum ValueOrModule {}
 
 impl ResolutionTarget for ValueOrModule {
     type Output = CrateIndex;
 
-    fn resolve_bare_super_and_crate(_: Span, module: CrateIndex) -> Result<Self::Output> {
-        Ok(module)
+    fn output(index: CrateIndex, _: &ast::Identifier) -> Self::Output {
+        index
+    }
+
+    fn handle_bare_super_and_crate(_: Span, namespace: CrateIndex) -> Result<Self::Output> {
+        Ok(namespace)
     }
 
     fn resolve_simple_path(
@@ -541,7 +648,11 @@ pub(super) enum OnlyValue {}
 impl ResolutionTarget for OnlyValue {
     type Output = Identifier;
 
-    fn resolve_bare_super_and_crate(span: Span, _: CrateIndex) -> Result<Self::Output> {
+    fn output(index: CrateIndex, identifier: &ast::Identifier) -> Self::Output {
+        Identifier::new(index, identifier.clone())
+    }
+
+    fn handle_bare_super_and_crate(span: Span, _: CrateIndex) -> Result<Self::Output> {
         Err(module_used_as_a_value(span))
     }
 
@@ -554,7 +665,7 @@ impl ResolutionTarget for OnlyValue {
 
         match binding {
             UntypedValue | UntypedDataType(_) | UntypedConstructor(_) => {
-                Ok(Identifier::new(index, identifier.clone()))
+                Ok(Self::output(index, identifier))
             }
             Module(_) => Err(module_used_as_a_value(identifier.span)),
             _ => unreachable!(),
@@ -562,23 +673,35 @@ impl ResolutionTarget for OnlyValue {
     }
 }
 
-/// Specifies behavior for resolving different sorts of entities.
-///
-/// Right now, it's only about the difference between values and modules
-/// since modules are not values (non-first-class). As such, this trait
-/// allows to implementors to define what should happen with the resolved entity
-/// if it appears in a specific location
-pub(super) trait ResolutionTarget {
-    type Output;
+// pub(super) enum OnlyModule {}
 
-    fn resolve_bare_super_and_crate(span: Span, module: CrateIndex) -> Result<Self::Output>;
+// impl ResolutionTarget for OnlyModule {
+//     type Output = CrateIndex;
 
-    fn resolve_simple_path(
-        identifier: &ast::Identifier,
-        binding: &EntityKind,
-        index: CrateIndex,
-    ) -> Result<Self::Output>;
-}
+//     fn output(index: CrateIndex, _: &ast::Identifier) -> Self::Output {
+//         index
+//     }
+
+//     fn handle_bare_super_and_crate(_: Span, namespace: CrateIndex) -> Result<Self::Output> {
+//         Ok(namespace)
+//     }
+
+//     fn resolve_simple_path(
+//         identifier: &ast::Identifier,
+//         binding: &EntityKind,
+//         index: CrateIndex,
+//     ) -> Result<Self::Output> {
+//         use EntityKind::*;
+
+//         match binding {
+//             UntypedValue | UntypedDataType(_) | UntypedConstructor(_) => {
+//                 Err(value_used_as_a_namespace(identifier, subbinder))
+//             }
+//             Module(_) => Ok(index),
+//             _ => unreachable!(),
+//         }
+//     }
+// }
 
 /// The agent who inquired after a path.
 ///
@@ -969,6 +1092,7 @@ fn is_similar(queried_identifier: &str, other_identifier: &str) -> bool {
 }
 
 // @Task levenshtein-search for similar named bindings which are in fact a namespace and suggest the first one
+// @Question rewrite to set the focus on the illegal access to a "subdeclaration"
 fn value_used_as_a_namespace(
     non_namespace: &ast::Identifier,
     subbinder: &ast::Identifier,

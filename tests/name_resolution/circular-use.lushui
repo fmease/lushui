@@ -5,6 +5,7 @@ use fake-my-dude.alpha0.((self as alpha1))
 module fake-my-dude =
     use beta0 as beta1
 
+    @public
     use super.alpha1 as alpha0
 
     use beta1 as beta2

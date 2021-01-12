@@ -302,3 +302,10 @@ pub macro try_or($subject:expr, $continuation:expr, buffer = $buffer:expr) {
         }
     }
 }
+
+pub macro obtain($expr:expr, $( $pat:pat )|+ $( if $guard:expr )? $(,)? => $mapping:expr) {
+    match $expr {
+        $( $pat )|+ $( if $guard )? => Some($mapping),
+        _ => None
+    }
+}

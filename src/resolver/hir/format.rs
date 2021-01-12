@@ -314,7 +314,7 @@ mod test {
         entity::{Entity, EntityKind},
         hir::expr,
         lowered_ast::{Attribute, AttributeKind, Attributes, Number},
-        resolver::{CrateScope, Exposure::Exposed, Identifier},
+        resolver::{CrateScope, Exposure, Identifier},
         span::Span,
         support::DisplayWith,
     };
@@ -340,7 +340,7 @@ mod test {
             scope.bindings.push(Entity {
                 source: ast::Identifier::new("test".into(), Span::SHAM),
                 parent: None,
-                exposure: Exposed,
+                exposure: Exposure::Unrestricted, // @Note not quite sure
                 kind: EntityKind::module(),
             });
             scope
@@ -352,7 +352,7 @@ mod test {
             let entity = Entity {
                 source: identifier.clone(),
                 parent: Some(self.root()),
-                exposure: Exposed,
+                exposure: Exposure::Unrestricted, // @Note not quite sure
                 kind,
             };
             let index = self.bindings.push(entity);

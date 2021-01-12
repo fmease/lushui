@@ -26,17 +26,17 @@ error[E019]: too few attribute arguments provided
   | ^^^^^ 
   |
 
-error[E028]: found named argument `skope`, but expected `scope`
+error[E028]: found named argument `reech`, but expected `reach`
   >>> ${DIRECTORY}/lowering/malformed-attribute-arguments.lushui:11:11
    |
-11 | @(public (skope path) "hello")
+11 | @(public (reech path) "hello")
    |           ^^^^^ 
    |
 
 error[E019]: too many attribute arguments provided
   >>> ${DIRECTORY}/lowering/malformed-attribute-arguments.lushui:11:23
    |
-11 | @(public (skope path) "hello")
+11 | @(public (reech path) "hello")
    |                       ^^^^^^^ 
    |
 

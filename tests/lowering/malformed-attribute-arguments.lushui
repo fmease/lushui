@@ -8,5 +8,5 @@ module m =
 @deny
 data Void: Type =
 
-@(public (skope path) "hello")
+@(public (reech path) "hello")
 base: Base = @(Rune 0) "X"

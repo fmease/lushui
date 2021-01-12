@@ -395,6 +395,7 @@ impl Diagnostic {
     /// Panics if the diagnostic refers to code snippets by [Span] but no source
     /// map is provided.
     // @Beacon @Beacon @Bug this does not handle hash collisions, we might lose some diagnostics!
+    #[must_use]
     pub fn emit_to_stderr(mut self, map: Option<&SourceMap>) -> bool {
         // we use this static instead of definining `Diagnostics` to a `HashSet` as it is really difficult to
         // correctly `cancel` duplicate diagnostic in every single case (`insert`, `extend`, `FromIterator`, …)
@@ -634,7 +635,7 @@ impl Drop for Diagnostic {
         const LENIENT: bool = false; // for debugging
 
         if LENIENT {
-            Diagnostic::warning()
+            let _ = Diagnostic::warning()
                 .with_message("diagnostic not emitted")
                 .with_note(format!("{:#?}", self))
                 .emit_to_stderr(None);

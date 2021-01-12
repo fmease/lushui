@@ -17,4 +17,5 @@ data Gamma: Type =
 Gamma-Alias: Ty = Gamma
 
 module m0 =
+    @public
     T: super.Ty = Type
