@@ -250,6 +250,8 @@ impl CrateScope {
     // @Beacon @Bug this error is always fatal rn, we need to return a "recoverable" error
     // and make it not-fatal upstream
     // @Task check punctuation exposure rules
+    // @Task verify that the exposure is checked even in the case of use declarations
+    // using use bindings (use chains).
     fn handle_exposure(
         &self,
         index: CrateIndex,
@@ -263,6 +265,7 @@ impl CrateScope {
 
             let exposure_ = exposure.borrow();
             let reach = match &*exposure_ {
+                // @Note this case hits more than once if we fails inside of the branch
                 RestrictedExposure::Unresolved {
                     reach: unresolved_reach,
                 } => {
@@ -278,9 +281,10 @@ impl CrateScope {
                         .some_ancestor_satisfies(definition_site_namespace, |namespace| {
                             namespace == reach
                         });
-                    // @Task improve message text, add code, add note about the definition_site_namespace
+                    // @Task improve message text, add note about the definition_site_namespace
                     if !reach_is_ancestor {
                         return Err(Diagnostic::error()
+                            .with_code(Code::E000)
                             .with_message("exposure can only be restricted to ancestor modules")
                             .with_primary_span(unresolved_reach)
                             .into());
@@ -426,7 +430,6 @@ impl CrateScope {
     /// all out of order use bindings are successfully resolved or until
     /// no progress can be made anymore in which case all remaining
     /// use bindings are actually circular and are thus reported.
-    // @Task handle exposure
     pub(super) fn resolve_unresolved_uses(&mut self) -> Results<()> {
         while !self.unresolved_uses.is_empty() {
             let mut unresolved_uses = HashMap::default();

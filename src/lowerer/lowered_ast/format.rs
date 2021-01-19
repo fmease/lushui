@@ -133,7 +133,7 @@ impl super::Declaration {
                 writeln!(f, "{}: {}", constructor.binder, constructor.type_annotation)
             }
             Module(declaration) => {
-                writeln!(f, "module {}: =", declaration.binder)?;
+                writeln!(f, "module {} =", declaration.binder)?;
                 for declaration in &declaration.declarations {
                     let depth = depth + 1;
                     write!(f, "{}", " ".repeat(depth * INDENTATION_IN_SPACES))?;

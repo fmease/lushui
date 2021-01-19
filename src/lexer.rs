@@ -146,6 +146,15 @@ impl<'a> Lexer<'a> {
         let last = LocalByteIndex::from_usize(self.source.content().len() - 1);
 
         self.extend_with_dedentations(last, self.indentation_in_spaces);
+
+        // ideally, we'd like to set its span to the index after the last token,
+        // but they way `SourceMap` is currently defined, that would not work,
+        // it would reach into the next `SourceFile` if there even was one
+        // I'd love to put "the red caret" in diagnostics visually after the last
+        // token. However, even with fake source files as separators between real ones,
+        // we would need to add a lot of complexity to be able to handle that in
+        // `Diagnostic::format_for_terminal`.
+        // @Task just take the span of the last token (this will break tests)
         self.span = LocalSpan::from(last);
         self.add(EndOfInput);
 
@@ -221,6 +230,12 @@ impl<'a> Lexer<'a> {
                 self.add_with(|span| Token::new_identifier(identifier, span))
             }
         };
+
+        if self.peek() == Some('.') {
+            self.span = LocalSpan::from(self.index().unwrap());
+            self.add(TokenKind::Dot);
+            self.advance();
+        }
 
         Ok(())
     }

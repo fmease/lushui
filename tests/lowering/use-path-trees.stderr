@@ -1,4 +1,4 @@
-module use-path-trees: =
+module use-path-trees =
     use foo as bar
     use foo.bar as bar
     use foo.bar.A.f as f

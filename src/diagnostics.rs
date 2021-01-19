@@ -759,6 +759,8 @@ impl Role {
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 #[forbid(missing_docs)]
 pub enum Code {
+    /// Exposure reach not an ancestor of definition-site namespace.
+    E000,
     /// Unbalanced (round) brackets.
     E001,
     /// Trailing dash on identifier.

@@ -50,6 +50,18 @@ fn assert_err(actual: Results<Vec<Token>>, expected_spans: &[&[Span]]) {
     }
 }
 
+#[allow(unused_macros)]
+macro no_std_assert($( $anything:tt )*) {
+    compile_error!(
+        "use function `assert_ok_token` or `assert_err` instead of macro `assert_eq` and similar"
+    )
+}
+
+#[allow(unused_imports)]
+use no_std_assert as assert_eq;
+#[allow(unused_imports)]
+use no_std_assert as assert_ne;
+
 #[test]
 fn lex_comment() {
     assert_ok_token(
@@ -256,6 +268,57 @@ fn lex_punctuation() {
             Token::new(EndOfInput, span(23, 23)),
         ],
     );
+}
+
+#[test]
+fn lex_identifier_trailing_dot() {
+    assert_ok_token(
+        lex("namespace."),
+        vec![
+            Token::new_identifier("namespace".into(), span(1, 9)),
+            Token::new(Dot, span(10, 10)),
+            Token::new(EndOfInput, span(10, 10)),
+        ],
+    )
+}
+
+#[test]
+fn lex_identifier_dot_punctuation() {
+    assert_ok_token(
+        lex("namespace.+>!"),
+        vec![
+            Token::new_identifier("namespace".into(), span(1, 9)),
+            Token::new(Dot, span(10, 10)),
+            Token::new_punctuation("+>!".into(), span(11, 13)),
+            Token::new(EndOfInput, span(13, 13)),
+        ],
+    )
+}
+
+#[test]
+fn lex_identifier_dot_dotted_punctuation() {
+    assert_ok_token(
+        lex("namespace.$.?!."),
+        vec![
+            Token::new_identifier("namespace".into(), span(1, 9)),
+            Token::new(Dot, span(10, 10)),
+            Token::new_punctuation("$.?!.".into(), span(11, 15)),
+            Token::new(EndOfInput, span(15, 15)),
+        ],
+    )
+}
+
+#[test]
+fn lex_keyword_dot_punctuation() {
+    assert_ok_token(
+        lex("data.#"),
+        vec![
+            Token::new(Data, span(1, 4)),
+            Token::new(Dot, span(5, 5)),
+            Token::new_punctuation("#".into(), span(6, 6)),
+            Token::new(EndOfInput, span(6, 6)),
+        ],
+    )
 }
 
 #[test]

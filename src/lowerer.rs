@@ -421,7 +421,7 @@ impl<'a> Lowerer<'a> {
                     }
 
                     errors.err_or(())
-                };
+                }
 
                 'discriminate: {
                     match use_.bindings.kind {
@@ -1068,7 +1068,7 @@ impl lowered_ast::AttributeKind {
                 *arguments = &arguments[1..];
                 argument
             })
-        };
+        }
 
         // @Task improve API
         fn argument<'a>(
@@ -1084,7 +1084,7 @@ impl lowered_ast::AttributeKind {
             })?;
             *arguments = &arguments[1..];
             Ok(argument)
-        };
+        }
 
         let attribute = (|| {
             Ok(match attribute.binder.as_str() {
