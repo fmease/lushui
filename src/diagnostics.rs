@@ -777,6 +777,8 @@ pub enum Code {
     E007,
     /// Number literal does not fit.
     E008,
+    /// Re-export of private binding.
+    E009,
     /// Unexpected token.
     E010,
     /// Undefined attribute.

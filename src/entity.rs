@@ -111,14 +111,11 @@ impl Entity {
             | UntypedDataType(_)
             | UntypedConstructor(_)
             | Module(_)
-            | Use(_)
+            | Use { .. }
             | UnresolvedUse => unreachable!(),
         }
     }
 }
-
-/// Textual representation of what lies beyond the crate root.
-pub const BEYOND_CRATE_ROOT: &str = "crate.super";
 
 impl DisplayWith for Entity {
     type Linchpin = <EntityKind as DisplayWith>::Linchpin;
@@ -126,16 +123,14 @@ impl DisplayWith for Entity {
     fn format(&self, scope: &CrateScope, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use std::borrow::Cow;
 
-        let parent = self
-            .parent
-            .map_or(Cow::Borrowed(BEYOND_CRATE_ROOT), |parent| {
-                format!("{:?}", parent).into()
-            });
+        let parent = self.parent.map_or(Cow::Borrowed("-1C"), |parent| {
+            format!("{:?}", parent).into()
+        });
         let source = &self.source;
         let exposure = &self.exposure;
         let kind = self.kind.with(scope);
 
-        write!(f, "{parent:>11}.{source:20} {exposure:?} |-> {kind}")
+        write!(f, "{parent:>5}.{source:20} {exposure:?} |-> {kind}")
     }
 }
 
@@ -147,8 +142,11 @@ pub enum EntityKind {
     UntypedDataType(Namespace),
     /// Constructors are not [Self::UntypedValue] as they are also namespaces containing fields.
     UntypedConstructor(Namespace),
-    /// Invariant: The "target" is never a Use itself. There are no nested aliases
-    Use(CrateIndex),
+    /// The `reference is never a `Use` itself.
+    /// Nested aliases were already collapsed by [CrateScope::collapse_use_chain].
+    Use {
+        reference: CrateIndex,
+    },
     UnresolvedUse,
 
     Value {
@@ -195,7 +193,7 @@ impl DisplayWith for EntityKind {
             Module(namespace) => write!(f, "module: {:?}", namespace),
             UntypedDataType(namespace) => write!(f, "untyped data type: {:?}", namespace),
             UntypedConstructor(namespace) => write!(f, "untyped constructor: {:?}", namespace),
-            Use(index) => write!(f, "use {:?}", index),
+            Use { reference } => write!(f, "use {:?}", reference),
             UnresolvedUse => write!(f, "unresolved use"),
             Value { type_, expression } => match expression {
                 Some(expression) => write!(f, "{}: {}", expression.with(scope), type_.with(scope)),

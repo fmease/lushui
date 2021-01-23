@@ -13,7 +13,6 @@
 //! The equivalent in the type checker is [crate::typer::interpreter::scope].
 
 // @Task don't report similarily named *private* bindings!
-// @Beacon @Task implement the punctuation exposure rules!!!
 // @Task recognize leaks of private types!
 // @Task add tests around exposure!!!
 
@@ -23,15 +22,13 @@ use crate::{
     entity::{Entity, EntityKind},
     smallvec,
     span::{Span, Spanning},
-    support::{
-        unordered_listing, AsDebug, AsDisplay, Conjunction, DisplayWith, ManyErrExt, QuoteExt,
-    },
+    support::{unordered_listing, AsDebug, Conjunction, DisplayWith, ManyErrExt, QuoteExt},
     typer::interpreter::{ffi, scope::Registration},
     HashMap, HashSet, SmallVec,
 };
 use indexed_vec::IndexVec;
 use joinery::JoinableIterator;
-use std::{cell::RefCell, fmt, iter::once, usize};
+use std::{cell::RefCell, cmp::Ordering, fmt, iter::once, usize};
 
 type Bindings = IndexVec<CrateIndex, Entity>;
 
@@ -49,7 +46,7 @@ pub struct CrateScope {
     partially_resolved_use_bindings: HashMap<CrateIndex, PartiallyResolvedUseBinding>,
     /// Used for grouping circular bindings in diagnostics
     // @Question can we smh unify this with `unresolved_uses`?
-    unresolved_use_bindings_grouped: Vec<HashSet<CrateIndex>>,
+    partially_resolved_use_bindings_grouped: Vec<HashSet<CrateIndex>>,
     /// For error reporting.
     pub(super) duplicate_definitions: HashMap<CrateIndex, DuplicateDefinition>,
     pub(crate) ffi: ffi::Scope,
@@ -75,12 +72,14 @@ impl CrateScope {
     ///
     /// This procedure always prepends `crate.` to every path.
     pub fn absolute_path(&self, index: CrateIndex) -> String {
+        use crate::lexer::is_punctuation;
+
         let entity = &self.bindings[index];
+
         if let Some(parent) = entity.parent {
             let mut parent = self.absolute_path(parent);
 
-            let parent_is_punctuation =
-                crate::lexer::is_punctuation(parent.chars().next_back().unwrap());
+            let parent_is_punctuation = is_punctuation(parent.chars().next_back().unwrap());
 
             if parent_is_punctuation {
                 parent.push(' ');
@@ -252,7 +251,7 @@ impl CrateScope {
     }
 
     fn resolve_super(&self, hanger: &ast::Hanger, module: CrateIndex) -> Result<CrateIndex> {
-        self.parent_of(module).ok_or_else(|| {
+        module.parent(self).ok_or_else(|| {
             Diagnostic::error()
                 .with_code(Code::E021) // @Question use a dedicated code?
                 .with_message("the crate root does not have a parent")
@@ -287,7 +286,6 @@ impl CrateScope {
         self.collapse_use_chain(index)
     }
 
-    // @Task check punctuation exposure rules
     // @Task verify that the exposure is checked even in the case of use declarations
     // using use bindings (use chains).
     fn handle_exposure(
@@ -299,12 +297,9 @@ impl CrateScope {
         let binding = &self.bindings[index];
 
         if let Exposure::Restricted(exposure) = &binding.exposure {
+            // unwrap: root always has Exposure::Unrestricted
             let definition_site_namespace = binding.parent.unwrap();
-
-            let reach = match *exposure.borrow() {
-                RestrictedExposure::Resolved { reach } => reach,
-                RestrictedExposure::Unresolved { .. } => unreachable!(),
-            };
+            let reach = RestrictedExposure::resolve(exposure, definition_site_namespace, self)?;
 
             if !self.is_allowed_to_access(origin_namespace, definition_site_namespace, reach) {
                 return Err(Diagnostic::error()
@@ -328,84 +323,47 @@ impl CrateScope {
         definition_site_namespace: CrateIndex,
         reach: CrateIndex,
     ) -> bool {
-        let access_from_same_namespace_or_below = self
-            .some_ancestor_satisfies(namespace, |namespace| {
-                namespace == definition_site_namespace
-            });
+        let access_from_same_namespace_or_below =
+            namespace.some_ancestor_equals(definition_site_namespace, self);
 
-        let access_from_above_in_reach =
-            || self.some_ancestor_satisfies(namespace, |namespace| namespace == reach);
+        let access_from_above_in_reach = || namespace.some_ancestor_equals(reach, self);
 
         access_from_same_namespace_or_below || access_from_above_in_reach()
     }
 
-    // performance-heavy, I suppose
     pub(super) fn resolve_exposure_reaches(&mut self) -> Results {
         let mut errors = Diagnostics::default();
 
-        macro try_($subject:expr) {
-            crate::support::try_or!($subject, continue, buffer = errors)
-        }
-
         for binding in &self.bindings {
             if let Exposure::Restricted(exposure) = &binding.exposure {
-                let exposure_ = exposure.borrow();
+                // unwrap: root always has Exposure::Unrestricted
+                let definition_site_namespace = binding.parent.unwrap();
 
-                if let RestrictedExposure::Unresolved {
-                    reach: unresolved_reach,
-                } = &*exposure_
+                if let Err(error) =
+                    RestrictedExposure::resolve(exposure, definition_site_namespace, self)
                 {
-                    // unwrap: root always has Exposure::Unrestricted
-                    let definition_site_namespace = binding.parent.unwrap();
-
-                    let reach = try_!(self
-                        .resolve_path_unchecked_exposure::<OnlyModule>(
-                            unresolved_reach,
-                            definition_site_namespace,
-                        )
-                        // unwrap: all use bindings are already resolved
-                        .map_err(|error| error.diagnostic(self).unwrap()));
-
-                    let reach_is_ancestor = self
-                        .some_ancestor_satisfies(definition_site_namespace, |namespace| {
-                            namespace == reach
-                        });
-
-                    if !reach_is_ancestor {
-                        try_!(Err(Diagnostic::error()
-                            .with_code(Code::E000)
-                            .with_message("exposure can only be restricted to ancestor modules")
-                            .with_primary_span(unresolved_reach)));
-                    }
-
-                    drop(exposure_);
-                    *exposure.borrow_mut() = RestrictedExposure::Resolved { reach };
+                    errors.insert(error);
+                    continue;
                 };
+            }
+
+            if let EntityKind::Use { reference } = binding.kind {
+                let reference = &self.bindings[reference];
+
+                if binding.exposure.compare(&reference.exposure, self) == Some(Ordering::Greater) {
+                    // @Task message, add notes as auxiliary spans!!
+                    errors.insert(
+                        Diagnostic::error()
+                            .with_code(Code::E009)
+                            .with_message("re-export of private")
+                            .with_primary_span(&binding.source)
+                            .with_secondary_span(&reference.source),
+                    );
+                }
             }
         }
 
         errors.err_or(())
-    }
-
-    fn some_ancestor_satisfies(
-        &self,
-        mut namespace: CrateIndex,
-        predicate: impl Fn(CrateIndex) -> bool,
-    ) -> bool {
-        loop {
-            if predicate(namespace) {
-                break true;
-            }
-
-            namespace = match self.parent_of(namespace) {
-                Some(parent) => parent,
-                None => break false,
-            }
-        }
-    }
-
-    fn parent_of(&self, index: CrateIndex) -> Option<CrateIndex> {
-        self.bindings[index].parent
     }
 
     /// Find a similarly named binding in the same namespace.
@@ -429,10 +387,8 @@ impl CrateScope {
 
         match self.bindings[index].kind {
             UntypedValue | Module(_) | UntypedDataType(_) | UntypedConstructor(_) => Ok(index),
-            Use(reference) => Ok(reference),
-            UnresolvedUse => Err(ResolutionError::UnresolvedUseBinding {
-                inquirer_index: index,
-            }),
+            Use { reference } => Ok(reference),
+            UnresolvedUse => Err(ResolutionError::UnresolvedUseBinding { inquirer: index }),
             _ => unreachable!(),
         }
     }
@@ -486,20 +442,20 @@ impl CrateScope {
     // @Task update docs in regards to number of phases
     pub(super) fn resolve_use_bindings(&mut self) -> Results {
         while !self.partially_resolved_use_bindings.is_empty() {
-            let mut unresolved_uses = HashMap::default();
+            let mut partially_resolved_use_bindings = HashMap::default();
 
             for (&index, item) in self.partially_resolved_use_bindings.iter() {
                 use ResolutionError::*;
 
                 match self.resolve_path::<ValueOrModule>(&item.reference, item.module) {
                     Ok(reference) => {
-                        self.bindings[index].kind = EntityKind::Use(reference);
+                        self.bindings[index].kind = EntityKind::Use { reference };
                     }
                     Err(error @ (UnresolvedBinding { .. } | Unrecoverable(_))) => {
                         return Err(error.diagnostic(self).unwrap()).many_err()
                     }
-                    Err(UnresolvedUseBinding { inquirer_index }) => {
-                        unresolved_uses.insert(
+                    Err(UnresolvedUseBinding { inquirer }) => {
+                        partially_resolved_use_bindings.insert(
                             index,
                             PartiallyResolvedUseBinding {
                                 reference: item.reference.clone(),
@@ -513,30 +469,30 @@ impl CrateScope {
                         // does it remove non-circular bindings over time? or is it just like
                         // today's version?? check this with playground/somecirc.lushui
                         if let Some(indices) = self
-                            .unresolved_use_bindings_grouped
+                            .partially_resolved_use_bindings_grouped
                             .iter_mut()
-                            .filter(|indices| indices.contains(&inquirer_index))
+                            .filter(|indices| indices.contains(&inquirer))
                             .next()
                         {
                             indices.insert(index);
                         } else {
                             let mut indices = HashSet::default();
                             indices.insert(index);
-                            self.unresolved_use_bindings_grouped.push(indices);
+                            self.partially_resolved_use_bindings_grouped.push(indices);
                         }
                     }
                 }
             }
 
             // resolution stalled; therefore there are circular bindings
-            if unresolved_uses.len() == self.partially_resolved_use_bindings.len() {
+            if partially_resolved_use_bindings.len() == self.partially_resolved_use_bindings.len() {
                 return Err(self
-                    .unresolved_use_bindings_grouped
+                    .partially_resolved_use_bindings_grouped
                     .iter()
                     .filter(|indices| {
                         indices
                             .iter()
-                            .any(|index| unresolved_uses.contains_key(index))
+                            .any(|index| partially_resolved_use_bindings.contains_key(index))
                     })
                     .map(|indices| -> Diagnostic {
                         Diagnostic::error()
@@ -559,7 +515,7 @@ impl CrateScope {
                     .collect());
             }
 
-            self.partially_resolved_use_bindings = unresolved_uses;
+            self.partially_resolved_use_bindings = partially_resolved_use_bindings;
         }
 
         Ok(())
@@ -579,7 +535,10 @@ impl fmt::Debug for CrateScope {
                     .as_debug(),
             )
             // @Bug debug out broken: missing newline: we need to do it manually without debug_struct
-            .field("unresolved_uses", &self.partially_resolved_use_bindings)
+            .field(
+                "partially_resolved_use_bindings",
+                &self.partially_resolved_use_bindings,
+            )
             // .field("out_of_order_bindings", &self.out_of_order_bindings)
             .finish()
     }
@@ -598,20 +557,30 @@ pub enum Exposure {
 }
 
 impl Exposure {
-    pub(super) fn unresolved_restricted(reach: Path) -> Self {
-        Self::Restricted(RefCell::new(RestrictedExposure::Unresolved { reach }))
-    }
+    fn compare(&self, other: &Self, scope: &CrateScope) -> Option<Ordering> {
+        use Exposure::*;
 
-    pub(super) fn resolved_restricted(reach: CrateIndex) -> Self {
-        Self::Restricted(RefCell::new(RestrictedExposure::Resolved { reach }))
+        match (self, other) {
+            (Unrestricted, Unrestricted) => Some(Ordering::Equal),
+            (Unrestricted, Restricted(_)) => Some(Ordering::Greater),
+            (Restricted(_), Unrestricted) => Some(Ordering::Less),
+            (Restricted(this), Restricted(other)) => this.borrow().compare(&other.borrow(), scope),
+        }
     }
 }
 
 impl fmt::Debug for Exposure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Unrestricted => write!(f, "{}", "unrestricted exposure"),
-            Self::Restricted(reach) => write!(f, "restricted {reach:?} exposure"),
+            Self::Unrestricted => write!(f, "{}", "unrestricted"),
+            Self::Restricted(reach) => {
+                write!(f, "restricted(")?;
+                match &*reach.borrow() {
+                    RestrictedExposure::Unresolved { reach } => write!(f, "{reach}"),
+                    RestrictedExposure::Resolved { reach } => write!(f, "{reach}"),
+                }?;
+                write!(f, ")")
+            }
         }
     }
 }
@@ -622,12 +591,74 @@ pub enum RestrictedExposure {
     Resolved { reach: CrateIndex },
 }
 
-impl fmt::Debug for RestrictedExposure {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Unresolved { reach } => write!(f, "unresolved {reach}"),
-            Self::Resolved { reach } => write!(f, "resolved {reach:?}"),
-        }
+impl RestrictedExposure {
+    fn resolve(
+        exposure: &RefCell<Self>,
+        definition_site_namespace: CrateIndex,
+        scope: &CrateScope,
+    ) -> Result<CrateIndex> {
+        let exposure_ = exposure.borrow();
+
+        Ok(match &*exposure_ {
+            Self::Unresolved {
+                reach: unresolved_reach,
+            } => {
+                // Here we indeed resolve the exposure reach without validating *its*
+                // exposure reach. This is not a problem however since in all cases where
+                // it actually is private, it cannot be an ancestor module as those are
+                // always accessible to their descendants.
+                // It's not possible to use `resolve_path` as that can lead to infinite
+                // loops with out of order use bindings.
+                let reach = scope
+                    .resolve_path_unchecked_exposure::<OnlyModule>(
+                        unresolved_reach,
+                        definition_site_namespace,
+                    )
+                    // unwrap: all use bindings are already resolved
+                    .map_err(|error| error.diagnostic(scope).unwrap())?;
+
+                let reach_is_ancestor =
+                    definition_site_namespace.some_ancestor_equals(reach, scope);
+
+                if !reach_is_ancestor {
+                    return Err(Diagnostic::error()
+                        .with_code(Code::E000)
+                        .with_message("exposure can only be restricted to ancestor modules")
+                        .with_primary_span(unresolved_reach));
+                }
+
+                drop(exposure_);
+                *exposure.borrow_mut() = RestrictedExposure::Resolved { reach };
+
+                reach
+            }
+            &Self::Resolved { reach } => reach,
+        })
+    }
+
+    fn compare(&self, other: &Self, scope: &CrateScope) -> Option<Ordering> {
+        use RestrictedExposure::*;
+
+        Some(match (self, other) {
+            (&Resolved { reach: this }, &Resolved { reach: other }) => {
+                if this == other {
+                    Ordering::Equal
+                } else if other.some_ancestor_equals(this, scope) {
+                    Ordering::Greater
+                } else if this.some_ancestor_equals(other, scope) {
+                    Ordering::Less
+                } else {
+                    return None;
+                }
+            }
+            _ => return None,
+        })
+    }
+}
+
+impl From<RestrictedExposure> for Exposure {
+    fn from(exposure: RestrictedExposure) -> Self {
+        Self::Restricted(RefCell::new(exposure))
     }
 }
 
@@ -798,14 +829,7 @@ pub struct Namespace {
 
 impl fmt::Debug for Namespace {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            self.bindings
-                .iter()
-                .map(|binding| binding.as_display())
-                .join_with(" ")
-        )
+        write!(f, "{}", self.bindings.iter().join_with(" "))
     }
 }
 
@@ -877,17 +901,11 @@ impl Identifier {
     }
 
     pub fn crate_index(&self) -> Option<CrateIndex> {
-        match self.index {
-            Index::Crate(index) => Some(index),
-            _ => None,
-        }
+        self.index.crate_()
     }
 
     pub fn de_bruijn_index(&self) -> Option<DeBruijnIndex> {
-        match self.index {
-            Index::DeBruijn(index) => Some(index),
-            _ => None,
-        }
+        self.index.de_bruijn()
     }
 }
 
@@ -904,12 +922,8 @@ impl fmt::Display for Identifier {
             .get()
             .map_or(false, |options| options.display_crate_indices)
         {
-            write!(f, "#")?;
-            match self.index {
-                Index::Crate(index) => write!(f, "{:?}", index)?,
-                Index::DeBruijn(index) => write!(f, "{}D", index.0)?,
-                Index::DeBruijnParameter => write!(f, "P")?,
-            }
+            // @Note does not work well with punctuation..
+            write!(f, "#{:?}", self.index)?;
         }
         Ok(())
     }
@@ -921,7 +935,7 @@ impl fmt::Debug for Identifier {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum Index {
     Crate(CrateIndex),
     DeBruijn(DeBruijnIndex),
@@ -931,28 +945,76 @@ pub enum Index {
 impl Index {
     fn shift(self, amount: usize) -> Self {
         match self {
-            Self::Crate(_) => self,
             Self::DeBruijn(index) => DeBruijnIndex(index.0 + amount).into(),
-            Self::DeBruijnParameter => unreachable!(),
+            Self::Crate(_) | Self::DeBruijnParameter => self,
         }
     }
 
     fn unshift(self) -> Self {
         match self {
-            Self::Crate(_) => self,
             Self::DeBruijn(index) => DeBruijnIndex(index.0.saturating_sub(1)).into(),
-            Self::DeBruijnParameter => unreachable!(),
+            Self::Crate(_) | Self::DeBruijnParameter => self,
+        }
+    }
+
+    pub fn crate_(self) -> Option<CrateIndex> {
+        match self {
+            Self::Crate(index) => Some(index),
+            _ => None,
+        }
+    }
+
+    pub fn de_bruijn(self) -> Option<DeBruijnIndex> {
+        match self {
+            Self::DeBruijn(index) => Some(index),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Debug for Index {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Crate(index) => write!(f, "{:?}", index),
+            Self::DeBruijn(index) => write!(f, "{:?}", index),
+            Self::DeBruijnParameter => write!(f, "P"),
         }
     }
 }
 
 /// Crate-local identifier for bindings defined through declarations.
+// @Note name is kind of misleading, we should think about renaming it
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CrateIndex(pub(crate) usize);
+
+impl CrateIndex {
+    fn parent(self, scope: &CrateScope) -> Option<Self> {
+        scope.bindings[self].parent
+    }
+
+    fn some_ancestor_equals(mut self, namespace: CrateIndex, scope: &CrateScope) -> bool {
+        loop {
+            if self == namespace {
+                break true;
+            }
+
+            self = match self.parent(scope) {
+                Some(parent) => parent,
+                None => break false,
+            }
+        }
+    }
+}
 
 impl fmt::Debug for CrateIndex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}C", self.0)
+    }
+}
+
+impl fmt::Display for CrateIndex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(self, f)
     }
 }
 
@@ -972,8 +1034,14 @@ impl indexed_vec::Idx for CrateIndex {
 }
 
 /// De Bruijn index — index for bindings defined by function parameters.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DeBruijnIndex(pub usize);
+
+impl fmt::Debug for DeBruijnIndex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}D", self.0)
+    }
+}
 
 impl From<DeBruijnIndex> for Index {
     fn from(index: DeBruijnIndex) -> Self {
@@ -1184,7 +1252,7 @@ enum ResolutionError {
         usage: IdentifierUsage,
     },
     UnresolvedUseBinding {
-        inquirer_index: CrateIndex,
+        inquirer: CrateIndex,
     },
 }
 

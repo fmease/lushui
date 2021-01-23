@@ -28,7 +28,7 @@ use hir::{decl, expr, pat};
 pub use scope::{
     CrateIndex, CrateScope, DeBruijnIndex, Exposure, FunctionScope, Identifier, Index, Namespace,
 };
-use scope::{OnlyModule, OnlyValue, RegistrationError, ValueOrModule};
+use scope::{OnlyModule, OnlyValue, RegistrationError, RestrictedExposure, ValueOrModule};
 use std::{mem, rc::Rc};
 
 const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
@@ -73,8 +73,6 @@ impl<'a> Resolver<'a> {
         self.start_resolve_declaration(&declaration, None, Context::default())
             .map_err(|error| error.diagnostics(mem::take(&mut self.scope.duplicate_definitions)))?;
         // @Bug creates fatal errors for use stuff (see tests/multiple-undefined1)
-        // @Beacon @Question does resolving use bindings before resolving exposure reaches
-        // create security holes? cases where we can 'use' private bindings?
         self.scope.resolve_use_bindings()?;
         self.scope.resolve_exposure_reaches()?;
         self.finish_resolve_declaration(declaration, None, Context::default())
@@ -106,13 +104,16 @@ impl<'a> Resolver<'a> {
                 .attributes
                 .get(|kind| obtain!(kind, AttributeKind::Public { reach } => reach))
             {
-                Some(reach) => Exposure::unresolved_restricted(reach.clone()),
+                Some(reach) => RestrictedExposure::Unresolved {
+                    reach: reach.clone(),
+                }
+                .into(),
                 None => Exposure::Unrestricted,
             }
         } else {
             match module {
                 // no `@public` means private i.e. restricted to `self` i.e. `@(public self)`
-                Some(module) => Exposure::resolved_restricted(module),
+                Some(module) => RestrictedExposure::Resolved { reach: module }.into(),
                 None => Exposure::Unrestricted,
             }
         };
@@ -174,7 +175,7 @@ impl<'a> Resolver<'a> {
                 let exposure = match module_opacity.unwrap() {
                     Opacity::Transparent => self.scope.bindings[namespace].exposure.clone(),
                     // as if a @(public super) was attached to the constructor
-                    Opacity::Opaque => Exposure::resolved_restricted(module),
+                    Opacity::Opaque => RestrictedExposure::Resolved { reach: module }.into(),
                 };
 
                 // @Task don't return early, see analoguous code for modules
