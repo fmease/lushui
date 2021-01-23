@@ -367,18 +367,17 @@ impl<'a> Lowerer<'a> {
                     span: Span,
                     attributes: lowered_ast::Attributes,
                     declarations: &mut SmallVec<lowered_ast::Declaration, 1>,
-                ) -> Results<()> {
+                ) -> Results {
                     let mut errors = Diagnostics::default();
 
-                    macro try_or($subject:expr, $continuation:expr) {
-                        crate::support::try_or!($subject, $continuation, buffer = errors)
+                    macro try_($subject:expr) {
+                        crate::support::try_or!($subject, continue, buffer = errors)
                     }
 
                     for binding in bindings {
                         match binding.kind {
                             Single { target, binder } => {
-                                let combined_target =
-                                    try_or!(path.clone().join(target.clone()), continue);
+                                let combined_target = try_!(path.clone().join(target.clone()));
 
                                 // if the binder is not explicitly set, look for the most-specific/last/right-most
                                 // identifier of the target but if that one is `self`, look up the last identifier of
@@ -394,7 +393,7 @@ impl<'a> Lowerer<'a> {
                                         // is effectively unnamed because `crate` is unnamed
                                         invalid_unnamed_path_hanger(target.hanger.unwrap())
                                     });
-                                let binder = try_or!(binder, continue);
+                                let binder = try_!(binder);
 
                                 declarations.push(decl! {
                                     Use {
@@ -410,7 +409,7 @@ impl<'a> Lowerer<'a> {
                                 bindings,
                             } => {
                                 lower_use_path_tree(
-                                    try_or!(path.clone().join(inner_path), continue),
+                                    try_!(path.clone().join(inner_path)),
                                     bindings,
                                     span,
                                     attributes.clone(),
@@ -1023,11 +1022,7 @@ impl<'a> Lowerer<'a> {
         errors.err_or(expression)
     }
 
-    fn check_fieldness_location(
-        &mut self,
-        fieldness: Option<Span>,
-        context: Context,
-    ) -> Result<()> {
+    fn check_fieldness_location(&mut self, fieldness: Option<Span>, context: Context) -> Result {
         if let Some(field) = fieldness {
             if !context.in_constructor {
                 // @Note it would be helpful to also say the name of the actual declaration

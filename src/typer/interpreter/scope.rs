@@ -71,7 +71,7 @@ impl CrateScope {
         }
     }
 
-    pub fn carry_out(&mut self, registration: Registration) -> Result<()> {
+    pub fn carry_out(&mut self, registration: Registration) -> Result {
         use Registration::*;
 
         Ok(match registration {

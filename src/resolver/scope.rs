@@ -46,10 +46,10 @@ pub struct CrateScope {
     /// The first element must always be the root module.
     pub(crate) bindings: Bindings,
     /// For resolving out of order use declarations.
-    unresolved_uses: HashMap<CrateIndex, UnresolvedUse>,
+    partially_resolved_use_bindings: HashMap<CrateIndex, PartiallyResolvedUseBinding>,
     /// Used for grouping circular bindings in diagnostics
     // @Question can we smh unify this with `unresolved_uses`?
-    unresolved_uses_grouped: Vec<HashSet<CrateIndex>>,
+    unresolved_use_bindings_grouped: Vec<HashSet<CrateIndex>>,
     /// For error reporting.
     pub(super) duplicate_definitions: HashMap<CrateIndex, DuplicateDefinition>,
     pub(crate) ffi: ffi::Scope,
@@ -74,12 +74,24 @@ impl CrateScope {
     /// Build a textual representation of the absolute path of a binding.
     ///
     /// This procedure always prepends `crate.` to every path.
-    // @Task handle punctuation segments correctly!
     pub fn absolute_path(&self, index: CrateIndex) -> String {
         let entity = &self.bindings[index];
         if let Some(parent) = entity.parent {
             let mut parent = self.absolute_path(parent);
+
+            let parent_is_punctuation =
+                crate::lexer::is_punctuation(parent.chars().next_back().unwrap());
+
+            if parent_is_punctuation {
+                parent.push(' ');
+            }
+
             parent.push('.');
+
+            if entity.source.is_punctuation() && parent_is_punctuation {
+                parent.push(' ');
+            }
+
             parent += entity.source.as_str();
             parent
         } else {
@@ -140,15 +152,15 @@ impl CrateScope {
         Ok(index)
     }
 
-    pub(super) fn register_unresolved_use(
+    pub(super) fn register_use_binding(
         &mut self,
         index: CrateIndex,
         reference: Path,
         module: CrateIndex,
     ) {
         let previous = self
-            .unresolved_uses
-            .insert(index, UnresolvedUse { reference, module });
+            .partially_resolved_use_bindings
+            .insert(index, PartiallyResolvedUseBinding { reference, module });
 
         debug_assert!(previous.is_none());
     }
@@ -158,20 +170,38 @@ impl CrateScope {
         &self,
         path: &Path,
         namespace: CrateIndex,
-        inquirer: Inquirer,
     ) -> Result<Target::Output, ResolutionError> {
-        self.resolve_path_with_origin::<Target>(path, namespace, namespace, inquirer)
+        self.resolve_path_with_origin::<Target>(
+            path,
+            namespace,
+            namespace,
+            IdentifierUsage::Unqualified,
+            CheckExposure::Yes,
+        )
+    }
+
+    fn resolve_path_unchecked_exposure<Target: ResolutionTarget>(
+        &self,
+        path: &Path,
+        namespace: CrateIndex,
+    ) -> Result<Target::Output, ResolutionError> {
+        self.resolve_path_with_origin::<Target>(
+            path,
+            namespace,
+            namespace,
+            IdentifierUsage::Unqualified,
+            CheckExposure::No,
+        )
     }
 
     /// Resolve a syntactic path given a namespace with an explicit origin.
-    // @Beacon @Beacon @Task remove whole concept of Inquirer and replace it with
-    // check namespace != origin_namespace (corresp. to Inquirer::System)
     fn resolve_path_with_origin<Target: ResolutionTarget>(
         &self,
         path: &Path,
         namespace: CrateIndex,
         origin_namespace: CrateIndex,
-        inquirer: Inquirer,
+        usage: IdentifierUsage,
+        check_exposure: CheckExposure,
     ) -> Result<Target::Output, ResolutionError> {
         use ast::HangerKind::*;
 
@@ -189,13 +219,19 @@ impl CrateScope {
                     &path.tail(),
                     namespace,
                     origin_namespace,
-                    Inquirer::System,
+                    IdentifierUsage::Qualified,
+                    check_exposure,
                 )
             };
         }
 
-        let index =
-            self.resolve_first_segment(&path.segments[0], namespace, origin_namespace, inquirer)?;
+        let index = self.resolve_first_segment(
+            &path.segments[0],
+            namespace,
+            origin_namespace,
+            usage,
+            check_exposure,
+        )?;
 
         match path.to_simple() {
             Some(identifier) => {
@@ -207,7 +243,8 @@ impl CrateScope {
                     &path.tail(),
                     index,
                     origin_namespace,
-                    Inquirer::System,
+                    IdentifierUsage::Qualified,
+                    check_exposure,
                 ),
                 None => Err(value_used_as_a_namespace(&path.segments[0], &path.segments[1]).into()),
             },
@@ -217,7 +254,7 @@ impl CrateScope {
     fn resolve_super(&self, hanger: &ast::Hanger, module: CrateIndex) -> Result<CrateIndex> {
         self.parent_of(module).ok_or_else(|| {
             Diagnostic::error()
-                .with_code(Code::E021) // @Question have a specific code?
+                .with_code(Code::E021) // @Question use a dedicated code?
                 .with_message("the crate root does not have a parent")
                 .with_primary_span(hanger)
         })
@@ -229,9 +266,10 @@ impl CrateScope {
         identifier: &ast::Identifier,
         namespace: CrateIndex,
         origin_namespace: CrateIndex,
-        inquirer: Inquirer,
+        usage: IdentifierUsage,
+        check_exposure: CheckExposure,
     ) -> Result<CrateIndex, ResolutionError> {
-        self.bindings[namespace]
+        let index = self.bindings[namespace]
             .namespace()
             .unwrap()
             .bindings
@@ -241,14 +279,14 @@ impl CrateScope {
             .ok_or_else(|| ResolutionError::UnresolvedBinding {
                 identifier: identifier.clone(),
                 namespace,
-                inquirer,
-            })
-            .and_then(|index| self.handle_exposure(index, identifier, origin_namespace))
-            .and_then(|index| self.collapse_use_chain(index))
+                usage,
+            })?;
+        if matches!(check_exposure, CheckExposure::Yes) {
+            self.handle_exposure(index, identifier, origin_namespace)?;
+        }
+        self.collapse_use_chain(index)
     }
 
-    // @Beacon @Bug this error is always fatal rn, we need to return a "recoverable" error
-    // and make it not-fatal upstream
     // @Task check punctuation exposure rules
     // @Task verify that the exposure is checked even in the case of use declarations
     // using use bindings (use chains).
@@ -257,53 +295,22 @@ impl CrateScope {
         index: CrateIndex,
         identifier: &ast::Identifier,
         origin_namespace: CrateIndex,
-    ) -> Result<CrateIndex, ResolutionError> {
+    ) -> Result<(), ResolutionError> {
         let binding = &self.bindings[index];
 
         if let Exposure::Restricted(exposure) = &binding.exposure {
             let definition_site_namespace = binding.parent.unwrap();
 
-            let exposure_ = exposure.borrow();
-            let reach = match &*exposure_ {
-                // @Note this case hits more than once if we fails inside of the branch
-                RestrictedExposure::Unresolved {
-                    reach: unresolved_reach,
-                } => {
-                    // @Task protect against non-modules, we need OnlyModule!
-                    // @Task make this non-fatal (upstream)
-                    let reach = self.resolve_path::<ValueOrModule>(
-                        unresolved_reach,
-                        definition_site_namespace,
-                        Inquirer::System,
-                    )?;
-
-                    let reach_is_ancestor = self
-                        .some_ancestor_satisfies(definition_site_namespace, |namespace| {
-                            namespace == reach
-                        });
-                    // @Task improve message text, add note about the definition_site_namespace
-                    if !reach_is_ancestor {
-                        return Err(Diagnostic::error()
-                            .with_code(Code::E000)
-                            .with_message("exposure can only be restricted to ancestor modules")
-                            .with_primary_span(unresolved_reach)
-                            .into());
-                    }
-
-                    drop(exposure_);
-                    *exposure.borrow_mut() = RestrictedExposure::Resolved { reach };
-
-                    reach
-                }
-                &RestrictedExposure::Resolved { reach } => reach,
+            let reach = match *exposure.borrow() {
+                RestrictedExposure::Resolved { reach } => reach,
+                RestrictedExposure::Unresolved { .. } => unreachable!(),
             };
 
             if !self.is_allowed_to_access(origin_namespace, definition_site_namespace, reach) {
-                // @Task improve message
                 return Err(Diagnostic::error()
                     .with_code(Code::E029)
                     .with_message(format!(
-                        "use of private binding `{}`",
+                        "binding `{}` is private",
                         self.absolute_path(index)
                     ))
                     .with_primary_span(identifier)
@@ -311,7 +318,7 @@ impl CrateScope {
             }
         }
 
-        Ok(index)
+        Ok(())
     }
 
     /// Indicate if the definition-site namespace can be accessed from the given namespace.
@@ -332,13 +339,59 @@ impl CrateScope {
         access_from_same_namespace_or_below || access_from_above_in_reach()
     }
 
+    // performance-heavy, I suppose
+    pub(super) fn resolve_exposure_reaches(&mut self) -> Results {
+        let mut errors = Diagnostics::default();
+
+        macro try_($subject:expr) {
+            crate::support::try_or!($subject, continue, buffer = errors)
+        }
+
+        for binding in &self.bindings {
+            if let Exposure::Restricted(exposure) = &binding.exposure {
+                let exposure_ = exposure.borrow();
+
+                if let RestrictedExposure::Unresolved {
+                    reach: unresolved_reach,
+                } = &*exposure_
+                {
+                    // unwrap: root always has Exposure::Unrestricted
+                    let definition_site_namespace = binding.parent.unwrap();
+
+                    let reach = try_!(self
+                        .resolve_path_unchecked_exposure::<OnlyModule>(
+                            unresolved_reach,
+                            definition_site_namespace,
+                        )
+                        // unwrap: all use bindings are already resolved
+                        .map_err(|error| error.diagnostic(self).unwrap()));
+
+                    let reach_is_ancestor = self
+                        .some_ancestor_satisfies(definition_site_namespace, |namespace| {
+                            namespace == reach
+                        });
+
+                    if !reach_is_ancestor {
+                        try_!(Err(Diagnostic::error()
+                            .with_code(Code::E000)
+                            .with_message("exposure can only be restricted to ancestor modules")
+                            .with_primary_span(unresolved_reach)));
+                    }
+
+                    drop(exposure_);
+                    *exposure.borrow_mut() = RestrictedExposure::Resolved { reach };
+                };
+            }
+        }
+
+        errors.err_or(())
+    }
+
     fn some_ancestor_satisfies(
         &self,
-        namespace: CrateIndex,
+        mut namespace: CrateIndex,
         predicate: impl Fn(CrateIndex) -> bool,
     ) -> bool {
-        let mut namespace = namespace;
-
         loop {
             if predicate(namespace) {
                 break true;
@@ -370,7 +423,7 @@ impl CrateScope {
 
     /// Collapse chain of use bindings aka indirect uses.
     ///
-    /// This is an invariant established to to make things easier to reason about during resolution.
+    /// This is an invariant established to make things easier to reason about during resolution.
     fn collapse_use_chain(&self, index: CrateIndex) -> Result<CrateIndex, ResolutionError> {
         use EntityKind::*;
 
@@ -422,7 +475,7 @@ impl CrateScope {
         Target::output(index, identifier)
     }
 
-    /// Resolve unresolved uses.
+    /// Resolve use bindings.
     ///
     /// This is the second pass of three of the name resolver.
     ///
@@ -430,18 +483,15 @@ impl CrateScope {
     /// all out of order use bindings are successfully resolved or until
     /// no progress can be made anymore in which case all remaining
     /// use bindings are actually circular and are thus reported.
-    pub(super) fn resolve_unresolved_uses(&mut self) -> Results<()> {
-        while !self.unresolved_uses.is_empty() {
+    // @Task update docs in regards to number of phases
+    pub(super) fn resolve_use_bindings(&mut self) -> Results {
+        while !self.partially_resolved_use_bindings.is_empty() {
             let mut unresolved_uses = HashMap::default();
 
-            for (&index, item) in self.unresolved_uses.iter() {
+            for (&index, item) in self.partially_resolved_use_bindings.iter() {
                 use ResolutionError::*;
 
-                match self.resolve_path::<ValueOrModule>(
-                    &item.reference,
-                    item.module,
-                    Inquirer::User,
-                ) {
+                match self.resolve_path::<ValueOrModule>(&item.reference, item.module) {
                     Ok(reference) => {
                         self.bindings[index].kind = EntityKind::Use(reference);
                     }
@@ -451,7 +501,7 @@ impl CrateScope {
                     Err(UnresolvedUseBinding { inquirer_index }) => {
                         unresolved_uses.insert(
                             index,
-                            UnresolvedUse {
+                            PartiallyResolvedUseBinding {
                                 reference: item.reference.clone(),
                                 module: item.module,
                             },
@@ -463,7 +513,7 @@ impl CrateScope {
                         // does it remove non-circular bindings over time? or is it just like
                         // today's version?? check this with playground/somecirc.lushui
                         if let Some(indices) = self
-                            .unresolved_uses_grouped
+                            .unresolved_use_bindings_grouped
                             .iter_mut()
                             .filter(|indices| indices.contains(&inquirer_index))
                             .next()
@@ -472,16 +522,16 @@ impl CrateScope {
                         } else {
                             let mut indices = HashSet::default();
                             indices.insert(index);
-                            self.unresolved_uses_grouped.push(indices);
+                            self.unresolved_use_bindings_grouped.push(indices);
                         }
                     }
                 }
             }
 
             // resolution stalled; therefore there are circular bindings
-            if unresolved_uses.len() == self.unresolved_uses.len() {
+            if unresolved_uses.len() == self.partially_resolved_use_bindings.len() {
                 return Err(self
-                    .unresolved_uses_grouped
+                    .unresolved_use_bindings_grouped
                     .iter()
                     .filter(|indices| {
                         indices
@@ -509,7 +559,7 @@ impl CrateScope {
                     .collect());
             }
 
-            self.unresolved_uses = unresolved_uses;
+            self.partially_resolved_use_bindings = unresolved_uses;
         }
 
         Ok(())
@@ -529,10 +579,16 @@ impl fmt::Debug for CrateScope {
                     .as_debug(),
             )
             // @Bug debug out broken: missing newline: we need to do it manually without debug_struct
-            .field("unresolved_uses", &self.unresolved_uses)
+            .field("unresolved_uses", &self.partially_resolved_use_bindings)
             // .field("out_of_order_bindings", &self.out_of_order_bindings)
             .finish()
     }
+}
+
+#[derive(Clone, Copy)]
+enum CheckExposure {
+    Yes,
+    No,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -676,54 +732,55 @@ impl ResolutionTarget for OnlyValue {
     }
 }
 
-// pub(super) enum OnlyModule {}
+pub(super) enum OnlyModule {}
 
-// impl ResolutionTarget for OnlyModule {
-//     type Output = CrateIndex;
+impl ResolutionTarget for OnlyModule {
+    type Output = CrateIndex;
 
-//     fn output(index: CrateIndex, _: &ast::Identifier) -> Self::Output {
-//         index
-//     }
+    fn output(index: CrateIndex, _: &ast::Identifier) -> Self::Output {
+        index
+    }
 
-//     fn handle_bare_super_and_crate(_: Span, namespace: CrateIndex) -> Result<Self::Output> {
-//         Ok(namespace)
-//     }
+    fn handle_bare_super_and_crate(_: Span, namespace: CrateIndex) -> Result<Self::Output> {
+        Ok(namespace)
+    }
 
-//     fn resolve_simple_path(
-//         identifier: &ast::Identifier,
-//         binding: &EntityKind,
-//         index: CrateIndex,
-//     ) -> Result<Self::Output> {
-//         use EntityKind::*;
+    fn resolve_simple_path(
+        identifier: &ast::Identifier,
+        binding: &EntityKind,
+        index: CrateIndex,
+    ) -> Result<Self::Output> {
+        use EntityKind::*;
 
-//         match binding {
-//             UntypedValue | UntypedDataType(_) | UntypedConstructor(_) => {
-//                 Err(value_used_as_a_namespace(identifier, subbinder))
-//             }
-//             Module(_) => Ok(index),
-//             _ => unreachable!(),
-//         }
-//     }
-// }
-
-/// The agent who inquired after a path.
-///
-/// Used for error reporting.
-#[derive(PartialEq, Eq, Clone, Copy)]
-enum Inquirer {
-    User,
-    System,
+        match binding {
+            // @Beacon @Task use a distinct code!
+            UntypedValue | UntypedDataType(_) | UntypedConstructor(_) => Err(Diagnostic::error()
+                .with_code(Code::E022)
+                .with_message(format!("value `{}` is not a module", identifier))
+                .with_primary_span(identifier)),
+            Module(_) => Ok(index),
+            _ => unreachable!(),
+        }
+    }
 }
 
-/// Partially resolved use binding.
-struct UnresolvedUse {
+/// If an identifier is used unqualified or qualified.
+///
+/// Exclusively used for error reporting.
+#[derive(Clone, Copy)]
+enum IdentifierUsage {
+    Qualified,
+    Unqualified,
+}
+
+struct PartiallyResolvedUseBinding {
     reference: Path,
     module: CrateIndex,
 }
 
-impl fmt::Debug for UnresolvedUse {
+impl fmt::Debug for PartiallyResolvedUseBinding {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("UnresolvedUse")
+        f.debug_struct("PartiallyResolvedUseBinding")
             .field("reference", &self.reference.as_debug())
             .field("module", &self.module)
             .finish()
@@ -981,7 +1038,7 @@ impl<'a> FunctionScope<'a> {
 
         match self {
             &Module(module) => scope
-                .resolve_path::<OnlyValue>(query, module, Inquirer::User)
+                .resolve_path::<OnlyValue>(query, module)
                 .map_err(|error| {
                     error
                         .diagnostic_with(scope, |identifier, _| {
@@ -1003,7 +1060,7 @@ impl<'a> FunctionScope<'a> {
                     }
                 } else {
                     scope
-                        .resolve_path::<OnlyValue>(query, parent.module(), Inquirer::User)
+                        .resolve_path::<OnlyValue>(query, parent.module())
                         .map_err(|error| error.diagnostic(scope).unwrap())
                 }
             }
@@ -1035,7 +1092,7 @@ impl<'a> FunctionScope<'a> {
                     }
                 } else {
                     scope
-                        .resolve_path::<OnlyValue>(query, parent.module(), Inquirer::User)
+                        .resolve_path::<OnlyValue>(query, parent.module())
                         .map_err(|error| error.diagnostic(scope).unwrap())
                 }
             }
@@ -1124,10 +1181,9 @@ enum ResolutionError {
     UnresolvedBinding {
         identifier: ast::Identifier,
         namespace: CrateIndex,
-        inquirer: Inquirer,
+        usage: IdentifierUsage,
     },
     UnresolvedUseBinding {
-        // @Note I don't know if this name makes sense at all
         inquirer_index: CrateIndex,
     },
 }
@@ -1149,14 +1205,14 @@ impl ResolutionError {
             Self::UnresolvedBinding {
                 identifier,
                 namespace,
-                inquirer,
+                usage,
             } => {
                 // @Question should we use the terminology "field" when the namespace is a record?
                 let mut message = format!("binding `{}` is not defined in ", identifier);
 
-                match inquirer {
-                    Inquirer::User => message += "this scope",
-                    Inquirer::System => {
+                match usage {
+                    IdentifierUsage::Unqualified => message += "this scope",
+                    IdentifierUsage::Qualified => {
                         message += match scope.bindings[namespace].kind {
                             EntityKind::Module(_) => "module",
                             EntityKind::UntypedDataType(_) | EntityKind::UntypedConstructor(_) => {

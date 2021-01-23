@@ -63,10 +63,10 @@ use std::{
 /// A successful value or – by default – a [Diagnostic].
 ///
 /// Mainly intended for errors and maybe also warnings.
-pub type Result<T, E = Diagnostic> = std::result::Result<T, E>;
+pub type Result<T = (), E = Diagnostic> = std::result::Result<T, E>;
 
 /// A successful value or a [buffer](Diagnostics) of [diagnostics](Diagnostic).
-pub type Results<T> = Result<T, Diagnostics>;
+pub type Results<T = ()> = Result<T, Diagnostics>;
 
 /// A buffer of [diagnostics](Diagnostic).
 #[derive(Default)]

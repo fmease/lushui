@@ -251,7 +251,7 @@ fn main() {
     let mut map = SourceMap::default();
     let mut warnings = Diagnostics::default();
 
-    let result: Results<()> = (|| {
+    let result: Results = (|| {
         let path = merged_arguments.file;
         let source_file = map.load(path).map_err(Into::into).many_err()?;
 

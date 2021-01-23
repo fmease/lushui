@@ -207,7 +207,7 @@ impl<'a> Lexer<'a> {
     }
 
     // @Task make trailing dashes part of punctuation (this removes the error condition)
-    fn lex_identifier(&mut self) -> Result<()> {
+    fn lex_identifier(&mut self) -> Result {
         self.lex_identifier_segment();
         while self.peek() == Some('-') {
             let dash = self.index().unwrap();
@@ -250,7 +250,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn lex_indentation(&mut self) -> Result<()> {
+    fn lex_indentation(&mut self) -> Result {
         use std::cmp::Ordering::*;
 
         // squash consecutive line breaks into a single one
@@ -303,7 +303,7 @@ impl<'a> Lexer<'a> {
         Ok(())
     }
 
-    fn lex_punctuation_or_number_literal(&mut self) -> Results<()> {
+    fn lex_punctuation_or_number_literal(&mut self) -> Results {
         self.advance();
         if self
             .peek()
@@ -330,7 +330,7 @@ impl<'a> Lexer<'a> {
     }
 
     // @Task move validation logic out of the lexer
-    fn lex_number_literal(&mut self) -> Result<()> {
+    fn lex_number_literal(&mut self) -> Result {
         const NUMERIC_SEPERATOR: char = '\'';
 
         let mut number = self.source().to_owned();
@@ -390,7 +390,7 @@ impl<'a> Lexer<'a> {
 
     // @Task escape sequences @Update do them in the parser (or at least mark them as invalid
     // and do the error reporting in the parser)
-    fn lex_text_literal(&mut self) -> Result<()> {
+    fn lex_text_literal(&mut self) -> Result {
         let mut is_terminated = false;
         self.advance();
 
@@ -425,7 +425,7 @@ impl<'a> Lexer<'a> {
         self.advance();
     }
 
-    fn lex_closing_round_bracket(&mut self) -> Result<()> {
+    fn lex_closing_round_bracket(&mut self) -> Result {
         self.add(ClosingRoundBracket);
         if self.round_brackets.is_empty() {
             return Err(Diagnostic::error()

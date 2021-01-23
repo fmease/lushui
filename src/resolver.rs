@@ -28,7 +28,7 @@ use hir::{decl, expr, pat};
 pub use scope::{
     CrateIndex, CrateScope, DeBruijnIndex, Exposure, FunctionScope, Identifier, Index, Namespace,
 };
-use scope::{OnlyValue, RegistrationError, ValueOrModule};
+use scope::{OnlyModule, OnlyValue, RegistrationError, ValueOrModule};
 use std::{mem, rc::Rc};
 
 const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
@@ -73,7 +73,10 @@ impl<'a> Resolver<'a> {
         self.start_resolve_declaration(&declaration, None, Context::default())
             .map_err(|error| error.diagnostics(mem::take(&mut self.scope.duplicate_definitions)))?;
         // @Bug creates fatal errors for use stuff (see tests/multiple-undefined1)
-        self.scope.resolve_unresolved_uses()?;
+        // @Beacon @Question does resolving use bindings before resolving exposure reaches
+        // create security holes? cases where we can 'use' private bindings?
+        self.scope.resolve_use_bindings()?;
+        self.scope.resolve_exposure_reaches()?;
         self.finish_resolve_declaration(declaration, None, Context::default())
     }
 
@@ -90,7 +93,6 @@ impl<'a> Resolver<'a> {
     /// new intermediate HIR because of too much mapping and type-system boilerplate
     /// and it's just not worth it memory-wise.
     /// For more on this, see [CrateScope::resolve_identifier].
-    // @Task allow for non-fatal errors inside of here!!!
     fn start_resolve_declaration(
         &mut self,
         declaration: &lowered_ast::Declaration,
@@ -107,10 +109,12 @@ impl<'a> Resolver<'a> {
                 Some(reach) => Exposure::unresolved_restricted(reach.clone()),
                 None => Exposure::Unrestricted,
             }
-        }
-        // no `@public` means private i.e. restricted to `self` i.e. `@(public self)`
-        else {
-            Exposure::resolved_restricted(module.unwrap_or(self.scope.root()))
+        } else {
+            match module {
+                // no `@public` means private i.e. restricted to `self` i.e. `@(public self)`
+                Some(module) => Exposure::resolved_restricted(module),
+                None => Exposure::Unrestricted,
+            }
         };
 
         match &declaration.kind {
@@ -234,7 +238,7 @@ impl<'a> Resolver<'a> {
                 )?;
 
                 self.scope
-                    .register_unresolved_use(index, use_.target.clone(), module);
+                    .register_use_binding(index, use_.target.clone(), module);
             }
             Invalid => {}
         }
@@ -352,11 +356,10 @@ impl<'a> Resolver<'a> {
                 }
             }
             Module(submodule) => {
-                // @Task use OnlyModule once we define it
                 let index = match module {
                     Some(module) => self
                         .scope
-                        .reobtain_resolved_identifier::<ValueOrModule>(&submodule.binder, module),
+                        .reobtain_resolved_identifier::<OnlyModule>(&submodule.binder, module),
                     None => self.scope.root(),
                 };
 

@@ -306,15 +306,12 @@ impl DisplayWith for Pattern {
 
 #[cfg(test)]
 mod test {
-    // @Beacon @Task add more tests
-
-    use super::Expression;
     use crate::{
         ast::{self, Explicitness::*},
         entity::{Entity, EntityKind},
-        hir::expr,
+        hir::{expr, Expression},
         lowered_ast::{Attribute, AttributeKind, Attributes, Number},
-        resolver::{CrateScope, Exposure, Identifier},
+        resolver::{CrateIndex, CrateScope, Exposure, Identifier},
         span::Span,
         support::DisplayWith,
     };
@@ -340,19 +337,22 @@ mod test {
             scope.bindings.push(Entity {
                 source: ast::Identifier::new("test".into(), Span::SHAM),
                 parent: None,
-                exposure: Exposure::Unrestricted, // @Note not quite sure
+                exposure: Exposure::Unrestricted,
                 kind: EntityKind::module(),
             });
             scope
         }
 
-        // @Task add way to specify the module
-        fn add(&mut self, name: &'static str, kind: EntityKind) -> Identifier {
+        fn add(&mut self, name: &str, kind: EntityKind) -> Identifier {
+            self.add_below(name, kind, self.root())
+        }
+
+        fn add_below(&mut self, name: &str, kind: EntityKind, parent: CrateIndex) -> Identifier {
             let identifier = ast::Identifier::new(name.into(), Span::SHAM);
             let entity = Entity {
                 source: identifier.clone(),
-                parent: Some(self.root()),
-                exposure: Exposure::Unrestricted, // @Note not quite sure
+                parent: Some(parent),
+                exposure: Exposure::Unrestricted,
                 kind,
             };
             let index = self.bindings.push(entity);
@@ -636,6 +636,7 @@ mod test {
                             parameter: it.clone(),
                             parameter_type_annotation: None,
                             body_type_annotation: None,
+                            // technically not correct
                             body: it.to_expression(),
                             explicitness: Explicit,
                             laziness: None,
@@ -672,6 +673,7 @@ mod test {
                                     parameter: it.clone(),
                                     parameter_type_annotation: None,
                                     body_type_annotation: None,
+                                    // technically not correct
                                     body: it.to_expression(),
                                     explicitness: Explicit,
                                     laziness: None,
@@ -920,14 +922,14 @@ mod test {
         let scope = CrateScope::new();
 
         assert_eq(
-            "= @static @unsafe 3 @static (increment 1)",
+            "== @static @unsafe 3 @static (increment 1)",
             (expr! {
                 Application {
                     Attributes::default(), Span::SHAM;
                     callee: expr! {
                         Application {
                             Attributes::default(), Span::SHAM;
-                            callee: Identifier::parameter("=").to_expression(),
+                            callee: Identifier::parameter("==").to_expression(),
                             argument: expr! {
                                 Number(
                                     Attributes::new(vec![
@@ -957,5 +959,50 @@ mod test {
             .with(&scope)
             .to_string(),
         )
+    }
+
+    #[test]
+    fn path() {
+        let mut scope = CrateScope::new();
+
+        let overarching = scope.add("overarching", EntityKind::module());
+        let middle = scope.add_below(
+            "middle",
+            EntityKind::module(),
+            overarching.crate_index().unwrap(),
+        );
+        let sink = scope.add_below(
+            "sink",
+            EntityKind::UntypedValue,
+            middle.crate_index().unwrap(),
+        );
+
+        assert_eq(
+            "crate.overarching.middle.sink",
+            sink.to_expression().with(&scope).to_string(),
+        );
+    }
+
+    #[test]
+    fn path_identifier_punctuation_punctuation_identifier_segments() {
+        let mut scope = CrateScope::new();
+
+        let overarching = scope.add("overarching", EntityKind::module());
+        let noisy = scope.add_below(
+            "&/.~##",
+            EntityKind::module(),
+            overarching.crate_index().unwrap(),
+        );
+        let zickzack = scope.add_below("^^^", EntityKind::module(), noisy.crate_index().unwrap());
+        let sink = scope.add_below(
+            "sink",
+            EntityKind::UntypedValue,
+            zickzack.crate_index().unwrap(),
+        );
+
+        assert_eq(
+            "crate.overarching.&/.~## . ^^^ .sink",
+            sink.to_expression().with(&scope).to_string(),
+        );
     }
 }

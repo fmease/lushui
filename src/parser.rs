@@ -46,7 +46,7 @@ use crate::{
 use ast::*;
 use std::{cell::RefCell, convert::TryInto, default::default, rc::Rc};
 
-type Result<T, E = ()> = std::result::Result<T, E>;
+type Result<T = (), E = ()> = std::result::Result<T, E>;
 
 const STANDARD_DECLARATION_DELIMITERS: [Delimiter; 3] = {
     use Delimiter::*;
@@ -83,8 +83,6 @@ impl<'a> Parser<'a> {
     /// Parse in a sandboxed way.
     ///
     /// Used for arbitrary look-ahead. Restores the old cursor on failure.
-    // @Bug because of arbitrary look-ahead/this function, a magnitude of Diagnostics are constructed
-    // but never emitted/wasted
     // @Task "restore" old warnings state on Err, so we don't get false positive warnings
     // when looking arbitrarily far ahead
     fn reflect<T>(&mut self, parser: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
@@ -170,7 +168,7 @@ impl<'a> Parser<'a> {
     /// ```
     fn consume_general_identifier(&mut self) -> Result<Identifier> {
         use TokenKind::*;
-        match self.current_token_kind() {
+        match self.current_token().kind {
             Identifier | Punctuation => {
                 let identifier = self.current_token_into_identifier();
                 self.advance();
@@ -188,7 +186,7 @@ impl<'a> Parser<'a> {
     /// but more memory-efficient as it does not clone the consumed token.
     #[must_use]
     fn has_consumed(&mut self, kind: TokenKind) -> bool {
-        if self.current_token_kind() == kind {
+        if self.current_token().kind == kind {
             self.advance();
             true
         } else {
@@ -199,8 +197,8 @@ impl<'a> Parser<'a> {
     /// Conceptually equivalent to `Self::consume(..).map(Spanning::span).ok()` but more memory-efficient as
     /// it neither constructs a [crate::diagnostics::Diagnostic] nor clones the consumed token.
     fn consume_span(&mut self, kind: TokenKind) -> Option<Span> {
-        if self.current_token_kind() == kind {
-            let span = self.current_token_span();
+        if self.current_token().kind == kind {
+            let span = self.current_token().span;
             self.advance();
             Some(span)
         } else {
@@ -223,16 +221,8 @@ impl<'a> Parser<'a> {
         &self.tokens[self.index]
     }
 
-    fn current_token_kind(&self) -> TokenKind {
-        self.current_token().kind
-    }
-
-    fn current_token_span(&self) -> Span {
-        self.current_token().span
-    }
-
     fn current_token_is_delimiter(&self, delimiters: &[Delimiter]) -> bool {
-        let queried_token_kind = self.current_token_kind();
+        let queried_token_kind = self.current_token().kind;
 
         delimiters
             .iter()
@@ -264,8 +254,8 @@ impl<'a> Parser<'a> {
         use TokenKind::*;
         let attributes = self.parse_attributes(SkipLineBreaks::Yes)?;
 
-        let span = self.current_token_span();
-        match self.current_token_kind() {
+        let span = self.current_token().span;
+        match self.current_token().kind {
             Identifier => {
                 let identifier = self.current_token_into_identifier();
                 self.advance();
@@ -319,8 +309,8 @@ impl<'a> Parser<'a> {
         let mut attributes = Attributes::default();
 
         loop {
-            let span = self.current_token_span();
-            attributes.push(match self.current_token_kind() {
+            let span = self.current_token().span;
+            attributes.push(match self.current_token().kind {
                 At => {
                     self.advance();
                     let attribute = self.finish_parse_regular_attribute(span)?;
@@ -373,7 +363,7 @@ impl<'a> Parser<'a> {
         let binder;
         let mut arguments = SmallVec::new();
 
-        match self.current_token_kind() {
+        match self.current_token().kind {
             Identifier => {
                 binder = span.merging(self.current_token_into_identifier());
                 self.advance();
@@ -382,7 +372,7 @@ impl<'a> Parser<'a> {
                 self.advance();
                 binder = self.consume_identifier()?;
 
-                while self.current_token_kind() != ClosingRoundBracket {
+                while self.current_token().kind != ClosingRoundBracket {
                     arguments.push(self.parse_attribute_argument()?);
                 }
 
@@ -415,7 +405,7 @@ impl<'a> Parser<'a> {
     /// ```
     fn parse_attribute_argument(&mut self) -> Result<AttributeArgument> {
         use TokenKind::*;
-        Ok(match self.current_token_kind() {
+        Ok(match self.current_token().kind {
             kind if kind.is_path_head() => {
                 let path = self.parse_path()?;
                 attrarg! { Path(path.span(); path) }
@@ -437,7 +427,7 @@ impl<'a> Parser<'a> {
                 attrarg! { TextLiteral(span; text_literal) }
             }
             OpeningRoundBracket => {
-                let mut span = self.current_token_span();
+                let mut span = self.current_token().span;
                 self.advance();
                 let binder = self.consume_identifier()?;
                 let value = self.parse_attribute_argument()?;
@@ -519,9 +509,9 @@ impl<'a> Parser<'a> {
         let parameters = span.merging(self.parse_parameters(&STANDARD_DECLARATION_DELIMITERS)?);
         let type_annotation = span.merging(self.parse_optional_type_annotation()?);
 
-        let constructors = match self.current_token_kind() {
+        let constructors = match self.current_token().kind {
             Equals => {
-                span.merging(self.current_token_span());
+                span.merging(self.current_token().span);
                 self.advance();
                 self.consume(LineBreak)?;
 
@@ -591,7 +581,7 @@ impl<'a> Parser<'a> {
 
         let binder = span.merging(self.consume_identifier()?);
 
-        match self.current_token_kind() {
+        match self.current_token().kind {
             // external module declaration
             LineBreak => {
                 self.advance();
@@ -678,11 +668,11 @@ impl<'a> Parser<'a> {
     }
 
     // @Note this is fragile and ugly as heck
-    fn parse_indented(&mut self, mut subparser: impl FnMut(&mut Self) -> Result<()>) -> Result<()> {
+    fn parse_indented(&mut self, mut subparser: impl FnMut(&mut Self) -> Result<()>) -> Result {
         use TokenKind::*;
 
         while self.has_consumed(Indentation) {
-            while self.current_token_kind() != Dedentation {
+            while self.current_token().kind != Dedentation {
                 if self.has_consumed(LineBreak) {
                     continue;
                 }
@@ -743,19 +733,19 @@ impl<'a> Parser<'a> {
         let mut path = self.parse_first_path_segment()?;
 
         while self.has_consumed(Dot) {
-            match self.current_token_kind() {
+            match self.current_token().kind {
                 Identifier | Punctuation => {
                     let identifier = self.current_token_into_identifier();
                     self.advance();
                     path.segments.push(identifier);
                 }
                 OpeningRoundBracket => {
-                    let mut span = self.current_token_span();
+                    let mut span = self.current_token().span;
                     self.advance();
 
                     let mut bindings = Vec::new();
 
-                    while self.current_token_kind() != ClosingRoundBracket {
+                    while self.current_token().kind != ClosingRoundBracket {
                         if let Ok(bracket) =
                             self.manually_reflect(|this| this.consume(OpeningRoundBracket))
                         {
@@ -877,7 +867,7 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Expression ::= Pi-Type-Literal-Or-Lower
     /// ```
-    // @Task parse sigma literals
+    // @Task parse sigma type literals
     // @Task once that has been completed, inline Self::parse_pi_type_literal_or_lower
     fn parse_expression(&mut self) -> Result<Expression> {
         self.parse_pi_type_literal_or_lower()
@@ -914,7 +904,6 @@ impl<'a> Parser<'a> {
 
                 span.merging(&this.consume(ClosingRoundBracket)?);
 
-                // Ok((explicitness, laziness, fieldness, Some(binder), parameter))
                 Ok(Domain {
                     aspect,
                     binder: Some(binder),
@@ -929,7 +918,7 @@ impl<'a> Parser<'a> {
                 Ok(Domain::simple(domain))
             })?;
 
-        if self.current_token_kind() == ThinArrowRight {
+        if self.current_token().kind == ThinArrowRight {
             self.advance();
 
             let codomain = span.merging(self.parse_pi_type_literal_or_lower()?);
@@ -1030,8 +1019,8 @@ impl<'a> Parser<'a> {
         use TokenKind::*;
         let attributes = self.parse_attributes(SkipLineBreaks::No)?;
 
-        let mut span = self.current_token_span();
-        match self.current_token_kind() {
+        let mut span = self.current_token().span;
+        match self.current_token().kind {
             kind if kind.is_path_head() => self.parse_path().map(|path| {
                 expr! { Path(attributes, path.span(); path) }
             }),
@@ -1088,7 +1077,7 @@ impl<'a> Parser<'a> {
 
                 let mut elements = Vec::new();
 
-                while self.current_token_kind() != ClosingSquareBracket {
+                while self.current_token().kind != ClosingSquareBracket {
                     elements.push(self.parse_lower_expression()?);
                 }
 
@@ -1134,7 +1123,7 @@ impl<'a> Parser<'a> {
     /// Parse the first segment of a path.
     fn parse_first_path_segment(&mut self) -> Result<Path> {
         use TokenKind::*;
-        let path = match self.current_token_kind() {
+        let path = match self.current_token().kind {
             Identifier | Punctuation => Path::try_from_token(self.current_token().clone()).unwrap(),
             Crate | Super | Self_ => Path::hanger(self.current_token().clone()),
             _ => return self.error(|| Expected::Path.but_actual_is(self.current_token())),
@@ -1267,11 +1256,11 @@ impl<'a> Parser<'a> {
 
         let mut cases = Vec::new();
 
-        if self.current_token_kind() == LineBreak && self.succeeding_token_kind() == Indentation {
+        if self.current_token().kind == LineBreak && self.succeeding_token_kind() == Indentation {
             self.advance();
             self.advance();
 
-            while self.current_token_kind() != Dedentation {
+            while self.current_token().kind != Dedentation {
                 let pattern = self.parse_pattern()?;
                 self.consume(WideArrow)?;
                 let expression = self.parse_possibly_indented_terminated_expression()?;
@@ -1327,8 +1316,8 @@ impl<'a> Parser<'a> {
         self.consume(LineBreak)?;
         self.consume(Indentation)?;
 
-        while self.current_token_kind() != Dedentation {
-            statements.push(match self.current_token_kind() {
+        while self.current_token().kind != Dedentation {
+            statements.push(match self.current_token().kind {
                 Let => {
                     self.advance();
                     let binder = self.consume_identifier()?;
@@ -1353,7 +1342,7 @@ impl<'a> Parser<'a> {
                     Statement::Use(ast::Use { bindings })
                 }
                 _ => {
-                    if self.current_token_kind() == Identifier
+                    if self.current_token().kind == Identifier
                         && matches!(self.succeeding_token_kind(), Colon | ThinArrowLeft)
                     {
                         let binder = self.current_token_into_identifier();
@@ -1424,8 +1413,9 @@ impl<'a> Parser<'a> {
     /// ```
     fn parse_parameter_group(&mut self, delimiters: &[Delimiter]) -> Result<ParameterGroup> {
         use TokenKind::*;
-        let mut span = self.current_token_span();
-        match self.current_token_kind() {
+        let mut span = self.current_token().span;
+
+        match self.current_token().kind {
             Identifier => {
                 let binder = self.current_token_into_identifier();
                 self.advance();
@@ -1460,7 +1450,6 @@ impl<'a> Parser<'a> {
                     span,
                 })
             }
-
             _ => self.error(|| {
                 delimiters_with_expected(delimiters, Some(Expected::Parameter))
                     .but_actual_is(self.current_token())
@@ -1492,7 +1481,7 @@ impl<'a> Parser<'a> {
                 self.reflect(|this| {
                     this.consume(OpeningRoundBracket)?;
                     let explicitness = this.consume_explicitness_symbol();
-                    let binder = (this.current_token_kind() == Identifier
+                    let binder = (this.current_token().kind == Identifier
                         && this.succeeding_token_kind() == Equals)
                         .then(|| {
                             let binder = this.current_token_into_identifier();
@@ -1534,8 +1523,8 @@ impl<'a> Parser<'a> {
         use TokenKind::*;
         let attributes = self.parse_attributes(SkipLineBreaks::No)?;
 
-        let mut span = self.current_token_span();
-        match self.current_token_kind() {
+        let mut span = self.current_token().span;
+        match self.current_token().kind {
             kind if kind.is_path_head() => self.parse_path().map(|path| {
                 pat! { Path(attributes, path.span(); path) }
             }),
@@ -1567,7 +1556,7 @@ impl<'a> Parser<'a> {
 
                 let mut elements = Vec::new();
 
-                while self.current_token_kind() != ClosingSquareBracket {
+                while self.current_token().kind != ClosingSquareBracket {
                     elements.push(self.parse_lower_pattern()?);
                 }
 
@@ -1679,7 +1668,7 @@ impl<'a> Parser<'a> {
     fn parse_terminated_expression(&mut self) -> Result<Expression> {
         let expression = self.parse_expression()?;
         // @Note special-casing is also called programming hackily
-        if self.current_token_kind() != TokenKind::Dedentation {
+        if self.current_token().kind != TokenKind::Dedentation {
             self.consume(TokenKind::LineBreak)?;
         }
         Ok(expression)

@@ -34,7 +34,7 @@ impl Scope {
         mut constructors: impl Iterator<Item = &'a Constructor>,
         declaration: &Declaration,
         attribute: &Attribute,
-    ) -> Result<()> {
+    ) -> Result {
         // @Task link to previous definition
         let duplicate = || {
             Diagnostic::error()

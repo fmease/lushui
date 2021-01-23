@@ -309,6 +309,18 @@ fn lex_identifier_dot_dotted_punctuation() {
 }
 
 #[test]
+fn lex_identifier_and_dotted_punctuation_after_space() {
+    assert_ok_token(
+        lex("namespace .$.?!."),
+        vec![
+            Token::new_identifier("namespace".into(), span(1, 9)),
+            Token::new_punctuation(".$.?!.".into(), span(11, 16)),
+            Token::new(EndOfInput, span(16, 16)),
+        ],
+    )
+}
+
+#[test]
 fn lex_keyword_dot_punctuation() {
     assert_ok_token(
         lex("data.#"),

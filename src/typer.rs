@@ -55,7 +55,7 @@ impl<'a> Typer<'a> {
         Interpreter::new(&mut self.scope, &mut self.warnings)
     }
 
-    pub fn infer_types_in_declaration(&mut self, declaration: &Declaration) -> Results<()> {
+    pub fn infer_types_in_declaration(&mut self, declaration: &Declaration) -> Results {
         let results_of_first_pass =
             self.start_infer_types_in_declaration(declaration, Context::default());
         self.poisoned = results_of_first_pass.is_err();
@@ -73,7 +73,7 @@ impl<'a> Typer<'a> {
         &mut self,
         declaration: &Declaration,
         mut context: Context,
-    ) -> Results<()> {
+    ) -> Results {
         use hir::DeclarationKind::*;
 
         match &declaration.kind {
@@ -171,7 +171,7 @@ impl<'a> Typer<'a> {
     // @Task @Beacon @Beacon somehow (*somehow*!) restructure this code so it is not DRY.
     // it is DRY even though we use an ugly macro..how sad is that??
     // we need to design the error handling here, it's super difficult, fragile, …
-    fn evaluate_registration(&mut self, registration: Registration) -> Results<()> {
+    fn evaluate_registration(&mut self, registration: Registration) -> Results {
         use Registration::*;
 
         match registration.clone() {
@@ -376,7 +376,7 @@ impl<'a> Typer<'a> {
         Ok(())
     }
 
-    fn infer_types_of_out_of_order_bindings(&mut self) -> Results<()> {
+    fn infer_types_of_out_of_order_bindings(&mut self) -> Results {
         while !self.scope.out_of_order_bindings.is_empty() {
             let bindings = std::mem::take(&mut self.scope.out_of_order_bindings);
             let previous_amount = bindings.len();
@@ -861,7 +861,7 @@ impl<'a> Typer<'a> {
         &mut self,
         constructor: Expression,
         type_: Expression,
-    ) -> Result<()> {
+    ) -> Result {
         let result_type = self.result_type(constructor, &FunctionScope::CrateScope);
         let callee = self.callee(result_type.clone());
 

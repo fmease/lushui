@@ -629,7 +629,7 @@ pub trait AttributeTarget: Spanning {
 
     /// Target-specific attribute checks
     // @Note this is the wrong place, it should be in the lowerer, somehow
-    fn check_attributes(&self, _attributes: &crate::lowered_ast::Attributes) -> Results<()> {
+    fn check_attributes(&self, _attributes: &crate::lowered_ast::Attributes) -> Results {
         Ok(())
     }
 }
@@ -664,7 +664,7 @@ impl AttributeTarget for Declaration {
         }
     }
 
-    fn check_attributes(&self, attributes: &crate::lowered_ast::Attributes) -> Results<()> {
+    fn check_attributes(&self, attributes: &crate::lowered_ast::Attributes) -> Results {
         use crate::lowered_ast::AttributeKeys;
         use DeclarationKind::*;
 
