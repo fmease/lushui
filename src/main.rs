@@ -3,12 +3,13 @@
 use lushui::{
     diagnostics::{Diagnostic, Diagnostics, Results},
     documenter::Documenter,
+    error::ManyErrExt,
+    format::{pluralize, s_pluralize, DisplayWith},
     lexer::Lexer,
     lowerer::Lowerer,
     parser::Parser,
     resolver,
     span::SourceMap,
-    support::{pluralize, s_pluralize, DisplayWith, ManyErrExt},
     typer::Typer,
 };
 use resolver::{CrateScope, Resolver};

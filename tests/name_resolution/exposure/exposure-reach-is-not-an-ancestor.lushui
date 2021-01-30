@@ -1,0 +1,17 @@
+;; TEST fail check
+
+@(public solipsism) ;; itself
+module solipsism =
+
+@(public store.shelves) ;; descendant
+module store =
+    module shelves =
+
+@(public brother) ;; sibling
+module sister =
+
+@(public locked-up.brother) ;; private relative
+module brother =
+
+module locked-up =
+    module brother =

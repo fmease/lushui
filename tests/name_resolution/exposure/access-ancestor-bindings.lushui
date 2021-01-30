@@ -1,0 +1,29 @@
+;; TEST pass check
+
+Alpha: Type = Alpha
+
+module realm =
+    Alpha: super.Beta = crate.Alpha
+
+    module local =
+        use super.Alpha as A0
+        use crate.realm.Alpha as A1
+        use crate.Alpha as A2
+        use self as lokal
+        use crate.parallel-realm
+
+module parallel-realm =
+    use super.Unit.unit
+
+@(public self)
+Beta: Type = Type
+
+data Unit: Type =
+    unit: Unit
+
+;; Description: Privacy is only one-way: Descendant modules or namespaces
+;; are in all cases permitted to refer to and use bindings defined in
+;; parent/ancestor modules (unless such a binding breaks exposure rules to begin with)
+;; no matter their declared exposure reach (which is directed upwards).
+;; This should work for both use declarations and inside expressions.
+;; Out of order declarations should not hinder the algorithm.

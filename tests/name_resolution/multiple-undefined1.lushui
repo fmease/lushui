@@ -1,13 +1,14 @@
-;; TEST ignore
+;; TEST fail check
+;; @Bug we are suggesting similiarly(&identically)named bindings on privacy fail
 
-use alpha.Nothing ;; @Bug this is a fatal error, it shouldn't be
+use alpha.Nothing
 
-module alpha: =
+module alpha =
     Thin: Type = super.Air
     use super.Air
     use crate.empty as full
 
-    module beta: =
+    module beta =
         use super.air
 
 use alpha.(Nothingness beta.space)

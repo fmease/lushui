@@ -1,0 +1,18 @@
+;; TEST fail check
+;; @Task more cases
+
+module grotto =
+    @public
+    module deeper-end =
+        @(public super) data Icicle: Type =
+
+        @(public crate)
+        module rock-face =
+            @(public crate.grotto)
+            data Ingrown-Stalactite: Type =
+
+use grotto.deeper-end.((self as cave) (Icicle as I))
+J: Type = cave.Icicle
+
+module mod =
+    use super.cave.rock-face.Ingrown-Stalactite as St

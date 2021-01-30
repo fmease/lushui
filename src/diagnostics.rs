@@ -15,8 +15,8 @@
 //!
 //! Meta: Task: Expand and add description.
 //!
-//! * [crate::support::accumulate_errors] + [crate::support::TransposeExt] + [Diagnostics::err_or]
-//! * [crate::support::InvalidFallback] + [crate::support::TryIn]
+//! * [crate::error::accumulate_errors] + [crate::error::TransposeExt] + [Diagnostics::err_or]
+//! * [crate::error::PossiblyErroneous] + [crate::error::TryIn]
 //! * custom diagnostics (new struct or enum impl'ing `From`) buffer in a stateful "context" struct
 //! * `Error` enum with `Error::Unrecoverable` and `From` impl's (complements all of the above)
 //!
@@ -47,8 +47,8 @@
 //! * cannot handle overly long lines of highlighted code (does not look tidy anymore)
 
 use crate::{
+    format::AsDebug,
     span::{SourceMap, Span, Spanning},
-    support::AsDebug,
     HashSet, OnceCell, Str,
 };
 use colored::{Color, Colorize};

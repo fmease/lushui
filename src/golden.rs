@@ -122,14 +122,17 @@ fn run() -> Result<(), Error> {
             continue;
         }
 
+        let time = std::time::Instant::now();
+
         let output = Command::new("cargo")
             .args(&["run", "-q", "--"])
-            // .env("NO_COLOR", "") // not necessary apparently
             .arg("--sort-diagnostics") // for deterministic output
             .args(config.program_arguments)
             .arg(entry.path())
             .output()
             .map_err(Error::FailedRunningCompilerProcess)?;
+
+        let duration = time.elapsed();
 
         let failures = failures.entry(readable_path.to_owned()).or_default();
 
@@ -171,13 +174,15 @@ fn run() -> Result<(), Error> {
             failures.push(error);
         }
 
-        if failures.is_empty() {
+        let badge = if failures.is_empty() {
             number_of_passed_tests += 1;
-            println!("{}", badge_ok);
+            &badge_ok
         } else {
             number_of_failed_tests += 1;
-            println!("{}", &badge_failed);
-        }
+            &badge_failed
+        };
+
+        println!("{badge:<7} {}", format!("{duration:.2?}").bright_black());
     }
 
     for (path, file_failures) in failures {

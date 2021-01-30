@@ -1,0 +1,16 @@
+error[E022]: value `Void` is not a module
+ --> ${DIRECTORY}/name_resolution/exposure/exposure-reach-not-a-module.lushui:4:10
+  |
+4 | @(public Void) data Empty: Type =
+  |          ^^^^ 
+  |
+
+error[E022]: value `imposter` is not a module
+  --> ${DIRECTORY}/name_resolution/exposure/exposure-reach-not-a-module.lushui:11:10
+   |
+11 | @(public imposter) data Void: Type =
+   |          ^^^^^^^^ 
+   |
+
+error: aborting due to 2 previous errors
+

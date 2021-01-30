@@ -142,7 +142,7 @@ impl super::Declaration {
                 Ok(())
             }
             Use(declaration) => writeln!(f, "use {} as {}", declaration.target, declaration.binder),
-            Invalid => write!(f, "?(invalid)"),
+            Error => write!(f, "?(error)"),
         }
     }
 }
@@ -182,7 +182,7 @@ impl fmt::Display for super::Expression {
                 }
                 Ok(())
             }
-            Invalid => write!(f, "?(invalid)"),
+            Error => write!(f, "?(error)"),
         }
     }
 }
@@ -248,7 +248,7 @@ impl fmt::Display for super::Pattern {
             Deapplication(application) => {
                 write!(f, "({}) ({})", application.callee, application.argument)
             }
-            Invalid => write!(f, "?(invalid)"),
+            Error => write!(f, "?(error)"),
         }
     }
 }
@@ -271,7 +271,7 @@ impl PossiblyWrapped<'_> {
 
         !matches!(
             &self.0.kind,
-            Type | Number(_) | Text(_) | Binding(_) | Invalid
+            Type | Number(_) | Text(_) | Binding(_) | Error
         )
     }
 }

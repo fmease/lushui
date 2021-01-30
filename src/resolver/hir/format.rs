@@ -1,7 +1,7 @@
 //! The definition of the textual representation of the [HIR](crate::hir).
 
 use super::{CrateScope, Declaration, Expression, Pattern};
-use crate::{ast::Implicit, support::DisplayWith};
+use crate::{ast::Implicit, format::DisplayWith};
 use joinery::JoinableIterator;
 use std::{default::default, fmt};
 
@@ -84,7 +84,7 @@ impl Declaration {
                 Some(binder) => writeln!(f, "use {} as {}", declaration.target, binder),
                 None => writeln!(f, "use {}", declaration.target),
             },
-            Invalid => writeln!(f, "?(invalid)"),
+            Error => writeln!(f, "?(error)"),
         }
     }
 }
@@ -271,7 +271,7 @@ fn format_lower_expression(
             substitution.substitution.with(scope),
             substitution.expression.with(scope)
         ),
-        Invalid => write!(f, "?(invalid)"),
+        Error => write!(f, "?(error)"),
         _ => write!(f, "({})", expression.with(scope)),
     }
 }
@@ -299,7 +299,7 @@ impl DisplayWith for Pattern {
                 application.callee.with(scope),
                 application.argument.with(scope)
             ),
-            Invalid => write!(f, "?(invalid)"),
+            Error => write!(f, "?(error)"),
         }
     }
 }
@@ -309,11 +309,11 @@ mod test {
     use crate::{
         ast::{self, Explicitness::*},
         entity::{Entity, EntityKind},
+        format::DisplayWith,
         hir::{expr, Expression},
         lowered_ast::{Attribute, AttributeKind, Attributes, Number},
         resolver::{CrateIndex, CrateScope, Exposure, Identifier},
         span::Span,
-        support::DisplayWith,
     };
     use std::default::default;
 

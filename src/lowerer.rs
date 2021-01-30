@@ -29,13 +29,11 @@ pub mod lowered_ast;
 use crate::{
     ast::{self, Explicit, Path},
     diagnostics::{Code, Diagnostic, Diagnostics, Result, Results, Warn},
+    error::{accumulate_errors, obtain, ManyErrExt, PossiblyErroneous, TryIn},
+    format::{ordered_listing, s_pluralize, Conjunction, QuoteExt},
     lowered_ast::{decl, expr, pat, AttributeKeys, AttributeKind, Attributes, Number},
     smallvec,
     span::{SourceMap, Span, Spanning},
-    support::{
-        accumulate_errors, obtain, ordered_listing, s_pluralize, Conjunction, InvalidFallback,
-        ManyErrExt, QuoteExt, TryIn,
-    },
     SmallVec, Str,
 };
 use joinery::JoinableIterator;
@@ -371,7 +369,7 @@ impl<'a> Lowerer<'a> {
                     let mut errors = Diagnostics::default();
 
                     macro try_($subject:expr) {
-                        crate::support::try_or!($subject, continue, buffer = errors)
+                        crate::error::try_or!($subject, continue, buffer = errors)
                     }
 
                     for binding in bindings {
@@ -694,7 +692,7 @@ impl<'a> Lowerer<'a> {
             SequenceLiteral(_sequence) => Err(errors.inserted(
                 Diagnostic::unimplemented("sequence literals").with_primary_span(&expression.span),
             )),
-            Invalid => errors.err_or(InvalidFallback::invalid()),
+            Error => errors.err_or(PossiblyErroneous::error()),
         }
     }
 

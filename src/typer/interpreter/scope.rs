@@ -4,11 +4,11 @@ use super::{ffi, Expression, Substitution::Shift};
 use crate::{
     diagnostics::{Code, Diagnostic, Result},
     entity::EntityKind,
+    format::AsDebug,
     hir::expr,
     lowered_ast::{Attributes, Number},
     resolver::{CrateIndex, CrateScope, DeBruijnIndex, Identifier, Index},
     span::Span,
-    support::AsDebug,
 };
 
 /// Many methods of module scope panic instead of returning a `Result` because
@@ -296,7 +296,7 @@ pub enum Registration {
 
 use std::fmt;
 
-impl crate::support::DisplayWith for Registration {
+impl crate::format::DisplayWith for Registration {
     type Linchpin = CrateScope;
 
     fn format(&self, scope: &CrateScope, f: &mut fmt::Formatter<'_>) -> fmt::Result {

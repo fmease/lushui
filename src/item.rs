@@ -1,8 +1,8 @@
 //! Abstractions for working with things that have a source location and can have attributes.
 
 use crate::{
+    error::PossiblyErroneous,
     span::{Span, Spanning},
-    support::InvalidFallback,
 };
 
 /// Something with a source location and attributes.
@@ -30,10 +30,10 @@ impl<Kind, Attribute> Spanning for Item<Kind, Attribute> {
     }
 }
 
-impl<Kind: InvalidFallback, Attributes: Default> InvalidFallback for Item<Kind, Attributes> {
-    fn invalid() -> Self {
+impl<Kind: PossiblyErroneous, Attributes: Default> PossiblyErroneous for Item<Kind, Attributes> {
+    fn error() -> Self {
         Self {
-            kind: Kind::invalid(),
+            kind: Kind::error(),
             span: Span::SHAM,
             attributes: Attributes::default(),
         }

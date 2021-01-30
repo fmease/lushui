@@ -17,3 +17,7 @@ module fake-my-dude =
     use Omega as omega0
 
     Omega: Type = Type
+
+;; Description: Circular/cyclic/mutually recursive use bindings should be forbidden,
+;; should not crash the compiler and give a good error message. Distinct cycles
+;; have to be reported separately.

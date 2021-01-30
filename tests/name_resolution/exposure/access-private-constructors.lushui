@@ -1,0 +1,31 @@
+;; TEST fail check
+
+module separation =
+    data Private: Type =
+        private: Private
+    
+    @opaque
+    data Private-Opaque: Type =
+        private: Private-Opaque
+
+    @public @opaque
+    data Public-Opaque: Type =
+        private: Public-Opaque
+    
+    @(public crate)
+    module further-separation =
+        @(public super)
+        data Hidden: Type =
+            hidden: Hidden
+        
+        @(public crate) @opaque
+        data Opaque: Type =
+            hidden: Opaque
+
+use separation.Private.private as p0
+use separation.Private-Opaque.private as p1
+use separation.Public-Opaque.private as p2
+
+p3: separation.Public-Opaque = separation.Public-Opaque.private
+
+use separation.further-separation.((Hidden.hidden as h) (Opaque.hidden as ho))

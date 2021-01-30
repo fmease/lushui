@@ -1,0 +1,15 @@
+;; for those weird artificial cases where the exposure reach is defined in some sibling/remote module,
+;; we explicitly resolve it without checking the exposure reach of the exposure reach (we have a dedicated
+;; method for this) since at the time, I assumed that in all those cases, that exposure reach is not an
+;; ancestor anyway, so even if the exposure reach is not accessible to us and we still access it, we report
+;; an error. We cannot simply resolve the exposure reach with our standard resolution algorithm as that one
+;; recursively checks the exposure which leads to infinite recursion is some pathological input.
+;; but now, I found a code example where we disobey the exposure reach but do obey the ancestor rule.
+;; not sure how we can tackle this problem.
+
+module inner =
+    use crate.offside as remote
+
+module offside =
+    @(public crate.inner.remote) module m = ;; @Bug we should not be able to access `remote` here!!!
+

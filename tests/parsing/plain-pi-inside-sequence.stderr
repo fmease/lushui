@@ -1,0 +1,10 @@
+error[E010]: found `->`, but expected expression
+ --> ${DIRECTORY}/parsing/plain-pi-inside-sequence.lushui:3:19
+  |
+3 | target = [Int Nat -> Nat]
+  |                   ^^ unexpected token
+  |
+ help: add round brackets around the potential pi type literal to disambiguate the expression
+
+error: aborting due to previous error
+

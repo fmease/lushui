@@ -4,10 +4,10 @@ mod format;
 
 use crate::{
     ast::{Explicitness, ParameterAspect},
+    error::PossiblyErroneous,
     lowered_ast::{Item, Number},
     resolver::{CrateScope, FunctionScope, Identifier},
     span::{SourceFile, Span},
-    support::InvalidFallback,
     typer::interpreter,
 };
 use std::rc::Rc;
@@ -29,12 +29,12 @@ pub enum DeclarationKind {
     Constructor(Box<Constructor>),
     Module(Box<Module>),
     Use(Box<Use>),
-    Invalid,
+    Error,
 }
 
-impl InvalidFallback for DeclarationKind {
-    fn invalid() -> Self {
-        Self::Invalid
+impl PossiblyErroneous for DeclarationKind {
+    fn error() -> Self {
+        Self::Error
     }
 }
 
@@ -83,12 +83,12 @@ pub enum ExpressionKind {
     ForeignApplication(Rc<ForeignApplication>),
     Projection(Rc<Projection>),
     IO(Rc<IO>),
-    Invalid,
+    Error,
 }
 
-impl InvalidFallback for ExpressionKind {
-    fn invalid() -> Self {
-        Self::Invalid
+impl PossiblyErroneous for ExpressionKind {
+    fn error() -> Self {
+        Self::Error
     }
 }
 
@@ -169,12 +169,12 @@ pub enum PatternKind {
     Binding(Rc<Binding>),
     Binder(Rc<Binder>),
     Deapplication(Rc<Deapplication>),
-    Invalid,
+    Error,
 }
 
-impl InvalidFallback for PatternKind {
-    fn invalid() -> Self {
-        Self::Invalid
+impl PossiblyErroneous for PatternKind {
+    fn error() -> Self {
+        Self::Error
     }
 }
 

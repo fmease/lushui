@@ -37,10 +37,10 @@ mod test;
 
 use crate::{
     diagnostics::{Code, Diagnostic, Diagnostics, Results, Warn},
+    format::{ordered_listing, Conjunction},
     lexer::{Token, TokenKind},
     smallvec,
     span::{SourceFile, Span, Spanning},
-    support::{ordered_listing, Conjunction},
     SmallVec,
 };
 use ast::*;
@@ -1097,7 +1097,19 @@ impl<'a> Parser<'a> {
 
                 Ok(expression)
             }
-            _ => self.error(|| Expected::Expression.but_actual_is(self.current_token())),
+            _ => self.error(|| {
+                Expected::Expression
+                    .but_actual_is(self.current_token())
+                    // @Beacon @Note this is a prime example for a situation where we can
+                    // make a parsing error non-fatal: we can just skip the `->` and keep
+                    // parsing w/o introducing too many (any?) useless/confusing consequential
+                    // errors!
+                    .when(self.current_token().kind == ThinArrowRight, |this| {
+                        this.with_help(
+                            "add round brackets around the potential pi type literal to disambiguate the expression",
+                        )
+                    })
+            }),
         }
     }
 

@@ -1,0 +1,36 @@
+error[E013]: attribute `public` cannot be ascribed to a constructor declaration
+  --> ${DIRECTORY}/lowering/constructor-with-explicit-public.lushui:14:5
+   |
+14 |     @public Unit: Unit -> Universe
+   |     ^^^^^^^ misplaced attribute
+   |
+  --> ${DIRECTORY}/lowering/constructor-with-explicit-public.lushui:14:13
+   |
+14 |     @public Unit: Unit -> Universe
+   |             ---------------------- incompatible item
+   |
+  note: attribute `public` can only be ascribed to declarations except constructors
+
+error[E013]: attribute `public` cannot be ascribed to a constructor declaration
+  --> ${DIRECTORY}/lowering/constructor-with-explicit-public.lushui:15:5
+   |
+15 |     @(public self) Bool: Bool -> Universe = Universe.Bool
+   |     ^^^^^^^^^^^^^^ misplaced attribute
+   |
+  --> ${DIRECTORY}/lowering/constructor-with-explicit-public.lushui:15:20
+   |
+15 |     @(public self) Bool: Bool -> Universe = Universe.Bool
+   |                    -------------------------------------- incompatible item
+   |
+  note: attribute `public` can only be ascribed to declarations except constructors
+
+error[E020]: `Bool` is defined multiple times in this scope
+  --> ${DIRECTORY}/lowering/constructor-with-explicit-public.lushui:15:45
+   |
+15 |     @(public self) Bool: Bool -> Universe = Universe.Bool
+   |                                             ^^^^^^^^^^^^^ conflicting definition
+   |
+  note: the body of the constructor is implied but it also has a body introduced by `=`
+
+error: aborting due to 3 previous errors
+

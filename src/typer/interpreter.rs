@@ -19,11 +19,12 @@ use super::Expression;
 use crate::{
     ast::Explicit,
     diagnostics::{Code, Diagnostic, Diagnostics, Result, Warn},
+    error::PossiblyErroneous,
+    format::DisplayWith,
     hir::{self, expr},
     lowered_ast::Attributes,
     resolver::CrateScope,
     span::{Span, Spanning},
-    support::{DisplayWith, InvalidFallback},
 };
 use scope::{FunctionScope, ValueView};
 use std::fmt;
@@ -313,7 +314,7 @@ impl<'a> Interpreter<'a> {
                     }).collect()
                 }
             },
-            (Invalid, _) => InvalidFallback::invalid(),
+            (Error, _) => PossiblyErroneous::error(),
         }
     }
 
@@ -534,7 +535,7 @@ impl<'a> Interpreter<'a> {
                                 }
                                 Binder(_) => todo!(),
                                 Deapplication(_) => todo!(),
-                                Invalid => unreachable!(),
+                                Error => unreachable!(),
                             }
                         }
 
@@ -562,14 +563,14 @@ impl<'a> Interpreter<'a> {
                                     // @Beacon @Beacon @Question whyy do we need type information here in *evaluate*???
                                     let scope = context
                                         .scope
-                                        .extend_with_parameter(InvalidFallback::invalid());
+                                        .extend_with_parameter(PossiblyErroneous::error());
                                     return self.evaluate_expression(
                                         case.body.clone(),
                                         context.with_scope(&scope),
                                     );
                                 }
                                 Deapplication(_) => todo!(),
-                                Invalid => unreachable!(),
+                                Error => unreachable!(),
                             }
                         }
                         // we should not be here
@@ -601,7 +602,7 @@ impl<'a> Interpreter<'a> {
                         }
                     })
             }
-            Invalid => InvalidFallback::invalid(),
+            Error => PossiblyErroneous::error(),
         })
     }
 
@@ -710,7 +711,7 @@ impl<'a> Interpreter<'a> {
                     .with_message("attempt to check two substitutions for equivalence")
                     .with_note("they should not exist in this part of the code but should have already been evaluated"))
             }
-            (Invalid, _) | (_, Invalid) => panic!("trying to check equality on an invalid node"),
+            (Error, _) | (_, Error) => panic!("trying to check equality on erroneous expressions"),
             _ => false,
         })
     }

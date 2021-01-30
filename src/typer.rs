@@ -5,13 +5,14 @@ pub mod interpreter;
 use crate::{
     ast::ParameterAspect,
     diagnostics::{Code, Diagnostic, Diagnostics, Result, Results, Warn},
+    error::{accumulate_errors, ManyErrExt, TransposeExt},
+    format::{s_pluralize, DisplayWith, QuoteExt},
     lowered_ast::{AttributeKeys, Attributes},
     resolver::{
         hir::{self, expr, Declaration, Expression},
         CrateScope, Identifier,
     },
     span::Span,
-    support::{accumulate_errors, s_pluralize, DisplayWith, ManyErrExt, QuoteExt, TransposeExt},
 };
 use interpreter::{
     ffi,
@@ -159,7 +160,7 @@ impl<'a> Typer<'a> {
                     })
                     .transpose()?;
             }
-            Use(_) | Invalid => {}
+            Use(_) | Error => {}
         }
 
         Ok(())
@@ -205,8 +206,8 @@ impl<'a> Typer<'a> {
                     Ok(expression) => expression,
                     Err(error) => {
                         return match error {
-                            Error::Unrecoverable(error) => Err(error),
-                            Error::OutOfOrderBinding => {
+                            Unrecoverable(error) => Err(error),
+                            OutOfOrderBinding => {
                                 self.scope.out_of_order_bindings.push(registration);
                                 self.scope.carry_out(Registration::ValueBinding {
                                     binder,
@@ -215,7 +216,7 @@ impl<'a> Typer<'a> {
                                 })
                             }
                             // @Task abstract over explicit diagnostic building
-                            Error::TypeMismatch { expected, actual } => Err(Diagnostic::error()
+                            TypeMismatch { expected, actual } => Err(Diagnostic::error()
                                 .with_code(Code::E032)
                                 .with_message(format!(
                                     "expected type `{}`, got type `{}`",
@@ -348,12 +349,12 @@ impl<'a> Typer<'a> {
                 Ok(expression) => expression,
                 Err(error) => {
                     return match error {
-                        Error::Unrecoverable(error) => Err(error),
-                        Error::OutOfOrderBinding => {
+                        Unrecoverable(error) => Err(error),
+                        OutOfOrderBinding => {
                             $scope.out_of_order_bindings.push($registration);
                             Ok(())
                         }
-                        Error::TypeMismatch { expected, actual } => {
+                        TypeMismatch { expected, actual } => {
                             Err(Diagnostic::error()
                                 .with_code(Code::E032)
                                 .with_message(format!(
@@ -430,7 +431,7 @@ impl<'a> Typer<'a> {
         Ok(match expression.kind {
             Binding(binding) => scope
                 .lookup_type(&binding.binder, &self.scope)
-                .ok_or(Error::OutOfOrderBinding)?,
+                .ok_or(OutOfOrderBinding)?,
             Type => expr! { Type { Attributes::default(), Span::SHAM } },
             Number(number) => self
                 .scope
@@ -527,8 +528,8 @@ impl<'a> Typer<'a> {
                             // @Bug this error handling might *steal* the error from other handlers further
                             // down the call chain
                             .map_err(|error| match error {
-                                Error::Unrecoverable(error) => error,
-                                Error::TypeMismatch { expected, actual } => Diagnostic::error()
+                                Unrecoverable(error) => error,
+                                TypeMismatch { expected, actual } => Diagnostic::error()
                                     .with_code(Code::E032)
                                     .with_message(format!(
                                         "expected type `{}`, got type `{}`",
@@ -612,7 +613,7 @@ impl<'a> Typer<'a> {
                     let mut types = Vec::new();
 
                     let handle_type_mismatch = |error, scope| match error {
-                        Error::TypeMismatch { expected, actual } => Diagnostic::error()
+                        TypeMismatch { expected, actual } => Diagnostic::error()
                             .with_code(Code::E032)
                             .with_message(format!(
                                 "expected type `{}`, got type `{}`",
@@ -693,10 +694,10 @@ impl<'a> Typer<'a> {
                                         .into())
                                 }
                                 (Deapplication(_), _argument) => todo!(),
-                                (Invalid, _) => unreachable!(),
+                                (Error, _) => unreachable!(),
                             };
                         }
-                        Invalid => unreachable!(),
+                        Error => unreachable!(),
                     }
 
                     let type_ = self.infer_type_of_expression(
@@ -723,7 +724,7 @@ impl<'a> Typer<'a> {
             IO(_) => self
                 .scope
                 .lookup_foreign_type(ffi::Type::IO, Some(expression.span))?,
-            Invalid => expression,
+            Error => expression,
         })
     }
 
@@ -785,7 +786,7 @@ impl<'a> Typer<'a> {
             .interpreter()
             .equals(expected.clone(), actual.clone(), scope)?
         {
-            return Err(Error::TypeMismatch { expected, actual });
+            return Err(TypeMismatch { expected, actual });
         }
 
         Ok(())
@@ -899,6 +900,8 @@ pub enum Error {
         actual: Expression,
     },
 }
+
+use Error::*;
 
 impl From<Diagnostic> for Error {
     fn from(error: Diagnostic) -> Self {

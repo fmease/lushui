@@ -55,6 +55,8 @@ pub mod compiler;
 pub mod diagnostics;
 pub mod documenter;
 mod entity;
+pub mod error;
+pub mod format;
 #[cfg(test)]
 mod golden;
 mod grow_array;
@@ -64,7 +66,6 @@ pub mod lowerer;
 pub mod parser;
 pub mod resolver;
 pub mod span;
-pub mod support;
 pub mod typer;
 
 const FILE_EXTENSION: &str = "lushui";

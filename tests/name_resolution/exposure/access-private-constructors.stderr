@@ -1,0 +1,44 @@
+error[E029]: binding `crate.separation.Private` is private
+  --> ${DIRECTORY}/name_resolution/exposure/access-private-constructors.lushui:25:16
+   |
+25 | use separation.Private.private as p0
+   |                ^^^^^^^ 
+   |
+
+error[E029]: binding `crate.separation.Private-Opaque` is private
+  --> ${DIRECTORY}/name_resolution/exposure/access-private-constructors.lushui:26:16
+   |
+26 | use separation.Private-Opaque.private as p1
+   |                ^^^^^^^^^^^^^^ 
+   |
+
+error[E029]: binding `crate.separation.Public-Opaque.private` is private
+  --> ${DIRECTORY}/name_resolution/exposure/access-private-constructors.lushui:27:30
+   |
+27 | use separation.Public-Opaque.private as p2
+   |                              ^^^^^^^ 
+   |
+
+error[E029]: binding `crate.separation.Public-Opaque.private` is private
+  --> ${DIRECTORY}/name_resolution/exposure/access-private-constructors.lushui:29:57
+   |
+29 | p3: separation.Public-Opaque = separation.Public-Opaque.private
+   |                                                         ^^^^^^^ 
+   |
+
+error[E029]: binding `crate.separation.further-separation.Hidden` is private
+  --> ${DIRECTORY}/name_resolution/exposure/access-private-constructors.lushui:31:37
+   |
+31 | use separation.further-separation.((Hidden.hidden as h) (Opaque.hidden as ho))
+   |                                     ^^^^^^ 
+   |
+
+error[E029]: binding `crate.separation.further-separation.Opaque.hidden` is private
+  --> ${DIRECTORY}/name_resolution/exposure/access-private-constructors.lushui:31:65
+   |
+31 | use separation.further-separation.((Hidden.hidden as h) (Opaque.hidden as ho))
+   |                                                                 ^^^^^^ 
+   |
+
+error: aborting due to 6 previous errors
+

@@ -1,0 +1,21 @@
+;; TEST fail check
+;; @Task also report the undefined `Who-Am-I` if feasible
+
+@(public who-am-i)
+Foo: Who-Am-I = Type
+
+@(public namespaced.who-am-i)
+Bar: Unit = Unit.unit
+
+module namespaced =
+
+@(public indir2.void)
+Y: Type = Unit
+
+data Unit: Type =
+    unit: Unit
+
+use crate.((namespaced as indir0) (indir0 as indir1) (indir1 as indir2))
+
+@(public self.indir2.emptiness)
+X: Type = Unit

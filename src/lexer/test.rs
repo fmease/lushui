@@ -111,7 +111,7 @@ fn lex_identifier() {
 }
 
 #[test]
-fn lex_identifier_dashes() {
+fn lex_dashed_identifier() {
     assert_ok_token(
         lex("ALPH4-G4MM4 alpha-gamma _-_"),
         vec![
@@ -124,7 +124,7 @@ fn lex_identifier_dashes() {
 }
 
 #[test]
-fn lex_keywords() {
+fn possibly_lex_keywords() {
     assert_ok_token(
         lex("self   Type Type_ Type-Type in _"),
         vec![
@@ -163,22 +163,22 @@ fn do_not_lex_identifier_leading_prime() {
 }
 
 #[test]
-fn do_not_lex_identifier_trailing_dash() {
+fn do_not_lex_identifier_with_trailing_dash() {
     assert_err(lex("alpha-"), &[&[span(6, 6)]]);
 }
 
 #[test]
-fn do_not_lex_identifier_trailing_dash_punctuation() {
+fn do_not_lex_identifier_with_trailing_dash_punctuation() {
     assert_err(lex("alpha-:"), &[&[span(6, 6)]]);
 }
 
 #[test]
-fn do_not_lex_identifier_trailing_dash_number_literal() {
+fn do_not_lex_identifier_with_trailing_dash_number_literal() {
     assert_err(lex("alpha-0"), &[&[span(6, 6)]]);
 }
 
 #[test]
-fn do_not_lex_identifier_consecutive_dashes() {
+fn do_not_lex_identifier_with_consecutive_dashes() {
     assert_err(lex("alpha--gamma"), &[&[span(6, 6)]]);
 }
 
@@ -271,7 +271,7 @@ fn lex_punctuation() {
 }
 
 #[test]
-fn lex_identifier_trailing_dot() {
+fn lex_identifier_with_trailing_dot() {
     assert_ok_token(
         lex("namespace."),
         vec![

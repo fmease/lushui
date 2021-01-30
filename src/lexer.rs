@@ -19,8 +19,8 @@ pub mod token;
 
 use crate::{
     diagnostics::{Code, Diagnostic, Diagnostics, Result, Results, Warn},
+    error::ManyErrExt,
     span::{LocalByteIndex, LocalSpan, SourceFile, Span},
-    support::ManyErrExt,
     Atom, INDENTATION_IN_SPACES,
 };
 use std::{iter::Peekable, str::CharIndices};

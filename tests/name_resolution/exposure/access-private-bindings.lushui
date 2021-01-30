@@ -1,0 +1,28 @@
+;; TEST fail check
+
+use S.structure as s
+
+use outer.((south.Structure as S) (north.Structure as N))
+use outer.south
+
+module outer =
+
+    It: Type = north.Structure
+
+    @public
+    module north =
+        data Structure: Type =
+            structure: Structure
+
+    module south =
+        data Structure: Type =
+
+
+Struct: Type = outer.south
+
+;; Description: Bindings w/o any `@public` should be considered private to the module
+;; the binding is defined in. No matter if it is accessed by `use` or inside of an expression.
+;; Furthermore, processing use declarations that break exposure rules should not lead to a
+;; fatal error but allow the name resolver to keep resolving and checking on a
+;; partially erroneous crate scope. Lastly, this test case exercises the exposure checker
+;; with out of order bindings.

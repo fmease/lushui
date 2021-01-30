@@ -1,0 +1,27 @@
+;; TEST pass check
+
+module inner =
+    use innermore.innermost as m
+
+    @(public super.krate)
+    use crate.offside as remote
+
+    @(public crate)
+    module innermore =
+        @(public super)
+        module innermost =
+            @(public crate.inner)
+            X: Type = X
+
+            @(public crate.n)
+            Th: Type = Type
+    
+        TH: Type = innermost.Th
+
+    Z: Type = m.X
+
+use inner.innermore as n
+use self as krate
+
+module offside =
+    @(public crate.inner.remote) data Ping: Type =

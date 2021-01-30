@@ -8,8 +8,8 @@ mod format;
 use crate::{
     ast::{self, Explicitness, Identifier, ParameterAspect, Path},
     diagnostics::Results,
+    error::PossiblyErroneous,
     span::{SourceFile, Span, Spanned},
-    support::InvalidFallback,
 };
 use std::rc::Rc;
 
@@ -23,12 +23,12 @@ pub enum DeclarationKind {
     Constructor(Box<Constructor>),
     Module(Box<Module>),
     Use(Box<Use>),
-    Invalid,
+    Error,
 }
 
-impl InvalidFallback for DeclarationKind {
-    fn invalid() -> Self {
-        Self::Invalid
+impl PossiblyErroneous for DeclarationKind {
+    fn error() -> Self {
+        Self::Error
     }
 }
 
@@ -73,12 +73,12 @@ pub enum ExpressionKind {
     Lambda(Rc<Lambda>),
     UseIn,
     CaseAnalysis(Rc<CaseAnalysis>),
-    Invalid,
+    Error,
 }
 
-impl InvalidFallback for ExpressionKind {
-    fn invalid() -> Self {
-        Self::Invalid
+impl PossiblyErroneous for ExpressionKind {
+    fn error() -> Self {
+        Self::Error
     }
 }
 
@@ -137,12 +137,12 @@ pub enum PatternKind {
     Binding(Rc<Binding>),
     Binder(Rc<Binder>),
     Deapplication(Rc<Deapplication>),
-    Invalid,
+    Error,
 }
 
-impl InvalidFallback for PatternKind {
-    fn invalid() -> Self {
-        Self::Invalid
+impl PossiblyErroneous for PatternKind {
+    fn error() -> Self {
+        Self::Error
     }
 }
 
@@ -210,8 +210,8 @@ impl Attributes {
     }
 }
 
-impl InvalidFallback for Attributes {
-    fn invalid() -> Self {
+impl PossiblyErroneous for Attributes {
+    fn error() -> Self {
         Self::default()
     }
 }

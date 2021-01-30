@@ -21,8 +21,8 @@ use crate::{
     ast,
     diagnostics::{Diagnostic, Diagnostics, Results, Warn},
     entity::EntityKind,
+    error::{accumulate_errors, obtain, ManyErrExt, PossiblyErroneous, TransposeExt, TryIn},
     lowered_ast::{self, AttributeKeys, AttributeKind},
-    support::{accumulate_errors, obtain, InvalidFallback, ManyErrExt, TransposeExt, TryIn},
 };
 use hir::{decl, expr, pat};
 pub use scope::{
@@ -72,10 +72,19 @@ impl<'a> Resolver<'a> {
         // topic: horrible error handling APIs
         self.start_resolve_declaration(&declaration, None, Context::default())
             .map_err(|error| error.diagnostics(mem::take(&mut self.scope.duplicate_definitions)))?;
-        // @Bug creates fatal errors for use stuff (see tests/multiple-undefined1)
-        self.scope.resolve_use_bindings()?;
+
+        self.scope.resolve_use_bindings();
         self.scope.resolve_exposure_reaches()?;
-        self.finish_resolve_declaration(declaration, None, Context::default())
+
+        // dbg!(&self.scope);
+
+        let declaration = self
+            .finish_resolve_declaration(declaration, None, Context::default())
+            .try_in(&mut self.scope.errors);
+
+        // dbg!(&self.scope);
+
+        self.scope.errors.take().err_or(declaration)
     }
 
     /// Partially resolve a declaration merely registering declarations.
@@ -241,7 +250,7 @@ impl<'a> Resolver<'a> {
                 self.scope
                     .register_use_binding(index, use_.target.clone(), module);
             }
-            Invalid => {}
+            Error => {}
         }
 
         Ok(())
@@ -404,7 +413,7 @@ impl<'a> Resolver<'a> {
                     }
                 }
             }
-            Invalid => InvalidFallback::invalid(),
+            Error => PossiblyErroneous::error(),
         })
     }
 
@@ -519,7 +528,7 @@ impl<'a> Resolver<'a> {
                     }
                 }
             }
-            Invalid => InvalidFallback::invalid(),
+            Error => PossiblyErroneous::error(),
         };
 
         errors.err_or(expression)
@@ -572,7 +581,7 @@ impl<'a> Resolver<'a> {
                     }
                 }
             }
-            Invalid => InvalidFallback::invalid(),
+            Error => PossiblyErroneous::error(),
         };
 
         Ok((pattern, binders))

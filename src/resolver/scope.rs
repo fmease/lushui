@@ -20,15 +20,15 @@ use crate::{
     ast::{self, Path},
     diagnostics::{Code, Diagnostic, Diagnostics, Result, Results},
     entity::{Entity, EntityKind},
+    format::{unordered_listing, AsDebug, Conjunction, DisplayWith, QuoteExt},
     smallvec,
     span::{Span, Spanning},
-    support::{unordered_listing, AsDebug, Conjunction, DisplayWith, ManyErrExt, QuoteExt},
     typer::interpreter::{ffi, scope::Registration},
     HashMap, HashSet, SmallVec,
 };
 use indexed_vec::IndexVec;
 use joinery::JoinableIterator;
-use std::{cell::RefCell, cmp::Ordering, fmt, iter::once, usize};
+use std::{cell::RefCell, cmp::Ordering, fmt, iter::once, mem::take, usize};
 
 type Bindings = IndexVec<CrateIndex, Entity>;
 
@@ -49,6 +49,7 @@ pub struct CrateScope {
     partially_resolved_use_bindings_grouped: Vec<HashSet<CrateIndex>>,
     /// For error reporting.
     pub(super) duplicate_definitions: HashMap<CrateIndex, DuplicateDefinition>,
+    pub(super) errors: Diagnostics,
     pub(crate) ffi: ffi::Scope,
     // @Note this is very coarse-grained: as soon as we cannot resolve EITHER type annotation (for example)
     // OR actual value(s), we bail out and add this here. This might be too conversative (leading to more
@@ -245,6 +246,10 @@ impl CrateScope {
                     IdentifierUsage::Qualified,
                     check_exposure,
                 ),
+                None if self.bindings[index].is_error() => {
+                    // @Task add rationale
+                    Ok(Target::output(index, path.last_identifier().unwrap()))
+                }
                 None => Err(value_used_as_a_namespace(&path.segments[0], &path.segments[1]).into()),
             },
         }
@@ -351,13 +356,20 @@ impl CrateScope {
                 let reference = &self.bindings[reference];
 
                 if binding.exposure.compare(&reference.exposure, self) == Some(Ordering::Greater) {
-                    // @Task message, add notes as auxiliary spans!!
+                    // @Task @Beacon once we can use multiline notes, do so here!!!
                     errors.insert(
                         Diagnostic::error()
                             .with_code(Code::E009)
-                            .with_message("re-export of private")
-                            .with_primary_span(&binding.source)
-                            .with_secondary_span(&reference.source),
+                            // @Question use absolute path?
+                            .with_message(format!("re-export of the more private binding `{}`", reference.source))
+                            .with_labeled_primary_span(&binding.source, "re-exporting binding with greater exposure")
+                            .with_labeled_secondary_span(&reference.source, "re-exported binding with lower exposure")
+                            .with_note(format!(
+                                "expected the exposure of `{}` to be at most {} but it actually is {}",
+                                binding.source,
+                                reference.exposure.with(self),
+                                binding.exposure.with(self),
+                            )),
                     );
                 }
             }
@@ -389,6 +401,7 @@ impl CrateScope {
             UntypedValue | Module(_) | UntypedDataType(_) | UntypedConstructor(_) => Ok(index),
             Use { reference } => Ok(reference),
             UnresolvedUse => Err(ResolutionError::UnresolvedUseBinding { inquirer: index }),
+            Error => Ok(index),
             _ => unreachable!(),
         }
     }
@@ -410,6 +423,9 @@ impl CrateScope {
     /// (painfully learned through previous experiences).
     // @Task add to documentation that this panics on unresolved and does not check exposure,
     // also it does not check the resolution target etc
+    // @Task add that it may only fail if circular use bindings were found or a use
+    // binding could not be resolved since `Self::resolve_use_binding` is treated non-fatally
+    // in Resolver::resolve_declaration
     pub(super) fn reobtain_resolved_identifier<Target: ResolutionTarget>(
         &self,
         identifier: &ast::Identifier,
@@ -440,7 +456,9 @@ impl CrateScope {
     /// no progress can be made anymore in which case all remaining
     /// use bindings are actually circular and are thus reported.
     // @Task update docs in regards to number of phases
-    pub(super) fn resolve_use_bindings(&mut self) -> Results {
+    // @Task update docs regarding errors
+    // @Task clear partially_resolved_use_bindings at the end both if Err or Ok
+    pub(super) fn resolve_use_bindings(&mut self) {
         while !self.partially_resolved_use_bindings.is_empty() {
             let mut partially_resolved_use_bindings = HashMap::default();
 
@@ -452,7 +470,8 @@ impl CrateScope {
                         self.bindings[index].kind = EntityKind::Use { reference };
                     }
                     Err(error @ (UnresolvedBinding { .. } | Unrecoverable(_))) => {
-                        return Err(error.diagnostic(self).unwrap()).many_err()
+                        self.bindings[index].invalidate();
+                        self.errors.insert(error.diagnostic(self).unwrap());
                     }
                     Err(UnresolvedUseBinding { inquirer }) => {
                         partially_resolved_use_bindings.insert(
@@ -486,39 +505,44 @@ impl CrateScope {
 
             // resolution stalled; therefore there are circular bindings
             if partially_resolved_use_bindings.len() == self.partially_resolved_use_bindings.len() {
-                return Err(self
-                    .partially_resolved_use_bindings_grouped
-                    .iter()
+                let circular_bindings = take(&mut self.partially_resolved_use_bindings_grouped)
+                    .into_iter()
                     .filter(|indices| {
                         indices
                             .iter()
                             .any(|index| partially_resolved_use_bindings.contains_key(index))
-                    })
+                    });
+
+                let errors = circular_bindings
                     .map(|indices| -> Diagnostic {
+                        indices
+                            .iter()
+                            .for_each(|&index| self.bindings[index].invalidate());
+
+                        let declarations = unordered_listing(
+                            indices
+                                .iter()
+                                .map(|&index| self.absolute_path(index).quote()),
+                            Conjunction::And,
+                        );
+
+                        let spans = indices
+                            .into_iter()
+                            .map(|index| self.bindings[index].source.span);
+
                         Diagnostic::error()
                             .with_code(Code::E024)
-                            .with_message(format!(
-                                "declarations {} are circular",
-                                unordered_listing(
-                                    indices
-                                        .iter()
-                                        .map(|&index| self.absolute_path(index).quote()),
-                                    Conjunction::And
-                                ),
-                            ))
-                            .with_primary_spans(
-                                indices
-                                    .iter()
-                                    .map(|&index| self.bindings[index].source.span),
-                            )
+                            .with_message(format!("declarations {declarations} are circular"))
+                            .with_primary_spans(spans)
                     })
-                    .collect());
+                    .collect::<Vec<_>>();
+
+                self.errors.extend(errors);
+                return;
             }
 
             self.partially_resolved_use_bindings = partially_resolved_use_bindings;
         }
-
-        Ok(())
     }
 }
 
@@ -585,6 +609,17 @@ impl fmt::Debug for Exposure {
     }
 }
 
+impl DisplayWith for Exposure {
+    type Linchpin = CrateScope;
+
+    fn format(&self, scope: &CrateScope, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unrestricted => write!(f, "unrestricted"),
+            Self::Restricted(reach) => write!(f, "`{}`", reach.borrow().with(scope)),
+        }
+    }
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub enum RestrictedExposure {
     Unresolved { reach: Path },
@@ -606,7 +641,8 @@ impl RestrictedExposure {
                 // Here we indeed resolve the exposure reach without validating *its*
                 // exposure reach. This is not a problem however since in all cases where
                 // it actually is private, it cannot be an ancestor module as those are
-                // always accessible to their descendants.
+                // always accessible to their descendants, and therefore we are going to
+                // throw an error.
                 // It's not possible to use `resolve_path` as that can lead to infinite
                 // loops with out of order use bindings.
                 let reach = scope
@@ -653,6 +689,17 @@ impl RestrictedExposure {
             }
             _ => return None,
         })
+    }
+}
+
+impl DisplayWith for RestrictedExposure {
+    type Linchpin = CrateScope;
+
+    fn format(&self, scope: &CrateScope, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unresolved { reach } => write!(f, "{}", reach),
+            &Self::Resolved { reach } => write!(f, "{}", scope.absolute_path(reach)),
+        }
     }
 }
 
@@ -754,7 +801,7 @@ impl ResolutionTarget for OnlyValue {
         use EntityKind::*;
 
         match binding {
-            UntypedValue | UntypedDataType(_) | UntypedConstructor(_) => {
+            UntypedValue | UntypedDataType(_) | UntypedConstructor(_) | Error => {
                 Ok(Self::output(index, identifier))
             }
             Module(_) => Err(module_used_as_a_value(identifier.span)),

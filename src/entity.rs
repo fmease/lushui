@@ -5,9 +5,10 @@
 use std::{default::default, fmt};
 
 use crate::{
+    error::PossiblyErroneous,
+    format::DisplayWith,
     hir::Expression,
     resolver::{CrateIndex, CrateScope, Exposure, Identifier, Namespace},
-    support::DisplayWith,
     typer::interpreter::{ffi::NakedForeignFunction, scope::ValueView},
 };
 
@@ -40,6 +41,10 @@ impl Entity {
             self.kind,
             UntypedValue | UntypedDataType(_) | UntypedConstructor(_)
         )
+    }
+
+    pub const fn is_error(&self) -> bool {
+        matches!(self.kind, EntityKind::Error)
     }
 
     pub fn namespace(&self) -> Option<&Namespace> {
@@ -105,7 +110,8 @@ impl Entity {
             } => ValueView::Reducible(expression.clone()),
             Value {
                 expression: None, ..
-            } => ValueView::Neutral,
+            }
+            | Error => ValueView::Neutral,
             DataType { .. } | Constructor { .. } | Foreign { .. } => ValueView::Neutral,
             UntypedValue
             | UntypedDataType(_)
@@ -114,6 +120,10 @@ impl Entity {
             | Use { .. }
             | UnresolvedUse => unreachable!(),
         }
+    }
+
+    pub fn invalidate(&mut self) {
+        self.kind = EntityKind::Error;
     }
 }
 
@@ -166,6 +176,14 @@ pub enum EntityKind {
         arity: usize,
         function: NakedForeignFunction,
     },
+    // @Task explain why we want entities to be possibly erroneous
+    Error,
+}
+
+impl PossiblyErroneous for EntityKind {
+    fn error() -> Self {
+        Self::Error
+    }
 }
 
 impl EntityKind {
@@ -213,6 +231,7 @@ impl DisplayWith for EntityKind {
             ),
             Constructor { type_ } => write!(f, "constructor: {}", type_.with(scope)),
             Foreign { type_, .. } => write!(f, "foreign: {}", type_.with(scope)),
+            Error => write!(f, "error"),
         }
     }
 }

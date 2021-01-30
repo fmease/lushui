@@ -381,7 +381,7 @@ impl Format for super::ExpressionKind {
             Self::CaseAnalysis(analysis) => analysis.format(f, indentation),
             Self::DoBlock(do_) => do_.format(f, indentation),
             Self::SequenceLiteral(sequence) => sequence.format(f, indentation),
-            Self::Invalid => write!(f, "{}", "invalid".color(INVALID_COLOR)),
+            Self::Error => write!(f, "{}", "invalid".color(INVALID_COLOR)),
         }
     }
 }

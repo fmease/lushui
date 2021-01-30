@@ -1,0 +1,6 @@
+@(public Box)
+data Box: Type =
+    box: Type -> Box
+
+;; it should only output the error about `Box` not being a module
+;; but it also outputs a second error complaining about `Box` not being defined when it clearly is!!

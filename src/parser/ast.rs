@@ -6,11 +6,10 @@ mod format;
 
 use crate::{
     diagnostics::{Code, Diagnostic, Result, Results},
+    error::{ManyErrExt, PossiblyErroneous},
     lexer::{Token, TokenKind},
     smallvec,
     span::{PossiblySpanning, SourceFile, Span, Spanned, Spanning},
-    support::InvalidFallback,
-    support::ManyErrExt,
     Atom, SmallVec,
 };
 use std::{convert::TryFrom, convert::TryInto, default::default, rc::Rc};
@@ -176,12 +175,12 @@ pub enum ExpressionKind {
     CaseAnalysis(Box<CaseAnalysis>),
     DoBlock(Box<DoBlock>),
     SequenceLiteral(Box<SequenceLiteral>),
-    Invalid,
+    Error,
 }
 
-impl InvalidFallback for ExpressionKind {
-    fn invalid() -> Self {
-        Self::Invalid
+impl PossiblyErroneous for ExpressionKind {
+    fn error() -> Self {
+        Self::Error
     }
 }
 
@@ -731,7 +730,7 @@ impl AttributeTarget for Expression {
             CaseAnalysis(_) => "a case analysis",
             DoBlock(_) => "a do block",
             SequenceLiteral(_) => "a sequence literal expression",
-            Invalid => "an invalid expression",
+            Error => "an erroneous expression",
         }
     }
 
@@ -752,7 +751,7 @@ impl AttributeTarget for Expression {
             CaseAnalysis(_) => AttributeTargets::CASE_ANALYSIS_EXPRESSION,
             DoBlock(_) => AttributeTargets::DO_BLOCK_EXPRESSION,
             SequenceLiteral(_) => AttributeTargets::SEQUENCE_LITERAL_EXPRESSION,
-            Invalid => AttributeTargets::empty(),
+            Error => AttributeTargets::empty(),
         }
     }
 }

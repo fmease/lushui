@@ -1,5 +1,7 @@
 //! The compiler emitting bytecode.
 
+#![allow(dead_code)]
+
 // @Task rename to codegen
 
 // @Note API not so clear yet
@@ -240,7 +242,7 @@ impl<'a> Compiler<'a> {
             }
             UseIn => todo!(),
             CaseAnalysis(_analysis) => todo!(),
-            Invalid => todo!(),
+            Error => todo!(),
             Substitution(_substitution) => todo!(),
             ForeignApplication(_application) => todo!(),
             Projection(_projection) => todo!(),
