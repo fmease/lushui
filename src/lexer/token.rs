@@ -78,7 +78,7 @@ impl Token {
                 Err(Diagnostic::error()
                     .with_code(Code::E004)
                     .with_message("unterminated text literal")
-                    .with_primary_span(&self.span))
+                    .with_primary_span(self.span))
             }),
             _ => None,
         }
@@ -168,7 +168,7 @@ pub enum TokenKind {
     Backslash,
     QuestionMark,
     Colon,
-    Comma,
+    SingleQuote,
     Dedentation,
     Dot,
     Equals,
@@ -233,7 +233,7 @@ impl fmt::Display for TokenKind {
             Backslash => quoted!(r"\"),
             QuestionMark => quoted!("?"),
             Colon => quoted!(":"),
-            Comma => quoted!(","),
+            SingleQuote => quoted!("'"),
             Dedentation => "dedentation",
             Dot => quoted!("."),
             Equals => quoted!("="),

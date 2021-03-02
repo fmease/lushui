@@ -53,6 +53,7 @@ use crate::{
 };
 use colored::{Color, Colorize};
 use std::{
+    borrow::Cow,
     default::default,
     hash::Hash,
     iter::{once, FromIterator},
@@ -251,7 +252,7 @@ impl Diagnostic {
         self
     }
 
-    fn with_span(mut self, spanning: &impl Spanning, label: Option<Str>, role: Role) -> Self {
+    fn with_span(mut self, spanning: impl Spanning, label: Option<Str>, role: Role) -> Self {
         self.0.highlights.push(Highlight {
             span: spanning.span(),
             label: label.map(Into::into),
@@ -261,28 +262,24 @@ impl Diagnostic {
     }
 
     /// Reference a code snippet as one of the focal points of the diagnostic.
-    pub fn with_primary_span(self, spanning: &impl Spanning) -> Self {
+    pub fn with_primary_span(self, spanning: impl Spanning) -> Self {
         self.with_span(spanning, None, Role::Primary)
     }
 
     /// Reference and label a code snippet as one of the focal points of the diagnostic.
-    pub fn with_labeled_primary_span(
-        self,
-        spanning: &impl Spanning,
-        label: impl Into<Str>,
-    ) -> Self {
+    pub fn with_labeled_primary_span(self, spanning: impl Spanning, label: impl Into<Str>) -> Self {
         self.with_span(spanning, Some(label.into()), Role::Primary)
     }
 
     /// Reference a code snippet as auxiliary information for the diagnostic.
-    pub fn with_secondary_span(self, spanning: &impl Spanning) -> Self {
+    pub fn with_secondary_span(self, spanning: impl Spanning) -> Self {
         self.with_span(spanning, None, Role::Secondary)
     }
 
     /// Reference and label a code snippet as auxiliary information for the diagnostic.
     pub fn with_labeled_secondary_span(
         self,
-        spanning: &impl Spanning,
+        spanning: impl Spanning,
         label: impl Into<Str>,
     ) -> Self {
         self.with_span(spanning, Some(label.into()), Role::Secondary)
@@ -513,19 +510,20 @@ impl Diagnostic {
 
                 let role_color = highlight.role.color(self.0.level.color());
 
+                let label = match &highlight.label {
+                    Some(label) => label,
+                    None => &Cow::Borrowed(""),
+                };
+
                 match &resolved_span.final_line {
                     // the snippet spans a single line
                     None => {
                         let line = resolved_span.first_line.number;
+                        // @Question does this *always* end in a line break?
                         let snippet = resolved_span.first_line.content;
-                        let label = highlight
-                            .label
-                            .as_ref()
-                            .map(|label| label.color(role_color))
-                            .unwrap_or_default();
-                        let highlight_padding =
+                        let underline_padding =
                             " ".repeat(resolved_span.first_line.highlight_prefix_width);
-                        let highlight = highlight
+                        let underline = highlight
                             .role
                             .symbol()
                             .repeat(resolved_span.first_line.highlight_width)
@@ -535,9 +533,32 @@ impl Diagnostic {
                         message += &format!(
                             "\n\
                             {padding} {bar}\n\
-                            {line:>padding_length$} {bar} {snippet}\
-                            {padding} {bar} {highlight_padding}{highlight} {label}"
+                            {line:>padding_length$} {bar} {snippet}"
                         );
+
+                        // the underline and the label
+                        {
+                            let mut lines = label.split('\n');
+
+                            {
+                                let line = lines.next().unwrap().color(role_color);
+
+                                message += &format!(
+                                    "{padding} {bar} {underline_padding}{underline} {line}"
+                                );
+                            }
+
+                            let space = " ".repeat(
+                                resolved_span.first_line.highlight_prefix_width
+                                    + resolved_span.first_line.highlight_width,
+                            );
+
+                            for line in lines {
+                                let line = line.color(role_color);
+
+                                message += &format!("\n{padding} {bar} {space} {line}");
+                            }
+                        }
                     }
                     // the snippet spans multiple lines
                     Some(final_line) => {
@@ -554,43 +575,59 @@ impl Diagnostic {
                         // the upper arm
                         {
                             let line = resolved_span.first_line.number;
+                            // @Question does this *always* end in a line break?
                             let snippet = resolved_span.first_line.content;
-                            let highlight_horizontal_arm = "_"
+                            let horizontal_arm = "_"
                                 .repeat(resolved_span.first_line.highlight_prefix_width + 1)
                                 .color(role_color)
                                 .bold();
                             // the hand is currently not dependent on the Unicode width of the first character
-                            let highlight_hand = highlight.role.symbol().color(role_color).bold();
+                            let hand = highlight.role.symbol().color(role_color).bold();
 
                             message += &format!(
                                 "\n\
                                 {padding} {bar}\n\
                                 {line:>padding_length$} {bar}   {snippet}\
-                                {ellipsis:>padding_length$}  {highlight_horizontal_arm}{highlight_hand}\n" 
+                                {ellipsis:>padding_length$}  {horizontal_arm}{hand}\n"
                             );
                         }
                         // the connector and the lower arm
                         {
                             let line = final_line.number;
+                            // @Question does this *always* end in a line break?
                             let snippet = final_line.content;
                             // the arm is currently not dependent on the Unicode width of the last character
-                            let highlight_horizontal_arm = "_"
+                            let horizontal_arm = "_"
                                 .repeat(final_line.highlight_width)
                                 .color(role_color)
                                 .bold();
-                            let highlight_vertical_arm = "|".color(role_color).bold();
+                            let vertical_arm = "|".color(role_color).bold();
                             // the hand is currently not dependent on the Unicode width of the 1st character
-                            let highlight_hand = highlight.role.symbol().color(role_color).bold();
-                            let label = highlight
-                                .label
-                                .as_ref()
-                                .map(|label| label.color(role_color))
-                                .unwrap_or_default();
+                            let hand = highlight.role.symbol().color(role_color).bold();
 
-                            message += &format!(
-                                "{line:>padding_length$} {bar} {highlight_vertical_arm} {snippet}\
-                                {padding} {bar} {highlight_vertical_arm}{highlight_horizontal_arm}{highlight_hand} {label}",
-                            );
+                            message +=
+                                &format!("{line:>padding_length$} {bar} {vertical_arm} {snippet}");
+
+                            // the lower arm and the label
+                            {
+                                let mut lines = label.split('\n');
+
+                                {
+                                    let line = lines.next().unwrap().color(role_color);
+
+                                    message += &format!(
+                                    "{padding} {bar} {vertical_arm}{horizontal_arm}{hand} {line}"
+                                );
+                                }
+
+                                let space = " ".repeat(1 + final_line.highlight_width + 1);
+
+                                for line in lines {
+                                    let line = line.color(role_color);
+
+                                    message += &format!("\n{padding} {bar} {space} {line}");
+                                }
+                            }
                         }
                     }
                 }
@@ -602,6 +639,7 @@ impl Diagnostic {
         }
 
         for subdiagnostic in &self.0.subdiagnostics {
+            // @Task allow multiline messages
             message += &format!("\n{padding}{subdiagnostic}");
         }
 
@@ -841,8 +879,6 @@ pub enum Code {
     E062,
     /// Undefined inherent type.
     E063,
-    /// Implicitness unimplemented.
-    W001,
 }
 
 impl Code {

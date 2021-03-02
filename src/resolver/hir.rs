@@ -94,6 +94,7 @@ impl PossiblyErroneous for ExpressionKind {
 
 #[derive(Clone)]
 pub struct PiType {
+    pub explicitness: Explicitness,
     // @Question should the concept of fieldness still exist in this pass?
     pub aspect: ParameterAspect,
     pub parameter: Option<Identifier>,

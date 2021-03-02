@@ -1,0 +1,9 @@
+;; TEST pass check --only-parse
+
+data X 'A '(B C): '(b: Bool) -> Type =
+    x'z'z'(p: P): X
+
+binding = \'A '(a: A) => a
+
+main: It =
+    callee 'this '(with that) '(tag = 0) '0 'self.me '[]

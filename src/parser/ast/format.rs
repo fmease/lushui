@@ -406,6 +406,7 @@ impl Format for super::Domain {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         FormatStruct::new(f, indentation)
             .name("Domain")
+            .field("explicitness", &self.explicitness)
             .field("aspect", &self.aspect)
             .field("binder", &self.binder)
             .field("expression", &self.expression)
@@ -418,7 +419,6 @@ impl Format for super::ParameterAspect {
         FormatStruct::new(f, indentation)
             .name("Parameter-Aspect")
             .inline()
-            .field("explicitness", &self.explicitness)
             .field("laziness", &self.laziness)
             .field("fieldness", &self.fieldness)
             .finish()
@@ -428,8 +428,6 @@ impl Format for super::ParameterAspect {
 /// Potentially with trailing whitespace.
 impl fmt::Display for super::ParameterAspect {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}", self.explicitness)?;
-
         if self.is_lazy() {
             write!(f, "lazy ")?;
         }
@@ -557,6 +555,7 @@ impl Format for super::ParameterGroup {
         write!(f, " ")?;
         FormatStruct::new(f, indentation)
             .name("Parameter-Group")
+            .field("explicitness", &self.explicitness)
             .field("aspect", &self.aspect)
             .field("parameters", &self.parameters)
             .field("type-annotation", &self.type_annotation)
@@ -712,7 +711,7 @@ impl Format for Explicitness {
 impl fmt::Display for Explicitness {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            Self::Implicit => write!(f, ","),
+            Self::Implicit => write!(f, "'"),
             Self::Explicit => write!(f, ""),
         }
     }

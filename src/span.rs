@@ -137,6 +137,9 @@ mod span {
     const _: () = assert!(size_of::<Span>() == 8);
     // const _: () = assert!(size_of::<Option<Span>>() == 8); // @Task
 
+    // @Beacon @Task rename and create operations according to common set operations and adjust the
+    // debugging asserts (which in many cases are overly restricted as they originally had a much more
+    // narrow scope in mind)
     impl Span {
         /// Invalid span used for things without a source location.
         ///
@@ -177,18 +180,19 @@ mod span {
             self.start <= index && index <= self.end
         }
 
-        pub fn merge(self, other: &impl PossiblySpanning) -> Self {
-            if let Some(other) = other.possible_span() {
-                self.assert_consecutive(other);
-                Self::new(self.start, other.end)
-            } else {
-                self
+        pub fn merge(self, other: impl PossiblySpanning) -> Self {
+            match other.possible_span() {
+                Some(other) => {
+                    self.assert_disjoint_and_consecutive(other);
+                    Self::new(self.start, other.end)
+                }
+                None => self,
             }
         }
 
-        pub fn merge_into(self, other: &impl PossiblySpanning) -> Self {
+        pub fn merge_into(self, other: impl PossiblySpanning) -> Self {
             if let Some(other) = other.possible_span() {
-                other.assert_consecutive(self);
+                other.assert_disjoint_and_consecutive(self);
                 Self::new(other.start, self.end)
             } else {
                 self
@@ -197,14 +201,23 @@ mod span {
 
         pub fn merging<S: PossiblySpanning>(&mut self, spanning: S) -> S {
             if let Some(other) = spanning.possible_span() {
-                self.assert_consecutive(other);
+                self.assert_disjoint_and_consecutive(other);
                 self.end = other.end;
             }
             spanning
         }
 
+        // @Note naming is not great
+        pub fn merging_from(&mut self, spanning: impl PossiblySpanning) {
+            if let Some(other) = spanning.possible_span() {
+                // self.assert_disjoint_and_consecutive(other);
+                debug_assert!(other.start <= self.start && other.end <= self.end);
+                self.start = other.start;
+            }
+        }
+
         #[inline(always)]
-        fn assert_consecutive(self, other: Span) {
+        fn assert_disjoint_and_consecutive(self, other: Span) {
             debug_assert!(
                 self.start <= other.start && self.end <= other.end,
                 "assertion failed: {:?} <= {:?} && {:?} <= {:?} , start <= start' && end <= end'",
@@ -213,6 +226,18 @@ mod span {
                 self.end,
                 other.end
             );
+        }
+
+        /// Similar to [Self::merge] except that the spans do not need to be disjoint.
+        pub fn fit_end(self, other: impl PossiblySpanning) -> Self {
+            match other.possible_span() {
+                Some(other) => {
+                    debug_assert!(self.start <= other.start && self.start <= other.end);
+
+                    Span::new(self.start, other.end)
+                }
+                None => self,
+            }
         }
     }
 
@@ -277,26 +302,27 @@ pub(crate) fn span(start: u32, end: u32) -> Span {
 
 mod spanning {
     use super::{Span, Spanned};
+    use crate::SmallVec;
 
-    pub trait Spanning {
+    pub trait Spanning: PossiblySpanning {
         fn span(&self) -> Span;
     }
 
     impl Spanning for Span {
-        fn span(&self) -> Span {
+        fn span(&self) -> Self {
             *self
+        }
+    }
+
+    impl<S: Spanning> Spanning for &'_ S {
+        fn span(&self) -> Span {
+            (**self).span()
         }
     }
 
     impl<S> Spanning for Spanned<S> {
         fn span(&self) -> Span {
             self.span
-        }
-    }
-
-    impl<S: Spanning> Spanning for &S {
-        fn span(&self) -> Span {
-            (*self).span()
         }
     }
 
@@ -322,7 +348,7 @@ mod spanning {
         }
     }
 
-    impl<S: Spanning, const N: usize> PossiblySpanning for crate::SmallVec<S, N> {
+    impl<S: Spanning, const N: usize> PossiblySpanning for SmallVec<S, N> {
         fn possible_span(&self) -> Option<Span> {
             self.first().map(|item| {
                 let mut span = item.span();
@@ -340,6 +366,28 @@ mod spanning {
             self.as_ref().map(<_>::span)
         }
     }
+
+    // @Task smh (specialization?) abstract over those two impls
+    // with impl<S: PossiblySpanning> PossiblySpanning for &'_ S
+    // this currently (obviously) conflicts with impl<S: Spanning> Spanning for &'_ S
+
+    // impl<S: PossiblySpanning> PossiblySpanning for &'_ S {
+    //     fn possible_span(&self) -> Option<Span> {
+    //         (**self).possible_span()
+    //     }
+    // }
+
+    impl<S: Spanning> PossiblySpanning for &'_ Option<S> {
+        fn possible_span(&self) -> Option<Span> {
+            (**self).possible_span()
+        }
+    }
+
+    impl<S: Spanning> PossiblySpanning for &'_ Vec<S> {
+        fn possible_span(&self) -> Option<Span> {
+            (**self).possible_span()
+        }
+    }
 }
 
 mod spanned {
@@ -347,24 +395,24 @@ mod spanned {
     use std::fmt;
 
     #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-    pub struct Spanned<K> {
-        pub kind: K,
+    pub struct Spanned<Kind> {
+        pub kind: Kind,
         pub span: Span,
     }
 
-    impl<K> Spanned<K> {
-        pub const fn new(span: Span, kind: K) -> Self {
+    impl<Kind> Spanned<Kind> {
+        pub const fn new(span: Span, kind: Kind) -> Self {
             Self { kind, span }
         }
     }
 
-    impl<K: fmt::Debug> fmt::Debug for Spanned<K> {
+    impl<Kind: fmt::Debug> fmt::Debug for Spanned<Kind> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "{:?} {:?}", self.kind, self.span)
         }
     }
 
-    impl<K: fmt::Display> fmt::Display for Spanned<K> {
+    impl<Kind: fmt::Display> fmt::Display for Spanned<Kind> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             self.kind.fmt(f)
         }

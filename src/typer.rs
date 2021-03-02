@@ -8,6 +8,7 @@ use crate::{
     error::{accumulate_errors, ManyErrExt, TransposeExt},
     format::{s_pluralize, DisplayWith, QuoteExt},
     lowered_ast::{AttributeKeys, Attributes},
+    parser::ast::Explicitness,
     resolver::{
         hir::{self, expr, Declaration, Expression},
         CrateScope, Identifier,
@@ -482,6 +483,7 @@ impl<'a> Typer<'a> {
                     PiType {
                         expression.attributes,
                         expression.span;
+                        explicitness: Explicitness::Explicit,
                         // @Temporary
                         // aspect: ParameterAspect { laziness: lambda.laziness, ..default() },
                         aspect,
@@ -514,6 +516,7 @@ impl<'a> Typer<'a> {
                             expr! {
                                 PiType {
                                     Attributes::default(), argument_type.span;
+                                    explicitness: Explicitness::Explicit,
                                     aspect: default(),
                                     parameter: None,
                                     domain: self.scope.lookup_unit_type(Some(application.callee.span))?,
@@ -597,7 +600,7 @@ impl<'a> Typer<'a> {
                         return Err(Diagnostic::error()
                             .with_code(Code::E035)
                             .with_message("attempt to analyze a type")
-                            .with_primary_span(&expression.span)
+                            .with_primary_span(expression.span)
                             .with_note("forbidden to uphold parametricity and type erasure")
                             .into());
                     }
@@ -877,7 +880,7 @@ impl<'a> Typer<'a> {
                     result_type.with(&self.scope),
                     type_.with(&self.scope)
                 ))
-                .with_primary_span(&result_type.span))
+                .with_primary_span(result_type.span))
         } else {
             Ok(())
         }

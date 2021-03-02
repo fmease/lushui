@@ -7,9 +7,9 @@ mod format;
 
 use crate::{
     ast::{self, Explicitness, Identifier, ParameterAspect, Path},
-    diagnostics::Results,
-    error::PossiblyErroneous,
-    span::{SourceFile, Span, Spanned},
+    diagnostics::{Code, Diagnostic, Results},
+    error::{ManyErrExt, PossiblyErroneous},
+    span::{PossiblySpanning, SourceFile, Span, Spanned, Spanning},
 };
 use std::rc::Rc;
 
@@ -87,6 +87,7 @@ pub struct PiType {
     // @Question should we move `aspect`, `parameter` and `domain` to
     // separate `Domain` type like in `crate::ast` or should we keep it
     // flat and also inline `Domain` in the non-lowered AST?
+    pub explicitness: Explicitness,
     pub aspect: ParameterAspect,
     pub parameter: Option<Identifier>,
     pub domain: Expression,
@@ -156,6 +157,235 @@ pub struct Binder {
 pub struct Deapplication {
     pub callee: Pattern,
     pub argument: Pattern,
+}
+
+/// Something attributes can be ascribed to.
+///
+/// This is the trait version of the struct [Item].
+pub trait AttributeTarget: Spanning {
+    /// Used in diagnostics.
+    fn name(&self) -> &'static str;
+
+    fn as_attribute_targets(&self) -> AttributeTargets;
+
+    /// Target-specific attribute checks
+    fn check_attributes(&self, _attributes: &Attributes) -> Results {
+        Ok(())
+    }
+}
+
+impl AttributeTarget for ast::Declaration {
+    fn name(&self) -> &'static str {
+        use ast::DeclarationKind::*;
+
+        match self.kind {
+            Value(_) => "a value declaration",
+            Data(_) => "a data declaration",
+            Constructor(_) => "a constructor declaration",
+            Module(_) => "a module declaration",
+            Header => "a module header declaraiton",
+            Crate(_) => "a crate declaration",
+            Group(_) => "an attribute group declaration",
+            Use(_) => "a use declaration",
+        }
+    }
+
+    fn as_attribute_targets(&self) -> AttributeTargets {
+        use ast::DeclarationKind::*;
+
+        match self.kind {
+            Value(_) => AttributeTargets::VALUE_DECLARATION,
+            Data(_) => AttributeTargets::DATA_DECLARATION,
+            Constructor(_) => AttributeTargets::CONSTRUCTOR_DECLARATION,
+            Module(_) | Header => AttributeTargets::MODULE_DECLARATION,
+            Crate(_) => AttributeTargets::CRATE_DECLARATION,
+            Group(_) => AttributeTargets::all(),
+            Use(_) => AttributeTargets::USE_DECLARATION,
+        }
+    }
+
+    fn check_attributes(&self, attributes: &Attributes) -> Results {
+        use ast::DeclarationKind::*;
+
+        let (body, binder) = match &self.kind {
+            Value(value) => (
+                value.body.as_ref().map(|expression| expression.span),
+                &value.binder,
+            ),
+            // @Task instead of using the span of the whole data declaration for empty bodies
+            // (`=` but nothing else), find a way to return the span of the `=`
+            Data(data) => (
+                data.constructors
+                    .as_ref()
+                    .map(|constructors| constructors.possible_span().unwrap_or(self.span)),
+                &data.binder,
+            ),
+            _ => return Ok(()),
+        };
+
+        match (body, attributes.has(AttributeKeys::FOREIGN)) {
+            (None, false) => Err(Diagnostic::error()
+                .with_code(Code::E012)
+                .with_message(format!("declaration `{}` has no definition", binder))
+                .with_primary_span(self)
+                .with_help("provide a definition with `=`")),
+            (Some(body), true) => Err(Diagnostic::error()
+                .with_code(Code::E020)
+                .with_message(format!(
+                    "`{}` is defined multiple times in this scope",
+                    binder
+                ))
+                .with_labeled_primary_span(&body, "conflicting definition")
+                .with_labeled_secondary_span(
+                    attributes.filter(AttributeKeys::FOREIGN).next().unwrap(),
+                    "conflicting definition",
+                )
+                .with_note(
+                    "declaration is marked `foreign` but it also has a body introduced by `=`",
+                )),
+            _ => Ok(()),
+        }
+        .many_err()
+    }
+}
+
+impl AttributeTarget for ast::Expression {
+    fn name(&self) -> &'static str {
+        use ast::ExpressionKind::*;
+
+        match self.kind {
+            PiTypeLiteral(_) => "a pi type literal",
+            Application(_) => "an application",
+            TypeLiteral => "a type literal",
+            NumberLiteral(_) => "a number literal expression",
+            TextLiteral(_) => "a text literal expression",
+            TypedHole(_) => "a typed hole",
+            Path(_) => "a path expression",
+            LambdaLiteral(_) => "a lambda literal",
+            LetIn(_) => "a let/in expression",
+            UseIn(_) => "a use/in expression",
+            CaseAnalysis(_) => "a case analysis",
+            DoBlock(_) => "a do block",
+            SequenceLiteral(_) => "a sequence literal expression",
+            Error => "an erroneous expression",
+        }
+    }
+
+    fn as_attribute_targets(&self) -> AttributeTargets {
+        use ast::ExpressionKind::*;
+
+        match self.kind {
+            PiTypeLiteral(_) => AttributeTargets::PI_TYPE_LITERAL_EXPRESSION,
+            Application(_) => AttributeTargets::APPLICATION_EXPRESSION,
+            TypeLiteral => AttributeTargets::TYPE_LITERAL_EXPRESSION,
+            NumberLiteral(_) => AttributeTargets::NUMBER_LITERAL_EXPRESSION,
+            TextLiteral(_) => AttributeTargets::TEXT_LITERAL_EXPRESSION,
+            TypedHole(_) => AttributeTargets::TYPED_HOLE_EXPRESSION,
+            Path(_) => AttributeTargets::PATH_EXPRESSION,
+            LambdaLiteral(_) => AttributeTargets::LAMBDA_LITERAL_EXPRESSION,
+            LetIn(_) => AttributeTargets::LET_IN_EXPRESSION,
+            UseIn(_) => AttributeTargets::USE_IN_EXPRESSION,
+            CaseAnalysis(_) => AttributeTargets::CASE_ANALYSIS_EXPRESSION,
+            DoBlock(_) => AttributeTargets::DO_BLOCK_EXPRESSION,
+            SequenceLiteral(_) => AttributeTargets::SEQUENCE_LITERAL_EXPRESSION,
+            Error => AttributeTargets::empty(),
+        }
+    }
+}
+
+impl AttributeTarget for ast::Pattern {
+    fn name(&self) -> &'static str {
+        use ast::PatternKind::*;
+
+        match self.kind {
+            NumberLiteral(_) => "a number literal pattern",
+            TextLiteral(_) => "a text literal pattern",
+            SequenceLiteralPattern(_) => "a sequence literal pattern",
+            Path(_) => "a path pattern",
+            Binder(_) => "a binder pattern",
+            Deapplication(_) => "a deapplication",
+        }
+    }
+
+    fn as_attribute_targets(&self) -> AttributeTargets {
+        use ast::PatternKind::*;
+
+        match self.kind {
+            NumberLiteral(_) => AttributeTargets::NUMBER_LITERAL_PATTERN,
+            TextLiteral(_) => AttributeTargets::TEXT_LITERAL_PATTERN,
+            SequenceLiteralPattern(_) => AttributeTargets::SEQUENCE_LITERAL_PATTERN,
+            Path(_) => AttributeTargets::PATH_PATTERN,
+            Binder(_) => AttributeTargets::BINDER_PATTERN,
+            Deapplication(_) => AttributeTargets::DEAPPLICATION_PATTERN,
+        }
+    }
+}
+
+// excluded: crate::ast::DeclarationKind::{Header, Group}
+// @Task somehow generate the explicit bits
+bitflags::bitflags! {
+    /// Attribute targets.
+    pub struct AttributeTargets: u32 {
+        const VALUE_DECLARATION = 1 << 0;
+        const DATA_DECLARATION = 1 << 1;
+        const CONSTRUCTOR_DECLARATION = 1 << 2;
+        const MODULE_DECLARATION = 1 << 3;
+        const CRATE_DECLARATION = 1 << 4;
+        const USE_DECLARATION = 1 << 5;
+
+        const DECLARATION = Self::VALUE_DECLARATION.bits
+            | Self::DATA_DECLARATION.bits
+            | Self::CONSTRUCTOR_DECLARATION.bits
+            | Self::MODULE_DECLARATION.bits
+            | Self::CRATE_DECLARATION.bits
+            | Self::USE_DECLARATION.bits;
+
+        const PI_TYPE_LITERAL_EXPRESSION = 1 << 6;
+        const APPLICATION_EXPRESSION = 1 << 7;
+        const TYPE_LITERAL_EXPRESSION = 1 << 8;
+        const NUMBER_LITERAL_EXPRESSION = 1 << 9;
+        const TEXT_LITERAL_EXPRESSION = 1 << 10;
+        const TYPED_HOLE_EXPRESSION = 1 << 11;
+        const PATH_EXPRESSION = 1 << 12;
+        const LAMBDA_LITERAL_EXPRESSION = 1 << 13;
+        const LET_IN_EXPRESSION = 1 << 14;
+        const USE_IN_EXPRESSION = 1 << 15;
+        const CASE_ANALYSIS_EXPRESSION = 1 << 16;
+        const DO_BLOCK_EXPRESSION = 1 << 17;
+        const SEQUENCE_LITERAL_EXPRESSION = 1 << 18;
+
+        const EXPRESSION = Self::PI_TYPE_LITERAL_EXPRESSION.bits
+            | Self::APPLICATION_EXPRESSION.bits
+            | Self::TYPE_LITERAL_EXPRESSION.bits
+            | Self::NUMBER_LITERAL_EXPRESSION.bits
+            | Self::TEXT_LITERAL_EXPRESSION.bits
+            | Self::TYPED_HOLE_EXPRESSION.bits
+            | Self::PATH_EXPRESSION.bits
+            | Self::LAMBDA_LITERAL_EXPRESSION.bits
+            | Self::LET_IN_EXPRESSION.bits
+            | Self::USE_IN_EXPRESSION.bits
+            | Self::CASE_ANALYSIS_EXPRESSION.bits
+            | Self::DO_BLOCK_EXPRESSION.bits
+            | Self::SEQUENCE_LITERAL_EXPRESSION.bits;
+
+        const NUMBER_LITERAL_PATTERN = 1 << 19;
+        const TEXT_LITERAL_PATTERN = 1 << 20;
+        const SEQUENCE_LITERAL_PATTERN = 1 << 21;
+        const PATH_PATTERN = 1 << 22;
+        const BINDER_PATTERN = 1 << 23;
+        const DEAPPLICATION_PATTERN = 1 << 24;
+
+        const PATTERN = Self::NUMBER_LITERAL_PATTERN.bits
+            | Self::TEXT_LITERAL_PATTERN.bits
+            | Self::SEQUENCE_LITERAL_PATTERN.bits
+            | Self::PATH_PATTERN.bits
+            | Self::BINDER_PATTERN.bits
+            | Self::DEAPPLICATION_PATTERN.bits;
+
+        const NUMBER_LITERAL = Self::NUMBER_LITERAL_EXPRESSION.bits | Self::NUMBER_LITERAL_PATTERN.bits;
+        const TEXT_LITERAL = Self::TEXT_LITERAL_EXPRESSION.bits | Self::TEXT_LITERAL_PATTERN.bits;
+        const SEQUENCE_LITERAL = Self::SEQUENCE_LITERAL_EXPRESSION.bits | Self::SEQUENCE_LITERAL_PATTERN.bits;
+    }
 }
 
 #[derive(Clone, Default)]
@@ -428,9 +658,9 @@ impl AttributeKind {
     }
 
     // keep this in sync with Self::target_names
-    pub fn targets(&self) -> ast::AttributeTargets {
-        use ast::AttributeTargets as Targets;
+    pub fn targets(&self) -> AttributeTargets {
         use AttributeKind::*;
+        use AttributeTargets as Targets;
 
         match self {
             Allow { .. } | Deny { .. } | Forbid { .. } | Warn { .. } => Targets::all(),

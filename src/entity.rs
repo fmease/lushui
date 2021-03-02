@@ -122,7 +122,7 @@ impl Entity {
         }
     }
 
-    pub fn invalidate(&mut self) {
+    pub fn mark_as_error(&mut self) {
         self.kind = EntityKind::Error;
     }
 }

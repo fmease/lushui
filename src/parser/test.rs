@@ -81,6 +81,16 @@ where
     }
 }
 
+#[allow(unused_macros)]
+macro no_std_assert($( $anything:tt )*) {
+    compile_error!("use function `assert_eq` instead of macro `assert_eq` and similar")
+}
+
+#[allow(unused_imports)]
+use no_std_assert as assert_eq;
+#[allow(unused_imports)]
+use no_std_assert as assert_ne;
+
 /// Compare with [application_lambda_literal_argument_strict_grouping].
 /// They parse to the same AST modulo spans.
 #[test]
@@ -99,6 +109,7 @@ fn application_lambda_literal_argument_lax_grouping() {
                                 Attributes::default(), span(7, 19);
                                 parameters: vec![
                                     ParameterGroup {
+                                        explicitness: Explicit,
                                         aspect: default(),
                                         parameters: smallvec![Identifier::new("this".into(), span(8, 11))],
                                         type_annotation: None,
@@ -139,6 +150,7 @@ fn application_lambda_literal_argument_strict_grouping() {
                                 Attributes::default(), span(6, 20);
                                 parameters: vec![
                                     ParameterGroup {
+                                        explicitness: Explicit,
                                         aspect: default(),
                                         parameters: smallvec![Identifier::new("this".into(), span(8, 11))],
                                         type_annotation: None,
@@ -168,8 +180,11 @@ fn pi_type_literal_application_bracketed_argument_domain() {
         Ok(expr! {
             PiTypeLiteral {
                 Attributes::default(), span(1, 21);
-                domain: Domain::simple(
-                    expr! {
+                domain: Domain {
+                    explicitness: Explicit,
+                    aspect: default(),
+                    binder: None,
+                    expression: expr! {
                         Application {
                             Attributes::default(), span(1, 12);
                             callee: Identifier::new("Alpha".into(), span(1, 5)).into(),
@@ -178,7 +193,7 @@ fn pi_type_literal_application_bracketed_argument_domain() {
                             binder: None,
                         }
                     },
-                ),
+                },
                 codomain: Identifier::new("Gamma".into(), span(17, 21)).into(),
             }
         }),
@@ -192,16 +207,107 @@ fn bracketed_pi_type_literal_application_bracketed_argument_domain() {
         Ok(expr! {
             PiTypeLiteral {
                 Attributes::default(), span(1, 23);
-                domain: Domain::simple(expr! {
-                    Application {
-                        Attributes::default(), span(2, 13);
-                        callee: Identifier::new("Alpha".into(), span(2, 6)).into(),
-                        argument: Identifier::new("Beta".into(), span(8, 13)).into(),
-                        explicitness: Explicit,
-                        binder: None,
-                    }
-                }),
+                domain: Domain {
+                    explicitness: Explicit,
+                    aspect: default(),
+                    binder: None,
+                    expression: expr! {
+                        Application {
+                            Attributes::default(), span(2, 13);
+                            callee: Identifier::new("Alpha".into(), span(2, 6)).into(),
+                            argument: Identifier::new("Beta".into(), span(8, 13)).into(),
+                            explicitness: Explicit,
+                            binder: None,
+                        }
+                    },
+                },
                 codomain: Identifier::new("Gamma".into(), span(18, 22)).into(),
+            }
+        }),
+    );
+}
+
+/// Compare this with `f Int -> Type`.
+///
+/// This should demonstrate why we don't want `'A -> Type` to mean `'(_: A) -> Type`.
+/// Compare this with [application_pi_type_literal_implicit_domain], too.
+#[test]
+fn pi_type_literal_application_implicit_argument_domain() {
+    assert_eq(
+        parse_expression("f 'Int -> Type"),
+        Ok(expr! {
+            PiTypeLiteral {
+                Attributes::default(), span(1, 14);
+                domain: Domain {
+                    explicitness: Explicit,
+                    aspect: default(),
+                    binder: None,
+                    expression: expr! {
+                        Application {
+                            Attributes::default(), span(1, 6);
+                            callee: Identifier::new("f".into(), span(1, 1)).into(),
+                            argument: Identifier::new("Int".into(), span(4, 6)).into(),
+                            explicitness: Implicit,
+                            binder: None,
+                        }
+                    }
+                },
+                codomain: expr! { TypeLiteral { Attributes::default(), span(11, 14) } },
+            }
+        }),
+    );
+}
+
+#[test]
+fn pi_type_literal_application_implicit_named_argument_domain() {
+    assert_eq(
+        parse_expression("f '(T = Int) -> Type"),
+        Ok(expr! {
+            PiTypeLiteral {
+                Attributes::default(), span(1, 20);
+                domain: Domain {
+                    explicitness: Explicit,
+                    aspect: default(),
+                    binder: None,
+                    expression: expr! {
+                        Application {
+                            Attributes::default(), span(1, 12);
+                            callee: Identifier::new("f".into(), span(1, 1)).into(),
+                            argument: Identifier::new("Int".into(), span(9, 11)).into(),
+                            explicitness: Implicit,
+                            binder: Some(Identifier::new("T".into(), span(5, 5))),
+                        }
+                    }
+                },
+                codomain: expr! { TypeLiteral { Attributes::default(), span(17, 20) } },
+            }
+        }),
+    );
+}
+
+/// Compare with [pi_type_literal_application_implicit_argument_domain].
+#[test]
+fn application_pi_type_literal_implicit_domain() {
+    assert_eq(
+        parse_expression("receive ('(n: Int) -> Type)"),
+        Ok(expr! {
+            Application {
+                Attributes::default(), span(1, 27);
+                callee: Identifier::new("receive".into(), span(1, 7)).into(),
+                argument: expr! {
+                    PiTypeLiteral {
+                        Attributes::default(), span(9, 27);
+                        domain: Domain {
+                            explicitness: Implicit,
+                            aspect: default(),
+                            binder: Some(Identifier::new("n".into(), span(12, 12))),
+                            expression: Identifier::new("Int".into(), span(15, 17)).into(),
+                        },
+                        codomain: expr! { TypeLiteral { Attributes::default(), span(23, 26) } },
+                    }
+                },
+                explicitness: Explicit,
+                binder: None,
             }
         }),
     );

@@ -74,15 +74,13 @@ impl<'a> Resolver<'a> {
             .map_err(|error| error.diagnostics(mem::take(&mut self.scope.duplicate_definitions)))?;
 
         self.scope.resolve_use_bindings();
-        self.scope.resolve_exposure_reaches()?;
 
-        // dbg!(&self.scope);
+        // @Task @Beacon don't return early here
+        self.scope.resolve_exposure_reaches()?;
 
         let declaration = self
             .finish_resolve_declaration(declaration, None, Context::default())
             .try_in(&mut self.scope.errors);
-
-        // dbg!(&self.scope);
 
         self.scope.errors.take().err_or(declaration)
     }
@@ -444,6 +442,7 @@ impl<'a> Resolver<'a> {
                     PiType {
                         expression.attributes,
                         expression.span;
+                        explicitness: pi.explicitness,
                         aspect: pi.aspect,
                         parameter: pi.parameter.clone()
                             .map(|parameter| Identifier::new(Index::DeBruijnParameter, parameter.clone())),

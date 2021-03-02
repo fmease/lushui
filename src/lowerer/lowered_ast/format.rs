@@ -3,6 +3,8 @@
 // @Task rewrite all the formatting functions to respect precedence
 // just follow what we did for HIR nodes (crate::hir::format)
 
+// @Task update to the new implicitness syntax
+
 use crate::ast::{Explicit, Implicit};
 use std::{default::default, fmt};
 
@@ -190,6 +192,8 @@ impl fmt::Display for super::Expression {
 impl fmt::Display for super::PiType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let domain_needs_brackets = self.parameter.is_some() || self.aspect != default();
+
+        write!(f, "{}", self.explicitness)?;
 
         if domain_needs_brackets {
             write!(f, "(")?;

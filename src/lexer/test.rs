@@ -140,29 +140,6 @@ fn possibly_lex_keywords() {
 }
 
 #[test]
-fn do_not_lex_identifier_single_prime() {
-    assert_ok_token(
-        lex("'"),
-        vec![
-            Token::new_illegal('\'', span(1, 1)),
-            Token::new(EndOfInput, span(1, 1)),
-        ],
-    );
-}
-
-#[test]
-fn do_not_lex_identifier_leading_prime() {
-    assert_ok_token(
-        lex("'alpha"),
-        vec![
-            Token::new_illegal('\'', span(1, 1)),
-            Token::new_identifier("alpha".into(), span(2, 6)),
-            Token::new(EndOfInput, span(6, 6)),
-        ],
-    );
-}
-
-#[test]
 fn do_not_lex_identifier_with_trailing_dash() {
     assert_err(lex("alpha-"), &[&[span(6, 6)]]);
 }
@@ -187,7 +164,7 @@ fn lex_indentation() {
     assert_ok_token(
         lex("
 alpha
-    alpha,
+    alpha:
     <$
 beta
     gamma
@@ -202,7 +179,7 @@ beta
             Token::new(LineBreak, span(7, 7)),
             Token::new(Indentation, span(8, 11)),
             Token::new_identifier("alpha".into(), span(12, 16)),
-            Token::new(Comma, span(17, 17)),
+            Token::new(Colon, span(17, 17)),
             Token::new(LineBreak, span(18, 18)),
             Token::new_punctuation("<$".into(), span(23, 24)),
             Token::new(LineBreak, span(25, 25)),
@@ -406,6 +383,17 @@ fn lex_unterminated_text_literal() {
         vec![
             Token::new_text_literal("text message".into(), span(1, 13), false),
             Token::new(EndOfInput, span(13, 13)),
+        ],
+    );
+}
+
+#[test]
+fn lex_single_quote() {
+    assert_ok_token(
+        lex("'"),
+        vec![
+            Token::new(SingleQuote, span(1, 1)),
+            Token::new(EndOfInput, span(1, 1)),
         ],
     );
 }

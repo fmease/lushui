@@ -1,0 +1,5 @@
+;; TEST fail check
+
+foo = let x: Int in 0
+
+

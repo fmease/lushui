@@ -1,0 +1,4 @@
+;; TEST fail check
+
+foo = let x f in 0
+

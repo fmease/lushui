@@ -75,24 +75,28 @@ Expression ::= Pi-Type-Literal-Or-Lower
 ; contain further expressions) `Lower-Expression`s namely let/in, use/in, lambda literals,
 ; case analyses and do blocks (not sure about sequence literals)
 Pi-Type-Literal-Or-Lower ::=
-    (Complex-Pi-Type-Domain | Application-Or-Lower)
+    (Designated-Pi-Type-Domain | Application-Or-Lower)
     "->" Pi-Type-Literal-Or-Lower
-Complex-Pi-Type-Domain ::= "(" Parameter-Aspect #Identifier Type-Annotation ")"
+Designated-Pi-Type-Domain ::=
+    Explicitness
+    "(" Parameter-Aspect #Identifier Type-Annotation ")"
 
-Parameter-Aspect ::= Explicitness Laziness Fieldness
+Parameter-Aspect ::= Laziness Fieldness
 Laziness ::= "lazy"?
 Fieldness ::= "field"?
 
-Application-Or-Lower ::=
-    Lower-Expression
-    (Lower-Expression | "(" Explicitness (#Identifier "=")? Expression ")")*
+Application-Or-Lower ::= Lower-Expression Argument*
+Argument ::=
+    | Explicitness Lower-Expression
+    | Explicitness "(" (#Identifier "=")? Expression ")"
 
 ; ; left-recursive version unsuitable for the recursive descent parser
 ; ; but indeed usable for pretty-printers:
 ;
-; Application-Or-Lower ::=
-;     Application-Or-Lower?
-;     (Lower-Expression | "(" Explicitness (#Identifier "=")? Expression ")")*
+; Application-Or-Lower ::= Application-Or-Lower? Argument*
+; Argument ::=
+;     | Lower-Expression
+;     | Explicitness "(" (#Identifier "=")? Expression ")"
 
 Lower-Expression ::= Attribute* Naked-Lower-Expression
 Naked-Lower-Expression ::=
@@ -118,8 +122,9 @@ Path-Hanger ::= "crate" | "super" | "self"
 Lambda-Literal ::= "\" Parameters Type-Annotation? "=>" Expression
 
 Let-In ::=
-    "let" #Identifier Parameters Type_Annotation? "="
-    Possibly-Breakably-Indented-Expression "in" Line-Break? Expression
+    "let" #Identifier Parameters Type_Annotation?
+    ("=" Possibly-Breakably-Indented-Expression)?
+    "in" Line-Break? Expression
 
 Use-In ::= "use" Use-Path-Tree "in" Line-Break? Expression
 
@@ -135,13 +140,15 @@ Expression-Statement ::= Expression Line-Break
 
 Parameters ::= Parameter-Group*
 
-Parameter-Group ::=
+Parameter-Group ::= Explicitness Naked-Parameter-Group
+Naked-Parameter-Group ::=
     | #Identifier
-    | "(" Pi-Type-Parameter-Aspect #Identifier+ Type-Annotation? ")"
+    | "(" Parameter-Aspect #Identifier+ Type-Annotation? ")"
 
-Pattern ::=
-    Lower-Pattern
-    (Lower-Pattern | "(" Explicitness (#Identifier "=")? Pattern ")")*
+Pattern ::= Lower-Pattern Pattern-Argument*
+Pattern-Argument ::=
+    | Explicitness Lower-Pattern
+    | Explicitness "(" (#Identifier "=")? Pattern ")"
 
 Lower-Pattern ::= Attribute* Naked-Lower-Pattern
 Naked-Lower-Pattern ::=
@@ -166,5 +173,5 @@ Possibly-Breakably-Indented-Expression ::=
 
 Terminated-Expression ::= Expression (<!Dedentation Line-Break)?
 
-Explicitness ::= ","?
+Explicitness ::= "'"?
 

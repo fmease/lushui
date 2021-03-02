@@ -1,7 +1,7 @@
 //! The definition of the textual representation of the [HIR](crate::hir).
 
 use super::{CrateScope, Declaration, Expression, Pattern};
-use crate::{ast::Implicit, format::DisplayWith};
+use crate::format::DisplayWith;
 use joinery::JoinableIterator;
 use std::{default::default, fmt};
 
@@ -129,6 +129,8 @@ fn format_pi_type_literal_or_lower(
     // for further details.
     match &expression.kind {
         PiType(pi) => {
+            write!(f, "{}", pi.explicitness)?;
+
             let domain_needs_brackets = pi.parameter.is_some() || pi.aspect != default();
 
             // @Task add tests to check if parameter aspect is handled correctly
@@ -149,13 +151,12 @@ fn format_pi_type_literal_or_lower(
             format_pi_type_literal_or_lower(&pi.codomain, scope, f)
         }
         Lambda(lambda) => {
-            write!(f, r"\")?;
-            let parameter_needs_brackets = lambda.parameter_type_annotation.is_some()
-                || lambda.explicitness == Implicit
-                || lambda.laziness.is_some();
+            write!(f, r"\{}", lambda.explicitness)?;
+            let parameter_needs_brackets =
+                lambda.parameter_type_annotation.is_some() || lambda.laziness.is_some();
 
             if parameter_needs_brackets {
-                write!(f, "({}", lambda.explicitness)?;
+                write!(f, "(")?;
                 if lambda.laziness.is_some() {
                     write!(f, "lazy ")?;
                 }
@@ -203,19 +204,8 @@ fn format_application_or_lower(
     match &expression.kind {
         Application(application) => {
             format_application_or_lower(&application.callee, scope, f)?;
-            write!(f, " ")?;
-            if application.explicitness == Implicit
-            /*|| application.binder.is_some()*/
-            {
-                write!(
-                    f,
-                    "({}{})",
-                    application.explicitness,
-                    application.argument.with(scope)
-                )
-            } else {
-                format_lower_expression(&application.argument, scope, f)
-            }
+            write!(f, " {}", application.explicitness)?;
+            format_lower_expression(&application.argument, scope, f)
         }
         ForeignApplication(application) => {
             write!(f, "{}", application.callee)?;
@@ -390,6 +380,7 @@ mod test {
             (expr! {
                 PiType {
                     Attributes::default(), Span::SHAM;
+                    explicitness: Explicit,
                     aspect: default(),
                     parameter: None,
                     domain: expr! {
@@ -422,6 +413,7 @@ mod test {
             (expr! {
                 PiType {
                     Attributes::default(), Span::SHAM;
+                    explicitness: Explicit,
                     aspect: default(),
                     parameter: Some(alpha.clone()),
                     domain: expr! {
@@ -452,11 +444,12 @@ mod test {
         let scope = CrateScope::new();
 
         assert_eq(
-            "(,whatever: Type) -> Type",
+            "'(whatever: Type) -> Type",
             (expr! {
                 PiType {
                     Attributes::default(), Span::SHAM;
-                    aspect: Implicit.into(),
+                    explicitness: Implicit,
+                    aspect: default(),
                     parameter: Some(Identifier::parameter("whatever")),
                     domain: type_(),
                     codomain: type_(),
@@ -480,11 +473,13 @@ mod test {
             (expr! {
                 PiType {
                     Attributes::default(), Span::SHAM;
+                    explicitness: Explicit,
                     aspect: default(),
                     parameter: None,
                     domain: expr! {
                         PiType {
                             Attributes::default(), Span::SHAM;
+                            explicitness: Explicit,
                             aspect: default(),
                             parameter: None,
                             domain: int.clone(),
@@ -515,12 +510,14 @@ mod test {
             (expr! {
                 PiType {
                     Attributes::default(), Span::SHAM;
+                    explicitness: Explicit,
                     aspect: default(),
                     parameter: None,
                     domain: int,
                     codomain: expr! {
                         PiType {
                             Attributes::default(), Span::SHAM;
+                            explicitness: Explicit,
                             aspect: default(),
                             parameter: None,
                             domain: text,
@@ -550,6 +547,7 @@ mod test {
             (expr! {
                 PiType {
                     Attributes::default(), Span::SHAM;
+                    explicitness: Explicit,
                     aspect: default(),
                     parameter: None,
                     domain: expr! {
@@ -703,12 +701,41 @@ mod test {
         let identity = scope.add("identity", EntityKind::UntypedValue);
 
         assert_eq(
-            r"crate.identity (,Type)",
+            r"crate.identity 'Type",
             (expr! {
                 Application {
                     Attributes::default(), Span::SHAM;
                     callee: identity.to_expression(),
                     argument: type_(),
+                    explicitness: Implicit,
+                }
+            })
+            .with(&scope)
+            .to_string(),
+        );
+    }
+
+    #[test]
+    fn application_complex_implicit_argument() {
+        let mut scope = CrateScope::new();
+
+        let identity = scope.add("identity", EntityKind::UntypedValue);
+        let text = scope.add("Text", EntityKind::untyped_data_type());
+
+        assert_eq(
+            r"crate.identity '(prepare crate.Text)",
+            (expr! {
+                Application {
+                    Attributes::default(), Span::SHAM;
+                    callee: identity.to_expression(),
+                    argument: expr! {
+                        Application {
+                            Attributes::default(), Span::SHAM;
+                            callee: Identifier::parameter("prepare").to_expression(),
+                            argument: text.to_expression(),
+                            explicitness: Explicit,
+                        }
+                    },
                     explicitness: Implicit,
                 }
             })
@@ -800,7 +827,7 @@ mod test {
         let scope = CrateScope::new();
 
         assert_eq(
-            r"\(,Input: Type) => Type",
+            r"\'(Input: Type) => Type",
             (expr! {
                 Lambda {
                     Attributes::default(), Span::SHAM;
@@ -808,6 +835,39 @@ mod test {
                     parameter_type_annotation: Some(type_()),
                     body_type_annotation: None,
                     body: type_(),
+                    explicitness: Implicit,
+                    laziness: None,
+                }
+            })
+            .with(&scope)
+            .to_string(),
+        );
+    }
+
+    #[test]
+    fn lambda_implicit_unannotated_parameter() {
+        let scope = CrateScope::new();
+        let a = Identifier::parameter("a");
+
+        assert_eq(
+            r"\'A => \a => a",
+            (expr! {
+                Lambda {
+                    Attributes::default(), Span::SHAM;
+                    parameter: Identifier::parameter("A"),
+                    parameter_type_annotation: None,
+                    body_type_annotation: None,
+                    body: expr! {
+                        Lambda {
+                            Attributes::default(), Span::SHAM;
+                            parameter: a.clone(),
+                            parameter_type_annotation: None,
+                            body_type_annotation: None,
+                            body: a.to_expression(),
+                            explicitness: Explicit,
+                            laziness: None,
+                        }
+                    },
                     explicitness: Implicit,
                     laziness: None,
                 }
@@ -835,6 +895,7 @@ mod test {
                     body: expr! {
                         PiType {
                             Attributes::default(), Span::SHAM;
+                            explicitness: Explicit,
                             aspect: default(),
                             parameter: None,
                             domain: x.to_expression(),

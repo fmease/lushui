@@ -470,7 +470,7 @@ impl CrateScope {
                         self.bindings[index].kind = EntityKind::Use { reference };
                     }
                     Err(error @ (UnresolvedBinding { .. } | Unrecoverable(_))) => {
-                        self.bindings[index].invalidate();
+                        self.bindings[index].mark_as_error();
                         self.errors.insert(error.diagnostic(self).unwrap());
                     }
                     Err(UnresolvedUseBinding { inquirer }) => {
@@ -517,7 +517,7 @@ impl CrateScope {
                     .map(|indices| -> Diagnostic {
                         indices
                             .iter()
-                            .for_each(|&index| self.bindings[index].invalidate());
+                            .for_each(|&index| self.bindings[index].mark_as_error());
 
                         let declarations = unordered_listing(
                             indices
@@ -1286,7 +1286,7 @@ fn module_used_as_a_value(span: Span) -> Diagnostic {
     Diagnostic::error()
         .with_code(Code::E023)
         .with_message("module used as if it was a value")
-        .with_primary_span(&span)
+        .with_primary_span(span)
         .with_help("modules are not first-class citizens, consider utilizing records for such cases instead")
 }
 

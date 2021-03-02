@@ -28,9 +28,6 @@
 //! | `#T`      | Named Terminal                      | Lexed token by name                                           |
 //! | `<!A`     | Negative Look-Behind                |                                                               |
 
-// @Task allow underscores in places where binders are allowed
-// @Task parse temporary Lazy-Expression ::= "lazy" Expression
-
 pub mod ast;
 #[cfg(test)]
 mod test;
@@ -40,7 +37,7 @@ use crate::{
     format::{ordered_listing, Conjunction},
     lexer::{Token, TokenKind},
     smallvec,
-    span::{SourceFile, Span, Spanning},
+    span::{SourceFile, Span, Spanned, Spanning},
     SmallVec,
 };
 use ast::*;
@@ -56,6 +53,9 @@ const STANDARD_DECLARATION_DELIMITERS: [Delimiter; 3] = {
         Token(TokenKind::LineBreak),
     ]
 };
+
+const BRACKET_POTENTIAL_PI_TYPE_LITERAL: &str =
+    "add round brackets around the potential pi type literal to disambiguate the expression";
 
 /// The state of the parser.
 pub struct Parser<'a> {
@@ -83,8 +83,6 @@ impl<'a> Parser<'a> {
     /// Parse in a sandboxed way.
     ///
     /// Used for arbitrary look-ahead. Restores the old cursor on failure.
-    // @Task "restore" old warnings state on Err, so we don't get false positive warnings
-    // when looking arbitrarily far ahead
     fn reflect<T>(&mut self, parser: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
         let index = self.index;
         let result = self.manually_reflect(parser);
@@ -230,8 +228,8 @@ impl<'a> Parser<'a> {
             .any(|&token| token == queried_token_kind)
     }
 
-    fn succeeding_token_kind(&self) -> TokenKind {
-        self.tokens[self.index + 1].kind
+    fn succeeding_token(&self) -> &Token {
+        &self.tokens[self.index + 1]
     }
 
     /// Parse a declaration.
@@ -288,9 +286,7 @@ impl<'a> Parser<'a> {
             }
             Indentation => {
                 self.advance();
-                self.error(|| {
-                    Diagnostic::unimplemented("attribute groups").with_primary_span(&span)
-                })
+                self.error(|| Diagnostic::unimplemented("attribute groups").with_primary_span(span))
                 // self.consume(Dedentation)?;
             }
             _ => self.error(|| Expected::Declaration.but_actual_is(self.current_token())),
@@ -541,7 +537,7 @@ impl<'a> Parser<'a> {
         Ok(decl! {
             Data {
                 attributes,
-                keyword_span.merge(&span);
+                keyword_span.merge(span);
                 binder,
                 parameters,
                 type_annotation,
@@ -781,7 +777,7 @@ impl<'a> Parser<'a> {
                     span.merging(&self.consume(ClosingRoundBracket).unwrap());
 
                     return Ok(UsePathTree::new(
-                        path.span().merge(&span),
+                        path.span().merge(span),
                         UsePathTreeKind::Multiple { path, bindings },
                     ));
                 }
@@ -883,64 +879,76 @@ impl<'a> Parser<'a> {
     /// ; contain further expressions) `Lower-Expression`s namely let/in, use/in, lambda literals,
     /// ; case analyses and do blocks (not sure about sequence literals)
     /// Pi-Type-Literal-Or-Lower ::=
-    ///     (Complex-Pi-Type-Domain | Application-Or-Lower)
+    ///     (Designated-Pi-Type-Domain | Application-Or-Lower)
     ///     "->" Pi-Type-Literal-Or-Lower
-    /// Complex-Pi-Type-Domain ::= "(" Parameter-Aspect #Identifier Type-Annotation ")"
+    /// Designated-Pi-Type-Domain ::=
+    ///     Explicitness
+    ///     "(" Parameter-Aspect #Identifier Type-Annotation ")"
     /// ```
     fn parse_pi_type_literal_or_lower(&mut self) -> Result<Expression> {
         use TokenKind::*;
-        let mut span = Span::SHAM;
 
         let domain = self
             .reflect(|this| {
-                span = this.consume(OpeningRoundBracket)?.span;
+                let (explicitness, span) = this.parse_optional_implicitness();
+                let mut span = this.consume(OpeningRoundBracket)?.span.merge_into(span);
 
                 let aspect = this.parse_parameter_aspect();
-
                 let binder = this.consume_identifier()?;
-                // @Question maybe .map_err(|error| error.fatal()) to mark this one fatal
-                // (in respect to error reflecting)
+                // @Question should this be fatal in respect to reflecting?
                 let domain = this.parse_type_annotation(ClosingRoundBracket.into())?;
 
                 span.merging(&this.consume(ClosingRoundBracket)?);
 
-                Ok(Domain {
-                    aspect,
-                    binder: Some(binder),
-                    expression: domain,
-                })
+                Ok(Spanned::new(
+                    span,
+                    Domain {
+                        explicitness,
+                        aspect,
+                        binder: Some(binder),
+                        expression: domain,
+                    },
+                ))
             })
             .or_else(|_| -> Result<_> {
                 // @Question should we parse `lazy` here too to allow for unnamed laziness
                 // which is reasonable?
                 let domain = self.parse_application_or_lower()?;
-                span = domain.span;
-                Ok(Domain::simple(domain))
+                Ok(Spanned::new(
+                    domain.span,
+                    Domain {
+                        explicitness: Explicit,
+                        aspect: default(),
+                        binder: None,
+                        expression: domain,
+                    },
+                ))
             })?;
 
         if self.current_token().kind == ThinArrowRight {
             self.advance();
 
+            let mut span = domain.span;
             let codomain = span.merging(self.parse_pi_type_literal_or_lower()?);
 
             Ok(expr! {
                 PiTypeLiteral {
                     Attributes::new(),
                     span;
-                    domain,
+                    domain: domain.kind,
                     codomain,
                 }
             })
         }
         // the case where we don't actually have a pi type literal but merely
         // an application or lower
-        else if domain.binder.is_none() {
-            Ok(domain.expression)
+        else if domain.kind.binder.is_none() {
+            Ok(domain.kind.expression)
         } else {
             self.error(|| {
                 Expected::Token(ThinArrowRight)
                     .but_actual_is(self.current_token())
-                    .with_labeled_secondary_span(&span, "the start of a pi type literal")
+                    .with_labeled_secondary_span(domain, "the start of a pi type literal")
             })
         }
     }
@@ -950,14 +958,13 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```ebnf
-    /// Parameter-Aspect ::= Explicitness Laziness Fieldness
+    /// Parameter-Aspect ::= Laziness Fieldness
     /// Laziness ::= "lazy"?
     /// Fieldness ::= "field"?
     /// ```
     fn parse_parameter_aspect(&mut self) -> ParameterAspect {
         use TokenKind::*;
 
-        let explicitness = self.consume_explicitness_symbol();
         // @Task allow `lazy` and `field` to appear in any order
         // relative to each other. that flexibility should only be
         // allow syntactically not semantically and we should
@@ -967,7 +974,6 @@ impl<'a> Parser<'a> {
         let fieldness = self.consume_span(Field);
 
         ParameterAspect {
-            explicitness,
             laziness,
             fieldness,
         }
@@ -978,16 +984,18 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```ebnf
-    /// Application-Or-Lower ::=
-    ///     Lower-Expression
-    ///     (Lower-Expression | "(" Explicitness (#Identifier "=")? Expression ")")*
+    /// Application-Or-Lower ::= Lower-Expression Argument*
+    /// Argument ::=
+    ///     | Explicitness Lower-Expression
+    ///     | Explicitness "(" (#Identifier "=")? Expression ")"
     ///
     /// ; ; left-recursive version unsuitable for the recursive descent parser
     /// ; ; but indeed usable for pretty-printers:
     /// ;
-    /// ; Application-Or-Lower ::=
-    /// ;     Application-Or-Lower?
-    /// ;     (Lower-Expression | "(" Explicitness (#Identifier "=")? Expression ")")*
+    /// ; Application-Or-Lower ::= Application-Or-Lower? Argument*
+    /// ; Argument ::=
+    /// ;     | Lower-Expression
+    /// ;     | Explicitness "(" (#Identifier "=")? Expression ")"
     /// ```
     fn parse_application_or_lower(&mut self) -> Result<Expression> {
         self.parse_application_like_or_lower()
@@ -1105,9 +1113,7 @@ impl<'a> Parser<'a> {
                     // parsing w/o introducing too many (any?) useless/confusing consequential
                     // errors!
                     .when(self.current_token().kind == ThinArrowRight, |this| {
-                        this.with_help(
-                            "add round brackets around the potential pi type literal to disambiguate the expression",
-                        )
+                        this.with_help(BRACKET_POTENTIAL_PI_TYPE_LITERAL)
                     })
             }),
         }
@@ -1184,23 +1190,44 @@ impl<'a> Parser<'a> {
     ///
     /// ```ebnf
     /// Let-In ::=
-    ///     "let" #Identifier Parameters Type_Annotation? "="
-    ///     Possibly-Breakably-Indented-Expression "in" Line-Break? Expression
+    ///     "let" #Identifier Parameters Type_Annotation?
+    ///     ("=" Possibly-Breakably-Indented-Expression)?
+    ///     "in" Line-Break? Expression
     /// ```
+    // @Task allow omitting the `in` at the end of the line (@Note we might want to restrict it to
+    // scopes of type let/in and use/in; is that still context-free?)
+    // @Note however (at least in the future): `let x = start\n    end in 0` should mean that the
+    // "expression" of the let/in is the application `start end` and `let x = start\nend in 0`
+    // (on its own) w/o indentation is a syntax error and `let x = start\nend` is a let/in followed
+    // by a scope (w/o `in`) being the identifier `end`
+    // @Task allow writing `in` at the start of the next line (unless the previous line
+    // already had one ofc)
+    // @Task skip duplicate `=`, `in`, `:`s (throw an error for each one)
     fn finish_parse_let_in(
         &mut self,
         span_of_let: Span,
         attributes: Attributes,
     ) -> Result<Expression> {
+        use TokenKind::*;
+
         let mut span = span_of_let;
         let binder = self.consume_identifier()?;
-        let parameters =
-            self.parse_parameters(&[Delimiter::TypeAnnotationPrefix, Delimiter::DefinitionPrefix])?;
+        let parameters = self.parse_parameters(&[
+            Delimiter::TypeAnnotationPrefix,
+            Delimiter::DefinitionPrefix,
+            In.into(),
+            // next up: line break (maybe)
+        ])?;
         let type_annotation = self.parse_optional_type_annotation()?;
-        self.consume(TokenKind::Equals)?;
-        let expression = self.parse_possibly_breakably_indented_expression()?;
-        self.consume(TokenKind::In)?;
-        let _ = self.has_consumed(TokenKind::LineBreak);
+
+        let expression = if self.has_consumed(Equals) {
+            Some(self.parse_possibly_breakably_indented_expression()?)
+        } else {
+            None
+        };
+
+        self.consume(In)?;
+        let _ = self.has_consumed(LineBreak);
         let scope = span.merging(self.parse_expression()?);
 
         Ok(expr! {
@@ -1268,7 +1295,7 @@ impl<'a> Parser<'a> {
 
         let mut cases = Vec::new();
 
-        if self.current_token().kind == LineBreak && self.succeeding_token_kind() == Indentation {
+        if self.current_token().kind == LineBreak && self.succeeding_token().kind == Indentation {
             self.advance();
             self.advance();
 
@@ -1330,6 +1357,7 @@ impl<'a> Parser<'a> {
 
         while self.current_token().kind != Dedentation {
             statements.push(match self.current_token().kind {
+                // @Task move to its own function
                 Let => {
                     self.advance();
                     let binder = self.consume_identifier()?;
@@ -1355,8 +1383,9 @@ impl<'a> Parser<'a> {
                 }
                 _ => {
                     if self.current_token().kind == Identifier
-                        && matches!(self.succeeding_token_kind(), Colon | ThinArrowLeft)
+                        && matches!(self.succeeding_token().kind, Colon | ThinArrowLeft)
                     {
+                        // @Task move to its own function
                         let binder = self.current_token_into_identifier();
                         self.advance();
                         let type_annotation = self.parse_optional_type_annotation()?;
@@ -1419,19 +1448,24 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```ebnf
-    /// Parameter-Group ::=
+    /// Parameter-Group ::= Explicitness Naked-Parameter-Group
+    /// Naked-Parameter-Group ::=
     ///     | #Identifier
-    ///     | "(" Pi-Type-Parameter-Aspect #Identifier+ Type-Annotation? ")"
+    ///     | "(" Parameter-Aspect #Identifier+ Type-Annotation? ")"
     /// ```
     fn parse_parameter_group(&mut self, delimiters: &[Delimiter]) -> Result<ParameterGroup> {
         use TokenKind::*;
-        let mut span = self.current_token().span;
+
+        let (explicitness, span) = self.parse_optional_implicitness();
+        let mut span = self.current_token().span.merge_into(span);
 
         match self.current_token().kind {
             Identifier => {
                 let binder = self.current_token_into_identifier();
                 self.advance();
+
                 Ok(ParameterGroup {
+                    explicitness,
                     aspect: default(),
                     parameters: smallvec![binder],
                     type_annotation: None,
@@ -1456,6 +1490,7 @@ impl<'a> Parser<'a> {
                 span.merging(self.consume(ClosingRoundBracket)?);
 
                 Ok(ParameterGroup {
+                    explicitness,
                     aspect,
                     parameters,
                     type_annotation,
@@ -1474,42 +1509,102 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```ebnf
-    /// Pattern ::=
-    ///     Lower-Pattern
-    ///     (Lower-Pattern | "(" Explicitness (#Identifier "=")? Pattern ")")*
+    /// Pattern ::= Lower-Pattern Pattern-Argument*
+    /// Pattern-Argument ::=
+    ///     | Explicitness Lower-Pattern
+    ///     | Explicitness "(" (#Identifier "=")? Pattern ")"
     /// ```
+    // @Task add alternative precedence for formatting to the documentation above
     fn parse_pattern(&mut self) -> Result<Pattern> {
         self.parse_application_like_or_lower()
     }
 
     /// Parse a (de)application or something lower.
-    fn parse_application_like_or_lower<EP: ExpressionOrPattern>(&mut self) -> Result<EP> {
+    // @Task rewrite this with a `delimiter: Delimiter`-parameter for better error messages!
+    fn parse_application_like_or_lower<Expat: ExpressionOrPattern>(&mut self) -> Result<Expat> {
         use TokenKind::*;
-        let mut callee = EP::parse_lower(self)?;
+        let mut callee = Expat::parse_lower(self)?;
 
-        while let Ok((argument, explicitness, binder)) = self
-            .reflect(|this| Ok((EP::parse_lower(this)?, Explicit, None)))
+        struct Argument<Expat> {
+            explicitness: Explicitness,
+            binder: Option<ast::Identifier>,
+            expat: Expat,
+        }
+
+        let mut illegal_pi = None;
+
+        while let Ok(argument) = self
+            .reflect(|this| {
+                // @Beacon @Question can pi_type_literal_was_used_as_lower_expression also happen here???
+                // @Task use the span returned by parse_optional_implicitness
+                let (explicitness, _span) = this.parse_optional_implicitness();
+                let expat = Expat::parse_lower(this)?;
+                Ok(Spanned::new(
+                    expat.span(),
+                    Argument {
+                        binder: None,
+                        explicitness,
+                        expat,
+                    },
+                ))
+            })
             .or_else(|_| -> Result<_> {
                 self.reflect(|this| {
-                    this.consume(OpeningRoundBracket)?;
-                    let explicitness = this.consume_explicitness_symbol();
-                    let binder = (this.current_token().kind == Identifier
-                        && this.succeeding_token_kind() == Equals)
-                        .then(|| {
-                            let binder = this.current_token_into_identifier();
-                            this.advance();
-                            this.advance();
-                            binder
-                        });
-                    let argument = EP::parse_lower(this)?;
-                    this.consume(ClosingRoundBracket)?;
-                    Ok((argument, explicitness, binder))
+                    let (explicitness, explicitness_span) = this.parse_optional_implicitness();
+                    let mut span = this.consume(OpeningRoundBracket)?.span;
+                    span.merging_from(explicitness_span);
+
+                    let binder = this.consume_identifier()?;
+
+                    if Expat::IS_EXPRESSION && this.current_token().kind == Colon {
+                        illegal_pi = Some(this.current_token().clone());
+                        this.advance();
+                    } else {
+                        this.consume(Equals)?;
+                    }
+
+                    let argument = Expat::parse_lower(this)?;
+                    span.merging(this.consume(ClosingRoundBracket)?);
+
+                    Ok(Spanned::new(
+                        span,
+                        Argument {
+                            explicitness,
+                            binder: Some(binder),
+                            expat: argument,
+                        },
+                    ))
                 })
             })
         {
+            if let Some(token) = illegal_pi {
+                let explicitness = match argument.kind.explicitness {
+                    Implicit => "an implicit",
+                    Explicit => "a",
+                };
+
+                self.errors.borrow_mut().insert(
+                    expected_one_of![Expected::Expression, Equals]
+                        .but_actual_is(&token)
+                        .with_labeled_secondary_span(
+                            &argument,
+                            format!("this is treated as {explicitness} function argument,\nnot as the domain of a pi type literal"),
+                        )
+                        .with_help(BRACKET_POTENTIAL_PI_TYPE_LITERAL),
+                );
+
+                return Err(());
+            }
+
             let span = callee.span().merge(&argument);
 
-            callee = EP::application_like(callee, argument, explicitness, binder, span);
+            callee = Expat::application_like(
+                callee,
+                argument.kind.expat,
+                argument.kind.explicitness,
+                argument.kind.binder,
+                span,
+            );
         }
 
         Ok(callee)
@@ -1691,24 +1786,18 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```ebnf
-    /// Explicitness ::= ","?
+    /// Explicitness ::= "'"?
     /// ```
-    fn consume_explicitness_symbol(&mut self) -> Explicitness {
-        self.manually_reflect(|this| {
-            if let Ok(token) = this.consume(TokenKind::Comma) {
-                // @Note there might be false positives (through arbitrary look-ahead)
-                // (current issue of Self::reflect)
-                this.warn(
-                    Diagnostic::warning()
-                        .with_code(Code::W001)
-                        .with_message("implicitness markers are currently ignored")
-                        .with_primary_span(&token),
-                );
-                Implicit
-            } else {
-                Explicit
+    // @Task improve return type
+    fn parse_optional_implicitness(&mut self) -> (Explicitness, Option<Span>) {
+        match self.current_token().kind {
+            TokenKind::SingleQuote => {
+                let span = self.current_token().span;
+                self.advance();
+                (Implicit, Some(span))
             }
-        })
+            _ => (Explicit, None),
+        }
     }
 }
 
@@ -1719,6 +1808,7 @@ impl Warn for Parser<'_> {
 }
 
 /// Abstraction over expressions and patterns.
+// @Task consider replacing this with an enum
 trait ExpressionOrPattern: Sized + Spanning {
     fn application_like(
         callee: Self,
@@ -1729,6 +1819,8 @@ trait ExpressionOrPattern: Sized + Spanning {
     ) -> Self;
     fn parse(parser: &mut Parser<'_>) -> Result<Self>;
     fn parse_lower(parser: &mut Parser<'_>) -> Result<Self>;
+
+    const IS_EXPRESSION: bool;
 }
 
 impl ExpressionOrPattern for Expression {
@@ -1747,6 +1839,8 @@ impl ExpressionOrPattern for Expression {
     fn parse_lower(parser: &mut Parser<'_>) -> Result<Self> {
         parser.parse_lower_expression()
     }
+
+    const IS_EXPRESSION: bool = true;
 }
 
 impl ExpressionOrPattern for Pattern {
@@ -1765,6 +1859,8 @@ impl ExpressionOrPattern for Pattern {
     fn parse_lower(parser: &mut Parser<'_>) -> Result<Self> {
         parser.parse_lower_pattern()
     }
+
+    const IS_EXPRESSION: bool = false;
 }
 
 enum Expected {
