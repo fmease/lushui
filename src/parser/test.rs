@@ -3,15 +3,14 @@
 //! Intended for testing edge cases. The majority of parsing tests should be
 //! golden UI tests ([crate::golden], `tests/`).
 
-// @Beacon @Task add more tests!!
-// @Question maybe create builders for the elements?
+// @Question maybe create builders for the elements instead of using macros?
 
 use std::rc::Rc;
 
 use super::{
     ast::{
-        decl, expr, Attributes, Declaration, Domain, Explicitness::*, Expression, Format,
-        Identifier, Item, ParameterGroup, Path, UsePathTree, UsePathTreeKind,
+        decl, expr, Attribute, Attributes, Declaration, Domain, Explicitness::*, Expression,
+        Format, Identifier, Item, ParameterGroup, Path, UsePathTree, UsePathTreeKind,
     },
     Parser, Result,
 };
@@ -23,6 +22,7 @@ use crate::{
 };
 use std::default::default;
 
+// @Question @Bug why doesn't this seemingly return an Err(()) on error but a partial AST?
 fn parse_expression(source: &str) -> Result<Expression> {
     let mut diagnostics = Diagnostics::default();
     let file = Rc::new(SourceFile::fake(source.to_owned()));
@@ -99,14 +99,14 @@ fn application_lambda_literal_argument_lax_grouping() {
         parse_expression(r"(read \this => this) alpha"),
         Ok(expr! {
             Application {
-                Attributes::default(), span(1, 26);
+                Attributes::new(), span(1, 26);
                 callee: expr! {
                     Application {
-                        Attributes::default(), span(1, 20);
+                        Attributes::new(), span(1, 20);
                         callee: Identifier::new("read".into(), span(2, 5)).into(),
                         argument: expr! {
                             LambdaLiteral {
-                                Attributes::default(), span(7, 19);
+                                Attributes::new(), span(7, 19);
                                 parameters: vec![
                                     ParameterGroup {
                                         explicitness: Explicit,
@@ -140,14 +140,14 @@ fn application_lambda_literal_argument_strict_grouping() {
         parse_expression(r"read (\this => this) alpha"),
         Ok(expr! {
             Application {
-                Attributes::default(), span(1, 26);
+                Attributes::new(), span(1, 26);
                 callee: expr! {
                     Application {
-                        Attributes::default(), span(1, 20);
+                        Attributes::new(), span(1, 20);
                         callee: Identifier::new("read".into(), span(1, 4)).into(),
                         argument: expr! {
                             LambdaLiteral {
-                                Attributes::default(), span(6, 20);
+                                Attributes::new(), span(6, 20);
                                 parameters: vec![
                                     ParameterGroup {
                                         explicitness: Explicit,
@@ -179,14 +179,14 @@ fn pi_type_literal_application_bracketed_argument_domain() {
         parse_expression("Alpha (Beta) -> Gamma"),
         Ok(expr! {
             PiTypeLiteral {
-                Attributes::default(), span(1, 21);
+                Attributes::new(), span(1, 21);
                 domain: Domain {
                     explicitness: Explicit,
                     aspect: default(),
                     binder: None,
                     expression: expr! {
                         Application {
-                            Attributes::default(), span(1, 12);
+                            Attributes::new(), span(1, 12);
                             callee: Identifier::new("Alpha".into(), span(1, 5)).into(),
                             argument: Identifier::new("Beta".into(), span(7, 12)).into(),
                             explicitness: Explicit,
@@ -206,14 +206,14 @@ fn bracketed_pi_type_literal_application_bracketed_argument_domain() {
         parse_expression("(Alpha (Beta) -> Gamma)"),
         Ok(expr! {
             PiTypeLiteral {
-                Attributes::default(), span(1, 23);
+                Attributes::new(), span(1, 23);
                 domain: Domain {
                     explicitness: Explicit,
                     aspect: default(),
                     binder: None,
                     expression: expr! {
                         Application {
-                            Attributes::default(), span(2, 13);
+                            Attributes::new(), span(2, 13);
                             callee: Identifier::new("Alpha".into(), span(2, 6)).into(),
                             argument: Identifier::new("Beta".into(), span(8, 13)).into(),
                             explicitness: Explicit,
@@ -237,14 +237,14 @@ fn pi_type_literal_application_implicit_argument_domain() {
         parse_expression("f 'Int -> Type"),
         Ok(expr! {
             PiTypeLiteral {
-                Attributes::default(), span(1, 14);
+                Attributes::new(), span(1, 14);
                 domain: Domain {
                     explicitness: Explicit,
                     aspect: default(),
                     binder: None,
                     expression: expr! {
                         Application {
-                            Attributes::default(), span(1, 6);
+                            Attributes::new(), span(1, 6);
                             callee: Identifier::new("f".into(), span(1, 1)).into(),
                             argument: Identifier::new("Int".into(), span(4, 6)).into(),
                             explicitness: Implicit,
@@ -252,7 +252,7 @@ fn pi_type_literal_application_implicit_argument_domain() {
                         }
                     }
                 },
-                codomain: expr! { TypeLiteral { Attributes::default(), span(11, 14) } },
+                codomain: expr! { TypeLiteral { Attributes::new(), span(11, 14) } },
             }
         }),
     );
@@ -264,14 +264,14 @@ fn pi_type_literal_application_implicit_named_argument_domain() {
         parse_expression("f '(T = Int) -> Type"),
         Ok(expr! {
             PiTypeLiteral {
-                Attributes::default(), span(1, 20);
+                Attributes::new(), span(1, 20);
                 domain: Domain {
                     explicitness: Explicit,
                     aspect: default(),
                     binder: None,
                     expression: expr! {
                         Application {
-                            Attributes::default(), span(1, 12);
+                            Attributes::new(), span(1, 12);
                             callee: Identifier::new("f".into(), span(1, 1)).into(),
                             argument: Identifier::new("Int".into(), span(9, 11)).into(),
                             explicitness: Implicit,
@@ -279,7 +279,7 @@ fn pi_type_literal_application_implicit_named_argument_domain() {
                         }
                     }
                 },
-                codomain: expr! { TypeLiteral { Attributes::default(), span(17, 20) } },
+                codomain: expr! { TypeLiteral { Attributes::new(), span(17, 20) } },
             }
         }),
     );
@@ -292,18 +292,18 @@ fn application_pi_type_literal_implicit_domain() {
         parse_expression("receive ('(n: Int) -> Type)"),
         Ok(expr! {
             Application {
-                Attributes::default(), span(1, 27);
+                Attributes::new(), span(1, 27);
                 callee: Identifier::new("receive".into(), span(1, 7)).into(),
                 argument: expr! {
                     PiTypeLiteral {
-                        Attributes::default(), span(9, 27);
+                        Attributes::new(), span(9, 27);
                         domain: Domain {
                             explicitness: Implicit,
                             aspect: default(),
                             binder: Some(Identifier::new("n".into(), span(12, 12))),
                             expression: Identifier::new("Int".into(), span(15, 17)).into(),
                         },
-                        codomain: expr! { TypeLiteral { Attributes::default(), span(23, 26) } },
+                        codomain: expr! { TypeLiteral { Attributes::new(), span(23, 26) } },
                     }
                 },
                 explicitness: Explicit,
@@ -312,6 +312,158 @@ fn application_pi_type_literal_implicit_domain() {
         }),
     );
 }
+
+#[test]
+fn chained_fields() {
+    assert_eq(
+        parse_expression("base::member::protrusion"),
+        Ok(expr! {
+            Field {
+                Attributes::new(), span(1, 24);
+                base: expr! {
+                    Field {
+                        Attributes::new(), span(1, 12);
+                        base: Identifier::new("base".into(), span(1, 4)).into(),
+                        member: Identifier::new("member".into(), span(7, 12))
+                    }
+                },
+                member: Identifier::new("protrusion".into(), span(15, 24))
+            }
+        }),
+    );
+}
+
+#[test]
+fn namespaced_base_with_field() {
+    assert_eq(
+        parse_expression("path.to.base::member"),
+        Ok(expr! {
+            Field {
+                Attributes::new(), span(1, 20);
+                base: expr! {
+                    Path {
+                        Attributes::new(), span(1, 12);
+                        hanger: None,
+                        segments: smallvec![
+                            Identifier::new("path".into(), span(1, 4)),
+                            Identifier::new("to".into(), span(6, 7)),
+                            Identifier::new("base".into(), span(9, 12)),
+                        ],
+                    }
+                },
+                member: Identifier::new("member".into(), span(15, 20)),
+            }
+        }),
+    );
+}
+
+/// Compare with [base_with_attribute_and_field].
+#[test]
+fn field_with_attribute() {
+    assert_eq(
+        parse_expression("@overall compound::projection"),
+        Ok(expr! {
+            Field {
+                vec![Attribute {
+                    binder: Identifier::new("overall".into(), span(2, 8)),
+                    arguments: default(),
+                    span: span(1, 8),
+                }],
+                span(10, 29);
+                base: Identifier::new("compound".into(), span(10, 17)).into(),
+                member: Identifier::new("projection".into(), span(20, 29)),
+            }
+        }),
+    );
+}
+
+/// Compare with [field_with_attribute].
+#[test]
+fn base_with_attribute_and_field() {
+    assert_eq(
+        parse_expression("(@specifically compound)::projection"),
+        Ok(expr! {
+            Field {
+                Attributes::new(), span(1, 36);
+                base: expr! {
+                    Path(
+                        vec![Attribute {
+                            binder: Identifier::new("specifically".into(), span(3, 14)),
+                            arguments: default(),
+                            span: span(2, 14),
+                        }],
+                        span(1, 24);
+                        Path::from(Identifier::new("compound".into(), span(16, 23)))
+                    )
+                },
+                member: Identifier::new("projection".into(), span(27, 36)),
+            }
+        }),
+    );
+}
+
+#[test]
+fn field_inside_application() {
+    assert_eq(
+        parse_expression("cb::cm ab::am"),
+        Ok(expr! {
+            Application {
+                Attributes::new(), span(1, 13);
+                callee: expr! {
+                    Field {
+                        Attributes::new(), span(1, 6);
+                        base: Identifier::new("cb".into(), span(1, 2)).into(),
+                        member: Identifier::new("cm".into(), span(5, 6)),
+                    }
+                },
+                argument: expr! {
+                    Field {
+                        Attributes::new(), span(8, 13);
+                        base: Identifier::new("ab".into(), span(8, 9)).into(),
+                        member: Identifier::new("am".into(), span(12, 13)),
+                    }
+                },
+                binder: None,
+                explicitness: Explicit,
+            }
+        }),
+    );
+}
+
+#[test]
+fn outer_and_inner_attributes() {
+    assert_eq(
+        parse_expression("@outer @outer (@inner Type)"),
+        Ok(expr! {
+            TypeLiteral {
+                vec![
+                    Attribute {
+                        binder: Identifier::new("inner".into(), span(17, 21)),
+                        arguments: default(),
+                        span: span(16, 21),
+                    },
+                    Attribute {
+                        binder: Identifier::new("outer".into(), span(2, 6)),
+                        arguments: default(),
+                        span: span(1, 6),
+                    },
+                    Attribute {
+                        binder: Identifier::new("outer".into(), span(9, 13)),
+                        arguments: default(),
+                        span: span(8, 13),
+                    }
+                ],
+                span(15, 27)
+            }
+        }),
+    );
+}
+
+// @Task
+// #[test]
+// fn expression_attributes() {
+//     assert_eq(parse_expression("@(alpha) "), Ok(todo!()));
+// }
 
 /// Compare with [use_as_double_brackets].
 #[test]
@@ -322,13 +474,13 @@ fn use_as_plain() {
         Ok(declaration),
         Ok(decl! {
             Module {
-                Attributes::default(), span(1, 24);
+                Attributes::new(), span(1, 24);
                 binder: test_module_name(),
                 file,
                 declarations: Some(vec![
                     decl! {
                         Use {
-                            Attributes::default(), span(1, 23);
+                            Attributes::new(), span(1, 23);
                             bindings: UsePathTree::new(
                                 span(5, 23),
                                 UsePathTreeKind::Single {
@@ -359,13 +511,13 @@ fn use_as_double_brackets() {
         Ok(declaration),
         Ok(decl! {
             Module {
-                Attributes::default(), span(1, 28);
+                Attributes::new(), span(1, 28);
                 binder: test_module_name(),
                 file,
                 declarations: Some(vec![
                     decl! {
                         Use {
-                            Attributes::default(), span(1, 27);
+                            Attributes::new(), span(1, 27);
                             bindings: UsePathTree::new(
                                 span(5, 27),
                                 UsePathTreeKind::Multiple {

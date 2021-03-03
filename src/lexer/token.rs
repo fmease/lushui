@@ -164,13 +164,22 @@ pub enum TokenKind {
     Punctuation,
     NumberLiteral,
     TextLiteral,
+    /// For attributes.
     At,
+    /// For lambda literals and pattern binders.
     Backslash,
+    /// For typed holes.
     QuestionMark,
+    /// For type annotations.
     Colon,
+    /// For record fields.
+    DoubleColon,
+    /// For implicit parameters.
     SingleQuote,
     Dedentation,
+    /// For paths.
     Dot,
+    /// For definitions.
     Equals,
     Indentation,
     LineBreak,
@@ -180,24 +189,46 @@ pub enum TokenKind {
     ClosingRoundBracket,
     ClosingSquareBracket,
     ClosingCurlyBracket,
+    /// For pi type literals.
     ThinArrowRight,
+    /// For monadic binds in do-blocks.
     ThinArrowLeft,
+    /// For value inference and unnameable unique identifiers.
     Underscore,
+    /// For lambda literals and case analyses.
     WideArrow,
+    /// For use-declarations.
     As,
+    /// For case analyses / case/of-expressions.
     Case,
+    /// For paths relative to the current crate.
     Crate,
+    /// For data declarations.
     Data,
+    /// For do-blocks.
     Do,
-    Field,
+    /// For let- and use-bindings.
+    ///
+    /// That is let/in-expressions and statements and
+    /// use/in-expressions and statements.
     In,
+    /// For lazy parameters.
     Lazy,
+    /// For let-bindings / let/in-expressions and statements.
     Let,
+    /// For module declarations.
     Module,
+    /// For case analyses / case/of-expressions.
     Of,
+    /// For paths relative to the current module/namespace.
     Self_,
+    /// For paths relative to the parent module/namespace.
     Super,
+    /// For type literals.
     Type,
+    /// For use-declarations and use-bindings.
+    ///
+    /// The latter being use/in-expressions and statements.
     Use,
     EndOfInput,
     Illegal,
@@ -233,6 +264,7 @@ impl fmt::Display for TokenKind {
             Backslash => quoted!(r"\"),
             QuestionMark => quoted!("?"),
             Colon => quoted!(":"),
+            DoubleColon => quoted!("::"),
             SingleQuote => quoted!("'"),
             Dedentation => "dedentation",
             Dot => quoted!("."),
@@ -254,7 +286,6 @@ impl fmt::Display for TokenKind {
             Crate => keyword!(crate),
             Data => keyword!(data),
             Do => keyword!(do),
-            Field => keyword!(field),
             In => keyword!(in),
             Lazy => keyword!(lazy),
             Let => keyword!(let),
@@ -301,7 +332,6 @@ pub fn parse_keyword(source: &str) -> Option<TokenKind> {
         "crate" => Crate,
         "data" => Data,
         "do" => Do,
-        "field" => Field,
         "in" => In,
         "lazy" => Lazy,
         "let" => Let,
@@ -326,6 +356,7 @@ pub fn parse_reserved_punctuation(source: &str) -> Option<TokenKind> {
         "->" => ThinArrowRight,
         "<-" => ThinArrowLeft,
         "=>" => WideArrow,
+        "::" => DoubleColon,
         _ => return None,
     })
 }

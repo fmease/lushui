@@ -36,7 +36,7 @@ error[E026]: path hanger `super` not allowed in this position
 10 | use crate.(self.(self.thing super))
    |                             ^^^^^ 
    |
-  help: consider moving this path to its own separate use declaration
+  help: consider moving this path to its own separate use-declaration
 
 error: aborting due to 5 previous errors
 

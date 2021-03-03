@@ -1,0 +1,8 @@
+;; TEST pass check --only-parse
+
+data Person: Type =
+    person (::name: Text) (::birth: Date): Person
+
+jane = Person.person (name = "Jane") (birth = some-date)
+
+main = jane::name

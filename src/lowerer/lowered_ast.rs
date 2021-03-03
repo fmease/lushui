@@ -186,7 +186,7 @@ impl AttributeTarget for ast::Declaration {
             Header => "a module header declaraiton",
             Crate(_) => "a crate declaration",
             Group(_) => "an attribute group declaration",
-            Use(_) => "a use declaration",
+            Use(_) => "a use-declaration",
         }
     }
 
@@ -261,6 +261,7 @@ impl AttributeTarget for ast::Expression {
             TextLiteral(_) => "a text literal expression",
             TypedHole(_) => "a typed hole",
             Path(_) => "a path expression",
+            Field(_) => "a field",
             LambdaLiteral(_) => "a lambda literal",
             LetIn(_) => "a let/in expression",
             UseIn(_) => "a use/in expression",
@@ -282,6 +283,7 @@ impl AttributeTarget for ast::Expression {
             TextLiteral(_) => AttributeTargets::TEXT_LITERAL_EXPRESSION,
             TypedHole(_) => AttributeTargets::TYPED_HOLE_EXPRESSION,
             Path(_) => AttributeTargets::PATH_EXPRESSION,
+            Field(_) => AttributeTargets::FIELD_EXPRESSION,
             LambdaLiteral(_) => AttributeTargets::LAMBDA_LITERAL_EXPRESSION,
             LetIn(_) => AttributeTargets::LET_IN_EXPRESSION,
             UseIn(_) => AttributeTargets::USE_IN_EXPRESSION,
@@ -347,12 +349,13 @@ bitflags::bitflags! {
         const TEXT_LITERAL_EXPRESSION = 1 << 10;
         const TYPED_HOLE_EXPRESSION = 1 << 11;
         const PATH_EXPRESSION = 1 << 12;
-        const LAMBDA_LITERAL_EXPRESSION = 1 << 13;
-        const LET_IN_EXPRESSION = 1 << 14;
-        const USE_IN_EXPRESSION = 1 << 15;
-        const CASE_ANALYSIS_EXPRESSION = 1 << 16;
-        const DO_BLOCK_EXPRESSION = 1 << 17;
-        const SEQUENCE_LITERAL_EXPRESSION = 1 << 18;
+        const FIELD_EXPRESSION = 1 << 13;
+        const LAMBDA_LITERAL_EXPRESSION = 1 << 14;
+        const LET_IN_EXPRESSION = 1 << 15;
+        const USE_IN_EXPRESSION = 1 << 16;
+        const CASE_ANALYSIS_EXPRESSION = 1 << 17;
+        const DO_BLOCK_EXPRESSION = 1 << 18;
+        const SEQUENCE_LITERAL_EXPRESSION = 1 << 19;
 
         const EXPRESSION = Self::PI_TYPE_LITERAL_EXPRESSION.bits
             | Self::APPLICATION_EXPRESSION.bits
@@ -361,6 +364,7 @@ bitflags::bitflags! {
             | Self::TEXT_LITERAL_EXPRESSION.bits
             | Self::TYPED_HOLE_EXPRESSION.bits
             | Self::PATH_EXPRESSION.bits
+            | Self::FIELD_EXPRESSION.bits
             | Self::LAMBDA_LITERAL_EXPRESSION.bits
             | Self::LET_IN_EXPRESSION.bits
             | Self::USE_IN_EXPRESSION.bits
@@ -368,12 +372,12 @@ bitflags::bitflags! {
             | Self::DO_BLOCK_EXPRESSION.bits
             | Self::SEQUENCE_LITERAL_EXPRESSION.bits;
 
-        const NUMBER_LITERAL_PATTERN = 1 << 19;
-        const TEXT_LITERAL_PATTERN = 1 << 20;
-        const SEQUENCE_LITERAL_PATTERN = 1 << 21;
-        const PATH_PATTERN = 1 << 22;
-        const BINDER_PATTERN = 1 << 23;
-        const DEAPPLICATION_PATTERN = 1 << 24;
+        const NUMBER_LITERAL_PATTERN = 1 << 20;
+        const TEXT_LITERAL_PATTERN = 1 << 21;
+        const SEQUENCE_LITERAL_PATTERN = 1 << 22;
+        const PATH_PATTERN = 1 << 23;
+        const BINDER_PATTERN = 1 << 24;
+        const DEAPPLICATION_PATTERN = 1 << 25;
 
         const PATTERN = Self::NUMBER_LITERAL_PATTERN.bits
             | Self::TEXT_LITERAL_PATTERN.bits

@@ -684,7 +684,7 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    /// Finish parsing use declaration.
+    /// Finish parsing a use-declaration.
     ///
     /// The keyword `use` should have already been parsed.
     /// The span does not contain the trailing line break.
@@ -711,7 +711,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// Parse a use path tree.
+    /// Parse a use-path tree.
     ///
     /// ## Grammar
     ///
@@ -960,18 +960,13 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Parameter-Aspect ::= Laziness Fieldness
     /// Laziness ::= "lazy"?
-    /// Fieldness ::= "field"?
+    /// Fieldness ::= "::"?
     /// ```
     fn parse_parameter_aspect(&mut self) -> ParameterAspect {
         use TokenKind::*;
 
-        // @Task allow `lazy` and `field` to appear in any order
-        // relative to each other. that flexibility should only be
-        // allow syntactically not semantically and we should
-        // @Task check the order `laziness < fieldness` in the lowerer
-        // and generate a good error message
         let laziness = self.consume_span(Lazy);
-        let fieldness = self.consume_span(Field);
+        let fieldness = self.consume_span(DoubleColon);
 
         ParameterAspect {
             laziness,
@@ -1007,7 +1002,9 @@ impl<'a> Parser<'a> {
     ///
     /// ```ebnf
     /// Lower-Expression ::= Attribute* Naked-Lower-Expression
-    /// Naked-Lower-Expression ::=
+    /// ; @Task rename into Field-Or-Lower
+    /// Naked-Lower-Expression ::= Lowest-Expression ("::" Identifier)*
+    /// Lowest-Expression ::=
     ///     | Path
     ///     | "Type"
     ///     | #Number-Literal
@@ -1025,23 +1022,27 @@ impl<'a> Parser<'a> {
     /// ```
     fn parse_lower_expression(&mut self) -> Result<Expression> {
         use TokenKind::*;
+
         let attributes = self.parse_attributes(SkipLineBreaks::No)?;
 
         let mut span = self.current_token().span;
-        match self.current_token().kind {
-            kind if kind.is_path_head() => self.parse_path().map(|path| {
-                expr! { Path(attributes, path.span(); path) }
-            }),
+        // @Task don't pass attributes down but make them empty at first, then update the attributes
+        // dependeninh on if it's a field or not
+        let mut expression = match self.current_token().kind {
+            kind if kind.is_path_head() => {
+                let path = self.parse_path()?;
+                expr! { Path(default(), path.span(); path) }
+            }
             Type => {
                 self.advance();
-                Ok(expr! { TypeLiteral { attributes, span } })
+                expr! { TypeLiteral { default(), span } }
             }
             NumberLiteral => {
                 let token = self.current_token().clone();
                 self.advance();
-                Ok(expr! {
-                    NumberLiteral(attributes, token.span; token.number_literal().unwrap())
-                })
+                expr! {
+                    NumberLiteral(default(), token.span; token.number_literal().unwrap())
+                }
             }
             TextLiteral => {
                 let token = self.current_token().clone();
@@ -1053,32 +1054,32 @@ impl<'a> Parser<'a> {
                     .unwrap()
                     .or_else(|error| self.error(|| error))?;
 
-                Ok(expr! { TextLiteral(attributes, span; text_literal) })
+                expr! { TextLiteral(default(), span; text_literal) }
             }
             QuestionMark => {
                 self.advance();
-                self.consume_identifier()
-                    .map(|tag| expr! { TypedHole { attributes, span.merge(&tag); tag } })
+                let tag = self.consume_identifier()?;
+                expr! { TypedHole { default(), span.merge(&tag); tag } }
             }
             Let => {
                 self.advance();
-                self.finish_parse_let_in(span, attributes)
+                self.finish_parse_let_in(span)?
             }
             Use => {
                 self.advance();
-                self.finish_parse_use_in(span, attributes)
+                self.finish_parse_use_in(span)?
             }
             Backslash => {
                 self.advance();
-                self.finish_parse_lambda_literal(span, attributes)
+                self.finish_parse_lambda_literal(span)?
             }
             Case => {
                 self.advance();
-                self.finish_parse_case_analysis(span, attributes)
+                self.finish_parse_case_analysis(span)?
             }
             Do => {
                 self.advance();
-                self.finish_parse_do_block(span, attributes)
+                self.finish_parse_do_block(span)?
             }
             OpeningSquareBracket => {
                 self.advance();
@@ -1092,7 +1093,7 @@ impl<'a> Parser<'a> {
                 span.merging(self.current_token());
                 self.advance();
 
-                Ok(expr! { SequenceLiteral { attributes, span; elements } })
+                expr! { SequenceLiteral { default(), span; elements } }
             }
             OpeningRoundBracket => {
                 self.advance();
@@ -1101,22 +1102,43 @@ impl<'a> Parser<'a> {
 
                 span.merging(self.consume(ClosingRoundBracket)?);
                 expression.span = span;
-                expression.attributes.extend(attributes);
 
-                Ok(expression)
+                expression
             }
-            _ => self.error(|| {
-                Expected::Expression
-                    .but_actual_is(self.current_token())
-                    // @Beacon @Note this is a prime example for a situation where we can
-                    // make a parsing error non-fatal: we can just skip the `->` and keep
-                    // parsing w/o introducing too many (any?) useless/confusing consequential
-                    // errors!
-                    .when(self.current_token().kind == ThinArrowRight, |this| {
-                        this.with_help(BRACKET_POTENTIAL_PI_TYPE_LITERAL)
-                    })
-            }),
+            _ => {
+                return self.error(|| {
+                    Expected::Expression
+                        .but_actual_is(self.current_token())
+                        // @Beacon @Note this is a prime example for a situation where we can
+                        // make a parsing error non-fatal: we can just skip the `->` and keep
+                        // parsing w/o introducing too many (any?) useless/confusing consequential
+                        // errors!
+                        .when(self.current_token().kind == ThinArrowRight, |this| {
+                            this.with_help(BRACKET_POTENTIAL_PI_TYPE_LITERAL)
+                        })
+                });
+            }
+        };
+
+        let mut attributes = Some(attributes);
+
+        while self.has_consumed(DoubleColon) {
+            let member = self.consume_identifier()?;
+
+            expression = expr! {
+                Field {
+                    attributes.take().unwrap_or_default(), expression.span.merge(&member);
+                    base: expression,
+                    member,
+                }
+            }
         }
+
+        if let Some(attributes) = attributes {
+            expression.attributes.extend(attributes);
+        }
+
+        Ok(expression)
     }
 
     /// Parse a path.
@@ -1159,11 +1181,7 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Lambda-Literal ::= "\" Parameters Type-Annotation? "=>" Expression
     /// ```
-    fn finish_parse_lambda_literal(
-        &mut self,
-        keyword_span: Span,
-        attributes: Attributes,
-    ) -> Result<Expression> {
+    fn finish_parse_lambda_literal(&mut self, keyword_span: Span) -> Result<Expression> {
         let mut span = keyword_span;
         let parameters =
             self.parse_parameters(&[Delimiter::TypeAnnotationPrefix, TokenKind::WideArrow.into()])?;
@@ -1173,7 +1191,7 @@ impl<'a> Parser<'a> {
 
         Ok(expr! {
             LambdaLiteral {
-                attributes,
+                Attributes::new(),
                 span;
                 parameters,
                 body_type_annotation,
@@ -1203,11 +1221,7 @@ impl<'a> Parser<'a> {
     // @Task allow writing `in` at the start of the next line (unless the previous line
     // already had one ofc)
     // @Task skip duplicate `=`, `in`, `:`s (throw an error for each one)
-    fn finish_parse_let_in(
-        &mut self,
-        span_of_let: Span,
-        attributes: Attributes,
-    ) -> Result<Expression> {
+    fn finish_parse_let_in(&mut self, span_of_let: Span) -> Result<Expression> {
         use TokenKind::*;
 
         let mut span = span_of_let;
@@ -1232,7 +1246,7 @@ impl<'a> Parser<'a> {
 
         Ok(expr! {
             LetIn {
-                attributes,
+                Attributes::new(),
                 span;
                 binder,
                 parameters,
@@ -1250,11 +1264,7 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Use-In ::= "use" Use-Path-Tree "in" Line-Break? Expression
     /// ```
-    fn finish_parse_use_in(
-        &mut self,
-        span_of_use: Span,
-        attributes: Attributes,
-    ) -> Result<Expression> {
+    fn finish_parse_use_in(&mut self, span_of_use: Span) -> Result<Expression> {
         let bindings = self.parse_use_path_tree(&[TokenKind::In.into()])?;
         self.consume(TokenKind::In)?;
         let _ = self.has_consumed(TokenKind::LineBreak);
@@ -1262,7 +1272,7 @@ impl<'a> Parser<'a> {
 
         Ok(expr! {
             UseIn {
-                attributes,
+                Attributes::new(),
                 span_of_use.merge(&scope);
                 bindings,
                 scope,
@@ -1282,11 +1292,7 @@ impl<'a> Parser<'a> {
     ///     (Line-Break (Indentation Case* Dedentation)?)?
     /// Case ::= Pattern "=>" Expression
     /// ```
-    fn finish_parse_case_analysis(
-        &mut self,
-        span_of_case: Span,
-        attributes: Attributes,
-    ) -> Result<Expression> {
+    fn finish_parse_case_analysis(&mut self, span_of_case: Span) -> Result<Expression> {
         use TokenKind::*;
         let mut span = span_of_case;
 
@@ -1316,7 +1322,7 @@ impl<'a> Parser<'a> {
 
         Ok(expr! {
             CaseAnalysis {
-                attributes,
+                Attributes::new(),
                 span;
                 scrutinee,
                 cases,
@@ -1343,11 +1349,7 @@ impl<'a> Parser<'a> {
     /// we could switch to like `!x = …` or `set x = …`. The latter look-ahead is not much of an
     /// issue, `:` is a bad *but only in case* of adding type annotation expressions (not that likely
     /// as they clash with other syntactic elements like pi literals).
-    fn finish_parse_do_block(
-        &mut self,
-        span_of_do: Span,
-        attributes: Attributes,
-    ) -> Result<Expression> {
+    fn finish_parse_do_block(&mut self, span_of_do: Span) -> Result<Expression> {
         use TokenKind::*;
         let mut span = span_of_do;
         let mut statements = Vec::new();
@@ -1412,7 +1414,7 @@ impl<'a> Parser<'a> {
 
         Ok(expr! {
             DoBlock {
-                attributes,
+                Attributes::new(),
                 span;
                 statements,
             }

@@ -85,7 +85,7 @@ pub struct Group {
     pub declarations: Vec<Declaration>,
 }
 
-/// The syntax node of a use declaration or statement.
+/// The syntax node of a use-declaration or statement.
 ///
 /// See [DeclarationKind::Use] and [Statement::Use].
 #[derive(Clone)]
@@ -169,6 +169,7 @@ pub enum ExpressionKind {
     TextLiteral(Box<String>),
     TypedHole(Box<TypedHole>),
     Path(Box<Path>),
+    Field(Box<Field>),
     LambdaLiteral(Box<LambdaLiteral>),
     LetIn(Box<LetIn>),
     UseIn(Box<UseIn>),
@@ -270,7 +271,7 @@ impl Path {
                         hanger
                     ))
                     .with_primary_span(&hanger)
-                    .with_help("consider moving this path to its own separate use declaration"));
+                    .with_help("consider moving this path to its own separate use-declaration"));
             }
         }
         self.segments.extend(other.segments);
@@ -353,6 +354,14 @@ impl Spanning for Path {
                 .merge(self.segments.last().unwrap())
         }
     }
+}
+
+/// The syntax node of a path expression.
+#[derive(Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
+pub struct Field {
+    pub base: Expression,
+    pub member: Identifier,
 }
 
 /// The syntax node of a lambda literal expression.
@@ -579,7 +588,7 @@ impl TryFrom<Token> for Identifier {
 impl From<Identifier> for Expression {
     fn from(identifier: Identifier) -> Self {
         expr! {
-            Path(Attributes::default(), identifier.span; Path::from(identifier))
+            Path(Attributes::new(), identifier.span; Path::from(identifier))
         }
     }
 }

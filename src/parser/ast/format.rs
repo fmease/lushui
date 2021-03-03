@@ -375,6 +375,7 @@ impl Format for super::ExpressionKind {
             }
             Self::TypedHole(hole) => hole.format(f, indentation),
             Self::Path(path) => path.format(f, indentation),
+            Self::Field(field) => field.format(f, indentation),
             Self::LambdaLiteral(lambda) => lambda.format(f, indentation),
             Self::LetIn(let_in) => let_in.format(f, indentation),
             Self::UseIn(use_in) => use_in.format(f, indentation),
@@ -467,6 +468,16 @@ impl Format for super::Path {
             .name("Path")
             .field("hanger", &self.hanger)
             .field("segments", &self.segments)
+            .finish()
+    }
+}
+
+impl Format for super::Field {
+    fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
+        FormatStruct::new(f, indentation)
+            .name("Field")
+            .field("base", &self.base)
+            .field("member", &self.member)
             .finish()
     }
 }

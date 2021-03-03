@@ -7,7 +7,7 @@
 //! links to a [crate-local index](CrateIndex) or a [de Bruijn index](DeBruijnIndex)
 //! respectively.
 //!
-//! It does two main passes and a (hopefully) small one for use declarations to support
+//! It does two main passes and a (hopefully) small one for use-declarations to support
 //! out of order declarations.
 //!
 //! ## Future Features

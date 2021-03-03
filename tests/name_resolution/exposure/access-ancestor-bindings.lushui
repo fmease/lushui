@@ -25,5 +25,5 @@ data Unit: Type =
 ;; are in all cases permitted to refer to and use bindings defined in
 ;; parent/ancestor modules (unless such a binding breaks exposure rules to begin with)
 ;; no matter their declared exposure reach (which is directed upwards).
-;; This should work for both use declarations and inside expressions.
+;; This should work for both use-declarations and inside expressions.
 ;; Out of order declarations should not hinder the algorithm.

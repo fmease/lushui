@@ -83,7 +83,7 @@ Designated-Pi-Type-Domain ::=
 
 Parameter-Aspect ::= Laziness Fieldness
 Laziness ::= "lazy"?
-Fieldness ::= "field"?
+Fieldness ::= "::"?
 
 Application-Or-Lower ::= Lower-Expression Argument*
 Argument ::=
@@ -99,7 +99,9 @@ Argument ::=
 ;     | Explicitness "(" (#Identifier "=")? Expression ")"
 
 Lower-Expression ::= Attribute* Naked-Lower-Expression
-Naked-Lower-Expression ::=
+; @Task rename into Field-Or-Lower
+Naked-Lower-Expression ::= Lowest-Expression ("::" Identifier)*
+Lowest-Expression ::=
     | Path
     | "Type"
     | #Number-Literal

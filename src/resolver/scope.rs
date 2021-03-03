@@ -42,7 +42,7 @@ pub struct CrateScope {
     ///
     /// The first element must always be the root module.
     pub(crate) bindings: Bindings,
-    /// For resolving out of order use declarations.
+    /// For resolving out of order use-declarations.
     partially_resolved_use_bindings: HashMap<CrateIndex, PartiallyResolvedUseBinding>,
     /// Used for grouping circular bindings in diagnostics
     // @Question can we smh unify this with `unresolved_uses`?
@@ -291,7 +291,7 @@ impl CrateScope {
         self.collapse_use_chain(index)
     }
 
-    // @Task verify that the exposure is checked even in the case of use declarations
+    // @Task verify that the exposure is checked even in the case of use-declarations
     // using use bindings (use chains).
     fn handle_exposure(
         &self,

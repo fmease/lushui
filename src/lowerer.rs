@@ -10,7 +10,7 @@
 //! * lower parameters to simple lambda literals
 //! * open external modules (this will probably move to the parser in the future
 //!   for parallel reading and independent error reporting)
-//! * simplify use declarations by unfolding use path trees
+//! * simplify use-declarations by unfolding use-path trees
 //! * apply attribute groups (unimplemented right now)
 //! * parse number literals according to their type indicated by attributes (unsure
 //!   if this is the right place or whether it should be moved to a later stage)
@@ -26,6 +26,7 @@
 
 pub mod lowered_ast;
 
+use self::lowered_ast::AttributeTarget;
 use crate::{
     ast::{self, Explicit, ParameterGroup, Path},
     diagnostics::{Code, Diagnostic, Diagnostics, Result, Results, Warn},
@@ -38,8 +39,6 @@ use crate::{
 };
 use joinery::JoinableIterator;
 use std::iter::once;
-
-use self::lowered_ast::AttributeTarget;
 
 #[derive(Clone, Copy)]
 struct Context {
@@ -553,8 +552,10 @@ impl<'a> Lowerer<'a> {
                     binder: *path,
                 }
             }),
-            // @Beacon @Beacon @Task lower `laziness` to Lambda as well!!
-            // ass field for Lambda in lowered_ast and HIR!!!
+            // @Beacon @Task
+            Field(_field) => Err(errors.inserted(
+                Diagnostic::unimplemented("record fields").with_primary_span(expression.span),
+            )),
             LambdaLiteral(lambda) => {
                 let mut expression = self
                     .lower_expression(lambda.body, context)
@@ -607,10 +608,7 @@ impl<'a> Lowerer<'a> {
                         .ok_or_else(|| {
                             Diagnostic::error()
                                 .with_code(Code::E012)
-                                .with_message(format!(
-                                    "`let`-binding `{}` has no definition",
-                                    binder
-                                ))
+                                .with_message(format!("let-binding `{}` has no definition", binder))
                                 .with_primary_span(span)
                                 .with_help("provide a definition with `=`")
                         })
@@ -1049,7 +1047,7 @@ impl<'a> Lowerer<'a> {
                 // but I think we lack a method for this right now
                 return Err(Diagnostic::error()
                     .with_code(Code::E017)
-                    .with_message("`field` used outside of a constructor declaration")
+                    .with_message("field marker `::` used outside of a constructor declaration")
                     .with_primary_span(field)
                     .with_labeled_secondary_span(context.declaration, "not a constructor"));
             }

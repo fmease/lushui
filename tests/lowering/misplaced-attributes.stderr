@@ -1,4 +1,4 @@
-error[E013]: attribute `foreign` cannot be ascribed to a use declaration
+error[E013]: attribute `foreign` cannot be ascribed to a use-declaration
  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:3:1
   |
 3 | @foreign
@@ -11,7 +11,7 @@ error[E013]: attribute `foreign` cannot be ascribed to a use declaration
   |
  note: attribute `foreign` can only be ascribed to value or data declarations
 
-error[E013]: attribute `foreign` cannot be ascribed to a use declaration
+error[E013]: attribute `foreign` cannot be ascribed to a use-declaration
  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:4:1
   |
 4 | @foreign @Int32
@@ -24,7 +24,7 @@ error[E013]: attribute `foreign` cannot be ascribed to a use declaration
   |
  note: attribute `foreign` can only be ascribed to value or data declarations
 
-error[E013]: attribute `Int32` cannot be ascribed to a use declaration
+error[E013]: attribute `Int32` cannot be ascribed to a use-declaration
  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:4:10
   |
 4 | @foreign @Int32
@@ -37,7 +37,7 @@ error[E013]: attribute `Int32` cannot be ascribed to a use declaration
   |
  note: attribute `Int32` can only be ascribed to number literals
 
-error[E013]: attribute `foreign` cannot be ascribed to a use declaration
+error[E013]: attribute `foreign` cannot be ascribed to a use-declaration
  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:7:1
   |
 7 | @foreign @opaque @(location "/")
@@ -50,7 +50,7 @@ error[E013]: attribute `foreign` cannot be ascribed to a use declaration
   |
  note: attribute `foreign` can only be ascribed to value or data declarations
 
-error[E013]: attribute `opaque` cannot be ascribed to a use declaration
+error[E013]: attribute `opaque` cannot be ascribed to a use-declaration
  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:7:10
   |
 7 | @foreign @opaque @(location "/")
@@ -63,7 +63,7 @@ error[E013]: attribute `opaque` cannot be ascribed to a use declaration
   |
  note: attribute `opaque` can only be ascribed to data declarations
 
-error[E013]: attribute `location` cannot be ascribed to a use declaration
+error[E013]: attribute `location` cannot be ascribed to a use-declaration
  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:7:18
   |
 7 | @foreign @opaque @(location "/")
