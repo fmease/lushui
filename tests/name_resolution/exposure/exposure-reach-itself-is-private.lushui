@@ -1,0 +1,8 @@
+;; XXX
+;; TEST fail check
+
+module inner =
+    use crate.offside as remote
+
+module offside =
+    @(public crate.inner.remote) module m = 

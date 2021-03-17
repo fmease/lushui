@@ -1,0 +1,7 @@
+;; XXX
+;; TEST fail check
+;; @Task group the errors by cycle, provide more information
+
+@(public here) module there =
+@(public there) module here =
+

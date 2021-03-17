@@ -1,0 +1,16 @@
+error: circular exposure reach
+ --> ${DIRECTORY}/name_resolution/exposure/circular-exposure-reach.lushui:4:10
+  |
+4 | @(public here) module there =
+  |          ^^^^ 
+  |
+
+error: circular exposure reach
+ --> ${DIRECTORY}/name_resolution/exposure/circular-exposure-reach.lushui:5:10
+  |
+5 | @(public there) module here =
+  |          ^^^^^ 
+  |
+
+error: aborting due to 2 previous errors
+

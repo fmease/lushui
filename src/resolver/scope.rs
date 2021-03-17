@@ -14,11 +14,10 @@
 
 // @Task don't report similarily named *private* bindings!
 // @Task recognize leaks of private types!
-// @Task add tests around exposure!!!
 
 use crate::{
     ast::{self, Path},
-    diagnostics::{Code, Diagnostic, Diagnostics, Result, Results},
+    diagnostics::{Code, Diagnostic, Diagnostics, Result},
     entity::{Entity, EntityKind},
     format::{unordered_listing, AsDebug, Conjunction, DisplayWith, QuoteExt},
     smallvec,
@@ -28,7 +27,7 @@ use crate::{
 };
 use indexed_vec::IndexVec;
 use joinery::JoinableIterator;
-use std::{cell::RefCell, cmp::Ordering, fmt, iter::once, mem::take, usize};
+use std::{cell::RefCell, cmp::Ordering, default::default, fmt, iter::once, mem::take};
 
 type Bindings = IndexVec<CrateIndex, Entity>;
 
@@ -45,8 +44,13 @@ pub struct CrateScope {
     /// For resolving out of order use-declarations.
     partially_resolved_use_bindings: HashMap<CrateIndex, PartiallyResolvedUseBinding>,
     /// Used for grouping circular bindings in diagnostics
-    // @Question can we smh unify this with `unresolved_uses`?
+    // @Beacon @Question can we smh unify this with `unresolved_uses`?
     partially_resolved_use_bindings_grouped: Vec<HashSet<CrateIndex>>,
+    // @Temporary
+    // set of the "owners"
+    partially_resolved_exposure_reaches: HashSet<CrateIndex>,
+    // @Temporary
+    partially_resolved_exposure_reaches_grouped: Vec<HashSet<CrateIndex>>,
     /// For error reporting.
     pub(super) duplicate_definitions: HashMap<CrateIndex, DuplicateDefinition>,
     pub(super) errors: Diagnostics,
@@ -176,21 +180,6 @@ impl CrateScope {
             namespace,
             namespace,
             IdentifierUsage::Unqualified,
-            CheckExposure::Yes,
-        )
-    }
-
-    fn resolve_path_unchecked_exposure<Target: ResolutionTarget>(
-        &self,
-        path: &Path,
-        namespace: CrateIndex,
-    ) -> Result<Target::Output, ResolutionError> {
-        self.resolve_path_with_origin::<Target>(
-            path,
-            namespace,
-            namespace,
-            IdentifierUsage::Unqualified,
-            CheckExposure::No,
         )
     }
 
@@ -201,7 +190,6 @@ impl CrateScope {
         namespace: CrateIndex,
         origin_namespace: CrateIndex,
         usage: IdentifierUsage,
-        check_exposure: CheckExposure,
     ) -> Result<Target::Output, ResolutionError> {
         use ast::HangerKind::*;
 
@@ -220,18 +208,12 @@ impl CrateScope {
                     namespace,
                     origin_namespace,
                     IdentifierUsage::Qualified,
-                    check_exposure,
                 )
             };
         }
 
-        let index = self.resolve_first_segment(
-            &path.segments[0],
-            namespace,
-            origin_namespace,
-            usage,
-            check_exposure,
-        )?;
+        let index =
+            self.resolve_first_segment(&path.segments[0], namespace, origin_namespace, usage)?;
 
         match path.to_simple() {
             Some(identifier) => {
@@ -244,7 +226,6 @@ impl CrateScope {
                     index,
                     origin_namespace,
                     IdentifierUsage::Qualified,
-                    check_exposure,
                 ),
                 None if self.bindings[index].is_error() => {
                     // @Task add rationale
@@ -271,7 +252,6 @@ impl CrateScope {
         namespace: CrateIndex,
         origin_namespace: CrateIndex,
         usage: IdentifierUsage,
-        check_exposure: CheckExposure,
     ) -> Result<CrateIndex, ResolutionError> {
         let index = self.bindings[namespace]
             .namespace()
@@ -285,28 +265,41 @@ impl CrateScope {
                 namespace,
                 usage,
             })?;
-        if matches!(check_exposure, CheckExposure::Yes) {
-            self.handle_exposure(index, identifier, origin_namespace)?;
-        }
+
+        self.handle_exposure(index, identifier, origin_namespace)?;
         self.collapse_use_chain(index)
     }
 
-    // @Task verify that the exposure is checked even in the case of use-declarations
-    // using use bindings (use chains).
     fn handle_exposure(
         &self,
         index: CrateIndex,
         identifier: &ast::Identifier,
         origin_namespace: CrateIndex,
     ) -> Result<(), ResolutionError> {
+        eprintln!("handle_exposure index={index} ident={identifier}");
+
         let binding = &self.bindings[index];
 
         if let Exposure::Restricted(exposure) = &binding.exposure {
             // unwrap: root always has Exposure::Unrestricted
             let definition_site_namespace = binding.parent.unwrap();
-            let reach = RestrictedExposure::resolve(exposure, definition_site_namespace, self)?;
+            // @Beacon @Beacon @Task don't resolve here!! (no recursive call plz)
+            // throw some new ResolutionError::UnresolvedExposureReach that
+            // resolve_exposure_reaches can handle (to successfully detect circular
+            // exposure reaches!)
+            // let reach = exposure.resolve(definition_site_namespace, self)?;
+            // @Bug this not fine-graned enough, I guess
+            // @Note we need to differenciate between failed to resolve
+            // exposure reach (for good) and not-yet-resolved
+            let reach = match *exposure.borrow() {
+                RestrictedExposure::Resolved { reach } => reach,
+                RestrictedExposure::Unresolved { reach: _ } => {
+                    return Err(ResolutionError::UnresolvedExposureReach { inquirer: index })
+                }
+            };
 
             if !self.is_allowed_to_access(origin_namespace, definition_site_namespace, reach) {
+                // @Task add more information
                 return Err(Diagnostic::error()
                     .with_code(Code::E029)
                     .with_message(format!(
@@ -336,28 +329,65 @@ impl CrateScope {
         access_from_same_namespace_or_below || access_from_above_in_reach()
     }
 
-    pub(super) fn resolve_exposure_reaches(&mut self) -> Results {
-        let mut errors = Diagnostics::default();
+    pub(super) fn resolve_exposure_reaches(&mut self) {}
 
-        for binding in &self.bindings {
-            if let Exposure::Restricted(exposure) = &binding.exposure {
-                // unwrap: root always has Exposure::Unrestricted
-                let definition_site_namespace = binding.parent.unwrap();
+    pub(super) fn _resolve_exposure_reaches(&mut self) {
+        // @Note it's not necessary to store this as a field
+        self.partially_resolved_exposure_reaches = self.bindings.indices().collect();
+        self.partially_resolved_exposure_reaches_grouped = default();
 
-                if let Err(error) =
-                    RestrictedExposure::resolve(exposure, definition_site_namespace, self)
-                {
-                    errors.insert(error);
-                    continue;
-                };
-            }
+        while !self.partially_resolved_exposure_reaches.is_empty() {
+            let mut partially_resolved_exposure_reaches = HashSet::default();
 
-            if let EntityKind::Use { reference } = binding.kind {
-                let reference = &self.bindings[reference];
+            for &index in &self.partially_resolved_exposure_reaches {
+                let binding = &self.bindings[index];
+                // eprintln!(
+                //     "resolve_exposure_reaches {{for}} binding.source={}",
+                //     binding.source
+                // );
 
-                if binding.exposure.compare(&reference.exposure, self) == Some(Ordering::Greater) {
-                    // @Task @Beacon once we can use multiline notes, do so here!!!
-                    errors.insert(
+                if let Exposure::Restricted(exposure) = &binding.exposure {
+                    // unwrap: root always has Exposure::Unrestricted
+                    let definition_site_namespace = binding.parent.unwrap();
+
+                    use ResolutionError::*;
+
+                    match exposure.resolve(definition_site_namespace, self) {
+                        Ok(_) => {}
+                        Err(UnresolvedExposureReach { inquirer }) => {
+                            eprintln!("inserting partially resolved exposure reach index={index} inquirer={inquirer}");
+                            partially_resolved_exposure_reaches.insert(index);
+
+                            if let Some(indices) = self
+                                .partially_resolved_exposure_reaches_grouped
+                                .iter_mut()
+                                .filter(|indices| indices.contains(&inquirer))
+                                .next()
+                            {
+                                indices.insert(index);
+                            } else {
+                                let mut indices = HashSet::default();
+                                indices.insert(index);
+                                self.partially_resolved_exposure_reaches_grouped
+                                    .push(indices);
+                            }
+                        }
+                        Err(Unrecoverable(error)) => {
+                            self.errors.insert(error);
+                            continue;
+                        }
+                        Err(UnresolvedBinding { .. }) => todo!("unresolved binding"),
+                        Err(UnresolvedUseBinding { .. }) => todo!("unresolved use binding"),
+                    }
+                }
+
+                if let EntityKind::Use { reference } = binding.kind {
+                    let reference = &self.bindings[reference];
+
+                    if binding.exposure.compare(&reference.exposure, self)
+                        == Some(Ordering::Greater)
+                    {
+                        self.errors.insert(
                         Diagnostic::error()
                             .with_code(Code::E009)
                             // @Question use absolute path?
@@ -371,11 +401,70 @@ impl CrateScope {
                                 binding.exposure.with(self),
                             )),
                     );
+                    }
                 }
             }
+
+            // resolition stalled; therefore tere are circular exposure reaches
+            if partially_resolved_exposure_reaches.len()
+                == self.partially_resolved_exposure_reaches.len()
+            {
+                // self.errors.insert(
+                //     Diagnostic::error()
+                //         .with_message("found circular exposure reaches")
+                //         .with_debug("only maybe"),
+                // );
+                let circular_bindings = take(&mut self.partially_resolved_exposure_reaches_grouped)
+                    .into_iter()
+                    .filter(|indices| {
+                        indices
+                            .iter()
+                            .any(|index| partially_resolved_exposure_reaches.contains(index))
+                    });
+
+                let errors = circular_bindings
+                    .map(|indices| -> Diagnostic {
+                        indices
+                            .iter()
+                            .for_each(|&index| self.bindings[index].mark_as_error());
+
+                        let reaches = unordered_listing(
+                            indices
+                                .iter()
+                                .map(|&index| self.absolute_path(index).quote()),
+                            Conjunction::And,
+                        );
+
+                        // @Task don't use the def-site spans, use the use-site spans
+                        let spans = indices
+                            .into_iter()
+                            .map(|index| self.bindings[index].source.span);
+
+                        // @Note on unresolved reaches we can still get the span but then
+                        // we don't know which one...which of the segments is actually circular?
+                        // in general, it isn't always the last one, right?
+                        // let spans = indices.into_iter().map(|index| {
+                        //     self.bindings[self.bindings[index].exposure.resolved_reach().unwrap()]
+                        //         .source
+                        //         .span
+                        // });
+
+                        Diagnostic::error()
+                            // .with_code(Code::E024)
+                            .with_message(format!("exposure reaches {reaches} are circular"))
+                            .with_primary_spans(spans)
+                            .with_debug("merely temporary")
+                    })
+                    .collect::<Vec<_>>();
+
+                self.errors.extend(errors);
+                return;
+            }
+
+            self.partially_resolved_exposure_reaches = partially_resolved_exposure_reaches;
         }
 
-        errors.err_or(())
+        // dbg!(&self.partially_resolved_exposure_reaches);
     }
 
     /// Find a similarly named binding in the same namespace.
@@ -406,7 +495,7 @@ impl CrateScope {
         }
     }
 
-    /// Reabotain the resolved identifier.
+    /// Reobtain the resolved identifier.
     ///
     /// Used in [super::Resolver::finish_resolve_declaration], the last pass of the
     /// name resolver, to re-gain some information (the [Identifier]s) collected during the first pass.
@@ -451,7 +540,7 @@ impl CrateScope {
     ///
     /// This is the second pass of three of the name resolver.
     ///
-    /// This uses a queue to resolve use bindings over and over until
+    /// This uses a queue/worklist to resolve use bindings over and over until
     /// all out of order use bindings are successfully resolved or until
     /// no progress can be made anymore in which case all remaining
     /// use bindings are actually circular and are thus reported.
@@ -473,7 +562,9 @@ impl CrateScope {
                         self.bindings[index].mark_as_error();
                         self.errors.insert(error.diagnostic(self).unwrap());
                     }
-                    Err(UnresolvedUseBinding { inquirer }) => {
+                    Err(
+                        UnresolvedUseBinding { inquirer } | UnresolvedExposureReach { inquirer },
+                    ) => {
                         partially_resolved_use_bindings.insert(
                             index,
                             PartiallyResolvedUseBinding {
@@ -499,11 +590,23 @@ impl CrateScope {
                             indices.insert(index);
                             self.partially_resolved_use_bindings_grouped.push(indices);
                         }
-                    }
+                    } // @Note UnresolvedExposureReach does not differentiate
+                      // between unresolved and erroneous exposure reach
+                      // @Task we probably should do that
+                      // @Temporary
+                      // Err(UnresolvedExposureReach) => {
+                      //     partially_resolved_use_bindings.insert(
+                      //         index,
+                      //         PartiallyResolvedUseBinding {
+                      //             reference: item.reference.clone(),
+                      //             module: item.module,
+                      //         },
+                      //     );
+                      // }
                 }
             }
 
-            // resolution stalled; therefore there are circular bindings
+            // resolution stalled; therefore there are circular use-bindings
             if partially_resolved_use_bindings.len() == self.partially_resolved_use_bindings.len() {
                 let circular_bindings = take(&mut self.partially_resolved_use_bindings_grouped)
                     .into_iter()
@@ -546,6 +649,7 @@ impl CrateScope {
     }
 }
 
+// @Task improve!
 impl fmt::Debug for CrateScope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CrateScope")
@@ -563,15 +667,21 @@ impl fmt::Debug for CrateScope {
                 "partially_resolved_use_bindings",
                 &self.partially_resolved_use_bindings,
             )
+            .field(
+                "partially_resolved_use_bindings_grouped",
+                &self.partially_resolved_use_bindings_grouped,
+            )
+            .field(
+                "partially_resolved_exposure_reaches",
+                &self.partially_resolved_exposure_reaches,
+            )
+            .field(
+                "partially_resolved_exposure_reaches_grouped",
+                &self.partially_resolved_exposure_reaches_grouped,
+            )
             // .field("out_of_order_bindings", &self.out_of_order_bindings)
             .finish()
     }
-}
-
-#[derive(Clone, Copy)]
-enum CheckExposure {
-    Yes,
-    No,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -597,9 +707,9 @@ impl fmt::Debug for Exposure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Unrestricted => write!(f, "{}", "unrestricted"),
-            Self::Restricted(reach) => {
+            Self::Restricted(exposure) => {
                 write!(f, "restricted(")?;
-                match &*reach.borrow() {
+                match &*exposure.borrow() {
                     RestrictedExposure::Unresolved { reach } => write!(f, "{reach}"),
                     RestrictedExposure::Resolved { reach } => write!(f, "{reach}"),
                 }?;
@@ -615,7 +725,7 @@ impl DisplayWith for Exposure {
     fn format(&self, scope: &CrateScope, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Unrestricted => write!(f, "unrestricted"),
-            Self::Restricted(reach) => write!(f, "`{}`", reach.borrow().with(scope)),
+            Self::Restricted(exposure) => write!(f, "`{}`", exposure.borrow().with(scope)),
         }
     }
 }
@@ -627,51 +737,6 @@ pub enum RestrictedExposure {
 }
 
 impl RestrictedExposure {
-    fn resolve(
-        exposure: &RefCell<Self>,
-        definition_site_namespace: CrateIndex,
-        scope: &CrateScope,
-    ) -> Result<CrateIndex> {
-        let exposure_ = exposure.borrow();
-
-        Ok(match &*exposure_ {
-            Self::Unresolved {
-                reach: unresolved_reach,
-            } => {
-                // Here we indeed resolve the exposure reach without validating *its*
-                // exposure reach. This is not a problem however since in all cases where
-                // it actually is private, it cannot be an ancestor module as those are
-                // always accessible to their descendants, and therefore we are going to
-                // throw an error.
-                // It's not possible to use `resolve_path` as that can lead to infinite
-                // loops with out of order use bindings.
-                let reach = scope
-                    .resolve_path_unchecked_exposure::<OnlyModule>(
-                        unresolved_reach,
-                        definition_site_namespace,
-                    )
-                    // unwrap: all use bindings are already resolved
-                    .map_err(|error| error.diagnostic(scope).unwrap())?;
-
-                let reach_is_ancestor =
-                    definition_site_namespace.some_ancestor_equals(reach, scope);
-
-                if !reach_is_ancestor {
-                    return Err(Diagnostic::error()
-                        .with_code(Code::E000)
-                        .with_message("exposure can only be restricted to ancestor modules")
-                        .with_primary_span(unresolved_reach));
-                }
-
-                drop(exposure_);
-                *exposure.borrow_mut() = RestrictedExposure::Resolved { reach };
-
-                reach
-            }
-            &Self::Resolved { reach } => reach,
-        })
-    }
-
     fn compare(&self, other: &Self, scope: &CrateScope) -> Option<Ordering> {
         use RestrictedExposure::*;
 
@@ -688,6 +753,52 @@ impl RestrictedExposure {
                 }
             }
             _ => return None,
+        })
+    }
+}
+
+trait ResolveExt {
+    fn resolve(
+        &self,
+        definition_site_namespace: CrateIndex,
+        scope: &CrateScope,
+    ) -> Result<CrateIndex, ResolutionError>;
+}
+
+impl ResolveExt for RefCell<RestrictedExposure> {
+    fn resolve(
+        &self,
+        definition_site_namespace: CrateIndex,
+        scope: &CrateScope,
+    ) -> Result<CrateIndex, ResolutionError> {
+        let exposure = self.borrow();
+
+        Ok(match &*exposure {
+            RestrictedExposure::Unresolved {
+                reach: unresolved_reach,
+            } => {
+                let reach = scope
+                    .resolve_path::<OnlyModule>(unresolved_reach, definition_site_namespace)?;
+                // unwrap: all use bindings are already resolved @Update @Bug not anymore...UnresExpRe
+                // .map_err(|error| error.diagnostic(scope).unwrap())?;
+
+                let reach_is_ancestor =
+                    definition_site_namespace.some_ancestor_equals(reach, scope);
+
+                if !reach_is_ancestor {
+                    return Err(Diagnostic::error()
+                        .with_code(Code::E000)
+                        .with_message("exposure can only be restricted to ancestor modules")
+                        .with_primary_span(unresolved_reach)
+                        .into());
+                }
+
+                drop(exposure);
+                *self.borrow_mut() = RestrictedExposure::Resolved { reach };
+
+                reach
+            }
+            &RestrictedExposure::Resolved { reach } => reach,
         })
     }
 }
@@ -836,7 +947,7 @@ impl ResolutionTarget for OnlyModule {
                 .with_code(Code::E022)
                 .with_message(format!("value `{}` is not a module", identifier))
                 .with_primary_span(identifier)),
-            Module(_) => Ok(index),
+            Module(_) | Error => Ok(index),
             _ => unreachable!(),
         }
     }
@@ -1290,7 +1401,7 @@ fn module_used_as_a_value(span: Span) -> Diagnostic {
         .with_help("modules are not first-class citizens, consider utilizing records for such cases instead")
 }
 
-/// A possibly recoverable error that cab emerge during resolution.
+/// A possibly recoverable error that can emerge during resolution.
 enum ResolutionError {
     Unrecoverable(Diagnostic),
     UnresolvedBinding {
@@ -1299,6 +1410,10 @@ enum ResolutionError {
         usage: IdentifierUsage,
     },
     UnresolvedUseBinding {
+        inquirer: CrateIndex,
+    },
+    // @Temporary
+    UnresolvedExposureReach {
         inquirer: CrateIndex,
     },
 }

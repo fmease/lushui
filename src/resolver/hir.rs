@@ -77,11 +77,11 @@ pub enum ExpressionKind {
     Text(Rc<String>),
     Binding(Rc<Binding>),
     Lambda(Rc<Lambda>),
+    Field(Rc<Field>),
     UseIn,
     CaseAnalysis(Rc<CaseAnalysis>),
     Substitution(Rc<Substitution>),
     ForeignApplication(Rc<ForeignApplication>),
-    Projection(Rc<Projection>),
     IO(Rc<IO>),
     Error,
 }
@@ -115,6 +115,12 @@ pub struct Binding {
 }
 
 #[derive(Clone)]
+pub struct Field {
+    pub base: Expression,
+    pub member: crate::ast::Identifier,
+}
+
+#[derive(Clone)]
 pub struct Lambda {
     pub parameter: Identifier,
     pub parameter_type_annotation: Option<Expression>,
@@ -142,11 +148,6 @@ pub struct ForeignApplication {
     pub callee: Identifier,
     pub arguments: Vec<Expression>,
 }
-
-// @Temporary until we have better case analysis support to replace it with
-// @Task @Beacon
-#[derive(Clone)]
-pub struct Projection {}
 
 #[derive(Clone)]
 pub struct IO {

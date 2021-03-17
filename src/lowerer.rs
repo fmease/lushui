@@ -552,10 +552,20 @@ impl<'a> Lowerer<'a> {
                     binder: *path,
                 }
             }),
-            // @Beacon @Task
-            Field(_field) => Err(errors.inserted(
-                Diagnostic::unimplemented("record fields").with_primary_span(expression.span),
-            )),
+            Field(field) => {
+                let base = self
+                    .lower_expression(field.base, context)
+                    .try_in(&mut errors);
+
+                errors.err_or(expr! {
+                    Field {
+                        attributes,
+                        expression.span;
+                        base,
+                        member: field.member,
+                    }
+                })
+            }
             LambdaLiteral(lambda) => {
                 let mut expression = self
                     .lower_expression(lambda.body, context)
@@ -1047,7 +1057,9 @@ impl<'a> Lowerer<'a> {
                 // but I think we lack a method for this right now
                 return Err(Diagnostic::error()
                     .with_code(Code::E017)
-                    .with_message("field marker `::` used outside of a constructor declaration")
+                    .with_message(
+                        "record field marker `::` used outside of a constructor declaration",
+                    )
                     .with_primary_span(field)
                     .with_labeled_secondary_span(context.declaration, "not a constructor"));
             }

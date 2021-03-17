@@ -174,6 +174,8 @@ impl fmt::Display for super::Expression {
             Number(literal) => write!(f, "{}", literal),
             Text(literal) => write!(f, "{:?}", literal),
             Binding(binding) => write!(f, "{}", binding.binder),
+            // @Task less brackets
+            Field(field) => write!(f, "({})::{}", field.base, field.member),
             Lambda(lambda) => write!(f, "{}", lambda),
             UseIn => todo!(),
             // @Task fix indentation

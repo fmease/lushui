@@ -62,6 +62,8 @@ pub struct Use {
 
 pub type Expression = Item<ExpressionKind>;
 
+// @Task use a naming scheme that is closer to the one of the AST's
+// e.g. `PiTypeLiteral` and `Path`
 #[derive(Clone)]
 pub enum ExpressionKind {
     PiType(Rc<PiType>),
@@ -70,6 +72,7 @@ pub enum ExpressionKind {
     Number(Rc<Number>),
     Text(Rc<String>),
     Binding(Rc<Binding>),
+    Field(Rc<Field>),
     Lambda(Rc<Lambda>),
     UseIn,
     CaseAnalysis(Rc<CaseAnalysis>),
@@ -101,9 +104,16 @@ pub struct Application {
     pub explicitness: Explicitness,
 }
 
+// @Question inline?
 #[derive(Clone)]
 pub struct Binding {
     pub binder: Path,
+}
+
+#[derive(Clone)]
+pub struct Field {
+    pub base: Expression,
+    pub member: Identifier,
 }
 
 #[derive(Clone)]

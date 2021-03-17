@@ -221,6 +221,7 @@ impl<'a> Compiler<'a> {
                     todo!()
                 }
             }
+            Field(_field) => todo!(),
             Lambda(lambda) => {
                 let mut body = self.compile_expression(&lambda.body, LambdaParent::Lambda)?;
 
@@ -245,7 +246,6 @@ impl<'a> Compiler<'a> {
             Error => todo!(),
             Substitution(_substitution) => todo!(),
             ForeignApplication(_application) => todo!(),
-            Projection(_projection) => todo!(),
             IO(_io) => todo!(),
         };
 

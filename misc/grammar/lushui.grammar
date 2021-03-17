@@ -98,9 +98,8 @@ Argument ::=
 ;     | Lower-Expression
 ;     | Explicitness "(" (#Identifier "=")? Expression ")"
 
-Lower-Expression ::= Attribute* Naked-Lower-Expression
-; @Task rename into Field-Or-Lower
-Naked-Lower-Expression ::= Lowest-Expression ("::" Identifier)*
+Lower-Expression ::= Attribute* Field-Or-Lower
+Field-Or-Lower ::= Lowest-Expression ("::" Identifier)*
 Lowest-Expression ::=
     | Path
     | "Type"

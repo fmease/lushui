@@ -24,6 +24,7 @@ use crate::{
     error::{accumulate_errors, obtain, ManyErrExt, PossiblyErroneous, TransposeExt, TryIn},
     lowered_ast::{self, AttributeKeys, AttributeKind},
 };
+use colored::Colorize;
 use hir::{decl, expr, pat};
 pub use scope::{
     CrateIndex, CrateScope, DeBruijnIndex, Exposure, FunctionScope, Identifier, Index, Namespace,
@@ -70,17 +71,29 @@ impl<'a> Resolver<'a> {
     ) -> Results<hir::Declaration> {
         // @Note awkward manual error propagation, very error prone
         // topic: horrible error handling APIs
+
+        eprintln!("{}", "[#] Resolver::start_resolve_declaration()".yellow()); // @Temporary
         self.start_resolve_declaration(&declaration, None, Context::default())
             .map_err(|error| error.diagnostics(mem::take(&mut self.scope.duplicate_definitions)))?;
+        eprintln!("[#] CrateScope: {:?}", self.scope);
 
+        eprintln!("{}", "[#] CrateScope::resolve_use_bindings()".yellow());
         self.scope.resolve_use_bindings();
+        eprintln!("[#] CrateScope: {:?}", self.scope);
 
-        // @Task @Beacon don't return early here
-        self.scope.resolve_exposure_reaches()?;
+        eprintln!("{}", "[#] CrateScope::resolve_exposure_reaches()".yellow());
+        self.scope.resolve_exposure_reaches();
+        eprintln!("[#] CrateScope: {:?}", self.scope);
 
+        eprintln!(
+            "{}",
+            "[#] CrateScope::finish_resolve_declaration()".yellow()
+        );
         let declaration = self
             .finish_resolve_declaration(declaration, None, Context::default())
             .try_in(&mut self.scope.errors);
+
+        // dbg!(&self.scope); // @Temporary
 
         self.scope.errors.take().err_or(declaration)
     }
@@ -477,6 +490,17 @@ impl<'a> Resolver<'a> {
                     binder: scope.resolve_binding(&binding.binder, &self.scope).many_err()?,
                 }
             },
+            Field(field) => {
+                let base = self.resolve_expression(field.base.clone(), scope)?;
+
+                expr! {
+                    Field {
+                        expression.attributes, expression.span;
+                        base,
+                        member: field.member.clone(),
+                    }
+                }
+            }
             // @Task @Beacon @Beacon don't use try_in here: you don't need to: use
             // accumulate_err, the stuff here is independent! right??
             Lambda(lambda) => expr! {
@@ -500,7 +524,7 @@ impl<'a> Resolver<'a> {
             },
             UseIn => {
                 return Err(
-                    Diagnostic::unimplemented("use/in expression").with_primary_span(&expression)
+                    Diagnostic::unimplemented("use/in-expressions").with_primary_span(&expression)
                 )
                 .many_err()
             }

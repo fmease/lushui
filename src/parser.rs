@@ -1001,9 +1001,8 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```ebnf
-    /// Lower-Expression ::= Attribute* Naked-Lower-Expression
-    /// ; @Task rename into Field-Or-Lower
-    /// Naked-Lower-Expression ::= Lowest-Expression ("::" Identifier)*
+    /// Lower-Expression ::= Attribute* Field-Or-Lower
+    /// Field-Or-Lower ::= Lowest-Expression ("::" Identifier)*
     /// Lowest-Expression ::=
     ///     | Path
     ///     | "Type"
@@ -1026,8 +1025,6 @@ impl<'a> Parser<'a> {
         let attributes = self.parse_attributes(SkipLineBreaks::No)?;
 
         let mut span = self.current_token().span;
-        // @Task don't pass attributes down but make them empty at first, then update the attributes
-        // dependeninh on if it's a field or not
         let mut expression = match self.current_token().kind {
             kind if kind.is_path_head() => {
                 let path = self.parse_path()?;

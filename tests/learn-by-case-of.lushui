@@ -1,0 +1,17 @@
+;; TEST ignore
+
+@foreign data Text: Type
+@foreign data Nat: Type
+@inherent data Bool: Type =
+    false: Bool
+    true: Bool
+
+Nat-Or-Text (b: Bool): Type =
+    case b of
+        Bool.true => Nat
+        Bool.false => Text
+get-nat-or-text (b: Bool): Nat-Or-Text b =
+    case b of
+        Bool.true => 0
+        Bool.false => ""
+

@@ -1,0 +1,6 @@
+;; XXX
+;; TEST fail check
+
+use Ty as who
+
+@(public who) Ty: Type = Type

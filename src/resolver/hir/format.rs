@@ -244,8 +244,8 @@ fn format_lower_expression(
             "{}",
             super::FunctionScope::absolute_path(&binding.binder, scope)
         ),
-        // @Beacon @Temporary @Task just write out the path
-        Projection(_projection) => write!(f, "?(projection)"),
+        // @Beacon @Task less brackets!
+        Field(field) => write!(f, "({})::{}", field.base.with(scope), field.member),
         IO(io) => write!(
             f,
             "?(io {} {})",

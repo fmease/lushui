@@ -1,0 +1,14 @@
+;; XXX
+;; TEST pass check
+
+module inner =
+    @(public crate) use crate.offside as remote
+
+module offside =
+    @(public crate.inner.remote) module m = 
+
+;; Description: At first glance, it may not appear as such but the exposure reach of `crate.offside.m` is
+;; indeed an ancestor module of the aforementioned module (which it has to be for it to be valid).
+;; Even though `crate.inner.remote` is defined in a sibling (i.e. non-ancestor) module, use-bindings act
+;; as almost-transparent aliases which means it effectively takes on the characteristics of its target
+;; `crate.offside` (almost: minus the exposure of the use-binding itself).

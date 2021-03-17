@@ -433,6 +433,15 @@ impl<'a> Typer<'a> {
             Binding(binding) => scope
                 .lookup_type(&binding.binder, &self.scope)
                 .ok_or(OutOfOrderBinding)?,
+            // @Beacon @Task
+            Field(field) => {
+                let _type_of_base = self.infer_type_of_expression(field.base.clone(), scope)?;
+
+                // @Task check if type has a field == field.member
+                // @Task get the type of the field (correctly substituted)
+
+                todo!()
+            }
             Type => expr! { Type { Attributes::default(), Span::SHAM } },
             Number(number) => self
                 .scope
@@ -723,7 +732,6 @@ impl<'a> Typer<'a> {
             }
             // @Beacon @Task
             ForeignApplication(_) => todo!(),
-            Projection(_) => todo!(),
             IO(_) => self
                 .scope
                 .lookup_foreign_type(ffi::Type::IO, Some(expression.span))?,

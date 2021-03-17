@@ -1,7 +1,13 @@
+;; XXX
 ;; TEST fail check
-;; @Task also report the undefined `xxx` if it's feasible to implement
+;; @Beacon @Beacon @Task report *both* `Void` and `imposter` to be not modules
+;; right now after removing `resolve_path_unchecked_exposure` we only report
+;; `impostor` for some reason
+;; either it's because the error is (too) fatal rn or idk
 
 @(public Void) data Empty: Type =
+;;@(public Void2) data Empty: Type =
+data Void2: Type =
 
 data Hunk: Type =
     hunk: Hunk
