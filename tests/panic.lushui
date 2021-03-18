@@ -1,10 +1,9 @@
 ;; TEST ignore
-
-;; @Update foreign data declarations don't work anymore because of the DeBruijn-rewrite
+;; @Task make this a TEST "pass"(?) run once we reimpl panicking
 
 module core
 
-_foreign_
+@foreign
 panic (A: Type) (message: Text): A
 
 main: Unit = panic Unit "this is not going well"

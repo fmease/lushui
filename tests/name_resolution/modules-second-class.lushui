@@ -4,9 +4,9 @@ RECORD: Type = Type
 
 r0: RECORD = am-i-a-record
 
-module am-i-a-record =
+module am-i-a-record of
     @public
-    module am-i-a-record-too =
+    module am-i-a-record-too of
 
 r1: RECORD = am-i-a-record.am-i-a-record-too
 

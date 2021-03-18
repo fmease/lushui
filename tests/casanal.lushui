@@ -1,5 +1,7 @@
 ;; TEST ignore
 ;; @Task change to pass check --only-parse
+;; @Task move to parsing/
+;; @Task expand test (include attributes etc)
 
 ;; @Bug fails to parse when last stmt of file due to missing line break at the end.
 ;; @Note the parse_terminated_expression is too strict or too stupid always requiring

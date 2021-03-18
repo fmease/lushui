@@ -6,7 +6,7 @@ error[E009]: re-export of the more private binding `Thing`
   |
  --> ${DIRECTORY}/name_resolution/exposure/re-export-more-private-bindings.lushui:7:6
   |
-7 | data Thing: Type =
+7 | data Thing: Type of
   |      ----- re-exported binding with lower exposure
   |
  note: expected the exposure of `Piece` to be at most `crate` but it actually is unrestricted
@@ -14,7 +14,7 @@ error[E009]: re-export of the more private binding `Thing`
 error[E009]: re-export of the more private binding `Linchpin`
   --> ${DIRECTORY}/name_resolution/exposure/re-export-more-private-bindings.lushui:12:14
    |
-12 |         data Linchpin: Type =
+12 |         data Linchpin: Type of
    |              -------- re-exported binding with lower exposure
    |
   --> ${DIRECTORY}/name_resolution/exposure/re-export-more-private-bindings.lushui:16:35
@@ -27,7 +27,7 @@ error[E009]: re-export of the more private binding `Linchpin`
 error[E009]: re-export of the more private binding `Mock`
   --> ${DIRECTORY}/name_resolution/exposure/re-export-more-private-bindings.lushui:19:18
    |
-19 |             data Mock: Type =
+19 |             data Mock: Type of
    |                  ---- re-exported binding with lower exposure
    |
   --> ${DIRECTORY}/name_resolution/exposure/re-export-more-private-bindings.lushui:22:25

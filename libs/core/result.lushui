@@ -1,5 +1,5 @@
 @public
-data Result (A E: Type): Type =
+data Result (A E: Type): Type of
     failure (A E: Type): E -> Result A E
     success (A E: Type): A -> Result A E
 

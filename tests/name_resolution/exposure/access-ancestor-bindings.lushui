@@ -2,23 +2,23 @@
 
 Alpha: Type = Alpha
 
-module realm =
+module realm of
     Alpha: super.Beta = crate.Alpha
 
-    module local =
+    module local of
         use super.Alpha as A0
         use crate.realm.Alpha as A1
         use crate.Alpha as A2
         use self as lokal
         use crate.parallel-realm
 
-module parallel-realm =
+module parallel-realm of
     use super.Unit.unit
 
 @(public self)
 Beta: Type = Type
 
-data Unit: Type =
+data Unit: Type of
     unit: Unit
 
 ;; Description: Privacy is only one-way: Descendant modules or namespaces

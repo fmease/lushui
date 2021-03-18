@@ -28,7 +28,7 @@ add: Nat -> Nat -> Nat
 
 use add as +
 
-data OptionNat: Type =
+data OptionNat: Type of
     none: OptionNat
     some: Nat -> OptionNat
 

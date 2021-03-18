@@ -1,6 +1,12 @@
 ;; TEST pass check --only-parse
 
-data Person: Type =
+;; @Note with the new indentation system, this shoould work, too:
+;; data Person: Type of
+;;     person
+;;         (::name: Text)
+;;         (::birth: Date): Person
+
+data Person: Type of
     person (::name: Text) (::birth: Date): Person
 
 jane = Person.person (name = "Jane") (birth = some-date)

@@ -2,16 +2,17 @@
 
 use Bool.((false as f) (true as t))
 
-data Bool: Type =
+data Bool: Type of
     false: Bool
     true: Bool
 
-@opaque data Switch: Type =
+@opaque
+data Switch: Type of
     on: Switch
     off: crate.Switch
 
-module grotto =
-    @public data Color: Type =
+module grotto of
+    @public data Color: Type of
         white: Color
         black: Color
 

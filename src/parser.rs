@@ -491,7 +491,7 @@ impl<'a> Parser<'a> {
     /// Data-Declaration ::=
     ///     "data" #Identifier
     ///     Parameters Type-Annotation?
-    ///     (Line-Break | "=" Line-Break Indentation (Line-Break | Constructor)* Dedentation)
+    ///     (Line-Break | "of" Line-Break Indentation (Line-Break | Constructor)* Dedentation)
     /// ```
     fn finish_parse_data_declaration(
         &mut self,
@@ -502,11 +502,15 @@ impl<'a> Parser<'a> {
         let mut span = keyword_span;
 
         let binder = span.merging(self.consume_identifier()?);
-        let parameters = span.merging(self.parse_parameters(&STANDARD_DECLARATION_DELIMITERS)?);
+        let parameters = span.merging(self.parse_parameters(&[
+            Delimiter::TypeAnnotationPrefix,
+            Of.into(),
+            LineBreak.into(),
+        ])?);
         let type_annotation = span.merging(self.parse_optional_type_annotation()?);
 
         let constructors = match self.current_token().kind {
-            Equals => {
+            Of => {
                 span.merging(self.current_token().span);
                 self.advance();
                 self.consume(LineBreak)?;
@@ -555,8 +559,8 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Module-Declaration ::=
     ///     | Header
-    ///     | "module" #Identifier (Line-Break | "=" Line-Break Indentation (Line-Break | Declaration)* Dedentation)
-    /// Header ::= "module" "=" Line-Break
+    ///     | "module" #Identifier (Line-Break | "of" Line-Break Indentation (Line-Break | Declaration)* Dedentation)
+    /// Header ::= "module" "of" Line-Break
     /// ```
     fn finish_parse_module_declaration(
         &mut self,
@@ -566,7 +570,7 @@ impl<'a> Parser<'a> {
         use TokenKind::*;
         let mut span = keyword_span;
 
-        if self.has_consumed(Equals) {
+        if self.has_consumed(Of) {
             return Ok(decl! {
                 Header {
                     attributes,
@@ -591,14 +595,13 @@ impl<'a> Parser<'a> {
                     }
                 });
             }
-            Equals => {
+            Of => {
                 self.advance();
                 self.consume(LineBreak)?;
             }
             _ => {
-                return self.error(|| {
-                    expected_one_of![LineBreak, Equals].but_actual_is(self.current_token())
-                })
+                return self
+                    .error(|| expected_one_of![LineBreak, Of].but_actual_is(self.current_token()))
             }
         };
 

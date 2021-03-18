@@ -2,14 +2,14 @@
 
 what: on earth = this bogus line
 
-data Xoo (A: Non-Existent): Departed =
+data Xoo (A: Non-Existent): Departed of
     x00: Slipped-Away
     x11: Lost-All-Along
 
-module realm =
+module realm of
     Nothing: Type = Void
 
-data Thing: Type =
+data Thing: Type of
     thing: Thing
 
 ex-nihilo (x y: Thing): Thing = f z Thing.thing

@@ -1,7 +1,8 @@
 ;; TEST fail check
 ;; this should be supported eventually #ImprovedIndentationSystem
+;; @Update working on it
 
 Definition:
-    Type =
+    Type of
     Type
 

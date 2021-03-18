@@ -1,7 +1,7 @@
 error[E020]: `Alpha` is defined multiple times in this scope
   --> ${DIRECTORY}/name_resolution/duplicate-bindings.lushui:8:6
    |
- 8 | data Alpha: Type =
+ 8 | data Alpha: Type of
    |      ^^^^^ conflicting definition
    |
   --> ${DIRECTORY}/name_resolution/duplicate-bindings.lushui:11:1
@@ -25,7 +25,7 @@ error[E020]: `beta` is defined multiple times in this scope
 error[E020]: `capsule` is defined multiple times in this scope
   --> ${DIRECTORY}/name_resolution/duplicate-bindings.lushui:15:8
    |
-15 | module capsule =
+15 | module capsule of
    |        ^^^^^^^ conflicting definition
    |
   --> ${DIRECTORY}/name_resolution/duplicate-bindings.lushui:24:1
@@ -42,7 +42,7 @@ error[E020]: `Nat` is defined multiple times in this scope
    |
   --> ${DIRECTORY}/name_resolution/duplicate-bindings.lushui:18:10
    |
-18 |     data Nat: Type =
+18 |     data Nat: Type of
    |          ^^^ conflicting definition
    |
 

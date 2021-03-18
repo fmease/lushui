@@ -12,7 +12,7 @@ tree-sitter (pathway: Nat): Nat = pathway
 
 P: Type = Pathway
 
-module detached =
+module detached of
     a: super.kore.nat.Nat = tree-sinner ;; @Bug "core" should be suggested for "kore"
 
 ;;use kore as k ;; @Bug fatal error (see comment in resolve_declaration)

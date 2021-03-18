@@ -1,20 +1,20 @@
 ;; TEST pass check
 
 use Identity as Alias
-data Identity: Type =
+data Identity: Type of
 
 @public use Point as *
-@public data Point: Type =
+@public data Point: Type of
 
 use crate as krate ;; @Bug needs to be above `Center`
 
 @(public crate) use Center as C
-@(public krate) data Center: Type =
+@(public krate) data Center: Type of
 
-module namespace =
+module namespace of
     T: Type = Type
 
-    module subnamespace =
+    module subnamespace of
         @(public super)
         use super.T as T0
 

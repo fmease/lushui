@@ -7,16 +7,16 @@ module core
 ;;     False: identity Type Bool
 
 
-data ListX (A: Type): Type =
+data ListX (A: Type): Type of
     NilX (A: Type): List A
     Foo: List Nat
     ;; Bar: Nat
 
 ;; This is bad!!!
 
-data Foo: Type =
+data Foo: Type of
     ;; @Bug @Bug @Beacon smh a parsing error below why???
-    Bar: (n: Nat) -> if (n == 0) Nat Foo
+    Bar: (n: Nat) -> if (== n 0) Nat Foo
 
 ;; So in this case, clearly `if (n == 0) 'Nat Foo` is *not* an instance
 ;; of `Foo` since there exists an `n` where it clearly isn't ('Nat /= Foo)
@@ -24,7 +24,7 @@ data Foo: Type =
 ;; How can we algorithmically check this? I mean the second example given
 ;; below *should* compile:
 
-data Ban: Type =
+data Ban: Type of
     Baz: (n: Nat) -> const Nat Foo
 
 ;; "Easy"! We just need to normalize the result type *under* the respective environment
@@ -34,7 +34,7 @@ data Ban: Type =
 
 ;; @Task verify Bar reduces/fix it to reduce:
 
-data Foo2: Type =
+data Foo2: Type of
     ;; @Bug fails instance check even though it should pass
     Bar2 (A: Type): constant Type Type Foo2 A
 

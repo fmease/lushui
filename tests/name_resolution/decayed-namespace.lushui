@@ -1,6 +1,6 @@
 ;; TEST fail check
 
-data Alpha: Type =
+data Alpha: Type of
     alpha: Alpha
 
 use Alpha as A

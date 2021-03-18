@@ -5,17 +5,17 @@ module core
 
 use core.nat.Nat
 
-data Alpha: Type =
+data Alpha: Type of
     alpha (beta: Alpha): Alpha
 
 Alpha: Type = Type
 
 beta: Nat = 1000
 
-module capsule =
+module capsule of
     use super.Nat
 
-    data Nat: Type =
+    data Nat: Type of
         zero: Nat
         successor: Nat -> Nat
 
@@ -23,7 +23,7 @@ beta (x y: Nat): Nat = y
 
 capsule: Nat = beta
 
-data ALIKE: Type =
+data ALIKE: Type of
     ALIKE: ALIKE
 
 zero: Nat = 0

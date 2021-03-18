@@ -1,15 +1,15 @@
 ;; TEST pass check
 
-module inner =
+module inner of
     use innermore.innermost as m
 
     @(public super.krate)
     use crate.offside as remote
 
     @(public crate)
-    module innermore =
+    module innermore of
         @(public super)
-        module innermost =
+        module innermost of
             @(public crate.inner)
             X: Type = X
 
@@ -23,5 +23,5 @@ module inner =
 use inner.innermore as n
 use self as krate
 
-module offside =
+module offside of
     @(public crate.inner.remote) data Ping: Type =

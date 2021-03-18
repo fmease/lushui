@@ -4,7 +4,7 @@ use super.list.(List self)
 
 ;; @Note backed by List
 @public
-data Tuple (L: List Type): Type =
+data Tuple (L: List Type): Type of
     empty: Tuple (list.empty Type)
     ;; @Task rename "cons" to sth more descriptive
     cons (A: Type) (L: List Type): A -> Tuple L -> Tuple (list.cons Type A L)
@@ -17,7 +17,7 @@ use super.nat.(Nat +)
 
 ;; @Note backed by Vector
 @public
-data Tuple_ (n: Nat) (L: Vector n Type): Type =
+data Tuple_ (n: Nat) (L: Vector n Type): Type of
     empty: Tuple_ 0 (vector.empty Type)
     ;; @Task rename "cons" to sth more descriptive
     cons (A: Type) (n: Nat) (L: Vector n Type): A -> Tuple_ n L -> Tuple_ (+ n 1) (vector.cons n Type A L)

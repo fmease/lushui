@@ -1,5 +1,5 @@
 @public
-data List (A: Type): Type =
+data List (A: Type): Type of
     empty (A: Type): List A
     ;; @Task rename cons...cons to new, with, cell, idk
     cons (A: Type): A -> List A -> List A

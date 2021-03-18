@@ -12,7 +12,7 @@
 @(location "../libs/core/core")
 module core
 
-data X: Type =
+data X: Type of
     x: X
 
 a: X = Type

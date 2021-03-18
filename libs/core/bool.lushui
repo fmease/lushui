@@ -1,5 +1,5 @@
 @public @inherent
-data Bool: Type =
+data Bool: Type of
     false: Bool
     true: Bool
 

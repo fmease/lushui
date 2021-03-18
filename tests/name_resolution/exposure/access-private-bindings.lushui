@@ -5,17 +5,17 @@ use S.structure as s
 use outer.((south.Structure as S) (north.Structure as N))
 use outer.south
 
-module outer =
+module outer of
 
     It: Type = north.Structure
 
     @public
-    module north =
-        data Structure: Type =
+    module north of
+        data Structure: Type of
             structure: Structure
 
-    module south =
-        data Structure: Type =
+    module south of
+        data Structure: Type of
 
 
 Struct: Type = outer.south

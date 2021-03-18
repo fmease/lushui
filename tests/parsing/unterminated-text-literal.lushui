@@ -2,5 +2,5 @@
 
 value: Text = "open end
 
-data Field: Type =
+data Field: Type of
     field: Res -> Field

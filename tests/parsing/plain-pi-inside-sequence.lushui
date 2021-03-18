@@ -2,5 +2,5 @@
 
 target = [Int Nat -> Nat]
 
-;; Description: Since this language is not comma-based, in several cases, once needs to add brackets.
-;; The sequence above could mean `[Int (Nat -> Nat)]` (well-typed!) but also `[(Int Nat -> Nat)]` (well-typed).
+;; Description: Since this language is not comma-based, in several cases, one needs to add brackets.
+;; The sequence above could mean `[Int (Nat -> Nat)]` (well-typed) but also `[(Int Nat -> Nat)]` (not well-typed).

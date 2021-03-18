@@ -5,7 +5,7 @@ module core
 
 use core.(list.(List empty cons) bool.(Bool false true) unit.(Unit unit))
 
-data Any: Type =
+data Any: Type of
     any: (A: Type) -> A -> Any
 
 use Any.any

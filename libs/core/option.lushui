@@ -1,5 +1,5 @@
 @public @inherent
-data Option (A: Type): Type =
+data Option (A: Type): Type of
     none (A: Type): Option A
     some (A: Type): A -> Option A
 

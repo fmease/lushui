@@ -1,5 +1,5 @@
 @public
-data Ordering: Type =
+data Ordering: Type of
     less: Ordering
     equal: Ordering
     greater: Ordering
@@ -14,14 +14,13 @@ invert (o: Ordering): Ordering =
         equal => equal
         greater => less
 
-use super.unit.(unit Unit)
+use super.unit.(unit Unit Thunk (force as !))
 use super.int.Int
 
-;; @Temporary until laziness API
 @public
-then (o: Ordering) (p: Unit -> Ordering): Ordering =
+then (o: Ordering) (lazy p: Thunk Ordering): Ordering =
     case o of
-        equal => p unit
+        equal => ! Ordering p
         \o => o
 
 @public

@@ -7,7 +7,7 @@ power (S: Type): Type = S -> Type
 
 U: Type = (X: Type) -> (power (power X) -> X) -> power (power X)
 
-data HOLE: Type =
+data HOLE: Type of ;; @Temporary
 
 tau (t: power (power U)) (X: Type) (f: power (power X) -> X) (p: power X): HOLE =
     t (\(x: U) => p (f (x X f)))

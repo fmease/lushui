@@ -2,9 +2,9 @@
 
 use boundary.(Thing (Th as TH) inner)
 
-module boundary =
+module boundary of
     @public
-    data Thing: Type =
+    data Thing: Type of
 
     @public
     use Thing as Th
@@ -15,7 +15,7 @@ module boundary =
     Intermediate: Type = Type
 
     @public
-    module inner =
+    module inner of
         @public
         D: Type = super.Intermediate
 
