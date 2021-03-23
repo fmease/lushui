@@ -176,12 +176,10 @@ pub enum TokenKind {
     DoubleColon,
     /// For implicit parameters.
     SingleQuote,
-    Dedentation,
     /// For paths.
     Dot,
     /// For definitions.
     Equals,
-    Indentation,
     LineBreak,
     OpeningRoundBracket,
     OpeningSquareBracket,
@@ -266,10 +264,8 @@ impl fmt::Display for TokenKind {
             Colon => quoted!(":"),
             DoubleColon => quoted!("::"),
             SingleQuote => quoted!("'"),
-            Dedentation => "dedentation",
             Dot => quoted!("."),
             Equals => quoted!("="),
-            Indentation => "indentation",
             LineBreak => "line break",
             OpeningRoundBracket => quoted!("("),
             OpeningSquareBracket => quoted!("["),

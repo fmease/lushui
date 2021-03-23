@@ -1,9 +1,9 @@
 ;; TEST fail check
 
-data Alpha =
+data Alpha of
     alpha a
 
-data Beta A =
+data Beta A of
     beta A: Beta A
 
 number = 0

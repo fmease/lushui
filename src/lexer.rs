@@ -1,19 +1,12 @@
 //! The lexer.
 //!
-//! It parses indentation and dedentation intwo two pseudo tokens:
-//! [TokenKind::Indentation] and [TokenKind::Dedentation] respectively.
-//!
 //! ## Issues
 //!
 //! * most lexical errors are fatal right now. we shouldn't make the lexer fail
 //!   on mismatching brackets, that should be the task of the parser (indeed also
-//!   keeping the bracket stack!), as well as invalid tokens: we should just
-//!   keep going having a new TokenKind, TokenKind::Invalid(..) (which is a cluster)
-//!   as a result, the parser can skip them and what not
-//!   (both things should not poison the lexer!)
+//!   keeping the bracket stack!)
 
 #[cfg(test)]
-// @Beacon @Task update errors
 mod test;
 pub mod token;
 
@@ -56,6 +49,49 @@ pub fn parse_identifier(source: String) -> Option<Atom> {
     }
 }
 
+// @Task add documentation, better name
+#[derive(Clone, Copy, PartialEq, Eq)]
+// @Temporary
+#[derive(Debug)]
+enum LineContinuation {
+    TopLevel,
+    DelimitedBlock,
+    IndentedBlock,
+    Indentation,
+}
+
+impl LineContinuation {
+    const fn line_break_is_terminator(self) -> bool {
+        matches!(self, Self::TopLevel | Self::IndentedBlock)
+    }
+}
+
+impl Default for LineContinuation {
+    fn default() -> Self {
+        Self::TopLevel
+    }
+}
+
+// #[derive(Default)]
+// struct LineContinuationStack(Vec<LineContinuation>);
+
+// impl LineContinuationStack {
+//     fn push(&mut self, mode: LineContinuation) {
+//         eprintln!("push({:?}) to {:?}", mode, self.0);
+//         self.0.push(mode);
+//     }
+
+//     // @Question good API?
+//     fn pop(&mut self) -> LineContinuation {
+//         eprintln!("pop({:?})", self.current());
+//         self.0.pop().unwrap_or_default()
+//     }
+
+//     fn current(&self) -> LineContinuation {
+//         self.0.last().copied().unwrap_or_default()
+//     }
+// }
+
 /// The state of the lexer.
 pub struct Lexer<'a> {
     source: &'a SourceFile,
@@ -65,6 +101,7 @@ pub struct Lexer<'a> {
     indentation_in_spaces: usize,
     round_brackets: Vec<Span>,
     warnings: &'a mut Diagnostics,
+    line_continuation: Vec<LineContinuation>,
 }
 
 impl<'a> Lexer<'a> {
@@ -77,6 +114,7 @@ impl<'a> Lexer<'a> {
             span: LocalSpan::zero(),
             indentation_in_spaces: 0,
             round_brackets: Vec::new(),
+            line_continuation: Vec::new(),
         }
     }
 
@@ -87,7 +125,7 @@ impl<'a> Lexer<'a> {
         while let Some(character) = self.peek() {
             self.span = LocalSpan::from(self.index().unwrap());
             match character {
-                // @Bug if it is SOI, don't lex_whitespace but lex_indentation
+                // @Bug @Beacon if it is SOI, don't lex_whitespace but lex_indentation
                 // (SOI should act as a line break)
                 ' ' => self.lex_whitespace(),
                 ';' => self.lex_comment(),
@@ -113,6 +151,8 @@ impl<'a> Lexer<'a> {
                     self.advance();
                 }
                 '{' => {
+                    self.line_continuation
+                        .push(LineContinuation::DelimitedBlock);
                     self.add(OpeningCurlyBracket);
                     self.advance();
                 }
@@ -132,6 +172,7 @@ impl<'a> Lexer<'a> {
             }
         }
 
+        // @Task move this out of the lexer to the parser
         if !self.round_brackets.is_empty() {
             return Err(self
                 .round_brackets
@@ -148,8 +189,6 @@ impl<'a> Lexer<'a> {
         // @Bug panics if last byte is not a valid codepoint, right?
         let last = LocalByteIndex::from_usize(self.source.content().len() - 1);
 
-        self.extend_with_dedentations(last, self.indentation_in_spaces);
-
         // ideally, we'd like to set its span to the index after the last token,
         // but they way `SourceMap` is currently defined, that would not work,
         // it would reach into the next `SourceFile` if there even was one
@@ -158,6 +197,8 @@ impl<'a> Lexer<'a> {
         // we would need to add a lot of complexity to be able to handle that in
         // `Diagnostic::format_for_terminal`.
         // @Task just take the span of the last token (this will break tests)
+        // @Update don't! consider what would happen with the diagnostic of
+        // unterminated text literals!
         self.span = LocalSpan::from(last);
         self.add(EndOfInput);
 
@@ -256,28 +297,34 @@ impl<'a> Lexer<'a> {
     fn lex_indentation(&mut self) -> Result {
         use std::cmp::Ordering::*;
 
+        // @Note not extensible to DelimitedBlocks
+        let found_block_marker = self
+            .tokens
+            .last()
+            .map_or(false, |token| matches!(token.kind, Of | Do));
+
         // squash consecutive line breaks into a single one
         self.advance();
         self.take_while(|character| character == '\n');
         self.add(LineBreak);
 
-        self.span = match self.index() {
-            Some(index) => LocalSpan::from(index),
-            None => return Ok(()),
-        };
+        // self.span = match self.index() {
+        //     Some(index) => LocalSpan::from(index),
+        //     None => return Ok(()),
+        // };
         let mut spaces = 0;
         self.take_while_with(|character| character == ' ', || spaces += 1);
 
         let change = spaces.cmp(&self.indentation_in_spaces);
-
         let absolute_difference = match change {
             Greater => spaces - self.indentation_in_spaces,
             Less => self.indentation_in_spaces - spaces,
-            Equal => return Ok(()),
+            Equal => 0,
         };
 
-        self.span = LocalSpan::new(self.span.end + 1 - absolute_difference, self.span.end);
+        // self.span = LocalSpan::new(self.span.end + 1 - absolute_difference, self.span.end);
 
+        // @Task don't fail fatally, accept it but push error into an error buffer
         if absolute_difference % INDENTATION_IN_SPACES != 0
             || change == Greater && absolute_difference > INDENTATION_IN_SPACES
         {
@@ -294,11 +341,48 @@ impl<'a> Lexer<'a> {
                 )));
         }
 
-        match change {
-            Greater => self.add(Indentation),
-            // @Note hacky
-            Less => self.extend_with_dedentations(self.span.end - 1, absolute_difference),
-            Equal => unreachable!(),
+        // @Note
+        // let x = do
+        // let y = do
+        // means do{}, do{}
+
+        // @Beacon @Beacon @Task don't necessarily emit a LineBreak before a ClosingCurlyBracket
+        // ... the  parser can handle it (in parse_terminated_expression)
+
+        let line_continuation = self.line_continuation.last().copied().unwrap_or_default();
+
+        // @Task simplify
+        if found_block_marker {
+            self.tokens.pop(); // remove the line break
+            self.add(OpeningCurlyBracket); // @Bug wrong span
+            self.line_continuation.push(LineContinuation::IndentedBlock);
+        } else {
+            if change == Greater || change == Equal && !line_continuation.line_break_is_terminator()
+            {
+                self.tokens.pop(); // remove the line break
+            }
+            if change == Greater {
+                self.line_continuation.push(LineContinuation::Indentation);
+            }
+        };
+
+        if change == Less || change == Equal && found_block_marker {
+            let dedentation = absolute_difference / INDENTATION_IN_SPACES;
+
+            for _ in 0..=dedentation {
+                // @Note _or_default prob never reaches, @Task use unwrap()
+                let line_continuation = self.line_continuation.pop().unwrap_or_default();
+
+                if line_continuation == LineContinuation::IndentedBlock {
+                    // @Bug wrong span
+                    self.add(ClosingCurlyBracket);
+                    // @Temporary @Note a temp fix so that mod/data decls are terminated by
+                    // a line break which they have to be. issue: not compatible with
+                    // case analysis. @Task we need to update the parser such that it
+                    // accepts declarations with a trailing block but no trailing line break
+                    self.add(LineBreak);
+                }
+            }
         }
 
         self.indentation_in_spaces = spaces;
@@ -490,21 +574,6 @@ impl<'a> Lexer<'a> {
 
     fn add_with(&mut self, constructor: impl FnOnce(Span) -> Token) {
         self.tokens.push(constructor(self.span()))
-    }
-
-    fn extend_with_dedentations(&mut self, start: LocalByteIndex, amount_of_spaces: usize) {
-        if amount_of_spaces == 0 {
-            return;
-        }
-
-        // @Task use better span (it should span 4 spaces if possible) @Note you need to go backwards
-        self.span = LocalSpan::from(start);
-        let span = self.span();
-
-        let extension = std::iter::repeat(Token::new(TokenKind::Dedentation, span))
-            .take(amount_of_spaces / INDENTATION_IN_SPACES);
-
-        self.tokens.extend(extension);
     }
 }
 

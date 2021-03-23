@@ -6,8 +6,8 @@ error[E020]: `Void` is defined multiple times in this scope
   |
  --> ${DIRECTORY}/lowering/foreign-declaration-with-explicit-body.lushui:4:1
   |
-4 | data Void: Type =
-  | ^^^^^^^^^^^^^^^^^ conflicting definition
+4 | data Void: Type of
+  | ^^^^^^^^^^^^^^^^^^ conflicting definition
   |
  note: declaration is marked `foreign` but it also has a body introduced by `=`
 

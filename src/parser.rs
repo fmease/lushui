@@ -5,7 +5,6 @@
 //! ## Issues
 //!
 //! * crude error locations
-//! * cannot really handle optional indentation
 //! * ugly API
 //! * all syntax errors are fatal. instead, she should have a "poisoned" mode
 //!
@@ -244,10 +243,9 @@ impl<'a> Parser<'a> {
     ///     | Module-Declaration
     ///     | Crate-Declaration
     ///     | Use-Declaration
-    ///     | Group
     /// Crate-Declaration ::= "crate" #Identifier Line-Break
-    /// Group ::= Indentation Declaration* Dedentation
     /// ```
+    // @Task re-add attribute groups (needs syntax proposals)
     fn parse_declaration(&mut self) -> Result<Declaration> {
         use TokenKind::*;
         let attributes = self.parse_attributes(SkipLineBreaks::Yes)?;
@@ -267,6 +265,7 @@ impl<'a> Parser<'a> {
                 self.advance();
                 self.finish_parse_module_declaration(span, attributes)
             }
+            // @Task remove
             Crate => {
                 self.advance();
                 let binder = self.consume_identifier()?;
@@ -283,11 +282,6 @@ impl<'a> Parser<'a> {
             Use => {
                 self.advance();
                 self.finish_parse_use_declaration(span, attributes)
-            }
-            Indentation => {
-                self.advance();
-                self.error(|| Diagnostic::unimplemented("attribute groups").with_primary_span(span))
-                // self.consume(Dedentation)?;
             }
             _ => self.error(|| Expected::Declaration.but_actual_is(self.current_token())),
         }
@@ -373,6 +367,8 @@ impl<'a> Parser<'a> {
                 }
 
                 // @Note constructs and wastes a diagnostic
+                // @Task transform above while into a loop
+                // @Beacon :while_current_not
                 span.merging(self.consume(ClosingRoundBracket).unwrap());
             }
             _ => {
@@ -448,7 +444,7 @@ impl<'a> Parser<'a> {
     /// Value-Declaration ::=
     ///     #Identifier
     ///     Parameters Type-Annotation?
-    ///     ("=" Possibly-Indented-Terminated-Expression | Line-Break)
+    ///     ("=" Terminated-Expression | Line-Break)
     /// ```
     fn finish_parse_value_declaration(
         &mut self,
@@ -462,7 +458,7 @@ impl<'a> Parser<'a> {
         let type_annotation = span.merging(self.parse_optional_type_annotation()?);
 
         let body = if self.has_consumed(Equals) {
-            Some(span.merging(self.parse_possibly_indented_terminated_expression()?))
+            Some(span.merging(self.parse_terminated_expression()?))
         } else {
             self.consume(LineBreak)?;
             None
@@ -491,7 +487,7 @@ impl<'a> Parser<'a> {
     /// Data-Declaration ::=
     ///     "data" #Identifier
     ///     Parameters Type-Annotation?
-    ///     (Line-Break | "of" Line-Break Indentation (Line-Break | Constructor)* Dedentation)
+    ///     (Line-Break | "of" "{" (Line-Break | Constructor)* "}")
     /// ```
     fn finish_parse_data_declaration(
         &mut self,
@@ -513,11 +509,10 @@ impl<'a> Parser<'a> {
             Of => {
                 span.merging(self.current_token().span);
                 self.advance();
-                self.consume(LineBreak)?;
 
                 let mut constructors = Vec::new();
 
-                self.parse_indented(|this| {
+                self.parse_block(|this| {
                     constructors.push(this.parse_constructor()?);
                     Ok(())
                 })?;
@@ -559,8 +554,8 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Module-Declaration ::=
     ///     | Header
-    ///     | "module" #Identifier (Line-Break | "of" Line-Break Indentation (Line-Break | Declaration)* Dedentation)
-    /// Header ::= "module" "of" Line-Break
+    ///     | "module" #Identifier (Line-Break | "of" "{" (Line-Break | Declaration)* "}")
+    /// Header ::= "module" Line-Break
     /// ```
     fn finish_parse_module_declaration(
         &mut self,
@@ -570,13 +565,8 @@ impl<'a> Parser<'a> {
         use TokenKind::*;
         let mut span = keyword_span;
 
-        if self.has_consumed(Of) {
-            return Ok(decl! {
-                Header {
-                    attributes,
-                    span
-                }
-            });
+        if self.has_consumed(LineBreak) {
+            return Ok(decl! { Header { attributes, span } });
         }
 
         let binder = span.merging(self.consume_identifier()?);
@@ -585,7 +575,7 @@ impl<'a> Parser<'a> {
             // external module declaration
             LineBreak => {
                 self.advance();
-                return Ok(decl! {
+                Ok(decl! {
                     Module {
                         attributes,
                         span;
@@ -593,35 +583,30 @@ impl<'a> Parser<'a> {
                         file: self.file.clone(),
                         declarations: None,
                     }
-                });
+                })
             }
             Of => {
                 self.advance();
-                self.consume(LineBreak)?;
-            }
-            _ => {
-                return self
-                    .error(|| expected_one_of![LineBreak, Of].but_actual_is(self.current_token()))
-            }
-        };
+                let mut declarations = Vec::new();
 
-        let mut declarations = Vec::new();
+                self.parse_block(|this| {
+                    declarations.push(this.parse_declaration()?);
+                    Ok(())
+                })?;
 
-        self.parse_indented(|this| {
-            declarations.push(this.parse_declaration()?);
-            Ok(())
-        })?;
-
-        // @Bug span is wrong: we need to store the last token's span: dedentation/line break
-        Ok(decl! {
-            Module {
-                attributes,
-                span;
-                binder,
-                file: self.file.clone(),
-                declarations: Some(declarations),
+                // @Bug span is wrong: we need to store the last token's span: dedentation/line break
+                Ok(decl! {
+                    Module {
+                        attributes,
+                        span;
+                        binder,
+                        file: self.file.clone(),
+                        declarations: Some(declarations),
+                    }
+                })
             }
-        })
+            _ => self.error(|| expected_one_of![LineBreak, Of].but_actual_is(self.current_token())),
+        }
     }
 
     /// Parse a file module.
@@ -666,25 +651,23 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // @Note this is fragile and ugly as heck
-    fn parse_indented(&mut self, mut subparser: impl FnMut(&mut Self) -> Result<()>) -> Result {
+    fn parse_block(&mut self, mut subparser: impl FnMut(&mut Self) -> Result<()>) -> Result {
         use TokenKind::*;
 
-        while self.has_consumed(Indentation) {
-            while self.current_token().kind != Dedentation {
-                if self.has_consumed(LineBreak) {
-                    continue;
-                }
+        let _ = self.consume(OpeningCurlyBracket)?;
 
-                subparser(self)?;
+        loop {
+            // @Note necessary I guess in cases where we have Line-Break ((Comment)) Line-Break
+            if self.has_consumed(LineBreak) {
+                continue;
             }
 
-            self.consume(Dedentation)?;
+            if self.has_consumed(ClosingCurlyBracket) {
+                break Ok(());
+            }
 
-            while self.has_consumed(LineBreak) {}
+            subparser(self)?;
         }
-
-        Ok(())
     }
 
     /// Finish parsing a use-declaration.
@@ -777,6 +760,8 @@ impl<'a> Parser<'a> {
                     }
 
                     // @Note constructs and wastes a diagnostic
+                    // @Task transform above while into a loop
+                    // @Beacon :while_current_not
                     span.merging(&self.consume(ClosingRoundBracket).unwrap());
 
                     return Ok(UsePathTree::new(
@@ -826,7 +811,7 @@ impl<'a> Parser<'a> {
     /// Constructor ::=
     ///     (Attribute Line-Break*)*
     ///     #Identifier Parameters Type-Annotation?
-    ///     ("=" Possibly-Indented-Terminated-Expression)? Line-Break
+    ///     ("=" Terminated-Expression)? Line-Break
     /// ```
     fn parse_constructor(&mut self) -> Result<Declaration> {
         use TokenKind::*;
@@ -841,7 +826,7 @@ impl<'a> Parser<'a> {
         let type_annotation = span.merging(self.parse_optional_type_annotation()?);
 
         let body = if self.has_consumed(Equals) {
-            Some(span.merging(self.parse_possibly_indented_terminated_expression()?))
+            Some(span.merging(self.parse_terminated_expression()?))
         } else {
             self.consume(LineBreak)?;
             None
@@ -893,8 +878,11 @@ impl<'a> Parser<'a> {
 
         let domain = self
             .reflect(|this| {
-                let (explicitness, span) = this.parse_optional_implicitness();
-                let mut span = this.consume(OpeningRoundBracket)?.span.merge_into(span);
+                let explicitness = this.parse_optional_implicitness();
+                let mut span = this
+                    .consume(OpeningRoundBracket)?
+                    .span
+                    .merge_into(explicitness);
 
                 let aspect = this.parse_parameter_aspect();
                 let binder = this.consume_identifier()?;
@@ -906,7 +894,7 @@ impl<'a> Parser<'a> {
                 Ok(Spanned::new(
                     span,
                     Domain {
-                        explicitness,
+                        explicitness: explicitness.into(),
                         aspect,
                         binder: Some(binder),
                         expression: domain,
@@ -1212,7 +1200,7 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Let-In ::=
     ///     "let" #Identifier Parameters Type_Annotation?
-    ///     ("=" Possibly-Breakably-Indented-Expression)?
+    ///     ("=" Expression)?
     ///     "in" Line-Break? Expression
     /// ```
     // @Task allow omitting the `in` at the end of the line (@Note we might want to restrict it to
@@ -1238,7 +1226,7 @@ impl<'a> Parser<'a> {
         let type_annotation = self.parse_optional_type_annotation()?;
 
         let expression = if self.has_consumed(Equals) {
-            Some(self.parse_possibly_breakably_indented_expression()?)
+            Some(self.parse_expression()?)
         } else {
             None
         };
@@ -1291,37 +1279,33 @@ impl<'a> Parser<'a> {
     ///
     ///
     /// ```ebnf
-    /// Case-Analysis ::= "case" Possibly-Breakably-Indented-Expression "of"
-    ///     (Line-Break (Indentation Case* Dedentation)?)?
+    /// Case-Analysis ::= "case" Expression "of" "{" Case* "}"
     /// Case ::= Pattern "=>" Expression
     /// ```
     fn finish_parse_case_analysis(&mut self, span_of_case: Span) -> Result<Expression> {
         use TokenKind::*;
         let mut span = span_of_case;
 
-        let scrutinee = self.parse_possibly_breakably_indented_expression()?;
+        let scrutinee = self.parse_expression()?;
         span.merging(self.consume(Of)?);
 
         let mut cases = Vec::new();
 
-        if self.current_token().kind == LineBreak && self.succeeding_token().kind == Indentation {
-            self.advance();
-            self.advance();
+        let _ = self.consume(OpeningCurlyBracket)?;
 
-            while self.current_token().kind != Dedentation {
-                let pattern = self.parse_pattern()?;
-                self.consume(WideArrow)?;
-                let expression = self.parse_possibly_indented_terminated_expression()?;
+        // @Task use parse_block function for this (but don't trash the span!)
 
-                cases.push(ast::Case {
-                    pattern,
-                    body: expression,
-                });
-            }
+        while self.current_token().kind != ClosingCurlyBracket {
+            let pattern = self.parse_pattern()?;
+            self.consume(WideArrow)?;
+            let body = self.parse_terminated_expression()?;
 
-            span.merging(self.current_token());
-            self.advance();
+            cases.push(ast::Case { pattern, body });
         }
+
+        // @Beacon :while_current_not
+        span.merging(self.current_token());
+        self.advance();
 
         Ok(expr! {
             CaseAnalysis {
@@ -1340,7 +1324,7 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```ebnf
-    /// Do-Block ::= "do" Line-Break Indentation Statement* Dedentation
+    /// Do-Block ::= "do" "{" Statement* "}"
     /// Statement ::= Let-Statement | Use-Declaration | Bind-Statement | Expression-Statement
     /// Let-Statement ::= "let" Value-Declaration
     /// Bind-Statement ::= #Identifier Type-Annotation? "<-" Expression Line-Break
@@ -1357,10 +1341,14 @@ impl<'a> Parser<'a> {
         let mut span = span_of_do;
         let mut statements = Vec::new();
 
-        self.consume(LineBreak)?;
-        self.consume(Indentation)?;
+        let _ = self.consume(OpeningCurlyBracket)?;
 
-        while self.current_token().kind != Dedentation {
+        while self.current_token().kind != ClosingCurlyBracket {
+            // @Note necessary I guess in cases where we have Line-Break ((Comment)) Line-Break
+            if self.has_consumed(LineBreak) {
+                continue;
+            }
+
             statements.push(match self.current_token().kind {
                 // @Task move to its own function
                 Let => {
@@ -1372,7 +1360,7 @@ impl<'a> Parser<'a> {
                     ])?;
                     let type_annotation = self.parse_optional_type_annotation()?;
                     self.consume(TokenKind::Equals)?;
-                    let expression = self.parse_possibly_indented_terminated_expression()?;
+                    let expression = self.parse_terminated_expression()?;
                     Statement::Let(LetStatement {
                         binder,
                         parameters,
@@ -1395,7 +1383,7 @@ impl<'a> Parser<'a> {
                         self.advance();
                         let type_annotation = self.parse_optional_type_annotation()?;
                         self.consume(ThinArrowLeft)?;
-                        let expression = self.parse_possibly_indented_terminated_expression()?;
+                        let expression = self.parse_terminated_expression()?;
                         Statement::Bind(BindStatement {
                             binder,
                             type_annotation,
@@ -1412,6 +1400,7 @@ impl<'a> Parser<'a> {
             });
         }
 
+        // @Beacon :while_current_not
         span.merging(self.current_token());
         self.advance();
 
@@ -1461,8 +1450,8 @@ impl<'a> Parser<'a> {
     fn parse_parameter_group(&mut self, delimiters: &[Delimiter]) -> Result<ParameterGroup> {
         use TokenKind::*;
 
-        let (explicitness, span) = self.parse_optional_implicitness();
-        let mut span = self.current_token().span.merge_into(span);
+        let explicitness = self.parse_optional_implicitness();
+        let mut span = self.current_token().span.merge_into(explicitness);
 
         match self.current_token().kind {
             Identifier => {
@@ -1470,7 +1459,7 @@ impl<'a> Parser<'a> {
                 self.advance();
 
                 Ok(ParameterGroup {
-                    explicitness,
+                    explicitness: explicitness.into(),
                     aspect: default(),
                     parameters: smallvec![binder],
                     type_annotation: None,
@@ -1495,7 +1484,7 @@ impl<'a> Parser<'a> {
                 span.merging(self.consume(ClosingRoundBracket)?);
 
                 Ok(ParameterGroup {
-                    explicitness,
+                    explicitness: explicitness.into(),
                     aspect,
                     parameters,
                     type_annotation,
@@ -1542,22 +1531,22 @@ impl<'a> Parser<'a> {
             .reflect(|this| {
                 // @Beacon @Question can pi_type_literal_was_used_as_lower_expression also happen here???
                 // @Task use the span returned by parse_optional_implicitness
-                let (explicitness, _span) = this.parse_optional_implicitness();
+                let explicitness = this.parse_optional_implicitness();
                 let expat = Expat::parse_lower(this)?;
                 Ok(Spanned::new(
                     expat.span(),
                     Argument {
                         binder: None,
-                        explicitness,
+                        explicitness: explicitness.into(),
                         expat,
                     },
                 ))
             })
             .or_else(|_| -> Result<_> {
                 self.reflect(|this| {
-                    let (explicitness, explicitness_span) = this.parse_optional_implicitness();
+                    let explicitness = this.parse_optional_implicitness();
                     let mut span = this.consume(OpeningRoundBracket)?.span;
-                    span.merging_from(explicitness_span);
+                    span.merging_from(explicitness);
 
                     let binder = this.consume_identifier()?;
 
@@ -1574,7 +1563,7 @@ impl<'a> Parser<'a> {
                     Ok(Spanned::new(
                         span,
                         Argument {
-                            explicitness,
+                            explicitness: explicitness.into(),
                             binder: Some(binder),
                             expat: argument,
                         },
@@ -1712,62 +1701,6 @@ impl<'a> Parser<'a> {
             .transpose()
     }
 
-    /// Parse a possibly indented expression terminated by a line break.
-    ///
-    /// ## Grammar
-    ///
-    /// ```ebnf
-    /// Possibly-Indented-Terminated-Expression ::=
-    ///     | Line-Break Indentation Expression Line-Break? Dedentation
-    ///     | Terminated-Expression
-    /// ```
-    fn parse_possibly_indented_terminated_expression(&mut self) -> Result<Expression> {
-        use TokenKind::*;
-
-        if self.has_consumed(LineBreak) {
-            self.consume(Indentation)?;
-            let expression = self.parse_expression()?;
-            let _ = self.has_consumed(LineBreak);
-            self.consume(Dedentation)?;
-            Ok(expression)
-        } else {
-            self.parse_terminated_expression()
-        }
-    }
-
-    /// Parse a possibly indented expression whose indentation can be broken.
-    ///
-    /// The user of this function needs to parse the indentation breaker by themself.
-    ///
-    /// An **indentation breaker** is a token which functions as an alternative to
-    /// a line break followed by dedentation. This feature exists for ergonomic reasons.
-    /// Well-known tokens of this sort are `in` in let/in and use/in and `of` in case/of.
-    ///
-    /// ## Grammar
-    ///
-    /// ```ebnf
-    /// Possibly-Breakably-Indented-Expression ::=
-    ///     | Line-Break Indentation Expression (Line-Break Dedentation)?
-    ///     | Expression
-    /// ```
-    // @Bug even though this function works locally, it does not to with more context.
-    // the indentation breaking logic does not work because our parser then inserts a
-    // Dedentation token somewhere later down the line (e.g. after the In)
-    fn parse_possibly_breakably_indented_expression(&mut self) -> Result<Expression> {
-        use TokenKind::*;
-
-        if self.has_consumed(LineBreak) {
-            self.consume(Indentation)?;
-            let expression = self.parse_expression()?;
-            if self.has_consumed(LineBreak) {
-                self.consume(Dedentation)?;
-            }
-            Ok(expression)
-        } else {
-            self.parse_expression()
-        }
-    }
-
     /// Parse an expression terminated by a line break or dedentation.
     ///
     /// A line break is parsed, dedentation is not.
@@ -1775,12 +1708,13 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```ebnf
-    /// Terminated-Expression ::= Expression (<!Dedentation Line-Break)?
+    /// Terminated-Expression ::= Expression (<! "{" Line-Break)?
     /// ```
+    // @Question just inline/remove?
     fn parse_terminated_expression(&mut self) -> Result<Expression> {
         let expression = self.parse_expression()?;
         // @Note special-casing is also called programming hackily
-        if self.current_token().kind != TokenKind::Dedentation {
+        if self.current_token().kind != TokenKind::ClosingCurlyBracket {
             self.consume(TokenKind::LineBreak)?;
         }
         Ok(expression)
@@ -1793,15 +1727,14 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Explicitness ::= "'"?
     /// ```
-    // @Task improve return type
-    fn parse_optional_implicitness(&mut self) -> (Explicitness, Option<Span>) {
+    fn parse_optional_implicitness(&mut self) -> SpannedExplicitness {
         match self.current_token().kind {
             TokenKind::SingleQuote => {
                 let span = self.current_token().span;
                 self.advance();
-                (Implicit, Some(span))
+                SpannedExplicitness::Implicit { marker: span }
             }
-            _ => (Explicit, None),
+            _ => SpannedExplicitness::Explicit,
         }
     }
 }

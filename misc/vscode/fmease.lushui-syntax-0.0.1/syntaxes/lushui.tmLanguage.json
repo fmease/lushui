@@ -53,7 +53,7 @@
                     "name": "keyword.other.lushui"
                 },
                 {
-                    "match": "(?<![\\w\\-])(data|field|lazy|let|module|use)(?![\\w\\-])",
+                    "match": "(?<![\\w\\-])(data|lazy|let|module|use)(?![\\w\\-])",
                     "name": "storage.modifier.lushui"
                 },
                 {
@@ -94,7 +94,15 @@
                     "name": "punctuation.grouping.end.bracket.square.lushui meta.brace.square.lushui"
                 },
                 {
-                    "match": ",",
+                    "match": "\\{",
+                    "name": "punctuation.grouping.begin.bracket.curly.lushui meta.brace.curly.lushui"
+                },
+                {
+                    "match": "\\}",
+                    "name": "punctuation.grouping.end.bracket.curly.lushui meta.brace.curly.lushui"
+                },
+                {
+                    "match": "'",
                     "name": "punctuation.lushui"
                 }
             ]
@@ -120,7 +128,7 @@
         "entity": {
             "patterns": [
                 {
-                    "match": "(?<=\\b(?:data|field|let|module|as))\\s+((?:[a-zA-Z_]\\w*)(?:-[a-zA-Z_]\\w*)*)\\b",
+                    "match": "(?<=\\b(?:data|let|module|as))\\s+((?:[a-zA-Z_]\\w*)(?:-[a-zA-Z_]\\w*)*)\\b",
                     "captures": {
                         "1": {
                             "name": "entity.name.function.lushui"

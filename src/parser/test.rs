@@ -9,8 +9,9 @@ use std::rc::Rc;
 
 use super::{
     ast::{
-        decl, expr, Attribute, Attributes, Declaration, Domain, Explicitness::*, Expression,
-        Format, Identifier, Item, ParameterGroup, Path, UsePathTree, UsePathTreeKind,
+        decl, expr, pat, Attribute, Attributes, Case, Declaration, Domain, Explicitness::*,
+        Expression, Format, Identifier, Item, ParameterGroup, Parameters, Path, UsePathTree,
+        UsePathTreeKind,
     },
     Parser, Result,
 };
@@ -34,16 +35,17 @@ fn parse_expression(source: &str) -> Result<Expression> {
 
 // @Task improve API: don't return file @Note that's possible once we use
 // source file indices indead of Rc<SourceFile> in the span API
-fn parse_declaration(source: &str) -> Result<(Rc<SourceFile>, Declaration)> {
+fn parse_declaration(source: &str) -> (Rc<SourceFile>, Result<Declaration>) {
     let mut diagnostics = Diagnostics::default();
     let file = Rc::new(SourceFile::fake(source.to_owned()));
-    let lexer = Lexer::new(&file, &mut diagnostics);
-    let tokens = lexer.lex().map_err(|_| ())?;
-    let mut parser = Parser::new(file.clone(), &tokens, &mut diagnostics);
-    parser
-        .parse(test_module_name())
-        .map(|declaration| (file, declaration))
-        .map_err(|_| ())
+    let declaration = (|| {
+        let lexer = Lexer::new(&file, &mut diagnostics);
+        let tokens = lexer.lex().map_err(|_| ())?;
+        let mut parser = Parser::new(file.clone(), &tokens, &mut diagnostics);
+        parser.parse(test_module_name()).map_err(|_| ())
+    })();
+
+    (file, declaration)
 }
 
 /// The name of the module returned by [parse_declaration].
@@ -58,6 +60,7 @@ where
     match (expected, actual) {
         (Ok(expected), Ok(actual)) => {
             if actual != expected {
+                std::env::set_var("NO_COLOR", "");
                 panic!(
                     "the actual output of the parser does not match the expected one:\n{}",
                     difference::Changeset::new(
@@ -468,10 +471,10 @@ fn outer_and_inner_attributes() {
 /// Compare with [use_as_double_brackets].
 #[test]
 fn use_as_plain() {
-    let (file, declaration) = parse_declaration("use alpha.beta as gamma\n").unwrap();
+    let (file, declaration) = parse_declaration("use alpha.beta as gamma\n");
 
     assert_eq(
-        Ok(declaration),
+        declaration,
         Ok(decl! {
             Module {
                 Attributes::new(), span(1, 24);
@@ -505,10 +508,10 @@ fn use_as_plain() {
 /// Compare with [use_as_plain].
 #[test]
 fn use_as_double_brackets() {
-    let (file, declaration) = parse_declaration("use alpha.((beta as gamma))\n").unwrap();
+    let (file, declaration) = parse_declaration("use alpha.((beta as gamma))\n");
 
     assert_eq(
-        Ok(declaration),
+        declaration,
         Ok(decl! {
             Module {
                 Attributes::new(), span(1, 28);
@@ -539,4 +542,145 @@ fn use_as_double_brackets() {
             }
         }),
     )
+}
+
+/// Compare with [case_analysis_not_indented]. They are identical up to span.
+#[test]
+fn case_analysis_indented() {
+    let (file, declaration) = parse_declaration(
+        "\
+main =
+    case x of
+        false => 0
+        \\bar =>
+            \"bar\"
+",
+    );
+
+    assert_eq(
+        declaration,
+        Ok(decl! {
+            Module {
+                Attributes::new(), span(1, 74);
+                binder: test_module_name(),
+                file,
+                declarations: Some(vec![
+                    decl! {
+                        Value {
+                            Attributes::new(), span(1, 74);
+                            binder: Identifier::new("main".into(), span(1, 4)),
+                            parameters: Parameters::new(),
+                            type_annotation: None,
+                            body: Some(expr! {
+                                CaseAnalysis {
+                                    Attributes::new(), span(12, 74);
+                                    scrutinee: Identifier::new("x".into(), span(17, 17)).into(),
+                                    cases: vec![
+                                        Case {
+                                            pattern: pat! {
+                                                Path(
+                                                    Attributes::new(), span(30, 34);
+                                                    Path::from(Identifier::new("false".into(), span(30, 34))),
+                                                )
+                                            },
+                                            body: expr! {
+                                                NumberLiteral(
+                                                    Attributes::new(), span(39, 39);
+                                                    String::from("0"),
+                                                )
+                                            },
+                                        },
+                                        Case {
+                                            pattern: pat! {
+                                                Binder {
+                                                    Attributes::new(), span(49, 52);
+                                                    binder: Identifier::new("bar".into(), span(50, 52)),
+                                                }
+                                            },
+                                            body: expr! {
+                                                TextLiteral(
+                                                    Attributes::new(), span(69, 73);
+                                                    String::from("bar"),
+                                                )
+                                            },
+                                        },
+                                    ],
+                                }
+                            }),
+                        }
+                    }
+                ]),
+            }
+        }),
+    );
+}
+
+/// Compare with [case_analysis_indented]. They are identical up to span.
+#[test]
+fn case_analysis_not_indented() {
+    let (file, declaration) = parse_declaration(
+        "\
+main = case x of
+    false => 0
+    \\bar =>
+        \"bar\"
+",
+    );
+
+    assert_eq(
+        declaration,
+        Ok(decl! {
+            Module {
+                Attributes::new(), span(1, 58);
+                binder: test_module_name(),
+                file,
+                declarations: Some(vec![
+                    decl! {
+                        Value {
+                            Attributes::new(), span(1, 58);
+                            binder: Identifier::new("main".into(), span(1, 4)),
+                            parameters: Parameters::new(),
+                            type_annotation: None,
+                            body: Some(expr! {
+                                CaseAnalysis {
+                                    Attributes::new(), span(8, 58);
+                                    scrutinee: Identifier::new("x".into(), span(13, 13)).into(),
+                                    cases: vec![
+                                        Case {
+                                            pattern: pat! {
+                                                Path(
+                                                    Attributes::new(), span(22, 26);
+                                                    Path::from(Identifier::new("false".into(), span(22, 26))),
+                                                )
+                                            },
+                                            body: expr! {
+                                                NumberLiteral(
+                                                    Attributes::new(), span(31, 31);
+                                                    String::from("0"),
+                                                )
+                                            },
+                                        },
+                                        Case {
+                                            pattern: pat! {
+                                                Binder {
+                                                    Attributes::new(), span(37, 40);
+                                                    binder: Identifier::new("bar".into(), span(38, 40)),
+                                                }
+                                            },
+                                            body: expr! {
+                                                TextLiteral(
+                                                    Attributes::new(), span(53, 57);
+                                                    String::from("bar"),
+                                                )
+                                            },
+                                        },
+                                    ],
+                                }
+                            }),
+                        }
+                    }
+                ]),
+            }
+        }),
+    );
 }

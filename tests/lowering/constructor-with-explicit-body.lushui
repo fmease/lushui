@@ -1,5 +1,5 @@
 ;; TEST fail check
 
-data Container: Type =
+data Container: Type of
     container = attachment
     attachment: Container = container

@@ -1,8 +1,15 @@
-;; TEST fail check
-;; this should be supported eventually #ImprovedIndentationSystem
-;; @Update working on it
+;; TEST pass check
+;; @Question worth keeping around?
 
 Definition:
-    Type of
+    Type =
     Type
 
+;; @Note not valid:
+;; data Definition:
+;;     Type of
+;;     definition: Definition
+
+data Definition:
+    Type of
+        definition: Definition

@@ -1,16 +1,16 @@
 ;; TEST fail check
 
 @public
-data Unit: Type =
+data Unit: Type of
     unit: Unit
 
 @public
-data Bool: Type =
+data Bool: Type of
     false: Bool
     true: Bool
 
 @public
-data Universe: Type =
+data Universe: Type of
     @public Unit: Unit -> Universe
     @(public self) Bool: Bool -> Universe = Universe.Bool
 

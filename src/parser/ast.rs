@@ -9,7 +9,7 @@ use crate::{
     error::PossiblyErroneous,
     lexer::{Token, TokenKind},
     smallvec,
-    span::{SourceFile, Span, Spanned, Spanning},
+    span::{PossiblySpanning, SourceFile, Span, Spanned, Spanning},
     Atom, SmallVec,
 };
 use std::{convert::TryFrom, convert::TryInto, rc::Rc};
@@ -629,6 +629,30 @@ pub enum Explicitness {
 impl Default for Explicitness {
     fn default() -> Self {
         Explicit
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum SpannedExplicitness {
+    Implicit { marker: Span },
+    Explicit,
+}
+
+impl From<SpannedExplicitness> for Explicitness {
+    fn from(explicitness: SpannedExplicitness) -> Self {
+        match explicitness {
+            SpannedExplicitness::Implicit { .. } => Implicit,
+            SpannedExplicitness::Explicit => Explicit,
+        }
+    }
+}
+
+impl PossiblySpanning for SpannedExplicitness {
+    fn possible_span(&self) -> Option<Span> {
+        match self {
+            &Self::Implicit { marker } => Some(marker),
+            Self::Explicit => None,
+        }
     }
 }
 
