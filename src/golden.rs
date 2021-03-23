@@ -113,7 +113,7 @@ fn run() -> Result<(), Error> {
             .load(entry.path())
             .map_err(|_| Error::FailedLoadingSourceFile)?;
 
-        let config = TestConfiguration::parse(source_file.content())
+        let config = TestConfiguration::parse(map[source_file].content())
             .map_err(Error::InvalidTestFileHeader)?;
 
         if config.tag == TestTag::Ignore {

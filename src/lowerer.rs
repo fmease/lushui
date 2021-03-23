@@ -261,8 +261,7 @@ impl<'a> Lowerer<'a> {
                             module.binder.as_str()
                         };
 
-                        let path = module
-                            .file
+                        let path = self.map[module.file]
                             .path
                             .parent()
                             .unwrap()
@@ -290,8 +289,8 @@ impl<'a> Lowerer<'a> {
                             })
                             .map_err(|error| errors.take().inserted(error))?;
 
-                        let tokens = Lexer::new(&file, &mut self.warnings).lex()?;
-                        let node = Parser::new(file, &tokens, &mut self.warnings)
+                        let tokens = Lexer::new(&self.map[file], &mut self.warnings).lex()?;
+                        let node = Parser::new(&self.map, file, &tokens, &mut self.warnings)
                             .parse(module.binder.clone())
                             .map_err(|error| errors.take().extended(error))?;
                         let module = match node.kind {

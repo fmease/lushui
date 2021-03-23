@@ -5,7 +5,7 @@
 
 // @Question maybe create builders for the elements instead of using macros?
 
-use std::rc::Rc;
+use std::path::PathBuf;
 
 use super::{
     ast::{
@@ -19,38 +19,47 @@ use crate::{
     diagnostics::Diagnostics,
     lexer::Lexer,
     smallvec,
-    span::{span, SourceFile, Span},
+    span::{span, SourceFileIndex, SourceMap, Span},
 };
 use std::default::default;
 
 // @Question @Bug why doesn't this seemingly return an Err(()) on error but a partial AST?
 fn parse_expression(source: &str) -> Result<Expression> {
     let mut diagnostics = Diagnostics::default();
-    let file = Rc::new(SourceFile::fake(source.to_owned()));
-    let lexer = Lexer::new(&file, &mut diagnostics);
+    let mut map = SourceMap::default();
+    let file = map
+        .add(PathBuf::new(), source.to_owned())
+        .unwrap_or_else(|_| unreachable!());
+    let lexer = Lexer::new(&map[file], &mut diagnostics);
     let tokens = lexer.lex().map_err(|_| ())?;
-    let mut parser = Parser::new(file, &tokens, &mut diagnostics);
+    let mut parser = Parser::new(&map, file, &tokens, &mut diagnostics);
     parser.parse_expression()
 }
 
 // @Task improve API: don't return file @Note that's possible once we use
 // source file indices indead of Rc<SourceFile> in the span API
-fn parse_declaration(source: &str) -> (Rc<SourceFile>, Result<Declaration>) {
+fn parse_declaration(source: &str) -> Result<Declaration> {
     let mut diagnostics = Diagnostics::default();
-    let file = Rc::new(SourceFile::fake(source.to_owned()));
-    let declaration = (|| {
-        let lexer = Lexer::new(&file, &mut diagnostics);
-        let tokens = lexer.lex().map_err(|_| ())?;
-        let mut parser = Parser::new(file.clone(), &tokens, &mut diagnostics);
-        parser.parse(test_module_name()).map_err(|_| ())
-    })();
-
-    (file, declaration)
+    let mut map = SourceMap::default();
+    let file = map
+        .add(PathBuf::new(), source.to_owned())
+        .unwrap_or_else(|_| unreachable!());
+    let lexer = Lexer::new(&map[file], &mut diagnostics);
+    let tokens = lexer.lex().map_err(|_| ())?;
+    let mut parser = Parser::new(&map, file.clone(), &tokens, &mut diagnostics);
+    parser.parse(test_module_name()).map_err(|_| ())
 }
 
 /// The name of the module returned by [parse_declaration].
 fn test_module_name() -> Identifier {
     Identifier::new("test".into(), Span::SHAM)
+}
+
+fn test_file_index() -> SourceFileIndex {
+    // @Task improve this, we are using an implementation detail here
+    // either guarantee this (add documentation to the SourceMap) or
+    // do something better?
+    SourceFileIndex::new(0)
 }
 
 fn assert_eq<ItemKind>(actual: Result<Item<ItemKind>>, expected: Result<Item<ItemKind>>)
@@ -89,6 +98,7 @@ macro no_std_assert($( $anything:tt )*) {
     compile_error!("use function `assert_eq` instead of macro `assert_eq` and similar")
 }
 
+use indexed_vec::Idx;
 #[allow(unused_imports)]
 use no_std_assert as assert_eq;
 #[allow(unused_imports)]
@@ -471,15 +481,13 @@ fn outer_and_inner_attributes() {
 /// Compare with [use_as_double_brackets].
 #[test]
 fn use_as_plain() {
-    let (file, declaration) = parse_declaration("use alpha.beta as gamma\n");
-
     assert_eq(
-        declaration,
+        parse_declaration("use alpha.beta as gamma\n"),
         Ok(decl! {
             Module {
                 Attributes::new(), span(1, 24);
                 binder: test_module_name(),
-                file,
+                file: test_file_index(),
                 declarations: Some(vec![
                     decl! {
                         Use {
@@ -508,15 +516,13 @@ fn use_as_plain() {
 /// Compare with [use_as_plain].
 #[test]
 fn use_as_double_brackets() {
-    let (file, declaration) = parse_declaration("use alpha.((beta as gamma))\n");
-
     assert_eq(
-        declaration,
+        parse_declaration("use alpha.((beta as gamma))\n"),
         Ok(decl! {
             Module {
                 Attributes::new(), span(1, 28);
                 binder: test_module_name(),
-                file,
+                file: test_file_index(),
                 declarations: Some(vec![
                     decl! {
                         Use {
@@ -547,23 +553,21 @@ fn use_as_double_brackets() {
 /// Compare with [case_analysis_not_indented]. They are identical up to span.
 #[test]
 fn case_analysis_indented() {
-    let (file, declaration) = parse_declaration(
-        "\
+    assert_eq(
+        parse_declaration(
+            "\
 main =
     case x of
         false => 0
         \\bar =>
             \"bar\"
 ",
-    );
-
-    assert_eq(
-        declaration,
+        ),
         Ok(decl! {
             Module {
                 Attributes::new(), span(1, 74);
                 binder: test_module_name(),
-                file,
+                file: test_file_index(),
                 declarations: Some(vec![
                     decl! {
                         Value {
@@ -618,22 +622,20 @@ main =
 /// Compare with [case_analysis_indented]. They are identical up to span.
 #[test]
 fn case_analysis_not_indented() {
-    let (file, declaration) = parse_declaration(
-        "\
+    assert_eq(
+        parse_declaration(
+            "\
 main = case x of
     false => 0
     \\bar =>
         \"bar\"
 ",
-    );
-
-    assert_eq(
-        declaration,
+        ),
         Ok(decl! {
             Module {
                 Attributes::new(), span(1, 58);
                 binder: test_module_name(),
-                file,
+                file: test_file_index(),
                 declarations: Some(vec![
                     decl! {
                         Value {

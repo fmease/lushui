@@ -258,7 +258,7 @@ fn main() {
 
         let crate_name = lushui::parse_crate_name(path).many_err()?;
 
-        let tokens = Lexer::new(&source_file, &mut warnings).lex()?;
+        let tokens = Lexer::new(&map[source_file], &mut warnings).lex()?;
         if merged_arguments.print_tokens {
             eprintln!("{:#?}", tokens);
         }
@@ -267,7 +267,7 @@ fn main() {
         }
 
         let declaration =
-            Parser::new(source_file, &tokens, &mut warnings).parse(crate_name.clone())?;
+            Parser::new(&map, source_file, &tokens, &mut warnings).parse(crate_name.clone())?;
         if merged_arguments.print_ast {
             eprintln!("{:#?}", declaration);
         }

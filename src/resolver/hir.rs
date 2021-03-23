@@ -7,7 +7,7 @@ use crate::{
     error::PossiblyErroneous,
     lowered_ast::{Item, Number},
     resolver::{CrateScope, FunctionScope, Identifier},
-    span::{SourceFile, Span},
+    span::{SourceFileIndex, Span},
     typer::interpreter,
 };
 use std::rc::Rc;
@@ -57,7 +57,7 @@ pub struct Constructor {
 
 pub struct Module {
     pub binder: Identifier,
-    pub file: Rc<SourceFile>,
+    pub file: SourceFileIndex,
     pub declarations: Vec<Declaration>,
 }
 

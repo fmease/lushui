@@ -9,10 +9,10 @@ use crate::{
     error::PossiblyErroneous,
     lexer::{Token, TokenKind},
     smallvec,
-    span::{PossiblySpanning, SourceFile, Span, Spanned, Spanning},
+    span::{PossiblySpanning, SourceFileIndex, Span, Spanned, Spanning},
     Atom, SmallVec,
 };
-use std::{convert::TryFrom, convert::TryInto, rc::Rc};
+use std::{convert::TryFrom, convert::TryInto};
 
 pub use format::Format;
 
@@ -69,7 +69,7 @@ pub struct Constructor {
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Module {
     pub binder: Identifier,
-    pub file: Rc<SourceFile>,
+    pub file: SourceFileIndex,
     pub declarations: Option<Vec<Declaration>>,
 }
 

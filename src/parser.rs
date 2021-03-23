@@ -36,11 +36,11 @@ use crate::{
     format::{ordered_listing, Conjunction},
     lexer::{Token, TokenKind},
     smallvec,
-    span::{SourceFile, Span, Spanned, Spanning},
+    span::{SourceFileIndex, SourceMap, Span, Spanned, Spanning},
     SmallVec,
 };
 use ast::*;
-use std::{cell::RefCell, convert::TryInto, default::default, rc::Rc};
+use std::{cell::RefCell, convert::TryInto, default::default};
 
 type Result<T = (), E = ()> = std::result::Result<T, E>;
 
@@ -58,7 +58,8 @@ const BRACKET_POTENTIAL_PI_TYPE_LITERAL: &str =
 
 /// The state of the parser.
 pub struct Parser<'a> {
-    file: Rc<SourceFile>,
+    map: &'a SourceMap,
+    file: SourceFileIndex,
     tokens: &'a [Token],
     // @Task make it a RefCell, too
     warnings: &'a mut Diagnostics,
@@ -68,8 +69,14 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(file: Rc<SourceFile>, tokens: &'a [Token], warnings: &'a mut Diagnostics) -> Self {
+    pub fn new(
+        map: &'a SourceMap,
+        file: SourceFileIndex,
+        tokens: &'a [Token],
+        warnings: &'a mut Diagnostics,
+    ) -> Self {
         Self {
+            map,
             file,
             tokens,
             warnings,
@@ -236,14 +243,14 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```ebnf
-    /// Declaration ::= (Attribute Line-Break*)* Naked-Declaration
+    /// Declaration ::= (Attribute #Line-Break*)* Naked-Declaration
     /// Naked-Declaration ::=
     ///     | Value-Declaration
     ///     | Data-Declaration
     ///     | Module-Declaration
     ///     | Crate-Declaration
     ///     | Use-Declaration
-    /// Crate-Declaration ::= "crate" #Identifier Line-Break
+    /// Crate-Declaration ::= "crate" #Identifier #Line-Break
     /// ```
     // @Task re-add attribute groups (needs syntax proposals)
     fn parse_declaration(&mut self) -> Result<Declaration> {
@@ -444,7 +451,7 @@ impl<'a> Parser<'a> {
     /// Value-Declaration ::=
     ///     #Identifier
     ///     Parameters Type-Annotation?
-    ///     ("=" Terminated-Expression | Line-Break)
+    ///     ("=" Terminated-Expression | #Line-Break)
     /// ```
     fn finish_parse_value_declaration(
         &mut self,
@@ -487,8 +494,14 @@ impl<'a> Parser<'a> {
     /// Data-Declaration ::=
     ///     "data" #Identifier
     ///     Parameters Type-Annotation?
-    ///     (Line-Break | "of" "{" (Line-Break | Constructor)* "}")
+    ///     ("of" "{" (#Line-Break | Constructor)* "}")?
+    ///     #Line-Break
     /// ```
+    //  before (#Line-Break | "of" "{" (#Line-Break | Constructor)* "}")
+    // @Bug ideally, we want to have the grammar `("of" "{" (#Line-Break | Constructor)* "}")? #Line-Break`
+    // i.e. enforce a line break after a cury-bracket-block (we want `module m of {} inline` to be legal
+    // (I guess??) (talking about explicitly inserted curly brackets) )
+    // @Note but @Update the thing above is not a problem, LF is inserted implicitly
     fn finish_parse_data_declaration(
         &mut self,
         keyword_span: Span,
@@ -517,7 +530,10 @@ impl<'a> Parser<'a> {
                     Ok(())
                 })?;
 
-                span.merging(constructors.last());
+                // implicitly inserted by the lexer in the case where "}" is artificial
+                // @Question what about EndOfInput?
+                span.merging(self.consume(LineBreak)?);
+                // span.merging(constructors.last());
 
                 Some(constructors)
             }
@@ -554,9 +570,10 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Module-Declaration ::=
     ///     | Header
-    ///     | "module" #Identifier (Line-Break | "of" "{" (Line-Break | Declaration)* "}")
-    /// Header ::= "module" Line-Break
+    ///     | "module" #Identifier ("of" "{" (#Line-Break | Declaration)* "}")? #Line-Break
+    /// Header ::= "module" #Line-Break
     /// ```
+    // @Temporary @Note before: "module" #Identifier (#Line-Break | "of" "{" (#Line-Break | Declaration)* "}")
     fn finish_parse_module_declaration(
         &mut self,
         keyword_span: Span,
@@ -594,7 +611,10 @@ impl<'a> Parser<'a> {
                     Ok(())
                 })?;
 
-                // @Bug span is wrong: we need to store the last token's span: dedentation/line break
+                // artificially inserted by the lexer in the case where `}` is fake
+                // @Question what about EOI?
+                span.merging(self.consume(LineBreak)?);
+
                 Ok(decl! {
                     Module {
                         attributes,
@@ -623,7 +643,7 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```ebnf
-    /// Top-Level ::= (Line-Break | Declaration)* #End-Of-Input
+    /// Top-Level ::= (#Line-Break | Declaration)* #End-Of-Input
     /// ```
     fn parse_top_level(&mut self, binder: Identifier) -> Result<Declaration> {
         use TokenKind::*;
@@ -639,9 +659,9 @@ impl<'a> Parser<'a> {
                 break Ok(decl! {
                     Module {
                         Attributes::new(),
-                        self.file.span;
+                        self.map[self.file].span;
                         binder,
-                        file: self.file.clone(),
+                        file: self.file,
                         declarations: Some(declarations)
                     }
                 });
@@ -657,7 +677,7 @@ impl<'a> Parser<'a> {
         let _ = self.consume(OpeningCurlyBracket)?;
 
         loop {
-            // @Note necessary I guess in cases where we have Line-Break ((Comment)) Line-Break
+            // @Note necessary I guess in cases where we have #Line-Break ((Comment)) #Line-Break
             if self.has_consumed(LineBreak) {
                 continue;
             }
@@ -678,7 +698,7 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```ebnf
-    /// Use-Declaration ::= "use" Use-Path-Tree Line-Break
+    /// Use-Declaration ::= "use" Use-Path-Tree #Line-Break
     /// ```
     fn finish_parse_use_declaration(
         &mut self,
@@ -809,9 +829,9 @@ impl<'a> Parser<'a> {
     ///
     /// ```ebnf
     /// Constructor ::=
-    ///     (Attribute Line-Break*)*
+    ///     (Attribute #Line-Break*)*
     ///     #Identifier Parameters Type-Annotation?
-    ///     ("=" Terminated-Expression)? Line-Break
+    ///     (#Line-Break | "=" Terminated-Expression)
     /// ```
     fn parse_constructor(&mut self) -> Result<Declaration> {
         use TokenKind::*;
@@ -1201,7 +1221,7 @@ impl<'a> Parser<'a> {
     /// Let-In ::=
     ///     "let" #Identifier Parameters Type_Annotation?
     ///     ("=" Expression)?
-    ///     "in" Line-Break? Expression
+    ///     "in" #Line-Break? Expression
     /// ```
     // @Task allow omitting the `in` at the end of the line (@Note we might want to restrict it to
     // scopes of type let/in and use/in; is that still context-free?)
@@ -1253,7 +1273,7 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```ebnf
-    /// Use-In ::= "use" Use-Path-Tree "in" Line-Break? Expression
+    /// Use-In ::= "use" Use-Path-Tree "in" #Line-Break? Expression
     /// ```
     fn finish_parse_use_in(&mut self, span_of_use: Span) -> Result<Expression> {
         let bindings = self.parse_use_path_tree(&[TokenKind::In.into()])?;
@@ -1327,8 +1347,8 @@ impl<'a> Parser<'a> {
     /// Do-Block ::= "do" "{" Statement* "}"
     /// Statement ::= Let-Statement | Use-Declaration | Bind-Statement | Expression-Statement
     /// Let-Statement ::= "let" Value-Declaration
-    /// Bind-Statement ::= #Identifier Type-Annotation? "<-" Expression Line-Break
-    /// Expression-Statement ::= Expression Line-Break
+    /// Bind-Statement ::= #Identifier Type-Annotation? "<-" Expression #Line-Break
+    /// Expression-Statement ::= Expression #Line-Break
     /// ```
     ///
     /// Bind statements are the worst right now. We need to look ahead for `:` (type annotation)
@@ -1344,7 +1364,7 @@ impl<'a> Parser<'a> {
         let _ = self.consume(OpeningCurlyBracket)?;
 
         while self.current_token().kind != ClosingCurlyBracket {
-            // @Note necessary I guess in cases where we have Line-Break ((Comment)) Line-Break
+            // @Note necessary I guess in cases where we have #Line-Break ((Comment)) #Line-Break
             if self.has_consumed(LineBreak) {
                 continue;
             }
@@ -1708,7 +1728,7 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```ebnf
-    /// Terminated-Expression ::= Expression (<! "{" Line-Break)?
+    /// Terminated-Expression ::= Expression ((<! "}") #Line-Break)?
     /// ```
     // @Question just inline/remove?
     fn parse_terminated_expression(&mut self) -> Result<Expression> {

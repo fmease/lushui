@@ -13,21 +13,21 @@ pub mod token;
 use crate::{
     diagnostics::{Code, Diagnostic, Diagnostics, Result, Results, Warn},
     error::ManyErrExt,
-    span::{LocalByteIndex, LocalSpan, SourceFile, Span},
+    span::{LocalByteIndex, LocalSpan, SourceFile, SourceMap, Span},
     Atom, INDENTATION_IN_SPACES,
 };
-use std::{iter::Peekable, str::CharIndices};
+use std::{iter::Peekable, path::PathBuf, str::CharIndices};
 pub use token::{
     is_punctuation, Token,
     TokenKind::{self, *},
 };
 
 fn lex(source: String) -> Results<Vec<Token>> {
-    Lexer::new(
-        &SourceFile::fake(source.to_owned()),
-        &mut Default::default(),
-    )
-    .lex()
+    let mut map = SourceMap::default();
+    let file = map
+        .add(PathBuf::new(), source)
+        .unwrap_or_else(|_| unreachable!());
+    Lexer::new(&map[file], &mut Default::default()).lex()
 }
 
 /// Utility to parse identifiers from a string slice.
@@ -340,11 +340,6 @@ impl<'a> Lexer<'a> {
                     INDENTATION_IN_SPACES
                 )));
         }
-
-        // @Note
-        // let x = do
-        // let y = do
-        // means do{}, do{}
 
         // @Beacon @Beacon @Task don't necessarily emit a LineBreak before a ClosingCurlyBracket
         // ... the  parser can handle it (in parse_terminated_expression)

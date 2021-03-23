@@ -1,12 +1,13 @@
 //! The definition of the textual representation(s) of the [AST](crate::ast).
 
 use crate::{
-    span::{SourceFile, Span, Spanned},
+    span::{SourceFileIndex, Span, Spanned},
     SmallVec,
 };
 use colored::{Color, Colorize};
 use format_struct::FormatStruct;
 pub use indentation::Indentation;
+use indexed_vec::Idx;
 use joinery::JoinableIterator;
 use std::fmt::{self, Debug, Formatter, Result};
 
@@ -289,21 +290,18 @@ impl Format for super::Module {
         FormatStruct::new(f, indentation)
             .name("Module-Declaration")
             .field("binder", &self.binder)
-            .field("file", &*self.file)
+            .field("file", &self.file)
             .field("declarations", &self.declarations)
             .finish()
     }
 }
 
-impl Format for SourceFile {
+impl Format for SourceFileIndex {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
-        self.span.format(f, indentation)?;
-        write!(f, " ")?;
         FormatStruct::new(f, indentation)
-            .name("Source-File")
+            .name("Source-File-Index")
             .finish()?;
-        write!(f, " ")?;
-        write!(f, "{}", self.path.to_string_lossy().color(VERBATIM_COLOR))
+        write!(f, " {}", self.index().to_string().color(VERBATIM_COLOR))
     }
 }
 

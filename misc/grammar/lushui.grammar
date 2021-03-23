@@ -20,16 +20,14 @@
 
 General-Identifier ::= #Identifier | #Punctuation
 
-Declaration ::= (Attribute Line-Break*)* Naked-Declaration
+Declaration ::= (Attribute #Line-Break*)* Naked-Declaration
 Naked-Declaration ::=
     | Value-Declaration
     | Data-Declaration
     | Module-Declaration
     | Crate-Declaration
     | Use-Declaration
-    | Group
-Crate-Declaration ::= "crate" #Identifier Line-Break
-Group ::= Indentation Declaration* Dedentation
+Crate-Declaration ::= "crate" #Identifier #Line-Break
 
 Attribute ::= Regular-Attribute | Documentation-Comment
 
@@ -41,21 +39,22 @@ Lower-Attribute-Argument ::= Path | #Number-Literal | #Text-Literal
 Value-Declaration ::=
     #Identifier
     Parameters Type-Annotation?
-    ("=" Possibly-Indented-Terminated-Expression | Line-Break)
+    ("=" Terminated-Expression | #Line-Break)
 
 Data-Declaration ::=
     "data" #Identifier
     Parameters Type-Annotation?
-    (Line-Break | "=" Line-Break Indentation (Line-Break | Constructor)* Dedentation)
+    ("of" "{" (#Line-Break | Constructor)* "}")?
+    #Line-Break
 
 Module-Declaration ::=
     | Header
-    | "module" #Identifier (Line-Break | "=" Line-Break Indentation (Line-Break | Declaration)* Dedentation)
-Header ::= "module" "=" Line-Break
+    | "module" #Identifier ("of" "{" (#Line-Break | Declaration)* "}")? #Line-Break
+Header ::= "module" #Line-Break
 
-Top-Level ::= (Line-Break | Declaration)* #End-Of-Input
+Top-Level ::= (#Line-Break | Declaration)* #End-Of-Input
 
-Use-Declaration ::= "use" Use-Path-Tree Line-Break
+Use-Declaration ::= "use" Use-Path-Tree #Line-Break
 
 Use-Path-Tree ::=
     | Path
@@ -64,9 +63,9 @@ Use-Path-Tree ::=
 Renaming ::= Path "as" General-Identifier
 
 Constructor ::=
-    (Attribute Line-Break*)*
+    (Attribute #Line-Break*)*
     #Identifier Parameters Type-Annotation?
-    ("=" Possibly-Indented-Terminated-Expression)? Line-Break
+    (#Line-Break | "=" Terminated-Expression)
 
 Expression ::= Pi-Type-Literal-Or-Lower
 
@@ -125,20 +124,19 @@ Lambda-Literal ::= "\" Parameters Type-Annotation? "=>" Expression
 
 Let-In ::=
     "let" #Identifier Parameters Type_Annotation?
-    ("=" Possibly-Breakably-Indented-Expression)?
-    "in" Line-Break? Expression
+    ("=" Expression)?
+    "in" #Line-Break? Expression
 
-Use-In ::= "use" Use-Path-Tree "in" Line-Break? Expression
+Use-In ::= "use" Use-Path-Tree "in" #Line-Break? Expression
 
-Case-Analysis ::= "case" Possibly-Breakably-Indented-Expression "of"
-    (Line-Break (Indentation Case* Dedentation)?)?
+Case-Analysis ::= "case" Expression "of" "{" Case* "}"
 Case ::= Pattern "=>" Expression
 
-Do-Block ::= "do" Line-Break Indentation Statement* Dedentation
+Do-Block ::= "do" "{" Statement* "}"
 Statement ::= Let-Statement | Use-Declaration | Bind-Statement | Expression-Statement
 Let-Statement ::= "let" Value-Declaration
-Bind-Statement ::= #Identifier Type-Annotation? "<-" Expression Line-Break
-Expression-Statement ::= Expression Line-Break
+Bind-Statement ::= #Identifier Type-Annotation? "<-" Expression #Line-Break
+Expression-Statement ::= Expression #Line-Break
 
 Parameters ::= Parameter-Group*
 
@@ -165,15 +163,7 @@ Sequence-Literal-Pattern ::= "[" Lower-Pattern* "]"
 
 Type-Annotation ::= ":" Expression
 
-Possibly-Indented-Terminated-Expression ::=
-    | Line-Break Indentation Expression Line-Break? Dedentation
-    | Terminated-Expression
-
-Possibly-Breakably-Indented-Expression ::=
-    | Line-Break Indentation Expression (Line-Break Dedentation)?
-    | Expression
-
-Terminated-Expression ::= Expression (<!Dedentation Line-Break)?
+Terminated-Expression ::= Expression ((<! "}") #Line-Break)?
 
 Explicitness ::= "'"?
 

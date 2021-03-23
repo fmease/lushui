@@ -9,7 +9,7 @@ use crate::{
     ast::{self, Explicitness, Identifier, ParameterAspect, Path},
     diagnostics::{Code, Diagnostic, Results},
     error::{ManyErrExt, PossiblyErroneous},
-    span::{PossiblySpanning, SourceFile, Span, Spanned, Spanning},
+    span::{PossiblySpanning, SourceFileIndex, Span, Spanned, Spanning},
 };
 use std::rc::Rc;
 
@@ -51,7 +51,7 @@ pub struct Constructor {
 
 pub struct Module {
     pub binder: Identifier,
-    pub file: Rc<SourceFile>,
+    pub file: SourceFileIndex,
     pub declarations: Vec<Declaration>,
 }
 
