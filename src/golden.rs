@@ -110,7 +110,7 @@ fn run() -> Result<(), Error> {
         print!("test {:>60} ", readable_path);
 
         let source_file = map
-            .load(entry.path())
+            .load(entry.path().to_owned())
             .map_err(|_| Error::FailedLoadingSourceFile)?;
 
         let config = TestConfiguration::parse(map[source_file].content())

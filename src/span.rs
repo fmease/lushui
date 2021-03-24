@@ -450,12 +450,16 @@ mod source_map {
 
         // @Note this could instead return an index, and index into an IndexVec of
         // SourceFiles
-        pub fn load(&mut self, path: impl AsRef<Path>) -> Result<SourceFileIndex, Error> {
+        pub fn load(&mut self, path: PathBuf) -> Result<SourceFileIndex, Error> {
             let source = std::fs::read_to_string(&path).map_err(Error::LoadFailure)?;
-            self.add(path.as_ref().to_owned(), source)
+            self.add(Some(path), source)
         }
 
-        pub fn add(&mut self, path: PathBuf, source: String) -> Result<SourceFileIndex, Error> {
+        pub fn add(
+            &mut self,
+            path: Option<PathBuf>,
+            source: String,
+        ) -> Result<SourceFileIndex, Error> {
             Ok(self
                 .files
                 .push(SourceFile::new(path, source, self.next_offset()?)?))
@@ -607,7 +611,7 @@ mod source_map {
             }
 
             ResolvedSpan {
-                path: &file.path,
+                path: file.path.as_ref().unwrap(),
                 first_line: first_line.unwrap().extract_information(file).unwrap(),
                 final_line: final_line.map(|line| line.extract_information(file).unwrap()),
             }
@@ -669,13 +673,17 @@ mod source_file {
     /// A file, its contents and [its span](super::SourceMap).
     #[cfg_attr(test, derive(PartialEq, Eq))]
     pub struct SourceFile {
-        pub path: PathBuf,
+        pub path: Option<PathBuf>,
         content: String,
         pub span: Span,
     }
 
     impl SourceFile {
-        pub fn new(path: PathBuf, content: String, start: ByteIndex) -> Result<Self, Error> {
+        pub fn new(
+            path: Option<PathBuf>,
+            content: String,
+            start: ByteIndex,
+        ) -> Result<Self, Error> {
             let offset = u32::try_from(content.len())
                 .map_err(|_| Error::OffsetOverflow)?
                 .saturating_sub(1);

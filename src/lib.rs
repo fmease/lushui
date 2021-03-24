@@ -70,9 +70,7 @@ pub mod typer;
 
 const FILE_EXTENSION: &str = "lushui";
 
-/// Amount of spaces making up one unit of indentation.
-pub const INDENTATION_IN_SPACES: usize = 4;
-
+use lexer::INDENTATION;
 use lowerer::lowered_ast;
 use num_bigint::{BigInt as Int, BigUint as Nat};
 use once_cell::sync::OnceCell;

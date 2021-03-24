@@ -1,4 +1,4 @@
-//! The parser.
+//! The parser (syntactic analyzer).
 //!
 //! I *think* it can be classified as a top-down recursive-descent parser with arbitrary look-ahead.
 //!
@@ -494,10 +494,10 @@ impl<'a> Parser<'a> {
     /// Data-Declaration ::=
     ///     "data" #Identifier
     ///     Parameters Type-Annotation?
-    ///     ("of" "{" (#Line-Break | Constructor)* "}")?
+    ///     ("of" ("{" (#Line-Break | Constructor)* "}")?)?
     ///     #Line-Break
     /// ```
-    //  before (#Line-Break | "of" "{" (#Line-Break | Constructor)* "}")
+    //  before (#Line-Break | "of" ("{" (#Line-Break | Constructor)* "}")?)
     // @Bug ideally, we want to have the grammar `("of" "{" (#Line-Break | Constructor)* "}")? #Line-Break`
     // i.e. enforce a line break after a cury-bracket-block (we want `module m of {} inline` to be legal
     // (I guess??) (talking about explicitly inserted curly brackets) )
@@ -525,7 +525,7 @@ impl<'a> Parser<'a> {
 
                 let mut constructors = Vec::new();
 
-                self.parse_block(|this| {
+                self.parse_optional_block(|this| {
                     constructors.push(this.parse_constructor()?);
                     Ok(())
                 })?;
@@ -570,10 +570,10 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Module-Declaration ::=
     ///     | Header
-    ///     | "module" #Identifier ("of" "{" (#Line-Break | Declaration)* "}")? #Line-Break
+    ///     | "module" #Identifier ("of" ("{" (#Line-Break | Declaration)* "}")?)? #Line-Break
     /// Header ::= "module" #Line-Break
     /// ```
-    // @Temporary @Note before: "module" #Identifier (#Line-Break | "of" "{" (#Line-Break | Declaration)* "}")
+    // @Temporary @Note before: "module" #Identifier (#Line-Break | "of" ("{" (#Line-Break | Declaration)* "}")?)
     fn finish_parse_module_declaration(
         &mut self,
         keyword_span: Span,
@@ -606,7 +606,7 @@ impl<'a> Parser<'a> {
                 self.advance();
                 let mut declarations = Vec::new();
 
-                self.parse_block(|this| {
+                self.parse_optional_block(|this| {
                     declarations.push(this.parse_declaration()?);
                     Ok(())
                 })?;
@@ -671,23 +671,29 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_block(&mut self, mut subparser: impl FnMut(&mut Self) -> Result<()>) -> Result {
+    fn parse_optional_block(
+        &mut self,
+        mut subparser: impl FnMut(&mut Self) -> Result<()>,
+    ) -> Result {
         use TokenKind::*;
 
-        let _ = self.consume(OpeningCurlyBracket)?;
+        if self.has_consumed(OpeningCurlyBracket) {
+            loop {
+                // @Note necessary I guess in cases where we have #Line-Break ((Comment)) #Line-Break
+                // @Question can we easily get rid of this?
+                if self.has_consumed(LineBreak) {
+                    continue;
+                }
 
-        loop {
-            // @Note necessary I guess in cases where we have #Line-Break ((Comment)) #Line-Break
-            if self.has_consumed(LineBreak) {
-                continue;
+                if self.has_consumed(ClosingCurlyBracket) {
+                    break;
+                }
+
+                subparser(self)?;
             }
-
-            if self.has_consumed(ClosingCurlyBracket) {
-                break Ok(());
-            }
-
-            subparser(self)?;
         }
+
+        Ok(())
     }
 
     /// Finish parsing a use-declaration.
@@ -1299,7 +1305,7 @@ impl<'a> Parser<'a> {
     ///
     ///
     /// ```ebnf
-    /// Case-Analysis ::= "case" Expression "of" "{" Case* "}"
+    /// Case-Analysis ::= "case" Expression "of" ("{" Case* "}")?
     /// Case ::= Pattern "=>" Expression
     /// ```
     fn finish_parse_case_analysis(&mut self, span_of_case: Span) -> Result<Expression> {
@@ -1311,21 +1317,21 @@ impl<'a> Parser<'a> {
 
         let mut cases = Vec::new();
 
-        let _ = self.consume(OpeningCurlyBracket)?;
+        if self.has_consumed(OpeningCurlyBracket) {
+            // @Task use parse_block function for this (but don't trash the span!)
 
-        // @Task use parse_block function for this (but don't trash the span!)
+            while self.current_token().kind != ClosingCurlyBracket {
+                let pattern = self.parse_pattern()?;
+                self.consume(WideArrow)?;
+                let body = self.parse_terminated_expression()?;
 
-        while self.current_token().kind != ClosingCurlyBracket {
-            let pattern = self.parse_pattern()?;
-            self.consume(WideArrow)?;
-            let body = self.parse_terminated_expression()?;
+                cases.push(ast::Case { pattern, body });
+            }
 
-            cases.push(ast::Case { pattern, body });
+            // @Beacon :while_current_not
+            span.merging(self.current_token());
+            self.advance();
         }
-
-        // @Beacon :while_current_not
-        span.merging(self.current_token());
-        self.advance();
 
         Ok(expr! {
             CaseAnalysis {
@@ -1537,8 +1543,8 @@ impl<'a> Parser<'a> {
     // @Task rewrite this with a `delimiter: Delimiter`-parameter for better error messages!
     fn parse_application_like_or_lower<Expat: ExpressionOrPattern>(&mut self) -> Result<Expat> {
         use TokenKind::*;
-        let mut callee = Expat::parse_lower(self)?;
 
+        let mut callee = Expat::parse_lower(self)?;
         struct Argument<Expat> {
             explicitness: Explicitness,
             binder: Option<ast::Identifier>,
@@ -1550,9 +1556,9 @@ impl<'a> Parser<'a> {
         while let Ok(argument) = self
             .reflect(|this| {
                 // @Beacon @Question can pi_type_literal_was_used_as_lower_expression also happen here???
-                // @Task use the span returned by parse_optional_implicitness
                 let explicitness = this.parse_optional_implicitness();
                 let expat = Expat::parse_lower(this)?;
+
                 Ok(Spanned::new(
                     expat.span(),
                     Argument {
@@ -1577,7 +1583,8 @@ impl<'a> Parser<'a> {
                         this.consume(Equals)?;
                     }
 
-                    let argument = Expat::parse_lower(this)?;
+                    let argument = Expat::parse(this)?;
+
                     span.merging(this.consume(ClosingRoundBracket)?);
 
                     Ok(Spanned::new(
@@ -1591,23 +1598,19 @@ impl<'a> Parser<'a> {
                 })
             })
         {
-            if let Some(token) = illegal_pi {
+            if let Some(token) = &illegal_pi {
                 let explicitness = match argument.kind.explicitness {
                     Implicit => "an implicit",
                     Explicit => "a",
                 };
 
-                self.errors.borrow_mut().insert(
-                    expected_one_of![Expected::Expression, Equals]
-                        .but_actual_is(&token)
-                        .with_labeled_secondary_span(
-                            &argument,
-                            format!("this is treated as {explicitness} function argument,\nnot as the domain of a pi type literal"),
-                        )
-                        .with_help(BRACKET_POTENTIAL_PI_TYPE_LITERAL),
-                );
-
-                return Err(());
+                self.error(|| expected_one_of![Expected::Expression, Equals]
+                    .but_actual_is(token)
+                    .with_labeled_secondary_span(
+                        &argument,
+                        format!("this is treated as {explicitness} function argument,\nnot as the domain of a pi type literal"),
+                    )
+                    .with_help(BRACKET_POTENTIAL_PI_TYPE_LITERAL))?;
             }
 
             let span = callee.span().merge(&argument);
@@ -1733,10 +1736,12 @@ impl<'a> Parser<'a> {
     // @Question just inline/remove?
     fn parse_terminated_expression(&mut self) -> Result<Expression> {
         let expression = self.parse_expression()?;
-        // @Note special-casing is also called programming hackily
+
         if self.current_token().kind != TokenKind::ClosingCurlyBracket {
             self.consume(TokenKind::LineBreak)?;
         }
+        // self.consume(TokenKind::LineBreak)?;
+
         Ok(expression)
     }
 
@@ -1767,7 +1772,7 @@ impl Warn for Parser<'_> {
 
 /// Abstraction over expressions and patterns.
 // @Task consider replacing this with an enum
-trait ExpressionOrPattern: Sized + Spanning {
+trait ExpressionOrPattern: Sized + Spanning + std::fmt::Debug {
     fn application_like(
         callee: Self,
         argument: Self,

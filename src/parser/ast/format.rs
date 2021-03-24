@@ -443,10 +443,10 @@ impl Format for super::Application {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         FormatStruct::new(f, indentation)
             .name("Application")
-            .field("callee", &self.callee)
-            .field("argument", &self.argument)
             .field("explicitness", &self.explicitness)
             .field("binder", &self.binder)
+            .field("callee", &self.callee)
+            .field("argument", &self.argument)
             .finish()
     }
 }
@@ -673,10 +673,10 @@ impl Format for super::Deapplication {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         FormatStruct::new(f, indentation)
             .name("Deapplication")
-            .field("callee", &self.callee)
-            .field("argument", &self.argument)
             .field("explicitness", &self.explicitness)
             .field("binder", &self.binder)
+            .field("callee", &self.callee)
+            .field("argument", &self.argument)
             .finish()
     }
 }

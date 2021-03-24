@@ -1,10 +1,13 @@
-;; TEST ignore
+;; TEST ignore (deapplications not supported yet)
 
+@(location "../libs/core/core")
 module core
 
-use core.(list.(List cons nil) bool.(Bool false true))
+use core.(
+    list.(List cons empty)
+    bool.(Bool false true))
 
 is-empty (A: Type) (list: List A): Bool =
     case list of
-        nil \A => true
+        empty \A => true
         cons \A \a => false

@@ -1,20 +1,15 @@
-;; TEST ignore
-;; @Task change to pass check --only-parse
+;; TEST pass check --only-parse
 ;; @Task move to parsing/
 ;; @Task expand test (include attributes etc)
+;; @Task make this more about parsing patterns
 
-;; @Bug fails to parse when last stmt of file due to missing line break at the end.
-;; @Note the parse_terminated_expression is too strict or too stupid always requiring
-;; that only a line break terminates the expression but dedentation is a perfectly valid
-;; terminator as well. unfortunately, that function has no insight whether the
-;; parsed_expression ended with dedentation
-;; main: N =
-;;     case 100 of
-;;         1 => case xxx of
-;;             344 => 33
-;;         33 => 23
+main0: Untyped =
+    case 100 of
+        1 => case xxx of
+            344 => 33
+        33 => 23
 
-main: N =
+main: Untyped =
     case 100 of
         some.path.to.Bool.false => "foo"
         super.Xoo => "bar"
@@ -26,16 +21,17 @@ main: N =
         23 \x => 22
         344 w2w 2 => 1
 
+@(location "../libs/core/core")
 module core
 
-use core.nat.(Nat Bool false true)
+use core.(nat.Nat bool.Bool.(self false true))
 
-invert (b: Bool): Bool = case b of
-    false => true
-    true => false
+invert (b: Bool): Bool =
+    case b of
+        false => true
+        true => false
 
 invert2 (b: Bool): Bool = case b of
     false => true
     \xoodle => false
 
-;; main: Nat = 0

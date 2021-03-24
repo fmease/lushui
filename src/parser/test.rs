@@ -5,8 +5,6 @@
 
 // @Question maybe create builders for the elements instead of using macros?
 
-use std::path::PathBuf;
-
 use super::{
     ast::{
         decl, expr, pat, Attribute, Attributes, Case, Declaration, Domain, Explicitness::*,
@@ -23,31 +21,33 @@ use crate::{
 };
 use std::default::default;
 
-// @Question @Bug why doesn't this seemingly return an Err(()) on error but a partial AST?
+// @Task don't map errors to unit!
 fn parse_expression(source: &str) -> Result<Expression> {
-    let mut diagnostics = Diagnostics::default();
+    let mut warnings = Diagnostics::default();
     let mut map = SourceMap::default();
     let file = map
-        .add(PathBuf::new(), source.to_owned())
+        .add(None, source.to_owned())
         .unwrap_or_else(|_| unreachable!());
-    let lexer = Lexer::new(&map[file], &mut diagnostics);
-    let tokens = lexer.lex().map_err(|_| ())?;
-    let mut parser = Parser::new(&map, file, &tokens, &mut diagnostics);
+    let lexer = Lexer::new(&map[file], &mut warnings);
+    let tokens = lexer.lex().map_err(|mut errors| errors.cancel())?;
+    dbg!(&tokens);
+    let mut parser = Parser::new(&map, file, &tokens, &mut warnings);
     parser.parse_expression()
 }
 
-// @Task improve API: don't return file @Note that's possible once we use
-// source file indices indead of Rc<SourceFile> in the span API
+// @Task don't map errors to unit!
 fn parse_declaration(source: &str) -> Result<Declaration> {
-    let mut diagnostics = Diagnostics::default();
+    let mut warnings = Diagnostics::default();
     let mut map = SourceMap::default();
     let file = map
-        .add(PathBuf::new(), source.to_owned())
+        .add(None, source.to_owned())
         .unwrap_or_else(|_| unreachable!());
-    let lexer = Lexer::new(&map[file], &mut diagnostics);
-    let tokens = lexer.lex().map_err(|_| ())?;
-    let mut parser = Parser::new(&map, file.clone(), &tokens, &mut diagnostics);
-    parser.parse(test_module_name()).map_err(|_| ())
+    let lexer = Lexer::new(&map[file], &mut warnings);
+    let tokens = lexer.lex().map_err(|mut errors| errors.cancel())?;
+    let mut parser = Parser::new(&map, file.clone(), &tokens, &mut warnings);
+    parser
+        .parse(test_module_name())
+        .map_err(|mut errors| errors.cancel())
 }
 
 /// The name of the module returned by [parse_declaration].
@@ -82,7 +82,7 @@ where
         }
         (Ok(expected), Err(error)) => {
             panic!(
-                "expected the parser to successfully parse the input\n\
+                "expected the parser to successfully parse the input to the following AST:\n\
                 {:?}\n\
                 but it failed with the following diagnostics:\n\
                 {:?}",
@@ -477,6 +477,78 @@ fn outer_and_inner_attributes() {
 // fn expression_attributes() {
 //     assert_eq(parse_expression("@(alpha) "), Ok(todo!()));
 // }
+
+#[test]
+fn bracketed_empty_case_analysis() {
+    assert_eq(
+        parse_expression("(case 1 of)"),
+        Ok(expr! {
+            CaseAnalysis {
+                Attributes::new(), span(1, 11);
+                scrutinee: expr! {
+                    NumberLiteral(
+                        Attributes::new(),
+                        span(7, 7);
+                        String::from("1"),
+                    )
+                },
+                cases: Vec::new(),
+            }
+        }),
+    );
+}
+
+/// The closing round bracket *has* to be placed in the next line and a outdented by one.
+/// That's its only legal place. Whether that's a good thing or not has yet to be pondered about.
+/// On a related note, notice how the case (“match arm”) is effectively outdented relative to the
+/// start of the case analysis, the keyword `case`. This may be counter-intuitive but technically,
+/// it is correct since indentation is relative to the start of the line.
+#[test]
+#[ignore = "failing and we cannot debug this because our parser sucks (pathetic reflection system!)"]
+fn bracketed_case_analysis() {
+    assert_eq(
+        parse_expression(
+            "\
+lengthy-space-filler (case 0 of
+    \\n => n
+)",
+        ),
+        Ok(expr! {
+            Application {
+                Attributes::new(), span(1, 45);
+                explicitness: Explicit,
+                binder: None,
+                callee: Identifier::new("lengthy-space-filler".into(), span(1, 20)).into(),
+                argument: expr! {
+                    CaseAnalysis {
+                        Attributes::new(), span(22, 45);
+                        scrutinee: expr! {
+                            NumberLiteral(
+                                Attributes::new(),
+                                span(28, 28);
+                                String::from("0"),
+                            )
+                        },
+                        cases: vec![
+                            Case {
+                                pattern: pat! {
+                                    Binder {
+                                        Attributes::new(), span(37, 38);
+                                        binder: Identifier::new("n".into(), span(38, 38)),
+                                    }
+                                },
+                                body: Identifier::new("n".into(), span(43, 43)).into(),
+                            }
+                        ],
+                    }
+                }
+            }
+        }),
+    );
+}
+
+// @Task add test (here or as golden) for expression `f (a = g b)` (this couldn't be parsed until now
+// because of a bug; only `f (a = (g b))` was valid)
 
 /// Compare with [use_as_double_brackets].
 #[test]

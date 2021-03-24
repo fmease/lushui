@@ -111,6 +111,13 @@ impl Diagnostics {
     pub fn take(&mut self) -> Self {
         std::mem::take(self)
     }
+
+    /// [Cancel](Diagnostic::cancel) all containing diagnostics.
+    pub fn cancel(&mut self) {
+        for diagnostic in &mut self.0 {
+            diagnostic.cancel();
+        }
+    }
 }
 
 impl IntoIterator for Diagnostics {

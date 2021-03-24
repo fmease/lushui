@@ -439,6 +439,9 @@ alpha #?
 // @Beacon @Task add a lot of tests of the interaction between
 // line breaks, indentation and *comments*!
 
+/// Indentation means line continuation unless it follows the keyword `of`
+/// or `do` (in which case it creates a “proper”/reified section, namely an
+/// indented section; not in this test).
 #[test]
 fn indentation_means_line_continuation() {
     assert_ok_token(
@@ -473,11 +476,8 @@ $%&~~
     );
 }
 
-// @Task @Beacon we need a better name for this, rn we cannot call it an *indented block*
-// since that's actually "the opposite" (the blocks after do/of) so we should probably
-// rename those, too!
 #[test]
-fn line_breaks_are_not_terminators_following_indentation() {
+fn line_breaks_are_not_terminators_in_continued_sections() {
     assert_ok_token(
         lex("\
 -0
@@ -504,11 +504,7 @@ fn line_breaks_are_not_terminators_following_indentation() {
             Token::new_identifier("lvl1".into(), span(40, 43)),
             Token::new_identifier("lvl2".into(), span(53, 56)),
             Token::new_identifier("lvl2".into(), span(66, 69)),
-            // @Beacon @Question is this token desired?
-            Token::new(LineBreak, span(70, 70)),
             Token::new_identifier("lvl1".into(), span(75, 78)),
-            // @Beacon @Question is emitting this token a @Bug?
-            Token::new(LineBreak, span(79, 79)),
             Token::new_number_literal("1".into(), span(84, 84)),
             Token::new(LineBreak, span(85, 85)),
             Token::new(EndOfInput, span(85, 85)),
@@ -516,10 +512,8 @@ fn line_breaks_are_not_terminators_following_indentation() {
     );
 }
 
-// @Beacon @Note we need to rename indented blocks to avoid confusion with LineContinuation::Indented blocks
-// @Beacon :ind_block
 #[test]
-fn keyword_of_introduces_indented_blocks() {
+fn keyword_of_introduces_indented_sections() {
     // @Task test sth similar with no trailing line break at the end ("early" EOI)
     assert_ok_token(
         lex("\
@@ -568,13 +562,8 @@ of
             // @Task we need to associate the token with a more useful span
             Token::new(OpeningCurlyBracket, span(58, 66)),
             Token::new_identifier("CONTENT".into(), span(67, 73)),
-            //////////////////////// @Bug they should not be emitted here but later!
-            Token::new(LineBreak, span(74, 74)),
-            Token::new(ClosingCurlyBracket, span(74, 78)),
-            ////////////////////////
             // @Question don't output?
-            // @Bug wrong span?
-            Token::new(LineBreak, span(74, 78)),
+            Token::new(LineBreak, span(74, 74)),
             // @Task we need to associate the token with a more useful span
             Token::new(ClosingCurlyBracket, span(74, 78)),
             // @Task don't output this (fake) line break
@@ -590,11 +579,10 @@ of
             Token::new(ClosingCurlyBracket, span(95, 95)),
             // @Task don't output this (fake) line break
             Token::new(LineBreak, span(95, 95)),
-            // @Beacon @Bug we need to output this but we don't!
             // // @Task we need to associate the token with a more useful span
-            // Token::new(ClosingCurlyBracket, span(95, 95)),
-            // // @Task don't output this (fake) line break
-            // Token::new(LineBreak, span(95, 95)),
+            Token::new(ClosingCurlyBracket, span(95, 95)),
+            // @Task don't output this (fake) line break
+            Token::new(LineBreak, span(95, 95)),
             Token::new(EndOfInput, span(95, 95)),
         ],
     );
@@ -605,15 +593,13 @@ of
 //     todo!()
 // }
 
-// // @Beacon :ind_block
 // #[test]
-// fn keyword_do_introduces_indented_blocks() {
+// fn keyword_do_introduces_indented_sections() {
 //     todo!()
 // }
 
-// @Beacon :ind_block
 #[test]
-fn empty_indented_block() {
+fn empty_indented_section_does_not_create_curly_brackets() {
     assert_ok_token(
         lex("\
 of
@@ -624,18 +610,12 @@ of
 "),
         vec![
             Token::new(Of, span(1, 2)),
-            Token::new(OpeningCurlyBracket, span(3, 3)),
-            Token::new(ClosingCurlyBracket, span(3, 3)),
             Token::new(LineBreak, span(3, 3)),
             Token::new(Do, span(4, 5)),
-            Token::new(OpeningCurlyBracket, span(6, 7)),
-            Token::new(ClosingCurlyBracket, span(6, 7)),
             Token::new(LineBreak, span(6, 7)),
             Token::new(Of, span(8, 9)),
             Token::new(OpeningCurlyBracket, span(10, 14)),
             Token::new(Do, span(15, 16)),
-            Token::new(OpeningCurlyBracket, span(17, 17)),
-            Token::new(ClosingCurlyBracket, span(17, 17)),
             Token::new(LineBreak, span(17, 17)),
             Token::new(ClosingCurlyBracket, span(17, 17)),
             Token::new(LineBreak, span(17, 17)),
@@ -644,13 +624,13 @@ of
     )
 }
 
-// @Beacon @Task smh create a Vec<LineContinuation> of the form [TopLevel,Indented,IndentedBlock]
+// @Beacon @Task smh create a Stack<Section> of the form [TopLevel,Continued,Indented]
 // #[test]
 // fn yyyy() {
 //     todo!()
 // }
 
-// @Beacon @Task smh create a Vec<LineContinuation> of the form [TopLevel,IndentedBlock,Indented]
+// @Beacon @Task smh create a Vec<Section> of the form [TopLevel,Indented,Continued]
 // #[test]
 // fn yyyy() {
 //     todo!()
@@ -678,11 +658,11 @@ of"it"
 
 // @Task
 
-#[test]
-fn xxxxxx() {
-    let _ = lex("\n    \n");
-    todo!();
-}
+// #[test]
+// fn xxxxxx() {
+//     let _ = lex("\n    \n");
+//     todo!();
+// }
 
 // @Task we gonna redo this stuff anyway
 

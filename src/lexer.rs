@@ -1,4 +1,4 @@
-//! The lexer.
+//! The lexer (lexical analyzer).
 //!
 //! ## Issues
 //!
@@ -14,83 +14,73 @@ use crate::{
     diagnostics::{Code, Diagnostic, Diagnostics, Result, Results, Warn},
     error::ManyErrExt,
     span::{LocalByteIndex, LocalSpan, SourceFile, SourceMap, Span},
-    Atom, INDENTATION_IN_SPACES,
+    Atom,
 };
-use std::{iter::Peekable, path::PathBuf, str::CharIndices};
+use std::{
+    cmp::Ordering::{self, *},
+    convert::{TryFrom, TryInto},
+    iter::Peekable,
+    str::CharIndices,
+};
 pub use token::{
     is_punctuation, Token,
     TokenKind::{self, *},
 };
 
+/// The unit indentation in spaces.
+pub const INDENTATION: Spaces = Indentation::UNIT.to_spaces();
+
 fn lex(source: String) -> Results<Vec<Token>> {
     let mut map = SourceMap::default();
-    let file = map
-        .add(PathBuf::new(), source)
-        .unwrap_or_else(|_| unreachable!());
+    let file = map.add(None, source).unwrap_or_else(|_| unreachable!());
     Lexer::new(&map[file], &mut Default::default()).lex()
 }
 
-/// Utility to parse identifiers from a string slice.
+/// Utility to parse identifiers from a string.
 ///
 /// Used for non-lushui code like crate names.
-// @Note this is ugly
 pub fn parse_identifier(source: String) -> Option<Atom> {
     let mut tokens = lex(source).ok()?;
     let mut tokens = tokens.drain(..);
-    match [tokens.next(), tokens.next()] {
-        [Some(Token {
-            kind: Identifier,
-            data: token::TokenData::Identifier(atom),
-            ..
-        }), Some(Token {
-            kind: EndOfInput, ..
-        })] => Some(atom),
+
+    match (tokens.next()?, tokens.next()?.kind) {
+        (
+            Token {
+                kind: Identifier,
+                data: token::TokenData::Identifier(atom),
+                ..
+            },
+            EndOfInput,
+        ) => Some(atom),
         _ => None,
     }
 }
 
-// @Task add documentation, better name
 #[derive(Clone, Copy, PartialEq, Eq)]
-// @Temporary
-#[derive(Debug)]
-enum LineContinuation {
+enum Section {
     TopLevel,
-    DelimitedBlock,
-    IndentedBlock,
-    Indentation,
+    /// A section of code within curly brackets.
+    Delimited,
+    /// An indented section of code following th keyword `of` or `do`.
+    Indented,
+    /// An indented section of code than seamlessly continues the previous line.
+    Continued,
 }
 
-impl LineContinuation {
-    const fn line_break_is_terminator(self) -> bool {
-        matches!(self, Self::TopLevel | Self::IndentedBlock)
+impl Section {
+    /// Indicate whether line breaks terminate syntactic constructs in this section.
+    const fn line_breaks_are_terminators(self) -> bool {
+        matches!(self, Self::TopLevel | Self::Indented)
     }
 }
 
-impl Default for LineContinuation {
+impl Default for Section {
     fn default() -> Self {
         Self::TopLevel
     }
 }
 
-// #[derive(Default)]
-// struct LineContinuationStack(Vec<LineContinuation>);
-
-// impl LineContinuationStack {
-//     fn push(&mut self, mode: LineContinuation) {
-//         eprintln!("push({:?}) to {:?}", mode, self.0);
-//         self.0.push(mode);
-//     }
-
-//     // @Question good API?
-//     fn pop(&mut self) -> LineContinuation {
-//         eprintln!("pop({:?})", self.current());
-//         self.0.pop().unwrap_or_default()
-//     }
-
-//     fn current(&self) -> LineContinuation {
-//         self.0.last().copied().unwrap_or_default()
-//     }
-// }
+type Stack<T> = Vec<T>;
 
 /// The state of the lexer.
 pub struct Lexer<'a> {
@@ -98,10 +88,10 @@ pub struct Lexer<'a> {
     characters: Peekable<CharIndices<'a>>,
     tokens: Vec<Token>,
     span: LocalSpan,
-    indentation_in_spaces: usize,
-    round_brackets: Vec<Span>,
+    indentation: Spaces,
+    round_brackets: Stack<Span>,
     warnings: &'a mut Diagnostics,
-    line_continuation: Vec<LineContinuation>,
+    section: Stack<Section>,
 }
 
 impl<'a> Lexer<'a> {
@@ -112,9 +102,9 @@ impl<'a> Lexer<'a> {
             characters: source.content().char_indices().peekable(),
             tokens: Vec::new(),
             span: LocalSpan::zero(),
-            indentation_in_spaces: 0,
-            round_brackets: Vec::new(),
-            line_continuation: Vec::new(),
+            indentation: Spaces(0),
+            round_brackets: Stack::new(),
+            section: Stack::new(),
         }
     }
 
@@ -151,12 +141,19 @@ impl<'a> Lexer<'a> {
                     self.advance();
                 }
                 '{' => {
-                    self.line_continuation
-                        .push(LineContinuation::DelimitedBlock);
+                    self.section.push(Section::Delimited);
                     self.add(OpeningCurlyBracket);
                     self.advance();
                 }
                 '}' => {
+                    // @Temporary unverified
+                    if self
+                        .section
+                        .last()
+                        .map_or(false, |&section| section == Section::Delimited)
+                    {
+                        self.section.pop();
+                    }
                     self.add(ClosingCurlyBracket);
                     self.advance();
                 }
@@ -189,7 +186,7 @@ impl<'a> Lexer<'a> {
         // @Bug panics if last byte is not a valid codepoint, right?
         let last = LocalByteIndex::from_usize(self.source.content().len() - 1);
 
-        // ideally, we'd like to set its span to the index after the last token,
+        // Ideally, we'd like to set its span to the index after the last token,
         // but they way `SourceMap` is currently defined, that would not work,
         // it would reach into the next `SourceFile` if there even was one
         // I'd love to put "the red caret" in diagnostics visually after the last
@@ -295,10 +292,8 @@ impl<'a> Lexer<'a> {
     }
 
     fn lex_indentation(&mut self) -> Result {
-        use std::cmp::Ordering::*;
-
-        // @Note not extensible to DelimitedBlocks
-        let found_block_marker = self
+        // @Note not extensible to Section::Delimited
+        let is_start_of_indented_section = self
             .tokens
             .last()
             .map_or(false, |token| matches!(token.kind, Of | Do));
@@ -312,75 +307,103 @@ impl<'a> Lexer<'a> {
         //     Some(index) => LocalSpan::from(index),
         //     None => return Ok(()),
         // };
-        let mut spaces = 0;
-        self.take_while_with(|character| character == ' ', || spaces += 1);
+        let mut spaces = Spaces(0);
+        self.take_while_with(|character| character == ' ', || spaces.0 += 1);
 
-        let change = spaces.cmp(&self.indentation_in_spaces);
-        let absolute_difference = match change {
-            Greater => spaces - self.indentation_in_spaces,
-            Less => self.indentation_in_spaces - spaces,
-            Equal => 0,
-        };
+        let (change, difference) = spaces.difference(self.indentation);
 
         // self.span = LocalSpan::new(self.span.end + 1 - absolute_difference, self.span.end);
 
-        // @Task don't fail fatally, accept it but push error into an error buffer
-        if absolute_difference % INDENTATION_IN_SPACES != 0
-            || change == Greater && absolute_difference > INDENTATION_IN_SPACES
-        {
-            return Err(Diagnostic::error()
-                .with_code(Code::E003)
-                .with_message(format!(
-                    "invalid indentation consisting of {} spaces",
-                    absolute_difference
-                ))
-                .with_primary_span(self.span())
-                .with_note(format!(
-                    "indentation needs to be a multiple of {}",
-                    INDENTATION_IN_SPACES
-                )));
-        }
-
-        // @Beacon @Beacon @Task don't necessarily emit a LineBreak before a ClosingCurlyBracket
-        // ... the  parser can handle it (in parse_terminated_expression)
-
-        let line_continuation = self.line_continuation.last().copied().unwrap_or_default();
-
-        // @Task simplify
-        if found_block_marker {
-            self.tokens.pop(); // remove the line break
-            self.add(OpeningCurlyBracket); // @Bug wrong span
-            self.line_continuation.push(LineContinuation::IndentedBlock);
-        } else {
-            if change == Greater || change == Equal && !line_continuation.line_break_is_terminator()
-            {
-                self.tokens.pop(); // remove the line break
-            }
-            if change == Greater {
-                self.line_continuation.push(LineContinuation::Indentation);
+        let difference: Indentation = match (change, difference).try_into() {
+            Ok(difference) => difference,
+            Err(_error) => {
+                // @Task don't fail fatally, accept it but push error into an error buffer
+                return Err(Diagnostic::error()
+                    .with_code(Code::E003)
+                    .with_message(format!(
+                        "invalid indentation consisting of {} spaces",
+                        difference.0
+                    ))
+                    .with_primary_span(self.span())
+                    // @Bug we display this even in case of ind==8|12|…
+                    .with_note(format!(
+                        "indentation needs to be a multiple of {}",
+                        INDENTATION.0
+                    )));
             }
         };
 
-        if change == Less || change == Equal && found_block_marker {
-            let dedentation = absolute_difference / INDENTATION_IN_SPACES;
+        let section = self.section.last().copied().unwrap_or_default();
 
-            for _ in 0..=dedentation {
-                // @Note _or_default prob never reaches, @Task use unwrap()
-                let line_continuation = self.line_continuation.pop().unwrap_or_default();
+        if is_start_of_indented_section {
+            if change == Greater {
+                // remove the line break again
+                self.tokens.pop();
+                // @Bug wrong span
+                self.add(OpeningCurlyBracket);
+                self.section.push(Section::Indented);
+            }
+        } else {
+            // Remove the line break again if the next line is indented or if we are in a Section
+            // where line breaks are not terminators or if we dedent by some amount and the
+            // “target Section” treats line breaks as terminators.
+            if change == Greater
+                || change == Equal && !section.line_breaks_are_terminators()
+                || change == Less
+                    && !self
+                        .section
+                        .len()
+                        .checked_sub(1 + difference.0)
+                        .map(|index| self.section[index])
+                        .unwrap_or_default()
+                        .line_breaks_are_terminators()
+            {
+                // remove the line break again
+                self.tokens.pop();
+            }
 
-                if line_continuation == LineContinuation::IndentedBlock {
+            if change == Greater {
+                self.section.push(Section::Continued);
+            }
+        };
+
+        if change == Less {
+            for _ in 0..difference.0 {
+                // unwrap: we currently handle dedentation which means priorly code
+                // was indented i.e. is not the top level
+                let section = self.section.pop().unwrap();
+
+                if section == Section::Indented {
+                    // // @Temporary
+                    // if self
+                    //     .tokens
+                    //     .last()
+                    //     .map_or(false, |token| token.kind == LineBreak)
+                    // {
+                    //     self.tokens.pop();
+                    // }
+
                     // @Bug wrong span
                     self.add(ClosingCurlyBracket);
-                    // @Temporary @Note a temp fix so that mod/data decls are terminated by
-                    // a line break which they have to be. issue: not compatible with
-                    // case analysis. @Task we need to update the parser such that it
-                    // accepts declarations with a trailing block but no trailing line break
-                    self.add(LineBreak);
+
+                    self.add(LineBreak); // @Temporary
+
+                    // if self
+                    //     .section
+                    //     .last()
+                    //     .map_or(true, |section| section.line_breaks_are_terminators())
+                    // {
+                    //     // @Temporary @Note a temp fix so that mod/data decls are terminated by
+                    //     // a line break which they have to be. issue: not compatible with
+                    //     // case analysis. @Task we need to update the parser such that it
+                    //     // accepts declarations with a trailing block but no trailing line break
+                    //     self.add(LineBreak);
+                    // }
                 }
             }
         }
 
-        self.indentation_in_spaces = spaces;
+        self.indentation = spaces;
 
         Ok(())
     }
@@ -576,4 +599,60 @@ impl Warn for Lexer<'_> {
     fn diagnostics(&mut self) -> &mut Diagnostics {
         &mut self.warnings
     }
+}
+
+#[derive(Clone, Copy)]
+pub struct Spaces(pub usize);
+
+impl Spaces {
+    /// Returns the ordering and the absolute difference.
+    pub fn difference(self, other: Self) -> (Ordering, Self) {
+        let change = self.0.cmp(&other.0);
+        let difference = match change {
+            Greater => self.0 - other.0,
+            Less => other.0 - self.0,
+            Equal => 0,
+        };
+        (change, Self(difference))
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct Indentation(pub usize);
+
+impl Indentation {
+    pub const UNIT: Self = Self(1);
+
+    pub const fn to_spaces(self) -> Spaces {
+        const INDENTATION_IN_SPACES: usize = 4;
+
+        Spaces(self.0 * INDENTATION_IN_SPACES)
+    }
+}
+
+impl From<Indentation> for Spaces {
+    fn from(indentation: Indentation) -> Self {
+        indentation.to_spaces()
+    }
+}
+
+impl TryFrom<(Ordering, Spaces)> for Indentation {
+    type Error = IndentationError;
+
+    fn try_from((change, spaces): (Ordering, Spaces)) -> Result<Self, Self::Error> {
+        if spaces.0 % INDENTATION.0 != 0 {
+            return Err(IndentationError::Misaligned);
+        }
+
+        if change == Greater && spaces.0 > INDENTATION.0 {
+            return Err(IndentationError::TooDeep);
+        }
+
+        Ok(Indentation(spaces.0 / INDENTATION.0))
+    }
+}
+
+pub enum IndentationError {
+    Misaligned,
+    TooDeep,
 }
