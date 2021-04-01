@@ -344,18 +344,21 @@ fn lex_brackets() {
     );
 }
 
+// @Task update to the new system
 #[test]
+#[ignore]
 fn do_not_lex_unbalanced_round_brackets_too_few_closing() {
     assert_err(lex("(("), &[&[span(1, 1)], &[span(2, 2)]]);
 }
 
 #[test]
+#[ignore]
 fn do_not_lex_unbalanced_round_brackets_too_few_opening() {
     assert_err(lex(")))"), &[&[span(1, 1)]]);
 }
 
 #[test]
-fn lex_bare_non_ascii_as_illegal() {
+fn bare_non_ascii_is_illegal() {
     assert_ok_token(
         lex("函数"),
         vec![
@@ -367,7 +370,7 @@ fn lex_bare_non_ascii_as_illegal() {
 }
 
 #[test]
-fn lex_bare_non_ascii_as_illegal_and_keep_lexing() {
+fn bare_non_ascii_are_illegal_but_non_fatal() {
     assert_ok_token(
         lex(" 函数 function"),
         vec![
@@ -380,7 +383,7 @@ fn lex_bare_non_ascii_as_illegal_and_keep_lexing() {
 }
 
 #[test]
-fn lex_backtick_as_illegal() {
+fn backticks_are_illegal() {
     assert_ok_token(
         lex("`"),
         vec![
@@ -391,7 +394,7 @@ fn lex_backtick_as_illegal() {
 }
 
 #[test]
-fn lex_backtick_as_illegal_right_after_number_literal() {
+fn backticks_are_illegal_right_after_number_literal() {
     assert_ok_token(
         lex("1`"),
         vec![
@@ -403,7 +406,7 @@ fn lex_backtick_as_illegal_right_after_number_literal() {
 }
 
 #[test]
-fn lex_tabs_as_illegals() {
+fn tabs_are_illegal() {
     assert_ok_token(
         lex("\t\t"),
         vec![
@@ -663,6 +666,123 @@ of"it"
 //     let _ = lex("\n    \n");
 //     todo!();
 // }
+
+#[test]
+fn round_bracket_closes_indented_section() {
+    assert_ok_token(
+        lex("\
+(of
+    fo)
+(of
+    fo
+    )
+"),
+        vec![
+            Token::new(OpeningRoundBracket, span(1, 1)),
+            Token::new(Of, span(2, 3)),
+            // @Bug wrong span
+            Token::new(OpeningCurlyBracket, span(4, 8)),
+            Token::new_identifier("fo".into(), span(9, 10)),
+            // @Question better span?
+            Token::new(ClosingCurlyBracket, span(11, 11)),
+            Token::new(ClosingRoundBracket, span(11, 11)),
+            Token::new(LineBreak, span(12, 12)),
+            Token::new(OpeningRoundBracket, span(13, 13)),
+            Token::new(Of, span(14, 15)),
+            // @Bug wrong span
+            Token::new(OpeningCurlyBracket, span(16, 20)),
+            Token::new_identifier("fo".into(), span(21, 22)),
+            Token::new(LineBreak, span(23, 23)),
+            // @Question better span?
+            Token::new(ClosingCurlyBracket, span(28, 28)),
+            Token::new(ClosingRoundBracket, span(28, 28)),
+            Token::new(LineBreak, span(29, 29)),
+            Token::new(EndOfInput, span(29, 29)),
+        ],
+    );
+}
+
+// @Task
+#[test]
+#[ignore]
+fn square_bracket_closes_indented_section() {}
+
+#[test]
+fn pair_of_brackets_does_not_close_indented_section() {
+    assert_ok_token(
+        lex("\
+of
+    (f [])
+    inside
+"),
+        vec![
+            Token::new(Of, span(1, 2)),
+            // @Bug wrong span
+            Token::new(OpeningCurlyBracket, span(3, 7)),
+            Token::new(OpeningRoundBracket, span(8, 8)),
+            Token::new_identifier("f".into(), span(9, 9)),
+            Token::new(OpeningSquareBracket, span(11, 11)),
+            Token::new(ClosingSquareBracket, span(12, 12)),
+            Token::new(ClosingRoundBracket, span(13, 13)),
+            Token::new(LineBreak, span(14, 14)),
+            Token::new_identifier("inside".into(), span(19, 24)),
+            Token::new(LineBreak, span(25, 25)),
+            Token::new(ClosingCurlyBracket, span(25, 25)),
+            Token::new(LineBreak, span(25, 25)),
+            Token::new(EndOfInput, span(25, 25)),
+        ],
+    );
+}
+
+// @Question should the single dot really be a Dot? shouldn't it be
+// punctuation?
+/// Yes, `=>` and `=` are aligned *but* the `)` outdents the first indentation and
+/// and such, the `=` should be considered (more) indented relative to the line with
+/// the closing bracket.
+// @Task rephrase the above
+#[test]
+fn brackets_reset_indentation() {
+    assert_ok_token(
+        lex("\
+(of
+    =>)
+    = .
+"),
+        vec![
+            Token::new(OpeningRoundBracket, span(1, 1)),
+            Token::new(Of, span(2, 3)),
+            Token::new(OpeningCurlyBracket, span(4, 8)),
+            Token::new(WideArrow, span(9, 10)),
+            Token::new(ClosingCurlyBracket, span(11, 11)),
+            Token::new(ClosingRoundBracket, span(11, 11)),
+            Token::new(Equals, span(17, 17)),
+            Token::new(Dot, span(19, 19)),
+            Token::new(LineBreak, span(20, 20)),
+            Token::new(EndOfInput, span(20, 20)),
+        ],
+    )
+}
+
+// @Question should it?? hmmmmmm
+#[test]
+#[ignore]
+fn keyword_do_resets_indentation() {
+    assert_ok_token(
+        lex("\
+case
+    9 of
+    q => Q
+"),
+        todo!(),
+    )
+
+    // if yes, then what about:
+    // case
+    //     9
+    //     of
+    //     q => Q
+    // that one shouldnt work imo
+}
 
 // @Task we gonna redo this stuff anyway
 

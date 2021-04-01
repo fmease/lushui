@@ -455,6 +455,20 @@ mod source_map {
             self.add(Some(path), source)
         }
 
+        /// Add a [SourceFile] to the source map.
+        ///
+        /// The first source file always has index `0`.
+        ///
+        /// ```
+        /// # fn main() {
+        /// # use lushui::span::{SourceFileIndex, SourceMap};
+        /// let index = SourceMap::default()
+        ///     .add(None, String::new())
+        ///     .unwrap_or_else(|_| unreachable!());
+        ///
+        /// assert_eq!(index, SourceFileIndex::new(0));
+        /// # }
+        /// ```
         pub fn add(
             &mut self,
             path: Option<PathBuf>,

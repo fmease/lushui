@@ -56,19 +56,18 @@ fn test_module_name() -> Identifier {
 }
 
 fn test_file_index() -> SourceFileIndex {
-    // @Task improve this, we are using an implementation detail here
-    // either guarantee this (add documentation to the SourceMap) or
-    // do something better?
     SourceFileIndex::new(0)
 }
 
 fn assert_eq<ItemKind>(actual: Result<Item<ItemKind>>, expected: Result<Item<ItemKind>>)
 where
-    ItemKind: Eq + Format + std::fmt::Debug,
+    ItemKind: Eq + Format,
 {
     match (expected, actual) {
         (Ok(expected), Ok(actual)) => {
             if actual != expected {
+                // the colored Format-output overwrites the colored highlighting of
+                // the Changeset, this prevent that from happening
                 std::env::set_var("NO_COLOR", "");
                 panic!(
                     "the actual output of the parser does not match the expected one:\n{}",
@@ -498,30 +497,44 @@ fn bracketed_empty_case_analysis() {
     );
 }
 
-/// The closing round bracket *has* to be placed in the next line and a outdented by one.
-/// That's its only legal place. Whether that's a good thing or not has yet to be pondered about.
-/// On a related note, notice how the case (“match arm”) is effectively outdented relative to the
+// /// The closing round bracket *has* to be placed in the next line and a outdented by one.
+// /// That's its only legal place. Whether that's a good thing or not has yet to be pondered about.
+// /// On a related note,
+// @Update this does not and should not work
+// #[test]
+// fn bracketed_case_analysis() {
+//     assert_eq(
+//         parse_expression(
+//             "\
+// lengthy-space-filler (case 0 of
+//     \\n => n
+// )",
+//         ),
+//         Err(_)
+//     );
+// }
+
+/// Btw, notice how the case (“match arm”) is effectively outdented relative to the
 /// start of the case analysis, the keyword `case`. This may be counter-intuitive but technically,
 /// it is correct since indentation is relative to the start of the line.
+// @Temporary name
 #[test]
-#[ignore = "failing and we cannot debug this because our parser sucks (pathetic reflection system!)"]
 fn bracketed_case_analysis() {
     assert_eq(
         parse_expression(
             "\
 lengthy-space-filler (case 0 of
-    \\n => n
-)",
+    \\n => n)",
         ),
         Ok(expr! {
             Application {
-                Attributes::new(), span(1, 45);
+                Attributes::new(), span(1, 44);
                 explicitness: Explicit,
                 binder: None,
                 callee: Identifier::new("lengthy-space-filler".into(), span(1, 20)).into(),
                 argument: expr! {
                     CaseAnalysis {
-                        Attributes::new(), span(22, 45);
+                        Attributes::new(), span(22, 44);
                         scrutinee: expr! {
                             NumberLiteral(
                                 Attributes::new(),
@@ -545,6 +558,22 @@ lengthy-space-filler (case 0 of
             }
         }),
     );
+}
+
+// @Note we probably don't need this as a parser but as a lexer test
+// (exercising the sections.truncate call)
+#[test]
+#[ignore]
+fn yyy() {
+    assert_eq(
+        parse_expression(
+            "\
+lengthy-space-filler (case 0 of
+    \\n => n
+        )",
+        ),
+        Ok(todo!()),
+    )
 }
 
 // @Task add test (here or as golden) for expression `f (a = g b)` (this couldn't be parsed until now

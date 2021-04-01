@@ -1418,9 +1418,7 @@ impl<'a> Parser<'a> {
                     } else {
                         // @Task improve error diagnostics for an unexpected token to not only mention an
                         // expression was expected but also statements were
-                        let expression = self.parse_expression()?;
-                        self.consume(LineBreak)?;
-                        Statement::Expression(expression)
+                        Statement::Expression(self.parse_terminated_expression()?)
                     }
                 }
             });
