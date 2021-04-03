@@ -1,4 +1,4 @@
-;; TEST fail check
+;;; TEST fail check
 
 module separation of
     data Private: Type of

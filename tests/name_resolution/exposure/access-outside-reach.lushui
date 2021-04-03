@@ -1,5 +1,5 @@
-;; TEST fail check
-;; @Task more cases
+;;; TEST fail check
+;;; @Task more cases
 
 module grotto of
     @public

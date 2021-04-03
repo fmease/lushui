@@ -1,4 +1,4 @@
-;; TEST fail check
+;;; TEST fail check
 
 data Alpha of
     alpha a

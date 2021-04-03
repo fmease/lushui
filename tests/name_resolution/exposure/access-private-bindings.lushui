@@ -1,4 +1,4 @@
-;; TEST fail check
+;;; TEST fail check
 
 use S.structure as s
 
@@ -20,9 +20,9 @@ module outer of
 
 Struct: Type = outer.south
 
-;; Description: Bindings w/o any `@public` should be considered private to the module
-;; the binding is defined in. No matter if it is accessed by `use` or inside of an expression.
-;; Furthermore, processing use-declarations that break exposure rules should not lead to a
-;; fatal error but allow the name resolver to keep resolving and checking on a
-;; partially erroneous crate scope. Lastly, this test case exercises the exposure checker
-;; with out of order bindings.
+;;; Description: Bindings w/o any `@public` should be considered private to the module
+;;; the binding is defined in. No matter if it is accessed by `use` or inside of an expression.
+;;; Furthermore, processing use-declarations that break exposure rules should not lead to a
+;;; fatal error but allow the name resolver to keep resolving and checking on a
+;;; partially erroneous crate scope. Lastly, this test case exercises the exposure checker
+;;; with out of order bindings.

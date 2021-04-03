@@ -248,7 +248,7 @@ impl<'a> Lexer<'a> {
                 // @Bug @Beacon if it is SOI, don't lex_whitespace but lex_indentation
                 // (SOI should act as a line break)
                 ' ' => self.lex_whitespace(),
-                ';' => self.lex_comment(),
+                ';' => self.lex_semi_tmp(),
                 character if token::is_identifier_segment_start(character) => {
                     self.lex_identifier().many_err()?
                 }
@@ -369,16 +369,27 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    // @Task inline
+    fn lex_semi_tmp(&mut self) {
+        self.advance();
+
+        if let Some(';') = self.peek() {
+            self.lex_comment();
+        } else {
+            self.add(Semicolon);
+        }
+    }
+
     // @Task merge consecutive documentation comments
     // @Task emit TokenKind::Comment if asked
     fn lex_comment(&mut self) {
         self.advance();
 
-        let mut documentation = true;
+        let mut is_documentation = true;
 
         if let Some(character) = self.peek() {
             if character == ';' {
-                documentation = false;
+                is_documentation = false;
             } else {
                 self.take();
             }
@@ -392,15 +403,15 @@ impl<'a> Lexer<'a> {
                 break;
             }
 
-            if documentation {
+            if is_documentation {
                 self.take();
             }
 
             self.advance();
         }
 
-        if documentation {
-            self.add(DocumentationComment)
+        if is_documentation {
+            self.add(DocumentationComment);
         }
     }
 

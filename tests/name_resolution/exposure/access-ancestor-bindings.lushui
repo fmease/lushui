@@ -1,4 +1,4 @@
-;; TEST pass check
+;;; TEST pass check
 
 Alpha: Type = Alpha
 
@@ -21,9 +21,9 @@ Beta: Type = Type
 data Unit: Type of
     unit: Unit
 
-;; Description: Privacy is only one-way: Descendant modules or namespaces
-;; are in all cases permitted to refer to and use bindings defined in
-;; parent/ancestor modules (unless such a binding breaks exposure rules to begin with)
-;; no matter their declared exposure reach (which is directed upwards).
-;; This should work for both use-declarations and inside expressions.
-;; Out of order declarations should not hinder the algorithm.
+;;; Description: Privacy is only one-way: Descendant modules or namespaces
+;;; are in all cases permitted to refer to and use bindings defined in
+;;; parent/ancestor modules (unless such a binding breaks exposure rules to begin with)
+;;; no matter their declared exposure reach (which is directed upwards).
+;;; This should work for both use-declarations and inside expressions.
+;;; Out of order declarations should not hinder the algorithm.

@@ -1,4 +1,4 @@
-;; TEST ignore
+;;; TEST ignore
 
 @foreign
 data Nat32: Type

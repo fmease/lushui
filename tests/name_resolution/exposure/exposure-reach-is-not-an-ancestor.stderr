@@ -1,28 +1,28 @@
 error[E000]: exposure can only be restricted to ancestor modules
  --> ${DIRECTORY}/name_resolution/exposure/exposure-reach-is-not-an-ancestor.lushui:3:10
   |
-3 | @(public solipsism) ;; itself
+3 | @(public solipsism) ;;; itself
   |          ^^^^^^^^^ 
   |
 
 error[E000]: exposure can only be restricted to ancestor modules
  --> ${DIRECTORY}/name_resolution/exposure/exposure-reach-is-not-an-ancestor.lushui:6:10
   |
-6 | @(public store.shelves) ;; descendant
+6 | @(public store.shelves) ;;; descendant
   |          ^^^^^^^^^^^^^ 
   |
 
 error[E000]: exposure can only be restricted to ancestor modules
   --> ${DIRECTORY}/name_resolution/exposure/exposure-reach-is-not-an-ancestor.lushui:10:10
    |
-10 | @(public brother) ;; sibling
+10 | @(public brother) ;;; sibling
    |          ^^^^^^^ 
    |
 
 error[E000]: exposure can only be restricted to ancestor modules
   --> ${DIRECTORY}/name_resolution/exposure/exposure-reach-is-not-an-ancestor.lushui:13:10
    |
-13 | @(public locked-up.brother) ;; private relative
+13 | @(public locked-up.brother) ;;; private relative
    |          ^^^^^^^^^^^^^^^^^ 
    |
 

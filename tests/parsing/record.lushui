@@ -1,10 +1,10 @@
-;; TEST pass check --only-parse
+;;; TEST pass check --only-parse
 
-;; @Note with the new indentation system, this shoould work, too:
-;; data Person: Type of
-;;     person
-;;         (::name: Text)
-;;         (::birth: Date): Person
+;;; @Note with the new indentation system, this shoould work, too:
+;;; data Person: Type of
+;;;     person
+;;;         (::name: Text)
+;;;         (::birth: Date): Person
 
 data Person: Type of
     person (::name: Text) (::birth: Date): Person

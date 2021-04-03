@@ -44,12 +44,12 @@ Value-Declaration ::=
 Data-Declaration ::=
     "data" #Identifier
     Parameters Type-Annotation?
-    ("of" "{" (#Line-Break | Constructor)* "}")?
+    ("of" ("{" (#Line-Break | Constructor)* "}")?)?
     #Line-Break
 
 Module-Declaration ::=
     | Header
-    | "module" #Identifier ("of" "{" (#Line-Break | Declaration)* "}")? #Line-Break
+    | "module" #Identifier ("of" ("{" (#Line-Break | Declaration)* "}")?)? #Line-Break
 Header ::= "module" #Line-Break
 
 Top-Level ::= (#Line-Break | Declaration)* #End-Of-Input
@@ -125,11 +125,12 @@ Lambda-Literal ::= "\" Parameters Type-Annotation? "=>" Expression
 Let-In ::=
     "let" #Identifier Parameters Type_Annotation?
     ("=" Expression)?
-    "in" #Line-Break? Expression
+    #Line-Break?
+    "in" Expression
 
 Use-In ::= "use" Use-Path-Tree "in" #Line-Break? Expression
 
-Case-Analysis ::= "case" Expression "of" "{" Case* "}"
+Case-Analysis ::= "case" Expression "of" ("{" Case* "}")?
 Case ::= Pattern "=>" Expression
 
 Do-Block ::= "do" "{" Statement* "}"

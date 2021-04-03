@@ -1,6 +1,6 @@
 F: Type = F
 
-;; @Bug does not overflow because equals does not evaluate
+;;; @Bug does not overflow because equals does not evaluate
 x: F = Type
 
 @(location "../libs/core/core")
@@ -12,6 +12,6 @@ f (n: Nat): Nat = + 1 (f n)
 
 data Holder (n: Nat): Type =
 
-;; @Bug should overflow but does not
+;;; @Bug should overflow but does not
 y: Holder (f 100000) = Type
 

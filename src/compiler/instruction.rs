@@ -52,7 +52,7 @@ impl Instruction {
                 format!("closure {:?}, {:?}", chunk, captures).into()
             }
             &Self::Constant(constant) => {
-                format!("constant {:04} ;; {:?}", constant, constants[constant]).into()
+                format!("constant {:04} ;;; {:?}", constant, constants[constant]).into()
             }
             Self::Argument => "argument".into(),
             Self::Apply => "apply".into(),

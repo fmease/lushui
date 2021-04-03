@@ -1,4 +1,4 @@
-;; TEST pass check
+;;; TEST pass check
 
 @(location "../libs/core/core")
 module core

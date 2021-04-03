@@ -1,4 +1,4 @@
-;; TEST fail check
+;;; TEST fail check
 
 data Alpha: Type of
     alpha: Alpha

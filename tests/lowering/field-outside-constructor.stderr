@@ -6,7 +6,7 @@ error[E017]: field marker `::` used outside of a constructor declaration
   |
  --> ${DIRECTORY}/lowering/field-outside-constructor.lushui:3:9
   |
-3 | data X (::A: Type): (::m: M) -> X =
+3 | data X (::A: Type): (::m: M) -> X of
   |         ^^ 
   |
 

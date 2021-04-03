@@ -63,35 +63,35 @@ use no_std_assert as assert_eq;
 use no_std_assert as assert_ne;
 
 #[test]
-fn lex_comment() {
+fn comments() {
     assert_ok_token(
         lex("
-;; bland commentary ensues
-;; a filler line
-;; and an end
+;;; bland commentary ensues
+;;; a filler line
+;;; and an end
 "),
         vec![
             Token::new(LineBreak, span(1, 1)),
-            Token::new(EndOfInput, span(59, 59)),
+            Token::new(EndOfInput, span(62, 62)),
         ],
     );
 }
 
 #[test]
-fn lex_documentation_comment() {
+fn documentation_comments() {
     assert_ok_token(
         lex("\
-alpha;;文本
-0401 ; stray documentation comment
-; next one
-;有意思的信"),
+alpha;;;文本
+0401 ;; stray documentation comment
+;; next one
+;;有意思的信"),
         vec![
             Token::new_identifier("alpha".into(), span(1, 5)),
-            Token::new_number_literal("0401".into(), span(15, 18)),
-            Token::new(DocumentationComment, span(20, 49)),
-            Token::new(DocumentationComment, span(50, 60)),
-            Token::new(DocumentationComment, span(61, 76)),
-            Token::new(EndOfInput, span(76, 76)),
+            Token::new_number_literal("0401".into(), span(16, 19)),
+            Token::new(DocumentationComment, span(21, 51)),
+            Token::new(DocumentationComment, span(52, 63)),
+            Token::new(DocumentationComment, span(64, 80)),
+            Token::new(EndOfInput, span(80, 80)),
         ],
     );
 }

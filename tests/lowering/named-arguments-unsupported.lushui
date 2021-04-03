@@ -1,4 +1,4 @@
-;; TEST fail check
+;;; TEST fail check
 
 receiver: Receiver (A = Type) = engender (material = X)
 

@@ -1,5 +1,5 @@
-;; TEST ignore
-;; @Task re-add panic, then un-ignore
+;;; TEST ignore
+;;; @Task re-add panic, then un-ignore
 
 module core
 

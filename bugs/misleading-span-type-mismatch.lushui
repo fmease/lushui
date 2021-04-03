@@ -8,12 +8,12 @@ lazy (A: Type): Type = Unit -> A
 
 Lazy-Bool: Type = lazy Bool
 
-;;and (a: Bool) (b: Unit -> Bool): Bool =
+;;;and (a: Bool) (b: Unit -> Bool): Bool =
 and (a: Bool) (b: lazy Bool): Bool =
     case a of
         false => false
         true => b unit
 
-;; @Bug span: "expected due to this" points to normalization of _lazy Bool_ instead of the pre-normalized for
+;;; @Bug span: "expected due to this" points to normalization of _lazy Bool_ instead of the pre-normalized for
 main: lazy Bool = and true (\(unit: Unit) => true)
-;;main: Bool = and true (\(unit: Unit) => true)
+;;;main: Bool = and true (\(unit: Unit) => true)

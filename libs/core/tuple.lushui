@@ -1,12 +1,12 @@
-;; @Question tuple backed by List or by Vector in core (or both implementations)?
+;;; @Question tuple backed by List or by Vector in core (or both implementations)?
 
 use super.list.(List self)
 
-;; @Note backed by List
+;;; @Note backed by List
 @public
 data Tuple (L: List Type): Type of
     empty: Tuple (list.empty Type)
-    ;; @Task rename "cons" to sth more descriptive
+    ;;; @Task rename "cons" to sth more descriptive
     cons (A: Type) (L: List Type): A -> Tuple L -> Tuple (list.cons Type A L)
 
 @public
@@ -15,9 +15,9 @@ use Tuple.(empty cons)
 use super.vector.(Vector self)
 use super.nat.(Nat +)
 
-;; @Note backed by Vector
+;;; @Note backed by Vector
 @public
 data Tuple_ (n: Nat) (L: Vector n Type): Type of
     empty: Tuple_ 0 (vector.empty Type)
-    ;; @Task rename "cons" to sth more descriptive
+    ;;; @Task rename "cons" to sth more descriptive
     cons (A: Type) (n: Nat) (L: Vector n Type): A -> Tuple_ n L -> Tuple_ (+ n 1) (vector.cons n Type A L)

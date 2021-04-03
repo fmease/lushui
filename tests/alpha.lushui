@@ -1,4 +1,4 @@
-;; TEST pass check
+;;; TEST pass check
 
 @(location "../libs/core/core")
 module core
@@ -14,7 +14,7 @@ nat-identity (x: Nat): Nat = x
 alpha: Nat = do-something 3000
 beta: Nat = nat-identity 23
 
-;; foo: multiply 2 4 = Nat
+;;; foo: multiply 2 4 = Nat
 
 name: Text = "Jane"
 

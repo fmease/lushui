@@ -1,5 +1,5 @@
-;; TEST ignore
-;; @Task make this a TEST "pass"(?) run once we reimpl panicking
+;;; TEST ignore
+;;; @Task make this a TEST "pass"(?) run once we reimpl panicking
 
 module core
 

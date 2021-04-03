@@ -18,7 +18,7 @@ subtract: Nat -> Nat -> Option Nat
 @public
 use panicking-subtract as -?
 
-;; @Temporary
+;;; @Temporary
 @public @foreign
 panicking-subtract: Nat -> Nat -> Nat
 
@@ -40,10 +40,10 @@ use equal as ==
 @public @foreign
 equal: Nat -> Nat -> Bool
 
-;; equal (n m: Nat): Bool =
-;;     case duple Nat Nat n m of
-;;         duple Nat Nat \n n => true
-;;         \_ => false
+;;; equal (n m: Nat): Bool =
+;;;     case duple Nat Nat n m of
+;;;         duple Nat Nat \n n => true
+;;;         \_ => false
 
 @public
 use less as <
@@ -83,5 +83,5 @@ compare (n m: Nat): ordering.Ordering =
             bool.true => ordering.less
             bool.false => ordering.greater
 
-;; @public @foreign
-;; to-int: Nat -> Nat -> core.int.Int
+;;; @public @foreign
+;;; to-int: Nat -> Nat -> core.int.Int

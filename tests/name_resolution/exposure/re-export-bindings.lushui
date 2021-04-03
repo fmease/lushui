@@ -1,4 +1,4 @@
-;; TEST pass check
+;;; TEST pass check
 
 use Identity as Alias
 data Identity: Type of
@@ -6,7 +6,7 @@ data Identity: Type of
 @public use Point as *
 @public data Point: Type of
 
-use crate as krate ;; @Bug needs to be above `Center`
+use crate as krate ;;; @Bug needs to be above `Center`
 
 @(public crate) use Center as C
 @(public krate) data Center: Type of

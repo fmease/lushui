@@ -1,4 +1,4 @@
-;; TEST pass check
+;;; TEST pass check
 
 use boundary.(Thing (Th as TH) inner)
 
@@ -23,17 +23,17 @@ use boundary.(T Th inner.D)
 
 D_: Type = D
 
-;; Description: Bindings marked with a plain `@public` are exposed/public
-;; to any ancestor modules and also other crates. Out of order bindings should
-;; not confuse the algorithm. Also, even though `crate.boundary.Intermediate` is
-;; not exposed to the root module *directly*, it is indirectly.
-;; This does not count as a re-export (which would be illegal in this case)
-;; since the private binding is used inside of an expression which is the
-;; implementation of `boundary.inner.D`. In a dependently-typed language like
-;; this is, this implementation can unfortunately be leaked if that `D` is
-;; used in a type position. We do not check for leaked bindings in this way
-;; (yet) like Rust does. The documentation for Idris 1 mentions that it is
-;; impossible to deny this in general without drastically reducing the expressiblity of
-;; the language (citation needed!) and simply prepends a dot to the textual
-;; representation of expressions containing these inaccessible paths which
-;; are used in error messages to signal this information.
+;;; Description: Bindings marked with a plain `@public` are exposed/public
+;;; to any ancestor modules and also other crates. Out of order bindings should
+;;; not confuse the algorithm. Also, even though `crate.boundary.Intermediate` is
+;;; not exposed to the root module *directly*, it is indirectly.
+;;; This does not count as a re-export (which would be illegal in this case)
+;;; since the private binding is used inside of an expression which is the
+;;; implementation of `boundary.inner.D`. In a dependently-typed language like
+;;; this is, this implementation can unfortunately be leaked if that `D` is
+;;; used in a type position. We do not check for leaked bindings in this way
+;;; (yet) like Rust does. The documentation for Idris 1 mentions that it is
+;;; impossible to deny this in general without drastically reducing the expressiblity of
+;;; the language (citation needed!) and simply prepends a dot to the textual
+;;; representation of expressions containing these inaccessible paths which
+;;; are used in error messages to signal this information.

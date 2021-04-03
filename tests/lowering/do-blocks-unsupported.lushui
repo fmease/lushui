@@ -1,4 +1,4 @@
-;; TEST fail check
+;;; TEST fail check
 
 main: IO Unit =
     do

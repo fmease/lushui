@@ -28,13 +28,13 @@
         "comment": {
             "patterns": [
                 {
-                    "name": "comment.line.double-semicolon.lushui",
+                    "__comment__": "Also works: ;;(?!;).*",
+                    "name": "comment.block.documentation.lushui",
                     "match": ";;.*"
                 },
                 {
-                    "__comment__": "Also works: ;(?!;).*",
-                    "name": "comment.block.documentation.lushui",
-                    "match": ";.*"
+                    "name": "comment.line.triple-semicolon.lushui",
+                    "match": ";;;.*"
                 }
             ]
         },
@@ -102,7 +102,7 @@
                     "name": "punctuation.grouping.end.bracket.curly.lushui meta.brace.curly.lushui"
                 },
                 {
-                    "match": "'",
+                    "match": "[';]",
                     "name": "punctuation.lushui"
                 }
             ]

@@ -1,0 +1,12 @@
+;;; TEST pass check --only-parse
+
+thing1 =
+    let x =
+        case 4 of
+            \alpha => gamma
+    in 2
+
+thing2 =
+    let x = case 4 of
+        \alpha => gamma
+    in 2

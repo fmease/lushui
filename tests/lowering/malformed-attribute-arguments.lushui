@@ -1,4 +1,4 @@
-;; TEST fail check
+;;; TEST fail check
 
 @(allow never-gonna-be-implied)
 module m of

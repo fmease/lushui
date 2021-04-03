@@ -1,9 +1,8 @@
-;; XXX @Task update syntax
-;; TEST fail check
+;;; TEST fail check
 
-; module-level
-; documentation
-; here
+;; module-level
+;; documentation
+;; here
 module
 
 @foreign

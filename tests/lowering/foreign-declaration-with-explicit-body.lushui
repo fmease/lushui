@@ -1,4 +1,4 @@
-;; TEST fail check
+;;; TEST fail check
 
 @foreign
 data Void: Type of

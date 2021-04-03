@@ -1,4 +1,4 @@
-;; TEST pass check --only-parse
+;;; TEST pass check --only-parse
 
 data X 'A '(B C): '(b: Bool) -> Type of
     x'z'z'(p: P): X

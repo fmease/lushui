@@ -1,4 +1,4 @@
-;; TEST pass check
+;;; TEST pass check
 
 module inner of
     use innermore.innermost as m
@@ -16,7 +16,7 @@ module inner of
             @(public crate.n)
             Th: Type = Type
     
-        TH: Type = innermost.Th
+        TH: Type = innermost.Th ;;; @Beacon @Bug lexing/parsing: this is placed in the same line as `innermore`, `Z`!
 
     Z: Type = m.X
 
@@ -24,4 +24,4 @@ use inner.innermore as n
 use self as krate
 
 module offside of
-    @(public crate.inner.remote) data Ping: Type =
+    @(public crate.inner.remote) data Ping: Type of

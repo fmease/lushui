@@ -1,7 +1,7 @@
-;; TEST pass check --only-parse
-;; @Task move to parsing/
-;; @Task expand test (include attributes etc)
-;; @Task make this more about parsing patterns
+;;; TEST pass check --only-parse
+;;; @Task move to parsing/
+;;; @Task expand test (include attributes etc)
+;;; @Task make this more about parsing patterns
 
 main0: Untyped =
     case 100 of

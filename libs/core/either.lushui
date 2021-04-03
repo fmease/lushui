@@ -1,4 +1,4 @@
-;; @Task better name for this type, module and constructors!
+;;; @Task better name for this type, module and constructors!
 
 @public
 data Either (A B: Type): Type of

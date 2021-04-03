@@ -1,4 +1,4 @@
-;; TEST pass check --only-lower --print-lowered-ast
+;;; TEST pass check --only-lower --print-lowered-ast
 
 use foocoo.()
 

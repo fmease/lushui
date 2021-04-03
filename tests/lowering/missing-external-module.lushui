@@ -1,6 +1,6 @@
-;; TEST fail check
+;;; TEST fail check
 
-; famous recording
+;; famous recording
 module external-module-really-nowhere-to-be-found
 
 @(location "expansion-of-void-until-eternity")

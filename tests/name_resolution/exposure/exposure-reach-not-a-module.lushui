@@ -1,11 +1,11 @@
-;; TEST fail check
-;; @Task also report the undefined `xxx` if it's feasible to implement
+;;; TEST fail check
+;;; @Task also report the undefined `xxx` if it's feasible to implement
 
 @(public Void) data Empty: Type of
 
 data Hunk: Type of
     hunk: Hunk
 
-imposter: Hunk = xxx ;; Hunk.hunk
+imposter: Hunk = xxx ;;; Hunk.hunk
 
 @(public imposter) data Void: Type of
