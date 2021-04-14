@@ -124,6 +124,7 @@ fn run() -> Result<(), Error> {
 
         let time = std::time::Instant::now();
 
+        // @Beacon @Task if rustc/cargo emits warnings, don't keep them around!
         let output = Command::new("cargo")
             .args(&["run", "-q", "--"])
             .arg("--sort-diagnostics") // for deterministic output

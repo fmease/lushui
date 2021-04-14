@@ -531,9 +531,8 @@ impl<'a> Parser<'a> {
                 })?;
 
                 // implicitly inserted by the lexer in the case where "}" is artificial
-                // @Question what about EndOfInput?
-                span.merging(self.consume(LineBreak)?);
-                // span.merging(constructors.last());
+                self.consume(LineBreak)?;
+                span.merging(constructors.last());
 
                 Some(constructors)
             }
@@ -611,8 +610,6 @@ impl<'a> Parser<'a> {
                     Ok(())
                 })?;
 
-                // artificially inserted by the lexer in the case where `}` is fake
-                // @Question what about EOI?
                 span.merging(self.consume(LineBreak)?);
 
                 Ok(decl! {
@@ -679,11 +676,7 @@ impl<'a> Parser<'a> {
 
         if self.has_consumed(OpeningCurlyBracket) {
             loop {
-                // @Note necessary I guess in cases where we have #Line-Break ((Comment)) #Line-Break
-                // @Question can we easily get rid of this?
-                if self.has_consumed(LineBreak) {
-                    continue;
-                }
+                while self.has_consumed(LineBreak) {}
 
                 if self.has_consumed(ClosingCurlyBracket) {
                     break;
@@ -1227,16 +1220,9 @@ impl<'a> Parser<'a> {
     /// Let-In ::=
     ///     "let" #Identifier Parameters Type_Annotation?
     ///     ("=" Expression)?
-    ///     "in" #Line-Break? Expression
+    ///     #Line-Break?
+    ///     "in" Expression
     /// ```
-    // @Task allow omitting the `in` at the end of the line (@Note we might want to restrict it to
-    // scopes of type let/in and use/in; is that still context-free?)
-    // @Note however (at least in the future): `let x = start\n    end in 0` should mean that the
-    // "expression" of the let/in is the application `start end` and `let x = start\nend in 0`
-    // (on its own) w/o indentation is a syntax error and `let x = start\nend` is a let/in followed
-    // by a scope (w/o `in`) being the identifier `end`
-    // @Task allow writing `in` at the start of the next line (unless the previous line
-    // already had one ofc)
     // @Task skip duplicate `=`, `in`, `:`s (throw an error for each one)
     fn finish_parse_let_in(&mut self, span_of_let: Span) -> Result<Expression> {
         use TokenKind::*;
@@ -1247,7 +1233,7 @@ impl<'a> Parser<'a> {
             Delimiter::TypeAnnotationPrefix,
             Delimiter::DefinitionPrefix,
             In.into(),
-            // next up: line break (maybe)
+            LineBreak.into(),
         ])?;
         let type_annotation = self.parse_optional_type_annotation()?;
 
@@ -1257,8 +1243,9 @@ impl<'a> Parser<'a> {
             None
         };
 
-        self.consume(In)?;
         let _ = self.has_consumed(LineBreak);
+        self.consume(In)?;
+
         let scope = span.merging(self.parse_expression()?);
 
         Ok(expr! {

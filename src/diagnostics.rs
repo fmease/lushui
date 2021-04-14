@@ -671,6 +671,8 @@ impl fmt::Debug for Diagnostic {
     }
 }
 
+// @Note this makes error handling soo tedios since there are a lot of cases where we need to cancel
+// diagnostics (intentionally ignore them)!! how can we improve this??
 impl Drop for Diagnostic {
     fn drop(&mut self) {
         if self.is_cancelled() {

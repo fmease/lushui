@@ -15,7 +15,7 @@ module inner of
 
             @(public crate.n)
             Th: Type = Type
-    
+
         TH: Type = innermost.Th ;;; @Beacon @Bug lexing/parsing: this is placed in the same line as `innermore`, `Z`!
 
     Z: Type = m.X

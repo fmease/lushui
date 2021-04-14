@@ -297,10 +297,18 @@ impl<'a> Lowerer<'a> {
                             })
                             .map_err(|error| errors.take().inserted(error))?;
 
-                        let tokens = Lexer::new(&self.map[file], &mut self.warnings).lex()?;
+                        let (tokens, mut lexical_errors) =
+                            Lexer::new(&self.map[file], &mut self.warnings).lex()?;
                         let node = Parser::new(&self.map, file, &tokens, &mut self.warnings)
                             .parse(module.binder.clone())
-                            .map_err(|error| errors.take().extended(error))?;
+                            .map_err(|error| {
+                                errors
+                                    .take()
+                                    .extended(lexical_errors.take())
+                                    .extended(error)
+                            })?;
+                        lexical_errors.err_or(())?;
+
                         let module = match node.kind {
                             Module(module) => module,
                             _ => unreachable!(),

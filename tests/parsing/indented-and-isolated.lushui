@@ -1,0 +1,7 @@
+;;; TEST pass check --only-parse
+
+module a of
+    module b of
+
+
+        T: T = T

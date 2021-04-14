@@ -462,6 +462,7 @@ mod source_map {
         /// ```
         /// # fn main() {
         /// # use lushui::span::{SourceFileIndex, SourceMap};
+        /// # use indexed_vec::Idx as _;
         /// let index = SourceMap::default()
         ///     .add(None, String::new())
         ///     .unwrap_or_else(|_| unreachable!());

@@ -1,16 +1,16 @@
 use super::{Token, TokenKind::*};
 use crate::{
-    diagnostics::Results,
+    diagnostics::{Diagnostics, Results},
     span::{span, Span},
 };
 
-fn lex(source: &'static str) -> Results<Vec<Token>> {
+fn lex(source: &'static str) -> Results<(Vec<Token>, Diagnostics)> {
     super::lex(source.to_owned())
 }
 
-fn assert_ok_token(actual: Results<Vec<Token>>, expected: Vec<Token>) {
+fn assert_ok_token(actual: Results<(Vec<Token>, Diagnostics)>, expected: Vec<Token>) {
     match actual {
-        Ok(actual) => {
+        Ok((actual, errors)) if errors.is_empty() => {
             if actual != expected {
                 panic!(
                     "the actual tokens outputted by the lexer do not match the expected ones:\n{}",
@@ -22,15 +22,18 @@ fn assert_ok_token(actual: Results<Vec<Token>>, expected: Vec<Token>) {
                 );
             }
         }
-        Err(_) => panic!("expected the tokens `{:?}` but got an `Err`", expected),
+        _ => panic!("expected the tokens `{:?}` but got an `Err`", expected),
     }
 }
 
-fn assert_err(actual: Results<Vec<Token>>, expected_spans: &[&[Span]]) {
+// @Task remove
+fn assert_err(actual: Results<(Vec<Token>, Diagnostics)>, expected_spans: &[&[Span]]) {
     match actual {
-        Ok(actual) => panic!("expected an `Err` but got the tokens `{:?}`", actual),
-        Err(diagnostics) => {
-            let mut actual_spans: Vec<Vec<Span>> = diagnostics
+        Ok((actual, errors)) if errors.is_empty() => {
+            panic!("expected an `Err` but got the tokens `{:?}`", actual)
+        }
+        Ok((_, errors)) | Err(errors) => {
+            let mut actual_spans: Vec<Vec<Span>> = errors
                 .into_iter()
                 .map(|mut diagnostic| {
                     diagnostic.cancel();
@@ -97,7 +100,7 @@ alpha;;;文本
 }
 
 #[test]
-fn lex_identifier() {
+fn identifiers() {
     assert_ok_token(
         lex("alpha alpha0 _alpha al6ha_beta_"),
         vec![
@@ -111,7 +114,7 @@ fn lex_identifier() {
 }
 
 #[test]
-fn lex_dashed_identifier() {
+fn dashed_identifiers() {
     assert_ok_token(
         lex("ALPH4-G4MM4 alpha-gamma _-_"),
         vec![
@@ -124,7 +127,7 @@ fn lex_dashed_identifier() {
 }
 
 #[test]
-fn possibly_lex_keywords() {
+fn keywords_and_lookalikes() {
     assert_ok_token(
         lex("self   Type Type_ Type-Type in _"),
         vec![
@@ -160,7 +163,7 @@ fn do_not_lex_identifier_with_consecutive_dashes() {
 }
 
 #[test]
-fn lex_punctuation() {
+fn punctuation() {
     assert_ok_token(
         lex("+ +>alpha//$~%  #0 . .."),
         vec![
@@ -178,7 +181,7 @@ fn lex_punctuation() {
 }
 
 #[test]
-fn lex_identifier_with_trailing_dot() {
+fn identifier_with_trailing_dot() {
     assert_ok_token(
         lex("namespace."),
         vec![
@@ -190,7 +193,7 @@ fn lex_identifier_with_trailing_dot() {
 }
 
 #[test]
-fn lex_identifier_dot_punctuation() {
+fn identifier_dot_punctuation() {
     assert_ok_token(
         lex("namespace.+>!"),
         vec![
@@ -761,27 +764,6 @@ fn brackets_reset_indentation() {
             Token::new(EndOfInput, span(20, 20)),
         ],
     )
-}
-
-// @Question should it?? hmmmmmm
-#[test]
-#[ignore]
-fn keyword_do_resets_indentation() {
-    assert_ok_token(
-        lex("\
-case
-    9 of
-    q => Q
-"),
-        todo!(),
-    )
-
-    // if yes, then what about:
-    // case
-    //     9
-    //     of
-    //     q => Q
-    // that one shouldnt work imo
 }
 
 // @Task we gonna redo this stuff anyway

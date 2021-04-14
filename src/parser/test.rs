@@ -29,8 +29,11 @@ fn parse_expression(source: &str) -> Result<Expression> {
         .add(None, source.to_owned())
         .unwrap_or_else(|_| unreachable!());
     let lexer = Lexer::new(&map[file], &mut warnings);
-    let tokens = lexer.lex().map_err(|mut errors| errors.cancel())?;
-    dbg!(&tokens);
+    let (tokens, mut lexical_errors) = lexer.lex().map_err(|mut errors| errors.cancel())?;
+    if !lexical_errors.is_empty() {
+        lexical_errors.cancel();
+        return Err(());
+    }
     let mut parser = Parser::new(&map, file, &tokens, &mut warnings);
     parser.parse_expression()
 }
@@ -43,7 +46,11 @@ fn parse_declaration(source: &str) -> Result<Declaration> {
         .add(None, source.to_owned())
         .unwrap_or_else(|_| unreachable!());
     let lexer = Lexer::new(&map[file], &mut warnings);
-    let tokens = lexer.lex().map_err(|mut errors| errors.cancel())?;
+    let (tokens, mut lexical_errors) = lexer.lex().map_err(|mut errors| errors.cancel())?;
+    if !lexical_errors.is_empty() {
+        lexical_errors.cancel();
+        return Err(());
+    }
     let mut parser = Parser::new(&map, file.clone(), &tokens, &mut warnings);
     parser
         .parse(test_module_name())
@@ -497,23 +504,6 @@ fn bracketed_empty_case_analysis() {
     );
 }
 
-// /// The closing round bracket *has* to be placed in the next line and a outdented by one.
-// /// That's its only legal place. Whether that's a good thing or not has yet to be pondered about.
-// /// On a related note,
-// @Update this does not and should not work
-// #[test]
-// fn bracketed_case_analysis() {
-//     assert_eq(
-//         parse_expression(
-//             "\
-// lengthy-space-filler (case 0 of
-//     \\n => n
-// )",
-//         ),
-//         Err(_)
-//     );
-// }
-
 /// Btw, notice how the case (“match arm”) is effectively outdented relative to the
 /// start of the case analysis, the keyword `case`. This may be counter-intuitive but technically,
 /// it is correct since indentation is relative to the start of the line.
@@ -562,19 +552,19 @@ lengthy-space-filler (case 0 of
 
 // @Note we probably don't need this as a parser but as a lexer test
 // (exercising the sections.truncate call)
-#[test]
-#[ignore]
-fn yyy() {
-    assert_eq(
-        parse_expression(
-            "\
-lengthy-space-filler (case 0 of
-    \\n => n
-        )",
-        ),
-        Ok(todo!()),
-    )
-}
+// #[test]
+// #[ignore]
+// fn yyy() {
+//     assert_eq(
+//         parse_expression(
+//             "\
+// lengthy-space-filler (case 0 of
+//     \\n => n
+//         )",
+//         ),
+//         Ok(todo!()),
+//     )
+// }
 
 // @Task add test (here or as golden) for expression `f (a = g b)` (this couldn't be parsed until now
 // because of a bug; only `f (a = (g b))` was valid)

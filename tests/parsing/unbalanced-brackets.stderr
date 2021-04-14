@@ -5,5 +5,19 @@ error[E010]: found `]`, but expected line break
   |      ^ unexpected token
   |
 
-error: aborting due to previous error
+error[E001]: unbalanced square bracket
+ --> ${DIRECTORY}/parsing/unbalanced-brackets.lushui:4:6
+  |
+4 | x: X ] X [
+  |      ^ has no matching opening square bracket
+  |
+
+error[E001]: unbalanced square bracket
+ --> ${DIRECTORY}/parsing/unbalanced-brackets.lushui:4:10
+  |
+4 | x: X ] X [
+  |          ^ has no matching closing square bracket
+  |
+
+error: aborting due to 3 previous errors
 
