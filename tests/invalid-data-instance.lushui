@@ -1,11 +1,11 @@
-;; TEST fail check
+;;; TEST fail check
 
-data Int: Type =
+data Int: Type of
 
-data X: Type =
+data X: Type of
     x0: Int -> Type
     x1: Y Int
     x2: Int
 
-data Y: Type -> Type =
+data Y: Type -> Type of
     y: Int -> Int

@@ -1,41 +1,41 @@
-;; TEST pass check
+;;; TEST pass check
 
-module first =
+module first of
     use alpha.alias
 
-    module alpha =
+    module alpha of
         @public
         use beta.alias
 
-        module beta =
+        module beta of
             @public
             alias: Type = Type
 
-module second =
+module second of
     X: Type = Alpha
 
-    data Alpha: Type =
+    data Alpha: Type of
         alpha: Alpha
 
-    module foo =
+    module foo of
         use super.Alpha
         use super.Alpha.alpha
         what-every: Alpha = alpha
         use super.Void
         V: Type = Void
 
-    data Void: Type =
+    data Void: Type of
 
 use alpha.Void
 
-module alpha =
+module alpha of
     use super.V
 
-    module xoo =
+    module xoo of
         W: Type = super.V
 
     @public
-    data Void: Type =
+    data Void: Type of
 
 V: Type = Void
 

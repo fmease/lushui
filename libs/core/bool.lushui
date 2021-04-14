@@ -1,5 +1,5 @@
 @public @inherent
-data Bool: Type =
+data Bool: Type of
     false: Bool
     true: Bool
 
@@ -20,7 +20,7 @@ if (A: Type) (condition: Bool) (lazy consequent alternate: Thunk A): A =
         false => ! A alternate
         true => ! A consequent
 
-;; @Question or `&&`?
+;;; @Question or `&&`?
 @public
 use and as &
 
@@ -28,7 +28,7 @@ use and as &
 and (b: Bool) (lazy c: Thunk Bool): Bool = if Bool b (! Bool c) false
 
 @public
-;; @Question or `||`?
+;;; @Question or `||`?
 use or as |
 
 @public

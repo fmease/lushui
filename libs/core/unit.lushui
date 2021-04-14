@@ -1,5 +1,5 @@
 @public @inherent
-data Unit: Type =
+data Unit: Type of
     unit: Unit
 
 @public   

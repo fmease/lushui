@@ -1,16 +1,16 @@
 use super::{Token, TokenKind::*};
 use crate::{
-    diagnostics::Results,
+    diagnostics::{Diagnostics, Results},
     span::{span, Span},
 };
 
-fn lex(source: &'static str) -> Results<Vec<Token>> {
+fn lex(source: &'static str) -> Results<(Vec<Token>, Diagnostics)> {
     super::lex(source.to_owned())
 }
 
-fn assert_ok_token(actual: Results<Vec<Token>>, expected: Vec<Token>) {
+fn assert_ok_token(actual: Results<(Vec<Token>, Diagnostics)>, expected: Vec<Token>) {
     match actual {
-        Ok(actual) => {
+        Ok((actual, errors)) if errors.is_empty() => {
             if actual != expected {
                 panic!(
                     "the actual tokens outputted by the lexer do not match the expected ones:\n{}",
@@ -22,15 +22,18 @@ fn assert_ok_token(actual: Results<Vec<Token>>, expected: Vec<Token>) {
                 );
             }
         }
-        Err(_) => panic!("expected the tokens `{:?}` but got an `Err`", expected),
+        _ => panic!("expected the tokens `{:?}` but got an `Err`", expected),
     }
 }
 
-fn assert_err(actual: Results<Vec<Token>>, expected_spans: &[&[Span]]) {
+// @Task remove
+fn assert_err(actual: Results<(Vec<Token>, Diagnostics)>, expected_spans: &[&[Span]]) {
     match actual {
-        Ok(actual) => panic!("expected an `Err` but got the tokens `{:?}`", actual),
-        Err(diagnostics) => {
-            let mut actual_spans: Vec<Vec<Span>> = diagnostics
+        Ok((actual, errors)) if errors.is_empty() => {
+            panic!("expected an `Err` but got the tokens `{:?}`", actual)
+        }
+        Ok((_, errors)) | Err(errors) => {
+            let mut actual_spans: Vec<Vec<Span>> = errors
                 .into_iter()
                 .map(|mut diagnostic| {
                     diagnostic.cancel();
@@ -63,41 +66,41 @@ use no_std_assert as assert_eq;
 use no_std_assert as assert_ne;
 
 #[test]
-fn lex_comment() {
+fn comments() {
     assert_ok_token(
         lex("
-;; bland commentary ensues
-;; a filler line
-;; and an end
+;;; bland commentary ensues
+;;; a filler line
+;;; and an end
 "),
         vec![
             Token::new(LineBreak, span(1, 1)),
-            Token::new(EndOfInput, span(59, 59)),
+            Token::new(EndOfInput, span(62, 62)),
         ],
     );
 }
 
 #[test]
-fn lex_documentation_comment() {
+fn documentation_comments() {
     assert_ok_token(
         lex("\
-alpha;;文本
-0401 ; stray documentation comment
-; next one
-;有意思的信"),
+alpha;;;文本
+0401 ;; stray documentation comment
+;; next one
+;;有意思的信"),
         vec![
             Token::new_identifier("alpha".into(), span(1, 5)),
-            Token::new_number_literal("0401".into(), span(15, 18)),
-            Token::new(DocumentationComment, span(20, 49)),
-            Token::new(DocumentationComment, span(50, 60)),
-            Token::new(DocumentationComment, span(61, 76)),
-            Token::new(EndOfInput, span(76, 76)),
+            Token::new_number_literal("0401".into(), span(16, 19)),
+            Token::new(DocumentationComment, span(21, 51)),
+            Token::new(DocumentationComment, span(52, 63)),
+            Token::new(DocumentationComment, span(64, 80)),
+            Token::new(EndOfInput, span(80, 80)),
         ],
     );
 }
 
 #[test]
-fn lex_identifier() {
+fn identifiers() {
     assert_ok_token(
         lex("alpha alpha0 _alpha al6ha_beta_"),
         vec![
@@ -111,7 +114,7 @@ fn lex_identifier() {
 }
 
 #[test]
-fn lex_dashed_identifier() {
+fn dashed_identifiers() {
     assert_ok_token(
         lex("ALPH4-G4MM4 alpha-gamma _-_"),
         vec![
@@ -124,7 +127,7 @@ fn lex_dashed_identifier() {
 }
 
 #[test]
-fn possibly_lex_keywords() {
+fn keywords_and_lookalikes() {
     assert_ok_token(
         lex("self   Type Type_ Type-Type in _"),
         vec![
@@ -160,77 +163,7 @@ fn do_not_lex_identifier_with_consecutive_dashes() {
 }
 
 #[test]
-fn lex_indentation() {
-    assert_ok_token(
-        lex("
-alpha
-    alpha:
-    <$
-beta
-    gamma
-        delta
-+
-    -
-        *
-    /"),
-        vec![
-            Token::new(LineBreak, span(1, 1)),
-            Token::new_identifier("alpha".into(), span(2, 6)),
-            Token::new(LineBreak, span(7, 7)),
-            Token::new(Indentation, span(8, 11)),
-            Token::new_identifier("alpha".into(), span(12, 16)),
-            Token::new(Colon, span(17, 17)),
-            Token::new(LineBreak, span(18, 18)),
-            Token::new_punctuation("<$".into(), span(23, 24)),
-            Token::new(LineBreak, span(25, 25)),
-            Token::new(Dedentation, span(25, 25)),
-            Token::new_identifier("beta".into(), span(26, 29)),
-            Token::new(LineBreak, span(30, 30)),
-            Token::new(Indentation, span(31, 34)),
-            Token::new_identifier("gamma".into(), span(35, 39)),
-            Token::new(LineBreak, span(40, 40)),
-            Token::new(Indentation, span(45, 48)),
-            Token::new_identifier("delta".into(), span(49, 53)),
-            Token::new(LineBreak, span(54, 54)),
-            Token::new(Dedentation, span(54, 54)),
-            Token::new(Dedentation, span(54, 54)),
-            Token::new_punctuation("+".into(), span(55, 55)),
-            Token::new(LineBreak, span(56, 56)),
-            Token::new(Indentation, span(57, 60)),
-            Token::new_punctuation("-".into(), span(61, 61)),
-            Token::new(LineBreak, span(62, 62)),
-            Token::new(Indentation, span(67, 70)),
-            Token::new_punctuation("*".into(), span(71, 71)),
-            Token::new(LineBreak, span(72, 72)),
-            Token::new(Dedentation, span(75, 75)),
-            Token::new_punctuation("/".into(), span(77, 77)),
-            Token::new(Dedentation, span(77, 77)),
-            Token::new(EndOfInput, span(77, 77)),
-        ],
-    );
-}
-
-#[test]
-fn do_not_lex_too_shallow_indentation() {
-    assert_err(
-        lex("
-  ="),
-        &[&[span(2, 3)]],
-    );
-}
-
-#[test]
-fn do_not_lex_too_deep_indentation() {
-    assert_err(
-        lex("
-        |
-    "),
-        &[&[span(2, 9)]],
-    );
-}
-
-#[test]
-fn lex_punctuation() {
+fn punctuation() {
     assert_ok_token(
         lex("+ +>alpha//$~%  #0 . .."),
         vec![
@@ -248,7 +181,7 @@ fn lex_punctuation() {
 }
 
 #[test]
-fn lex_identifier_with_trailing_dot() {
+fn identifier_with_trailing_dot() {
     assert_ok_token(
         lex("namespace."),
         vec![
@@ -260,7 +193,7 @@ fn lex_identifier_with_trailing_dot() {
 }
 
 #[test]
-fn lex_identifier_dot_punctuation() {
+fn identifier_dot_punctuation() {
     assert_ok_token(
         lex("namespace.+>!"),
         vec![
@@ -414,18 +347,21 @@ fn lex_brackets() {
     );
 }
 
+// @Task update to the new system
 #[test]
+#[ignore]
 fn do_not_lex_unbalanced_round_brackets_too_few_closing() {
     assert_err(lex("(("), &[&[span(1, 1)], &[span(2, 2)]]);
 }
 
 #[test]
+#[ignore]
 fn do_not_lex_unbalanced_round_brackets_too_few_opening() {
     assert_err(lex(")))"), &[&[span(1, 1)]]);
 }
 
 #[test]
-fn lex_bare_non_ascii_as_illegal() {
+fn bare_non_ascii_is_illegal() {
     assert_ok_token(
         lex("函数"),
         vec![
@@ -437,7 +373,7 @@ fn lex_bare_non_ascii_as_illegal() {
 }
 
 #[test]
-fn lex_bare_non_ascii_as_illegal_and_keep_lexing() {
+fn bare_non_ascii_are_illegal_but_non_fatal() {
     assert_ok_token(
         lex(" 函数 function"),
         vec![
@@ -450,7 +386,7 @@ fn lex_bare_non_ascii_as_illegal_and_keep_lexing() {
 }
 
 #[test]
-fn lex_backtick_as_illegal() {
+fn backticks_are_illegal() {
     assert_ok_token(
         lex("`"),
         vec![
@@ -461,7 +397,7 @@ fn lex_backtick_as_illegal() {
 }
 
 #[test]
-fn lex_backtick_as_illegal_right_after_number_literal() {
+fn backticks_are_illegal_right_after_number_literal() {
     assert_ok_token(
         lex("1`"),
         vec![
@@ -473,7 +409,7 @@ fn lex_backtick_as_illegal_right_after_number_literal() {
 }
 
 #[test]
-fn lex_tabs_as_illegal() {
+fn tabs_are_illegal() {
     assert_ok_token(
         lex("\t\t"),
         vec![
@@ -483,3 +419,370 @@ fn lex_tabs_as_illegal() {
         ],
     );
 }
+
+#[test]
+fn line_breaks_are_terminators_at_the_toplevel() {
+    assert_ok_token(
+        lex("\
+alpha #?
+100 it
+
+\"moot\"\
+"),
+        vec![
+            Token::new_identifier("alpha".into(), span(1, 5)),
+            Token::new_punctuation("#?".into(), span(7, 8)),
+            Token::new(LineBreak, span(9, 9)),
+            Token::new_number_literal("100".into(), span(10, 12)),
+            Token::new_identifier("it".into(), span(14, 15)),
+            Token::new(LineBreak, span(16, 17)),
+            Token::new_text_literal("moot".into(), span(18, 23), true),
+            Token::new(EndOfInput, span(23, 23)),
+        ],
+    );
+}
+
+// @Beacon @Task add a lot of tests of the interaction between
+// line breaks, indentation and *comments*!
+
+/// Indentation means line continuation unless it follows the keyword `of`
+/// or `do` (in which case it creates a “proper”/reified section, namely an
+/// indented section; not in this test).
+#[test]
+fn indentation_means_line_continuation() {
+    assert_ok_token(
+        lex("\
+start middle
+    end
+\"anything
+    really\"
+    3291238
+        module
+            (
+                )
+
+$%&~~
+    .!^  \\/"),
+        vec![
+            Token::new_identifier("start".into(), span(1, 5)),
+            Token::new_identifier("middle".into(), span(7, 12)),
+            Token::new_identifier("end".into(), span(18, 20)),
+            Token::new(LineBreak, span(21, 21)),
+            Token::new_text_literal("anything\n    really".into(), span(22, 42), true),
+            Token::new_number_literal("3291238".into(), span(48, 54)),
+            Token::new(Module, span(64, 69)),
+            Token::new(OpeningRoundBracket, span(83, 83)),
+            Token::new(ClosingRoundBracket, span(101, 101)),
+            Token::new(LineBreak, span(102, 103)),
+            Token::new_punctuation("$%&~~".into(), span(104, 108)),
+            Token::new_punctuation(".!^".into(), span(114, 116)),
+            Token::new_punctuation(r"\/".into(), span(119, 120)),
+            Token::new(EndOfInput, span(120, 120)),
+        ],
+    );
+}
+
+#[test]
+fn line_breaks_are_not_terminators_in_continued_sections() {
+    assert_ok_token(
+        lex("\
+-0
+    off
+    side
+    \"\"
+@@@ @
+
+
+    lvl1
+        lvl2
+        lvl2
+    lvl1
+    1
+"),
+        vec![
+            Token::new_number_literal("-0".into(), span(1, 2)),
+            Token::new_identifier("off".into(), span(8, 10)),
+            Token::new_identifier("side".into(), span(16, 19)),
+            Token::new_text_literal(String::new(), span(25, 26), true),
+            Token::new(LineBreak, span(27, 27)),
+            Token::new_punctuation("@@@".into(), span(28, 30)),
+            Token::new(At, span(32, 32)),
+            Token::new_identifier("lvl1".into(), span(40, 43)),
+            Token::new_identifier("lvl2".into(), span(53, 56)),
+            Token::new_identifier("lvl2".into(), span(66, 69)),
+            Token::new_identifier("lvl1".into(), span(75, 78)),
+            Token::new_number_literal("1".into(), span(84, 84)),
+            Token::new(LineBreak, span(85, 85)),
+            Token::new(EndOfInput, span(85, 85)),
+        ],
+    );
+}
+
+#[test]
+fn keyword_of_introduces_indented_sections() {
+    // @Task test sth similar with no trailing line break at the end ("early" EOI)
+    assert_ok_token(
+        lex("\
+of
+    something
+    more
+of
+
+    1980
+
+>of
+    module of
+        CONTENT
+    of
+        >>!<<
+"),
+        vec![
+            Token::new(Of, span(1, 2)),
+            // @Task we need to associate the token with a more useful span
+            Token::new(OpeningCurlyBracket, span(3, 7)),
+            Token::new_identifier("something".into(), span(8, 16)),
+            Token::new(LineBreak, span(17, 17)),
+            Token::new_identifier("more".into(), span(22, 25)),
+            // @Question don't output?
+            Token::new(LineBreak, span(26, 26)),
+            // @Task we need to associate the token with a more useful span
+            Token::new(ClosingCurlyBracket, span(26, 26)),
+            // @Task don't output this (fake) line break
+            Token::new(LineBreak, span(26, 26)),
+            Token::new(Of, span(27, 28)),
+            // @Task we need to associate the token with a more useful span
+            Token::new(OpeningCurlyBracket, span(29, 34)),
+            Token::new_number_literal("1980".into(), span(35, 38)),
+            // @Question don't output?
+            Token::new(LineBreak, span(39, 40)),
+            // @Task we need to associate the token with a more useful span
+            Token::new(ClosingCurlyBracket, span(39, 40)),
+            // @Task don't output this (fake) line break
+            Token::new(LineBreak, span(39, 40)),
+            Token::new_punctuation(">".into(), span(41, 41)),
+            Token::new(Of, span(42, 43)),
+            // @Task we need to associate the token with a more useful span
+            Token::new(OpeningCurlyBracket, span(44, 48)),
+            Token::new(Module, span(49, 54)),
+            Token::new(Of, span(56, 57)),
+            // @Task we need to associate the token with a more useful span
+            Token::new(OpeningCurlyBracket, span(58, 66)),
+            Token::new_identifier("CONTENT".into(), span(67, 73)),
+            // @Question don't output?
+            Token::new(LineBreak, span(74, 74)),
+            // @Task we need to associate the token with a more useful span
+            Token::new(ClosingCurlyBracket, span(74, 78)),
+            // @Task don't output this (fake) line break
+            // @Bug wrong span?
+            Token::new(LineBreak, span(74, 78)),
+            Token::new(Of, span(79, 80)),
+            // @Task we need to associate the token with a more useful span
+            Token::new(OpeningCurlyBracket, span(81, 89)),
+            Token::new_punctuation(">>!<<".into(), span(90, 94)),
+            // @Question don't output?
+            Token::new(LineBreak, span(95, 95)),
+            // @Task we need to associate the token with a more useful span
+            Token::new(ClosingCurlyBracket, span(95, 95)),
+            // @Task don't output this (fake) line break
+            Token::new(LineBreak, span(95, 95)),
+            // // @Task we need to associate the token with a more useful span
+            Token::new(ClosingCurlyBracket, span(95, 95)),
+            // @Task don't output this (fake) line break
+            Token::new(LineBreak, span(95, 95)),
+            Token::new(EndOfInput, span(95, 95)),
+        ],
+    );
+}
+
+// #[test]
+// fn __no_xxx() {
+//     todo!()
+// }
+
+// #[test]
+// fn keyword_do_introduces_indented_sections() {
+//     todo!()
+// }
+
+#[test]
+fn empty_indented_section_does_not_create_curly_brackets() {
+    assert_ok_token(
+        lex("\
+of
+do
+
+of
+    do
+"),
+        vec![
+            Token::new(Of, span(1, 2)),
+            Token::new(LineBreak, span(3, 3)),
+            Token::new(Do, span(4, 5)),
+            Token::new(LineBreak, span(6, 7)),
+            Token::new(Of, span(8, 9)),
+            Token::new(OpeningCurlyBracket, span(10, 14)),
+            Token::new(Do, span(15, 16)),
+            Token::new(LineBreak, span(17, 17)),
+            Token::new(ClosingCurlyBracket, span(17, 17)),
+            Token::new(LineBreak, span(17, 17)),
+            Token::new(EndOfInput, span(17, 17)),
+        ],
+    )
+}
+
+// @Beacon @Task smh create a Stack<Section> of the form [TopLevel,Continued,Indented]
+// #[test]
+// fn yyyy() {
+//     todo!()
+// }
+
+// @Beacon @Task smh create a Vec<Section> of the form [TopLevel,Indented,Continued]
+// #[test]
+// fn yyyy() {
+//     todo!()
+// }
+
+#[test]
+fn keyword_do_and_of_and_no_block_follows() {
+    assert_ok_token(
+        lex(r#"
+do it
+of"it"
+"#),
+        vec![
+            Token::new(LineBreak, span(1, 1)),
+            Token::new(Do, span(2, 3)),
+            Token::new_identifier("it".into(), span(5, 6)),
+            Token::new(LineBreak, span(7, 7)),
+            Token::new(Of, span(8, 9)),
+            Token::new_text_literal("it".into(), span(10, 13), true),
+            Token::new(LineBreak, span(14, 14)),
+            Token::new(EndOfInput, span(14, 14)),
+        ],
+    );
+}
+
+// @Task
+
+// #[test]
+// fn xxxxxx() {
+//     let _ = lex("\n    \n");
+//     todo!();
+// }
+
+#[test]
+fn round_bracket_closes_indented_section() {
+    assert_ok_token(
+        lex("\
+(of
+    fo)
+(of
+    fo
+    )
+"),
+        vec![
+            Token::new(OpeningRoundBracket, span(1, 1)),
+            Token::new(Of, span(2, 3)),
+            // @Bug wrong span
+            Token::new(OpeningCurlyBracket, span(4, 8)),
+            Token::new_identifier("fo".into(), span(9, 10)),
+            // @Question better span?
+            Token::new(ClosingCurlyBracket, span(11, 11)),
+            Token::new(ClosingRoundBracket, span(11, 11)),
+            Token::new(LineBreak, span(12, 12)),
+            Token::new(OpeningRoundBracket, span(13, 13)),
+            Token::new(Of, span(14, 15)),
+            // @Bug wrong span
+            Token::new(OpeningCurlyBracket, span(16, 20)),
+            Token::new_identifier("fo".into(), span(21, 22)),
+            Token::new(LineBreak, span(23, 23)),
+            // @Question better span?
+            Token::new(ClosingCurlyBracket, span(28, 28)),
+            Token::new(ClosingRoundBracket, span(28, 28)),
+            Token::new(LineBreak, span(29, 29)),
+            Token::new(EndOfInput, span(29, 29)),
+        ],
+    );
+}
+
+// @Task
+#[test]
+#[ignore]
+fn square_bracket_closes_indented_section() {}
+
+#[test]
+fn pair_of_brackets_does_not_close_indented_section() {
+    assert_ok_token(
+        lex("\
+of
+    (f [])
+    inside
+"),
+        vec![
+            Token::new(Of, span(1, 2)),
+            // @Bug wrong span
+            Token::new(OpeningCurlyBracket, span(3, 7)),
+            Token::new(OpeningRoundBracket, span(8, 8)),
+            Token::new_identifier("f".into(), span(9, 9)),
+            Token::new(OpeningSquareBracket, span(11, 11)),
+            Token::new(ClosingSquareBracket, span(12, 12)),
+            Token::new(ClosingRoundBracket, span(13, 13)),
+            Token::new(LineBreak, span(14, 14)),
+            Token::new_identifier("inside".into(), span(19, 24)),
+            Token::new(LineBreak, span(25, 25)),
+            Token::new(ClosingCurlyBracket, span(25, 25)),
+            Token::new(LineBreak, span(25, 25)),
+            Token::new(EndOfInput, span(25, 25)),
+        ],
+    );
+}
+
+// @Question should the single dot really be a Dot? shouldn't it be
+// punctuation?
+/// Yes, `=>` and `=` are aligned *but* the `)` outdents the first indentation and
+/// and such, the `=` should be considered (more) indented relative to the line with
+/// the closing bracket.
+// @Task rephrase the above
+#[test]
+fn brackets_reset_indentation() {
+    assert_ok_token(
+        lex("\
+(of
+    =>)
+    = .
+"),
+        vec![
+            Token::new(OpeningRoundBracket, span(1, 1)),
+            Token::new(Of, span(2, 3)),
+            Token::new(OpeningCurlyBracket, span(4, 8)),
+            Token::new(WideArrow, span(9, 10)),
+            Token::new(ClosingCurlyBracket, span(11, 11)),
+            Token::new(ClosingRoundBracket, span(11, 11)),
+            Token::new(Equals, span(17, 17)),
+            Token::new(Dot, span(19, 19)),
+            Token::new(LineBreak, span(20, 20)),
+            Token::new(EndOfInput, span(20, 20)),
+        ],
+    )
+}
+
+// @Task we gonna redo this stuff anyway
+
+// #[test]
+// fn do_not_lex_too_shallow_indentation() {
+//     assert_err(
+//         lex("
+//   ="),
+//         &[&[span(2, 3)]],
+//     );
+// }
+
+// #[test]
+// fn do_not_lex_too_deep_indentation() {
+//     assert_err(
+//         lex("
+//         |
+//     "),
+//         &[&[span(2, 9)]],
+//     );
+// }

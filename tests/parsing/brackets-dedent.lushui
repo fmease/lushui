@@ -1,0 +1,5 @@
+;;; TEST pass check --only-parse
+
+M: (case N of
+    Q => Q)
+    = O

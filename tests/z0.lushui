@@ -1,6 +1,6 @@
-;; TEST ignore
-;; small program which I used to start developing the code generator – what I should continue on doing
-;; – after finally implementing the bidirectional type checker with implicit arguments, sigh!
+;;; TEST ignore
+;;; small program which I used to start developing the code generator – what I should continue on doing
+;;; – after finally implementing the bidirectional type checker with implicit arguments, sigh!
 
 @foreign
 data Nat32: Type

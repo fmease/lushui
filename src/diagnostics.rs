@@ -111,6 +111,13 @@ impl Diagnostics {
     pub fn take(&mut self) -> Self {
         std::mem::take(self)
     }
+
+    /// [Cancel](Diagnostic::cancel) all containing diagnostics.
+    pub fn cancel(&mut self) {
+        for diagnostic in &mut self.0 {
+            diagnostic.cancel();
+        }
+    }
 }
 
 impl IntoIterator for Diagnostics {
@@ -664,6 +671,8 @@ impl fmt::Debug for Diagnostic {
     }
 }
 
+// @Note this makes error handling soo tedios since there are a lot of cases where we need to cancel
+// diagnostics (intentionally ignore them)!! how can we improve this??
 impl Drop for Diagnostic {
     fn drop(&mut self) {
         if self.is_cancelled() {

@@ -97,7 +97,7 @@ impl fmt::Display for super::Number {
 impl super::Declaration {
     fn format_with_depth(&self, depth: usize, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use super::DeclarationKind::*;
-        use crate::INDENTATION_IN_SPACES;
+        use crate::INDENTATION;
 
         match &self.kind {
             Value(declaration) => {
@@ -116,12 +116,7 @@ impl super::Declaration {
                     )?;
                     for constructor in constructors {
                         let depth = depth + 1;
-                        write!(
-                            f,
-                            "{}{}",
-                            " ".repeat(depth * INDENTATION_IN_SPACES),
-                            constructor
-                        )?;
+                        write!(f, "{}{}", " ".repeat(depth * INDENTATION.0), constructor)?;
                     }
                     Ok(())
                 }
@@ -138,7 +133,7 @@ impl super::Declaration {
                 writeln!(f, "module {} =", declaration.binder)?;
                 for declaration in &declaration.declarations {
                     let depth = depth + 1;
-                    write!(f, "{}", " ".repeat(depth * INDENTATION_IN_SPACES))?;
+                    write!(f, "{}", " ".repeat(depth * INDENTATION.0))?;
                     declaration.format_with_depth(depth, f)?;
                 }
                 Ok(())

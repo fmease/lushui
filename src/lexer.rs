@@ -1,58 +1,227 @@
-//! The lexer.
-//!
-//! It parses indentation and dedentation intwo two pseudo tokens:
-//! [TokenKind::Indentation] and [TokenKind::Dedentation] respectively.
-//!
-//! ## Issues
-//!
-//! * most lexical errors are fatal right now. we shouldn't make the lexer fail
-//!   on mismatching brackets, that should be the task of the parser (indeed also
-//!   keeping the bracket stack!), as well as invalid tokens: we should just
-//!   keep going having a new TokenKind, TokenKind::Invalid(..) (which is a cluster)
-//!   as a result, the parser can skip them and what not
-//!   (both things should not poison the lexer!)
+//! The lexer (lexical analyzer).
 
 #[cfg(test)]
-// @Beacon @Task update errors
 mod test;
 pub mod token;
 
 use crate::{
     diagnostics::{Code, Diagnostic, Diagnostics, Result, Results, Warn},
     error::ManyErrExt,
-    span::{LocalByteIndex, LocalSpan, SourceFile, Span},
-    Atom, INDENTATION_IN_SPACES,
+    span::{LocalByteIndex, LocalSpan, SourceFile, SourceMap, Span, Spanned},
+    Atom,
 };
-use std::{iter::Peekable, str::CharIndices};
+use std::{
+    cmp::Ordering::{self, *},
+    convert::{TryFrom, TryInto},
+    fmt,
+    iter::Peekable,
+    ops::{Sub, SubAssign},
+    str::CharIndices,
+};
 pub use token::{
     is_punctuation, Token,
     TokenKind::{self, *},
 };
 
-fn lex(source: String) -> Results<Vec<Token>> {
-    Lexer::new(
-        &SourceFile::fake(source.to_owned()),
-        &mut Default::default(),
-    )
-    .lex()
+/// The unit indentation in spaces.
+pub const INDENTATION: Spaces = Indentation::UNIT.to_spaces();
+
+fn lex(source: String) -> Results<(Vec<Token>, Diagnostics)> {
+    let mut map = SourceMap::default();
+    let file = map.add(None, source).unwrap_or_else(|_| unreachable!());
+    Lexer::new(&map[file], &mut Default::default()).lex()
 }
 
-/// Utility to parse identifiers from a string slice.
+/// Utility to parse identifiers from a string.
 ///
 /// Used for non-lushui code like crate names.
-// @Note this is ugly
 pub fn parse_identifier(source: String) -> Option<Atom> {
-    let mut tokens = lex(source).ok()?;
+    let (mut tokens, mut errors) = lex(source).map_err(|mut errors| errors.cancel()).ok()?;
+    if !errors.is_empty() {
+        errors.cancel();
+        return None;
+    }
     let mut tokens = tokens.drain(..);
-    match [tokens.next(), tokens.next()] {
-        [Some(Token {
-            kind: Identifier,
-            data: token::TokenData::Identifier(atom),
-            ..
-        }), Some(Token {
-            kind: EndOfInput, ..
-        })] => Some(atom),
+
+    match (tokens.next()?, tokens.next()?.kind) {
+        (
+            Token {
+                kind: Identifier,
+                data: token::TokenData::Identifier(atom),
+                ..
+            },
+            EndOfInput,
+        ) => Some(atom),
         _ => None,
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Section {
+    Top,
+    /// A section of code within curly brackets.
+    Delimited,
+    /// An indented section of code following the keyword `of` or `do`.
+    ///
+    /// Stores the amount of open brackets coming before it.
+    Indented {
+        brackets: usize,
+    },
+    /// An indented section of code that seamlessly continues the previous line.
+    Continued,
+}
+
+impl Section {
+    /// Indicate whether line breaks terminate syntactic constructs in this section.
+    const fn line_breaks_are_terminators(self) -> bool {
+        matches!(self, Self::Top | Self::Indented { .. })
+    }
+}
+
+impl Default for Section {
+    fn default() -> Self {
+        Self::Top
+    }
+}
+
+#[derive(Default)]
+struct Sections(Stack<Section>);
+
+impl Sections {
+    fn current(&self) -> Section {
+        self.get(0)
+    }
+
+    /// Current section stripped from any [Section::Continued]s.
+    fn current_continued(&self) -> (Section, usize) {
+        // @Task replace implementation with Iterator::position
+
+        let mut index = self.0.len();
+
+        let section = (|| {
+            let mut section;
+
+            while {
+                index = index.checked_sub(1)?;
+                section = *unsafe { self.0.get_unchecked(index) };
+                section == Section::Continued
+            } {}
+
+            Some(section)
+        })()
+        .unwrap_or_default();
+
+        (section, index)
+    }
+
+    fn get(&self, index: usize) -> Section {
+        self.0.get_from_end(index).copied().unwrap_or_default()
+    }
+
+    fn enter(&mut self, section: Section) {
+        self.0.push(section);
+    }
+
+    fn exit(&mut self) -> Section {
+        self.0.pop().unwrap_or_default()
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Bracket {
+    Round,
+    Square,
+    Curly,
+}
+
+impl Bracket {
+    const fn opening(self) -> TokenKind {
+        match self {
+            Self::Round => OpeningRoundBracket,
+            Self::Square => OpeningSquareBracket,
+            Self::Curly => OpeningCurlyBracket,
+        }
+    }
+
+    const fn closing(self) -> TokenKind {
+        match self {
+            Self::Round => ClosingRoundBracket,
+            Self::Square => ClosingSquareBracket,
+            Self::Curly => ClosingCurlyBracket,
+        }
+    }
+}
+
+impl fmt::Display for Bracket {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Round => "round",
+            Self::Square => "square",
+            Self::Curly => "curly",
+        })
+    }
+}
+
+#[derive(Default)]
+struct Brackets(Stack<Spanned<Bracket>>);
+
+impl Brackets {
+    fn open(&mut self, opening_bracket: Spanned<Bracket>) {
+        self.0.push(opening_bracket);
+    }
+
+    fn close(&mut self, closing_bracket: Spanned<Bracket>) -> Result<(), Diagnostic> {
+        match self.0.pop() {
+            Some(opening_bracket) => {
+                if opening_bracket.kind == closing_bracket.kind {
+                    Ok(())
+                } else {
+                    // @Beacon @Bug we are not smart enough here yet, the error messages are too confusing
+                    // or even incorrect!
+                    Err(Diagnostic::error()
+                        .with_code(Code::E001)
+                        .with_message(format!("unbalanced {} bracket", closing_bracket.kind))
+                        .with_labeled_primary_span(
+                            closing_bracket,
+                            format!("has no matching opening {} bracket", closing_bracket.kind),
+                        ))
+                }
+            }
+            // @Beacon @Bug we are not smart enough here yet, the error messages are too confusing
+            // or even incorrect!
+            None => Err(Diagnostic::error()
+                .with_code(Code::E001)
+                .with_message(format!("unbalanced {} bracket", closing_bracket.kind))
+                .with_labeled_primary_span(
+                    closing_bracket,
+                    format!("has no matching opening {} bracket", closing_bracket.kind),
+                )),
+        }
+    }
+}
+
+// @Temporary location
+trait GetFromEndExt {
+    type Item;
+
+    fn get_from_end(&self, index: usize) -> Option<&Self::Item>;
+}
+
+impl<T> GetFromEndExt for [T] {
+    type Item = T;
+
+    fn get_from_end(&self, index: usize) -> Option<&Self::Item> {
+        let index = self.len().checked_sub(index.checked_add(1)?)?;
+        Some(unsafe { self.get_unchecked(index) })
+    }
+}
+
+type Stack<T> = Vec<T>;
+
+// @Temporary location
+impl TokenKind {
+    pub fn introduces_indented_section(self) -> bool {
+        self == Do || self == Of
     }
 }
 
@@ -62,10 +231,14 @@ pub struct Lexer<'a> {
     characters: Peekable<CharIndices<'a>>,
     tokens: Vec<Token>,
     span: LocalSpan,
-    indentation_in_spaces: usize,
-    round_brackets: Vec<Span>,
+    indentation: Spaces,
     warnings: &'a mut Diagnostics,
+    sections: Sections,
+    brackets: Brackets,
+    errors: Diagnostics,
 }
+
+// @Task disallow indented sections inside of delimited ones (very weird!)
 
 impl<'a> Lexer<'a> {
     pub fn new(source: &'a SourceFile, warnings: &'a mut Diagnostics) -> Self {
@@ -75,22 +248,31 @@ impl<'a> Lexer<'a> {
             characters: source.content().char_indices().peekable(),
             tokens: Vec::new(),
             span: LocalSpan::zero(),
-            indentation_in_spaces: 0,
-            round_brackets: Vec::new(),
+            indentation: Spaces(0),
+            sections: Sections::default(),
+            brackets: Brackets::default(),
+            errors: Diagnostics::default(),
         }
     }
 
-    // @Task move balanced bracket validation out of lexer to the parser and
-    // also start supporting square and curly brachets for future use
     /// Lex source code into an array of tokens
-    pub fn lex(mut self) -> Results<Vec<Token>> {
+    // @Task return (Vec<Token>, Diagnostics)
+    pub fn lex(mut self) -> Results<(Vec<Token>, Diagnostics)> {
         while let Some(character) = self.peek() {
             self.span = LocalSpan::from(self.index().unwrap());
             match character {
-                // @Bug if it is SOI, don't lex_whitespace but lex_indentation
+                // @Bug @Beacon if it is SOI, don't lex_whitespace but lex_indentation
                 // (SOI should act as a line break)
                 ' ' => self.lex_whitespace(),
-                ';' => self.lex_comment(),
+                ';' => {
+                    self.advance();
+
+                    if let Some(';') = self.peek() {
+                        self.lex_comment();
+                    } else {
+                        self.add(Semicolon);
+                    }
+                }
                 character if token::is_identifier_segment_start(character) => {
                     self.lex_identifier().many_err()?
                 }
@@ -102,23 +284,24 @@ impl<'a> Lexer<'a> {
                 }
                 character if token::is_punctuation(character) => self.lex_punctuation(),
                 '"' => self.lex_text_literal().many_err()?,
-                '(' => self.lex_opening_round_bracket(),
-                ')' => self.lex_closing_round_bracket().many_err()?,
-                '[' => {
-                    self.add(OpeningSquareBracket);
-                    self.advance();
+                '(' => self.add_opening_bracket(Bracket::Round),
+                '[' => self.add_opening_bracket(Bracket::Square),
+                '{' => {
+                    self.sections.enter(Section::Delimited);
+                    self.add_opening_bracket(Bracket::Curly);
+                }
+                ')' => {
+                    self.add_closing_bracket(Bracket::Round);
                 }
                 ']' => {
-                    self.add(ClosingSquareBracket);
-                    self.advance();
-                }
-                '{' => {
-                    self.add(OpeningCurlyBracket);
-                    self.advance();
+                    self.add_closing_bracket(Bracket::Square);
                 }
                 '}' => {
-                    self.add(ClosingCurlyBracket);
-                    self.advance();
+                    // @Temporary unverified
+                    if self.sections.current() == Section::Delimited {
+                        self.sections.exit();
+                    }
+                    self.add_closing_bracket(Bracket::Curly);
                 }
                 '\'' => {
                     self.add(SingleQuote);
@@ -132,36 +315,76 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        if !self.round_brackets.is_empty() {
-            return Err(self
-                .round_brackets
-                .into_iter()
-                .map(|bracket| {
-                    Diagnostic::error()
-                        .with_code(Code::E001)
-                        .with_message("unbalanced brackets")
-                        .with_labeled_primary_span(bracket, "has no matching closing bracket")
-                })
-                .collect());
+        if !self.brackets.0.is_empty() {
+            // @Task don't report all remaining brackets in the stack, only unclosed ones!
+            // @Beacon @Bug we are not smart enough here yet, the error messages are too confusing
+            // or even incorrect!
+
+            self.errors.extend(self.brackets.0.iter().map(|bracket| {
+                Diagnostic::error()
+                    .with_code(Code::E001)
+                    .with_message(format!("unbalanced {} bracket", bracket.kind))
+                    .with_labeled_primary_span(
+                        bracket,
+                        format!("has no matching closing {} bracket", bracket.kind),
+                    )
+            }));
         }
 
         // @Bug panics if last byte is not a valid codepoint, right?
+        // @Bug panics on empty input
         let last = LocalByteIndex::from_usize(self.source.content().len() - 1);
 
-        self.extend_with_dedentations(last, self.indentation_in_spaces);
-
-        // ideally, we'd like to set its span to the index after the last token,
+        // Ideally, we'd like to set its span to the index after the last token,
         // but they way `SourceMap` is currently defined, that would not work,
         // it would reach into the next `SourceFile` if there even was one
         // I'd love to put "the red caret" in diagnostics visually after the last
         // token. However, even with fake source files as separators between real ones,
         // we would need to add a lot of complexity to be able to handle that in
         // `Diagnostic::format_for_terminal`.
-        // @Task just take the span of the last token (this will break tests)
         self.span = LocalSpan::from(last);
+
+        // add a final line break if there isn't one to make the output more regular
+        // and thus easier to parse.
+        // @Temporary
+        // if self
+        //     .tokens
+        //     .last()
+        //     .map_or(true, |token| token.kind != LineBreak)
+        // {
+        //     self.add(LineBreak);
+        // }
+
+        // @Beacon @Task close all sections (inserting virtual `}` if necessary)
+
         self.add(EndOfInput);
 
-        Ok(self.tokens)
+        Ok((self.tokens, self.errors))
+    }
+
+    fn add_opening_bracket(&mut self, bracket: Bracket) {
+        self.add(bracket.opening());
+        let span = self.span();
+        self.brackets.open(Spanned::new(span, bracket));
+        self.advance();
+    }
+
+    fn add_closing_bracket(&mut self, bracket: Bracket) {
+        if let (Section::Indented { brackets }, size) = self.sections.current_continued() {
+            if self.brackets.0.len() <= brackets {
+                self.add(ClosingCurlyBracket);
+                // @Question can this panic??
+                let dedentation = self.sections.0.len() - size;
+                self.sections.0.truncate(size);
+                self.indentation -= Indentation(dedentation);
+            }
+        }
+
+        self.add(bracket.closing());
+        if let Err(error) = self.brackets.close(Spanned::new(self.span(), bracket)) {
+            self.errors.insert(error);
+        };
+        self.advance();
     }
 
     fn lex_whitespace(&mut self) {
@@ -179,11 +402,11 @@ impl<'a> Lexer<'a> {
     fn lex_comment(&mut self) {
         self.advance();
 
-        let mut documentation = true;
+        let mut is_documentation = true;
 
         if let Some(character) = self.peek() {
             if character == ';' {
-                documentation = false;
+                is_documentation = false;
             } else {
                 self.take();
             }
@@ -197,15 +420,15 @@ impl<'a> Lexer<'a> {
                 break;
             }
 
-            if documentation {
+            if is_documentation {
                 self.take();
             }
 
             self.advance();
         }
 
-        if documentation {
-            self.add(DocumentationComment)
+        if is_documentation {
+            self.add(DocumentationComment);
         }
     }
 
@@ -254,56 +477,118 @@ impl<'a> Lexer<'a> {
     }
 
     fn lex_indentation(&mut self) -> Result {
-        use std::cmp::Ordering::*;
+        // @Note not extensible to Section::Delimited
+        let is_start_of_indented_section = self
+            .tokens
+            .last()
+            .map_or(false, |token| token.kind.introduces_indented_section());
 
         // squash consecutive line breaks into a single one
         self.advance();
         self.take_while(|character| character == '\n');
         self.add(LineBreak);
 
-        self.span = match self.index() {
-            Some(index) => LocalSpan::from(index),
-            None => return Ok(()),
-        };
-        let mut spaces = 0;
-        self.take_while_with(|character| character == ' ', || spaces += 1);
+        // self.span = match self.index() {
+        //     Some(index) => LocalSpan::from(index),
+        //     None => return Ok(()),
+        // };
+        let mut spaces = Spaces(0);
+        self.take_while_with(|character| character == ' ', || spaces.0 += 1);
 
-        let change = spaces.cmp(&self.indentation_in_spaces);
-
-        let absolute_difference = match change {
-            Greater => spaces - self.indentation_in_spaces,
-            Less => self.indentation_in_spaces - spaces,
-            Equal => return Ok(()),
-        };
-
-        self.span = LocalSpan::new(self.span.end + 1 - absolute_difference, self.span.end);
-
-        if absolute_difference % INDENTATION_IN_SPACES != 0
-            || change == Greater && absolute_difference > INDENTATION_IN_SPACES
-        {
-            return Err(Diagnostic::error()
-                .with_code(Code::E003)
-                .with_message(format!(
-                    "invalid indentation consisting of {} spaces",
-                    absolute_difference
-                ))
-                .with_primary_span(self.span())
-                .with_note(format!(
-                    "indentation needs to be a multiple of {}",
-                    INDENTATION_IN_SPACES
-                )));
+        // if the line is empty, ignore it (important for indented comments)
+        if self.line_is_empty() {
+            spaces = self.indentation;
         }
 
-        match change {
-            Greater => self.add(Indentation),
-            // @Note hacky
-            Less => self.extend_with_dedentations(self.span.end - 1, absolute_difference),
-            Equal => unreachable!(),
+        let (change, difference) = spaces.difference(self.indentation);
+
+        // self.span = LocalSpan::new(self.span.end + 1 - absolute_difference, self.span.end);
+
+        let difference: Indentation = match (change, difference).try_into() {
+            Ok(difference) => difference,
+            Err(error) => {
+                // @Task push that to the error buffer instead (making this non-fatal)
+                // and treat Spaces(1) as Spaces(4), Spaces(6) as Spaces(8) etc.
+                return Err(Diagnostic::error()
+                    .with_code(Code::E003)
+                    .with_message(format!(
+                        "invalid indentation consisting of {} spaces",
+                        difference.0
+                    ))
+                    .with_primary_span(self.span())
+                    .with_note(match error {
+                        IndentationError::Misaligned => {
+                            format!("indentation needs to be a multiple of {}", INDENTATION.0)
+                        }
+                        IndentationError::TooDeep => format!(
+                            "indentation is greater than {} and therefore too deep",
+                            INDENTATION.0
+                        ),
+                    }));
+            }
+        };
+
+        let section = self.sections.current();
+
+        if is_start_of_indented_section {
+            if change == Greater {
+                // remove the line break again
+                self.tokens.pop();
+                // @Bug wrong span
+                self.add(OpeningCurlyBracket);
+                self.sections.enter(Section::Indented {
+                    brackets: self.brackets.0.len(),
+                });
+            }
+        } else {
+            // Remove the line break again if the next line is indented or if we are in a Section
+            // where line breaks are not terminators or if we dedent by some amount and the
+            // “target Section” treats line breaks as terminators.
+            if change == Greater
+                || change == Equal && !section.line_breaks_are_terminators()
+                || change == Less
+                    && !self
+                        .sections
+                        .get(difference.0)
+                        .line_breaks_are_terminators()
+            {
+                // remove the line break again
+                self.tokens.pop();
+            }
+
+            if change == Greater {
+                self.sections.enter(Section::Continued);
+            }
+        };
+
+        if change == Less {
+            for _ in 0..difference.0 {
+                let section = self.sections.exit();
+
+                // @Beacon @Task handle the case where `!section.brackets.is_empty()`
+
+                if let Section::Indented { .. } = section {
+                    // @Bug wrong span
+                    self.add(ClosingCurlyBracket);
+                    self.add(LineBreak);
+                }
+            }
         }
 
-        self.indentation_in_spaces = spaces;
+        self.indentation = spaces;
 
         Ok(())
+    }
+
+    fn line_is_empty(&mut self) -> bool {
+        self.peek() == Some('\n')
+        // @Bug has unforseen consequences (investigation needed)
+        // || self.peek() == Some(';') && {
+        //     let mut characters = self.characters.clone();
+        //     characters.next();
+        //     matches!(characters.next(), Some((_, ';')))
+        //         && matches!(characters.next(), Some((_, ';')))
+        // }
     }
 
     fn lex_punctuation_or_number_literal(&mut self) -> Results {
@@ -422,26 +707,6 @@ impl<'a> Lexer<'a> {
         Ok(())
     }
 
-    fn lex_opening_round_bracket(&mut self) {
-        self.add(OpeningRoundBracket);
-        self.round_brackets.push(self.span());
-        self.advance();
-    }
-
-    fn lex_closing_round_bracket(&mut self) -> Result {
-        self.add(ClosingRoundBracket);
-        if self.round_brackets.is_empty() {
-            return Err(Diagnostic::error()
-                .with_code(Code::E001)
-                .with_message("unbalanced brackets")
-                .with_labeled_primary_span(self.span(), "has no matching opening bracket"));
-        }
-        self.round_brackets.pop();
-        self.advance();
-
-        Ok(())
-    }
-
     fn span(&self) -> Span {
         Span::local(self.source, self.span)
     }
@@ -491,25 +756,80 @@ impl<'a> Lexer<'a> {
     fn add_with(&mut self, constructor: impl FnOnce(Span) -> Token) {
         self.tokens.push(constructor(self.span()))
     }
-
-    fn extend_with_dedentations(&mut self, start: LocalByteIndex, amount_of_spaces: usize) {
-        if amount_of_spaces == 0 {
-            return;
-        }
-
-        // @Task use better span (it should span 4 spaces if possible) @Note you need to go backwards
-        self.span = LocalSpan::from(start);
-        let span = self.span();
-
-        let extension = std::iter::repeat(Token::new(TokenKind::Dedentation, span))
-            .take(amount_of_spaces / INDENTATION_IN_SPACES);
-
-        self.tokens.extend(extension);
-    }
 }
 
 impl Warn for Lexer<'_> {
     fn diagnostics(&mut self) -> &mut Diagnostics {
         &mut self.warnings
     }
+}
+
+#[derive(Clone, Copy)]
+pub struct Spaces(pub usize);
+
+impl Spaces {
+    /// Return the ordering / direction / sign and the absolute difference.
+    pub fn difference(self, other: Self) -> (Ordering, Self) {
+        let change = self.0.cmp(&other.0);
+        let difference = match change {
+            Greater => self.0 - other.0,
+            Less => other.0 - self.0,
+            Equal => 0,
+        };
+        (change, Self(difference))
+    }
+}
+
+impl<S: Into<Spaces>> Sub<S> for Spaces {
+    type Output = Self;
+
+    fn sub(self, other: S) -> Self::Output {
+        Self(self.0.saturating_sub(other.into().0))
+    }
+}
+
+impl<S: Into<Spaces>> SubAssign<S> for Spaces {
+    fn sub_assign(&mut self, other: S) {
+        *self = *self - other
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct Indentation(pub usize);
+
+impl Indentation {
+    pub const UNIT: Self = Self(1);
+
+    pub const fn to_spaces(self) -> Spaces {
+        const INDENTATION_IN_SPACES: usize = 4;
+
+        Spaces(self.0 * INDENTATION_IN_SPACES)
+    }
+}
+
+impl From<Indentation> for Spaces {
+    fn from(indentation: Indentation) -> Self {
+        indentation.to_spaces()
+    }
+}
+
+impl TryFrom<(Ordering, Spaces)> for Indentation {
+    type Error = IndentationError;
+
+    fn try_from((change, spaces): (Ordering, Spaces)) -> Result<Self, Self::Error> {
+        if spaces.0 % INDENTATION.0 != 0 {
+            return Err(IndentationError::Misaligned);
+        }
+
+        if change == Greater && spaces.0 > INDENTATION.0 {
+            return Err(IndentationError::TooDeep);
+        }
+
+        Ok(Indentation(spaces.0 / INDENTATION.0))
+    }
+}
+
+pub enum IndentationError {
+    Misaligned,
+    TooDeep,
 }

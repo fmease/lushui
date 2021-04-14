@@ -1,0 +1,6 @@
+;;; TEST pass check --only-parse
+
+main =
+    let x = 234
+    in 233
+

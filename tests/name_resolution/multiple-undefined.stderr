@@ -36,14 +36,14 @@ error[E021]: binding `line` is not defined in this scope
 error[E021]: binding `Non-Existent` is not defined in this scope
  --> ${DIRECTORY}/name_resolution/multiple-undefined.lushui:5:14
   |
-5 | data Xoo (A: Non-Existent): Departed =
+5 | data Xoo (A: Non-Existent): Departed of
   |              ^^^^^^^^^^^^ 
   |
 
 error[E021]: binding `Departed` is not defined in this scope
  --> ${DIRECTORY}/name_resolution/multiple-undefined.lushui:5:29
   |
-5 | data Xoo (A: Non-Existent): Departed =
+5 | data Xoo (A: Non-Existent): Departed of
   |                             ^^^^^^^^ 
   |
 

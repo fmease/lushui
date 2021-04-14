@@ -9,7 +9,7 @@ use std::{io, path::Path};
 
 pub use index::{ByteIndex, LocalByteIndex};
 pub use source_file::SourceFile;
-pub use source_map::SourceMap;
+pub use source_map::{SourceFileIndex, SourceMap};
 pub use span::{LocalSpan, Span};
 pub use spanned::Spanned;
 pub use spanning::{PossiblySpanning, Spanning};
@@ -160,6 +160,7 @@ mod span {
             self.end.0 + 1 - self.start.0
         }
 
+        #[must_use]
         pub fn trim_start(self, amount: u32) -> Self {
             debug_assert!(amount < self.length());
 
@@ -180,6 +181,7 @@ mod span {
             self.start <= index && index <= self.end
         }
 
+        #[must_use]
         pub fn merge(self, other: impl PossiblySpanning) -> Self {
             match other.possible_span() {
                 Some(other) => {
@@ -190,6 +192,7 @@ mod span {
             }
         }
 
+        #[must_use]
         pub fn merge_into(self, other: impl PossiblySpanning) -> Self {
             if let Some(other) = other.possible_span() {
                 other.assert_disjoint_and_consecutive(self);
@@ -229,6 +232,7 @@ mod span {
         }
 
         /// Similar to [Self::merge] except that the spans do not need to be disjoint.
+        #[must_use]
         pub fn fit_end(self, other: impl PossiblySpanning) -> Self {
             match other.possible_span() {
                 Some(other) => {
@@ -423,10 +427,8 @@ const START_OF_FIRST_SOURCE_FILE: ByteIndex = ByteIndex::new(1);
 
 mod source_map {
     use super::{ByteIndex, Error, LocalByteIndex, LocalSpan, SourceFile, Span};
-    use std::{
-        path::{Path, PathBuf},
-        rc::Rc,
-    };
+    use indexed_vec::IndexVec;
+    use std::path::{Path, PathBuf};
     use unicode_width::UnicodeWidthStr;
 
     /// A mapping from an index or offset to source files.
@@ -435,7 +437,7 @@ mod source_map {
     // @Task use indices to enable unloading source file when they are not needed
     #[derive(Default)]
     pub struct SourceMap {
-        files: Vec<Rc<SourceFile>>,
+        files: IndexVec<SourceFileIndex, SourceFile>,
     }
 
     impl SourceMap {
@@ -448,16 +450,34 @@ mod source_map {
 
         // @Note this could instead return an index, and index into an IndexVec of
         // SourceFiles
-        pub fn load(&mut self, path: impl AsRef<Path>) -> Result<Rc<SourceFile>, Error> {
+        pub fn load(&mut self, path: PathBuf) -> Result<SourceFileIndex, Error> {
             let source = std::fs::read_to_string(&path).map_err(Error::LoadFailure)?;
-            self.add(path.as_ref().to_owned(), source)
+            self.add(Some(path), source)
         }
 
-        fn add(&mut self, path: PathBuf, source: String) -> Result<Rc<SourceFile>, Error> {
-            let file = Rc::new(SourceFile::new(path, source, self.next_offset()?)?);
-            self.files.push(file.clone());
-
-            Ok(file)
+        /// Add a [SourceFile] to the source map.
+        ///
+        /// The first source file always has index `0`.
+        ///
+        /// ```
+        /// # fn main() {
+        /// # use lushui::span::{SourceFileIndex, SourceMap};
+        /// # use indexed_vec::Idx as _;
+        /// let index = SourceMap::default()
+        ///     .add(None, String::new())
+        ///     .unwrap_or_else(|_| unreachable!());
+        ///
+        /// assert_eq!(index, SourceFileIndex::new(0));
+        /// # }
+        /// ```
+        pub fn add(
+            &mut self,
+            path: Option<PathBuf>,
+            source: String,
+        ) -> Result<SourceFileIndex, Error> {
+            Ok(self
+                .files
+                .push(SourceFile::new(path, source, self.next_offset()?)?))
         }
 
         /// Panics if span is a sham.
@@ -606,10 +626,31 @@ mod source_map {
             }
 
             ResolvedSpan {
-                path: &file.path,
+                path: file.path.as_ref().unwrap(),
                 first_line: first_line.unwrap().extract_information(file).unwrap(),
                 final_line: final_line.map(|line| line.extract_information(file).unwrap()),
             }
+        }
+    }
+
+    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+    pub struct SourceFileIndex(usize);
+
+    impl indexed_vec::Idx for SourceFileIndex {
+        fn new(index: usize) -> Self {
+            Self(index)
+        }
+
+        fn index(self) -> usize {
+            self.0
+        }
+    }
+
+    impl std::ops::Index<SourceFileIndex> for SourceMap {
+        type Output = SourceFile;
+
+        fn index(&self, index: SourceFileIndex) -> &Self::Output {
+            &self.files[index]
         }
     }
 
@@ -647,23 +688,17 @@ mod source_file {
     /// A file, its contents and [its span](super::SourceMap).
     #[cfg_attr(test, derive(PartialEq, Eq))]
     pub struct SourceFile {
-        pub path: PathBuf,
+        pub path: Option<PathBuf>,
         content: String,
         pub span: Span,
     }
 
     impl SourceFile {
-        /// A fake source file.
-        ///
-        /// "Fake" in the sense that is does not actually correspond to a
-        /// file in the file system of the user.
-        pub(crate) fn fake(source: String) -> Self {
-            Self::new(PathBuf::new(), source, super::START_OF_FIRST_SOURCE_FILE)
-                .ok()
-                .unwrap()
-        }
-
-        pub fn new(path: PathBuf, content: String, start: ByteIndex) -> Result<Self, Error> {
+        pub fn new(
+            path: Option<PathBuf>,
+            content: String,
+            start: ByteIndex,
+        ) -> Result<Self, Error> {
             let offset = u32::try_from(content.len())
                 .map_err(|_| Error::OffsetOverflow)?
                 .saturating_sub(1);

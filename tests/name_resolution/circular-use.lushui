@@ -1,8 +1,8 @@
-;; TEST fail check
+;;; TEST fail check
 
 use fake-my-dude.alpha0.((self as alpha1))
 
-module fake-my-dude =
+module fake-my-dude of
     use beta0 as beta1
 
     @public
@@ -18,6 +18,6 @@ module fake-my-dude =
 
     Omega: Type = Type
 
-;; Description: Circular/cyclic/mutually recursive use bindings should be forbidden,
-;; should not crash the compiler and give a good error message. Distinct cycles
-;; have to be reported separately.
+;;; Description: Circular/cyclic/mutually recursive use bindings should be forbidden,
+;;; should not crash the compiler and give a good error message. Distinct cycles
+;;; have to be reported separately.

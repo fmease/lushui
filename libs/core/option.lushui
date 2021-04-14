@@ -1,109 +1,109 @@
 @public @inherent
-data Option (A: Type): Type =
+data Option (A: Type): Type of
     none (A: Type): Option A
     some (A: Type): A -> Option A
 
 @public
 use Option.(none some)
 
-;; use core.bool.(Bool false true not)
-;;
-;; @public
-;; is-some (A: Type) (a: Option A): Bool =
-;;     case a of
-;;         some \_ \_ => true
-;;         none \_ => false
+;;; use core.bool.(Bool false true not)
+;;;
+;;; @public
+;;; is-some (A: Type) (a: Option A): Bool =
+;;;     case a of
+;;;         some \_ \_ => true
+;;;         none \_ => false
 
-;; @Task use compose, not (blocked on implicits)
-;; @public
-;; is-none (A: Type) (a: Option A): Bool =
-;;     case a of
-;;         some \_ \_ => false
-;;         none \_ => true
+;;; @Task use compose, not (blocked on implicits)
+;;; @public
+;;; is-none (A: Type) (a: Option A): Bool =
+;;;     case a of
+;;;         some \_ \_ => false
+;;;         none \_ => true
 
-;; @public
-;; and (A B: Type) (a: Option A) (b: Option B): Option B =
-;;    case a of
-;;         some \_ \_ => b
-;;         none \_ => none (Option B)
+;;; @public
+;;; and (A B: Type) (a: Option A) (b: Option B): Option B =
+;;;    case a of
+;;;         some \_ \_ => b
+;;;         none \_ => none (Option B)
 
-;; use core.unit.(Unit unit)
-;;
-;; @public
-;; or (A: Type) (a: Option A) (b: Unit -> Option A): Option A =
-;;     case a of
-;;         some \_ \_ => a
-;;         none \_ => b unit
+;;; use core.unit.(Unit unit)
+;;;
+;;; @public
+;;; or (A: Type) (a: Option A) (b: Unit -> Option A): Option A =
+;;;     case a of
+;;;         some \_ \_ => a
+;;;         none \_ => b unit
 
-;; @public
-;; or_: (A: Type) -> (a b: Option A): Option A
+;;; @public
+;;; or_: (A: Type) -> (a b: Option A): Option A
 
-;; @public
-;; xor (A: Type) (a b: Option A): Option A =
-;;     case duple (Option A) (Option A) a b of
-;;         duple \_ \_ (some \_ \_) (none \_) => a
-;;         duple \_ \_ (none \_) (some \_ \_) => b
-;;         \_ => none A
+;;; @public
+;;; xor (A: Type) (a b: Option A): Option A =
+;;;     case duple (Option A) (Option A) a b of
+;;;         duple \_ \_ (some \_ \_) (none \_) => a
+;;;         duple \_ \_ (none \_) (some \_ \_) => b
+;;;         \_ => none A
 
-;; @public
-;; xor (,A B: Type) (a b: Option A): Option A = case duple a b of
-;;     duple (some \_) none => a
-;;     duple none (some \_) => b
-;;     \_ => none
+;;; @public
+;;; xor (,A B: Type) (a b: Option A): Option A = case duple a b of
+;;;     duple (some \_) none => a
+;;;     duple none (some \_) => b
+;;;     \_ => none
 
-;; @public
-;; map (A B: Type) (f: A -> B) (a: Option A): Option B =
-;;     case a of
-;;         some \_ \a => some B (f a)
-;;         none \_ => none B
+;;; @public
+;;; map (A B: Type) (f: A -> B) (a: Option A): Option B =
+;;;     case a of
+;;;         some \_ \a => some B (f a)
+;;;         none \_ => none B
 
-;; ;; or "flat-map"
-;; @public
-;; bind (A B: Type) (f: A -> Option B) (a: Option A): Option B =
-;;     case a of
-;;         some \_ \a => f a
-;;         none \_ => none B
+;;; ;;; or "flat-map"
+;;; @public
+;;; bind (A B: Type) (f: A -> Option B) (a: Option A): Option B =
+;;;     case a of
+;;;         some \_ \a => f a
+;;;         none \_ => none B
 
-;; @public
-;; filter (A: Type) (a: Option A) (predicate: A -> Bool): Option A =
-;;     case a of
-;;         some \_ \a_ => if (predicate a_) a (none A)
-;;         none \_ => none B
+;;; @public
+;;; filter (A: Type) (a: Option A) (predicate: A -> Bool): Option A =
+;;;     case a of
+;;;         some \_ \a_ => if (predicate a_) a (none A)
+;;;         none \_ => none B
 
-;; @public
-;; flatten (A: Type) (a: Option (Option A)): Option A =
-;;     case a of
-;;         some \_ (some \_ a) => some A a
-;;         \_ => none A
+;;; @public
+;;; flatten (A: Type) (a: Option (Option A)): Option A =
+;;;     case a of
+;;;         some \_ (some \_ a) => some A a
+;;;         \_ => none A
 
-;; @public
-;; unwrap (A: Type) (a: Option A): A =
-;;     case a of
-;;         some \_ a => a
-;;         none \_ => panic A "expected some value but got none"
+;;; @public
+;;; unwrap (A: Type) (a: Option A): A =
+;;;     case a of
+;;;         some \_ a => a
+;;;         none \_ => panic A "expected some value but got none"
 
-;; @public
-;; zip (A B: Type) (a: Option A) (b: Option B): Option (Duple A B) =
-;;     case duple (Option A) (Option B) a b of
-;;         duple \_ \_ (some \_ a) (some \_ b) => some (Duple A B) (duple A B a b)
-;;         \_ => none (Duple A B)
+;;; @public
+;;; zip (A B: Type) (a: Option A) (b: Option B): Option (Duple A B) =
+;;;     case duple (Option A) (Option B) a b of
+;;;         duple \_ \_ (some \_ a) (some \_ b) => some (Duple A B) (duple A B a b)
+;;;         \_ => none (Duple A B)
 
-;; @public
-;; contains (A: Type) (eq: A -> A -> Bool) (a b: Option A): Bool =
-;;     case a of
-;;         some \_ a => eq a b
-;;         none \_ => false
+;;; @public
+;;; contains (A: Type) (eq: A -> A -> Bool) (a b: Option A): Bool =
+;;;     case a of
+;;;         some \_ a => eq a b
+;;;         none \_ => false
 
-;; @public
-;; success-or (A E: Type) (a: Option A) (e: E): Result A E =
-;;     case a of
-;;         some \_ a => success A E a
-;;         none \_ => failure A E e
+;;; @public
+;;; success-or (A E: Type) (a: Option A) (e: E): Result A E =
+;;;     case a of
+;;;         some \_ a => success A E a
+;;;         none \_ => failure A E e
 
-;; @public
-;; transpose (A E: Type) (a: Option (Result A E)): Result (Option A) E =
-;;     case a of
-;;         some \_ (success \_ \_ a) => success (Option A) E (some A a)
-;;         some \_ (failure \_ \_ e) => failure (Option A) E e
-;;         none \_ => success (Option A) E (none A)
+;;; @public
+;;; transpose (A E: Type) (a: Option (Result A E)): Result (Option A) E =
+;;;     case a of
+;;;         some \_ (success \_ \_ a) => success (Option A) E (some A a)
+;;;         some \_ (failure \_ \_ e) => failure (Option A) E e
+;;;         none \_ => success (Option A) E (none A)
 

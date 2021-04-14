@@ -1,4 +1,4 @@
-;; TEST fail check
+;;; TEST fail check
 
 main: IO Unit =
     use qualified.thing as matter in

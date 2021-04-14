@@ -174,14 +174,15 @@ pub enum TokenKind {
     Colon,
     /// For record fields.
     DoubleColon,
-    /// For implicit parameters.
-    SingleQuote,
-    Dedentation,
     /// For paths.
     Dot,
     /// For definitions.
     Equals,
-    Indentation,
+    /// For implicit parameters.
+    SingleQuote,
+    /// Delimiter.
+    Semicolon,
+    // @Task replace with virtual semicolons
     LineBreak,
     OpeningRoundBracket,
     OpeningSquareBracket,
@@ -265,11 +266,10 @@ impl fmt::Display for TokenKind {
             QuestionMark => quoted!("?"),
             Colon => quoted!(":"),
             DoubleColon => quoted!("::"),
-            SingleQuote => quoted!("'"),
-            Dedentation => "dedentation",
             Dot => quoted!("."),
             Equals => quoted!("="),
-            Indentation => "indentation",
+            SingleQuote => quoted!("'"),
+            Semicolon => quoted!(";"),
             LineBreak => "line break",
             OpeningRoundBracket => quoted!("("),
             OpeningSquareBracket => quoted!("["),

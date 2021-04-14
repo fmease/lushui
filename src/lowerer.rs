@@ -261,9 +261,16 @@ impl<'a> Lowerer<'a> {
                             module.binder.as_str()
                         };
 
-                        let path = module
-                            .file
+                        // 1st unwrap: the file has to have a path since it was loaded with `SourceMap::load`
+                        // 2nd unwrap: the file has to be contained within some folder and the permissions
+                        //             should be at least as liberal as the ones of the file (which could be
+                        //             loaded). of course, the permissions might have changed or it was entirely
+                        //             deleted by somebody while this program (the frontend) is running but I don't
+                        //             care about that edge case right now!
+                        let path = self.map[module.file]
                             .path
+                            .as_ref()
+                            .unwrap()
                             .parent()
                             .unwrap()
                             .join(relative_path)
@@ -275,7 +282,7 @@ impl<'a> Lowerer<'a> {
                         // saying to create the missing file or change the access rights etc.
                         let file = self
                             .map
-                            .load(&path)
+                            .load(path.clone())
                             .map_err(|error| match error {
                                 span::Error::LoadFailure(_) => Diagnostic::error()
                                     .with_code(Code::E016)
@@ -290,10 +297,18 @@ impl<'a> Lowerer<'a> {
                             })
                             .map_err(|error| errors.take().inserted(error))?;
 
-                        let tokens = Lexer::new(&file, &mut self.warnings).lex()?;
-                        let node = Parser::new(file, &tokens, &mut self.warnings)
+                        let (tokens, mut lexical_errors) =
+                            Lexer::new(&self.map[file], &mut self.warnings).lex()?;
+                        let node = Parser::new(&self.map, file, &tokens, &mut self.warnings)
                             .parse(module.binder.clone())
-                            .map_err(|error| errors.take().extended(error))?;
+                            .map_err(|error| {
+                                errors
+                                    .take()
+                                    .extended(lexical_errors.take())
+                                    .extended(error)
+                            })?;
+                        lexical_errors.err_or(())?;
+
                         let module = match node.kind {
                             Module(module) => module,
                             _ => unreachable!(),

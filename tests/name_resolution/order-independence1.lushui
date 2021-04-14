@@ -1,8 +1,8 @@
-;; TEST pass check
+;;; TEST pass check
 
 Ty: Type = Type
 
-data Beta: m0.T =
+data Beta: m0.T of
     beta: Beta
 
 b: Beta = alpha
@@ -11,11 +11,11 @@ alpha: Beta = Beta.beta
 
 g: Gamma = Gamma.gamma
 
-data Gamma: Type =
+data Gamma: Type of
     gamma: Gamma-Alias
 
 Gamma-Alias: Ty = Gamma
 
-module m0 =
+module m0 of
     @public
     T: super.Ty = Type

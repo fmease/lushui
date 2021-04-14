@@ -1,5 +1,5 @@
 @public
-data Triple (A B C: Type): Type =
+data Triple (A B C: Type): Type of
     triple (A B C: Type): A -> B -> C -> Triple A B C
 
 @public

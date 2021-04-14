@@ -254,20 +254,23 @@ fn main() {
 
     let result: Results = (|| {
         let path = merged_arguments.file;
-        let source_file = map.load(path).map_err(Into::into).many_err()?;
+        let source_file = map.load(path.to_owned()).map_err(Into::into).many_err()?;
 
         let crate_name = lushui::parse_crate_name(path).many_err()?;
 
-        let tokens = Lexer::new(&source_file, &mut warnings).lex()?;
+        let (tokens, mut lexical_errors) = Lexer::new(&map[source_file], &mut warnings).lex()?;
         if merged_arguments.print_tokens {
             eprintln!("{:#?}", tokens);
         }
         if merged_arguments.only_lex {
+            lexical_errors.err_or(())?;
             return Ok(());
         }
 
-        let declaration =
-            Parser::new(source_file, &tokens, &mut warnings).parse(crate_name.clone())?;
+        let declaration = Parser::new(&map, source_file, &tokens, &mut warnings)
+            .parse(crate_name.clone())
+            .map_err(|errors| errors.extended(lexical_errors.take()))?;
+        lexical_errors.err_or(())?;
         if merged_arguments.print_ast {
             eprintln!("{:#?}", declaration);
         }

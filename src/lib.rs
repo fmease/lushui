@@ -39,7 +39,6 @@
     associated_type_defaults,
     never_type,
     default_free_fn,
-    or_patterns,
     never_type_fallback,
     const_panic,
     map_first_last,
@@ -70,9 +69,7 @@ pub mod typer;
 
 const FILE_EXTENSION: &str = "lushui";
 
-/// Amount of spaces making up one unit of indentation.
-pub const INDENTATION_IN_SPACES: usize = 4;
-
+use lexer::INDENTATION;
 use lowerer::lowered_ast;
 use num_bigint::{BigInt as Int, BigUint as Nat};
 use once_cell::sync::OnceCell;

@@ -1,22 +1,22 @@
-;; TEST fail check
+;;; TEST fail check
 
 @public
 use Thing as Piece
 
 @(public crate)
-data Thing: Type =
+data Thing: Type of
     thing: Thing
 
-module alpha =
-    module beta =
-        data Linchpin: Type =
+module alpha of
+    module beta of
+        data Linchpin: Type of
 
-        module gamma =
+        module gamma of
             @(public crate)
             use super.Linchpin as L
 
             @(public super)
-            data Mock: Type =
+            data Mock: Type of
 
             @(public crate.alpha)
             use Mock as //>

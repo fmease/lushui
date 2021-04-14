@@ -1,4 +1,4 @@
-;; TEST pass check
+;;; TEST pass check
 
 @foreign
 data Nat32: Type

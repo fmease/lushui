@@ -1,0 +1,3 @@
+;;; TEST pass check --only-parse
+
+it = case 1 of {} argument

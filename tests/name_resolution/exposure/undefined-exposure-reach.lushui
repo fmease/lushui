@@ -1,5 +1,5 @@
-;; TEST fail check
-;; @Task also report the undefined `Who-Am-I` if feasible
+;;; TEST fail check
+;;; @Task also report the undefined `Who-Am-I` if feasible
 
 @(public who-am-i)
 Foo: Who-Am-I = Type
@@ -7,12 +7,12 @@ Foo: Who-Am-I = Type
 @(public namespaced.who-am-i)
 Bar: Unit = Unit.unit
 
-module namespaced =
+module namespaced of
 
 @(public indir2.void)
 Y: Type = Unit
 
-data Unit: Type =
+data Unit: Type of
     unit: Unit
 
 use crate.((namespaced as indir0) (indir0 as indir1) (indir1 as indir2))

@@ -1,5 +1,5 @@
 @public
-data Duple (A B: Type): Type =
+data Duple (A B: Type): Type of
     duple (A B: Type): A -> B -> Duple A B
 
 @public

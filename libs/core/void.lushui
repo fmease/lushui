@@ -1,5 +1,5 @@
 @public
-data Void: Type =
+data Void: Type of
 
-;; @public
-;; absurd (A: Type) (v: Void): A = (case v of) A
+;;; @public
+;;; absurd (A: Type) (v: Void): A = (case v of) A

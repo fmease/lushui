@@ -1,12 +1,12 @@
-;; TEST fail check
+;;; TEST fail check
 
 @(allow never-gonna-be-implied)
-module m =
+module m of
 
 @(allow "my lint")
 @(forbid (lint "my other one"))
 @deny
-data Void: Type =
+data Void: Type of
 
 @(public (reech path) "hello")
 base: Base = @(Rune 0) "X"

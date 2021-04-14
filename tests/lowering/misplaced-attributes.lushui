@@ -1,4 +1,4 @@
-;; TEST fail check
+;;; TEST fail check
 
 @foreign
 @foreign @Int32
@@ -11,7 +11,7 @@ use something.substantial.(root0 root1)
 binding: Binding =
     @foreign @Text make-binding @(public super) resource
 
-data Manifest: Type =
+data Manifest: Type of
     @public manifest
 
 Platform: Type =

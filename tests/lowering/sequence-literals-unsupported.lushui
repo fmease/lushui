@@ -1,4 +1,4 @@
-;; TEST fail check
+;;; TEST fail check
 
 construct: List = @List [1 3 100 @Nat32 0]
 

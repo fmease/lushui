@@ -1,4 +1,4 @@
-;; @Bug span is not correct (eval'ed too much)
+;;; @Bug span is not correct (eval'ed too much)
 data Thing: Type =
     thing: Kind
 

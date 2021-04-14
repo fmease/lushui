@@ -1,27 +1,28 @@
-;; TEST pass check
+;;; TEST pass check
 
 use Bool.((false as f) (true as t))
 
-data Bool: Type =
+data Bool: Type of
     false: Bool
     true: Bool
 
-@opaque data Switch: Type =
+@opaque
+data Switch: Type of
     on: Switch
     off: crate.Switch
 
-module grotto =
-    @public data Color: Type =
+module grotto of
+    @public data Color: Type of
         white: Color
         black: Color
 
 col: grotto.Color = grotto.Color.black
 lever: self.Switch = Switch.on
 
-;; Description: Constructors can never be annotated with `@public`.
-;; Nonetheless, they are effectively public to the module where the
-;; corresp. data type is defined in if the data type is module not
-;; exposed to any ancestors. This is not influenced by the presence
-;; of `@opaque` which is solely useful when the data type is a bit
-;; more exposed. If the data type is annotated with an explicit exposure
-;; reach, then the constructors take the same exposure as their type.
+;;; Description: Constructors can never be annotated with `@public`.
+;;; Nonetheless, they are effectively public to the module where the
+;;; corresp. data type is defined in if the data type is module not
+;;; exposed to any ancestors. This is not influenced by the presence
+;;; of `@opaque` which is solely useful when the data type is a bit
+;;; more exposed. If the data type is annotated with an explicit exposure
+;;; reach, then the constructors take the same exposure as their type.

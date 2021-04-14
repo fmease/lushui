@@ -51,7 +51,6 @@ where
     match items.next() {
         Some(item) => {
             let body = once(item).chain(items).join_with(", ");
-            let conjunction = conjunction.name();
             format!("{body} {conjunction} {last}")
         }
         None => last.to_string(),
@@ -69,7 +68,6 @@ where
     match items.next() {
         Some(item) => {
             let body = once(item).chain(items).join_with(", ");
-            let conjunction = conjunction.name();
             format!("{body} {conjunction} {last}")
         }
         None => last.to_string(),
@@ -82,12 +80,12 @@ pub enum Conjunction {
     Or,
 }
 
-impl Conjunction {
-    const fn name(self) -> &'static str {
-        match self {
+impl fmt::Display for Conjunction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
             Self::And => "and",
             Self::Or => "or",
-        }
+        })
     }
 }
 

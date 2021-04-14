@@ -1,10 +1,8 @@
-;; TEST ignore
-
-;; @Update FFI currently does not work
+;;; TEST ignore
+;;; @Task re-add panic, then un-ignore
 
 module core
 
-;; @Note does not work rn
 _foreign_
 panic (A: Type) (message: Text): A
 

@@ -1,6 +1,6 @@
-;; TEST fail check
+;;; TEST fail check
 
 @foreign
-data Void: Type =
+data Void: Type of
 
 @foreign thing = 0

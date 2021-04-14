@@ -1,27 +1,27 @@
 error: module headers not supported yet
- --> ${DIRECTORY}/lowering/header-declaration-unsupported.lushui:6:1
+ --> ${DIRECTORY}/lowering/module-headers-unsupported.lushui:6:1
   |
-6 | module =
+6 | module
   | ^^^^^^ 
   |
 
 error[E013]: attribute `foreign` cannot be ascribed to a module header declaraiton
- --> ${DIRECTORY}/lowering/header-declaration-unsupported.lushui:8:1
+ --> ${DIRECTORY}/lowering/module-headers-unsupported.lushui:8:1
   |
 8 | @foreign
   | ^^^^^^^^ misplaced attribute
   |
- --> ${DIRECTORY}/lowering/header-declaration-unsupported.lushui:9:1
+ --> ${DIRECTORY}/lowering/module-headers-unsupported.lushui:9:1
   |
-9 | module =
+9 | module
   | ------ incompatible item
   |
  note: attribute `foreign` can only be ascribed to value or data declarations
 
 error: module headers not supported yet
- --> ${DIRECTORY}/lowering/header-declaration-unsupported.lushui:9:1
+ --> ${DIRECTORY}/lowering/module-headers-unsupported.lushui:9:1
   |
-9 | module =
+9 | module
   | ^^^^^^ 
   |
 

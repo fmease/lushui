@@ -1,4 +1,4 @@
-;; TEST pass run
+;;; TEST pass run
 
 @(location "../libs/core/core")
 module core
@@ -12,9 +12,9 @@ name: Text = concat "Jane#" (nat.display (nat.add 1 base))
 
 message: Text = concat (concat "Hello, " name) "."
 
-;;;;;;;;;;;;;;;;;;;
-;; PROGRAM ENTRY ;;
-;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;
+;;; PROGRAM ENTRY ;;;
+;;;;;;;;;;;;;;;;;;;;;
 
 main: Text =
     message

@@ -1,25 +1,25 @@
-;; TEST fail check
+;;; TEST fail check
 
-module separation =
-    data Private: Type =
+module separation of
+    data Private: Type of
         private: Private
     
     @opaque
-    data Private-Opaque: Type =
+    data Private-Opaque: Type of
         private: Private-Opaque
 
     @public @opaque
-    data Public-Opaque: Type =
+    data Public-Opaque: Type of
         private: Public-Opaque
     
     @(public crate)
-    module further-separation =
+    module further-separation of
         @(public super)
-        data Hidden: Type =
+        data Hidden: Type of
             hidden: Hidden
         
         @(public crate) @opaque
-        data Opaque: Type =
+        data Opaque: Type of
             hidden: Opaque
 
 use separation.Private.private as p0
