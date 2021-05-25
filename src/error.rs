@@ -1,56 +1,155 @@
 //! Different error handling mechanisms.
-//! Read documention of [crate::diagnostics] for more information on
-//! the error handling APIs found in this module
-// @Task move documentation to here
 
-use crate::{
-    diagnostics::{Diagnostic, Diagnostics, Result, Results},
-    SmallVec,
-};
+use crate::SmallVec;
 
-/// Join results accumulating errors.
-// @Note I don't like this accumulation API at all, it is cumbersome to define and cumbersome
-// to use! @Task Try to replace it!
-pub macro accumulate_errors {
-    ($result0:expr, $result1:expr $(,)?) => { accumulate_errors2($result0, $result1) },
-    ($result0:expr, $result1:expr, $result2:expr $(,)?) => { accumulate_errors3($result0, $result1, $result2) },
-    ($result0:expr, $result1:expr, $result2:expr, $result3:expr, $(,)?) => { accumulate_errors4($result0, $result1, $result2, $result3) },
+pub type Result<T = (), E = ()> = std::result::Result<T, E>;
+
+#[must_use]
+pub struct Outcome<T> {
+    pub value: T,
+    pub health: Health,
 }
 
-pub fn accumulate_errors2<A, B>(result0: Results<A>, result1: Results<B>) -> Results<(A, B)> {
-    match (result0, result1) {
-        (Ok(okay0), Ok(okay1)) => Ok((okay0, okay1)),
-        (Err(error), Ok(_)) | (Ok(_), Err(error)) => Err(error),
-        (Err(error0), Err(error1)) => {
-            let mut error = error0;
-            error.extend(error1);
-            Err(error)
+impl<T> Outcome<T> {
+    pub const fn new(value: T, health: Health) -> Self {
+        Self { value, health }
+    }
+
+    pub const fn untainted(value: T) -> Self {
+        Self::new(value, Health::Untainted)
+    }
+
+    pub const fn tainted(value: T) -> Self {
+        Self::new(value, Health::Tainted)
+    }
+
+    // @Question good API?
+    pub fn unwrap(self, health: &mut Health) -> T {
+        *health &= self.health;
+        self.value
+    }
+
+    pub fn map<U>(self, mapper: impl FnOnce(T) -> U) -> Outcome<U> {
+        Outcome::new(mapper(self.value), self.health)
+    }
+}
+
+// @Temporary API
+pub fn map_outcome_from_result<T, U: PossiblyErroneous>(
+    result: Result<T>,
+    mapper: impl FnOnce(T) -> U,
+) -> Outcome<U> {
+    match result {
+        Ok(value) => Outcome::untainted(mapper(value)),
+        Err(()) => Outcome::tainted(U::error()),
+    }
+}
+
+impl<T: PossiblyErroneous> From<Option<T>> for Outcome<T> {
+    fn from(option: Option<T>) -> Self {
+        match option {
+            Some(value) => Outcome::untainted(value),
+            None => Outcome::tainted(T::error()),
         }
     }
 }
 
-pub fn accumulate_errors3<A, B, C>(
-    result0: Results<A>,
-    result1: Results<B>,
-    result2: Results<C>,
-) -> Results<(A, B, C)> {
-    let result = accumulate_errors2(result0, result1);
-    let ((okay0, okay1), okay2) = accumulate_errors2(result, result2)?;
-    Ok((okay0, okay1, okay2))
+impl<T: PossiblyErroneous> From<Result<T>> for Outcome<T> {
+    fn from(option: Result<T>) -> Self {
+        match option {
+            Ok(value) => Outcome::untainted(value),
+            Err(()) => Outcome::tainted(T::error()),
+        }
+    }
 }
 
-pub fn accumulate_errors4<A, B, C, D>(
-    result0: Results<A>,
-    result1: Results<B>,
-    result2: Results<C>,
-    result3: Results<D>,
-) -> Results<(A, B, C, D)> {
-    let result = accumulate_errors3(result0, result1, result2);
-    let ((okay0, okay1, okay2), okay3) = accumulate_errors2(result, result3)?;
-    Ok((okay0, okay1, okay2, okay3))
+impl<T> From<Outcome<T>> for Result<T> {
+    fn from(outcome: Outcome<T>) -> Self {
+        match outcome.health {
+            Health::Untainted => Ok(outcome.value),
+            Health::Tainted => Err(()),
+        }
+    }
+}
+
+// @Task better location (even after we move the location of POssErr)
+impl<T: PossiblyErroneous> PossiblyErroneous for Outcome<T> {
+    fn error() -> Self {
+        Self::tainted(T::error())
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[must_use]
+pub enum Health {
+    Untainted,
+    /// Marks non-fatal failures.
+    Tainted,
+}
+
+impl Health {
+    pub const fn of<T>(self, value: T) -> Outcome<T> {
+        Outcome::new(value, self)
+    }
+
+    pub const fn is_tainted(self) -> bool {
+        matches!(self, Self::Tainted)
+    }
+
+    pub const fn is_untainted(self) -> bool {
+        !self.is_tainted()
+    }
+
+    pub fn taint(&mut self) {
+        if *self == Self::Untainted {
+            *self = Self::Tainted;
+        }
+    }
+}
+
+impl Default for Health {
+    fn default() -> Self {
+        Self::Untainted
+    }
+}
+
+impl<H: Into<Health>> std::ops::BitAnd<H> for Health {
+    type Output = Self;
+
+    fn bitand(self, other: H) -> Self::Output {
+        match (self, other.into()) {
+            (Self::Untainted, Self::Untainted) => Self::Untainted,
+            (_, _) => Self::Tainted,
+        }
+    }
+}
+
+impl<H: Into<Health>> std::ops::BitAndAssign<H> for Health {
+    fn bitand_assign(&mut self, other: H) {
+        *self = *self & other;
+    }
+}
+
+impl From<Result> for Health {
+    fn from(result: Result) -> Self {
+        match result {
+            Ok(()) => Self::Untainted,
+            Err(()) => Self::Tainted,
+        }
+    }
+}
+
+impl From<Health> for Result {
+    fn from(health: Health) -> Self {
+        match health {
+            Health::Untainted => Ok(()),
+            Health::Tainted => Err(()),
+        }
+    }
 }
 
 // @Beacon @Task documentation
+// @Task move (maybe)
 pub trait PossiblyErroneous {
     fn error() -> Self;
 }
@@ -72,94 +171,4 @@ impl<T> PossiblyErroneous for Vec<T> {
 // as it allows us to call try_in on functions that merely check (Result<(), Error>)
 impl PossiblyErroneous for () {
     fn error() -> Self {}
-}
-
-/// Try to get a value falling back to something invalid logging errors.
-pub trait TryIn<T: PossiblyErroneous> {
-    fn try_in(self, bag: &mut Diagnostics) -> T;
-}
-
-impl<T: PossiblyErroneous> TryIn<T> for Results<T> {
-    fn try_in(self, bag: &mut Diagnostics) -> T {
-        match self {
-            Ok(okay) => okay,
-            Err(errors) => {
-                bag.extend(errors);
-                T::error()
-            }
-        }
-    }
-}
-
-impl<T: PossiblyErroneous> TryIn<T> for Result<T> {
-    fn try_in(self, diagnostics: &mut Diagnostics) -> T {
-        match self {
-            Ok(okay) => okay,
-            Err(error) => {
-                diagnostics.insert(error);
-                T::error()
-            }
-        }
-    }
-}
-
-// @Task documentation
-// @Task rename this to something more descriptive relating to the concept of errors for one!
-// @Note this can go once we commit to mutable error buffers and throw away
-// the accumulation API
-pub trait TransposeExt<T, E> {
-    fn transpose(self) -> Result<Vec<T>, E>;
-}
-
-impl<I, T, E> TransposeExt<T, E> for I
-where
-    I: Iterator<Item = Result<T, E>>,
-    E: Extend<Diagnostic> + IntoIterator<Item = Diagnostic>,
-{
-    fn transpose(self) -> Result<Vec<T>, E> {
-        let mut final_result = Ok(Vec::new());
-        for result in self {
-            match final_result {
-                Ok(ref mut okays) => match result {
-                    Ok(okay) => okays.push(okay),
-                    Err(errors) => final_result = Err(errors),
-                },
-                Err(ref mut previous_errors) => match result {
-                    Ok(_) => (),
-                    Err(errors) => previous_errors.extend(errors),
-                },
-            }
-        }
-        final_result
-    }
-}
-
-// @Note this can go once we commit to mutable error buffers and throw away
-// the accumulation API
-pub trait ManyErrExt<T> {
-    fn many_err(self) -> Results<T>;
-}
-
-impl<T> ManyErrExt<T> for Result<T, Diagnostic> {
-    fn many_err(self) -> Results<T> {
-        self.map_err(|error| Some(error).into_iter().collect())
-    }
-}
-
-pub macro try_or($subject:expr, $continuation:expr, buffer = $buffer:expr) {
-    match $subject {
-        Ok(subject) => subject,
-        Err(error) => {
-            $buffer.insert(error);
-            $continuation
-        }
-    }
-}
-
-// @Note does not fit this module
-pub macro obtain($expr:expr, $( $pat:pat )|+ $( if $guard:expr )? $(,)? => $mapping:expr) {
-    match $expr {
-        $( $pat )|+ $( if $guard )? => Some($mapping),
-        _ => None
-    }
 }

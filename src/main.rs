@@ -1,10 +1,10 @@
 #![forbid(rust_2018_idioms, unused_must_use)]
 
 use lushui::{
-    diagnostics::{Diagnostic, Diagnostics, Results},
+    diagnostics::{Diagnostic, Handler},
     documenter::Documenter,
-    error::ManyErrExt,
-    format::{pluralize, s_pluralize, DisplayWith},
+    error::{Outcome, Result},
+    format::DisplayWith,
     lexer::Lexer,
     lowerer::Lowerer,
     parser::Parser,
@@ -14,9 +14,11 @@ use lushui::{
 };
 use resolver::{CrateScope, Resolver};
 use std::{
+    cell::RefCell,
     fs::File,
     io::BufWriter,
     path::{Path, PathBuf},
+    rc::Rc,
 };
 use structopt::StructOpt;
 
@@ -38,9 +40,6 @@ struct Arguments {
     /// Use rustc panic hook with RUST_BACKTRACE=1
     #[structopt(long, short = "B")]
     panic_with_backtrace: bool,
-
-    #[structopt(long)]
-    sort_diagnostics: bool,
 
     #[structopt(subcommand)]
     command: Command,
@@ -249,28 +248,39 @@ fn main() {
         })
         .unwrap_or_else(|_| unreachable!());
 
-    let mut map = SourceMap::default();
-    let mut warnings = Diagnostics::default();
+    let map = Rc::new(RefCell::new(SourceMap::default()));
+    let handler = Handler::buffered_stderr(map.clone());
 
-    let result: Results = (|| {
+    let result: Result = (|| {
         let path = merged_arguments.file;
-        let source_file = map.load(path.to_owned()).map_err(Into::into).many_err()?;
+        let source_file = map
+            .borrow_mut()
+            .load(path.to_owned())
+            .map_err(|error| Diagnostic::from(error).emit(&handler))?;
 
-        let crate_name = lushui::parse_crate_name(path).many_err()?;
+        let crate_name =
+            lushui::parse_crate_name(path, &handler).map_err(|error| error.emit(&handler))?;
 
-        let (tokens, mut lexical_errors) = Lexer::new(&map[source_file], &mut warnings).lex()?;
+        let Outcome {
+            value: tokens,
+            health,
+        } = Lexer::new(map.borrow().get(source_file), &handler).lex()?;
+
         if merged_arguments.print_tokens {
             eprintln!("{:#?}", tokens);
         }
         if merged_arguments.only_lex {
-            lexical_errors.err_or(())?;
+            if health.is_tainted() {
+                return Err(());
+            }
             return Ok(());
         }
 
-        let declaration = Parser::new(&map, source_file, &tokens, &mut warnings)
-            .parse(crate_name.clone())
-            .map_err(|errors| errors.extended(lexical_errors.take()))?;
-        lexical_errors.err_or(())?;
+        let declaration =
+            Parser::new(source_file, &tokens, map.clone(), &handler).parse(crate_name.clone())?;
+        if health.is_tainted() {
+            return Err(());
+        }
         if merged_arguments.print_ast {
             eprintln!("{:#?}", declaration);
         }
@@ -280,10 +290,16 @@ fn main() {
 
         match arguments.command {
             Command::Check { .. } | Command::Run { .. } | Command::Build { .. } => {
-                let declaration = Lowerer::new(&mut map, &mut warnings)
-                    .lower_declaration(declaration)?
-                    .pop()
-                    .unwrap();
+                let Outcome {
+                    value: mut declarations,
+                    health,
+                } = Lowerer::new(map.clone(), &handler).lower_declaration(declaration);
+
+                if health.is_tainted() {
+                    return Err(());
+                }
+
+                let declaration = declarations.pop().unwrap();
 
                 {
                     if merged_arguments.print_lowered_ast {
@@ -295,7 +311,7 @@ fn main() {
                 }
 
                 let mut scope = CrateScope::default();
-                let mut resolver = Resolver::new(&mut scope, &mut warnings);
+                let mut resolver = Resolver::new(&mut scope, &handler);
                 let declaration = resolver.resolve_declaration(declaration)?;
 
                 {
@@ -312,7 +328,7 @@ fn main() {
 
                 scope.register_foreign_bindings();
 
-                let mut typer = Typer::new(&mut scope, &mut warnings);
+                let mut typer = Typer::new(&mut scope, &handler);
                 typer.infer_types_in_declaration(&declaration)?;
 
                 {
@@ -325,7 +341,7 @@ fn main() {
                 // but here (a static error) (if the CLI dictates to run it)
 
                 if let Command::Run { .. } = arguments.command {
-                    let result = typer.interpreter().run().many_err()?;
+                    let result = typer.interpreter().run()?;
 
                     println!("{}", result.with(&scope));
                 }
@@ -338,12 +354,13 @@ fn main() {
                 }
             }
             Command::Highlight { .. } => {
-                return Err(Diagnostic::unimplemented("operation")).many_err()
+                Diagnostic::unimplemented("operation").emit(&handler);
+                return Err(());
             }
             Command::Document { .. } => {
                 // @Task error handling
                 let mut file = BufWriter::new(File::create(path.with_extension("html")).unwrap());
-                let documenter = Documenter::new(&mut file, &map, &mut warnings);
+                let documenter = Documenter::new(&mut file, map);
                 // @Temporary @Task
                 documenter.document(&declaration).unwrap();
             }
@@ -352,55 +369,18 @@ fn main() {
         Ok(())
     })();
 
-    if !warnings.is_empty() {
-        let amount = emit_diagnostics(warnings, &mut map, arguments.sort_diagnostics);
+    handler.emit_buffered_diagnostics();
 
-        const MINIMUM_AMOUNT_WARNINGS_FOR_SUMMARY: usize = 0;
+    // if result.is_err() || handler.system_health().is_tainted() {
+    //     // @Task use ExitStatus
+    //     std::process::exit(1);
+    // }
 
-        // @Question should we print this at all?
-        if amount >= MINIMUM_AMOUNT_WARNINGS_FOR_SUMMARY {
-            let _ = Diagnostic::warning()
-                .with_message(format!(
-                    "emitted {} {}",
-                    amount,
-                    s_pluralize!(amount, "warning")
-                ))
-                .emit_to_stderr(Some(&map));
-        }
-    }
-
-    if let Err(errors) = result {
-        let amount = emit_diagnostics(errors, &mut map, arguments.sort_diagnostics);
-
-        let _ = Diagnostic::error()
-            .with_message(pluralize(amount, "aborting due to previous error", || {
-                format!("aborting due to {} previous errors", amount)
-            }))
-            .emit_to_stderr(Some(&map));
-
-        // @Task instead of this using this function, return a std::process::ExitCode
-        // from main once stable again. I am not sure but it could be that right now,
-        // destructors are not run
+    if result.is_err() {
+        // I think
+        assert!(handler.system_health().is_tainted());
+        // @Task use ExitStatus
         std::process::exit(1);
-    }
-}
-
-fn emit_diagnostics(diagnostics: Diagnostics, map: &mut SourceMap, sort: bool) -> usize {
-    if sort {
-        let mut diagnostics: Vec<_> = diagnostics.into_iter().collect();
-        diagnostics.sort_by_key(|error| error.sorted_spans());
-
-        diagnostics
-            .into_iter()
-            .map(|diagnostic| diagnostic.emit_to_stderr(Some(&map)))
-            .filter(|&emitted| emitted)
-            .count()
-    } else {
-        diagnostics
-            .into_iter()
-            .map(|diagnostic| diagnostic.emit_to_stderr(Some(&map)))
-            .filter(|&emitted| emitted)
-            .count()
     }
 }
 
@@ -419,6 +399,6 @@ fn set_panic_hook() {
             message += &format!(" at {}", location);
         }
 
-        let _ = Diagnostic::bug().with_message(message).emit_to_stderr(None);
+        Diagnostic::bug().message(message).emit_to_stderr(None);
     }));
 }

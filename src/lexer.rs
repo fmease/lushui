@@ -5,8 +5,8 @@ mod test;
 pub mod token;
 
 use crate::{
-    diagnostics::{Code, Diagnostic, Diagnostics, Result, Results, Warn},
-    error::ManyErrExt,
+    diagnostics::{Code, Diagnostic, Handler},
+    error::{Health, Outcome, Result},
     span::{LocalByteIndex, LocalSpan, SourceFile, SourceMap, Span, Spanned},
     Atom,
 };
@@ -26,19 +26,21 @@ pub use token::{
 /// The unit indentation in spaces.
 pub const INDENTATION: Spaces = Indentation::UNIT.to_spaces();
 
-fn lex(source: String) -> Results<(Vec<Token>, Diagnostics)> {
+fn lex(source: String) -> Result<Outcome<Vec<Token>>> {
     let mut map = SourceMap::default();
     let file = map.add(None, source).unwrap_or_else(|_| unreachable!());
-    Lexer::new(&map[file], &mut Default::default()).lex()
+    Lexer::new(map.get(file), &Handler::silent()).lex()
 }
 
 /// Utility to parse identifiers from a string.
 ///
 /// Used for non-lushui code like crate names.
 pub fn parse_identifier(source: String) -> Option<Atom> {
-    let (mut tokens, mut errors) = lex(source).map_err(|mut errors| errors.cancel()).ok()?;
-    if !errors.is_empty() {
-        errors.cancel();
+    let Outcome {
+        value: mut tokens,
+        health,
+    } = lex(source).ok()?;
+    if health == Health::Tainted {
         return None;
     }
     let mut tokens = tokens.drain(..);
@@ -179,9 +181,9 @@ impl Brackets {
                     // @Beacon @Bug we are not smart enough here yet, the error messages are too confusing
                     // or even incorrect!
                     Err(Diagnostic::error()
-                        .with_code(Code::E001)
-                        .with_message(format!("unbalanced {} bracket", closing_bracket.kind))
-                        .with_labeled_primary_span(
+                        .code(Code::E001)
+                        .message(format!("unbalanced {} bracket", closing_bracket.kind))
+                        .labeled_primary_span(
                             closing_bracket,
                             format!("has no matching opening {} bracket", closing_bracket.kind),
                         ))
@@ -190,9 +192,9 @@ impl Brackets {
             // @Beacon @Bug we are not smart enough here yet, the error messages are too confusing
             // or even incorrect!
             None => Err(Diagnostic::error()
-                .with_code(Code::E001)
-                .with_message(format!("unbalanced {} bracket", closing_bracket.kind))
-                .with_labeled_primary_span(
+                .code(Code::E001)
+                .message(format!("unbalanced {} bracket", closing_bracket.kind))
+                .labeled_primary_span(
                     closing_bracket,
                     format!("has no matching opening {} bracket", closing_bracket.kind),
                 )),
@@ -232,32 +234,34 @@ pub struct Lexer<'a> {
     tokens: Vec<Token>,
     span: LocalSpan,
     indentation: Spaces,
-    warnings: &'a mut Diagnostics,
     sections: Sections,
     brackets: Brackets,
-    errors: Diagnostics,
+    health: Health,
+    handler: &'a Handler,
 }
 
 // @Task disallow indented sections inside of delimited ones (very weird!)
 
 impl<'a> Lexer<'a> {
-    pub fn new(source: &'a SourceFile, warnings: &'a mut Diagnostics) -> Self {
+    pub fn new(source: &'a SourceFile, handler: &'a Handler) -> Self {
+        let content = source.content();
+
         Self {
+            characters: content.char_indices().peekable(),
             source,
-            warnings,
-            characters: source.content().char_indices().peekable(),
             tokens: Vec::new(),
             span: LocalSpan::zero(),
             indentation: Spaces(0),
             sections: Sections::default(),
             brackets: Brackets::default(),
-            errors: Diagnostics::default(),
+            health: Health::Untainted,
+            handler,
         }
     }
 
     /// Lex source code into an array of tokens
     // @Task return (Vec<Token>, Diagnostics)
-    pub fn lex(mut self) -> Results<(Vec<Token>, Diagnostics)> {
+    pub fn lex(mut self) -> Result<Outcome<Vec<Token>>> {
         while let Some(character) = self.peek() {
             self.span = LocalSpan::from(self.index().unwrap());
             match character {
@@ -274,16 +278,16 @@ impl<'a> Lexer<'a> {
                     }
                 }
                 character if token::is_identifier_segment_start(character) => {
-                    self.lex_identifier().many_err()?
+                    self.lex_identifier()?
                 }
-                '\n' => self.lex_indentation().many_err()?,
+                '\n' => self.lex_indentation()?,
                 '-' => self.lex_punctuation_or_number_literal()?,
                 character if character.is_ascii_digit() => {
                     self.advance();
-                    self.lex_number_literal().many_err()?
+                    self.lex_number_literal()?
                 }
                 character if token::is_punctuation(character) => self.lex_punctuation(),
-                '"' => self.lex_text_literal().many_err()?,
+                '"' => self.lex_text_literal(),
                 '(' => self.add_opening_bracket(Bracket::Round),
                 '[' => self.add_opening_bracket(Bracket::Square),
                 '{' => {
@@ -320,15 +324,17 @@ impl<'a> Lexer<'a> {
             // @Beacon @Bug we are not smart enough here yet, the error messages are too confusing
             // or even incorrect!
 
-            self.errors.extend(self.brackets.0.iter().map(|bracket| {
+            for bracket in &self.brackets.0 {
+                self.health.taint();
                 Diagnostic::error()
-                    .with_code(Code::E001)
-                    .with_message(format!("unbalanced {} bracket", bracket.kind))
-                    .with_labeled_primary_span(
+                    .code(Code::E001)
+                    .message(format!("unbalanced {} bracket", bracket.kind))
+                    .labeled_primary_span(
                         bracket,
                         format!("has no matching closing {} bracket", bracket.kind),
                     )
-            }));
+                    .emit(&self.handler);
+            }
         }
 
         // @Bug panics if last byte is not a valid codepoint, right?
@@ -359,7 +365,7 @@ impl<'a> Lexer<'a> {
 
         self.add(EndOfInput);
 
-        Ok((self.tokens, self.errors))
+        Ok(Outcome::new(self.tokens, self.health))
     }
 
     fn add_opening_bracket(&mut self, bracket: Bracket) {
@@ -382,7 +388,8 @@ impl<'a> Lexer<'a> {
 
         self.add(bracket.closing());
         if let Err(error) = self.brackets.close(Spanned::new(self.span(), bracket)) {
-            self.errors.insert(error);
+            self.health.taint();
+            error.emit(&self.handler);
         };
         self.advance();
     }
@@ -442,10 +449,13 @@ impl<'a> Lexer<'a> {
             let previous = self.span;
             self.lex_identifier_segment();
             if self.span == previous {
-                return Err(Diagnostic::error()
-                    .with_code(Code::E002)
-                    .with_message("trailing dash on identifier")
-                    .with_primary_span(Span::local(self.source, dash.into())));
+                self.span = dash.into();
+                Diagnostic::error()
+                    .code(Code::E002)
+                    .message("trailing dash on identifier")
+                    .primary_span(self.span())
+                    .emit(&self.handler);
+                return Err(());
             }
         }
 
@@ -509,14 +519,14 @@ impl<'a> Lexer<'a> {
             Err(error) => {
                 // @Task push that to the error buffer instead (making this non-fatal)
                 // and treat Spaces(1) as Spaces(4), Spaces(6) as Spaces(8) etc.
-                return Err(Diagnostic::error()
-                    .with_code(Code::E003)
-                    .with_message(format!(
+                Diagnostic::error()
+                    .code(Code::E003)
+                    .message(format!(
                         "invalid indentation consisting of {} spaces",
                         difference.0
                     ))
-                    .with_primary_span(self.span())
-                    .with_note(match error {
+                    .primary_span(self.span())
+                    .note(match error {
                         IndentationError::Misaligned => {
                             format!("indentation needs to be a multiple of {}", INDENTATION.0)
                         }
@@ -524,7 +534,9 @@ impl<'a> Lexer<'a> {
                             "indentation is greater than {} and therefore too deep",
                             INDENTATION.0
                         ),
-                    }));
+                    })
+                    .emit(&self.handler);
+                return Err(());
             }
         };
 
@@ -591,14 +603,14 @@ impl<'a> Lexer<'a> {
         // }
     }
 
-    fn lex_punctuation_or_number_literal(&mut self) -> Results {
+    fn lex_punctuation_or_number_literal(&mut self) -> Result {
         self.advance();
         if self
             .peek()
             .map(|character| character.is_ascii_digit())
             .unwrap_or(false)
         {
-            self.lex_number_literal().many_err()?;
+            self.lex_number_literal()?;
         } else {
             self.lex_punctuation();
         }
@@ -654,21 +666,26 @@ impl<'a> Lexer<'a> {
         // @Task emit an invalid identifier token if an identifier immedially follows
         // a number literal (maybe)
 
-        // @Task return an invalid token instead
-        if consecutive_primes {
-            return Err(Diagnostic::error()
-                .with_code(Code::E005)
-                .with_message("consecutive primes in number literal")
-                .with_primary_span(self.span()));
-        }
+        if consecutive_primes || trailing_prime {
+            if consecutive_primes {
+                Diagnostic::error()
+                    .code(Code::E005)
+                    .message("consecutive primes in number literal")
+                    .primary_span(self.span())
+                    .emit(&self.handler);
+            }
 
-        // @Task return an invalid token instead
+            if trailing_prime {
+                Diagnostic::error()
+                    .code(Code::E005)
+                    .message("trailing prime in number literal")
+                    .primary_span(self.span())
+                    .emit(&self.handler);
+            }
 
-        if trailing_prime {
-            return Err(Diagnostic::error()
-                .with_code(Code::E005)
-                .with_message("trailing prime in number literal")
-                .with_primary_span(self.span()));
+            // @Task don't return early here, just taint the health and
+            // return an InvalidNumberLiteral token
+            return Err(());
         }
 
         self.add_with(|span| Token::new_number_literal(number, span));
@@ -678,7 +695,7 @@ impl<'a> Lexer<'a> {
 
     // @Task escape sequences @Update do them in the parser (or at least mark them as invalid
     // and do the error reporting in the parser)
-    fn lex_text_literal(&mut self) -> Result {
+    fn lex_text_literal(&mut self) {
         let mut is_terminated = false;
         self.advance();
 
@@ -703,12 +720,10 @@ impl<'a> Lexer<'a> {
         )]
         .to_owned();
         self.add_with(|span| Token::new_text_literal(text, span, is_terminated));
-
-        Ok(())
     }
 
     fn span(&self) -> Span {
-        Span::local(self.source, self.span)
+        Span::local(&self.source, self.span)
     }
 
     fn source(&self) -> &str {
@@ -755,12 +770,6 @@ impl<'a> Lexer<'a> {
 
     fn add_with(&mut self, constructor: impl FnOnce(Span) -> Token) {
         self.tokens.push(constructor(self.span()))
-    }
-}
-
-impl Warn for Lexer<'_> {
-    fn diagnostics(&mut self) -> &mut Diagnostics {
-        &mut self.warnings
     }
 }
 

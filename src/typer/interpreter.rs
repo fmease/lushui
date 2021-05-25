@@ -18,8 +18,8 @@ pub(crate) mod scope;
 use super::Expression;
 use crate::{
     ast::Explicit,
-    diagnostics::{Code, Diagnostic, Diagnostics, Result, Warn},
-    error::PossiblyErroneous,
+    diagnostics::{Code, Diagnostic, Handler},
+    error::{PossiblyErroneous, Result},
     format::DisplayWith,
     hir::{self, expr},
     lowered_ast::Attributes,
@@ -66,12 +66,12 @@ impl<'a> Context<'a> {
 // @Task add recursion depth
 pub struct Interpreter<'a> {
     scope: &'a CrateScope,
-    warnings: &'a mut Diagnostics,
+    handler: &'a Handler,
 }
 
 impl<'a> Interpreter<'a> {
-    pub fn new(scope: &'a CrateScope, warnings: &'a mut Diagnostics) -> Self {
-        Self { scope, warnings }
+    pub fn new(scope: &'a CrateScope, handler: &'a Handler) -> Self {
+        Self { scope, handler }
     }
 
     /// Run the entry point of the crate.
@@ -87,9 +87,11 @@ impl<'a> Interpreter<'a> {
             )
         } else {
             // @Task this should be checked statically
-            Err(Diagnostic::error()
-                .with_code(Code::E050)
-                .with_message("missing program entry"))
+            Diagnostic::error()
+                .code(Code::E050)
+                .message("missing program entry")
+                .emit(&self.handler);
+            Err(())
         }
     }
 
@@ -360,7 +362,7 @@ impl<'a> Interpreter<'a> {
                                     // an Option<_> (that's gonna happen when we finally implement
                                     // the discarding identifier `_`)
                                     parameter: crate::resolver::Identifier::parameter("__"),
-                                    parameter_type_annotation: Some(self.scope.lookup_unit_type(None)?),
+                                    parameter_type_annotation: Some(self.scope.lookup_unit_type(None, &self.handler)?),
                                     body_type_annotation: None,
                                     body: expr! {
                                         Substitution {
@@ -466,7 +468,7 @@ impl<'a> Interpreter<'a> {
                         lambda
                             .parameter_type_annotation
                             .clone()
-                            .ok_or_else(super::missing_annotation)?,
+                            .ok_or_else(|| super::missing_annotation().emit(&self.handler))?,
                         context,
                     )?;
                     let body_type = lambda
@@ -592,7 +594,11 @@ impl<'a> Interpreter<'a> {
                     .map(|argument| self.evaluate_expression(argument, context))
                     .collect::<Result<Vec<_>, _>>()?;
                 self.scope
-                    .apply_foreign_binding(application.callee.clone(), arguments.clone())?
+                    .apply_foreign_binding(
+                        application.callee.clone(),
+                        arguments.clone(),
+                        &self.handler,
+                    )?
                     .unwrap_or_else(|| {
                         expr! {
                             ForeignApplication {
@@ -680,11 +686,11 @@ impl<'a> Interpreter<'a> {
                 let parameter_type_annotation0 = lambda0
                     .parameter_type_annotation
                     .clone()
-                    .ok_or_else(super::missing_annotation)?;
+                    .ok_or_else(|| super::missing_annotation().emit(&self.handler))?;
                 let parameter_type_annotation1 = lambda1
                     .parameter_type_annotation
                     .clone()
-                    .ok_or_else(super::missing_annotation)?;
+                    .ok_or_else(|| super::missing_annotation().emit(&self.handler))?;
 
                 self.equals(
                     parameter_type_annotation0.clone(),
@@ -709,19 +715,14 @@ impl<'a> Interpreter<'a> {
             }
             // @Question is that what we want or should we just evaluate again?
             (Substitution(_), Substitution(_)) => {
-                return Err(Diagnostic::bug()
-                    .with_message("attempt to check two substitutions for equivalence")
-                    .with_note("they should not exist in this part of the code but should have already been evaluated"))
+                Diagnostic::bug()
+                    .message("attempt to check two substitutions for equivalence")
+                    .note("they should not exist in this part of the code but should have already been evaluated").emit(&self.handler);
+                return Err(());
             }
             (Error, _) | (_, Error) => panic!("trying to check equality on erroneous expressions"),
             _ => false,
         })
-    }
-}
-
-impl Warn for Interpreter<'_> {
-    fn diagnostics(&mut self) -> &mut Diagnostics {
-        &mut self.warnings
     }
 }
 

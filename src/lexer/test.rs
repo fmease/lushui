@@ -1,16 +1,19 @@
 use super::{Token, TokenKind::*};
 use crate::{
-    diagnostics::{Diagnostics, Results},
-    span::{span, Span},
+    error::{Health, Outcome, Result},
+    span::span,
 };
 
-fn lex(source: &'static str) -> Results<(Vec<Token>, Diagnostics)> {
+fn lex(source: &'static str) -> Result<Outcome<Vec<Token>>> {
     super::lex(source.to_owned())
 }
 
-fn assert_ok_token(actual: Results<(Vec<Token>, Diagnostics)>, expected: Vec<Token>) {
+fn assert_ok_token(actual: Result<Outcome<Vec<Token>>>, expected: Vec<Token>) {
     match actual {
-        Ok((actual, errors)) if errors.is_empty() => {
+        Ok(Outcome {
+            value: actual,
+            health: Health::Untainted,
+        }) => {
             if actual != expected {
                 panic!(
                     "the actual tokens outputted by the lexer do not match the expected ones:\n{}",
@@ -23,33 +26,6 @@ fn assert_ok_token(actual: Results<(Vec<Token>, Diagnostics)>, expected: Vec<Tok
             }
         }
         _ => panic!("expected the tokens `{:?}` but got an `Err`", expected),
-    }
-}
-
-// @Task remove
-fn assert_err(actual: Results<(Vec<Token>, Diagnostics)>, expected_spans: &[&[Span]]) {
-    match actual {
-        Ok((actual, errors)) if errors.is_empty() => {
-            panic!("expected an `Err` but got the tokens `{:?}`", actual)
-        }
-        Ok((_, errors)) | Err(errors) => {
-            let mut actual_spans: Vec<Vec<Span>> = errors
-                .into_iter()
-                .map(|mut diagnostic| {
-                    diagnostic.cancel();
-                    diagnostic.sorted_spans()
-                })
-                .collect();
-
-            actual_spans.sort();
-
-            if actual_spans != expected_spans {
-                panic!(
-                    "expected the spans `{:?}` but got the spans `{:?}`",
-                    expected_spans, actual_spans
-                );
-            }
-        }
     }
 }
 
@@ -142,24 +118,28 @@ fn keywords_and_lookalikes() {
     );
 }
 
+// @Task make this a UI test
 #[test]
 fn do_not_lex_identifier_with_trailing_dash() {
-    assert_err(lex("alpha-"), &[&[span(6, 6)]]);
+    assert!(lex("alpha-").is_err());
 }
 
+// @Task make this a UI test
 #[test]
 fn do_not_lex_identifier_with_trailing_dash_punctuation() {
-    assert_err(lex("alpha-:"), &[&[span(6, 6)]]);
+    assert!(lex("alpha-:").is_err());
 }
 
+// @Task make this a UI test
 #[test]
 fn do_not_lex_identifier_with_trailing_dash_number_literal() {
-    assert_err(lex("alpha-0"), &[&[span(6, 6)]]);
+    assert!(lex("alpha-0").is_err());
 }
 
+// @Task make this a UI test
 #[test]
 fn do_not_lex_identifier_with_consecutive_dashes() {
-    assert_err(lex("alpha--gamma"), &[&[span(6, 6)]]);
+    assert!(lex("alpha--gamma").is_err());
 }
 
 #[test]
@@ -274,19 +254,22 @@ fn lex_number_literals_with_separators() {
     );
 }
 
+// @Task make this a UI test
 #[test]
 fn do_no_lex_number_literal_with_consecutive_separators() {
-    assert_err(lex("3''100"), &[&[span(1, 6)]]);
+    assert!(lex("3''100").is_err());
 }
 
+// @Task make this a UI test
 #[test]
 fn do_not_lex_number_literal_with_trailing_separator() {
-    assert_err(lex("10' "), &[&[span(1, 3)]]);
+    assert!(lex("10' ").is_err());
 }
 
+// @Task make this a UI test
 #[test]
 fn do_not_lex_number_literal_with_trailing_separator_right_before_eoi() {
-    assert_err(lex("10'"), &[&[span(1, 3)]]);
+    assert!(lex("10'").is_err());
 }
 
 #[test]
@@ -351,13 +334,13 @@ fn lex_brackets() {
 #[test]
 #[ignore]
 fn do_not_lex_unbalanced_round_brackets_too_few_closing() {
-    assert_err(lex("(("), &[&[span(1, 1)], &[span(2, 2)]]);
+    assert!(lex("((").is_err());
 }
 
 #[test]
 #[ignore]
 fn do_not_lex_unbalanced_round_brackets_too_few_opening() {
-    assert_err(lex(")))"), &[&[span(1, 1)]]);
+    assert!(lex(")))").is_err());
 }
 
 #[test]

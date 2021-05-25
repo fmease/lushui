@@ -109,12 +109,14 @@ fn run() -> Result<(), Error> {
 
         print!("test {:>60} ", readable_path);
 
-        let source_file = map
+        // @Beacon @Task don't use SourceMap for this, just raw File
+        let file = map
             .load(entry.path().to_owned())
             .map_err(|_| Error::FailedLoadingSourceFile)?;
+        let file = map.get(file);
 
-        let config = TestConfiguration::parse(map[source_file].content())
-            .map_err(Error::InvalidTestFileHeader)?;
+        let config =
+            TestConfiguration::parse(file.content()).map_err(Error::InvalidTestFileHeader)?;
 
         if config.tag == TestTag::Ignore {
             number_of_ignored_tests += 1;

@@ -5,7 +5,7 @@
 mod format;
 
 use crate::{
-    diagnostics::{Code, Diagnostic, Result},
+    diagnostics::{Code, Diagnostic},
     error::PossiblyErroneous,
     lexer::{Token, TokenKind},
     smallvec,
@@ -261,17 +261,17 @@ impl Path {
     }
 
     // @Task make this Option<Self> and move diagnostic construction into lowerer
-    pub fn join(mut self, other: Self) -> Result<Self> {
+    pub fn join(mut self, other: Self) -> Result<Self, Diagnostic> {
         if let Some(hanger) = other.hanger {
             if !matches!(hanger.kind, HangerKind::Self_) {
                 return Err(Diagnostic::error()
-                    .with_code(Code::E026)
-                    .with_message(format!(
+                    .code(Code::E026)
+                    .message(format!(
                         "path hanger `{}` not allowed in this position",
                         hanger
                     ))
-                    .with_primary_span(&hanger)
-                    .with_help("consider moving this path to its own separate use-declaration"));
+                    .primary_span(&hanger)
+                    .help("consider moving this path to its own separate use-declaration"));
             }
         }
         self.segments.extend(other.segments);

@@ -14,47 +14,51 @@ use super::{
     Parser, Result,
 };
 use crate::{
-    diagnostics::Diagnostics,
+    diagnostics::Handler,
+    error::{Health, Outcome},
     lexer::Lexer,
     smallvec,
     span::{span, SourceFileIndex, SourceMap, Span},
 };
-use std::default::default;
+use std::{cell::RefCell, default::default, rc::Rc};
 
-// @Task don't map errors to unit!
 fn parse_expression(source: &str) -> Result<Expression> {
-    let mut warnings = Diagnostics::default();
-    let mut map = SourceMap::default();
+    let map = Rc::new(RefCell::new(SourceMap::default()));
     let file = map
+        .borrow_mut()
         .add(None, source.to_owned())
         .unwrap_or_else(|_| unreachable!());
-    let lexer = Lexer::new(&map[file], &mut warnings);
-    let (tokens, mut lexical_errors) = lexer.lex().map_err(|mut errors| errors.cancel())?;
-    if !lexical_errors.is_empty() {
-        lexical_errors.cancel();
+    let handler = Handler::silent();
+    let Outcome {
+        value: tokens,
+        health,
+    } = Lexer::new(map.borrow().get(file), &handler).lex()?;
+    let mut parser = Parser::new(file, &tokens, map, &handler);
+    let expression = parser.parse_expression();
+    if health.is_tainted() {
         return Err(());
     }
-    let mut parser = Parser::new(&map, file, &tokens, &mut warnings);
-    parser.parse_expression()
+    expression
 }
 
-// @Task don't map errors to unit!
 fn parse_declaration(source: &str) -> Result<Declaration> {
-    let mut warnings = Diagnostics::default();
-    let mut map = SourceMap::default();
+    let map = Rc::new(RefCell::new(SourceMap::default()));
     let file = map
+        .borrow_mut()
         .add(None, source.to_owned())
         .unwrap_or_else(|_| unreachable!());
-    let lexer = Lexer::new(&map[file], &mut warnings);
-    let (tokens, mut lexical_errors) = lexer.lex().map_err(|mut errors| errors.cancel())?;
-    if !lexical_errors.is_empty() {
-        lexical_errors.cancel();
+    let handler = Handler::silent();
+    let Outcome {
+        value: tokens,
+        health,
+    } = Lexer::new(map.borrow().get(file), &handler).lex()?;
+
+    let mut parser = Parser::new(file.clone(), &tokens, map, &handler);
+    let declaration = parser.parse(test_module_name());
+    if health == Health::Tainted {
         return Err(());
     }
-    let mut parser = Parser::new(&map, file.clone(), &tokens, &mut warnings);
-    parser
-        .parse(test_module_name())
-        .map_err(|mut errors| errors.cancel())
+    declaration
 }
 
 /// The name of the module returned by [parse_declaration].

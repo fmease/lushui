@@ -19,17 +19,18 @@ mod scope;
 
 use crate::{
     ast,
-    diagnostics::{Diagnostic, Diagnostics, Results, Warn},
+    diagnostics::{Diagnostic, Handler},
     entity::EntityKind,
-    error::{accumulate_errors, obtain, ManyErrExt, PossiblyErroneous, TransposeExt, TryIn},
+    error::{Health, PossiblyErroneous, Result},
     lowered_ast::{self, AttributeKeys, AttributeKind},
+    obtain,
 };
 use hir::{decl, expr, pat};
 pub use scope::{
     CrateIndex, CrateScope, DeBruijnIndex, Exposure, FunctionScope, Identifier, Index, Namespace,
 };
 use scope::{OnlyModule, OnlyValue, RegistrationError, RestrictedExposure, ValueOrModule};
-use std::{mem, rc::Rc};
+use std::rc::Rc;
 
 const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
 
@@ -51,12 +52,12 @@ enum Opacity {
 /// The state of the resolver.
 pub struct Resolver<'a> {
     scope: &'a mut CrateScope,
-    warnings: &'a mut Diagnostics,
+    handler: &'a Handler,
 }
 
 impl<'a> Resolver<'a> {
-    pub fn new(scope: &'a mut CrateScope, warnings: &'a mut Diagnostics) -> Self {
-        Self { scope, warnings }
+    pub fn new(scope: &'a mut CrateScope, handler: &'a Handler) -> Self {
+        Self { scope, handler }
     }
 
     /// Resolve the names of a declaration.
@@ -67,22 +68,22 @@ impl<'a> Resolver<'a> {
     pub fn resolve_declaration(
         &mut self,
         declaration: lowered_ast::Declaration,
-    ) -> Results<hir::Declaration> {
-        // @Note awkward manual error propagation, very error prone
-        // topic: horrible error handling APIs
+    ) -> Result<hir::Declaration> {
         self.start_resolve_declaration(&declaration, None, Context::default())
-            .map_err(|error| error.diagnostics(mem::take(&mut self.scope.duplicate_definitions)))?;
+            .map_err(|_| {
+                std::mem::take(&mut self.scope.duplicate_definitions)
+                    .into_iter()
+                    .for_each(|(_, error)| Diagnostic::from(error).emit(&self.handler));
+            })?;
 
-        self.scope.resolve_use_bindings();
+        self.scope.resolve_use_bindings(&self.handler);
 
         // @Task @Beacon don't return early here
-        self.scope.resolve_exposure_reaches()?;
+        self.scope.resolve_exposure_reaches(&self.handler)?;
 
-        let declaration = self
-            .finish_resolve_declaration(declaration, None, Context::default())
-            .try_in(&mut self.scope.errors);
+        let declaration = self.finish_resolve_declaration(declaration, None, Context::default());
 
-        self.scope.errors.take().err_or(declaration)
+        Result::from(self.scope.health).and(declaration)
     }
 
     /// Partially resolve a declaration merely registering declarations.
@@ -155,24 +156,32 @@ impl<'a> Resolver<'a> {
                 )?;
 
                 if let Some(constructors) = &data.constructors {
-                    constructors
-                        .iter()
-                        .map(|constructor| {
-                            let opacity = if declaration.attributes.has(AttributeKeys::OPAQUE) {
-                                Opacity::Opaque
-                            } else {
-                                Opacity::Transparent
-                            };
+                    // @Task awkward API: Result <-> Result<(), RegistrationError>
+                    let health =
+                        constructors
+                            .iter()
+                            .fold(Health::Untainted, |health, constructor| {
+                                let opacity =
+                                    match declaration.attributes.has(AttributeKeys::OPAQUE) {
+                                        true => Opacity::Opaque,
+                                        false => Opacity::Transparent,
+                                    };
 
-                            self.start_resolve_declaration(
-                                constructor,
-                                Some(module),
-                                Context {
-                                    parent_data_binding: Some((namespace, Some(opacity))),
-                                },
-                            )
-                        })
-                        .transpose()?;
+                                health
+                                    & self
+                                        .start_resolve_declaration(
+                                            constructor,
+                                            Some(module),
+                                            Context {
+                                                parent_data_binding: Some((
+                                                    namespace,
+                                                    Some(opacity),
+                                                )),
+                                            },
+                                        )
+                                        .map_err(|_| ())
+                            });
+                    return Result::from(health).map_err(|()| RegistrationError::Unrecoverable);
                 }
             }
             Constructor(constructor) => {
@@ -227,13 +236,22 @@ impl<'a> Resolver<'a> {
                     module,
                 )?;
 
-                submodule
-                    .declarations
-                    .iter()
-                    .map(|declaration| {
-                        self.start_resolve_declaration(declaration, Some(index), Context::default())
-                    })
-                    .transpose()?;
+                // @Note awkward API
+                let health =
+                    submodule
+                        .declarations
+                        .iter()
+                        .fold(Health::Untainted, |health, declaration| {
+                            health
+                                & self
+                                    .start_resolve_declaration(
+                                        declaration,
+                                        Some(index),
+                                        Context::default(),
+                                    )
+                                    .map_err(|_| ())
+                        });
+                return Result::from(health).map_err(|()| RegistrationError::Unrecoverable);
             }
             Use(use_) => {
                 let module = module.unwrap();
@@ -266,7 +284,7 @@ impl<'a> Resolver<'a> {
         declaration: lowered_ast::Declaration,
         module: Option<CrateIndex>,
         context: Context,
-    ) -> Results<hir::Declaration> {
+    ) -> Result<hir::Declaration> {
         use lowered_ast::DeclarationKind::*;
 
         Ok(match declaration.kind {
@@ -287,16 +305,13 @@ impl<'a> Resolver<'a> {
                     .scope
                     .reobtain_resolved_identifier::<OnlyValue>(&value.binder, module);
 
-                let (type_annotation, expression) =
-                    accumulate_errors!(type_annotation, expression)?;
-
                 decl! {
                     Value {
                         declaration.attributes,
                         declaration.span;
+                        type_annotation: type_annotation?,
+                        expression: expression?,
                         binder,
-                        type_annotation,
-                        expression,
                     }
                 }
             }
@@ -328,16 +343,13 @@ impl<'a> Resolver<'a> {
                         .collect()
                 });
 
-                let (type_annotation, constructors) =
-                    accumulate_errors!(type_annotation, constructors.transpose())?;
-
                 decl! {
                     Data {
                         declaration.attributes,
                         declaration.span;
+                        constructors: constructors.transpose()?,
+                        type_annotation: type_annotation?,
                         binder,
-                        constructors,
-                        type_annotation,
                     }
                 }
             }
@@ -371,17 +383,26 @@ impl<'a> Resolver<'a> {
                     None => self.scope.root(),
                 };
 
+                let mut health = Health::Untainted;
+
+                // @Note awkward API
                 let declarations = submodule
                     .declarations
                     .into_iter()
-                    .map(|declaration| {
-                        self.finish_resolve_declaration(
+                    .flat_map(|declaration| {
+                        let declaration = self.finish_resolve_declaration(
                             declaration,
                             Some(index),
                             Context::default(),
-                        )
+                        );
+                        if declaration.is_err() {
+                            health.taint();
+                        }
+                        declaration
                     })
-                    .transpose()?;
+                    .collect();
+
+                Result::from(health)?;
 
                 decl! {
                     Module {
@@ -420,49 +441,43 @@ impl<'a> Resolver<'a> {
         &mut self,
         expression: lowered_ast::Expression,
         scope: &FunctionScope<'_>,
-    ) -> Results<hir::Expression> {
+    ) -> Result<hir::Expression> {
         use lowered_ast::ExpressionKind::*;
-
-        let mut errors = Diagnostics::default();
 
         let expression = match expression.kind {
             PiType(pi) => {
-                let (domain, codomain) = accumulate_errors!(
-                    self.resolve_expression(pi.domain.clone(), scope),
-                    match pi.parameter.clone() {
-                        Some(parameter) => self.resolve_expression(
-                            pi.codomain.clone(),
-                            &scope.extend_with_parameter(parameter),
-                        ),
-                        None => self.resolve_expression(pi.codomain.clone(), scope),
-                    },
-                )?;
+                let domain = self.resolve_expression(pi.domain.clone(), scope);
+                let codomain = match pi.parameter.clone() {
+                    Some(parameter) => self.resolve_expression(
+                        pi.codomain.clone(),
+                        &scope.extend_with_parameter(parameter),
+                    ),
+                    None => self.resolve_expression(pi.codomain.clone(), scope),
+                };
 
                 return Ok(expr! {
                     PiType {
                         expression.attributes,
                         expression.span;
+                        domain: domain?,
+                        codomain: codomain?,
                         explicitness: pi.explicitness,
                         aspect: pi.aspect,
                         parameter: pi.parameter.clone()
                             .map(|parameter| Identifier::new(Index::DeBruijnParameter, parameter.clone())),
-                        domain,
-                        codomain,
                     }
                 });
             }
             Application(application) => {
-                let (callee, argument) = accumulate_errors!(
-                    self.resolve_expression(application.callee.clone(), scope),
-                    self.resolve_expression(application.argument.clone(), scope),
-                )?;
+                let callee = self.resolve_expression(application.callee.clone(), scope);
+                let argument = self.resolve_expression(application.argument.clone(), scope);
 
                 return Ok(expr! {
                     Application {
                         expression.attributes,
                         expression.span;
-                        callee,
-                        argument,
+                        callee: callee?,
+                        argument: argument?,
                         explicitness: application.explicitness,
                     }
                 });
@@ -474,35 +489,42 @@ impl<'a> Resolver<'a> {
                 Binding {
                     expression.attributes,
                     expression.span;
-                    binder: scope.resolve_binding(&binding.binder, &self.scope).many_err()?,
+                    binder: scope.resolve_binding(&binding.binder, &self.scope, &self.handler)?,
                 }
             },
-            // @Task @Beacon @Beacon don't use try_in here: you don't need to: use
-            // accumulate_err, the stuff here is independent! right??
-            Lambda(lambda) => expr! {
-                Lambda {
-                    expression.attributes,
-                    expression.span;
-                    parameter: Identifier::new(Index::DeBruijnParameter, lambda.parameter.clone()),
-                    parameter_type_annotation: lambda.parameter_type_annotation.clone()
-                        .map(|type_| self.resolve_expression(type_, scope)
-                            .try_in(&mut errors)),
-                    body_type_annotation: lambda.body_type_annotation.clone()
-                        .map(|type_| self.resolve_expression(type_,
-                            &scope.extend_with_parameter(lambda.parameter.clone()))
-                            .try_in(&mut errors)),
-                    body: self.resolve_expression(lambda.body.clone(),
-                        &scope.extend_with_parameter(lambda.parameter.clone()))
-                        .try_in(&mut errors),
-                    explicitness: lambda.explicitness,
-                    laziness: lambda.laziness,
+            Lambda(lambda) => {
+                let parameter_type_annotation = lambda
+                    .parameter_type_annotation
+                    .clone()
+                    .map(|type_| self.resolve_expression(type_, scope));
+                let body_type_annotation = lambda.body_type_annotation.clone().map(|type_| {
+                    self.resolve_expression(
+                        type_,
+                        &scope.extend_with_parameter(lambda.parameter.clone()),
+                    )
+                });
+                let body = self.resolve_expression(
+                    lambda.body.clone(),
+                    &scope.extend_with_parameter(lambda.parameter.clone()),
+                );
+
+                expr! {
+                    Lambda {
+                        expression.attributes,
+                        expression.span;
+                        parameter: Identifier::new(Index::DeBruijnParameter, lambda.parameter.clone()),
+                        parameter_type_annotation: parameter_type_annotation.transpose()?,
+                        body_type_annotation: body_type_annotation.transpose()?,
+                        body: body?,
+                        explicitness: lambda.explicitness,
+                        laziness: lambda.laziness,
+                    }
                 }
-            },
+            }
             UseIn => {
-                return Err(
-                    Diagnostic::unimplemented("use/in expression").with_primary_span(&expression)
-                )
-                .many_err()
+                return Err(Diagnostic::unimplemented("use/in expression")
+                    .primary_span(&expression)
+                    .emit(&self.handler));
             }
             CaseAnalysis(analysis) => {
                 let subject = self.resolve_expression(analysis.subject.clone(), scope)?;
@@ -530,14 +552,14 @@ impl<'a> Resolver<'a> {
             Error => PossiblyErroneous::error(),
         };
 
-        errors.err_or(expression)
+        Ok(expression)
     }
 
     fn resolve_pattern(
         &mut self,
         pattern: lowered_ast::Pattern,
         scope: &FunctionScope<'_>,
-    ) -> Results<(hir::Pattern, Vec<ast::Identifier>)> {
+    ) -> Result<(hir::Pattern, Vec<ast::Identifier>)> {
         use lowered_ast::PatternKind::*;
 
         let mut binders = Vec::new();
@@ -549,7 +571,7 @@ impl<'a> Resolver<'a> {
                 Binding {
                     pattern.attributes,
                     pattern.span;
-                    binder: scope.resolve_binding(&binding.binder, &self.scope).many_err()?,
+                    binder: scope.resolve_binding(&binding.binder, &self.scope, &self.handler)?,
                 }
             },
             Binder(binder) => {
@@ -563,10 +585,11 @@ impl<'a> Resolver<'a> {
                 }
             }
             Deapplication(deapplication) => {
-                let ((callee, mut callee_binders), (argument, mut argument_binders)) = accumulate_errors!(
-                    self.resolve_pattern(deapplication.callee.clone(), scope),
-                    self.resolve_pattern(deapplication.argument.clone(), scope),
-                )?;
+                let callee = self.resolve_pattern(deapplication.callee.clone(), scope);
+                let argument = self.resolve_pattern(deapplication.argument.clone(), scope);
+
+                let (callee, mut callee_binders) = callee?;
+                let (argument, mut argument_binders) = argument?;
 
                 binders.append(&mut callee_binders);
                 binders.append(&mut argument_binders);
@@ -584,12 +607,6 @@ impl<'a> Resolver<'a> {
         };
 
         Ok((pattern, binders))
-    }
-}
-
-impl Warn for Resolver<'_> {
-    fn diagnostics(&mut self) -> &mut Diagnostics {
-        &mut self.warnings
     }
 }
 

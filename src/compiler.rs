@@ -16,7 +16,6 @@ use std::default::default;
 use indexed_vec::IndexVec;
 
 use crate::{
-    diagnostics::Result,
     grow_array::GrowArray,
     hir::{self, Declaration, Expression},
     lowered_ast::AttributeKeys,

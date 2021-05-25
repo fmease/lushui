@@ -2,8 +2,9 @@
 
 use super::{ffi, Expression, Substitution::Shift};
 use crate::{
-    diagnostics::{Code, Diagnostic, Result},
+    diagnostics::{Code, Diagnostic, Handler},
     entity::EntityKind,
+    error::Result,
     format::AsDebug,
     hir::expr,
     lowered_ast::{Attributes, Number},
@@ -47,6 +48,7 @@ impl CrateScope {
         &self,
         binder: Identifier,
         arguments: Vec<Expression>,
+        handler: &Handler,
     ) -> Result<Option<Expression>> {
         match self.bindings[binder.crate_index().unwrap()].kind {
             EntityKind::Foreign {
@@ -63,7 +65,7 @@ impl CrateScope {
                     }
                 }
 
-                Some(function(value_arguments).into_expression(self)?)
+                Some(function(value_arguments).into_expression(self, handler)?)
             } else {
                 None
             }),
@@ -71,7 +73,7 @@ impl CrateScope {
         }
     }
 
-    pub fn carry_out(&mut self, registration: Registration) -> Result {
+    pub fn carry_out(&mut self, registration: Registration, handler: &Handler) -> Result {
         use Registration::*;
 
         Ok(match registration {
@@ -133,10 +135,12 @@ impl CrateScope {
                     },
                     None => {
                         // @Task better message
-                        return Err(Diagnostic::error()
-                            .with_code(Code::E060)
-                            .with_message(format!("foreign binding `{}` is not registered", binder))
-                            .with_primary_span(&binder));
+                        Diagnostic::error()
+                            .code(Code::E060)
+                            .message(format!("foreign binding `{}` is not registered", binder))
+                            .primary_span(&binder)
+                            .emit(handler);
+                        return Err(());
                     }
                 };
             }
@@ -147,13 +151,12 @@ impl CrateScope {
                     }
                     Some(Some(_)) => unreachable!(),
                     None => {
-                        return Err(Diagnostic::error()
-                            .with_code(Code::E060)
-                            .with_message(format!(
-                                "foreign data type `{}` is not registered",
-                                binder
-                            ))
-                            .with_primary_span(&binder))
+                        Diagnostic::error()
+                            .code(Code::E060)
+                            .message(format!("foreign data type `{}` is not registered", binder))
+                            .primary_span(&binder)
+                            .emit(handler);
+                        return Err(());
                     }
                 }
             }
@@ -197,15 +200,20 @@ impl CrateScope {
         &self,
         binder: &'static str,
         expression_span: Option<Span>,
+        handler: &Handler,
     ) -> Result<Expression> {
         match self.ffi.foreign_types.get(binder) {
             Some(Some(binder)) => Ok(binder.clone().to_expression()),
-            Some(None) => Err(Diagnostic::error()
-                .with_code(Code::E061)
-                .with_message(format!("foreign type `{}` is not defined", binder))
-                .when_some(expression_span, |diagnostic, span| {
-                    diagnostic.with_labeled_primary_span(span, "the type of this expression")
-                })),
+            Some(None) => {
+                Diagnostic::error()
+                    .code(Code::E061)
+                    .message(format!("foreign type `{}` is not defined", binder))
+                    .when_some(expression_span, |diagnostic, span| {
+                        diagnostic.labeled_primary_span(span, "the type of this expression")
+                    })
+                    .emit(handler);
+                Err(())
+            }
             None => unreachable!(),
         }
     }
@@ -214,6 +222,7 @@ impl CrateScope {
         &self,
         number: &Number,
         expression_span: Option<Span>,
+        handler: &Handler,
     ) -> Result<Expression> {
         self.lookup_foreign_type(
             match number {
@@ -225,46 +234,59 @@ impl CrateScope {
                 Number::Int64(_) => ffi::Type::INT64,
             },
             expression_span,
+            handler,
         )
     }
 
-    pub fn lookup_unit_type(&self, expression_span: Option<Span>) -> Result<Expression> {
+    pub fn lookup_unit_type(
+        &self,
+        expression_span: Option<Span>,
+        handler: &Handler,
+    ) -> Result<Expression> {
         Ok(self
             .ffi
             .inherent_types
             .unit
             .clone()
-            .ok_or_else(|| undefined_inherent_type("Unit", expression_span))?
+            .ok_or_else(|| undefined_inherent_type("Unit", expression_span).emit(handler))?
             .to_expression())
     }
 
-    pub fn lookup_bool_type(&self, expression_span: Option<Span>) -> Result<Expression> {
+    pub fn lookup_bool_type(
+        &self,
+        expression_span: Option<Span>,
+        handler: &Handler,
+    ) -> Result<Expression> {
         Ok(self
             .ffi
             .inherent_types
             .bool
             .clone()
-            .ok_or_else(|| undefined_inherent_type("Bool", expression_span))?
+            .ok_or_else(|| undefined_inherent_type("Bool", expression_span).emit(handler))?
             .to_expression())
     }
 
-    pub fn lookup_option_type(&self, expression_span: Option<Span>) -> Result<Expression> {
+    pub fn lookup_option_type(
+        &self,
+        expression_span: Option<Span>,
+        handler: &Handler,
+    ) -> Result<Expression> {
         Ok(self
             .ffi
             .inherent_types
             .option
             .clone()
-            .ok_or_else(|| undefined_inherent_type("Option", expression_span))?
+            .ok_or_else(|| undefined_inherent_type("Option", expression_span).emit(handler))?
             .to_expression())
     }
 }
 
 fn undefined_inherent_type(name: &'static str, expression_span: Option<Span>) -> Diagnostic {
     Diagnostic::error()
-        .with_code(Code::E063)
-        .with_message(format!("inherent type `{}` is not defined", name))
+        .code(Code::E063)
+        .message(format!("inherent type `{}` is not defined", name))
         .when_some(expression_span, |diagnostic, span| {
-            diagnostic.with_labeled_primary_span(span, "the type of this expression")
+            diagnostic.labeled_primary_span(span, "the type of this expression")
         })
 }
 

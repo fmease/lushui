@@ -428,7 +428,10 @@ const START_OF_FIRST_SOURCE_FILE: ByteIndex = ByteIndex::new(1);
 mod source_map {
     use super::{ByteIndex, Error, LocalByteIndex, LocalSpan, SourceFile, Span};
     use indexed_vec::IndexVec;
-    use std::path::{Path, PathBuf};
+    use std::{
+        borrow::Borrow,
+        path::{Path, PathBuf},
+    };
     use unicode_width::UnicodeWidthStr;
 
     /// A mapping from an index or offset to source files.
@@ -437,6 +440,7 @@ mod source_map {
     // @Task use indices to enable unloading source file when they are not needed
     #[derive(Default)]
     pub struct SourceMap {
+        // @Task do Rc<RefCell<_>>
         files: IndexVec<SourceFileIndex, SourceFile>,
     }
 
@@ -480,50 +484,53 @@ mod source_map {
                 .push(SourceFile::new(path, source, self.next_offset()?)?))
         }
 
+        pub fn get(&self, index: SourceFileIndex) -> &SourceFile {
+            // Ref::map(self.files.borrow(), |files| &files[index])
+            &self.files.borrow()[index]
+        }
+
         /// Panics if span is a sham.
-        fn resolve_span_to_file(&self, span: Span) -> &SourceFile {
+        // @Task do binary search (by span)
+        fn file_from_span(&self, span: Span) -> &SourceFile {
             debug_assert!(span != Span::SHAM);
 
             self.files
                 .iter()
                 .find(|file| file.span.contains_index(span.start))
                 .unwrap()
-
-            // @Bug panics @Beacon @Task find out why and adjust
-            // let index = self
-            //     .files
-            //     .binary_search_by(|file| file.span.cmp(&span))
-            //     .unwrap();
-
-            // self.files[index].clone()
         }
 
         /// Resolve a span to the string content it points to.
         ///
         /// This treats line breaks verbatim.
-        pub fn resolve_span_to_snippet(&self, span: Span) -> &str {
-            let file = self.resolve_span_to_file(span);
+        pub fn snippet_from_span(&self, span: Span) -> &str {
+            let file = self.file_from_span(span);
             let span = LocalSpan::global(&file, span);
             &file[span]
         }
 
-        // @Task improve documentation, @Note bad name of the method
         /// Resolve a span to various information useful for highlighting.
         ///
         /// This procedure is line-break-aware.
-        pub fn resolve_span(&self, span: Span) -> ResolvedSpan<'_> {
-            let file = self.resolve_span_to_file(span);
+        // @Task update docs
+        pub fn lines_from_span(&self, span: Span) -> Lines<'_> {
+            let file = self.file_from_span(span);
             let span = LocalSpan::global(&file, span);
 
             let mut first_line = None;
             let mut final_line = None;
 
-            let mut line = Line {
+            let mut line = InterimLine {
                 number: 1,
                 start: None,
                 end: None,
                 highlight: None,
             };
+
+            struct Highlight {
+                start: LocalByteIndex,
+                end: Option<LocalByteIndex>,
+            }
 
             for (index, character) in file
                 .content()
@@ -566,7 +573,7 @@ mod source_map {
 
                             first_line = Some(line);
 
-                            line = Line {
+                            line = InterimLine {
                                 number,
                                 start: None,
                                 end: None,
@@ -587,28 +594,29 @@ mod source_map {
                 }
             }
 
-            struct Line {
+            struct InterimLine {
                 number: u32,
                 start: Option<LocalByteIndex>,
                 end: Option<LocalByteIndex>,
                 highlight: Option<Highlight>,
             }
 
-            impl Line {
-                fn extract_information(self, file: &SourceFile) -> Option<LineInformation<'_>> {
+            impl InterimLine {
+                fn resolve(self, file: &SourceFile) -> Option<Line<'_>> {
                     let start = self.start?;
                     let highlight = self.highlight?;
 
-                    // @Question should we instead map all 0s to 1s?
                     let highlight_width =
                         match &file[LocalSpan::new(highlight.start, highlight.end?)] {
                             "\n" => 1,
                             snippet => snippet.width(),
                         };
 
-                    Some(LineInformation {
+                    let end = self.end?;
+
+                    Some(Line {
                         number: self.number,
-                        content: &file[LocalSpan::new(start, self.end?)],
+                        content: &file[LocalSpan::new(start, end)],
                         highlight_width,
                         highlight_prefix_width: if start < highlight.start {
                             file[LocalSpan::new(start, highlight.start - 1)].width()
@@ -620,15 +628,10 @@ mod source_map {
                 }
             }
 
-            struct Highlight {
-                start: LocalByteIndex,
-                end: Option<LocalByteIndex>,
-            }
-
-            ResolvedSpan {
-                path: file.path.as_ref().unwrap(),
-                first_line: first_line.unwrap().extract_information(file).unwrap(),
-                final_line: final_line.map(|line| line.extract_information(file).unwrap()),
+            Lines {
+                path: file.path.as_deref().unwrap(),
+                first_line: first_line.unwrap().resolve(file).unwrap(),
+                final_line: final_line.map(|line| line.resolve(file).unwrap()),
             }
         }
     }
@@ -646,24 +649,16 @@ mod source_map {
         }
     }
 
-    impl std::ops::Index<SourceFileIndex> for SourceMap {
-        type Output = SourceFile;
-
-        fn index(&self, index: SourceFileIndex) -> &Self::Output {
-            &self.files[index]
-        }
-    }
-
     #[derive(Debug)]
-    pub struct ResolvedSpan<'a> {
+    pub struct Lines<'a> {
         pub path: &'a Path,
-        pub first_line: LineInformation<'a>,
+        pub first_line: Line<'a>,
         /// This is `None` if the last is the first line.
-        pub final_line: Option<LineInformation<'a>>,
+        pub final_line: Option<Line<'a>>,
     }
 
     #[derive(Debug)]
-    pub struct LineInformation<'a> {
+    pub struct Line<'a> {
         pub number: u32,
         /// The content of the entire line that contains the to-be-highlighted snippet.
         ///
@@ -754,6 +749,6 @@ impl Error {
 
 impl From<Error> for Diagnostic {
     fn from(error: Error) -> Self {
-        Diagnostic::error().with_message(error.message(None))
+        Diagnostic::error().message(error.message(None))
     }
 }

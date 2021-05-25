@@ -32,7 +32,7 @@ pub mod ast;
 mod test;
 
 use crate::{
-    diagnostics::{Code, Diagnostic, Diagnostics, Results, Warn},
+    diagnostics::{Code, Diagnostic, Handler},
     format::{ordered_listing, Conjunction},
     lexer::{Token, TokenKind},
     smallvec,
@@ -40,7 +40,7 @@ use crate::{
     SmallVec,
 };
 use ast::*;
-use std::{cell::RefCell, convert::TryInto, default::default};
+use std::{cell::RefCell, convert::TryInto, default::default, rc::Rc};
 
 type Result<T = (), E = ()> = std::result::Result<T, E>;
 
@@ -58,31 +58,28 @@ const BRACKET_POTENTIAL_PI_TYPE_LITERAL: &str =
 
 /// The state of the parser.
 pub struct Parser<'a> {
-    map: &'a SourceMap,
     file: SourceFileIndex,
     tokens: &'a [Token],
-    // @Task make it a RefCell, too
-    warnings: &'a mut Diagnostics,
-    errors: RefCell<Diagnostics>,
     reflection_depth: u16,
     index: usize,
+    map: Rc<RefCell<SourceMap>>,
+    handler: &'a Handler,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(
-        map: &'a SourceMap,
         file: SourceFileIndex,
         tokens: &'a [Token],
-        warnings: &'a mut Diagnostics,
+        map: Rc<RefCell<SourceMap>>,
+        handler: &'a Handler,
     ) -> Self {
         Self {
-            map,
             file,
             tokens,
-            warnings,
-            errors: default(),
             reflection_depth: 0,
             index: 0,
+            map,
+            handler,
         }
     }
 
@@ -114,7 +111,7 @@ impl<'a> Parser<'a> {
     fn error<T, D: FnOnce() -> Diagnostic>(&self, diagnostic: D) -> Result<T> {
         fn error<D: FnOnce() -> Diagnostic>(parser: &Parser<'_>, diagnostic: D) -> Result<!> {
             if !parser.reflecting() {
-                parser.errors.borrow_mut().insert(diagnostic());
+                diagnostic().emit(&parser.handler);
             }
 
             Err(())
@@ -382,7 +379,7 @@ impl<'a> Parser<'a> {
                 return self.error(|| {
                     expected_one_of![Identifier, OpeningRoundBracket]
                         .but_actual_is(self.current_token())
-                        .with_note("`@` introduces attributes")
+                        .note("`@` introduces attributes")
                 });
             }
         }
@@ -629,8 +626,8 @@ impl<'a> Parser<'a> {
     /// Parse a file module.
     ///
     /// It takes the identifier of the module as an argument.
-    pub fn parse(&mut self, binder: Identifier) -> Results<Declaration> {
-        self.parse_top_level(binder).map_err(|_| self.errors.take())
+    pub fn parse(&mut self, binder: Identifier) -> Result<Declaration> {
+        self.parse_top_level(binder)
     }
 
     /// Parse the "top level" aka the body of a module file.
@@ -656,7 +653,7 @@ impl<'a> Parser<'a> {
                 break Ok(decl! {
                     Module {
                         Attributes::new(),
-                        self.map[self.file].span;
+                        self.map.borrow().get(self.file).span;
                         binder,
                         file: self.file,
                         declarations: Some(declarations)
@@ -958,7 +955,7 @@ impl<'a> Parser<'a> {
             self.error(|| {
                 Expected::Token(ThinArrowRight)
                     .but_actual_is(self.current_token())
-                    .with_labeled_secondary_span(domain, "the start of a pi type literal")
+                    .labeled_secondary_span(domain, "the start of a pi type literal")
             })
         }
     }
@@ -1124,7 +1121,7 @@ impl<'a> Parser<'a> {
                         // parsing w/o introducing too many (any?) useless/confusing consequential
                         // errors!
                         .when(self.current_token().kind == ThinArrowRight, |this| {
-                            this.with_help(BRACKET_POTENTIAL_PI_TYPE_LITERAL)
+                            this.help(BRACKET_POTENTIAL_PI_TYPE_LITERAL)
                         })
                 });
             }
@@ -1591,11 +1588,11 @@ impl<'a> Parser<'a> {
 
                 self.error(|| expected_one_of![Expected::Expression, Equals]
                     .but_actual_is(token)
-                    .with_labeled_secondary_span(
+                    .labeled_secondary_span(
                         &argument,
                         format!("this is treated as {explicitness} function argument,\nnot as the domain of a pi type literal"),
                     )
-                    .with_help(BRACKET_POTENTIAL_PI_TYPE_LITERAL))?;
+                    .help(BRACKET_POTENTIAL_PI_TYPE_LITERAL))?;
             }
 
             let span = callee.span().merge(&argument);
@@ -1749,12 +1746,6 @@ impl<'a> Parser<'a> {
     }
 }
 
-impl Warn for Parser<'_> {
-    fn diagnostics(&mut self) -> &mut Diagnostics {
-        &mut self.warnings
-    }
-}
-
 /// Abstraction over expressions and patterns.
 // @Task consider replacing this with an enum
 trait ExpressionOrPattern: Sized + Spanning + std::fmt::Debug {
@@ -1855,8 +1846,8 @@ fn delimiters_with_expected(
 impl Expected {
     fn but_actual_is(self, actual: &Token) -> Diagnostic {
         Diagnostic::error()
-            .with_code(Code::E010)
-            .with_message(format!(
+            .code(Code::E010)
+            .message(format!(
                 "found {}, but expected {}",
                 match actual.kind {
                     kind @ TokenKind::Illegal => {
@@ -1867,7 +1858,7 @@ impl Expected {
                 },
                 self
             ))
-            .with_labeled_primary_span(actual, "unexpected token")
+            .labeled_primary_span(actual, "unexpected token")
     }
 }
 

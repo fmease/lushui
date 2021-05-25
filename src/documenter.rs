@@ -5,11 +5,10 @@
 
 use crate::{
     ast::{Declaration, DeclarationKind},
-    diagnostics::Diagnostics,
     span::SourceMap,
 };
-use std::io::Result;
 use std::io::Write;
+use std::{cell::RefCell, io::Result, rc::Rc};
 // use v_htmlescape::escape;
 // use typed_html::{dom::DOMTree, html, text};
 
@@ -21,18 +20,13 @@ use std::io::Write;
 // @Task so it's a must to add some options to the Desugarer
 
 pub struct Documenter<'a, W: Write> {
-    map: &'a SourceMap,
-    warnings: &'a mut Diagnostics,
+    map: Rc<RefCell<SourceMap>>,
     output: &'a mut W,
 }
 
 impl<'a, W: Write> Documenter<'a, W> {
-    pub fn new(output: &'a mut W, map: &'a SourceMap, warnings: &'a mut Diagnostics) -> Self {
-        Self {
-            map,
-            warnings,
-            output,
-        }
+    pub fn new(output: &'a mut W, map: Rc<RefCell<SourceMap>>) -> Self {
+        Self { map, output }
     }
 
     pub fn document(mut self, declaration: &Declaration) -> Result<()> {
@@ -62,7 +56,8 @@ impl<'a, W: Write> Documenter<'a, W> {
                         self.output,
                         "{}",
                         self.map
-                            .resolve_span_to_snippet(attribute.span.trim_start(2))
+                            .borrow()
+                            .snippet_from_span(attribute.span.trim_start(2))
                     )?;
                 }
                 write!(self.output, "</div>")?;

@@ -43,7 +43,6 @@
     const_panic,
     map_first_last,
     stmt_expr_attributes,
-    map_into_keys_values,
     format_args_capture,
     associated_type_bounds,
     label_break_value
@@ -95,26 +94,36 @@ fn has_file_extension(path: &Path, required_extension: &str) -> bool {
     path.extension().and_then(|extension| extension.to_str()) == Some(required_extension)
 }
 
-use diagnostics::Diagnostic;
+use diagnostics::{Diagnostic, Handler};
 
-pub fn parse_crate_name(file: impl AsRef<Path>) -> Result<ast::Identifier, Diagnostic> {
+pub fn parse_crate_name(
+    file: impl AsRef<Path>,
+    handler: &Handler,
+) -> Result<ast::Identifier, Diagnostic> {
     let file = file.as_ref();
 
     if !has_file_extension(file, FILE_EXTENSION) {
-        let _ = Diagnostic::warning()
-            .with_message("missing or non-standard file extension")
-            .emit_to_stderr(None);
+        Diagnostic::warning()
+            .message("missing or non-standard file extension")
+            .emit(handler);
     }
 
     // @Question does unwrap ever fail in a real-world example?
     let stem = file.file_stem().unwrap();
 
     let atom = (|| lexer::parse_identifier(stem.to_str()?.to_owned()))().ok_or_else(|| {
-        Diagnostic::error().with_message(format!(
+        Diagnostic::error().message(format!(
             "`{}` is not a valid crate name",
             stem.to_string_lossy()
         ))
     })?;
 
     Ok(ast::Identifier::new(atom, span::Span::SHAM))
+}
+
+macro obtain($expr:expr, $( $pat:pat )|+ $( if $guard:expr )? $(,)? => $mapping:expr) {
+    match $expr {
+        $( $pat )|+ $( if $guard )? => Some($mapping),
+        _ => None
+    }
 }

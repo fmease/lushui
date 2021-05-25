@@ -1,5 +1,5 @@
 use crate::{
-    diagnostics::{Code, Diagnostic, Result},
+    diagnostics::{Code, Diagnostic},
     span::{Span, Spanning},
     Atom,
 };
@@ -67,7 +67,7 @@ impl Token {
     }
 
     /// Unwrap the data of a [TextLiteral].
-    pub fn text_literal(self) -> Option<Result<String>> {
+    pub fn text_literal(self) -> Option<Result<String, Diagnostic>> {
         match self.data {
             TokenData::TextLiteral {
                 content: text,
@@ -76,9 +76,9 @@ impl Token {
                 Ok(text)
             } else {
                 Err(Diagnostic::error()
-                    .with_code(Code::E004)
-                    .with_message("unterminated text literal")
-                    .with_primary_span(self.span))
+                    .code(Code::E004)
+                    .message("unterminated text literal")
+                    .primary_span(self.span))
             }),
             _ => None,
         }

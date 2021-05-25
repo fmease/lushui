@@ -7,8 +7,8 @@ mod format;
 
 use crate::{
     ast::{self, Explicitness, Identifier, ParameterAspect, Path},
-    diagnostics::{Code, Diagnostic, Results},
-    error::{ManyErrExt, PossiblyErroneous},
+    diagnostics::{Code, Diagnostic, Handler},
+    error::{PossiblyErroneous, Result},
     span::{PossiblySpanning, SourceFileIndex, Span, Spanned, Spanning},
 };
 use std::rc::Rc;
@@ -169,7 +169,8 @@ pub trait AttributeTarget: Spanning {
     fn as_attribute_targets(&self) -> AttributeTargets;
 
     /// Target-specific attribute checks
-    fn check_attributes(&self, _attributes: &Attributes) -> Results {
+    // @Note weird API
+    fn check_attributes(&self, _attributes: &Attributes, _handler: &Handler) -> Result {
         Ok(())
     }
 }
@@ -204,7 +205,7 @@ impl AttributeTarget for ast::Declaration {
         }
     }
 
-    fn check_attributes(&self, attributes: &Attributes) -> Results {
+    fn check_attributes(&self, attributes: &Attributes, handler: &Handler) -> Result {
         use ast::DeclarationKind::*;
 
         let (body, binder) = match &self.kind {
@@ -225,27 +226,26 @@ impl AttributeTarget for ast::Declaration {
 
         match (body, attributes.has(AttributeKeys::FOREIGN)) {
             (None, false) => Err(Diagnostic::error()
-                .with_code(Code::E012)
-                .with_message(format!("declaration `{}` has no definition", binder))
-                .with_primary_span(self)
-                .with_help("provide a definition with `=`")),
+                .code(Code::E012)
+                .message(format!("declaration `{}` has no definition", binder))
+                .primary_span(self)
+                .help("provide a definition with `=`")
+                .emit(handler)),
             (Some(body), true) => Err(Diagnostic::error()
-                .with_code(Code::E020)
-                .with_message(format!(
+                .code(Code::E020)
+                .message(format!(
                     "`{}` is defined multiple times in this scope",
                     binder
                 ))
-                .with_labeled_primary_span(&body, "conflicting definition")
-                .with_labeled_secondary_span(
+                .labeled_primary_span(&body, "conflicting definition")
+                .labeled_secondary_span(
                     attributes.filter(AttributeKeys::FOREIGN).next().unwrap(),
                     "conflicting definition",
                 )
-                .with_note(
-                    "declaration is marked `foreign` but it also has a body introduced by `=`",
-                )),
+                .note("declaration is marked `foreign` but it also has a body introduced by `=`")
+                .emit(handler)),
             _ => Ok(()),
         }
-        .many_err()
     }
 }
 
@@ -453,10 +453,10 @@ impl PossiblyErroneous for Attributes {
 pub type Attribute = Spanned<AttributeKind>;
 
 impl Attribute {
-    pub fn parse(attribute: &ast::Attribute) -> Results<Self> {
+    pub fn parse(attribute: &ast::Attribute, handler: &Handler) -> Result<Self> {
         Ok(Attribute::new(
             attribute.span,
-            AttributeKind::parse(attribute)?,
+            AttributeKind::parse(attribute, handler)?,
         ))
     }
 

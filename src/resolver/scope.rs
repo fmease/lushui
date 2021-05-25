@@ -14,12 +14,12 @@
 
 // @Task don't report similarily named *private* bindings!
 // @Task recognize leaks of private types!
-// @Task add tests around exposure!!!
 
 use crate::{
     ast::{self, Path},
-    diagnostics::{Code, Diagnostic, Diagnostics, Result, Results},
+    diagnostics::{Code, Diagnostic, Handler},
     entity::{Entity, EntityKind},
+    error::{Health, Result},
     format::{unordered_listing, AsDebug, Conjunction, DisplayWith, QuoteExt},
     smallvec,
     span::{Span, Spanning},
@@ -28,7 +28,7 @@ use crate::{
 };
 use indexed_vec::IndexVec;
 use joinery::JoinableIterator;
-use std::{cell::RefCell, cmp::Ordering, fmt, iter::once, mem::take, usize};
+use std::{cell::RefCell, cmp::Ordering, fmt, mem::take, usize};
 
 type Bindings = IndexVec<CrateIndex, Entity>;
 
@@ -49,7 +49,7 @@ pub struct CrateScope {
     partially_resolved_use_bindings_grouped: Vec<HashSet<CrateIndex>>,
     /// For error reporting.
     pub(super) duplicate_definitions: HashMap<CrateIndex, DuplicateDefinition>,
-    pub(super) errors: Diagnostics,
+    pub(super) health: Health,
     pub(crate) ffi: ffi::Scope,
     // @Note this is very coarse-grained: as soon as we cannot resolve EITHER type annotation (for example)
     // OR actual value(s), we bail out and add this here. This might be too conversative (leading to more
@@ -170,6 +170,7 @@ impl CrateScope {
         &self,
         path: &Path,
         namespace: CrateIndex,
+        handler: &Handler,
     ) -> Result<Target::Output, ResolutionError> {
         self.resolve_path_with_origin::<Target>(
             path,
@@ -177,6 +178,7 @@ impl CrateScope {
             namespace,
             IdentifierUsage::Unqualified,
             CheckExposure::Yes,
+            handler,
         )
     }
 
@@ -184,6 +186,7 @@ impl CrateScope {
         &self,
         path: &Path,
         namespace: CrateIndex,
+        handler: &Handler,
     ) -> Result<Target::Output, ResolutionError> {
         self.resolve_path_with_origin::<Target>(
             path,
@@ -191,6 +194,7 @@ impl CrateScope {
             namespace,
             IdentifierUsage::Unqualified,
             CheckExposure::No,
+            handler,
         )
     }
 
@@ -202,18 +206,20 @@ impl CrateScope {
         origin_namespace: CrateIndex,
         usage: IdentifierUsage,
         check_exposure: CheckExposure,
+        handler: &Handler,
     ) -> Result<Target::Output, ResolutionError> {
         use ast::HangerKind::*;
 
         if let Some(hanger) = &path.hanger {
             let namespace = match hanger.kind {
                 Crate => self.root(),
-                Super => self.resolve_super(hanger, namespace)?,
+                Super => self.resolve_super(hanger, namespace, handler)?,
                 Self_ => namespace,
             };
 
             return if path.segments.is_empty() {
-                Target::handle_bare_super_and_crate(hanger.span, namespace).map_err(Into::into)
+                Target::handle_bare_super_and_crate(hanger.span, namespace, handler)
+                    .map_err(Into::into)
             } else {
                 self.resolve_path_with_origin::<Target>(
                     &path.tail(),
@@ -221,6 +227,7 @@ impl CrateScope {
                     origin_namespace,
                     IdentifierUsage::Qualified,
                     check_exposure,
+                    handler,
                 )
             };
         }
@@ -231,11 +238,12 @@ impl CrateScope {
             origin_namespace,
             usage,
             check_exposure,
+            handler,
         )?;
 
         match path.to_simple() {
             Some(identifier) => {
-                Target::resolve_simple_path(identifier, &self.bindings[index].kind, index)
+                Target::resolve_simple_path(identifier, &self.bindings[index].kind, index, handler)
                     .map_err(Into::into)
             }
             None => match self.bindings[index].namespace() {
@@ -245,22 +253,32 @@ impl CrateScope {
                     origin_namespace,
                     IdentifierUsage::Qualified,
                     check_exposure,
+                    handler,
                 ),
                 None if self.bindings[index].is_error() => {
                     // @Task add rationale
                     Ok(Target::output(index, path.last_identifier().unwrap()))
                 }
-                None => Err(value_used_as_a_namespace(&path.segments[0], &path.segments[1]).into()),
+                None => {
+                    value_used_as_a_namespace(&path.segments[0], &path.segments[1]).emit(handler);
+                    Err(ResolutionError::Unrecoverable)
+                }
             },
         }
     }
 
-    fn resolve_super(&self, hanger: &ast::Hanger, module: CrateIndex) -> Result<CrateIndex> {
+    fn resolve_super(
+        &self,
+        hanger: &ast::Hanger,
+        module: CrateIndex,
+        handler: &Handler,
+    ) -> Result<CrateIndex> {
         module.parent(self).ok_or_else(|| {
             Diagnostic::error()
-                .with_code(Code::E021) // @Question use a dedicated code?
-                .with_message("the crate root does not have a parent")
-                .with_primary_span(hanger)
+                .code(Code::E021) // @Question use a dedicated code?
+                .message("the crate root does not have a parent")
+                .primary_span(hanger)
+                .emit(handler)
         })
     }
 
@@ -272,6 +290,7 @@ impl CrateScope {
         origin_namespace: CrateIndex,
         usage: IdentifierUsage,
         check_exposure: CheckExposure,
+        handler: &Handler,
     ) -> Result<CrateIndex, ResolutionError> {
         let index = self.bindings[namespace]
             .namespace()
@@ -286,7 +305,7 @@ impl CrateScope {
                 usage,
             })?;
         if matches!(check_exposure, CheckExposure::Yes) {
-            self.handle_exposure(index, identifier, origin_namespace)?;
+            self.handle_exposure(index, identifier, origin_namespace, handler)?;
         }
         self.collapse_use_chain(index)
     }
@@ -298,23 +317,26 @@ impl CrateScope {
         index: CrateIndex,
         identifier: &ast::Identifier,
         origin_namespace: CrateIndex,
+        handler: &Handler,
     ) -> Result<(), ResolutionError> {
         let binding = &self.bindings[index];
 
         if let Exposure::Restricted(exposure) = &binding.exposure {
             // unwrap: root always has Exposure::Unrestricted
             let definition_site_namespace = binding.parent.unwrap();
-            let reach = RestrictedExposure::resolve(exposure, definition_site_namespace, self)?;
+            let reach =
+                RestrictedExposure::resolve(exposure, definition_site_namespace, self, handler)?;
 
             if !self.is_allowed_to_access(origin_namespace, definition_site_namespace, reach) {
-                return Err(Diagnostic::error()
-                    .with_code(Code::E029)
-                    .with_message(format!(
+                Diagnostic::error()
+                    .code(Code::E029)
+                    .message(format!(
                         "binding `{}` is private",
                         self.absolute_path(index)
                     ))
-                    .with_primary_span(identifier)
-                    .into());
+                    .primary_span(identifier)
+                    .emit(handler);
+                return Err(ResolutionError::Unrecoverable);
             }
         }
 
@@ -336,18 +358,18 @@ impl CrateScope {
         access_from_same_namespace_or_below || access_from_above_in_reach()
     }
 
-    pub(super) fn resolve_exposure_reaches(&mut self) -> Results {
-        let mut errors = Diagnostics::default();
+    pub(super) fn resolve_exposure_reaches(&mut self, handler: &Handler) -> Result {
+        let mut health = Health::Untainted;
 
         for binding in &self.bindings {
             if let Exposure::Restricted(exposure) = &binding.exposure {
                 // unwrap: root always has Exposure::Unrestricted
                 let definition_site_namespace = binding.parent.unwrap();
 
-                if let Err(error) =
-                    RestrictedExposure::resolve(exposure, definition_site_namespace, self)
+                if RestrictedExposure::resolve(exposure, definition_site_namespace, self, handler)
+                    .is_err()
                 {
-                    errors.insert(error);
+                    health.taint();
                     continue;
                 };
             }
@@ -357,25 +379,33 @@ impl CrateScope {
 
                 if binding.exposure.compare(&reference.exposure, self) == Some(Ordering::Greater) {
                     // @Task @Beacon once we can use multiline notes, do so here!!!
-                    errors.insert(
-                        Diagnostic::error()
-                            .with_code(Code::E009)
-                            // @Question use absolute path?
-                            .with_message(format!("re-export of the more private binding `{}`", reference.source))
-                            .with_labeled_primary_span(&binding.source, "re-exporting binding with greater exposure")
-                            .with_labeled_secondary_span(&reference.source, "re-exported binding with lower exposure")
-                            .with_note(format!(
-                                "expected the exposure of `{}` to be at most {} but it actually is {}",
-                                binding.source,
-                                reference.exposure.with(self),
-                                binding.exposure.with(self),
-                            )),
-                    );
+                    Diagnostic::error()
+                        .code(Code::E009)
+                        // @Question use absolute path?
+                        .message(format!(
+                            "re-export of the more private binding `{}`",
+                            reference.source
+                        ))
+                        .labeled_primary_span(
+                            &binding.source,
+                            "re-exporting binding with greater exposure",
+                        )
+                        .labeled_secondary_span(
+                            &reference.source,
+                            "re-exported binding with lower exposure",
+                        )
+                        .note(format!(
+                            "expected the exposure of `{}` to be at most {} but it actually is {}",
+                            binding.source,
+                            reference.exposure.with(self),
+                            binding.exposure.with(self),
+                        ))
+                        .emit(handler);
                 }
             }
         }
 
-        errors.err_or(())
+        health.into()
     }
 
     /// Find a similarly named binding in the same namespace.
@@ -458,20 +488,21 @@ impl CrateScope {
     // @Task update docs in regards to number of phases
     // @Task update docs regarding errors
     // @Task clear partially_resolved_use_bindings at the end both if Err or Ok
-    pub(super) fn resolve_use_bindings(&mut self) {
+    pub(super) fn resolve_use_bindings(&mut self, handler: &Handler) {
         while !self.partially_resolved_use_bindings.is_empty() {
             let mut partially_resolved_use_bindings = HashMap::default();
 
             for (&index, item) in self.partially_resolved_use_bindings.iter() {
                 use ResolutionError::*;
 
-                match self.resolve_path::<ValueOrModule>(&item.reference, item.module) {
+                match self.resolve_path::<ValueOrModule>(&item.reference, item.module, handler) {
                     Ok(reference) => {
                         self.bindings[index].kind = EntityKind::Use { reference };
                     }
-                    Err(error @ (UnresolvedBinding { .. } | Unrecoverable(_))) => {
+                    Err(error @ (UnresolvedBinding { .. } | Unrecoverable)) => {
                         self.bindings[index].mark_as_error();
-                        self.errors.insert(error.diagnostic(self).unwrap());
+                        error.diagnostic(self).unwrap().emit(handler);
+                        self.health.taint();
                     }
                     Err(UnresolvedUseBinding { inquirer }) => {
                         partially_resolved_use_bindings.insert(
@@ -513,31 +544,30 @@ impl CrateScope {
                             .any(|index| partially_resolved_use_bindings.contains_key(index))
                     });
 
-                let errors = circular_bindings
-                    .map(|indices| -> Diagnostic {
+                for indices in circular_bindings {
+                    indices
+                        .iter()
+                        .for_each(|&index| self.bindings[index].mark_as_error());
+
+                    let declarations = unordered_listing(
                         indices
                             .iter()
-                            .for_each(|&index| self.bindings[index].mark_as_error());
+                            .map(|&index| self.absolute_path(index).quote()),
+                        Conjunction::And,
+                    );
 
-                        let declarations = unordered_listing(
-                            indices
-                                .iter()
-                                .map(|&index| self.absolute_path(index).quote()),
-                            Conjunction::And,
-                        );
+                    let spans = indices
+                        .into_iter()
+                        .map(|index| self.bindings[index].source.span);
 
-                        let spans = indices
-                            .into_iter()
-                            .map(|index| self.bindings[index].source.span);
+                    Diagnostic::error()
+                        .code(Code::E024)
+                        .message(format!("declarations {declarations} are circular"))
+                        .primary_spans(spans)
+                        .emit(handler);
+                }
 
-                        Diagnostic::error()
-                            .with_code(Code::E024)
-                            .with_message(format!("declarations {declarations} are circular"))
-                            .with_primary_spans(spans)
-                    })
-                    .collect::<Vec<_>>();
-
-                self.errors.extend(errors);
+                self.health.taint();
                 return;
             }
 
@@ -631,6 +661,7 @@ impl RestrictedExposure {
         exposure: &RefCell<Self>,
         definition_site_namespace: CrateIndex,
         scope: &CrateScope,
+        handler: &Handler,
     ) -> Result<CrateIndex> {
         let exposure_ = exposure.borrow();
 
@@ -649,18 +680,20 @@ impl RestrictedExposure {
                     .resolve_path_unchecked_exposure::<OnlyModule>(
                         unresolved_reach,
                         definition_site_namespace,
+                        handler,
                     )
                     // unwrap: all use bindings are already resolved
-                    .map_err(|error| error.diagnostic(scope).unwrap())?;
+                    .map_err(|error| error.diagnostic(scope).unwrap().emit(handler))?;
 
                 let reach_is_ancestor =
                     definition_site_namespace.some_ancestor_equals(reach, scope);
 
                 if !reach_is_ancestor {
                     return Err(Diagnostic::error()
-                        .with_code(Code::E000)
-                        .with_message("exposure can only be restricted to ancestor modules")
-                        .with_primary_span(unresolved_reach));
+                        .code(Code::E000)
+                        .message("exposure can only be restricted to ancestor modules")
+                        .primary_span(unresolved_reach)
+                        .emit(handler));
                 }
 
                 drop(exposure_);
@@ -718,21 +751,12 @@ pub(super) struct DuplicateDefinition {
 impl From<DuplicateDefinition> for Diagnostic {
     fn from(definition: DuplicateDefinition) -> Self {
         Diagnostic::error()
-            .with_code(Code::E020)
-            .with_message(format!(
+            .code(Code::E020)
+            .message(format!(
                 "`{}` is defined multiple times in this scope",
                 definition.binder
             ))
-            .with_labeled_primary_spans(
-                definition.occurrences.into_iter(),
-                "conflicting definition",
-            )
-    }
-}
-
-impl From<HashMap<CrateIndex, DuplicateDefinition>> for Diagnostics {
-    fn from(definitions: HashMap<CrateIndex, DuplicateDefinition>) -> Self {
-        definitions.into_values().map(Into::into).collect()
+            .labeled_primary_spans(definition.occurrences.into_iter(), "conflicting definition")
     }
 }
 
@@ -747,12 +771,17 @@ pub(super) trait ResolutionTarget {
 
     fn output(index: CrateIndex, identifier: &ast::Identifier) -> Self::Output;
 
-    fn handle_bare_super_and_crate(span: Span, namespace: CrateIndex) -> Result<Self::Output>;
+    fn handle_bare_super_and_crate(
+        span: Span,
+        namespace: CrateIndex,
+        handler: &Handler,
+    ) -> Result<Self::Output>;
 
     fn resolve_simple_path(
         identifier: &ast::Identifier,
         binding: &EntityKind,
         index: CrateIndex,
+        handler: &Handler,
     ) -> Result<Self::Output>;
 }
 
@@ -766,7 +795,11 @@ impl ResolutionTarget for ValueOrModule {
         index
     }
 
-    fn handle_bare_super_and_crate(_: Span, namespace: CrateIndex) -> Result<Self::Output> {
+    fn handle_bare_super_and_crate(
+        _: Span,
+        namespace: CrateIndex,
+        _: &Handler,
+    ) -> Result<Self::Output> {
         Ok(namespace)
     }
 
@@ -774,6 +807,7 @@ impl ResolutionTarget for ValueOrModule {
         _: &ast::Identifier,
         _: &EntityKind,
         index: CrateIndex,
+        _: &Handler,
     ) -> Result<Self::Output> {
         Ok(index)
     }
@@ -789,14 +823,19 @@ impl ResolutionTarget for OnlyValue {
         Identifier::new(index, identifier.clone())
     }
 
-    fn handle_bare_super_and_crate(span: Span, _: CrateIndex) -> Result<Self::Output> {
-        Err(module_used_as_a_value(span))
+    fn handle_bare_super_and_crate(
+        span: Span,
+        _: CrateIndex,
+        handler: &Handler,
+    ) -> Result<Self::Output> {
+        Err(module_used_as_a_value(span).emit(handler))
     }
 
     fn resolve_simple_path(
         identifier: &ast::Identifier,
         binding: &EntityKind,
         index: CrateIndex,
+        handler: &Handler,
     ) -> Result<Self::Output> {
         use EntityKind::*;
 
@@ -804,7 +843,7 @@ impl ResolutionTarget for OnlyValue {
             UntypedValue | UntypedDataType(_) | UntypedConstructor(_) | Error => {
                 Ok(Self::output(index, identifier))
             }
-            Module(_) => Err(module_used_as_a_value(identifier.span)),
+            Module(_) => Err(module_used_as_a_value(identifier.span).emit(handler)),
             _ => unreachable!(),
         }
     }
@@ -819,7 +858,11 @@ impl ResolutionTarget for OnlyModule {
         index
     }
 
-    fn handle_bare_super_and_crate(_: Span, namespace: CrateIndex) -> Result<Self::Output> {
+    fn handle_bare_super_and_crate(
+        _: Span,
+        namespace: CrateIndex,
+        _: &Handler,
+    ) -> Result<Self::Output> {
         Ok(namespace)
     }
 
@@ -827,15 +870,17 @@ impl ResolutionTarget for OnlyModule {
         identifier: &ast::Identifier,
         binding: &EntityKind,
         index: CrateIndex,
+        handler: &Handler,
     ) -> Result<Self::Output> {
         use EntityKind::*;
 
         match binding {
             // @Beacon @Task use a distinct code!
             UntypedValue | UntypedDataType(_) | UntypedConstructor(_) => Err(Diagnostic::error()
-                .with_code(Code::E022)
-                .with_message(format!("value `{}` is not a module", identifier))
-                .with_primary_span(identifier)),
+                .code(Code::E022)
+                .message(format!("value `{}` is not a module", identifier))
+                .primary_span(identifier)
+                .emit(handler)),
             Module(_) => Ok(index),
             _ => unreachable!(),
         }
@@ -1131,8 +1176,13 @@ impl<'a> FunctionScope<'a> {
     }
 
     /// Resolve a binding in a function scope given a depth.
-    pub(super) fn resolve_binding(&self, query: &Path, scope: &CrateScope) -> Result<Identifier> {
-        self.resolve_binding_with_depth(query, scope, 0, self)
+    pub(super) fn resolve_binding(
+        &self,
+        query: &Path,
+        scope: &CrateScope,
+        handler: &Handler,
+    ) -> Result<Identifier> {
+        self.resolve_binding_with_depth(query, scope, 0, self, handler)
     }
 
     /// Resolve a binding in a function scope given a depth.
@@ -1148,35 +1198,40 @@ impl<'a> FunctionScope<'a> {
         scope: &CrateScope,
         depth: usize,
         origin: &Self,
+        handler: &Handler,
     ) -> Result<Identifier> {
         use FunctionScope::*;
 
+        // @Note kinda awkward API with map_err
         match self {
             &Module(module) => scope
-                .resolve_path::<OnlyValue>(query, module)
+                .resolve_path::<OnlyValue>(query, module, handler)
                 .map_err(|error| {
                     error
                         .diagnostic_with(scope, |identifier, _| {
                             origin.find_similarly_named(identifier, scope)
                         })
                         .unwrap()
+                        .emit(handler)
                 }),
             // @Note this looks ugly/complicated, use helper functions
             FunctionParameter { parent, binder } => {
                 if let Some(identifier) = query.identifier_head() {
                     if binder == identifier {
                         if query.segments.len() > 1 {
-                            return Err(value_used_as_a_namespace(identifier, &query.segments[1]));
+                            return Err(value_used_as_a_namespace(identifier, &query.segments[1])
+                                .emit(handler));
                         }
 
                         Ok(Identifier::new(DeBruijnIndex(depth), identifier.clone()))
                     } else {
-                        parent.resolve_binding_with_depth(query, scope, depth + 1, origin)
+                        parent.resolve_binding_with_depth(query, scope, depth + 1, origin, handler)
                     }
                 } else {
+                    // @Note kinda awkward API...?
                     scope
-                        .resolve_path::<OnlyValue>(query, parent.module())
-                        .map_err(|error| error.diagnostic(scope).unwrap())
+                        .resolve_path::<OnlyValue>(query, parent.module(), handler)
+                        .map_err(|error| error.diagnostic(scope).unwrap().emit(handler))
                 }
             }
             // @Note this looks ugly/complicated, use helper functions
@@ -1193,7 +1248,8 @@ impl<'a> FunctionScope<'a> {
                                 return Err(value_used_as_a_namespace(
                                     identifier,
                                     &query.segments[1],
-                                ));
+                                )
+                                .emit(handler));
                             }
 
                             Ok(Identifier::new(DeBruijnIndex(depth), identifier.clone()))
@@ -1203,12 +1259,13 @@ impl<'a> FunctionScope<'a> {
                             scope,
                             depth + binders.len(),
                             origin,
+                            handler,
                         ),
                     }
                 } else {
                     scope
-                        .resolve_path::<OnlyValue>(query, parent.module())
-                        .map_err(|error| error.diagnostic(scope).unwrap())
+                        .resolve_path::<OnlyValue>(query, parent.module(), handler)
+                        .map_err(|error| error.diagnostic(scope).unwrap().emit(handler))
                 }
             }
         }
@@ -1273,10 +1330,10 @@ fn value_used_as_a_namespace(
     subbinder: &ast::Identifier,
 ) -> Diagnostic {
     Diagnostic::error()
-        .with_code(Code::E022)
-        .with_message(format!("value `{}` is not a namespace", non_namespace))
-        .with_labeled_primary_span(subbinder, "reference to a subdeclaration")
-        .with_labeled_secondary_span(non_namespace, "a value, not a namespace")
+        .code(Code::E022)
+        .message(format!("value `{}` is not a namespace", non_namespace))
+        .labeled_primary_span(subbinder, "reference to a subdeclaration")
+        .labeled_secondary_span(non_namespace, "a value, not a namespace")
 }
 
 // @Task levenshtein-search for similar named bindings which are in fact values and suggest the first one
@@ -1284,15 +1341,15 @@ fn value_used_as_a_namespace(
 // segment
 fn module_used_as_a_value(span: Span) -> Diagnostic {
     Diagnostic::error()
-        .with_code(Code::E023)
-        .with_message("module used as if it was a value")
-        .with_primary_span(span)
-        .with_help("modules are not first-class citizens, consider utilizing records for such cases instead")
+        .code(Code::E023)
+        .message("module used as if it was a value")
+        .primary_span(span)
+        .help("modules are not first-class citizens, consider utilizing records for such cases instead")
 }
 
 /// A possibly recoverable error that cab emerge during resolution.
 enum ResolutionError {
-    Unrecoverable(Diagnostic),
+    Unrecoverable,
     UnresolvedBinding {
         identifier: ast::Identifier,
         namespace: CrateIndex,
@@ -1316,7 +1373,7 @@ impl ResolutionError {
         find_lookalike: impl FnOnce(&str, CrateIndex) -> Option<&'s str>,
     ) -> Option<Diagnostic> {
         match self {
-            Self::Unrecoverable(error) => Some(error),
+            Self::Unrecoverable => None,
             Self::UnresolvedBinding {
                 identifier,
                 namespace,
@@ -1343,13 +1400,13 @@ impl ResolutionError {
 
                 Some(
                     Diagnostic::error()
-                        .with_code(Code::E021)
-                        .with_message(message)
-                        .with_primary_span(&identifier)
+                        .code(Code::E021)
+                        .message(message)
+                        .primary_span(&identifier)
                         .when_some(
                             find_lookalike(identifier.as_str(), namespace),
                             |diagnostic, binding| {
-                                diagnostic.with_help(format!(
+                                diagnostic.help(format!(
                                     "a binding with a similar name exists in scope: `{}`",
                                     binding
                                 ))
@@ -1362,14 +1419,14 @@ impl ResolutionError {
     }
 }
 
-impl From<Diagnostic> for ResolutionError {
-    fn from(error: Diagnostic) -> Self {
-        Self::Unrecoverable(error)
+impl From<()> for ResolutionError {
+    fn from((): ()) -> Self {
+        Self::Unrecoverable
     }
 }
 
 pub(super) enum RegistrationError {
-    Unrecoverable(Diagnostics),
+    Unrecoverable,
     /// Duplicate definitions found.
     ///
     /// Details about this error are **not stored here** but as
@@ -1378,53 +1435,8 @@ pub(super) enum RegistrationError {
     DuplicateDefinition,
 }
 
-impl RegistrationError {
-    pub(super) fn diagnostics(
-        self,
-        duplicate_definitions: HashMap<CrateIndex, DuplicateDefinition>,
-    ) -> Diagnostics {
-        duplicate_definitions
-            .into_values()
-            .map(Into::into)
-            .chain(self)
-            .collect()
-    }
-}
-
-impl From<Diagnostic> for RegistrationError {
-    fn from(diagnostic: Diagnostic) -> Self {
-        Self::Unrecoverable(once(diagnostic).collect())
-    }
-}
-
-// @Note not entirely happy that we need to implement this
-// this undermines the safety of this type: We only want you
-// to be able to access the unrecoverable diagnostics if you
-// give us duplicate_definitions: HashMap<CrateIndex, DuplicateDefinition>,
-// but now, this is not true anymore
-impl IntoIterator for RegistrationError {
-    type Item = Diagnostic;
-
-    type IntoIter = std::vec::IntoIter<Self::Item>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        match self {
-            Self::Unrecoverable(diagnostics) => diagnostics.into_iter(),
-            Self::DuplicateDefinition => Diagnostics::default().into_iter(),
-        }
-    }
-}
-
-// @Note uggllyyy!!!
-impl Extend<Diagnostic> for RegistrationError {
-    fn extend<T: IntoIterator<Item = Diagnostic>>(&mut self, iter: T) {
-        if let Self::DuplicateDefinition = self {
-            *self = Self::Unrecoverable(Diagnostics::default());
-        };
-
-        match self {
-            Self::Unrecoverable(diagnostics) => diagnostics.extend(iter),
-            Self::DuplicateDefinition => unreachable!(),
-        };
+impl From<()> for RegistrationError {
+    fn from((): ()) -> Self {
+        RegistrationError::Unrecoverable
     }
 }
