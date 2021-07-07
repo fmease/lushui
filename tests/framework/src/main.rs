@@ -1,4 +1,4 @@
-#![feature(format_args_capture)]
+#![feature(format_args_capture, default_free_fn)]
 #![forbid(rust_2018_idioms, unused_must_use)]
 
 // @Task
@@ -8,17 +8,20 @@
 // * add help messages
 
 use std::{
+    default::default,
     fmt,
     fs::{read_to_string, File},
     io::Write,
     path::{Path, PathBuf},
     process::{Command, Stdio},
     str::FromStr,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
 use colored::Colorize;
 use difference::{Changeset, Difference};
+use itertools::Itertools;
 use unicode_width::UnicodeWidthStr;
 
 fn lushui_source_path() -> PathBuf {
@@ -28,11 +31,14 @@ fn lushui_source_path() -> PathBuf {
         .unwrap()
 }
 
-fn default_test_directory_path() -> PathBuf {
+fn default_test_directory_path() -> String {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../tests")
         .canonicalize()
         .unwrap()
+        .to_str()
+        .unwrap()
+        .to_owned()
 }
 
 #[derive(Debug)] // @Temporary
@@ -40,7 +46,8 @@ struct Application {
     release_mode: bool,
     gilding: bool,
     filter: Vec<String>,
-    test_folder_path: PathBuf,
+    jobs: usize,
+    test_folder_path: String,
 }
 
 impl Application {
@@ -72,15 +79,22 @@ impl Application {
             )
             .arg(
                 // @Task help
-                clap::Arg::with_name("test-folder-path")
-                    .long("test-folder")
+                clap::Arg::with_name("jobs")
+                    .long("jobs")
                     .takes_value(true)
                     .validator(|input| {
-                        PathBuf::from_str(&input)
+                        usize::from_str(&input)
                             .map(|_| ())
                             .map_err(|error| error.to_string())
                     })
-                    .default_value_os(default_test_directory_path.as_os_str()),
+                    .default_value("4"),
+            )
+            .arg(
+                // @Task help
+                clap::Arg::with_name("test-folder-path")
+                    .long("test-folder")
+                    .takes_value(true)
+                    .default_value(&default_test_directory_path),
             )
             .get_matches();
 
@@ -90,10 +104,11 @@ impl Application {
             filter: matches
                 .values_of("filter")
                 .map_or(Vec::new(), |value| value.map(ToString::to_string).collect()),
-            test_folder_path: matches
-                .value_of("test-folder-path")
+            jobs: matches
+                .value_of("jobs")
                 .map(|input| input.parse().unwrap())
                 .unwrap(),
+            test_folder_path: matches.value_of("test-folder-path").unwrap().to_owned(),
         }
     }
 }
@@ -142,169 +157,198 @@ fn main_() -> Result<(), ()> {
         .stderr(Stdio::null())
         .status()
         .unwrap();
-    assert!(status.success());
+    assert!(status.success()); // @Temporary
 
     println!();
     println!("{}", "=".repeat(SEPARATOR_WIDTH));
     println!();
 
-    let test_directory_path = application.test_folder_path;
-    let legible_test_directory_path = test_directory_path.to_str().unwrap();
+    let test_folder_path: &'static _ = Box::leak(application.test_folder_path.into_boxed_str());
+    let statistics: Arc<Mutex<Statistics>> = default();
+    let failures: Arc<Mutex<Vec<_>>> = default();
+    let filter: &'static _ = Box::leak(application.filter.into_boxed_slice());
+    let gilding = application.gilding;
 
-    let mut summary = Summary::new(application.gilding, &application.filter);
-    let mut failures = Vec::new();
     let suite_time = Instant::now();
 
-    // @Task make parallel if possible (windows()/chunks()?)
-    for entry in walkdir::WalkDir::new(&test_directory_path) {
-        let entry = entry.unwrap();
+    for entries in &walkdir::WalkDir::new(test_folder_path)
+        .into_iter()
+        .chunks(application.jobs)
+    {
+        let handles: Vec<_> = entries
+            .into_iter()
+            .map(|entry| {
+                let statistics = statistics.clone();
+                let failures = failures.clone();
 
-        if entry.file_type().is_dir() {
-            continue;
-        }
+                std::thread::spawn(move || -> Option<String> {
+                    let entry = entry.unwrap();
+                    let path = entry.path();
 
-        if !entry.file_type().is_file() {
-            panic!("invalid file type");
-        }
+                    if entry.file_type().is_dir() {
+                        return None;
+                    }
 
-        if has_file_extension(entry.path(), "stdout") || has_file_extension(entry.path(), "stderr")
-        {
-            // handled later together with the corresponding Lushui file
-            continue;
-        }
+                    if !entry.file_type().is_file() {
+                        panic!("invalid file type");
+                    }
 
-        if !has_file_extension(entry.path(), "lushui") {
-            panic!("illegal extension");
-        }
+                    if has_file_extension(path, "stdout") || has_file_extension(path, "stderr") {
+                        // handled later together with the corresponding Lushui file
+                        return None;
+                    }
 
-        let legible_path = entry
-            .path()
-            .to_str()
-            .unwrap()
-            .strip_prefix(legible_test_directory_path)
-            .unwrap()
-            .strip_prefix("/")
-            .unwrap()
-            .strip_suffix("lushui")
-            .unwrap()
-            .strip_suffix(".")
-            .unwrap();
+                    if !has_file_extension(path, "lushui") {
+                        panic!("illegal extension");
+                    }
 
-        let mut failure = TestFailure {
-            path: legible_path.to_owned(),
-            subfailures: Vec::new(),
-        };
+                    let legible_path = path
+                        .to_str()
+                        .unwrap()
+                        .strip_prefix(test_folder_path)
+                        .unwrap()
+                        .strip_prefix("/")
+                        .unwrap()
+                        .strip_suffix("lushui")
+                        .unwrap()
+                        .strip_suffix(".")
+                        .unwrap();
 
-        if !application.filter.is_empty()
-            && !application
-                .filter
-                .iter()
-                .any(|filter| legible_path.contains(filter))
-        {
-            summary.skipped_tests += 1;
-            continue;
-        }
+                    let mut failure = TestFailure {
+                        path: legible_path.to_owned(),
+                        subfailures: Vec::new(),
+                    };
 
-        print!("test {legible_path:<80}");
+                    if !filter.is_empty()
+                        && !filter.iter().any(|filter| legible_path.contains(filter))
+                    {
+                        statistics.lock().unwrap().skipped_tests += 1;
+                        return None;
+                    }
 
-        let file = read_to_string(entry.path()).unwrap();
+                    let mut message = format!("test {legible_path:<80}");
 
-        let configuration = match TestConfiguration::parse(&file) {
-            Ok(configuration) => configuration,
-            Err(error) => {
-                println!(" {}", "INVALID".red());
-                summary.failed_tests += 1;
-                failure
-                    .subfailures
-                    .push(TestSubfailure::Invalid { reason: error });
-                failures.push(failure);
-                continue;
+                    let file = read_to_string(entry.path()).unwrap();
+
+                    let configuration = match TestConfiguration::parse(&file) {
+                        Ok(configuration) => configuration,
+                        Err(error) => {
+                            message += &format!(" {}", "INVALID".red());
+                            statistics.lock().unwrap().failed_tests += 1;
+                            failure
+                                .subfailures
+                                .push(TestSubfailure::Invalid { reason: error });
+                            failures.lock().unwrap().push(failure);
+                            return Some(message);
+                        }
+                    };
+
+                    if let TestTag::Ignore = configuration.tag {
+                        message += &format!(" {}", "ignored".yellow());
+                        statistics.lock().unwrap().ignored_tests += 1;
+                        return Some(message);
+                    }
+
+                    let time = Instant::now();
+
+                    // @Beacon @Question how can we filter out rustc's warnings from stderr?
+
+                    let output = Command::new("cargo")
+                        .current_dir(lushui_source_path())
+                        .args(&["run", "--quiet", "--"])
+                        .args(configuration.arguments)
+                        .arg(entry.path())
+                        .output()
+                        .unwrap();
+
+                    let duration = time.elapsed();
+                    message += &format!("{}", format!(" {duration:.2?}").bright_black());
+
+                    match (configuration.tag, output.status.success()) {
+                        (TestTag::Pass, true) | (TestTag::Fail, false) => {}
+                        (TestTag::Pass, false) => {
+                            failure.subfailures.push(TestSubfailure::UnexpectedFail {
+                                code: output.status.code(),
+                            })
+                        }
+                        (TestTag::Fail, true) => {
+                            failure.subfailures.push(TestSubfailure::UnexpectedPass)
+                        }
+                        (TestTag::Ignore, _) => unreachable!(),
+                    }
+
+                    let stdout_was_gilded = match check_against_golden_file(
+                        test_folder_path,
+                        &entry.path().with_extension("stdout"),
+                        output.stdout,
+                        Stream::Stdout,
+                        gilding,
+                    ) {
+                        Ok(gilded) => gilded,
+                        Err(error) => {
+                            failure.subfailures.push(error);
+                            false
+                        }
+                    };
+
+                    let stderr_was_gilded = match check_against_golden_file(
+                        test_folder_path,
+                        &entry.path().with_extension("stderr"),
+                        output.stderr,
+                        Stream::Stderr,
+                        gilding,
+                    ) {
+                        Ok(gilded) => gilded,
+                        Err(error) => {
+                            failure.subfailures.push(error);
+                            false
+                        }
+                    };
+
+                    if stdout_was_gilded || stderr_was_gilded {
+                        statistics.lock().unwrap().gilded_tests += 1;
+                        message += &format!(" {}", "gilded".blue());
+
+                        if stdout_was_gilded {
+                            message += &format!(" {}", "stdout".blue());
+                        };
+                        if stderr_was_gilded {
+                            message += &format!(" {}", "stderr".blue());
+                        };
+                    } else {
+                        if failure.subfailures.is_empty() {
+                            message += &format!(" {}", "ok".green());
+                            statistics.lock().unwrap().passed_tests += 1;
+                        } else {
+                            message += &format!(" {}", "FAIL".red());
+                            statistics.lock().unwrap().failed_tests += 1;
+                            failures.lock().unwrap().push(failure);
+                        }
+                    }
+
+                    return Some(message);
+                })
+            })
+            .collect();
+
+        for handle in handles {
+            if let Some(message) = handle.join().unwrap() {
+                println!("{}", message);
             }
-        };
-
-        if let TestTag::Ignore = configuration.tag {
-            println!(" {}", "ignored".yellow());
-            summary.ignored_tests += 1;
-            continue;
         }
-
-        let time = Instant::now();
-
-        // @Beacon @Question how can we filter out rustc's warnings from stderr?
-
-        let output = Command::new("cargo")
-            .current_dir(lushui_source_path())
-            .args(&["run", "--quiet", "--"])
-            .args(configuration.arguments)
-            .arg(entry.path())
-            .output()
-            .unwrap();
-
-        let duration = time.elapsed();
-        print!("{}", format!(" {duration:.2?}").bright_black());
-
-        match (configuration.tag, output.status.success()) {
-            (TestTag::Pass, true) | (TestTag::Fail, false) => {}
-            (TestTag::Pass, false) => failure.subfailures.push(TestSubfailure::UnexpectedFail {
-                code: output.status.code(),
-            }),
-            (TestTag::Fail, true) => failure.subfailures.push(TestSubfailure::UnexpectedPass),
-            (TestTag::Ignore, _) => unreachable!(),
-        }
-
-        let stdout_was_gilded = match check_against_golden_file(
-            legible_test_directory_path,
-            &entry.path().with_extension("stdout"),
-            output.stdout,
-            Stream::Stdout,
-            application.gilding,
-        ) {
-            Ok(gilded) => gilded,
-            Err(error) => {
-                failure.subfailures.push(error);
-                false
-            }
-        };
-
-        let stderr_was_gilded = match check_against_golden_file(
-            legible_test_directory_path,
-            &entry.path().with_extension("stderr"),
-            output.stderr,
-            Stream::Stderr,
-            application.gilding,
-        ) {
-            Ok(gilded) => gilded,
-            Err(error) => {
-                failure.subfailures.push(error);
-                false
-            }
-        };
-
-        if stdout_was_gilded || stderr_was_gilded {
-            summary.gilded_tests += 1;
-            print!(" {}", "gilded".blue());
-
-            if stdout_was_gilded {
-                print!(" {}", "stdout".blue());
-            }
-            if stderr_was_gilded {
-                print!(" {}", "stderr".blue());
-            }
-        } else {
-            if failure.subfailures.is_empty() {
-                print!(" {}", "ok".green());
-                summary.passed_tests += 1;
-            } else {
-                print!(" {}", "FAIL".red());
-                summary.failed_tests += 1;
-                failures.push(failure);
-            }
-        }
-
-        println!();
     }
 
-    summary.duration = suite_time.elapsed();
+    let duration = suite_time.elapsed();
+
+    let statistics = Arc::try_unwrap(statistics)
+        .unwrap_or_else(|_| unreachable!())
+        .into_inner()
+        .unwrap();
+
+    let failures = Arc::try_unwrap(failures)
+        .unwrap_or_else(|_| unreachable!())
+        .into_inner()
+        .unwrap();
 
     for failure in failures {
         println!();
@@ -324,10 +368,17 @@ fn main_() -> Result<(), ()> {
         }
     }
 
+    let summary = Summary {
+        statistics,
+        gilding: application.gilding,
+        duration,
+        filter,
+    };
+
     println!();
     println!("{}", summary);
 
-    if !summary.tests_passed() {
+    if !summary.statistics.tests_passed() {
         return Err(());
     }
 
@@ -374,33 +425,16 @@ fn check_against_golden_file(
     }
 }
 
-// `failed_tests` does not necessarily equal `gilded_tests` since the former includes
-// invalid tests which are not gilded
-struct Summary<'filter> {
+#[derive(Default)]
+struct Statistics {
     ignored_tests: usize,
     passed_tests: usize,
     failed_tests: usize,
     gilded_tests: usize,
     skipped_tests: usize,
-    gilding: bool,
-    duration: Duration,
-    filter: &'filter [String],
 }
 
-impl<'filter> Summary<'filter> {
-    fn new(gilding: bool, filter: &'filter [String]) -> Self {
-        Self {
-            ignored_tests: 0,
-            passed_tests: 0,
-            failed_tests: 0,
-            gilded_tests: 0,
-            skipped_tests: 0,
-            gilding,
-            duration: Duration::default(),
-            filter,
-        }
-    }
-
+impl Statistics {
     fn tests_passed(&self) -> bool {
         self.failed_tests == 0
     }
@@ -431,16 +465,25 @@ impl<'filter> Summary<'filter> {
     }
 }
 
-impl fmt::Display for Summary<'_> {
+// `failed_tests` does not necessarily equal `gilded_tests` since the former includes
+// invalid tests which are not gilded
+struct Summary {
+    statistics: Statistics,
+    gilding: bool,
+    duration: Duration,
+    filter: &'static [String],
+}
+
+impl fmt::Display for Summary {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}", "=".repeat(SEPARATOR_WIDTH))?;
         writeln!(f)?;
 
-        let status = if self.tests_passed() {
+        let status = if self.statistics.tests_passed() {
             if !self.gilding {
                 "ALL TESTS PASSED!".green()
             } else {
-                if self.gilded_tests == 0 {
+                if self.statistics.gilded_tests == 0 {
                     "ALL TESTS PASSED WITHOUT GILDING!".green()
                 } else {
                     "SOME TESTS WERE GILDED!".blue()
@@ -454,20 +497,20 @@ impl fmt::Display for Summary<'_> {
             f,
             "  {status}
     {passed} {label_passed} ({ratio:.2}%)",
-            passed = self.passed_tests,
+            passed = self.statistics.passed_tests,
             label_passed = if !self.gilding {
                 "passed".green()
             } else {
                 "passed without gilding".green()
             },
-            ratio = self.ratio_passed_vs_executed_tests(),
+            ratio = self.statistics.ratio_passed_vs_executed_tests(),
         )?;
 
         if self.gilding {
             write!(
                 f,
                 " | {gilded} {label_gilded}",
-                gilded = self.gilded_tests,
+                gilded = self.statistics.gilded_tests,
                 label_gilded = "gilded".blue(),
             )?;
         }
@@ -475,14 +518,14 @@ impl fmt::Display for Summary<'_> {
         writeln!(f, " | {failed} {label_failed} | {ignored} {label_ignored} | {filtered_out} filtered out | {total} in total ({filter_ratio:.2}% of {unfiltered_total})
     {duration}\
 ",
-            failed = self.failed_tests,
+            failed = self.statistics.failed_tests,
             label_failed = "failed".red(),
-            ignored = self.ignored_tests,
+            ignored = self.statistics.ignored_tests,
             label_ignored = "ignored".yellow(),
-            total = self.total_amount_tests(),
-            filtered_out = self.skipped_tests,
-            unfiltered_total = self.unfiltered_total_amount_tests(),
-            filter_ratio = self.filter_ratio(),
+            total = self.statistics.total_amount_tests(),
+            filtered_out = self.statistics.skipped_tests,
+            unfiltered_total = self.statistics.unfiltered_total_amount_tests(),
+            filter_ratio = self.statistics.filter_ratio(),
             duration = format!("{:.2?}", self.duration).bright_black(),
         )?;
 

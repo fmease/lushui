@@ -55,8 +55,6 @@ pub mod documenter;
 mod entity;
 pub mod error;
 pub mod format;
-#[cfg(test)]
-mod golden;
 mod grow_array;
 mod item;
 pub mod lexer;
