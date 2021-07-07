@@ -12,7 +12,7 @@
 //!
 //! The equivalent in the type checker is [crate::typer::interpreter::scope].
 
-// @Task don't report similarily named *private* bindings!
+// @Beacon @Beacon @Task don't report similarily named *private* bindings!
 // @Task recognize leaks of private types!
 
 use crate::{
@@ -22,10 +22,11 @@ use crate::{
     error::{Health, Result},
     format::{unordered_listing, AsDebug, Conjunction, DisplayWith, QuoteExt},
     smallvec,
-    span::{Span, Spanning},
+    span::{Span, Spanned, Spanning},
     typer::interpreter::{ffi, scope::Registration},
     HashMap, HashSet, SmallVec,
 };
+use colored::Colorize;
 use indexed_vec::IndexVec;
 use joinery::JoinableIterator;
 use std::{cell::RefCell, cmp::Ordering, fmt, mem::take, usize};
@@ -218,8 +219,7 @@ impl CrateScope {
             };
 
             return if path.segments.is_empty() {
-                Target::handle_bare_super_and_crate(hanger.span, namespace, handler)
-                    .map_err(Into::into)
+                Target::handle_bare_super_and_crate(hanger, namespace, handler).map_err(Into::into)
             } else {
                 self.resolve_path_with_origin::<Target>(
                     &path.tail(),
@@ -260,7 +260,13 @@ impl CrateScope {
                     Ok(Target::output(index, path.last_identifier().unwrap()))
                 }
                 None => {
-                    value_used_as_a_namespace(&path.segments[0], &path.segments[1]).emit(handler);
+                    value_used_as_a_namespace(
+                        &path.segments[0],
+                        &path.segments[1],
+                        namespace,
+                        self,
+                    )
+                    .emit(handler);
                     Err(ResolutionError::Unrecoverable)
                 }
             },
@@ -378,7 +384,6 @@ impl CrateScope {
                 let reference = &self.bindings[reference];
 
                 if binding.exposure.compare(&reference.exposure, self) == Some(Ordering::Greater) {
-                    // @Task @Beacon once we can use multiline notes, do so here!!!
                     Diagnostic::error()
                         .code(Code::E009)
                         // @Question use absolute path?
@@ -395,12 +400,16 @@ impl CrateScope {
                             "re-exported binding with lower exposure",
                         )
                         .note(format!(
-                            "expected the exposure of `{}` to be at most {} but it actually is {}",
-                            binding.source,
+                            "\
+expected the exposure of `{}`
+           to be at most {}
+      but it actually is {}",
+                            binding.source, // @Task absolute path
                             reference.exposure.with(self),
                             binding.exposure.with(self),
                         ))
                         .emit(handler);
+                    health.taint();
                 }
             }
         }
@@ -418,6 +427,22 @@ impl CrateScope {
             .bindings
             .iter()
             .map(|&index| self.bindings[index].source.as_str())
+            .find(|&other_identifier| is_similar(identifier, other_identifier))
+    }
+
+    // @Question better API?
+    fn find_similarly_named_filtering(
+        &self,
+        identifier: &str,
+        filter: impl Fn(&Entity) -> bool,
+        namespace: &Namespace,
+    ) -> Option<&str> {
+        namespace
+            .bindings
+            .iter()
+            .map(|&index| &self.bindings[index])
+            .filter(|entity| filter(entity))
+            .map(|entity| entity.source.as_str())
             .find(|&other_identifier| is_similar(identifier, other_identifier))
     }
 
@@ -501,7 +526,7 @@ impl CrateScope {
                     }
                     Err(error @ (UnresolvedBinding { .. } | Unrecoverable)) => {
                         self.bindings[index].mark_as_error();
-                        error.diagnostic(self).unwrap().emit(handler);
+                        error.emit(self, handler);
                         self.health.taint();
                     }
                     Err(UnresolvedUseBinding { inquirer }) => {
@@ -682,8 +707,7 @@ impl RestrictedExposure {
                         definition_site_namespace,
                         handler,
                     )
-                    // unwrap: all use bindings are already resolved
-                    .map_err(|error| error.diagnostic(scope).unwrap().emit(handler))?;
+                    .map_err(|error| error.emit(scope, handler))?;
 
                 let reach_is_ancestor =
                     definition_site_namespace.some_ancestor_equals(reach, scope);
@@ -772,7 +796,7 @@ pub(super) trait ResolutionTarget {
     fn output(index: CrateIndex, identifier: &ast::Identifier) -> Self::Output;
 
     fn handle_bare_super_and_crate(
-        span: Span,
+        hanger: &ast::Hanger,
         namespace: CrateIndex,
         handler: &Handler,
     ) -> Result<Self::Output>;
@@ -796,7 +820,7 @@ impl ResolutionTarget for ValueOrModule {
     }
 
     fn handle_bare_super_and_crate(
-        _: Span,
+        _: &ast::Hanger,
         namespace: CrateIndex,
         _: &Handler,
     ) -> Result<Self::Output> {
@@ -824,11 +848,11 @@ impl ResolutionTarget for OnlyValue {
     }
 
     fn handle_bare_super_and_crate(
-        span: Span,
+        hanger: &ast::Hanger,
         _: CrateIndex,
         handler: &Handler,
     ) -> Result<Self::Output> {
-        Err(module_used_as_a_value(span).emit(handler))
+        Err(module_used_as_a_value(hanger.as_ref()).emit(handler))
     }
 
     fn resolve_simple_path(
@@ -843,7 +867,11 @@ impl ResolutionTarget for OnlyValue {
             UntypedValue | UntypedDataType(_) | UntypedConstructor(_) | Error => {
                 Ok(Self::output(index, identifier))
             }
-            Module(_) => Err(module_used_as_a_value(identifier.span).emit(handler)),
+            Module(_) => Err(module_used_as_a_value(Spanned::new(
+                identifier.span,
+                identifier.as_str(),
+            ))
+            .emit(handler)),
             _ => unreachable!(),
         }
     }
@@ -859,7 +887,7 @@ impl ResolutionTarget for OnlyModule {
     }
 
     fn handle_bare_super_and_crate(
-        _: Span,
+        _: &ast::Hanger,
         namespace: CrateIndex,
         _: &Handler,
     ) -> Result<Self::Output> {
@@ -1168,6 +1196,15 @@ impl<'a> FunctionScope<'a> {
         }
     }
 
+    fn module(&self) -> CrateIndex {
+        match self {
+            &Self::Module(module) => module,
+            Self::FunctionParameter { parent, .. } | Self::PatternBinders { parent, .. } => {
+                parent.module()
+            }
+        }
+    }
+
     pub fn absolute_path(binder: &Identifier, scope: &CrateScope) -> String {
         match binder.index {
             Index::Crate(index) => scope.absolute_path(index),
@@ -1207,20 +1244,24 @@ impl<'a> FunctionScope<'a> {
             &Module(module) => scope
                 .resolve_path::<OnlyValue>(query, module, handler)
                 .map_err(|error| {
-                    error
-                        .diagnostic_with(scope, |identifier, _| {
-                            origin.find_similarly_named(identifier, scope)
-                        })
-                        .unwrap()
-                        .emit(handler)
+                    error.emit_finding_lookalike(
+                        scope,
+                        |identifier, _| origin.find_similarly_named(identifier, scope),
+                        handler,
+                    )
                 }),
             // @Note this looks ugly/complicated, use helper functions
             FunctionParameter { parent, binder } => {
                 if let Some(identifier) = query.identifier_head() {
                     if binder == identifier {
                         if query.segments.len() > 1 {
-                            return Err(value_used_as_a_namespace(identifier, &query.segments[1])
-                                .emit(handler));
+                            return Err(value_used_as_a_namespace(
+                                identifier,
+                                &query.segments[1],
+                                self.module(),
+                                scope,
+                            )
+                            .emit(handler));
                         }
 
                         Ok(Identifier::new(DeBruijnIndex(depth), identifier.clone()))
@@ -1228,10 +1269,9 @@ impl<'a> FunctionScope<'a> {
                         parent.resolve_binding_with_depth(query, scope, depth + 1, origin, handler)
                     }
                 } else {
-                    // @Note kinda awkward API...?
                     scope
                         .resolve_path::<OnlyValue>(query, parent.module(), handler)
-                        .map_err(|error| error.diagnostic(scope).unwrap().emit(handler))
+                        .map_err(|error| error.emit(scope, handler))
                 }
             }
             // @Note this looks ugly/complicated, use helper functions
@@ -1248,6 +1288,8 @@ impl<'a> FunctionScope<'a> {
                                 return Err(value_used_as_a_namespace(
                                     identifier,
                                     &query.segments[1],
+                                    self.module(),
+                                    scope,
                                 )
                                 .emit(handler));
                             }
@@ -1265,7 +1307,7 @@ impl<'a> FunctionScope<'a> {
                 } else {
                     scope
                         .resolve_path::<OnlyValue>(query, parent.module(), handler)
-                        .map_err(|error| error.diagnostic(scope).unwrap().emit(handler))
+                        .map_err(|error| error.emit(scope, handler))
                 }
             }
         }
@@ -1306,16 +1348,6 @@ impl<'a> FunctionScope<'a> {
             }
         }
     }
-
-    fn module(&self) -> CrateIndex {
-        use FunctionScope::*;
-
-        match self {
-            Module(index) => *index,
-            FunctionParameter { parent, .. } => parent.module(),
-            PatternBinders { parent, .. } => parent.module(),
-        }
-    }
 }
 
 fn is_similar(queried_identifier: &str, other_identifier: &str) -> bool {
@@ -1323,27 +1355,101 @@ fn is_similar(queried_identifier: &str, other_identifier: &str) -> bool {
         <= std::cmp::max(queried_identifier.len(), 3) / 3
 }
 
-// @Task levenshtein-search for similar named bindings which are in fact a namespace and suggest the first one
-// @Question rewrite to set the focus on the illegal access to a "subdeclaration"
+struct Lookalike<'a> {
+    actual: &'a str,
+    lookalike: &'a str,
+}
+
+impl fmt::Display for Lookalike<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use difference::Difference::*;
+
+        let changeset = difference::Changeset::new(self.actual, self.lookalike, "");
+        let mut purely_additive = true;
+
+        write!(f, "`")?;
+
+        for difference in &changeset.diffs {
+            match difference {
+                Same(segment) => write!(f, "{}", segment)?,
+                Add(segment) => write!(f, "{}", segment.bold())?,
+                Rem(_) => {
+                    purely_additive = false;
+                }
+            }
+        }
+
+        write!(f, "`")?;
+
+        if !purely_additive {
+            write!(f, " ({changeset})")?;
+        }
+
+        Ok(())
+    }
+}
+
 fn value_used_as_a_namespace(
     non_namespace: &ast::Identifier,
     subbinder: &ast::Identifier,
+    parent: CrateIndex,
+    scope: &CrateScope,
 ) -> Diagnostic {
+    // @Question should we also include lookalike namespaces that don't contain the
+    // subbinding (displaying them in a separate help message?)?
+    // @Beacon @Bug this ignores shadowing @Task define this method for FunctionScope
+    // @Update @Note actually in the future (lang spec) this kind of shadowing does not
+    // occur, the subbinder access pierces through parameters
+    let similarly_named_namespace = scope.find_similarly_named_filtering(
+        non_namespace.as_str(),
+        |entity| {
+            entity.namespace().map_or(false, |namespace| {
+                namespace
+                    .bindings
+                    .iter()
+                    .find(|&&index| &scope.bindings[index].source == subbinder)
+                    .is_some()
+            })
+        },
+        scope.bindings[parent].namespace().unwrap(),
+    );
+
+    let show_very_general_help = similarly_named_namespace.is_none();
+
     Diagnostic::error()
         .code(Code::E022)
-        .message(format!("value `{}` is not a namespace", non_namespace))
-        .labeled_primary_span(subbinder, "reference to a subdeclaration")
-        .labeled_secondary_span(non_namespace, "a value, not a namespace")
+        .message(format!("value `{non_namespace}` is not a namespace"))
+        .labeled_primary_span(non_namespace, "not a namespace, just a value")
+        .labeled_secondary_span(
+            subbinder,
+            "requires the preceeding path segment to refer to a namespace",
+        )
+        .when_some(
+            similarly_named_namespace,
+            |this, lookalike| {
+                this
+                    .help(format!(
+                        "a namespace with a similar name containing the binding exists in scope:\n    {}",
+                        Lookalike { actual: non_namespace.as_str(), lookalike },
+                    ))
+            }
+        )
+        .when(show_very_general_help, |this| {
+            this
+                .note("identifiers following a `.` refer to bindings defined in a namespace (i.e. a module or a data type)")
+                // no type information here yet to check if the non-namespace is indeed a record
+                .help("use `::` to reference a field of a record")
+        })
 }
 
-// @Task levenshtein-search for similar named bindings which are in fact values and suggest the first one
-// @Task print absolute path of the module in question and use highlight the entire path, not just the last
-// segment
-fn module_used_as_a_value(span: Span) -> Diagnostic {
+fn module_used_as_a_value(module: Spanned<impl fmt::Display>) -> Diagnostic {
+    // @Task levenshtein-search for similar named bindings which are in fact values and suggest the first one
+    // @Task print absolute path of the module in question and use highlight the entire path, not just the last
+    // segment
     Diagnostic::error()
         .code(Code::E023)
-        .message("module used as if it was a value")
-        .primary_span(span)
+        .message(format!("module `{module}` is used as a value"))
+        .primary_span(module)
         .help("modules are not first-class citizens, consider utilizing records for such cases instead")
 }
 
@@ -1361,19 +1467,27 @@ enum ResolutionError {
 }
 
 impl ResolutionError {
-    fn diagnostic(self, scope: &CrateScope) -> Option<Diagnostic> {
-        self.diagnostic_with(scope, |identifier, namespace| {
-            scope.find_similarly_named(identifier, scope.bindings[namespace].namespace().unwrap())
-        })
+    fn emit(self, scope: &CrateScope, handler: &Handler) {
+        self.emit_finding_lookalike(
+            scope,
+            |identifier, namespace| {
+                scope.find_similarly_named(
+                    identifier,
+                    scope.bindings[namespace].namespace().unwrap(),
+                )
+            },
+            handler,
+        );
     }
 
-    fn diagnostic_with<'s>(
+    fn emit_finding_lookalike<'s>(
         self,
         scope: &CrateScope,
         find_lookalike: impl FnOnce(&str, CrateIndex) -> Option<&'s str>,
-    ) -> Option<Diagnostic> {
+        handler: &Handler,
+    ) {
         match self {
-            Self::Unrecoverable => None,
+            Self::Unrecoverable => {}
             Self::UnresolvedBinding {
                 identifier,
                 namespace,
@@ -1398,23 +1512,25 @@ impl ResolutionError {
                     }
                 }
 
-                Some(
-                    Diagnostic::error()
-                        .code(Code::E021)
-                        .message(message)
-                        .primary_span(&identifier)
-                        .when_some(
-                            find_lookalike(identifier.as_str(), namespace),
-                            |diagnostic, binding| {
-                                diagnostic.help(format!(
-                                    "a binding with a similar name exists in scope: `{}`",
-                                    binding
-                                ))
-                            },
-                        ),
-                )
+                Diagnostic::error()
+                    .code(Code::E021)
+                    .message(message)
+                    .primary_span(&identifier)
+                    .when_some(
+                        find_lookalike(identifier.as_str(), namespace),
+                        |diagnostic, binding| {
+                            diagnostic.help(format!(
+                                "a binding with a similar name exists in scope: {}",
+                                Lookalike {
+                                    actual: identifier.as_str(),
+                                    lookalike: binding
+                                },
+                            ))
+                        },
+                    )
+                    .emit(handler);
             }
-            _ => None,
+            _ => unreachable!(),
         }
     }
 }

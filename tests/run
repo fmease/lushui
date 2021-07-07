@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+
+cargo run --release --quiet --manifest-path="$(dirname $0)/framework/Cargo.toml" -- $*

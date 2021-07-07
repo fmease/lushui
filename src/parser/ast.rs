@@ -554,7 +554,7 @@ pub struct Identifier {
 }
 
 impl Identifier {
-    pub fn new(atom: Atom, span: Span) -> Self {
+    pub const fn new(atom: Atom, span: Span) -> Self {
         Self { atom, span }
     }
 

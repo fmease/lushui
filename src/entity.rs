@@ -35,8 +35,9 @@ pub struct Entity {
 }
 
 impl Entity {
-    pub const fn is_untyped(&self) -> bool {
+    pub const fn is_untyped_value(&self) -> bool {
         use EntityKind::*;
+
         matches!(
             self.kind,
             UntypedValue | UntypedDataType(_) | UntypedConstructor(_)
@@ -47,8 +48,18 @@ impl Entity {
         matches!(self.kind, EntityKind::Error)
     }
 
+    pub fn is_namespace(&self) -> bool {
+        use EntityKind::*;
+
+        matches!(
+            self.kind,
+            Module(_) | UntypedDataType(_) | UntypedConstructor(_)
+        )
+    }
+
     pub fn namespace(&self) -> Option<&Namespace> {
         use EntityKind::*;
+
         match &self.kind {
             Module(namespace) | UntypedDataType(namespace) | UntypedConstructor(namespace) => {
                 Some(namespace)
@@ -59,6 +70,7 @@ impl Entity {
 
     pub fn namespace_mut(&mut self) -> Option<&mut Namespace> {
         use EntityKind::*;
+
         match &mut self.kind {
             Module(namespace) | UntypedDataType(namespace) | UntypedConstructor(namespace) => {
                 Some(namespace)

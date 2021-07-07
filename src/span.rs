@@ -408,6 +408,23 @@ mod spanned {
         pub const fn new(span: Span, kind: Kind) -> Self {
             Self { kind, span }
         }
+
+        pub fn map<MappedKind>(
+            self,
+            mapper: impl FnOnce(Kind) -> MappedKind,
+        ) -> Spanned<MappedKind> {
+            Spanned {
+                kind: mapper(self.kind),
+                span: self.span,
+            }
+        }
+
+        pub const fn as_ref(&self) -> Spanned<&Kind> {
+            Spanned {
+                kind: &self.kind,
+                span: self.span,
+            }
+        }
     }
 
     impl<Kind: fmt::Debug> fmt::Debug for Spanned<Kind> {

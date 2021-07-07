@@ -1,0 +1,14 @@
+;;; TEST fail check
+
+@(location "../../../libs/core/core")
+module core
+
+use core.nat.Nat
+
+unleet: Nat = -1337
+
+weird: Careless =
+    accumulate @Nat64 1'000'000'000'000'000'000'000 @Int32 -9'999'999'999
+
+@(recursion-limit 130'454'112'009'021)
+module dummy of

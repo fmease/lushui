@@ -955,7 +955,7 @@ impl<'a> Parser<'a> {
             self.error(|| {
                 Expected::Token(ThinArrowRight)
                     .but_actual_is(self.current_token())
-                    .labeled_secondary_span(domain, "the start of a pi type literal")
+                    .labeled_secondary_span(domain, "start of a pi type literal")
             })
         }
     }
@@ -1590,7 +1590,7 @@ impl<'a> Parser<'a> {
                     .but_actual_is(token)
                     .labeled_secondary_span(
                         &argument,
-                        format!("this is treated as {explicitness} function argument,\nnot as the domain of a pi type literal"),
+                        format!("treated as {explicitness} function argument,\nnot as the domain of a pi type literal"),
                     )
                     .help(BRACKET_POTENTIAL_PI_TYPE_LITERAL))?;
             }

@@ -1,0 +1,12 @@
+;;; TEST fail check
+
+data Alpha: Type of
+    alpha: Alpha
+
+use Alpha as A
+
+x: Alpha = A.alpha
+
+Decayed-Alpha: Type = Alpha
+
+y: Alpha = Decayed-Alpha.alpha

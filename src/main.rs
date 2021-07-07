@@ -380,6 +380,7 @@ fn main() {
         // I think
         assert!(handler.system_health().is_tainted());
         // @Task use ExitStatus
+        // @Beacon @Question do destructors run?
         std::process::exit(1);
     }
 }

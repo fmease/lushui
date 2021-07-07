@@ -1,0 +1,13 @@
+;;; TEST pass check
+
+@(location "../../libs/core/core")
+module core
+
+use core.nat.Nat
+use core.nat
+
+main: Nat =
+    let a: Nat = 10 in
+    let b: Nat = 20 in nat.add a b
+
+x: Nat = (\(a: Nat) (b: Nat): Nat => nat.add a b) 10 20

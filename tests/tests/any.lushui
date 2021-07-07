@@ -1,0 +1,17 @@
+;;; TEST pass check
+
+@(location "../../libs/core/core")
+module core
+
+use core.(list.(List empty cons) bool.(Bool false true) unit.(Unit unit))
+
+data Any: Type of
+    any: (A: Type) -> A -> Any
+
+use Any.any
+
+foo: List Bool =
+    cons Bool false (cons Bool true (empty Bool))
+
+bar: List Any =
+    cons Any (any Unit unit) (cons Any (any Bool false) (empty Any))

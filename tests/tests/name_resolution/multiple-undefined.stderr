@@ -1,0 +1,81 @@
+error[E021]: binding `on` is not defined in this scope
+ --> ${DIRECTORY}/name_resolution/multiple-undefined.lushui:3:7
+  |
+3 | what: on earth = this bogus line
+  |       ^^ 
+  |
+
+error[E021]: binding `earth` is not defined in this scope
+ --> ${DIRECTORY}/name_resolution/multiple-undefined.lushui:3:10
+  |
+3 | what: on earth = this bogus line
+  |          ^^^^^ 
+  |
+
+error[E021]: binding `this` is not defined in this scope
+ --> ${DIRECTORY}/name_resolution/multiple-undefined.lushui:3:18
+  |
+3 | what: on earth = this bogus line
+  |                  ^^^^ 
+  |
+
+error[E021]: binding `bogus` is not defined in this scope
+ --> ${DIRECTORY}/name_resolution/multiple-undefined.lushui:3:23
+  |
+3 | what: on earth = this bogus line
+  |                       ^^^^^ 
+  |
+
+error[E021]: binding `line` is not defined in this scope
+ --> ${DIRECTORY}/name_resolution/multiple-undefined.lushui:3:29
+  |
+3 | what: on earth = this bogus line
+  |                             ^^^^ 
+  |
+
+error[E021]: binding `Non-Existent` is not defined in this scope
+ --> ${DIRECTORY}/name_resolution/multiple-undefined.lushui:5:14
+  |
+5 | data Xoo (A: Non-Existent): Departed of
+  |              ^^^^^^^^^^^^ 
+  |
+
+error[E021]: binding `Departed` is not defined in this scope
+ --> ${DIRECTORY}/name_resolution/multiple-undefined.lushui:5:29
+  |
+5 | data Xoo (A: Non-Existent): Departed of
+  |                             ^^^^^^^^ 
+  |
+
+error[E021]: binding `Slipped-Away` is not defined in this scope
+ --> ${DIRECTORY}/name_resolution/multiple-undefined.lushui:6:10
+  |
+6 |     x00: Slipped-Away
+  |          ^^^^^^^^^^^^ 
+  |
+
+error[E021]: binding `Void` is not defined in this scope
+  --> ${DIRECTORY}/name_resolution/multiple-undefined.lushui:10:21
+   |
+10 |     Nothing: Type = Void
+   |                     ^^^^ 
+   |
+
+error[E021]: binding `f` is not defined in this scope
+  --> ${DIRECTORY}/name_resolution/multiple-undefined.lushui:15:33
+   |
+15 | ex-nihilo (x y: Thing): Thing = f z Thing.thing
+   |                                 ^ 
+   |
+  help: a binding with a similar name exists in scope: `y` ([91mf[0m[92my[0m)
+
+error[E021]: binding `z` is not defined in this scope
+  --> ${DIRECTORY}/name_resolution/multiple-undefined.lushui:15:35
+   |
+15 | ex-nihilo (x y: Thing): Thing = f z Thing.thing
+   |                                   ^ 
+   |
+  help: a binding with a similar name exists in scope: `y` ([91mz[0m[92my[0m)
+
+error: aborting due to 11 previous errors
+

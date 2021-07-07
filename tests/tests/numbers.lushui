@@ -1,0 +1,15 @@
+;;; TEST pass check
+
+@(location "../../libs/core/core")
+module core
+
+use core.(nat.(self Nat) nat32.Nat32 int.Int int64.Int64)
+
+alpha: Int = @Int -1000
+
+beta: Nat = nat. + 69696 44
+
+use core.duple.(Duple duple)
+
+gamma: Duple Int64 Nat32 =
+    duple Int64 Nat32 @Int64 334333223322 @Nat32 233323

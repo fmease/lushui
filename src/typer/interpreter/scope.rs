@@ -84,7 +84,7 @@ impl CrateScope {
             } => {
                 let index = binder.crate_index().unwrap();
                 debug_assert!(
-                    self.bindings[index].is_untyped()
+                    self.bindings[index].is_untyped_value()
                         || self.bindings[index].is_value_without_value()
                 );
                 self.bindings[index].kind = EntityKind::Value {
@@ -94,7 +94,7 @@ impl CrateScope {
             }
             DataBinding { binder, type_ } => {
                 let index = binder.crate_index().unwrap();
-                debug_assert!(self.bindings[index].is_untyped());
+                debug_assert!(self.bindings[index].is_untyped_value());
                 self.bindings[index].kind = EntityKind::DataType {
                     type_,
                     constructors: Vec::new(),
@@ -106,7 +106,7 @@ impl CrateScope {
                 data,
             } => {
                 let index = binder.crate_index().unwrap();
-                debug_assert!(self.bindings[index].is_untyped());
+                debug_assert!(self.bindings[index].is_untyped_value());
                 self.bindings[index].kind = EntityKind::Constructor { type_ };
 
                 match self
@@ -124,7 +124,7 @@ impl CrateScope {
             }
             ForeignValueBinding { binder, type_ } => {
                 let index = binder.crate_index().unwrap();
-                debug_assert!(self.bindings[index].is_untyped());
+                debug_assert!(self.bindings[index].is_untyped_value());
 
                 self.bindings[index].kind = match &self.ffi.foreign_bindings.remove(binder.as_str())
                 {

@@ -1,0 +1,12 @@
+;;; TEST fail check
+
+@(location "../../libs/core/core")
+module core
+
+use core.bool.(false true Bool)
+
+is-nat32-or-nat64 (A: Type -> Type): Bool =
+    case A of
+        core.nat32.Nat32 => true
+        core.nat64.Nat64 => true
+        \else => false

@@ -70,7 +70,7 @@ impl<'a> Lowerer<'a> {
             Outcome::from(self.lower_attributes(&declaration.attributes, &declaration))
                 .unwrap(&mut health);
 
-        health.of(match declaration.kind {
+        let declarations = match declaration.kind {
             Value(value) => {
                 let context = Context::new(declaration.span);
 
@@ -93,6 +93,7 @@ impl<'a> Lowerer<'a> {
                 let body = match value.body {
                     Some(body) => {
                         let mut body = self.lower_expression(body, context).unwrap(&mut health);
+                        
                         {
                             let mut type_annotation = once(
                                 self.lower_expression(declaration_type_annotation.clone(), context)
@@ -325,7 +326,7 @@ impl<'a> Lowerer<'a> {
                                 return PossiblyErroneous::error();
                                 }
                             };
-                        if health.is_tainted() {
+                        if lexer_health.is_tainted() {
                             return PossiblyErroneous::error();
                         }
 
@@ -522,7 +523,9 @@ impl<'a> Lowerer<'a> {
 
                 declarations
             }
-        })
+        };
+
+        health.of(declarations)
     }
 
     /// Lower an expression.
@@ -538,7 +541,7 @@ impl<'a> Lowerer<'a> {
         let attributes = Outcome::from(self.lower_attributes(&expression.attributes, &expression))
             .unwrap(&mut health);
 
-        health.of(match expression.kind {
+        let expression = match expression.kind {
             PiTypeLiteral(pi) => {
                 health &= self.check_fieldness_location(pi.domain.aspect.fieldness, context);
 
@@ -800,7 +803,9 @@ impl<'a> Lowerer<'a> {
                 PossiblyErroneous::error()
             }
             Error => PossiblyErroneous::error(),
-        })
+        };
+
+        health.of(expression)
     }
 
     /// Lower a pattern.
@@ -812,7 +817,7 @@ impl<'a> Lowerer<'a> {
         let attributes =
             Outcome::from(self.lower_attributes(&pattern.attributes, &pattern)).unwrap(&mut health);
 
-        health.of(match pattern.kind {
+        let pattern = match pattern.kind {
             // @Note awkward API!
             NumberLiteral(literal) => {
                 let span = pattern.span;
@@ -871,7 +876,9 @@ impl<'a> Lowerer<'a> {
                 health.taint();
                 PossiblyErroneous::error()
             }
-        })
+        };
+
+        health.of(pattern)
     }
 
     /// Lower attributes.

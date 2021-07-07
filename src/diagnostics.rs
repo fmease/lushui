@@ -27,14 +27,16 @@
 
 use crate::{
     error::Health,
-    format::{pluralize, s_pluralize, AsDebug},
+    format::{pluralize, s_pluralize},
     span::{SourceMap, Span, Spanning},
     Str,
 };
 use colored::{Color, Colorize};
 use std::{
-    borrow::Cow, cell::RefCell, collections::BTreeSet, default::default, iter::once, rc::Rc,
+    borrow::Cow, cell::RefCell, collections::BTreeSet, default::default, fmt::Debug, iter::once,
+    rc::Rc,
 };
+use unicode_width::UnicodeWidthStr;
 
 /// The error handler.
 // @Task better name
@@ -150,14 +152,13 @@ enum Emitter {
     },
 }
 
-// @Task optimize Ord impl
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 struct UnboxedDiagnostic {
+    highlights: BTreeSet<Highlight>,
+    subdiagnostics: Vec<Subdiagnostic>,
     level: Level,
     code: Option<Code>,
     message: Option<Str>,
-    highlights: BTreeSet<Highlight>,
-    subdiagnostics: Vec<Subdiagnostic>,
 }
 
 /// A complex error message optionally with source location information.
@@ -557,28 +558,21 @@ impl Diagnostic {
         }
 
         for subdiagnostic in &self.0.subdiagnostics {
-            // @Task allow multiline messages
-            message += &format!("\n{padding}{subdiagnostic}");
+            message += &format!("\n{padding}{}: ", subdiagnostic.level);
+
+            let mut message_lines = subdiagnostic.message.split('\n');
+
+            if let Some(message_line) = message_lines.next() {
+                message += message_line;
+            }
+
+            for message_line in message_lines {
+                let level_space = " ".repeat(subdiagnostic.level.name().width() + 1);
+                message += &format!("\n{padding}{level_space} {message_line}",);
+            }
         }
 
         message
-    }
-}
-
-impl fmt::Debug for Diagnostic {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fn option<T: fmt::Debug>(option: &Option<T>) -> Str {
-            option
-                .as_ref()
-                .map_or::<Str, _>("None".into(), |message| format!("{:?}", message).into())
-        }
-
-        f.debug_struct("Diagnostic")
-            .field("level", &self.0.level)
-            .field("code", &option(&self.0.code).as_debug())
-            .field("message", &option(&self.0.message).as_debug())
-            .field("subs", &self.0.subdiagnostics)
-            .finish()
     }
 }
 
@@ -593,21 +587,6 @@ const DEBUG_COLOR: Color = Color::BrightMagenta;
 struct Subdiagnostic {
     level: Sublevel,
     message: Str,
-}
-
-impl fmt::Debug for Subdiagnostic {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Sub")
-            .field("level", &self.level)
-            .field("message", &self.message)
-            .finish()
-    }
-}
-
-impl fmt::Display for Subdiagnostic {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.level, self.message)
-    }
 }
 
 /// Level of severity of a diagnostic.

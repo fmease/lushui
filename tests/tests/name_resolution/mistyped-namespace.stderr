@@ -1,0 +1,10 @@
+error[E016]: could not load module `core`
+ --> ${DIRECTORY}/name_resolution/mistyped-namespace.lushui:8:1
+  |
+8 | module core
+  | ^^^^^^^^^^^ 
+  |
+ note: file `${DIRECTORY}/name_resolution/../../libs/core/core.lushui` does not exist
+
+error: aborting due to previous error
+

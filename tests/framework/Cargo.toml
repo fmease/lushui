@@ -1,0 +1,15 @@
+[package]
+name = "golden-testing-framework"
+version = "0.1.0"
+description = "Golden testing framework for the Lushui reference compiler"
+authors = ["León Orell Valerian Liehr <liehr.exchange@gmx.net>"]
+edition = "2018"
+publish = false
+
+[dependencies]
+colored = "2.0.0"
+difference = "2.0.0"
+walkdir = "2.3.2"
+structopt = "0.3.21"
+clap = "2.33.3"
+unicode-width = "0.1.7"

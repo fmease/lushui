@@ -1,0 +1,694 @@
+#![feature(format_args_capture)]
+#![forbid(rust_2018_idioms, unused_must_use)]
+
+// @Task
+// * parallel test execution
+// * replace some panics with Testsubfailures
+// * strip rustc warnings from stderr
+// * add help messages
+
+use std::{
+    fmt,
+    fs::{read_to_string, File},
+    io::Write,
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
+    str::FromStr,
+    time::{Duration, Instant},
+};
+
+use colored::Colorize;
+use difference::{Changeset, Difference};
+use unicode_width::UnicodeWidthStr;
+
+fn lushui_source_path() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .unwrap()
+}
+
+fn default_test_directory_path() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../tests")
+        .canonicalize()
+        .unwrap()
+}
+
+#[derive(Debug)] // @Temporary
+struct Application {
+    release_mode: bool,
+    gilding: bool,
+    filter: Vec<String>,
+    test_folder_path: PathBuf,
+}
+
+impl Application {
+    fn new() -> Self {
+        let default_test_directory_path = default_test_directory_path();
+
+        let matches = clap::App::new(env!("CARGO_PKG_NAME"))
+            .version(env!("CARGO_PKG_VERSION"))
+            .author(env!("CARGO_PKG_AUTHORS"))
+            .about(env!("CARGO_PKG_DESCRIPTION"))
+            .arg(
+                clap::Arg::with_name("release")
+                    .long("release")
+                    .help("Build the Lushui compiler in release mode (i.e. with optimizations)"),
+            )
+            .arg(
+                clap::Arg::with_name("gild")
+                    .long("gild")
+                    // @Note description not entirely correct
+                    .help("Update golden files to the current compiler output"),
+            )
+            .arg(
+                // @Task help
+                clap::Arg::with_name("filter")
+                    .long("filter")
+                    .short("F")
+                    .takes_value(true)
+                    .multiple(true),
+            )
+            .arg(
+                // @Task help
+                clap::Arg::with_name("test-folder-path")
+                    .long("test-folder")
+                    .takes_value(true)
+                    .validator(|input| {
+                        PathBuf::from_str(&input)
+                            .map(|_| ())
+                            .map_err(|error| error.to_string())
+                    })
+                    .default_value_os(default_test_directory_path.as_os_str()),
+            )
+            .get_matches();
+
+        Application {
+            release_mode: matches.is_present("release"),
+            gilding: matches.is_present("gild"),
+            filter: matches
+                .values_of("filter")
+                .map_or(Vec::new(), |value| value.map(ToString::to_string).collect()),
+            test_folder_path: matches
+                .value_of("test-folder-path")
+                .map(|input| input.parse().unwrap())
+                .unwrap(),
+        }
+    }
+}
+
+const SEPARATOR_WIDTH: usize = 100;
+
+fn main() {
+    if main_().is_err() {
+        std::process::exit(1);
+    }
+}
+
+fn main_() -> Result<(), ()> {
+    let application = Application::new();
+
+    if application.gilding {
+        print!("Do you really want to gild all valid failing tests? [y/N] ");
+        std::io::stdout().flush().unwrap();
+
+        let mut answer = String::new();
+        std::io::stdin().read_line(&mut answer).unwrap();
+        let answer = answer.trim();
+
+        if !(answer.eq_ignore_ascii_case("y") || answer.eq_ignore_ascii_case("yes")) {
+            return Err(());
+        }
+
+        println!();
+    }
+
+    println!("Building the Lushui compiler...");
+
+    // @Task capture stderr (errors + warnings)
+    // save those warnings so we can remove it as the prefix of the following tests
+    // but also add a note that some stuff was written to stderr (but status is ok)
+    let status = Command::new("cargo")
+        .current_dir(lushui_source_path())
+        .arg("build")
+        .args(if application.release_mode {
+            &["--release"][..]
+        } else {
+            &[]
+        })
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    println!();
+    println!("{}", "=".repeat(SEPARATOR_WIDTH));
+    println!();
+
+    let test_directory_path = application.test_folder_path;
+    let legible_test_directory_path = test_directory_path.to_str().unwrap();
+
+    let mut summary = Summary::new(application.gilding, &application.filter);
+    let mut failures = Vec::new();
+    let suite_time = Instant::now();
+
+    // @Task make parallel if possible (windows()/chunks()?)
+    for entry in walkdir::WalkDir::new(&test_directory_path) {
+        let entry = entry.unwrap();
+
+        if entry.file_type().is_dir() {
+            continue;
+        }
+
+        if !entry.file_type().is_file() {
+            panic!("invalid file type");
+        }
+
+        if has_file_extension(entry.path(), "stdout") || has_file_extension(entry.path(), "stderr")
+        {
+            // handled later together with the corresponding Lushui file
+            continue;
+        }
+
+        if !has_file_extension(entry.path(), "lushui") {
+            panic!("illegal extension");
+        }
+
+        let legible_path = entry
+            .path()
+            .to_str()
+            .unwrap()
+            .strip_prefix(legible_test_directory_path)
+            .unwrap()
+            .strip_prefix("/")
+            .unwrap()
+            .strip_suffix("lushui")
+            .unwrap()
+            .strip_suffix(".")
+            .unwrap();
+
+        let mut failure = TestFailure {
+            path: legible_path.to_owned(),
+            subfailures: Vec::new(),
+        };
+
+        if !application.filter.is_empty()
+            && !application
+                .filter
+                .iter()
+                .any(|filter| legible_path.contains(filter))
+        {
+            summary.skipped_tests += 1;
+            continue;
+        }
+
+        print!("test {legible_path:<80}");
+
+        let file = read_to_string(entry.path()).unwrap();
+
+        let configuration = match TestConfiguration::parse(&file) {
+            Ok(configuration) => configuration,
+            Err(error) => {
+                println!(" {}", "INVALID".red());
+                summary.failed_tests += 1;
+                failure
+                    .subfailures
+                    .push(TestSubfailure::Invalid { reason: error });
+                failures.push(failure);
+                continue;
+            }
+        };
+
+        if let TestTag::Ignore = configuration.tag {
+            println!(" {}", "ignored".yellow());
+            summary.ignored_tests += 1;
+            continue;
+        }
+
+        let time = Instant::now();
+
+        // @Beacon @Question how can we filter out rustc's warnings from stderr?
+
+        let output = Command::new("cargo")
+            .current_dir(lushui_source_path())
+            .args(&["run", "--quiet", "--"])
+            .args(configuration.arguments)
+            .arg(entry.path())
+            .output()
+            .unwrap();
+
+        let duration = time.elapsed();
+        print!("{}", format!(" {duration:.2?}").bright_black());
+
+        match (configuration.tag, output.status.success()) {
+            (TestTag::Pass, true) | (TestTag::Fail, false) => {}
+            (TestTag::Pass, false) => failure.subfailures.push(TestSubfailure::UnexpectedFail {
+                code: output.status.code(),
+            }),
+            (TestTag::Fail, true) => failure.subfailures.push(TestSubfailure::UnexpectedPass),
+            (TestTag::Ignore, _) => unreachable!(),
+        }
+
+        let stdout_was_gilded = match check_against_golden_file(
+            legible_test_directory_path,
+            &entry.path().with_extension("stdout"),
+            output.stdout,
+            Stream::Stdout,
+            application.gilding,
+        ) {
+            Ok(gilded) => gilded,
+            Err(error) => {
+                failure.subfailures.push(error);
+                false
+            }
+        };
+
+        let stderr_was_gilded = match check_against_golden_file(
+            legible_test_directory_path,
+            &entry.path().with_extension("stderr"),
+            output.stderr,
+            Stream::Stderr,
+            application.gilding,
+        ) {
+            Ok(gilded) => gilded,
+            Err(error) => {
+                failure.subfailures.push(error);
+                false
+            }
+        };
+
+        if stdout_was_gilded || stderr_was_gilded {
+            summary.gilded_tests += 1;
+            print!(" {}", "gilded".blue());
+
+            if stdout_was_gilded {
+                print!(" {}", "stdout".blue());
+            }
+            if stderr_was_gilded {
+                print!(" {}", "stderr".blue());
+            }
+        } else {
+            if failure.subfailures.is_empty() {
+                print!(" {}", "ok".green());
+                summary.passed_tests += 1;
+            } else {
+                print!(" {}", "FAIL".red());
+                summary.failed_tests += 1;
+                failures.push(failure);
+            }
+        }
+
+        println!();
+    }
+
+    summary.duration = suite_time.elapsed();
+
+    for failure in failures {
+        println!();
+        println!(
+            "=== {} {}",
+            failure.path,
+            "=".repeat(
+                SEPARATOR_WIDTH
+                    .saturating_sub(failure.path.width())
+                    .saturating_sub(5)
+            )
+        );
+        println!();
+
+        for subfailure in failure.subfailures {
+            println!("  {subfailure}");
+        }
+    }
+
+    println!();
+    println!("{}", summary);
+
+    if !summary.tests_passed() {
+        return Err(());
+    }
+
+    Ok(())
+}
+
+fn check_against_golden_file(
+    test_directory_path: &str,
+    golden_file_path: &Path,
+    actual: Vec<u8>,
+    stream: Stream,
+    gilding: bool,
+) -> Result<bool, TestSubfailure> {
+    let actual = String::from_utf8(actual).unwrap();
+
+    let golden = if golden_file_path.exists() {
+        stream.preprocess_before_comparison(
+            read_to_string(golden_file_path).unwrap(),
+            test_directory_path,
+        )
+    } else {
+        String::new()
+    };
+
+    if actual != golden {
+        if !gilding {
+            Err(TestSubfailure::GoldenFileMismatch {
+                golden,
+                actual,
+                stream,
+            })
+        } else {
+            let actual = stream.preprocess_before_generating(actual, test_directory_path);
+
+            File::create(golden_file_path)
+                .unwrap()
+                .write_all(&actual.as_bytes())
+                .unwrap();
+
+            Ok(true)
+        }
+    } else {
+        Ok(false)
+    }
+}
+
+// `failed_tests` does not necessarily equal `gilded_tests` since the former includes
+// invalid tests which are not gilded
+struct Summary<'filter> {
+    ignored_tests: usize,
+    passed_tests: usize,
+    failed_tests: usize,
+    gilded_tests: usize,
+    skipped_tests: usize,
+    gilding: bool,
+    duration: Duration,
+    filter: &'filter [String],
+}
+
+impl<'filter> Summary<'filter> {
+    fn new(gilding: bool, filter: &'filter [String]) -> Self {
+        Self {
+            ignored_tests: 0,
+            passed_tests: 0,
+            failed_tests: 0,
+            gilded_tests: 0,
+            skipped_tests: 0,
+            gilding,
+            duration: Duration::default(),
+            filter,
+        }
+    }
+
+    fn tests_passed(&self) -> bool {
+        self.failed_tests == 0
+    }
+
+    fn executed_tests(&self) -> usize {
+        self.passed_tests + self.gilded_tests + self.failed_tests
+    }
+
+    fn ratio_passed_vs_executed_tests(&self) -> f32 {
+        let ratio = self.passed_tests as f32 / self.executed_tests() as f32;
+        ratio * 100.0
+    }
+
+    // @Note misleading name
+    fn total_amount_tests(&self) -> usize {
+        self.executed_tests() + self.ignored_tests
+    }
+
+    // @Note horrid name
+    fn unfiltered_total_amount_tests(&self) -> usize {
+        self.total_amount_tests() + self.skipped_tests
+    }
+
+    // @Note horrible name
+    fn filter_ratio(&self) -> f32 {
+        let ratio = self.total_amount_tests() as f32 / self.unfiltered_total_amount_tests() as f32;
+        ratio * 100.0
+    }
+}
+
+impl fmt::Display for Summary<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{}", "=".repeat(SEPARATOR_WIDTH))?;
+        writeln!(f)?;
+
+        let status = if self.tests_passed() {
+            if !self.gilding {
+                "ALL TESTS PASSED!".green()
+            } else {
+                if self.gilded_tests == 0 {
+                    "ALL TESTS PASSED WITHOUT GILDING!".green()
+                } else {
+                    "SOME TESTS WERE GILDED!".blue()
+                }
+            }
+        } else {
+            "SOME TESTS FAILED!".red()
+        };
+
+        write!(
+            f,
+            "  {status}
+    {passed} {label_passed} ({ratio:.2}%)",
+            passed = self.passed_tests,
+            label_passed = if !self.gilding {
+                "passed".green()
+            } else {
+                "passed without gilding".green()
+            },
+            ratio = self.ratio_passed_vs_executed_tests(),
+        )?;
+
+        if self.gilding {
+            write!(
+                f,
+                " | {gilded} {label_gilded}",
+                gilded = self.gilded_tests,
+                label_gilded = "gilded".blue(),
+            )?;
+        }
+
+        writeln!(f, " | {failed} {label_failed} | {ignored} {label_ignored} | {filtered_out} filtered out | {total} in total ({filter_ratio:.2}% of {unfiltered_total})
+    {duration}\
+",
+            failed = self.failed_tests,
+            label_failed = "failed".red(),
+            ignored = self.ignored_tests,
+            label_ignored = "ignored".yellow(),
+            total = self.total_amount_tests(),
+            filtered_out = self.skipped_tests,
+            unfiltered_total = self.unfiltered_total_amount_tests(),
+            filter_ratio = self.filter_ratio(),
+            duration = format!("{:.2?}", self.duration).bright_black(),
+        )?;
+
+        if !self.filter.is_empty() {
+            writeln!(f, "    filtered by\n        {}", self.filter.join(" "))?;
+        }
+
+        writeln!(f)?;
+        writeln!(f, "{}", "=".repeat(SEPARATOR_WIDTH))
+    }
+}
+
+struct TestConfiguration<'a> {
+    tag: TestTag,
+    arguments: Vec<&'a str>,
+}
+
+impl<'a> TestConfiguration<'a> {
+    fn parse(source: &'a str) -> Result<Self, ParseError> {
+        use ParseError::*;
+
+        const PREFIX: &str = ";;; TEST ";
+
+        let arguments = source
+            .lines()
+            .next()
+            .and_then(|line| line.strip_prefix(PREFIX))
+            .ok_or(MissingPrefix)?;
+
+        let mut arguments = arguments.split_ascii_whitespace();
+
+        let tag = arguments.next().ok_or(MissingArgument)?;
+
+        Ok(TestConfiguration {
+            tag: match tag {
+                "ignore" => TestTag::Ignore,
+                "pass" => TestTag::Pass,
+                "fail" => TestTag::Fail,
+                tag => return Err(InvalidArgument(tag.to_owned())),
+            },
+            arguments: arguments.collect(),
+        })
+    }
+}
+
+enum TestTag {
+    Ignore,
+    Pass,
+    Fail,
+}
+
+#[derive(Debug)]
+enum ParseError {
+    MissingPrefix,
+    MissingArgument,
+    InvalidArgument(String),
+}
+
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MissingPrefix => write!(f, "missing prefix"),
+            Self::MissingArgument => write!(f, "missing argument"),
+            Self::InvalidArgument(argument) => write!(f, "invalid argument `{argument}`"),
+        }
+    }
+}
+#[derive(Clone, Copy)]
+enum Stream {
+    Stdout,
+    Stderr,
+}
+
+impl Stream {
+    fn preprocess_before_comparison(self, stream: String, test_directory_path: &str) -> String {
+        match self {
+            Self::Stdout => stream,
+            // @Task don't replace if preceeded by another `$` (and replace `$$` with `$` in a second step)
+            Self::Stderr => stream.replace(GOLDEN_STDERR_VARIABLE_DIRECTORY, test_directory_path),
+        }
+    }
+
+    fn preprocess_before_generating(self, stream: String, test_directory_path: &str) -> String {
+        match self {
+            Self::Stdout => stream,
+            Self::Stderr => stream.replace(test_directory_path, GOLDEN_STDERR_VARIABLE_DIRECTORY),
+        }
+    }
+}
+
+impl fmt::Display for Stream {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Stdout => write!(f, "stdout"),
+            Self::Stderr => write!(f, "stderr"),
+        }
+    }
+}
+
+const GOLDEN_STDERR_VARIABLE_DIRECTORY: &str = "${DIRECTORY}";
+
+struct TestFailure {
+    path: String,
+    subfailures: Vec<TestSubfailure>,
+}
+
+enum TestSubfailure {
+    UnexpectedPass,
+    UnexpectedFail {
+        code: Option<i32>,
+    },
+    GoldenFileMismatch {
+        golden: String,
+        actual: String,
+        stream: Stream,
+    },
+    Invalid {
+        // @Temporary
+        reason: ParseError,
+    },
+}
+
+impl fmt::Display for TestSubfailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnexpectedPass => {
+                write!(
+                    f,
+                    "{}",
+                    "expected the test to fail but the Lushui compiler exited successfully".red()
+                )?;
+            }
+            Self::UnexpectedFail { code } => {
+                write!(
+                    f,
+                    "{}",
+                    format!(
+                        "expected the test to pass but the Lushui compiler failed{}",
+                        match code {
+                            Some(code) => format!(" with exit code {}", code),
+                            None => String::new(),
+                        }
+                    )
+                    .red()
+                )?;
+            }
+            Self::GoldenFileMismatch {
+                golden,
+                actual,
+                stream,
+            } => {
+                writeln!(f, "{}", format!(
+                    "the actual {stream} of the Lushui compiler does not match the expected golden {stream}:",
+                    stream = stream
+                ).red())?;
+                writeln!(f)?;
+                writeln!(f, "{}", "-".repeat(SEPARATOR_WIDTH).bright_black())?;
+
+                let changes = Changeset::new(golden, actual, "\n");
+                write_differences_with_ledge(&changes.diffs, f)?;
+
+                write!(f, "{}", "-".repeat(SEPARATOR_WIDTH).bright_black())?;
+            }
+            Self::Invalid { reason } => {
+                // @Beacon @Temporary formatting
+                write!(
+                    f,
+                    "{}: {}",
+                    "the test is of an invalid format".red(),
+                    reason
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+// the provided Display implementation for Changesets is problematic when whitespace differs
+fn write_differences_with_ledge(
+    differences: &[Difference],
+    f: &mut fmt::Formatter<'_>,
+) -> fmt::Result {
+    for difference in differences {
+        match difference {
+            Difference::Same(lines) => {
+                for line in lines.lines() {
+                    writeln!(f, "{} {}", " ".on_bright_white(), line)?;
+                }
+            }
+            Difference::Add(lines) => {
+                for line in lines.lines().chain(lines.is_empty().then(|| "")) {
+                    writeln!(f, "{} {}", "+".black().on_green(), line.green())?;
+                }
+            }
+            Difference::Rem(lines) => {
+                for line in lines.lines().chain(lines.is_empty().then(|| "")) {
+                    writeln!(f, "{} {}", "-".black().on_red(), line.red())?;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn has_file_extension(path: &Path, extension: &str) -> bool {
+    path.extension().and_then(|extension| extension.to_str()) == Some(extension)
+}

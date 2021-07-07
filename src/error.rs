@@ -4,6 +4,7 @@ use crate::SmallVec;
 
 pub type Result<T = (), E = ()> = std::result::Result<T, E>;
 
+#[derive(Debug)]
 #[must_use]
 pub struct Outcome<T> {
     pub value: T,
@@ -24,6 +25,7 @@ impl<T> Outcome<T> {
     }
 
     // @Question good API?
+    #[must_use = "use `&=` if you want to ignore the result"]
     pub fn unwrap(self, health: &mut Health) -> T {
         *health &= self.health;
         self.value
@@ -79,7 +81,7 @@ impl<T: PossiblyErroneous> PossiblyErroneous for Outcome<T> {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[must_use]
 pub enum Health {
     Untainted,

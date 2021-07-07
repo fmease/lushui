@@ -1,0 +1,27 @@
+;;; TEST fail check
+
+use core.list.List
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+@(location "../../libs/core/core")
+module core
+
+use true-treasures-of-life.Friendship
+
+module the-true-treasures-of-life of
+
+    @public
+    data Friendship: Type of
+
+true-treasures-of-life: List Type = List.empty Type
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+module shared-spaces of
+    @public data One: Type of
+
+shared-spades: List Type = List.empty Type
+
+use shared-spades.One
+

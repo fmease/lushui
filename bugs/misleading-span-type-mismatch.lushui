@@ -1,4 +1,4 @@
-@(location "../libs/core/core")
+@(location "../../libs/core/core")
 module core
 
 use core.unit.(Unit unit)
