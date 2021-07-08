@@ -1,4 +1,9 @@
-#![feature(format_args_capture, default_free_fn)]
+#![feature(
+    format_args_capture,
+    default_free_fn,
+    available_concurrency,
+    const_option
+)]
 #![forbid(rust_2018_idioms, unused_must_use)]
 
 // @Task
@@ -12,6 +17,7 @@ use std::{
     fmt,
     fs::{read_to_string, File},
     io::Write,
+    num::NonZeroUsize,
     path::{Path, PathBuf},
     process::{Command, Stdio},
     str::FromStr,
@@ -23,6 +29,9 @@ use colored::Colorize;
 use difference::{Changeset, Difference};
 use itertools::Itertools;
 use unicode_width::UnicodeWidthStr;
+
+const DEFAULT_NUMBER_TEST_THREADS_UNKNOWN_AVAILABLE_CONCURRENCY: NonZeroUsize =
+    NonZeroUsize::new(4).unwrap();
 
 fn lushui_source_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -41,18 +50,21 @@ fn default_test_directory_path() -> String {
         .to_owned()
 }
 
-#[derive(Debug)] // @Temporary
 struct Application {
     release_mode: bool,
     gilding: bool,
     filter: Vec<String>,
-    jobs: usize,
+    test_threads: NonZeroUsize,
     test_folder_path: String,
 }
 
 impl Application {
     fn new() -> Self {
         let default_test_directory_path = default_test_directory_path();
+        let available_concurrency = std::thread::available_concurrency()
+            .ok()
+            .unwrap_or(DEFAULT_NUMBER_TEST_THREADS_UNKNOWN_AVAILABLE_CONCURRENCY);
+        let available_concurrency = available_concurrency.to_string();
 
         let matches = clap::App::new(env!("CARGO_PKG_NAME"))
             .version(env!("CARGO_PKG_VERSION"))
@@ -79,15 +91,15 @@ impl Application {
             )
             .arg(
                 // @Task help
-                clap::Arg::with_name("jobs")
-                    .long("jobs")
+                clap::Arg::with_name("number-test-threads")
+                    .long("test-threads")
                     .takes_value(true)
                     .validator(|input| {
-                        usize::from_str(&input)
+                        NonZeroUsize::from_str(&input)
                             .map(|_| ())
                             .map_err(|error| error.to_string())
                     })
-                    .default_value("4"),
+                    .default_value(&available_concurrency),
             )
             .arg(
                 // @Task help
@@ -104,8 +116,8 @@ impl Application {
             filter: matches
                 .values_of("filter")
                 .map_or(Vec::new(), |value| value.map(ToString::to_string).collect()),
-            jobs: matches
-                .value_of("jobs")
+            test_threads: matches
+                .value_of("number-test-threads")
                 .map(|input| input.parse().unwrap())
                 .unwrap(),
             test_folder_path: matches.value_of("test-folder-path").unwrap().to_owned(),
@@ -173,7 +185,7 @@ fn main_() -> Result<(), ()> {
 
     for entries in &walkdir::WalkDir::new(test_folder_path)
         .into_iter()
-        .chunks(application.jobs)
+        .chunks(application.test_threads.into())
     {
         let handles: Vec<_> = entries
             .into_iter()
