@@ -27,13 +27,12 @@ use std::{
 
 use colored::Colorize;
 use difference::{Changeset, Difference};
-use itertools::Itertools;
 use unicode_width::UnicodeWidthStr;
 
 const DEFAULT_NUMBER_TEST_THREADS_UNKNOWN_AVAILABLE_CONCURRENCY: NonZeroUsize =
     NonZeroUsize::new(4).unwrap();
 
-fn lushui_source_path() -> PathBuf {
+fn lushui_compiler_source_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .canonicalize()
@@ -54,7 +53,7 @@ struct Application {
     release_mode: bool,
     gilding: bool,
     filter: Vec<String>,
-    test_threads: NonZeroUsize,
+    number_test_threads: NonZeroUsize,
     test_folder_path: String,
 }
 
@@ -116,7 +115,7 @@ impl Application {
             filter: matches
                 .values_of("filter")
                 .map_or(Vec::new(), |value| value.map(ToString::to_string).collect()),
-            test_threads: matches
+            number_test_threads: matches
                 .value_of("number-test-threads")
                 .map(|input| input.parse().unwrap())
                 .unwrap(),
@@ -157,7 +156,7 @@ fn main_() -> Result<(), ()> {
     // save those warnings so we can remove it as the prefix of the following tests
     // but also add a note that some stuff was written to stderr (but status is ok)
     let status = Command::new("cargo")
-        .current_dir(lushui_source_path())
+        .current_dir(lushui_compiler_source_path())
         .arg("build")
         .args(if application.release_mode {
             &["--release"][..]
@@ -176,179 +175,208 @@ fn main_() -> Result<(), ()> {
     println!();
 
     let test_folder_path: &'static _ = Box::leak(application.test_folder_path.into_boxed_str());
+    // @Beacon @Question alternative to Arcs??? since we have a fixed amount of threads
+    // currently, the Arc are deallocated "when joining" (just before but yeah)
+    let test_folder_entries = Arc::new(Mutex::new(
+        walkdir::WalkDir::new(test_folder_path).into_iter(),
+    ));
     let statistics: Arc<Mutex<Statistics>> = default();
     let failures: Arc<Mutex<Vec<_>>> = default();
     let filter: &'static _ = Box::leak(application.filter.into_boxed_slice());
     let gilding = application.gilding;
+    let number_test_threads = application.number_test_threads.into();
 
     let suite_time = Instant::now();
 
-    for entries in &walkdir::WalkDir::new(test_folder_path)
-        .into_iter()
-        .chunks(application.test_threads.into())
-    {
-        let handles: Vec<_> = entries
-            .into_iter()
-            .map(|entry| {
-                let statistics = statistics.clone();
-                let failures = failures.clone();
+    let handles: Vec<_> = (0..number_test_threads)
+        .map(|_| {
+            let shared_entries = test_folder_entries.clone();
+            let shared_statistics = statistics.clone();
+            let shared_failures = failures.clone();
 
-                std::thread::spawn(move || -> Option<String> {
-                    let entry = entry.unwrap();
-                    let path = entry.path();
+            std::thread::spawn(move || {
+                let chunk_size = number_test_threads;
+                let mut entries = Vec::with_capacity(chunk_size);
+                let mut statistics = Statistics::default();
+                let mut failures = Vec::new();
 
-                    if entry.file_type().is_dir() {
-                        return None;
-                    }
-
-                    if !entry.file_type().is_file() {
-                        panic!("invalid file type");
-                    }
-
-                    if has_file_extension(path, "stdout") || has_file_extension(path, "stderr") {
-                        // handled later together with the corresponding Lushui file
-                        return None;
-                    }
-
-                    if !has_file_extension(path, "lushui") {
-                        panic!("illegal extension");
-                    }
-
-                    let legible_path = path
-                        .to_str()
-                        .unwrap()
-                        .strip_prefix(test_folder_path)
-                        .unwrap()
-                        .strip_prefix("/")
-                        .unwrap()
-                        .strip_suffix("lushui")
-                        .unwrap()
-                        .strip_suffix(".")
-                        .unwrap();
-
-                    let mut failure = TestFailure {
-                        path: legible_path.to_owned(),
-                        subfailures: Vec::new(),
-                    };
-
-                    if !filter.is_empty()
-                        && !filter.iter().any(|filter| legible_path.contains(filter))
+                loop {
                     {
-                        statistics.lock().unwrap().skipped_tests += 1;
-                        return None;
+                        let mut shared_entries = shared_entries.lock().unwrap();
+
+                        for _ in 0..chunk_size {
+                            match shared_entries.next() {
+                                Some(entry) => entries.push(entry),
+                                None => break,
+                            }
+                        }
                     }
 
-                    let mut message = format!("test {legible_path:<80}");
-
-                    let file = read_to_string(entry.path()).unwrap();
-
-                    let configuration = match TestConfiguration::parse(&file) {
-                        Ok(configuration) => configuration,
-                        Err(error) => {
-                            message += &format!(" {}", "INVALID".red());
-                            statistics.lock().unwrap().failed_tests += 1;
-                            failure
-                                .subfailures
-                                .push(TestSubfailure::Invalid { reason: error });
-                            failures.lock().unwrap().push(failure);
-                            return Some(message);
-                        }
-                    };
-
-                    if let TestTag::Ignore = configuration.tag {
-                        message += &format!(" {}", "ignored".yellow());
-                        statistics.lock().unwrap().ignored_tests += 1;
-                        return Some(message);
+                    if entries.is_empty() {
+                        break;
                     }
 
-                    let time = Instant::now();
+                    for entry in entries.drain(..) {
+                        let entry = entry.unwrap();
+                        let path = entry.path();
 
-                    // @Beacon @Question how can we filter out rustc's warnings from stderr?
-
-                    let output = Command::new("cargo")
-                        .current_dir(lushui_source_path())
-                        .args(&["run", "--quiet", "--"])
-                        .args(configuration.arguments)
-                        .arg(entry.path())
-                        .output()
-                        .unwrap();
-
-                    let duration = time.elapsed();
-                    message += &format!("{}", format!(" {duration:.2?}").bright_black());
-
-                    match (configuration.tag, output.status.success()) {
-                        (TestTag::Pass, true) | (TestTag::Fail, false) => {}
-                        (TestTag::Pass, false) => {
-                            failure.subfailures.push(TestSubfailure::UnexpectedFail {
-                                code: output.status.code(),
-                            })
+                        if entry.file_type().is_dir() {
+                            continue;
                         }
-                        (TestTag::Fail, true) => {
-                            failure.subfailures.push(TestSubfailure::UnexpectedPass)
+
+                        if !entry.file_type().is_file() {
+                            panic!("invalid file type");
                         }
-                        (TestTag::Ignore, _) => unreachable!(),
-                    }
 
-                    let stdout_was_gilded = match check_against_golden_file(
-                        test_folder_path,
-                        &entry.path().with_extension("stdout"),
-                        output.stdout,
-                        Stream::Stdout,
-                        gilding,
-                    ) {
-                        Ok(gilded) => gilded,
-                        Err(error) => {
-                            failure.subfailures.push(error);
-                            false
+                        if has_file_extension(path, "stdout") || has_file_extension(path, "stderr")
+                        {
+                            // handled later together with the corresponding Lushui file
+                            continue;
                         }
-                    };
 
-                    let stderr_was_gilded = match check_against_golden_file(
-                        test_folder_path,
-                        &entry.path().with_extension("stderr"),
-                        output.stderr,
-                        Stream::Stderr,
-                        gilding,
-                    ) {
-                        Ok(gilded) => gilded,
-                        Err(error) => {
-                            failure.subfailures.push(error);
-                            false
+                        if !has_file_extension(path, "lushui") {
+                            panic!("illegal extension");
                         }
-                    };
 
-                    if stdout_was_gilded || stderr_was_gilded {
-                        statistics.lock().unwrap().gilded_tests += 1;
-                        message += &format!(" {}", "gilded".blue());
+                        let legible_path = path
+                            .to_str()
+                            .unwrap()
+                            .strip_prefix(test_folder_path)
+                            .unwrap()
+                            .strip_prefix("/")
+                            .unwrap()
+                            .strip_suffix("lushui")
+                            .unwrap()
+                            .strip_suffix(".")
+                            .unwrap();
 
-                        if stdout_was_gilded {
-                            message += &format!(" {}", "stdout".blue());
+                        let mut failure = TestFailure {
+                            path: legible_path.to_owned(),
+                            subfailures: Vec::new(),
                         };
-                        if stderr_was_gilded {
-                            message += &format!(" {}", "stderr".blue());
+
+                        if !filter.is_empty()
+                            && !filter.iter().any(|filter| legible_path.contains(filter))
+                        {
+                            statistics.skipped_tests += 1;
+                            continue;
+                        }
+
+                        let mut message = format!("test {legible_path:<80}");
+
+                        let file = read_to_string(entry.path()).unwrap();
+
+                        let configuration = match TestConfiguration::parse(&file) {
+                            Ok(configuration) => configuration,
+                            Err(error) => {
+                                message += &format!(" {}", "INVALID".red());
+                                statistics.failed_tests += 1;
+                                failure
+                                    .subfailures
+                                    .push(TestSubfailure::Invalid { reason: error });
+                                failures.push(failure);
+                                println!("{}", message);
+                                continue;
+                            }
                         };
-                    } else {
-                        if failure.subfailures.is_empty() {
-                            message += &format!(" {}", "ok".green());
-                            statistics.lock().unwrap().passed_tests += 1;
+
+                        if let TestTag::Ignore = configuration.tag {
+                            message += &format!(" {}", "ignored".yellow());
+                            statistics.ignored_tests += 1;
+                            println!("{}", message);
+                            continue;
+                        }
+
+                        let time = Instant::now();
+
+                        // @Beacon @Question how can we filter out rustc's warnings from stderr?
+
+                        let output = Command::new("cargo")
+                            .current_dir(lushui_compiler_source_path())
+                            .args(&["run", "--quiet", "--"])
+                            .args(configuration.arguments)
+                            .arg(entry.path())
+                            .output()
+                            .unwrap();
+
+                        let duration = time.elapsed();
+                        message += &format!("{}", format!(" {duration:.2?}").bright_black());
+
+                        match (configuration.tag, output.status.success()) {
+                            (TestTag::Pass, true) | (TestTag::Fail, false) => {}
+                            (TestTag::Pass, false) => {
+                                failure.subfailures.push(TestSubfailure::UnexpectedFail {
+                                    code: output.status.code(),
+                                })
+                            }
+                            (TestTag::Fail, true) => {
+                                failure.subfailures.push(TestSubfailure::UnexpectedPass)
+                            }
+                            (TestTag::Ignore, _) => unreachable!(),
+                        }
+
+                        let stdout_was_gilded = match check_against_golden_file(
+                            test_folder_path,
+                            &entry.path().with_extension("stdout"),
+                            output.stdout,
+                            Stream::Stdout,
+                            gilding,
+                        ) {
+                            Ok(gilded) => gilded,
+                            Err(error) => {
+                                failure.subfailures.push(error);
+                                false
+                            }
+                        };
+
+                        let stderr_was_gilded = match check_against_golden_file(
+                            test_folder_path,
+                            &entry.path().with_extension("stderr"),
+                            output.stderr,
+                            Stream::Stderr,
+                            gilding,
+                        ) {
+                            Ok(gilded) => gilded,
+                            Err(error) => {
+                                failure.subfailures.push(error);
+                                false
+                            }
+                        };
+
+                        if stdout_was_gilded || stderr_was_gilded {
+                            statistics.gilded_tests += 1;
+                            message += &format!(" {}", "gilded".blue());
+
+                            if stdout_was_gilded {
+                                message += &format!(" {}", "stdout".blue());
+                            };
+                            if stderr_was_gilded {
+                                message += &format!(" {}", "stderr".blue());
+                            };
                         } else {
-                            message += &format!(" {}", "FAIL".red());
-                            statistics.lock().unwrap().failed_tests += 1;
-                            failures.lock().unwrap().push(failure);
+                            if failure.subfailures.is_empty() {
+                                message += &format!(" {}", "ok".green());
+                                statistics.passed_tests += 1;
+                            } else {
+                                message += &format!(" {}", "FAIL".red());
+                                statistics.failed_tests += 1;
+                                failures.push(failure);
+                            }
                         }
+
+                        println!("{}", message);
                     }
 
-                    return Some(message);
-                })
+                    *shared_statistics.lock().unwrap() += &std::mem::take(&mut statistics);
+                    shared_failures.lock().unwrap().append(&mut failures);
+                }
             })
-            .collect();
+        })
+        .collect();
 
-        for handle in handles {
-            if let Some(message) = handle.join().unwrap() {
-                println!("{}", message);
-            }
-        }
-    }
+    handles
+        .into_iter()
+        .for_each(|handle| handle.join().unwrap());
 
     let duration = suite_time.elapsed();
 
@@ -437,7 +465,7 @@ fn check_against_golden_file(
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct Statistics {
     ignored_tests: usize,
     passed_tests: usize,
@@ -474,6 +502,26 @@ impl Statistics {
     fn filter_ratio(&self) -> f32 {
         let ratio = self.total_amount_tests() as f32 / self.unfiltered_total_amount_tests() as f32;
         ratio * 100.0
+    }
+}
+
+impl std::ops::Add for &'_ Statistics {
+    type Output = Statistics;
+
+    fn add(self, other: Self) -> Self::Output {
+        Statistics {
+            ignored_tests: self.ignored_tests + other.ignored_tests,
+            passed_tests: self.passed_tests + other.passed_tests,
+            failed_tests: self.failed_tests + other.failed_tests,
+            gilded_tests: self.gilded_tests + other.gilded_tests,
+            skipped_tests: self.skipped_tests + other.skipped_tests,
+        }
+    }
+}
+
+impl std::ops::AddAssign<&'_ Self> for Statistics {
+    fn add_assign(&mut self, other: &Self) {
+        *self = &*self + other;
     }
 }
 
