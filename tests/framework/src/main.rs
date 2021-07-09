@@ -7,7 +7,6 @@
 #![forbid(rust_2018_idioms, unused_must_use)]
 
 // @Task
-// * parallel test execution
 // * replace some panics with Testsubfailures
 // * strip rustc warnings from stderr
 // * add help messages
@@ -250,17 +249,17 @@ fn main_() -> Result<(), ()> {
                             .strip_suffix(".")
                             .unwrap();
 
-                        let mut failure = TestFailure {
-                            path: legible_path.to_owned(),
-                            subfailures: Vec::new(),
-                        };
-
                         if !filter.is_empty()
                             && !filter.iter().any(|filter| legible_path.contains(filter))
                         {
                             statistics.skipped_tests += 1;
                             continue;
                         }
+
+                        let mut failure = TestFailure {
+                            path: legible_path.to_owned(),
+                            subfailures: Vec::new(),
+                        };
 
                         let mut message = format!("test {legible_path:<80}");
 
@@ -410,7 +409,7 @@ fn main_() -> Result<(), ()> {
 
     let summary = Summary {
         statistics,
-        gilding: application.gilding,
+        gilding,
         duration,
         filter,
     };
@@ -465,6 +464,8 @@ fn check_against_golden_file(
     }
 }
 
+// `failed_tests` does not necessarily equal `gilded_tests` since the former includes
+// invalid tests which are not gilded
 #[derive(Default, Clone)]
 struct Statistics {
     ignored_tests: usize,
@@ -505,7 +506,7 @@ impl Statistics {
     }
 }
 
-impl std::ops::Add for &'_ Statistics {
+impl std::ops::Add for &Statistics {
     type Output = Statistics;
 
     fn add(self, other: Self) -> Self::Output {
@@ -519,14 +520,12 @@ impl std::ops::Add for &'_ Statistics {
     }
 }
 
-impl std::ops::AddAssign<&'_ Self> for Statistics {
+impl std::ops::AddAssign<&Self> for Statistics {
     fn add_assign(&mut self, other: &Self) {
         *self = &*self + other;
     }
 }
 
-// `failed_tests` does not necessarily equal `gilded_tests` since the former includes
-// invalid tests which are not gilded
 struct Summary {
     statistics: Statistics,
     gilding: bool,
@@ -653,6 +652,7 @@ impl fmt::Display for ParseError {
         }
     }
 }
+
 #[derive(Clone, Copy)]
 enum Stream {
     Stdout,
@@ -737,10 +737,7 @@ impl fmt::Display for TestSubfailure {
                 actual,
                 stream,
             } => {
-                writeln!(f, "{}", format!(
-                    "the actual {stream} of the Lushui compiler does not match the expected golden {stream}:",
-                    stream = stream
-                ).red())?;
+                writeln!(f, "{}", format!("the actual {stream} of the Lushui compiler does not match the expected golden {stream}:").red())?;
                 writeln!(f)?;
                 writeln!(f, "{}", "-".repeat(SEPARATOR_WIDTH).bright_black())?;
 

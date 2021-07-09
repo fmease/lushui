@@ -328,7 +328,7 @@ impl Diagnostic {
     }
 
     /// Add to the diagnostic if the given resource exists.
-    pub fn when_some<T>(self, value: Option<T>, builder: impl FnOnce(Self, T) -> Self) -> Self {
+    pub fn when_present<T>(self, value: Option<T>, builder: impl FnOnce(Self, T) -> Self) -> Self {
         match value {
             Some(value) => builder(self, value),
             None => self,

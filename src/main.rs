@@ -1,3 +1,4 @@
+#![feature(backtrace, format_args_capture)]
 #![forbid(rust_2018_idioms, unused_must_use)]
 
 use lushui::{
@@ -37,10 +38,6 @@ const VERSION: &str = concat!(
 #[derive(StructOpt)]
 #[structopt(version = VERSION, author, about)]
 struct Arguments {
-    /// Use rustc panic hook with RUST_BACKTRACE=1
-    #[structopt(long, short = "B")]
-    panic_with_backtrace: bool,
-
     #[structopt(subcommand)]
     command: Command,
 }
@@ -232,14 +229,9 @@ enum Command {
 // @Task add --engine|e=twi|bci
 
 fn main() {
+    set_panic_hook();
+
     let arguments = Arguments::from_args();
-
-    if arguments.panic_with_backtrace {
-        std::env::set_var("RUST_BACKTRACE", "1");
-    } else {
-        set_panic_hook();
-    }
-
     let merged_arguments = arguments.merged();
 
     lushui::OPTIONS
@@ -267,7 +259,7 @@ fn main() {
         } = Lexer::new(map.borrow().get(source_file), &handler).lex()?;
 
         if merged_arguments.print_tokens {
-            eprintln!("{:#?}", tokens);
+            eprintln!("{tokens:#?}");
         }
         if merged_arguments.only_lex {
             if health.is_tainted() {
@@ -282,7 +274,7 @@ fn main() {
             return Err(());
         }
         if merged_arguments.print_ast {
-            eprintln!("{:#?}", declaration);
+            eprintln!("{declaration:#?}");
         }
         if merged_arguments.only_parse {
             return Ok(());
@@ -319,7 +311,7 @@ fn main() {
                         eprintln!("{}", declaration.with(&scope));
                     }
                     if merged_arguments.print_scope {
-                        eprintln!("{:#?}", scope);
+                        eprintln!("{scope:#?}");
                     }
                     if merged_arguments.only_resolve {
                         return Ok(());
@@ -385,21 +377,28 @@ fn main() {
     }
 }
 
-// @Task print a stacktrace
 fn set_panic_hook() {
     std::panic::set_hook(Box::new(|information| {
         let payload = information.payload();
 
-        let mut message = payload
+        let message = payload
             .downcast_ref::<&str>()
             .copied()
             .or_else(|| payload.downcast_ref::<String>().map(|payload| &payload[..]))
             .unwrap_or_else(|| "unknown cause")
             .to_owned();
-        if let Some(location) = information.location() {
-            message += &format!(" at {}", location);
-        }
 
-        Diagnostic::bug().message(message).emit_to_stderr(None);
+        let backtrace = std::backtrace::Backtrace::force_capture();
+
+        Diagnostic::bug()
+            .message(message)
+            .when_present(information.location(), |this, location| {
+                this.note(format!("at `{location}`"))
+            })
+            .when_present(std::thread::current().name(), |this, name| {
+                this.note(format!("in thread `{name}`"))
+            })
+            .note(format!("with the following backtrace:\n{backtrace}"))
+            .emit_to_stderr(None);
     }));
 }

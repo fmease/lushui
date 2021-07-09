@@ -208,7 +208,7 @@ impl CrateScope {
                 Diagnostic::error()
                     .code(Code::E061)
                     .message(format!("foreign type `{}` is not defined", binder))
-                    .when_some(expression_span, |diagnostic, span| {
+                    .when_present(expression_span, |diagnostic, span| {
                         diagnostic.labeled_primary_span(span, "the type of this expression")
                     })
                     .emit(handler);
@@ -285,7 +285,7 @@ fn undefined_inherent_type(name: &'static str, expression_span: Option<Span>) ->
     Diagnostic::error()
         .code(Code::E063)
         .message(format!("inherent type `{}` is not defined", name))
-        .when_some(expression_span, |diagnostic, span| {
+        .when_present(expression_span, |diagnostic, span| {
             diagnostic.labeled_primary_span(span, "the type of this expression")
         })
 }

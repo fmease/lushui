@@ -1382,6 +1382,8 @@ impl fmt::Display for Lookalike<'_> {
         write!(f, "`")?;
 
         if !purely_additive {
+            // @Beacon @Beacon @Bug the provided Display impl disrespects NO_COLOR!!
+            // write a custom implementation!
             write!(f, " ({changeset})")?;
         }
 
@@ -1424,7 +1426,7 @@ fn value_used_as_a_namespace(
             subbinder,
             "requires the preceeding path segment to refer to a namespace",
         )
-        .when_some(
+        .when_present(
             similarly_named_namespace,
             |this, lookalike| {
                 this
@@ -1516,7 +1518,7 @@ impl ResolutionError {
                     .code(Code::E021)
                     .message(message)
                     .primary_span(&identifier)
-                    .when_some(
+                    .when_present(
                         find_lookalike(identifier.as_str(), namespace),
                         |diagnostic, binding| {
                             diagnostic.help(format!(
