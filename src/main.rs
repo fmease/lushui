@@ -1,5 +1,6 @@
 #![feature(backtrace, format_args_capture)]
 #![forbid(rust_2018_idioms, unused_must_use)]
+#![allow(unused_imports)]
 
 use lushui::{
     diagnostics::{Diagnostic, Handler},
@@ -14,229 +15,29 @@ use lushui::{
     typer::Typer,
 };
 use resolver::{CrateScope, Resolver};
-use std::{
-    cell::RefCell,
-    fs::File,
-    io::BufWriter,
-    path::{Path, PathBuf},
-    rc::Rc,
-};
-use structopt::StructOpt;
+use std::{cell::RefCell, fs::File, io::BufWriter, rc::Rc};
 
-const VERSION: &str = concat!(
-    env!("CARGO_PKG_VERSION"),
-    " (",
-    env!("GIT_COMMIT_HASH"),
-    " ",
-    env!("GIT_COMMIT_DATE"),
-    ")"
-);
+use cli::Command;
 
-// @Beacon @Task rewrite the argument parsing logic to be less DRY
-// and also move it to a file module
+use crate::cli::PhaseRestriction;
 
-#[derive(StructOpt)]
-#[structopt(version = VERSION, author, about)]
-struct Arguments {
-    #[structopt(subcommand)]
-    command: Command,
-}
+mod cli;
 
-impl Arguments {
-    // @Task remove (create function instead which uses unwrap_or(false))
-    // @Note what a cruel poilerplate :'(
-    fn merged(&self) -> MergedCommandArguments<'_> {
-        let mut only_lex_ = false;
-        let mut print_tokens_ = false;
-        let mut only_parse_ = false;
-        let mut print_ast_ = false;
-        let mut only_lower_ = false;
-        let mut print_lowered_ast_ = false;
-        let mut display_crate_indices_ = false;
-        let mut only_resolve_ = false;
-        let mut print_hir_ = false;
-        let mut print_scope_ = false;
-        let mut print_typed_scope_ = false;
-        let file_: &Path;
-
-        match &self.command {
-            Command::Check {
-                file,
-                only_lex,
-                print_tokens,
-                only_parse,
-                print_ast,
-                only_lower,
-                print_lowered_ast,
-                print_typed_scope,
-                only_resolve,
-                print_hir,
-                print_scope,
-                display_crate_indices,
-            } => {
-                file_ = file;
-                only_lex_ = *only_lex;
-                print_tokens_ = *print_tokens;
-                only_parse_ = *only_parse;
-                print_ast_ = *print_ast;
-                only_lower_ = *only_lower;
-                print_lowered_ast_ = *print_lowered_ast;
-                print_typed_scope_ = *print_typed_scope;
-                only_resolve_ = *only_resolve;
-                print_hir_ = *print_hir;
-                print_scope_ = *print_scope;
-                display_crate_indices_ = *display_crate_indices;
-            }
-            Command::Run {
-                file,
-                print_scope: print_interpreter_scope,
-                display_crate_indices,
-            } => {
-                file_ = file;
-                print_typed_scope_ = *print_interpreter_scope;
-                display_crate_indices_ = *display_crate_indices;
-            }
-            Command::Build { file } => {
-                file_ = file;
-            }
-            Command::Highlight { file } => {
-                file_ = file;
-            }
-            Command::Document { file } => {
-                file_ = file;
-            }
-        }
-
-        MergedCommandArguments {
-            only_lex: only_lex_,
-            print_tokens: print_tokens_,
-            only_parse: only_parse_,
-            print_ast: print_ast_,
-            only_lower: only_lower_,
-            print_lowered_ast: print_lowered_ast_,
-            display_crate_indices: display_crate_indices_,
-            only_resolve: only_resolve_,
-            print_hir: print_hir_,
-            print_scope: print_scope_,
-            print_typed_scope: print_typed_scope_,
-            file: file_,
-        }
+fn main() {
+    if main_().is_err() {
+        std::process::exit(1);
     }
 }
 
-struct MergedCommandArguments<'a> {
-    only_lex: bool,
-    print_tokens: bool,
-    only_parse: bool,
-    print_ast: bool,
-    only_lower: bool,
-    print_lowered_ast: bool,
-    display_crate_indices: bool,
-    only_resolve: bool,
-    print_hir: bool,
-    print_scope: bool,
-    print_typed_scope: bool,
-    file: &'a Path,
-}
-
-// @Task gather all print flags under a common --print=THING option
-#[derive(StructOpt)]
-enum Command {
-    /// Type check a given program
-    Check {
-        /// Only run the lexer
-        #[structopt(long)]
-        only_lex: bool,
-
-        /// Print the tokens emitted by the lexer
-        #[structopt(long)]
-        print_tokens: bool,
-
-        /// Only run the parser
-        #[structopt(long)]
-        only_parse: bool,
-
-        /// Print the AST
-        #[structopt(long)]
-        print_ast: bool,
-
-        /// Only lower
-        #[structopt(long)]
-        only_lower: bool,
-
-        /// Print the lowered AST
-        #[structopt(long)]
-        print_lowered_ast: bool,
-
-        /// Display crate indices when emitting a resolved HIR
-        #[structopt(long)]
-        display_crate_indices: bool,
-
-        /// Only run the resolver
-        #[structopt(long)]
-        only_resolve: bool,
-
-        /// Print the HIR
-        #[structopt(long)]
-        print_hir: bool,
-
-        /// Print the crate scope after name resolution
-        #[structopt(long)]
-        print_scope: bool,
-
-        /// Print the crate scope after type checking
-        #[structopt(long)]
-        print_typed_scope: bool,
-
-        /// Set the source file
-        #[structopt(name = "FILE")]
-        file: PathBuf,
-    },
-    /// Type check and run a given program
-    Run {
-        /// Display crate indices when emitting a resolved HIR
-        #[structopt(long)]
-        display_crate_indices: bool,
-
-        /// Print the crate scope after name resolution
-        #[structopt(long)]
-        print_scope: bool,
-
-        /// Set the source file
-        #[structopt(name = "FILE")]
-        file: PathBuf,
-    },
-    /// Compile the code to bytecode.
-    Build {
-        /// Set the source file
-        #[structopt(name = "FILE")]
-        file: PathBuf,
-    },
-    /// Generate syntax highlighting for a given file in HTML
-    Highlight {
-        /// Set the source file
-        #[structopt(name = "FILE")]
-        file: PathBuf,
-    },
-    /// Generate HTML documentation.
-    Document {
-        /// Set the source file
-        #[structopt(name = "FILE")]
-        file: PathBuf,
-    },
-}
-
-// @Task add --engine|e=twi|bci
-
-fn main() {
+fn main_() -> Result<(), ()> {
     set_panic_hook();
 
-    let arguments = Arguments::from_args();
-    let merged_arguments = arguments.merged();
+    let application = cli::Application::new();
 
+    // @Task improve API
     lushui::OPTIONS
         .set(lushui::Options {
-            display_crate_indices: merged_arguments.display_crate_indices,
+            show_binding_indices: application.show_binding_indices,
         })
         .unwrap_or_else(|_| unreachable!());
 
@@ -244,44 +45,45 @@ fn main() {
     let handler = Handler::buffered_stderr(map.clone());
 
     let result: Result = (|| {
-        let path = merged_arguments.file;
-        let source_file = map
-            .borrow_mut()
-            .load(path.to_owned())
-            .map_err(|error| Diagnostic::from(error).emit(&handler))?;
+        match &application.command {
+            Command::Check { source_file_path }
+            | Command::Run { source_file_path }
+            | Command::Build { source_file_path } => {
+                let source_file = map
+                    .borrow_mut()
+                    .load(source_file_path.clone())
+                    .map_err(|error| Diagnostic::from(error).emit(&handler))?;
 
-        let crate_name =
-            lushui::parse_crate_name(path, &handler).map_err(|error| error.emit(&handler))?;
+                let crate_name = lushui::parse_crate_name(source_file_path, &handler)
+                    .map_err(|error| error.emit(&handler))?;
 
-        let Outcome {
-            value: tokens,
-            health,
-        } = Lexer::new(map.borrow().get(source_file), &handler).lex()?;
+                let Outcome {
+                    value: tokens,
+                    health,
+                } = Lexer::new(map.borrow().get(source_file), &handler).lex()?;
 
-        if merged_arguments.print_tokens {
-            eprintln!("{tokens:#?}");
-        }
-        if merged_arguments.only_lex {
-            if health.is_tainted() {
-                return Err(());
-            }
-            return Ok(());
-        }
+                if application.dump.tokens {
+                    eprintln!("{tokens:#?}");
+                }
+                if application.phase_restriction == Some(PhaseRestriction::Lexer) {
+                    if health.is_tainted() {
+                        return Err(());
+                    }
+                    return Ok(());
+                }
 
-        let declaration =
-            Parser::new(source_file, &tokens, map.clone(), &handler).parse(crate_name.clone())?;
-        if health.is_tainted() {
-            return Err(());
-        }
-        if merged_arguments.print_ast {
-            eprintln!("{declaration:#?}");
-        }
-        if merged_arguments.only_parse {
-            return Ok(());
-        }
+                let declaration = Parser::new(source_file, &tokens, map.clone(), &handler)
+                    .parse(crate_name.clone())?;
+                if health.is_tainted() {
+                    return Err(());
+                }
+                if application.dump.ast {
+                    eprintln!("{declaration:#?}");
+                }
+                if application.phase_restriction == Some(PhaseRestriction::Parser) {
+                    return Ok(());
+                }
 
-        match arguments.command {
-            Command::Check { .. } | Command::Run { .. } | Command::Build { .. } => {
                 let Outcome {
                     value: mut declarations,
                     health,
@@ -294,10 +96,10 @@ fn main() {
                 let declaration = declarations.pop().unwrap();
 
                 {
-                    if merged_arguments.print_lowered_ast {
+                    if application.dump.lowered_ast {
                         eprintln!("{}", declaration);
                     }
-                    if merged_arguments.only_lower {
+                    if application.phase_restriction == Some(PhaseRestriction::Lowerer) {
                         return Ok(());
                     }
                 }
@@ -307,13 +109,13 @@ fn main() {
                 let declaration = resolver.resolve_declaration(declaration)?;
 
                 {
-                    if merged_arguments.print_hir {
+                    if application.dump.hir {
                         eprintln!("{}", declaration.with(&scope));
                     }
-                    if merged_arguments.print_scope {
+                    if application.dump.untyped_scope {
                         eprintln!("{scope:#?}");
                     }
-                    if merged_arguments.only_resolve {
+                    if application.phase_restriction == Some(PhaseRestriction::Resolver) {
                         return Ok(());
                     }
                 }
@@ -324,7 +126,7 @@ fn main() {
                 typer.infer_types_in_declaration(&declaration)?;
 
                 {
-                    if merged_arguments.print_typed_scope {
+                    if application.dump.scope {
                         eprintln!("{:#?}", typer.scope);
                     }
                 }
@@ -332,29 +134,18 @@ fn main() {
                 // @Beacon @Task dont check for program_entry in scope.run() or compile_and_interp
                 // but here (a static error) (if the CLI dictates to run it)
 
-                if let Command::Run { .. } = arguments.command {
+                if let Command::Run { .. } = application.command {
                     let result = typer.interpreter().run()?;
 
                     println!("{}", result.with(&scope));
                 }
                 // @Temporary
-                else if let Command::Build { .. } = arguments.command {
+                else if let Command::Build { .. } = application.command {
                     // @Temporary not just builds, also runs ^^
 
                     lushui::compiler::compile_and_interpret_declaration(&declaration, &scope)
                         .unwrap_or_else(|_| panic!());
                 }
-            }
-            Command::Highlight { .. } => {
-                Diagnostic::unimplemented("operation").emit(&handler);
-                return Err(());
-            }
-            Command::Document { .. } => {
-                // @Task error handling
-                let mut file = BufWriter::new(File::create(path.with_extension("html")).unwrap());
-                let documenter = Documenter::new(&mut file, map);
-                // @Temporary @Task
-                documenter.document(&declaration).unwrap();
             }
         }
 
@@ -363,18 +154,12 @@ fn main() {
 
     handler.emit_buffered_diagnostics();
 
-    // if result.is_err() || handler.system_health().is_tainted() {
-    //     // @Task use ExitStatus
-    //     std::process::exit(1);
-    // }
-
     if result.is_err() {
-        // I think
         assert!(handler.system_health().is_tainted());
-        // @Task use ExitStatus
-        // @Beacon @Question do destructors run?
-        std::process::exit(1);
+        return Err(());
     }
+
+    Ok(())
 }
 
 fn set_panic_hook() {

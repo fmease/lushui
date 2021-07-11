@@ -1040,7 +1040,7 @@ impl fmt::Display for Identifier {
         write!(f, "{}", self.source)?;
         if crate::OPTIONS
             .get()
-            .map_or(false, |options| options.display_crate_indices)
+            .map_or(false, |options| options.show_binding_indices)
         {
             // @Note does not work well with punctuation..
             write!(f, "#{:?}", self.index)?;

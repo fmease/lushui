@@ -1,4 +1,4 @@
-;;; TEST pass check --only-parse
+;;; TEST pass check -Z parse-only
 ;;; @Task move to parsing/
 ;;; @Task expand test (include attributes etc)
 ;;; @Task make this more about parsing patterns

@@ -1,4 +1,4 @@
-;;; TEST pass check --only-parse
+;;; TEST pass check -Z parse-only
 
 module a of
     module b of

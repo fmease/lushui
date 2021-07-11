@@ -84,7 +84,7 @@ type SmallVec<T, const N: usize> = smallvec::SmallVec<[T; N]>;
 pub static OPTIONS: OnceCell<Options> = OnceCell::new();
 
 pub struct Options {
-    pub display_crate_indices: bool,
+    pub show_binding_indices: bool,
 }
 
 // @Task move
