@@ -25,10 +25,10 @@ jobs:
       uses: actions-rs/cargo@v1
       with:
         command: check
-    - name: Run unit tests
+    - name: Run unit tests (via the rust testing framework)
       uses: actions-rs/cargo@v1
       with:
         command: test
-    - name: Run golden tests
-      run: ./tests/run
+    - name: Run UI tests (via the golden UI testing framework)
+      run: ./ui_tests/run
 
