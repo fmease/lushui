@@ -1,6 +1,7 @@
 use crate::{
     diagnostics::{Code, Diagnostic},
     span::{Span, Spanning},
+    util::obtain,
     Atom,
 };
 use std::fmt;
@@ -13,11 +14,15 @@ pub struct Token {
 }
 
 impl Token {
-    pub fn new(kind: TokenKind, span: Span) -> Self {
+    pub const fn new(kind: TokenKind, span: Span) -> Self {
         Self::with_data(kind, TokenData::None, span)
     }
 
-    pub fn with_data(kind: TokenKind, data: TokenData, span: Span) -> Self {
+    pub const fn new_virtual(kind: TokenKind, span: Span) -> Self {
+        Self::with_data(kind, TokenData::IsVirtual, span)
+    }
+
+    pub const fn with_data(kind: TokenKind, data: TokenData, span: Span) -> Self {
         Self { kind, data, span }
     }
 
@@ -52,21 +57,22 @@ impl Token {
         Self::with_data(Illegal, TokenData::Illegal(character), span)
     }
 
+    pub fn is_virtual(&self) -> bool {
+        self.data == TokenData::IsVirtual
+    }
+
+    pub fn is_line_break(&self) -> bool {
+        self.kind == Semicolon && self.is_virtual()
+    }
+
     pub fn identifier(self) -> Option<Atom> {
-        match self.data {
-            TokenData::Identifier(atom) => Some(atom),
-            _ => None,
-        }
+        obtain!(self.data, TokenData::Identifier(atom) => atom)
     }
 
     pub fn number_literal(self) -> Option<String> {
-        match self.data {
-            TokenData::NumberLiteral(number) => Some(number),
-            _ => None,
-        }
+        obtain!(self.data, TokenData::NumberLiteral(number) => number)
     }
 
-    /// Unwrap the data of a [TextLiteral].
     pub fn text_literal(self) -> Option<Result<String, Diagnostic>> {
         match self.data {
             TokenData::TextLiteral {
@@ -84,12 +90,8 @@ impl Token {
         }
     }
 
-    /// Unwrap the data of an [Illegal] character. Panics if it isn't one.
-    pub fn illegal(&self) -> char {
-        match self.data {
-            TokenData::Illegal(character) => character,
-            _ => unreachable!(),
-        }
+    pub fn illegal(&self) -> Option<char> {
+        obtain!(self.data, TokenData::Illegal(character) => character)
     }
 }
 
@@ -101,11 +103,18 @@ impl Spanning for Token {
 
 impl fmt::Debug for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.data == TokenData::None {
-            write!(f, "{} {:?}", self.kind, self.span)
-        } else {
-            write!(f, "{} {:?} {:?}", self.kind, self.data, self.span)
+        write!(
+            f,
+            "{} {}",
+            format!("{:?}", self.span).bright_black(),
+            self.kind
+        )?;
+
+        if self.data != TokenData::None {
+            write!(f, " {}", format!("{:?}", self.data).bright_yellow())?;
         }
+
+        Ok(())
     }
 }
 
@@ -115,6 +124,7 @@ impl fmt::Debug for Token {
 #[derive(Clone, PartialEq, Eq)]
 pub enum TokenData {
     None,
+    IsVirtual,
     Identifier(Atom),
     // @Question how should we store this?
     NumberLiteral(String),
@@ -131,6 +141,7 @@ impl fmt::Debug for TokenData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::None => write!(f, ""),
+            Self::IsVirtual => write!(f, "virtual"),
             Self::Identifier(value) => write!(f, "{}", value),
             Self::NumberLiteral(value) => write!(f, "{}", value),
             Self::TextLiteral {
@@ -182,8 +193,6 @@ pub enum TokenKind {
     SingleQuote,
     /// Delimiter.
     Semicolon,
-    // @Task replace with virtual semicolons
-    LineBreak,
     OpeningRoundBracket,
     OpeningSquareBracket,
     OpeningCurlyBracket,
@@ -238,11 +247,19 @@ pub enum TokenKind {
 impl TokenKind {
     /// Test if the token may appear at the start of a [path](crate::ast::Path).
     pub const fn is_path_head(self) -> bool {
-        use TokenKind::*;
         matches!(self, Identifier | Punctuation | Crate | Super | Self_)
+    }
+
+    pub const fn is_terminator(self) -> bool {
+        matches!(self, Semicolon | ClosingCurlyBracket | EndOfInput)
+    }
+
+    pub const fn introduces_indented_section(self) -> bool {
+        matches!(self, Do | Of)
     }
 }
 
+use colored::Colorize;
 use TokenKind::*;
 
 impl fmt::Display for TokenKind {
@@ -270,7 +287,6 @@ impl fmt::Display for TokenKind {
             Equals => quoted!("="),
             SingleQuote => quoted!("'"),
             Semicolon => quoted!(";"),
-            LineBreak => "line break",
             OpeningRoundBracket => quoted!("("),
             OpeningSquareBracket => quoted!("["),
             OpeningCurlyBracket => quoted!("{"),
@@ -322,6 +338,12 @@ pub const fn is_identifier_segment_start(character: char) -> bool {
 
 pub const fn is_identifier_segment_middle(character: char) -> bool {
     character.is_ascii_alphanumeric() || character == '_'
+}
+
+pub const NUMERIC_SEPARATOR: char = '\'';
+
+pub const fn is_number_literal_middle(character: char) -> bool {
+    character.is_ascii_digit() || character == NUMERIC_SEPARATOR
 }
 
 pub fn parse_keyword(source: &str) -> Option<TokenKind> {

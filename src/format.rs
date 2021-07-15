@@ -1,8 +1,4 @@
 //! Formatting support functionality.
-//!
-// @Task rename this module in utilities and move formatting (`WithDisplay`, pluralize)
-// into separate module
-// @Task move error handling APIs to separate module `errors`
 
 use joinery::JoinableIterator;
 

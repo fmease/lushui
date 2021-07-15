@@ -295,7 +295,7 @@ impl Diagnostic {
     ///
     /// ## Strict Guidelines
     ///
-    /// * Same rules as for [Self::with_message] apply
+    /// * Same rules as for [Self::message] apply
     /// * It is allowed to use colons `:` but try not to
     /// * May span multiple lines
     pub fn note(self, message: impl Into<Str>) -> Self {
@@ -306,7 +306,7 @@ impl Diagnostic {
     ///
     /// ## Strict Guidelines
     ///
-    /// * Same rules as for [Self::with_message] apply
+    /// * Same rules as for [Self::message] apply
     /// * Do not pose a question like `did you mean …?`
     /// * It is allowed to use colons `:` but try not to
     /// * May span multiple lines

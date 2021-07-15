@@ -15,6 +15,9 @@ fn assert_ok_token(actual: Result<Outcome<Vec<Token>>>, expected: Vec<Token>) {
             health: Health::Untainted,
         }) => {
             if actual != expected {
+                // @Beacon @Temporary
+                std::env::set_var("NO_COLOR", "");
+
                 panic!(
                     "the actual tokens outputted by the lexer do not match the expected ones:\n{}",
                     difference::Changeset::new(
@@ -50,7 +53,7 @@ fn comments() {
 ;;; and an end
 "),
         vec![
-            Token::new(LineBreak, span(1, 1)),
+            Token::new_virtual(Semicolon, span(1, 1)),
             Token::new(EndOfInput, span(62, 62)),
         ],
     );
@@ -415,10 +418,10 @@ alpha #?
         vec![
             Token::new_identifier("alpha".into(), span(1, 5)),
             Token::new_punctuation("#?".into(), span(7, 8)),
-            Token::new(LineBreak, span(9, 9)),
+            Token::new_virtual(Semicolon, span(9, 9)),
             Token::new_number_literal("100".into(), span(10, 12)),
             Token::new_identifier("it".into(), span(14, 15)),
-            Token::new(LineBreak, span(16, 17)),
+            Token::new_virtual(Semicolon, span(16, 17)),
             Token::new_text_literal("moot".into(), span(18, 23), true),
             Token::new(EndOfInput, span(23, 23)),
         ],
@@ -450,13 +453,13 @@ $%&~~
             Token::new_identifier("start".into(), span(1, 5)),
             Token::new_identifier("middle".into(), span(7, 12)),
             Token::new_identifier("end".into(), span(18, 20)),
-            Token::new(LineBreak, span(21, 21)),
+            Token::new_virtual(Semicolon, span(21, 21)),
             Token::new_text_literal("anything\n    really".into(), span(22, 42), true),
             Token::new_number_literal("3291238".into(), span(48, 54)),
             Token::new(Module, span(64, 69)),
             Token::new(OpeningRoundBracket, span(83, 83)),
             Token::new(ClosingRoundBracket, span(101, 101)),
-            Token::new(LineBreak, span(102, 103)),
+            Token::new_virtual(Semicolon, span(102, 103)),
             Token::new_punctuation("$%&~~".into(), span(104, 108)),
             Token::new_punctuation(".!^".into(), span(114, 116)),
             Token::new_punctuation(r"\/".into(), span(119, 120)),
@@ -487,7 +490,7 @@ fn line_breaks_are_not_terminators_in_continued_sections() {
             Token::new_identifier("off".into(), span(8, 10)),
             Token::new_identifier("side".into(), span(16, 19)),
             Token::new_text_literal(String::new(), span(25, 26), true),
-            Token::new(LineBreak, span(27, 27)),
+            Token::new_virtual(Semicolon, span(27, 27)),
             Token::new_punctuation("@@@".into(), span(28, 30)),
             Token::new(At, span(32, 32)),
             Token::new_identifier("lvl1".into(), span(40, 43)),
@@ -495,7 +498,7 @@ fn line_breaks_are_not_terminators_in_continued_sections() {
             Token::new_identifier("lvl2".into(), span(66, 69)),
             Token::new_identifier("lvl1".into(), span(75, 78)),
             Token::new_number_literal("1".into(), span(84, 84)),
-            Token::new(LineBreak, span(85, 85)),
+            Token::new_virtual(Semicolon, span(85, 85)),
             Token::new(EndOfInput, span(85, 85)),
         ],
     );
@@ -522,73 +525,76 @@ of
         vec![
             Token::new(Of, span(1, 2)),
             // @Task we need to associate the token with a more useful span
-            Token::new(OpeningCurlyBracket, span(3, 7)),
+            Token::new_virtual(OpeningCurlyBracket, span(3, 7)),
             Token::new_identifier("something".into(), span(8, 16)),
-            Token::new(LineBreak, span(17, 17)),
+            Token::new_virtual(Semicolon, span(17, 17)),
             Token::new_identifier("more".into(), span(22, 25)),
-            // @Question don't output?
-            Token::new(LineBreak, span(26, 26)),
             // @Task we need to associate the token with a more useful span
-            Token::new(ClosingCurlyBracket, span(26, 26)),
-            // @Task don't output this (fake) line break
-            Token::new(LineBreak, span(26, 26)),
+            Token::new_virtual(ClosingCurlyBracket, span(26, 26)),
+            Token::new_virtual(Semicolon, span(26, 26)),
             Token::new(Of, span(27, 28)),
             // @Task we need to associate the token with a more useful span
-            Token::new(OpeningCurlyBracket, span(29, 34)),
+            Token::new_virtual(OpeningCurlyBracket, span(29, 34)),
             Token::new_number_literal("1980".into(), span(35, 38)),
-            // @Question don't output?
-            Token::new(LineBreak, span(39, 40)),
             // @Task we need to associate the token with a more useful span
-            Token::new(ClosingCurlyBracket, span(39, 40)),
-            // @Task don't output this (fake) line break
-            Token::new(LineBreak, span(39, 40)),
+            Token::new_virtual(ClosingCurlyBracket, span(39, 40)),
+            Token::new_virtual(Semicolon, span(39, 40)),
             Token::new_punctuation(">".into(), span(41, 41)),
             Token::new(Of, span(42, 43)),
             // @Task we need to associate the token with a more useful span
-            Token::new(OpeningCurlyBracket, span(44, 48)),
+            Token::new_virtual(OpeningCurlyBracket, span(44, 48)),
             Token::new(Module, span(49, 54)),
             Token::new(Of, span(56, 57)),
             // @Task we need to associate the token with a more useful span
-            Token::new(OpeningCurlyBracket, span(58, 66)),
+            Token::new_virtual(OpeningCurlyBracket, span(58, 66)),
             Token::new_identifier("CONTENT".into(), span(67, 73)),
-            // @Question don't output?
-            Token::new(LineBreak, span(74, 74)),
             // @Task we need to associate the token with a more useful span
-            Token::new(ClosingCurlyBracket, span(74, 78)),
-            // @Task don't output this (fake) line break
+            Token::new_virtual(ClosingCurlyBracket, span(74, 78)),
             // @Bug wrong span?
-            Token::new(LineBreak, span(74, 78)),
+            Token::new_virtual(Semicolon, span(74, 78)),
             Token::new(Of, span(79, 80)),
             // @Task we need to associate the token with a more useful span
-            Token::new(OpeningCurlyBracket, span(81, 89)),
+            Token::new_virtual(OpeningCurlyBracket, span(81, 89)),
             Token::new_punctuation(">>!<<".into(), span(90, 94)),
-            // @Question don't output?
-            Token::new(LineBreak, span(95, 95)),
             // @Task we need to associate the token with a more useful span
-            Token::new(ClosingCurlyBracket, span(95, 95)),
-            // @Task don't output this (fake) line break
-            Token::new(LineBreak, span(95, 95)),
+            Token::new_virtual(ClosingCurlyBracket, span(95, 95)),
+            Token::new_virtual(Semicolon, span(95, 95)),
             // // @Task we need to associate the token with a more useful span
-            Token::new(ClosingCurlyBracket, span(95, 95)),
-            // @Task don't output this (fake) line break
-            Token::new(LineBreak, span(95, 95)),
+            Token::new_virtual(ClosingCurlyBracket, span(95, 95)),
+            Token::new_virtual(Semicolon, span(95, 95)),
             Token::new(EndOfInput, span(95, 95)),
         ],
     );
 }
 
-// #[test]
-// fn __no_xxx() {
-//     todo!()
-// }
-
-// #[test]
-// fn keyword_do_introduces_indented_sections() {
-//     todo!()
-// }
+#[test]
+fn no_superfluous_virtual_semicolon_before_virtual_curly_bracket_with_continued_section() {
+    assert_ok_token(
+        lex("\
+of
+    a
+        b
+"),
+        vec![
+            Token::new(Of, span(1, 2)),
+            Token::new_virtual(OpeningCurlyBracket, span(3, 7)),
+            Token::new_identifier("a".into(), span(8, 8)),
+            Token::new_identifier("b".into(), span(18, 18)),
+            Token::new_virtual(ClosingCurlyBracket, span(19, 19)),
+            Token::new_virtual(Semicolon, span(19, 19)),
+            Token::new(EndOfInput, span(19, 19)),
+        ],
+    );
+}
 
 #[test]
-fn empty_indented_section_does_not_create_curly_brackets() {
+#[ignore]
+fn keyword_do_introduces_indented_sections() {
+    todo!()
+}
+
+#[test]
+fn empty_indented_section_does_not_create_virtual_curly_brackets() {
     assert_ok_token(
         lex("\
 of
@@ -599,15 +605,15 @@ of
 "),
         vec![
             Token::new(Of, span(1, 2)),
-            Token::new(LineBreak, span(3, 3)),
+            Token::new_virtual(Semicolon, span(3, 3)),
             Token::new(Do, span(4, 5)),
-            Token::new(LineBreak, span(6, 7)),
+            Token::new_virtual(Semicolon, span(6, 7)),
             Token::new(Of, span(8, 9)),
-            Token::new(OpeningCurlyBracket, span(10, 14)),
+            Token::new_virtual(OpeningCurlyBracket, span(10, 14)),
             Token::new(Do, span(15, 16)),
-            Token::new(LineBreak, span(17, 17)),
-            Token::new(ClosingCurlyBracket, span(17, 17)),
-            Token::new(LineBreak, span(17, 17)),
+            // Token::new_virtual(Semicolon, span(17, 17)), // @Beacon hmm
+            Token::new_virtual(ClosingCurlyBracket, span(17, 17)),
+            Token::new_virtual(Semicolon, span(17, 17)),
             Token::new(EndOfInput, span(17, 17)),
         ],
     )
@@ -633,13 +639,13 @@ do it
 of"it"
 "#),
         vec![
-            Token::new(LineBreak, span(1, 1)),
+            Token::new_virtual(Semicolon, span(1, 1)),
             Token::new(Do, span(2, 3)),
             Token::new_identifier("it".into(), span(5, 6)),
-            Token::new(LineBreak, span(7, 7)),
+            Token::new_virtual(Semicolon, span(7, 7)),
             Token::new(Of, span(8, 9)),
             Token::new_text_literal("it".into(), span(10, 13), true),
-            Token::new(LineBreak, span(14, 14)),
+            Token::new_virtual(Semicolon, span(14, 14)),
             Token::new(EndOfInput, span(14, 14)),
         ],
     );
@@ -667,22 +673,22 @@ fn round_bracket_closes_indented_section() {
             Token::new(OpeningRoundBracket, span(1, 1)),
             Token::new(Of, span(2, 3)),
             // @Bug wrong span
-            Token::new(OpeningCurlyBracket, span(4, 8)),
+            Token::new_virtual(OpeningCurlyBracket, span(4, 8)),
             Token::new_identifier("fo".into(), span(9, 10)),
             // @Question better span?
-            Token::new(ClosingCurlyBracket, span(11, 11)),
+            Token::new_virtual(ClosingCurlyBracket, span(11, 11)),
             Token::new(ClosingRoundBracket, span(11, 11)),
-            Token::new(LineBreak, span(12, 12)),
+            Token::new_virtual(Semicolon, span(12, 12)),
             Token::new(OpeningRoundBracket, span(13, 13)),
             Token::new(Of, span(14, 15)),
             // @Bug wrong span
-            Token::new(OpeningCurlyBracket, span(16, 20)),
+            Token::new_virtual(OpeningCurlyBracket, span(16, 20)),
             Token::new_identifier("fo".into(), span(21, 22)),
-            Token::new(LineBreak, span(23, 23)),
+            Token::new_virtual(Semicolon, span(23, 23)),
             // @Question better span?
-            Token::new(ClosingCurlyBracket, span(28, 28)),
+            Token::new_virtual(ClosingCurlyBracket, span(28, 28)),
             Token::new(ClosingRoundBracket, span(28, 28)),
-            Token::new(LineBreak, span(29, 29)),
+            Token::new_virtual(Semicolon, span(29, 29)),
             Token::new(EndOfInput, span(29, 29)),
         ],
     );
@@ -704,17 +710,16 @@ of
         vec![
             Token::new(Of, span(1, 2)),
             // @Bug wrong span
-            Token::new(OpeningCurlyBracket, span(3, 7)),
+            Token::new_virtual(OpeningCurlyBracket, span(3, 7)),
             Token::new(OpeningRoundBracket, span(8, 8)),
             Token::new_identifier("f".into(), span(9, 9)),
             Token::new(OpeningSquareBracket, span(11, 11)),
             Token::new(ClosingSquareBracket, span(12, 12)),
             Token::new(ClosingRoundBracket, span(13, 13)),
-            Token::new(LineBreak, span(14, 14)),
+            Token::new_virtual(Semicolon, span(14, 14)),
             Token::new_identifier("inside".into(), span(19, 24)),
-            Token::new(LineBreak, span(25, 25)),
-            Token::new(ClosingCurlyBracket, span(25, 25)),
-            Token::new(LineBreak, span(25, 25)),
+            Token::new_virtual(ClosingCurlyBracket, span(25, 25)),
+            Token::new_virtual(Semicolon, span(25, 25)),
             Token::new(EndOfInput, span(25, 25)),
         ],
     );
@@ -737,35 +742,28 @@ fn brackets_reset_indentation() {
         vec![
             Token::new(OpeningRoundBracket, span(1, 1)),
             Token::new(Of, span(2, 3)),
-            Token::new(OpeningCurlyBracket, span(4, 8)),
+            Token::new_virtual(OpeningCurlyBracket, span(4, 8)),
             Token::new(WideArrow, span(9, 10)),
-            Token::new(ClosingCurlyBracket, span(11, 11)),
+            Token::new_virtual(ClosingCurlyBracket, span(11, 11)),
             Token::new(ClosingRoundBracket, span(11, 11)),
             Token::new(Equals, span(17, 17)),
             Token::new(Dot, span(19, 19)),
-            Token::new(LineBreak, span(20, 20)),
+            Token::new_virtual(Semicolon, span(20, 20)),
             Token::new(EndOfInput, span(20, 20)),
         ],
     )
 }
 
-// @Task we gonna redo this stuff anyway
+// @Task make this a UI test (maybe?)
+#[test]
+#[ignore]
+fn do_not_lex_too_shallow_indentation() {
+    todo!()
+}
 
-// #[test]
-// fn do_not_lex_too_shallow_indentation() {
-//     assert_err(
-//         lex("
-//   ="),
-//         &[&[span(2, 3)]],
-//     );
-// }
-
-// #[test]
-// fn do_not_lex_too_deep_indentation() {
-//     assert_err(
-//         lex("
-//         |
-//     "),
-//         &[&[span(2, 9)]],
-//     );
-// }
+// @Task make this a UI test (maybe?)
+#[test]
+#[ignore]
+fn do_not_lex_too_deep_indentation() {
+    todo!()
+}

@@ -8,6 +8,7 @@ use crate::{
     diagnostics::{Code, Diagnostic, Handler},
     error::{Health, Outcome, Result},
     span::{LocalByteIndex, LocalSpan, SourceFile, SourceMap, Span, Spanned},
+    util::GetFromEndExt,
     Atom,
 };
 use std::{
@@ -16,11 +17,13 @@ use std::{
     fmt,
     iter::Peekable,
     ops::{Sub, SubAssign},
+    path::Path,
     str::CharIndices,
 };
 pub use token::{
-    is_punctuation, Token,
+    Token,
     TokenKind::{self, *},
+    NUMERIC_SEPARATOR,
 };
 
 /// The unit indentation in spaces.
@@ -58,17 +61,47 @@ pub fn parse_identifier(source: String) -> Option<Atom> {
     }
 }
 
+pub fn parse_crate_name(
+    file: impl AsRef<Path>,
+    handler: &Handler,
+) -> Result<crate::ast::Identifier, Diagnostic> {
+    let file = file.as_ref();
+
+    if !crate::util::has_file_extension(file, crate::FILE_EXTENSION) {
+        Diagnostic::warning()
+            .message("missing or non-standard file extension")
+            .emit(handler);
+    }
+
+    // @Question does unwrap ever fail in a real-world example?
+    let stem = file.file_stem().unwrap();
+
+    let atom = (|| parse_identifier(stem.to_str()?.to_owned()))().ok_or_else(|| {
+        Diagnostic::error().message(format!(
+            "`{}` is not a valid crate name",
+            stem.to_string_lossy()
+        ))
+    })?;
+
+    Ok(crate::ast::Identifier::new(atom, Span::SHAM))
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Section {
+    /// The top-level section.
+    ///
+    /// Basically the same as [Section::Indented] except that it does not call
+    /// for adding any virtual closing curly brackets since the indentation is
+    /// zero.
     Top,
     /// A section of code within curly brackets.
+    ///
+    /// Line breaks are not terminators and it is not indentation-sensitive.
     Delimited,
     /// An indented section of code following the keyword `of` or `do`.
     ///
     /// Stores the amount of open brackets coming before it.
-    Indented {
-        brackets: usize,
-    },
+    Indented { brackets: usize },
     /// An indented section of code that seamlessly continues the previous line.
     Continued,
 }
@@ -78,6 +111,10 @@ impl Section {
     const fn line_breaks_are_terminators(self) -> bool {
         matches!(self, Self::Top | Self::Indented { .. })
     }
+
+    const fn is_indented(self) -> bool {
+        matches!(self, Self::Indented { .. })
+    }
 }
 
 impl Default for Section {
@@ -86,7 +123,7 @@ impl Default for Section {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct Sections(Stack<Section>);
 
 impl Sections {
@@ -103,11 +140,14 @@ impl Sections {
         let section = (|| {
             let mut section;
 
-            while {
+            loop {
                 index = index.checked_sub(1)?;
                 section = *unsafe { self.0.get_unchecked(index) };
-                section == Section::Continued
-            } {}
+
+                if section != Section::Continued {
+                    break;
+                }
+            }
 
             Some(section)
         })()
@@ -126,6 +166,10 @@ impl Sections {
 
     fn exit(&mut self) -> Section {
         self.0.pop().unwrap_or_default()
+    }
+
+    fn exit_all(&mut self) -> impl Iterator<Item = Section> {
+        std::mem::take(&mut self.0).into_iter().rev()
     }
 }
 
@@ -202,30 +246,7 @@ impl Brackets {
     }
 }
 
-// @Temporary location
-trait GetFromEndExt {
-    type Item;
-
-    fn get_from_end(&self, index: usize) -> Option<&Self::Item>;
-}
-
-impl<T> GetFromEndExt for [T] {
-    type Item = T;
-
-    fn get_from_end(&self, index: usize) -> Option<&Self::Item> {
-        let index = self.len().checked_sub(index.checked_add(1)?)?;
-        Some(unsafe { self.get_unchecked(index) })
-    }
-}
-
 type Stack<T> = Vec<T>;
-
-// @Temporary location
-impl TokenKind {
-    pub fn introduces_indented_section(self) -> bool {
-        self == Do || self == Of
-    }
-}
 
 /// The state of the lexer.
 pub struct Lexer<'a> {
@@ -239,8 +260,6 @@ pub struct Lexer<'a> {
     health: Health,
     handler: &'a Handler,
 }
-
-// @Task disallow indented sections inside of delimited ones (very weird!)
 
 impl<'a> Lexer<'a> {
     pub fn new(source: &'a SourceFile, handler: &'a Handler) -> Self {
@@ -261,6 +280,8 @@ impl<'a> Lexer<'a> {
 
     /// Lex source code into an array of tokens
     // @Task return (Vec<Token>, Diagnostics)
+    // @Beacon @Task disallow Indented sections inside delimited ones
+    // @Beacon @Task disallow semicolons in non-delimited sections
     pub fn lex(mut self) -> Result<Outcome<Vec<Token>>> {
         while let Some(character) = self.peek() {
             self.span = LocalSpan::from(self.index().unwrap());
@@ -280,7 +301,8 @@ impl<'a> Lexer<'a> {
                 character if token::is_identifier_segment_start(character) => {
                     self.lex_identifier()?
                 }
-                '\n' => self.lex_indentation()?,
+                '\n' if self.sections.current() != Section::Delimited => self.lex_indentation()?,
+                '\n' => self.advance(),
                 '-' => self.lex_punctuation_or_number_literal()?,
                 character if character.is_ascii_digit() => {
                     self.advance();
@@ -338,8 +360,7 @@ impl<'a> Lexer<'a> {
         }
 
         // @Bug panics if last byte is not a valid codepoint, right?
-        // @Bug panics on empty input
-        let last = LocalByteIndex::from_usize(self.source.content().len() - 1);
+        let last = LocalByteIndex::from_usize(self.source.content().len().saturating_sub(1));
 
         // Ideally, we'd like to set its span to the index after the last token,
         // but they way `SourceMap` is currently defined, that would not work,
@@ -350,18 +371,12 @@ impl<'a> Lexer<'a> {
         // `Diagnostic::format_for_terminal`.
         self.span = LocalSpan::from(last);
 
-        // add a final line break if there isn't one to make the output more regular
-        // and thus easier to parse.
-        // @Temporary
-        // if self
-        //     .tokens
-        //     .last()
-        //     .map_or(true, |token| token.kind != LineBreak)
-        // {
-        //     self.add(LineBreak);
-        // }
-
-        // @Beacon @Task close all sections (inserting virtual `}` if necessary)
+        for section in self.sections.exit_all() {
+            if section.is_indented() {
+                self.add_virtual(ClosingCurlyBracket);
+                self.add_virtual(Semicolon);
+            }
+        }
 
         self.add(EndOfInput);
 
@@ -378,7 +393,7 @@ impl<'a> Lexer<'a> {
     fn add_closing_bracket(&mut self, bracket: Bracket) {
         if let (Section::Indented { brackets }, size) = self.sections.current_continued() {
             if self.brackets.0.len() <= brackets {
-                self.add(ClosingCurlyBracket);
+                self.add_virtual(ClosingCurlyBracket);
                 // @Question can this panic??
                 let dedentation = self.sections.0.len() - size;
                 self.sections.0.truncate(size);
@@ -496,7 +511,7 @@ impl<'a> Lexer<'a> {
         // squash consecutive line breaks into a single one
         self.advance();
         self.take_while(|character| character == '\n');
-        self.add(LineBreak);
+        self.add_virtual(Semicolon);
 
         // self.span = match self.index() {
         //     Some(index) => LocalSpan::from(index),
@@ -547,15 +562,15 @@ impl<'a> Lexer<'a> {
                 // remove the line break again
                 self.tokens.pop();
                 // @Bug wrong span
-                self.add(OpeningCurlyBracket);
+                self.add_virtual(OpeningCurlyBracket);
                 self.sections.enter(Section::Indented {
                     brackets: self.brackets.0.len(),
                 });
             }
         } else {
-            // Remove the line break again if the next line is indented or if we are in a Section
+            // Remove the line break again if the next line is indented or if we are in a section
             // where line breaks are not terminators or if we dedent by some amount and the
-            // “target Section” treats line breaks as terminators.
+            // section reached treats line breaks as terminators.
             if change == Greater
                 || change == Equal && !section.line_breaks_are_terminators()
                 || change == Less
@@ -574,15 +589,27 @@ impl<'a> Lexer<'a> {
         };
 
         if change == Less {
+            // Remove legal but superfluous virtual semicolons in front of virtual
+            // closing curly brackets (which also act as terminators).
+            if self.sections.current_continued().0.is_indented() {
+                if self
+                    .tokens
+                    .last()
+                    .map_or(false, |token| token.is_virtual() && token.kind == Semicolon)
+                {
+                    self.tokens.pop();
+                }
+            }
+
             for _ in 0..difference.0 {
                 let section = self.sections.exit();
 
-                // @Beacon @Task handle the case where `!section.brackets.is_empty()`
+                if section.is_indented() {
+                    // @Beacon @Task handle the case where `!section.brackets.is_empty()`
 
-                if let Section::Indented { .. } = section {
                     // @Bug wrong span
-                    self.add(ClosingCurlyBracket);
-                    self.add(LineBreak);
+                    self.add_virtual(ClosingCurlyBracket);
+                    self.add_virtual(Semicolon);
                 }
             }
         }
@@ -631,34 +658,28 @@ impl<'a> Lexer<'a> {
 
     // @Task move validation logic out of the lexer
     fn lex_number_literal(&mut self) -> Result {
-        const NUMERIC_SEPERATOR: char = '\'';
-
         let mut number = self.source().to_owned();
 
-        let mut trailing_prime = false;
-        let mut consecutive_primes = false;
+        let mut trailing_separator = false;
+        let mut consecutive_separators = false;
 
         while let Some(character) = self.peek() {
-            if !(character.is_ascii_digit() || character == NUMERIC_SEPERATOR) {
+            if !token::is_number_literal_middle(character) {
                 break;
             }
             self.take();
             self.advance();
 
-            if character != NUMERIC_SEPERATOR {
+            if character != NUMERIC_SEPARATOR {
                 number.push(character);
             } else {
-                if let Some(NUMERIC_SEPERATOR) = self.peek() {
-                    consecutive_primes = true;
+                if let Some(NUMERIC_SEPARATOR) = self.peek() {
+                    consecutive_separators = true;
                 }
-                if self
-                    .peek()
-                    .filter(|&character| {
-                        character.is_ascii_digit() || character == NUMERIC_SEPERATOR
-                    })
-                    .is_none()
-                {
-                    trailing_prime = true;
+                if self.peek().map_or(true, |character| {
+                    !token::is_number_literal_middle(character)
+                }) {
+                    trailing_separator = true;
                 }
             }
         }
@@ -666,8 +687,8 @@ impl<'a> Lexer<'a> {
         // @Task emit an invalid identifier token if an identifier immedially follows
         // a number literal (maybe)
 
-        if consecutive_primes || trailing_prime {
-            if consecutive_primes {
+        if consecutive_separators || trailing_separator {
+            if consecutive_separators {
                 Diagnostic::error()
                     .code(Code::E005)
                     .message("consecutive primes in number literal")
@@ -675,7 +696,7 @@ impl<'a> Lexer<'a> {
                     .emit(&self.handler);
             }
 
-            if trailing_prime {
+            if trailing_separator {
                 Diagnostic::error()
                     .code(Code::E005)
                     .message("trailing prime in number literal")
@@ -730,10 +751,14 @@ impl<'a> Lexer<'a> {
         &self.source[self.span]
     }
 
+    /// Step to the next token in the input stream.
     fn advance(&mut self) {
         self.characters.next();
     }
 
+    /// Include the span of the current token in the span of the token to-be-added.
+    ///
+    /// Preparation for [Self::add] and variants.
     fn take(&mut self) {
         let &(index, character) = self.characters.peek().unwrap();
         self.span.end = LocalByteIndex::from_usize(index) + character;
@@ -764,8 +789,17 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Add a token with the given kind to the output of the lexer.
+    ///
+    /// The other component of a token is the span
+    /// which is stored in the lexer and most commonly updated using
+    /// [Self::take].
     fn add(&mut self, token: TokenKind) {
-        self.tokens.push(Token::new(token, self.span()));
+        self.add_with(|span| Token::new(token, span))
+    }
+
+    fn add_virtual(&mut self, token: TokenKind) {
+        self.add_with(|span| Token::new_virtual(token, span))
     }
 
     fn add_with(&mut self, constructor: impl FnOnce(Span) -> Token) {

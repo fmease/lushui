@@ -9,7 +9,7 @@ error[E020]: `Void` is defined multiple times in this scope
 4 | data Void: Type of
   | ^^^^^^^^^^^^^^^^^^ conflicting definition
   |
- note: declaration is marked `foreign` but it also has a body introduced by `=`
+ note: declaration is marked `foreign` but it also has a body introduced by `of`
 
 error[E020]: `thing` is defined multiple times in this scope
  --> ${DIRECTORY}/lowering/foreign-declaration-with-explicit-body.lushui:6:1

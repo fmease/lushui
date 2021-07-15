@@ -74,7 +74,6 @@ impl<T> From<Outcome<T>> for Result<T> {
     }
 }
 
-// @Task better location (even after we move the location of POssErr)
 impl<T: PossiblyErroneous> PossiblyErroneous for Outcome<T> {
     fn error() -> Self {
         Self::tainted(T::error())

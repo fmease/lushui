@@ -208,18 +208,18 @@ impl AttributeTarget for ast::Declaration {
     fn check_attributes(&self, attributes: &Attributes, handler: &Handler) -> Result {
         use ast::DeclarationKind::*;
 
-        let (body, binder) = match &self.kind {
+        let (body, binder, definition_marker) = match &self.kind {
             Value(value) => (
                 value.body.as_ref().map(|expression| expression.span),
                 &value.binder,
+                "=",
             ),
-            // @Task instead of using the span of the whole data declaration for empty bodies
-            // (`=` but nothing else), find a way to return the span of the `=`
             Data(data) => (
                 data.constructors
                     .as_ref()
                     .map(|constructors| constructors.possible_span().unwrap_or(self.span)),
                 &data.binder,
+                "of",
             ),
             _ => return Ok(()),
         };
@@ -229,7 +229,7 @@ impl AttributeTarget for ast::Declaration {
                 .code(Code::E012)
                 .message(format!("declaration `{}` has no definition", binder))
                 .primary_span(self)
-                .help("provide a definition with `=`")
+                .help(format!("provide a definition with `{definition_marker}`"))
                 .emit(handler)),
             (Some(body), true) => Err(Diagnostic::error()
                 .code(Code::E020)
@@ -242,7 +242,7 @@ impl AttributeTarget for ast::Declaration {
                     attributes.filter(AttributeKeys::FOREIGN).next().unwrap(),
                     "conflicting definition",
                 )
-                .note("declaration is marked `foreign` but it also has a body introduced by `=`")
+                .note(format!("declaration is marked `foreign` but it also has a body introduced by `{definition_marker}`"))
                 .emit(handler)),
             _ => Ok(()),
         }
@@ -263,8 +263,8 @@ impl AttributeTarget for ast::Expression {
             Path(_) => "a path expression",
             Field(_) => "a field",
             LambdaLiteral(_) => "a lambda literal",
-            LetIn(_) => "a let/in expression",
-            UseIn(_) => "a use/in expression",
+            LetIn(_) => "a let/in-expression",
+            UseIn(_) => "a use/in-expression",
             CaseAnalysis(_) => "a case analysis",
             DoBlock(_) => "a do block",
             SequenceLiteral(_) => "a sequence literal expression",

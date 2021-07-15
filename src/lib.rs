@@ -63,6 +63,7 @@ pub mod parser;
 pub mod resolver;
 pub mod span;
 pub mod typer;
+mod util;
 
 const FILE_EXTENSION: &str = "lushui";
 
@@ -74,54 +75,18 @@ use parser::ast;
 use resolver::hir;
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use smallvec::smallvec;
-use std::path::Path;
 use string_cache::DefaultAtom as Atom;
 
 type Str = std::borrow::Cow<'static, str>;
 
 type SmallVec<T, const N: usize> = smallvec::SmallVec<[T; N]>;
 
-pub static OPTIONS: OnceCell<Options> = OnceCell::new();
+static OPTIONS: OnceCell<Options> = OnceCell::new();
 
 pub struct Options {
     pub show_binding_indices: bool,
 }
 
-// @Task move
-fn has_file_extension(path: &Path, required_extension: &str) -> bool {
-    path.extension().and_then(|extension| extension.to_str()) == Some(required_extension)
-}
-
-use diagnostics::{Diagnostic, Handler};
-
-pub fn parse_crate_name(
-    file: impl AsRef<Path>,
-    handler: &Handler,
-) -> Result<ast::Identifier, Diagnostic> {
-    let file = file.as_ref();
-
-    if !has_file_extension(file, FILE_EXTENSION) {
-        Diagnostic::warning()
-            .message("missing or non-standard file extension")
-            .emit(handler);
-    }
-
-    // @Question does unwrap ever fail in a real-world example?
-    let stem = file.file_stem().unwrap();
-
-    let atom = (|| lexer::parse_identifier(stem.to_str()?.to_owned()))().ok_or_else(|| {
-        Diagnostic::error().message(format!(
-            "`{}` is not a valid crate name",
-            stem.to_string_lossy()
-        ))
-    })?;
-
-    Ok(ast::Identifier::new(atom, span::Span::SHAM))
-}
-
-macro obtain($expr:expr, $( $pat:pat )|+ $( if $guard:expr )? $(,)? => $mapping:expr) {
-    match $expr {
-        $( $pat )|+ $( if $guard )? => Some($mapping),
-        _ => None
-    }
+pub fn set_global_options(options: Options) {
+    OPTIONS.set(options).unwrap_or_else(|_| unreachable!());
 }

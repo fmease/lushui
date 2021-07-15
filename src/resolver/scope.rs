@@ -5,7 +5,7 @@
 //! * [CrateScope] for module-level bindings (may be out of order and recursive)
 //!   i.e. bindings defined by declarations in modules, data types and constructors
 //! * [FunctionScope] for bindings defined inside of expressions or functions (order matters)
-//!   like parameters, let/in binders and case analysis binders
+//!   like parameters, let/in-binders and case-analysis binders
 //!
 //! The most important functions are [FunctionScope::resolve_binding] and [CrateScope::resolve_path]
 //! (used by `resolve_binding`).
@@ -74,7 +74,7 @@ impl CrateScope {
     ///
     /// This procedure always prepends `crate.` to every path.
     pub fn absolute_path(&self, index: CrateIndex) -> String {
-        use crate::lexer::is_punctuation;
+        use crate::lexer::token::is_punctuation;
 
         let entity = &self.bindings[index];
 
@@ -317,7 +317,7 @@ impl CrateScope {
     }
 
     // @Task verify that the exposure is checked even in the case of use-declarations
-    // using use bindings (use chains).
+    // using use-bindings (use-chains).
     fn handle_exposure(
         &self,
         index: CrateIndex,
@@ -446,7 +446,7 @@ expected the exposure of `{}`
             .find(|&other_identifier| is_similar(identifier, other_identifier))
     }
 
-    /// Collapse chain of use bindings aka indirect uses.
+    /// Collapse chain of use-bindings aka indirect uses.
     ///
     /// This is an invariant established to make things easier to reason about during resolution.
     fn collapse_use_chain(&self, index: CrateIndex) -> Result<CrateIndex, ResolutionError> {
@@ -461,7 +461,7 @@ expected the exposure of `{}`
         }
     }
 
-    /// Reabotain the resolved identifier.
+    /// Reobtain the resolved identifier.
     ///
     /// Used in [super::Resolver::finish_resolve_declaration], the last pass of the
     /// name resolver, to re-gain some information (the [Identifier]s) collected during the first pass.
@@ -478,7 +478,7 @@ expected the exposure of `{}`
     /// (painfully learned through previous experiences).
     // @Task add to documentation that this panics on unresolved and does not check exposure,
     // also it does not check the resolution target etc
-    // @Task add that it may only fail if circular use bindings were found or a use
+    // @Task add that it may only fail if circular use-bindings were found or a use
     // binding could not be resolved since `Self::resolve_use_binding` is treated non-fatally
     // in Resolver::resolve_declaration
     pub(super) fn reobtain_resolved_identifier<Target: ResolutionTarget>(
@@ -502,14 +502,14 @@ expected the exposure of `{}`
         Target::output(index, identifier)
     }
 
-    /// Resolve use bindings.
+    /// Resolve use-bindings.
     ///
     /// This is the second pass of three of the name resolver.
     ///
-    /// This uses a queue to resolve use bindings over and over until
-    /// all out of order use bindings are successfully resolved or until
+    /// This uses a queue to resolve use-bindings over and over until
+    /// all out of order use-bindings are successfully resolved or until
     /// no progress can be made anymore in which case all remaining
-    /// use bindings are actually circular and are thus reported.
+    /// use-bindings are actually circular and are thus reported.
     // @Task update docs in regards to number of phases
     // @Task update docs regarding errors
     // @Task clear partially_resolved_use_bindings at the end both if Err or Ok
@@ -700,7 +700,7 @@ impl RestrictedExposure {
                 // always accessible to their descendants, and therefore we are going to
                 // throw an error.
                 // It's not possible to use `resolve_path` as that can lead to infinite
-                // loops with out of order use bindings.
+                // loops with out of order use-bindings.
                 let reach = scope
                     .resolve_path_unchecked_exposure::<OnlyModule>(
                         unresolved_reach,

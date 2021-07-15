@@ -27,7 +27,7 @@
 pub mod lowered_ast;
 
 use self::lowered_ast::AttributeTarget;
-use crate::{SmallVec, Str, ast::{self, Explicit, ParameterGroup, Path}, diagnostics::{Code, Diagnostic, Handler}, error::{Health, Outcome, map_outcome_from_result, PossiblyErroneous, Result}, format::{ordered_listing, s_pluralize, Conjunction, QuoteExt}, lowered_ast::{decl, expr, pat, AttributeKeys, AttributeKind, Attributes, Number}, obtain, smallvec, span::{SourceMap, Span, Spanned, Spanning}};
+use crate::{SmallVec, Str, ast::{self, Explicit, ParameterGroup, Path}, diagnostics::{Code, Diagnostic, Handler}, error::{Health, Outcome, map_outcome_from_result, PossiblyErroneous, Result}, format::{ordered_listing, s_pluralize, Conjunction, QuoteExt}, lowered_ast::{decl, expr, pat, AttributeKeys, AttributeKind, Attributes, Number}, smallvec, span::{SourceMap, Span, Spanned, Spanning}, util::obtain};
 use joinery::JoinableIterator;
 use std::{cell::RefCell, iter::once, rc::Rc};
 

@@ -17,9 +17,7 @@ use lushui::{
 use resolver::{CrateScope, Resolver};
 use std::{cell::RefCell, fs::File, io::BufWriter, rc::Rc};
 
-use cli::Command;
-
-use crate::cli::PhaseRestriction;
+use cli::{Command, PhaseRestriction};
 
 mod cli;
 
@@ -34,12 +32,9 @@ fn main_() -> Result<(), ()> {
 
     let application = cli::Application::new();
 
-    // @Task improve API
-    lushui::OPTIONS
-        .set(lushui::Options {
-            show_binding_indices: application.show_binding_indices,
-        })
-        .unwrap_or_else(|_| unreachable!());
+    lushui::set_global_options(lushui::Options {
+        show_binding_indices: application.show_binding_indices,
+    });
 
     let map = Rc::new(RefCell::new(SourceMap::default()));
     let handler = Handler::buffered_stderr(map.clone());
@@ -54,7 +49,7 @@ fn main_() -> Result<(), ()> {
                     .load(source_file_path.clone())
                     .map_err(|error| Diagnostic::from(error).emit(&handler))?;
 
-                let crate_name = lushui::parse_crate_name(source_file_path, &handler)
+                let crate_name = lushui::lexer::parse_crate_name(source_file_path, &handler)
                     .map_err(|error| error.emit(&handler))?;
 
                 let Outcome {
@@ -63,7 +58,9 @@ fn main_() -> Result<(), ()> {
                 } = Lexer::new(map.borrow().get(source_file), &handler).lex()?;
 
                 if application.dump.tokens {
-                    eprintln!("{tokens:#?}");
+                    for token in &tokens {
+                        eprintln!("{:?}", token);
+                    }
                 }
                 if application.phase_restriction == Some(PhaseRestriction::Lexer) {
                     if health.is_tainted() {

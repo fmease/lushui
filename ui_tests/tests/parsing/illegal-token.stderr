@@ -1,4 +1,4 @@
-error[E010]: found illegal token U+95F4 `间`, but expected parameter, type annotation, keyword `of` or line break
+error[E010]: found illegal token U+95F4 `间`, but expected parameter, terminator, type annotation or keyword `of`
  --> ${DIRECTORY}/parsing/illegal-token.lushui:3:13
   |
 3 | data System 间: 时

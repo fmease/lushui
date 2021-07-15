@@ -2,12 +2,6 @@
 //!
 //! I *think* it can be classified as a top-down recursive-descent parser with arbitrary look-ahead.
 //!
-//! ## Issues
-//!
-//! * crude error locations
-//! * ugly API
-//! * all syntax errors are fatal. instead, she should have a "poisoned" mode
-//!
 //! ## Grammar Notation
 //!
 //! Most parsing functions in this module are accompanied by a grammar snippet.
@@ -25,7 +19,7 @@
 //! | `A+`      | Kleene Plus (Positive Multiplicity) | Arbitrarily long non-empty sequence of `A`s                   |
 //! | `"T"`     | Terminal                            | Lexed token by textual content                                |
 //! | `#T`      | Named Terminal                      | Lexed token by name                                           |
-//! | `<!A`     | Negative Look-Behind                |                                                               |
+//! | `(> A)`   | Positive Look-Ahead                 |                                                               |
 
 pub mod ast;
 #[cfg(test)]
@@ -46,11 +40,8 @@ type Result<T = (), E = ()> = std::result::Result<T, E>;
 
 const STANDARD_DECLARATION_DELIMITERS: [Delimiter; 3] = {
     use Delimiter::*;
-    [
-        TypeAnnotationPrefix,
-        DefinitionPrefix,
-        Token(TokenKind::LineBreak),
-    ]
+
+    [Terminator, TypeAnnotationPrefix, DefinitionPrefix]
 };
 
 const BRACKET_POTENTIAL_PI_TYPE_LITERAL: &str =
@@ -129,6 +120,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    // @Note horrible name
     fn expect_among_others(&self, expected: TokenKind, other_expected: Expected) -> Result<Token> {
         let token = self.current_token();
         if token.kind == expected {
@@ -214,23 +206,27 @@ impl<'a> Parser<'a> {
         self.current_token().clone().try_into().unwrap()
     }
 
+    /// Step to the next token output by the lexer.
     fn advance(&mut self) {
         self.index += 1;
     }
 
+    /// Inspect the current token.
     fn current_token(&self) -> &Token {
         &self.tokens[self.index]
     }
 
+    /// Indicate whether the current token is one of the given delimiters.
     fn current_token_is_delimiter(&self, delimiters: &[Delimiter]) -> bool {
-        let queried_token_kind = self.current_token().kind;
-
-        delimiters
-            .iter()
-            .map(|delimiter| <&TokenKind>::from(delimiter))
-            .any(|&token| token == queried_token_kind)
+        let token = self.current_token().kind;
+        delimiters.iter().any(|delimiter| delimiter.matches(token))
     }
 
+    /// Inspect the token following the current one.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if the current token is the [end of input](TokenKind::EndOfInput).
     fn succeeding_token(&self) -> &Token {
         &self.tokens[self.index + 1]
     }
@@ -247,7 +243,7 @@ impl<'a> Parser<'a> {
     ///     | Module-Declaration
     ///     | Crate-Declaration
     ///     | Use-Declaration
-    /// Crate-Declaration ::= "crate" #Identifier #Line-Break
+    /// Crate-Declaration ::= "crate" #Identifier Terminator
     /// ```
     // @Task re-add attribute groups (needs syntax proposals)
     fn parse_declaration(&mut self) -> Result<Declaration> {
@@ -273,7 +269,7 @@ impl<'a> Parser<'a> {
             Crate => {
                 self.advance();
                 let binder = self.consume_identifier()?;
-                self.consume(LineBreak)?;
+                self.expect_terminator()?;
 
                 Ok(decl! {
                     Crate {
@@ -309,7 +305,7 @@ impl<'a> Parser<'a> {
                     self.advance();
                     let attribute = self.finish_parse_regular_attribute(span)?;
                     if matches!(skip_line_breaks, SkipLineBreaks::Yes) {
-                        while self.has_consumed(LineBreak) {}
+                        while self.has_consumed(Semicolon) {}
                     }
                     attribute
                 }
@@ -327,7 +323,7 @@ impl<'a> Parser<'a> {
                         )],
                     };
                     if matches!(skip_line_breaks, SkipLineBreaks::Yes) {
-                        while self.has_consumed(LineBreak) {}
+                        while self.has_consumed(Semicolon) {}
                     }
                     attribute
                 }
@@ -448,7 +444,8 @@ impl<'a> Parser<'a> {
     /// Value-Declaration ::=
     ///     #Identifier
     ///     Parameters Type-Annotation?
-    ///     ("=" Terminated-Expression | #Line-Break)
+    ///     ("=" Expression)?
+    ///     Terminator
     /// ```
     fn finish_parse_value_declaration(
         &mut self,
@@ -462,11 +459,12 @@ impl<'a> Parser<'a> {
         let type_annotation = span.merging(self.parse_optional_type_annotation()?);
 
         let body = if self.has_consumed(Equals) {
-            Some(span.merging(self.parse_terminated_expression()?))
+            Some(span.merging(self.parse_expression()?))
         } else {
-            self.consume(LineBreak)?;
             None
         };
+
+        self.expect_terminator()?;
 
         Ok(decl! {
             Value {
@@ -491,14 +489,9 @@ impl<'a> Parser<'a> {
     /// Data-Declaration ::=
     ///     "data" #Identifier
     ///     Parameters Type-Annotation?
-    ///     ("of" ("{" (#Line-Break | Constructor)* "}")?)?
-    ///     #Line-Break
+    ///     ("of" ("{" (Terminator | Constructor)* "}")?)?
+    ///     Terminator
     /// ```
-    //  before (#Line-Break | "of" ("{" (#Line-Break | Constructor)* "}")?)
-    // @Bug ideally, we want to have the grammar `("of" "{" (#Line-Break | Constructor)* "}")? #Line-Break`
-    // i.e. enforce a line break after a cury-bracket-block (we want `module m of {} inline` to be legal
-    // (I guess??) (talking about explicitly inserted curly brackets) )
-    // @Note but @Update the thing above is not a problem, LF is inserted implicitly
     fn finish_parse_data_declaration(
         &mut self,
         keyword_span: Span,
@@ -509,13 +502,19 @@ impl<'a> Parser<'a> {
 
         let binder = span.merging(self.consume_identifier()?);
         let parameters = span.merging(self.parse_parameters(&[
+            Delimiter::Terminator,
             Delimiter::TypeAnnotationPrefix,
             Of.into(),
-            LineBreak.into(),
         ])?);
         let type_annotation = span.merging(self.parse_optional_type_annotation()?);
 
         let constructors = match self.current_token().kind {
+            kind if kind.is_terminator() => {
+                if kind == Semicolon {
+                    self.advance();
+                }
+                None
+            }
             Of => {
                 span.merging(self.current_token().span);
                 self.advance();
@@ -527,20 +526,19 @@ impl<'a> Parser<'a> {
                     Ok(())
                 })?;
 
-                // implicitly inserted by the lexer in the case where "}" is artificial
-                self.consume(LineBreak)?;
                 span.merging(constructors.last());
+                self.expect_terminator()?;
 
                 Some(constructors)
             }
-            LineBreak => {
-                self.advance();
-                None
-            }
             _ => {
                 return self.error(|| {
-                    expected_one_of![Delimiter::DefinitionPrefix, LineBreak, Expected::Expression]
-                        .but_actual_is(self.current_token())
+                    expected_one_of![
+                        Delimiter::Terminator,
+                        Delimiter::DefinitionPrefix,
+                        Expected::Expression
+                    ]
+                    .but_actual_is(self.current_token())
                 });
             }
         };
@@ -566,10 +564,9 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Module-Declaration ::=
     ///     | Header
-    ///     | "module" #Identifier ("of" ("{" (#Line-Break | Declaration)* "}")?)? #Line-Break
-    /// Header ::= "module" #Line-Break
+    ///     | "module" #Identifier ("of" ("{" (Terminator | Declaration)* "}")?)? Terminator
+    /// Header ::= "module" Terminator
     /// ```
-    // @Temporary @Note before: "module" #Identifier (#Line-Break | "of" ("{" (#Line-Break | Declaration)* "}")?)
     fn finish_parse_module_declaration(
         &mut self,
         keyword_span: Span,
@@ -578,16 +575,26 @@ impl<'a> Parser<'a> {
         use TokenKind::*;
         let mut span = keyword_span;
 
-        if self.has_consumed(LineBreak) {
-            return Ok(decl! { Header { attributes, span } });
+        match self.current_token().kind {
+            kind if kind.is_terminator() => {
+                if kind == Semicolon {
+                    self.advance();
+                }
+
+                return Ok(decl! { Header { attributes, span } });
+            }
+            _ => {}
         }
 
         let binder = span.merging(self.consume_identifier()?);
 
         match self.current_token().kind {
             // external module declaration
-            LineBreak => {
-                self.advance();
+            kind if kind.is_terminator() => {
+                if kind == Semicolon {
+                    self.advance();
+                }
+
                 Ok(decl! {
                     Module {
                         attributes,
@@ -607,7 +614,7 @@ impl<'a> Parser<'a> {
                     Ok(())
                 })?;
 
-                span.merging(self.consume(LineBreak)?);
+                span.merging(self.expect_terminator()?);
 
                 Ok(decl! {
                     Module {
@@ -619,7 +626,9 @@ impl<'a> Parser<'a> {
                     }
                 })
             }
-            _ => self.error(|| expected_one_of![LineBreak, Of].but_actual_is(self.current_token())),
+            _ => self.error(|| {
+                expected_one_of![Delimiter::Terminator, Of].but_actual_is(self.current_token())
+            }),
         }
     }
 
@@ -645,7 +654,7 @@ impl<'a> Parser<'a> {
         let mut declarations = Vec::new();
 
         loop {
-            if self.has_consumed(LineBreak) {
+            if self.has_consumed(Semicolon) {
                 continue;
             }
 
@@ -673,7 +682,7 @@ impl<'a> Parser<'a> {
 
         if self.has_consumed(OpeningCurlyBracket) {
             loop {
-                while self.has_consumed(LineBreak) {}
+                while self.has_consumed(Semicolon) {}
 
                 if self.has_consumed(ClosingCurlyBracket) {
                     break;
@@ -694,15 +703,15 @@ impl<'a> Parser<'a> {
     /// ## Grammar
     ///
     /// ```ebnf
-    /// Use-Declaration ::= "use" Use-Path-Tree #Line-Break
+    /// Use-Declaration ::= "use" Use-Path-Tree Terminator
     /// ```
     fn finish_parse_use_declaration(
         &mut self,
         keyword_span: Span,
         attributes: Attributes,
     ) -> Result<Declaration> {
-        let bindings = self.parse_use_path_tree(&[TokenKind::LineBreak.into()])?;
-        self.consume(TokenKind::LineBreak)?;
+        let bindings = self.parse_use_path_tree(&[Delimiter::Terminator])?;
+        self.expect_terminator()?;
 
         Ok(decl! {
             Use {
@@ -827,7 +836,8 @@ impl<'a> Parser<'a> {
     /// Constructor ::=
     ///     (Attribute #Line-Break*)*
     ///     #Identifier Parameters Type-Annotation?
-    ///     (#Line-Break | "=" Terminated-Expression)
+    ///     ("=" Expression)?
+    ///     Terminator
     /// ```
     fn parse_constructor(&mut self) -> Result<Declaration> {
         use TokenKind::*;
@@ -842,11 +852,12 @@ impl<'a> Parser<'a> {
         let type_annotation = span.merging(self.parse_optional_type_annotation()?);
 
         let body = if self.has_consumed(Equals) {
-            Some(span.merging(self.parse_terminated_expression()?))
+            Some(span.merging(self.parse_expression()?))
         } else {
-            self.consume(LineBreak)?;
             None
         };
+
+        self.expect_terminator()?;
 
         Ok(decl! {
             Constructor {
@@ -1207,7 +1218,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// Finish parsing an let/in expression.
+    /// Finish parsing an let/in-expression.
     ///
     /// The initial `let` should have already been parsed beforehand.
     ///
@@ -1215,22 +1226,24 @@ impl<'a> Parser<'a> {
     ///
     /// ```ebnf
     /// Let-In ::=
-    ///     "let" #Identifier Parameters Type_Annotation?
+    ///     "let" #Identifier Parameters Type-Annotation?
     ///     ("=" Expression)?
-    ///     #Line-Break?
+    ///     #Virtual-Semicolon?
     ///     "in" Expression
     /// ```
-    // @Task skip duplicate `=`, `in`, `:`s (throw an error for each one)
     fn finish_parse_let_in(&mut self, span_of_let: Span) -> Result<Expression> {
-        use TokenKind::*;
+        // @Task recover from two consecutive `in`s
 
+        use TokenKind::*;
         let mut span = span_of_let;
+
         let binder = self.consume_identifier()?;
+
+        // @Task smh add line break aka virtual semicolon
         let parameters = self.parse_parameters(&[
             Delimiter::TypeAnnotationPrefix,
             Delimiter::DefinitionPrefix,
             In.into(),
-            LineBreak.into(),
         ])?;
         let type_annotation = self.parse_optional_type_annotation()?;
 
@@ -1240,7 +1253,10 @@ impl<'a> Parser<'a> {
             None
         };
 
-        let _ = self.has_consumed(LineBreak);
+        if self.current_token().is_line_break() {
+            self.advance();
+        }
+
         self.consume(In)?;
 
         let scope = span.merging(self.parse_expression()?);
@@ -1258,17 +1274,30 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// Finish parsing a use/in expression.
+    /// Finish parsing a use/in-expression.
     ///
     /// ## Grammar
     ///
     /// ```ebnf
-    /// Use-In ::= "use" Use-Path-Tree "in" #Line-Break? Expression
+    /// Use-In ::=
+    ///     "use" Use-Path-Tree
+    ///     #Virtual-Semicolon?
+    ///     "in" Expression
     /// ```
     fn finish_parse_use_in(&mut self, span_of_use: Span) -> Result<Expression> {
-        let bindings = self.parse_use_path_tree(&[TokenKind::In.into()])?;
-        self.consume(TokenKind::In)?;
-        let _ = self.has_consumed(TokenKind::LineBreak);
+        // @Task recover from two consecutive `in`s
+
+        use TokenKind::*;
+
+        // @Task smh add line break aka virtual semicolon
+        let bindings = self.parse_use_path_tree(&[In.into()])?;
+
+        if self.current_token().is_line_break() {
+            self.advance();
+        }
+
+        self.consume(In)?;
+
         let scope = self.parse_expression()?;
 
         Ok(expr! {
@@ -1290,7 +1319,7 @@ impl<'a> Parser<'a> {
     ///
     /// ```ebnf
     /// Case-Analysis ::= "case" Expression "of" ("{" Case* "}")?
-    /// Case ::= Pattern "=>" Expression
+    /// Case ::= Pattern "=>" Expression Terminator
     /// ```
     fn finish_parse_case_analysis(&mut self, span_of_case: Span) -> Result<Expression> {
         use TokenKind::*;
@@ -1307,7 +1336,8 @@ impl<'a> Parser<'a> {
             while self.current_token().kind != ClosingCurlyBracket {
                 let pattern = self.parse_pattern()?;
                 self.consume(WideArrow)?;
-                let body = self.parse_terminated_expression()?;
+                let body = self.parse_expression()?;
+                self.expect_terminator()?;
 
                 cases.push(ast::Case { pattern, body });
             }
@@ -1337,8 +1367,8 @@ impl<'a> Parser<'a> {
     /// Do-Block ::= "do" "{" Statement* "}"
     /// Statement ::= Let-Statement | Use-Declaration | Bind-Statement | Expression-Statement
     /// Let-Statement ::= "let" Value-Declaration
-    /// Bind-Statement ::= #Identifier Type-Annotation? "<-" Expression #Line-Break
-    /// Expression-Statement ::= Expression #Line-Break
+    /// Bind-Statement ::= #Identifier Type-Annotation? "<-" Expression Terminator
+    /// Expression-Statement ::= Expression Terminator
     /// ```
     ///
     /// Bind statements are the worst right now. We need to look ahead for `:` (type annotation)
@@ -1355,7 +1385,7 @@ impl<'a> Parser<'a> {
 
         while self.current_token().kind != ClosingCurlyBracket {
             // @Note necessary I guess in cases where we have #Line-Break ((Comment)) #Line-Break
-            if self.has_consumed(LineBreak) {
+            if self.has_consumed(Semicolon) {
                 continue;
             }
 
@@ -1370,7 +1400,9 @@ impl<'a> Parser<'a> {
                     ])?;
                     let type_annotation = self.parse_optional_type_annotation()?;
                     self.consume(TokenKind::Equals)?;
-                    let expression = self.parse_terminated_expression()?;
+                    let expression = self.parse_expression()?;
+                    self.expect_terminator()?;
+
                     Statement::Let(LetStatement {
                         binder,
                         parameters,
@@ -1380,8 +1412,9 @@ impl<'a> Parser<'a> {
                 }
                 Use => {
                     self.advance();
-                    let bindings = self.parse_use_path_tree(&[TokenKind::LineBreak.into()])?;
-                    self.consume(LineBreak)?;
+                    let bindings = self.parse_use_path_tree(&[Delimiter::Terminator])?;
+                    self.expect_terminator()?;
+
                     Statement::Use(ast::Use { bindings })
                 }
                 _ => {
@@ -1393,7 +1426,9 @@ impl<'a> Parser<'a> {
                         self.advance();
                         let type_annotation = self.parse_optional_type_annotation()?;
                         self.consume(ThinArrowLeft)?;
-                        let expression = self.parse_terminated_expression()?;
+                        let expression = self.parse_expression()?;
+                        self.expect_terminator()?;
+
                         Statement::Bind(BindStatement {
                             binder,
                             type_annotation,
@@ -1402,7 +1437,10 @@ impl<'a> Parser<'a> {
                     } else {
                         // @Task improve error diagnostics for an unexpected token to not only mention an
                         // expression was expected but also statements were
-                        Statement::Expression(self.parse_terminated_expression()?)
+                        let expression = self.parse_expression()?;
+                        self.expect_terminator()?;
+
+                        Statement::Expression(expression)
                     }
                 }
             });
@@ -1706,25 +1744,33 @@ impl<'a> Parser<'a> {
             .transpose()
     }
 
-    /// Parse an expression terminated by a line break or dedentation.
+    /// Expect a terminator.
     ///
-    /// A line break is parsed, dedentation is not.
+    /// If the terminator is a semicolon, consume it.
     ///
     /// ## Grammar
     ///
     /// ```ebnf
-    /// Terminated-Expression ::= Expression ((<! "}") #Line-Break)?
+    /// Terminator ::= ";" | (> "}" | #End-Of-Input)
     /// ```
-    // @Question just inline/remove?
-    fn parse_terminated_expression(&mut self) -> Result<Expression> {
-        let expression = self.parse_expression()?;
+    fn expect_terminator(&mut self) -> Result<Option<Token>> {
+        use TokenKind::*;
+        let token = self.current_token();
+        if token.kind.is_terminator() {
+            if token.kind == Semicolon {
+                let token = token.clone();
+                self.advance();
 
-        if self.current_token().kind != TokenKind::ClosingCurlyBracket {
-            self.consume(TokenKind::LineBreak)?;
+                Ok(Some(token))
+            } else {
+                Ok(None)
+            }
+        } else {
+            Expected::Delimiter(Delimiter::Terminator)
+                .but_actual_is(self.current_token())
+                .emit(&self.handler);
+            Err(())
         }
-        // self.consume(TokenKind::LineBreak)?;
-
-        Ok(expression)
     }
 
     /// Consume the explicitness symbol.
@@ -1822,7 +1868,7 @@ impl Expected {
         if let Self::OneOf(expected) = &mut self {
             expected.push(extra);
         } else {
-            self = Self::OneOf(vec![self, extra])
+            self = expected_one_of![self, extra];
         }
 
         self
@@ -1851,7 +1897,7 @@ impl Expected {
                 "found {}, but expected {}",
                 match actual.kind {
                     kind @ TokenKind::Illegal => {
-                        let character = actual.illegal();
+                        let character = actual.illegal().unwrap();
                         format!("{} U+{:04X} `{}`", kind, character as u32, character)
                     }
                     kind => kind.to_string(),
@@ -1894,12 +1940,26 @@ impl fmt::Display for Expected {
     }
 }
 
-// @Question merge with Expected?
 #[derive(Clone, Copy)]
 enum Delimiter {
     TypeAnnotationPrefix,
     DefinitionPrefix,
+    Terminator,
     Token(TokenKind),
+}
+
+impl Delimiter {
+    fn matches(self, token: TokenKind) -> bool {
+        use TokenKind::*;
+
+        match (self, token) {
+            (Self::TypeAnnotationPrefix, Colon) => true,
+            (Self::DefinitionPrefix, Equals) => true,
+            (Self::Terminator, Semicolon | ClosingCurlyBracket | EndOfInput) => true,
+            (Self::Token(expected), actual) => expected == actual,
+            _ => false,
+        }
+    }
 }
 
 impl fmt::Display for Delimiter {
@@ -1907,6 +1967,8 @@ impl fmt::Display for Delimiter {
         match self {
             Self::TypeAnnotationPrefix => write!(f, "type annotation"),
             Self::DefinitionPrefix => write!(f, "definition with `=`"),
+            // @Question or spell it out? `;`, line break, `}`, dedentation, end of input?
+            Self::Terminator => write!(f, "terminator"),
             Self::Token(token) => write!(f, "{}", token),
         }
     }
@@ -1915,16 +1977,6 @@ impl fmt::Display for Delimiter {
 impl From<TokenKind> for Delimiter {
     fn from(token: TokenKind) -> Self {
         Self::Token(token)
-    }
-}
-
-impl<'a> From<&'a Delimiter> for &'a TokenKind {
-    fn from(delimiter: &'a Delimiter) -> &'a TokenKind {
-        match delimiter {
-            Delimiter::TypeAnnotationPrefix => &TokenKind::Colon,
-            Delimiter::DefinitionPrefix => &TokenKind::Equals,
-            Delimiter::Token(token) => token,
-        }
     }
 }
 

@@ -12,7 +12,7 @@ error[E012]: declaration `Blank` has no definition
 5 | data Blank
   | ^^^^^^^^^^ 
   |
- help: provide a definition with `=`
+ help: provide a definition with `of`
 
 error[E015]: missing mandatory type annotation on declaration `Blank`
  --> ${DIRECTORY}/lowering/abnormally-bodiless.lushui:5:1

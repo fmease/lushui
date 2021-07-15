@@ -23,7 +23,7 @@ use crate::{
     entity::EntityKind,
     error::{Health, PossiblyErroneous, Result},
     lowered_ast::{self, AttributeKeys, AttributeKind},
-    obtain,
+    util::obtain,
 };
 use hir::{decl, expr, pat};
 pub use scope::{
@@ -90,7 +90,7 @@ impl<'a> Resolver<'a> {
     ///
     /// This traverses all declarations and registers module-level bindings
     /// checking that they are only defined once per namespace.
-    /// Use bindings which refer to an unknown binding are marked as such
+    /// Use-bindings which refer to an unknown binding are marked as such
     /// to be resolved in the second, a minor pass.
     ///
     /// This also searches the program entry and stores it when it finds it.
@@ -98,7 +98,7 @@ impl<'a> Resolver<'a> {
     /// In contrast to [Self::finish_resolve_declaration], this does not actually return a
     /// new intermediate HIR because of too much mapping and type-system boilerplate
     /// and it's just not worth it memory-wise.
-    /// For more on this, see [CrateScope::resolve_identifier].
+    /// For more on this, see [CrateScope::reobtain_resolved_identifier].
     fn start_resolve_declaration(
         &mut self,
         declaration: &lowered_ast::Declaration,

@@ -15,8 +15,6 @@ const VERSION: &str = concat!(
     ")"
 );
 
-#[derive(Debug)] // @Temporary
-
 pub struct Application {
     pub command: Command,
     pub interpreter: Interpreter,
@@ -65,7 +63,7 @@ impl Application {
                         "lex-only",
                         "parse-only",
                         "lower-only",
-                        "resolve-names-only",
+                        "resolve-only",
                     ])
                     .help("@Task"),
             )
@@ -130,7 +128,7 @@ impl Application {
                     "lower-only" => {
                         PhaseRestriction::update(&mut phase_restriction, PhaseRestriction::Lowerer);
                     }
-                    "resolve-names-only" => {
+                    "resolve-only" => {
                         PhaseRestriction::update(
                             &mut phase_restriction,
                             PhaseRestriction::Resolver,
@@ -154,7 +152,6 @@ impl Application {
     }
 }
 
-#[derive(Debug)] // @Temporary
 pub enum Interpreter {
     TreeWalk,
     ByteCode,
@@ -179,7 +176,6 @@ impl FromStr for Interpreter {
 }
 
 // @Note bad name
-#[derive(Debug)] // @Temporary
 #[derive(Default)]
 
 pub struct DumpInformation {
@@ -191,13 +187,12 @@ pub struct DumpInformation {
     pub scope: bool,
 }
 
-#[derive(Debug)] // @Temporary
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum PhaseRestriction {
-    Lexer,
-    Parser,
-    Lowerer,
     Resolver,
+    Lowerer,
+    Parser,
+    Lexer,
 }
 
 impl PhaseRestriction {
@@ -211,17 +206,14 @@ impl FromStr for PhaseRestriction {
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         Ok(match input {
-            "lex-only" => Self::Lexer,
-            "parse-only" => Self::Parser,
+            "resolve-only" => Self::Resolver,
             "lower-only" => Self::Lowerer,
-            "resolve-names-only" => Self::Resolver,
+            "parse-only" => Self::Parser,
+            "lex-only" => Self::Lexer,
             _ => return Err(()),
         })
     }
 }
-
-// @Task use PathBuf instead
-#[derive(Debug)] // @Temporary
 
 pub enum Command {
     Build { source_file_path: PathBuf },

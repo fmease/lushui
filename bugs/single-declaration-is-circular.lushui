@@ -1,0 +1,1 @@
+module alpha of { use foo }

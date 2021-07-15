@@ -559,7 +559,7 @@ impl Identifier {
     }
 
     pub fn is_punctuation(&self) -> bool {
-        crate::lexer::is_punctuation(self.atom.chars().next().unwrap())
+        crate::lexer::token::is_punctuation(self.atom.chars().next().unwrap())
     }
 
     pub fn as_str(&self) -> &str {
