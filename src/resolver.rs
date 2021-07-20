@@ -107,8 +107,8 @@ impl<'a> Resolver<'a> {
     ) -> Result<(), RegistrationError> {
         use lowered_ast::DeclarationKind::*;
 
-        let exposure = if declaration.attributes.has(AttributeKeys::PUBLIC) {
-            match declaration
+        let exposure = match declaration.attributes.has(AttributeKeys::PUBLIC) {
+            true => match declaration
                 .attributes
                 .get(|kind| obtain!(kind, AttributeKind::Public { reach } => reach))
             {
@@ -117,13 +117,12 @@ impl<'a> Resolver<'a> {
                 }
                 .into(),
                 None => Exposure::Unrestricted,
-            }
-        } else {
-            match module {
-                // no `@public` means private i.e. restricted to `self` i.e. `@(public self)`
+            },
+            false => match module {
+                // a lack of `@public` means private i.e. restricted to `self` i.e. `@(public self)`
                 Some(module) => RestrictedExposure::Resolved { reach: module }.into(),
                 None => Exposure::Unrestricted,
-            }
+            },
         };
 
         match &declaration.kind {
@@ -145,6 +144,7 @@ impl<'a> Resolver<'a> {
                 }
             }
             Data(data) => {
+                // there is always a root module
                 let module = module.unwrap();
 
                 // @Task don't return early, see analoguous code for modules
@@ -185,6 +185,7 @@ impl<'a> Resolver<'a> {
                 }
             }
             Constructor(constructor) => {
+                // there is always a root module
                 let module = module.unwrap();
                 let (namespace, module_opacity) = context.parent_data_binding.unwrap();
 
@@ -254,6 +255,7 @@ impl<'a> Resolver<'a> {
                 return Result::from(health).map_err(|()| RegistrationError::Unrecoverable);
             }
             Use(use_) => {
+                // there is always a root module
                 let module = module.unwrap();
 
                 let index = self.scope.register_binding(

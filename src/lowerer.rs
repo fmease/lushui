@@ -27,7 +27,7 @@
 pub mod lowered_ast;
 
 use self::lowered_ast::AttributeTarget;
-use crate::{SmallVec, Str, ast::{self, Explicit, ParameterGroup, Path}, diagnostics::{Code, Diagnostic, Handler}, error::{Health, Outcome, map_outcome_from_result, PossiblyErroneous, Result}, format::{ordered_listing, s_pluralize, Conjunction, QuoteExt}, lowered_ast::{decl, expr, pat, AttributeKeys, AttributeKind, Attributes, Number}, smallvec, span::{SourceMap, Span, Spanned, Spanning}, util::obtain};
+use crate::{SmallVec, Str, ast::{self, Explicit, ParameterGroup, Path}, diagnostics::{Code, Diagnostic, Handler}, error::{Health, Outcome, map_outcome_from_result, PossiblyErroneous, Result}, format::{Conjunction, QuoteExt, ordered_listing, pluralize}, lowered_ast::{decl, expr, pat, AttributeKeys, AttributeKind, Attributes, Number}, smallvec, span::{SourceMap, Span, Spanned, Spanning}, util::obtain};
 use joinery::JoinableIterator;
 use std::{cell::RefCell, iter::once, rc::Rc};
 
@@ -1517,7 +1517,7 @@ impl AnnotationTarget<'_> {
     fn name(&self) -> &'static str {
         match self {
             Self::Parameters(parameter_group) => {
-                s_pluralize!(parameter_group.parameters.len(), "parameter")
+                pluralize!(parameter_group.parameters.len(), "parameter")
             }
             Self::Declaration(_) => "declaration",
         }

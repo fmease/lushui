@@ -11,7 +11,6 @@ error[E021]: binding `Air` is not defined in module `crate`
 7 |     Thin: Type = super.Air
   |                        ^^^ 
   |
- help: a binding with a similar name exists in scope: `Air`
 
 error[E021]: binding `Air` is not defined in module `crate`
  --> ${DIRECTORY}/name_resolution/multiple-undefined1.lushui:8:15

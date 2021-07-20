@@ -300,12 +300,16 @@ impl Path {
     /// Try to debase a path to a single identifier.
     ///
     /// A path is _simple_ iff it has a single segment being the head which is not a hanger.
-    pub fn to_simple(&self) -> Option<&Identifier> {
-        if self.hanger.is_some() || self.segments.len() > 1 {
+    pub fn to_single_identifier(&self) -> Option<&Identifier> {
+        if !self.is_single_identifier() {
             return None;
         }
 
         Some(&self.segments[0])
+    }
+
+    pub fn is_single_identifier(&self) -> bool {
+        self.hanger.is_none() && self.segments.len() == 1
     }
 
     pub fn tail(&self) -> Self {
@@ -328,6 +332,15 @@ impl Path {
             hanger: self.hanger.clone(),
             segments: self.segments.iter().rev().skip(1).rev().cloned().collect(),
         }
+    }
+}
+
+use std::fmt;
+
+// @Question bad idea?
+impl fmt::Debug for Path {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
     }
 }
 
@@ -547,6 +560,7 @@ impl TryFrom<TokenKind> for HangerKind {
     }
 }
 
+#[derive(Debug)] // @Temporary
 #[derive(Clone, Eq)]
 pub struct Identifier {
     atom: Atom,

@@ -6,7 +6,7 @@ use crate::{
     ast::ParameterAspect,
     diagnostics::{Code, Diagnostic, Handler},
     error::{Health, Result},
-    format::{s_pluralize, DisplayWith, QuoteExt},
+    format::{pluralize, DisplayWith, QuoteExt},
     lowered_ast::{AttributeKeys, Attributes},
     parser::ast::Explicitness,
     resolver::{
@@ -381,7 +381,7 @@ impl<'a> Typer<'a> {
                 return Err(Diagnostic::bug()
                     .message(format!(
                         "found unresolvable {} during type checking",
-                        s_pluralize!(previous_amount, "binding")
+                        pluralize!(previous_amount, "binding")
                     ))
                     .note(format!(
                         "namely {}",

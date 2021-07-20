@@ -589,7 +589,7 @@ impl<'a> Lexer<'a> {
         };
 
         if change == Less {
-            // Remove legal but superfluous virtual semicolons in front of virtual
+            // Remove legal but superfluous virtual semicolons before virtual
             // closing curly brackets (which also act as terminators).
             if self.sections.current_continued().0.is_indented() {
                 if self
@@ -756,7 +756,7 @@ impl<'a> Lexer<'a> {
         self.characters.next();
     }
 
-    /// Include the span of the current token in the span of the token to-be-added.
+    /// Include the span of the current token in the span of the token-to-be-added.
     ///
     /// Preparation for [Self::add] and variants.
     fn take(&mut self) {
@@ -774,10 +774,12 @@ impl<'a> Lexer<'a> {
             .map(|&(index, _)| LocalByteIndex::from_usize(index))
     }
 
+    /// [Take](Self::take) the span of all succeeding tokens where the predicate holds and step.
     fn take_while(&mut self, predicate: fn(char) -> bool) {
         self.take_while_with(predicate, || ())
     }
 
+    /// [Take](Self::take) the span of all succeeding tokens where the predicate holds, step and perform the given action.
     fn take_while_with(&mut self, predicate: fn(char) -> bool, mut action: impl FnMut()) {
         while let Some(character) = self.peek() {
             if !predicate(character) {
@@ -791,17 +793,18 @@ impl<'a> Lexer<'a> {
 
     /// Add a token with the given kind to the output of the lexer.
     ///
-    /// The other component of a token is the span
-    /// which is stored in the lexer and most commonly updated using
-    /// [Self::take].
+    /// The other component of a token – the span – is stored in the lexer and is most commonly
+    /// updated using [Self::take].
     fn add(&mut self, token: TokenKind) {
         self.add_with(|span| Token::new(token, span))
     }
 
+    /// [Add](Self::add) a virtual token.
     fn add_virtual(&mut self, token: TokenKind) {
         self.add_with(|span| Token::new_virtual(token, span))
     }
 
+    /// [Add](Self::add) a token given a constructor.
     fn add_with(&mut self, constructor: impl FnOnce(Span) -> Token) {
         self.tokens.push(constructor(self.span()))
     }

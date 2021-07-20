@@ -27,7 +27,7 @@
 
 use crate::{
     error::Health,
-    format::{pluralize, s_pluralize},
+    format::pluralize,
     span::{SourceMap, Span, Spanning},
     Str,
 };
@@ -115,7 +115,7 @@ impl Handler {
                             .message(format!(
                                 "emitted {} {}",
                                 warnings.len(),
-                                s_pluralize!(warnings.len(), "warning")
+                                pluralize!(warnings.len(), "warning")
                             ))
                             .emit_to_stderr(Some(&map.borrow()));
                     }
@@ -130,10 +130,10 @@ impl Handler {
 
                     if !errors.is_empty() {
                         Diagnostic::error()
-                            .message(pluralize(
+                            .message(pluralize!(
                                 errors.len(),
                                 "aborting due to previous error",
-                                || format!("aborting due to {} previous errors", errors.len()),
+                                format!("aborting due to {} previous errors", errors.len()),
                             ))
                             .emit_to_stderr(Some(&map.borrow()));
                     }

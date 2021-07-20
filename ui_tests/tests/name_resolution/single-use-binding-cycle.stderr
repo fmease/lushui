@@ -1,0 +1,9 @@
+error[E024]: declaration `crate.instantly-circular` is circular
+ --> ${DIRECTORY}/name_resolution/single-use-binding-cycle.lushui:3:5
+  |
+3 | use instantly-circular
+  |     ^^^^^^^^^^^^^^^^^^ 
+  |
+
+error: aborting due to previous error
+

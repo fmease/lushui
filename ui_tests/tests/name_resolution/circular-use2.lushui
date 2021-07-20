@@ -1,0 +1,14 @@
+;;; TEST fail check
+
+use indirect.thing
+module indirect of { @public use super.thing }
+
+use alpha.alpha
+
+use omega.omega as bridge
+use bridge as omega
+
+use cycle
+use cycle as trans0
+use trans0 as trans1
+

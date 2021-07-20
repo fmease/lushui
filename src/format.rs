@@ -85,23 +85,18 @@ impl fmt::Display for Conjunction {
     }
 }
 
-use std::borrow::Cow;
-
-pub macro s_pluralize($amount:expr, $singular:literal) {
-    match $amount {
-        1 => $singular,
-        _ => concat!($singular, "s"),
-    }
-}
-
-pub fn pluralize<'a, S: Into<Cow<'a, str>>>(
-    amount: usize,
-    singular: &'a str,
-    plural: impl FnOnce() -> S,
-) -> Cow<'a, str> {
-    match amount {
-        1 => singular.into(),
-        _ => plural().into(),
+pub macro pluralize {
+    ($amount:expr, $singular:expr, $plural:expr $(,)?) => {
+        match $amount {
+            1 => $singular.into(),
+            _ => $plural.into(),
+        }: ::std::borrow::Cow<'_, str>
+    },
+    ($amount:expr, $singular:literal $(,)?) => {
+        match $amount {
+            1 => $singular,
+            _ => concat!($singular, "s"),
+        }
     }
 }
 

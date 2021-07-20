@@ -20,7 +20,7 @@ use crate::{
     diagnostics::{Code, Diagnostic, Handler},
     entity::{Entity, EntityKind},
     error::{Health, Result},
-    format::{unordered_listing, AsDebug, Conjunction, DisplayWith, QuoteExt},
+    format::{pluralize, unordered_listing, AsDebug, Conjunction, DisplayWith, QuoteExt},
     smallvec,
     span::{Span, Spanned, Spanning},
     typer::interpreter::{ffi, scope::Registration},
@@ -29,7 +29,7 @@ use crate::{
 use colored::Colorize;
 use indexed_vec::IndexVec;
 use joinery::JoinableIterator;
-use std::{cell::RefCell, cmp::Ordering, fmt, mem::take, usize};
+use std::{cell::RefCell, cmp::Ordering, fmt, usize};
 
 type Bindings = IndexVec<CrateIndex, Entity>;
 
@@ -45,9 +45,6 @@ pub struct CrateScope {
     pub(crate) bindings: Bindings,
     /// For resolving out of order use-declarations.
     partially_resolved_use_bindings: HashMap<CrateIndex, PartiallyResolvedUseBinding>,
-    /// Used for grouping circular bindings in diagnostics
-    // @Question can we smh unify this with `unresolved_uses`?
-    partially_resolved_use_bindings_grouped: Vec<HashSet<CrateIndex>>,
     /// For error reporting.
     pub(super) duplicate_definitions: HashMap<CrateIndex, DuplicateDefinition>,
     pub(super) health: Health,
@@ -159,9 +156,14 @@ impl CrateScope {
         reference: Path,
         module: CrateIndex,
     ) {
-        let previous = self
-            .partially_resolved_use_bindings
-            .insert(index, PartiallyResolvedUseBinding { reference, module });
+        let previous = self.partially_resolved_use_bindings.insert(
+            index,
+            PartiallyResolvedUseBinding {
+                reference,
+                module,
+                inquirer: None,
+            },
+        );
 
         debug_assert!(previous.is_none());
     }
@@ -200,6 +202,7 @@ impl CrateScope {
     }
 
     /// Resolve a syntactic path given a namespace with an explicit origin.
+    // @Task memoize by (path, namespace)
     fn resolve_path_with_origin<Target: ResolutionTarget>(
         &self,
         path: &Path,
@@ -232,7 +235,7 @@ impl CrateScope {
             };
         }
 
-        let index = self.resolve_first_segment(
+        let index = self.resolve_first_path_segment(
             &path.segments[0],
             namespace,
             origin_namespace,
@@ -241,7 +244,7 @@ impl CrateScope {
             handler,
         )?;
 
-        match path.to_simple() {
+        match path.to_single_identifier() {
             Some(identifier) => {
                 Target::resolve_simple_path(identifier, &self.bindings[index].kind, index, handler)
                     .map_err(Into::into)
@@ -289,7 +292,7 @@ impl CrateScope {
     }
 
     /// Resolve the first identifier segment of a path.
-    fn resolve_first_segment(
+    fn resolve_first_path_segment(
         &self,
         identifier: &ast::Identifier,
         namespace: CrateIndex,
@@ -310,6 +313,8 @@ impl CrateScope {
                 namespace,
                 usage,
             })?;
+
+        // @Temporary hack until we can manage cyclic exposure reaches!
         if matches!(check_exposure, CheckExposure::Yes) {
             self.handle_exposure(index, identifier, origin_namespace, handler)?;
         }
@@ -422,12 +427,18 @@ expected the exposure of `{}`
     /// Used for error reporting when an undefined binding was encountered.
     /// In the future, we might decide to find not one but several similar names
     /// but that would be computationally heavier.
-    fn find_similarly_named(&self, identifier: &str, namespace: &Namespace) -> Option<&str> {
+    fn find_similarly_named(
+        &self,
+        queried_identifier: &str,
+        namespace: &Namespace,
+    ) -> Option<&str> {
         namespace
             .bindings
             .iter()
-            .map(|&index| self.bindings[index].source.as_str())
-            .find(|&other_identifier| is_similar(identifier, other_identifier))
+            .map(|&index| &self.bindings[index])
+            .filter(|binding| !binding.is_error())
+            .map(|binding| binding.source.as_str())
+            .find(|&identifier| is_similar(queried_identifier, identifier))
     }
 
     // @Question better API?
@@ -512,14 +523,13 @@ expected the exposure of `{}`
     /// use-bindings are actually circular and are thus reported.
     // @Task update docs in regards to number of phases
     // @Task update docs regarding errors
-    // @Task clear partially_resolved_use_bindings at the end both if Err or Ok
     pub(super) fn resolve_use_bindings(&mut self, handler: &Handler) {
+        use ResolutionError::*;
+
         while !self.partially_resolved_use_bindings.is_empty() {
             let mut partially_resolved_use_bindings = HashMap::default();
 
             for (&index, item) in self.partially_resolved_use_bindings.iter() {
-                use ResolutionError::*;
-
                 match self.resolve_path::<ValueOrModule>(&item.reference, item.module, handler) {
                     Ok(reference) => {
                         self.bindings[index].kind = EntityKind::Use { reference };
@@ -535,68 +545,92 @@ expected the exposure of `{}`
                             PartiallyResolvedUseBinding {
                                 reference: item.reference.clone(),
                                 module: item.module,
+                                inquirer: Some(inquirer),
                             },
                         );
-                        // @Beacon @Beacon @Question would it change if we were
-                        // to add it to a intially empty local definition `unresolved_uses_grouped`
-                        // just like `unresolved_uses` (c.f. `self.unresolved_uses`)
-                        // and adding to it and updating it after the "stalling" check
-                        // does it remove non-circular bindings over time? or is it just like
-                        // today's version?? check this with playground/somecirc.lushui
-                        if let Some(indices) = self
-                            .partially_resolved_use_bindings_grouped
-                            .iter_mut()
-                            .filter(|indices| indices.contains(&inquirer))
-                            .next()
-                        {
-                            indices.insert(index);
-                        } else {
-                            let mut indices = HashSet::default();
-                            indices.insert(index);
-                            self.partially_resolved_use_bindings_grouped.push(indices);
-                        }
                     }
                 }
             }
 
             // resolution stalled; therefore there are circular bindings
             if partially_resolved_use_bindings.len() == self.partially_resolved_use_bindings.len() {
-                let circular_bindings = take(&mut self.partially_resolved_use_bindings_grouped)
-                    .into_iter()
-                    .filter(|indices| {
-                        indices
-                            .iter()
-                            .any(|index| partially_resolved_use_bindings.contains_key(index))
-                    });
+                for &index in partially_resolved_use_bindings.keys() {
+                    self.bindings[index].mark_as_error();
+                }
 
-                for indices in circular_bindings {
-                    indices
-                        .iter()
-                        .for_each(|&index| self.bindings[index].mark_as_error());
-
-                    let declarations = unordered_listing(
-                        indices
-                            .iter()
-                            .map(|&index| self.absolute_path(index).quote()),
-                        Conjunction::And,
-                    );
-
-                    let spans = indices
-                        .into_iter()
-                        .map(|index| self.bindings[index].source.span);
+                for cycle in find_cycles(partially_resolved_use_bindings) {
+                    let paths = cycle.iter().map(|&index| self.absolute_path(index).quote());
+                    let paths = unordered_listing(paths, Conjunction::And);
+                    let spans = cycle.iter().map(|&index| self.bindings[index].source.span);
 
                     Diagnostic::error()
                         .code(Code::E024)
-                        .message(format!("declarations {declarations} are circular"))
+                        .message(pluralize!(
+                            cycle.len(),
+                            format!("declaration {paths} is circular"),
+                            format!("declarations {paths} are circular"),
+                        ))
                         .primary_spans(spans)
                         .emit(handler);
                 }
 
                 self.health.taint();
-                return;
+                break;
             }
 
             self.partially_resolved_use_bindings = partially_resolved_use_bindings;
+        }
+
+        self.partially_resolved_use_bindings.clear();
+
+        type UseBindings = HashMap<CrateIndex, PartiallyResolvedUseBinding>;
+        type Cycle = HashSet<CrateIndex>;
+
+        fn find_cycles(bindings: UseBindings) -> Vec<Cycle> {
+            let mut cycles = Vec::new();
+            let mut visited = HashMap::default();
+
+            enum Status {
+                InProgress,
+                Finished,
+            }
+
+            for &index in bindings.keys() {
+                if !visited.contains_key(&index) {
+                    let mut worklist = vec![index];
+                    visited.insert(index, Status::InProgress);
+                    cycles.extend(find_cycle(&bindings, &mut worklist, &mut visited));
+                }
+            }
+
+            fn find_cycle(
+                bindings: &UseBindings,
+                worklist: &mut Vec<CrateIndex>,
+                visited: &mut HashMap<CrateIndex, Status>,
+            ) -> Option<Cycle> {
+                let target = bindings[worklist.last().unwrap()].inquirer.unwrap();
+
+                let cycle = match visited.get(&target) {
+                    Some(Status::InProgress) => Some(
+                        worklist
+                            .iter()
+                            .copied()
+                            .skip_while(|&vertex| vertex != target)
+                            .collect(),
+                    ),
+                    Some(Status::Finished) => None,
+                    None => {
+                        worklist.push(target);
+                        visited.insert(target, Status::InProgress);
+                        find_cycle(bindings, worklist, visited)
+                    }
+                };
+                visited.insert(worklist.pop().unwrap(), Status::Finished);
+
+                cycle
+            }
+
+            cycles
         }
     }
 }
@@ -918,24 +952,18 @@ impl ResolutionTarget for OnlyModule {
 /// If an identifier is used unqualified or qualified.
 ///
 /// Exclusively used for error reporting.
+#[derive(Debug)] // @Temporary
 #[derive(Clone, Copy)]
 enum IdentifierUsage {
     Qualified,
     Unqualified,
 }
 
+#[derive(Debug)]
 struct PartiallyResolvedUseBinding {
     reference: Path,
     module: CrateIndex,
-}
-
-impl fmt::Debug for PartiallyResolvedUseBinding {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("PartiallyResolvedUseBinding")
-            .field("reference", &self.reference.as_debug())
-            .field("module", &self.module)
-            .finish()
-    }
+    inquirer: Option<CrateIndex>,
 }
 
 /// A namespace can either be a module or a data type.
@@ -1456,6 +1484,7 @@ fn module_used_as_a_value(module: Spanned<impl fmt::Display>) -> Diagnostic {
 }
 
 /// A possibly recoverable error that cab emerge during resolution.
+#[derive(Debug)] // @Temporary
 enum ResolutionError {
     Unrecoverable,
     UnresolvedBinding {
