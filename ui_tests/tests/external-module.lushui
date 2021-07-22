@@ -1,0 +1,8 @@
+;;; TEST auxiliary external-module-declaration
+
+@public
+data Definition: Type of
+
+@public
+module internal of
+

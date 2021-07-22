@@ -12,6 +12,7 @@
 // * add help messages
 
 use std::{
+    borrow::Cow,
     default::default,
     fmt,
     fs::{read_to_string, File},
@@ -256,28 +257,70 @@ fn main_() -> Result<(), ()> {
                             continue;
                         }
 
-                        let mut failure = TestFailure {
+                        let mut failure = Failure {
                             path: legible_path.to_owned(),
                             subfailures: Vec::new(),
                         };
 
-                        let mut message = format!("test {legible_path:<80}");
+                        const PATH_PADDING: usize = 80;
 
                         let file = read_to_string(entry.path()).unwrap();
 
-                        let configuration = match TestConfiguration::parse(&file) {
+                        let configuration = match Configuration::parse(&file) {
                             Ok(configuration) => configuration,
                             Err(error) => {
-                                message += &format!(" {}", "INVALID".red());
-                                statistics.failed_tests += 1;
-                                failure
-                                    .subfailures
-                                    .push(TestSubfailure::Invalid { reason: error });
-                                failures.push(failure);
+                                let message = format!("file {legible_path:<PATH_PADDING$} {}", "INVALID".red());
+                                statistics.invalid_files += 1;
+                                failure.subfailures.push(Subfailure::Invalid {
+                                    reason: error.to_string().into(),
+                                });
                                 println!("{}", message);
+                                failures.push(failure);
                                 continue;
                             }
                         };
+
+                        if let TestTag::Auxiliary = configuration.tag {
+                            let mut message = format!("aux  {legible_path:<PATH_PADDING$}");
+                            let mut invalid = false;
+
+                            if configuration.arguments.is_empty() {
+                                invalid = true;
+                                failure.subfailures.push(Subfailure::Invalid {
+                                    reason: "the auxiliary file does not declare its users".into(),
+                                });
+                            } else {
+                                // @Note validation not (yet) that sophisticated
+                                // we should probably check if the auxiliary file is actually used by
+                                // every single alleged user
+
+                                for user in configuration.arguments {
+                                    let path = Path::new(test_folder_path)
+                                        .join(user)
+                                        .with_extension("lushui");
+
+                                    if !path.exists() {
+                                        if !invalid {
+                                            invalid = true;
+                                        }
+                                        failure
+                                            .subfailures
+                                            .push(Subfailure::Invalid { reason: format!("the user `{user}` of the auxiliary file does not exist").into() });
+                                    }
+                                }
+                            }
+
+                            if invalid {
+                                message += &format!(" {}", "INVALID".red());
+                                statistics.invalid_files += 1;
+                                println!("{}", message);
+                                failures.push(failure);
+                            }
+
+                            continue;
+                        }
+
+                        let mut message = format!("test {legible_path:<PATH_PADDING$}");
 
                         if let TestTag::Ignore = configuration.tag {
                             message += &format!(" {}", "ignored".yellow());
@@ -304,14 +347,14 @@ fn main_() -> Result<(), ()> {
                         match (configuration.tag, output.status.success()) {
                             (TestTag::Pass, true) | (TestTag::Fail, false) => {}
                             (TestTag::Pass, false) => {
-                                failure.subfailures.push(TestSubfailure::UnexpectedFail {
+                                failure.subfailures.push(Subfailure::UnexpectedFail {
                                     code: output.status.code(),
                                 })
                             }
                             (TestTag::Fail, true) => {
-                                failure.subfailures.push(TestSubfailure::UnexpectedPass)
+                                failure.subfailures.push(Subfailure::UnexpectedPass)
                             }
-                            (TestTag::Ignore, _) => unreachable!(),
+                            (TestTag::Ignore | TestTag::Auxiliary, _) => unreachable!(),
                         }
 
                         let stdout_was_gilded = match check_against_golden_file(
@@ -430,7 +473,7 @@ fn check_against_golden_file(
     actual: Vec<u8>,
     stream: Stream,
     gilding: bool,
-) -> Result<bool, TestSubfailure> {
+) -> Result<bool, Subfailure> {
     let actual = String::from_utf8(actual).unwrap();
 
     let golden = if golden_file_path.exists() {
@@ -444,7 +487,7 @@ fn check_against_golden_file(
 
     if actual != golden {
         if !gilding {
-            Err(TestSubfailure::GoldenFileMismatch {
+            Err(Subfailure::GoldenFileMismatch {
                 golden,
                 actual,
                 stream,
@@ -473,11 +516,12 @@ struct Statistics {
     failed_tests: usize,
     gilded_tests: usize,
     skipped_tests: usize,
+    invalid_files: usize,
 }
 
 impl Statistics {
     fn tests_passed(&self) -> bool {
-        self.failed_tests == 0
+        self.failed_tests == 0 && self.invalid_files == 0
     }
 
     fn executed_tests(&self) -> usize {
@@ -516,6 +560,7 @@ impl std::ops::Add for &Statistics {
             failed_tests: self.failed_tests + other.failed_tests,
             gilded_tests: self.gilded_tests + other.gilded_tests,
             skipped_tests: self.skipped_tests + other.skipped_tests,
+            invalid_files: self.invalid_files + other.invalid_files,
         }
     }
 }
@@ -549,7 +594,21 @@ impl fmt::Display for Summary {
                 }
             }
         } else {
-            "SOME TESTS FAILED!".red()
+            let mut message = String::new();
+
+            if self.statistics.failed_tests > 0 {
+                message += "SOME TESTS FAILED!";
+            }
+
+            if self.statistics.invalid_files > 0 {
+                if self.statistics.failed_tests > 0 {
+                    message.push(' ');
+                }
+
+                message += "SOME INVALID FILES FOUND!";
+            }
+
+            message.red()
         };
 
         write!(
@@ -571,6 +630,15 @@ impl fmt::Display for Summary {
                 " | {gilded} {label_gilded}",
                 gilded = self.statistics.gilded_tests,
                 label_gilded = "gilded".blue(),
+            )?;
+        }
+
+        if self.statistics.invalid_files > 0 {
+            write!(
+                f,
+                " | {invalid} {label_invalid}",
+                invalid = self.statistics.invalid_files,
+                label_invalid = "invalid".red(),
             )?;
         }
 
@@ -597,33 +665,37 @@ impl fmt::Display for Summary {
     }
 }
 
-struct TestConfiguration<'a> {
+const FILE_PREFIX: &str = ";;; TEST ";
+
+struct Configuration<'a> {
     tag: TestTag,
     arguments: Vec<&'a str>,
 }
 
-impl<'a> TestConfiguration<'a> {
+impl<'a> Configuration<'a> {
     fn parse(source: &'a str) -> Result<Self, ParseError> {
         use ParseError::*;
 
-        const PREFIX: &str = ";;; TEST ";
-
+        // @Bug the prefix `;;; TEST` (no final space) leads to ParseError::MissingTag but
+        // ideally, it should lead to ParseError::MissingTag. we need to apply trimming beforehand
+        // (and restructure the code a bit)
         let arguments = source
             .lines()
             .next()
-            .and_then(|line| line.strip_prefix(PREFIX))
+            .and_then(|line| line.strip_prefix(FILE_PREFIX))
             .ok_or(MissingPrefix)?;
 
         let mut arguments = arguments.split_ascii_whitespace();
 
-        let tag = arguments.next().ok_or(MissingArgument)?;
+        let tag = arguments.next().ok_or(MissingTag)?;
 
-        Ok(TestConfiguration {
+        Ok(Configuration {
             tag: match tag {
                 "ignore" => TestTag::Ignore,
                 "pass" => TestTag::Pass,
                 "fail" => TestTag::Fail,
-                tag => return Err(InvalidArgument(tag.to_owned())),
+                "auxiliary" => TestTag::Auxiliary,
+                tag => return Err(InvalidTag(tag.to_owned())),
             },
             arguments: arguments.collect(),
         })
@@ -631,24 +703,39 @@ impl<'a> TestConfiguration<'a> {
 }
 
 enum TestTag {
+    Auxiliary,
+    Fail,
     Ignore,
     Pass,
-    Fail,
+}
+
+impl TestTag {
+    const VALUES: &'static str = "`auxiliary`, `fail`, `ignore` and `pass`";
 }
 
 #[derive(Debug)]
 enum ParseError {
     MissingPrefix,
-    MissingArgument,
-    InvalidArgument(String),
+    MissingTag,
+    InvalidTag(String),
 }
 
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::MissingPrefix => write!(f, "missing prefix"),
-            Self::MissingArgument => write!(f, "missing argument"),
-            Self::InvalidArgument(argument) => write!(f, "invalid argument `{argument}`"),
+            Self::MissingPrefix => write!(f, "the file is missing the prefix `{FILE_PREFIX}`"),
+            Self::MissingTag => write!(
+                f,
+                "the file is missing a tag; valid tags are {}",
+                TestTag::VALUES
+            ),
+            Self::InvalidTag(argument) => {
+                write!(
+                    f,
+                    "the file contains the invalid tag `{argument}`; valid tags are {}",
+                    TestTag::VALUES
+                )
+            }
         }
     }
 }
@@ -687,12 +774,12 @@ impl fmt::Display for Stream {
 
 const GOLDEN_STDERR_VARIABLE_DIRECTORY: &str = "${DIRECTORY}";
 
-struct TestFailure {
+struct Failure {
     path: String,
-    subfailures: Vec<TestSubfailure>,
+    subfailures: Vec<Subfailure>,
 }
 
-enum TestSubfailure {
+enum Subfailure {
     UnexpectedPass,
     UnexpectedFail {
         code: Option<i32>,
@@ -703,12 +790,11 @@ enum TestSubfailure {
         stream: Stream,
     },
     Invalid {
-        // @Temporary
-        reason: ParseError,
+        reason: Cow<'static, str>,
     },
 }
 
-impl fmt::Display for TestSubfailure {
+impl fmt::Display for Subfailure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnexpectedPass => {
@@ -747,13 +833,7 @@ impl fmt::Display for TestSubfailure {
                 write!(f, "{}", "-".repeat(SEPARATOR_WIDTH).bright_black())?;
             }
             Self::Invalid { reason } => {
-                // @Beacon @Temporary formatting
-                write!(
-                    f,
-                    "{}: {}",
-                    "the test is of an invalid format".red(),
-                    reason
-                )?;
+                write!(f, "{}: {}", "the file is invalid".red(), reason)?;
             }
         }
 
