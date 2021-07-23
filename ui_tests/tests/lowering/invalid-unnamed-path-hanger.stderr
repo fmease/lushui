@@ -39,4 +39,6 @@ error[E026]: path hanger `super` not allowed in this position
   help: consider moving this path to its own separate use-declaration
 
 error: aborting due to 5 previous errors
+ note: the errors E025 and E026 have a detailed explanation
+ help: run `lushui explain <codes...>` to view a selection of them
 

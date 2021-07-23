@@ -165,4 +165,6 @@ error[E013]: attribute `static` cannot be ascribed to a path pattern
   note: attribute `static` can only be ascribed to expressions
 
 error: aborting due to 13 previous errors
+ note: the errors E013 and E015 have a detailed explanation
+ help: run `lushui explain <codes...>` to view a selection of them
 

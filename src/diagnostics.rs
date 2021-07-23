@@ -26,131 +26,15 @@
 //! * cannot handle overly long lines of highlighted code (does not look tidy anymore)
 
 use crate::{
-    error::Health,
-    format::pluralize,
     span::{SourceMap, Span, Spanning},
     Str,
 };
 use colored::{Color, Colorize};
-use std::{
-    borrow::Cow, cell::RefCell, collections::BTreeSet, default::default, fmt::Debug, iter::once,
-    rc::Rc,
-};
+pub use handler::Handler;
+use std::{borrow::Cow, collections::BTreeSet, fmt::Debug, iter::once};
 use unicode_width::UnicodeWidthStr;
 
-/// The error handler.
-// @Task better name
-pub struct Handler {
-    emitter: Emitter,
-}
-
-impl Handler {
-    pub fn silent() -> Self {
-        Self {
-            emitter: Emitter::Silent,
-        }
-    }
-
-    pub fn buffered_stderr(map: Rc<RefCell<SourceMap>>) -> Self {
-        Self {
-            emitter: Emitter::BufferedStderr {
-                errors: default(),
-                warnings: default(),
-                map,
-            },
-        }
-    }
-
-    // @Task don't emit warnings unconditionally once we support
-    // `@allow`ing certain warnings (lint support)
-    fn emit(&self, diagnostic: Diagnostic) {
-        match &self.emitter {
-            Emitter::Silent => {}
-            Emitter::BufferedStderr {
-                errors,
-                warnings,
-                map,
-            } => {
-                match diagnostic.0.level {
-                    Level::Bug | Level::Error => {
-                        errors.borrow_mut().insert(diagnostic);
-                    }
-                    Level::Warning => {
-                        warnings.borrow_mut().insert(diagnostic);
-                    }
-                    Level::Debug => diagnostic.emit_to_stderr(Some(&map.borrow())),
-                };
-            }
-        }
-    }
-
-    pub fn system_health(&self) -> Health {
-        match &self.emitter {
-            Emitter::BufferedStderr { errors, .. } if !errors.borrow().is_empty() => {
-                Health::Tainted
-            }
-            _ => Health::Untainted,
-        }
-    }
-
-    pub fn emit_buffered_diagnostics(&self) {
-        match &self.emitter {
-            Emitter::Silent => {}
-            Emitter::BufferedStderr {
-                errors,
-                warnings,
-                map,
-            } => {
-                {
-                    let warnings = warnings.borrow();
-
-                    const MINIMUM_AMOUNT_WARNINGS_FOR_SUMMARY: usize = 1;
-
-                    for warning in &*warnings {
-                        warning.emit_to_stderr(Some(&map.borrow()));
-                    }
-
-                    if warnings.len() >= MINIMUM_AMOUNT_WARNINGS_FOR_SUMMARY {
-                        Diagnostic::warning()
-                            .message(format!(
-                                "emitted {} {}",
-                                warnings.len(),
-                                pluralize!(warnings.len(), "warning")
-                            ))
-                            .emit_to_stderr(Some(&map.borrow()));
-                    }
-                }
-
-                {
-                    let errors = errors.borrow();
-
-                    for error in &*errors {
-                        error.emit_to_stderr(Some(&map.borrow()));
-                    }
-
-                    if !errors.is_empty() {
-                        Diagnostic::error()
-                            .message(pluralize!(
-                                errors.len(),
-                                "aborting due to previous error",
-                                format!("aborting due to {} previous errors", errors.len()),
-                            ))
-                            .emit_to_stderr(Some(&map.borrow()));
-                    }
-                }
-            }
-        }
-    }
-}
-
-enum Emitter {
-    Silent,
-    BufferedStderr {
-        errors: RefCell<BTreeSet<Diagnostic>>,
-        warnings: RefCell<BTreeSet<Diagnostic>>,
-        map: Rc<RefCell<SourceMap>>,
-    },
-}
+pub mod handler;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 struct UnboxedDiagnostic {
@@ -367,7 +251,7 @@ impl Diagnostic {
             let code = &self
                 .0
                 .code
-                .map(|code| format!("[{:?}]", code).color(self.0.level.color()))
+                .map(|code| format!("[{code}]").color(self.0.level.color()))
                 .unwrap_or_default();
 
             message += &format!("{level}{code}");
@@ -789,5 +673,11 @@ impl Code {
     #[allow(dead_code)]
     pub const fn explain(self) -> &'static str {
         todo!()
+    }
+}
+
+impl fmt::Display for Code {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(self, f)
     }
 }

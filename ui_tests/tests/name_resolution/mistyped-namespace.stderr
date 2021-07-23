@@ -7,4 +7,6 @@ error[E016]: could not load module `core`
  note: file `${DIRECTORY}/name_resolution/../../libs/core/core.lushui` does not exist
 
 error: aborting due to previous error
+ note: the error E016 has a detailed explanation
+ help: run `lushui explain E016` to view it
 

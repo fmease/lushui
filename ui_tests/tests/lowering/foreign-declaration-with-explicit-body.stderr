@@ -33,4 +33,6 @@ error[E015]: missing mandatory type annotation on declaration `thing`
  help: provide a type annotation for the declaration with `: TYPE`
 
 error: aborting due to 3 previous errors
+ note: the errors E015 and E020 have a detailed explanation
+ help: run `lushui explain <codes...>` to view a selection of them
 

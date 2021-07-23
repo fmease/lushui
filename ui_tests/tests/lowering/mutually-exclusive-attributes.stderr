@@ -28,4 +28,6 @@ error[E014]: attributes `Nat`, `Int` and `Int32` are mutually exclusive
   |
 
 error: aborting due to 2 previous errors
+ note: the error E014 has a detailed explanation
+ help: run `lushui explain E014` to view it
 

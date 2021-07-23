@@ -11,4 +11,6 @@ error[E031]: expected type `_ -> _`, got type `crate.core.nat.Nat`
   |
 
 error: aborting due to previous error
+ note: the error E031 has a detailed explanation
+ help: run `lushui explain E031` to view it
 

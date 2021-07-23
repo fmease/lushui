@@ -48,4 +48,6 @@ error[E019]: too many attribute arguments provided
    |
 
 error: aborting due to 7 previous errors
+ note: the errors E018, E019, E027 and E028 have a detailed explanation
+ help: run `lushui explain <codes...>` to view a selection of them
 

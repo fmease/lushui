@@ -9,4 +9,6 @@ error[E035]: attempt to analyze a type
   note: forbidden to uphold parametricity and type erasure
 
 error: aborting due to previous error
+ note: the error E035 has a detailed explanation
+ help: run `lushui explain E035` to view it
 

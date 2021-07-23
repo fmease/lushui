@@ -7,4 +7,6 @@ error[E010]: found `[`, but expected identifier or `(`
  note: `@` introduces attributes
 
 error: aborting due to previous error
+ note: the error E010 has a detailed explanation
+ help: run `lushui explain E010` to view it
 

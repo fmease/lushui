@@ -27,4 +27,6 @@ error[E033]: `crate.Int` is not an instance of `crate.Y`
    |
 
 error: aborting due to 4 previous errors
+ note: the error E033 has a detailed explanation
+ help: run `lushui explain E033` to view it
 

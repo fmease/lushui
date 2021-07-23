@@ -23,4 +23,6 @@ error[E015]: missing mandatory type annotation on declaration `Blank`
  help: provide a type annotation for the declaration with `: TYPE`
 
 error: aborting due to 3 previous errors
+ note: the errors E012 and E015 have a detailed explanation
+ help: run `lushui explain <codes...>` to view a selection of them
 

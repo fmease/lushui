@@ -49,4 +49,6 @@ error[E029]: binding `crate.alpha.beta` is private
    |
 
 error: aborting due to 7 previous errors
+ note: the errors E021 and E029 have a detailed explanation
+ help: run `lushui explain <codes...>` to view a selection of them
 

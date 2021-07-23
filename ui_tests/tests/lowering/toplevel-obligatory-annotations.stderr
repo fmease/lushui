@@ -91,4 +91,6 @@ error[E015]: missing mandatory type annotation on parameters `partner` and `in-c
   help: provide a type annotation for the parameters with `(partner in-crime: TYPE)`
 
 error: aborting due to 11 previous errors
+ note: the error E015 has a detailed explanation
+ help: run `lushui explain E015` to view it
 

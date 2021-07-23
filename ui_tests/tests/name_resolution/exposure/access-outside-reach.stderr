@@ -20,4 +20,6 @@ error[E029]: binding `crate.grotto.deeper-end.rock-face.Ingrown-Stalactite` is p
    |
 
 error: aborting due to 3 previous errors
+ note: the error E029 has a detailed explanation
+ help: run `lushui explain E029` to view it
 

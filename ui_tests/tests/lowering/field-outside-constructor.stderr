@@ -23,4 +23,6 @@ error[E017]: field marker `::` used outside of a constructor declaration
   |
 
 error: aborting due to 2 previous errors
+ note: the error E017 has a detailed explanation
+ help: run `lushui explain E017` to view it
 

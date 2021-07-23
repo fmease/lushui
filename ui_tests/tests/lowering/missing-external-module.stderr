@@ -15,4 +15,6 @@ error[E016]: could not load module `meaningless`
  note: file `${DIRECTORY}/lowering/expansion-of-void-until-eternity.lushui` does not exist
 
 error: aborting due to 2 previous errors
+ note: the error E016 has a detailed explanation
+ help: run `lushui explain E016` to view it
 

@@ -37,4 +37,6 @@ error[E006]: multiple `ignore` attributes
   |
 
 error: aborting due to 4 previous errors
+ note: the error E006 has a detailed explanation
+ help: run `lushui explain E006` to view it
 

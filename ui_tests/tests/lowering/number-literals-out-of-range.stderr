@@ -30,4 +30,6 @@ error[E008]: attribute argument does not fit integer interval [0, 2^32-1]
    |
 
 error: aborting due to 4 previous errors
+ note: the errors E007 and E008 have a detailed explanation
+ help: run `lushui explain <codes...>` to view a selection of them
 

@@ -13,4 +13,6 @@ error[E010]: found `:`, but expected expression or `=`
  help: add round brackets around the potential pi type literal to disambiguate the expression
 
 error: aborting due to previous error
+ note: the error E010 has a detailed explanation
+ help: run `lushui explain E010` to view it
 

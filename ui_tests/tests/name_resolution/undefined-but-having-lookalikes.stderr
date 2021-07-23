@@ -67,4 +67,6 @@ error[E021]: binding `onega` is not defined in this scope
   help: a binding with a similar name exists in scope: `omega` (o[91mn[0m[92mm[0mega)
 
 error: aborting due to 9 previous errors
+ note: the error E021 has a detailed explanation
+ help: run `lushui explain E021` to view it
 

@@ -13,4 +13,6 @@ error[E022]: value `Decayed-Alpha` is not a namespace
   help: use `::` to reference a field of a record
 
 error: aborting due to previous error
+ note: the error E022 has a detailed explanation
+ help: run `lushui explain E022` to view it
 

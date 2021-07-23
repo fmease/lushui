@@ -26,4 +26,6 @@ error: module headers not supported yet
   |
 
 error: aborting due to 3 previous errors
+ note: the error E013 has a detailed explanation
+ help: run `lushui explain E013` to view it
 
