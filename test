@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 
 # Run unit tests (via the rust testing framework)
-cargo test --quiet --manifest-path="$(dirname $0)/Cargo.toml" -- --format pretty
+cargo test --quiet --manifest-path="$(dirname $(realpath $0))/Cargo.toml" -- --format pretty
 
 # Run UI tests (via the golden UI testing framework)
 ./ui_tests/run
