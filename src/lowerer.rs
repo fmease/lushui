@@ -361,14 +361,6 @@ impl<'a> Lowerer<'a> {
                     }
                 }]
             }
-            Crate(_) => {
-                // @Note awkward API!
-                Diagnostic::unimplemented("crate declarations")
-                    .primary_span(declaration.span)
-                    .emit(&self.handler);
-                health.taint();
-                PossiblyErroneous::error()
-            }
             // @Beacon @Task merge attributes with parent module
             // (through a `Context`) and ensure it's the first declaration in the whole module
             Header => {

@@ -185,7 +185,6 @@ impl AttributeTarget for ast::Declaration {
             Constructor(_) => "a constructor declaration",
             Module(_) => "a module declaration",
             Header => "a module header declaraiton",
-            Crate(_) => "a crate declaration",
             Group(_) => "an attribute group declaration",
             Use(_) => "a use-declaration",
         }
@@ -199,7 +198,6 @@ impl AttributeTarget for ast::Declaration {
             Data(_) => AttributeTargets::DATA_DECLARATION,
             Constructor(_) => AttributeTargets::CONSTRUCTOR_DECLARATION,
             Module(_) | Header => AttributeTargets::MODULE_DECLARATION,
-            Crate(_) => AttributeTargets::CRATE_DECLARATION,
             Group(_) => AttributeTargets::all(),
             Use(_) => AttributeTargets::USE_DECLARATION,
         }
@@ -332,14 +330,12 @@ bitflags::bitflags! {
         const DATA_DECLARATION = 1 << 1;
         const CONSTRUCTOR_DECLARATION = 1 << 2;
         const MODULE_DECLARATION = 1 << 3;
-        const CRATE_DECLARATION = 1 << 4;
         const USE_DECLARATION = 1 << 5;
 
         const DECLARATION = Self::VALUE_DECLARATION.bits
             | Self::DATA_DECLARATION.bits
             | Self::CONSTRUCTOR_DECLARATION.bits
             | Self::MODULE_DECLARATION.bits
-            | Self::CRATE_DECLARATION.bits
             | Self::USE_DECLARATION.bits;
 
         const PI_TYPE_LITERAL_EXPRESSION = 1 << 6;

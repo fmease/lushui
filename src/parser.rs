@@ -241,9 +241,7 @@ impl<'a> Parser<'a> {
     ///     | Value-Declaration
     ///     | Data-Declaration
     ///     | Module-Declaration
-    ///     | Crate-Declaration
     ///     | Use-Declaration
-    /// Crate-Declaration ::= "crate" #Identifier Terminator
     /// ```
     // @Task re-add attribute groups (needs syntax proposals)
     fn parse_declaration(&mut self) -> Result<Declaration> {
@@ -264,20 +262,6 @@ impl<'a> Parser<'a> {
             Module => {
                 self.advance();
                 self.finish_parse_module_declaration(span, attributes)
-            }
-            // @Task remove
-            Crate => {
-                self.advance();
-                let binder = self.consume_identifier()?;
-                self.expect_terminator()?;
-
-                Ok(decl! {
-                    Crate {
-                        attributes,
-                        span.merge(&binder.span);
-                        binder,
-                    }
-                })
             }
             Use => {
                 self.advance();
@@ -1166,7 +1150,7 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Path ::= Path-Head ("." General-Identifier)*
     /// Path-Head ::= Path-Hanger | General-Identifier
-    /// Path-Hanger ::= "crate" | "super" | "self"
+    /// Path-Hanger ::= "external" | "crate" | "super" | "self"
     /// ```
     fn parse_path(&mut self) -> Result<Path> {
         let mut path = self.parse_first_path_segment()?;
@@ -1183,7 +1167,7 @@ impl<'a> Parser<'a> {
         use TokenKind::*;
         let path = match self.current_token().kind {
             Identifier | Punctuation => Path::try_from_token(self.current_token().clone()).unwrap(),
-            Crate | Super | Self_ => Path::hanger(self.current_token().clone()),
+            External | Crate | Super | Self_ => Path::hanger(self.current_token().clone()),
             _ => return self.error(|| Expected::Path.but_actual_is(self.current_token())),
         };
         self.advance();

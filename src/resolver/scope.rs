@@ -220,6 +220,12 @@ impl CrateScope {
 
         if let Some(hanger) = &path.hanger {
             let namespace = match hanger.kind {
+                External => {
+                    Diagnostic::unimplemented("external paths")
+                        .primary_span(hanger)
+                        .emit(handler);
+                    return Err(ResolutionError::Unrecoverable);
+                }
                 Crate => self.root(),
                 Super => self.resolve_super(hanger, namespace, handler)?,
                 Self_ => namespace,

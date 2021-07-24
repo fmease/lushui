@@ -27,7 +27,6 @@ pub enum DeclarationKind {
     Data(Box<Data>),
     Constructor(Box<Constructor>),
     Module(Box<Module>),
-    Crate(Box<Crate>),
     Header,
     Group(Box<Group>),
     Use(Box<Use>),
@@ -71,12 +70,6 @@ pub struct Module {
     pub binder: Identifier,
     pub file: SourceFileIndex,
     pub declarations: Option<Vec<Declaration>>,
-}
-
-/// The syntax node of a crate declaration.
-#[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct Crate {
-    pub binder: Identifier,
 }
 
 /// The syntax node of attribute groups.
@@ -532,6 +525,7 @@ pub type Hanger = Spanned<HangerKind>;
 /// The non-identifier head of a path.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HangerKind {
+    External,
     Crate,
     Super,
     Self_,
@@ -540,6 +534,7 @@ pub enum HangerKind {
 impl HangerKind {
     pub const fn name(self) -> &'static str {
         match self {
+            Self::External => "external",
             Self::Crate => "crate",
             Self::Super => "super",
             Self::Self_ => "self",
@@ -552,6 +547,7 @@ impl TryFrom<TokenKind> for HangerKind {
 
     fn try_from(kind: TokenKind) -> Result<Self, Self::Error> {
         Ok(match kind {
+            TokenKind::External => Self::External,
             TokenKind::Crate => Self::Crate,
             TokenKind::Super => Self::Super,
             TokenKind::Self_ => Self::Self_,

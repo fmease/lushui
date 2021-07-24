@@ -235,7 +235,6 @@ impl Format for super::DeclarationKind {
             Self::Data(declaration) => declaration.format(f, indentation),
             Self::Constructor(declaration) => declaration.format(f, indentation),
             Self::Module(declaration) => declaration.format(f, indentation),
-            Self::Crate(declaration) => declaration.format(f, indentation),
             Self::Header => FormatStruct::new(f, indentation).name("Header").finish(),
             Self::Group(declaration) => declaration.format(f, indentation),
             Self::Use(declaration) => declaration.format(f, indentation),
@@ -302,15 +301,6 @@ impl Format for SourceFileIndex {
             .name("Source-File-Index")
             .finish()?;
         write!(f, " {}", self.index().to_string().color(VERBATIM_COLOR))
-    }
-}
-
-impl Format for super::Crate {
-    fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
-        FormatStruct::new(f, indentation)
-            .name("Crate-Declaration")
-            .field("binder", &self.binder)
-            .finish()
     }
 }
 

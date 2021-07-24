@@ -74,7 +74,6 @@ impl<'a, W: Write> Documenter<'a, W> {
                 }
                 write!(self.output, "</ul>")?;
             }
-            Crate(_) => todo!(),
             Header => todo!(),
             Group(_) => todo!(),
             Use(_) => todo!(),
