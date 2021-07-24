@@ -1,12 +1,11 @@
 //! The definition of the textual representation of the [lowered AST](crate::lowered_ast).
 
-// @Task rewrite all the formatting functions to respect precedence
-// just follow what we did for HIR nodes (crate::hir::format)
+use colored::{Color, Colorize};
 
-// @Task update to the new implicitness syntax
-
-use crate::ast::{Explicit, Implicit};
 use std::{default::default, fmt};
+
+const KEYWORD_COLOR: Color = Color::Cyan;
+const PUNCTUATION_COLOR: Color = Color::BrightMagenta;
 
 impl fmt::Display for super::AttributeKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -101,9 +100,20 @@ impl super::Declaration {
 
         match &self.kind {
             Value(declaration) => {
-                write!(f, "{}: {}", declaration.binder, declaration.type_annotation)?;
+                write!(
+                    f,
+                    "{}{colon} {}",
+                    declaration.binder,
+                    declaration.type_annotation,
+                    colon = ":".color(PUNCTUATION_COLOR)
+                )?;
                 if let Some(expression) = &declaration.expression {
-                    write!(f, " = {}", expression)?;
+                    write!(
+                        f,
+                        " {equals} {}",
+                        expression,
+                        equals = "=".color(PUNCTUATION_COLOR)
+                    )?;
                 }
                 writeln!(f)
             }
@@ -111,8 +121,12 @@ impl super::Declaration {
                 Some(constructors) => {
                     writeln!(
                         f,
-                        "data {}: {} =",
-                        declaration.binder, declaration.type_annotation
+                        "{data} {binder}{colon} {type_} {of}",
+                        binder = declaration.binder,
+                        colon = ":".color(PUNCTUATION_COLOR),
+                        type_ = declaration.type_annotation,
+                        data = "data".color(KEYWORD_COLOR),
+                        of = "of".color(KEYWORD_COLOR)
                     )?;
                     for constructor in constructors {
                         let depth = depth + 1;
@@ -122,15 +136,30 @@ impl super::Declaration {
                 }
                 None => writeln!(
                     f,
-                    "data {}: {}",
-                    declaration.binder, declaration.type_annotation
+                    "{data} {binder}{colon} {type_}",
+                    data = "data".color(KEYWORD_COLOR),
+                    binder = declaration.binder,
+                    colon = ":".color(PUNCTUATION_COLOR),
+                    type_ = declaration.type_annotation,
                 ),
             },
             Constructor(constructor) => {
-                writeln!(f, "{}: {}", constructor.binder, constructor.type_annotation)
+                writeln!(
+                    f,
+                    "{binder}{colon} {type_}",
+                    binder = constructor.binder,
+                    colon = ":".color(PUNCTUATION_COLOR),
+                    type_ = constructor.type_annotation
+                )
             }
             Module(declaration) => {
-                writeln!(f, "module {} =", declaration.binder)?;
+                writeln!(
+                    f,
+                    "{module} {binder} {of}",
+                    module = "module".color(KEYWORD_COLOR),
+                    binder = declaration.binder,
+                    of = "of".color(KEYWORD_COLOR)
+                )?;
                 for declaration in &declaration.declarations {
                     let depth = depth + 1;
                     write!(f, "{}", " ".repeat(depth * INDENTATION.0))?;
@@ -138,8 +167,15 @@ impl super::Declaration {
                 }
                 Ok(())
             }
-            Use(declaration) => writeln!(f, "use {} as {}", declaration.target, declaration.binder),
-            Error => write!(f, "?(error)"),
+            Use(declaration) => writeln!(
+                f,
+                "{use_} {target} {as_} {binder}",
+                use_ = "use".color(KEYWORD_COLOR),
+                target = declaration.target,
+                as_ = "as".color(KEYWORD_COLOR),
+                binder = declaration.binder,
+            ),
+            Error => write!(f, "{}", "?(error)".red()),
         }
     }
 }
@@ -154,83 +190,152 @@ impl fmt::Display for super::Declaration {
 // @Note many wasted allocations (intermediate Strings)
 impl fmt::Display for super::Expression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use super::ExpressionKind::*;
+        format_pi_type_literal_or_lower(self, f)
+    }
+}
 
-        match &self.kind {
-            PiType(literal) => write!(f, "{}", literal),
-            Application(application) => {
-                write!(f, "{} ", application.callee.wrap())?;
-                match application.explicitness {
-                    Explicit => write!(f, "{}", application.argument.wrap()),
-                    Implicit => write!(f, "({}{})", application.explicitness, application.argument),
+fn format_pi_type_literal_or_lower(
+    expression: &super::Expression,
+    f: &mut fmt::Formatter<'_>,
+) -> fmt::Result {
+    use super::ExpressionKind::*;
+
+    match &expression.kind {
+        PiType(pi) => {
+            write!(f, "{}", pi.explicitness)?;
+
+            // @Note fragile
+            let domain_needs_brackets = pi.parameter.is_some() || pi.aspect != default();
+
+            if domain_needs_brackets {
+                write!(f, "(")?;
+                write!(f, "{}", pi.aspect)?;
+
+                if let Some(parameter) = &pi.parameter {
+                    write!(
+                        f,
+                        "{parameter}{colon} ",
+                        colon = ":".color(PUNCTUATION_COLOR)
+                    )?;
                 }
+
+                write!(f, "{}", pi.domain)?;
+                write!(f, ")")?;
+            } else {
+                format_application_or_lower(&pi.domain, f)?;
             }
-            Type => write!(f, "Type"),
-            Number(literal) => write!(f, "{}", literal),
-            Text(literal) => write!(f, "{:?}", literal),
-            Binding(binding) => write!(f, "{}", binding.binder),
-            Lambda(lambda) => write!(f, "{}", lambda),
-            UseIn => todo!(),
-            // @Task fix indentation
-            CaseAnalysis(analysis) => {
-                writeln!(f, "case {} of", analysis.subject)?;
-                for case in &analysis.cases {
-                    write!(f, "{}", case)?;
+
+            write!(f, " {arrow} ", arrow = "->".color(PUNCTUATION_COLOR))?;
+            format_pi_type_literal_or_lower(&pi.codomain, f)
+        }
+        Lambda(lambda) => {
+            write!(
+                f,
+                "{backslash}{explicitness}",
+                backslash = "\\".color(PUNCTUATION_COLOR),
+                explicitness = lambda.explicitness,
+            )?;
+            let parameter_needs_brackets =
+                lambda.parameter_type_annotation.is_some() || lambda.laziness.is_some();
+
+            if parameter_needs_brackets {
+                write!(f, "(")?;
+                if lambda.laziness.is_some() {
+                    write!(f, "{lazy} ", lazy = "lazy".color(KEYWORD_COLOR))?;
                 }
-                Ok(())
+                write!(f, "{}", lambda.parameter)?;
+                if let Some(annotation) = &lambda.parameter_type_annotation {
+                    write!(
+                        f,
+                        "{colon} {type_}",
+                        colon = ":".color(PUNCTUATION_COLOR),
+                        type_ = annotation
+                    )?;
+                }
+                write!(f, ")")?;
+            } else {
+                write!(f, "{}", lambda.parameter)?;
             }
-            Error => write!(f, "?(error)"),
+
+            if let Some(annotation) = &lambda.body_type_annotation {
+                write!(
+                    f,
+                    "{colon} {type_}",
+                    colon = ":".color(PUNCTUATION_COLOR),
+                    type_ = annotation,
+                )?;
+            }
+            write!(
+                f,
+                " {arrow} {body}",
+                arrow = "=>".color(PUNCTUATION_COLOR),
+                body = lambda.body
+            )
         }
+        UseIn => todo!(),
+        CaseAnalysis(analysis) => {
+            write!(
+                f,
+                "{case} {subject} {of} {{ ",
+                case = "case".color(KEYWORD_COLOR),
+                subject = analysis.subject,
+                of = "of".color(KEYWORD_COLOR)
+            )?;
+            let mut first = true;
+            for case in &analysis.cases {
+                if !first {
+                    write!(f, "; ")?;
+                } else {
+                    first = false;
+                }
+
+                write!(
+                    f,
+                    "{pattern} {arrow} {body}",
+                    pattern = case.pattern,
+                    arrow = "=>".color(PUNCTUATION_COLOR),
+                    body = case.body
+                )?;
+            }
+            write!(f, " }}")
+        }
+        _ => format_application_or_lower(expression, f),
     }
 }
 
-impl fmt::Display for super::PiType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let domain_needs_brackets = self.parameter.is_some() || self.aspect != default();
+fn format_application_or_lower(
+    expression: &super::Expression,
+    f: &mut fmt::Formatter<'_>,
+) -> fmt::Result {
+    use super::ExpressionKind::*;
 
-        write!(f, "{}", self.explicitness)?;
-
-        if domain_needs_brackets {
-            write!(f, "(")?;
+    match &expression.kind {
+        Application(application) => {
+            format_application_or_lower(&application.callee, f)?;
+            write!(f, " {}", application.explicitness)?;
+            format_lower_expression(&application.argument, f)
         }
-
-        write!(f, "{}", self.aspect)?;
-
-        if let Some(parameter) = &self.parameter {
-            write!(f, "{parameter}: ")?;
-        }
-
-        if domain_needs_brackets {
-            write!(f, "{}", self.domain)?;
-        } else {
-            write!(f, "{}", self.domain.wrap())?;
-        }
-
-        if domain_needs_brackets {
-            write!(f, ")")?;
-        }
-
-        write!(f, " -> {}", self.codomain.wrap())
+        _ => format_lower_expression(expression, f),
     }
 }
 
-impl fmt::Display for super::Lambda {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "\\({}{}", self.explicitness, self.parameter)?;
-        if let Some(annotation) = &self.parameter_type_annotation {
-            write!(f, ": {}", annotation.wrap())?;
-        }
-        write!(f, ")")?;
-        if let Some(annotation) = &self.body_type_annotation {
-            write!(f, ": {}", annotation.wrap())?;
-        }
-        write!(f, " => {}", self.body.wrap())
-    }
-}
+fn format_lower_expression(
+    expression: &super::Expression,
+    f: &mut fmt::Formatter<'_>,
+) -> fmt::Result {
+    use super::ExpressionKind::*;
 
-impl fmt::Display for super::Case {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{} => {}", self.pattern, self.body)
+    for attribute in expression.attributes.iter() {
+        write!(f, "{} ", attribute)?;
+    }
+
+    match &expression.kind {
+        Type => write!(f, "{Type}", Type = "Type".blue()),
+        Number(literal) => write!(f, "{literal}"),
+        Text(literal) => write!(f, "{literal:?}"),
+        Binding(binding) => write!(f, "{}", binding.binder),
+        Error => write!(f, "{}", "?(error)".red()),
+        _ => write!(f, "({})", expression),
     }
 }
 
@@ -243,44 +348,16 @@ impl fmt::Display for super::Pattern {
             Number(number) => write!(f, "{}", number),
             Text(text) => write!(f, "{:?}", text),
             Binding(binding) => write!(f, "{}", binding.binder),
-            Binder(binder) => write!(f, "\\{}", binder.binder),
+            Binder(binder) => write!(
+                f,
+                "{backslash}{binder}",
+                backslash = "\\".color(PUNCTUATION_COLOR),
+                binder = binder.binder
+            ),
             Deapplication(application) => {
                 write!(f, "({}) ({})", application.callee, application.argument)
             }
-            Error => write!(f, "?(error)"),
-        }
-    }
-}
-
-trait WrapExpression {
-    fn wrap<'a>(&'a self) -> PossiblyWrapped<'a>;
-}
-
-impl WrapExpression for super::Expression {
-    fn wrap<'a>(&'a self) -> PossiblyWrapped<'a> {
-        PossiblyWrapped(self)
-    }
-}
-
-struct PossiblyWrapped<'a>(&'a super::Expression);
-
-impl PossiblyWrapped<'_> {
-    fn needs_brackets_conservative(&self) -> bool {
-        use super::ExpressionKind::*;
-
-        !matches!(
-            &self.0.kind,
-            Type | Number(_) | Text(_) | Binding(_) | Error
-        )
-    }
-}
-
-impl fmt::Display for PossiblyWrapped<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.needs_brackets_conservative() {
-            write!(f, "({})", self.0)
-        } else {
-            write!(f, "{}", self.0)
+            Error => write!(f, "{}", "?(error)".red()),
         }
     }
 }

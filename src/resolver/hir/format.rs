@@ -43,7 +43,7 @@ impl Declaration {
                 Some(constructors) => {
                     writeln!(
                         f,
-                        "data {}: {} =",
+                        "data {}: {} of",
                         declaration.binder,
                         declaration.type_annotation.with(scope)
                     )?;
@@ -72,7 +72,7 @@ impl Declaration {
                 constructor.type_annotation.with(scope)
             ),
             Module(declaration) => {
-                writeln!(f, "module {} =", declaration.binder)?;
+                writeln!(f, "module {} of", declaration.binder)?;
                 for declaration in &declaration.declarations {
                     let depth = depth + 1;
                     write!(f, "{}", " ".repeat(depth * INDENTATION.0))?;
@@ -120,17 +120,18 @@ fn format_pi_type_literal_or_lower(
     // parse to the identical AST modulo spans.
     // However for pretty-printing, we only use the last form — `read (\this => this) alpha` — to avoid
     // extra checks. For the case above, this decision is neither liberal nor conservate resulting in
-    // an equal amount of brackets (that being one). This is not the case for `crate.take (\it => it)` where
-    // which we *might* want to print as `crate.take \it => it`. This would probably require passing some flags to
+    // an equal amount of brackets (that being one). This is not the case for `crate.take (\it => it)` which
+    // we *might* want to print as `crate.take \it => it`. This would probably require passing some flags to
     // the formatting functions and adding more checks.
     //
-    // Also see `crate::parser::test::application_lambda_literal_argument_{lax,strict}_grouping` and the
-    // comment at the grammar definition of `Pi-Type-Literal-Or-Lower` (in `misc/grammar/lushui.grammar`)
+    // See also `crate::parser::test::application_lambda_literal_argument_{lax,strict}_grouping` and the
+    // comment at the grammar definition of `Pi-Type-Literal-Or-Lower` (in `/misc/grammar/lushui.grammar`)
     // for further details.
     match &expression.kind {
         PiType(pi) => {
             write!(f, "{}", pi.explicitness)?;
 
+            // @Note fragile
             let domain_needs_brackets = pi.parameter.is_some() || pi.aspect != default();
 
             // @Task add tests to check if parameter aspect is handled correctly

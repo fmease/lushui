@@ -32,7 +32,7 @@ error[E021]: binding `air` is not defined in module `crate.alpha`
 12 |         use super.air
    |                   ^^^ 
    |
-  help: a binding with a similar name exists in scope: `Air` ([91ma[0m[92mA[0mir)
+  help: a binding with a similar name exists in scope: `Air` (aAir)
 
 error[E021]: binding `Nothingness` is not defined in module `crate.alpha`
   --> ${DIRECTORY}/name_resolution/multiple-undefined1.lushui:14:12

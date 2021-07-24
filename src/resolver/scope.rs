@@ -20,7 +20,10 @@ use crate::{
     diagnostics::{Code, Diagnostic, Handler},
     entity::{Entity, EntityKind},
     error::{Health, Result},
-    format::{pluralize, unordered_listing, AsDebug, Conjunction, DisplayWith, QuoteExt},
+    format::{
+        pluralize, unordered_listing, AsAutoColoredChangeset, AsDebug, Conjunction, DisplayWith,
+        QuoteExt,
+    },
     smallvec,
     span::{Span, Spanned, Spanning},
     typer::interpreter::{ffi, scope::Registration},
@@ -30,6 +33,7 @@ use colored::Colorize;
 use indexed_vec::IndexVec;
 use joinery::JoinableIterator;
 use std::{cell::RefCell, cmp::Ordering, fmt, usize};
+use unicode_width::UnicodeWidthStr;
 
 type Bindings = IndexVec<CrateIndex, Entity>;
 
@@ -1390,18 +1394,18 @@ struct Lookalike<'a> {
 
 impl fmt::Display for Lookalike<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use difference::Difference::*;
+        use difference::{Changeset, Difference};
 
-        let changeset = difference::Changeset::new(self.actual, self.lookalike, "");
+        let changeset = Changeset::new(self.actual, self.lookalike, "");
         let mut purely_additive = true;
 
         write!(f, "`")?;
 
         for difference in &changeset.diffs {
             match difference {
-                Same(segment) => write!(f, "{}", segment)?,
-                Add(segment) => write!(f, "{}", segment.bold())?,
-                Rem(_) => {
+                Difference::Same(segment) => write!(f, "{}", segment)?,
+                Difference::Add(segment) => write!(f, "{}", segment.bold())?,
+                Difference::Rem(_) => {
                     purely_additive = false;
                 }
             }
@@ -1409,10 +1413,8 @@ impl fmt::Display for Lookalike<'_> {
 
         write!(f, "`")?;
 
-        if !purely_additive {
-            // @Beacon @Beacon @Bug the provided Display impl disrespects NO_COLOR!!
-            // write a custom implementation!
-            write!(f, " ({changeset})")?;
+        if !purely_additive && !(self.actual.width() == 1 && changeset.distance == 2) {
+            write!(f, " ({})", changeset.auto_colored())?;
         }
 
         Ok(())

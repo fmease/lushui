@@ -1,5 +1,7 @@
 //! Formatting support functionality.
 
+use colored::Colorize;
+use difference::{Changeset, Difference};
 use joinery::JoinableIterator;
 
 use std::fmt;
@@ -140,5 +142,41 @@ pub struct DebugIsDisplay<'a, T: fmt::Debug>(&'a T);
 impl<T: fmt::Debug> fmt::Display for DebugIsDisplay<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
+    }
+}
+
+pub struct AutoColoredChangeset<'a>(pub &'a Changeset);
+
+impl fmt::Display for AutoColoredChangeset<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let split = &self.0.split;
+
+        for difference in &self.0.diffs {
+            match difference {
+                Difference::Same(snippet) => {
+                    write!(f, "{snippet}{split}")?;
+                }
+                Difference::Add(snippet) => {
+                    // @Task get rid of wasteful allocation
+                    write!(f, "{}{split}", snippet.green())?;
+                }
+                Difference::Rem(snippet) => {
+                    // @Task get rid of wasteful allocation
+                    write!(f, "{}{split}", snippet.red())?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+pub trait AsAutoColoredChangeset {
+    fn auto_colored(&self) -> AutoColoredChangeset<'_>;
+}
+
+impl AsAutoColoredChangeset for Changeset {
+    fn auto_colored(&self) -> AutoColoredChangeset<'_> {
+        AutoColoredChangeset(self)
     }
 }

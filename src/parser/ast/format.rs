@@ -432,7 +432,7 @@ impl fmt::Display for super::ParameterAspect {
         }
 
         if self.is_field() {
-            write!(f, "field ")?;
+            write!(f, "::")?;
         }
 
         Ok(())

@@ -67,7 +67,7 @@ error[E021]: binding `f` is not defined in this scope
 15 | ex-nihilo (x y: Thing): Thing = f z Thing.thing
    |                                 ^ 
    |
-  help: a binding with a similar name exists in scope: `y` ([91mf[0m[92my[0m)
+  help: a binding with a similar name exists in scope: `y`
 
 error[E021]: binding `z` is not defined in this scope
   --> ${DIRECTORY}/name_resolution/multiple-undefined.lushui:15:35
@@ -75,7 +75,7 @@ error[E021]: binding `z` is not defined in this scope
 15 | ex-nihilo (x y: Thing): Thing = f z Thing.thing
    |                                   ^ 
    |
-  help: a binding with a similar name exists in scope: `y` ([91mz[0m[92my[0m)
+  help: a binding with a similar name exists in scope: `y`
 
 error: aborting due to 11 previous errors
  note: the error E021 has a detailed explanation
