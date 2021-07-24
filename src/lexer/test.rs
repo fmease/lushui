@@ -79,6 +79,78 @@ alpha;;;文本
 }
 
 #[test]
+fn shebang() {
+    assert_ok_token(
+        lex("\
+#!/usr/bin/lushui run
+it"),
+        vec![
+            Token::new_identifier("it".into(), span(23, 24)),
+            Token::new(EndOfInput, span(24, 24)),
+        ],
+    )
+}
+
+#[test]
+fn not_a_shebang_but_a_hashtag() {
+    assert_ok_token(
+        lex("\
+#hashtag"),
+        vec![
+            Token::new_punctuation("#".into(), span(1, 1)),
+            Token::new_identifier("hashtag".into(), span(2, 8)),
+            Token::new(EndOfInput, span(8, 8)),
+        ],
+    );
+}
+
+#[test]
+fn not_a_shabang_but_a_hash() {
+    assert_ok_token(
+        lex("\
+#"),
+        vec![
+            Token::new_punctuation("#".into(), span(1, 1)),
+            Token::new(EndOfInput, span(1, 1)),
+        ],
+    );
+}
+
+#[test]
+fn not_a_shebang_but_punctuation() {
+    assert_ok_token(
+        lex("\
+#?/WEIRD"),
+        vec![
+            Token::new_punctuation("#?/".into(), span(1, 3)),
+            Token::new_identifier("WEIRD".into(), span(4, 8)),
+            Token::new(EndOfInput, span(8, 8)),
+        ],
+    );
+}
+
+#[test]
+fn shebang_lookalike_not_first_line() {
+    assert_ok_token(
+        lex("
+#!/usr/bin/lushui run
+"),
+        vec![
+            Token::new_virtual(Semicolon, span(1, 1)),
+            Token::new_punctuation("#!/".into(), span(2, 4)),
+            Token::new_identifier("usr".into(), span(5, 7)),
+            Token::new_punctuation("/".into(), span(8, 8)),
+            Token::new_identifier("bin".into(), span(9, 11)),
+            Token::new_punctuation("/".into(), span(12, 12)),
+            Token::new_identifier("lushui".into(), span(13, 18)),
+            Token::new_identifier("run".into(), span(20, 22)),
+            Token::new_virtual(Semicolon, span(23, 23)),
+            Token::new(EndOfInput, span(23, 23)),
+        ],
+    )
+}
+
+#[test]
 fn identifiers() {
     assert_ok_token(
         lex("alpha alpha0 _alpha al6ha_beta_"),

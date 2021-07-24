@@ -284,8 +284,10 @@ impl<'a> Lexer<'a> {
     // @Beacon @Task disallow semicolons in non-delimited sections
     pub fn lex(mut self) -> Result<Outcome<Vec<Token>>> {
         while let Some(character) = self.peek() {
-            self.span = LocalSpan::from(self.index().unwrap());
+            let index = self.index().unwrap();
+            self.span = LocalSpan::from(index);
             match character {
+                '#' if index == LocalByteIndex::new(0) => self.lex_shebang_candidate(),
                 // @Bug @Beacon if it is SOI, don't lex_whitespace but lex_indentation
                 // (SOI should act as a line break)
                 ' ' => self.lex_whitespace(),
@@ -407,6 +409,22 @@ impl<'a> Lexer<'a> {
             error.emit(&self.handler);
         };
         self.advance();
+    }
+
+    fn lex_shebang_candidate(&mut self) {
+        self.advance();
+
+        if let Some('!') = self.peek() {
+            while let Some(character) = self.peek() {
+                self.advance();
+
+                if character == '\n' {
+                    break;
+                }
+            }
+        } else {
+            self.lex_punctuation();
+        }
     }
 
     fn lex_whitespace(&mut self) {
