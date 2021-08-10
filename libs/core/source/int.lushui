@@ -2,8 +2,8 @@
 data Int: Type
 
 ;;; @public @foreign
-;;; to-nat: Int -> Option super.nat.Nat
+;;; to-nat: Int -> Option crate.nat.Nat
 
 ;;; @public @foreign
-;;; absolute: Int -> super.nat.Nat
+;;; absolute: Int -> crate.nat.Nat
 

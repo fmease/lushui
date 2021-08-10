@@ -96,7 +96,7 @@ impl fmt::Display for super::Number {
 impl super::Declaration {
     fn format_with_depth(&self, depth: usize, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use super::DeclarationKind::*;
-        use crate::INDENTATION;
+        use crate::lexer::INDENTATION;
 
         match &self.kind {
             Value(declaration) => {

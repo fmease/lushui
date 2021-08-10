@@ -1,6 +1,6 @@
 //! Different error handling mechanisms.
 
-use crate::SmallVec;
+use crate::util::SmallVec;
 
 pub type Result<T = (), E = ()> = std::result::Result<T, E>;
 
@@ -80,9 +80,10 @@ impl<T: PossiblyErroneous> PossiblyErroneous for Outcome<T> {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 #[must_use]
 pub enum Health {
+    #[default]
     Untainted,
     /// Marks non-fatal failures.
     Tainted,
@@ -105,12 +106,6 @@ impl Health {
         if *self == Self::Untainted {
             *self = Self::Tainted;
         }
-    }
-}
-
-impl Default for Health {
-    fn default() -> Self {
-        Self::Untainted
     }
 }
 

@@ -26,14 +26,14 @@ pub mod ast;
 mod test;
 
 use crate::{
-    diagnostics::{Code, Diagnostic, Handler},
+    diagnostics::{Code, Diagnostic, Reporter},
     format::{ordered_listing, Conjunction},
     lexer::{Token, TokenKind},
-    smallvec,
     span::{SourceFileIndex, SourceMap, Span, Spanned, Spanning},
-    SmallVec,
+    util::SmallVec,
 };
 use ast::*;
+use smallvec::smallvec;
 use std::{cell::RefCell, convert::TryInto, default::default, rc::Rc};
 
 type Result<T = (), E = ()> = std::result::Result<T, E>;
@@ -54,7 +54,7 @@ pub struct Parser<'a> {
     reflection_depth: u16,
     index: usize,
     map: Rc<RefCell<SourceMap>>,
-    handler: &'a Handler,
+    reporter: &'a Reporter,
 }
 
 impl<'a> Parser<'a> {
@@ -62,7 +62,7 @@ impl<'a> Parser<'a> {
         file: SourceFileIndex,
         tokens: &'a [Token],
         map: Rc<RefCell<SourceMap>>,
-        handler: &'a Handler,
+        reporter: &'a Reporter,
     ) -> Self {
         Self {
             file,
@@ -70,7 +70,7 @@ impl<'a> Parser<'a> {
             reflection_depth: 0,
             index: 0,
             map,
-            handler,
+            reporter,
         }
     }
 
@@ -88,9 +88,9 @@ impl<'a> Parser<'a> {
         result
     }
 
-    fn manually_reflect<T>(&mut self, handler: impl FnOnce(&mut Self) -> T) -> T {
+    fn manually_reflect<T>(&mut self, reporter: impl FnOnce(&mut Self) -> T) -> T {
         self.reflection_depth += 1;
-        let result = handler(self);
+        let result = reporter(self);
         self.reflection_depth -= 1;
         result
     }
@@ -102,7 +102,7 @@ impl<'a> Parser<'a> {
     fn error<T, D: FnOnce() -> Diagnostic>(&self, diagnostic: D) -> Result<T> {
         fn error<D: FnOnce() -> Diagnostic>(parser: &Parser<'_>, diagnostic: D) -> Result<!> {
             if !parser.reflecting() {
-                diagnostic().emit(&parser.handler);
+                diagnostic().report(&parser.reporter);
             }
 
             Err(())
@@ -297,7 +297,7 @@ impl<'a> Parser<'a> {
                     self.advance();
                     let attribute = Attribute {
                         binder: ast::Identifier::new(
-                            crate::Atom::from("documentation"),
+                            crate::util::Atom::from("documentation"),
                             Span::SHAM,
                         ),
                         span,
@@ -1150,7 +1150,7 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Path ::= Path-Head ("." General-Identifier)*
     /// Path-Head ::= Path-Hanger | General-Identifier
-    /// Path-Hanger ::= "external" | "crate" | "super" | "self"
+    /// Path-Hanger ::= "crates" | "crate" | "super" | "self"
     /// ```
     fn parse_path(&mut self) -> Result<Path> {
         let mut path = self.parse_first_path_segment()?;
@@ -1167,7 +1167,7 @@ impl<'a> Parser<'a> {
         use TokenKind::*;
         let path = match self.current_token().kind {
             Identifier | Punctuation => Path::try_from_token(self.current_token().clone()).unwrap(),
-            External | Crate | Super | Self_ => Path::hanger(self.current_token().clone()),
+            kind if kind.is_path_hanger() => Path::hanger(self.current_token().clone()),
             _ => return self.error(|| Expected::Path.but_actual_is(self.current_token())),
         };
         self.advance();
@@ -1752,7 +1752,7 @@ impl<'a> Parser<'a> {
         } else {
             Expected::Delimiter(Delimiter::Terminator)
                 .but_actual_is(self.current_token())
-                .emit(&self.handler);
+                .report(&self.reporter);
             Err(())
         }
     }

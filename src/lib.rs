@@ -46,11 +46,14 @@
     format_args_capture,
     associated_type_bounds,
     label_break_value,
-    type_ascription
+    type_ascription,
+    derive_default_enum,
+    generic_associated_types
 )]
-#![forbid(rust_2018_idioms, unused_must_use)]
+#![deny(rust_2018_idioms, unused_must_use)]
 
 pub mod compiler;
+pub mod crates;
 pub mod diagnostics;
 pub mod documenter;
 mod entity;
@@ -68,19 +71,12 @@ mod util;
 
 const FILE_EXTENSION: &str = "lushui";
 
-use lexer::INDENTATION;
 use lowerer::lowered_ast;
-use num_bigint::{BigInt as Int, BigUint as Nat};
 use once_cell::sync::OnceCell;
 use parser::ast;
 use resolver::hir;
-use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
-use smallvec::smallvec;
-use string_cache::DefaultAtom as Atom;
 
-type Str = std::borrow::Cow<'static, str>;
-
-type SmallVec<T, const N: usize> = smallvec::SmallVec<[T; N]>;
+// @Task remove this options stuff!
 
 static OPTIONS: OnceCell<Options> = OnceCell::new();
 

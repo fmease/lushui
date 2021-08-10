@@ -1,9 +1,6 @@
 ;;; TEST fail check
 
-@(location "../../../libs/core/core")
-module core
-
-use core.nat.Nat
+use crates.core.nat.Nat
 
 data Alpha: Type of
     alpha (beta: Alpha): Alpha

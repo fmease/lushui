@@ -1,9 +1,4 @@
 ;;; TEST pass run
 
-@(location "../../libs/core/core")
-module core
-
-use core.text.Text
-
 ;;; 这件衣服是漂亮的。
-main: Text = "这件衣服是漂亮的。"
+main: crates.core.text.Text = "这件衣服是漂亮的。"

@@ -2,7 +2,7 @@
 
 use crate::{
     span::{SourceFileIndex, Span, Spanned},
-    SmallVec,
+    util::SmallVec,
 };
 use colored::{Color, Colorize};
 use format_struct::FormatStruct;

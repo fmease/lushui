@@ -5,11 +5,10 @@ mod test;
 pub mod token;
 
 use crate::{
-    diagnostics::{Code, Diagnostic, Handler},
+    diagnostics::{reporter::SilentReporter, Code, Diagnostic, Reporter},
     error::{Health, Outcome, Result},
     span::{LocalByteIndex, LocalSpan, SourceFile, SourceMap, Span, Spanned},
-    util::GetFromEndExt,
-    Atom,
+    util::{Atom, GetFromEndExt},
 };
 use std::{
     cmp::Ordering::{self, *},
@@ -32,7 +31,7 @@ pub const INDENTATION: Spaces = Indentation::UNIT.to_spaces();
 fn lex(source: String) -> Result<Outcome<Vec<Token>>> {
     let mut map = SourceMap::default();
     let file = map.add(None, source).unwrap_or_else(|_| unreachable!());
-    Lexer::new(map.get(file), &Handler::silent()).lex()
+    Lexer::new(map.get(file), &SilentReporter.into()).lex()
 }
 
 /// Utility to parse identifiers from a string.
@@ -63,14 +62,14 @@ pub fn parse_identifier(source: String) -> Option<Atom> {
 
 pub fn parse_crate_name(
     file: impl AsRef<Path>,
-    handler: &Handler,
+    reporter: &Reporter,
 ) -> Result<crate::ast::Identifier, Diagnostic> {
     let file = file.as_ref();
 
     if !crate::util::has_file_extension(file, crate::FILE_EXTENSION) {
         Diagnostic::warning()
             .message("missing or non-standard file extension")
-            .emit(handler);
+            .report(reporter);
     }
 
     // @Question does unwrap ever fail in a real-world example?
@@ -86,13 +85,14 @@ pub fn parse_crate_name(
     Ok(crate::ast::Identifier::new(atom, Span::SHAM))
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 enum Section {
     /// The top-level section.
     ///
     /// Basically the same as [Section::Indented] except that it does not call
     /// for adding any virtual closing curly brackets since the indentation is
     /// zero.
+    #[default]
     Top,
     /// A section of code within curly brackets.
     ///
@@ -114,12 +114,6 @@ impl Section {
 
     const fn is_indented(self) -> bool {
         matches!(self, Self::Indented { .. })
-    }
-}
-
-impl Default for Section {
-    fn default() -> Self {
-        Self::Top
     }
 }
 
@@ -258,11 +252,11 @@ pub struct Lexer<'a> {
     sections: Sections,
     brackets: Brackets,
     health: Health,
-    handler: &'a Handler,
+    reporter: &'a Reporter,
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(source: &'a SourceFile, handler: &'a Handler) -> Self {
+    pub fn new(source: &'a SourceFile, reporter: &'a Reporter) -> Self {
         let content = source.content();
 
         Self {
@@ -274,7 +268,7 @@ impl<'a> Lexer<'a> {
             sections: Sections::default(),
             brackets: Brackets::default(),
             health: Health::Untainted,
-            handler,
+            reporter,
         }
     }
 
@@ -357,7 +351,7 @@ impl<'a> Lexer<'a> {
                         bracket,
                         format!("has no matching closing {} bracket", bracket.kind),
                     )
-                    .emit(&self.handler);
+                    .report(&self.reporter);
             }
         }
 
@@ -406,7 +400,7 @@ impl<'a> Lexer<'a> {
         self.add(bracket.closing());
         if let Err(error) = self.brackets.close(Spanned::new(self.span(), bracket)) {
             self.health.taint();
-            error.emit(&self.handler);
+            error.report(&self.reporter);
         };
         self.advance();
     }
@@ -487,7 +481,7 @@ impl<'a> Lexer<'a> {
                     .code(Code::E002)
                     .message("trailing dash on identifier")
                     .primary_span(self.span())
-                    .emit(&self.handler);
+                    .report(&self.reporter);
                 return Err(());
             }
         }
@@ -568,7 +562,7 @@ impl<'a> Lexer<'a> {
                             INDENTATION.0
                         ),
                     })
-                    .emit(&self.handler);
+                    .report(&self.reporter);
                 return Err(());
             }
         };
@@ -711,7 +705,7 @@ impl<'a> Lexer<'a> {
                     .code(Code::E005)
                     .message("consecutive primes in number literal")
                     .primary_span(self.span())
-                    .emit(&self.handler);
+                    .report(&self.reporter);
             }
 
             if trailing_separator {
@@ -719,7 +713,7 @@ impl<'a> Lexer<'a> {
                     .code(Code::E005)
                     .message("trailing prime in number literal")
                     .primary_span(self.span())
-                    .emit(&self.handler);
+                    .report(&self.reporter);
             }
 
             // @Task don't return early here, just taint the health and

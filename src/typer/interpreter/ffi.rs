@@ -1,7 +1,10 @@
+// @Note all of this is ugly as hell!
+
 use super::{CrateScope, Expression};
 use crate::{
     ast::Explicit,
-    diagnostics::{Code, Diagnostic, Handler},
+    crates::CrateStore,
+    diagnostics::{Code, Diagnostic, Reporter},
     error::Result,
     lowered_ast::{Attribute, Attributes},
     resolver::{
@@ -10,7 +13,7 @@ use crate::{
     },
     span::Span,
     typer::Declaration,
-    HashMap, Int, Nat,
+    util::{HashMap, Int, Nat},
 };
 use indexed_vec::IndexVec;
 
@@ -18,15 +21,14 @@ use indexed_vec::IndexVec;
 #[derive(Default)]
 pub struct Scope {
     /// Foreign types (`@foreign data`).
-    pub(super) foreign_types: HashMap<&'static str, Option<Identifier>>,
+    pub foreign_types: HashMap<&'static str, Option<Identifier>>,
     /// Foreign bindings (`@foreign`).
-    pub(super) foreign_bindings: HashMap<&'static str, ForeignFunction>,
+    pub foreign_bindings: HashMap<&'static str, ForeignFunction>,
     /// Inherent values (`@inherent`)
     pub(in crate::typer) inherent_values: InherentValueMap,
     /// Inherent types (`@inherent`)
     pub(in crate::typer) inherent_types: InherentTypeMap,
     pub(super) _runners: IndexVec<IOIndex, IORunner>,
-    // @Question handler: Rc<Handler>,
 }
 
 impl Scope {
@@ -36,7 +38,7 @@ impl Scope {
         mut constructors: impl Iterator<Item = &'a Constructor>,
         declaration: &Declaration,
         attribute: &Attribute,
-        handler: &Handler,
+        reporter: &Reporter,
     ) -> Result {
         // @Task link to previous definition
         let duplicate = || {
@@ -60,7 +62,7 @@ impl Scope {
         match binder.as_str() {
             Type::UNIT => {
                 if self.inherent_types.unit.is_some() {
-                    duplicate().emit(handler);
+                    duplicate().report(reporter);
                     return Err(());
                 }
 
@@ -69,7 +71,7 @@ impl Scope {
             }
             Type::BOOL => {
                 if self.inherent_types.bool.is_some() {
-                    duplicate().emit(handler);
+                    duplicate().report(reporter);
                     return Err(());
                 }
 
@@ -79,7 +81,7 @@ impl Scope {
             }
             Type::OPTION => {
                 if self.inherent_types.option.is_some() {
-                    duplicate().emit(handler);
+                    duplicate().report(reporter);
                     return Err(());
                 }
 
@@ -93,7 +95,7 @@ impl Scope {
                     .message(format!("`{}` is not an inherent type", binder))
                     .primary_span(attribute)
                     .labeled_secondary_span(declaration, "ascribed to this declaration")
-                    .emit(handler);
+                    .report(reporter);
                 return Err(());
             }
         }
@@ -195,20 +197,25 @@ impl Type {
         })
     }
 
-    fn into_expression(self, scope: &CrateScope, handler: &Handler) -> Result<Expression> {
+    fn into_expression(
+        self,
+        scope: &CrateScope,
+        crates: &CrateStore,
+        reporter: &Reporter,
+    ) -> Result<Expression> {
         match self {
-            Self::Unit => scope.lookup_unit_type(None, handler),
-            Self::Bool => scope.lookup_bool_type(None, handler),
-            Self::Nat => scope.lookup_foreign_type(Type::NAT, None, handler),
-            Self::Nat32 => scope.lookup_foreign_type(Type::NAT32, None, handler),
-            Self::Nat64 => scope.lookup_foreign_type(Type::NAT64, None, handler),
-            Self::Int => scope.lookup_foreign_type(Type::INT, None, handler),
-            Self::Int32 => scope.lookup_foreign_type(Type::INT32, None, handler),
-            Self::Int64 => scope.lookup_foreign_type(Type::INT64, None, handler),
-            Self::Text => scope.lookup_foreign_type(Type::TEXT, None, handler),
+            Self::Unit => scope.lookup_unit_type(None, reporter),
+            Self::Bool => scope.lookup_bool_type(None, reporter),
+            Self::Nat => scope.lookup_foreign_type(Type::NAT, None, crates, reporter),
+            Self::Nat32 => scope.lookup_foreign_type(Type::NAT32, None, crates, reporter),
+            Self::Nat64 => scope.lookup_foreign_type(Type::NAT64, None, crates, reporter),
+            Self::Int => scope.lookup_foreign_type(Type::INT, None, crates, reporter),
+            Self::Int32 => scope.lookup_foreign_type(Type::INT32, None, crates, reporter),
+            Self::Int64 => scope.lookup_foreign_type(Type::INT64, None, crates, reporter),
+            Self::Text => scope.lookup_foreign_type(Type::TEXT, None, crates, reporter),
             Self::Option(type_) => Ok(application(
-                scope.lookup_option_type(None, handler)?,
-                type_.into_expression(scope, handler)?,
+                scope.lookup_option_type(None, reporter)?,
+                type_.into_expression(scope, crates, reporter)?,
             )),
         }
     }
@@ -299,7 +306,12 @@ impl Value {
         })
     }
 
-    pub fn into_expression(self, scope: &CrateScope, handler: &Handler) -> Result<Expression> {
+    pub fn into_expression(
+        self,
+        scope: &CrateScope,
+        crates: &CrateStore,
+        reporter: &Reporter,
+    ) -> Result<Expression> {
         let values = &scope.ffi.inherent_values;
 
         fn missing_inherent() -> Diagnostic {
@@ -313,11 +325,11 @@ impl Value {
             Self::Unit => values
                 .unit
                 .clone()
-                .ok_or_else(|| missing_inherent().emit(handler))?
+                .ok_or_else(|| missing_inherent().report(reporter))?
                 .to_expression(),
             Self::Bool(value) => (if value { &values.true_ } else { &values.false_ }
                 .clone()
-                .ok_or_else(|| missing_inherent().emit(handler))?)
+                .ok_or_else(|| missing_inherent().report(reporter))?)
             .to_expression(),
             Self::Text(value) => expr! { Text(Attributes::default(), Span::SHAM; value) },
             Self::Nat(value) => expr! { Number(Attributes::default(), Span::SHAM; Nat(value)) },
@@ -332,19 +344,19 @@ impl Value {
                         values
                             .some
                             .clone()
-                            .ok_or_else(|| missing_inherent().emit(handler))?
+                            .ok_or_else(|| missing_inherent().report(reporter))?
                             .to_expression(),
-                        type_.into_expression(scope, handler)?,
+                        type_.into_expression(scope, crates, reporter)?,
                     ),
-                    value.into_expression(scope, handler)?,
+                    value.into_expression(scope, crates, reporter)?,
                 ),
                 None => application(
                     values
                         .none
                         .clone()
-                        .ok_or_else(|| missing_inherent().emit(handler))?
+                        .ok_or_else(|| missing_inherent().report(reporter))?
                         .to_expression(),
-                    type_.into_expression(scope, handler)?,
+                    type_.into_expression(scope, crates, reporter)?,
                 ),
             },
             Self::IO { index, arguments } => expr! {
@@ -353,7 +365,7 @@ impl Value {
                     Span::SHAM;
                     index,
                     arguments: arguments.into_iter()
-                        .map(|argument| argument.into_expression(scope, handler))
+                        .map(|argument| argument.into_expression(scope, crates, reporter))
                         .collect::<Result<Vec<_>>>()?,
                 }
             },

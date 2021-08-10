@@ -27,8 +27,9 @@
 pub mod lowered_ast;
 
 use self::lowered_ast::AttributeTarget;
-use crate::{SmallVec, Str, ast::{self, Explicit, ParameterGroup, Path}, diagnostics::{Code, Diagnostic, Handler}, error::{Health, Outcome, map_outcome_from_result, PossiblyErroneous, Result}, format::{Conjunction, QuoteExt, ordered_listing, pluralize}, lowered_ast::{decl, expr, pat, AttributeKeys, AttributeKind, Attributes, Number}, smallvec, span::{SourceMap, Span, Spanned, Spanning}, util::obtain};
+use crate::{util::{SmallVec, Str}, ast::{self, Explicit, ParameterGroup, Path}, diagnostics::{Code, Diagnostic, Reporter}, error::{Health, Outcome, map_outcome_from_result, PossiblyErroneous, Result}, format::{Conjunction, QuoteExt, ordered_listing, pluralize}, lowered_ast::{decl, expr, pat, AttributeKeys, AttributeKind, Attributes, Number}, span::{SourceMap, Span, Spanned, Spanning}, util::obtain};
 use joinery::JoinableIterator;
+use smallvec::smallvec;
 use std::{cell::RefCell, iter::once, rc::Rc};
 
 #[derive(Clone, Copy)]
@@ -49,12 +50,12 @@ impl Context {
 /// The state of the lowering pass.
 pub struct Lowerer<'a> {
     map: Rc<RefCell<SourceMap>>,
-    handler: &'a Handler,
+    reporter: &'a Reporter,
 }
 
 impl<'a> Lowerer<'a> {
-    pub fn new(map: Rc<RefCell<SourceMap>>, handler: &'a Handler) -> Self {
-        Self { map, handler }
+    pub fn new(map: Rc<RefCell<SourceMap>>, reporter: &'a Reporter) -> Self {
+        Self { map, reporter }
     }
 
     /// Lower a declaration.
@@ -79,7 +80,7 @@ impl<'a> Lowerer<'a> {
                         declaration.span,
                         AnnotationTarget::Declaration(&value.binder),
                     )
-                    .emit(&self.handler);
+                    .report(&self.reporter);
                     health.taint();
                 }
 
@@ -106,7 +107,7 @@ impl<'a> Lowerer<'a> {
                                         parameter_group,
                                         AnnotationTarget::Parameters(parameter_group),
                                     )
-                                    .emit(&self.handler);
+                                    .report(&self.reporter);
                                     health.taint();
                                 }
                                 // @Note awkward API! + check above ^
@@ -164,7 +165,7 @@ impl<'a> Lowerer<'a> {
                         missing_mandatory_type_annotation(
                             declaration.span,
                             AnnotationTarget::Declaration(&data.binder),
-                        ).emit(&self.handler);
+                        ).report(&self.reporter);
                         health.taint();
                         PossiblyErroneous::error()
                     }
@@ -206,7 +207,7 @@ impl<'a> Lowerer<'a> {
                         missing_mandatory_type_annotation(
                             declaration.span,
                             AnnotationTarget::Declaration(&constructor.binder),
-                        ).emit(&self.handler);
+                        ).report(&self.reporter);
                         health.taint();
                         PossiblyErroneous::error()
                     }
@@ -237,7 +238,7 @@ impl<'a> Lowerer<'a> {
                         .labeled_primary_span(&body, "conflicting definition")
                         .note(
                             "the body of the constructor is implied but it also has a body introduced by `=`",
-                        ).emit(&self.handler);
+                        ).report(&self.reporter);
                     health.taint();
                 }
 
@@ -304,7 +305,7 @@ impl<'a> Lowerer<'a> {
             
                                             // @Task add context information
                                             error => Diagnostic::from(error),
-                                        }.emit(&self.handler);
+                                        }.report(&self.reporter);
                                 return PossiblyErroneous::error();
                             }
                         };
@@ -312,14 +313,14 @@ impl<'a> Lowerer<'a> {
                         let mut lexer_health = Health::Untainted;
 
                         // @Note awkward API
-                        let tokens = match Lexer::new(self.map.borrow().get(file), self.handler).lex() {
+                        let tokens = match Lexer::new(self.map.borrow().get(file), self.reporter).lex() {
                             Ok(tokens) => tokens.unwrap(&mut lexer_health),
                             Err(()) => {
                                 return PossiblyErroneous::error()
                             }
                         };
                         // @Note awkward API
-                        let node = match Parser::new(file, &tokens, self.map.clone(), self.handler)
+                        let node = match Parser::new(file, &tokens, self.map.clone(), self.reporter)
                             .parse(module.binder.clone()) {
                                 Ok(node) => node,
                                 Err(()) => {
@@ -337,7 +338,7 @@ impl<'a> Lowerer<'a> {
                         if !node.attributes.is_empty() {
                             Diagnostic::warning()
                                 .message("attributes on module headers are ignored right now")
-                                .emit(&self.handler);
+                                .report(&self.reporter);
                             health.taint()
                         }
                         module.declarations.unwrap()
@@ -367,7 +368,7 @@ impl<'a> Lowerer<'a> {
                 // @Note awkward API!
                 Diagnostic::unimplemented("module headers")
                     .primary_span(declaration.span)
-                    .emit(&self.handler);
+                    .report(&self.reporter);
                 health.taint();
                 PossiblyErroneous::error()
             }
@@ -404,7 +405,7 @@ impl<'a> Lowerer<'a> {
                     span: Span,
                     attributes: lowered_ast::Attributes,
                     declarations: &mut SmallVec<lowered_ast::Declaration, 1>,
-                    handler: &Handler,
+                    reporter: &Reporter,
                 ) -> Result {
                     let mut health = Health::Untainted;
 
@@ -413,7 +414,7 @@ impl<'a> Lowerer<'a> {
                         match $subject {
                             Ok(subject) => subject,
                             Err(error) => {
-                                error.emit(handler); // @Temporary (upstream should return () in the future)
+                                error.report(reporter); // @Temporary (upstream should return () in the future)
                                 health.taint();
                                 continue;
                             }
@@ -460,7 +461,7 @@ impl<'a> Lowerer<'a> {
                                     span,
                                     attributes.clone(),
                                     declarations,
-                                    handler,
+                                    reporter,
                                 )?;
                             }
                         }
@@ -477,7 +478,7 @@ impl<'a> Lowerer<'a> {
                                 Some(binder) => binder,
                                 None => {
                                     invalid_unnamed_path_hanger(target.hanger.unwrap())
-                                        .emit(&self.handler);
+                                        .report(&self.reporter);
                                     health.taint();
                                     break 'discriminate;
                                 }
@@ -499,7 +500,7 @@ impl<'a> Lowerer<'a> {
                                 declaration.span,
                                 attributes,
                                 &mut declarations,
-                                self.handler,
+                                self.reporter,
                             )).unwrap(&mut health)
                         }
                     }
@@ -560,7 +561,7 @@ impl<'a> Lowerer<'a> {
                 if let Some(binder) = &application.binder {
                     Diagnostic::unimplemented("named arguments")
                         .primary_span(binder)
-                        .emit(&self.handler);
+                        .report(&self.reporter);
                     health.taint();
                 }
 
@@ -599,7 +600,7 @@ impl<'a> Lowerer<'a> {
             TypedHole(_hole) => {
                 Diagnostic::unimplemented("typed holes")
                     .primary_span(expression.span)
-                    .emit(&self.handler);
+                    .report(&self.reporter);
                 // @Note awkward API!
                 health.taint();
                 PossiblyErroneous::error()
@@ -614,7 +615,7 @@ impl<'a> Lowerer<'a> {
             Field(_field) => {
                 Diagnostic::unimplemented("record fields")
                     .primary_span(expression.span)
-                    .emit(&self.handler);
+                    .report(&self.reporter);
                 // @Note awkward API
                 health.taint();
                 PossiblyErroneous::error()
@@ -677,7 +678,7 @@ impl<'a> Lowerer<'a> {
                                 .message(format!("let-binding `{}` has no definition", binder))
                                 .primary_span(span)
                                 .help("provide a definition with `=`")
-                                .emit(&self.handler);
+                                .report(&self.reporter);
                             health.taint();
                             PossiblyErroneous::error()
                         }
@@ -749,7 +750,7 @@ impl<'a> Lowerer<'a> {
                 // @Note awkward API
                 Diagnostic::unimplemented("use/in expressions")
                     .primary_span(expression.span)
-                    .emit(&self.handler);
+                    .report(&self.reporter);
                 health.taint();
                 PossiblyErroneous::error()
             }
@@ -782,7 +783,7 @@ impl<'a> Lowerer<'a> {
                 // @Note awkward API!
                 Diagnostic::unimplemented("do blocks")
                     .primary_span(expression.span)
-                    .emit(&self.handler);
+                    .report(&self.reporter);
                 health.taint();
                 PossiblyErroneous::error()
             }
@@ -790,7 +791,7 @@ impl<'a> Lowerer<'a> {
                 // @Note awkward API!
                 Diagnostic::unimplemented("sequence literals")
                     .primary_span(expression.span)
-                    .emit(&self.handler);
+                    .report(&self.reporter);
                 health.taint();
                 PossiblyErroneous::error()
             }
@@ -844,7 +845,7 @@ impl<'a> Lowerer<'a> {
                 if let Some(binder) = &application.binder {
                     Diagnostic::unimplemented("named arguments")
                         .primary_span(binder)
-                        .emit(&self.handler);
+                        .report(&self.reporter);
                     health.taint();
                 }
 
@@ -863,7 +864,7 @@ impl<'a> Lowerer<'a> {
             SequenceLiteralPattern(_sequence) => {
                 Diagnostic::unimplemented("sequence literal patterns")
                     .primary_span(pattern.span)
-                    .emit(&self.handler);
+                    .report(&self.reporter);
                 // @Note awkward API!
                 health.taint();
                 PossiblyErroneous::error()
@@ -886,7 +887,7 @@ impl<'a> Lowerer<'a> {
         let mut lowered_attributes = Vec::new();
 
         for attribute in attributes {
-            let attribute = match Attribute::parse(attribute, &self.handler) {
+            let attribute = match Attribute::parse(attribute, &self.reporter) {
                 Ok(attribute) => attribute,
                 Err(()) => {
                     health.taint();
@@ -910,7 +911,7 @@ impl<'a> Lowerer<'a> {
                         attribute.kind.quoted_name(),
                         attribute.kind.target_names()
                     ))
-                    .emit(&self.handler);
+                    .report(&self.reporter);
                 health.taint();
                 continue;
             }
@@ -954,7 +955,7 @@ impl<'a> Lowerer<'a> {
                         faulty_attributes.into_iter(),
                         "duplicate or conflicting attribute",
                     )
-                    .emit(&self.handler);
+                    .report(&self.reporter);
                 health.taint();
             }
         }
@@ -964,14 +965,14 @@ impl<'a> Lowerer<'a> {
             data: attributes.into_boxed_slice(),
         };
 
-        health &= target.check_attributes(&attributes, &self.handler);
+        health &= target.check_attributes(&attributes, &self.reporter);
 
         if attributes.keys.is_empty() {
             return health.of(attributes).into();
         }
 
         let check_mutual_exclusivity = |mutually_exclusive_attributes: AttributeKeys,
-                                        handler: &Handler|
+                                        reporter: &Reporter|
          -> Result {
             if (attributes.keys & mutually_exclusive_attributes)
                 .bits()
@@ -991,7 +992,7 @@ impl<'a> Lowerer<'a> {
                     .code(Code::E014)
                     .message(format!("attributes {} are mutually exclusive", listing))
                     .labeled_primary_spans(faulty_attributes.into_iter(), "conflicting attribute")
-                    .emit(handler));
+                    .report(reporter));
             }
 
             Ok(())
@@ -999,12 +1000,12 @@ impl<'a> Lowerer<'a> {
 
         health &= check_mutual_exclusivity(
             AttributeKeys::FOREIGN | AttributeKeys::INHERENT,
-            &self.handler,
+            &self.reporter,
         );
 
         health &= check_mutual_exclusivity(
             AttributeKeys::MOVING | AttributeKeys::OPAQUE,
-            &self.handler,
+            &self.reporter,
         );
 
         health &= check_mutual_exclusivity(
@@ -1014,24 +1015,24 @@ impl<'a> Lowerer<'a> {
                 | AttributeKeys::NAT
                 | AttributeKeys::NAT32
                 | AttributeKeys::NAT64,
-            &self.handler,
+            &self.reporter,
         );
 
         health &= check_mutual_exclusivity(
             AttributeKeys::RUNE | AttributeKeys::TEXT,
-            &self.handler,
+            &self.reporter,
         );
 
         health &= check_mutual_exclusivity(
             AttributeKeys::LIST | AttributeKeys::VECTOR,
-            &self.handler,
+            &self.reporter,
         );
 
         if attributes.within(AttributeKeys::UNSUPPORTED) {
             for attribute in attributes.filter(AttributeKeys::UNSUPPORTED) {
                 Diagnostic::unimplemented(format!("attribute {}", attribute.kind.quoted_name()))
                     .primary_span(attribute)
-                    .emit(&self.handler);
+                    .report(&self.reporter);
             }
             health.taint();
         }
@@ -1086,7 +1087,7 @@ impl<'a> Lowerer<'a> {
                     "values of this type must fit integer interval {}",
                     interval
                 ))
-                .emit(&self.handler);
+                .report(&self.reporter);
         })
     }
 
@@ -1109,7 +1110,7 @@ impl<'a> Lowerer<'a> {
                     &parameter_group,
                     AnnotationTarget::Parameters(&parameter_group),
                 )
-                .emit(&self.handler);
+                .report(&self.reporter);
                 health.taint();
             }
             // @Note awkward API! + the code above ^
@@ -1154,7 +1155,7 @@ impl<'a> Lowerer<'a> {
                     .message("field marker `::` used outside of a constructor declaration")
                     .primary_span(field)
                     .labeled_secondary_span(context.declaration, "not a constructor")
-                    .emit(&self.handler));
+                    .report(&self.reporter));
             }
         }
 
@@ -1168,13 +1169,13 @@ const NAT_INTERVAL_REPRESENTATION: &str = "[0, infinity)";
 const INT32_INTERVAL_REPRESENTATION: &str = "[-2^31, 2^31-1]";
 const INT64_INTERVAL_REPRESENTATION: &str = "[-2^63, 2^63-1]";
 
-// @Beacon @Beacon @Task don't use handler+Result<_> here but
+// @Beacon @Beacon @Task don't use reporter+Result<_> here but
 // a custom error type (w/o ::Unrecoverable)
 // and turn that stuff into stuff later
 
 impl lowered_ast::AttributeKind {
     // @Task allow unordered named attributes e.g. `@(unstable (reason "x") (feature thing))`
-    pub fn parse(attribute: &ast::Attribute, handler: &Handler) -> Result<Self> {
+    pub fn parse(attribute: &ast::Attribute, reporter: &Reporter) -> Result<Self> {
         let arguments = &mut &*attribute.arguments;
 
         fn optional_argument<'a>(
@@ -1190,7 +1191,7 @@ impl lowered_ast::AttributeKind {
         fn argument<'a>(
             arguments: &mut &'a [ast::AttributeArgument],
             span: Span,
-            handler: &Handler,
+            reporter: &Reporter,
         ) -> Result<&'a ast::AttributeArgument, AttributeParsingError> {
             let argument = arguments.first().ok_or_else(|| {
                 // @Task add more information about the arity and the argument types
@@ -1198,7 +1199,7 @@ impl lowered_ast::AttributeKind {
                     .code(Code::E019)
                     .message("too few attribute arguments provided")
                     .primary_span(span)
-                    .emit(handler);
+                    .report(reporter);
                 AttributeParsingError::Unrecoverable
             })?;
             *arguments = &arguments[1..];
@@ -1209,43 +1210,43 @@ impl lowered_ast::AttributeKind {
             Ok(match attribute.binder.as_str() {
                 "allow" => Self::Allow {
                     lint: lowered_ast::Lint::parse(
-                        argument(arguments, attribute.span, handler)?
-                            .path(Some("lint"), handler)?,
-                        handler,
+                        argument(arguments, attribute.span, reporter)?
+                            .path(Some("lint"), reporter)?,
+                        reporter,
                     )?,
                 },
                 "deny" => Self::Deny {
                     lint: lowered_ast::Lint::parse(
-                        argument(arguments, attribute.span, handler)?
-                            .path(Some("lint"), handler)?,
-                        handler,
+                        argument(arguments, attribute.span, reporter)?
+                            .path(Some("lint"), reporter)?,
+                        reporter,
                     )?,
                 },
                 "deprecated" => {
                     Diagnostic::unimplemented("attribute `deprecated")
                         .primary_span(attribute)
-                        .emit(handler);
+                        .report(reporter);
                     return Err(AttributeParsingError::Unrecoverable);
                 }
                 // @Beacon @Temporary @Bug the whole code for this
                 "documentation" => {
-                    let _ = argument(arguments, attribute.span, handler)?;
+                    let _ = argument(arguments, attribute.span, reporter)?;
                     Self::Documentation {
                         content: String::new(),
                     }
                 }
                 "forbid" => Self::Forbid {
                     lint: lowered_ast::Lint::parse(
-                        argument(arguments, attribute.span, handler)?
-                            .path(Some("lint"), handler)?,
-                        handler,
+                        argument(arguments, attribute.span, reporter)?
+                            .path(Some("lint"), reporter)?,
+                        reporter,
                     )?,
                 },
                 "foreign" => Self::Foreign,
                 "if" => {
                     Diagnostic::unimplemented("attribute `if`")
                         .primary_span(attribute)
-                        .emit(handler);
+                        .report(reporter);
                     return Err(AttributeParsingError::Unrecoverable);
                 }
                 "ignore" => Self::Ignore,
@@ -1256,8 +1257,8 @@ impl lowered_ast::AttributeKind {
                 "Int64" => Self::Int64,
                 "List" => Self::List,
                 "location" => {
-                    let path = argument(arguments, attribute.span, handler)?
-                        .text_literal(Some("path"), handler)?;
+                    let path = argument(arguments, attribute.span, reporter)?
+                        .text_literal(Some("path"), reporter)?;
 
                     Self::Location { path }
                 }
@@ -1268,15 +1269,15 @@ impl lowered_ast::AttributeKind {
                 "opaque" => Self::Opaque,
                 "public" => {
                     let reach = optional_argument(arguments)
-                        .map(|argument| argument.path(Some("reach"), handler))
+                        .map(|argument| argument.path(Some("reach"), reporter))
                         .transpose()?;
 
                     Self::Public { reach }
                 }
                 "recursion-limit" => {
-                    let depth = argument(arguments, attribute.span, handler)?;
+                    let depth = argument(arguments, attribute.span, reporter)?;
                     let depth = depth
-                        .number_literal(Some("depth"), handler)?
+                        .number_literal(Some("depth"), reporter)?
                         .parse::<u32>()
                         .map_err(|_| {
                             Diagnostic::error()
@@ -1286,7 +1287,7 @@ impl lowered_ast::AttributeKind {
                                     NAT32_INTERVAL_REPRESENTATION
                                 ))
                                 .primary_span(depth)
-                                .emit(handler);
+                                .report(reporter);
                             AttributeParsingError::Unrecoverable
                         })?;
 
@@ -1300,16 +1301,16 @@ impl lowered_ast::AttributeKind {
                 "unstable" => {
                     Diagnostic::unimplemented("attribute `unstable`")
                         .primary_span(attribute)
-                        .emit(handler);
+                        .report(reporter);
 
                     return Err(AttributeParsingError::Unrecoverable);
                 }
                 "Vector" => Self::Vector,
                 "warn" => Self::Warn {
                     lint: lowered_ast::Lint::parse(
-                        argument(arguments, attribute.span, handler)?
-                            .path(Some("lint"), handler)?,
-                        handler,
+                        argument(arguments, attribute.span, reporter)?
+                            .path(Some("lint"), reporter)?,
+                        reporter,
                     )?,
                 },
                 _ => {
@@ -1331,7 +1332,7 @@ impl lowered_ast::AttributeKind {
                     .code(Code::E019)
                     .message("too many attribute arguments provided")
                     .primary_span(argument.span.merge(arguments.last()))
-                    .emit(handler);
+                    .report(reporter);
                 health.taint();
             }
         }
@@ -1343,7 +1344,7 @@ impl lowered_ast::AttributeKind {
                         .code(Code::E011)
                         .message(format!("attribute `{}` does not exist", binder))
                         .primary_span(&binder)
-                        .emit(handler);
+                        .report(reporter);
                 }
             })
             .and_then(|attributes| health.of(attributes).into())
@@ -1367,7 +1368,7 @@ macro extractor($name:ident $repr:literal: $variant:ident => $ty:ty) {
     fn $name(
         &self,
         name: Option<&'static str>,
-        handler: &Handler,
+        reporter: &Reporter,
     ) -> Result<$ty, AttributeParsingError> {
         match &self.kind {
             ast::AttributeArgumentKind::$variant(literal) => Ok(literal.as_ref().clone()),
@@ -1377,18 +1378,18 @@ macro extractor($name:ident $repr:literal: $variant:ident => $ty:ty) {
                     ast::AttributeArgumentKind::$variant(literal) => Ok(literal.as_ref().clone()),
                     kind => {
                         invalid_attribute_argument_type((argument.span, kind.name()), $repr)
-                            .emit(handler);
+                            .report(reporter);
                         Err(AttributeParsingError::Unrecoverable)
                     }
                 },
-                handler,
+                reporter,
             ),
             kind => {
                 invalid_attribute_argument_type(
                     (self.span, kind.name()),
                     concat!("positional or named ", $repr),
                 )
-                .emit(handler);
+                .report(reporter);
                 Err(AttributeParsingError::Unrecoverable)
             }
         }
@@ -1425,14 +1426,14 @@ impl ast::NamedAttributeArgument {
         &self,
         name: Option<&'static str>,
         handle: impl FnOnce(&ast::AttributeArgument) -> Result<T, AttributeParsingError>,
-        handler: &Handler,
+        reporter: &Reporter,
     ) -> Result<T, AttributeParsingError> {
         match name {
             Some(name) => {
                 if self.binder.as_str() == name {
                     handle(&self.value)
                 } else {
-                    unexpected_named_attribute_argument(&self.binder, name).emit(handler);
+                    unexpected_named_attribute_argument(&self.binder, name).report(reporter);
                     Err(AttributeParsingError::Unrecoverable)
                 }
             }
@@ -1440,7 +1441,7 @@ impl ast::NamedAttributeArgument {
             None => {
                 Diagnostic::error()
                     .message("unexpected named attribute argument")
-                    .emit(handler);
+                    .report(reporter);
                 Err(AttributeParsingError::Unrecoverable)
             }
         }
@@ -1448,12 +1449,12 @@ impl ast::NamedAttributeArgument {
 }
 
 impl lowered_ast::Lint {
-    fn parse(binder: Path, handler: &Handler) -> Result<Self, AttributeParsingError> {
+    fn parse(binder: Path, reporter: &Reporter) -> Result<Self, AttributeParsingError> {
         Diagnostic::error()
             .code(Code::E018)
             .message(format!("lint `{}` does not exist", binder))
             .primary_span(binder.span())
-            .emit(handler);
+            .report(reporter);
         return Err(AttributeParsingError::Unrecoverable);
     }
 }

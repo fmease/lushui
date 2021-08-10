@@ -35,6 +35,10 @@
                 {
                     "name": "comment.line.triple-semicolon.lushui",
                     "match": ";;;.*"
+                },
+                {
+                    "name": "comment.line.shebang.lushui",
+                    "match": "\\A#!.*"
                 }
             ]
         },
@@ -49,7 +53,7 @@
         "keyword": {
             "patterns": [
                 {
-                    "match": "(?<![\\w\\-])(in|of|self|super|crate)(?![\\w\\-])",
+                    "match": "(?<![\\w\\-])(in|of|self|super|crate|crates)(?![\\w\\-])",
                     "name": "keyword.other.lushui"
                 },
                 {

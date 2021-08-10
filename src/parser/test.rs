@@ -14,12 +14,12 @@ use super::{
     Parser, Result,
 };
 use crate::{
-    diagnostics::Handler,
+    diagnostics::reporter::SilentReporter,
     error::{Health, Outcome},
     lexer::Lexer,
-    smallvec,
     span::{span, SourceFileIndex, SourceMap, Span},
 };
+use smallvec::smallvec;
 use std::{cell::RefCell, default::default, rc::Rc};
 
 fn parse_expression(source: &str) -> Result<Expression> {
@@ -28,12 +28,12 @@ fn parse_expression(source: &str) -> Result<Expression> {
         .borrow_mut()
         .add(None, source.to_owned())
         .unwrap_or_else(|_| unreachable!());
-    let handler = Handler::silent();
+    let reporter = SilentReporter.into();
     let Outcome {
         value: tokens,
         health,
-    } = Lexer::new(map.borrow().get(file), &handler).lex()?;
-    let mut parser = Parser::new(file, &tokens, map, &handler);
+    } = Lexer::new(map.borrow().get(file), &reporter).lex()?;
+    let mut parser = Parser::new(file, &tokens, map, &reporter);
     let expression = parser.parse_expression();
     if health.is_tainted() {
         return Err(());
@@ -47,13 +47,13 @@ fn parse_declaration(source: &str) -> Result<Declaration> {
         .borrow_mut()
         .add(None, source.to_owned())
         .unwrap_or_else(|_| unreachable!());
-    let handler = Handler::silent();
+    let reporter = SilentReporter.into();
     let Outcome {
         value: tokens,
         health,
-    } = Lexer::new(map.borrow().get(file), &handler).lex()?;
+    } = Lexer::new(map.borrow().get(file), &reporter).lex()?;
 
-    let mut parser = Parser::new(file.clone(), &tokens, map, &handler);
+    let mut parser = Parser::new(file.clone(), &tokens, map, &reporter);
     let declaration = parser.parse(test_module_name());
     if health == Health::Tainted {
         return Err(());

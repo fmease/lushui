@@ -1,10 +1,7 @@
 ;;; TEST pass run
 
-@(location "../../libs/core/core")
-module core
-
-use core.text.(concat Text)
-use core.nat.(self Nat)
+use crates.core.text.(concat Text)
+use crates.core.nat.(self Nat)
 
 base: Nat = 1034032
 

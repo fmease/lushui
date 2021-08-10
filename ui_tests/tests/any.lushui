@@ -1,9 +1,9 @@
 ;;; TEST pass check
 
-@(location "../../libs/core/core")
-module core
-
-use core.(list.(List empty cons) bool.(Bool false true) unit.(Unit unit))
+use crates.core.(
+    list.(List empty cons)
+    bool.(Bool false true)
+    unit.(Unit unit))
 
 data Any: Type of
     any: (A: Type) -> A -> Any

@@ -1,14 +1,13 @@
-//! Binding and scope handler.
-
 use super::{ffi, Expression, Substitution::Shift};
 use crate::{
-    diagnostics::{Code, Diagnostic, Handler},
+    crates::CrateStore,
+    diagnostics::{Code, Diagnostic, Reporter},
     entity::EntityKind,
     error::Result,
     format::AsDebug,
     hir::expr,
     lowered_ast::{Attributes, Number},
-    resolver::{CrateIndex, CrateScope, DeBruijnIndex, Identifier, Index},
+    resolver::{CrateScope, DeBruijnIndex, DeclarationIndex, Identifier, Index},
     span::Span,
 };
 
@@ -20,17 +19,20 @@ impl CrateScope {
         ffi::register_foreign_bindings(self);
     }
 
-    pub fn lookup_type(&self, index: CrateIndex) -> Option<Expression> {
-        self.bindings[index].type_()
+    pub fn lookup_type(&self, index: DeclarationIndex, crates: &CrateStore) -> Option<Expression> {
+        self.entity(index, crates).type_()
     }
 
     /// Look up the value of a binding.
-    pub fn lookup_value(&self, index: CrateIndex) -> ValueView {
-        self.bindings[index].value()
+    pub fn lookup_value(&self, index: DeclarationIndex, crates: &CrateStore) -> ValueView {
+        self.entity(index, crates).value()
     }
 
-    pub fn is_foreign(&self, index: CrateIndex) -> bool {
-        matches!(self.bindings[index].kind, EntityKind::Foreign { .. })
+    pub fn is_foreign(&self, index: DeclarationIndex) -> bool {
+        matches!(
+            self.get(self.__temporary_local_index(index)).kind,
+            EntityKind::Foreign { .. }
+        )
     }
 
     /// Try applying foreign binding.
@@ -48,9 +50,13 @@ impl CrateScope {
         &self,
         binder: Identifier,
         arguments: Vec<Expression>,
-        handler: &Handler,
+        crates: &CrateStore,
+        reporter: &Reporter,
     ) -> Result<Option<Expression>> {
-        match self.bindings[binder.crate_index().unwrap()].kind {
+        match self
+            .get(self.__temporary_local_index(binder.declaration_index().unwrap()))
+            .kind
+        {
             EntityKind::Foreign {
                 arity, function, ..
             } => Ok(if arguments.len() == arity {
@@ -65,7 +71,7 @@ impl CrateScope {
                     }
                 }
 
-                Some(function(value_arguments).into_expression(self, handler)?)
+                Some(function(value_arguments).into_expression(self, crates, reporter)?)
             } else {
                 None
             }),
@@ -73,7 +79,7 @@ impl CrateScope {
         }
     }
 
-    pub fn carry_out(&mut self, registration: Registration, handler: &Handler) -> Result {
+    pub fn carry_out(&mut self, registration: Registration, reporter: &Reporter) -> Result {
         use Registration::*;
 
         Ok(match registration {
@@ -82,20 +88,21 @@ impl CrateScope {
                 type_,
                 value,
             } => {
-                let index = binder.crate_index().unwrap();
+                let index = binder.declaration_index().unwrap();
+                let index = self.__temporary_local_index(index);
                 debug_assert!(
-                    self.bindings[index].is_untyped_value()
-                        || self.bindings[index].is_value_without_value()
+                    self.get(index).is_untyped_value() || self.get(index).is_value_without_value()
                 );
-                self.bindings[index].kind = EntityKind::Value {
+                self.get_mut(index).kind = EntityKind::Value {
                     type_,
                     expression: value,
                 };
             }
             DataBinding { binder, type_ } => {
-                let index = binder.crate_index().unwrap();
-                debug_assert!(self.bindings[index].is_untyped_value());
-                self.bindings[index].kind = EntityKind::DataType {
+                let index = binder.declaration_index().unwrap();
+                let index = self.__temporary_local_index(index);
+                debug_assert!(self.get(index).is_untyped_value());
+                self.get_mut(index).kind = EntityKind::DataType {
                     type_,
                     constructors: Vec::new(),
                 };
@@ -105,14 +112,13 @@ impl CrateScope {
                 type_,
                 data,
             } => {
-                let index = binder.crate_index().unwrap();
-                debug_assert!(self.bindings[index].is_untyped_value());
-                self.bindings[index].kind = EntityKind::Constructor { type_ };
+                let index = binder.declaration_index().unwrap();
+                let index = self.__temporary_local_index(index);
+                debug_assert!(self.get(index).is_untyped_value());
+                self.get_mut(index).kind = EntityKind::Constructor { type_ };
 
                 match self
-                    .bindings
-                    .get_mut(data.crate_index().unwrap())
-                    .unwrap()
+                    .get_mut(self.__temporary_local_index(data.declaration_index().unwrap()))
                     .kind
                 {
                     EntityKind::DataType {
@@ -123,10 +129,11 @@ impl CrateScope {
                 }
             }
             ForeignValueBinding { binder, type_ } => {
-                let index = binder.crate_index().unwrap();
-                debug_assert!(self.bindings[index].is_untyped_value());
+                let index = binder.declaration_index().unwrap();
+                let index = self.__temporary_local_index(index);
+                debug_assert!(self.get(index).is_untyped_value());
 
-                self.bindings[index].kind = match &self.ffi.foreign_bindings.remove(binder.as_str())
+                self.get_mut(index).kind = match &self.ffi.foreign_bindings.remove(binder.as_str())
                 {
                     Some(ffi::ForeignFunction { arity, function }) => EntityKind::Foreign {
                         type_,
@@ -139,11 +146,14 @@ impl CrateScope {
                             .code(Code::E060)
                             .message(format!("foreign binding `{}` is not registered", binder))
                             .primary_span(&binder)
-                            .emit(handler);
+                            .report(reporter);
                         return Err(());
                     }
                 };
             }
+            // @Beacon @Beacon @Task throw an error ("redefinition")
+            // if an earlier crates has already defined this type
+            // (and also if it's defined several times in the same crate!!)
             ForeignDataBinding { binder } => {
                 match self.ffi.foreign_types.get_mut(binder.as_str()) {
                     Some(index @ None) => {
@@ -155,7 +165,7 @@ impl CrateScope {
                             .code(Code::E060)
                             .message(format!("foreign data type `{}` is not registered", binder))
                             .primary_span(&binder)
-                            .emit(handler);
+                            .report(reporter);
                         return Err(());
                     }
                 }
@@ -200,18 +210,24 @@ impl CrateScope {
         &self,
         binder: &'static str,
         expression_span: Option<Span>,
-        handler: &Handler,
+        crates: &CrateStore,
+        reporter: &Reporter,
     ) -> Result<Expression> {
+        if let Some(binder) = crates.foreign_type(binder) {
+            return Ok(binder.clone().to_expression());
+        }
+
         match self.ffi.foreign_types.get(binder) {
             Some(Some(binder)) => Ok(binder.clone().to_expression()),
             Some(None) => {
                 Diagnostic::error()
                     .code(Code::E061)
+                    // @Beacon @Task write a waaay better message!!
                     .message(format!("foreign type `{}` is not defined", binder))
                     .when_present(expression_span, |diagnostic, span| {
                         diagnostic.labeled_primary_span(span, "the type of this expression")
                     })
-                    .emit(handler);
+                    .report(reporter);
                 Err(())
             }
             None => unreachable!(),
@@ -222,7 +238,8 @@ impl CrateScope {
         &self,
         number: &Number,
         expression_span: Option<Span>,
-        handler: &Handler,
+        crates: &CrateStore,
+        reporter: &Reporter,
     ) -> Result<Expression> {
         self.lookup_foreign_type(
             match number {
@@ -234,49 +251,50 @@ impl CrateScope {
                 Number::Int64(_) => ffi::Type::INT64,
             },
             expression_span,
-            handler,
+            crates,
+            reporter,
         )
     }
 
     pub fn lookup_unit_type(
         &self,
         expression_span: Option<Span>,
-        handler: &Handler,
+        reporter: &Reporter,
     ) -> Result<Expression> {
         Ok(self
             .ffi
             .inherent_types
             .unit
             .clone()
-            .ok_or_else(|| undefined_inherent_type("Unit", expression_span).emit(handler))?
+            .ok_or_else(|| undefined_inherent_type("Unit", expression_span).report(reporter))?
             .to_expression())
     }
 
     pub fn lookup_bool_type(
         &self,
         expression_span: Option<Span>,
-        handler: &Handler,
+        reporter: &Reporter,
     ) -> Result<Expression> {
         Ok(self
             .ffi
             .inherent_types
             .bool
             .clone()
-            .ok_or_else(|| undefined_inherent_type("Bool", expression_span).emit(handler))?
+            .ok_or_else(|| undefined_inherent_type("Bool", expression_span).report(reporter))?
             .to_expression())
     }
 
     pub fn lookup_option_type(
         &self,
         expression_span: Option<Span>,
-        handler: &Handler,
+        reporter: &Reporter,
     ) -> Result<Expression> {
         Ok(self
             .ffi
             .inherent_types
             .option
             .clone()
-            .ok_or_else(|| undefined_inherent_type("Option", expression_span).emit(handler))?
+            .ok_or_else(|| undefined_inherent_type("Option", expression_span).report(reporter))?
             .to_expression())
     }
 }
@@ -319,9 +337,9 @@ pub enum Registration {
 use std::fmt;
 
 impl crate::format::DisplayWith for Registration {
-    type Linchpin = CrateScope;
+    type Context<'a> = (&'a CrateScope, &'a CrateStore);
 
-    fn format(&self, scope: &CrateScope, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Registration::*;
 
         match self {
@@ -333,9 +351,9 @@ impl crate::format::DisplayWith for Registration {
                 let mut compound = f.debug_struct("ValueBinding");
                 compound
                     .field("binder", binder)
-                    .field("type", &type_.with(scope).as_debug());
+                    .field("type", &type_.with(context).as_debug());
                 match value {
-                    Some(value) => compound.field("value", &value.with(scope).as_debug()),
+                    Some(value) => compound.field("value", &value.with(context).as_debug()),
                     None => compound.field("value", &"?(none)"),
                 }
                 .finish()
@@ -343,7 +361,7 @@ impl crate::format::DisplayWith for Registration {
             DataBinding { binder, type_ } => f
                 .debug_struct("DataBinding")
                 .field("binder", binder)
-                .field("type", &type_.with(scope).as_debug())
+                .field("type", &type_.with(context).as_debug())
                 .finish(),
             ConstructorBinding {
                 binder,
@@ -352,13 +370,13 @@ impl crate::format::DisplayWith for Registration {
             } => f
                 .debug_struct("ConstructorBinding")
                 .field("binder", binder)
-                .field("type", &type_.with(scope).as_debug())
+                .field("type", &type_.with(context).as_debug())
                 .field("data", data)
                 .finish(),
             ForeignValueBinding { binder, type_ } => f
                 .debug_struct("ForeignValueBinding")
                 .field("binder", binder)
-                .field("type", &type_.with(scope).as_debug())
+                .field("type", &type_.with(context).as_debug())
                 .finish(),
             ForeignDataBinding { binder } => f
                 .debug_struct("ForeignDataBinding")
@@ -404,11 +422,16 @@ impl<'a> FunctionScope<'a> {
         }
     }
 
-    pub fn lookup_type(&self, binder: &Identifier, scope: &CrateScope) -> Option<Expression> {
+    pub fn lookup_type(
+        &self,
+        binder: &Identifier,
+        scope: &CrateScope,
+        crates: &CrateStore,
+    ) -> Option<Expression> {
         use Index::*;
 
         match binder.index {
-            Crate(index) => scope.lookup_type(index),
+            Declaration(index) => scope.lookup_type(index, crates),
             DeBruijn(index) => Some(self.lookup_type_with_depth(index, 0)),
             DeBruijnParameter => unreachable!(),
         }
@@ -453,11 +476,16 @@ impl<'a> FunctionScope<'a> {
         }
     }
 
-    pub fn lookup_value(&self, binder: &Identifier, scope: &CrateScope) -> ValueView {
+    pub fn lookup_value(
+        &self,
+        binder: &Identifier,
+        scope: &CrateScope,
+        crates: &CrateStore,
+    ) -> ValueView {
         use Index::*;
 
         match binder.index {
-            Crate(index) => scope.lookup_value(index),
+            Declaration(index) => scope.lookup_value(index, crates),
             DeBruijn(_) => ValueView::Neutral,
             DeBruijnParameter => unreachable!(),
         }
@@ -467,7 +495,7 @@ impl<'a> FunctionScope<'a> {
         use Index::*;
 
         match binder.index {
-            Crate(index) => scope.is_foreign(index),
+            Declaration(index) => scope.is_foreign(index),
             DeBruijn(_) => false,
             DeBruijnParameter => unreachable!(),
         }

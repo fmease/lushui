@@ -9,17 +9,14 @@
 //!
 //! It does two main passes and a (hopefully) small one for use-declarations to support
 //! out of order declarations.
-//!
-//! ## Future Features
-//!
-//! * crate system
 
 pub mod hir;
 mod scope;
 
 use crate::{
     ast,
-    diagnostics::{Diagnostic, Handler},
+    crates::CrateStore,
+    diagnostics::{Diagnostic, Reporter},
     entity::EntityKind,
     error::{Health, PossiblyErroneous, Result},
     lowered_ast::{self, AttributeKeys, AttributeKind},
@@ -27,7 +24,8 @@ use crate::{
 };
 use hir::{decl, expr, pat};
 pub use scope::{
-    CrateIndex, CrateScope, DeBruijnIndex, Exposure, FunctionScope, Identifier, Index, Namespace,
+    CrateScope, DeBruijnIndex, DeclarationIndex, Exposure, FunctionScope, Identifier, Index,
+    LocalDeclarationIndex, Namespace,
 };
 use scope::{OnlyModule, OnlyValue, RegistrationError, RestrictedExposure, ValueOrModule};
 use std::rc::Rc;
@@ -36,14 +34,15 @@ const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
 
 /// Additional context for name resolution.
 // @Task split context for start|finish resolve second does not store info about opacity
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct Context {
     // @Note if we were to rewrite/refactor the lowered AST to use indices for nested
     // declarations, then we could simply loop up the AST node and wouldn't need
     // `Opacity`
-    parent_data_binding: Option<(CrateIndex, Option<Opacity>)>,
+    parent_data_binding: Option<(LocalDeclarationIndex, Option<Opacity>)>,
 }
 
+#[derive(Debug)]
 enum Opacity {
     Transparent,
     Opaque,
@@ -52,12 +51,17 @@ enum Opacity {
 /// The state of the resolver.
 pub struct Resolver<'a> {
     scope: &'a mut CrateScope,
-    handler: &'a Handler,
+    crates: &'a CrateStore,
+    reporter: &'a Reporter,
 }
 
 impl<'a> Resolver<'a> {
-    pub fn new(scope: &'a mut CrateScope, handler: &'a Handler) -> Self {
-        Self { scope, handler }
+    pub fn new(scope: &'a mut CrateScope, crates: &'a CrateStore, reporter: &'a Reporter) -> Self {
+        Self {
+            scope,
+            crates,
+            reporter,
+        }
     }
 
     /// Resolve the names of a declaration.
@@ -73,13 +77,15 @@ impl<'a> Resolver<'a> {
             .map_err(|_| {
                 std::mem::take(&mut self.scope.duplicate_definitions)
                     .into_iter()
-                    .for_each(|(_, error)| Diagnostic::from(error).emit(&self.handler));
+                    .for_each(|(_, error)| Diagnostic::from(error).report(&self.reporter));
             })?;
 
-        self.scope.resolve_use_bindings(&self.handler);
+        self.scope
+            .resolve_use_bindings(&self.crates, &self.reporter);
 
         // @Task @Beacon don't return early here
-        self.scope.resolve_exposure_reaches(&self.handler)?;
+        self.scope
+            .resolve_exposure_reaches(&self.crates, &self.reporter)?;
 
         let declaration = self.finish_resolve_declaration(declaration, None, Context::default());
 
@@ -102,7 +108,7 @@ impl<'a> Resolver<'a> {
     fn start_resolve_declaration(
         &mut self,
         declaration: &lowered_ast::Declaration,
-        module: Option<CrateIndex>,
+        module: Option<LocalDeclarationIndex>,
         context: Context,
     ) -> Result<(), RegistrationError> {
         use lowered_ast::DeclarationKind::*;
@@ -138,8 +144,10 @@ impl<'a> Resolver<'a> {
 
                 if self.scope.program_entry.is_none() && module == self.scope.root() {
                     if value.binder.as_str() == PROGRAM_ENTRY_IDENTIFIER {
-                        self.scope.program_entry =
-                            Some(Identifier::new(index, value.binder.clone()));
+                        self.scope.program_entry = Some(Identifier::new(
+                            self.scope.global_index(index),
+                            value.binder.clone(),
+                        ));
                     }
                 }
             }
@@ -190,7 +198,7 @@ impl<'a> Resolver<'a> {
                 let (namespace, module_opacity) = context.parent_data_binding.unwrap();
 
                 let exposure = match module_opacity.unwrap() {
-                    Opacity::Transparent => self.scope.bindings[namespace].exposure.clone(),
+                    Opacity::Transparent => self.scope.get(namespace).exposure.clone(),
                     // as if a @(public super) was attached to the constructor
                     Opacity::Opaque => RestrictedExposure::Resolved { reach: module }.into(),
                 };
@@ -284,7 +292,7 @@ impl<'a> Resolver<'a> {
     fn finish_resolve_declaration(
         &mut self,
         declaration: lowered_ast::Declaration,
-        module: Option<CrateIndex>,
+        module: Option<DeclarationIndex>,
         context: Context,
     ) -> Result<hir::Declaration> {
         use lowered_ast::DeclarationKind::*;
@@ -323,6 +331,9 @@ impl<'a> Resolver<'a> {
                 let type_annotation =
                     self.resolve_expression(data.type_annotation, &FunctionScope::Module(module));
 
+                // @Beacon @Question wouldn't it be great if that method returned a
+                // LocalDeclarationIndex instead of an Identifier?
+                // or maybe even a *LocalIdentifier?
                 let binder = self
                     .scope
                     .reobtain_resolved_identifier::<OnlyValue>(&data.binder, module);
@@ -336,7 +347,9 @@ impl<'a> Resolver<'a> {
                                 Some(module),
                                 Context {
                                     parent_data_binding: Some((
-                                        binder.crate_index().unwrap(),
+                                        self.scope
+                                            .local_index(binder.declaration_index().unwrap())
+                                            .unwrap(),
                                         None,
                                     )),
                                 },
@@ -365,7 +378,8 @@ impl<'a> Resolver<'a> {
 
                 let binder = self.scope.reobtain_resolved_identifier::<OnlyValue>(
                     &constructor.binder,
-                    context.parent_data_binding.unwrap().0,
+                    self.scope
+                        .__temporary_global_index(context.parent_data_binding.unwrap().0),
                 );
 
                 decl! {
@@ -382,7 +396,7 @@ impl<'a> Resolver<'a> {
                     Some(module) => self
                         .scope
                         .reobtain_resolved_identifier::<OnlyModule>(&submodule.binder, module),
-                    None => self.scope.root(),
+                    None => self.scope.__temporary_global_index(self.scope.root()),
                 };
 
                 let mut health = Health::Untainted;
@@ -491,7 +505,7 @@ impl<'a> Resolver<'a> {
                 Binding {
                     expression.attributes,
                     expression.span;
-                    binder: scope.resolve_binding(&binding.binder, &self.scope, &self.handler)?,
+                    binder: scope.resolve_binding(&binding.binder, &self.scope, &self.crates, &self.reporter)?,
                 }
             },
             Lambda(lambda) => {
@@ -526,7 +540,7 @@ impl<'a> Resolver<'a> {
             UseIn => {
                 return Err(Diagnostic::unimplemented("use/in expression")
                     .primary_span(&expression)
-                    .emit(&self.handler));
+                    .report(&self.reporter));
             }
             CaseAnalysis(analysis) => {
                 let subject = self.resolve_expression(analysis.subject.clone(), scope)?;
@@ -573,7 +587,7 @@ impl<'a> Resolver<'a> {
                 Binding {
                     pattern.attributes,
                     pattern.span;
-                    binder: scope.resolve_binding(&binding.binder, &self.scope, &self.handler)?,
+                    binder: scope.resolve_binding(&binding.binder, &self.scope, &self.crates,  &self.reporter)?,
                 }
             },
             Binder(binder) => {

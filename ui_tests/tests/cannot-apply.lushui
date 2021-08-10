@@ -1,6 +1,3 @@
 ;;; TEST fail check
 
-@(location "../../libs/core/core")
-module core
-
 Abomination: Type = 0 1

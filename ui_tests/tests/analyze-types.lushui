@@ -1,9 +1,6 @@
 ;;; TEST fail check
 
-@(location "../../libs/core/core")
-module core
-
-use core.bool.(false true Bool)
+use crates.core.bool.(false true Bool)
 
 is-nat32-or-nat64 (A: Type -> Type): Bool =
     case A of

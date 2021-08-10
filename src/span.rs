@@ -306,7 +306,7 @@ pub(crate) fn span(start: u32, end: u32) -> Span {
 
 mod spanning {
     use super::{Span, Spanned};
-    use crate::SmallVec;
+    use crate::util::SmallVec;
 
     pub trait Spanning: PossiblySpanning {
         fn span(&self) -> Span;

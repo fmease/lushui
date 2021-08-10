@@ -1,4 +1,4 @@
-use super.(option.Option bool.Bool text.Text)
+use crate.(option.Option bool.Bool text.Text)
 
 @public @foreign
 data Nat: Type
@@ -72,8 +72,7 @@ greater-equal: Nat -> Nat -> Bool
 @public @foreign
 display: Nat -> Text
 
-@public
-use super.(bool ordering)
+use crate.(bool ordering)
 
 @public
 compare (n m: Nat): ordering.Ordering =
@@ -84,4 +83,4 @@ compare (n m: Nat): ordering.Ordering =
             bool.false => ordering.greater
 
 ;;; @public @foreign
-;;; to-int: Nat -> Nat -> core.int.Int
+;;; to-int: Nat -> Nat -> crate.int.Int

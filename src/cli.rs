@@ -1,8 +1,4 @@
-use std::{
-    mem::take,
-    path::{Path, PathBuf},
-    str::FromStr,
-};
+use std::{path::PathBuf, str::FromStr};
 
 use clap::AppSettings;
 
@@ -15,8 +11,13 @@ const VERSION: &str = concat!(
     ")"
 );
 
+// @Task add --color=always|never|auto
+// @Task add --link=<crate-name>
+// @Task add explain <codes...>
 pub struct Application {
     pub command: Command,
+    pub source_file_path: Option<PathBuf>,
+    pub unlink_core: bool,
     pub interpreter: Interpreter,
     pub dump: DumpInformation,
     pub show_binding_indices: bool,
@@ -36,12 +37,18 @@ impl Application {
             // .setting(AppSettings::HidePossibleValuesInHelp)
             .setting(AppSettings::SubcommandRequiredElseHelp)
             .arg(
+                clap::Arg::with_name("unlink-core")
+                    .long("unlink-core")
+                    .global(true)
+                    .help("Ceases linking with the library `core`"),
+            )
+            .arg(
                 clap::Arg::with_name("interpreter")
                     .long("interpreter")
                     .takes_value(true)
                     .global(true)
                     .possible_values(&["tree-walk", "byte-code"])
-                    .help("@Task"),
+                    .help("Sets the interpreter"),
             )
             .arg(
                 clap::Arg::with_name("unstable-options")
@@ -59,6 +66,7 @@ impl Application {
                         "dump-hir",
                         "dump-untyped-scope",
                         "dump-scope",
+                        // @Beacon @Task rename to show-declaration-indices
                         "show-binding-indices",
                         "lex-only",
                         "parse-only",
@@ -91,16 +99,12 @@ impl Application {
             .get_matches();
 
         let command = matches.subcommand.as_ref().unwrap();
+        let source_file_path = command.matches.value_of_os("FILE").map(Into::into);
+
         let command = match &*command.name {
-            "build" => Command::Build {
-                source_file_path: PathBuf::from(command.matches.value_of_os("FILE").unwrap()),
-            },
-            "check" => Command::Check {
-                source_file_path: PathBuf::from(command.matches.value_of_os("FILE").unwrap()),
-            },
-            "run" => Command::Run {
-                source_file_path: PathBuf::from(command.matches.value_of_os("FILE").unwrap()),
-            },
+            "build" => Command::Build,
+            "check" => Command::Check,
+            "run" => Command::Run,
             _ => unreachable!(),
         };
 
@@ -141,6 +145,8 @@ impl Application {
 
         Self {
             command,
+            source_file_path,
+            unlink_core: matches.is_present("unlink-core"),
             interpreter: matches
                 .value_of("interpreter")
                 .map(|input| input.parse().unwrap())
@@ -152,15 +158,11 @@ impl Application {
     }
 }
 
+#[derive(Default)]
 pub enum Interpreter {
+    #[default] // the most stable one
     TreeWalk,
     ByteCode,
-}
-
-impl Default for Interpreter {
-    fn default() -> Self {
-        Self::TreeWalk // most stable
-    }
 }
 
 impl FromStr for Interpreter {
@@ -216,7 +218,7 @@ impl FromStr for PhaseRestriction {
 }
 
 pub enum Command {
-    Build { source_file_path: PathBuf },
-    Check { source_file_path: PathBuf },
-    Run { source_file_path: PathBuf },
+    Build,
+    Check,
+    Run,
 }

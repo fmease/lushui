@@ -1,9 +1,6 @@
 ;;; TEST pass run
 
-@(location "../../libs/core/core")
-module core
-
-use core.nat.(Nat + *)
+use crates.core.nat.(Nat + *)
 
 main: Nat =
     let alpha: Nat = 12 in

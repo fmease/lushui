@@ -231,6 +231,7 @@ fn main_() -> Result<(), ()> {
                         if has_file_extension(path, "stdout") || has_file_extension(path, "stderr")
                         {
                             // handled later together with the corresponding Lushui file
+                            // @Task throw an error if no corresp. Lushui file is found
                             continue;
                         }
 

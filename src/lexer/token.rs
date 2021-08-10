@@ -2,7 +2,7 @@ use crate::{
     diagnostics::{Code, Diagnostic},
     span::{Span, Spanning},
     util::obtain,
-    Atom,
+    util::Atom,
 };
 use std::fmt;
 
@@ -213,12 +213,12 @@ pub enum TokenKind {
     Case,
     /// For paths relative to the current crate.
     Crate,
+    /// For paths relative to the collection of linked crates.
+    Crates,
     /// For data declarations.
     Data,
     /// For do-blocks.
     Do,
-    /// For paths relative to the collection of external crates.
-    External,
     /// For let- and use-bindings.
     ///
     /// That is let/in-expressions and statements and
@@ -249,10 +249,11 @@ pub enum TokenKind {
 impl TokenKind {
     /// Test if the token may appear at the start of a [path](crate::ast::Path).
     pub const fn is_path_head(self) -> bool {
-        matches!(
-            self,
-            Identifier | Punctuation | External | Crate | Super | Self_
-        )
+        matches!(self, Identifier | Punctuation) || self.is_path_hanger()
+    }
+
+    pub const fn is_path_hanger(self) -> bool {
+        matches!(self, Crates | Crate | Super | Self_)
     }
 
     pub const fn is_terminator(self) -> bool {
@@ -305,9 +306,9 @@ impl fmt::Display for TokenKind {
             As => keyword!(as),
             Case => keyword!(case),
             Crate => keyword!(crate),
+            Crates => keyword!(crates),
             Data => keyword!(data),
             Do => keyword!(do),
-            External => keyword!(external),
             In => keyword!(in),
             Lazy => keyword!(lazy),
             Let => keyword!(let),
@@ -358,9 +359,9 @@ pub fn parse_keyword(source: &str) -> Option<TokenKind> {
         "as" => As,
         "case" => Case,
         "crate" => Crate,
+        "crates" => Crates,
         "data" => Data,
         "do" => Do,
-        "external" => External,
         "in" => In,
         "lazy" => Lazy,
         "let" => Let,

@@ -5,10 +5,13 @@
 use std::{default::default, fmt};
 
 use crate::{
+    crates::CrateStore,
     error::PossiblyErroneous,
     format::DisplayWith,
     hir::Expression,
-    resolver::{CrateIndex, CrateScope, Exposure, Identifier, Namespace},
+    resolver::{
+        CrateScope, DeclarationIndex, Exposure, Identifier, LocalDeclarationIndex, Namespace,
+    },
     typer::interpreter::{ffi::NakedForeignFunction, scope::ValueView},
 };
 
@@ -29,7 +32,7 @@ pub struct Entity {
     /// Source information of the definition site.
     pub source: crate::ast::Identifier,
     /// The namespace this entity is a member of.
-    pub parent: Option<CrateIndex>,
+    pub parent: Option<LocalDeclarationIndex>,
     pub exposure: Exposure,
     pub kind: EntityKind,
 }
@@ -140,19 +143,18 @@ impl Entity {
 }
 
 impl DisplayWith for Entity {
-    type Linchpin = <EntityKind as DisplayWith>::Linchpin;
+    type Context<'a> = <EntityKind as DisplayWith>::Context<'a>;
 
-    fn format(&self, scope: &CrateScope, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use std::borrow::Cow;
-
-        let parent = self.parent.map_or(Cow::Borrowed("-1C"), |parent| {
-            format!("{:?}", parent).into()
-        });
+    fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let parent = self
+            .parent
+            .map(|parent| format!("{parent:?}."))
+            .unwrap_or_default();
         let source = &self.source;
         let exposure = &self.exposure;
-        let kind = self.kind.with(scope);
+        let kind = self.kind.with(context);
 
-        write!(f, "{parent:>5}.{source:20} {exposure:?} |-> {kind}")
+        write!(f, "{parent:>5}{source:20} {exposure:?} |-> {kind}")
     }
 }
 
@@ -167,7 +169,7 @@ pub enum EntityKind {
     /// The `reference is never a `Use` itself.
     /// Nested aliases were already collapsed by [CrateScope::collapse_use_chain].
     Use {
-        reference: CrateIndex,
+        reference: DeclarationIndex,
     },
     UnresolvedUse,
 
@@ -213,21 +215,23 @@ impl EntityKind {
 }
 
 impl DisplayWith for EntityKind {
-    type Linchpin = CrateScope;
+    type Context<'a> = (&'a CrateScope, &'a CrateStore);
 
-    fn format(&self, scope: &CrateScope, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use EntityKind::*;
 
         match self {
             UntypedValue => write!(f, "untyped value"),
-            Module(namespace) => write!(f, "module: {:?}", namespace),
-            UntypedDataType(namespace) => write!(f, "untyped data type: {:?}", namespace),
-            UntypedConstructor(namespace) => write!(f, "untyped constructor: {:?}", namespace),
+            Module(namespace) => write!(f, "module of {:?}", namespace),
+            UntypedDataType(namespace) => write!(f, "untyped data type of {:?}", namespace),
+            UntypedConstructor(namespace) => write!(f, "untyped constructor of {:?}", namespace),
             Use { reference } => write!(f, "use {:?}", reference),
             UnresolvedUse => write!(f, "unresolved use"),
             Value { type_, expression } => match expression {
-                Some(expression) => write!(f, "{}: {}", expression.with(scope), type_.with(scope)),
-                None => write!(f, ": {}", type_.with(scope)),
+                Some(expression) => {
+                    write!(f, "{}: {}", expression.with(context), type_.with(context))
+                }
+                None => write!(f, ": {}", type_.with(context)),
             },
             DataType {
                 type_,
@@ -235,14 +239,14 @@ impl DisplayWith for EntityKind {
             } => write!(
                 f,
                 "data: {} = {}",
-                type_.with(scope),
+                type_.with(context),
                 constructors
                     .iter()
                     .map(|constructor| format!("{} ", constructor))
                     .collect::<String>()
             ),
-            Constructor { type_ } => write!(f, "constructor: {}", type_.with(scope)),
-            Foreign { type_, .. } => write!(f, "foreign: {}", type_.with(scope)),
+            Constructor { type_ } => write!(f, "constructor: {}", type_.with(context)),
+            Foreign { type_, .. } => write!(f, "foreign: {}", type_.with(context)),
             Error => write!(f, "error"),
         }
     }

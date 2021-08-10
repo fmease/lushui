@@ -1,10 +1,7 @@
 ;;; TEST fail check
 ;;; @Task test more branches
 
-@(location "../../../libs/core/core")
-module core
-
-use core.nat.Nat
+use crates.core.nat.Nat
 
 a: Nat = tree-sinner
 

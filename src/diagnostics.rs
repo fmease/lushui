@@ -1,12 +1,7 @@
 //! The diagnostics system.
 //!
-//! We currently solely emit to stderr and as a result, we only format for the use in
-//! a terminal (TUI). In the future, we might want to emit as JSON or HTML, too.
-//!
 //! ## Unimplemented Features
 //!
-//! * multiline subdiagnostic messages that are properly indented (aligned with the first
-//!   character of the message)
 //! * (maybe) subdiagnostics with a span
 //! * emitting JSON
 //! * display style: rich (current system) <-> short
@@ -16,7 +11,6 @@
 //! * unindenting long lines of highlighted source code (i.e. mapping initial whitespace to
 //!   a single one)
 //! * warning API/manager which can understand lushui's allows/denies/… directives
-//! * unifying error handling API
 //!
 //! ## Issues
 //!
@@ -27,35 +21,39 @@
 
 use crate::{
     span::{SourceMap, Span, Spanning},
-    Str,
+    util::Str,
 };
 use colored::{Color, Colorize};
-pub use handler::Handler;
-use std::{borrow::Cow, collections::BTreeSet, fmt::Debug, iter::once};
+pub use reporter::Reporter;
+use std::{
+    borrow::Cow,
+    collections::BTreeSet,
+    fmt::{self, Debug},
+    iter::once,
+};
 use unicode_width::UnicodeWidthStr;
 
-pub mod handler;
+pub mod reporter;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 struct UnboxedDiagnostic {
     highlights: BTreeSet<Highlight>,
     subdiagnostics: Vec<Subdiagnostic>,
-    level: Level,
+    severity: Severity,
     code: Option<Code>,
     message: Option<Str>,
 }
 
 /// A complex error message optionally with source location information.
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
-// @Beacon @Task once we stop storing any those (except inside Handler), we need to unbox this!
 #[must_use]
 pub struct Diagnostic(Box<UnboxedDiagnostic>);
 
 impl Diagnostic {
     /// Create a bare-bones diagnostic with a certain level of severity.
-    fn new(level: Level) -> Self {
+    fn new(severity: Severity) -> Self {
         Self(Box::new(UnboxedDiagnostic {
-            level,
+            severity,
             code: None,
             message: None,
             highlights: BTreeSet::new(),
@@ -63,32 +61,32 @@ impl Diagnostic {
         }))
     }
 
-    /// Diagnostic of an internal compiler error.
+    /// Create a diagnostic for an internal compiler error (ICE).
     pub fn bug() -> Self {
-        Self::new(Level::Bug)
+        Self::new(Severity::Bug)
     }
 
-    /// Diagnostic of a user error.
+    /// Create a diagnostic for a user error.
     pub fn error() -> Self {
-        Self::new(Level::Error)
+        Self::new(Severity::Error)
     }
 
-    /// Diagnostic of a warning.
+    /// Create a diagnostic for a warning.
     pub fn warning() -> Self {
-        Self::new(Level::Warning)
+        Self::new(Severity::Warning)
     }
 
-    /// Diagnostic of an internal debugging message.
+    /// Create a diagnostic for an internal debugging message.
     pub fn debug() -> Self {
-        Self::new(Level::Debug)
+        Self::new(Severity::Debug)
     }
 
-    /// Diagnostic of an unimplemented language feature.
+    /// Create a diagnostic for an unimplemented language feature.
     pub fn unimplemented(message: impl Into<Str>) -> Self {
         Self::error().message(format!("{} not supported yet", message.into()))
     }
 
-    /// Add a suitable code to the diagnostic.
+    /// Add an (error) code to the diagnostic.
     pub fn code(mut self, code: Code) -> Self {
         self.0.code = Some(code);
         self
@@ -101,7 +99,7 @@ impl Diagnostic {
     /// * No line breaks
     /// * Do not start the message with an upper case letter
     /// * Single sentence only without a final period or exclamation mark
-    /// * When quoting code, surround them in backticks
+    /// * When quoting code, surround it with backticks
     /// * Try not to quote complex expressions (the error messages for
     ///   type mismatches disobey this rule right now, this needs to change)
     /// * The message should be able to stand on its own without the additional
@@ -170,8 +168,10 @@ impl Diagnostic {
         self.spans(spannings, Some(label.into()), Role::Primary)
     }
 
-    fn subdiagnostic(mut self, level: Sublevel, message: Str) -> Self {
-        self.0.subdiagnostics.push(Subdiagnostic { level, message });
+    fn subdiagnostic(mut self, severity: Subseverity, message: Str) -> Self {
+        self.0
+            .subdiagnostics
+            .push(Subdiagnostic { severity, message });
         self
     }
 
@@ -183,7 +183,7 @@ impl Diagnostic {
     /// * It is allowed to use colons `:` but try not to
     /// * May span multiple lines
     pub fn note(self, message: impl Into<Str>) -> Self {
-        self.subdiagnostic(Sublevel::Note, message.into())
+        self.subdiagnostic(Subseverity::Note, message.into())
     }
 
     /// Add steps or tips to solve the diagnosed issue.
@@ -195,12 +195,12 @@ impl Diagnostic {
     /// * It is allowed to use colons `:` but try not to
     /// * May span multiple lines
     pub fn help(self, message: impl Into<Str>) -> Self {
-        self.subdiagnostic(Sublevel::Help, message.into())
+        self.subdiagnostic(Subseverity::Help, message.into())
     }
 
     /// Add an internal debugging message.
     pub fn subdebug(self, message: impl Into<Str>) -> Self {
-        self.subdiagnostic(Sublevel::Debug, message.into())
+        self.subdiagnostic(Subseverity::Debug, message.into())
     }
 
     /// Add to the diagnostic depending on a boolean condition.
@@ -219,19 +219,9 @@ impl Diagnostic {
         }
     }
 
-    pub fn emit(self, handler: &Handler) {
-        handler.emit(self);
-    }
-
-    /// Emit the diagnostic to `stderr`.
-    ///
-    /// ## Panics
-    ///
-    /// Panics if the diagnostic refers to code snippets by [Span] but no source
-    /// map is provided.
-    pub fn emit_to_stderr(&self, map: Option<&SourceMap>) {
-        eprintln!("{}", self.format_for_terminal(map));
-        eprintln!();
+    /// Report the diagnostic.
+    pub fn report(self, reporter: &Reporter) {
+        reporter.report(self);
     }
 
     /// Format the diagnostic for the use in a terminal.
@@ -247,14 +237,14 @@ impl Diagnostic {
 
         // header
         {
-            let level = self.0.level.to_string();
+            let severity = self.0.severity.to_string();
             let code = &self
                 .0
                 .code
-                .map(|code| format!("[{code}]").color(self.0.level.color()))
+                .map(|code| format!("[{code}]").color(self.0.severity.color()))
                 .unwrap_or_default();
 
-            message += &format!("{level}{code}");
+            message += &format!("{severity}{code}");
         }
 
         // text message
@@ -312,7 +302,7 @@ impl Diagnostic {
                         .to_string();
                 }
 
-                let role_color = highlight.role.color(self.0.level.color());
+                let role_color = highlight.role.color(self.0.severity.color());
 
                 let label = match &highlight.label {
                     Some(label) => label,
@@ -351,7 +341,7 @@ impl Diagnostic {
                                 );
                             }
 
-                            let space = " ".repeat(
+                            let spacing = " ".repeat(
                                 lines.first_line.highlight_prefix_width
                                     + lines.first_line.highlight_width,
                             );
@@ -359,7 +349,7 @@ impl Diagnostic {
                             for label_line in label_lines {
                                 let label_line = label_line.color(role_color);
 
-                                message += &format!("\n{padding} {bar} {space} {label_line}");
+                                message += &format!("\n{padding} {bar} {spacing} {label_line}");
                             }
                         }
                     }
@@ -423,12 +413,12 @@ impl Diagnostic {
                                 );
                                 }
 
-                                let space = " ".repeat(1 + final_line.highlight_width + 1);
+                                let spacing = " ".repeat(1 + final_line.highlight_width + 1);
 
                                 for label_line in label_lines {
                                     let label_line = label_line.color(role_color);
 
-                                    message += &format!("\n{padding} {bar} {space} {label_line}");
+                                    message += &format!("\n{padding} {bar} {spacing} {label_line}");
                                 }
                             }
                         }
@@ -442,7 +432,7 @@ impl Diagnostic {
         }
 
         for subdiagnostic in &self.0.subdiagnostics {
-            message += &format!("\n{padding}{}: ", subdiagnostic.level);
+            message += &format!("\n{padding}{}: ", subdiagnostic.severity);
 
             let mut message_lines = subdiagnostic.message.split('\n');
 
@@ -451,8 +441,8 @@ impl Diagnostic {
             }
 
             for message_line in message_lines {
-                let level_space = " ".repeat(subdiagnostic.level.name().width() + 1);
-                message += &format!("\n{padding}{level_space} {message_line}",);
+                let severity_spacing = " ".repeat(subdiagnostic.severity.name().width() + 1);
+                message += &format!("\n{padding}{severity_spacing} {message_line}",);
             }
         }
 
@@ -469,22 +459,22 @@ const DEBUG_COLOR: Color = Color::BrightMagenta;
 /// Part of a [complex error message](Diagnostic) providing extra text messages.
 #[derive(PartialEq, Eq, Clone, PartialOrd, Ord)]
 struct Subdiagnostic {
-    level: Sublevel,
+    severity: Subseverity,
     message: Str,
 }
 
 /// Level of severity of a diagnostic.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, PartialOrd, Ord)]
-enum Level {
-    /// Internal compiler error.
+enum Severity {
+    /// An internal compiler error (ICE).
     Bug,
-    /// User error.
+    /// A user error.
     Error,
     Warning,
     Debug,
 }
 
-impl Level {
+impl Severity {
     const fn name(self) -> &'static str {
         match self {
             Self::Bug => "internal compiler error",
@@ -503,16 +493,14 @@ impl Level {
     }
 }
 
-use std::fmt;
-
-impl fmt::Display for Level {
+impl fmt::Display for Severity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.name().color(self.color()).bold())
     }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, PartialOrd, Ord)]
-enum Sublevel {
+enum Subseverity {
     /// Auxiliary note.
     Note,
     /// Steps to solve an issue.
@@ -520,7 +508,7 @@ enum Sublevel {
     Debug,
 }
 
-impl Sublevel {
+impl Subseverity {
     const fn name(self) -> &'static str {
         match self {
             Self::Note => "note",
@@ -537,7 +525,7 @@ impl Sublevel {
     }
 }
 
-impl fmt::Display for Sublevel {
+impl fmt::Display for Subseverity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.name().color(self.color()).bold())
     }

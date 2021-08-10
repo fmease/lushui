@@ -1,9 +1,6 @@
 ;;; TEST pass check
 
-@(location "../../libs/core/core")
-module core
-
-use core.(nat.(Nat multiply) text.(Text concat))
+use crates.core.(nat.(Nat multiply) text.(Text concat))
 
 some-result: Nat = multiply 16 4
 

@@ -8,10 +8,10 @@ use crate::{
     diagnostics::{Code, Diagnostic},
     error::PossiblyErroneous,
     lexer::{Token, TokenKind},
-    smallvec,
     span::{PossiblySpanning, SourceFileIndex, Span, Spanned, Spanning},
-    Atom, SmallVec,
+    util::{Atom, SmallVec},
 };
+use smallvec::smallvec;
 use std::{convert::TryFrom, convert::TryInto};
 
 pub use format::Format;
@@ -234,10 +234,19 @@ pub struct TypedHole {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Path {
     pub hanger: Option<Hanger>,
+    // @Task better name: identifier_segments
+    // @Note non-empty if hanger is None
     pub segments: SmallVec<Identifier, 1>,
 }
 
 impl Path {
+    pub fn from_segments(segments: SmallVec<Identifier, 1>) -> Self {
+        Self {
+            hanger: None,
+            segments,
+        }
+    }
+
     /// Construct a single identifier segment path.
     ///
     /// May panic.
@@ -305,16 +314,30 @@ impl Path {
         self.hanger.is_none() && self.segments.len() == 1
     }
 
-    pub fn tail(&self) -> Self {
+    pub fn unhanged(self) -> Self {
         Self {
             hanger: None,
-            // @Task avoid allocation, try to design it as a slice `&self.segments[1..]`
-            segments: if self.hanger.is_some() {
-                self.segments.clone()
-            } else {
-                self.segments.iter().skip(1).cloned().collect()
-            },
+            segments: self.segments,
         }
+    }
+
+    // @Task replace thing function with something that does not allocate
+    // @Note we'd like to have a PathView which uses slices of segments
+    pub fn tail(&self) -> Option<Self> {
+        let segments = if self.hanger.is_some() {
+            self.segments.clone()
+        } else {
+            let segments: SmallVec<_, 1> = self.segments.iter().skip(1).cloned().collect();
+            match segments.is_empty() {
+                true => return None,
+                false => segments,
+            }
+        };
+
+        Some(Self {
+            hanger: None,
+            segments,
+        })
     }
 
     // @Task avoid allocation, try to design it as a slice `&self.segments[..LEN - 1]`
@@ -525,7 +548,7 @@ pub type Hanger = Spanned<HangerKind>;
 /// The non-identifier head of a path.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HangerKind {
-    External,
+    Crates,
     Crate,
     Super,
     Self_,
@@ -534,7 +557,7 @@ pub enum HangerKind {
 impl HangerKind {
     pub const fn name(self) -> &'static str {
         match self {
-            Self::External => "external",
+            Self::Crates => "crates",
             Self::Crate => "crate",
             Self::Super => "super",
             Self::Self_ => "self",
@@ -547,7 +570,7 @@ impl TryFrom<TokenKind> for HangerKind {
 
     fn try_from(kind: TokenKind) -> Result<Self, Self::Error> {
         Ok(match kind {
-            TokenKind::External => Self::External,
+            TokenKind::Crates => Self::Crates,
             TokenKind::Crate => Self::Crate,
             TokenKind::Super => Self::Super,
             TokenKind::Self_ => Self::Self_,
@@ -630,16 +653,11 @@ pub use Explicitness::*;
 ///
 /// In the context of applications, [Implicit] means that the argument is passed explicitly
 /// even though the parameter is marked implicit.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Explicitness {
     Implicit,
+    #[default]
     Explicit,
-}
-
-impl Default for Explicitness {
-    fn default() -> Self {
-        Explicit
-    }
 }
 
 #[derive(Clone, Copy)]

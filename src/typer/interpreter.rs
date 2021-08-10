@@ -18,7 +18,8 @@ pub(crate) mod scope;
 use super::Expression;
 use crate::{
     ast::Explicit,
-    diagnostics::{Code, Diagnostic, Handler},
+    crates::CrateStore,
+    diagnostics::{Code, Diagnostic, Reporter},
     error::{PossiblyErroneous, Result},
     format::DisplayWith,
     hir::{self, expr},
@@ -66,12 +67,17 @@ impl<'a> Context<'a> {
 // @Task add recursion depth
 pub struct Interpreter<'a> {
     scope: &'a CrateScope,
-    handler: &'a Handler,
+    crates: &'a CrateStore,
+    reporter: &'a Reporter,
 }
 
 impl<'a> Interpreter<'a> {
-    pub fn new(scope: &'a CrateScope, handler: &'a Handler) -> Self {
-        Self { scope, handler }
+    pub fn new(scope: &'a CrateScope, crates: &'a CrateStore, reporter: &'a Reporter) -> Self {
+        Self {
+            scope,
+            crates,
+            reporter,
+        }
     }
 
     /// Run the entry point of the crate.
@@ -90,7 +96,7 @@ impl<'a> Interpreter<'a> {
             Diagnostic::error()
                 .code(Code::E050)
                 .message("missing program entry")
-                .emit(&self.handler);
+                .report(self.reporter);
             Err(())
         }
     }
@@ -334,16 +340,21 @@ impl<'a> Interpreter<'a> {
 
         // @Bug we currently don't support zero-arity foreign functions
         Ok(match expression.clone().kind {
-            Binding(binding) => match context.scope.lookup_value(&binding.binder, &self.scope) {
-                // @Question is this normalization necessary? I mean, yes, we got a new scope,
-                // but the thing in the previous was already normalized (well, it should have been
-                // at least). I guess it is necessary because it can contain parameters which could not
-                // be resolved yet but potentially can be now.
-                ValueView::Reducible(expression) => {
-                    self.evaluate_expression(expression, context)?
+            Binding(binding) => {
+                match context
+                    .scope
+                    .lookup_value(&binding.binder, self.scope, self.crates)
+                {
+                    // @Question is this normalization necessary? I mean, yes, we got a new scope,
+                    // but the thing in the previous was already normalized (well, it should have been
+                    // at least). I guess it is necessary because it can contain parameters which could not
+                    // be resolved yet but potentially can be now.
+                    ValueView::Reducible(expression) => {
+                        self.evaluate_expression(expression, context)?
+                    }
+                    ValueView::Neutral => expression,
                 }
-                ValueView::Neutral => expression,
-            },
+            }
             Application(application) => {
                 let callee = self.evaluate_expression(application.callee.clone(), context)?;
                 let argument = application.argument.clone();
@@ -362,7 +373,7 @@ impl<'a> Interpreter<'a> {
                                     // an Option<_> (that's gonna happen when we finally implement
                                     // the discarding identifier `_`)
                                     parameter: crate::resolver::Identifier::parameter("__"),
-                                    parameter_type_annotation: Some(self.scope.lookup_unit_type(None, &self.handler)?),
+                                    parameter_type_annotation: Some(self.scope.lookup_unit_type(None, self.reporter)?),
                                     body_type_annotation: None,
                                     body: expr! {
                                         Substitution {
@@ -390,7 +401,7 @@ impl<'a> Interpreter<'a> {
                             context,
                         )?
                     }
-                    Binding(binding) if context.scope.is_foreign(&binding.binder, &self.scope) => {
+                    Binding(binding) if context.scope.is_foreign(&binding.binder, self.scope) => {
                         self.evaluate_expression(
                             expr! {
                                 ForeignApplication {
@@ -468,7 +479,7 @@ impl<'a> Interpreter<'a> {
                         lambda
                             .parameter_type_annotation
                             .clone()
-                            .ok_or_else(|| super::missing_annotation().emit(&self.handler))?,
+                            .ok_or_else(|| super::missing_annotation().report(self.reporter))?,
                         context,
                     )?;
                     let body_type = lambda
@@ -597,7 +608,8 @@ impl<'a> Interpreter<'a> {
                     .apply_foreign_binding(
                         application.callee.clone(),
                         arguments.clone(),
-                        &self.handler,
+                        self.crates,
+                        self.reporter,
                     )?
                     .unwrap_or_else(|| {
                         expr! {
@@ -686,11 +698,11 @@ impl<'a> Interpreter<'a> {
                 let parameter_type_annotation0 = lambda0
                     .parameter_type_annotation
                     .clone()
-                    .ok_or_else(|| super::missing_annotation().emit(&self.handler))?;
+                    .ok_or_else(|| super::missing_annotation().report(self.reporter))?;
                 let parameter_type_annotation1 = lambda1
                     .parameter_type_annotation
                     .clone()
-                    .ok_or_else(|| super::missing_annotation().emit(&self.handler))?;
+                    .ok_or_else(|| super::missing_annotation().report(self.reporter))?;
 
                 self.equals(
                     parameter_type_annotation0.clone(),
@@ -717,7 +729,7 @@ impl<'a> Interpreter<'a> {
             (Substitution(_), Substitution(_)) => {
                 Diagnostic::bug()
                     .message("attempt to check two substitutions for equivalence")
-                    .note("they should not exist in this part of the code but should have already been evaluated").emit(&self.handler);
+                    .note("they should not exist in this part of the code but should have already been evaluated").report(self.reporter);
                 return Err(());
             }
             (Error, _) | (_, Error) => panic!("trying to check equality on erroneous expressions"),
@@ -755,17 +767,17 @@ impl Substitution {
 }
 
 impl DisplayWith for Substitution {
-    type Linchpin = CrateScope;
+    type Context<'a> = (&'a CrateScope, &'a CrateStore);
 
-    fn format(&self, scope: &CrateScope, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use self::Substitution::*;
         match self {
             Shift(amount) => write!(f, "shift {}", amount),
             Use(substitution, expression) => write!(
                 f,
                 "{}[{}]",
-                expression.with(scope),
-                substitution.with(scope)
+                expression.with(context),
+                substitution.with(context)
             ),
         }
     }

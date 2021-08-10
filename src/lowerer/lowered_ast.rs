@@ -7,7 +7,7 @@ mod format;
 
 use crate::{
     ast::{self, Explicitness, Identifier, ParameterAspect, Path},
-    diagnostics::{Code, Diagnostic, Handler},
+    diagnostics::{Code, Diagnostic, Reporter},
     error::{PossiblyErroneous, Result},
     span::{PossiblySpanning, SourceFileIndex, Span, Spanned, Spanning},
 };
@@ -170,7 +170,7 @@ pub trait AttributeTarget: Spanning {
 
     /// Target-specific attribute checks
     // @Note weird API
-    fn check_attributes(&self, _attributes: &Attributes, _handler: &Handler) -> Result {
+    fn check_attributes(&self, _attributes: &Attributes, _reporter: &Reporter) -> Result {
         Ok(())
     }
 }
@@ -203,7 +203,7 @@ impl AttributeTarget for ast::Declaration {
         }
     }
 
-    fn check_attributes(&self, attributes: &Attributes, handler: &Handler) -> Result {
+    fn check_attributes(&self, attributes: &Attributes, reporter: &Reporter) -> Result {
         use ast::DeclarationKind::*;
 
         let (body, binder, definition_marker) = match &self.kind {
@@ -228,7 +228,7 @@ impl AttributeTarget for ast::Declaration {
                 .message(format!("declaration `{}` has no definition", binder))
                 .primary_span(self)
                 .help(format!("provide a definition with `{definition_marker}`"))
-                .emit(handler)),
+                .report(reporter)),
             (Some(body), true) => Err(Diagnostic::error()
                 .code(Code::E020)
                 .message(format!(
@@ -241,7 +241,7 @@ impl AttributeTarget for ast::Declaration {
                     "conflicting definition",
                 )
                 .note(format!("declaration is marked `foreign` but it also has a body introduced by `{definition_marker}`"))
-                .emit(handler)),
+                .report(reporter)),
             _ => Ok(()),
         }
     }
@@ -449,10 +449,10 @@ impl PossiblyErroneous for Attributes {
 pub type Attribute = Spanned<AttributeKind>;
 
 impl Attribute {
-    pub fn parse(attribute: &ast::Attribute, handler: &Handler) -> Result<Self> {
+    pub fn parse(attribute: &ast::Attribute, reporter: &Reporter) -> Result<Self> {
         Ok(Attribute::new(
             attribute.span,
-            AttributeKind::parse(attribute, handler)?,
+            AttributeKind::parse(attribute, reporter)?,
         ))
     }
 
@@ -820,10 +820,10 @@ pub enum Feature {}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Number {
-    Nat(crate::Nat),
+    Nat(crate::util::Nat),
     Nat32(u32),
     Nat64(u64),
-    Int(crate::Int),
+    Int(crate::util::Int),
     Int32(i32),
     Int64(i64),
 }

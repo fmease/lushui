@@ -1,8 +1,5 @@
-@(location "../../libs/core/core")
-module core
-
-use core.unit.(Unit unit)
-use core.bool.(Bool false true)
+use crates.core.unit.(Unit unit)
+use crates.core.bool.(Bool false true)
 
 lazy (A: Type): Type = Unit -> A
 
