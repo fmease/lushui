@@ -340,11 +340,39 @@ impl CrateScope {
         use ast::HangerKind::*;
 
         if let Some(hanger) = &path.hanger {
+            if path.segments.is_empty() {
+                // `crates` already handled in the lowerer (for now)
+                Target::handle_bare_path_hanger_except_crates(hanger)
+                    .map_err(|error| error.report(reporter))?;
+            }
+
             let namespace = match hanger.kind {
                 Crates => {
-                    // @Task dont do this "crate by name" thingy (here)
-                    // @Bug panics with bare "crates"s
-                    let scope = &crates[crates.by_name(path.segments[0].as_str()).unwrap()].scope;
+                    // @Note ugly!
+                    let crate_ = &path.segments[0];
+
+                    let crate_ = match crates.by_name(crate_.as_str()) {
+                        Some(crate_) => crate_,
+                        None => {
+                            // @Temporary message
+                            // @Task add help:
+                            // * if it's a single-file-crate (@Task smh propagate??)
+                            //   then suggest `--link`ing
+                            // * otherwise suggest adding to `dependencies` section in
+                            //   the package manifest (@Note does not scale to dev-deps)
+                            // @Task suggest similarly named dep(s)!
+                            // @Task check if a dependency has a (transitive) dependency
+                            // with the *same* name and add the note that they (trans deps) have to be
+                            // explicitly added to the deps list to be referenceable in this crate
+                            Diagnostic::error()
+                                .message(format!("crate `{crate_}` does not exist"))
+                                .primary_span(crate_)
+                                .report(reporter);
+                            return Err(ResolutionError::Unrecoverable);
+                        }
+                    };
+
+                    let scope = &crates[crate_].scope;
                     return scope.resolve_path_with_origin::<Target>(
                         // @Bug may create illegal paths with empty segment list:
                         // [this scope] `crates.core` -> [external scope] `` but it should be
@@ -367,19 +395,15 @@ impl CrateScope {
                 Self_ => namespace,
             };
 
-            return if path.segments.is_empty() {
-                Target::handle_bare_super_and_crate(hanger, namespace, reporter).map_err(Into::into)
-            } else {
-                self.resolve_path_with_origin::<Target>(
-                    &path.tail().unwrap(),
-                    namespace,
-                    origin_namespace,
-                    IdentifierUsage::Qualified,
-                    check_exposure,
-                    crates,
-                    reporter,
-                )
-            };
+            return self.resolve_path_with_origin::<Target>(
+                &path.tail().unwrap(),
+                namespace,
+                origin_namespace,
+                IdentifierUsage::Qualified,
+                check_exposure,
+                crates,
+                reporter,
+            );
         }
 
         let index = self.resolve_first_path_segment(
@@ -395,8 +419,11 @@ impl CrateScope {
         let entity = self.entity(index, crates);
 
         match &*path.segments {
-            [identifier] => Target::resolve_simple_path(identifier, &entity.kind, index, reporter)
-                .map_err(Into::into),
+            [identifier] => {
+                Target::handle_simple_path(identifier, entity)
+                    .map_err(|error| error.report(reporter))?;
+                Ok(Target::output(index, identifier))
+            }
             [identifier, identifiers @ ..] => {
                 if entity.is_namespace() {
                     self.resolve_path_with_origin::<Target>(
@@ -412,6 +439,8 @@ impl CrateScope {
                     // @Task add rationale
                     Ok(Target::output(index, identifiers.last().unwrap()))
                 } else {
+                    dbg!();
+
                     value_used_as_a_namespace(
                         identifier,
                         identifiers.first().unwrap(),
@@ -452,8 +481,9 @@ impl CrateScope {
         crates: &CrateStore,
         reporter: &Reporter,
     ) -> Result<DeclarationIndex, ResolutionError> {
-        let index = self
-            .get(self.__temporary_local_index(namespace))
+        let entity = self.entity(namespace, crates);
+
+        let index = entity
             .namespace()
             .unwrap()
             .bindings
@@ -728,7 +758,7 @@ expected the exposure of `{}`
                     }
                     Err(error @ (UnresolvedBinding { .. } | Unrecoverable)) => {
                         self.bindings[index].mark_as_error();
-                        error.emit(self, crates, reporter);
+                        error.report(self, crates, reporter);
                         self.health.taint();
                     }
                     Err(UnresolvedUseBinding { inquirer }) => {
@@ -948,7 +978,7 @@ impl RestrictedExposure {
                         crates,
                         reporter,
                     )
-                    .map_err(|error| error.emit(scope, crates, reporter))?;
+                    .map_err(|error| error.report(scope, crates, reporter))?;
 
                 let reach_is_ancestor =
                     scope.some_ancestor_equals(definition_site_namespace, reach);
@@ -1050,18 +1080,9 @@ pub(super) trait ResolutionTarget {
 
     fn output(index: DeclarationIndex, identifier: &ast::Identifier) -> Self::Output;
 
-    fn handle_bare_super_and_crate(
-        hanger: &ast::Hanger,
-        namespace: DeclarationIndex,
-        reporter: &Reporter,
-    ) -> Result<Self::Output>;
+    fn handle_bare_path_hanger_except_crates(hanger: &ast::Hanger) -> Result<(), Diagnostic>;
 
-    fn resolve_simple_path(
-        identifier: &ast::Identifier,
-        binding: &EntityKind,
-        index: DeclarationIndex,
-        reporter: &Reporter,
-    ) -> Result<Self::Output>;
+    fn handle_simple_path(identifier: &ast::Identifier, entity: &Entity) -> Result<(), Diagnostic>;
 }
 
 /// Marker to specify it's okay to resolve to either value or module.
@@ -1074,21 +1095,12 @@ impl ResolutionTarget for ValueOrModule {
         index
     }
 
-    fn handle_bare_super_and_crate(
-        _: &ast::Hanger,
-        namespace: DeclarationIndex,
-        _: &Reporter,
-    ) -> Result<Self::Output> {
-        Ok(namespace)
+    fn handle_bare_path_hanger_except_crates(_: &ast::Hanger) -> Result<(), Diagnostic> {
+        Ok(())
     }
 
-    fn resolve_simple_path(
-        _: &ast::Identifier,
-        _: &EntityKind,
-        index: DeclarationIndex,
-        _: &Reporter,
-    ) -> Result<Self::Output> {
-        Ok(index)
+    fn handle_simple_path(_: &ast::Identifier, _: &Entity) -> Result<(), Diagnostic> {
+        Ok(())
     }
 }
 
@@ -1102,30 +1114,19 @@ impl ResolutionTarget for OnlyValue {
         Identifier::new(index, identifier.clone())
     }
 
-    fn handle_bare_super_and_crate(
-        hanger: &ast::Hanger,
-        _: DeclarationIndex,
-        reporter: &Reporter,
-    ) -> Result<Self::Output> {
-        Err(module_used_as_a_value(hanger.as_ref()).report(reporter))
+    fn handle_bare_path_hanger_except_crates(hanger: &ast::Hanger) -> Result<(), Diagnostic> {
+        Err(module_used_as_a_value(hanger.as_ref()))
     }
 
-    fn resolve_simple_path(
-        identifier: &ast::Identifier,
-        binding: &EntityKind,
-        index: DeclarationIndex,
-        reporter: &Reporter,
-    ) -> Result<Self::Output> {
-        use EntityKind::*;
-
-        match binding {
-            Module(_) => Err(module_used_as_a_value(Spanned::new(
+    fn handle_simple_path(identifier: &ast::Identifier, entity: &Entity) -> Result<(), Diagnostic> {
+        if entity.is_module() {
+            return Err(module_used_as_a_value(Spanned::new(
                 identifier.span,
                 identifier.as_str(),
-            ))
-            .report(reporter)),
-            _ => Ok(Self::output(index, identifier)),
+            )));
         }
+
+        Ok(())
     }
 }
 
@@ -1138,32 +1139,21 @@ impl ResolutionTarget for OnlyModule {
         index
     }
 
-    fn handle_bare_super_and_crate(
-        _: &ast::Hanger,
-        namespace: DeclarationIndex,
-        _: &Reporter,
-    ) -> Result<Self::Output> {
-        Ok(namespace)
+    fn handle_bare_path_hanger_except_crates(_: &ast::Hanger) -> Result<(), Diagnostic> {
+        Ok(())
     }
 
-    fn resolve_simple_path(
-        identifier: &ast::Identifier,
-        binding: &EntityKind,
-        index: DeclarationIndex,
-        reporter: &Reporter,
-    ) -> Result<Self::Output> {
-        use EntityKind::*;
-
-        match binding {
-            // @Beacon @Task use a distinct code!
-            UntypedValue | UntypedDataType(_) | UntypedConstructor(_) => Err(Diagnostic::error()
+    fn handle_simple_path(identifier: &ast::Identifier, entity: &Entity) -> Result<(), Diagnostic> {
+        // @Task print absolute path!
+        if !entity.is_module() {
+            return Err(Diagnostic::error()
+                // @Task custom code
                 .code(Code::E022)
                 .message(format!("value `{}` is not a module", identifier))
-                .primary_span(identifier)
-                .report(reporter)),
-            Module(_) => Ok(index),
-            _ => unreachable!(),
+                .primary_span(identifier));
         }
+
+        Ok(())
     }
 }
 
@@ -1432,7 +1422,7 @@ impl<'a> FunctionScope<'a> {
                 } else {
                     scope
                         .resolve_path::<OnlyValue>(query, parent.module(), crates, reporter)
-                        .map_err(|error| error.emit(scope, crates, reporter))
+                        .map_err(|error| error.report(scope, crates, reporter))
                 }
             }
             // @Note this looks ugly/complicated, use helper functions
@@ -1469,7 +1459,7 @@ impl<'a> FunctionScope<'a> {
                 } else {
                     scope
                         .resolve_path::<OnlyValue>(query, parent.module(), crates, reporter)
-                        .map_err(|error| error.emit(scope, crates, reporter))
+                        .map_err(|error| error.report(scope, crates, reporter))
                 }
             }
         }
@@ -1637,7 +1627,7 @@ enum ResolutionError {
 }
 
 impl ResolutionError {
-    fn emit(self, scope: &CrateScope, crates: &CrateStore, reporter: &Reporter) {
+    fn report(self, scope: &CrateScope, crates: &CrateStore, reporter: &Reporter) {
         self.emit_finding_lookalike(
             |_identifier, _namespace| {
                 // @Temporary comment
@@ -1675,12 +1665,9 @@ impl ResolutionError {
                 match usage {
                     IdentifierUsage::Unqualified => message += "this scope",
                     IdentifierUsage::Qualified => {
-                        message += match scope.entity(namespace, crates).kind {
-                            EntityKind::Module(_) => "module",
-                            EntityKind::UntypedDataType(_) | EntityKind::UntypedConstructor(_) => {
-                                "namespace"
-                            }
-                            _ => unreachable!(),
+                        message += match scope.entity(namespace, crates).is_module() {
+                            true => "module",
+                            false => "namespace",
                         };
                         message += " `";
                         message += &scope.absolute_path(namespace, crates);

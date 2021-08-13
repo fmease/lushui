@@ -27,7 +27,7 @@
 pub mod lowered_ast;
 
 use self::lowered_ast::AttributeTarget;
-use crate::{util::{SmallVec, Str}, ast::{self, Explicit, ParameterGroup, Path}, diagnostics::{Code, Diagnostic, Reporter}, error::{Health, Outcome, map_outcome_from_result, PossiblyErroneous, Result}, format::{Conjunction, QuoteExt, ordered_listing, pluralize}, lowered_ast::{decl, expr, pat, AttributeKeys, AttributeKind, Attributes, Number}, span::{SourceMap, Span, Spanned, Spanning}, util::obtain};
+use crate::{ast::{self, Explicit, ParameterGroup, Path}, diagnostics::{Code, Diagnostic, Reporter}, error::{Health, Outcome, map_outcome_from_result, PossiblyErroneous, Result}, format::{Conjunction, QuoteExt, ordered_listing, pluralize}, lowered_ast::{decl, expr, pat, AttributeKeys, AttributeKind, Attributes, Number}, parser::ast::HangerKind, span::{SourceMap, Span, Spanned, Spanning}, util::{SmallVec, Str}, util::obtain};
 use joinery::JoinableIterator;
 use smallvec::smallvec;
 use std::{cell::RefCell, iter::once, rc::Rc};
@@ -431,7 +431,7 @@ impl<'a> Lowerer<'a> {
                                 // the parent path
                                 let binder = binder
                                     .or_else(|| {
-                                        if target.is_self() { &path } else { &target }
+                                        if target.bare_hanger(HangerKind::Self_).is_some() { &path } else { &target }
                                             .last_identifier()
                                             .cloned()
                                     })
@@ -473,6 +473,17 @@ impl<'a> Lowerer<'a> {
                 'discriminate: {
                     match use_.bindings.kind {
                         Single { target, binder } => {
+                            if let Some(hanger) = target.bare_hanger(HangerKind::Crates) {
+                                // @Task improve this message text
+                                // @Task error code
+                                Diagnostic::error()
+                                    .message(format!("`use` of bare `{hanger}`"))
+                                    .primary_span(hanger)
+                                    .report(&self.reporter);
+                                health.taint();
+                                    break 'discriminate;
+                            }
+
                             let binder = binder.or_else(|| target.last_identifier().cloned());
                             let binder = match binder {
                                 Some(binder) => binder,
@@ -507,6 +518,7 @@ impl<'a> Lowerer<'a> {
                 }
 
                 fn invalid_unnamed_path_hanger(hanger: ast::Hanger) -> Diagnostic {
+                    // @Task improve this message text
                     Diagnostic::error()
                         .code(Code::E025)
                         .message(format!("`use` of unnamed `{hanger}`"))

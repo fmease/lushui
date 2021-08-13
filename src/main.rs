@@ -3,8 +3,12 @@
 
 use cli::{Command, PhaseRestriction};
 use indexed_vec::Idx;
+use joinery::JoinableIterator;
 use lushui::{
-    crates::{Binary, BinaryManifest, Crate, CrateIndex, CrateStore, Library, Manifest},
+    crates::{
+        distributed_libraries_path, Binary, BinaryManifest, CrateIndex, CrateStore, Library,
+        Package, PackageManifest, CORE_LIBRARY_NAME,
+    },
     diagnostics::{
         reporter::{BufferedStderrReporter, StderrReporter},
         Diagnostic, Reporter,
@@ -20,7 +24,7 @@ use lushui::{
 };
 use resolver::Resolver;
 use rustc_hash::FxHashMap as HashMap;
-use std::{cell::RefCell, path::Path, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
 mod cli;
 
@@ -64,30 +68,43 @@ fn main_() -> Result<(), ()> {
                 // so we're gonna have like 2 of these: done + WIP?
                 let mut crates_to_build = Vec::new();
 
-                // @Temporary
                 if application.source_file_path.is_some() && !application.unlink_core {
-                    let core_library_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("libs/core");
-                    let manifest = Manifest::open(&core_library_path).into_ok();
-                    crates_to_build.push(Crate::from_manifest(
+                    let core_library_path = distributed_libraries_path().join(CORE_LIBRARY_NAME);
+
+                    // @Question custom message for not finding the core library?
+                    let manifest = PackageManifest::open(&core_library_path, &reporter)?;
+                    crates_to_build.push(Package::from_manifest(
                         false,
                         next_crate_index(),
                         core_library_path,
                         manifest,
-                    ))
+                    ));
                 }
 
-                crates_to_build.push(match application.source_file_path {
+                if application.source_file_path.is_none() && application.unlink_core {
+                    // @Temporary message
+                    // @Beacon @Question does curl support this in a built-in way?:
+                    // @Task add note explaining how one needs to remove the
+                    // explicit `core` dep in the manifest to achieve the wanted behavior
+                    Diagnostic::error()
+                        .message("option --unlink-core only works with explicit source file paths")
+                        .report(&reporter);
+                }
+
+                match application.source_file_path {
+                    // @Note does not scale to `--link`s
                     Some(source_file_path) => {
                         let crate_name =
                             lushui::lexer::parse_crate_name(source_file_path.clone(), &reporter)
                                 .map_err(|error| error.report(&reporter))?;
 
-                        Crate::from_manifest(
+                        crates_to_build.push(Package::from_manifest(
                             true,
                             next_crate_index(),
                             // @Task dont unwrap, handle error case
                             source_file_path.parent().unwrap().to_owned(),
-                            Manifest {
+                            // @Task create a PackageManifest::single_file_package constructor for this
+                            PackageManifest {
                                 // @Task we can do better here
                                 name: crate_name.as_str().to_owned(),
                                 version: "0.0.0".to_owned(),
@@ -102,17 +119,58 @@ fn main_() -> Result<(), ()> {
                                 }),
                                 dependencies: HashMap::default(),
                             },
-                        )
+                        ));
                     }
                     None => {
-                        // @Task search parent directories as well!!
                         // @Task dont unwrap, handle the error cases
-                        let path = std::env::current_dir().unwrap();
-                        let manifest = Manifest::open(&path).into_ok();
+                        let main_path = std::env::current_dir().unwrap();
+                        let manifest = PackageManifest::open(&main_path, &reporter)?;
 
-                        Crate::from_manifest(true, next_crate_index(), path, manifest)
+                        // @Note bad names
+                        for (crate_name, crate_specification) in &manifest.dependencies {
+                            // @Note not sure whether we can move DepManif validation to mod crates
+
+                            let path = match &crate_specification.path {
+                                Some(path) => main_path.join(path),
+                                // @Beacon @Task we need to emit a custom diagnostic if stuff cannot be
+                                // found in the distributies libraries path
+                                None => distributed_libraries_path().join(crate_name),
+                            };
+
+                            // @Task verify name and version matches (unless overwritten!)
+                            // @Task don't return early here!
+                            // @Task don't bubble up with `?` but once `open` returns a proper error type,
+                            // report a custom diagnostic saying ~ "could not find a package manifest for the package XY
+                            // specified as a path dependency" (sth sim to this)
+                            let manifest = PackageManifest::open(&path, &reporter)?;
+
+                            // @Task deduplicate!! and don't overwrite
+
+                            crates_to_build.push(Package::from_manifest(
+                                false,
+                                next_crate_index(),
+                                path,
+                                manifest,
+                            ));
+                        }
+
+                        crates_to_build.push(Package::from_manifest(
+                            true,
+                            next_crate_index(),
+                            main_path,
+                            manifest,
+                        ));
                     }
-                });
+                };
+
+                // @Beacon @Temporary
+                eprintln!(
+                    "crates to build: {}",
+                    crates_to_build
+                        .iter()
+                        .map(|crate_| &crate_.name)
+                        .join_with(", ")
+                );
 
                 // @Task forall crates in dependencies "compile"/… them
                 // and in the end crates.add() them
@@ -252,6 +310,10 @@ fn main_() -> Result<(), ()> {
     };
 
     let number_of_errors_reported = reporter.release_buffer();
+
+    if number_of_errors_reported > 0 {
+        return Err(());
+    }
 
     if result.is_err() {
         assert!(

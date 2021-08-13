@@ -90,10 +90,10 @@ impl CrateScope {
             } => {
                 let index = binder.declaration_index().unwrap();
                 let index = self.__temporary_local_index(index);
-                debug_assert!(
-                    self.get(index).is_untyped_value() || self.get(index).is_value_without_value()
-                );
-                self.get_mut(index).kind = EntityKind::Value {
+                let entity = self.get_mut(index);
+                debug_assert!(entity.is_untyped_value() || entity.is_value_without_value());
+
+                entity.kind = EntityKind::Value {
                     type_,
                     expression: value,
                 };
@@ -101,8 +101,11 @@ impl CrateScope {
             DataBinding { binder, type_ } => {
                 let index = binder.declaration_index().unwrap();
                 let index = self.__temporary_local_index(index);
-                debug_assert!(self.get(index).is_untyped_value());
-                self.get_mut(index).kind = EntityKind::DataType {
+                let entity = self.get_mut(index);
+                debug_assert!(entity.is_untyped_value());
+
+                entity.kind = EntityKind::DataType {
+                    namespace: std::mem::take(entity.namespace_mut().unwrap()),
                     type_,
                     constructors: Vec::new(),
                 };
@@ -114,8 +117,13 @@ impl CrateScope {
             } => {
                 let index = binder.declaration_index().unwrap();
                 let index = self.__temporary_local_index(index);
-                debug_assert!(self.get(index).is_untyped_value());
-                self.get_mut(index).kind = EntityKind::Constructor { type_ };
+                let entity = self.get_mut(index);
+                debug_assert!(entity.is_untyped_value());
+
+                entity.kind = EntityKind::Constructor {
+                    namespace: std::mem::take(entity.namespace_mut().unwrap()),
+                    type_,
+                };
 
                 match self
                     .get_mut(self.__temporary_local_index(data.declaration_index().unwrap()))

@@ -280,10 +280,11 @@ impl Path {
         Ok(self)
     }
 
-    pub fn is_self(&self) -> bool {
-        self.hanger
-            .map_or(false, |hanger| hanger.kind == HangerKind::Self_)
-            && self.segments.is_empty()
+    pub fn bare_hanger(&self, hanger_kind: HangerKind) -> Option<Hanger> {
+        match self.hanger {
+            Some(hanger) if hanger.kind == hanger_kind && self.segments.is_empty() => Some(hanger),
+            _ => None,
+        }
     }
 
     /// Return the path head if it is an identifier.
