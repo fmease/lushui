@@ -69,7 +69,8 @@ pub mod span;
 pub mod typer;
 mod util;
 
-const FILE_EXTENSION: &str = "lushui";
+/// The file extension of a Lushui source code file.
+pub const FILE_EXTENSION: &str = "lushui";
 
 use lowerer::lowered_ast;
 use once_cell::sync::OnceCell;
@@ -78,12 +79,12 @@ use resolver::hir;
 
 // @Task remove this options stuff!
 
-static OPTIONS: OnceCell<Options> = OnceCell::new();
+static OPTIONS: OnceCell<GlobalOptions> = OnceCell::new();
 
-pub struct Options {
+pub struct GlobalOptions {
     pub show_binding_indices: bool,
 }
 
-pub fn set_global_options(options: Options) {
+pub fn set_global_options(options: GlobalOptions) {
     OPTIONS.set(options).unwrap_or_else(|_| unreachable!());
 }

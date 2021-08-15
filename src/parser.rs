@@ -658,10 +658,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_optional_block(
-        &mut self,
-        mut subparser: impl FnMut(&mut Self) -> Result<()>,
-    ) -> Result {
+    fn parse_optional_block(&mut self, mut subparser: impl FnMut(&mut Self) -> Result) -> Result {
         use TokenKind::*;
 
         if self.has_consumed(OpeningCurlyBracket) {

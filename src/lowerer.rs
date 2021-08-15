@@ -27,7 +27,16 @@
 pub mod lowered_ast;
 
 use self::lowered_ast::AttributeTarget;
-use crate::{ast::{self, Explicit, ParameterGroup, Path}, diagnostics::{Code, Diagnostic, Reporter}, error::{Health, Outcome, map_outcome_from_result, PossiblyErroneous, Result}, format::{Conjunction, QuoteExt, ordered_listing, pluralize}, lowered_ast::{decl, expr, pat, AttributeKeys, AttributeKind, Attributes, Number}, parser::ast::HangerKind, span::{SourceMap, Span, Spanned, Spanning}, util::{SmallVec, Str}, util::obtain};
+use crate::{
+    ast::{self, Explicit, ParameterGroup, Path},
+    diagnostics::{Code, Diagnostic, Reporter},
+    error::{map_outcome_from_result, Health, Outcome, PossiblyErroneous, Result},
+    format::{ordered_listing, pluralize, Conjunction, QuoteExt},
+    lowered_ast::{decl, expr, pat, AttributeKeys, AttributeKind, Attributes, Number},
+    parser::ast::HangerKind,
+    span::{SourceMap, Span, Spanned, Spanning},
+    util::{obtain, SmallVec, Str},
+};
 use joinery::JoinableIterator;
 use smallvec::smallvec;
 use std::{cell::RefCell, iter::once, rc::Rc};
@@ -94,7 +103,7 @@ impl<'a> Lowerer<'a> {
                 let body = match value.body {
                     Some(body) => {
                         let mut body = self.lower_expression(body, context).unwrap(&mut health);
-                        
+
                         {
                             let mut type_annotation = once(
                                 self.lower_expression(declaration_type_annotation.clone(), context)
@@ -165,7 +174,8 @@ impl<'a> Lowerer<'a> {
                         missing_mandatory_type_annotation(
                             declaration.span,
                             AnnotationTarget::Declaration(&data.binder),
-                        ).report(&self.reporter);
+                        )
+                        .report(&self.reporter);
                         health.taint();
                         PossiblyErroneous::error()
                     }
@@ -187,7 +197,7 @@ impl<'a> Lowerer<'a> {
                         })
                         .collect()
                 });
-                
+
                 smallvec![decl! {
                     Data{
                         attributes,
@@ -207,7 +217,8 @@ impl<'a> Lowerer<'a> {
                         missing_mandatory_type_annotation(
                             declaration.span,
                             AnnotationTarget::Declaration(&constructor.binder),
-                        ).report(&self.reporter);
+                        )
+                        .report(&self.reporter);
                         health.taint();
                         PossiblyErroneous::error()
                     }
@@ -290,22 +301,24 @@ impl<'a> Lowerer<'a> {
 
                         // @Task instead of a note saying the error, print a help message
                         // saying to create the missing file or change the access rights etc.
-                                        // @Note awkward API!
+                        // @Note awkward API!
 
                         let file = match self.map.borrow_mut().load(path.clone()) {
                             Ok(file) => file,
                             Err(error) => {
                                 match error {
-                                            span::Error::LoadFailure(_) => Diagnostic::error()
-                                                .code(Code::E016)
-                                                .message(format!("could not load module `{}`", module.binder))
-                                                .primary_span(declaration_span)
-                                                .note(error.message(Some(&path)))
-                                                ,
-            
-                                            // @Task add context information
-                                            error => Diagnostic::from(error),
-                                        }.report(&self.reporter);
+                                    span::Error::LoadFailure(_) => Diagnostic::error()
+                                        .code(Code::E016)
+                                        .message(format!(
+                                            "could not load module `{}`",
+                                            module.binder
+                                        ))
+                                        .primary_span(declaration_span)
+                                        .note(error.message(Some(&path))),
+                                    // @Task add context information
+                                    error => Diagnostic::from(error),
+                                }
+                                .report(&self.reporter);
                                 return PossiblyErroneous::error();
                             }
                         };
@@ -313,20 +326,20 @@ impl<'a> Lowerer<'a> {
                         let mut lexer_health = Health::Untainted;
 
                         // @Note awkward API
-                        let tokens = match Lexer::new(self.map.borrow().get(file), self.reporter).lex() {
-                            Ok(tokens) => tokens.unwrap(&mut lexer_health),
-                            Err(()) => {
-                                return PossiblyErroneous::error()
-                            }
-                        };
+                        let tokens =
+                            match Lexer::new(self.map.borrow().get(file), self.reporter).lex() {
+                                Ok(tokens) => tokens.unwrap(&mut lexer_health),
+                                Err(()) => return PossiblyErroneous::error(),
+                            };
                         // @Note awkward API
                         let node = match Parser::new(file, &tokens, self.map.clone(), self.reporter)
-                            .parse(module.binder.clone()) {
-                                Ok(node) => node,
-                                Err(()) => {
+                            .parse(module.binder.clone())
+                        {
+                            Ok(node) => node,
+                            Err(()) => {
                                 return PossiblyErroneous::error();
-                                }
-                            };
+                            }
+                        };
                         if lexer_health.is_tainted() {
                             return PossiblyErroneous::error();
                         }
@@ -347,9 +360,7 @@ impl<'a> Lowerer<'a> {
 
                 let declarations = declarations
                     .into_iter()
-                    .flat_map(|declaration| {
-                        self.lower_declaration(declaration).unwrap(&mut health)
-                    })
+                    .flat_map(|declaration| self.lower_declaration(declaration).unwrap(&mut health))
                     .collect();
 
                 smallvec![decl! {
@@ -385,9 +396,7 @@ impl<'a> Lowerer<'a> {
                         declaration.attributes = group_attributes;
                         declaration
                     })
-                    .flat_map(|declaration| {
-                        self.lower_declaration(declaration).unwrap(&mut health)
-                    })
+                    .flat_map(|declaration| self.lower_declaration(declaration).unwrap(&mut health))
                     .collect();
 
                 group
@@ -431,9 +440,13 @@ impl<'a> Lowerer<'a> {
                                 // the parent path
                                 let binder = binder
                                     .or_else(|| {
-                                        if target.bare_hanger(HangerKind::Self_).is_some() { &path } else { &target }
-                                            .last_identifier()
-                                            .cloned()
+                                        if target.bare_hanger(HangerKind::Self_).is_some() {
+                                            &path
+                                        } else {
+                                            &target
+                                        }
+                                        .last_identifier()
+                                        .cloned()
                                     })
                                     .ok_or_else(|| {
                                         // @Task improve the message for `use crate.(self)`: hint that `self`
@@ -481,7 +494,7 @@ impl<'a> Lowerer<'a> {
                                     .primary_span(hanger)
                                     .report(&self.reporter);
                                 health.taint();
-                                    break 'discriminate;
+                                break 'discriminate;
                             }
 
                             let binder = binder.or_else(|| target.last_identifier().cloned());
@@ -504,16 +517,15 @@ impl<'a> Lowerer<'a> {
                                 }
                             })
                         }
-                        Multiple { path, bindings } => {
-                            Outcome::from(lower_use_path_tree(
-                                path,
-                                bindings,
-                                declaration.span,
-                                attributes,
-                                &mut declarations,
-                                self.reporter,
-                            )).unwrap(&mut health)
-                        }
+                        Multiple { path, bindings } => Outcome::from(lower_use_path_tree(
+                            path,
+                            bindings,
+                            declaration.span,
+                            attributes,
+                            &mut declarations,
+                            self.reporter,
+                        ))
+                        .unwrap(&mut health),
                     }
                 }
 
@@ -1030,15 +1042,11 @@ impl<'a> Lowerer<'a> {
             &self.reporter,
         );
 
-        health &= check_mutual_exclusivity(
-            AttributeKeys::RUNE | AttributeKeys::TEXT,
-            &self.reporter,
-        );
+        health &=
+            check_mutual_exclusivity(AttributeKeys::RUNE | AttributeKeys::TEXT, &self.reporter);
 
-        health &= check_mutual_exclusivity(
-            AttributeKeys::LIST | AttributeKeys::VECTOR,
-            &self.reporter,
-        );
+        health &=
+            check_mutual_exclusivity(AttributeKeys::LIST | AttributeKeys::VECTOR, &self.reporter);
 
         if attributes.within(AttributeKeys::UNSUPPORTED) {
             for attribute in attributes.filter(AttributeKeys::UNSUPPORTED) {
@@ -1153,11 +1161,7 @@ impl<'a> Lowerer<'a> {
         health.of(expression)
     }
 
-    fn check_fieldness_location(
-        &mut self,
-        fieldness: Option<Span>,
-        context: Context,
-    ) -> Result {
+    fn check_fieldness_location(&mut self, fieldness: Option<Span>, context: Context) -> Result {
         if let Some(field) = fieldness {
             if !context.in_constructor {
                 // @Note it would be helpful to also say the name of the actual declaration

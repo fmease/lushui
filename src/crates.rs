@@ -4,6 +4,7 @@ use crate::{
     error::Result,
     resolver::{CrateScope, DeclarationIndex, Identifier},
     util::HashMap,
+    FILE_EXTENSION,
 };
 use serde::Deserialize;
 use std::{
@@ -13,6 +14,7 @@ use std::{
 };
 
 /// A collection of [crates](Crate).
+// conceptual @Bug: currently a PackageStore
 #[derive(Default)]
 pub struct CrateStore {
     crates: HashMap<CrateIndex, Package>,
@@ -21,14 +23,6 @@ pub struct CrateStore {
 impl CrateStore {
     pub fn add(&mut self, index: CrateIndex, crate_: Package) {
         self.crates.insert(index, crate_);
-    }
-
-    // @Beacon @Temporary insecure, naive etc!!!
-    pub fn by_name(&self, name: &str) -> Option<CrateIndex> {
-        self.crates
-            .iter()
-            .find(|(_, crate_)| crate_.name == name)
-            .map(|(&index, _)| index)
     }
 
     pub fn entity(&self, index: DeclarationIndex) -> &Entity {
@@ -96,8 +90,21 @@ pub fn distributed_libraries_path() -> PathBuf {
 
 pub const CORE_LIBRARY_NAME: &str = "core";
 
-pub const DEFAULT_LIBRARY_ROOT_FILE_PATH: &str = "source/library.lushui";
-pub const DEFAULT_BINARY_ROOT_FILE_PATH: &str = "source/main.lushui";
+pub const DEFAULT_SOURCE_FOLDER_NAME: &str = "source";
+pub const DEFAULT_LIBRARY_ROOT_FILE_STEM: &str = "library";
+pub const DEFAULT_BINARY_ROOT_FILE_STEM: &str = "main";
+
+pub fn default_library_root_file_path() -> PathBuf {
+    Path::new(DEFAULT_SOURCE_FOLDER_NAME)
+        .join(DEFAULT_LIBRARY_ROOT_FILE_STEM)
+        .with_extension(FILE_EXTENSION)
+}
+
+pub fn default_binary_root_file_path() -> PathBuf {
+    Path::new(DEFAULT_SOURCE_FOLDER_NAME)
+        .join(DEFAULT_BINARY_ROOT_FILE_STEM)
+        .with_extension(FILE_EXTENSION)
+}
 
 // @Beacon @Note really not so sure about the architecture: storing the index and the scope
 pub struct Package {
@@ -113,6 +120,9 @@ pub struct Package {
     pub binary: Option<Binary>,
     // @Temporary DependencyManifest -> Dependency
     pub dependencies: HashMap<String, DependencyManifest>,
+    // @Temporary
+    // pub resolved_dependencies: HashMap<String, CrateIndex>,
+    pub metadata: PackageMetadata,
     pub scope: CrateScope,
     // @Temporary name, @Task better name
     // if this is the crate with no dependents, the final crate,
@@ -142,10 +152,11 @@ impl Package {
         is_main: bool,
         index: CrateIndex,
         path: PathBuf,
+        resolved_dependencies: HashMap<String, CrateIndex>,
         manifest: PackageManifest,
     ) -> Self {
-        let default_library_path = path.join(DEFAULT_LIBRARY_ROOT_FILE_PATH);
-        let default_binary_path = path.join(DEFAULT_BINARY_ROOT_FILE_PATH);
+        let default_library_path = path.join(default_library_root_file_path());
+        let default_binary_path = path.join(default_binary_root_file_path());
 
         let library = match manifest.library {
             Some(library) => Some(Library {
@@ -175,10 +186,19 @@ impl Package {
             binary,
             // @Temporary
             dependencies: manifest.dependencies,
+            metadata: PackageMetadata {
+                resolved_dependencies,
+            },
             scope: CrateScope::new(index),
             is_main,
         }
     }
+}
+
+// @Temporary: not sure if we should use it
+pub struct PackageMetadata {
+    // pub index: CrateIndex,
+    pub resolved_dependencies: HashMap<String, CrateIndex>,
 }
 
 #[derive(Debug)]
@@ -200,6 +220,7 @@ pub struct Dependency {
 // @Question rename to package manifest??
 #[derive(Deserialize, Debug)]
 pub struct PackageManifest {
+    // @Task newtype
     pub name: String,
     // @Temporary type
     pub version: String,

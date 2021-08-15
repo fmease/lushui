@@ -128,6 +128,7 @@ const SEPARATOR_WIDTH: usize = 100;
 
 fn main() {
     if main_().is_err() {
+        // all destructors have been run
         std::process::exit(1);
     }
 }

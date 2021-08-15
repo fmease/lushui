@@ -15,7 +15,7 @@ mod scope;
 
 use crate::{
     ast,
-    crates::CrateStore,
+    crates::{CrateStore, PackageMetadata},
     diagnostics::{Diagnostic, Reporter},
     entity::EntityKind,
     error::{Health, PossiblyErroneous, Result},
@@ -51,14 +51,21 @@ enum Opacity {
 /// The state of the resolver.
 pub struct Resolver<'a> {
     scope: &'a mut CrateScope,
+    metadata: &'a PackageMetadata,
     crates: &'a CrateStore,
     reporter: &'a Reporter,
 }
 
 impl<'a> Resolver<'a> {
-    pub fn new(scope: &'a mut CrateScope, crates: &'a CrateStore, reporter: &'a Reporter) -> Self {
+    pub fn new(
+        scope: &'a mut CrateScope,
+        metadata: &'a PackageMetadata,
+        crates: &'a CrateStore,
+        reporter: &'a Reporter,
+    ) -> Self {
         Self {
             scope,
+            metadata,
             crates,
             reporter,
         }
@@ -77,15 +84,15 @@ impl<'a> Resolver<'a> {
             .map_err(|_| {
                 std::mem::take(&mut self.scope.duplicate_definitions)
                     .into_iter()
-                    .for_each(|(_, error)| Diagnostic::from(error).report(&self.reporter));
+                    .for_each(|(_, error)| Diagnostic::from(error).report(self.reporter));
             })?;
 
         self.scope
-            .resolve_use_bindings(&self.crates, &self.reporter);
+            .resolve_use_bindings(self.crates, self.metadata, self.reporter);
 
         // @Task @Beacon don't return early here
         self.scope
-            .resolve_exposure_reaches(&self.crates, &self.reporter)?;
+            .resolve_exposure_reaches(self.crates, self.metadata, self.reporter)?;
 
         let declaration = self.finish_resolve_declaration(declaration, None, Context::default());
 
@@ -505,7 +512,7 @@ impl<'a> Resolver<'a> {
                 Binding {
                     expression.attributes,
                     expression.span;
-                    binder: scope.resolve_binding(&binding.binder, &self.scope, &self.crates, &self.reporter)?,
+                    binder: scope.resolve_binding(&binding.binder, self.scope, self.crates, self.metadata, self.reporter)?,
                 }
             },
             Lambda(lambda) => {
@@ -540,7 +547,7 @@ impl<'a> Resolver<'a> {
             UseIn => {
                 return Err(Diagnostic::unimplemented("use/in expression")
                     .primary_span(&expression)
-                    .report(&self.reporter));
+                    .report(self.reporter));
             }
             CaseAnalysis(analysis) => {
                 let subject = self.resolve_expression(analysis.subject.clone(), scope)?;
@@ -587,7 +594,7 @@ impl<'a> Resolver<'a> {
                 Binding {
                     pattern.attributes,
                     pattern.span;
-                    binder: scope.resolve_binding(&binding.binder, &self.scope, &self.crates,  &self.reporter)?,
+                    binder: scope.resolve_binding(&binding.binder, self.scope, self.crates, self.metadata, self.reporter)?,
                 }
             },
             Binder(binder) => {

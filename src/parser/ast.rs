@@ -281,10 +281,8 @@ impl Path {
     }
 
     pub fn bare_hanger(&self, hanger_kind: HangerKind) -> Option<Hanger> {
-        match self.hanger {
-            Some(hanger) if hanger.kind == hanger_kind && self.segments.is_empty() => Some(hanger),
-            _ => None,
-        }
+        self.hanger
+            .filter(|hanger| hanger.kind == hanger_kind && self.segments.is_empty())
     }
 
     /// Return the path head if it is an identifier.
