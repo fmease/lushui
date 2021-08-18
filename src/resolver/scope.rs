@@ -437,7 +437,7 @@ impl CrateScope {
             [identifier, identifiers @ ..] => {
                 if entity.is_namespace() {
                     self.resolve_path_with_origin::<Target>(
-                        &Path::from_segments(identifiers.to_owned().into()),
+                        &Path::with_segments(identifiers.to_owned().into()),
                         index,
                         origin_namespace,
                         IdentifierUsage::Qualified,

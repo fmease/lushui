@@ -1,4 +1,5 @@
 //! Utility functionality and definitions.
+#![allow(dead_code, unused_imports)]
 
 pub(crate) use num_bigint::{BigInt as Int, BigUint as Nat};
 pub(crate) use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};

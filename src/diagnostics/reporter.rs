@@ -8,9 +8,9 @@
 use super::{Diagnostic, Severity};
 use crate::{
     format::{ordered_listing, pluralize, Conjunction},
-    span::SourceMap,
+    span::SharedSourceMap,
 };
-use std::{cell::RefCell, collections::BTreeSet, default::default, rc::Rc};
+use std::{cell::RefCell, collections::BTreeSet, default::default};
 
 /// The diagnostic reporter.
 #[non_exhaustive]
@@ -39,11 +39,11 @@ impl From<SilentReporter> for Reporter {
 }
 
 pub struct StderrReporter {
-    map: Option<Rc<RefCell<SourceMap>>>,
+    map: Option<SharedSourceMap>,
 }
 
 impl StderrReporter {
-    pub fn new(map: Option<Rc<RefCell<SourceMap>>>) -> Self {
+    pub fn new(map: Option<SharedSourceMap>) -> Self {
         Self { map }
     }
 
@@ -62,11 +62,11 @@ impl From<StderrReporter> for Reporter {
 pub struct BufferedStderrReporter {
     errors: RefCell<BTreeSet<Diagnostic>>,
     warnings: RefCell<BTreeSet<Diagnostic>>,
-    map: Rc<RefCell<SourceMap>>,
+    map: SharedSourceMap,
 }
 
 impl BufferedStderrReporter {
-    pub fn new(map: Rc<RefCell<SourceMap>>) -> Self {
+    pub fn new(map: SharedSourceMap) -> Self {
         Self {
             errors: default(),
             warnings: default(),

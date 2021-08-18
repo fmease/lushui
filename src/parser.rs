@@ -29,12 +29,12 @@ use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     format::{ordered_listing, Conjunction},
     lexer::{Token, TokenKind},
-    span::{SourceFileIndex, SourceMap, Span, Spanned, Spanning},
+    span::{SharedSourceMap, SourceFileIndex, Span, Spanned, Spanning},
     util::SmallVec,
 };
 use ast::*;
 use smallvec::smallvec;
-use std::{cell::RefCell, convert::TryInto, default::default, rc::Rc};
+use std::{convert::TryInto, default::default};
 
 type Result<T = (), E = ()> = std::result::Result<T, E>;
 
@@ -53,7 +53,7 @@ pub struct Parser<'a> {
     tokens: &'a [Token],
     reflection_depth: u16,
     index: usize,
-    map: Rc<RefCell<SourceMap>>,
+    map: SharedSourceMap,
     reporter: &'a Reporter,
 }
 
@@ -61,7 +61,7 @@ impl<'a> Parser<'a> {
     pub fn new(
         file: SourceFileIndex,
         tokens: &'a [Token],
-        map: Rc<RefCell<SourceMap>>,
+        map: SharedSourceMap,
         reporter: &'a Reporter,
     ) -> Self {
         Self {

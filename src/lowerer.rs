@@ -26,7 +26,6 @@
 
 pub mod lowered_ast;
 
-use self::lowered_ast::AttributeTarget;
 use crate::{
     ast::{self, Explicit, ParameterGroup, Path},
     diagnostics::{Code, Diagnostic, Reporter},
@@ -34,12 +33,13 @@ use crate::{
     format::{ordered_listing, pluralize, Conjunction, QuoteExt},
     lowered_ast::{decl, expr, pat, AttributeKeys, AttributeKind, Attributes, Number},
     parser::ast::HangerKind,
-    span::{SourceMap, Span, Spanned, Spanning},
+    span::{SharedSourceMap, Span, Spanned, Spanning},
     util::{obtain, SmallVec, Str},
 };
 use joinery::JoinableIterator;
+use lowered_ast::AttributeTarget;
 use smallvec::smallvec;
-use std::{cell::RefCell, iter::once, rc::Rc};
+use std::iter::once;
 
 #[derive(Clone, Copy)]
 struct Context {
@@ -58,12 +58,12 @@ impl Context {
 
 /// The state of the lowering pass.
 pub struct Lowerer<'a> {
-    map: Rc<RefCell<SourceMap>>,
+    map: SharedSourceMap,
     reporter: &'a Reporter,
 }
 
 impl<'a> Lowerer<'a> {
-    pub fn new(map: Rc<RefCell<SourceMap>>, reporter: &'a Reporter) -> Self {
+    pub fn new(map: SharedSourceMap, reporter: &'a Reporter) -> Self {
         Self { map, reporter }
     }
 

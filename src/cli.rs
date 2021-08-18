@@ -1,6 +1,7 @@
 use std::{path::PathBuf, str::FromStr};
 
 use clap::{AppSettings, Arg, SubCommand};
+use lushui::crates::CrateType;
 
 const VERSION: &str = concat!(
     env!("CARGO_PKG_VERSION"),
@@ -96,7 +97,6 @@ pub fn arguments() -> (Command, Options) {
                         .help("@Task"),
                 ),
         )
-        // @Task options
         .subcommand(
             SubCommand::with_name("initialize")
                 .visible_alias("init")
@@ -282,10 +282,4 @@ pub enum Command {
 pub enum GenerationMode {
     Initialize,
     New { package_name: String },
-}
-
-// @Task move to mod crates
-pub enum CrateType {
-    Binary,
-    Library,
 }

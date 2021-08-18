@@ -240,7 +240,7 @@ pub struct Path {
 }
 
 impl Path {
-    pub fn from_segments(segments: SmallVec<Identifier, 1>) -> Self {
+    pub fn with_segments(segments: SmallVec<Identifier, 1>) -> Self {
         Self {
             hanger: None,
             segments,
@@ -250,6 +250,8 @@ impl Path {
     /// Construct a single identifier segment path.
     ///
     /// May panic.
+    // @Note bad naming try_from_token (only for ids) <-> hanger only for hangers
+    // unify?
     pub fn try_from_token(token: Token) -> Option<Self> {
         Some(Identifier::try_from(token).ok()?.into())
     }

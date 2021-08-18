@@ -22,6 +22,7 @@ pub struct CrateStore {
 
 impl CrateStore {
     pub fn add(&mut self, index: CrateIndex, crate_: Package) {
+        eprintln!("CrateStore::add({index:?}, {})", crate_.name);
         self.crates.insert(index, crate_);
     }
 
@@ -55,6 +56,8 @@ impl std::ops::Index<CrateIndex> for CrateStore {
     type Output = Package;
 
     fn index(&self, index: CrateIndex) -> &Self::Output {
+        eprintln!("CrateStore[{index:?}]");
+
         &self.crates[&index]
     }
 }
@@ -91,19 +94,33 @@ pub fn distributed_libraries_path() -> PathBuf {
 pub const CORE_LIBRARY_NAME: &str = "core";
 
 pub const DEFAULT_SOURCE_FOLDER_NAME: &str = "source";
-pub const DEFAULT_LIBRARY_ROOT_FILE_STEM: &str = "library";
-pub const DEFAULT_BINARY_ROOT_FILE_STEM: &str = "main";
 
-pub fn default_library_root_file_path() -> PathBuf {
-    Path::new(DEFAULT_SOURCE_FOLDER_NAME)
-        .join(DEFAULT_LIBRARY_ROOT_FILE_STEM)
-        .with_extension(FILE_EXTENSION)
+#[derive(Clone, Copy)]
+pub enum CrateType {
+    Library,
+    Binary,
 }
 
-pub fn default_binary_root_file_path() -> PathBuf {
-    Path::new(DEFAULT_SOURCE_FOLDER_NAME)
-        .join(DEFAULT_BINARY_ROOT_FILE_STEM)
-        .with_extension(FILE_EXTENSION)
+impl CrateType {
+    pub const fn default_root_file_stem(self) -> &'static str {
+        match self {
+            Self::Library => "library",
+            Self::Binary => "main",
+        }
+    }
+
+    pub fn default_root_file_path(self) -> PathBuf {
+        Path::new(DEFAULT_SOURCE_FOLDER_NAME)
+            .join(self.default_root_file_stem())
+            .with_extension(FILE_EXTENSION)
+    }
+}
+
+// @Task docs
+#[derive(PartialEq, Eq)]
+pub enum CrateRole {
+    Main,
+    Dependency,
 }
 
 // @Beacon @Note really not so sure about the architecture: storing the index and the scope
@@ -124,39 +141,19 @@ pub struct Package {
     // pub resolved_dependencies: HashMap<String, CrateIndex>,
     pub metadata: PackageMetadata,
     pub scope: CrateScope,
-    // @Temporary name, @Task better name
-    // if this is the crate with no dependents, the final crate,
-    // the crate the user actually wants to check/run
-    pub is_main: bool,
-}
-
-impl fmt::Debug for Package {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Package")
-            .field("index", &self.index)
-            .field("name", &self.name)
-            .field("path", &self.path)
-            .field("version", &self.version)
-            .field("description", &self.description)
-            .field("private", &self.private)
-            .field("library", &self.library)
-            .field("binary", &self.binary)
-            .field("dependencies", &self.dependencies)
-            .field("is_main", &self.is_main)
-            .finish()
-    }
+    pub role: CrateRole,
 }
 
 impl Package {
     pub fn from_manifest(
-        is_main: bool,
+        role: CrateRole,
         index: CrateIndex,
         path: PathBuf,
         resolved_dependencies: HashMap<String, CrateIndex>,
         manifest: PackageManifest,
     ) -> Self {
-        let default_library_path = path.join(default_library_root_file_path());
-        let default_binary_path = path.join(default_binary_root_file_path());
+        let default_library_path = path.join(CrateType::Library.default_root_file_path());
+        let default_binary_path = path.join(CrateType::Binary.default_root_file_path());
 
         let library = match manifest.library {
             Some(library) => Some(Library {
@@ -190,7 +187,7 @@ impl Package {
                 resolved_dependencies,
             },
             scope: CrateScope::new(index),
-            is_main,
+            role,
         }
     }
 }
@@ -201,12 +198,10 @@ pub struct PackageMetadata {
     pub resolved_dependencies: HashMap<String, CrateIndex>,
 }
 
-#[derive(Debug)]
 pub struct Binary {
     pub path: PathBuf,
 }
 
-#[derive(Debug)]
 pub struct Library {
     pub path: PathBuf,
 }
@@ -218,7 +213,7 @@ pub struct Dependency {
 }
 
 // @Question rename to package manifest??
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 pub struct PackageManifest {
     // @Task newtype
     pub name: String,
@@ -236,6 +231,18 @@ pub struct PackageManifest {
     pub dependencies: HashMap<String, DependencyManifest>,
 }
 
+// @Temporary location
+pub fn find_package_path(path: &Path) -> Result<&Path> {
+    let manifest_path = path.join(PackageManifest::FILE_NAME);
+
+    // @Task error handling
+    if manifest_path.try_exists().unwrap() {
+        Ok(path)
+    } else {
+        find_package_path(path.parent().ok_or(())?)
+    }
+}
+
 impl PackageManifest {
     pub const FILE_NAME: &'static str = "package.json5";
 
@@ -246,16 +253,19 @@ impl PackageManifest {
     // here? the current message does not make sense for implicitly opening `core`
     // and probably also not for trying to open dependencies...
     // @Update @Update @Task don't handle them here but at the caller's site!!
-    pub fn open(path: &Path, reporter: &Reporter) -> Result<Self> {
+    pub fn from_package_path(package_path: &Path, reporter: &Reporter) -> Result<Self> {
+        let manifest_path = package_path.join(Self::FILE_NAME);
+
         // @Beacon @Task search recursively upwards!
-        let manifest = match std::fs::read_to_string(path.join(Self::FILE_NAME)) {
+        let manifest = match std::fs::read_to_string(&manifest_path) {
             Ok(manifest) => manifest,
             Err(error) => {
                 // @Task custom error messages dependening on io::ErrorKind
                 // @Temporary message
+                // @Update not compatible with find_package_path I guess...
                 Diagnostic::error()
                     .message("cannot find a valid package manifest")
-                    .note(format!("path: {path:?}"))
+                    .note(format!("path: {manifest_path:?}"))
                     .note(format!("reason: {error}"))
                     .report(reporter);
                 return Err(());
@@ -272,17 +282,17 @@ impl PackageManifest {
     }
 }
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Deserialize, Default)]
 pub struct LibraryManifest {
     pub path: Option<PathBuf>,
 }
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Deserialize, Default)]
 pub struct BinaryManifest {
     pub path: Option<PathBuf>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 pub struct DependencyManifest {
     // @Temporary type
     pub version: Option<String>,

@@ -1,18 +1,17 @@
 //! Data structures and procedures for handling source locations.
 
-use crate::diagnostics::Diagnostic;
-use std::{io, path::Path};
-
 // @Beacon @Task The API of [Span], [LocalSpan], [ByteIndex], [LocalByteIndex] is
 // utter trash!! ugly, inconvenient, confusing, unsafe (trying to prevent overflow
 // panics but they still gonna happen!)
 
+use crate::diagnostics::Diagnostic;
 pub use index::{ByteIndex, LocalByteIndex};
 pub use source_file::SourceFile;
-pub use source_map::{SourceFileIndex, SourceMap};
+pub use source_map::{SharedSourceMap, SourceFileIndex, SourceMap};
 pub use span::{LocalSpan, Span};
 pub use spanned::Spanned;
 pub use spanning::{PossiblySpanning, Spanning};
+use std::{io, path::Path};
 
 mod index {
     use super::{Error, SourceFile};
@@ -447,21 +446,27 @@ mod source_map {
     use indexed_vec::IndexVec;
     use std::{
         borrow::Borrow,
+        cell::RefCell,
         path::{Path, PathBuf},
+        rc::Rc,
     };
     use unicode_width::UnicodeWidthStr;
+
+    pub type SharedSourceMap = Rc<RefCell<SourceMap>>;
 
     /// A mapping from an index or offset to source files.
     ///
     /// Most prominently, the offset is used to define [Span]s.
-    // @Task use indices to enable unloading source file when they are not needed
     #[derive(Default)]
     pub struct SourceMap {
-        // @Task do Rc<RefCell<_>>
         files: IndexVec<SourceFileIndex, SourceFile>,
     }
 
     impl SourceMap {
+        pub fn shared() -> SharedSourceMap {
+            Rc::new(RefCell::new(Self::default()))
+        }
+
         fn next_offset(&self) -> Result<ByteIndex, Error> {
             self.files
                 .last()

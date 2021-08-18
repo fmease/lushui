@@ -1,12 +1,12 @@
-#![feature(backtrace, format_args_capture, derive_default_enum)]
+#![feature(backtrace, format_args_capture, derive_default_enum, decl_macro)]
 #![forbid(rust_2018_idioms, unused_must_use)]
 
-use cli::{Command, CrateType, PhaseRestriction};
+use cli::{Command, PhaseRestriction};
 use lushui::{
     crates::{
-        distributed_libraries_path, Binary, BinaryManifest, CrateIndex, CrateStore,
-        DependencyManifest, Library, Package, PackageManifest, CORE_LIBRARY_NAME,
-        DEFAULT_BINARY_ROOT_FILE_STEM, DEFAULT_LIBRARY_ROOT_FILE_STEM, DEFAULT_SOURCE_FOLDER_NAME,
+        distributed_libraries_path, find_package_path, Binary, BinaryManifest, CrateIndex,
+        CrateRole, CrateStore, CrateType, DependencyManifest, Library, Package, PackageManifest,
+        CORE_LIBRARY_NAME, DEFAULT_SOURCE_FOLDER_NAME,
     },
     diagnostics::{
         reporter::{BufferedStderrReporter, StderrReporter},
@@ -18,17 +18,20 @@ use lushui::{
     lowerer::Lowerer,
     parser::{ast::Identifier, Parser},
     resolver,
-    span::{SourceMap, Span},
+    span::{SharedSourceMap, SourceMap, Span},
     typer::Typer,
     FILE_EXTENSION,
 };
 use resolver::Resolver;
 use rustc_hash::FxHashMap as HashMap;
-use std::{cell::RefCell, convert::TryInto, path::Path, rc::Rc};
+use std::{
+    convert::TryInto,
+    path::{Path, PathBuf},
+};
+use util::{obtain, Str};
 
 mod cli;
-
-type Str = std::borrow::Cow<'static, str>;
+mod util;
 
 fn main() {
     if main_().is_err() {
@@ -47,7 +50,7 @@ fn main_() -> Result<(), ()> {
         show_binding_indices: options.show_binding_indices,
     });
 
-    let map = Rc::new(RefCell::new(SourceMap::default()));
+    let map = SourceMap::shared();
     let reporter = BufferedStderrReporter::new(map.clone()).into();
 
     let result = execute_command(command, options, &map, &reporter);
@@ -74,7 +77,7 @@ fn main_() -> Result<(), ()> {
 fn execute_command(
     command: Command,
     options: cli::Options,
-    map: &Rc<RefCell<SourceMap>>,
+    map: &SharedSourceMap,
     reporter: &Reporter,
 ) -> Result {
     use cli::GenerationMode;
@@ -92,69 +95,85 @@ fn execute_command(
     }
 }
 
-// @Temporary location, concept
-// @Note inept name: package <-> crate
 #[derive(Default)]
-pub struct CrateQueue(Vec<Package>);
+// @Note it's an IndexVec
+pub struct CrateQueue2(Vec<QueueItem>);
 
-impl CrateQueue {
-    // @Note not scalable
+impl CrateQueue2 {
+    fn available_index(&self) -> CrateIndex {
+        CrateIndex(self.0.len().try_into().unwrap())
+    }
+
     pub fn find_by_path(&self, path: &Path) -> Option<CrateIndex> {
         self.0
             .iter()
-            .find(|package| package.path == path)
-            .map(|package| package.index)
+            .enumerate()
+            .find(|(_, item)| item.path() == path)
+            .map(|(index, _)| CrateIndex(index.try_into().unwrap()))
     }
 
-    pub fn enqueue(&mut self, package: impl FnOnce(CrateIndex) -> Package) {
-        let index = CrateIndex(self.0.len().try_into().unwrap());
+    pub fn enqueue_unresolved(&mut self, path: PathBuf) -> CrateIndex {
+        let index = self.available_index();
+        self.0.push(QueueItem::Unresolved(path));
+        index
+    }
 
-        self.0.push(package(index));
+    pub fn enqueue_resolved(&mut self, package: impl FnOnce(CrateIndex) -> Package) {
+        self.0
+            .push(QueueItem::Resolved(package(self.available_index())));
     }
 }
+
+pub enum QueueItem {
+    Unresolved(PathBuf),
+    Resolved(Package),
+}
+
+impl QueueItem {
+    pub fn path(&self) -> &Path {
+        match self {
+            Self::Unresolved(path) => path,
+            Self::Resolved(package) => &package.path,
+        }
+    }
+
+    pub fn resolve(&mut self, package: Package) {
+        match self {
+            Self::Unresolved(_) => *self = QueueItem::Resolved(package),
+            Self::Resolved(_) => unreachable!(),
+        }
+    }
+
+    pub fn into_resolved(self) -> Option<Package> {
+        obtain!(self, Self::Resolved(package) => package)
+    }
+}
+
+impl std::ops::Index<CrateIndex> for CrateQueue2 {
+    type Output = QueueItem;
+
+    fn index(&self, index: CrateIndex) -> &Self::Output {
+        &self.0[index.0 as usize]
+    }
+}
+
+impl std::ops::IndexMut<CrateIndex> for CrateQueue2 {
+    fn index_mut(&mut self, index: CrateIndex) -> &mut Self::Output {
+        &mut self.0[index.0 as usize]
+    }
+}
+
+// @Temporary
+type ResolvedDependencies = HashMap<String, CrateIndex>;
 
 fn check_run_or_build_package(
     command: Command,
     options: cli::Options,
-    map: &Rc<RefCell<SourceMap>>,
+    map: &SharedSourceMap,
     reporter: &Reporter,
 ) -> Result {
-    // @Temporary architecture
     let mut built_crates = CrateStore::default();
-    let mut unbuilt_crates = CrateQueue::default();
-
-    let mut single_file_crate_resolved_dependencies = HashMap::default();
-
-    if options.source_file_path.is_some() && !options.unlink_core {
-        let core_library_path = distributed_libraries_path().join(CORE_LIBRARY_NAME);
-
-        // @Question custom message for not finding the core library?
-        let manifest = PackageManifest::open(&core_library_path, &reporter)?;
-
-        unbuilt_crates.enqueue(|index| {
-            single_file_crate_resolved_dependencies.insert(CORE_LIBRARY_NAME.into(), index);
-
-            Package::from_manifest(
-                false,
-                index,
-                core_library_path,
-                // @Bug do not hardcode core's dependencies: use the resolve_dependencies function here
-                // no special-casing!!
-                HashMap::default(),
-                manifest,
-            )
-        });
-    }
-
-    if options.source_file_path.is_none() && options.unlink_core {
-        // @Temporary message
-        // @Beacon @Question does curl support this in a built-in way?:
-        // @Task add note explaining how one needs to remove the
-        // explicit `core` dep in the manifest to achieve the wanted behavior
-        Diagnostic::error()
-            .message("option --unlink-core only works with explicit source file paths")
-            .report(&reporter);
-    }
+    let mut unbuilt_crates = CrateQueue2::default();
 
     match options.source_file_path {
         // @Note does not scale to `--link`s
@@ -162,63 +181,105 @@ fn check_run_or_build_package(
             let crate_name = lushui::lexer::parse_crate_name(source_file_path.clone(), &reporter)
                 .map_err(|error| error.report(&reporter))?;
 
-            // @Bug probably crashes on `lushui check $CARGO_MANIFEST_DIR/libraries/core/source/library.lushui`
-            unbuilt_crates.enqueue(|index| {
-                Package::from_manifest(
-                    true,
-                    index,
-                    // @Task dont unwrap, handle error case
-                    // joining with "." since it might return "" which fails to canonicalize
-                    source_file_path
-                        .parent()
-                        .unwrap()
-                        .join(".")
-                        .canonicalize()
-                        .unwrap(),
-                    single_file_crate_resolved_dependencies,
-                    // @Task create a PackageManifest::single_file_package constructor for this
-                    PackageManifest {
-                        // @Task we can do better here
-                        name: crate_name.as_str().to_owned(),
-                        version: "0.0.0".to_owned(),
-                        description: String::new(),
-                        private: true,
-                        // @Bug we don't want to signal "check for yourself if there exists source/library.lushui" with None
-                        // but to explicitly set the library to None
-                        // meaning Manifest is not the correct type we want here!!
-                        library: None,
-                        binary: Some(BinaryManifest {
-                            path: Some(source_file_path),
-                        }),
-                        // @Beacon @Bug missing `core` (unless --unlink-core)
-                        dependencies: HashMap::default(),
-                    },
-                )
-            });
+            // @Task dont unwrap, handle error case
+            // joining with "." since it might return "" which fails to canonicalize
+            let path = source_file_path
+                .parent()
+                .unwrap()
+                .join(".")
+                .canonicalize()
+                .unwrap();
+
+            let index = unbuilt_crates.enqueue_unresolved(path.clone());
+
+            let mut resolved_dependencies = ResolvedDependencies::default();
+
+            if !options.unlink_core {
+                let core_library_path = distributed_libraries_path().join(CORE_LIBRARY_NAME);
+
+                // @Question custom message for not finding the core library?
+                let manifest = PackageManifest::from_package_path(&core_library_path, &reporter)?;
+
+                unbuilt_crates.enqueue_resolved(|index| {
+                    resolved_dependencies.insert(CORE_LIBRARY_NAME.to_string(), index);
+
+                    Package::from_manifest(
+                        CrateRole::Dependency,
+                        index,
+                        core_library_path,
+                        // @Bug do not hardcode core's dependencies: use the resolve_dependencies function here
+                        // no special-casing!!
+                        HashMap::default(),
+                        manifest,
+                    )
+                });
+            }
+
+            unbuilt_crates[index].resolve(Package::from_manifest(
+                CrateRole::Main,
+                index,
+                path,
+                resolved_dependencies,
+                // @Task create a PackageManifest::single_file_package constructor for this
+                PackageManifest {
+                    // @Task we can do better here
+                    name: crate_name.as_str().to_owned(),
+                    version: "0.0.0".to_owned(),
+                    description: String::new(),
+                    private: true,
+                    // @Bug we don't want to signal "check for yourself if there exists source/library.lushui" with None
+                    // but to explicitly set the library to None
+                    // meaning Manifest is not the correct type we want here!!
+                    library: None,
+                    binary: Some(BinaryManifest {
+                        path: Some(source_file_path),
+                    }),
+                    // @Beacon @Bug missing `core` (unless --unlink-core)
+                    dependencies: HashMap::default(),
+                },
+            ));
         }
         None => {
-            // @Beacon @Note even though we use recursion, we have duplicate code here, we need to
-            // have a proper (simpler!) base case! only call enqueue_dependency once here in this block
-            // not twice!
+            if options.unlink_core {
+                // @Temporary message
+                // @Beacon @Question does curl support this in a built-in way?:
+                // @Task add note explaining how one needs to remove the
+                // explicit `core` dep in the manifest to achieve the wanted behavior
+                Diagnostic::error()
+                    .message("option --unlink-core only works with explicit source file paths")
+                    .report(&reporter);
+            }
 
             // @Task dont unwrap, handle the error cases
             let path = std::env::current_dir().unwrap();
-            let manifest = PackageManifest::open(&path, &reporter)?;
+            let path = find_package_path(&path).unwrap();
+
+            // @Task verify name and version matches (unless overwritten!)
+            // @Task don't return early here!
+            // @Task don't bubble up with `?` but once `open` returns a proper error type,
+            // report a custom diagnostic saying ~ "could not find a package manifest for the package XY
+            // specified as a path dependency" (sth sim to this)
+            let manifest = PackageManifest::from_package_path(&path, &reporter)?;
+
+            let index = unbuilt_crates.enqueue_unresolved(path.into());
 
             let resolved_dependencies =
                 enqueue_dependencies(&mut unbuilt_crates, &path, &manifest.dependencies, reporter)?;
 
-            unbuilt_crates.enqueue(|index| {
-                Package::from_manifest(true, index, path, resolved_dependencies, manifest)
-            });
-
-            // @Temporary
-            type ResolvedDependencies = HashMap<String, CrateIndex>;
+            // @Note we probably need to disallow referencing the same package through different
+            // names from the same package to be able to generate a correct lock-file
+            unbuilt_crates[index].resolve(Package::from_manifest(
+                CrateRole::Main,
+                index,
+                path.into(),
+                resolved_dependencies,
+                manifest,
+            ));
 
             // @Temporary location
             // @Question are some errors non-fatal??
             fn enqueue_dependencies(
-                unbuilt_crates: &mut CrateQueue,
+                unbuilt_crates: &mut CrateQueue2,
                 project_path: &Path,
                 dependencies: &HashMap<String, DependencyManifest>,
                 reporter: &Reporter,
@@ -240,6 +301,10 @@ fn check_run_or_build_package(
                     };
 
                     if let Some(index) = unbuilt_crates.find_by_path(&path) {
+                        if matches!(unbuilt_crates[index], QueueItem::Unresolved(_)) {
+                            panic!("circular crates");
+                        }
+
                         resolved_dependencies.insert(name.clone(), index);
                         continue;
                     }
@@ -249,9 +314,10 @@ fn check_run_or_build_package(
                     // @Task don't bubble up with `?` but once `open` returns a proper error type,
                     // report a custom diagnostic saying ~ "could not find a package manifest for the package XY
                     // specified as a path dependency" (sth sim to this)
-                    let manifest = PackageManifest::open(&path, &reporter)?;
+                    let manifest = PackageManifest::from_package_path(&path, &reporter)?;
 
-                    // @Task handle circular deps! (currently loops indefinitly I guess)
+                    let index = unbuilt_crates.enqueue_unresolved(path.clone());
+
                     let resolved_transitive_dependencies = enqueue_dependencies(
                         unbuilt_crates,
                         &path,
@@ -261,17 +327,14 @@ fn check_run_or_build_package(
 
                     // @Note we probably need to disallow referencing the same package through different
                     // names from the same package to be able to generate a correct lock-file
-                    unbuilt_crates.enqueue(|index| {
-                        resolved_dependencies.insert(name.clone(), index);
-
-                        Package::from_manifest(
-                            false,
-                            index,
-                            path,
-                            resolved_transitive_dependencies,
-                            manifest,
-                        )
-                    });
+                    unbuilt_crates[index].resolve(Package::from_manifest(
+                        CrateRole::Dependency,
+                        index,
+                        path,
+                        resolved_transitive_dependencies,
+                        manifest,
+                    ));
+                    resolved_dependencies.insert(name.clone(), index);
                 }
 
                 Ok(resolved_dependencies)
@@ -280,18 +343,25 @@ fn check_run_or_build_package(
     };
 
     // @Beacon @Temporary
-    // eprintln!(
-    //     "crates to build: {}",
-    //     unbuilt_crates
-    //         .0
-    //         .iter()
-    //         .map(|crate_| format!("{} [{:?}]\n", crate_.name, crate_.path))
-    //         .collect::<String>()
-    // );
+    let unbuilt_crates = unbuilt_crates
+        .0
+        .into_iter()
+        .map(|crate_| {
+            let crate_ = crate_.into_resolved().unwrap();
+            println!(
+                "crate to build: {:?} {} [{:?}]\n",
+                crate_.scope.owner, crate_.name, crate_.path
+            );
+            crate_
+        })
+        .collect::<Vec<_>>();
 
-    // @Task forall crates in dependencies "compile"/… them
-    // and in the end crates.add() them
-    for mut crate_ in unbuilt_crates.0 {
+    // for item in unbuilt_crates.0 {
+    for item in unbuilt_crates.into_iter().rev() {
+        let mut crate_ = item;
+        // let mut crate_ = item.into_resolved().unwrap();
+        eprintln!("in build loop: {:?} {}", crate_.scope.owner, crate_.name);
+
         // @Beacon @Beacon @Task create CLI-flag -q/--quiet
         // and don't print this if it is set
         // eprintln!(
@@ -400,7 +470,7 @@ fn check_run_or_build_package(
         // but here (a static error) (if the CLI dictates to run it)
 
         if let Command::Run = command {
-            if crate_.is_main {
+            if crate_.role == CrateRole::Main {
                 let result = typer.interpreter().run()?;
 
                 println!("{}", result.with((&crate_.scope, &built_crates)));
@@ -454,10 +524,7 @@ fn create_new_package(
     .unwrap();
 
     let root_file_path = source_folder_path
-        .join(match crate_type {
-            CrateType::Binary => DEFAULT_BINARY_ROOT_FILE_STEM,
-            CrateType::Library => DEFAULT_LIBRARY_ROOT_FILE_STEM,
-        })
+        .join(crate_type.default_root_file_stem())
         .with_extension(FILE_EXTENSION);
 
     let root_file_content = match crate_type {

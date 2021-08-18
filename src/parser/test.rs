@@ -20,10 +20,10 @@ use crate::{
     span::{span, SourceFileIndex, SourceMap, Span},
 };
 use smallvec::smallvec;
-use std::{cell::RefCell, default::default, rc::Rc};
+use std::default::default;
 
 fn parse_expression(source: &str) -> Result<Expression> {
-    let map = Rc::new(RefCell::new(SourceMap::default()));
+    let map = SourceMap::shared();
     let file = map
         .borrow_mut()
         .add(None, source.to_owned())
@@ -42,7 +42,7 @@ fn parse_expression(source: &str) -> Result<Expression> {
 }
 
 fn parse_declaration(source: &str) -> Result<Declaration> {
-    let map = Rc::new(RefCell::new(SourceMap::default()));
+    let map = SourceMap::shared();
     let file = map
         .borrow_mut()
         .add(None, source.to_owned())

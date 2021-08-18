@@ -48,14 +48,14 @@
     label_break_value,
     type_ascription,
     derive_default_enum,
-    generic_associated_types
+    generic_associated_types,
+    path_try_exists
 )]
 #![deny(rust_2018_idioms, unused_must_use)]
 
 pub mod compiler;
 pub mod crates;
 pub mod diagnostics;
-pub mod documenter;
 mod entity;
 pub mod error;
 pub mod format;
