@@ -130,7 +130,7 @@ fn check_run_or_build_package(
 
     let goal_crate = unbuilt_crates.last().unwrap().index;
 
-    for mut crate_ in unbuilt_crates {
+    for mut crate_ in unbuilt_crates.into_values() {
         // @Beacon @Task print banner "compiling crate xyz" here unless --quiet/-q
         // eprintln!("  [building {}]", built_crates[crate_.package].name);
 
@@ -270,7 +270,7 @@ fn process_package(crates: &mut CrateBuildQueue, unlink_core: bool, reporter: &R
     let manifest = PackageManifest::from_package_path(path, &reporter)?;
 
     let package = Package::from_manifest_details(path.to_owned(), manifest.details);
-    let package = crates.add_package(package);
+    let package = crates.packages.insert(package);
 
     // @Note we probably need to disallow referencing the same package through different
     // names from the same package to be able to generate a correct lock-file
@@ -308,7 +308,7 @@ fn process_single_file_package(
 
     // @Note wasteful name cloning
     let package = Package::single_file_package(crate_name.as_str().to_owned(), path);
-    let package = crates.add_package(package);
+    let package = crates.packages.insert(package);
 
     let mut resolved_dependencies = HashMap::default();
 
@@ -319,7 +319,7 @@ fn process_single_file_package(
         let core_manifest = PackageManifest::from_package_path(&core_path, &reporter)?;
 
         let core_package = Package::from_manifest_details(core_path.clone(), core_manifest.details);
-        let core_package = crates.add_package(core_package);
+        let core_package = crates.packages.insert(core_package);
 
         // @Note we probably need to disallow referencing the same package through different
         // names from the same package to be able to generate a correct lock-fil
@@ -339,7 +339,8 @@ fn process_single_file_package(
     }
 
     let binary = crates
-        .enqueue(|index| CrateScope::new(index, package, source_file_path, CrateType::Binary));
+        .crates
+        .insert_with(|index| CrateScope::new(index, package, source_file_path, CrateType::Binary));
     crates[package].binaries.push(binary);
     crates.add_resolved_dependencies(package, resolved_dependencies);
 

@@ -31,7 +31,7 @@ use crate::{
 };
 use colored::Colorize;
 pub use index::{DeBruijnIndex, DeclarationIndex, Index, LocalDeclarationIndex};
-use indexed_vec::IndexVec;
+use index_map::IndexMap;
 use joinery::JoinableIterator;
 use smallvec::smallvec;
 use std::{cell::RefCell, cmp::Ordering, default::default, fmt, path::PathBuf, usize};
@@ -55,9 +55,8 @@ pub struct CrateScope {
     /// All bindings inside of a crate.
     ///
     /// The first element must always be the root module.
-    // pub(crate) bindings: IndexVec<index::LocalDeclarationIndex, Entity>,
     // @Temporary
-    pub(crate) bindings: IndexVec<LocalDeclarationIndex, Entity>,
+    pub(crate) bindings: IndexMap<LocalDeclarationIndex, Entity>,
     /// For resolving out of order use-declarations.
     partially_resolved_use_bindings: HashMap<LocalDeclarationIndex, PartiallyResolvedUseBinding>,
     /// For error reporting.
@@ -282,7 +281,7 @@ impl CrateScope {
             }
         }
 
-        let index = self.bindings.push(Entity {
+        let index = self.bindings.insert(Entity {
             source: binder,
             kind: binding,
             exposure,
@@ -613,7 +612,7 @@ impl CrateScope {
     ) -> Result {
         let mut health = Health::Untainted;
 
-        for binding in &self.bindings {
+        for binding in self.bindings.values() {
             if let Exposure::Restricted(exposure) = &binding.exposure {
                 // unwrap: root always has Exposure::Unrestricted
                 let definition_site_namespace = binding.parent.unwrap();
@@ -926,7 +925,7 @@ impl DisplayWith for CrateScope {
 
         writeln!(f, "  bindings:")?;
 
-        for (index, entity) in self.bindings.iter_enumerated() {
+        for (index, entity) in self.bindings.iter() {
             writeln!(f, "    {index:?}: {}", entity.with((self, crates)))?;
         }
 

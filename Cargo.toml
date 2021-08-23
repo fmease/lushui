@@ -14,7 +14,7 @@ num-traits = "0.2.11"
 smallvec = { version = "1.4.2", features = ["const_generics"] } 
 bitflags = "1.2.1"
 clap = "2.33.3"
-indexed_vec = { version = "1.2.1", default-features = false }
+index_map = { path = "src/index_map" }
 unicode-width = "0.1.7"
 once_cell = "1.3.1"
 joinery = "2.0.0"

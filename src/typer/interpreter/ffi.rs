@@ -15,7 +15,6 @@ use crate::{
     typer::Declaration,
     util::{HashMap, Int, Nat},
 };
-use indexed_vec::IndexVec;
 
 // @Note ugly data structures in use
 #[derive(Default)]
@@ -28,7 +27,7 @@ pub struct Scope {
     pub(in crate::typer) inherent_values: InherentValueMap,
     /// Inherent types (`@inherent`)
     pub(in crate::typer) inherent_types: InherentTypeMap,
-    pub(super) _runners: IndexVec<IOIndex, IORunner>,
+    pub(super) _runners: IndexMap<IOIndex, IORunner>,
 }
 
 impl Scope {
@@ -451,20 +450,12 @@ impl<V: IntoValue> IntoValue for Option<V> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, index_map::Index)]
 pub struct IOIndex(usize);
-
-impl indexed_vec::Idx for IOIndex {
-    fn new(index: usize) -> Self {
-        Self(index)
-    }
-    fn index(self) -> usize {
-        self.0
-    }
-}
 
 pub type IORunner = fn(Vec<Value>) -> Value;
 
+use index_map::IndexMap;
 use num_traits::ops::checked::{CheckedDiv, CheckedSub};
 
 pub fn register_foreign_bindings(scope: &mut CrateScope) {

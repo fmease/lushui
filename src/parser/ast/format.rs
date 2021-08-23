@@ -7,7 +7,7 @@ use crate::{
 use colored::{Color, Colorize};
 use format_struct::FormatStruct;
 pub use indentation::Indentation;
-use indexed_vec::Idx;
+use index_map::Index as _;
 use joinery::JoinableIterator;
 use std::fmt::{self, Debug, Formatter, Result};
 
@@ -300,7 +300,7 @@ impl Format for SourceFileIndex {
         FormatStruct::new(f, indentation)
             .name("Source-File-Index")
             .finish()?;
-        write!(f, " {}", self.index().to_string().color(VERBATIM_COLOR))
+        write!(f, " {}", self.value().to_string().color(VERBATIM_COLOR))
     }
 }
 

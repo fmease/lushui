@@ -19,6 +19,7 @@ use crate::{
     lexer::Lexer,
     span::{span, SourceFileIndex, SourceMap, Span},
 };
+use index_map::Index as _;
 use smallvec::smallvec;
 use std::default::default;
 
@@ -108,7 +109,6 @@ macro no_std_assert($( $anything:tt )*) {
     compile_error!("use function `assert_eq` instead of macro `assert_eq` and similar")
 }
 
-use indexed_vec::Idx;
 #[allow(unused_imports)]
 use no_std_assert as assert_eq;
 #[allow(unused_imports)]

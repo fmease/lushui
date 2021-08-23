@@ -104,12 +104,12 @@ impl fmt::Debug for LocalDeclarationIndex {
     }
 }
 
-impl indexed_vec::Idx for LocalDeclarationIndex {
+impl index_map::Index for LocalDeclarationIndex {
     fn new(index: usize) -> Self {
         Self::new(index as u64)
     }
 
-    fn index(self) -> usize {
+    fn value(self) -> usize {
         self.0.try_into().unwrap()
     }
 }

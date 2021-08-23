@@ -6,7 +6,7 @@ use crate::{
     util::HashMap,
     FILE_EXTENSION,
 };
-use indexed_vec::IndexVec;
+use index_map::IndexMap;
 pub use manifest::{
     BinaryManifest, DependencyManifest, LibraryManifest, PackageManifest, PackageManifestCrates,
     PackageManifestDetails, Version,
@@ -22,11 +22,11 @@ use std::{
 pub struct CrateStore {
     // @Question BTreeSet<CrateScope> (CrateScope.index) ?
     crates: HashMap<CrateIndex, CrateScope>,
-    packages: IndexVec<PackageIndex, Package>,
+    packages: IndexMap<PackageIndex, Package>,
 }
 
 impl CrateStore {
-    pub fn with_packages(packages: IndexVec<PackageIndex, Package>) -> Self {
+    pub fn with_packages(packages: IndexMap<PackageIndex, Package>) -> Self {
         Self {
             crates: HashMap::default(),
             packages,
@@ -84,7 +84,7 @@ impl IndexMut<PackageIndex> for CrateStore {
 }
 
 // @Temporary
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy, index_map::Index)]
 pub struct PackageIndex(usize);
 
 impl fmt::Debug for PackageIndex {
@@ -93,42 +93,13 @@ impl fmt::Debug for PackageIndex {
     }
 }
 
-impl indexed_vec::Idx for PackageIndex {
-    fn new(index: usize) -> Self {
-        PackageIndex(index)
-    }
-
-    fn index(self) -> usize {
-        self.0
-    }
-}
-
 #[derive(Default)]
 pub struct CrateBuildQueue {
-    // @Note it's an IndexVec
-    crates: Vec<CrateScope>,
-    packages: IndexVec<PackageIndex, Package>,
+    pub crates: IndexMap<CrateIndex, CrateScope>,
+    pub packages: IndexMap<PackageIndex, Package>,
 }
 
 impl CrateBuildQueue {
-    fn available_index(&self) -> CrateIndex {
-        CrateIndex(self.crates.len().try_into().unwrap())
-    }
-
-    fn find_package_by_path(&self, path: &Path) -> Option<&Package> {
-        self.packages.iter().find(|package| package.path == path)
-    }
-
-    pub fn add_package(&mut self, package: Package) -> PackageIndex {
-        self.packages.push(package)
-    }
-
-    pub fn enqueue(&mut self, crate_: impl FnOnce(CrateIndex) -> CrateScope) -> CrateIndex {
-        let index = self.available_index();
-        self.crates.push(crate_(index));
-        index
-    }
-
     // @Question are some errors non-fatal??
     pub fn enqueue_dependencies(
         &mut self,
@@ -147,7 +118,7 @@ impl CrateBuildQueue {
                 None => distributed_libraries_path().join(dependency_name),
             };
 
-            if let Some(package) = self.find_package_by_path(&path) {
+            if let Some(package) = self.packages.values().find(|package| package.path == path) {
                 if !package.is_fully_resolved {
                     // @Task embellish
                     Diagnostic::error()
@@ -176,7 +147,7 @@ impl CrateBuildQueue {
             // assert version requirement (if any) is fulfilled
 
             let package = Package::from_manifest_details(path.clone(), manifest.details);
-            let package = self.add_package(package);
+            let package = self.packages.insert(package);
 
             // @Note we probably need to disallow referencing the same package through different
             // names from the same package to be able to generate a correct lock-file
@@ -209,8 +180,9 @@ impl CrateBuildQueue {
         let package_contains_library = path.is_some();
 
         if let Some(path) = path {
-            let index = self
-                .enqueue(|index| CrateScope::new(index, package_index, path, CrateType::Library));
+            let index = self.crates.insert_with(|index| {
+                CrateScope::new(index, package_index, path, CrateType::Library)
+            });
             self[package_index].library = Some(index);
         }
 
@@ -237,8 +209,9 @@ impl CrateBuildQueue {
         let package_contains_binaries = !paths.is_empty();
 
         for path in paths {
-            let index = self
-                .enqueue(|index| CrateScope::new(index, package_index, path, CrateType::Binary));
+            let index = self.crates.insert_with(|index| {
+                CrateScope::new(index, package_index, path, CrateType::Binary)
+            });
             self[package_index].binaries.push(index);
         }
 
@@ -275,7 +248,7 @@ impl CrateBuildQueue {
         self[package_index].is_fully_resolved = true;
     }
 
-    pub fn into_unbuilt_and_built(self) -> (Vec<CrateScope>, CrateStore) {
+    pub fn into_unbuilt_and_built(self) -> (IndexMap<CrateIndex, CrateScope>, CrateStore) {
         (self.crates, CrateStore::with_packages(self.packages))
     }
 }
@@ -284,13 +257,13 @@ impl Index<CrateIndex> for CrateBuildQueue {
     type Output = CrateScope;
 
     fn index(&self, index: CrateIndex) -> &Self::Output {
-        &self.crates[index.0 as usize]
+        &self.crates[index]
     }
 }
 
 impl IndexMut<CrateIndex> for CrateBuildQueue {
     fn index_mut(&mut self, index: CrateIndex) -> &mut Self::Output {
-        &mut self.crates[index.0 as usize]
+        &mut self.crates[index]
     }
 }
 
@@ -314,6 +287,16 @@ pub struct CrateIndex(pub u16);
 impl fmt::Debug for CrateIndex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}c", self.0)
+    }
+}
+
+impl index_map::Index for CrateIndex {
+    fn new(index: usize) -> Self {
+        Self(index.try_into().unwrap())
+    }
+
+    fn value(self) -> usize {
+        self.0 as _
     }
 }
 

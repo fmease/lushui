@@ -443,7 +443,7 @@ const START_OF_FIRST_SOURCE_FILE: ByteIndex = ByteIndex::new(1);
 
 mod source_map {
     use super::{ByteIndex, Error, LocalByteIndex, LocalSpan, SourceFile, Span};
-    use indexed_vec::IndexVec;
+    use index_map::IndexMap;
     use std::{
         borrow::Borrow,
         cell::RefCell,
@@ -459,7 +459,7 @@ mod source_map {
     /// Most prominently, the offset is used to define [Span]s.
     #[derive(Default)]
     pub struct SourceMap {
-        files: IndexVec<SourceFileIndex, SourceFile>,
+        files: IndexMap<SourceFileIndex, SourceFile>,
     }
 
     impl SourceMap {
@@ -503,7 +503,7 @@ mod source_map {
         ) -> Result<SourceFileIndex, Error> {
             Ok(self
                 .files
-                .push(SourceFile::new(path, source, self.next_offset()?)?))
+                .insert(SourceFile::new(path, source, self.next_offset()?)?))
         }
 
         pub fn get(&self, index: SourceFileIndex) -> &SourceFile {
@@ -517,7 +517,7 @@ mod source_map {
             debug_assert!(span != Span::SHAM);
 
             self.files
-                .iter()
+                .values()
                 .find(|file| file.span.contains_index(span.start))
                 .unwrap()
         }
@@ -658,18 +658,8 @@ mod source_map {
         }
     }
 
-    #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+    #[derive(Debug, PartialEq, Eq, Clone, Copy, index_map::Index)]
     pub struct SourceFileIndex(usize);
-
-    impl indexed_vec::Idx for SourceFileIndex {
-        fn new(index: usize) -> Self {
-            Self(index)
-        }
-
-        fn index(self) -> usize {
-            self.0
-        }
-    }
 
     #[derive(Debug)]
     pub struct Lines<'a> {

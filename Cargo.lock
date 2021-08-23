@@ -133,10 +133,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "indexed_vec"
-version = "1.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd5390d1640d64a30efbbe9cd15cb9f472388b4d5693677c693a7bc9310c0d08"
+name = "index_map"
+version = "0.0.0"
+dependencies = [
+ "index_map_derive",
+]
+
+[[package]]
+name = "index_map_derive"
+version = "0.0.0"
+dependencies = [
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "joinery"
@@ -175,7 +184,7 @@ dependencies = [
  "clap",
  "colored",
  "difference",
- "indexed_vec",
+ "index_map",
  "joinery",
  "json5",
  "num-bigint",
@@ -396,9 +405,9 @@ checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
 
 [[package]]
 name = "syn"
-version = "1.0.74"
+version = "1.0.75"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1873d832550d4588c3dbc20f01361ab00bfe741048f71e3fecf145a7cc18b29c"
+checksum = "b7f58f7e8eaa0009c5fec437aabf511bd9933e4b2d7407bd05273c01a8906ea7"
 dependencies = [
  "proc-macro2",
  "quote",
