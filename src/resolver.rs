@@ -15,11 +15,11 @@ mod scope;
 
 use crate::{
     ast,
-    crates::{CrateStore, PackageMetadata},
     diagnostics::{Diagnostic, Reporter},
     entity::EntityKind,
     error::{Health, PossiblyErroneous, Result},
     lowered_ast::{self, AttributeKeys, AttributeKind},
+    package::CrateStore,
     util::obtain,
 };
 use hir::{decl, expr, pat};
@@ -51,21 +51,14 @@ enum Opacity {
 /// The state of the resolver.
 pub struct Resolver<'a> {
     scope: &'a mut CrateScope,
-    metadata: &'a PackageMetadata,
     crates: &'a CrateStore,
     reporter: &'a Reporter,
 }
 
 impl<'a> Resolver<'a> {
-    pub fn new(
-        scope: &'a mut CrateScope,
-        metadata: &'a PackageMetadata,
-        crates: &'a CrateStore,
-        reporter: &'a Reporter,
-    ) -> Self {
+    pub fn new(scope: &'a mut CrateScope, crates: &'a CrateStore, reporter: &'a Reporter) -> Self {
         Self {
             scope,
-            metadata,
             crates,
             reporter,
         }
@@ -87,12 +80,11 @@ impl<'a> Resolver<'a> {
                     .for_each(|(_, error)| Diagnostic::from(error).report(self.reporter));
             })?;
 
-        self.scope
-            .resolve_use_bindings(self.crates, self.metadata, self.reporter);
+        self.scope.resolve_use_bindings(self.crates, self.reporter);
 
         // @Task @Beacon don't return early here
         self.scope
-            .resolve_exposure_reaches(self.crates, self.metadata, self.reporter)?;
+            .resolve_exposure_reaches(self.crates, self.reporter)?;
 
         let declaration = self.finish_resolve_declaration(declaration, None, Context::default());
 
@@ -512,7 +504,7 @@ impl<'a> Resolver<'a> {
                 Binding {
                     expression.attributes,
                     expression.span;
-                    binder: scope.resolve_binding(&binding.binder, self.scope, self.crates, self.metadata, self.reporter)?,
+                    binder: scope.resolve_binding(&binding.binder, self.scope, self.crates,  self.reporter)?,
                 }
             },
             Lambda(lambda) => {
@@ -594,7 +586,7 @@ impl<'a> Resolver<'a> {
                 Binding {
                     pattern.attributes,
                     pattern.span;
-                    binder: scope.resolve_binding(&binding.binder, self.scope, self.crates, self.metadata, self.reporter)?,
+                    binder: scope.resolve_binding(&binding.binder, self.scope, self.crates,  self.reporter)?,
                 }
             },
             Binder(binder) => {

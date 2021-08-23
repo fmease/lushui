@@ -4,11 +4,11 @@ pub mod interpreter;
 
 use crate::{
     ast::ParameterAspect,
-    crates::CrateStore,
     diagnostics::{Code, Diagnostic, Reporter},
     error::{Health, Result},
     format::{pluralize, DisplayWith, QuoteExt},
     lowered_ast::{AttributeKeys, Attributes},
+    package::CrateStore,
     parser::ast::Explicitness,
     resolver::{
         hir::{self, expr, Declaration, Expression},

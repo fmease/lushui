@@ -2,7 +2,7 @@
 
 use std::{convert::TryInto, fmt};
 
-use crate::crates::CrateIndex;
+use crate::package::CrateIndex;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Index {

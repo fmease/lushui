@@ -1,7 +1,6 @@
 use std::{path::PathBuf, str::FromStr};
 
 use clap::{AppSettings, Arg, SubCommand};
-use lushui::crates::CrateType;
 
 const VERSION: &str = concat!(
     env!("CARGO_PKG_VERSION"),
@@ -18,11 +17,13 @@ pub fn arguments() -> (Command, Options) {
         .help("The source file to run");
 
     let package_creation_options = [
-        Arg::with_name("binary").long("binary").help("@Task"),
+        Arg::with_name("binary")
+            .long("binary")
+            .short("b")
+            .help("@Task"),
         Arg::with_name("library")
             .long("library")
             .short("l")
-            .conflicts_with("binary")
             .help("@Task"),
     ];
 
@@ -140,9 +141,9 @@ pub fn arguments() -> (Command, Options) {
                 },
                 _ => unreachable!(),
             },
-            crate_type: match command.matches.is_present("library") {
-                true => CrateType::Library,
-                false => CrateType::Binary,
+            options: GenerationOptions {
+                library: command.matches.is_present("library"),
+                binary: command.matches.is_present("binary"),
             },
         },
         "run" => Command::Run,
@@ -274,7 +275,7 @@ pub enum Command {
     Explain,
     Generate {
         mode: GenerationMode,
-        crate_type: CrateType,
+        options: GenerationOptions,
     },
     Run,
 }
@@ -282,4 +283,9 @@ pub enum Command {
 pub enum GenerationMode {
     Initialize,
     New { package_name: String },
+}
+
+pub struct GenerationOptions {
+    pub library: bool,
+    pub binary: bool,
 }

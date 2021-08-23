@@ -3,10 +3,10 @@
 use super::{CrateScope, Expression};
 use crate::{
     ast::Explicit,
-    crates::CrateStore,
     diagnostics::{Code, Diagnostic, Reporter},
     error::Result,
     lowered_ast::{Attribute, Attributes},
+    package::CrateStore,
     resolver::{
         hir::{expr, Constructor, ExpressionKind},
         Identifier,

@@ -54,7 +54,6 @@
 #![deny(rust_2018_idioms, unused_must_use)]
 
 pub mod compiler;
-pub mod crates;
 pub mod diagnostics;
 mod entity;
 pub mod error;
@@ -63,6 +62,7 @@ mod grow_array;
 mod item;
 pub mod lexer;
 pub mod lowerer;
+pub mod package;
 pub mod parser;
 pub mod resolver;
 pub mod span;

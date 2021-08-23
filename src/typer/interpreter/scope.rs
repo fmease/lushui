@@ -1,12 +1,12 @@
 use super::{ffi, Expression, Substitution::Shift};
 use crate::{
-    crates::CrateStore,
     diagnostics::{Code, Diagnostic, Reporter},
     entity::EntityKind,
     error::Result,
     format::AsDebug,
     hir::expr,
     lowered_ast::{Attributes, Number},
+    package::CrateStore,
     resolver::{CrateScope, DeBruijnIndex, DeclarationIndex, Identifier, Index},
     span::Span,
 };

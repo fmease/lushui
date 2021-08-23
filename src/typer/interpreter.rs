@@ -18,12 +18,12 @@ pub(crate) mod scope;
 use super::Expression;
 use crate::{
     ast::Explicit,
-    crates::CrateStore,
     diagnostics::{Code, Diagnostic, Reporter},
     error::{PossiblyErroneous, Result},
     format::DisplayWith,
     hir::{self, expr},
     lowered_ast::Attributes,
+    package::CrateStore,
     resolver::CrateScope,
     span::{Span, Spanning},
 };

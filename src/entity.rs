@@ -5,10 +5,10 @@
 use std::{default::default, fmt};
 
 use crate::{
-    crates::CrateStore,
     error::PossiblyErroneous,
     format::DisplayWith,
     hir::Expression,
+    package::CrateStore,
     resolver::{
         CrateScope, DeclarationIndex, Exposure, Identifier, LocalDeclarationIndex, Namespace,
     },

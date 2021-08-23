@@ -1,7 +1,7 @@
 //! The definition of the textual representation of the [HIR](crate::hir).
 
 use super::{CrateScope, Declaration, Expression, Pattern};
-use crate::{crates::CrateStore, format::DisplayWith};
+use crate::{format::DisplayWith, package::CrateStore};
 use joinery::JoinableIterator;
 use std::{default::default, fmt};
 
@@ -316,11 +316,11 @@ impl DisplayWith for Pattern {
 mod test {
     use crate::{
         ast::{self, Explicitness::*},
-        crates::CrateIndex,
         entity::{Entity, EntityKind},
         format::DisplayWith,
         hir::{expr, Expression},
         lowered_ast::{Attribute, AttributeKind, Attributes, Number},
+        package::CrateIndex,
         resolver::{scope::LocalDeclarationIndex, CrateScope, Exposure, Identifier},
         span::Span,
     };

@@ -17,13 +17,13 @@
 
 use crate::{
     ast::{self, Path},
-    crates::{CrateIndex, CrateStore, PackageMetadata},
     diagnostics::{Code, Diagnostic, Reporter},
     entity::{Entity, EntityKind},
     error::{Health, Result},
     format::{
         pluralize, unordered_listing, AsAutoColoredChangeset, Conjunction, DisplayWith, QuoteExt,
     },
+    package::{CrateIndex, CrateStore, CrateType, PackageIndex},
     parser::ast::HangerKind,
     span::{Span, Spanned, Spanning},
     typer::interpreter::{ffi, scope::Registration},
@@ -34,7 +34,7 @@ pub use index::{DeBruijnIndex, DeclarationIndex, Index, LocalDeclarationIndex};
 use indexed_vec::IndexVec;
 use joinery::JoinableIterator;
 use smallvec::smallvec;
-use std::{cell::RefCell, cmp::Ordering, default::default, fmt, usize};
+use std::{cell::RefCell, cmp::Ordering, default::default, fmt, path::PathBuf, usize};
 use unicode_width::UnicodeWidthStr;
 
 mod index;
@@ -43,9 +43,13 @@ mod index;
 /// The crate scope for module-level bindings.
 ///
 /// This structure is used not only by the name resolver but also the type checker.
+// @Question rename to just "Crate"?
+// @Task add optional field `name` (None means inherited from package)
 pub struct CrateScope {
-    // @Question move this out of here and make this a parameter of a different context struct??
-    pub owner: CrateIndex,
+    pub index: CrateIndex,
+    pub package: PackageIndex,
+    pub path: PathBuf,
+    pub type_: CrateType,
     // @Question move??
     pub(crate) program_entry: Option<Identifier>,
     /// All bindings inside of a crate.
@@ -69,9 +73,12 @@ pub struct CrateScope {
 }
 
 impl CrateScope {
-    pub fn new(owner: CrateIndex) -> Self {
+    pub fn new(index: CrateIndex, package: PackageIndex, path: PathBuf, type_: CrateType) -> Self {
         Self {
-            owner,
+            index,
+            package,
+            path,
+            type_,
             program_entry: default(),
             bindings: default(),
             partially_resolved_use_bindings: default(),
@@ -82,8 +89,22 @@ impl CrateScope {
         }
     }
 
+    fn dependency(&self, name: &str, crates: &CrateStore) -> Option<CrateIndex> {
+        let package = &crates[self.package];
+        let dependency = package.dependencies.get(name).copied();
+
+        // @Question should we forbid direct dependencies with the same name as the current package
+        // (in a prior step)?
+        match self.type_ {
+            CrateType::Library => dependency,
+            CrateType::Binary => {
+                dependency.or_else(|| (name == package.name).then(|| package.library).flatten())
+            }
+        }
+    }
+
     pub fn global_index(&self, index: LocalDeclarationIndex) -> DeclarationIndex {
-        DeclarationIndex::new(self.owner, index)
+        DeclarationIndex::new(self.index, index)
     }
 
     const DEBUG_INDEX_TRANSLATIONS: bool = false;
@@ -98,7 +119,7 @@ impl CrateScope {
     }
 
     pub fn local_index(&self, index: DeclarationIndex) -> Option<LocalDeclarationIndex> {
-        (index.crate_index() == self.owner).then(|| index.local_index())
+        (index.crate_index() == self.index).then(|| index.local_index())
     }
 
     // @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Temporary
@@ -110,7 +131,7 @@ impl CrateScope {
                 index,
                 match self.local_index(index) {
                     Some(index) => format!("{index:?}"),
-                    None => format!("none (local={:?})", self.owner),
+                    None => format!("none (local={:?})", self.index),
                 }
             );
         }
@@ -120,6 +141,16 @@ impl CrateScope {
 
     #[track_caller]
     pub fn get(&self, index: LocalDeclarationIndex) -> &Entity {
+        if self.bindings.get(index).is_none() {
+            eprintln!("{self:#?}");
+
+            eprintln!(
+                "get() idx={index:?} cr={:?} #entities={:?}",
+                self.index,
+                self.bindings.len()
+            );
+        }
+
         &self.bindings[index]
     }
 
@@ -180,9 +211,13 @@ impl CrateScope {
             Some(index) => index,
             None => {
                 let crate_ = &crates[index.crate_index()];
-                let root = format!("{}.{}", HangerKind::Crates.name(), crate_.name);
+                let root = format!(
+                    "{}.{}",
+                    HangerKind::Crates.name(),
+                    crates[crate_.package].name
+                );
 
-                return crate_.scope.absolute_path_with_root(index, root, crates);
+                return crate_.absolute_path_with_root(index, root, crates);
             }
         };
 
@@ -289,7 +324,6 @@ impl CrateScope {
         path: &Path,
         namespace: DeclarationIndex,
         crates: &CrateStore,
-        metadata: &PackageMetadata,
         reporter: &Reporter,
     ) -> Result<Target::Output, ResolutionError> {
         self.resolve_path_with_origin::<Target>(
@@ -299,7 +333,6 @@ impl CrateScope {
             IdentifierUsage::Unqualified,
             CheckExposure::Yes,
             crates,
-            metadata,
             reporter,
         )
     }
@@ -310,7 +343,6 @@ impl CrateScope {
         path: &Path,
         namespace: DeclarationIndex,
         crates: &CrateStore,
-        metadata: &PackageMetadata,
         reporter: &Reporter,
     ) -> Result<Target::Output, ResolutionError> {
         self.resolve_path_with_origin::<Target>(
@@ -320,7 +352,6 @@ impl CrateScope {
             IdentifierUsage::Unqualified,
             CheckExposure::No,
             crates,
-            metadata,
             reporter,
         )
     }
@@ -335,13 +366,11 @@ impl CrateScope {
         usage: IdentifierUsage,
         check_exposure: CheckExposure,
         crates: &CrateStore,
-        // @Temporary
-        metadata: &PackageMetadata,
         reporter: &Reporter,
     ) -> Result<Target::Output, ResolutionError> {
         // eprintln!(
         //     "(resolve_path (scope {:?}) (path {path}) (namespace {namespace:?}))",
-        //     self.owner
+        //     self.index
         // );
 
         use ast::HangerKind::*;
@@ -358,8 +387,8 @@ impl CrateScope {
                     // @Note ugly!
                     let crate_ = &path.segments[0];
 
-                    let crate_ = match metadata.resolved_dependencies.get(crate_.as_str()) {
-                        Some(crate_) => *crate_,
+                    let crate_ = match self.dependency(crate_.as_str(), crates) {
+                        Some(crate_) => crate_,
                         None => {
                             // @Temporary message
                             // @Task add help:
@@ -379,23 +408,25 @@ impl CrateScope {
                         }
                     };
 
-                    let scope = &crates[crate_].scope;
-                    return scope.resolve_path_with_origin::<Target>(
-                        // @Bug may create illegal paths with empty segment list:
-                        // [this scope] `crates.core` -> [external scope] `` but it should be
-                        // [this scope] `crates.core` -> [external scope] `crate`
-                        &path.clone().unhanged().tail().unwrap(),
-                        scope.global_index(scope.root()),
-                        origin_namespace,
-                        IdentifierUsage::Qualified,
-                        CheckExposure::Yes,
-                        crates,
-                        metadata,
-                        reporter,
-                    );
+                    let scope = &crates[crate_];
+                    let root = scope.global_index(scope.root());
+
+                    return match &*path.segments {
+                        [identifier] => Ok(Target::output(root, identifier)),
+                        [_, identifiers @ ..] => scope.resolve_path_with_origin::<Target>(
+                            &Path::with_segments(identifiers.to_owned().into()),
+                            root,
+                            origin_namespace,
+                            IdentifierUsage::Qualified,
+                            CheckExposure::Yes,
+                            crates,
+                            reporter,
+                        ),
+                        [] => unreachable!(),
+                    };
                 }
-                Crate => self.__temporary_global_index(self.root()),
-                Super => self.__temporary_global_index(self.resolve_super(
+                Crate => self.global_index(self.root()),
+                Super => self.global_index(self.resolve_super(
                     hanger,
                     self.__temporary_local_index(namespace),
                     reporter,
@@ -410,7 +441,6 @@ impl CrateScope {
                 IdentifierUsage::Qualified,
                 check_exposure,
                 crates,
-                metadata,
                 reporter,
             );
         }
@@ -422,7 +452,6 @@ impl CrateScope {
             usage,
             check_exposure,
             crates,
-            metadata,
             reporter,
         )?;
 
@@ -443,7 +472,6 @@ impl CrateScope {
                         IdentifierUsage::Qualified,
                         check_exposure,
                         crates,
-                        metadata,
                         reporter,
                     )
                 } else if entity.is_error() {
@@ -488,10 +516,11 @@ impl CrateScope {
         usage: IdentifierUsage,
         check_exposure: CheckExposure,
         crates: &CrateStore,
-        metadata: &PackageMetadata,
         reporter: &Reporter,
     ) -> Result<DeclarationIndex, ResolutionError> {
         let entity = self.entity(namespace, crates);
+
+        // eprintln!("rfps id={identifier} ns={namespace:?} ons={origin_namespace:?}");
 
         let index = entity
             .namespace()
@@ -513,7 +542,6 @@ impl CrateScope {
                 identifier,
                 origin_namespace,
                 crates,
-                metadata,
                 reporter,
             )?;
         }
@@ -528,7 +556,6 @@ impl CrateScope {
         identifier: &ast::Identifier,
         origin_namespace: DeclarationIndex,
         crates: &CrateStore,
-        metadata: &PackageMetadata,
         reporter: &Reporter,
     ) -> Result<(), ResolutionError> {
         let binding = self.get(self.__temporary_local_index(index));
@@ -541,7 +568,6 @@ impl CrateScope {
                 self.__temporary_global_index(definition_site_namespace),
                 self,
                 crates,
-                metadata,
                 reporter,
             )?;
 
@@ -583,7 +609,6 @@ impl CrateScope {
     pub(super) fn resolve_exposure_reaches(
         &mut self,
         crates: &CrateStore,
-        metadata: &PackageMetadata,
         reporter: &Reporter,
     ) -> Result {
         let mut health = Health::Untainted;
@@ -598,7 +623,6 @@ impl CrateScope {
                     self.__temporary_global_index(definition_site_namespace),
                     self,
                     crates,
-                    metadata,
                     reporter,
                 )
                 .is_err()
@@ -755,12 +779,7 @@ expected the exposure of `{}`
     /// use-bindings are actually circular and are thus reported.
     // @Task update docs in regards to number of phases
     // @Task update docs regarding errors
-    pub(super) fn resolve_use_bindings(
-        &mut self,
-        crates: &CrateStore,
-        metadata: &PackageMetadata,
-        reporter: &Reporter,
-    ) {
+    pub(super) fn resolve_use_bindings(&mut self, crates: &CrateStore, reporter: &Reporter) {
         use ResolutionError::*;
 
         while !self.partially_resolved_use_bindings.is_empty() {
@@ -771,7 +790,6 @@ expected the exposure of `{}`
                     &item.reference,
                     self.__temporary_global_index(item.module),
                     crates,
-                    metadata,
                     reporter,
                 ) {
                     Ok(reference) => {
@@ -881,12 +899,30 @@ expected the exposure of `{}`
     }
 }
 
+// @Temporary
+impl fmt::Debug for CrateScope {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CrateScope")
+            .field("index", &self.index)
+            .field("package", &self.package)
+            .field("path", &self.path)
+            .field("type_", &self.type_)
+            .field("program_entry", &self.program_entry)
+            .field("bindings", &self.bindings.indices().collect::<Vec<_>>())
+            .finish()
+    }
+}
+
 // @Note it would be better if we had `DebugWith`
 impl DisplayWith for CrateScope {
     type Context<'a> = &'a CrateStore;
 
     fn format(&self, crates: &CrateStore, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{:?}.CrateScope", self.owner)?;
+        writeln!(
+            f,
+            "{} {} ({:?}) {:?}",
+            self.type_, crates[self.package].name, self.index, self.package
+        )?;
 
         writeln!(f, "  bindings:")?;
 
@@ -977,7 +1013,6 @@ impl RestrictedExposure {
         definition_site_namespace: DeclarationIndex,
         scope: &CrateScope,
         crates: &CrateStore,
-        metadata: &PackageMetadata,
         reporter: &Reporter,
     ) -> Result<DeclarationIndex> {
         let exposure_ = exposure.borrow();
@@ -998,7 +1033,6 @@ impl RestrictedExposure {
                         unresolved_reach,
                         definition_site_namespace,
                         crates,
-                        metadata,
                         reporter,
                     )
                     .map_err(|error| error.report(scope, crates, reporter))?;
@@ -1382,10 +1416,9 @@ impl<'a> FunctionScope<'a> {
         query: &Path,
         scope: &CrateScope,
         crates: &CrateStore,
-        metadata: &PackageMetadata,
         reporter: &Reporter,
     ) -> Result<Identifier> {
-        self.resolve_binding_with_depth(query, scope, 0, self, crates, metadata, reporter)
+        self.resolve_binding_with_depth(query, scope, 0, self, crates, reporter)
     }
 
     /// Resolve a binding in a function scope given a depth.
@@ -1402,7 +1435,6 @@ impl<'a> FunctionScope<'a> {
         depth: usize,
         origin: &Self,
         crates: &CrateStore,
-        metadata: &PackageMetadata,
         reporter: &Reporter,
     ) -> Result<Identifier> {
         use FunctionScope::*;
@@ -1410,7 +1442,7 @@ impl<'a> FunctionScope<'a> {
         // @Note kinda awkward API with map_err
         match self {
             &Module(module) => scope
-                .resolve_path::<OnlyValue>(query, module, crates, metadata, reporter)
+                .resolve_path::<OnlyValue>(query, module, crates, reporter)
                 .map_err(|error| {
                     error.emit_finding_lookalike(
                         |identifier, _| origin.find_similarly_named(identifier, scope),
@@ -1441,19 +1473,12 @@ impl<'a> FunctionScope<'a> {
                             depth + 1,
                             origin,
                             crates,
-                            metadata,
                             reporter,
                         )
                     }
                 } else {
                     scope
-                        .resolve_path::<OnlyValue>(
-                            query,
-                            parent.module(),
-                            crates,
-                            metadata,
-                            reporter,
-                        )
+                        .resolve_path::<OnlyValue>(query, parent.module(), crates, reporter)
                         .map_err(|error| error.report(scope, crates, reporter))
                 }
             }
@@ -1485,19 +1510,12 @@ impl<'a> FunctionScope<'a> {
                             depth + binders.len(),
                             origin,
                             crates,
-                            metadata,
                             reporter,
                         ),
                     }
                 } else {
                     scope
-                        .resolve_path::<OnlyValue>(
-                            query,
-                            parent.module(),
-                            crates,
-                            metadata,
-                            reporter,
-                        )
+                        .resolve_path::<OnlyValue>(query, parent.module(), crates, reporter)
                         .map_err(|error| error.report(scope, crates, reporter))
                 }
             }

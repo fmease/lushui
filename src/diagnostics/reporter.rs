@@ -91,7 +91,7 @@ impl BufferedStderrReporter {
     /// Release the buffer of diagnostics.
     ///
     /// Writes all buffered bugs, errors and warnings to stderr and clears the buffer.
-    /// Returns the number of reported errors.
+    /// Returns the number of reported errors and bugs.
     pub fn release_buffer(&self) -> usize {
         let warnings = std::mem::take(&mut *self.warnings.borrow_mut());
 
