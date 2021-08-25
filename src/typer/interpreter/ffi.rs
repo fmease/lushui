@@ -6,7 +6,7 @@ use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     error::Result,
     lowered_ast::{Attribute, Attributes},
-    package::CrateStore,
+    package::Session,
     resolver::{
         hir::{expr, Constructor, ExpressionKind},
         Identifier,
@@ -199,22 +199,22 @@ impl Type {
     fn into_expression(
         self,
         scope: &CrateScope,
-        crates: &CrateStore,
+        session: &Session,
         reporter: &Reporter,
     ) -> Result<Expression> {
         match self {
             Self::Unit => scope.lookup_unit_type(None, reporter),
             Self::Bool => scope.lookup_bool_type(None, reporter),
-            Self::Nat => scope.lookup_foreign_type(Type::NAT, None, crates, reporter),
-            Self::Nat32 => scope.lookup_foreign_type(Type::NAT32, None, crates, reporter),
-            Self::Nat64 => scope.lookup_foreign_type(Type::NAT64, None, crates, reporter),
-            Self::Int => scope.lookup_foreign_type(Type::INT, None, crates, reporter),
-            Self::Int32 => scope.lookup_foreign_type(Type::INT32, None, crates, reporter),
-            Self::Int64 => scope.lookup_foreign_type(Type::INT64, None, crates, reporter),
-            Self::Text => scope.lookup_foreign_type(Type::TEXT, None, crates, reporter),
+            Self::Nat => scope.lookup_foreign_type(Type::NAT, None, session, reporter),
+            Self::Nat32 => scope.lookup_foreign_type(Type::NAT32, None, session, reporter),
+            Self::Nat64 => scope.lookup_foreign_type(Type::NAT64, None, session, reporter),
+            Self::Int => scope.lookup_foreign_type(Type::INT, None, session, reporter),
+            Self::Int32 => scope.lookup_foreign_type(Type::INT32, None, session, reporter),
+            Self::Int64 => scope.lookup_foreign_type(Type::INT64, None, session, reporter),
+            Self::Text => scope.lookup_foreign_type(Type::TEXT, None, session, reporter),
             Self::Option(type_) => Ok(application(
                 scope.lookup_option_type(None, reporter)?,
-                type_.into_expression(scope, crates, reporter)?,
+                type_.into_expression(scope, session, reporter)?,
             )),
         }
     }
@@ -308,7 +308,7 @@ impl Value {
     pub fn into_expression(
         self,
         scope: &CrateScope,
-        crates: &CrateStore,
+        session: &Session,
         reporter: &Reporter,
     ) -> Result<Expression> {
         let values = &scope.ffi.inherent_values;
@@ -345,9 +345,9 @@ impl Value {
                             .clone()
                             .ok_or_else(|| missing_inherent().report(reporter))?
                             .to_expression(),
-                        type_.into_expression(scope, crates, reporter)?,
+                        type_.into_expression(scope, session, reporter)?,
                     ),
-                    value.into_expression(scope, crates, reporter)?,
+                    value.into_expression(scope, session, reporter)?,
                 ),
                 None => application(
                     values
@@ -355,7 +355,7 @@ impl Value {
                         .clone()
                         .ok_or_else(|| missing_inherent().report(reporter))?
                         .to_expression(),
-                    type_.into_expression(scope, crates, reporter)?,
+                    type_.into_expression(scope, session, reporter)?,
                 ),
             },
             Self::IO { index, arguments } => expr! {
@@ -364,7 +364,7 @@ impl Value {
                     Span::SHAM;
                     index,
                     arguments: arguments.into_iter()
-                        .map(|argument| argument.into_expression(scope, crates, reporter))
+                        .map(|argument| argument.into_expression(scope, session, reporter))
                         .collect::<Result<Vec<_>>>()?,
                 }
             },

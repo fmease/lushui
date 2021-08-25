@@ -23,7 +23,7 @@ use crate::{
     format::DisplayWith,
     hir::{self, expr},
     lowered_ast::Attributes,
-    package::CrateStore,
+    package::Session,
     resolver::CrateScope,
     span::{Span, Spanning},
 };
@@ -67,15 +67,15 @@ impl<'a> Context<'a> {
 // @Task add recursion depth
 pub struct Interpreter<'a> {
     scope: &'a CrateScope,
-    crates: &'a CrateStore,
+    session: &'a Session,
     reporter: &'a Reporter,
 }
 
 impl<'a> Interpreter<'a> {
-    pub fn new(scope: &'a CrateScope, crates: &'a CrateStore, reporter: &'a Reporter) -> Self {
+    pub fn new(scope: &'a CrateScope, session: &'a Session, reporter: &'a Reporter) -> Self {
         Self {
             scope,
-            crates,
+            session,
             reporter,
         }
     }
@@ -343,7 +343,7 @@ impl<'a> Interpreter<'a> {
             Binding(binding) => {
                 match context
                     .scope
-                    .lookup_value(&binding.binder, self.scope, self.crates)
+                    .lookup_value(&binding.binder, self.scope, self.session)
                 {
                     // @Question is this normalization necessary? I mean, yes, we got a new scope,
                     // but the thing in the previous was already normalized (well, it should have been
@@ -404,7 +404,7 @@ impl<'a> Interpreter<'a> {
                     Binding(binding)
                         if context
                             .scope
-                            .is_foreign(&binding.binder, self.scope, self.crates) =>
+                            .is_foreign(&binding.binder, self.scope, self.session) =>
                     {
                         self.evaluate_expression(
                             expr! {
@@ -612,7 +612,7 @@ impl<'a> Interpreter<'a> {
                     .apply_foreign_binding(
                         application.callee.clone(),
                         arguments.clone(),
-                        self.crates,
+                        self.session,
                         self.reporter,
                     )?
                     .unwrap_or_else(|| {
@@ -771,7 +771,7 @@ impl Substitution {
 }
 
 impl DisplayWith for Substitution {
-    type Context<'a> = (&'a CrateScope, &'a CrateStore);
+    type Context<'a> = (&'a CrateScope, &'a Session);
 
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use self::Substitution::*;

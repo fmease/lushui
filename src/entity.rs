@@ -2,20 +2,18 @@
 //!
 //! Just like [CrateScope], [Entity] is a resource shared by those two passes.
 
-use std::{default::default, fmt};
-
 use crate::{
     error::PossiblyErroneous,
     format::DisplayWith,
     hir::Expression,
-    package::CrateStore,
+    package::Session,
     resolver::{
         CrateScope, DeclarationIndex, Exposure, Identifier, LocalDeclarationIndex, Namespace,
     },
     typer::interpreter::{ffi::NakedForeignFunction, scope::ValueView},
     util::obtain,
 };
-
+use std::{default::default, fmt};
 use EntityKind::*;
 
 /// Something that can be bound to an identifier.
@@ -239,7 +237,7 @@ impl EntityKind {
 }
 
 impl DisplayWith for EntityKind {
-    type Context<'a> = (&'a CrateScope, &'a CrateStore);
+    type Context<'a> = (&'a CrateScope, &'a Session);
 
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

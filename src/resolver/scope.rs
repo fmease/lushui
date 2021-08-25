@@ -23,7 +23,7 @@ use crate::{
     format::{
         pluralize, unordered_listing, AsAutoColoredChangeset, Conjunction, DisplayWith, QuoteExt,
     },
-    package::{CrateIndex, CrateStore, CrateType, PackageIndex},
+    package::{CrateIndex, CrateType, PackageIndex, Session},
     parser::ast::HangerKind,
     span::{Span, Spanned, Spanning},
     typer::interpreter::{ffi, scope::Registration},
@@ -88,8 +88,8 @@ impl CrateScope {
         }
     }
 
-    fn dependency(&self, name: &str, crates: &CrateStore) -> Option<CrateIndex> {
-        let package = &crates[self.package];
+    fn dependency(&self, name: &str, session: &Session) -> Option<CrateIndex> {
+        let package = &session[self.package];
         let dependency = package.dependencies.get(name).copied();
 
         // @Question should we forbid direct dependencies with the same name as the current package
@@ -106,17 +106,6 @@ impl CrateScope {
         DeclarationIndex::new(self.index, index)
     }
 
-    const DEBUG_INDEX_TRANSLATIONS: bool = false;
-
-    // @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Temporary
-    #[track_caller]
-    pub fn __temporary_global_index(&self, index: LocalDeclarationIndex) -> DeclarationIndex {
-        if Self::DEBUG_INDEX_TRANSLATIONS {
-            eprintln!("{:?} ~> {:?}", index, self.global_index(index));
-        }
-        self.global_index(index)
-    }
-
     pub fn is_local(&self, index: DeclarationIndex) -> bool {
         index.crate_index() == self.index
     }
@@ -125,35 +114,23 @@ impl CrateScope {
         self.is_local(index).then(|| index.local_index())
     }
 
-    // @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Temporary
+    // @Beacon @Temporary
     #[track_caller]
     pub fn __temporary_local_index(&self, index: DeclarationIndex) -> LocalDeclarationIndex {
-        if Self::DEBUG_INDEX_TRANSLATIONS {
-            eprintln!(
-                "{:?} ~> {}",
-                index,
-                match self.local_index(index) {
-                    Some(index) => format!("{index:?}"),
-                    None => format!("none (local={:?})", self.index),
-                }
-            );
-        }
+        // eprintln!(
+        //     "{:?} ~> {}",
+        //     index,
+        //     match self.local_index(index) {
+        //         Some(index) => format!("{index:?}"),
+        //         None => format!("none (local={:?})", self.index),
+        //     }
+        // );
 
         self.local_index(index).unwrap()
     }
 
     #[track_caller]
     pub fn get(&self, index: LocalDeclarationIndex) -> &Entity {
-        if self.bindings.get(index).is_none() {
-            eprintln!("{self:#?}");
-
-            eprintln!(
-                "get() idx={index:?} cr={:?} #entities={:?}",
-                self.index,
-                self.bindings.len()
-            );
-        }
-
         &self.bindings[index]
     }
 
@@ -163,10 +140,10 @@ impl CrateScope {
     }
 
     // @Note bad naming, better naming scheme: get <-> entity
-    pub fn entity<'a>(&'a self, index: DeclarationIndex, crates: &'a CrateStore) -> &'a Entity {
+    pub fn entity<'a>(&'a self, index: DeclarationIndex, session: &'a Session) -> &'a Entity {
         match self.local_index(index) {
             Some(index) => self.get(index),
-            None => crates.entity(index),
+            None => session.entity(index),
         }
     }
 
@@ -181,7 +158,7 @@ impl CrateScope {
             }
 
             index = match self.get(self.__temporary_local_index(index)).parent {
-                Some(parent) => self.__temporary_global_index(parent),
+                Some(parent) => self.global_index(parent),
                 None => break false,
             }
         }
@@ -198,29 +175,29 @@ impl CrateScope {
     }
 
     /// Build a textual representation of the absolute path of a binding.
-    pub fn absolute_path(&self, index: DeclarationIndex, crates: &CrateStore) -> String {
-        self.absolute_path_with_root(index, HangerKind::Crate.name().to_owned(), crates)
+    pub fn absolute_path(&self, index: DeclarationIndex, session: &Session) -> String {
+        self.absolute_path_with_root(index, HangerKind::Crate.name().to_owned(), session)
     }
 
     pub fn absolute_path_with_root(
         &self,
         index: DeclarationIndex,
         root: String,
-        crates: &CrateStore,
+        session: &Session,
     ) -> String {
         use crate::lexer::token::is_punctuation;
 
         let index = match self.local_index(index) {
             Some(index) => index,
             None => {
-                let crate_ = &crates[index.crate_index()];
+                let crate_ = &session[index.crate_index()];
                 let root = format!(
                     "{}.{}",
                     HangerKind::Crates.name(),
-                    crates[crate_.package].name
+                    session[crate_.package].name
                 );
 
-                return crate_.absolute_path_with_root(index, root, crates);
+                return crate_.absolute_path_with_root(index, root, session);
             }
         };
 
@@ -228,7 +205,7 @@ impl CrateScope {
 
         if let Some(parent) = entity.parent {
             let mut parent_path =
-                self.absolute_path_with_root(self.global_index(parent), root, crates);
+                self.absolute_path_with_root(self.global_index(parent), root, session);
 
             let parent_is_punctuation = is_punctuation(parent_path.chars().next_back().unwrap());
 
@@ -329,7 +306,7 @@ impl CrateScope {
         &self,
         path: &Path,
         namespace: DeclarationIndex,
-        crates: &CrateStore,
+        session: &Session,
         reporter: &Reporter,
     ) -> Result<Target::Output, ResolutionError> {
         self.resolve_path_with_origin::<Target>(
@@ -338,7 +315,7 @@ impl CrateScope {
             namespace,
             IdentifierUsage::Unqualified,
             CheckExposure::Yes,
-            crates,
+            session,
             reporter,
         )
     }
@@ -348,7 +325,7 @@ impl CrateScope {
         &self,
         path: &Path,
         namespace: DeclarationIndex,
-        crates: &CrateStore,
+        session: &Session,
         reporter: &Reporter,
     ) -> Result<Target::Output, ResolutionError> {
         self.resolve_path_with_origin::<Target>(
@@ -357,7 +334,7 @@ impl CrateScope {
             namespace,
             IdentifierUsage::Unqualified,
             CheckExposure::No,
-            crates,
+            session,
             reporter,
         )
     }
@@ -371,24 +348,18 @@ impl CrateScope {
         origin_namespace: DeclarationIndex,
         usage: IdentifierUsage,
         check_exposure: CheckExposure,
-        crates: &CrateStore,
+        session: &Session,
         reporter: &Reporter,
     ) -> Result<Target::Output, ResolutionError> {
         if let Some(hanger) = &path.hanger {
             use ast::HangerKind::*;
 
-            if path.segments.is_empty() {
-                // `crates` already handled in the lowerer (for now)
-                Target::handle_bare_path_hanger_except_crates(hanger)
-                    .map_err(|error| error.report(reporter))?;
-            }
-
             let namespace = match hanger.kind {
                 Crates => {
-                    // @Note ugly!
+                    // (for now) the lowerer gates bare `crates`
                     let crate_ = &path.segments[0];
 
-                    let crate_ = match self.dependency(crate_.as_str(), crates) {
+                    let crate_ = match self.dependency(crate_.as_str(), session) {
                         Some(crate_) => crate_,
                         None => {
                             // @Temporary message
@@ -409,7 +380,7 @@ impl CrateScope {
                         }
                     };
 
-                    let scope = &crates[crate_];
+                    let scope = &session[crate_];
                     let root = scope.global_index(scope.root());
 
                     return match &*path.segments {
@@ -420,7 +391,7 @@ impl CrateScope {
                             origin_namespace,
                             IdentifierUsage::Qualified,
                             CheckExposure::Yes,
-                            crates,
+                            session,
                             reporter,
                         ),
                         [] => unreachable!(),
@@ -435,15 +406,22 @@ impl CrateScope {
                 Self_ => namespace,
             };
 
-            return self.resolve_path_with_origin::<Target>(
-                &path.tail().unwrap(),
-                namespace,
-                origin_namespace,
-                IdentifierUsage::Qualified,
-                check_exposure,
-                crates,
-                reporter,
-            );
+            return if path.segments.is_empty() {
+                Target::output_bare_path_hanger(hanger, namespace).map_err(|error| {
+                    error.report(reporter);
+                    ResolutionError::Unrecoverable
+                })
+            } else {
+                self.resolve_path_with_origin::<Target>(
+                    &Path::with_segments(path.segments.clone()),
+                    namespace,
+                    origin_namespace,
+                    IdentifierUsage::Qualified,
+                    check_exposure,
+                    session,
+                    reporter,
+                )
+            };
         }
 
         let index = self.resolve_path_segment(
@@ -452,11 +430,11 @@ impl CrateScope {
             origin_namespace,
             usage,
             check_exposure,
-            crates,
+            session,
             reporter,
         )?;
 
-        let entity = self.entity(index, crates);
+        let entity = self.entity(index, session);
 
         match &*path.segments {
             [identifier] => {
@@ -472,7 +450,7 @@ impl CrateScope {
                         origin_namespace,
                         IdentifierUsage::Qualified,
                         check_exposure,
-                        crates,
+                        session,
                         reporter,
                     )
                 } else if entity.is_error() {
@@ -484,7 +462,7 @@ impl CrateScope {
                         identifiers.first().unwrap(),
                         namespace,
                         self,
-                        crates,
+                        session,
                     )
                     .report(reporter);
                     Err(ResolutionError::Unrecoverable)
@@ -516,10 +494,10 @@ impl CrateScope {
         origin_namespace: DeclarationIndex,
         usage: IdentifierUsage,
         check_exposure: CheckExposure,
-        crates: &CrateStore,
+        session: &Session,
         reporter: &Reporter,
     ) -> Result<DeclarationIndex, ResolutionError> {
-        let entity = self.entity(namespace, crates);
+        let entity = self.entity(namespace, session);
 
         let index = entity
             .namespace()
@@ -527,7 +505,7 @@ impl CrateScope {
             .binders
             .iter()
             .copied()
-            .find(|&index| &self.entity(index, crates).source == identifier)
+            .find(|&index| &self.entity(index, session).source == identifier)
             .ok_or_else(|| ResolutionError::UnresolvedBinding {
                 identifier: identifier.clone(),
                 namespace,
@@ -536,9 +514,9 @@ impl CrateScope {
 
         // @Temporary hack until we can manage cyclic exposure reaches!
         if matches!(check_exposure, CheckExposure::Yes) {
-            self.handle_exposure(index, identifier, origin_namespace, crates, reporter)?;
+            self.handle_exposure(index, identifier, origin_namespace, session, reporter)?;
         }
-        self.collapse_use_chain(index, crates)
+        self.collapse_use_chain(index, session)
     }
 
     // @Task verify that the exposure is checked even in the case of use-declarations
@@ -548,10 +526,10 @@ impl CrateScope {
         index: DeclarationIndex,
         identifier: &ast::Identifier,
         origin_namespace: DeclarationIndex,
-        crates: &CrateStore,
+        session: &Session,
         reporter: &Reporter,
     ) -> Result<(), ResolutionError> {
-        let entity = self.entity(index, crates);
+        let entity = self.entity(index, session);
 
         if let Exposure::Restricted(exposure) = &entity.exposure {
             // unwrap: root always has Exposure::Unrestricted
@@ -560,7 +538,7 @@ impl CrateScope {
                 exposure,
                 self.global_index(definition_site_namespace),
                 self,
-                crates,
+                session,
                 reporter,
             )?;
 
@@ -573,7 +551,7 @@ impl CrateScope {
                     .code(Code::E029)
                     .message(format!(
                         "binding `{}` is private",
-                        self.absolute_path(index, crates)
+                        self.absolute_path(index, session)
                     ))
                     .primary_span(identifier)
                     .report(reporter);
@@ -601,7 +579,7 @@ impl CrateScope {
 
     pub(super) fn resolve_exposure_reaches(
         &mut self,
-        crates: &CrateStore,
+        session: &Session,
         reporter: &Reporter,
     ) -> Result {
         let mut health = Health::Untainted;
@@ -613,9 +591,9 @@ impl CrateScope {
 
                 if RestrictedExposure::resolve(
                     exposure,
-                    self.__temporary_global_index(definition_site_namespace),
+                    self.global_index(definition_site_namespace),
                     self,
-                    crates,
+                    session,
                     reporter,
                 )
                 .is_err()
@@ -626,7 +604,7 @@ impl CrateScope {
             }
 
             if let EntityKind::Use { reference } = binding.kind {
-                let reference = self.entity(reference, crates);
+                let reference = self.entity(reference, session);
 
                 if binding.exposure.compare(&reference.exposure, self) == Some(Ordering::Greater) {
                     Diagnostic::error()
@@ -650,8 +628,8 @@ expected the exposure of `{}`
            to be at most {}
       but it actually is {}",
                             binding.source, // @Task absolute path
-                            reference.exposure.with((self, crates)),
-                            binding.exposure.with((self, crates)),
+                            reference.exposure.with((self, session)),
+                            binding.exposure.with((self, session)),
                         ))
                         .report(reporter);
                     health.taint();
@@ -670,16 +648,16 @@ expected the exposure of `{}`
     fn find_similarly_named<'a>(
         &'a self,
         queried_identifier: &str,
-        predicate: impl for<'f> Fn(&'f Entity) -> bool,
+        predicate: impl Fn(&Entity) -> bool,
         namespace: DeclarationIndex,
-        crates: &'a CrateStore,
+        session: &'a Session,
     ) -> Option<&'a str> {
-        self.entity(namespace, crates)
+        self.entity(namespace, session)
             .namespace()
             .unwrap()
             .binders
             .iter()
-            .map(|&index| self.entity(index, crates))
+            .map(|&index| self.entity(index, session))
             .filter(|entity| !entity.is_error() && predicate(entity))
             .map(|entity| entity.source.as_str())
             .find(|identifier| is_similar(identifier, queried_identifier))
@@ -691,11 +669,11 @@ expected the exposure of `{}`
     fn collapse_use_chain(
         &self,
         index: DeclarationIndex,
-        crates: &CrateStore,
+        session: &Session,
     ) -> Result<DeclarationIndex, ResolutionError> {
         use EntityKind::*;
 
-        match self.entity(index, crates).kind {
+        match self.entity(index, session).kind {
             Use { reference } => Ok(reference),
             UnresolvedUse => Err(ResolutionError::UnresolvedUseBinding { inquirer: index }),
             _ => Ok(index),
@@ -726,7 +704,7 @@ expected the exposure of `{}`
         &self,
         identifier: &ast::Identifier,
         namespace: LocalDeclarationIndex,
-        crates: &CrateStore,
+        session: &Session,
     ) -> Target::Output {
         let index = self
             .get(namespace)
@@ -738,7 +716,7 @@ expected the exposure of `{}`
             .find(|&index| &self.get(index).source == identifier)
             .unwrap();
         let index = self
-            .collapse_use_chain(self.global_index(index), crates)
+            .collapse_use_chain(self.global_index(index), session)
             .unwrap_or_else(|_| unreachable!());
 
         Target::output(index, identifier)
@@ -754,7 +732,7 @@ expected the exposure of `{}`
     /// use-bindings are actually circular and are thus reported.
     // @Task update docs in regards to number of phases
     // @Task update docs regarding errors
-    pub(super) fn resolve_use_bindings(&mut self, crates: &CrateStore, reporter: &Reporter) {
+    pub(super) fn resolve_use_bindings(&mut self, session: &Session, reporter: &Reporter) {
         use ResolutionError::*;
 
         while !self.partially_resolved_use_bindings.is_empty() {
@@ -764,7 +742,7 @@ expected the exposure of `{}`
                 match self.resolve_path::<ValueOrModule>(
                     &item.reference,
                     self.global_index(item.module),
-                    crates,
+                    session,
                     reporter,
                 ) {
                     Ok(reference) => {
@@ -772,7 +750,7 @@ expected the exposure of `{}`
                     }
                     Err(error @ (UnresolvedBinding { .. } | Unrecoverable)) => {
                         self.bindings[index].mark_as_error();
-                        error.report(self, crates, reporter);
+                        error.report(self, session, reporter);
                         self.health.taint();
                     }
                     Err(UnresolvedUseBinding { inquirer }) => {
@@ -796,7 +774,7 @@ expected the exposure of `{}`
 
                 for cycle in find_cycles(partially_resolved_use_bindings) {
                     let paths = cycle.iter().map(|&index| {
-                        self.absolute_path(self.__temporary_global_index(index), crates)
+                        self.absolute_path(self.global_index(index), session)
                             .quote()
                     });
                     let paths = unordered_listing(paths, Conjunction::And);
@@ -890,19 +868,19 @@ impl fmt::Debug for CrateScope {
 
 // @Note it would be better if we had `DebugWith`
 impl DisplayWith for CrateScope {
-    type Context<'a> = &'a CrateStore;
+    type Context<'a> = &'a Session;
 
-    fn format(&self, crates: &CrateStore, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn format(&self, session: &Session, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
             "{} {} ({:?}) {:?}",
-            self.type_, crates[self.package].name, self.index, self.package
+            self.type_, session[self.package].name, self.index, self.package
         )?;
 
         writeln!(f, "  bindings:")?;
 
         for (index, entity) in self.bindings.iter() {
-            writeln!(f, "    {index:?}: {}", entity.with((self, crates)))?;
+            writeln!(f, "    {index:?}: {}", entity.with((self, session)))?;
         }
 
         writeln!(f, "  partially unresolved use-bindings:")?;
@@ -957,16 +935,12 @@ impl fmt::Debug for Exposure {
 }
 
 impl DisplayWith for Exposure {
-    type Context<'a> = (&'a CrateScope, &'a CrateStore);
+    type Context<'a> = (&'a CrateScope, &'a Session);
 
-    fn format(
-        &self,
-        (scope, crates): Self::Context<'_>,
-        f: &mut fmt::Formatter<'_>,
-    ) -> fmt::Result {
+    fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Unrestricted => write!(f, "unrestricted"),
-            Self::Restricted(reach) => write!(f, "`{}`", reach.borrow().with((scope, crates))),
+            Self::Restricted(reach) => write!(f, "`{}`", reach.borrow().with(context)),
         }
     }
 }
@@ -987,7 +961,7 @@ impl RestrictedExposure {
         exposure: &RefCell<Self>,
         definition_site_namespace: DeclarationIndex,
         scope: &CrateScope,
-        crates: &CrateStore,
+        session: &Session,
         reporter: &Reporter,
     ) -> Result<DeclarationIndex> {
         let exposure_ = exposure.borrow();
@@ -1007,10 +981,10 @@ impl RestrictedExposure {
                     .resolve_path_unchecked_exposure::<OnlyModule>(
                         unresolved_reach,
                         definition_site_namespace,
-                        crates,
+                        session,
                         reporter,
                     )
-                    .map_err(|error| error.report(scope, crates, reporter))?;
+                    .map_err(|error| error.report(scope, session, reporter))?;
 
                 let reach_is_ancestor =
                     scope.some_ancestor_equals(definition_site_namespace, reach);
@@ -1030,7 +1004,7 @@ impl RestrictedExposure {
 
                 reach
             }
-            &Self::Resolved { reach } => scope.__temporary_global_index(reach),
+            &Self::Resolved { reach } => scope.global_index(reach),
         })
     }
 
@@ -1039,8 +1013,8 @@ impl RestrictedExposure {
 
         Some(match (self, other) {
             (&Resolved { reach: this }, &Resolved { reach: other }) => {
-                let this = scope.__temporary_global_index(this);
-                let other = scope.__temporary_global_index(other);
+                let this = scope.global_index(this);
+                let other = scope.global_index(other);
 
                 if this == other {
                     Ordering::Equal
@@ -1058,11 +1032,11 @@ impl RestrictedExposure {
 }
 
 impl DisplayWith for RestrictedExposure {
-    type Context<'a> = (&'a CrateScope, &'a CrateStore);
+    type Context<'a> = (&'a CrateScope, &'a Session);
 
     fn format(
         &self,
-        (scope, crates): Self::Context<'_>,
+        (scope, session): Self::Context<'_>,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
         match self {
@@ -1070,7 +1044,7 @@ impl DisplayWith for RestrictedExposure {
             &Self::Resolved { reach } => write!(
                 f,
                 "{}",
-                scope.absolute_path(scope.__temporary_global_index(reach), crates)
+                scope.absolute_path(scope.global_index(reach), session)
             ),
         }
     }
@@ -1107,12 +1081,16 @@ impl From<DuplicateDefinition> for Diagnostic {
 /// since modules are not values (non-first-class). As such, this trait
 /// allows to implementors to define what should happen with the resolved entity
 /// if it appears in a specific location
+// @Task get rid of this thing! smh!
 pub(super) trait ResolutionTarget {
     type Output;
 
     fn output(index: DeclarationIndex, identifier: &ast::Identifier) -> Self::Output;
 
-    fn handle_bare_path_hanger_except_crates(hanger: &ast::Hanger) -> Result<(), Diagnostic>;
+    fn output_bare_path_hanger(
+        hanger: &ast::Hanger,
+        index: DeclarationIndex,
+    ) -> Result<Self::Output, Diagnostic>;
 
     fn handle_simple_path(identifier: &ast::Identifier, entity: &Entity) -> Result<(), Diagnostic>;
 }
@@ -1127,8 +1105,11 @@ impl ResolutionTarget for ValueOrModule {
         index
     }
 
-    fn handle_bare_path_hanger_except_crates(_: &ast::Hanger) -> Result<(), Diagnostic> {
-        Ok(())
+    fn output_bare_path_hanger(
+        _: &ast::Hanger,
+        index: DeclarationIndex,
+    ) -> Result<Self::Output, Diagnostic> {
+        Ok(index)
     }
 
     fn handle_simple_path(_: &ast::Identifier, _: &Entity) -> Result<(), Diagnostic> {
@@ -1146,7 +1127,10 @@ impl ResolutionTarget for OnlyValue {
         Identifier::new(index, identifier.clone())
     }
 
-    fn handle_bare_path_hanger_except_crates(hanger: &ast::Hanger) -> Result<(), Diagnostic> {
+    fn output_bare_path_hanger(
+        hanger: &ast::Hanger,
+        _: DeclarationIndex,
+    ) -> Result<Self::Output, Diagnostic> {
         Err(module_used_as_a_value(hanger.as_ref()))
     }
 
@@ -1171,8 +1155,11 @@ impl ResolutionTarget for OnlyModule {
         index
     }
 
-    fn handle_bare_path_hanger_except_crates(_: &ast::Hanger) -> Result<(), Diagnostic> {
-        Ok(())
+    fn output_bare_path_hanger(
+        _: &ast::Hanger,
+        index: DeclarationIndex,
+    ) -> Result<Self::Output, Diagnostic> {
+        Ok(index)
     }
 
     fn handle_simple_path(identifier: &ast::Identifier, entity: &Entity) -> Result<(), Diagnostic> {
@@ -1374,9 +1361,9 @@ impl<'a> FunctionScope<'a> {
         }
     }
 
-    pub fn absolute_path(binder: &Identifier, scope: &CrateScope, crates: &CrateStore) -> String {
+    pub fn absolute_path(binder: &Identifier, scope: &CrateScope, session: &Session) -> String {
         match binder.index {
-            Index::Declaration(index) => scope.absolute_path(index, crates),
+            Index::Declaration(index) => scope.absolute_path(index, session),
             Index::DeBruijn(_) | Index::DeBruijnParameter => binder.as_str().into(),
         }
     }
@@ -1386,10 +1373,10 @@ impl<'a> FunctionScope<'a> {
         &self,
         query: &Path,
         scope: &CrateScope,
-        crates: &CrateStore,
+        session: &Session,
         reporter: &Reporter,
     ) -> Result<Identifier> {
-        self.resolve_binding_with_depth(query, scope, 0, self, crates, reporter)
+        self.resolve_binding_with_depth(query, scope, 0, self, session, reporter)
     }
 
     /// Resolve a binding in a function scope given a depth.
@@ -1405,7 +1392,7 @@ impl<'a> FunctionScope<'a> {
         scope: &CrateScope,
         depth: usize,
         origin: &Self,
-        crates: &CrateStore,
+        session: &Session,
         reporter: &Reporter,
     ) -> Result<Identifier> {
         use FunctionScope::*;
@@ -1413,12 +1400,12 @@ impl<'a> FunctionScope<'a> {
         // @Note kinda awkward API with map_err
         match self {
             &Module(module) => scope
-                .resolve_path::<OnlyValue>(query, scope.global_index(module), crates, reporter)
+                .resolve_path::<OnlyValue>(query, scope.global_index(module), session, reporter)
                 .map_err(|error| {
                     error.emit_finding_lookalike(
-                        |identifier, _| origin.find_similarly_named(identifier, scope, crates),
+                        |identifier, _| origin.find_similarly_named(identifier, scope, session),
                         scope,
-                        crates,
+                        session,
                         reporter,
                     )
                 }),
@@ -1432,7 +1419,7 @@ impl<'a> FunctionScope<'a> {
                                 &query.segments[1],
                                 scope.global_index(self.module()),
                                 scope,
-                                crates,
+                                session,
                             )
                             .report(reporter));
                         }
@@ -1444,7 +1431,7 @@ impl<'a> FunctionScope<'a> {
                             scope,
                             depth + 1,
                             origin,
-                            crates,
+                            session,
                             reporter,
                         )
                     }
@@ -1453,10 +1440,10 @@ impl<'a> FunctionScope<'a> {
                         .resolve_path::<OnlyValue>(
                             query,
                             scope.global_index(parent.module()),
-                            crates,
+                            session,
                             reporter,
                         )
-                        .map_err(|error| error.report(scope, crates, reporter))
+                        .map_err(|error| error.report(scope, session, reporter))
                 }
             }
             // @Note this looks ugly/complicated, use helper functions
@@ -1475,7 +1462,7 @@ impl<'a> FunctionScope<'a> {
                                     &query.segments[1],
                                     scope.global_index(self.module()),
                                     scope,
-                                    crates,
+                                    session,
                                 )
                                 .report(reporter));
                             }
@@ -1487,7 +1474,7 @@ impl<'a> FunctionScope<'a> {
                             scope,
                             depth + binders.len(),
                             origin,
-                            crates,
+                            session,
                             reporter,
                         ),
                     }
@@ -1496,10 +1483,10 @@ impl<'a> FunctionScope<'a> {
                         .resolve_path::<OnlyValue>(
                             query,
                             scope.global_index(parent.module()),
-                            crates,
+                            session,
                             reporter,
                         )
-                        .map_err(|error| error.report(scope, crates, reporter))
+                        .map_err(|error| error.report(scope, session, reporter))
                 }
             }
         }
@@ -1517,7 +1504,7 @@ impl<'a> FunctionScope<'a> {
         &'b self,
         identifier: &str,
         scope: &'b CrateScope,
-        crates: &'b CrateStore,
+        session: &'b Session,
     ) -> Option<&'b str>
     where
         'a: 'b,
@@ -1525,14 +1512,17 @@ impl<'a> FunctionScope<'a> {
         use FunctionScope::*;
 
         match self {
-            &Module(module) => {
-                scope.find_similarly_named(identifier, |_| true, scope.global_index(module), crates)
-            }
+            &Module(module) => scope.find_similarly_named(
+                identifier,
+                |_| true,
+                scope.global_index(module),
+                session,
+            ),
             FunctionParameter { parent, binder } => {
                 if is_similar(identifier, binder.as_str()) {
                     Some(binder.as_str())
                 } else {
-                    parent.find_similarly_named(identifier, scope, crates)
+                    parent.find_similarly_named(identifier, scope, session)
                 }
             }
             PatternBinders { parent, binders } => {
@@ -1543,7 +1533,7 @@ impl<'a> FunctionScope<'a> {
                 {
                     Some(binder.as_str())
                 } else {
-                    parent.find_similarly_named(identifier, scope, crates)
+                    parent.find_similarly_named(identifier, scope, session)
                 }
             }
         }
@@ -1595,7 +1585,7 @@ fn value_used_as_a_namespace(
     subbinder: &ast::Identifier,
     parent: DeclarationIndex,
     scope: &CrateScope,
-    crates: &CrateStore,
+    session: &Session,
 ) -> Diagnostic {
     // @Question should we also include lookalike namespaces that don't contain the
     // subbinding (displaying them in a separate help message?)?
@@ -1609,12 +1599,12 @@ fn value_used_as_a_namespace(
                 namespace
                     .binders
                     .iter()
-                    .find(|&&index| &scope.entity(index, crates).source == subbinder)
+                    .find(|&&index| &scope.entity(index, session).source == subbinder)
                     .is_some()
             })
         },
         parent,
-        crates,
+        session,
     );
 
     let show_very_general_help = similarly_named_namespace.is_none();
@@ -1671,13 +1661,13 @@ enum ResolutionError {
 }
 
 impl ResolutionError {
-    fn report(self, scope: &CrateScope, crates: &CrateStore, reporter: &Reporter) {
+    fn report(self, scope: &CrateScope, session: &Session, reporter: &Reporter) {
         self.emit_finding_lookalike(
             |identifier, namespace| {
-                scope.find_similarly_named(identifier, |_| true, namespace, crates)
+                scope.find_similarly_named(identifier, |_| true, namespace, session)
             },
             scope,
-            crates,
+            session,
             reporter,
         );
     }
@@ -1686,7 +1676,7 @@ impl ResolutionError {
         self,
         find_lookalike: impl FnOnce(&str, DeclarationIndex) -> Option<&'s str>,
         scope: &CrateScope,
-        crates: &CrateStore,
+        session: &Session,
         reporter: &Reporter,
     ) {
         match self {
@@ -1701,18 +1691,13 @@ impl ResolutionError {
                 match usage {
                     IdentifierUsage::Unqualified => message += "this scope",
                     IdentifierUsage::Qualified => {
-                        message += match scope.entity(namespace, crates).is_module() {
+                        message += match scope.entity(namespace, session).is_module() {
                             true => "module",
                             false => "namespace",
                         };
                         message += " `";
-                        message += &scope.absolute_path(namespace, crates);
+                        message += &scope.absolute_path(namespace, session);
                         message += "`";
-                        // @Beacon @Temporary
-                        message += &format!(
-                            " ({namespace:?}) [{:?}]",
-                            scope.entity(namespace, crates).namespace()
-                        );
                     }
                 }
 

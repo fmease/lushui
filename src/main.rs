@@ -11,7 +11,7 @@ use lushui::{
     format::DisplayWith,
     lexer::Lexer,
     lowerer::Lowerer,
-    package::{CrateBuildQueue, CrateType, PackageManifest, DEFAULT_SOURCE_FOLDER_NAME},
+    package::{BuildQueue, CrateType, PackageManifest, DEFAULT_SOURCE_FOLDER_NAME},
     parser::{ast::Identifier, Parser},
     resolver,
     span::{SharedSourceMap, SourceMap, Span},
@@ -93,10 +93,12 @@ fn check_run_or_build_package(
     map: &SharedSourceMap,
     reporter: &Reporter,
 ) -> Result {
-    let mut build_queue = CrateBuildQueue::default();
+    let mut build_queue = BuildQueue::default();
 
     match options.source_file_path {
         Some(source_file_path) => {
+            // @Question before building core, should we check the existence of source_file_path?
+
             build_queue.process_single_file_package(source_file_path, options.unlink_core, reporter)
         }
         None => {

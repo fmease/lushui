@@ -1,19 +1,19 @@
 //! The definition of the textual representation of the [HIR](crate::hir).
 
 use super::{CrateScope, Declaration, Expression, Pattern};
-use crate::{format::DisplayWith, package::CrateStore};
+use crate::{format::DisplayWith, package::Session};
 use joinery::JoinableIterator;
 use std::{default::default, fmt};
 
 impl DisplayWith for Declaration {
-    type Context<'a> = (&'a CrateScope, &'a CrateStore);
+    type Context<'a> = (&'a CrateScope, &'a Session);
 
     fn format(
         &self,
-        (scope, crates): Self::Context<'_>,
+        (scope, session): Self::Context<'_>,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
-        self.format_with_depth(scope, crates, 0, f)
+        self.format_with_depth(scope, session, 0, f)
     }
 }
 
@@ -24,12 +24,13 @@ impl Declaration {
     fn format_with_depth(
         &self,
         scope: &CrateScope,
-        crates: &CrateStore,
+        session: &Session,
         depth: usize,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
         use super::DeclarationKind::*;
         use crate::lexer::INDENTATION;
+        let context = (scope, session);
 
         match &self.kind {
             Value(declaration) => {
@@ -37,10 +38,10 @@ impl Declaration {
                     f,
                     "{}: {}",
                     declaration.binder,
-                    declaration.type_annotation.with((scope, crates))
+                    declaration.type_annotation.with(context)
                 )?;
                 if let Some(expression) = &declaration.expression {
-                    write!(f, " = {}", expression.with((scope, crates)))?;
+                    write!(f, " = {}", expression.with(context))?;
                 }
                 writeln!(f)
             }
@@ -50,7 +51,7 @@ impl Declaration {
                         f,
                         "data {}: {} of",
                         declaration.binder,
-                        declaration.type_annotation.with((scope, crates))
+                        declaration.type_annotation.with(context)
                     )?;
                     for constructor in constructors {
                         let depth = depth + 1;
@@ -58,7 +59,7 @@ impl Declaration {
                             f,
                             "{}{}",
                             " ".repeat(depth * INDENTATION.0),
-                            constructor.with((scope, crates))
+                            constructor.with(context)
                         )?;
                     }
                     Ok(())
@@ -67,21 +68,21 @@ impl Declaration {
                     f,
                     "data {}: {}",
                     declaration.binder,
-                    declaration.type_annotation.with((scope, crates))
+                    declaration.type_annotation.with(context)
                 ),
             },
             Constructor(constructor) => writeln!(
                 f,
                 "{}: {}",
                 constructor.binder,
-                constructor.type_annotation.with((scope, crates))
+                constructor.type_annotation.with(context)
             ),
             Module(declaration) => {
                 writeln!(f, "module {} of", declaration.binder)?;
                 for declaration in &declaration.declarations {
                     let depth = depth + 1;
                     write!(f, "{}", " ".repeat(depth * INDENTATION.0))?;
-                    declaration.format_with_depth(scope, crates, depth, f)?;
+                    declaration.format_with_depth(scope, session, depth, f)?;
                 }
                 Ok(())
             }
@@ -96,24 +97,25 @@ impl Declaration {
 
 // @Note many wasted allocations (intermediate Strings)
 impl DisplayWith for Expression {
-    type Context<'a> = (&'a CrateScope, &'a CrateStore);
+    type Context<'a> = (&'a CrateScope, &'a Session);
 
     fn format(
         &self,
-        (scope, crates): Self::Context<'_>,
+        (scope, session): Self::Context<'_>,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
-        format_pi_type_literal_or_lower(self, scope, crates, f)
+        format_pi_type_literal_or_lower(self, scope, session, f)
     }
 }
 
 fn format_pi_type_literal_or_lower(
     expression: &Expression,
     scope: &CrateScope,
-    crates: &CrateStore,
+    session: &Session,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
     use super::ExpressionKind::*;
+    let context = (scope, session);
 
     // In here, we format `Lambda`, `UseIn` and `CaseAnalysis` as a pi-type-literal-or-lower instead of
     // a lowered expression — which you might have expected from reading through the grammar and the parser.
@@ -153,13 +155,13 @@ fn format_pi_type_literal_or_lower(
                     write!(f, "{parameter}: ")?;
                 }
 
-                write!(f, "{}", pi.domain.with((scope, crates)))?;
+                write!(f, "{}", pi.domain.with(context))?;
                 write!(f, ")")?;
             } else {
-                format_application_or_lower(&pi.domain, scope, crates, f)?;
+                format_application_or_lower(&pi.domain, scope, session, f)?;
             }
             write!(f, " -> ")?;
-            format_pi_type_literal_or_lower(&pi.codomain, scope, crates, f)
+            format_pi_type_literal_or_lower(&pi.codomain, scope, session, f)
         }
         Lambda(lambda) => {
             write!(f, r"\{}", lambda.explicitness)?;
@@ -173,7 +175,7 @@ fn format_pi_type_literal_or_lower(
                 }
                 write!(f, "{}", lambda.parameter)?;
                 if let Some(annotation) = &lambda.parameter_type_annotation {
-                    write!(f, ": {}", annotation.with((scope, crates)))?;
+                    write!(f, ": {}", annotation.with(context))?;
                 }
                 write!(f, ")")?;
             } else {
@@ -181,26 +183,26 @@ fn format_pi_type_literal_or_lower(
             }
 
             if let Some(annotation) = &lambda.body_type_annotation {
-                write!(f, ": {}", annotation.with((scope, crates)))?;
+                write!(f, ": {}", annotation.with(context))?;
             }
 
-            write!(f, " => {}", lambda.body.with((scope, crates)))
+            write!(f, " => {}", lambda.body.with(context))
         }
         UseIn => todo!(),
         // @Task fix indentation
         CaseAnalysis(analysis) => {
-            writeln!(f, "case {} of", analysis.subject.with((scope, crates)))?;
+            writeln!(f, "case {} of", analysis.subject.with(context))?;
             for case in &analysis.cases {
                 writeln!(
                     f,
                     "{} => {}",
-                    case.pattern.with((scope, crates)),
-                    case.body.with((scope, crates))
+                    case.pattern.with(context),
+                    case.body.with(context)
                 )?;
             }
             Ok(())
         }
-        _ => format_application_or_lower(expression, scope, crates, f),
+        _ => format_application_or_lower(expression, scope, session, f),
     }
 }
 
@@ -208,38 +210,39 @@ fn format_pi_type_literal_or_lower(
 fn format_application_or_lower(
     expression: &Expression,
     scope: &CrateScope,
-    crates: &CrateStore,
+    session: &Session,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
     use super::ExpressionKind::*;
 
     match &expression.kind {
         Application(application) => {
-            format_application_or_lower(&application.callee, scope, crates, f)?;
+            format_application_or_lower(&application.callee, scope, session, f)?;
             write!(f, " {}", application.explicitness)?;
-            format_lower_expression(&application.argument, scope, crates, f)
+            format_lower_expression(&application.argument, scope, session, f)
         }
         ForeignApplication(application) => {
             write!(f, "{}", application.callee)?;
 
             for argument in &application.arguments {
                 write!(f, " ")?;
-                format_lower_expression(argument, scope, crates, f)?;
+                format_lower_expression(argument, scope, session, f)?;
             }
 
             Ok(())
         }
-        _ => format_lower_expression(expression, scope, crates, f),
+        _ => format_lower_expression(expression, scope, session, f),
     }
 }
 
 fn format_lower_expression(
     expression: &Expression,
     scope: &CrateScope,
-    crates: &CrateStore,
+    session: &Session,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
     use super::ExpressionKind::*;
+    let context = (scope, session);
 
     for attribute in expression.attributes.iter() {
         write!(f, "{} ", attribute)?;
@@ -255,7 +258,7 @@ fn format_lower_expression(
         Binding(binding) => write!(
             f,
             "{}",
-            super::FunctionScope::absolute_path(&binding.binder, scope, crates)
+            super::FunctionScope::absolute_path(&binding.binder, scope, session)
         ),
         // @Beacon @Temporary @Task just write out the path
         Projection(_projection) => write!(f, "?(projection)"),
@@ -265,27 +268,27 @@ fn format_lower_expression(
             io.index,
             io.arguments
                 .iter()
-                .map(|argument| argument.with((scope, crates)))
+                .map(|argument| argument.with(context))
                 .join_with(' ')
         ),
         Substitution(substitution) => write!(
             f,
             "?(substitution {} {})",
-            substitution.substitution.with((scope, crates)),
-            substitution.expression.with((scope, crates))
+            substitution.substitution.with(context),
+            substitution.expression.with(context)
         ),
         Error => write!(f, "?(error)"),
-        _ => write!(f, "({})", expression.with((scope, crates))),
+        _ => write!(f, "({})", expression.with(context)),
     }
 }
 
 // @Task @Beacon update bracket business
 impl DisplayWith for Pattern {
-    type Context<'a> = (&'a CrateScope, &'a CrateStore);
+    type Context<'a> = (&'a CrateScope, &'a Session);
 
     fn format(
         &self,
-        (scope, crates): Self::Context<'_>,
+        context @ (scope, session): Self::Context<'_>,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
         use super::PatternKind::*;
@@ -296,15 +299,15 @@ impl DisplayWith for Pattern {
             Binding(binding) => write!(
                 f,
                 "{}",
-                super::FunctionScope::absolute_path(&binding.binder, scope, crates)
+                super::FunctionScope::absolute_path(&binding.binder, scope, session)
             ),
 
             Binder(binder) => write!(f, "\\{}", binder.binder),
             Deapplication(application) => write!(
                 f,
                 "({}) ({})",
-                application.callee.with((scope, crates)),
-                application.argument.with((scope, crates))
+                application.callee.with(context),
+                application.argument.with(context)
             ),
             Error => write!(f, "?(error)"),
         }

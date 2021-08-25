@@ -19,7 +19,7 @@ use crate::{
     entity::EntityKind,
     error::{Health, PossiblyErroneous, Result},
     lowered_ast::{self, AttributeKeys, AttributeKind},
-    package::CrateStore,
+    package::Session,
     util::obtain,
 };
 use hir::{decl, expr, pat};
@@ -51,15 +51,15 @@ enum Opacity {
 /// The state of the resolver.
 pub struct Resolver<'a> {
     scope: &'a mut CrateScope,
-    crates: &'a CrateStore,
+    session: &'a Session,
     reporter: &'a Reporter,
 }
 
 impl<'a> Resolver<'a> {
-    pub fn new(scope: &'a mut CrateScope, crates: &'a CrateStore, reporter: &'a Reporter) -> Self {
+    pub fn new(scope: &'a mut CrateScope, session: &'a Session, reporter: &'a Reporter) -> Self {
         Self {
             scope,
-            crates,
+            session,
             reporter,
         }
     }
@@ -80,11 +80,11 @@ impl<'a> Resolver<'a> {
                     .for_each(|(_, error)| Diagnostic::from(error).report(self.reporter));
             })?;
 
-        self.scope.resolve_use_bindings(self.crates, self.reporter);
+        self.scope.resolve_use_bindings(self.session, self.reporter);
 
         // @Task @Beacon don't return early here
         self.scope
-            .resolve_exposure_reaches(self.crates, self.reporter)?;
+            .resolve_exposure_reaches(self.session, self.reporter)?;
 
         let declaration = self.finish_resolve_declaration(declaration, None, Context::default());
 
@@ -313,7 +313,7 @@ impl<'a> Resolver<'a> {
                 let binder = self.scope.reobtain_resolved_identifier::<OnlyValue>(
                     &value.binder,
                     module,
-                    self.crates,
+                    self.session,
                 );
 
                 decl! {
@@ -338,7 +338,7 @@ impl<'a> Resolver<'a> {
                 let binder = self.scope.reobtain_resolved_identifier::<OnlyValue>(
                     &data.binder,
                     module,
-                    self.crates,
+                    self.session,
                 );
 
                 let constructors = data.constructors.map(|constructors| {
@@ -382,7 +382,7 @@ impl<'a> Resolver<'a> {
                 let binder = self.scope.reobtain_resolved_identifier::<OnlyValue>(
                     &constructor.binder,
                     context.parent_data_binding.unwrap().0,
-                    self.crates,
+                    self.session,
                 );
 
                 decl! {
@@ -403,7 +403,7 @@ impl<'a> Resolver<'a> {
                         .local_index(self.scope.reobtain_resolved_identifier::<OnlyModule>(
                             &submodule.binder,
                             module,
-                            self.crates,
+                            self.session,
                         ))
                         .unwrap(),
                     None => self.scope.root(),
@@ -447,7 +447,7 @@ impl<'a> Resolver<'a> {
                     self.scope.reobtain_resolved_identifier::<ValueOrModule>(
                         &use_.binder,
                         module,
-                        self.crates,
+                        self.session,
                     ),
                     use_.binder,
                 );
@@ -518,7 +518,7 @@ impl<'a> Resolver<'a> {
                 Binding {
                     expression.attributes,
                     expression.span;
-                    binder: scope.resolve_binding(&binding.binder, self.scope, self.crates,  self.reporter)?,
+                    binder: scope.resolve_binding(&binding.binder, self.scope, self.session,  self.reporter)?,
                 }
             },
             Lambda(lambda) => {
@@ -600,7 +600,7 @@ impl<'a> Resolver<'a> {
                 Binding {
                     pattern.attributes,
                     pattern.span;
-                    binder: scope.resolve_binding(&binding.binder, self.scope, self.crates,  self.reporter)?,
+                    binder: scope.resolve_binding(&binding.binder, self.scope, self.session,  self.reporter)?,
                 }
             },
             Binder(binder) => {

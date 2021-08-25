@@ -6,7 +6,7 @@ use crate::{
     format::AsDebug,
     hir::expr,
     lowered_ast::{Attributes, Number},
-    package::CrateStore,
+    package::Session,
     resolver::{CrateScope, DeBruijnIndex, DeclarationIndex, Identifier, Index},
     span::Span,
 };
@@ -19,17 +19,17 @@ impl CrateScope {
         ffi::register_foreign_bindings(self);
     }
 
-    pub fn lookup_type(&self, index: DeclarationIndex, crates: &CrateStore) -> Option<Expression> {
-        self.entity(index, crates).type_()
+    pub fn lookup_type(&self, index: DeclarationIndex, session: &Session) -> Option<Expression> {
+        self.entity(index, session).type_()
     }
 
     /// Look up the value of a binding.
-    pub fn lookup_value(&self, index: DeclarationIndex, crates: &CrateStore) -> ValueView {
-        self.entity(index, crates).value()
+    pub fn lookup_value(&self, index: DeclarationIndex, session: &Session) -> ValueView {
+        self.entity(index, session).value()
     }
 
-    pub fn is_foreign(&self, index: DeclarationIndex, crates: &CrateStore) -> bool {
-        matches!(self.entity(index, crates).kind, EntityKind::Foreign { .. })
+    pub fn is_foreign(&self, index: DeclarationIndex, session: &Session) -> bool {
+        matches!(self.entity(index, session).kind, EntityKind::Foreign { .. })
     }
 
     /// Try applying foreign binding.
@@ -47,11 +47,11 @@ impl CrateScope {
         &self,
         binder: Identifier,
         arguments: Vec<Expression>,
-        crates: &CrateStore,
+        session: &Session,
         reporter: &Reporter,
     ) -> Result<Option<Expression>> {
         match self
-            .get(self.__temporary_local_index(binder.declaration_index().unwrap()))
+            .entity(binder.declaration_index().unwrap(), session)
             .kind
         {
             EntityKind::Foreign {
@@ -68,7 +68,7 @@ impl CrateScope {
                     }
                 }
 
-                Some(function(value_arguments).into_expression(self, crates, reporter)?)
+                Some(function(value_arguments).into_expression(self, session, reporter)?)
             } else {
                 None
             }),
@@ -215,10 +215,10 @@ impl CrateScope {
         &self,
         binder: &'static str,
         expression_span: Option<Span>,
-        crates: &CrateStore,
+        session: &Session,
         reporter: &Reporter,
     ) -> Result<Expression> {
-        if let Some(binder) = crates.foreign_type(binder) {
+        if let Some(binder) = session.foreign_type(binder) {
             return Ok(binder.clone().to_expression());
         }
 
@@ -243,7 +243,7 @@ impl CrateScope {
         &self,
         number: &Number,
         expression_span: Option<Span>,
-        crates: &CrateStore,
+        session: &Session,
         reporter: &Reporter,
     ) -> Result<Expression> {
         self.lookup_foreign_type(
@@ -256,7 +256,7 @@ impl CrateScope {
                 Number::Int64(_) => ffi::Type::INT64,
             },
             expression_span,
-            crates,
+            session,
             reporter,
         )
     }
@@ -342,7 +342,7 @@ pub enum Registration {
 use std::fmt;
 
 impl crate::format::DisplayWith for Registration {
-    type Context<'a> = (&'a CrateScope, &'a CrateStore);
+    type Context<'a> = (&'a CrateScope, &'a Session);
 
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Registration::*;
@@ -431,12 +431,12 @@ impl<'a> FunctionScope<'a> {
         &self,
         binder: &Identifier,
         scope: &CrateScope,
-        crates: &CrateStore,
+        session: &Session,
     ) -> Option<Expression> {
         use Index::*;
 
         match binder.index {
-            Declaration(index) => scope.lookup_type(index, crates),
+            Declaration(index) => scope.lookup_type(index, session),
             DeBruijn(index) => Some(self.lookup_type_with_depth(index, 0)),
             DeBruijnParameter => unreachable!(),
         }
@@ -485,22 +485,22 @@ impl<'a> FunctionScope<'a> {
         &self,
         binder: &Identifier,
         scope: &CrateScope,
-        crates: &CrateStore,
+        session: &Session,
     ) -> ValueView {
         use Index::*;
 
         match binder.index {
-            Declaration(index) => scope.lookup_value(index, crates),
+            Declaration(index) => scope.lookup_value(index, session),
             DeBruijn(_) => ValueView::Neutral,
             DeBruijnParameter => unreachable!(),
         }
     }
 
-    pub fn is_foreign(&self, binder: &Identifier, scope: &CrateScope, crates: &CrateStore) -> bool {
+    pub fn is_foreign(&self, binder: &Identifier, scope: &CrateScope, session: &Session) -> bool {
         use Index::*;
 
         match binder.index {
-            Declaration(index) => scope.is_foreign(index, crates),
+            Declaration(index) => scope.is_foreign(index, session),
             DeBruijn(_) => false,
             DeBruijnParameter => unreachable!(),
         }

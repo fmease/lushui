@@ -20,13 +20,13 @@ use std::{
 };
 
 #[derive(Default, Debug)] // @Temporary Debug
-pub struct CrateStore {
+pub struct Session {
     // @Question BTreeSet<CrateScope> (CrateScope.index) ?
     crates: HashMap<CrateIndex, CrateScope>,
     packages: IndexMap<PackageIndex, Package>,
 }
 
-impl CrateStore {
+impl Session {
     pub fn with_packages(packages: IndexMap<PackageIndex, Package>) -> Self {
         Self {
             crates: HashMap::default(),
@@ -62,7 +62,7 @@ impl CrateStore {
     }
 }
 
-impl Index<CrateIndex> for CrateStore {
+impl Index<CrateIndex> for Session {
     type Output = CrateScope;
 
     fn index(&self, index: CrateIndex) -> &Self::Output {
@@ -70,7 +70,7 @@ impl Index<CrateIndex> for CrateStore {
     }
 }
 
-impl Index<PackageIndex> for CrateStore {
+impl Index<PackageIndex> for Session {
     type Output = Package;
 
     fn index(&self, index: PackageIndex) -> &Self::Output {
@@ -78,7 +78,7 @@ impl Index<PackageIndex> for CrateStore {
     }
 }
 
-impl IndexMut<PackageIndex> for CrateStore {
+impl IndexMut<PackageIndex> for Session {
     fn index_mut(&mut self, index: PackageIndex) -> &mut Self::Output {
         &mut self.packages[index]
     }
@@ -95,12 +95,12 @@ impl fmt::Debug for PackageIndex {
 }
 
 #[derive(Default)]
-pub struct CrateBuildQueue {
+pub struct BuildQueue {
     crates: IndexMap<CrateIndex, CrateScope>,
     packages: IndexMap<PackageIndex, Package>,
 }
 
-impl CrateBuildQueue {
+impl BuildQueue {
     fn enqueue_dependencies(
         &mut self,
         package_index: PackageIndex,
@@ -384,12 +384,12 @@ impl CrateBuildQueue {
         Ok(())
     }
 
-    pub fn into_unbuilt_and_built(self) -> (IndexMap<CrateIndex, CrateScope>, CrateStore) {
-        (self.crates, CrateStore::with_packages(self.packages))
+    pub fn into_unbuilt_and_built(self) -> (IndexMap<CrateIndex, CrateScope>, Session) {
+        (self.crates, Session::with_packages(self.packages))
     }
 }
 
-impl Index<CrateIndex> for CrateBuildQueue {
+impl Index<CrateIndex> for BuildQueue {
     type Output = CrateScope;
 
     fn index(&self, index: CrateIndex) -> &Self::Output {
@@ -397,13 +397,13 @@ impl Index<CrateIndex> for CrateBuildQueue {
     }
 }
 
-impl IndexMut<CrateIndex> for CrateBuildQueue {
+impl IndexMut<CrateIndex> for BuildQueue {
     fn index_mut(&mut self, index: CrateIndex) -> &mut Self::Output {
         &mut self.crates[index]
     }
 }
 
-impl Index<PackageIndex> for CrateBuildQueue {
+impl Index<PackageIndex> for BuildQueue {
     type Output = Package;
 
     fn index(&self, index: PackageIndex) -> &Self::Output {
@@ -411,7 +411,7 @@ impl Index<PackageIndex> for CrateBuildQueue {
     }
 }
 
-impl IndexMut<PackageIndex> for CrateBuildQueue {
+impl IndexMut<PackageIndex> for BuildQueue {
     fn index_mut(&mut self, index: PackageIndex) -> &mut Self::Output {
         &mut self.packages[index]
     }
