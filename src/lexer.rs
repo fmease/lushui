@@ -6,7 +6,7 @@ pub mod token;
 
 use crate::{
     diagnostics::{reporter::SilentReporter, Code, Diagnostic, Reporter},
-    error::{Health, Outcome, Result},
+    error::{outcome, Health, Outcome, Result},
     span::{LocalByteIndex, LocalSpan, SourceFile, SourceMap, Span, Spanned},
     util::{Atom, GetFromEndExt},
 };
@@ -38,10 +38,8 @@ fn lex(source: String) -> Result<Outcome<Vec<Token>>> {
 ///
 /// Used for non-lushui code like crate names.
 pub fn parse_identifier(source: String) -> Option<Atom> {
-    let Outcome {
-        value: mut tokens,
-        health,
-    } = lex(source).ok()?;
+    let outcome!(mut tokens, health) = lex(source).ok()?;
+
     if health == Health::Tainted {
         return None;
     }

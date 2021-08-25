@@ -141,9 +141,14 @@ pub fn arguments() -> (Command, Options) {
                 },
                 _ => unreachable!(),
             },
-            options: GenerationOptions {
-                library: command.matches.is_present("library"),
-                binary: command.matches.is_present("binary"),
+            options: {
+                let library = command.matches.is_present("library");
+
+                GenerationOptions {
+                    library,
+                    // implicitly set when no explicit crate type specified
+                    binary: command.matches.is_present("binary") || !library,
+                }
             },
         },
         "run" => Command::Run,

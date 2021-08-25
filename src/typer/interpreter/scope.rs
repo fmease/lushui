@@ -28,11 +28,8 @@ impl CrateScope {
         self.entity(index, crates).value()
     }
 
-    pub fn is_foreign(&self, index: DeclarationIndex) -> bool {
-        matches!(
-            self.get(self.__temporary_local_index(index)).kind,
-            EntityKind::Foreign { .. }
-        )
+    pub fn is_foreign(&self, index: DeclarationIndex, crates: &CrateStore) -> bool {
+        matches!(self.entity(index, crates).kind, EntityKind::Foreign { .. })
     }
 
     /// Try applying foreign binding.
@@ -499,11 +496,11 @@ impl<'a> FunctionScope<'a> {
         }
     }
 
-    pub fn is_foreign(&self, binder: &Identifier, scope: &CrateScope) -> bool {
+    pub fn is_foreign(&self, binder: &Identifier, scope: &CrateScope, crates: &CrateStore) -> bool {
         use Index::*;
 
         match binder.index {
-            Declaration(index) => scope.is_foreign(index),
+            Declaration(index) => scope.is_foreign(index, crates),
             DeBruijn(_) => false,
             DeBruijnParameter => unreachable!(),
         }

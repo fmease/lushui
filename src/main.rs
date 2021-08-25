@@ -1,34 +1,26 @@
 #![feature(backtrace, format_args_capture, derive_default_enum, decl_macro)]
 #![forbid(rust_2018_idioms, unused_must_use)]
 
-use std::path::PathBuf;
-
 use cli::{Command, PhaseRestriction};
 use lushui::{
     diagnostics::{
         reporter::{BufferedStderrReporter, StderrReporter},
         Diagnostic, Reporter,
     },
-    error::{Outcome, Result},
+    error::{outcome, Outcome, Result},
     format::DisplayWith,
     lexer::Lexer,
     lowerer::Lowerer,
-    package::{
-        distributed_libraries_path, find_package, CrateBuildQueue, CrateType, Package,
-        PackageManifest, CORE_PACKAGE_NAME, DEFAULT_SOURCE_FOLDER_NAME,
-    },
+    package::{CrateBuildQueue, CrateType, PackageManifest, DEFAULT_SOURCE_FOLDER_NAME},
     parser::{ast::Identifier, Parser},
-    resolver::{self, CrateScope},
+    resolver,
     span::{SharedSourceMap, SourceMap, Span},
     typer::Typer,
     FILE_EXTENSION,
 };
 use resolver::Resolver;
-use rustc_hash::FxHashMap as HashMap;
-use util::Str;
 
 mod cli;
-mod util;
 
 fn main() {
     if main_().is_err() {
@@ -101,19 +93,29 @@ fn check_run_or_build_package(
     map: &SharedSourceMap,
     reporter: &Reporter,
 ) -> Result {
-    let mut crates = CrateBuildQueue::default();
+    let mut build_queue = CrateBuildQueue::default();
 
     match options.source_file_path {
-        Some(source_file_path) => process_single_file_package(
-            source_file_path,
-            &mut crates,
-            options.unlink_core,
-            reporter,
-        ),
-        None => process_package(&mut crates, options.unlink_core, reporter),
+        Some(source_file_path) => {
+            build_queue.process_single_file_package(source_file_path, options.unlink_core, reporter)
+        }
+        None => {
+            if options.unlink_core {
+                // @Temporary message
+                // @Task add note explaining how one needs to remove the
+                // explicit `core` dep in the manifest to achieve the wanted behavior
+                Diagnostic::error()
+                    .message("option --unlink-core only works with explicit source file paths")
+                    .report(&reporter);
+            }
+
+            // @Task dont unwrap, handle the error cases
+            let package_path = std::env::current_dir().unwrap();
+            build_queue.process_package(package_path, reporter)
+        }
     }?;
 
-    let (unbuilt_crates, mut built_crates) = crates.into_unbuilt_and_built();
+    let (unbuilt_crates, mut built_crates) = build_queue.into_unbuilt_and_built();
 
     // // @Temporary
     // unbuilt_crates.iter().for_each(|crate_| {
@@ -131,18 +133,22 @@ fn check_run_or_build_package(
     let goal_crate = unbuilt_crates.last().unwrap().index;
 
     for mut crate_ in unbuilt_crates.into_values() {
+        let is_goal_crate = crate_.index == goal_crate;
+
         // @Beacon @Task print banner "compiling crate xyz" here unless --quiet/-q
         // eprintln!("  [building {}]", built_crates[crate_.package].name);
+
+        macro applies($restriction:expr) {
+            is_goal_crate && options.phase_restriction == Some($restriction)
+        }
 
         let source_file = map
             .borrow_mut()
             .load(crate_.path.clone())
             .map_err(|error| Diagnostic::from(error).report(&reporter))?;
 
-        let Outcome {
-            value: tokens,
-            health,
-        } = Lexer::new(map.borrow().get(source_file), &reporter).lex()?;
+        let outcome!(tokens, health) =
+            Lexer::new(map.borrow().get(source_file), &reporter).lex()?;
 
         {
             if options.dump.tokens {
@@ -150,7 +156,7 @@ fn check_run_or_build_package(
                     eprintln!("{:?}", token);
                 }
             }
-            if options.phase_restriction == Some(PhaseRestriction::Lexer) {
+            if applies!(PhaseRestriction::Lexer) {
                 if health.is_tainted() {
                     return Err(());
                 }
@@ -169,7 +175,7 @@ fn check_run_or_build_package(
             if options.dump.ast {
                 eprintln!("{declaration:#?}");
             }
-            if options.phase_restriction == Some(PhaseRestriction::Parser) {
+            if applies!(PhaseRestriction::Parser) {
                 return Ok(());
             }
         }
@@ -189,7 +195,7 @@ fn check_run_or_build_package(
             if options.dump.lowered_ast {
                 eprintln!("{}", declaration);
             }
-            if options.phase_restriction == Some(PhaseRestriction::Lowerer) {
+            if applies!(PhaseRestriction::Lowerer) {
                 return Ok(());
             }
         }
@@ -204,15 +210,13 @@ fn check_run_or_build_package(
             if options.dump.untyped_scope {
                 eprintln!("{}", crate_.with(&built_crates));
             }
-            if options.phase_restriction == Some(PhaseRestriction::Resolver) {
+            if applies!(PhaseRestriction::Resolver) {
                 return Ok(());
             }
         }
 
         // @Beacon @Temporary only in `core`
         crate_.register_foreign_bindings();
-
-        let is_goal_crate = crate_.index == goal_crate;
 
         let mut typer = Typer::new(&mut crate_, &built_crates, &reporter);
         typer.infer_types_in_declaration(&declaration)?;
@@ -243,106 +247,6 @@ fn check_run_or_build_package(
 
         built_crates.add(crate_);
     }
-
-    Ok(())
-}
-
-fn process_package(crates: &mut CrateBuildQueue, unlink_core: bool, reporter: &Reporter) -> Result {
-    if unlink_core {
-        // @Temporary message
-        // @Beacon @Question does clap support this in a built-in way?:
-        // @Task add note explaining how one needs to remove the
-        // explicit `core` dep in the manifest to achieve the wanted behavior
-        Diagnostic::error()
-            .message("option --unlink-core only works with explicit source file paths")
-            .report(&reporter);
-    }
-
-    // @Task dont unwrap, handle the error cases
-    let path = std::env::current_dir().unwrap();
-    let path = find_package(&path).unwrap();
-
-    // @Task verify name and version matches (unless overwritten!)
-    // @Task don't return early here!
-    // @Task don't bubble up with `?` but once `open` returns a proper error type,
-    // report a custom diagnostic saying ~ "could not find a package manifest for the package XY
-    // specified as a path dependency" (sth sim to this)
-    let manifest = PackageManifest::from_package_path(path, &reporter)?;
-
-    let package = Package::from_manifest_details(path.to_owned(), manifest.details);
-    let package = crates.packages.insert(package);
-
-    // @Note we probably need to disallow referencing the same package through different
-    // names from the same package to be able to generate a correct lock-file
-    let resolved_dependencies =
-        crates.enqueue_dependencies(path, &manifest.crates.dependencies, reporter)?;
-
-    crates.resolve_library_and_binary_manifests(
-        package,
-        manifest.crates.library,
-        manifest.crates.binary,
-        reporter,
-    )?;
-    crates.add_resolved_dependencies(package, resolved_dependencies);
-
-    Ok(())
-}
-
-fn process_single_file_package(
-    source_file_path: PathBuf,
-    crates: &mut CrateBuildQueue,
-    unlink_core: bool,
-    reporter: &Reporter,
-) -> Result {
-    let crate_name = lushui::lexer::parse_crate_name(source_file_path.clone(), &reporter)
-        .map_err(|error| error.report(&reporter))?;
-
-    // @Task dont unwrap, handle error case
-    // joining with "." since it might return "" which would fail to canonicalize
-    let path = source_file_path
-        .parent()
-        .unwrap()
-        .join(".")
-        .canonicalize()
-        .unwrap();
-
-    // @Note wasteful name cloning
-    let package = Package::single_file_package(crate_name.as_str().to_owned(), path);
-    let package = crates.packages.insert(package);
-
-    let mut resolved_dependencies = HashMap::default();
-
-    if !unlink_core {
-        let core_path = distributed_libraries_path().join(CORE_PACKAGE_NAME);
-
-        // @Question custom message for not finding the core library?
-        let core_manifest = PackageManifest::from_package_path(&core_path, &reporter)?;
-
-        let core_package = Package::from_manifest_details(core_path.clone(), core_manifest.details);
-        let core_package = crates.packages.insert(core_package);
-
-        // @Note we probably need to disallow referencing the same package through different
-        // names from the same package to be able to generate a correct lock-fil
-        let resolved_transitive_core_dependencies = crates.enqueue_dependencies(
-            &core_path,
-            &core_manifest.crates.dependencies,
-            reporter,
-        )?;
-
-        crates.resolve_library_manifest(core_package, core_manifest.crates.library);
-        crates.add_resolved_dependencies(core_package, resolved_transitive_core_dependencies);
-
-        resolved_dependencies.insert(
-            CORE_PACKAGE_NAME.to_string(),
-            crates[core_package].library.unwrap(),
-        );
-    }
-
-    let binary = crates
-        .crates
-        .insert_with(|index| CrateScope::new(index, package, source_file_path, CrateType::Binary));
-    crates[package].binaries.push(binary);
-    crates.add_resolved_dependencies(package, resolved_dependencies);
 
     Ok(())
 }
@@ -428,3 +332,5 @@ fn set_panic_hook() {
             .report(&StderrReporter::new(None).into());
     }));
 }
+
+type Str = std::borrow::Cow<'static, str>;

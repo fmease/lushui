@@ -62,6 +62,7 @@ mod grow_array;
 mod item;
 pub mod lexer;
 pub mod lowerer;
+pub mod metadata;
 pub mod package;
 pub mod parser;
 pub mod resolver;

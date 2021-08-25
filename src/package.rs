@@ -2,6 +2,7 @@ use crate::{
     diagnostics::{Diagnostic, Reporter},
     entity::Entity,
     error::Result,
+    lexer::parse_crate_name,
     resolver::{CrateScope, DeclarationIndex, Identifier},
     util::HashMap,
     FILE_EXTENSION,
@@ -95,22 +96,24 @@ impl fmt::Debug for PackageIndex {
 
 #[derive(Default)]
 pub struct CrateBuildQueue {
-    pub crates: IndexMap<CrateIndex, CrateScope>,
-    pub packages: IndexMap<PackageIndex, Package>,
+    crates: IndexMap<CrateIndex, CrateScope>,
+    packages: IndexMap<PackageIndex, Package>,
 }
 
 impl CrateBuildQueue {
-    // @Question are some errors non-fatal??
-    pub fn enqueue_dependencies(
+    fn enqueue_dependencies(
         &mut self,
-        package_path: &Path,
+        package_index: PackageIndex,
         dependencies: &HashMap<String, DependencyManifest>,
         reporter: &Reporter,
     ) -> Result<HashMap<String, CrateIndex>> {
+        let package_path = self[package_index].path.clone();
         let mut resolved_dependencies = HashMap::default();
 
-        for (dependency_name, dependency_manifest) in dependencies {
-            let path = match &dependency_manifest.path {
+        // @Task don't bail out early, collect all errors! sound??
+        // @Note bad names: DependencyManifest, unresolved_dependency_manifest
+        for (dependency_name, unresolved_dependency_manifest) in dependencies {
+            let dependency_path = match &unresolved_dependency_manifest.path {
                 // @Task handle error
                 Some(path) => package_path.join(path).canonicalize().unwrap(),
                 // @Beacon @Task we need to emit a custom diagnostic if stuff cannot be
@@ -118,7 +121,11 @@ impl CrateBuildQueue {
                 None => distributed_libraries_path().join(dependency_name),
             };
 
-            if let Some(package) = self.packages.values().find(|package| package.path == path) {
+            if let Some(package) = self
+                .packages
+                .values()
+                .find(|package| package.path == dependency_path)
+            {
                 if !package.is_fully_resolved {
                     // @Task embellish
                     Diagnostic::error()
@@ -129,7 +136,14 @@ impl CrateBuildQueue {
 
                 // deduplicating packages by absolute path
                 // @Task handle unwrap: "error: crate does not contain a library"
-                resolved_dependencies.insert(dependency_name.clone(), package.library.unwrap());
+                // @Note the error case can only be reached if we don't bail out early (which we don't)
+                resolved_dependencies.insert(
+                    dependency_name.clone(),
+                    package.library.ok_or_else(|| {
+                        dependency_is_not_a_library(&package.name, &self[package_index].name)
+                            .report(reporter)
+                    })?,
+                );
                 continue;
             }
 
@@ -137,34 +151,61 @@ impl CrateBuildQueue {
             // @Task don't bubble up with `?` but once `open` returns a proper error type,
             // report a custom diagnostic saying ~ "could not find a package manifest for the package XY
             // specified as a path dependency" (sth sim to this)
-            let manifest = PackageManifest::from_package_path(&path, &reporter)?;
+            let dependency_manifest =
+                PackageManifest::from_package_path(&dependency_path, &reporter)?;
 
             // @Task proper error
             assert_eq!(
-                &manifest.details.name,
-                dependency_manifest.name.as_ref().unwrap_or(dependency_name)
+                &dependency_manifest.details.name,
+                unresolved_dependency_manifest
+                    .name
+                    .as_ref()
+                    .unwrap_or(dependency_name)
             );
             // assert version requirement (if any) is fulfilled
 
-            let package = Package::from_manifest_details(path.clone(), manifest.details);
-            let package = self.packages.insert(package);
+            let dependency_package =
+                Package::from_manifest_details(dependency_path, dependency_manifest.details);
+            let dependency_package = self.packages.insert(dependency_package);
 
             // @Note we probably need to disallow referencing the same package through different
             // names from the same package to be able to generate a correct lock-file
-            let resolved_transitive_dependencies =
-                self.enqueue_dependencies(&path, &manifest.crates.dependencies, reporter)?;
+            let resolved_transitive_dependencies = self.enqueue_dependencies(
+                dependency_package,
+                &dependency_manifest.crates.dependencies,
+                reporter,
+            )?;
 
-            self.resolve_library_manifest(package, manifest.crates.library);
-            self.add_resolved_dependencies(package, resolved_transitive_dependencies);
+            self.resolve_library_manifest(dependency_package, dependency_manifest.crates.library);
+            self[dependency_package].dependencies = resolved_transitive_dependencies;
+            self[dependency_package].is_fully_resolved = true;
 
             // @Task handle unwrap: "error: crate does not contain a library"
-            resolved_dependencies.insert(dependency_name.clone(), self[package].library.unwrap());
+            resolved_dependencies.insert(
+                dependency_name.clone(),
+                // @Temporary try op
+                self[dependency_package].library.ok_or_else(|| {
+                    dependency_is_not_a_library(
+                        &self[dependency_package].name,
+                        &self[package_index].name,
+                    )
+                    .report(reporter)
+                })?,
+            );
+        }
+
+        // @Temporary
+        fn dependency_is_not_a_library(dependency: &str, dependent: &str) -> Diagnostic {
+            // @Task message, location(!)
+            Diagnostic::error().message(format!(
+                "dependency `{dependency}` of `{dependent}` is not a library"
+            ))
         }
 
         Ok(resolved_dependencies)
     }
 
-    pub fn resolve_library_manifest(
+    fn resolve_library_manifest(
         &mut self,
         package_index: PackageIndex,
         library: Option<LibraryManifest>,
@@ -189,7 +230,7 @@ impl CrateBuildQueue {
         package_contains_library
     }
 
-    pub fn resolve_binary_manifest(
+    fn resolve_binary_manifest(
         &mut self,
         package_index: PackageIndex,
         binary: Option<BinaryManifest>,
@@ -218,7 +259,7 @@ impl CrateBuildQueue {
         package_contains_binaries
     }
 
-    pub fn resolve_library_and_binary_manifests(
+    fn resolve_library_and_binary_manifests(
         &mut self,
         package_index: PackageIndex,
         library: Option<LibraryManifest>,
@@ -239,13 +280,108 @@ impl CrateBuildQueue {
         Ok(())
     }
 
-    pub fn add_resolved_dependencies(
+    pub fn process_package(&mut self, path: PathBuf, reporter: &Reporter) -> Result {
+        let path = match find_package(&path) {
+            Some(path) => path,
+            None => {
+                Diagnostic::error()
+                    .message("neither the current directory nor any of its parents is a package")
+                    .note(format!(
+                        "none of the directories contain a package manifest file named `{}`",
+                        PackageManifest::FILE_NAME
+                    ))
+                    .report(reporter);
+                return Err(());
+            }
+        };
+
+        // @Task verify name and version matches (unless overwritten!)
+        // @Task don't return early here!
+        // @Task don't bubble up with `?` but once `open` returns a proper error type,
+        // report a custom diagnostic saying ~ "could not find a package manifest for the package XY
+        // specified as a path dependency" (sth sim to this)
+        let manifest = PackageManifest::from_package_path(path, &reporter)?;
+
+        let package = Package::from_manifest_details(path.to_owned(), manifest.details);
+        let package = self.packages.insert(package);
+
+        // @Note we probably need to disallow referencing the same package through different
+        // names from the same package to be able to generate a correct lock-file
+        let resolved_dependencies =
+            self.enqueue_dependencies(package, &manifest.crates.dependencies, reporter)?;
+
+        self.resolve_library_and_binary_manifests(
+            package,
+            manifest.crates.library,
+            manifest.crates.binary,
+            reporter,
+        )?;
+        self[package].dependencies = resolved_dependencies;
+        self[package].is_fully_resolved = true;
+
+        Ok(())
+    }
+
+    pub fn process_single_file_package(
         &mut self,
-        package_index: PackageIndex,
-        dependencies: HashMap<String, CrateIndex>,
-    ) {
-        self[package_index].dependencies = dependencies;
-        self[package_index].is_fully_resolved = true;
+        source_file_path: PathBuf,
+        unlink_core: bool,
+        reporter: &Reporter,
+    ) -> Result {
+        let crate_name = parse_crate_name(source_file_path.clone(), &reporter)
+            .map_err(|error| error.report(&reporter))?;
+
+        // @Task dont unwrap, handle error case
+        // joining with "." since it might return "" which would fail to canonicalize
+        let path = source_file_path
+            .parent()
+            .unwrap()
+            .join(".")
+            .canonicalize()
+            .unwrap();
+
+        // @Note wasteful name cloning
+        let package = Package::single_file_package(crate_name.as_str().to_owned(), path);
+        let package = self.packages.insert(package);
+
+        let mut resolved_dependencies = HashMap::default();
+
+        if !unlink_core {
+            let core_path = distributed_libraries_path().join(CORE_PACKAGE_NAME);
+
+            // @Question custom message for not finding the core library?
+            let core_manifest = PackageManifest::from_package_path(&core_path, &reporter)?;
+
+            let core_package = Package::from_manifest_details(core_path, core_manifest.details);
+            let core_package = self.packages.insert(core_package);
+
+            // @Note we probably need to disallow referencing the same package through different
+            // names from the same package to be able to generate a correct lock-fil
+            let resolved_transitive_core_dependencies = self.enqueue_dependencies(
+                core_package,
+                &core_manifest.crates.dependencies,
+                reporter,
+            )?;
+
+            self.resolve_library_manifest(core_package, core_manifest.crates.library);
+            self[core_package].dependencies = resolved_transitive_core_dependencies;
+            self[core_package].is_fully_resolved = true;
+
+            resolved_dependencies.insert(
+                CORE_PACKAGE_NAME.to_string(),
+                self[core_package].library.unwrap(),
+            );
+        }
+
+        let binary = self.crates.insert_with(|index| {
+            CrateScope::new(index, package, source_file_path, CrateType::Binary)
+        });
+        let package = &mut self[package];
+        package.binaries.push(binary);
+        package.dependencies = resolved_dependencies;
+        package.is_fully_resolved = true;
+
+        Ok(())
     }
 
     pub fn into_unbuilt_and_built(self) -> (IndexMap<CrateIndex, CrateScope>, CrateStore) {
@@ -386,15 +522,14 @@ impl Package {
     }
 }
 
-// @Temporary location
-pub fn find_package(path: &Path) -> Result<&Path> {
+pub fn find_package(path: &Path) -> Option<&Path> {
     let manifest_path = path.join(PackageManifest::FILE_NAME);
 
-    // @Task error handling
-    if manifest_path.try_exists().unwrap() {
-        Ok(path)
+    // `try_exists` not suitable here
+    if manifest_path.exists() {
+        Some(path)
     } else {
-        find_package(path.parent().ok_or(())?)
+        find_package(path.parent()?)
     }
 }
 

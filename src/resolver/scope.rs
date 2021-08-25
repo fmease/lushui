@@ -117,8 +117,12 @@ impl CrateScope {
         self.global_index(index)
     }
 
+    pub fn is_local(&self, index: DeclarationIndex) -> bool {
+        index.crate_index() == self.index
+    }
+
     pub fn local_index(&self, index: DeclarationIndex) -> Option<LocalDeclarationIndex> {
-        (index.crate_index() == self.index).then(|| index.local_index())
+        self.is_local(index).then(|| index.local_index())
     }
 
     // @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Temporary
@@ -248,8 +252,6 @@ impl CrateScope {
     /// Register a binding to a given entity.
     ///
     /// Apart from actually registering, it mainly checks for name duplication.
-    // @Note the way we handle errors here is a mess but it takes time and understanding
-    // to design a better API meeting all/most of our requirements!
     pub(super) fn register_binding(
         &mut self,
         binder: ast::Identifier,
@@ -258,14 +260,17 @@ impl CrateScope {
         namespace: Option<LocalDeclarationIndex>,
     ) -> Result<LocalDeclarationIndex, RegistrationError> {
         if let Some(namespace) = namespace {
-            if let Some(&index) = self
+            // @Temporary let-binding (borrowck bug?)
+            let index = self
                 .get(namespace)
                 .namespace()
                 .unwrap()
-                .bindings
+                .binders
                 .iter()
-                .find(|&&index| self.get(index).source == binder)
-            {
+                .map(|&index| self.local_index(index).unwrap())
+                .find(|&index| self.get(index).source == binder);
+
+            if let Some(index) = index {
                 let previous = &self.bindings[index].source;
 
                 self.duplicate_definitions
@@ -289,10 +294,12 @@ impl CrateScope {
         });
 
         if let Some(namespace) = namespace {
+            let index = self.global_index(index);
+
             self.get_mut(namespace)
                 .namespace_mut()
                 .unwrap()
-                .bindings
+                .binders
                 .push(index);
         }
 
@@ -367,14 +374,9 @@ impl CrateScope {
         crates: &CrateStore,
         reporter: &Reporter,
     ) -> Result<Target::Output, ResolutionError> {
-        // eprintln!(
-        //     "(resolve_path (scope {:?}) (path {path}) (namespace {namespace:?}))",
-        //     self.index
-        // );
-
-        use ast::HangerKind::*;
-
         if let Some(hanger) = &path.hanger {
+            use ast::HangerKind::*;
+
             if path.segments.is_empty() {
                 // `crates` already handled in the lowerer (for now)
                 Target::handle_bare_path_hanger_except_crates(hanger)
@@ -427,7 +429,7 @@ impl CrateScope {
                 Crate => self.global_index(self.root()),
                 Super => self.global_index(self.resolve_super(
                     hanger,
-                    self.__temporary_local_index(namespace),
+                    self.local_index(namespace).unwrap(),
                     reporter,
                 )?),
                 Self_ => namespace,
@@ -444,7 +446,7 @@ impl CrateScope {
             );
         }
 
-        let index = self.resolve_first_path_segment(
+        let index = self.resolve_path_segment(
             &path.segments[0],
             namespace,
             origin_namespace,
@@ -482,6 +484,7 @@ impl CrateScope {
                         identifiers.first().unwrap(),
                         namespace,
                         self,
+                        crates,
                     )
                     .report(reporter);
                     Err(ResolutionError::Unrecoverable)
@@ -506,8 +509,7 @@ impl CrateScope {
         })
     }
 
-    /// Resolve the first identifier segment of a path.
-    fn resolve_first_path_segment(
+    fn resolve_path_segment(
         &self,
         identifier: &ast::Identifier,
         namespace: DeclarationIndex,
@@ -519,15 +521,13 @@ impl CrateScope {
     ) -> Result<DeclarationIndex, ResolutionError> {
         let entity = self.entity(namespace, crates);
 
-        // eprintln!("rfps id={identifier} ns={namespace:?} ons={origin_namespace:?}");
-
         let index = entity
             .namespace()
             .unwrap()
-            .bindings
+            .binders
             .iter()
             .copied()
-            .find(|&index| &self.get(index).source == identifier)
+            .find(|&index| &self.entity(index, crates).source == identifier)
             .ok_or_else(|| ResolutionError::UnresolvedBinding {
                 identifier: identifier.clone(),
                 namespace,
@@ -536,15 +536,9 @@ impl CrateScope {
 
         // @Temporary hack until we can manage cyclic exposure reaches!
         if matches!(check_exposure, CheckExposure::Yes) {
-            self.handle_exposure(
-                self.__temporary_global_index(index),
-                identifier,
-                origin_namespace,
-                crates,
-                reporter,
-            )?;
+            self.handle_exposure(index, identifier, origin_namespace, crates, reporter)?;
         }
-        self.collapse_use_chain(self.__temporary_global_index(index))
+        self.collapse_use_chain(index, crates)
     }
 
     // @Task verify that the exposure is checked even in the case of use-declarations
@@ -557,14 +551,14 @@ impl CrateScope {
         crates: &CrateStore,
         reporter: &Reporter,
     ) -> Result<(), ResolutionError> {
-        let binding = self.get(self.__temporary_local_index(index));
+        let entity = self.entity(index, crates);
 
-        if let Exposure::Restricted(exposure) = &binding.exposure {
+        if let Exposure::Restricted(exposure) = &entity.exposure {
             // unwrap: root always has Exposure::Unrestricted
-            let definition_site_namespace = binding.parent.unwrap();
+            let definition_site_namespace = entity.parent.unwrap();
             let reach = RestrictedExposure::resolve(
                 exposure,
-                self.__temporary_global_index(definition_site_namespace),
+                self.global_index(definition_site_namespace),
                 self,
                 crates,
                 reporter,
@@ -572,7 +566,7 @@ impl CrateScope {
 
             if !self.is_allowed_to_access(
                 origin_namespace,
-                self.__temporary_global_index(definition_site_namespace),
+                self.global_index(definition_site_namespace),
                 reach,
             ) {
                 Diagnostic::error()
@@ -632,13 +626,7 @@ impl CrateScope {
             }
 
             if let EntityKind::Use { reference } = binding.kind {
-                // @Temporary what should we do in the case where the reference is external?
-                let reference = match self.local_index(reference) {
-                    Some(reference) => reference,
-                    None => continue,
-                };
-
-                let reference = self.get(reference);
+                let reference = self.entity(reference, crates);
 
                 if binding.exposure.compare(&reference.exposure, self) == Some(Ordering::Greater) {
                     Diagnostic::error()
@@ -679,35 +667,22 @@ expected the exposure of `{}`
     /// Used for error reporting when an undefined binding was encountered.
     /// In the future, we might decide to find not one but several similar names
     /// but that would be computationally heavier.
-    fn find_similarly_named(
-        &self,
+    fn find_similarly_named<'a>(
+        &'a self,
         queried_identifier: &str,
-        namespace: &Namespace,
-    ) -> Option<&str> {
-        namespace
-            .bindings
+        predicate: impl for<'f> Fn(&'f Entity) -> bool,
+        namespace: DeclarationIndex,
+        crates: &'a CrateStore,
+    ) -> Option<&'a str> {
+        self.entity(namespace, crates)
+            .namespace()
+            .unwrap()
+            .binders
             .iter()
-            .map(|&index| self.get(index))
-            .filter(|entity| !entity.is_error())
+            .map(|&index| self.entity(index, crates))
+            .filter(|entity| !entity.is_error() && predicate(entity))
             .map(|entity| entity.source.as_str())
-            .find(|&identifier| is_similar(queried_identifier, identifier))
-    }
-
-    // @Question better API?
-    fn find_similarly_named_filtering(
-        &self,
-        identifier: &str,
-        filter: impl Fn(&Entity) -> bool,
-        namespace: &Namespace,
-    ) -> Option<&str> {
-        namespace
-            .bindings
-            .iter()
-            .map(|&index| self.get(index))
-            .filter(|entity| !entity.is_error())
-            .filter(|entity| filter(entity))
-            .map(|entity| entity.source.as_str())
-            .find(|&other_identifier| is_similar(identifier, other_identifier))
+            .find(|identifier| is_similar(identifier, queried_identifier))
     }
 
     /// Collapse chain of use-bindings aka indirect uses.
@@ -716,10 +691,11 @@ expected the exposure of `{}`
     fn collapse_use_chain(
         &self,
         index: DeclarationIndex,
+        crates: &CrateStore,
     ) -> Result<DeclarationIndex, ResolutionError> {
         use EntityKind::*;
 
-        match self.get(self.__temporary_local_index(index)).kind {
+        match self.entity(index, crates).kind {
             Use { reference } => Ok(reference),
             UnresolvedUse => Err(ResolutionError::UnresolvedUseBinding { inquirer: index }),
             _ => Ok(index),
@@ -749,20 +725,20 @@ expected the exposure of `{}`
     pub(super) fn reobtain_resolved_identifier<Target: ResolutionTarget>(
         &self,
         identifier: &ast::Identifier,
-        namespace: DeclarationIndex,
+        namespace: LocalDeclarationIndex,
+        crates: &CrateStore,
     ) -> Target::Output {
         let index = self
-            .get(self.__temporary_local_index(namespace))
+            .get(namespace)
             .namespace()
             .unwrap()
-            .bindings
+            .binders
             .iter()
-            .copied()
+            .map(|&index| self.local_index(index).unwrap())
             .find(|&index| &self.get(index).source == identifier)
             .unwrap();
-
         let index = self
-            .collapse_use_chain(self.__temporary_global_index(index))
+            .collapse_use_chain(self.global_index(index), crates)
             .unwrap_or_else(|_| unreachable!());
 
         Target::output(index, identifier)
@@ -787,7 +763,7 @@ expected the exposure of `{}`
             for (&index, item) in self.partially_resolved_use_bindings.iter() {
                 match self.resolve_path::<ValueOrModule>(
                     &item.reference,
-                    self.__temporary_global_index(item.module),
+                    self.global_index(item.module),
                     crates,
                     reporter,
                 ) {
@@ -1242,21 +1218,17 @@ impl fmt::Debug for PartiallyResolvedUseBinding {
     }
 }
 
-/// A namespace can either be a module or a data type.
-/// A module contains any declarations (except constructors) and
-/// a data type their constructors.
-// @Task update documentation
 #[derive(Clone, Default)]
 pub struct Namespace {
-    bindings: Vec<LocalDeclarationIndex>,
+    pub binders: Vec<DeclarationIndex>,
 }
 
 impl fmt::Debug for Namespace {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{}",
-            self.bindings
+            "{{{}}}",
+            self.binders
                 .iter()
                 .map(|binding| format!("{binding:?}"))
                 .join_with(' ')
@@ -1367,7 +1339,7 @@ impl fmt::Debug for Identifier {
 }
 
 pub enum FunctionScope<'a> {
-    Module(DeclarationIndex),
+    Module(LocalDeclarationIndex),
     FunctionParameter {
         parent: &'a Self,
         binder: ast::Identifier,
@@ -1393,7 +1365,7 @@ impl<'a> FunctionScope<'a> {
         }
     }
 
-    fn module(&self) -> DeclarationIndex {
+    fn module(&self) -> LocalDeclarationIndex {
         match self {
             &Self::Module(module) => module,
             Self::FunctionParameter { parent, .. } | Self::PatternBinders { parent, .. } => {
@@ -1441,10 +1413,10 @@ impl<'a> FunctionScope<'a> {
         // @Note kinda awkward API with map_err
         match self {
             &Module(module) => scope
-                .resolve_path::<OnlyValue>(query, module, crates, reporter)
+                .resolve_path::<OnlyValue>(query, scope.global_index(module), crates, reporter)
                 .map_err(|error| {
                     error.emit_finding_lookalike(
-                        |identifier, _| origin.find_similarly_named(identifier, scope),
+                        |identifier, _| origin.find_similarly_named(identifier, scope, crates),
                         scope,
                         crates,
                         reporter,
@@ -1458,8 +1430,9 @@ impl<'a> FunctionScope<'a> {
                             return Err(value_used_as_a_namespace(
                                 identifier,
                                 &query.segments[1],
-                                self.module(),
+                                scope.global_index(self.module()),
                                 scope,
+                                crates,
                             )
                             .report(reporter));
                         }
@@ -1477,7 +1450,12 @@ impl<'a> FunctionScope<'a> {
                     }
                 } else {
                     scope
-                        .resolve_path::<OnlyValue>(query, parent.module(), crates, reporter)
+                        .resolve_path::<OnlyValue>(
+                            query,
+                            scope.global_index(parent.module()),
+                            crates,
+                            reporter,
+                        )
                         .map_err(|error| error.report(scope, crates, reporter))
                 }
             }
@@ -1495,8 +1473,9 @@ impl<'a> FunctionScope<'a> {
                                 return Err(value_used_as_a_namespace(
                                     identifier,
                                     &query.segments[1],
-                                    self.module(),
+                                    scope.global_index(self.module()),
                                     scope,
+                                    crates,
                                 )
                                 .report(reporter));
                             }
@@ -1514,7 +1493,12 @@ impl<'a> FunctionScope<'a> {
                     }
                 } else {
                     scope
-                        .resolve_path::<OnlyValue>(query, parent.module(), crates, reporter)
+                        .resolve_path::<OnlyValue>(
+                            query,
+                            scope.global_index(parent.module()),
+                            crates,
+                            reporter,
+                        )
                         .map_err(|error| error.report(scope, crates, reporter))
                 }
             }
@@ -1529,22 +1513,26 @@ impl<'a> FunctionScope<'a> {
     /// In the future, we might decide to find not one but several similar names
     /// but that would be computationally heavier and we would need to be careful
     /// and consider the effects of shadowing.
-    fn find_similarly_named(&self, identifier: &str, scope: &'a CrateScope) -> Option<&str> {
+    fn find_similarly_named<'b>(
+        &'b self,
+        identifier: &str,
+        scope: &'b CrateScope,
+        crates: &'b CrateStore,
+    ) -> Option<&'b str>
+    where
+        'a: 'b,
+    {
         use FunctionScope::*;
 
         match self {
-            &Module(module) => scope.find_similarly_named(
-                identifier,
-                scope
-                    .get(scope.__temporary_local_index(module))
-                    .namespace()
-                    .unwrap(),
-            ),
+            &Module(module) => {
+                scope.find_similarly_named(identifier, |_| true, scope.global_index(module), crates)
+            }
             FunctionParameter { parent, binder } => {
                 if is_similar(identifier, binder.as_str()) {
                     Some(binder.as_str())
                 } else {
-                    parent.find_similarly_named(identifier, scope)
+                    parent.find_similarly_named(identifier, scope, crates)
                 }
             }
             PatternBinders { parent, binders } => {
@@ -1555,7 +1543,7 @@ impl<'a> FunctionScope<'a> {
                 {
                     Some(binder.as_str())
                 } else {
-                    parent.find_similarly_named(identifier, scope)
+                    parent.find_similarly_named(identifier, scope, crates)
                 }
             }
         }
@@ -1601,32 +1589,32 @@ impl fmt::Display for Lookalike<'_> {
     }
 }
 
+// @Question parent: *Local*DeclarationIndex?
 fn value_used_as_a_namespace(
     non_namespace: &ast::Identifier,
     subbinder: &ast::Identifier,
     parent: DeclarationIndex,
     scope: &CrateScope,
+    crates: &CrateStore,
 ) -> Diagnostic {
     // @Question should we also include lookalike namespaces that don't contain the
     // subbinding (displaying them in a separate help message?)?
     // @Beacon @Bug this ignores shadowing @Task define this method for FunctionScope
     // @Update @Note actually in the future (lang spec) this kind of shadowing does not
     // occur, the subbinder access pierces through parameters
-    let similarly_named_namespace = scope.find_similarly_named_filtering(
+    let similarly_named_namespace = scope.find_similarly_named(
         non_namespace.as_str(),
         |entity| {
             entity.namespace().map_or(false, |namespace| {
                 namespace
-                    .bindings
+                    .binders
                     .iter()
-                    .find(|&&index| &scope.get(index).source == subbinder)
+                    .find(|&&index| &scope.entity(index, crates).source == subbinder)
                     .is_some()
             })
         },
-        scope
-            .get(scope.__temporary_local_index(parent))
-            .namespace()
-            .unwrap(),
+        parent,
+        crates,
     );
 
     let show_very_general_help = similarly_named_namespace.is_none();
@@ -1685,15 +1673,8 @@ enum ResolutionError {
 impl ResolutionError {
     fn report(self, scope: &CrateScope, crates: &CrateStore, reporter: &Reporter) {
         self.emit_finding_lookalike(
-            |_identifier, _namespace| {
-                // @Temporary comment
-                // scope.find_similarly_named(
-                //     identifier,
-                //     scope.get(scope.__temporary_local_index(namespace))
-                //         .namespace()
-                //         .unwrap(),
-                // )
-                None
+            |identifier, namespace| {
+                scope.find_similarly_named(identifier, |_| true, namespace, crates)
             },
             scope,
             crates,
@@ -1715,11 +1696,6 @@ impl ResolutionError {
                 namespace,
                 usage,
             } => {
-                // @Beacon @Note this currently outputs "… not defined in module `crates.CRATE`"
-                // for some crate `CRATE`. @Question should we special-case this as
-                // "… not defined in crate `CRATE`"?
-
-                // @Question should we use the terminology "field" when the namespace is a record?
                 let mut message = format!("binding `{identifier}` is not defined in ");
 
                 match usage {
@@ -1732,6 +1708,11 @@ impl ResolutionError {
                         message += " `";
                         message += &scope.absolute_path(namespace, crates);
                         message += "`";
+                        // @Beacon @Temporary
+                        message += &format!(
+                            " ({namespace:?}) [{:?}]",
+                            scope.entity(namespace, crates).namespace()
+                        );
                     }
                 }
 

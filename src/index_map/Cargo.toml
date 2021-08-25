@@ -2,6 +2,7 @@
 name = "index_map"
 version = "0.0.0"
 edition = "2018"
+publish = false
 
 [dependencies]
 derive = { path = "src/derive", package = "index_map_derive" }

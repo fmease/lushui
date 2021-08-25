@@ -291,7 +291,7 @@ impl<'a> Resolver<'a> {
     fn finish_resolve_declaration(
         &mut self,
         declaration: lowered_ast::Declaration,
-        module: Option<DeclarationIndex>,
+        module: Option<LocalDeclarationIndex>,
         context: Context,
     ) -> Result<hir::Declaration> {
         use lowered_ast::DeclarationKind::*;
@@ -310,9 +310,11 @@ impl<'a> Resolver<'a> {
                     })
                     .transpose();
 
-                let binder = self
-                    .scope
-                    .reobtain_resolved_identifier::<OnlyValue>(&value.binder, module);
+                let binder = self.scope.reobtain_resolved_identifier::<OnlyValue>(
+                    &value.binder,
+                    module,
+                    self.crates,
+                );
 
                 decl! {
                     Value {
@@ -333,9 +335,11 @@ impl<'a> Resolver<'a> {
                 // @Beacon @Question wouldn't it be great if that method returned a
                 // LocalDeclarationIndex instead of an Identifier?
                 // or maybe even a *LocalIdentifier?
-                let binder = self
-                    .scope
-                    .reobtain_resolved_identifier::<OnlyValue>(&data.binder, module);
+                let binder = self.scope.reobtain_resolved_identifier::<OnlyValue>(
+                    &data.binder,
+                    module,
+                    self.crates,
+                );
 
                 let constructors = data.constructors.map(|constructors| {
                     constructors
@@ -377,8 +381,8 @@ impl<'a> Resolver<'a> {
 
                 let binder = self.scope.reobtain_resolved_identifier::<OnlyValue>(
                     &constructor.binder,
-                    self.scope
-                        .__temporary_global_index(context.parent_data_binding.unwrap().0),
+                    context.parent_data_binding.unwrap().0,
+                    self.crates,
                 );
 
                 decl! {
@@ -392,10 +396,17 @@ impl<'a> Resolver<'a> {
             }
             Module(submodule) => {
                 let index = match module {
+                    // unwrap: could only ever be non-local if the binder was a use-binding
+                    // but it is module binding
                     Some(module) => self
                         .scope
-                        .reobtain_resolved_identifier::<OnlyModule>(&submodule.binder, module),
-                    None => self.scope.__temporary_global_index(self.scope.root()),
+                        .local_index(self.scope.reobtain_resolved_identifier::<OnlyModule>(
+                            &submodule.binder,
+                            module,
+                            self.crates,
+                        ))
+                        .unwrap(),
+                    None => self.scope.root(),
                 };
 
                 let mut health = Health::Untainted;
@@ -423,7 +434,7 @@ impl<'a> Resolver<'a> {
                     Module {
                         declaration.attributes,
                         declaration.span;
-                        binder: Identifier::new(index, submodule.binder),
+                        binder: Identifier::new(self.scope.global_index(index), submodule.binder),
                         file: submodule.file,
                         declarations,
                     }
@@ -433,8 +444,11 @@ impl<'a> Resolver<'a> {
                 let module = module.unwrap();
 
                 let binder = Identifier::new(
-                    self.scope
-                        .reobtain_resolved_identifier::<ValueOrModule>(&use_.binder, module),
+                    self.scope.reobtain_resolved_identifier::<ValueOrModule>(
+                        &use_.binder,
+                        module,
+                        self.crates,
+                    ),
                     use_.binder,
                 );
 

@@ -15,7 +15,7 @@ use super::{
 };
 use crate::{
     diagnostics::reporter::SilentReporter,
-    error::{Health, Outcome},
+    error::{outcome, Health},
     lexer::Lexer,
     span::{span, SourceFileIndex, SourceMap, Span},
 };
@@ -30,10 +30,7 @@ fn parse_expression(source: &str) -> Result<Expression> {
         .add(None, source.to_owned())
         .unwrap_or_else(|_| unreachable!());
     let reporter = SilentReporter.into();
-    let Outcome {
-        value: tokens,
-        health,
-    } = Lexer::new(map.borrow().get(file), &reporter).lex()?;
+    let outcome!(tokens, health) = Lexer::new(map.borrow().get(file), &reporter).lex()?;
     let mut parser = Parser::new(file, &tokens, map, &reporter);
     let expression = parser.parse_expression();
     if health.is_tainted() {
@@ -49,10 +46,7 @@ fn parse_declaration(source: &str) -> Result<Declaration> {
         .add(None, source.to_owned())
         .unwrap_or_else(|_| unreachable!());
     let reporter = SilentReporter.into();
-    let Outcome {
-        value: tokens,
-        health,
-    } = Lexer::new(map.borrow().get(file), &reporter).lex()?;
+    let outcome!(tokens, health) = Lexer::new(map.borrow().get(file), &reporter).lex()?;
 
     let mut parser = Parser::new(file.clone(), &tokens, map, &reporter);
     let declaration = parser.parse(test_module_name());

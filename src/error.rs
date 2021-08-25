@@ -36,6 +36,13 @@ impl<T> Outcome<T> {
     }
 }
 
+pub macro outcome($value:pat, $health:pat) {
+    crate::error::Outcome {
+        value: $value,
+        health: $health,
+    }
+}
+
 // @Temporary API
 pub fn map_outcome_from_result<T, U: PossiblyErroneous>(
     result: Result<T>,

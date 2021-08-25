@@ -401,7 +401,11 @@ impl<'a> Interpreter<'a> {
                             context,
                         )?
                     }
-                    Binding(binding) if context.scope.is_foreign(&binding.binder, self.scope) => {
+                    Binding(binding)
+                        if context
+                            .scope
+                            .is_foreign(&binding.binder, self.scope, self.crates) =>
+                    {
                         self.evaluate_expression(
                             expr! {
                                 ForeignApplication {

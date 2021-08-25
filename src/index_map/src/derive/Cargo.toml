@@ -2,6 +2,7 @@
 name = "index_map_derive"
 version = "0.0.0"
 edition = "2018"
+publish = false
 
 [lib]
 proc-macro = true
