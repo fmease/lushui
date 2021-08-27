@@ -9,7 +9,7 @@ use crate::{
     error::PossiblyErroneous,
     lexer::{Token, TokenKind},
     span::{PossiblySpanning, SourceFileIndex, Span, Spanned, Spanning},
-    util::{Atom, SmallVec},
+    util::{obtain, Atom, SmallVec},
 };
 use smallvec::smallvec;
 use std::{convert::TryFrom, convert::TryInto};
@@ -30,6 +30,14 @@ pub enum DeclarationKind {
     Header,
     Group(Box<Group>),
     Use(Box<Use>),
+}
+
+impl TryFrom<DeclarationKind> for Module {
+    type Error = ();
+
+    fn try_from(declaration: DeclarationKind) -> Result<Self, Self::Error> {
+        obtain!(declaration, DeclarationKind::Module(module) => *module).ok_or(())
+    }
 }
 
 /// The syntax node of a value declaration or a let statement.
@@ -614,7 +622,7 @@ impl TryFrom<Token> for Identifier {
     fn try_from(token: Token) -> Result<Self, Self::Error> {
         Ok(Self {
             span: token.span,
-            atom: token.identifier().ok_or(())?,
+            atom: token.into_identifier().ok_or(())?,
         })
     }
 }

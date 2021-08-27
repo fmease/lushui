@@ -8,7 +8,7 @@ use crate::{
     diagnostics::{reporter::SilentReporter, Code, Diagnostic, Reporter},
     error::{outcome, Health, Outcome, Result},
     span::{LocalByteIndex, LocalSpan, SourceFile, SourceMap, Span, Spanned},
-    util::{Atom, GetFromEndExt},
+    util::{self, lexer::Lexer as _, obtain, Atom, GetFromEndExt},
 };
 use std::{
     cmp::Ordering::{self, *},
@@ -19,11 +19,10 @@ use std::{
     path::Path,
     str::CharIndices,
 };
-pub use token::{
-    Token,
-    TokenKind::{self, *},
-    NUMERIC_SEPARATOR,
-};
+pub use token::{Token, TokenKind, TokenName, NUMERIC_SEPARATOR};
+use TokenKind::*;
+
+use self::token::{Provenance, UnterminatedTextLiteral};
 
 /// The unit indentation in spaces.
 pub const INDENTATION: Spaces = Indentation::UNIT.to_spaces();
@@ -31,7 +30,7 @@ pub const INDENTATION: Spaces = Indentation::UNIT.to_spaces();
 fn lex(source: String) -> Result<Outcome<Vec<Token>>> {
     let mut map = SourceMap::default();
     let file = map.add(None, source).unwrap_or_else(|_| unreachable!());
-    Lexer::new(map.get(file), &SilentReporter.into()).lex()
+    Lexer::new(&map[file], &SilentReporter.into()).lex()
 }
 
 /// Utility to parse identifiers from a string.
@@ -43,19 +42,13 @@ pub fn parse_identifier(source: String) -> Option<Atom> {
     if health == Health::Tainted {
         return None;
     }
-    let mut tokens = tokens.drain(..);
 
-    match (tokens.next()?, tokens.next()?.kind) {
-        (
-            Token {
-                kind: Identifier,
-                data: token::TokenData::Identifier(atom),
-                ..
-            },
-            EndOfInput,
-        ) => Some(atom),
-        _ => None,
-    }
+    let mut tokens = tokens.drain(..).map(|token| token.kind);
+
+    obtain!(
+        (tokens.next()?, tokens.next()?),
+        (Identifier(atom), EndOfInput) => atom
+    )
 }
 
 pub fn parse_crate_name(
@@ -177,7 +170,7 @@ impl Bracket {
         match self {
             Self::Round => OpeningRoundBracket,
             Self::Square => OpeningSquareBracket,
-            Self::Curly => OpeningCurlyBracket,
+            Self::Curly => OpeningCurlyBracket(Provenance::Source),
         }
     }
 
@@ -185,7 +178,7 @@ impl Bracket {
         match self {
             Self::Round => ClosingRoundBracket,
             Self::Square => ClosingSquareBracket,
-            Self::Curly => ClosingCurlyBracket,
+            Self::Curly => ClosingCurlyBracket(Provenance::Source),
         }
     }
 }
@@ -242,10 +235,10 @@ type Stack<T> = Vec<T>;
 
 /// The state of the lexer.
 pub struct Lexer<'a> {
-    source: &'a SourceFile,
+    source_file: &'a SourceFile,
     characters: Peekable<CharIndices<'a>>,
     tokens: Vec<Token>,
-    span: LocalSpan,
+    local_span: LocalSpan,
     indentation: Spaces,
     sections: Sections,
     brackets: Brackets,
@@ -254,14 +247,12 @@ pub struct Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(source: &'a SourceFile, reporter: &'a Reporter) -> Self {
-        let content = source.content();
-
+    pub fn new(source_file: &'a SourceFile, reporter: &'a Reporter) -> Self {
         Self {
-            characters: content.char_indices().peekable(),
-            source,
+            characters: source_file.content().char_indices().peekable(),
+            source_file,
             tokens: Vec::new(),
-            span: LocalSpan::zero(),
+            local_span: LocalSpan::zero(),
             indentation: Spaces(0),
             sections: Sections::default(),
             brackets: Brackets::default(),
@@ -277,7 +268,8 @@ impl<'a> Lexer<'a> {
     pub fn lex(mut self) -> Result<Outcome<Vec<Token>>> {
         while let Some(character) = self.peek() {
             let index = self.index().unwrap();
-            self.span = LocalSpan::from(index);
+            self.local_span = LocalSpan::from(index);
+
             match character {
                 '#' if index == LocalByteIndex::new(0) => self.lex_shebang_candidate(),
                 // @Bug @Beacon if it is SOI, don't lex_whitespace but lex_indentation
@@ -289,7 +281,7 @@ impl<'a> Lexer<'a> {
                     if let Some(';') = self.peek() {
                         self.lex_comment();
                     } else {
-                        self.add(Semicolon);
+                        self.add(Semicolon(Provenance::Source));
                     }
                 }
                 character if token::is_identifier_segment_start(character) => {
@@ -329,8 +321,8 @@ impl<'a> Lexer<'a> {
                 }
                 character => {
                     self.take();
+                    self.add(Illegal(character));
                     self.advance();
-                    self.add_with(|span| Token::new_illegal(character, span))
                 }
             }
         }
@@ -354,7 +346,7 @@ impl<'a> Lexer<'a> {
         }
 
         // @Bug panics if last byte is not a valid codepoint, right?
-        let last = LocalByteIndex::from_usize(self.source.content().len().saturating_sub(1));
+        let last = LocalByteIndex::from_usize(self.source_file.content().len().saturating_sub(1));
 
         // Ideally, we'd like to set its span to the index after the last token,
         // but they way `SourceMap` is currently defined, that would not work,
@@ -363,18 +355,17 @@ impl<'a> Lexer<'a> {
         // token. However, even with fake source files as separators between real ones,
         // we would need to add a lot of complexity to be able to handle that in
         // `Diagnostic::format_for_terminal`.
-        self.span = LocalSpan::from(last);
+        self.local_span = LocalSpan::from(last);
 
         for section in self.sections.exit_all() {
             if section.is_indented() {
-                self.add_virtual(ClosingCurlyBracket);
-                self.add_virtual(Semicolon);
+                self.add(ClosingCurlyBracket(Provenance::Lexer));
+                self.add(Semicolon(Provenance::Lexer));
             }
         }
 
         self.add(EndOfInput);
-
-        Ok(Outcome::new(self.tokens, self.health))
+        Ok(self.health.of(self.tokens))
     }
 
     fn add_opening_bracket(&mut self, bracket: Bracket) {
@@ -387,7 +378,7 @@ impl<'a> Lexer<'a> {
     fn add_closing_bracket(&mut self, bracket: Bracket) {
         if let (Section::Indented { brackets }, size) = self.sections.current_continued() {
             if self.brackets.0.len() <= brackets {
-                self.add_virtual(ClosingCurlyBracket);
+                self.add(ClosingCurlyBracket(Provenance::Lexer));
                 // @Question can this panic??
                 let dedentation = self.sections.0.len() - size;
                 self.sections.0.truncate(size);
@@ -471,10 +462,10 @@ impl<'a> Lexer<'a> {
             let dash = self.index().unwrap();
             self.take();
             self.advance();
-            let previous = self.span;
+            let previous = self.local_span;
             self.lex_identifier_segment();
-            if self.span == previous {
-                self.span = dash.into();
+            if self.local_span == previous {
+                self.local_span = dash.into();
                 Diagnostic::error()
                     .code(Code::E002)
                     .message("trailing dash on identifier")
@@ -484,16 +475,15 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        match token::parse_keyword(&self.source[self.span]) {
+        match token::parse_keyword(self.source()) {
             Some(keyword) => self.add(keyword),
             None => {
-                let identifier = self.source[self.span].into();
-                self.add_with(|span| Token::new_identifier(identifier, span))
+                self.add(Identifier(self.source().into()));
             }
         };
 
         if self.peek() == Some('.') {
-            self.span = LocalSpan::from(self.index().unwrap());
+            self.local_span = LocalSpan::from(self.index().unwrap());
             self.add(TokenKind::Dot);
             self.advance();
         }
@@ -516,12 +506,12 @@ impl<'a> Lexer<'a> {
         let is_start_of_indented_section = self
             .tokens
             .last()
-            .map_or(false, |token| token.kind.introduces_indented_section());
+            .map_or(false, |token| token.name().introduces_indented_section());
 
         // squash consecutive line breaks into a single one
         self.advance();
         self.take_while(|character| character == '\n');
-        self.add_virtual(Semicolon);
+        self.add(Semicolon(Provenance::Lexer));
 
         // self.span = match self.index() {
         //     Some(index) => LocalSpan::from(index),
@@ -572,7 +562,7 @@ impl<'a> Lexer<'a> {
                 // remove the line break again
                 self.tokens.pop();
                 // @Bug wrong span
-                self.add_virtual(OpeningCurlyBracket);
+                self.add(OpeningCurlyBracket(Provenance::Lexer));
                 self.sections.enter(Section::Indented {
                     brackets: self.brackets.0.len(),
                 });
@@ -602,11 +592,7 @@ impl<'a> Lexer<'a> {
             // Remove legal but superfluous virtual semicolons before virtual
             // closing curly brackets (which also act as terminators).
             if self.sections.current_continued().0.is_indented() {
-                if self
-                    .tokens
-                    .last()
-                    .map_or(false, |token| token.is_virtual() && token.kind == Semicolon)
-                {
+                if self.tokens.last().map_or(false, Token::is_line_break) {
                     self.tokens.pop();
                 }
             }
@@ -618,8 +604,8 @@ impl<'a> Lexer<'a> {
                     // @Beacon @Task handle the case where `!section.brackets.is_empty()`
 
                     // @Bug wrong span
-                    self.add_virtual(ClosingCurlyBracket);
-                    self.add_virtual(Semicolon);
+                    self.add(ClosingCurlyBracket(Provenance::Lexer));
+                    self.add(Semicolon(Provenance::Lexer));
                 }
             }
         }
@@ -657,11 +643,10 @@ impl<'a> Lexer<'a> {
     fn lex_punctuation(&mut self) {
         self.take_while(token::is_punctuation);
 
-        match token::parse_reserved_punctuation(&self.source[self.span]) {
+        match token::parse_reserved_punctuation(&self.source_file[self.local_span]) {
             Some(punctuation) => self.add(punctuation),
             None => {
-                let identifier = self.source[self.span].into();
-                self.add_with(|span| Token::new_punctuation(identifier, span))
+                self.add(Punctuation(self.source().into()));
             }
         }
     }
@@ -719,7 +704,7 @@ impl<'a> Lexer<'a> {
             return Err(());
         }
 
-        self.add_with(|span| Token::new_number_literal(number, span));
+        self.add(NumberLiteral(number));
 
         Ok(())
     }
@@ -741,82 +726,34 @@ impl<'a> Lexer<'a> {
         }
 
         // @Note once we implement escaping, this won't cut it and we need to build our own string
-        let text = self.source[LocalSpan::new(
-            self.span.start + 1,
-            if is_terminated {
-                self.span.end - 1
-            } else {
-                self.span.end
-            },
-        )]
-        .to_owned();
-        self.add_with(|span| Token::new_text_literal(text, span, is_terminated));
+        let content_span = self.local_span.trim_start(1).trim_end(1);
+        let content = self.source_file[content_span].to_owned();
+        self.add(TextLiteral(match is_terminated {
+            true => Ok(content),
+            false => Err(UnterminatedTextLiteral),
+        }));
+    }
+}
+
+impl<'a> util::lexer::Lexer<'a, TokenKind> for Lexer<'a> {
+    fn source_file(&self) -> &'a SourceFile {
+        &self.source_file
     }
 
-    fn span(&self) -> Span {
-        Span::local(&self.source, self.span)
+    fn characters(&mut self) -> &mut Peekable<CharIndices<'a>> {
+        &mut self.characters
     }
 
-    fn source(&self) -> &str {
-        &self.source[self.span]
+    fn tokens(&mut self) -> &mut Vec<Token> {
+        &mut self.tokens
     }
 
-    /// Step to the next token in the input stream.
-    fn advance(&mut self) {
-        self.characters.next();
+    fn local_span(&self) -> LocalSpan {
+        self.local_span
     }
 
-    /// Include the span of the current token in the span of the token-to-be-added.
-    ///
-    /// Preparation for [Self::add] and variants.
-    fn take(&mut self) {
-        let &(index, character) = self.characters.peek().unwrap();
-        self.span.end = LocalByteIndex::from_usize(index) + character;
-    }
-
-    fn peek(&mut self) -> Option<char> {
-        self.characters.peek().map(|&(_, character)| character)
-    }
-
-    fn index(&mut self) -> Option<LocalByteIndex> {
-        self.characters
-            .peek()
-            .map(|&(index, _)| LocalByteIndex::from_usize(index))
-    }
-
-    /// [Take](Self::take) the span of all succeeding tokens where the predicate holds and step.
-    fn take_while(&mut self, predicate: fn(char) -> bool) {
-        self.take_while_with(predicate, || ())
-    }
-
-    /// [Take](Self::take) the span of all succeeding tokens where the predicate holds, step and perform the given action.
-    fn take_while_with(&mut self, predicate: fn(char) -> bool, mut action: impl FnMut()) {
-        while let Some(character) = self.peek() {
-            if !predicate(character) {
-                break;
-            }
-            self.take();
-            self.advance();
-            action();
-        }
-    }
-
-    /// Add a token with the given kind to the output of the lexer.
-    ///
-    /// The other component of a token – the span – is stored in the lexer and is most commonly
-    /// updated using [Self::take].
-    fn add(&mut self, token: TokenKind) {
-        self.add_with(|span| Token::new(token, span))
-    }
-
-    /// [Add](Self::add) a virtual token.
-    fn add_virtual(&mut self, token: TokenKind) {
-        self.add_with(|span| Token::new_virtual(token, span))
-    }
-
-    /// [Add](Self::add) a token given a constructor.
-    fn add_with(&mut self, constructor: impl FnOnce(Span) -> Token) {
-        self.tokens.push(constructor(self.span()))
+    fn local_span_mut(&mut self) -> &mut LocalSpan {
+        &mut self.local_span
     }
 }
 

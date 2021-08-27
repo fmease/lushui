@@ -1,5 +1,7 @@
 //! Utility functionality and definitions.
 
+pub(crate) mod lexer;
+
 pub(crate) use num_bigint::{BigInt as Int, BigUint as Nat};
 pub(crate) use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::path::Path;

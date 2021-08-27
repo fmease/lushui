@@ -6,7 +6,7 @@ use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     error::Result,
     lowered_ast::{Attribute, Attributes},
-    package::Session,
+    package::BuildSession,
     resolver::{
         hir::{expr, Constructor, ExpressionKind},
         Identifier,
@@ -199,7 +199,7 @@ impl Type {
     fn into_expression(
         self,
         scope: &CrateScope,
-        session: &Session,
+        session: &BuildSession,
         reporter: &Reporter,
     ) -> Result<Expression> {
         match self {
@@ -308,7 +308,7 @@ impl Value {
     pub fn into_expression(
         self,
         scope: &CrateScope,
-        session: &Session,
+        session: &BuildSession,
         reporter: &Reporter,
     ) -> Result<Expression> {
         let values = &scope.ffi.inherent_values;

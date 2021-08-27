@@ -39,7 +39,7 @@ use crate::{
 use joinery::JoinableIterator;
 use lowered_ast::AttributeTarget;
 use smallvec::smallvec;
-use std::iter::once;
+use std::{convert::TryInto, iter::once};
 
 #[derive(Clone, Copy)]
 struct Context {
@@ -285,10 +285,7 @@ impl<'a> Lowerer<'a> {
                         //             loaded). of course, the permissions might have changed or it was entirely
                         //             deleted by somebody while this program (the frontend) is running but I don't
                         //             care about that edge case right now!
-                        let path = self
-                            .map
-                            .borrow()
-                            .get(module.file)
+                        let path = self.map.borrow()[module.file]
                             .path
                             .as_ref()
                             .unwrap()
@@ -326,11 +323,11 @@ impl<'a> Lowerer<'a> {
                         let mut lexer_health = Health::Untainted;
 
                         // @Note awkward API
-                        let tokens =
-                            match Lexer::new(self.map.borrow().get(file), self.reporter).lex() {
-                                Ok(tokens) => tokens.unwrap(&mut lexer_health),
-                                Err(()) => return PossiblyErroneous::error(),
-                            };
+                        let tokens = match Lexer::new(&self.map.borrow()[file], self.reporter).lex()
+                        {
+                            Ok(tokens) => tokens.unwrap(&mut lexer_health),
+                            Err(()) => return PossiblyErroneous::error(),
+                        };
                         // @Note awkward API
                         let node = match Parser::new(file, &tokens, self.map.clone(), self.reporter)
                             .parse(module.binder.clone())
@@ -340,17 +337,12 @@ impl<'a> Lowerer<'a> {
                                 return PossiblyErroneous::error();
                             }
                         };
-                        if lexer_health.is_tainted() {
-                            return PossiblyErroneous::error();
-                        }
+                        assert!(lexer_health.is_untainted()); // parsing succeeded
 
-                        let module = match node.kind {
-                            Module(module) => module,
-                            _ => unreachable!(),
-                        };
+                        let module: ast::Module = node.kind.try_into().unwrap();
+
                         if !node.attributes.is_empty() {
-                            Diagnostic::warning()
-                                .message("attributes on module headers are ignored right now")
+                            Diagnostic::unimplemented("attributes on module headers")
                                 .report(&self.reporter);
                             health.taint()
                         }

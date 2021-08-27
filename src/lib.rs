@@ -49,7 +49,8 @@
     type_ascription,
     derive_default_enum,
     generic_associated_types,
-    path_try_exists
+    path_try_exists,
+    extend_one
 )]
 #![deny(rust_2018_idioms, unused_must_use)]
 

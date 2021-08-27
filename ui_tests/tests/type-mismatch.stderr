@@ -7,7 +7,7 @@ error[E032]: expected type `crate.X`, got type `Type`
   --> ${DIRECTORY}/type-mismatch.lushui:15:8
    |
 15 | a: X = Type
-   |        ^^^^ has wrong type
+   |        ^^^^ has the wrong type
    |
 
 error[E032]: expected type `Type`, got type `crate.X`
@@ -19,14 +19,14 @@ error[E032]: expected type `Type`, got type `crate.X`
   --> ${DIRECTORY}/type-mismatch.lushui:16:11
    |
 16 | b: Type = X.x
-   |           ^^^ has wrong type
+   |           ^^^ has the wrong type
    |
 
 error[E032]: expected type `Type`, got type `crates.core.bool.Bool`
   --> ${DIRECTORY}/type-mismatch.lushui:20:4
    |
 20 | x: false = false
-   |    ^^^^^ has wrong type
+   |    ^^^^^ has the wrong type
    |
 
 error[E032]: expected type `crates.core.bool.Bool`, got type `crates.core.nat.Nat`
@@ -38,7 +38,7 @@ error[E032]: expected type `crates.core.bool.Bool`, got type `crates.core.nat.Na
   --> ${DIRECTORY}/type-mismatch.lushui:24:16
    |
 24 | t: Bool = take 44
-   |                ^^ has wrong type
+   |                ^^ has the wrong type
    |
 
 error: aborting due to 4 previous errors

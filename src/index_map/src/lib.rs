@@ -1,8 +1,7 @@
 #![deny(rust_2018_idioms, unused_must_use)]
 
-use std::{fmt, marker::PhantomData};
-
 pub use derive::Index;
+use std::{fmt, marker::PhantomData};
 
 // @Task impl IntoIterator, Extend, docs
 

@@ -23,7 +23,7 @@ use crate::{
     format::DisplayWith,
     hir::{self, expr},
     lowered_ast::Attributes,
-    package::Session,
+    package::BuildSession,
     resolver::CrateScope,
     span::{Span, Spanning},
 };
@@ -67,12 +67,12 @@ impl<'a> Context<'a> {
 // @Task add recursion depth
 pub struct Interpreter<'a> {
     scope: &'a CrateScope,
-    session: &'a Session,
+    session: &'a BuildSession,
     reporter: &'a Reporter,
 }
 
 impl<'a> Interpreter<'a> {
-    pub fn new(scope: &'a CrateScope, session: &'a Session, reporter: &'a Reporter) -> Self {
+    pub fn new(scope: &'a CrateScope, session: &'a BuildSession, reporter: &'a Reporter) -> Self {
         Self {
             scope,
             session,
@@ -771,7 +771,7 @@ impl Substitution {
 }
 
 impl DisplayWith for Substitution {
-    type Context<'a> = (&'a CrateScope, &'a Session);
+    type Context<'a> = (&'a CrateScope, &'a BuildSession);
 
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use self::Substitution::*;

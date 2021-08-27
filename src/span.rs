@@ -31,13 +31,17 @@ mod index {
             Self(index)
         }
 
+        pub(super) fn map(self, mapper: impl FnOnce(u32) -> u32) -> Self {
+            Self(mapper(self.0))
+        }
+
         /// Map a local byte index to global global one.
         ///
         /// ## Panics
         ///
         /// Panics on addition overflow.
-        pub fn local(source: &SourceFile, index: LocalByteIndex) -> Self {
-            Self::new(source.span.start.0 + index.0)
+        pub fn from_local(source: &SourceFile, index: LocalByteIndex) -> Self {
+            source.span.start.map(|start| start + index.0)
         }
 
         pub(super) fn offset(self, offset: u32) -> Result<Self, Error> {
@@ -69,7 +73,7 @@ mod index {
             Self::new(index.try_into().unwrap())
         }
 
-        pub fn global(source: &SourceFile, index: ByteIndex) -> Self {
+        pub fn from_global(source: &SourceFile, index: ByteIndex) -> Self {
             Self::new(index.0 - source.span.start.0)
         }
 
@@ -118,7 +122,7 @@ mod index {
 }
 
 mod span {
-    use super::{ByteIndex, LocalByteIndex, PossiblySpanning, SourceFile};
+    use super::{ByteIndex, LocalByteIndex, PossiblySpanning, SourceFile, Spanning};
     use std::{
         fmt,
         mem::size_of,
@@ -169,10 +173,20 @@ mod span {
             }
         }
 
-        pub fn local(source: &SourceFile, span: LocalSpan) -> Self {
+        #[must_use]
+        pub fn trim_end(self, amount: u32) -> Self {
+            debug_assert!(amount < self.length());
+
+            Self {
+                start: self.start,
+                end: self.end.map(|end| end - amount),
+            }
+        }
+
+        pub fn from_local(source: &SourceFile, span: LocalSpan) -> Self {
             Self::new(
-                ByteIndex::local(source, span.start),
-                ByteIndex::local(source, span.end),
+                ByteIndex::from_local(source, span.start),
+                ByteIndex::from_local(source, span.end),
             )
         }
 
@@ -201,17 +215,17 @@ mod span {
             }
         }
 
-        pub fn merging<S: PossiblySpanning>(&mut self, spanning: S) -> S {
-            if let Some(other) = spanning.possible_span() {
+        pub fn merging<S: PossiblySpanning>(&mut self, other: S) -> S {
+            if let Some(other) = other.possible_span() {
                 self.assert_disjoint_and_consecutive(other);
                 self.end = other.end;
             }
-            spanning
+            other
         }
 
         // @Note naming is not great
-        pub fn merging_from(&mut self, spanning: impl PossiblySpanning) {
-            if let Some(other) = spanning.possible_span() {
+        pub fn merging_from(&mut self, other: impl PossiblySpanning) {
+            if let Some(other) = other.possible_span() {
                 // self.assert_disjoint_and_consecutive(other);
                 debug_assert!(other.start <= self.start && other.end <= self.end);
                 self.start = other.start;
@@ -244,6 +258,12 @@ mod span {
         }
     }
 
+    impl Spanning for Span {
+        fn span(&self) -> Self {
+            *self
+        }
+    }
+
     impl fmt::Debug for Span {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "{}..{}", self.start.0, self.end.0)
@@ -269,11 +289,34 @@ mod span {
             Self::from(LocalByteIndex::new(0))
         }
 
-        pub fn global(source: &SourceFile, span: Span) -> Self {
+        pub fn from_global(source: &SourceFile, span: Span) -> Self {
             Self::new(
-                LocalByteIndex::global(source, span.start),
-                LocalByteIndex::global(source, span.end),
+                LocalByteIndex::from_global(source, span.start),
+                LocalByteIndex::from_global(source, span.end),
             )
+        }
+
+        // @Beacon @Task deduplicate by def an AbstractSpan<_>
+
+        #[must_use]
+        pub fn trim_start(self, amount: u32) -> Self {
+            // debug_assert!(amount < self.length());
+
+            Self {
+                start: LocalByteIndex::new(self.start.0 + amount),
+                end: self.end,
+            }
+        }
+
+        #[must_use]
+        pub fn trim_end(self, amount: u32) -> Self {
+            // debug_assert!(amount < self.length());
+
+            Self {
+                start: self.start,
+                // end: self.end.map(|end| end - amount),
+                end: LocalByteIndex::new(self.end.0 - amount),
+            }
         }
     }
 
@@ -304,17 +347,11 @@ pub(crate) fn span(start: u32, end: u32) -> Span {
 }
 
 mod spanning {
-    use super::{Span, Spanned};
+    use super::Span;
     use crate::util::SmallVec;
 
     pub trait Spanning: PossiblySpanning {
         fn span(&self) -> Span;
-    }
-
-    impl Spanning for Span {
-        fn span(&self) -> Self {
-            *self
-        }
     }
 
     impl<S: Spanning> Spanning for &'_ S {
@@ -323,9 +360,9 @@ mod spanning {
         }
     }
 
-    impl<S> Spanning for Spanned<S> {
+    impl<S: Spanning, Z: Spanning> Spanning for (S, Z) {
         fn span(&self) -> Span {
-            self.span
+            self.0.span().merge(self.1.span())
         }
     }
 
@@ -394,8 +431,8 @@ mod spanning {
 }
 
 mod spanned {
-    use super::Span;
-    use std::fmt;
+    use super::{Span, Spanning};
+    use std::{fmt, hash::Hash};
 
     #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
     pub struct Spanned<Kind> {
@@ -423,6 +460,12 @@ mod spanned {
                 kind: &self.kind,
                 span: self.span,
             }
+        }
+    }
+
+    impl<S> Spanning for Spanned<S> {
+        fn span(&self) -> Span {
+            self.span
         }
     }
 
@@ -494,11 +537,6 @@ mod source_map {
                 .insert(SourceFile::new(path, source, self.next_offset()?)?))
         }
 
-        pub fn get(&self, index: SourceFileIndex) -> &SourceFile {
-            // Ref::map(self.files.borrow(), |files| &files[index])
-            &self.files.borrow()[index]
-        }
-
         /// Panics if span is a sham.
         // @Task do binary search (by span)
         fn file_from_span(&self, span: Span) -> &SourceFile {
@@ -515,7 +553,7 @@ mod source_map {
         /// This treats line breaks verbatim.
         pub fn snippet_from_span(&self, span: Span) -> &str {
             let file = self.file_from_span(span);
-            let span = LocalSpan::global(&file, span);
+            let span = LocalSpan::from_global(&file, span);
             &file[span]
         }
 
@@ -525,7 +563,7 @@ mod source_map {
         // @Task update docs
         pub fn lines_from_span(&self, span: Span) -> Lines<'_> {
             let file = self.file_from_span(span);
-            let span = LocalSpan::global(&file, span);
+            let span = LocalSpan::from_global(&file, span);
 
             let mut first_line = None;
             let mut final_line = None;
@@ -646,6 +684,14 @@ mod source_map {
         }
     }
 
+    impl std::ops::Index<SourceFileIndex> for SourceMap {
+        type Output = SourceFile;
+
+        fn index(&self, index: SourceFileIndex) -> &Self::Output {
+            &self.files.borrow()[index]
+        }
+    }
+
     #[derive(Debug, PartialEq, Eq, Clone, Copy, index_map::Index)]
     pub struct SourceFileIndex(usize);
 
@@ -737,8 +783,10 @@ impl Error {
             Self::OffsetOverflow => "is too large",
             Self::LoadFailure(error) => match error.kind() {
                 NotFound => "does not exist",
-                PermissionDenied => "does not have required permissions",
+                PermissionDenied => "does not have the required permissions",
+                // @Task reword
                 InvalidData => "contains invalid UTF-8",
+                // @Task use the provided message
                 _ => "triggered some file system error",
             },
         };

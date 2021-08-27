@@ -1,12 +1,12 @@
 //! The definition of the textual representation of the [HIR](crate::hir).
 
 use super::{CrateScope, Declaration, Expression, Pattern};
-use crate::{format::DisplayWith, package::Session};
+use crate::{format::DisplayWith, package::BuildSession};
 use joinery::JoinableIterator;
 use std::{default::default, fmt};
 
 impl DisplayWith for Declaration {
-    type Context<'a> = (&'a CrateScope, &'a Session);
+    type Context<'a> = (&'a CrateScope, &'a BuildSession);
 
     fn format(
         &self,
@@ -24,7 +24,7 @@ impl Declaration {
     fn format_with_depth(
         &self,
         scope: &CrateScope,
-        session: &Session,
+        session: &BuildSession,
         depth: usize,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
@@ -97,7 +97,7 @@ impl Declaration {
 
 // @Note many wasted allocations (intermediate Strings)
 impl DisplayWith for Expression {
-    type Context<'a> = (&'a CrateScope, &'a Session);
+    type Context<'a> = (&'a CrateScope, &'a BuildSession);
 
     fn format(
         &self,
@@ -111,7 +111,7 @@ impl DisplayWith for Expression {
 fn format_pi_type_literal_or_lower(
     expression: &Expression,
     scope: &CrateScope,
-    session: &Session,
+    session: &BuildSession,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
     use super::ExpressionKind::*;
@@ -210,7 +210,7 @@ fn format_pi_type_literal_or_lower(
 fn format_application_or_lower(
     expression: &Expression,
     scope: &CrateScope,
-    session: &Session,
+    session: &BuildSession,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
     use super::ExpressionKind::*;
@@ -238,7 +238,7 @@ fn format_application_or_lower(
 fn format_lower_expression(
     expression: &Expression,
     scope: &CrateScope,
-    session: &Session,
+    session: &BuildSession,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
     use super::ExpressionKind::*;
@@ -284,7 +284,7 @@ fn format_lower_expression(
 
 // @Task @Beacon update bracket business
 impl DisplayWith for Pattern {
-    type Context<'a> = (&'a CrateScope, &'a Session);
+    type Context<'a> = (&'a CrateScope, &'a BuildSession);
 
     fn format(
         &self,

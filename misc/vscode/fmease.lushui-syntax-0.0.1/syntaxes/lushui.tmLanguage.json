@@ -28,7 +28,6 @@
         "comment": {
             "patterns": [
                 {
-                    "__comment__": "Also works: ;;(?!;).*",
                     "name": "comment.block.documentation.lushui",
                     "match": ";;.*"
                 },
@@ -83,27 +82,27 @@
             "patterns": [
                 {
                     "match": "\\(",
-                    "name": "punctuation.grouping.begin.bracket.round.lushui meta.brace.round.lushui"
+                    "name": "punctuation.brackets.round.lushui"
                 },
                 {
                     "match": "\\)",
-                    "name": "punctuation.grouping.end.bracket.round.lushui meta.brace.round.lushui"
+                    "name": "punctuation.brackets.round.lushui"
                 },
                 {
                     "match": "\\[",
-                    "name": "punctuation.grouping.begin.bracket.square.lushui meta.brace.square.lushui"
+                    "name": "punctuation.brackets.square.lushui"
                 },
                 {
                     "match": "\\]",
-                    "name": "punctuation.grouping.end.bracket.square.lushui meta.brace.square.lushui"
+                    "name": "punctuation.brackets.square.lushui"
                 },
                 {
                     "match": "\\{",
-                    "name": "punctuation.grouping.begin.bracket.curly.lushui meta.brace.curly.lushui"
+                    "name": "punctuation.brackets.curly.lushui"
                 },
                 {
                     "match": "\\}",
-                    "name": "punctuation.grouping.end.bracket.curly.lushui meta.brace.curly.lushui"
+                    "name": "punctuation.brackets.curly.lushui"
                 },
                 {
                     "match": "[';]",
@@ -127,7 +126,7 @@
         },
         "escape_sequence": {
             "name": "constant.character.escape.lushui",
-            "match": "\\\\(u[0-9a-f]{4}|U[0-9a-f]{6}|\\\\|\")"
+            "match": "\\\\(u\\{[0-9a-fA-F]+\\}|\\\\|\")"
         },
         "entity": {
             "patterns": [

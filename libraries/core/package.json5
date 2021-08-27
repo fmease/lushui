@@ -1,5 +1,0 @@
-{
-    name: 'core',
-    version: '0.0.0',
-    description: 'The standard library for the Lushui programming language',
-}

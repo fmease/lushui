@@ -653,13 +653,17 @@ pub enum Code {
     E062,
     /// Undefined inherent type.
     E063,
+    /// Metadata: Type mismatch.
+    E800,
+    /// Metadata: Unknown key.
+    E801,
 }
 
 impl Code {
     /// Provide detailled explanations and code examples per code.
     // @Task
     #[allow(dead_code)]
-    pub const fn explain(self) -> &'static str {
+    pub const fn explanation(self) -> &'static str {
         todo!()
     }
 }

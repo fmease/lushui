@@ -9,8 +9,9 @@ use super::{Diagnostic, Severity};
 use crate::{
     format::{ordered_listing, pluralize, Conjunction},
     span::SharedSourceMap,
+    util::obtain,
 };
-use std::{cell::RefCell, collections::BTreeSet, default::default};
+use std::{cell::RefCell, collections::BTreeSet, convert::TryFrom, default::default};
 
 /// The diagnostic reporter.
 #[non_exhaustive]
@@ -165,6 +166,14 @@ impl Drop for BufferedStderrReporter {
 impl From<BufferedStderrReporter> for Reporter {
     fn from(reporter: BufferedStderrReporter) -> Self {
         Self::BufferedStderr(reporter)
+    }
+}
+
+impl TryFrom<Reporter> for BufferedStderrReporter {
+    type Error = ();
+
+    fn try_from(reporter: Reporter) -> Result<Self, Self::Error> {
+        obtain!(reporter, Reporter::BufferedStderr(reporter) => reporter).ok_or(())
     }
 }
 

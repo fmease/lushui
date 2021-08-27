@@ -1,0 +1,108 @@
+{
+    "scopeName": "source.lushui-metadata",
+    "name": "lushui-metadata",
+    "patterns": [
+        {
+            "include": "#comment"
+        },
+        {
+            "include": "#key"
+        },
+        {
+            "include": "#text"
+        },
+        {
+            "include": "#punctuation"
+        },
+        {
+            "include": "#number"
+        },
+        {
+            "include": "#constant"
+        }
+    ],
+    "repository": {
+        "comment": {
+            "patterns": [
+                {
+                    "name": "comment.line.number-sign.lushui-metadata",
+                    "match": "#.*"
+                }
+            ]
+        },
+        "punctuation": {
+            "patterns": [
+                {
+                    "match": "\\[",
+                    "name": "punctuation.brackets.square.lushui-metadata"
+                },
+                {
+                    "match": "\\]",
+                    "name": "punctuation.brackets.square.lushui-metadata"
+                },
+                {
+                    "match": "\\{",
+                    "name": "punctuation.brackets.curly.lushui-metadata"
+                },
+                {
+                    "match": "\\}",
+                    "name": "punctuation.brackets.curly.lushui-metadata"
+                },
+                {
+                    "match": ",",
+                    "name": "punctuation.comma.lushui-metadata"
+                },
+                {
+                    "match": ":",
+                    "name": "punctuation.colon.lushui-metadata"
+                }
+            ]
+        },
+        "text": {
+            "patterns": [
+                {
+                    "name": "string.quoted.double.lushui-metadata",
+                    "begin": "\"",
+                    "end": "\"",
+                    "patterns": [
+                        {
+                            "include": "#escape_sequence"
+                        }
+                    ]
+                }
+            ]
+        },
+        "escape_sequence": {
+            "name": "constant.character.escape.lushui-metadata",
+            "match": "\\\\(u\\{[0-9a-fA-F]+\\}|\\\\|\")"
+        },
+        "constant": {
+            "patterns": [
+                {
+                    "match": "\\b(false|true|nan|infinity)\\b",
+                    "name": "constant.language.lushui-metadata"
+                }
+            ]
+        },
+        "number": {
+            "patterns": [
+                {
+                    "match": "(-|\\b)[0-9]([0-9]|'[0-9])*\\b",
+                    "name": "constant.numeric.integer.decimal.lushui-metadata"
+                }
+            ]
+        },
+        "key": {
+            "patterns": [
+                {
+                    "match": "\\b((?:[a-zA-Z_]\\w*)(?:-[a-zA-Z_]\\w*)*)(?=\\s*:)",
+                    "name": "keyword.key.lushui-metadata"
+                },
+                {
+                    "match": "\"([^\"])*?\"(?=\\s*:)",
+                    "name": "keyword.key.lushui-metadata"
+                }
+            ]
+        }
+    }
+}

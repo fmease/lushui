@@ -113,6 +113,10 @@ impl<D: fmt::Display> QuoteExt for D {
     }
 }
 
+pub macro quoted($code:expr) {
+    concat!("`", $code, "`")
+}
+
 pub trait AsDebug: fmt::Display + Sized {
     fn as_debug(&self) -> DisplayIsDebug<'_, Self> {
         DisplayIsDebug(self)

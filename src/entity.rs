@@ -6,7 +6,7 @@ use crate::{
     error::PossiblyErroneous,
     format::DisplayWith,
     hir::Expression,
-    package::Session,
+    package::BuildSession,
     resolver::{
         CrateScope, DeclarationIndex, Exposure, Identifier, LocalDeclarationIndex, Namespace,
     },
@@ -237,7 +237,7 @@ impl EntityKind {
 }
 
 impl DisplayWith for EntityKind {
-    type Context<'a> = (&'a CrateScope, &'a Session);
+    type Context<'a> = (&'a CrateScope, &'a BuildSession);
 
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

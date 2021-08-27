@@ -4,6 +4,7 @@ use crate::{
     error::Result,
     lexer::parse_crate_name,
     resolver::{CrateScope, DeclarationIndex, Identifier},
+    span::SharedSourceMap,
     util::HashMap,
     FILE_EXTENSION,
 };
@@ -14,32 +15,33 @@ pub use manifest::{
 };
 use std::{
     convert::TryInto,
+    default::default,
     fmt,
     ops::{Index, IndexMut},
     path::{Path, PathBuf},
 };
 
-#[derive(Default, Debug)] // @Temporary Debug
-pub struct Session {
+#[derive(Default)]
+pub struct BuildSession {
     // @Question BTreeSet<CrateScope> (CrateScope.index) ?
-    crates: HashMap<CrateIndex, CrateScope>,
-    packages: IndexMap<PackageIndex, Package>,
+    built_crates: HashMap<CrateIndex, CrateScope>,
+    built_packages: IndexMap<PackageIndex, Package>,
 }
 
-impl Session {
+impl BuildSession {
     pub fn with_packages(packages: IndexMap<PackageIndex, Package>) -> Self {
         Self {
-            crates: HashMap::default(),
-            packages,
+            built_crates: HashMap::default(),
+            built_packages: packages,
         }
     }
 
     pub fn add(&mut self, crate_: CrateScope) {
-        self.crates.insert(crate_.index, crate_);
+        self.built_crates.insert(crate_.index, crate_);
     }
 
     pub fn entity(&self, index: DeclarationIndex) -> &Entity {
-        self.crates[&index.crate_index()].get(index.local_index())
+        self.built_crates[&index.crate_index()].get(index.local_index())
     }
 
     pub fn foreign_type(&self, binder: &'static str) -> Option<&Identifier> {
@@ -50,7 +52,7 @@ impl Session {
         // equally far crates (e.g. `core` and a no-core library) trying
         // to define the same foreign type leads to an error
         // (a different one)
-        for crate_ in self.crates.values() {
+        for crate_ in self.built_crates.values() {
             match crate_.ffi.foreign_types.get(binder) {
                 Some(Some(binder)) => return Some(binder),
                 Some(None) => continue,
@@ -62,25 +64,25 @@ impl Session {
     }
 }
 
-impl Index<CrateIndex> for Session {
+impl Index<CrateIndex> for BuildSession {
     type Output = CrateScope;
 
     fn index(&self, index: CrateIndex) -> &Self::Output {
-        &self.crates[&index]
+        &self.built_crates[&index]
     }
 }
 
-impl Index<PackageIndex> for Session {
+impl Index<PackageIndex> for BuildSession {
     type Output = Package;
 
     fn index(&self, index: PackageIndex) -> &Self::Output {
-        &self.packages[index]
+        &self.built_packages[index]
     }
 }
 
-impl IndexMut<PackageIndex> for Session {
+impl IndexMut<PackageIndex> for BuildSession {
     fn index_mut(&mut self, index: PackageIndex) -> &mut Self::Output {
-        &mut self.packages[index]
+        &mut self.built_packages[index]
     }
 }
 
@@ -93,19 +95,29 @@ impl fmt::Debug for PackageIndex {
         write!(f, "{}p", self.0)
     }
 }
-
-#[derive(Default)]
-pub struct BuildQueue {
-    crates: IndexMap<CrateIndex, CrateScope>,
-    packages: IndexMap<PackageIndex, Package>,
+pub struct BuildQueue<'r> {
+    unbuilt_crates: IndexMap<CrateIndex, CrateScope>,
+    unbuilt_packages: IndexMap<PackageIndex, Package>,
+    map: SharedSourceMap,
+    reporter: &'r Reporter,
 }
 
-impl BuildQueue {
+impl<'r> BuildQueue<'r> {
+    pub fn new(map: SharedSourceMap, reporter: &'r Reporter) -> Self {
+        Self {
+            unbuilt_crates: default(),
+            unbuilt_packages: default(),
+            map,
+            reporter,
+        }
+    }
+}
+
+impl BuildQueue<'_> {
     fn enqueue_dependencies(
         &mut self,
         package_index: PackageIndex,
         dependencies: &HashMap<String, DependencyManifest>,
-        reporter: &Reporter,
     ) -> Result<HashMap<String, CrateIndex>> {
         let package_path = self[package_index].path.clone();
         let mut resolved_dependencies = HashMap::default();
@@ -115,14 +127,14 @@ impl BuildQueue {
         for (dependency_name, unresolved_dependency_manifest) in dependencies {
             let dependency_path = match &unresolved_dependency_manifest.path {
                 // @Task handle error
-                Some(path) => package_path.join(path).canonicalize().unwrap(),
+                Some(path) => package_path.join(&path.kind).canonicalize().unwrap(),
                 // @Beacon @Task we need to emit a custom diagnostic if stuff cannot be
                 // found in the distributies libraries path
                 None => distributed_libraries_path().join(dependency_name),
             };
 
             if let Some(package) = self
-                .packages
+                .unbuilt_packages
                 .values()
                 .find(|package| package.path == dependency_path)
             {
@@ -130,7 +142,7 @@ impl BuildQueue {
                     // @Task embellish
                     Diagnostic::error()
                         .message("circular crates")
-                        .report(reporter);
+                        .report(self.reporter);
                     return Err(());
                 }
 
@@ -141,7 +153,7 @@ impl BuildQueue {
                     dependency_name.clone(),
                     package.library.ok_or_else(|| {
                         dependency_is_not_a_library(&package.name, &self[package_index].name)
-                            .report(reporter)
+                            .report(self.reporter)
                     })?,
                 );
                 continue;
@@ -151,32 +163,46 @@ impl BuildQueue {
             // @Task don't bubble up with `?` but once `open` returns a proper error type,
             // report a custom diagnostic saying ~ "could not find a package manifest for the package XY
             // specified as a path dependency" (sth sim to this)
-            let dependency_manifest =
-                PackageManifest::from_package_path(&dependency_path, &reporter)?;
+            let dependency_manifest = PackageManifest::from_package_path(
+                &dependency_path,
+                self.map.clone(),
+                self.reporter,
+            )?;
 
             // @Task proper error
             assert_eq!(
-                &dependency_manifest.details.name,
+                &dependency_manifest.details.name.kind,
                 unresolved_dependency_manifest
                     .name
                     .as_ref()
+                    .map(|name| &name.kind)
                     .unwrap_or(dependency_name)
             );
             // assert version requirement (if any) is fulfilled
 
             let dependency_package =
                 Package::from_manifest_details(dependency_path, dependency_manifest.details);
-            let dependency_package = self.packages.insert(dependency_package);
+            let dependency_package = self.unbuilt_packages.insert(dependency_package);
 
             // @Note we probably need to disallow referencing the same package through different
             // names from the same package to be able to generate a correct lock-file
             let resolved_transitive_dependencies = self.enqueue_dependencies(
                 dependency_package,
-                &dependency_manifest.crates.dependencies,
-                reporter,
+                &dependency_manifest
+                    .crates
+                    .dependencies
+                    .iter()
+                    .map(|(key, value)| (key.kind.clone(), value.kind.clone()))
+                    .collect(),
             )?;
 
-            self.resolve_library_manifest(dependency_package, dependency_manifest.crates.library);
+            self.resolve_library_manifest(
+                dependency_package,
+                dependency_manifest
+                    .crates
+                    .library
+                    .map(|library| library.kind),
+            );
             self[dependency_package].dependencies = resolved_transitive_dependencies;
             self[dependency_package].is_fully_resolved = true;
 
@@ -189,7 +215,7 @@ impl BuildQueue {
                         &self[dependency_package].name,
                         &self[package_index].name,
                     )
-                    .report(reporter)
+                    .report(self.reporter)
                 })?,
             );
         }
@@ -214,14 +240,19 @@ impl BuildQueue {
         let default_library_path = path.join(CrateType::Library.default_root_file_path());
 
         let path = match library {
-            Some(library) => Some(library.path.unwrap_or(default_library_path)),
+            Some(library) => Some(
+                library
+                    .path
+                    .map(|path| path.kind)
+                    .unwrap_or(default_library_path),
+            ),
             None => default_library_path.exists().then(|| default_library_path),
         };
 
         let package_contains_library = path.is_some();
 
         if let Some(path) = path {
-            let index = self.crates.insert_with(|index| {
+            let index = self.unbuilt_crates.insert_with(|index| {
                 CrateScope::new(index, package_index, path, CrateType::Library)
             });
             self[package_index].library = Some(index);
@@ -240,7 +271,10 @@ impl BuildQueue {
 
         // @Beacon @Task also find other binaries in source/binaries/
         let paths = match binary {
-            Some(binary) => vec![binary.path.unwrap_or(default_binary_path)],
+            Some(binary) => vec![binary
+                .path
+                .map(|path| path.kind)
+                .unwrap_or(default_binary_path)],
             None => match default_binary_path.exists() {
                 true => vec![default_binary_path],
                 false => Vec::new(),
@@ -250,7 +284,7 @@ impl BuildQueue {
         let package_contains_binaries = !paths.is_empty();
 
         for path in paths {
-            let index = self.crates.insert_with(|index| {
+            let index = self.unbuilt_crates.insert_with(|index| {
                 CrateScope::new(index, package_index, path, CrateType::Binary)
             });
             self[package_index].binaries.push(index);
@@ -264,7 +298,6 @@ impl BuildQueue {
         package_index: PackageIndex,
         library: Option<LibraryManifest>,
         binary: Option<BinaryManifest>,
-        reporter: &Reporter,
     ) -> Result {
         let package_contains_library = self.resolve_library_manifest(package_index, library);
         let package_contains_binaries = self.resolve_binary_manifest(package_index, binary);
@@ -273,14 +306,14 @@ impl BuildQueue {
             // @Task embellish
             Diagnostic::error()
                 .message("package does neither contain a library nor any binaries")
-                .report(reporter);
+                .report(self.reporter);
             return Err(());
         }
 
         Ok(())
     }
 
-    pub fn process_package(&mut self, path: PathBuf, reporter: &Reporter) -> Result {
+    pub fn process_package(&mut self, path: PathBuf) -> Result {
         let path = match find_package(&path) {
             Some(path) => path,
             None => {
@@ -290,7 +323,7 @@ impl BuildQueue {
                         "none of the directories contain a package manifest file named `{}`",
                         PackageManifest::FILE_NAME
                     ))
-                    .report(reporter);
+                    .report(self.reporter);
                 return Err(());
             }
         };
@@ -300,21 +333,27 @@ impl BuildQueue {
         // @Task don't bubble up with `?` but once `open` returns a proper error type,
         // report a custom diagnostic saying ~ "could not find a package manifest for the package XY
         // specified as a path dependency" (sth sim to this)
-        let manifest = PackageManifest::from_package_path(path, &reporter)?;
+        let manifest = PackageManifest::from_package_path(path, self.map.clone(), self.reporter)?;
 
         let package = Package::from_manifest_details(path.to_owned(), manifest.details);
-        let package = self.packages.insert(package);
+        let package = self.unbuilt_packages.insert(package);
 
         // @Note we probably need to disallow referencing the same package through different
         // names from the same package to be able to generate a correct lock-file
-        let resolved_dependencies =
-            self.enqueue_dependencies(package, &manifest.crates.dependencies, reporter)?;
+        let resolved_dependencies = self.enqueue_dependencies(
+            package,
+            &manifest
+                .crates
+                .dependencies
+                .iter()
+                .map(|(key, value)| (key.kind.clone(), value.kind.clone()))
+                .collect(),
+        )?;
 
         self.resolve_library_and_binary_manifests(
             package,
-            manifest.crates.library,
-            manifest.crates.binary,
-            reporter,
+            manifest.crates.library.map(|library| library.kind),
+            manifest.crates.binary.map(|binary| binary.kind),
         )?;
         self[package].dependencies = resolved_dependencies;
         self[package].is_fully_resolved = true;
@@ -326,10 +365,9 @@ impl BuildQueue {
         &mut self,
         source_file_path: PathBuf,
         unlink_core: bool,
-        reporter: &Reporter,
     ) -> Result {
-        let crate_name = parse_crate_name(source_file_path.clone(), &reporter)
-            .map_err(|error| error.report(&reporter))?;
+        let crate_name = parse_crate_name(source_file_path.clone(), self.reporter)
+            .map_err(|error| error.report(self.reporter))?;
 
         // @Task dont unwrap, handle error case
         // joining with "." since it might return "" which would fail to canonicalize
@@ -342,7 +380,7 @@ impl BuildQueue {
 
         // @Note wasteful name cloning
         let package = Package::single_file_package(crate_name.as_str().to_owned(), path);
-        let package = self.packages.insert(package);
+        let package = self.unbuilt_packages.insert(package);
 
         let mut resolved_dependencies = HashMap::default();
 
@@ -350,20 +388,28 @@ impl BuildQueue {
             let core_path = distributed_libraries_path().join(CORE_PACKAGE_NAME);
 
             // @Question custom message for not finding the core library?
-            let core_manifest = PackageManifest::from_package_path(&core_path, &reporter)?;
+            let core_manifest =
+                PackageManifest::from_package_path(&core_path, self.map.clone(), self.reporter)?;
 
             let core_package = Package::from_manifest_details(core_path, core_manifest.details);
-            let core_package = self.packages.insert(core_package);
+            let core_package = self.unbuilt_packages.insert(core_package);
 
             // @Note we probably need to disallow referencing the same package through different
             // names from the same package to be able to generate a correct lock-fil
             let resolved_transitive_core_dependencies = self.enqueue_dependencies(
                 core_package,
-                &core_manifest.crates.dependencies,
-                reporter,
+                &core_manifest
+                    .crates
+                    .dependencies
+                    .iter()
+                    .map(|(key, value)| (key.kind.clone(), value.kind.clone()))
+                    .collect(),
             )?;
 
-            self.resolve_library_manifest(core_package, core_manifest.crates.library);
+            self.resolve_library_manifest(
+                core_package,
+                core_manifest.crates.library.map(|library| library.kind),
+            );
             self[core_package].dependencies = resolved_transitive_core_dependencies;
             self[core_package].is_fully_resolved = true;
 
@@ -373,7 +419,7 @@ impl BuildQueue {
             );
         }
 
-        let binary = self.crates.insert_with(|index| {
+        let binary = self.unbuilt_crates.insert_with(|index| {
             CrateScope::new(index, package, source_file_path, CrateType::Binary)
         });
         let package = &mut self[package];
@@ -384,36 +430,39 @@ impl BuildQueue {
         Ok(())
     }
 
-    pub fn into_unbuilt_and_built(self) -> (IndexMap<CrateIndex, CrateScope>, Session) {
-        (self.crates, Session::with_packages(self.packages))
+    pub fn into_unbuilt_and_built(self) -> (IndexMap<CrateIndex, CrateScope>, BuildSession) {
+        (
+            self.unbuilt_crates,
+            BuildSession::with_packages(self.unbuilt_packages),
+        )
     }
 }
 
-impl Index<CrateIndex> for BuildQueue {
+impl Index<CrateIndex> for BuildQueue<'_> {
     type Output = CrateScope;
 
     fn index(&self, index: CrateIndex) -> &Self::Output {
-        &self.crates[index]
+        &self.unbuilt_crates[index]
     }
 }
 
-impl IndexMut<CrateIndex> for BuildQueue {
+impl IndexMut<CrateIndex> for BuildQueue<'_> {
     fn index_mut(&mut self, index: CrateIndex) -> &mut Self::Output {
-        &mut self.crates[index]
+        &mut self.unbuilt_crates[index]
     }
 }
 
-impl Index<PackageIndex> for BuildQueue {
+impl Index<PackageIndex> for BuildQueue<'_> {
     type Output = Package;
 
     fn index(&self, index: PackageIndex) -> &Self::Output {
-        &self.packages[index]
+        &self.unbuilt_packages[index]
     }
 }
 
-impl IndexMut<PackageIndex> for BuildQueue {
+impl IndexMut<PackageIndex> for BuildQueue<'_> {
     fn index_mut(&mut self, index: PackageIndex) -> &mut Self::Output {
-        &mut self.packages[index]
+        &mut self.unbuilt_packages[index]
     }
 }
 
@@ -484,7 +533,7 @@ pub struct Package {
     pub name: String,
     pub path: PathBuf,
     pub version: Option<Version>,
-    pub description: Option<String>,
+    pub description: String,
     pub is_private: bool,
     pub library: Option<CrateIndex>,
     pub binaries: Vec<CrateIndex>,
@@ -495,11 +544,17 @@ pub struct Package {
 impl Package {
     pub fn from_manifest_details(path: PathBuf, manifest: PackageManifestDetails) -> Self {
         Package {
-            name: manifest.name,
+            name: manifest.name.kind,
             path,
-            version: manifest.version,
-            description: manifest.description,
-            is_private: manifest.is_private,
+            version: manifest.version.map(|version| version.kind),
+            description: manifest
+                .description
+                .map(|description| description.kind)
+                .unwrap_or_default(),
+            is_private: manifest
+                .is_private
+                .map(|is_private| is_private.kind)
+                .unwrap_or_default(),
             library: None,
             binaries: Vec::new(),
             dependencies: HashMap::default(),
@@ -512,7 +567,7 @@ impl Package {
             name,
             path,
             version: Some(Version("0.0.0".to_owned())),
-            description: None,
+            description: String::new(),
             is_private: true,
             library: None,
             binaries: Vec::new(),
@@ -535,23 +590,24 @@ pub fn find_package(path: &Path) -> Option<&Path> {
 
 pub mod manifest {
     use crate::{
-        diagnostics::{Diagnostic, Reporter},
+        diagnostics::{Code, Diagnostic, Reporter},
         error::Result,
+        metadata::{self, MapEntry, TypeError, ValueKind},
+        span::{SharedSourceMap, Span, Spanned},
         util::HashMap,
     };
-    use serde::Deserialize;
-    use std::path::{Path, PathBuf};
+    use std::{
+        convert::{TryFrom, TryInto},
+        path::{Path, PathBuf},
+    };
 
-    #[derive(Deserialize)]
     pub struct PackageManifest {
-        #[serde(flatten)]
         pub details: PackageManifestDetails,
-        #[serde(flatten)]
         pub crates: PackageManifestCrates,
     }
 
     impl PackageManifest {
-        pub const FILE_NAME: &'static str = "package.json5";
+        pub const FILE_NAME: &'static str = "package.metadata";
 
         // @Temporary signature: define errors
         // @Task handle errors
@@ -559,70 +615,150 @@ pub mod manifest {
         // here? the current message does not make sense for implicitly opening `core`
         // and probably also not for trying to open dependencies...
         // @Update @Update @Task don't handle them here but at the caller's site!!
-        pub fn from_package_path(package_path: &Path, reporter: &Reporter) -> Result<Self> {
+        pub fn from_package_path(
+            package_path: &Path,
+            map: SharedSourceMap,
+            reporter: &Reporter,
+        ) -> Result<Self> {
             let manifest_path = package_path.join(Self::FILE_NAME);
 
-            let manifest = match std::fs::read_to_string(&manifest_path) {
-                Ok(manifest) => manifest,
-                Err(error) => {
-                    // @Task custom error messages dependening on io::ErrorKind
-                    // @Temporary message
-                    // @Update not compatible with find_package_path I guess...
+            let source_file = map
+                .borrow_mut()
+                .load(manifest_path)
+                .map_err(|error| Diagnostic::from(error).report(reporter))?;
+
+            let value = metadata::parse(source_file, map, reporter)?;
+            let mut map = value.kind.into_map().expect("type error");
+
+            fn __remove<'key, T: TryFrom<ValueKind, Error = TypeError>>(
+                map: &mut HashMap<String, MapEntry>,
+                key: &'key str,
+                reporter: &Reporter,
+            ) -> Result<Spanned<T>> {
+                let value = match map.remove(key) {
+                    Some(entry) => entry.value,
+                    None => {
+                        // @Task imrpove message, add span, add name of map (or "root map")
+                        Diagnostic::error()
+                            .message(format!("the map ??? is the missing key `{key}`"))
+                            .report(reporter);
+                        return Err(());
+                    }
+                };
+                let span = value.span;
+                let value: T = value
+                    .kind
+                    .try_into()
+                    .map_err(|error| type_error(key, span, error).report(reporter))?;
+
+                Ok(Spanned::new(span, value))
+            }
+
+            fn type_error(key: &str, span: Span, error: TypeError) -> Diagnostic {
+                Diagnostic::error()
+                    .code(Code::E800)
+                    .message(format!(
+                        "the type of key `{}` should be {} but it is {}",
+                        key, error.expected, error.actual
+                    ))
+                    .labeled_primary_span(span, "has the wrong type")
+            }
+
+            fn __remove_optional<'key, T: TryFrom<ValueKind, Error = TypeError>>(
+                map: &mut HashMap<String, MapEntry>,
+                key: &'key str,
+                reporter: &Reporter,
+            ) -> Result<Option<Spanned<T>>> {
+                let value = match map.remove(key) {
+                    Some(entry) => entry.value,
+                    None => return Ok(None),
+                };
+
+                let span = value.span;
+                let value: T = value
+                    .kind
+                    .try_into()
+                    .map_err(|error| type_error(key, span, error).report(reporter))?;
+
+                Ok(Some(Spanned::new(span, value)))
+            }
+
+            let name = __remove(&mut map, "name", reporter);
+            let version = __remove_optional(&mut map, "version", reporter);
+            let description = __remove_optional(&mut map, "description", reporter);
+            let is_private = __remove_optional(&mut map, "private", reporter);
+
+            if !map.is_empty() {
+                for (key, entry) in map {
+                    // @Task improve message
                     Diagnostic::error()
-                        .message("cannot find a valid package manifest")
-                        .note(format!("path: {manifest_path:?}"))
-                        .note(format!("reason: {error}"))
+                        .code(Code::E801)
+                        .message(format!("unknown key `{key}` in map ???"))
+                        .primary_span(entry.key)
                         .report(reporter);
-                    return Err(());
                 }
+
+                return Err(());
+            }
+
+            let (name, version, description, is_private) =
+                (name?, version?, description?, is_private?);
+
+            // @Task don't bail out early on type errors & unknown keys!
+            let manifest = PackageManifest {
+                details: PackageManifestDetails {
+                    name,
+                    version: version.map(|version| version.map(Version)),
+                    description,
+                    is_private,
+                },
+                crates: PackageManifestCrates {
+                    library: None,                    // @Task
+                    binary: None,                     // @Task
+                    dependencies: HashMap::default(), // @Task
+                },
             };
 
-            // @Temporary error message
-            json5::from_str(&manifest).map_err(|error| {
-                Diagnostic::error()
-                    .message("package manifest has an invalid format")
-                    .note(format!("reason: {error}"))
-                    .report(reporter)
-            })
+            Ok(manifest)
         }
     }
 
-    #[derive(Deserialize)]
+    // @Beacon @Task make this a newtype and enforce that it's a valid
+    // alphanumeric identifier
+    pub type CrateName = String;
+
     pub struct PackageManifestDetails {
-        // @Task newtype
-        pub name: String,
-        pub version: Option<Version>,
-        pub description: Option<String>,
-        #[serde(default, rename = "private")]
-        pub is_private: bool,
+        pub name: Spanned<CrateName>,
+        pub version: Option<Spanned<Version>>,
+        pub description: Option<Spanned<String>>,
+        pub is_private: Option<Spanned<bool>>,
     }
 
-    #[derive(Deserialize)]
     pub struct PackageManifestCrates {
-        pub library: Option<LibraryManifest>,
+        pub library: Option<Spanned<LibraryManifest>>,
         // @Task Vec<_>
-        pub binary: Option<BinaryManifest>,
-        #[serde(default)]
-        pub dependencies: HashMap<String, DependencyManifest>,
+        pub binary: Option<Spanned<BinaryManifest>>,
+        pub dependencies: HashMap<Spanned<CrateName>, Spanned<DependencyManifest>>,
     }
 
-    #[derive(Deserialize, Default)]
+    #[derive(Default)]
     pub struct LibraryManifest {
-        // @Task pub name: Option<String>,
-        pub path: Option<PathBuf>,
+        // @Task pub name: Option<Spanned<CrateName>>,
+        pub path: Option<Spanned<PathBuf>>,
     }
 
-    #[derive(Deserialize, Default)]
+    #[derive(Default)]
     pub struct BinaryManifest {
-        // @Task pub name: Option<String>,
-        pub path: Option<PathBuf>,
+        // @Task pub name: Option<Spanned<CrateName>>,
+        pub path: Option<Spanned<PathBuf>>,
     }
 
-    #[derive(Deserialize)]
+    // @Beacon @Temporary clone
+    #[derive(Clone)]
     pub struct DependencyManifest {
-        pub version: Option<VersionRequirement>,
-        pub name: Option<String>,
-        pub path: Option<String>,
+        pub version: Option<Spanned<VersionRequirement>>,
+        pub name: Option<Spanned<CrateName>>,
+        pub path: Option<Spanned<PathBuf>>,
         // pub url: Option<String>,
         // pub branch: Option<String>,
         // pub tag: Option<String>,
@@ -630,12 +766,10 @@ pub mod manifest {
     }
 
     // @Temporary
-    #[derive(Deserialize, Debug)]
-    #[serde(transparent)]
+    #[derive(Debug)]
     pub struct Version(pub String);
 
     // @Temporary
-    #[derive(Deserialize)]
-    #[serde(transparent)]
+    #[derive(Clone)]
     pub struct VersionRequirement(pub String);
 }

@@ -1,13 +1,15 @@
 #![feature(backtrace, format_args_capture, derive_default_enum, decl_macro)]
 #![forbid(rust_2018_idioms, unused_must_use)]
 
+use std::convert::TryInto;
+
 use cli::{Command, PhaseRestriction};
 use lushui::{
     diagnostics::{
         reporter::{BufferedStderrReporter, StderrReporter},
         Diagnostic, Reporter,
     },
-    error::{outcome, Outcome, Result},
+    error::{outcome, Result},
     format::DisplayWith,
     lexer::Lexer,
     lowerer::Lowerer,
@@ -44,11 +46,7 @@ fn main_() -> Result<(), ()> {
 
     let result = execute_command(command, options, &map, &reporter);
 
-    let reporter = match reporter {
-        Reporter::BufferedStderr(reporter) => reporter,
-        _ => unreachable!(),
-    };
-
+    let reporter: BufferedStderrReporter = reporter.try_into().unwrap();
     let number_of_errors_reported = reporter.release_buffer();
 
     if number_of_errors_reported > 0 || result.is_err() {
@@ -93,13 +91,13 @@ fn check_run_or_build_package(
     map: &SharedSourceMap,
     reporter: &Reporter,
 ) -> Result {
-    let mut build_queue = BuildQueue::default();
+    let mut build_queue = BuildQueue::new(map.clone(), reporter);
 
     match options.source_file_path {
         Some(source_file_path) => {
             // @Question before building core, should we check the existence of source_file_path?
 
-            build_queue.process_single_file_package(source_file_path, options.unlink_core, reporter)
+            build_queue.process_single_file_package(source_file_path, options.unlink_core)
         }
         None => {
             if options.unlink_core {
@@ -113,24 +111,11 @@ fn check_run_or_build_package(
 
             // @Task dont unwrap, handle the error cases
             let package_path = std::env::current_dir().unwrap();
-            build_queue.process_package(package_path, reporter)
+            build_queue.process_package(package_path)
         }
     }?;
 
     let (unbuilt_crates, mut built_crates) = build_queue.into_unbuilt_and_built();
-
-    // // @Temporary
-    // unbuilt_crates.iter().for_each(|crate_| {
-    //     eprintln!(
-    //         "crate to build: {} ({:?}/{:?}) {} | {:?} || {:?}",
-    //         built_crates[crate_.package].name,
-    //         crate_.package,
-    //         crate_.index,
-    //         crate_.type_,
-    //         crate_.path,
-    //         built_crates[crate_.package].path,
-    //     )
-    // });
 
     let goal_crate = unbuilt_crates.last().unwrap().index;
 
@@ -149,8 +134,8 @@ fn check_run_or_build_package(
             .load(crate_.path.clone())
             .map_err(|error| Diagnostic::from(error).report(&reporter))?;
 
-        let outcome!(tokens, health) =
-            Lexer::new(map.borrow().get(source_file), &reporter).lex()?;
+        let outcome!(tokens, lexer_health) =
+            Lexer::new(&map.borrow()[source_file], &reporter).lex()?;
 
         {
             if options.dump.tokens {
@@ -159,7 +144,7 @@ fn check_run_or_build_package(
                 }
             }
             if applies!(PhaseRestriction::Lexer) {
-                if health.is_tainted() {
+                if lexer_health.is_tainted() {
                     return Err(());
                 }
                 return Ok(());
@@ -170,9 +155,9 @@ fn check_run_or_build_package(
             // @Beacon @Note yikes!! we just unwrapped that from a string!
             Identifier::new(built_crates[crate_.package].name.clone().into(), Span::SHAM),
         )?;
-        if health.is_tainted() {
-            return Err(());
-        }
+
+        assert!(lexer_health.is_untainted()); // parsing succeeded
+
         {
             if options.dump.ast {
                 eprintln!("{declaration:#?}");
@@ -182,10 +167,8 @@ fn check_run_or_build_package(
             }
         }
 
-        let Outcome {
-            value: mut declarations,
-            health,
-        } = Lowerer::new(map.clone(), &reporter).lower_declaration(declaration);
+        let outcome!(mut declarations, health) =
+            Lowerer::new(map.clone(), &reporter).lower_declaration(declaration);
 
         if health.is_tainted() {
             return Err(());

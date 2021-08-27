@@ -1,5 +1,5 @@
 [package]
-name = "index_map_derive"
+name = "discriminant_derive"
 version = "0.0.0"
 edition = "2018"
 publish = false

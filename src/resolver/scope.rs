@@ -23,7 +23,7 @@ use crate::{
     format::{
         pluralize, unordered_listing, AsAutoColoredChangeset, Conjunction, DisplayWith, QuoteExt,
     },
-    package::{CrateIndex, CrateType, PackageIndex, Session},
+    package::{BuildSession, CrateIndex, CrateType, PackageIndex},
     parser::ast::HangerKind,
     span::{Span, Spanned, Spanning},
     typer::interpreter::{ffi, scope::Registration},
@@ -88,7 +88,7 @@ impl CrateScope {
         }
     }
 
-    fn dependency(&self, name: &str, session: &Session) -> Option<CrateIndex> {
+    fn dependency(&self, name: &str, session: &BuildSession) -> Option<CrateIndex> {
         let package = &session[self.package];
         let dependency = package.dependencies.get(name).copied();
 
@@ -140,7 +140,7 @@ impl CrateScope {
     }
 
     // @Note bad naming, better naming scheme: get <-> entity
-    pub fn entity<'a>(&'a self, index: DeclarationIndex, session: &'a Session) -> &'a Entity {
+    pub fn entity<'a>(&'a self, index: DeclarationIndex, session: &'a BuildSession) -> &'a Entity {
         match self.local_index(index) {
             Some(index) => self.get(index),
             None => session.entity(index),
@@ -175,7 +175,7 @@ impl CrateScope {
     }
 
     /// Build a textual representation of the absolute path of a binding.
-    pub fn absolute_path(&self, index: DeclarationIndex, session: &Session) -> String {
+    pub fn absolute_path(&self, index: DeclarationIndex, session: &BuildSession) -> String {
         self.absolute_path_with_root(index, HangerKind::Crate.name().to_owned(), session)
     }
 
@@ -183,7 +183,7 @@ impl CrateScope {
         &self,
         index: DeclarationIndex,
         root: String,
-        session: &Session,
+        session: &BuildSession,
     ) -> String {
         use crate::lexer::token::is_punctuation;
 
@@ -306,7 +306,7 @@ impl CrateScope {
         &self,
         path: &Path,
         namespace: DeclarationIndex,
-        session: &Session,
+        session: &BuildSession,
         reporter: &Reporter,
     ) -> Result<Target::Output, ResolutionError> {
         self.resolve_path_with_origin::<Target>(
@@ -325,7 +325,7 @@ impl CrateScope {
         &self,
         path: &Path,
         namespace: DeclarationIndex,
-        session: &Session,
+        session: &BuildSession,
         reporter: &Reporter,
     ) -> Result<Target::Output, ResolutionError> {
         self.resolve_path_with_origin::<Target>(
@@ -348,7 +348,7 @@ impl CrateScope {
         origin_namespace: DeclarationIndex,
         usage: IdentifierUsage,
         check_exposure: CheckExposure,
-        session: &Session,
+        session: &BuildSession,
         reporter: &Reporter,
     ) -> Result<Target::Output, ResolutionError> {
         if let Some(hanger) = &path.hanger {
@@ -494,7 +494,7 @@ impl CrateScope {
         origin_namespace: DeclarationIndex,
         usage: IdentifierUsage,
         check_exposure: CheckExposure,
-        session: &Session,
+        session: &BuildSession,
         reporter: &Reporter,
     ) -> Result<DeclarationIndex, ResolutionError> {
         let entity = self.entity(namespace, session);
@@ -526,7 +526,7 @@ impl CrateScope {
         index: DeclarationIndex,
         identifier: &ast::Identifier,
         origin_namespace: DeclarationIndex,
-        session: &Session,
+        session: &BuildSession,
         reporter: &Reporter,
     ) -> Result<(), ResolutionError> {
         let entity = self.entity(index, session);
@@ -579,7 +579,7 @@ impl CrateScope {
 
     pub(super) fn resolve_exposure_reaches(
         &mut self,
-        session: &Session,
+        session: &BuildSession,
         reporter: &Reporter,
     ) -> Result {
         let mut health = Health::Untainted;
@@ -650,7 +650,7 @@ expected the exposure of `{}`
         queried_identifier: &str,
         predicate: impl Fn(&Entity) -> bool,
         namespace: DeclarationIndex,
-        session: &'a Session,
+        session: &'a BuildSession,
     ) -> Option<&'a str> {
         self.entity(namespace, session)
             .namespace()
@@ -669,7 +669,7 @@ expected the exposure of `{}`
     fn collapse_use_chain(
         &self,
         index: DeclarationIndex,
-        session: &Session,
+        session: &BuildSession,
     ) -> Result<DeclarationIndex, ResolutionError> {
         use EntityKind::*;
 
@@ -704,7 +704,7 @@ expected the exposure of `{}`
         &self,
         identifier: &ast::Identifier,
         namespace: LocalDeclarationIndex,
-        session: &Session,
+        session: &BuildSession,
     ) -> Target::Output {
         let index = self
             .get(namespace)
@@ -732,7 +732,7 @@ expected the exposure of `{}`
     /// use-bindings are actually circular and are thus reported.
     // @Task update docs in regards to number of phases
     // @Task update docs regarding errors
-    pub(super) fn resolve_use_bindings(&mut self, session: &Session, reporter: &Reporter) {
+    pub(super) fn resolve_use_bindings(&mut self, session: &BuildSession, reporter: &Reporter) {
         use ResolutionError::*;
 
         while !self.partially_resolved_use_bindings.is_empty() {
@@ -868,9 +868,9 @@ impl fmt::Debug for CrateScope {
 
 // @Note it would be better if we had `DebugWith`
 impl DisplayWith for CrateScope {
-    type Context<'a> = &'a Session;
+    type Context<'a> = &'a BuildSession;
 
-    fn format(&self, session: &Session, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn format(&self, session: &BuildSession, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
             "{} {} ({:?}) {:?}",
@@ -935,7 +935,7 @@ impl fmt::Debug for Exposure {
 }
 
 impl DisplayWith for Exposure {
-    type Context<'a> = (&'a CrateScope, &'a Session);
+    type Context<'a> = (&'a CrateScope, &'a BuildSession);
 
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -961,7 +961,7 @@ impl RestrictedExposure {
         exposure: &RefCell<Self>,
         definition_site_namespace: DeclarationIndex,
         scope: &CrateScope,
-        session: &Session,
+        session: &BuildSession,
         reporter: &Reporter,
     ) -> Result<DeclarationIndex> {
         let exposure_ = exposure.borrow();
@@ -1032,7 +1032,7 @@ impl RestrictedExposure {
 }
 
 impl DisplayWith for RestrictedExposure {
-    type Context<'a> = (&'a CrateScope, &'a Session);
+    type Context<'a> = (&'a CrateScope, &'a BuildSession);
 
     fn format(
         &self,
@@ -1361,7 +1361,11 @@ impl<'a> FunctionScope<'a> {
         }
     }
 
-    pub fn absolute_path(binder: &Identifier, scope: &CrateScope, session: &Session) -> String {
+    pub fn absolute_path(
+        binder: &Identifier,
+        scope: &CrateScope,
+        session: &BuildSession,
+    ) -> String {
         match binder.index {
             Index::Declaration(index) => scope.absolute_path(index, session),
             Index::DeBruijn(_) | Index::DeBruijnParameter => binder.as_str().into(),
@@ -1373,7 +1377,7 @@ impl<'a> FunctionScope<'a> {
         &self,
         query: &Path,
         scope: &CrateScope,
-        session: &Session,
+        session: &BuildSession,
         reporter: &Reporter,
     ) -> Result<Identifier> {
         self.resolve_binding_with_depth(query, scope, 0, self, session, reporter)
@@ -1392,7 +1396,7 @@ impl<'a> FunctionScope<'a> {
         scope: &CrateScope,
         depth: usize,
         origin: &Self,
-        session: &Session,
+        session: &BuildSession,
         reporter: &Reporter,
     ) -> Result<Identifier> {
         use FunctionScope::*;
@@ -1504,7 +1508,7 @@ impl<'a> FunctionScope<'a> {
         &'b self,
         identifier: &str,
         scope: &'b CrateScope,
-        session: &'b Session,
+        session: &'b BuildSession,
     ) -> Option<&'b str>
     where
         'a: 'b,
@@ -1585,7 +1589,7 @@ fn value_used_as_a_namespace(
     subbinder: &ast::Identifier,
     parent: DeclarationIndex,
     scope: &CrateScope,
-    session: &Session,
+    session: &BuildSession,
 ) -> Diagnostic {
     // @Question should we also include lookalike namespaces that don't contain the
     // subbinding (displaying them in a separate help message?)?
@@ -1661,7 +1665,7 @@ enum ResolutionError {
 }
 
 impl ResolutionError {
-    fn report(self, scope: &CrateScope, session: &Session, reporter: &Reporter) {
+    fn report(self, scope: &CrateScope, session: &BuildSession, reporter: &Reporter) {
         self.emit_finding_lookalike(
             |identifier, namespace| {
                 scope.find_similarly_named(identifier, |_| true, namespace, session)
@@ -1676,7 +1680,7 @@ impl ResolutionError {
         self,
         find_lookalike: impl FnOnce(&str, DeclarationIndex) -> Option<&'s str>,
         scope: &CrateScope,
-        session: &Session,
+        session: &BuildSession,
         reporter: &Reporter,
     ) {
         match self {

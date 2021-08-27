@@ -8,7 +8,7 @@ use crate::{
     error::{Health, Result},
     format::{pluralize, DisplayWith, QuoteExt},
     lowered_ast::{AttributeKeys, Attributes},
-    package::Session,
+    package::BuildSession,
     parser::ast::Explicitness,
     resolver::{
         hir::{self, expr, Declaration, Expression},
@@ -40,13 +40,17 @@ struct Context {
 // @Task add recursion depth field
 pub struct Typer<'a> {
     pub scope: &'a mut CrateScope,
-    session: &'a Session,
+    session: &'a BuildSession,
     reporter: &'a Reporter,
     health: Health,
 }
 
 impl<'a> Typer<'a> {
-    pub fn new(scope: &'a mut CrateScope, session: &'a Session, reporter: &'a Reporter) -> Self {
+    pub fn new(
+        scope: &'a mut CrateScope,
+        session: &'a BuildSession,
+        reporter: &'a Reporter,
+    ) -> Self {
         Self {
             scope,
             session,
@@ -221,7 +225,7 @@ impl<'a> Typer<'a> {
                                     expected.with((self.scope, self.session)),
                                     actual.with((self.scope, self.session))
                                 ))
-                                .labeled_primary_span(&actual, "has wrong type")
+                                .labeled_primary_span(&actual, "has the wrong type")
                                 .labeled_secondary_span(&expected, "expected due to this")
                                 .report(self.reporter)),
                         };
@@ -360,7 +364,7 @@ impl<'a> Typer<'a> {
                                 ))
                                 .labeled_primary_span(
                                     &$actual_value,
-                                    "has wrong type",
+                                    "has the wrong type",
                                 )
                                 $( .labeled_secondary_span(&$expected_reason, "expected due to this") )?
                                 .report(&$reporter))
@@ -540,7 +544,10 @@ impl<'a> Typer<'a> {
                                         expected.with((self.scope, self.session)),
                                         actual.with((self.scope, self.session))
                                     ))
-                                    .labeled_primary_span(&application.argument, "has wrong type")
+                                    .labeled_primary_span(
+                                        &application.argument,
+                                        "has the wrong type",
+                                    )
                                     .labeled_secondary_span(&expected, "expected due to this")
                                     .report(self.reporter),
                                 _ => unreachable!(),
@@ -626,7 +633,7 @@ impl<'a> Typer<'a> {
                                     expected.with(context),
                                     actual.with(context)
                                 ))
-                                .labeled_primary_span(&case.pattern, "has wrong type")
+                                .labeled_primary_span(&case.pattern, "has the wrong type")
                                 .labeled_secondary_span(&analysis.subject, "expected due to this")
                                 .report(reporter);
                             Unrecoverable

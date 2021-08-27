@@ -6,7 +6,7 @@ use crate::{
     format::AsDebug,
     hir::expr,
     lowered_ast::{Attributes, Number},
-    package::Session,
+    package::BuildSession,
     resolver::{CrateScope, DeBruijnIndex, DeclarationIndex, Identifier, Index},
     span::Span,
 };
@@ -19,16 +19,20 @@ impl CrateScope {
         ffi::register_foreign_bindings(self);
     }
 
-    pub fn lookup_type(&self, index: DeclarationIndex, session: &Session) -> Option<Expression> {
+    pub fn lookup_type(
+        &self,
+        index: DeclarationIndex,
+        session: &BuildSession,
+    ) -> Option<Expression> {
         self.entity(index, session).type_()
     }
 
     /// Look up the value of a binding.
-    pub fn lookup_value(&self, index: DeclarationIndex, session: &Session) -> ValueView {
+    pub fn lookup_value(&self, index: DeclarationIndex, session: &BuildSession) -> ValueView {
         self.entity(index, session).value()
     }
 
-    pub fn is_foreign(&self, index: DeclarationIndex, session: &Session) -> bool {
+    pub fn is_foreign(&self, index: DeclarationIndex, session: &BuildSession) -> bool {
         matches!(self.entity(index, session).kind, EntityKind::Foreign { .. })
     }
 
@@ -47,7 +51,7 @@ impl CrateScope {
         &self,
         binder: Identifier,
         arguments: Vec<Expression>,
-        session: &Session,
+        session: &BuildSession,
         reporter: &Reporter,
     ) -> Result<Option<Expression>> {
         match self
@@ -215,7 +219,7 @@ impl CrateScope {
         &self,
         binder: &'static str,
         expression_span: Option<Span>,
-        session: &Session,
+        session: &BuildSession,
         reporter: &Reporter,
     ) -> Result<Expression> {
         if let Some(binder) = session.foreign_type(binder) {
@@ -243,7 +247,7 @@ impl CrateScope {
         &self,
         number: &Number,
         expression_span: Option<Span>,
-        session: &Session,
+        session: &BuildSession,
         reporter: &Reporter,
     ) -> Result<Expression> {
         self.lookup_foreign_type(
@@ -342,7 +346,7 @@ pub enum Registration {
 use std::fmt;
 
 impl crate::format::DisplayWith for Registration {
-    type Context<'a> = (&'a CrateScope, &'a Session);
+    type Context<'a> = (&'a CrateScope, &'a BuildSession);
 
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Registration::*;
@@ -431,7 +435,7 @@ impl<'a> FunctionScope<'a> {
         &self,
         binder: &Identifier,
         scope: &CrateScope,
-        session: &Session,
+        session: &BuildSession,
     ) -> Option<Expression> {
         use Index::*;
 
@@ -485,7 +489,7 @@ impl<'a> FunctionScope<'a> {
         &self,
         binder: &Identifier,
         scope: &CrateScope,
-        session: &Session,
+        session: &BuildSession,
     ) -> ValueView {
         use Index::*;
 
@@ -496,7 +500,12 @@ impl<'a> FunctionScope<'a> {
         }
     }
 
-    pub fn is_foreign(&self, binder: &Identifier, scope: &CrateScope, session: &Session) -> bool {
+    pub fn is_foreign(
+        &self,
+        binder: &Identifier,
+        scope: &CrateScope,
+        session: &BuildSession,
+    ) -> bool {
         use Index::*;
 
         match binder.index {
