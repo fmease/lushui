@@ -3,13 +3,14 @@ use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     entity::EntityKind,
     error::Result,
-    format::AsDebug,
+    format::{AsDebug, DisplayWith},
     hir::expr,
     lowered_ast::{Attributes, Number},
     package::BuildSession,
-    resolver::{CrateScope, DeBruijnIndex, DeclarationIndex, Identifier, Index},
+    resolver::{CrateScope, DeBruijnIndex, Identifier},
     span::Span,
 };
+use std::fmt;
 
 /// Many methods of module scope panic instead of returning a `Result` because
 /// the invariants are expected to be checked beforehand by using the predicate
@@ -19,67 +20,7 @@ impl CrateScope {
         ffi::register_foreign_bindings(self);
     }
 
-    pub fn lookup_type(
-        &self,
-        index: DeclarationIndex,
-        session: &BuildSession,
-    ) -> Option<Expression> {
-        self.entity(index, session).type_()
-    }
-
-    /// Look up the value of a binding.
-    pub fn lookup_value(&self, index: DeclarationIndex, session: &BuildSession) -> ValueView {
-        self.entity(index, session).value()
-    }
-
-    pub fn is_foreign(&self, index: DeclarationIndex, session: &BuildSession) -> bool {
-        matches!(self.entity(index, session).kind, EntityKind::Foreign { .. })
-    }
-
-    /// Try applying foreign binding.
-    ///
-    /// ## Panics
-    ///
-    /// Panics if `binder` is either not bound or not foreign.
-    // @Task correctly handle
-    // * pure vs impure
-    // * polymorphism
-    // * illegal neutrals
-    // * types (arguments of type `Type`): skip them
-    // @Note: we need to convert to be able to convert to ffi::Value
-    pub fn apply_foreign_binding(
-        &self,
-        binder: Identifier,
-        arguments: Vec<Expression>,
-        session: &BuildSession,
-        reporter: &Reporter,
-    ) -> Result<Option<Expression>> {
-        match self
-            .entity(binder.declaration_index().unwrap(), session)
-            .kind
-        {
-            EntityKind::Foreign {
-                arity, function, ..
-            } => Ok(if arguments.len() == arity {
-                let mut value_arguments = Vec::new();
-
-                // @Task tidy up with iterator combinators
-                for argument in arguments {
-                    if let Some(argument) = ffi::Value::from_expression(&argument, &self.ffi) {
-                        value_arguments.push(argument);
-                    } else {
-                        return Ok(None);
-                    }
-                }
-
-                Some(function(value_arguments).into_expression(self, session, reporter)?)
-            } else {
-                None
-            }),
-            _ => unreachable!(),
-        }
-    }
-
+    // @Bug does not understand non-local binders
     pub fn carry_out(&mut self, registration: Registration, reporter: &Reporter) -> Result {
         use Registration::*;
 
@@ -90,8 +31,9 @@ impl CrateScope {
                 value,
             } => {
                 let index = binder.declaration_index().unwrap();
-                let index = self.__temporary_local_index(index);
-                let entity = self.get_mut(index);
+                // @Bug unwrap None reachable
+                let index = self.local_index(index).unwrap();
+                let entity = &mut self[index];
                 debug_assert!(entity.is_untyped_value() || entity.is_value_without_value());
 
                 entity.kind = EntityKind::Value {
@@ -101,8 +43,9 @@ impl CrateScope {
             }
             DataBinding { binder, type_ } => {
                 let index = binder.declaration_index().unwrap();
-                let index = self.__temporary_local_index(index);
-                let entity = self.get_mut(index);
+                // @Bug unwrap None reachable
+                let index = self.local_index(index).unwrap();
+                let entity = &mut self[index];
                 debug_assert!(entity.is_untyped_value());
 
                 entity.kind = EntityKind::DataType {
@@ -117,8 +60,9 @@ impl CrateScope {
                 data,
             } => {
                 let index = binder.declaration_index().unwrap();
-                let index = self.__temporary_local_index(index);
-                let entity = self.get_mut(index);
+                // @Bug unwrap None reachable
+                let index = self.local_index(index).unwrap();
+                let entity = &mut self[index];
                 debug_assert!(entity.is_untyped_value());
 
                 entity.kind = EntityKind::Constructor {
@@ -126,10 +70,10 @@ impl CrateScope {
                     type_,
                 };
 
-                match self
-                    .get_mut(self.__temporary_local_index(data.declaration_index().unwrap()))
-                    .kind
-                {
+                // @Bug unwrap None reachable
+                let data_index = self.local_index(data.declaration_index().unwrap()).unwrap();
+
+                match self[data_index].kind {
                     EntityKind::DataType {
                         ref mut constructors,
                         ..
@@ -139,11 +83,11 @@ impl CrateScope {
             }
             ForeignValueBinding { binder, type_ } => {
                 let index = binder.declaration_index().unwrap();
-                let index = self.__temporary_local_index(index);
-                debug_assert!(self.get(index).is_untyped_value());
+                // @Bug unwrap None reachable
+                let index = self.local_index(index).unwrap();
+                debug_assert!(self[index].is_untyped_value());
 
-                self.get_mut(index).kind = match &self.ffi.foreign_bindings.remove(binder.as_str())
-                {
+                self[index].kind = match &self.ffi.foreign_bindings.remove(binder.as_str()) {
                     Some(ffi::ForeignFunction { arity, function }) => EntityKind::Foreign {
                         type_,
                         arity: *arity,
@@ -215,7 +159,7 @@ impl CrateScope {
     // @Task don't take expression as an argument to get access to span information.
     // rather, return a custom error type, so that the caller can append the label
     // @Temporary signature
-    pub fn lookup_foreign_type(
+    pub fn look_up_foreign_type(
         &self,
         binder: &'static str,
         expression_span: Option<Span>,
@@ -243,14 +187,14 @@ impl CrateScope {
         }
     }
 
-    pub fn lookup_foreign_number_type(
+    pub fn look_up_foreign_number_type(
         &self,
         number: &Number,
         expression_span: Option<Span>,
         session: &BuildSession,
         reporter: &Reporter,
     ) -> Result<Expression> {
-        self.lookup_foreign_type(
+        self.look_up_foreign_type(
             match number {
                 Number::Nat(_) => ffi::Type::NAT,
                 Number::Nat32(_) => ffi::Type::NAT32,
@@ -265,7 +209,7 @@ impl CrateScope {
         )
     }
 
-    pub fn lookup_unit_type(
+    pub fn look_up_unit_type(
         &self,
         expression_span: Option<Span>,
         reporter: &Reporter,
@@ -279,7 +223,7 @@ impl CrateScope {
             .to_expression())
     }
 
-    pub fn lookup_bool_type(
+    pub fn look_up_bool_type(
         &self,
         expression_span: Option<Span>,
         reporter: &Reporter,
@@ -293,7 +237,7 @@ impl CrateScope {
             .to_expression())
     }
 
-    pub fn lookup_option_type(
+    pub fn look_up_option_type(
         &self,
         expression_span: Option<Span>,
         reporter: &Reporter,
@@ -343,9 +287,7 @@ pub enum Registration {
     },
 }
 
-use std::fmt;
-
-impl crate::format::DisplayWith for Registration {
+impl DisplayWith for Registration {
     type Context<'a> = (&'a CrateScope, &'a BuildSession);
 
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -431,22 +373,11 @@ impl<'a> FunctionScope<'a> {
         }
     }
 
-    pub fn lookup_type(
-        &self,
-        binder: &Identifier,
-        scope: &CrateScope,
-        session: &BuildSession,
-    ) -> Option<Expression> {
-        use Index::*;
-
-        match binder.index {
-            Declaration(index) => scope.lookup_type(index, session),
-            DeBruijn(index) => Some(self.lookup_type_with_depth(index, 0)),
-            DeBruijnParameter => unreachable!(),
-        }
+    pub(super) fn look_up_type(&self, index: DeBruijnIndex) -> Expression {
+        self.look_up_type_with_depth(index, 0)
     }
 
-    fn lookup_type_with_depth(&self, index: DeBruijnIndex, depth: usize) -> Expression {
+    fn look_up_type_with_depth(&self, index: DeBruijnIndex, depth: usize) -> Expression {
         match self {
             Self::FunctionParameter { parent, type_ } => {
                 if depth == index.0 {
@@ -459,7 +390,7 @@ impl<'a> FunctionScope<'a> {
                         }
                     }
                 } else {
-                    parent.lookup_type_with_depth(index, depth + 1)
+                    parent.look_up_type_with_depth(index, depth + 1)
                 }
             }
             Self::PatternBinders { parent, types } => {
@@ -478,40 +409,10 @@ impl<'a> FunctionScope<'a> {
                             expression: type_.clone(),
                         }
                     },
-                    None => parent.lookup_type_with_depth(index, depth + types.len()),
+                    None => parent.look_up_type_with_depth(index, depth + types.len()),
                 }
             }
             Self::CrateScope => unreachable!(),
-        }
-    }
-
-    pub fn lookup_value(
-        &self,
-        binder: &Identifier,
-        scope: &CrateScope,
-        session: &BuildSession,
-    ) -> ValueView {
-        use Index::*;
-
-        match binder.index {
-            Declaration(index) => scope.lookup_value(index, session),
-            DeBruijn(_) => ValueView::Neutral,
-            DeBruijnParameter => unreachable!(),
-        }
-    }
-
-    pub fn is_foreign(
-        &self,
-        binder: &Identifier,
-        scope: &CrateScope,
-        session: &BuildSession,
-    ) -> bool {
-        use Index::*;
-
-        match binder.index {
-            Declaration(index) => scope.is_foreign(index, session),
-            DeBruijn(_) => false,
-            DeBruijnParameter => unreachable!(),
         }
     }
 }

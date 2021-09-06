@@ -19,50 +19,17 @@ use super::Expression;
 use crate::{
     ast::Explicit,
     diagnostics::{Code, Diagnostic, Reporter},
+    entity::Entity,
     error::{PossiblyErroneous, Result},
     format::DisplayWith,
     hir::{self, expr},
     lowered_ast::Attributes,
     package::BuildSession,
-    resolver::CrateScope,
+    resolver::{CrateScope, DeclarationIndex, Identifier},
     span::{Span, Spanning},
 };
 use scope::{FunctionScope, ValueView};
 use std::fmt;
-
-#[derive(Clone, Copy)]
-pub enum Form {
-    Normal,
-    WeakHeadNormal,
-}
-
-/// Evaluation context.
-// @Task a recursion_depth: usize, @Note if we do that,
-// remove Copy and have a custom Clone impl incrementing the value
-#[derive(Clone, Copy)]
-pub struct Context<'a> {
-    pub(crate) scope: &'a FunctionScope<'a>,
-    pub(crate) form: Form,
-}
-
-impl<'a> Context<'a> {
-    /// Temporarily, for convenience and until we fix some bugs, the form
-    /// is [Form::Normal] by default.
-    pub fn new(scope: &'a FunctionScope<'_>) -> Self {
-        // @Temporary: Normal
-        Self {
-            scope,
-            form: Form::Normal,
-            // form: Form::WeakHeadNormal,
-        }
-    }
-}
-
-impl<'a> Context<'a> {
-    pub(crate) fn with_scope(&self, scope: &'a FunctionScope<'_>) -> Self {
-        Self { scope, ..*self }
-    }
-}
 
 // @Task add recursion depth
 pub struct Interpreter<'a> {
@@ -341,10 +308,7 @@ impl<'a> Interpreter<'a> {
         // @Bug we currently don't support zero-arity foreign functions
         Ok(match expression.clone().kind {
             Binding(binding) => {
-                match context
-                    .scope
-                    .lookup_value(&binding.binder, self.scope, self.session)
-                {
+                match self.look_up_value(&binding.binder) {
                     // @Question is this normalization necessary? I mean, yes, we got a new scope,
                     // but the thing in the previous was already normalized (well, it should have been
                     // at least). I guess it is necessary because it can contain parameters which could not
@@ -373,7 +337,7 @@ impl<'a> Interpreter<'a> {
                                     // an Option<_> (that's gonna happen when we finally implement
                                     // the discarding identifier `_`)
                                     parameter: crate::resolver::Identifier::parameter("__"),
-                                    parameter_type_annotation: Some(self.scope.lookup_unit_type(None, self.reporter)?),
+                                    parameter_type_annotation: Some(self.scope.look_up_unit_type(None, self.reporter)?),
                                     body_type_annotation: None,
                                     body: expr! {
                                         Substitution {
@@ -401,12 +365,8 @@ impl<'a> Interpreter<'a> {
                             context,
                         )?
                     }
-                    Binding(binding)
-                        if context
-                            .scope
-                            .is_foreign(&binding.binder, self.scope, self.session) =>
-                    {
-                        self.evaluate_expression(
+                    Binding(binding) if self.is_foreign(&binding.binder) => self
+                        .evaluate_expression(
                             expr! {
                                 ForeignApplication {
                                     expression.attributes,
@@ -416,8 +376,7 @@ impl<'a> Interpreter<'a> {
 
                             }},
                             context,
-                        )?
-                    }
+                        )?,
                     Binding(_) | Application(_) => expr! {
                         Application {
                             expression.attributes,
@@ -608,13 +567,7 @@ impl<'a> Interpreter<'a> {
                     .into_iter()
                     .map(|argument| self.evaluate_expression(argument, context))
                     .collect::<Result<Vec<_>, _>>()?;
-                self.scope
-                    .apply_foreign_binding(
-                        application.callee.clone(),
-                        arguments.clone(),
-                        self.session,
-                        self.reporter,
-                    )?
+                self.apply_foreign_binding(application.callee.clone(), arguments.clone())?
                     .unwrap_or_else(|| {
                         expr! {
                             ForeignApplication {
@@ -628,6 +581,50 @@ impl<'a> Interpreter<'a> {
             }
             Error => PossiblyErroneous::error(),
         })
+    }
+
+    /// Try applying foreign binding.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if `binder` is either not bound or not foreign.
+    // @Task correctly handle
+    // * pure vs impure
+    // * polymorphism
+    // * illegal neutrals
+    // * types (arguments of type `Type`): skip them
+    // @Note: we need to convert to be able to convert to ffi::Value
+    pub fn apply_foreign_binding(
+        &self,
+        binder: Identifier,
+        arguments: Vec<Expression>,
+    ) -> Result<Option<Expression>> {
+        match self.look_up(binder.declaration_index().unwrap()).kind {
+            crate::entity::EntityKind::Foreign {
+                arity, function, ..
+            } => Ok(if arguments.len() == arity {
+                let mut value_arguments = Vec::new();
+
+                // @Task tidy up with iterator combinators
+                for argument in arguments {
+                    if let Some(argument) = ffi::Value::from_expression(&argument, &self.scope.ffi)
+                    {
+                        value_arguments.push(argument);
+                    } else {
+                        return Ok(None);
+                    }
+                }
+
+                Some(function(value_arguments).into_expression(
+                    self.scope,
+                    self.session,
+                    self.reporter,
+                )?)
+            } else {
+                None
+            }),
+            _ => unreachable!(),
+        }
     }
 
     // @Question move into its own module?
@@ -740,6 +737,47 @@ impl<'a> Interpreter<'a> {
             _ => false,
         })
     }
+
+    fn look_up(&self, index: DeclarationIndex) -> &Entity {
+        match self.scope.local_index(index) {
+            Some(index) => &self.scope[index],
+            None => &self.session[index],
+        }
+    }
+
+    pub fn look_up_value(&self, binder: &Identifier) -> ValueView {
+        use crate::resolver::Index;
+
+        match binder.index {
+            Index::Declaration(index) => self.look_up(index).value(),
+            Index::DeBruijn(_) => ValueView::Neutral,
+            Index::DeBruijnParameter => unreachable!(),
+        }
+    }
+
+    pub fn look_up_type(
+        &self,
+        binder: &Identifier,
+        scope: &FunctionScope<'_>,
+    ) -> Option<Expression> {
+        use crate::resolver::Index;
+
+        match binder.index {
+            Index::Declaration(index) => self.look_up(index).type_(),
+            Index::DeBruijn(index) => Some(scope.look_up_type(index)),
+            Index::DeBruijnParameter => unreachable!(),
+        }
+    }
+
+    pub fn is_foreign(&self, binder: &Identifier) -> bool {
+        use crate::resolver::Index;
+
+        match binder.index {
+            Index::Declaration(index) => self.look_up(index).is_foreign(),
+            Index::DeBruijn(_) => false,
+            Index::DeBruijnParameter => unreachable!(),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -784,5 +822,39 @@ impl DisplayWith for Substitution {
                 substitution.with(context)
             ),
         }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum Form {
+    Normal,
+    WeakHeadNormal,
+}
+
+/// Evaluation context.
+// @Task a recursion_depth: usize, @Note if we do that,
+// remove Copy and have a custom Clone impl incrementing the value
+#[derive(Clone, Copy)]
+pub struct Context<'a> {
+    pub(crate) scope: &'a FunctionScope<'a>,
+    pub(crate) form: Form,
+}
+
+impl<'a> Context<'a> {
+    /// Temporarily, for convenience and until we fix some bugs, the form
+    /// is [Form::Normal] by default.
+    pub fn new(scope: &'a FunctionScope<'_>) -> Self {
+        // @Temporary: Normal
+        Self {
+            scope,
+            form: Form::Normal,
+            // form: Form::WeakHeadNormal,
+        }
+    }
+}
+
+impl<'a> Context<'a> {
+    pub(crate) fn with_scope(&self, scope: &'a FunctionScope<'_>) -> Self {
+        Self { scope, ..*self }
     }
 }

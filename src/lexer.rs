@@ -54,7 +54,7 @@ pub fn parse_identifier(source: String) -> Option<Atom> {
 pub fn parse_crate_name(
     file: impl AsRef<Path>,
     reporter: &Reporter,
-) -> Result<crate::ast::Identifier, Diagnostic> {
+) -> Result<crate::ast::Identifier> {
     let file = file.as_ref();
 
     if !crate::util::has_file_extension(file, crate::FILE_EXTENSION) {
@@ -67,10 +67,12 @@ pub fn parse_crate_name(
     let stem = file.file_stem().unwrap();
 
     let atom = (|| parse_identifier(stem.to_str()?.to_owned()))().ok_or_else(|| {
-        Diagnostic::error().message(format!(
-            "`{}` is not a valid crate name",
-            stem.to_string_lossy()
-        ))
+        Diagnostic::error()
+            .message(format!(
+                "`{}` is not a valid crate name",
+                stem.to_string_lossy()
+            ))
+            .report(reporter);
     })?;
 
     Ok(crate::ast::Identifier::new(atom, Span::SHAM))

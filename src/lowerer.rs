@@ -320,12 +320,12 @@ impl<'a> Lowerer<'a> {
                             }
                         };
 
-                        let mut lexer_health = Health::Untainted;
+                        let mut health_of_lexer = Health::Untainted;
 
                         // @Note awkward API
                         let tokens = match Lexer::new(&self.map.borrow()[file], self.reporter).lex()
                         {
-                            Ok(tokens) => tokens.unwrap(&mut lexer_health),
+                            Ok(tokens) => tokens.unwrap(&mut health_of_lexer),
                             Err(()) => return PossiblyErroneous::error(),
                         };
                         // @Note awkward API
@@ -337,7 +337,7 @@ impl<'a> Lowerer<'a> {
                                 return PossiblyErroneous::error();
                             }
                         };
-                        assert!(lexer_health.is_untainted()); // parsing succeeded
+                        assert!(health_of_lexer.is_untainted()); // parsing succeeded
 
                         let module: ast::Module = node.kind.try_into().unwrap();
 
@@ -478,21 +478,15 @@ impl<'a> Lowerer<'a> {
                 'discriminate: {
                     match use_.bindings.kind {
                         Single { target, binder } => {
-                            if let Some(hanger) = target.bare_hanger(HangerKind::Crates) {
-                                // @Task improve this message text
-                                // @Task error code
-                                Diagnostic::error()
-                                    .message(format!("`use` of bare `{hanger}`"))
-                                    .primary_span(hanger)
-                                    .report(&self.reporter);
-                                health.taint();
-                                break 'discriminate;
-                            }
-
                             let binder = binder.or_else(|| target.last_identifier().cloned());
                             let binder = match binder {
                                 Some(binder) => binder,
                                 None => {
+                                    // @Task improve the message for `use crate.(self)`: hint that `self`
+                                    // is effectively unnamed because `crate` is unnamed
+                                    // @Task the message is even worse (it is misleading!) with `use crates.(self)`
+                                    // currently leads to the suggestion to bind `self` to an identifier but
+                                    // for `crates` that is illegal, too
                                     invalid_unnamed_path_hanger(target.hanger.unwrap())
                                         .report(&self.reporter);
                                     health.taint();
@@ -522,11 +516,11 @@ impl<'a> Lowerer<'a> {
                 }
 
                 fn invalid_unnamed_path_hanger(hanger: ast::Hanger) -> Diagnostic {
-                    // @Task improve this message text
                     Diagnostic::error()
                         .code(Code::E025)
-                        .message(format!("`use` of unnamed `{hanger}`"))
+                        .message(format!("path `{hanger}` is not bound to an identifier"))
                         .primary_span(&hanger)
+                        .note("a use-declaration has to introduce at least one new binder")
                         .help("bind the path to a name with `as`")
                 }
 

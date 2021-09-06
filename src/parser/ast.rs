@@ -278,12 +278,9 @@ impl Path {
             if !matches!(hanger.kind, HangerKind::Self_) {
                 return Err(Diagnostic::error()
                     .code(Code::E026)
-                    .message(format!(
-                        "path hanger `{}` not allowed in this position",
-                        hanger
-                    ))
+                    .message(format!("path `{}` not allowed in this position", hanger))
                     .primary_span(&hanger)
-                    .help("consider moving this path to its own separate use-declaration"));
+                    .help("consider moving this path to a separate use-declaration"));
             }
         }
         self.segments.extend(other.segments);
@@ -388,7 +385,7 @@ impl Spanning for Path {
             self.segments
                 .first()
                 .unwrap()
-                .span
+                .span()
                 .merge(self.segments.last().unwrap())
         }
     }
@@ -590,29 +587,32 @@ impl TryFrom<TokenKind> for HangerKind {
 
 #[derive(Debug)] // @Temporary
 #[derive(Clone, Eq)]
-pub struct Identifier {
-    atom: Atom,
-    pub span: Span,
-}
+pub struct Identifier(Spanned<Atom>);
 
 impl Identifier {
     pub const fn new(atom: Atom, span: Span) -> Self {
-        Self { atom, span }
+        Self(Spanned::new(span, atom))
     }
 
-    pub fn is_punctuation(&self) -> bool {
-        crate::lexer::token::is_punctuation(self.atom.chars().next().unwrap())
+    fn atom(&self) -> &Atom {
+        &self.0.kind
     }
 
     pub fn as_str(&self) -> &str {
-        &self.atom
+        self.atom()
+    }
+
+    pub fn as_spanned_str(&self) -> Spanned<&str> {
+        self.0.as_ref().map(|atom| &**atom)
     }
 
     pub fn stripped(self) -> Self {
-        Self {
-            span: Span::SHAM,
-            ..self
-        }
+        Self::new(self.0.kind, Span::SHAM)
+    }
+
+    pub fn is_punctuation(&self) -> bool {
+        // either all characters are punctuation or none
+        crate::lexer::token::is_punctuation(self.atom().chars().next().unwrap())
     }
 }
 
@@ -620,36 +620,36 @@ impl TryFrom<Token> for Identifier {
     type Error = ();
 
     fn try_from(token: Token) -> Result<Self, Self::Error> {
-        Ok(Self {
-            span: token.span,
-            atom: token.into_identifier().ok_or(())?,
-        })
+        Ok(Self(Spanned::new(
+            token.span,
+            token.into_identifier().ok_or(())?,
+        )))
     }
 }
 
 impl From<Identifier> for Expression {
     fn from(identifier: Identifier) -> Self {
         expr! {
-            Path(Attributes::new(), identifier.span; Path::from(identifier))
+            Path(Attributes::new(), identifier.span(); Path::from(identifier))
         }
     }
 }
 
 impl Spanning for Identifier {
     fn span(&self) -> Span {
-        self.span
+        self.0.span
     }
 }
 
 impl PartialEq for Identifier {
     fn eq(&self, other: &Self) -> bool {
-        self.atom == other.atom
+        self.atom() == other.atom()
     }
 }
 
 impl std::hash::Hash for Identifier {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.atom.hash(state);
+        self.atom().hash(state);
     }
 }
 

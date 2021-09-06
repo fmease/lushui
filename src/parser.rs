@@ -433,7 +433,7 @@ impl<'a> Parser<'a> {
         binder: ast::Identifier,
         attributes: Attributes,
     ) -> Result<Declaration> {
-        let mut span = binder.span;
+        let mut span = binder.span();
 
         let parameters = span.merging(self.parse_parameters(&STANDARD_DECLARATION_DELIMITERS)?);
         let type_annotation = span.merging(self.parse_optional_type_annotation()?);
@@ -812,7 +812,7 @@ impl<'a> Parser<'a> {
         let attributes = self.parse_attributes(SkipLineBreaks::Yes)?;
 
         let binder = self.consume_identifier()?;
-        let mut span = binder.span;
+        let mut span = binder.span();
 
         let parameters = span.merging(self.parse_parameters(&STANDARD_DECLARATION_DELIMITERS)?);
 

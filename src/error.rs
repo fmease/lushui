@@ -1,6 +1,9 @@
 //! Different error handling mechanisms.
 
-use crate::util::SmallVec;
+use crate::{
+    diagnostics::{Diagnostic, Reporter},
+    util::SmallVec,
+};
 
 pub type Result<T = (), E = ()> = std::result::Result<T, E>;
 
@@ -174,4 +177,21 @@ impl<T> PossiblyErroneous for Vec<T> {
 // as it allows us to call try_in on functions that merely check (Result<(), Error>)
 impl PossiblyErroneous for () {
     fn error() -> Self {}
+}
+
+pub trait ReportedExt {
+    type Output;
+
+    fn reported(self, reporter: &Reporter) -> Self::Output;
+}
+
+impl<T, E> ReportedExt for Result<T, E>
+where
+    Diagnostic: From<E>,
+{
+    type Output = Result<T>;
+
+    fn reported(self, reporter: &Reporter) -> Self::Output {
+        self.map_err(|error| Diagnostic::from(error).report(reporter))
+    }
 }

@@ -36,3 +36,13 @@ impl<T> GetFromEndExt for [T] {
         Some(unsafe { self.get_unchecked(index) })
     }
 }
+
+pub(crate) macro try_all($( $ident:ident ),* $(,)?) {
+    let ($( $ident ),*) = ($( $ident? ),*);
+}
+
+pub(crate) macro unrc($compound:ident.$projection:ident) {
+    ::std::rc::Rc::try_unwrap($compound)
+        .map(|compound| compound.$projection)
+        .unwrap_or_else(|compound| compound.$projection.clone())
+}

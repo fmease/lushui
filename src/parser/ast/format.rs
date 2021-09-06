@@ -1,7 +1,7 @@
 //! The definition of the textual representation(s) of the [AST](crate::ast).
 
 use crate::{
-    span::{SourceFileIndex, Span, Spanned},
+    span::{SourceFileIndex, Span, Spanned, Spanning},
     util::SmallVec,
 };
 use colored::{Color, Colorize};
@@ -673,12 +673,12 @@ impl Format for super::Deapplication {
 
 impl Format for Identifier {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
-        self.span.format(f, indentation)?;
+        self.span().format(f, indentation)?;
         write!(f, " ")?;
         FormatStruct::new(f, indentation)
             .name("Identifier")
             .finish()?;
-        write!(f, " {}", self.atom.to_string().color(VERBATIM_COLOR))
+        write!(f, " {}", self.as_str().color(VERBATIM_COLOR))
     }
 }
 
@@ -687,7 +687,7 @@ impl fmt::Display for Identifier {
         write!(
             f,
             "{:width$}",
-            self.atom,
+            self.as_str(),
             width = f.width().unwrap_or_default()
         )
     }

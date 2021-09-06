@@ -24,18 +24,6 @@ use interpreter::{
 use joinery::JoinableIterator;
 use std::default::default;
 
-pub(crate) fn missing_annotation() -> Diagnostic {
-    // @Task add span
-    Diagnostic::bug()
-        .code(Code::E030)
-        .message("currently lambda literal parameters and patterns must be type-annotated")
-}
-
-#[derive(Default)]
-struct Context {
-    parent_data_binding: Option<Identifier>,
-}
-
 /// The state of the typer.
 // @Task add recursion depth field
 pub struct Typer<'a> {
@@ -429,17 +417,18 @@ impl<'a> Typer<'a> {
         use interpreter::Substitution::*;
 
         Ok(match expression.kind {
-            Binding(binding) => scope
-                .lookup_type(&binding.binder, self.scope, self.session)
+            Binding(binding) => self
+                .interpreter()
+                .look_up_type(&binding.binder, scope)
                 .ok_or(OutOfOrderBinding)?,
             Type => expr! { Type { Attributes::default(), Span::SHAM } },
-            Number(number) => self.scope.lookup_foreign_number_type(
+            Number(number) => self.scope.look_up_foreign_number_type(
                 &number,
                 Some(expression.span),
                 self.session,
                 self.reporter,
             )?,
-            Text(_) => self.scope.lookup_foreign_type(
+            Text(_) => self.scope.look_up_foreign_type(
                 ffi::Type::TEXT,
                 Some(expression.span),
                 self.session,
@@ -524,7 +513,7 @@ impl<'a> Typer<'a> {
                                     explicitness: Explicitness::Explicit,
                                     aspect: default(),
                                     parameter: None,
-                                    domain: self.scope.lookup_unit_type(Some(application.callee.span), self.reporter)?,
+                                    domain: self.scope.look_up_unit_type(Some(application.callee.span), self.reporter)?,
                                     codomain: argument_type,
                                 }
                             }
@@ -536,7 +525,7 @@ impl<'a> Typer<'a> {
                             // @Bug this error handling might *steal* the error from other handlers further
                             // down the call chain
                             .map_err(|error| match error {
-                                Unrecoverable => (),
+                                Unrecoverable => {}
                                 TypeMismatch { expected, actual } => Diagnostic::error()
                                     .code(Code::E032)
                                     .message(format!(
@@ -648,7 +637,7 @@ impl<'a> Typer<'a> {
                     // not sure
                     match &case.pattern.kind {
                         Number(number) => {
-                            let number_type = self.scope.lookup_foreign_number_type(
+                            let number_type = self.scope.look_up_foreign_number_type(
                                 number,
                                 Some(case.pattern.span),
                                 self.session,
@@ -664,7 +653,7 @@ impl<'a> Typer<'a> {
                                 })?;
                         }
                         Text(_) => {
-                            let text_type = self.scope.lookup_foreign_type(
+                            let text_type = self.scope.look_up_foreign_type(
                                 ffi::Type::TEXT,
                                 Some(case.pattern.span),
                                 self.session,
@@ -680,8 +669,9 @@ impl<'a> Typer<'a> {
                                 })?;
                         }
                         Binding(binding) => {
-                            let constructor_type = scope
-                                .lookup_type(&binding.binder, self.scope, self.session)
+                            let constructor_type = self
+                                .interpreter()
+                                .look_up_type(&binding.binder, scope)
                                 .unwrap();
 
                             self.it_is_actual(
@@ -711,9 +701,11 @@ impl<'a> Typer<'a> {
                                 // or can we defer this to an it_is_actual call??
                                 (Number(_) | Text(_), _argument) => todo!(),
                                 (Binding(binding), _argument) => {
-                                    let constructor_type = scope
-                                        .lookup_type(&binding.binder, self.scope, self.session)
+                                    let constructor_type = self
+                                        .interpreter()
+                                        .look_up_type(&binding.binder, scope)
                                         .unwrap();
+
                                     dbg!(
                                         &subject_type.with((self.scope, self.session)),
                                         deapplication.callee.with((self.scope, self.session)),
@@ -763,7 +755,7 @@ impl<'a> Typer<'a> {
             // @Beacon @Task
             ForeignApplication(_) => todo!(),
             Projection(_) => todo!(),
-            IO(_) => self.scope.lookup_foreign_type(
+            IO(_) => self.scope.look_up_foreign_type(
                 ffi::Type::IO,
                 Some(expression.span),
                 self.session,
@@ -928,6 +920,18 @@ impl<'a> Typer<'a> {
             Ok(())
         }
     }
+}
+
+#[derive(Default)]
+struct Context {
+    parent_data_binding: Option<Identifier>,
+}
+
+pub(crate) fn missing_annotation() -> Diagnostic {
+    // @Task add span
+    Diagnostic::bug()
+        .code(Code::E030)
+        .message("currently lambda literal parameters and patterns must be type-annotated")
 }
 
 // @Note maybe we should redesign this as a trait (object) looking at those

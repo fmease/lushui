@@ -9,7 +9,7 @@ publish = false
 [dependencies]
 colored = "2.0.0"
 string_cache = { version = "0.8.0", default-features = false }
-num-bigint = "0.3.0"
+num-bigint = "0.4.0"
 num-traits = "0.2.11"
 smallvec = { version = "1.4.2", features = ["const_generics"] } 
 bitflags = "1.2.1"

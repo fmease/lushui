@@ -17,17 +17,15 @@
 
 use crate::{
     ast::{self, Path},
-    diagnostics::{Code, Diagnostic, Reporter},
+    diagnostics::{Code, Diagnostic},
     entity::{Entity, EntityKind},
     error::{Health, Result},
-    format::{
-        pluralize, unordered_listing, AsAutoColoredChangeset, Conjunction, DisplayWith, QuoteExt,
-    },
+    format::{AsAutoColoredChangeset, DisplayWith},
     package::{BuildSession, CrateIndex, CrateType, PackageIndex},
     parser::ast::HangerKind,
     span::{Span, Spanned, Spanning},
     typer::interpreter::{ffi, scope::Registration},
-    util::{HashMap, HashSet, SmallVec},
+    util::{HashMap, SmallVec},
 };
 use colored::Colorize;
 pub use index::{DeBruijnIndex, DeclarationIndex, Index, LocalDeclarationIndex};
@@ -44,7 +42,6 @@ mod index;
 ///
 /// This structure is used not only by the name resolver but also the type checker.
 // @Question rename to just "Crate"?
-// @Task add optional field `name` (None means inherited from package)
 pub struct CrateScope {
     pub index: CrateIndex,
     pub package: PackageIndex,
@@ -55,10 +52,10 @@ pub struct CrateScope {
     /// All bindings inside of a crate.
     ///
     /// The first element must always be the root module.
-    // @Temporary
     pub(crate) bindings: IndexMap<LocalDeclarationIndex, Entity>,
     /// For resolving out of order use-declarations.
-    partially_resolved_use_bindings: HashMap<LocalDeclarationIndex, PartiallyResolvedUseBinding>,
+    pub(super) partially_resolved_use_bindings:
+        HashMap<LocalDeclarationIndex, PartiallyResolvedUseBinding>,
     /// For error reporting.
     pub(super) duplicate_definitions: HashMap<LocalDeclarationIndex, DuplicateDefinition>,
     pub(super) health: Health,
@@ -88,7 +85,7 @@ impl CrateScope {
         }
     }
 
-    fn dependency(&self, name: &str, session: &BuildSession) -> Option<CrateIndex> {
+    pub(super) fn dependency(&self, name: &str, session: &BuildSession) -> Option<CrateIndex> {
         let package = &session[self.package];
         let dependency = package.dependencies.get(name).copied();
 
@@ -114,40 +111,8 @@ impl CrateScope {
         self.is_local(index).then(|| index.local_index())
     }
 
-    // @Beacon @Temporary
-    #[track_caller]
-    pub fn __temporary_local_index(&self, index: DeclarationIndex) -> LocalDeclarationIndex {
-        // eprintln!(
-        //     "{:?} ~> {}",
-        //     index,
-        //     match self.local_index(index) {
-        //         Some(index) => format!("{index:?}"),
-        //         None => format!("none (local={:?})", self.index),
-        //     }
-        // );
-
-        self.local_index(index).unwrap()
-    }
-
-    #[track_caller]
-    pub fn get(&self, index: LocalDeclarationIndex) -> &Entity {
-        &self.bindings[index]
-    }
-
-    #[track_caller]
-    pub fn get_mut(&mut self, index: LocalDeclarationIndex) -> &mut Entity {
-        &mut self.bindings[index]
-    }
-
-    // @Note bad naming, better naming scheme: get <-> entity
-    pub fn entity<'a>(&'a self, index: DeclarationIndex, session: &'a BuildSession) -> &'a Entity {
-        match self.local_index(index) {
-            Some(index) => self.get(index),
-            None => session.entity(index),
-        }
-    }
-
-    fn some_ancestor_equals(
+    // @Beacon @Question shouldn't `index` be a LocalDeclarationIndex?
+    pub(super) fn some_ancestor_equals(
         &self,
         mut index: DeclarationIndex,
         namespace: DeclarationIndex,
@@ -157,7 +122,8 @@ impl CrateScope {
                 break true;
             }
 
-            index = match self.get(self.__temporary_local_index(index)).parent {
+            // @Beacon @Question can this ever panic?
+            index = match self[self.local_index(index).unwrap()].parent {
                 Some(parent) => self.global_index(parent),
                 None => break false,
             }
@@ -179,6 +145,7 @@ impl CrateScope {
         self.absolute_path_with_root(index, HangerKind::Crate.name().to_owned(), session)
     }
 
+    // @Task move to Resolver
     pub fn absolute_path_with_root(
         &self,
         index: DeclarationIndex,
@@ -201,7 +168,7 @@ impl CrateScope {
             }
         };
 
-        let entity = self.get(index);
+        let entity = &self[index];
 
         if let Some(parent) = entity.parent {
             let mut parent_path =
@@ -238,14 +205,13 @@ impl CrateScope {
     ) -> Result<LocalDeclarationIndex, RegistrationError> {
         if let Some(namespace) = namespace {
             // @Temporary let-binding (borrowck bug?)
-            let index = self
-                .get(namespace)
+            let index = self[namespace]
                 .namespace()
                 .unwrap()
                 .binders
                 .iter()
                 .map(|&index| self.local_index(index).unwrap())
-                .find(|&index| self.get(index).source == binder);
+                .find(|&index| self[index].source == binder);
 
             if let Some(index) = index {
                 let previous = &self.bindings[index].source;
@@ -254,10 +220,10 @@ impl CrateScope {
                     .entry(index)
                     .or_insert(DuplicateDefinition {
                         binder: previous.to_string(),
-                        occurrences: smallvec![previous.span],
+                        occurrences: smallvec![previous.span()],
                     })
                     .occurrences
-                    .push(binder.span);
+                    .push(binder.span());
 
                 return Err(RegistrationError::DuplicateDefinition);
             }
@@ -273,11 +239,7 @@ impl CrateScope {
         if let Some(namespace) = namespace {
             let index = self.global_index(index);
 
-            self.get_mut(namespace)
-                .namespace_mut()
-                .unwrap()
-                .binders
-                .push(index);
+            self[namespace].namespace_mut().unwrap().binders.push(index);
         }
 
         Ok(index)
@@ -301,269 +263,8 @@ impl CrateScope {
         debug_assert!(previous.is_none());
     }
 
-    /// Resolve a syntactic path given a namespace.
-    fn resolve_path<Target: ResolutionTarget>(
-        &self,
-        path: &Path,
-        namespace: DeclarationIndex,
-        session: &BuildSession,
-        reporter: &Reporter,
-    ) -> Result<Target::Output, ResolutionError> {
-        self.resolve_path_with_origin::<Target>(
-            path,
-            namespace,
-            namespace,
-            IdentifierUsage::Unqualified,
-            CheckExposure::Yes,
-            session,
-            reporter,
-        )
-    }
-
-    // @Task get rid of this concept
-    fn resolve_path_unchecked_exposure<Target: ResolutionTarget>(
-        &self,
-        path: &Path,
-        namespace: DeclarationIndex,
-        session: &BuildSession,
-        reporter: &Reporter,
-    ) -> Result<Target::Output, ResolutionError> {
-        self.resolve_path_with_origin::<Target>(
-            path,
-            namespace,
-            namespace,
-            IdentifierUsage::Unqualified,
-            CheckExposure::No,
-            session,
-            reporter,
-        )
-    }
-
-    /// Resolve a syntactic path given a namespace with an explicit origin.
-    // @Task memoize by (path, namespace)
-    fn resolve_path_with_origin<Target: ResolutionTarget>(
-        &self,
-        path: &Path,
-        namespace: DeclarationIndex,
-        origin_namespace: DeclarationIndex,
-        usage: IdentifierUsage,
-        check_exposure: CheckExposure,
-        session: &BuildSession,
-        reporter: &Reporter,
-    ) -> Result<Target::Output, ResolutionError> {
-        if let Some(hanger) = &path.hanger {
-            use ast::HangerKind::*;
-
-            let namespace = match hanger.kind {
-                Crates => {
-                    // (for now) the lowerer gates bare `crates`
-                    let crate_ = &path.segments[0];
-
-                    let crate_ = match self.dependency(crate_.as_str(), session) {
-                        Some(crate_) => crate_,
-                        None => {
-                            // @Temporary message
-                            // @Task add help:
-                            // * if it's a single-file-crate (@Task smh propagate??)
-                            //   then suggest `--link`ing
-                            // * otherwise suggest adding to `dependencies` section in
-                            //   the package manifest (@Note does not scale to dev-deps)
-                            // @Task suggest similarly named dep(s)!
-                            // @Task check if a dependency has a (transitive) dependency
-                            // with the *same* name and add the note that they (trans deps) have to be
-                            // explicitly added to the deps list to be referenceable in this crate
-                            Diagnostic::error()
-                                .message(format!("crate `{crate_}` does not exist"))
-                                .primary_span(crate_)
-                                .report(reporter);
-                            return Err(ResolutionError::Unrecoverable);
-                        }
-                    };
-
-                    let scope = &session[crate_];
-                    let root = scope.global_index(scope.root());
-
-                    return match &*path.segments {
-                        [identifier] => Ok(Target::output(root, identifier)),
-                        [_, identifiers @ ..] => scope.resolve_path_with_origin::<Target>(
-                            &Path::with_segments(identifiers.to_owned().into()),
-                            root,
-                            origin_namespace,
-                            IdentifierUsage::Qualified,
-                            CheckExposure::Yes,
-                            session,
-                            reporter,
-                        ),
-                        [] => unreachable!(),
-                    };
-                }
-                Crate => self.global_index(self.root()),
-                Super => self.global_index(self.resolve_super(
-                    hanger,
-                    self.local_index(namespace).unwrap(),
-                    reporter,
-                )?),
-                Self_ => namespace,
-            };
-
-            return if path.segments.is_empty() {
-                Target::output_bare_path_hanger(hanger, namespace).map_err(|error| {
-                    error.report(reporter);
-                    ResolutionError::Unrecoverable
-                })
-            } else {
-                self.resolve_path_with_origin::<Target>(
-                    &Path::with_segments(path.segments.clone()),
-                    namespace,
-                    origin_namespace,
-                    IdentifierUsage::Qualified,
-                    check_exposure,
-                    session,
-                    reporter,
-                )
-            };
-        }
-
-        let index = self.resolve_path_segment(
-            &path.segments[0],
-            namespace,
-            origin_namespace,
-            usage,
-            check_exposure,
-            session,
-            reporter,
-        )?;
-
-        let entity = self.entity(index, session);
-
-        match &*path.segments {
-            [identifier] => {
-                Target::handle_simple_path(identifier, entity)
-                    .map_err(|error| error.report(reporter))?;
-                Ok(Target::output(index, identifier))
-            }
-            [identifier, identifiers @ ..] => {
-                if entity.is_namespace() {
-                    self.resolve_path_with_origin::<Target>(
-                        &Path::with_segments(identifiers.to_owned().into()),
-                        index,
-                        origin_namespace,
-                        IdentifierUsage::Qualified,
-                        check_exposure,
-                        session,
-                        reporter,
-                    )
-                } else if entity.is_error() {
-                    // @Task add rationale
-                    Ok(Target::output(index, identifiers.last().unwrap()))
-                } else {
-                    value_used_as_a_namespace(
-                        identifier,
-                        identifiers.first().unwrap(),
-                        namespace,
-                        self,
-                        session,
-                    )
-                    .report(reporter);
-                    Err(ResolutionError::Unrecoverable)
-                }
-            }
-            [] => unreachable!(),
-        }
-    }
-
-    fn resolve_super(
-        &self,
-        hanger: &ast::Hanger,
-        module: LocalDeclarationIndex,
-        reporter: &Reporter,
-    ) -> Result<LocalDeclarationIndex> {
-        self.get(module).parent.ok_or_else(|| {
-            Diagnostic::error()
-                .code(Code::E021) // @Question use a dedicated code?
-                .message("the crate root does not have a parent")
-                .primary_span(hanger)
-                .report(reporter)
-        })
-    }
-
-    fn resolve_path_segment(
-        &self,
-        identifier: &ast::Identifier,
-        namespace: DeclarationIndex,
-        origin_namespace: DeclarationIndex,
-        usage: IdentifierUsage,
-        check_exposure: CheckExposure,
-        session: &BuildSession,
-        reporter: &Reporter,
-    ) -> Result<DeclarationIndex, ResolutionError> {
-        let entity = self.entity(namespace, session);
-
-        let index = entity
-            .namespace()
-            .unwrap()
-            .binders
-            .iter()
-            .copied()
-            .find(|&index| &self.entity(index, session).source == identifier)
-            .ok_or_else(|| ResolutionError::UnresolvedBinding {
-                identifier: identifier.clone(),
-                namespace,
-                usage,
-            })?;
-
-        // @Temporary hack until we can manage cyclic exposure reaches!
-        if matches!(check_exposure, CheckExposure::Yes) {
-            self.handle_exposure(index, identifier, origin_namespace, session, reporter)?;
-        }
-        self.collapse_use_chain(index, session)
-    }
-
-    // @Task verify that the exposure is checked even in the case of use-declarations
-    // using use-bindings (use-chains).
-    fn handle_exposure(
-        &self,
-        index: DeclarationIndex,
-        identifier: &ast::Identifier,
-        origin_namespace: DeclarationIndex,
-        session: &BuildSession,
-        reporter: &Reporter,
-    ) -> Result<(), ResolutionError> {
-        let entity = self.entity(index, session);
-
-        if let Exposure::Restricted(exposure) = &entity.exposure {
-            // unwrap: root always has Exposure::Unrestricted
-            let definition_site_namespace = entity.parent.unwrap();
-            let reach = RestrictedExposure::resolve(
-                exposure,
-                self.global_index(definition_site_namespace),
-                self,
-                session,
-                reporter,
-            )?;
-
-            if !self.is_allowed_to_access(
-                origin_namespace,
-                self.global_index(definition_site_namespace),
-                reach,
-            ) {
-                Diagnostic::error()
-                    .code(Code::E029)
-                    .message(format!(
-                        "binding `{}` is private",
-                        self.absolute_path(index, session)
-                    ))
-                    .primary_span(identifier)
-                    .report(reporter);
-                return Err(ResolutionError::Unrecoverable);
-            }
-        }
-
-        Ok(())
-    }
-
     /// Indicate if the definition-site namespace can be accessed from the given namespace.
-    fn is_allowed_to_access(
+    pub(super) fn is_allowed_to_access(
         &self,
         namespace: DeclarationIndex,
         definition_site_namespace: DeclarationIndex,
@@ -576,279 +277,21 @@ impl CrateScope {
 
         access_from_same_namespace_or_below || access_from_above_in_reach()
     }
+}
 
-    pub(super) fn resolve_exposure_reaches(
-        &mut self,
-        session: &BuildSession,
-        reporter: &Reporter,
-    ) -> Result {
-        let mut health = Health::Untainted;
+impl std::ops::Index<LocalDeclarationIndex> for CrateScope {
+    type Output = Entity;
 
-        for binding in self.bindings.values() {
-            if let Exposure::Restricted(exposure) = &binding.exposure {
-                // unwrap: root always has Exposure::Unrestricted
-                let definition_site_namespace = binding.parent.unwrap();
-
-                if RestrictedExposure::resolve(
-                    exposure,
-                    self.global_index(definition_site_namespace),
-                    self,
-                    session,
-                    reporter,
-                )
-                .is_err()
-                {
-                    health.taint();
-                    continue;
-                };
-            }
-
-            if let EntityKind::Use { reference } = binding.kind {
-                let reference = self.entity(reference, session);
-
-                if binding.exposure.compare(&reference.exposure, self) == Some(Ordering::Greater) {
-                    Diagnostic::error()
-                        .code(Code::E009)
-                        // @Question use absolute path?
-                        .message(format!(
-                            "re-export of the more private binding `{}`",
-                            reference.source
-                        ))
-                        .labeled_primary_span(
-                            &binding.source,
-                            "re-exporting binding with greater exposure",
-                        )
-                        .labeled_secondary_span(
-                            &reference.source,
-                            "re-exported binding with lower exposure",
-                        )
-                        .note(format!(
-                            "\
-expected the exposure of `{}`
-           to be at most {}
-      but it actually is {}",
-                            binding.source, // @Task absolute path
-                            reference.exposure.with((self, session)),
-                            binding.exposure.with((self, session)),
-                        ))
-                        .report(reporter);
-                    health.taint();
-                }
-            }
-        }
-
-        health.into()
+    #[track_caller]
+    fn index(&self, index: LocalDeclarationIndex) -> &Self::Output {
+        &self.bindings[index]
     }
+}
 
-    /// Find a similarly named binding in the same namespace.
-    ///
-    /// Used for error reporting when an undefined binding was encountered.
-    /// In the future, we might decide to find not one but several similar names
-    /// but that would be computationally heavier.
-    fn find_similarly_named<'a>(
-        &'a self,
-        queried_identifier: &str,
-        predicate: impl Fn(&Entity) -> bool,
-        namespace: DeclarationIndex,
-        session: &'a BuildSession,
-    ) -> Option<&'a str> {
-        self.entity(namespace, session)
-            .namespace()
-            .unwrap()
-            .binders
-            .iter()
-            .map(|&index| self.entity(index, session))
-            .filter(|entity| !entity.is_error() && predicate(entity))
-            .map(|entity| entity.source.as_str())
-            .find(|identifier| is_similar(identifier, queried_identifier))
-    }
-
-    /// Collapse chain of use-bindings aka indirect uses.
-    ///
-    /// This is an invariant established to make things easier to reason about during resolution.
-    fn collapse_use_chain(
-        &self,
-        index: DeclarationIndex,
-        session: &BuildSession,
-    ) -> Result<DeclarationIndex, ResolutionError> {
-        use EntityKind::*;
-
-        match self.entity(index, session).kind {
-            Use { reference } => Ok(reference),
-            UnresolvedUse => Err(ResolutionError::UnresolvedUseBinding { inquirer: index }),
-            _ => Ok(index),
-        }
-    }
-
-    /// Reobtain the resolved identifier.
-    ///
-    /// Used in [super::Resolver::finish_resolve_declaration], the last pass of the
-    /// name resolver, to re-gain some information (the [Identifier]s) collected during the first pass.
-    ///
-    /// This way, [super::Resolver::start_resolve_declaration] does not need to return
-    /// a new intermediate representation being a representation between the
-    /// lowered AST and the HIR where all the _binders_ of declarations are resolved
-    /// (i.e. are [Identifier]s) but all _bindings_ (in type annotations, expressions, …)
-    /// are still unresolved (i.e. are [crate::ast::Identifier]s).
-    ///
-    /// Such an IR would imply writing a lot of boilerplate if we were to duplicate
-    /// definitions & mappings or – if even possible – creating a totally complicated
-    /// parameterized lowered AST with complicated traits having many associated types
-    /// (painfully learned through previous experiences).
-    // @Task add to documentation that this panics on unresolved and does not check exposure,
-    // also it does not check the resolution target etc
-    // @Task add that it may only fail if circular use-bindings were found or a use
-    // binding could not be resolved since `Self::resolve_use_binding` is treated non-fatally
-    // in Resolver::resolve_declaration
-    pub(super) fn reobtain_resolved_identifier<Target: ResolutionTarget>(
-        &self,
-        identifier: &ast::Identifier,
-        namespace: LocalDeclarationIndex,
-        session: &BuildSession,
-    ) -> Target::Output {
-        let index = self
-            .get(namespace)
-            .namespace()
-            .unwrap()
-            .binders
-            .iter()
-            .map(|&index| self.local_index(index).unwrap())
-            .find(|&index| &self.get(index).source == identifier)
-            .unwrap();
-        let index = self
-            .collapse_use_chain(self.global_index(index), session)
-            .unwrap_or_else(|_| unreachable!());
-
-        Target::output(index, identifier)
-    }
-
-    /// Resolve use-bindings.
-    ///
-    /// This is the second pass of three of the name resolver.
-    ///
-    /// This uses a queue to resolve use-bindings over and over until
-    /// all out of order use-bindings are successfully resolved or until
-    /// no progress can be made anymore in which case all remaining
-    /// use-bindings are actually circular and are thus reported.
-    // @Task update docs in regards to number of phases
-    // @Task update docs regarding errors
-    pub(super) fn resolve_use_bindings(&mut self, session: &BuildSession, reporter: &Reporter) {
-        use ResolutionError::*;
-
-        while !self.partially_resolved_use_bindings.is_empty() {
-            let mut partially_resolved_use_bindings = HashMap::default();
-
-            for (&index, item) in self.partially_resolved_use_bindings.iter() {
-                match self.resolve_path::<ValueOrModule>(
-                    &item.reference,
-                    self.global_index(item.module),
-                    session,
-                    reporter,
-                ) {
-                    Ok(reference) => {
-                        self.bindings[index].kind = EntityKind::Use { reference };
-                    }
-                    Err(error @ (UnresolvedBinding { .. } | Unrecoverable)) => {
-                        self.bindings[index].mark_as_error();
-                        error.report(self, session, reporter);
-                        self.health.taint();
-                    }
-                    Err(UnresolvedUseBinding { inquirer }) => {
-                        partially_resolved_use_bindings.insert(
-                            index,
-                            PartiallyResolvedUseBinding {
-                                reference: item.reference.clone(),
-                                module: item.module,
-                                inquirer: Some(self.__temporary_local_index(inquirer)),
-                            },
-                        );
-                    }
-                }
-            }
-
-            // resolution stalled; therefore there are circular bindings
-            if partially_resolved_use_bindings.len() == self.partially_resolved_use_bindings.len() {
-                for &index in partially_resolved_use_bindings.keys() {
-                    self.get_mut(index).mark_as_error();
-                }
-
-                for cycle in find_cycles(partially_resolved_use_bindings) {
-                    let paths = cycle.iter().map(|&index| {
-                        self.absolute_path(self.global_index(index), session)
-                            .quote()
-                    });
-                    let paths = unordered_listing(paths, Conjunction::And);
-                    let spans = cycle.iter().map(|&index| self.get(index).source.span);
-
-                    Diagnostic::error()
-                        .code(Code::E024)
-                        .message(pluralize!(
-                            cycle.len(),
-                            format!("declaration {paths} is circular"),
-                            format!("declarations {paths} are circular"),
-                        ))
-                        .primary_spans(spans)
-                        .report(reporter);
-                }
-
-                self.health.taint();
-                break;
-            }
-
-            self.partially_resolved_use_bindings = partially_resolved_use_bindings;
-        }
-
-        self.partially_resolved_use_bindings.clear();
-
-        type UseBindings = HashMap<LocalDeclarationIndex, PartiallyResolvedUseBinding>;
-        type Cycle = HashSet<LocalDeclarationIndex>;
-
-        fn find_cycles(bindings: UseBindings) -> Vec<Cycle> {
-            let mut cycles = Vec::new();
-            let mut visited = HashMap::default();
-
-            enum Status {
-                InProgress,
-                Finished,
-            }
-
-            for &index in bindings.keys() {
-                if !visited.contains_key(&index) {
-                    let mut worklist = vec![index];
-                    visited.insert(index, Status::InProgress);
-                    cycles.extend(find_cycle(&bindings, &mut worklist, &mut visited));
-                }
-            }
-
-            fn find_cycle(
-                bindings: &UseBindings,
-                worklist: &mut Vec<LocalDeclarationIndex>,
-                visited: &mut HashMap<LocalDeclarationIndex, Status>,
-            ) -> Option<Cycle> {
-                let target = bindings[worklist.last().unwrap()].inquirer.unwrap();
-
-                let cycle = match visited.get(&target) {
-                    Some(Status::InProgress) => Some(
-                        worklist
-                            .iter()
-                            .copied()
-                            .skip_while(|&vertex| vertex != target)
-                            .collect(),
-                    ),
-                    Some(Status::Finished) => None,
-                    None => {
-                        worklist.push(target);
-                        visited.insert(target, Status::InProgress);
-                        find_cycle(bindings, worklist, visited)
-                    }
-                };
-                visited.insert(worklist.pop().unwrap(), Status::Finished);
-
-                cycle
-            }
-
-            cycles
-        }
+impl std::ops::IndexMut<LocalDeclarationIndex> for CrateScope {
+    #[track_caller]
+    fn index_mut(&mut self, index: LocalDeclarationIndex) -> &mut Self::Output {
+        &mut self.bindings[index]
     }
 }
 
@@ -893,12 +336,6 @@ impl DisplayWith for CrateScope {
     }
 }
 
-#[derive(Clone, Copy)]
-enum CheckExposure {
-    Yes,
-    No,
-}
-
 #[derive(Clone, PartialEq, Eq)]
 pub enum Exposure {
     Unrestricted,
@@ -906,7 +343,7 @@ pub enum Exposure {
 }
 
 impl Exposure {
-    fn compare(&self, other: &Self, scope: &CrateScope) -> Option<Ordering> {
+    pub(super) fn compare(&self, other: &Self, scope: &CrateScope) -> Option<Ordering> {
         use Exposure::*;
 
         match (self, other) {
@@ -957,57 +394,6 @@ pub enum RestrictedExposure {
 }
 
 impl RestrictedExposure {
-    fn resolve(
-        exposure: &RefCell<Self>,
-        definition_site_namespace: DeclarationIndex,
-        scope: &CrateScope,
-        session: &BuildSession,
-        reporter: &Reporter,
-    ) -> Result<DeclarationIndex> {
-        let exposure_ = exposure.borrow();
-
-        Ok(match &*exposure_ {
-            Self::Unresolved {
-                reach: unresolved_reach,
-            } => {
-                // Here we indeed resolve the exposure reach without validating *its*
-                // exposure reach. This is not a problem however since in all cases where
-                // it actually is private, it cannot be an ancestor module as those are
-                // always accessible to their descendants, and therefore we are going to
-                // throw an error.
-                // It's not possible to use `resolve_path` as that can lead to infinite
-                // loops with out of order use-bindings.
-                let reach = scope
-                    .resolve_path_unchecked_exposure::<OnlyModule>(
-                        unresolved_reach,
-                        definition_site_namespace,
-                        session,
-                        reporter,
-                    )
-                    .map_err(|error| error.report(scope, session, reporter))?;
-
-                let reach_is_ancestor =
-                    scope.some_ancestor_equals(definition_site_namespace, reach);
-
-                if !reach_is_ancestor {
-                    return Err(Diagnostic::error()
-                        .code(Code::E000)
-                        .message("exposure can only be restricted to ancestor modules")
-                        .primary_span(unresolved_reach)
-                        .report(reporter));
-                }
-
-                drop(exposure_);
-                *exposure.borrow_mut() = RestrictedExposure::Resolved {
-                    reach: scope.__temporary_local_index(reach),
-                };
-
-                reach
-            }
-            &Self::Resolved { reach } => scope.global_index(reach),
-        })
-    }
-
     fn compare(&self, other: &Self, scope: &CrateScope) -> Option<Ordering> {
         use RestrictedExposure::*;
 
@@ -1074,123 +460,11 @@ impl From<DuplicateDefinition> for Diagnostic {
     }
 }
 
-// @Task put all that stuff into a module `resolution_target`
-/// Specifies behavior for resolving different sorts of entities.
-///
-/// Right now, it's only about the difference between values and modules
-/// since modules are not values (non-first-class). As such, this trait
-/// allows to implementors to define what should happen with the resolved entity
-/// if it appears in a specific location
-// @Task get rid of this thing! smh!
-pub(super) trait ResolutionTarget {
-    type Output;
-
-    fn output(index: DeclarationIndex, identifier: &ast::Identifier) -> Self::Output;
-
-    fn output_bare_path_hanger(
-        hanger: &ast::Hanger,
-        index: DeclarationIndex,
-    ) -> Result<Self::Output, Diagnostic>;
-
-    fn handle_simple_path(identifier: &ast::Identifier, entity: &Entity) -> Result<(), Diagnostic>;
-}
-
-/// Marker to specify it's okay to resolve to either value or module.
-pub(super) enum ValueOrModule {}
-
-impl ResolutionTarget for ValueOrModule {
-    type Output = DeclarationIndex;
-
-    fn output(index: DeclarationIndex, _: &ast::Identifier) -> Self::Output {
-        index
-    }
-
-    fn output_bare_path_hanger(
-        _: &ast::Hanger,
-        index: DeclarationIndex,
-    ) -> Result<Self::Output, Diagnostic> {
-        Ok(index)
-    }
-
-    fn handle_simple_path(_: &ast::Identifier, _: &Entity) -> Result<(), Diagnostic> {
-        Ok(())
-    }
-}
-
-/// Marker to specify to only resolve to values.
-pub(super) enum OnlyValue {}
-
-impl ResolutionTarget for OnlyValue {
-    type Output = Identifier;
-
-    fn output(index: DeclarationIndex, identifier: &ast::Identifier) -> Self::Output {
-        Identifier::new(index, identifier.clone())
-    }
-
-    fn output_bare_path_hanger(
-        hanger: &ast::Hanger,
-        _: DeclarationIndex,
-    ) -> Result<Self::Output, Diagnostic> {
-        Err(module_used_as_a_value(hanger.as_ref()))
-    }
-
-    fn handle_simple_path(identifier: &ast::Identifier, entity: &Entity) -> Result<(), Diagnostic> {
-        if entity.is_module() {
-            return Err(module_used_as_a_value(Spanned::new(
-                identifier.span,
-                identifier.as_str(),
-            )));
-        }
-
-        Ok(())
-    }
-}
-
-pub(super) enum OnlyModule {}
-
-impl ResolutionTarget for OnlyModule {
-    type Output = DeclarationIndex;
-
-    fn output(index: DeclarationIndex, _: &ast::Identifier) -> Self::Output {
-        index
-    }
-
-    fn output_bare_path_hanger(
-        _: &ast::Hanger,
-        index: DeclarationIndex,
-    ) -> Result<Self::Output, Diagnostic> {
-        Ok(index)
-    }
-
-    fn handle_simple_path(identifier: &ast::Identifier, entity: &Entity) -> Result<(), Diagnostic> {
-        // @Task print absolute path!
-        if !entity.is_module() {
-            return Err(Diagnostic::error()
-                // @Task custom code
-                .code(Code::E022)
-                .message(format!("value `{}` is not a module", identifier))
-                .primary_span(identifier));
-        }
-
-        Ok(())
-    }
-}
-
-/// If an identifier is used unqualified or qualified.
-///
-/// Exclusively used for error reporting.
-#[derive(Debug)] // @Temporary
-#[derive(Clone, Copy)]
-enum IdentifierUsage {
-    Qualified,
-    Unqualified,
-}
-
-struct PartiallyResolvedUseBinding {
-    reference: Path,
-    module: LocalDeclarationIndex,
+pub(super) struct PartiallyResolvedUseBinding {
+    pub(super) reference: Path,
+    pub(super) module: LocalDeclarationIndex,
     // @Beacon @Question local or global??
-    inquirer: Option<LocalDeclarationIndex>,
+    pub(super) inquirer: Option<LocalDeclarationIndex>,
 }
 
 impl fmt::Debug for PartiallyResolvedUseBinding {
@@ -1301,7 +575,7 @@ impl Identifier {
 
 impl Spanning for Identifier {
     fn span(&self) -> Span {
-        self.source.span
+        self.source.span()
     }
 }
 
@@ -1352,7 +626,7 @@ impl<'a> FunctionScope<'a> {
         }
     }
 
-    fn module(&self) -> LocalDeclarationIndex {
+    pub(super) fn module(&self) -> LocalDeclarationIndex {
         match self {
             &Self::Module(module) => module,
             Self::FunctionParameter { parent, .. } | Self::PatternBinders { parent, .. } => {
@@ -1371,187 +645,16 @@ impl<'a> FunctionScope<'a> {
             Index::DeBruijn(_) | Index::DeBruijnParameter => binder.as_str().into(),
         }
     }
-
-    /// Resolve a binding in a function scope given a depth.
-    pub(super) fn resolve_binding(
-        &self,
-        query: &Path,
-        scope: &CrateScope,
-        session: &BuildSession,
-        reporter: &Reporter,
-    ) -> Result<Identifier> {
-        self.resolve_binding_with_depth(query, scope, 0, self, session, reporter)
-    }
-
-    /// Resolve a binding in a function scope given a depth.
-    ///
-    /// The `depth` is necessary for the recursion to successfully create DeBruijn-indices.
-    ///
-    /// The `origin` signifies the innermost function scope from where the resolution was first requested.
-    /// This information is used for diagnostics, namely typo flagging where we once again start at the origin
-    /// and walk back out.
-    fn resolve_binding_with_depth(
-        &self,
-        query: &Path,
-        scope: &CrateScope,
-        depth: usize,
-        origin: &Self,
-        session: &BuildSession,
-        reporter: &Reporter,
-    ) -> Result<Identifier> {
-        use FunctionScope::*;
-
-        // @Note kinda awkward API with map_err
-        match self {
-            &Module(module) => scope
-                .resolve_path::<OnlyValue>(query, scope.global_index(module), session, reporter)
-                .map_err(|error| {
-                    error.emit_finding_lookalike(
-                        |identifier, _| origin.find_similarly_named(identifier, scope, session),
-                        scope,
-                        session,
-                        reporter,
-                    )
-                }),
-            // @Note this looks ugly/complicated, use helper functions
-            FunctionParameter { parent, binder } => {
-                if let Some(identifier) = query.identifier_head() {
-                    if binder == identifier {
-                        if query.segments.len() > 1 {
-                            return Err(value_used_as_a_namespace(
-                                identifier,
-                                &query.segments[1],
-                                scope.global_index(self.module()),
-                                scope,
-                                session,
-                            )
-                            .report(reporter));
-                        }
-
-                        Ok(Identifier::new(DeBruijnIndex(depth), identifier.clone()))
-                    } else {
-                        parent.resolve_binding_with_depth(
-                            query,
-                            scope,
-                            depth + 1,
-                            origin,
-                            session,
-                            reporter,
-                        )
-                    }
-                } else {
-                    scope
-                        .resolve_path::<OnlyValue>(
-                            query,
-                            scope.global_index(parent.module()),
-                            session,
-                            reporter,
-                        )
-                        .map_err(|error| error.report(scope, session, reporter))
-                }
-            }
-            // @Note this looks ugly/complicated, use helper functions
-            PatternBinders { parent, binders } => {
-                if let Some(identifier) = query.identifier_head() {
-                    match binders
-                        .iter()
-                        .rev()
-                        .zip(depth..)
-                        .find(|(binder, _)| binder == &identifier)
-                    {
-                        Some((_, depth)) => {
-                            if query.segments.len() > 1 {
-                                return Err(value_used_as_a_namespace(
-                                    identifier,
-                                    &query.segments[1],
-                                    scope.global_index(self.module()),
-                                    scope,
-                                    session,
-                                )
-                                .report(reporter));
-                            }
-
-                            Ok(Identifier::new(DeBruijnIndex(depth), identifier.clone()))
-                        }
-                        None => parent.resolve_binding_with_depth(
-                            query,
-                            scope,
-                            depth + binders.len(),
-                            origin,
-                            session,
-                            reporter,
-                        ),
-                    }
-                } else {
-                    scope
-                        .resolve_path::<OnlyValue>(
-                            query,
-                            scope.global_index(parent.module()),
-                            session,
-                            reporter,
-                        )
-                        .map_err(|error| error.report(scope, session, reporter))
-                }
-            }
-        }
-    }
-
-    /// Find a similarly named binding in the scope.
-    ///
-    /// With "scope", it is meant to include parent scopes, too.
-    ///
-    /// Used for error reporting when an undefined binding was encountered.
-    /// In the future, we might decide to find not one but several similar names
-    /// but that would be computationally heavier and we would need to be careful
-    /// and consider the effects of shadowing.
-    fn find_similarly_named<'b>(
-        &'b self,
-        identifier: &str,
-        scope: &'b CrateScope,
-        session: &'b BuildSession,
-    ) -> Option<&'b str>
-    where
-        'a: 'b,
-    {
-        use FunctionScope::*;
-
-        match self {
-            &Module(module) => scope.find_similarly_named(
-                identifier,
-                |_| true,
-                scope.global_index(module),
-                session,
-            ),
-            FunctionParameter { parent, binder } => {
-                if is_similar(identifier, binder.as_str()) {
-                    Some(binder.as_str())
-                } else {
-                    parent.find_similarly_named(identifier, scope, session)
-                }
-            }
-            PatternBinders { parent, binders } => {
-                if let Some(binder) = binders
-                    .iter()
-                    .rev()
-                    .find(|binder| is_similar(identifier, binder.as_str()))
-                {
-                    Some(binder.as_str())
-                } else {
-                    parent.find_similarly_named(identifier, scope, session)
-                }
-            }
-        }
-    }
 }
 
-fn is_similar(queried_identifier: &str, other_identifier: &str) -> bool {
+pub(super) fn is_similar(queried_identifier: &str, other_identifier: &str) -> bool {
     strsim::levenshtein(other_identifier, queried_identifier)
         <= std::cmp::max(queried_identifier.len(), 3) / 3
 }
 
-struct Lookalike<'a> {
-    actual: &'a str,
-    lookalike: &'a str,
+pub(super) struct Lookalike<'a> {
+    pub(super) actual: &'a str,
+    pub(super) lookalike: &'a str,
 }
 
 impl fmt::Display for Lookalike<'_> {
@@ -1583,63 +686,7 @@ impl fmt::Display for Lookalike<'_> {
     }
 }
 
-// @Question parent: *Local*DeclarationIndex?
-fn value_used_as_a_namespace(
-    non_namespace: &ast::Identifier,
-    subbinder: &ast::Identifier,
-    parent: DeclarationIndex,
-    scope: &CrateScope,
-    session: &BuildSession,
-) -> Diagnostic {
-    // @Question should we also include lookalike namespaces that don't contain the
-    // subbinding (displaying them in a separate help message?)?
-    // @Beacon @Bug this ignores shadowing @Task define this method for FunctionScope
-    // @Update @Note actually in the future (lang spec) this kind of shadowing does not
-    // occur, the subbinder access pierces through parameters
-    let similarly_named_namespace = scope.find_similarly_named(
-        non_namespace.as_str(),
-        |entity| {
-            entity.namespace().map_or(false, |namespace| {
-                namespace
-                    .binders
-                    .iter()
-                    .find(|&&index| &scope.entity(index, session).source == subbinder)
-                    .is_some()
-            })
-        },
-        parent,
-        session,
-    );
-
-    let show_very_general_help = similarly_named_namespace.is_none();
-
-    Diagnostic::error()
-        .code(Code::E022)
-        .message(format!("value `{non_namespace}` is not a namespace"))
-        .labeled_primary_span(non_namespace, "not a namespace, just a value")
-        .labeled_secondary_span(
-            subbinder,
-            "requires the preceeding path segment to refer to a namespace",
-        )
-        .when_present(
-            similarly_named_namespace,
-            |this, lookalike| {
-                this
-                    .help(format!(
-                        "a namespace with a similar name containing the binding exists in scope:\n    {}",
-                        Lookalike { actual: non_namespace.as_str(), lookalike },
-                    ))
-            }
-        )
-        .when(show_very_general_help, |this| {
-            this
-                .note("identifiers following a `.` refer to bindings defined in a namespace (i.e. a module or a data type)")
-                // no type information here yet to check if the non-namespace is indeed a record
-                .help("use `::` to reference a field of a record")
-        })
-}
-
-fn module_used_as_a_value(module: Spanned<impl fmt::Display>) -> Diagnostic {
+pub(super) fn module_used_as_a_value(module: Spanned<impl fmt::Display>) -> Diagnostic {
     // @Task levenshtein-search for similar named bindings which are in fact values and suggest the first one
     // @Task print absolute path of the module in question and use highlight the entire path, not just the last
     // segment
@@ -1648,90 +695,6 @@ fn module_used_as_a_value(module: Spanned<impl fmt::Display>) -> Diagnostic {
         .message(format!("module `{module}` is used as a value"))
         .primary_span(module)
         .help("modules are not first-class citizens, consider utilizing records for such cases instead")
-}
-
-/// A possibly recoverable error that cab emerge during resolution.
-#[derive(Debug)] // @Temporary
-enum ResolutionError {
-    Unrecoverable,
-    UnresolvedBinding {
-        identifier: ast::Identifier,
-        namespace: DeclarationIndex,
-        usage: IdentifierUsage,
-    },
-    UnresolvedUseBinding {
-        inquirer: DeclarationIndex,
-    },
-}
-
-impl ResolutionError {
-    fn report(self, scope: &CrateScope, session: &BuildSession, reporter: &Reporter) {
-        self.emit_finding_lookalike(
-            |identifier, namespace| {
-                scope.find_similarly_named(identifier, |_| true, namespace, session)
-            },
-            scope,
-            session,
-            reporter,
-        );
-    }
-
-    fn emit_finding_lookalike<'s>(
-        self,
-        find_lookalike: impl FnOnce(&str, DeclarationIndex) -> Option<&'s str>,
-        scope: &CrateScope,
-        session: &BuildSession,
-        reporter: &Reporter,
-    ) {
-        match self {
-            Self::Unrecoverable => {}
-            Self::UnresolvedBinding {
-                identifier,
-                namespace,
-                usage,
-            } => {
-                let mut message = format!("binding `{identifier}` is not defined in ");
-
-                match usage {
-                    IdentifierUsage::Unqualified => message += "this scope",
-                    IdentifierUsage::Qualified => {
-                        message += match scope.entity(namespace, session).is_module() {
-                            true => "module",
-                            false => "namespace",
-                        };
-                        message += " `";
-                        message += &scope.absolute_path(namespace, session);
-                        message += "`";
-                    }
-                }
-
-                Diagnostic::error()
-                    .code(Code::E021)
-                    .message(message)
-                    .primary_span(&identifier)
-                    .when_present(
-                        find_lookalike(identifier.as_str(), namespace),
-                        |diagnostic, binding| {
-                            diagnostic.help(format!(
-                                "a binding with a similar name exists in scope: {}",
-                                Lookalike {
-                                    actual: identifier.as_str(),
-                                    lookalike: binding
-                                },
-                            ))
-                        },
-                    )
-                    .report(reporter);
-            }
-            _ => unreachable!(),
-        }
-    }
-}
-
-impl From<()> for ResolutionError {
-    fn from((): ()) -> Self {
-        Self::Unrecoverable
-    }
 }
 
 pub(super) enum RegistrationError {

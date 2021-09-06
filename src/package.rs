@@ -40,10 +40,6 @@ impl BuildSession {
         self.built_crates.insert(crate_.index, crate_);
     }
 
-    pub fn entity(&self, index: DeclarationIndex) -> &Entity {
-        self.built_crates[&index.crate_index()].get(index.local_index())
-    }
-
     pub fn foreign_type(&self, binder: &'static str) -> Option<&Identifier> {
         // @Task don't just search through all crates (linearly) but
         // respect the (not yet existing) dependency graph:
@@ -61,6 +57,14 @@ impl BuildSession {
         }
 
         None
+    }
+}
+
+impl Index<DeclarationIndex> for BuildSession {
+    type Output = Entity;
+
+    fn index(&self, index: DeclarationIndex) -> &Self::Output {
+        &self.built_crates[&index.crate_index()][index.local_index()]
     }
 }
 
@@ -366,8 +370,7 @@ impl BuildQueue<'_> {
         source_file_path: PathBuf,
         unlink_core: bool,
     ) -> Result {
-        let crate_name = parse_crate_name(source_file_path.clone(), self.reporter)
-            .map_err(|error| error.report(self.reporter))?;
+        let crate_name = parse_crate_name(source_file_path.clone(), self.reporter)?;
 
         // @Task dont unwrap, handle error case
         // joining with "." since it might return "" which would fail to canonicalize
@@ -591,10 +594,10 @@ pub fn find_package(path: &Path) -> Option<&Path> {
 pub mod manifest {
     use crate::{
         diagnostics::{Code, Diagnostic, Reporter},
-        error::Result,
+        error::{ReportedExt, Result},
         metadata::{self, MapEntry, TypeError, ValueKind},
-        span::{SharedSourceMap, Span, Spanned},
-        util::HashMap,
+        span::{SharedSourceMap, Spanned},
+        util::{try_all, HashMap},
     };
     use std::{
         convert::{TryFrom, TryInto},
@@ -622,65 +625,57 @@ pub mod manifest {
         ) -> Result<Self> {
             let manifest_path = package_path.join(Self::FILE_NAME);
 
-            let source_file = map
-                .borrow_mut()
-                .load(manifest_path)
-                .map_err(|error| Diagnostic::from(error).report(reporter))?;
+            let source_file = map.borrow_mut().load(manifest_path).reported(reporter)?;
 
             let value = metadata::parse(source_file, map, reporter)?;
             let mut map = value.kind.into_map().expect("type error");
 
-            fn __remove<'key, T: TryFrom<ValueKind, Error = TypeError>>(
+            fn __remove<T: TryFrom<ValueKind, Error = TypeError>>(
                 map: &mut HashMap<String, MapEntry>,
-                key: &'key str,
+                key: &str,
                 reporter: &Reporter,
             ) -> Result<Spanned<T>> {
-                let value = match map.remove(key) {
-                    Some(entry) => entry.value,
+                match map.remove(key) {
+                    Some(entry) => __convert(key, entry.value, reporter),
                     None => {
                         // @Task imrpove message, add span, add name of map (or "root map")
                         Diagnostic::error()
                             .message(format!("the map ??? is the missing key `{key}`"))
                             .report(reporter);
-                        return Err(());
+                        Err(())
                     }
-                };
-                let span = value.span;
-                let value: T = value
-                    .kind
-                    .try_into()
-                    .map_err(|error| type_error(key, span, error).report(reporter))?;
-
-                Ok(Spanned::new(span, value))
+                }
             }
 
-            fn type_error(key: &str, span: Span, error: TypeError) -> Diagnostic {
-                Diagnostic::error()
-                    .code(Code::E800)
-                    .message(format!(
-                        "the type of key `{}` should be {} but it is {}",
-                        key, error.expected, error.actual
-                    ))
-                    .labeled_primary_span(span, "has the wrong type")
-            }
-
-            fn __remove_optional<'key, T: TryFrom<ValueKind, Error = TypeError>>(
+            fn __remove_optional<T: TryFrom<ValueKind, Error = TypeError>>(
                 map: &mut HashMap<String, MapEntry>,
-                key: &'key str,
+                key: &str,
                 reporter: &Reporter,
             ) -> Result<Option<Spanned<T>>> {
-                let value = match map.remove(key) {
-                    Some(entry) => entry.value,
-                    None => return Ok(None),
-                };
+                match map.remove(key) {
+                    Some(entry) => __convert(key, entry.value, reporter).map(Some),
+                    None => Ok(None),
+                }
+            }
 
+            fn __convert<T: TryFrom<ValueKind, Error = TypeError>>(
+                key: &str,
+                value: Spanned<ValueKind>,
+                reporter: &Reporter,
+            ) -> Result<Spanned<T>> {
                 let span = value.span;
-                let value: T = value
-                    .kind
-                    .try_into()
-                    .map_err(|error| type_error(key, span, error).report(reporter))?;
+                let value = value.kind.try_into().map_err(|error: TypeError| {
+                    Diagnostic::error()
+                        .code(Code::E800)
+                        .message(format!(
+                            "the type of key `{}` should be {} but it is {}",
+                            key, error.expected, error.actual
+                        ))
+                        .labeled_primary_span(span, "has the wrong type")
+                        .report(reporter)
+                })?;
 
-                Ok(Some(Spanned::new(span, value)))
+                Ok(Spanned::new(span, value))
             }
 
             let name = __remove(&mut map, "name", reporter);
@@ -701,8 +696,7 @@ pub mod manifest {
                 return Err(());
             }
 
-            let (name, version, description, is_private) =
-                (name?, version?, description?, is_private?);
+            try_all!(name, version, description, is_private);
 
             // @Task don't bail out early on type errors & unknown keys!
             let manifest = PackageManifest {

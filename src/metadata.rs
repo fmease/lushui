@@ -158,10 +158,10 @@ pub fn parse(
 ) -> Result<Value> {
     let source_file = &map.borrow()[source_file_index];
     let lexer = lexer::Lexer::new(source_file);
-    let outcome!(tokens, lexer_health) = lexer.lex();
+    let outcome!(tokens, health_of_lexer) = lexer.lex();
     let mut parser = parser::Parser::new(source_file_index, &tokens, map.clone(), reporter);
     let value = parser.parse()?;
-    assert!(lexer_health.is_untainted()); // the parser succeeded
+    assert!(health_of_lexer.is_untainted()); // the parser succeeded
     Ok(value)
 }
 
@@ -504,7 +504,7 @@ mod parser {
     };
     use crate::{
         diagnostics::{Diagnostic, Reporter},
-        error::Result,
+        error::{ReportedExt, Result},
         span::{SharedSourceMap, SourceFileIndex, Span, Spanned, Spanning},
         util::HashMap,
     };
@@ -654,7 +654,7 @@ mod parser {
                         .clone()
                         .into_text()
                         .unwrap()
-                        .map_err(|error| error.report(self.reporter))?;
+                        .reported(self.reporter)?;
                     self.advance();
 
                     Ok(Value::new(span, ValueKind::Text(content)))
@@ -797,7 +797,7 @@ mod parser {
                         .clone()
                         .into_text()
                         .unwrap()
-                        .map_err(|error| error.report(self.reporter))?;
+                        .reported(self.reporter)?;
                     self.advance();
                     key
                 }

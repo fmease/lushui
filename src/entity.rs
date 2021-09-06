@@ -65,6 +65,10 @@ impl Entity {
         matches!(self.kind, Module { .. })
     }
 
+    pub const fn is_foreign(&self) -> bool {
+        matches!(self.kind, Foreign { .. })
+    }
+
     pub const fn is_error(&self) -> bool {
         matches!(self.kind, EntityKind::Error)
     }

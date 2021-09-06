@@ -203,17 +203,17 @@ impl Type {
         reporter: &Reporter,
     ) -> Result<Expression> {
         match self {
-            Self::Unit => scope.lookup_unit_type(None, reporter),
-            Self::Bool => scope.lookup_bool_type(None, reporter),
-            Self::Nat => scope.lookup_foreign_type(Type::NAT, None, session, reporter),
-            Self::Nat32 => scope.lookup_foreign_type(Type::NAT32, None, session, reporter),
-            Self::Nat64 => scope.lookup_foreign_type(Type::NAT64, None, session, reporter),
-            Self::Int => scope.lookup_foreign_type(Type::INT, None, session, reporter),
-            Self::Int32 => scope.lookup_foreign_type(Type::INT32, None, session, reporter),
-            Self::Int64 => scope.lookup_foreign_type(Type::INT64, None, session, reporter),
-            Self::Text => scope.lookup_foreign_type(Type::TEXT, None, session, reporter),
+            Self::Unit => scope.look_up_unit_type(None, reporter),
+            Self::Bool => scope.look_up_bool_type(None, reporter),
+            Self::Nat => scope.look_up_foreign_type(Type::NAT, None, session, reporter),
+            Self::Nat32 => scope.look_up_foreign_type(Type::NAT32, None, session, reporter),
+            Self::Nat64 => scope.look_up_foreign_type(Type::NAT64, None, session, reporter),
+            Self::Int => scope.look_up_foreign_type(Type::INT, None, session, reporter),
+            Self::Int32 => scope.look_up_foreign_type(Type::INT32, None, session, reporter),
+            Self::Int64 => scope.look_up_foreign_type(Type::INT64, None, session, reporter),
+            Self::Text => scope.look_up_foreign_type(Type::TEXT, None, session, reporter),
             Self::Option(type_) => Ok(application(
-                scope.lookup_option_type(None, reporter)?,
+                scope.look_up_option_type(None, reporter)?,
                 type_.into_expression(scope, session, reporter)?,
             )),
         }

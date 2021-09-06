@@ -1,7 +1,7 @@
 #![feature(backtrace, format_args_capture, derive_default_enum, decl_macro)]
 #![forbid(rust_2018_idioms, unused_must_use)]
 
-use std::convert::TryInto;
+use std::{convert::TryInto, time::Instant};
 
 use cli::{Command, PhaseRestriction};
 use lushui::{
@@ -9,7 +9,7 @@ use lushui::{
         reporter::{BufferedStderrReporter, StderrReporter},
         Diagnostic, Reporter,
     },
-    error::{outcome, Result},
+    error::{outcome, ReportedExt, Result},
     format::DisplayWith,
     lexer::Lexer,
     lowerer::Lowerer,
@@ -125,91 +125,143 @@ fn check_run_or_build_package(
         // @Beacon @Task print banner "compiling crate xyz" here unless --quiet/-q
         // eprintln!("  [building {}]", built_crates[crate_.package].name);
 
-        macro applies($restriction:expr) {
-            is_goal_crate && options.phase_restriction == Some($restriction)
+        macro check_phase_restriction($restriction:expr $(, $( $action:tt )* )?) {
+            if is_goal_crate && options.phase_restriction == Some($restriction) {
+                $( $( $action )*; )?
+                return Ok(())
+            }
         }
+
+        if options.dump.times {
+            eprintln!("Execution times by phase:");
+        }
+
+        const EXECUTION_TIME_PHASE_NAME_PADDING: usize = 30;
 
         let source_file = map
             .borrow_mut()
             .load(crate_.path.clone())
-            .map_err(|error| Diagnostic::from(error).report(&reporter))?;
+            .reported(reporter)?;
 
-        let outcome!(tokens, lexer_health) =
+        let time = Instant::now();
+
+        let outcome!(tokens, health_of_lexer) =
             Lexer::new(&map.borrow()[source_file], &reporter).lex()?;
 
-        {
-            if options.dump.tokens {
-                for token in &tokens {
-                    eprintln!("{:?}", token);
-                }
-            }
-            if applies!(PhaseRestriction::Lexer) {
-                if lexer_health.is_tainted() {
-                    return Err(());
-                }
-                return Ok(());
+        let duration = time.elapsed();
+
+        if options.dump.tokens {
+            for token in &tokens {
+                eprintln!("{:?}", token);
             }
         }
+
+        if options.dump.times {
+            eprintln!(
+                "  {:<EXECUTION_TIME_PHASE_NAME_PADDING$}{duration:?}",
+                "Lexing"
+            );
+        }
+
+        check_phase_restriction!(
+            PhaseRestriction::Lexer,
+            if health_of_lexer.is_tainted() {
+                return Err(());
+            }
+        );
+
+        let time = Instant::now();
 
         let declaration = Parser::new(source_file, &tokens, map.clone(), &reporter).parse(
             // @Beacon @Note yikes!! we just unwrapped that from a string!
             Identifier::new(built_crates[crate_.package].name.clone().into(), Span::SHAM),
         )?;
 
-        assert!(lexer_health.is_untainted()); // parsing succeeded
+        let duration = time.elapsed();
 
-        {
-            if options.dump.ast {
-                eprintln!("{declaration:#?}");
-            }
-            if applies!(PhaseRestriction::Parser) {
-                return Ok(());
-            }
+        assert!(health_of_lexer.is_untainted()); // parsing succeeded
+
+        if options.dump.ast {
+            eprintln!("{declaration:#?}");
         }
 
-        let outcome!(mut declarations, health) =
+        if options.dump.times {
+            eprintln!(
+                "  {:<EXECUTION_TIME_PHASE_NAME_PADDING$}{duration:?}",
+                "Parsing"
+            );
+        }
+
+        check_phase_restriction!(PhaseRestriction::Parser);
+
+        let time = Instant::now();
+
+        let outcome!(mut declarations, health_of_lowerer) =
             Lowerer::new(map.clone(), &reporter).lower_declaration(declaration);
 
-        if health.is_tainted() {
-            return Err(());
-        }
+        let duration = time.elapsed();
 
         let declaration = declarations.pop().unwrap();
 
-        {
-            if options.dump.lowered_ast {
-                eprintln!("{}", declaration);
-            }
-            if applies!(PhaseRestriction::Lowerer) {
-                return Ok(());
-            }
+        if options.dump.lowered_ast {
+            eprintln!("{}", declaration);
         }
+
+        if options.dump.times {
+            eprintln!(
+                "  {:<EXECUTION_TIME_PHASE_NAME_PADDING$}{duration:?}",
+                "Lowering"
+            );
+        }
+
+        if health_of_lowerer.is_tainted() {
+            return Err(());
+        }
+
+        check_phase_restriction!(PhaseRestriction::Lowerer);
+
+        let time = Instant::now();
 
         let mut resolver = Resolver::new(&mut crate_, &built_crates, &reporter);
         let declaration = resolver.resolve_declaration(declaration)?;
 
-        {
-            if options.dump.hir {
-                eprintln!("{}", declaration.with((&crate_, &built_crates)));
-            }
-            if options.dump.untyped_scope {
-                eprintln!("{}", crate_.with(&built_crates));
-            }
-            if applies!(PhaseRestriction::Resolver) {
-                return Ok(());
-            }
+        let duration = time.elapsed();
+
+        if options.dump.hir {
+            eprintln!("{}", declaration.with((&crate_, &built_crates)));
         }
+        if options.dump.untyped_scope {
+            eprintln!("{}", crate_.with(&built_crates));
+        }
+
+        if options.dump.times {
+            eprintln!(
+                "  {:<EXECUTION_TIME_PHASE_NAME_PADDING$}{duration:?}",
+                "Name resolution"
+            );
+        }
+
+        check_phase_restriction!(PhaseRestriction::Resolver);
 
         // @Beacon @Temporary only in `core`
         crate_.register_foreign_bindings();
 
+        let time = Instant::now();
+
         let mut typer = Typer::new(&mut crate_, &built_crates, &reporter);
         typer.infer_types_in_declaration(&declaration)?;
 
-        {
-            if options.dump.scope {
-                eprintln!("{}", typer.scope.with(&built_crates));
-            }
+        let duration = time.elapsed();
+
+        if options.dump.scope {
+            eprintln!("{}", typer.scope.with(&built_crates));
+        }
+
+        if options.dump.times {
+            eprintln!(
+                "  {:<EXECUTION_TIME_PHASE_NAME_PADDING$}{duration:?}",
+                "Type checking & inference"
+            );
         }
 
         // @Beacon @Task dont check for program_entry in scope.run() or compile_and_interp

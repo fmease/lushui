@@ -63,6 +63,7 @@ pub fn arguments() -> (Command, Options) {
                     "dump-hir",
                     "dump-untyped-scope",
                     "dump-scope",
+                    "dump-times",
                     // @Beacon @Task rename to show-declaration-indices
                     "show-binding-indices",
                     "lex-only",
@@ -169,6 +170,7 @@ pub fn arguments() -> (Command, Options) {
                 "dump-hir" => dump.hir = true,
                 "dump-untyped-scope" => dump.untyped_scope = true,
                 "dump-scope" => dump.scope = true,
+                "dump-times" => dump.times = true,
                 "show-binding-indices" => show_binding_indices = true,
                 "lex-only" => {
                     PhaseRestriction::update(&mut phase_restriction, PhaseRestriction::Lexer);
@@ -244,6 +246,7 @@ pub struct DumpInformation {
     pub hir: bool,
     pub untyped_scope: bool,
     pub scope: bool,
+    pub times: bool,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
