@@ -144,6 +144,7 @@ impl BuildQueue<'_> {
             {
                 if !package.is_fully_resolved {
                     // @Task embellish
+                    // @Beacon @Task span info
                     Diagnostic::error()
                         .message("circular crates")
                         .report(self.reporter);
@@ -195,6 +196,8 @@ impl BuildQueue<'_> {
                 &dependency_manifest
                     .crates
                     .dependencies
+                    .map(|dependencies| dependencies.kind)
+                    .unwrap_or_default()
                     .iter()
                     .map(|(key, value)| (key.kind.clone(), value.kind.clone()))
                     .collect(),
@@ -226,7 +229,7 @@ impl BuildQueue<'_> {
 
         // @Temporary
         fn dependency_is_not_a_library(dependency: &str, dependent: &str) -> Diagnostic {
-            // @Task message, location(!)
+            // @Task message, span!!
             Diagnostic::error().message(format!(
                 "dependency `{dependency}` of `{dependent}` is not a library"
             ))
@@ -308,6 +311,7 @@ impl BuildQueue<'_> {
 
         if !(package_contains_library || package_contains_binaries) {
             // @Task embellish
+            // @Beacon @Task span info
             Diagnostic::error()
                 .message("package does neither contain a library nor any binaries")
                 .report(self.reporter);
@@ -321,6 +325,7 @@ impl BuildQueue<'_> {
         let path = match find_package(&path) {
             Some(path) => path,
             None => {
+                // @Beacon @Task span info
                 Diagnostic::error()
                     .message("neither the current directory nor any of its parents is a package")
                     .note(format!(
@@ -349,6 +354,8 @@ impl BuildQueue<'_> {
             &manifest
                 .crates
                 .dependencies
+                .map(|dependencies| dependencies.kind)
+                .unwrap_or_default()
                 .iter()
                 .map(|(key, value)| (key.kind.clone(), value.kind.clone()))
                 .collect(),
@@ -404,6 +411,8 @@ impl BuildQueue<'_> {
                 &core_manifest
                     .crates
                     .dependencies
+                    .map(|dependencies| dependencies.kind)
+                    .unwrap_or_default()
                     .iter()
                     .map(|(key, value)| (key.kind.clone(), value.kind.clone()))
                     .collect(),
@@ -594,13 +603,13 @@ pub fn find_package(path: &Path) -> Option<&Path> {
 pub mod manifest {
     use crate::{
         diagnostics::{Code, Diagnostic, Reporter},
-        error::{ReportedExt, Result},
-        metadata::{self, MapEntry, TypeError, ValueKind},
+        error::{Health, ReportedExt, Result},
+        metadata::{self, convert, Map, TypeError},
         span::{SharedSourceMap, Spanned},
-        util::{try_all, HashMap},
+        util::{spanned_key_map::SpannedKeyMap, try_all},
     };
     use std::{
-        convert::{TryFrom, TryInto},
+        convert::TryInto,
         path::{Path, PathBuf},
     };
 
@@ -620,85 +629,132 @@ pub mod manifest {
         // @Update @Update @Task don't handle them here but at the caller's site!!
         pub fn from_package_path(
             package_path: &Path,
-            map: SharedSourceMap,
+            source_map: SharedSourceMap,
             reporter: &Reporter,
         ) -> Result<Self> {
             let manifest_path = package_path.join(Self::FILE_NAME);
 
-            let source_file = map.borrow_mut().load(manifest_path).reported(reporter)?;
+            let source_file = source_map
+                .borrow_mut()
+                .load(manifest_path)
+                .reported(reporter)?;
 
-            let value = metadata::parse(source_file, map, reporter)?;
-            let mut map = value.kind.into_map().expect("type error");
+            let manifest = metadata::parse(source_file, source_map.clone(), reporter)?;
 
-            fn __remove<T: TryFrom<ValueKind, Error = TypeError>>(
-                map: &mut HashMap<String, MapEntry>,
-                key: &str,
-                reporter: &Reporter,
-            ) -> Result<Spanned<T>> {
-                match map.remove(key) {
-                    Some(entry) => __convert(key, entry.value, reporter),
-                    None => {
-                        // @Task imrpove message, add span, add name of map (or "root map")
-                        Diagnostic::error()
-                            .message(format!("the map ??? is the missing key `{key}`"))
-                            .report(reporter);
-                        Err(())
+            let manifest_span = manifest.span;
+            let mut manifest: Map = manifest.kind.try_into().map_err(|error: TypeError| {
+                Diagnostic::error()
+                    .code(Code::E800)
+                    .message(format!(
+                        "the type of the root should be {} but it is {}",
+                        error.expected, error.actual
+                    ))
+                    .labeled_primary_span(manifest_span, "has the wrong type")
+                    .report(reporter)
+            })?;
+
+            let name = manifest.remove("name", None, manifest_span, reporter);
+            let version = manifest.remove_optional("version", reporter);
+            let description = manifest.remove_optional("description", reporter);
+            let is_private = manifest.remove_optional("private", reporter);
+
+            let library = match manifest.remove_optional::<Map>("library", reporter) {
+                Ok(Some(mut library)) => {
+                    let path = library.kind.remove_optional::<String>("path", reporter);
+                    let exhaustion = library
+                        .kind
+                        .check_exhaustion(Some("library".into()), reporter);
+
+                    try_all! { path, exhaustion => return Err(()) };
+                    Ok(Some(Spanned::new(
+                        library.span,
+                        LibraryManifest {
+                            path: path.map(|path| path.map(PathBuf::from)),
+                        },
+                    )))
+                }
+                Ok(None) => Ok(None),
+                Err(()) => Err(()),
+            };
+
+            let binary = match manifest.remove_optional::<Map>("binary", reporter) {
+                Ok(Some(mut binary)) => {
+                    let path = binary.kind.remove_optional::<String>("path", reporter);
+                    let exhaustion = binary
+                        .kind
+                        .check_exhaustion(Some("binary".into()), reporter);
+
+                    try_all! { path, exhaustion => return Err(()) };
+                    Ok(Some(Spanned::new(
+                        binary.span,
+                        BinaryManifest {
+                            path: path.map(|path| path.map(PathBuf::from)),
+                        },
+                    )))
+                }
+                Ok(None) => Ok(None),
+                Err(()) => Err(()),
+            };
+
+            let dependencies = match manifest.remove_optional::<Map>("dependencies", reporter) {
+                Ok(Some(dependencies)) => {
+                    let mut health = Health::Untainted;
+                    let mut parsed_dependencies = SpannedKeyMap::default();
+
+                    for (dependency_name, dependency_manifest) in dependencies.kind.into_iter() {
+                        // @Task custom error message (maybe)
+                        let dependency_manifest =
+                            convert::<Map>(&dependency_name.kind, dependency_manifest, reporter);
+
+                        try_all! { dependency_manifest => health.taint(); continue };
+                        let mut dependency_manifest = dependency_manifest;
+
+                        let version = dependency_manifest
+                            .kind
+                            .remove_optional::<String>("version", reporter);
+                        let name = dependency_manifest.kind.remove_optional("name", reporter);
+                        let path = dependency_manifest
+                            .kind
+                            .remove_optional::<String>("path", reporter);
+
+                        // @Temporary path
+                        let exhaustion = dependency_manifest
+                            .kind
+                            .check_exhaustion(Some("dependency".into()), reporter);
+
+                        try_all! {
+                            version, name, path, exhaustion =>
+                            health.taint(); continue
+                        };
+
+                        let dependency_manifest = Spanned::new(
+                            dependency_manifest.span,
+                            DependencyManifest {
+                                version: version.map(|version| version.map(VersionRequirement)),
+                                name,
+                                path: path.map(|path| path.map(PathBuf::from)),
+                            },
+                        );
+
+                        parsed_dependencies.insert(dependency_name, dependency_manifest);
                     }
+
+                    health
+                        .of(Some(Spanned::new(dependencies.span, parsed_dependencies)))
+                        .into()
                 }
-            }
+                Ok(None) => Ok(None),
+                Err(()) => Err(()),
+            };
 
-            fn __remove_optional<T: TryFrom<ValueKind, Error = TypeError>>(
-                map: &mut HashMap<String, MapEntry>,
-                key: &str,
-                reporter: &Reporter,
-            ) -> Result<Option<Spanned<T>>> {
-                match map.remove(key) {
-                    Some(entry) => __convert(key, entry.value, reporter).map(Some),
-                    None => Ok(None),
-                }
-            }
+            manifest.check_exhaustion(None, reporter)?;
 
-            fn __convert<T: TryFrom<ValueKind, Error = TypeError>>(
-                key: &str,
-                value: Spanned<ValueKind>,
-                reporter: &Reporter,
-            ) -> Result<Spanned<T>> {
-                let span = value.span;
-                let value = value.kind.try_into().map_err(|error: TypeError| {
-                    Diagnostic::error()
-                        .code(Code::E800)
-                        .message(format!(
-                            "the type of key `{}` should be {} but it is {}",
-                            key, error.expected, error.actual
-                        ))
-                        .labeled_primary_span(span, "has the wrong type")
-                        .report(reporter)
-                })?;
+            try_all! {
+                name, version, description, is_private,
+                library, binary, dependencies =>
+                return Err(())
+            };
 
-                Ok(Spanned::new(span, value))
-            }
-
-            let name = __remove(&mut map, "name", reporter);
-            let version = __remove_optional(&mut map, "version", reporter);
-            let description = __remove_optional(&mut map, "description", reporter);
-            let is_private = __remove_optional(&mut map, "private", reporter);
-
-            if !map.is_empty() {
-                for (key, entry) in map {
-                    // @Task improve message
-                    Diagnostic::error()
-                        .code(Code::E801)
-                        .message(format!("unknown key `{key}` in map ???"))
-                        .primary_span(entry.key)
-                        .report(reporter);
-                }
-
-                return Err(());
-            }
-
-            try_all!(name, version, description, is_private);
-
-            // @Task don't bail out early on type errors & unknown keys!
             let manifest = PackageManifest {
                 details: PackageManifestDetails {
                     name,
@@ -707,9 +763,9 @@ pub mod manifest {
                     is_private,
                 },
                 crates: PackageManifestCrates {
-                    library: None,                    // @Task
-                    binary: None,                     // @Task
-                    dependencies: HashMap::default(), // @Task
+                    library,
+                    binary,
+                    dependencies,
                 },
             };
 
@@ -732,7 +788,7 @@ pub mod manifest {
         pub library: Option<Spanned<LibraryManifest>>,
         // @Task Vec<_>
         pub binary: Option<Spanned<BinaryManifest>>,
-        pub dependencies: HashMap<Spanned<CrateName>, Spanned<DependencyManifest>>,
+        pub dependencies: Option<Spanned<SpannedKeyMap<CrateName, Spanned<DependencyManifest>>>>,
     }
 
     #[derive(Default)]

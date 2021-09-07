@@ -657,6 +657,8 @@ pub enum Code {
     E800,
     /// Metadata: Unknown key.
     E801,
+    /// Metadata: Missing key.
+    E802,
 }
 
 impl Code {

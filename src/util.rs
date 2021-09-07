@@ -1,6 +1,7 @@
 //! Utility functionality and definitions.
 
 pub(crate) mod lexer;
+pub(crate) mod spanned_key_map;
 
 pub(crate) use num_bigint::{BigInt as Int, BigUint as Nat};
 pub(crate) use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
@@ -37,8 +38,14 @@ impl<T> GetFromEndExt for [T] {
     }
 }
 
-pub(crate) macro try_all($( $ident:ident ),* $(,)?) {
-    let ($( $ident ),*) = ($( $ident? ),*);
+pub(crate) macro try_all {
+    ($( $binder:ident ),* => $( $continuation:stmt);+ $(;)?) => {
+        #[allow(redundant_semicolons, unused_variables)]
+        let ($( $binder, )*) = match ($( ::std::ops::Try::branch($binder), )*) {
+            ($( ::std::ops::ControlFlow::Continue($binder), )*) => ($( $binder, )*),
+            _ => { $( $continuation );+ }
+        };
+    },
 }
 
 pub(crate) macro unrc($compound:ident.$projection:ident) {

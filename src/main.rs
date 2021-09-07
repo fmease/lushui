@@ -4,6 +4,7 @@
 use std::{convert::TryInto, time::Instant};
 
 use cli::{Command, PhaseRestriction};
+use colored::Colorize;
 use lushui::{
     diagnostics::{
         reporter::{BufferedStderrReporter, StderrReporter},
@@ -31,7 +32,7 @@ fn main() {
     }
 }
 
-fn main_() -> Result<(), ()> {
+fn main_() -> Result {
     set_panic_hook();
 
     let (command, options) = cli::arguments();
@@ -122,8 +123,15 @@ fn check_run_or_build_package(
     for mut crate_ in unbuilt_crates.into_values() {
         let is_goal_crate = crate_.index == goal_crate;
 
-        // @Beacon @Task print banner "compiling crate xyz" here unless --quiet/-q
-        // eprintln!("  [building {}]", built_crates[crate_.package].name);
+        if !options.quiet {
+            // @Task write `Checking` if `lushui check`ing
+            let label = "Building".green().bold();
+            let package = &built_crates[crate_.package];
+            let name = &package.name;
+            let path = package.path.to_string_lossy();
+            // @Task print version
+            println!("   {label} {name} ({path})");
+        }
 
         macro check_phase_restriction($restriction:expr $(, $( $action:tt )* )?) {
             if is_goal_crate && options.phase_restriction == Some($restriction) {
@@ -309,13 +317,12 @@ fn create_new_package(
         package_path.join(PackageManifest::FILE_NAME),
         format!(
             "\
-{{
-    name: '{name}',
-    version: '0.0.0',
-    dependencies: {{
-        core: {{}},
-    }},
-}}"
+name: \"{name}\",
+version: \"0.0.0\",
+dependencies: {{
+    core: {{}},
+}},
+"
         ),
     )
     .unwrap();

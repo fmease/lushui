@@ -4,6 +4,15 @@
 // utter trash!! ugly, inconvenient, confusing, unsafe (trying to prevent overflow
 // panics but they still gonna happen!)
 
+// @Beacon @Beacon @Beacon @Bug we currently totally gloss over empty spans...
+// we always assume a span of length at least 1
+// this is because the upper end is inclusive, i.e. x..x is of length one
+// but we need to be able to handle empty files:
+// SourceFiles with span S..<S where S is the the "span of the source file"
+// we have to refactor LocalSpan and Span and everything that depends on it
+// (esp. Diagnostic!!!)
+// we'd like to have fn is_empty(self) { self.start == self.end } in the end
+
 use crate::diagnostics::Diagnostic;
 pub use index::{ByteIndex, LocalByteIndex};
 pub use source_file::SourceFile;
@@ -678,6 +687,8 @@ mod source_map {
 
             Lines {
                 path: file.path.as_deref().unwrap(),
+                // @Beacon @Beacon @Beacon @Bug crashes on empty files
+                // because our spans are always at least size 1
                 first_line: first_line.unwrap().resolve(file).unwrap(),
                 final_line: final_line.map(|line| line.resolve(file).unwrap()),
             }

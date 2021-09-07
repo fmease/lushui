@@ -5,62 +5,64 @@
 
 // @Task support keywords as keys e.g. `false: false`
 
-use std::{convert::TryFrom, fmt};
+// @Beacon @Task catch duplicate keys!!
 
-use crate::{
-    diagnostics::Reporter,
-    error::{outcome, Result},
-    span::{SharedSourceMap, SourceFileIndex, Span, Spanned},
-    util::{obtain, HashMap},
+use std::{
+    convert::{TryFrom, TryInto},
+    fmt,
 };
 
+use crate::{
+    diagnostics::{Code, Diagnostic, Reporter},
+    error::{outcome, Result},
+    span::{SharedSourceMap, SourceFileIndex, Span, Spanned},
+    util::{obtain, spanned_key_map::SpannedKeyMap},
+};
+use discriminant::Discriminant;
+
 pub type Value = Spanned<ValueKind>;
+pub type Array = Vec<Value>;
+pub type Map = SpannedKeyMap<String, Value>;
 
 // @Task version, version requirement
-#[derive(Debug)]
+#[derive(Debug, Discriminant)]
+#[discriminant(Type)]
 pub enum ValueKind {
     Bool(bool),
     Integer(i64),
     Float(f64),
     Text(String),
-    Array(Vec<Value>),
-    Map(HashMap<String, MapEntry>),
+    Array(Array),
+    Map(Map),
 }
 
 impl ValueKind {
-    pub fn into_bool(self) -> Option<bool> {
+    fn into_bool(self) -> Option<bool> {
         obtain!(self, Self::Bool(bool) => bool)
     }
 
-    pub fn into_integer(self) -> Option<i64> {
+    fn into_integer(self) -> Option<i64> {
         obtain!(self, Self::Integer(int) => int)
     }
 
-    pub fn into_float(self) -> Option<f64> {
+    fn into_float(self) -> Option<f64> {
         obtain!(self, Self::Float(float) => float)
     }
 
-    pub fn into_text(self) -> Option<String> {
+    fn into_text(self) -> Option<String> {
         obtain!(self, Self::Text(text) => text)
     }
 
-    pub fn into_array(self) -> Option<Vec<Value>> {
+    fn into_array(self) -> Option<Array> {
         obtain!(self, Self::Array(array) => array)
     }
 
-    pub fn into_map(self) -> Option<HashMap<String, MapEntry>> {
+    fn into_map(self) -> Option<Map> {
         obtain!(self, Self::Map(map) => map)
     }
 
     pub fn type_(&self) -> Type {
-        match self {
-            Self::Bool(_) => Type::Bool,
-            Self::Integer(_) => Type::Int,
-            Self::Float(_) => Type::Float,
-            Self::Text(_) => Type::Text,
-            Self::Array(_) => todo!(),
-            Self::Map(_) => todo!(),
-        }
+        self.discriminant()
     }
 }
 
@@ -84,7 +86,7 @@ impl TryFrom<ValueKind> for i64 {
         let type_ = value.type_();
 
         value.into_integer().ok_or(TypeError {
-            expected: Type::Int,
+            expected: Type::Integer,
             actual: type_,
         })
     }
@@ -116,39 +118,130 @@ impl TryFrom<ValueKind> for String {
     }
 }
 
-pub struct TypeError {
-    pub expected: Type,
-    pub actual: Type,
+impl TryFrom<ValueKind> for Array {
+    type Error = TypeError;
+
+    fn try_from(value: ValueKind) -> Result<Self, Self::Error> {
+        let type_ = value.type_();
+
+        value.into_array().ok_or(TypeError {
+            expected: Type::Array,
+            actual: type_,
+        })
+    }
 }
 
-pub enum Type {
-    Bool,
-    Int,
-    Float,
-    Text,
-    Array(Box<Type>),
-    Map(Box<Type>),
+impl TryFrom<ValueKind> for Map {
+    type Error = TypeError;
+
+    fn try_from(value: ValueKind) -> Result<Self, Self::Error> {
+        let type_ = value.type_();
+
+        value.into_map().ok_or(TypeError {
+            expected: Type::Map,
+            actual: type_,
+        })
+    }
 }
 
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Type::Bool => write!(f, "boolean"),
-            Type::Int => write!(f, "integer"),
-            Type::Float => write!(f, "floating-point number"),
-            Type::Text => write!(f, "text"),
-            // @Task opt "of XXX"
-            Type::Array(_) => write!(f, "array"),
-            // @Task opt "of XXX"
-            Type::Map(_) => write!(f, "map"),
+            Self::Bool => write!(f, "boolean"),
+            Self::Integer => write!(f, "integer"),
+            Self::Float => write!(f, "float"),
+            Self::Text => write!(f, "text"),
+            Self::Array => write!(f, "array"),
+            Self::Map => write!(f, "map"),
         }
     }
 }
 
-#[derive(Debug)]
-pub struct MapEntry {
-    pub key: Span,
-    pub value: Value,
+impl Map {
+    // @Beacon @Temporary signature
+    pub fn remove<T: TryFrom<ValueKind, Error = TypeError>>(
+        &mut self,
+        key: &str,
+        path: Option<String>,
+        map: Span,
+        reporter: &Reporter,
+    ) -> Result<Spanned<T>> {
+        match self.0.remove(key) {
+            Some(entry) => convert(key, entry.value, reporter),
+            None => {
+                // @Task imrpove message, add span, add name of map (or "root map")
+                Diagnostic::error()
+                    .code(Code::E802)
+                    .message(format!(
+                        "the {} is missing the key `{key}`",
+                        path.map(|path| format!("map `{path}`"))
+                            .unwrap_or_else(|| "root map".into())
+                    ))
+                    .primary_span(map)
+                    .report(reporter);
+                Err(())
+            }
+        }
+    }
+
+    pub fn remove_optional<T: TryFrom<ValueKind, Error = TypeError>>(
+        &mut self,
+        key: &str,
+        reporter: &Reporter,
+    ) -> Result<Option<Spanned<T>>> {
+        match self.0.remove(key) {
+            Some(entry) => convert(key, entry.value, reporter).map(Some),
+            None => Ok(None),
+        }
+    }
+
+    // @Temporary signature
+    pub fn check_exhaustion(self, path: Option<String>, reporter: &Reporter) -> Result {
+        if !self.is_empty() {
+            let location = path
+                .map(|path| format!("map `{path}`"))
+                .unwrap_or_else(|| "root map".into());
+
+            for key in self.into_keys() {
+                // @Task improve message
+                Diagnostic::error()
+                    .code(Code::E801)
+                    .message(format!("unknown key `{key}` in {location}"))
+                    .primary_span(key)
+                    .report(reporter);
+            }
+
+            return Err(());
+        }
+
+        Ok(())
+    }
+}
+
+// @Temporary name
+pub fn convert<T: TryFrom<ValueKind, Error = TypeError>>(
+    key: &str,
+    value: Value,
+    reporter: &Reporter,
+) -> Result<Spanned<T>> {
+    let span = value.span;
+    let value = value.kind.try_into().map_err(|error: TypeError| {
+        Diagnostic::error()
+            .code(Code::E800)
+            .message(format!(
+                "the type of key `{}` should be {} but it is {}",
+                key, error.expected, error.actual
+            ))
+            .labeled_primary_span(span, "has the wrong type")
+            .report(reporter)
+    })?;
+
+    Ok(Spanned::new(span, value))
+}
+
+pub struct TypeError {
+    pub expected: Type,
+    pub actual: Type,
 }
 
 pub fn parse(
@@ -500,13 +593,12 @@ mod parser {
             Token,
             TokenName::{self, *},
         },
-        MapEntry, Value, ValueKind,
+        SpannedKeyMap, Value, ValueKind,
     };
     use crate::{
         diagnostics::{Diagnostic, Reporter},
         error::{ReportedExt, Result},
-        span::{SharedSourceMap, SourceFileIndex, Span, Spanned, Spanning},
-        util::HashMap,
+        span::{SharedSourceMap, SourceFileIndex, Span, Spanned},
     };
     pub(super) struct Parser<'a> {
         file: SourceFileIndex,
@@ -591,25 +683,20 @@ mod parser {
         /// Top-Level-Map-Entries ::= (Map-Entry ",")* Map-Entry? (> #End-Of-Input)
         /// ```
         fn parse_top_level_map_entries(&mut self) -> Result<Value> {
-            let mut span: Option<Span> = None;
-            let mut entries = HashMap::default();
+            let mut entries = SpannedKeyMap::default();
 
             while self.current_token().name() != EndOfInput {
-                let (key, entry) = self.parse_map_entry()?;
+                let entry = self.parse_map_entry()?;
 
-                let span_of_entry = entry.key.merge(entry.value.span());
-                let span = span.get_or_insert(span_of_entry);
-                span.merging(span_of_entry);
-
-                entries.extend_one((key, entry));
+                entries.extend_one(entry);
 
                 if self.current_token().name() != EndOfInput {
-                    span.merging(self.consume(Comma)?);
+                    self.consume(Comma)?;
                 }
             }
 
             Ok(Value::new(
-                span.unwrap_or_else(|| self.map.borrow()[self.file].span),
+                self.map.borrow()[self.file].span,
                 ValueKind::Map(entries),
             ))
         }
@@ -737,7 +824,7 @@ mod parser {
         /// ```
         fn finish_parse_map(&mut self, opening_bracket_span: Span) -> Result<Value> {
             let mut span = opening_bracket_span;
-            let mut entries = HashMap::default();
+            let mut entries = SpannedKeyMap::default();
 
             while self.current_token().name() != ClosingCurlyBracket {
                 entries.extend_one(self.parse_map_entry()?);
@@ -760,18 +847,12 @@ mod parser {
         /// ```ebnf
         /// Map-Entry ::= Map-Key ":" Value
         /// ```
-        fn parse_map_entry(&mut self) -> Result<(String, MapEntry)> {
+        fn parse_map_entry(&mut self) -> Result<(Spanned<String>, Value)> {
             let key = self.parse_map_key()?;
             self.consume(Colon)?;
             let value = self.parse_value()?;
 
-            Ok((
-                key.kind,
-                MapEntry {
-                    key: key.span,
-                    value,
-                },
-            ))
+            Ok((key, value))
         }
 
         /// Parse a map key.

@@ -356,6 +356,7 @@ fn main_() -> Result<(), ()> {
                             .current_dir(lushui_compiler_source_path())
                             .args(&["run", "--quiet", "--"])
                             .args(configuration.arguments)
+                            .arg("--quiet")
                             .arg(entry.path())
                             .output()
                             .unwrap();

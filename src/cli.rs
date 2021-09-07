@@ -34,6 +34,13 @@ pub fn arguments() -> (Command, Options) {
         // .setting(AppSettings::HidePossibleValuesInHelp)
         .setting(AppSettings::SubcommandRequiredElseHelp)
         .arg(
+            Arg::with_name("quiet")
+                .long("quiet")
+                .short("q")
+                .global(true)
+                .help("@Task"),
+        )
+        .arg(
             Arg::with_name("unlink-core")
                 .long("unlink-core")
                 .global(true)
@@ -191,6 +198,7 @@ pub fn arguments() -> (Command, Options) {
 
     let options = Options {
         source_file_path,
+        quiet: matches.is_present("quiet"),
         unlink_core: matches.is_present("unlink-core"),
         interpreter: matches
             .value_of("interpreter")
@@ -210,6 +218,7 @@ pub struct Options {
     // @Task don't store this here in Application but in Command
     // (after merging those three commands maybe??)
     pub source_file_path: Option<PathBuf>,
+    pub quiet: bool,
     pub unlink_core: bool,
     pub interpreter: Interpreter,
     pub dump: DumpInformation,
