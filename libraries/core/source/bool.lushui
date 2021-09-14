@@ -12,7 +12,7 @@ not (b: Bool): Bool =
         false => true
         true => false
 
-use super.unit.(Unit Thunk (force as !))
+use crate.unit.(Unit Thunk (force as !))
 
 @public
 if (A: Type) (condition: Bool) (lazy consequent alternate: Thunk A): A =

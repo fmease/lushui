@@ -21,10 +21,9 @@ main: Untyped =
         23 \x => 22
         344 w2w 2 => 1
 
-@(location "../../libs/core/core")
-module core
-
-use core.(nat.Nat bool.Bool.(self false true))
+use extern.core.(
+    nat.Nat
+    bool.Bool.(self false true))
 
 invert (b: Bool): Bool =
     case b of

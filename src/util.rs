@@ -1,12 +1,22 @@
-//! Utility functionality.
+//! Utility functionality and definitions.
 
+pub(crate) mod lexer;
+pub(crate) mod spanned_key_map;
+
+pub(crate) use num_bigint::{BigInt as Int, BigUint as Nat};
+pub(crate) use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::path::Path;
+pub(crate) use string_cache::DefaultAtom as Atom;
+
+pub(crate) type Str = std::borrow::Cow<'static, str>;
+
+pub(crate) type SmallVec<T, const N: usize> = smallvec::SmallVec<[T; N]>;
 
 pub(crate) fn has_file_extension(path: &Path, required_extension: &str) -> bool {
     path.extension().and_then(|extension| extension.to_str()) == Some(required_extension)
 }
 
-pub(crate) macro obtain($expr:expr, $( $pat:pat )|+ $( if $guard:expr )? $(,)? => $mapping:expr) {
+pub(crate) macro obtain($expr:expr, $( $pat:pat )|+ $( if $guard:expr )? $(,)? => $mapping:expr $(,)?) {
     match $expr {
         $( $pat )|+ $( if $guard )? => Some($mapping),
         _ => None
@@ -26,4 +36,20 @@ impl<T> GetFromEndExt for [T] {
         let index = self.len().checked_sub(index.checked_add(1)?)?;
         Some(unsafe { self.get_unchecked(index) })
     }
+}
+
+pub(crate) macro try_all {
+    ($( $binder:ident ),* => $( $continuation:stmt);+ $(;)?) => {
+        #[allow(redundant_semicolons, unused_variables)]
+        let ($( $binder, )*) = match ($( ::std::ops::Try::branch($binder), )*) {
+            ($( ::std::ops::ControlFlow::Continue($binder), )*) => ($( $binder, )*),
+            _ => { $( $continuation );+ }
+        };
+    },
+}
+
+pub(crate) macro unrc($compound:ident.$projection:ident) {
+    ::std::rc::Rc::try_unwrap($compound)
+        .map(|compound| compound.$projection)
+        .unwrap_or_else(|compound| compound.$projection.clone())
 }

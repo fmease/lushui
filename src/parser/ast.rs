@@ -8,10 +8,10 @@ use crate::{
     diagnostics::{Code, Diagnostic},
     error::PossiblyErroneous,
     lexer::{Token, TokenKind},
-    smallvec,
     span::{PossiblySpanning, SourceFileIndex, Span, Spanned, Spanning},
-    Atom, SmallVec,
+    util::{obtain, Atom, SmallVec},
 };
+use smallvec::smallvec;
 use std::{convert::TryFrom, convert::TryInto};
 
 pub use format::Format;
@@ -27,10 +27,17 @@ pub enum DeclarationKind {
     Data(Box<Data>),
     Constructor(Box<Constructor>),
     Module(Box<Module>),
-    Crate(Box<Crate>),
     Header,
     Group(Box<Group>),
     Use(Box<Use>),
+}
+
+impl TryFrom<DeclarationKind> for Module {
+    type Error = ();
+
+    fn try_from(declaration: DeclarationKind) -> Result<Self, Self::Error> {
+        obtain!(declaration, DeclarationKind::Module(module) => *module).ok_or(())
+    }
 }
 
 /// The syntax node of a value declaration or a let statement.
@@ -71,12 +78,6 @@ pub struct Module {
     pub binder: Identifier,
     pub file: SourceFileIndex,
     pub declarations: Option<Vec<Declaration>>,
-}
-
-/// The syntax node of a crate declaration.
-#[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct Crate {
-    pub binder: Identifier,
 }
 
 /// The syntax node of attribute groups.
@@ -241,13 +242,24 @@ pub struct TypedHole {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Path {
     pub hanger: Option<Hanger>,
+    // @Task better name: identifier_segments
+    // @Note non-empty if hanger is None
     pub segments: SmallVec<Identifier, 1>,
 }
 
 impl Path {
+    pub fn with_segments(segments: SmallVec<Identifier, 1>) -> Self {
+        Self {
+            hanger: None,
+            segments,
+        }
+    }
+
     /// Construct a single identifier segment path.
     ///
     /// May panic.
+    // @Note bad naming try_from_token (only for ids) <-> hanger only for hangers
+    // unify?
     pub fn try_from_token(token: Token) -> Option<Self> {
         Some(Identifier::try_from(token).ok()?.into())
     }
@@ -255,7 +267,7 @@ impl Path {
     /// Construct a non-identifier-head-only path.
     pub fn hanger(token: Token) -> Self {
         Self {
-            hanger: Some(Hanger::new(token.span, token.kind.try_into().unwrap())),
+            hanger: Some(Hanger::new(token.span, token.data.try_into().unwrap())),
             segments: SmallVec::new(),
         }
     }
@@ -263,25 +275,21 @@ impl Path {
     // @Task make this Option<Self> and move diagnostic construction into lowerer
     pub fn join(mut self, other: Self) -> Result<Self, Diagnostic> {
         if let Some(hanger) = other.hanger {
-            if !matches!(hanger.kind, HangerKind::Self_) {
+            if !matches!(hanger.data, HangerKind::Self_) {
                 return Err(Diagnostic::error()
                     .code(Code::E026)
-                    .message(format!(
-                        "path hanger `{}` not allowed in this position",
-                        hanger
-                    ))
+                    .message(format!("path `{}` not allowed in this position", hanger))
                     .primary_span(&hanger)
-                    .help("consider moving this path to its own separate use-declaration"));
+                    .help("consider moving this path to a separate use-declaration"));
             }
         }
         self.segments.extend(other.segments);
         Ok(self)
     }
 
-    pub fn is_self(&self) -> bool {
+    pub fn bare_hanger(&self, queried_hanger: HangerKind) -> Option<Hanger> {
         self.hanger
-            .map_or(false, |hanger| hanger.kind == HangerKind::Self_)
-            && self.segments.is_empty()
+            .filter(|hanger| hanger.data == queried_hanger && self.segments.is_empty())
     }
 
     /// Return the path head if it is an identifier.
@@ -312,16 +320,30 @@ impl Path {
         self.hanger.is_none() && self.segments.len() == 1
     }
 
-    pub fn tail(&self) -> Self {
+    pub fn unhanged(self) -> Self {
         Self {
             hanger: None,
-            // @Task avoid allocation, try to design it as a slice `&self.segments[1..]`
-            segments: if self.hanger.is_some() {
-                self.segments.clone()
-            } else {
-                self.segments.iter().skip(1).cloned().collect()
-            },
+            segments: self.segments,
         }
+    }
+
+    // @Task replace thing function with something that does not allocate
+    // @Note we'd like to have a PathView which uses slices of segments
+    pub fn tail(&self) -> Option<Self> {
+        let segments = if self.hanger.is_some() {
+            self.segments.clone()
+        } else {
+            let segments: SmallVec<_, 1> = self.segments.iter().skip(1).cloned().collect();
+            match segments.is_empty() {
+                true => return None,
+                false => segments,
+            }
+        };
+
+        Some(Self {
+            hanger: None,
+            segments,
+        })
     }
 
     // @Task avoid allocation, try to design it as a slice `&self.segments[..LEN - 1]`
@@ -363,7 +385,7 @@ impl Spanning for Path {
             self.segments
                 .first()
                 .unwrap()
-                .span
+                .span()
                 .merge(self.segments.last().unwrap())
         }
     }
@@ -400,9 +422,9 @@ pub struct LetIn {
 impl Spanned<&'_ LetIn> {
     pub fn span_without_definition_and_scope(self) -> Span {
         self.span
-            .fit_end(&self.kind.binder)
-            .fit_end(&self.kind.parameters)
-            .fit_end(&self.kind.type_annotation)
+            .fit_end(&self.data.binder)
+            .fit_end(&self.data.parameters)
+            .fit_end(&self.data.type_annotation)
     }
 }
 
@@ -532,6 +554,7 @@ pub type Hanger = Spanned<HangerKind>;
 /// The non-identifier head of a path.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HangerKind {
+    Extern,
     Crate,
     Super,
     Self_,
@@ -540,6 +563,7 @@ pub enum HangerKind {
 impl HangerKind {
     pub const fn name(self) -> &'static str {
         match self {
+            Self::Extern => "extern",
             Self::Crate => "crate",
             Self::Super => "super",
             Self::Self_ => "self",
@@ -552,6 +576,7 @@ impl TryFrom<TokenKind> for HangerKind {
 
     fn try_from(kind: TokenKind) -> Result<Self, Self::Error> {
         Ok(match kind {
+            TokenKind::Extern => Self::Extern,
             TokenKind::Crate => Self::Crate,
             TokenKind::Super => Self::Super,
             TokenKind::Self_ => Self::Self_,
@@ -562,29 +587,32 @@ impl TryFrom<TokenKind> for HangerKind {
 
 #[derive(Debug)] // @Temporary
 #[derive(Clone, Eq)]
-pub struct Identifier {
-    atom: Atom,
-    pub span: Span,
-}
+pub struct Identifier(Spanned<Atom>);
 
 impl Identifier {
     pub const fn new(atom: Atom, span: Span) -> Self {
-        Self { atom, span }
+        Self(Spanned::new(span, atom))
     }
 
-    pub fn is_punctuation(&self) -> bool {
-        crate::lexer::token::is_punctuation(self.atom.chars().next().unwrap())
+    fn atom(&self) -> &Atom {
+        &self.0.data
     }
 
     pub fn as_str(&self) -> &str {
-        &self.atom
+        self.atom()
+    }
+
+    pub fn as_spanned_str(&self) -> Spanned<&str> {
+        self.0.as_ref().map(|atom| &**atom)
     }
 
     pub fn stripped(self) -> Self {
-        Self {
-            span: Span::SHAM,
-            ..self
-        }
+        Self::new(self.0.data, Span::SHAM)
+    }
+
+    pub fn is_punctuation(&self) -> bool {
+        // either all characters are punctuation or none
+        crate::lexer::token::is_punctuation(self.atom().chars().next().unwrap())
     }
 }
 
@@ -592,36 +620,36 @@ impl TryFrom<Token> for Identifier {
     type Error = ();
 
     fn try_from(token: Token) -> Result<Self, Self::Error> {
-        Ok(Self {
-            span: token.span,
-            atom: token.identifier().ok_or(())?,
-        })
+        Ok(Self(Spanned::new(
+            token.span,
+            token.into_identifier().ok_or(())?,
+        )))
     }
 }
 
 impl From<Identifier> for Expression {
     fn from(identifier: Identifier) -> Self {
         expr! {
-            Path(Attributes::new(), identifier.span; Path::from(identifier))
+            Path(Attributes::new(), identifier.span(); Path::from(identifier))
         }
     }
 }
 
 impl Spanning for Identifier {
     fn span(&self) -> Span {
-        self.span
+        self.0.span
     }
 }
 
 impl PartialEq for Identifier {
     fn eq(&self, other: &Self) -> bool {
-        self.atom == other.atom
+        self.atom() == other.atom()
     }
 }
 
 impl std::hash::Hash for Identifier {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.atom.hash(state);
+        self.atom().hash(state);
     }
 }
 
@@ -634,16 +662,11 @@ pub use Explicitness::*;
 ///
 /// In the context of applications, [Implicit] means that the argument is passed explicitly
 /// even though the parameter is marked implicit.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Explicitness {
     Implicit,
+    #[default]
     Explicit,
-}
-
-impl Default for Explicitness {
-    fn default() -> Self {
-        Explicit
-    }
 }
 
 #[derive(Clone, Copy)]

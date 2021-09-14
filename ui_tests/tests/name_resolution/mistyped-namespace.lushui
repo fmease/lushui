@@ -1,11 +1,8 @@
 ;;; TEST fail check
 
-use core.list.List
+use extern.core.list.List
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-@(location "../../libs/core/core")
-module core
 
 use true-treasures-of-life.Friendship
 

@@ -1,67 +1,67 @@
 error[E021]: binding `tree-sinner` is not defined in this scope
- --> ${DIRECTORY}/name_resolution/undefined-but-having-lookalikes.lushui:9:10
+ --> ${DIRECTORY}/name_resolution/undefined-but-having-lookalikes.lushui:7:10
   |
-9 | a: Nat = tree-sinner
+7 | a: Nat = tree-sinner
   |          ^^^^^^^^^^^ 
   |
  help: a binding with a similar name exists in scope: `tree-sitter` (tree-sinntter)
 
 error[E021]: binding `Pathway` is not defined in this scope
-  --> ${DIRECTORY}/name_resolution/undefined-but-having-lookalikes.lushui:13:11
+  --> ${DIRECTORY}/name_resolution/undefined-but-having-lookalikes.lushui:11:11
    |
-13 | P: Type = Pathway
+11 | P: Type = Pathway
    |           ^^^^^^^ 
    |
 
 error[E021]: binding `kore` is not defined in module `crate`
-  --> ${DIRECTORY}/name_resolution/undefined-but-having-lookalikes.lushui:16:14
+  --> ${DIRECTORY}/name_resolution/undefined-but-having-lookalikes.lushui:14:14
    |
-16 |     a: super.kore.nat.Nat = tree-sinner ;;; @Bug "core" should be suggested for "kore"
+14 |     a: super.kore.nat.Nat = tree-sinner ;;; @Bug "core" should be suggested for "kore"
    |              ^^^^ 
    |
 
 error[E021]: binding `tree-sinner` is not defined in this scope
-  --> ${DIRECTORY}/name_resolution/undefined-but-having-lookalikes.lushui:16:29
+  --> ${DIRECTORY}/name_resolution/undefined-but-having-lookalikes.lushui:14:29
    |
-16 |     a: super.kore.nat.Nat = tree-sinner ;;; @Bug "core" should be suggested for "kore"
+14 |     a: super.kore.nat.Nat = tree-sinner ;;; @Bug "core" should be suggested for "kore"
    |                             ^^^^^^^^^^^ 
    |
 
 error[E021]: binding `bet` is not defined in this scope
-  --> ${DIRECTORY}/name_resolution/undefined-but-having-lookalikes.lushui:20:47
+  --> ${DIRECTORY}/name_resolution/undefined-but-having-lookalikes.lushui:18:47
    |
-20 | func (A: Type) (alpha beta gamma-blocker: A): bet =
+18 | func (A: Type) (alpha beta gamma-blocker: A): bet =
    |                                               ^^^ 
    |
   help: a binding with a similar name exists in scope: `beta`
 
-error[E021]: binding `identiti` is not defined in module `crate.core`
-  --> ${DIRECTORY}/name_resolution/undefined-but-having-lookalikes.lushui:23:10
+error[E021]: binding `identiti` is not defined in module `extern.core`
+  --> ${DIRECTORY}/name_resolution/undefined-but-having-lookalikes.lushui:21:10
    |
-23 |     core.identiti gamha_blocker
+21 |     core.identiti gamha_blocker
    |          ^^^^^^^^ 
    |
 
 error[E021]: binding `gamha_blocker` is not defined in this scope
-  --> ${DIRECTORY}/name_resolution/undefined-but-having-lookalikes.lushui:23:19
+  --> ${DIRECTORY}/name_resolution/undefined-but-having-lookalikes.lushui:21:19
    |
-23 |     core.identiti gamha_blocker
+21 |     core.identiti gamha_blocker
    |                   ^^^^^^^^^^^^^ 
    |
   help: a binding with a similar name exists in scope: `gamma-blocker` (gamhma_-blocker)
 
 error[E021]: binding `Alppa` is not defined in this scope
-  --> ${DIRECTORY}/name_resolution/undefined-but-having-lookalikes.lushui:27:9
+  --> ${DIRECTORY}/name_resolution/undefined-but-having-lookalikes.lushui:25:9
    |
-27 |         Alppa \omega 0 => onega ;;; @Bug fatal
+25 |         Alppa \omega 0 => onega ;;; @Bug fatal
    |         ^^^^^ 
    |
   help: a binding with a similar name exists in scope: `Alpha` (Alppha)
 
 error[E021]: binding `onega` is not defined in this scope
-  --> ${DIRECTORY}/name_resolution/undefined-but-having-lookalikes.lushui:31:21
+  --> ${DIRECTORY}/name_resolution/undefined-but-having-lookalikes.lushui:29:21
    |
-31 |         \omega 0 => onega
+29 |         \omega 0 => onega
    |                     ^^^^^ 
    |
   help: a binding with a similar name exists in scope: `omega` (onmega)

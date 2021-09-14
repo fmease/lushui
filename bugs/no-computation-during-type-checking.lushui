@@ -3,10 +3,7 @@ F: Type = F
 ;;; @Bug does not overflow because equals does not evaluate
 x: F = Type
 
-@(location "../../libs/core/core")
-module core
-
-use core.nat.(+ Nat)
+use extern.core.nat.(+ Nat)
 
 f (n: Nat): Nat = + 1 (f n)
 

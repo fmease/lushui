@@ -2,15 +2,19 @@
 //!
 //! Just like [CrateScope], [Entity] is a resource shared by those two passes.
 
-use std::{default::default, fmt};
-
 use crate::{
     error::PossiblyErroneous,
     format::DisplayWith,
     hir::Expression,
-    resolver::{CrateIndex, CrateScope, Exposure, Identifier, Namespace},
+    package::BuildSession,
+    resolver::{
+        CrateScope, DeclarationIndex, Exposure, Identifier, LocalDeclarationIndex, Namespace,
+    },
     typer::interpreter::{ffi::NakedForeignFunction, scope::ValueView},
+    util::obtain,
 };
+use std::{default::default, fmt};
+use EntityKind::*;
 
 /// Something that can be bound to an identifier.
 ///
@@ -29,60 +33,79 @@ pub struct Entity {
     /// Source information of the definition site.
     pub source: crate::ast::Identifier,
     /// The namespace this entity is a member of.
-    pub parent: Option<CrateIndex>,
+    pub parent: Option<LocalDeclarationIndex>,
     pub exposure: Exposure,
     pub kind: EntityKind,
 }
 
 impl Entity {
     pub const fn is_untyped_value(&self) -> bool {
-        use EntityKind::*;
-
         matches!(
             self.kind,
-            UntypedValue | UntypedDataType(_) | UntypedConstructor(_)
+            UntypedValue | UntypedDataType { .. } | UntypedConstructor { .. }
         )
+    }
+
+    /// Returns `true` if the entity is a typed or untyped value.
+    pub const fn is_value(&self) -> bool {
+        matches!(self.kind, UntypedValue | Value { .. })
+    }
+
+    /// Returns `true` if the entity is a typed or untyped data type.
+    pub const fn is_data_type(&self) -> bool {
+        matches!(self.kind, UntypedDataType { .. } | DataType { .. })
+    }
+
+    /// Returns `true` if the entity is a typed or untyped constructor.
+    pub const fn is_constructor(&self) -> bool {
+        matches!(self.kind, UntypedConstructor { .. } | Constructor { .. })
+    }
+
+    pub const fn is_module(&self) -> bool {
+        matches!(self.kind, Module { .. })
+    }
+
+    pub const fn is_foreign(&self) -> bool {
+        matches!(self.kind, Foreign { .. })
     }
 
     pub const fn is_error(&self) -> bool {
         matches!(self.kind, EntityKind::Error)
     }
 
-    pub fn is_namespace(&self) -> bool {
-        use EntityKind::*;
+    pub const fn is_namespace(&self) -> bool {
+        // @Note constructors are still namespaces until we throw out the old
+        // record field semanantics!
 
-        matches!(
-            self.kind,
-            Module(_) | UntypedDataType(_) | UntypedConstructor(_)
+        self.is_module() || self.is_data_type() || self.is_constructor()
+    }
+
+    pub const fn namespace(&self) -> Option<&Namespace> {
+        obtain!(
+            &self.kind,
+            Module { namespace }
+            | UntypedDataType { namespace }
+            | DataType { namespace, .. }
+            | UntypedConstructor { namespace }
+            | Constructor { namespace, .. } => namespace,
         )
     }
 
-    pub fn namespace(&self) -> Option<&Namespace> {
-        use EntityKind::*;
-
-        match &self.kind {
-            Module(namespace) | UntypedDataType(namespace) | UntypedConstructor(namespace) => {
-                Some(namespace)
-            }
-            _ => None,
-        }
-    }
-
     pub fn namespace_mut(&mut self) -> Option<&mut Namespace> {
-        use EntityKind::*;
-
-        match &mut self.kind {
-            Module(namespace) | UntypedDataType(namespace) | UntypedConstructor(namespace) => {
-                Some(namespace)
-            }
-            _ => None,
-        }
+        obtain!(
+            &mut self.kind,
+            Module { namespace }
+            | UntypedDataType { namespace }
+            | DataType { namespace, .. }
+            | UntypedConstructor { namespace }
+            | Constructor { namespace, .. } => namespace,
+        )
     }
 
     pub const fn is_value_without_value(&self) -> bool {
         matches!(
             self.kind,
-            EntityKind::Value {
+            Value {
                 expression: None,
                 ..
             }
@@ -90,18 +113,12 @@ impl Entity {
     }
 
     pub fn type_(&self) -> Option<Expression> {
-        use EntityKind::*;
-
-        Some(
-            match &self.kind {
-                Value { type_, .. } => type_,
-                DataType { type_, .. } => type_,
-                Constructor { type_, .. } => type_,
-                Foreign { type_, .. } => type_,
-                UntypedValue | UntypedDataType(_) | UntypedConstructor(_) => return None,
-                _ => unreachable!(),
-            }
-            .clone(),
+        obtain!(
+            &self.kind,
+            Value { type_, .. } |
+            DataType { type_, .. } |
+            Constructor { type_, .. } |
+            Foreign { type_, .. } => type_.clone(),
         )
     }
 
@@ -113,8 +130,6 @@ impl Entity {
     /// (because they are second-class by specification) or untyped entities which are
     /// not ready yet.
     pub fn value(&self) -> ValueView {
-        use EntityKind::*;
-
         match &self.kind {
             Value {
                 expression: Some(expression),
@@ -126,48 +141,53 @@ impl Entity {
             | Error => ValueView::Neutral,
             DataType { .. } | Constructor { .. } | Foreign { .. } => ValueView::Neutral,
             UntypedValue
-            | UntypedDataType(_)
-            | UntypedConstructor(_)
-            | Module(_)
+            | UntypedDataType { .. }
+            | UntypedConstructor { .. }
+            | Module { .. }
             | Use { .. }
             | UnresolvedUse => unreachable!(),
         }
     }
 
     pub fn mark_as_error(&mut self) {
-        self.kind = EntityKind::Error;
+        self.kind = Error;
     }
 }
 
 impl DisplayWith for Entity {
-    type Linchpin = <EntityKind as DisplayWith>::Linchpin;
+    type Context<'a> = <EntityKind as DisplayWith>::Context<'a>;
 
-    fn format(&self, scope: &CrateScope, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use std::borrow::Cow;
-
-        let parent = self.parent.map_or(Cow::Borrowed("-1C"), |parent| {
-            format!("{:?}", parent).into()
-        });
+    fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let parent = self
+            .parent
+            .map(|parent| format!("{parent:?}."))
+            .unwrap_or_default();
         let source = &self.source;
         let exposure = &self.exposure;
-        let kind = self.kind.with(scope);
+        let kind = self.kind.with(context);
 
-        write!(f, "{parent:>5}.{source:20} {exposure:?} |-> {kind}")
+        write!(f, "{parent:>5}{source:20} {exposure:?} |-> {kind}")
     }
 }
 
 #[derive(Clone)]
 pub enum EntityKind {
     UntypedValue,
-    Module(Namespace),
+    Module {
+        namespace: Namespace,
+    },
     /// Data types are not [Self::UntypedValue] as they are also namespaces containing constructors.
-    UntypedDataType(Namespace),
+    UntypedDataType {
+        namespace: Namespace,
+    },
     /// Constructors are not [Self::UntypedValue] as they are also namespaces containing fields.
-    UntypedConstructor(Namespace),
+    UntypedConstructor {
+        namespace: Namespace,
+    },
     /// The `reference is never a `Use` itself.
     /// Nested aliases were already collapsed by [CrateScope::collapse_use_chain].
     Use {
-        reference: CrateIndex,
+        reference: DeclarationIndex,
     },
     UnresolvedUse,
 
@@ -177,10 +197,12 @@ pub enum EntityKind {
     },
     // @Question should we store the constructors?
     DataType {
+        namespace: Namespace,
         type_: Expression,
         constructors: Vec<Identifier>,
     },
     Constructor {
+        namespace: Namespace,
         type_: Expression,
     },
     Foreign {
@@ -200,49 +222,56 @@ impl PossiblyErroneous for EntityKind {
 
 impl EntityKind {
     pub fn module() -> Self {
-        Self::Module(default())
+        Module {
+            namespace: default(),
+        }
     }
 
     pub fn untyped_constructor() -> Self {
-        Self::UntypedConstructor(default())
+        UntypedConstructor {
+            namespace: default(),
+        }
     }
 
     pub fn untyped_data_type() -> Self {
-        Self::UntypedDataType(default())
+        UntypedDataType {
+            namespace: default(),
+        }
     }
 }
 
 impl DisplayWith for EntityKind {
-    type Linchpin = CrateScope;
+    type Context<'a> = (&'a CrateScope, &'a BuildSession);
 
-    fn format(&self, scope: &CrateScope, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use EntityKind::*;
-
+    fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             UntypedValue => write!(f, "untyped value"),
-            Module(namespace) => write!(f, "module: {:?}", namespace),
-            UntypedDataType(namespace) => write!(f, "untyped data type: {:?}", namespace),
-            UntypedConstructor(namespace) => write!(f, "untyped constructor: {:?}", namespace),
+            Module { namespace } => write!(f, "module of {:?}", namespace),
+            UntypedDataType { namespace } => write!(f, "untyped data type of {:?}", namespace),
+            UntypedConstructor { namespace } => write!(f, "untyped constructor of {:?}", namespace),
             Use { reference } => write!(f, "use {:?}", reference),
             UnresolvedUse => write!(f, "unresolved use"),
             Value { type_, expression } => match expression {
-                Some(expression) => write!(f, "{}: {}", expression.with(scope), type_.with(scope)),
-                None => write!(f, ": {}", type_.with(scope)),
+                Some(expression) => {
+                    write!(f, "{}: {}", expression.with(context), type_.with(context))
+                }
+                None => write!(f, ": {}", type_.with(context)),
             },
             DataType {
                 type_,
                 constructors,
+                ..
             } => write!(
                 f,
                 "data: {} = {}",
-                type_.with(scope),
+                type_.with(context),
                 constructors
                     .iter()
                     .map(|constructor| format!("{} ", constructor))
                     .collect::<String>()
             ),
-            Constructor { type_ } => write!(f, "constructor: {}", type_.with(scope)),
-            Foreign { type_, .. } => write!(f, "foreign: {}", type_.with(scope)),
+            Constructor { type_, .. } => write!(f, "constructor: {}", type_.with(context)),
+            Foreign { type_, .. } => write!(f, "foreign: {}", type_.with(context)),
             Error => write!(f, "error"),
         }
     }

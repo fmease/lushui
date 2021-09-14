@@ -14,8 +14,8 @@ invert (o: Ordering): Ordering =
         equal => equal
         greater => less
 
-use super.unit.(unit Unit Thunk (force as !))
-use super.int.Int
+use crate.unit.(unit Unit Thunk (force as !))
+use crate.int.Int
 
 @public
 then (o: Ordering) (lazy p: Thunk Ordering): Ordering =

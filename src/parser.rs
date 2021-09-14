@@ -26,17 +26,19 @@ pub mod ast;
 mod test;
 
 use crate::{
-    diagnostics::{Code, Diagnostic, Handler},
+    diagnostics::{Code, Diagnostic, Reporter},
+    error::Result,
     format::{ordered_listing, Conjunction},
-    lexer::{Token, TokenKind},
-    smallvec,
-    span::{SourceFileIndex, SourceMap, Span, Spanned, Spanning},
-    SmallVec,
+    lexer::{
+        Token,
+        TokenName::{self, *},
+    },
+    span::{SharedSourceMap, SourceFileIndex, Span, Spanned, Spanning},
+    util::SmallVec,
 };
 use ast::*;
-use std::{cell::RefCell, convert::TryInto, default::default, rc::Rc};
-
-type Result<T = (), E = ()> = std::result::Result<T, E>;
+use smallvec::smallvec;
+use std::{convert::TryInto, default::default};
 
 const STANDARD_DECLARATION_DELIMITERS: [Delimiter; 3] = {
     use Delimiter::*;
@@ -53,16 +55,16 @@ pub struct Parser<'a> {
     tokens: &'a [Token],
     reflection_depth: u16,
     index: usize,
-    map: Rc<RefCell<SourceMap>>,
-    handler: &'a Handler,
+    map: SharedSourceMap,
+    reporter: &'a Reporter,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(
         file: SourceFileIndex,
         tokens: &'a [Token],
-        map: Rc<RefCell<SourceMap>>,
-        handler: &'a Handler,
+        map: SharedSourceMap,
+        reporter: &'a Reporter,
     ) -> Self {
         Self {
             file,
@@ -70,7 +72,7 @@ impl<'a> Parser<'a> {
             reflection_depth: 0,
             index: 0,
             map,
-            handler,
+            reporter,
         }
     }
 
@@ -88,9 +90,9 @@ impl<'a> Parser<'a> {
         result
     }
 
-    fn manually_reflect<T>(&mut self, handler: impl FnOnce(&mut Self) -> T) -> T {
+    fn manually_reflect<T>(&mut self, reporter: impl FnOnce(&mut Self) -> T) -> T {
         self.reflection_depth += 1;
-        let result = handler(self);
+        let result = reporter(self);
         self.reflection_depth -= 1;
         result
     }
@@ -102,7 +104,7 @@ impl<'a> Parser<'a> {
     fn error<T, D: FnOnce() -> Diagnostic>(&self, diagnostic: D) -> Result<T> {
         fn error<D: FnOnce() -> Diagnostic>(parser: &Parser<'_>, diagnostic: D) -> Result<!> {
             if !parser.reflecting() {
-                diagnostic().emit(&parser.handler);
+                diagnostic().report(&parser.reporter);
             }
 
             Err(())
@@ -111,9 +113,9 @@ impl<'a> Parser<'a> {
         error(self, diagnostic).map(|okay| okay)
     }
 
-    fn expect(&self, expected: TokenKind) -> Result<Token> {
+    fn expect(&self, expected: TokenName) -> Result<Token> {
         let token = self.current_token();
-        if token.kind == expected {
+        if token.name() == expected {
             Ok(token.clone())
         } else {
             self.error(|| Expected::Token(expected).but_actual_is(token))
@@ -121,17 +123,17 @@ impl<'a> Parser<'a> {
     }
 
     // @Note horrible name
-    fn expect_among_others(&self, expected: TokenKind, other_expected: Expected) -> Result<Token> {
+    fn expect_among_others(&self, expected: TokenName, other_expected: Expected) -> Result<Token> {
         let token = self.current_token();
-        if token.kind == expected {
+        if token.name() == expected {
             Ok(token.clone())
         } else {
             self.error(|| other_expected.added(expected).but_actual_is(token))
         }
     }
 
-    fn consume(&mut self, token_kind: TokenKind) -> Result<Token> {
-        let token = self.expect(token_kind)?;
+    fn consume(&mut self, token: TokenName) -> Result<Token> {
+        let token = self.expect(token)?;
         self.advance();
         Ok(token)
     }
@@ -139,16 +141,16 @@ impl<'a> Parser<'a> {
     // @Note bad name
     fn consume_after_expecting(
         &mut self,
-        token_kind: TokenKind,
+        token: TokenName,
         other_expected: Expected,
     ) -> Result<Token> {
-        let token = self.expect_among_others(token_kind, other_expected)?;
+        let token = self.expect_among_others(token, other_expected)?;
         self.advance();
         Ok(token)
     }
 
-    fn consume_identifier(&mut self) -> Result<Identifier> {
-        self.consume(TokenKind::Identifier)
+    fn consume_identifier(&mut self) -> Result<ast::Identifier> {
+        self.consume(TokenName::Identifier)
             .map(|identifier| identifier.try_into().unwrap())
     }
 
@@ -159,9 +161,8 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// General-Identifier ::= #Identifier | #Punctuation
     /// ```
-    fn consume_general_identifier(&mut self) -> Result<Identifier> {
-        use TokenKind::*;
-        match self.current_token().kind {
+    fn consume_general_identifier(&mut self) -> Result<ast::Identifier> {
+        match self.current_token().name() {
             Identifier | Punctuation => {
                 let identifier = self.current_token_into_identifier();
                 self.advance();
@@ -178,8 +179,8 @@ impl<'a> Parser<'a> {
     /// Conceptually equivalent to `self.manually_reflect(|this| this.consume(..)).is_ok()`
     /// but more memory-efficient as it does not clone the consumed token.
     #[must_use]
-    fn has_consumed(&mut self, kind: TokenKind) -> bool {
-        if self.current_token().kind == kind {
+    fn has_consumed(&mut self, token: TokenName) -> bool {
+        if self.current_token().name() == token {
             self.advance();
             true
         } else {
@@ -189,8 +190,8 @@ impl<'a> Parser<'a> {
 
     /// Conceptually equivalent to `Self::consume(..).map(Spanning::span).ok()` but more memory-efficient as
     /// it neither constructs a [crate::diagnostics::Diagnostic] nor clones the consumed token.
-    fn consume_span(&mut self, kind: TokenKind) -> Option<Span> {
-        if self.current_token().kind == kind {
+    fn consume_span(&mut self, token: TokenName) -> Option<Span> {
+        if self.current_token().name() == token {
             let span = self.current_token().span;
             self.advance();
             Some(span)
@@ -218,7 +219,7 @@ impl<'a> Parser<'a> {
 
     /// Indicate whether the current token is one of the given delimiters.
     fn current_token_is_delimiter(&self, delimiters: &[Delimiter]) -> bool {
-        let token = self.current_token().kind;
+        let token = self.current_token().name();
         delimiters.iter().any(|delimiter| delimiter.matches(token))
     }
 
@@ -226,7 +227,7 @@ impl<'a> Parser<'a> {
     ///
     /// ## Panics
     ///
-    /// Panics if the current token is the [end of input](TokenKind::EndOfInput).
+    /// Panics if the current token is the [end of input](TokenName::EndOfInput).
     fn succeeding_token(&self) -> &Token {
         &self.tokens[self.index + 1]
     }
@@ -241,17 +242,14 @@ impl<'a> Parser<'a> {
     ///     | Value-Declaration
     ///     | Data-Declaration
     ///     | Module-Declaration
-    ///     | Crate-Declaration
     ///     | Use-Declaration
-    /// Crate-Declaration ::= "crate" #Identifier Terminator
     /// ```
     // @Task re-add attribute groups (needs syntax proposals)
     fn parse_declaration(&mut self) -> Result<Declaration> {
-        use TokenKind::*;
         let attributes = self.parse_attributes(SkipLineBreaks::Yes)?;
 
         let span = self.current_token().span;
-        match self.current_token().kind {
+        match self.current_token().name() {
             Identifier => {
                 let identifier = self.current_token_into_identifier();
                 self.advance();
@@ -264,20 +262,6 @@ impl<'a> Parser<'a> {
             Module => {
                 self.advance();
                 self.finish_parse_module_declaration(span, attributes)
-            }
-            // @Task remove
-            Crate => {
-                self.advance();
-                let binder = self.consume_identifier()?;
-                self.expect_terminator()?;
-
-                Ok(decl! {
-                    Crate {
-                        attributes,
-                        span.merge(&binder.span);
-                        binder,
-                    }
-                })
             }
             Use => {
                 self.advance();
@@ -295,12 +279,11 @@ impl<'a> Parser<'a> {
     /// Attribute ::= Regular-Attribute | Documentation-Comment
     /// ```
     fn parse_attributes(&mut self, skip_line_breaks: SkipLineBreaks) -> Result<Attributes> {
-        use TokenKind::*;
         let mut attributes = Attributes::default();
 
         loop {
             let span = self.current_token().span;
-            attributes.push(match self.current_token().kind {
+            attributes.push(match self.current_token().name() {
                 At => {
                     self.advance();
                     let attribute = self.finish_parse_regular_attribute(span)?;
@@ -313,7 +296,7 @@ impl<'a> Parser<'a> {
                     self.advance();
                     let attribute = Attribute {
                         binder: ast::Identifier::new(
-                            crate::Atom::from("documentation"),
+                            crate::util::Atom::from("documentation"),
                             Span::SHAM,
                         ),
                         span,
@@ -347,13 +330,12 @@ impl<'a> Parser<'a> {
     /// Regular-Attribute ::= "@" (#Identifier | "(" #Identifier Attribute-Argument* ")")
     /// ```
     fn finish_parse_regular_attribute(&mut self, keyword_span: Span) -> Result<Attribute> {
-        use TokenKind::*;
         let mut span = keyword_span;
 
         let binder;
         let mut arguments = SmallVec::new();
 
-        match self.current_token().kind {
+        match self.current_token().name() {
             Identifier => {
                 binder = span.merging(self.current_token_into_identifier());
                 self.advance();
@@ -362,7 +344,7 @@ impl<'a> Parser<'a> {
                 self.advance();
                 binder = self.consume_identifier()?;
 
-                while self.current_token().kind != ClosingRoundBracket {
+                while self.current_token().name() != ClosingRoundBracket {
                     arguments.push(self.parse_attribute_argument()?);
                 }
 
@@ -396,22 +378,21 @@ impl<'a> Parser<'a> {
     /// Lower-Attribute-Argument ::= Path | #Number-Literal | #Text-Literal
     /// ```
     fn parse_attribute_argument(&mut self) -> Result<AttributeArgument> {
-        use TokenKind::*;
-        Ok(match self.current_token().kind {
-            kind if kind.is_path_head() => {
+        Ok(match self.current_token().name() {
+            name if name.is_path_head() => {
                 let path = self.parse_path()?;
                 attrarg! { Path(path.span(); path) }
             }
             NumberLiteral => {
                 let token = self.current_token().clone();
                 self.advance();
-                attrarg! { NumberLiteral(token.span; token.number_literal().unwrap()) }
+                attrarg! { NumberLiteral(token.span; token.into_number_literal().unwrap()) }
             }
             TextLiteral => {
                 let token = self.current_token().clone();
                 let span = token.span;
                 let text_literal = token
-                    .text_literal()
+                    .into_text_literal()
                     .unwrap()
                     .or_else(|error| self.error(|| error))?;
 
@@ -449,11 +430,10 @@ impl<'a> Parser<'a> {
     /// ```
     fn finish_parse_value_declaration(
         &mut self,
-        binder: Identifier,
+        binder: ast::Identifier,
         attributes: Attributes,
     ) -> Result<Declaration> {
-        use TokenKind::*;
-        let mut span = binder.span;
+        let mut span = binder.span();
 
         let parameters = span.merging(self.parse_parameters(&STANDARD_DECLARATION_DELIMITERS)?);
         let type_annotation = span.merging(self.parse_optional_type_annotation()?);
@@ -497,7 +477,6 @@ impl<'a> Parser<'a> {
         keyword_span: Span,
         attributes: Attributes,
     ) -> Result<Declaration> {
-        use TokenKind::*;
         let mut span = keyword_span;
 
         let binder = span.merging(self.consume_identifier()?);
@@ -508,9 +487,9 @@ impl<'a> Parser<'a> {
         ])?);
         let type_annotation = span.merging(self.parse_optional_type_annotation()?);
 
-        let constructors = match self.current_token().kind {
-            kind if kind.is_terminator() => {
-                if kind == Semicolon {
+        let constructors = match self.current_token().name() {
+            name if name.is_terminator() => {
+                if name == Semicolon {
                     self.advance();
                 }
                 None
@@ -572,12 +551,11 @@ impl<'a> Parser<'a> {
         keyword_span: Span,
         attributes: Attributes,
     ) -> Result<Declaration> {
-        use TokenKind::*;
         let mut span = keyword_span;
 
-        match self.current_token().kind {
-            kind if kind.is_terminator() => {
-                if kind == Semicolon {
+        match self.current_token().name() {
+            name if name.is_terminator() => {
+                if name == Semicolon {
                     self.advance();
                 }
 
@@ -588,10 +566,10 @@ impl<'a> Parser<'a> {
 
         let binder = span.merging(self.consume_identifier()?);
 
-        match self.current_token().kind {
+        match self.current_token().name() {
             // external module declaration
-            kind if kind.is_terminator() => {
-                if kind == Semicolon {
+            name if name.is_terminator() => {
+                if name == Semicolon {
                     self.advance();
                 }
 
@@ -635,7 +613,7 @@ impl<'a> Parser<'a> {
     /// Parse a file module.
     ///
     /// It takes the identifier of the module as an argument.
-    pub fn parse(&mut self, binder: Identifier) -> Result<Declaration> {
+    pub fn parse(&mut self, binder: ast::Identifier) -> Result<Declaration> {
         self.parse_top_level(binder)
     }
 
@@ -648,9 +626,7 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Top-Level ::= (#Line-Break | Declaration)* #End-Of-Input
     /// ```
-    fn parse_top_level(&mut self, binder: Identifier) -> Result<Declaration> {
-        use TokenKind::*;
-
+    fn parse_top_level(&mut self, binder: ast::Identifier) -> Result<Declaration> {
         let mut declarations = Vec::new();
 
         loop {
@@ -662,7 +638,7 @@ impl<'a> Parser<'a> {
                 break Ok(decl! {
                     Module {
                         Attributes::new(),
-                        self.map.borrow().get(self.file).span;
+                        self.map.borrow()[self.file].span;
                         binder,
                         file: self.file,
                         declarations: Some(declarations)
@@ -674,12 +650,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_optional_block(
-        &mut self,
-        mut subparser: impl FnMut(&mut Self) -> Result<()>,
-    ) -> Result {
-        use TokenKind::*;
-
+    fn parse_optional_block(&mut self, mut subparser: impl FnMut(&mut Self) -> Result) -> Result {
         if self.has_consumed(OpeningCurlyBracket) {
             loop {
                 while self.has_consumed(Semicolon) {}
@@ -735,12 +706,10 @@ impl<'a> Parser<'a> {
     /// ```
     // @Task rewrite this following a simpler grammar mirroring expression applications
     fn parse_use_path_tree(&mut self, delimiters: &[Delimiter]) -> Result<UsePathTree> {
-        use TokenKind::*;
-
         let mut path = self.parse_first_path_segment()?;
 
         while self.has_consumed(Dot) {
-            match self.current_token().kind {
+            match self.current_token().name() {
                 Identifier | Punctuation => {
                     let identifier = self.current_token_into_identifier();
                     self.advance();
@@ -752,7 +721,7 @@ impl<'a> Parser<'a> {
 
                     let mut bindings = Vec::new();
 
-                    while self.current_token().kind != ClosingRoundBracket {
+                    while self.current_token().name() != ClosingRoundBracket {
                         if let Ok(bracket) =
                             self.manually_reflect(|this| this.consume(OpeningRoundBracket))
                         {
@@ -840,12 +809,10 @@ impl<'a> Parser<'a> {
     ///     Terminator
     /// ```
     fn parse_constructor(&mut self) -> Result<Declaration> {
-        use TokenKind::*;
-
         let attributes = self.parse_attributes(SkipLineBreaks::Yes)?;
 
         let binder = self.consume_identifier()?;
-        let mut span = binder.span;
+        let mut span = binder.span();
 
         let parameters = span.merging(self.parse_parameters(&STANDARD_DECLARATION_DELIMITERS)?);
 
@@ -901,8 +868,6 @@ impl<'a> Parser<'a> {
     ///     "(" Parameter-Aspect #Identifier Type-Annotation ")"
     /// ```
     fn parse_pi_type_literal_or_lower(&mut self) -> Result<Expression> {
-        use TokenKind::*;
-
         let domain = self
             .reflect(|this| {
                 let explicitness = this.parse_optional_implicitness();
@@ -943,7 +908,7 @@ impl<'a> Parser<'a> {
                 ))
             })?;
 
-        if self.current_token().kind == ThinArrowRight {
+        if self.current_token().name() == ThinArrowRight {
             self.advance();
 
             let mut span = domain.span;
@@ -953,15 +918,15 @@ impl<'a> Parser<'a> {
                 PiTypeLiteral {
                     Attributes::new(),
                     span;
-                    domain: domain.kind,
+                    domain: domain.data,
                     codomain,
                 }
             })
         }
         // the case where we don't actually have a pi type literal but merely
         // an application or lower
-        else if domain.kind.binder.is_none() {
-            Ok(domain.kind.expression)
+        else if domain.data.binder.is_none() {
+            Ok(domain.data.expression)
         } else {
             self.error(|| {
                 Expected::Token(ThinArrowRight)
@@ -981,8 +946,6 @@ impl<'a> Parser<'a> {
     /// Fieldness ::= "::"?
     /// ```
     fn parse_parameter_aspect(&mut self) -> ParameterAspect {
-        use TokenKind::*;
-
         let laziness = self.consume_span(Lazy);
         let fieldness = self.consume_span(DoubleColon);
 
@@ -1039,15 +1002,13 @@ impl<'a> Parser<'a> {
     /// Sequence-Literal ::= "[" Lower-Expression* "]"
     /// ```
     fn parse_lower_expression(&mut self) -> Result<Expression> {
-        use TokenKind::*;
-
         let attributes = self.parse_attributes(SkipLineBreaks::No)?;
 
         let mut span = self.current_token().span;
         // @Task don't pass attributes down but make them empty at first, then update the attributes
         // dependeninh on if it's a field or not
-        let mut expression = match self.current_token().kind {
-            kind if kind.is_path_head() => {
+        let mut expression = match self.current_token().name() {
+            name if name.is_path_head() => {
                 let path = self.parse_path()?;
                 expr! { Path(default(), path.span(); path) }
             }
@@ -1056,19 +1017,21 @@ impl<'a> Parser<'a> {
                 expr! { TypeLiteral { default(), span } }
             }
             NumberLiteral => {
+                // @Beacon @Task avoid clone!
                 let token = self.current_token().clone();
                 self.advance();
                 expr! {
-                    NumberLiteral(default(), token.span; token.number_literal().unwrap())
+                    NumberLiteral(default(), token.span; token.into_number_literal().unwrap())
                 }
             }
             TextLiteral => {
+                // @Beacon @Task avoid clone!
                 let token = self.current_token().clone();
                 self.advance();
 
                 let span = token.span;
                 let text_literal = token
-                    .text_literal()
+                    .into_text_literal()
                     .unwrap()
                     .or_else(|error| self.error(|| error))?;
 
@@ -1099,12 +1062,13 @@ impl<'a> Parser<'a> {
                 self.advance();
                 self.finish_parse_do_block(span)?
             }
+            // @Task move to a finish_parse_sequence_literal
             OpeningSquareBracket => {
                 self.advance();
 
                 let mut elements = Vec::new();
 
-                while self.current_token().kind != ClosingSquareBracket {
+                while self.current_token().name() != ClosingSquareBracket {
                     elements.push(self.parse_lower_expression()?);
                 }
 
@@ -1131,7 +1095,7 @@ impl<'a> Parser<'a> {
                         // make a parsing error non-fatal: we can just skip the `->` and keep
                         // parsing w/o introducing too many (any?) useless/confusing consequential
                         // errors!
-                        .when(self.current_token().kind == ThinArrowRight, |this| {
+                        .if_(self.current_token().name() == ThinArrowRight, |this| {
                             this.help(BRACKET_POTENTIAL_PI_TYPE_LITERAL)
                         })
                 });
@@ -1166,12 +1130,12 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Path ::= Path-Head ("." General-Identifier)*
     /// Path-Head ::= Path-Hanger | General-Identifier
-    /// Path-Hanger ::= "crate" | "super" | "self"
+    /// Path-Hanger ::= "extern" | "crate" | "super" | "self"
     /// ```
     fn parse_path(&mut self) -> Result<Path> {
         let mut path = self.parse_first_path_segment()?;
 
-        while self.has_consumed(TokenKind::Dot) {
+        while self.has_consumed(TokenName::Dot) {
             path.segments.push(self.consume_general_identifier()?);
         }
 
@@ -1180,10 +1144,9 @@ impl<'a> Parser<'a> {
 
     /// Parse the first segment of a path.
     fn parse_first_path_segment(&mut self) -> Result<Path> {
-        use TokenKind::*;
-        let path = match self.current_token().kind {
+        let path = match self.current_token().name() {
             Identifier | Punctuation => Path::try_from_token(self.current_token().clone()).unwrap(),
-            Crate | Super | Self_ => Path::hanger(self.current_token().clone()),
+            name if name.is_path_hanger() => Path::hanger(self.current_token().clone()),
             _ => return self.error(|| Expected::Path.but_actual_is(self.current_token())),
         };
         self.advance();
@@ -1201,10 +1164,12 @@ impl<'a> Parser<'a> {
     /// ```
     fn finish_parse_lambda_literal(&mut self, keyword_span: Span) -> Result<Expression> {
         let mut span = keyword_span;
-        let parameters =
-            self.parse_parameters(&[Delimiter::TypeAnnotationPrefix, TokenKind::WideArrow.into()])?;
+        let parameters = self.parse_parameters(&[
+            Delimiter::TypeAnnotationPrefix,
+            TokenName::WideArrowRight.into(),
+        ])?;
         let body_type_annotation = self.parse_optional_type_annotation()?;
-        self.consume(TokenKind::WideArrow)?;
+        self.consume(TokenName::WideArrowRight)?;
         let body = span.merging(self.parse_expression()?);
 
         Ok(expr! {
@@ -1234,7 +1199,6 @@ impl<'a> Parser<'a> {
     fn finish_parse_let_in(&mut self, span_of_let: Span) -> Result<Expression> {
         // @Task recover from two consecutive `in`s
 
-        use TokenKind::*;
         let mut span = span_of_let;
 
         let binder = self.consume_identifier()?;
@@ -1287,8 +1251,6 @@ impl<'a> Parser<'a> {
     fn finish_parse_use_in(&mut self, span_of_use: Span) -> Result<Expression> {
         // @Task recover from two consecutive `in`s
 
-        use TokenKind::*;
-
         // @Task smh add line break aka virtual semicolon
         let bindings = self.parse_use_path_tree(&[In.into()])?;
 
@@ -1322,7 +1284,6 @@ impl<'a> Parser<'a> {
     /// Case ::= Pattern "=>" Expression Terminator
     /// ```
     fn finish_parse_case_analysis(&mut self, span_of_case: Span) -> Result<Expression> {
-        use TokenKind::*;
         let mut span = span_of_case;
 
         let scrutinee = self.parse_expression()?;
@@ -1333,9 +1294,9 @@ impl<'a> Parser<'a> {
         if self.has_consumed(OpeningCurlyBracket) {
             // @Task use parse_block function for this (but don't trash the span!)
 
-            while self.current_token().kind != ClosingCurlyBracket {
+            while self.current_token().name() != ClosingCurlyBracket {
                 let pattern = self.parse_pattern()?;
-                self.consume(WideArrow)?;
+                self.consume(WideArrowRight)?;
                 let body = self.parse_expression()?;
                 self.expect_terminator()?;
 
@@ -1377,19 +1338,18 @@ impl<'a> Parser<'a> {
     /// issue, `:` is a bad *but only in case* of adding type annotation expressions (not that likely
     /// as they clash with other syntactic elements like pi literals).
     fn finish_parse_do_block(&mut self, span_of_do: Span) -> Result<Expression> {
-        use TokenKind::*;
         let mut span = span_of_do;
         let mut statements = Vec::new();
 
         let _ = self.consume(OpeningCurlyBracket)?;
 
-        while self.current_token().kind != ClosingCurlyBracket {
+        while self.current_token().name() != ClosingCurlyBracket {
             // @Note necessary I guess in cases where we have #Line-Break ((Comment)) #Line-Break
             if self.has_consumed(Semicolon) {
                 continue;
             }
 
-            statements.push(match self.current_token().kind {
+            statements.push(match self.current_token().name() {
                 // @Task move to its own function
                 Let => {
                     self.advance();
@@ -1399,7 +1359,7 @@ impl<'a> Parser<'a> {
                         Delimiter::DefinitionPrefix,
                     ])?;
                     let type_annotation = self.parse_optional_type_annotation()?;
-                    self.consume(TokenKind::Equals)?;
+                    self.consume(TokenName::Equals)?;
                     let expression = self.parse_expression()?;
                     self.expect_terminator()?;
 
@@ -1418,8 +1378,8 @@ impl<'a> Parser<'a> {
                     Statement::Use(ast::Use { bindings })
                 }
                 _ => {
-                    if self.current_token().kind == Identifier
-                        && matches!(self.succeeding_token().kind, Colon | ThinArrowLeft)
+                    if self.current_token().name() == Identifier
+                        && matches!(self.succeeding_token().name(), Colon | ThinArrowLeft)
                     {
                         // @Task move to its own function
                         let binder = self.current_token_into_identifier();
@@ -1462,7 +1422,7 @@ impl<'a> Parser<'a> {
     /// Parse parameters until one of the given delimiters is encountered.
     ///
     /// One needs to specify delimiters to allow for better error diagnostics.
-    /// A delimiter must not be [TokenKind::OpeningRoundBracket] or [TokenKind::Identifier].
+    /// A delimiter must not be [TokenName::OpeningRoundBracket] or [TokenName::Identifier].
     /// The delimiter list must be non-empty.
     ///
     /// ## Grammar
@@ -1494,12 +1454,10 @@ impl<'a> Parser<'a> {
     ///     | "(" Parameter-Aspect #Identifier+ Type-Annotation? ")"
     /// ```
     fn parse_parameter_group(&mut self, delimiters: &[Delimiter]) -> Result<ParameterGroup> {
-        use TokenKind::*;
-
         let explicitness = self.parse_optional_implicitness();
         let mut span = self.current_token().span.merge_into(explicitness);
 
-        match self.current_token().kind {
+        match self.current_token().name() {
             Identifier => {
                 let binder = self.current_token_into_identifier();
                 self.advance();
@@ -1562,8 +1520,6 @@ impl<'a> Parser<'a> {
     /// Parse a (de)application or something lower.
     // @Task rewrite this with a `delimiter: Delimiter`-parameter for better error messages!
     fn parse_application_like_or_lower<Expat: ExpressionOrPattern>(&mut self) -> Result<Expat> {
-        use TokenKind::*;
-
         let mut callee = Expat::parse_lower(self)?;
         struct Argument<Expat> {
             explicitness: Explicitness,
@@ -1596,7 +1552,7 @@ impl<'a> Parser<'a> {
 
                     let binder = this.consume_identifier()?;
 
-                    if Expat::IS_EXPRESSION && this.current_token().kind == Colon {
+                    if Expat::IS_EXPRESSION && this.current_token().name() == Colon {
                         illegal_pi = Some(this.current_token().clone());
                         this.advance();
                     } else {
@@ -1619,7 +1575,7 @@ impl<'a> Parser<'a> {
             })
         {
             if let Some(token) = &illegal_pi {
-                let explicitness = match argument.kind.explicitness {
+                let explicitness = match argument.data.explicitness {
                     Implicit => "an implicit",
                     Explicit => "a",
                 };
@@ -1637,9 +1593,9 @@ impl<'a> Parser<'a> {
 
             callee = Expat::application_like(
                 callee,
-                argument.kind.expat,
-                argument.kind.explicitness,
-                argument.kind.binder,
+                argument.data.expat,
+                argument.data.explicitness,
+                argument.data.binder,
                 span,
             );
         }
@@ -1664,19 +1620,18 @@ impl<'a> Parser<'a> {
     /// Sequence-Literal-Pattern ::= "[" Lower-Pattern* "]"
     /// ```
     fn parse_lower_pattern(&mut self) -> Result<Pattern> {
-        use TokenKind::*;
         let attributes = self.parse_attributes(SkipLineBreaks::No)?;
 
         let mut span = self.current_token().span;
-        match self.current_token().kind {
-            kind if kind.is_path_head() => self.parse_path().map(|path| {
+        match self.current_token().name() {
+            name if name.is_path_head() => self.parse_path().map(|path| {
                 pat! { Path(attributes, path.span(); path) }
             }),
             NumberLiteral => {
                 let token = self.current_token().clone();
                 self.advance();
                 Ok(pat! {
-                    NumberLiteral(attributes, token.span; token.number_literal().unwrap())
+                    NumberLiteral(attributes, token.span; token.into_number_literal().unwrap())
                 })
             }
             TextLiteral => {
@@ -1684,7 +1639,7 @@ impl<'a> Parser<'a> {
                 self.advance();
                 let span = token.span;
                 let text_literal = token
-                    .text_literal()
+                    .into_text_literal()
                     .unwrap()
                     .or_else(|error| self.error(|| error))?;
 
@@ -1700,7 +1655,7 @@ impl<'a> Parser<'a> {
 
                 let mut elements = Vec::new();
 
-                while self.current_token().kind != ClosingSquareBracket {
+                while self.current_token().name() != ClosingSquareBracket {
                     elements.push(self.parse_lower_pattern()?);
                 }
 
@@ -1733,13 +1688,13 @@ impl<'a> Parser<'a> {
         // very likely to certainly not show up in the final report since it gets swallowed
         // by reflect (the branch do-not-reflect experiments with this stuff and makes the
         // below actually show up)
-        self.consume_after_expecting(TokenKind::Colon, other_expected)?;
+        self.consume_after_expecting(TokenName::Colon, other_expected)?;
         self.reflect(Self::parse_expression)
     }
 
     /// Parse an optional type annotation.
     fn parse_optional_type_annotation(&mut self) -> Result<Option<Expression>> {
-        self.has_consumed(TokenKind::Colon)
+        self.has_consumed(TokenName::Colon)
             .then(|| self.parse_expression())
             .transpose()
     }
@@ -1754,10 +1709,9 @@ impl<'a> Parser<'a> {
     /// Terminator ::= ";" | (> "}" | #End-Of-Input)
     /// ```
     fn expect_terminator(&mut self) -> Result<Option<Token>> {
-        use TokenKind::*;
         let token = self.current_token();
-        if token.kind.is_terminator() {
-            if token.kind == Semicolon {
+        if token.name().is_terminator() {
+            if token.name() == Semicolon {
                 let token = token.clone();
                 self.advance();
 
@@ -1768,7 +1722,7 @@ impl<'a> Parser<'a> {
         } else {
             Expected::Delimiter(Delimiter::Terminator)
                 .but_actual_is(self.current_token())
-                .emit(&self.handler);
+                .report(&self.reporter);
             Err(())
         }
     }
@@ -1781,8 +1735,8 @@ impl<'a> Parser<'a> {
     /// Explicitness ::= "'"?
     /// ```
     fn parse_optional_implicitness(&mut self) -> SpannedExplicitness {
-        match self.current_token().kind {
-            TokenKind::SingleQuote => {
+        match self.current_token().name() {
+            TokenName::SingleQuote => {
                 let span = self.current_token().span;
                 self.advance();
                 SpannedExplicitness::Implicit { marker: span }
@@ -1799,7 +1753,7 @@ trait ExpressionOrPattern: Sized + Spanning + std::fmt::Debug {
         callee: Self,
         argument: Self,
         explicitness: Explicitness,
-        binder: Option<Identifier>,
+        binder: Option<ast::Identifier>,
         span: Span,
     ) -> Self;
     fn parse(parser: &mut Parser<'_>) -> Result<Self>;
@@ -1813,7 +1767,7 @@ impl ExpressionOrPattern for Expression {
         callee: Self,
         argument: Self,
         explicitness: Explicitness,
-        binder: Option<Identifier>,
+        binder: Option<ast::Identifier>,
         span: Span,
     ) -> Self {
         expr! { Application { Attributes::new(), span; callee, argument, explicitness, binder } }
@@ -1833,7 +1787,7 @@ impl ExpressionOrPattern for Pattern {
         callee: Self,
         argument: Self,
         explicitness: Explicitness,
-        binder: Option<Identifier>,
+        binder: Option<ast::Identifier>,
         span: Span,
     ) -> Self {
         pat! { Deapplication { Attributes::new(), span; callee, argument, explicitness, binder } }
@@ -1849,7 +1803,7 @@ impl ExpressionOrPattern for Pattern {
 }
 
 enum Expected {
-    Token(TokenKind),
+    Token(TokenName),
     Path,
     Declaration,
     Expression,
@@ -1893,23 +1847,13 @@ impl Expected {
     fn but_actual_is(self, actual: &Token) -> Diagnostic {
         Diagnostic::error()
             .code(Code::E010)
-            .message(format!(
-                "found {}, but expected {}",
-                match actual.kind {
-                    kind @ TokenKind::Illegal => {
-                        let character = actual.illegal().unwrap();
-                        format!("{} U+{:04X} `{}`", kind, character as u32, character)
-                    }
-                    kind => kind.to_string(),
-                },
-                self
-            ))
+            .message(format!("found {actual}, but expected {self}"))
             .labeled_primary_span(actual, "unexpected token")
     }
 }
 
-impl From<TokenKind> for Expected {
-    fn from(token: TokenKind) -> Self {
+impl From<TokenName> for Expected {
+    fn from(token: TokenName) -> Self {
         Self::Token(token)
     }
 }
@@ -1945,13 +1889,11 @@ enum Delimiter {
     TypeAnnotationPrefix,
     DefinitionPrefix,
     Terminator,
-    Token(TokenKind),
+    Token(TokenName),
 }
 
 impl Delimiter {
-    fn matches(self, token: TokenKind) -> bool {
-        use TokenKind::*;
-
+    fn matches(self, token: TokenName) -> bool {
         match (self, token) {
             (Self::TypeAnnotationPrefix, Colon) => true,
             (Self::DefinitionPrefix, Equals) => true,
@@ -1974,8 +1916,8 @@ impl fmt::Display for Delimiter {
     }
 }
 
-impl From<TokenKind> for Delimiter {
-    fn from(token: TokenKind) -> Self {
+impl From<TokenName> for Delimiter {
+    fn from(token: TokenName) -> Self {
         Self::Token(token)
     }
 }

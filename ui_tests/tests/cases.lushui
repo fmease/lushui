@@ -1,9 +1,6 @@
 ;;; TEST ignore (deapplications not supported yet)
 
-@(location "../../libs/core/core")
-module core
-
-use core.(
+use extern.core.(
     list.(List cons empty)
     bool.(Bool false true))
 

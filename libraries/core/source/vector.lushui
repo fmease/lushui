@@ -1,4 +1,4 @@
-use super.nat.(Nat +)
+use crate.nat.(Nat +)
 
 @public
 data Vector (n: Nat) (A: Type): Type of

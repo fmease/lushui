@@ -1,42 +1,46 @@
-error[E025]: `use` of unnamed `super`
+error[E025]: path `super` is not bound to an identifier
  --> ${DIRECTORY}/lowering/invalid-unnamed-path-hanger.lushui:3:5
   |
 3 | use super
   |     ^^^^^ 
   |
+ note: a use-declaration has to introduce at least one new binder
  help: bind the path to a name with `as`
 
-error[E025]: `use` of unnamed `crate`
+error[E025]: path `crate` is not bound to an identifier
  --> ${DIRECTORY}/lowering/invalid-unnamed-path-hanger.lushui:4:5
   |
 4 | use crate
   |     ^^^^^ 
   |
+ note: a use-declaration has to introduce at least one new binder
  help: bind the path to a name with `as`
 
-error[E025]: `use` of unnamed `self`
+error[E025]: path `self` is not bound to an identifier
  --> ${DIRECTORY}/lowering/invalid-unnamed-path-hanger.lushui:6:5
   |
 6 | use self
   |     ^^^^ 
   |
+ note: a use-declaration has to introduce at least one new binder
  help: bind the path to a name with `as`
 
-error[E025]: `use` of unnamed `self`
+error[E025]: path `self` is not bound to an identifier
  --> ${DIRECTORY}/lowering/invalid-unnamed-path-hanger.lushui:8:18
   |
 8 | use crate.(space self space)
   |                  ^^^^ 
   |
+ note: a use-declaration has to introduce at least one new binder
  help: bind the path to a name with `as`
 
-error[E026]: path hanger `super` not allowed in this position
+error[E026]: path `super` not allowed in this position
   --> ${DIRECTORY}/lowering/invalid-unnamed-path-hanger.lushui:10:29
    |
 10 | use crate.(self.(self.thing super))
    |                             ^^^^^ 
    |
-  help: consider moving this path to its own separate use-declaration
+  help: consider moving this path to a separate use-declaration
 
 error: aborting due to 5 previous errors
  note: the errors E025 and E026 have a detailed explanation

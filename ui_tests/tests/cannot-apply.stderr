@@ -1,12 +1,12 @@
-error[E031]: expected type `_ -> _`, got type `crate.core.nat.Nat`
- --> ${DIRECTORY}/cannot-apply.lushui:6:21
+error[E031]: expected type `_ -> _`, got type `extern.core.nat.Nat`
+ --> ${DIRECTORY}/cannot-apply.lushui:3:21
   |
-6 | Abomination: Type = 0 1
+3 | Abomination: Type = 0 1
   |                     ^ has wrong type
   |
- --> ${DIRECTORY}/cannot-apply.lushui:6:23
+ --> ${DIRECTORY}/cannot-apply.lushui:3:23
   |
-6 | Abomination: Type = 0 1
+3 | Abomination: Type = 0 1
   |                       - applied to this
   |
 

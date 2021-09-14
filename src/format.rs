@@ -7,30 +7,30 @@ use joinery::JoinableIterator;
 use std::fmt;
 
 pub trait DisplayWith: Sized {
-    type Linchpin;
+    type Context<'a>: Copy;
 
-    fn format(&self, linchpin: &Self::Linchpin, f: &mut fmt::Formatter<'_>) -> fmt::Result;
+    fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result;
 
-    fn with<'a>(&'a self, linchpin: &'a Self::Linchpin) -> WithLinchpin<'a, Self> {
-        WithLinchpin {
+    fn with<'a>(&'a self, context: Self::Context<'a>) -> WithContext<'a, Self> {
+        WithContext {
             subject: self,
-            linchpin,
+            context,
         }
     }
 }
 
-pub struct WithLinchpin<'a, T: DisplayWith> {
+pub struct WithContext<'a, T: DisplayWith> {
     pub subject: &'a T,
-    pub linchpin: &'a T::Linchpin,
+    pub context: T::Context<'a>,
 }
 
-impl<T: DisplayWith> fmt::Display for WithLinchpin<'_, T> {
+impl<T: DisplayWith> fmt::Display for WithContext<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.subject.format(self.linchpin, f)
+        self.subject.format(self.context, f)
     }
 }
 
-impl<T: DisplayWith> fmt::Debug for WithLinchpin<'_, T> {
+impl<T: DisplayWith> fmt::Debug for WithContext<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(self, f)
     }
@@ -111,6 +111,10 @@ impl<D: fmt::Display> QuoteExt for D {
         // @Task optimize
         format!("`{}`", self)
     }
+}
+
+pub macro quoted($code:expr) {
+    concat!("`", $code, "`")
 }
 
 pub trait AsDebug: fmt::Display + Sized {

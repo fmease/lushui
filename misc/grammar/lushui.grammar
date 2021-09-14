@@ -16,7 +16,7 @@
 ; | `A+`      | Kleene Plus (Positive Multiplicity) | Arbitrarily long non-empty sequence of `A`s                   |
 ; | `"T"`     | Terminal                            | Lexed token by textual content                                |
 ; | `#T`      | Named Terminal                      | Lexed token by name                                           |
-; | `<!A`     | Negative Look-Behind                |                                                               |
+; | `(> A)`   | Positive Look-Ahead                 |                                                               |
 
 General-Identifier ::= #Identifier | #Punctuation
 
@@ -25,9 +25,7 @@ Naked-Declaration ::=
     | Value-Declaration
     | Data-Declaration
     | Module-Declaration
-    | Crate-Declaration
     | Use-Declaration
-Crate-Declaration ::= "crate" #Identifier #Line-Break
 
 Attribute ::= Regular-Attribute | Documentation-Comment
 
@@ -39,22 +37,23 @@ Lower-Attribute-Argument ::= Path | #Number-Literal | #Text-Literal
 Value-Declaration ::=
     #Identifier
     Parameters Type-Annotation?
-    ("=" Terminated-Expression | #Line-Break)
+    ("=" Expression)?
+    Terminator
 
 Data-Declaration ::=
     "data" #Identifier
     Parameters Type-Annotation?
-    ("of" ("{" (#Line-Break | Constructor)* "}")?)?
-    #Line-Break
+    ("of" ("{" (Terminator | Constructor)* "}")?)?
+    Terminator
 
 Module-Declaration ::=
     | Header
-    | "module" #Identifier ("of" ("{" (#Line-Break | Declaration)* "}")?)? #Line-Break
-Header ::= "module" #Line-Break
+    | "module" #Identifier ("of" ("{" (Terminator | Declaration)* "}")?)? Terminator
+Header ::= "module" Terminator
 
 Top-Level ::= (#Line-Break | Declaration)* #End-Of-Input
 
-Use-Declaration ::= "use" Use-Path-Tree #Line-Break
+Use-Declaration ::= "use" Use-Path-Tree Terminator
 
 Use-Path-Tree ::=
     | Path
@@ -65,7 +64,8 @@ Renaming ::= Path "as" General-Identifier
 Constructor ::=
     (Attribute #Line-Break*)*
     #Identifier Parameters Type-Annotation?
-    (#Line-Break | "=" Terminated-Expression)
+    ("=" Expression)?
+    Terminator
 
 Expression ::= Pi-Type-Literal-Or-Lower
 
@@ -118,26 +118,29 @@ Sequence-Literal ::= "[" Lower-Expression* "]"
 
 Path ::= Path-Head ("." General-Identifier)*
 Path-Head ::= Path-Hanger | General-Identifier
-Path-Hanger ::= "crate" | "super" | "self"
+Path-Hanger ::= "crates" | "crate" | "super" | "self"
 
 Lambda-Literal ::= "\" Parameters Type-Annotation? "=>" Expression
 
 Let-In ::=
-    "let" #Identifier Parameters Type_Annotation?
+    "let" #Identifier Parameters Type-Annotation?
     ("=" Expression)?
-    #Line-Break?
+    #Virtual-Semicolon?
     "in" Expression
 
-Use-In ::= "use" Use-Path-Tree "in" #Line-Break? Expression
+Use-In ::=
+    "use" Use-Path-Tree
+    #Virtual-Semicolon?
+    "in" Expression
 
 Case-Analysis ::= "case" Expression "of" ("{" Case* "}")?
-Case ::= Pattern "=>" Expression
+Case ::= Pattern "=>" Expression Terminator
 
 Do-Block ::= "do" "{" Statement* "}"
 Statement ::= Let-Statement | Use-Declaration | Bind-Statement | Expression-Statement
 Let-Statement ::= "let" Value-Declaration
-Bind-Statement ::= #Identifier Type-Annotation? "<-" Expression #Line-Break
-Expression-Statement ::= Expression #Line-Break
+Bind-Statement ::= #Identifier Type-Annotation? "<-" Expression Terminator
+Expression-Statement ::= Expression Terminator
 
 Parameters ::= Parameter-Group*
 
@@ -164,7 +167,7 @@ Sequence-Literal-Pattern ::= "[" Lower-Pattern* "]"
 
 Type-Annotation ::= ":" Expression
 
-Terminated-Expression ::= Expression ((<! "}") #Line-Break)?
+Terminator ::= ";" | (> "}" | #End-Of-Input)
 
 Explicitness ::= "'"?
 

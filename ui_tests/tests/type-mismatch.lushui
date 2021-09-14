@@ -9,16 +9,13 @@
 ;;; it goes from 4 to 3 errors putting `module core` between the `take` and `t`
 ;;; declaration: the type error in `take 44` is not shown in this case
 
-@(location "../../libs/core/core")
-module core
-
 data X: Type of
     x: X
 
 a: X = Type
 b: Type = X.x
 
-use core.bool.(Bool false true)
+use extern.core.bool.(Bool false true)
 
 x: false = false
 

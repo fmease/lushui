@@ -1,9 +1,7 @@
 ;;; TEST fail check
 ;;; @Task test more branches
 
-@(location "../../../libs/core/core")
-module core
-
+use extern.core
 use core.nat.Nat
 
 a: Nat = tree-sinner

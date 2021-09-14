@@ -1,12 +1,12 @@
 ;;; TEST pass run
 
-@(location "../../libs/core/core")
-module core
-
-use core.(nat.(self Nat) bool.Bool duple.(Duple duple))
+use extern.core.(
+    nat.(self Nat)
+    bool.Bool
+    duple.(Duple duple))
 
 combine: Nat -> Nat -> Nat = nat.add
-successor: Nat -> core.nat.Nat = combine 1
+successor: Nat -> Nat = combine 1
 
 p: Bool = nat.equal 50 (nat.add 10 40)
 q: Bool = nat.equal 1 0

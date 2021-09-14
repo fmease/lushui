@@ -46,13 +46,19 @@
     format_args_capture,
     associated_type_bounds,
     label_break_value,
-    type_ascription
+    type_ascription,
+    derive_default_enum,
+    generic_associated_types,
+    path_try_exists,
+    extend_one,
+    try_trait_v2,
+    adt_const_params
 )]
-#![forbid(rust_2018_idioms, unused_must_use)]
+#![deny(rust_2018_idioms, unused_must_use)]
+#![allow(incomplete_features)] // adt_const_params (we are only doing the basics)
 
 pub mod compiler;
 pub mod diagnostics;
-pub mod documenter;
 mod entity;
 pub mod error;
 pub mod format;
@@ -60,34 +66,30 @@ mod grow_array;
 mod item;
 pub mod lexer;
 pub mod lowerer;
+pub mod metadata;
+pub mod package;
 pub mod parser;
 pub mod resolver;
 pub mod span;
 pub mod typer;
 mod util;
 
-const FILE_EXTENSION: &str = "lushui";
+/// The file extension of a Lushui source code file.
+pub const FILE_EXTENSION: &str = "lushui";
 
-use lexer::INDENTATION;
 use lowerer::lowered_ast;
-use num_bigint::{BigInt as Int, BigUint as Nat};
 use once_cell::sync::OnceCell;
 use parser::ast;
 use resolver::hir;
-use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
-use smallvec::smallvec;
-use string_cache::DefaultAtom as Atom;
 
-type Str = std::borrow::Cow<'static, str>;
+// @Task remove this options stuff!
 
-type SmallVec<T, const N: usize> = smallvec::SmallVec<[T; N]>;
+static OPTIONS: OnceCell<GlobalOptions> = OnceCell::new();
 
-static OPTIONS: OnceCell<Options> = OnceCell::new();
-
-pub struct Options {
+pub struct GlobalOptions {
     pub show_binding_indices: bool,
 }
 
-pub fn set_global_options(options: Options) {
+pub fn set_global_options(options: GlobalOptions) {
     OPTIONS.set(options).unwrap_or_else(|_| unreachable!());
 }

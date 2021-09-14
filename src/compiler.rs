@@ -13,15 +13,14 @@ pub mod interpreter;
 
 use std::default::default;
 
-use indexed_vec::IndexVec;
-
 use crate::{
     grow_array::GrowArray,
     hir::{self, Declaration, Expression},
     lowered_ast::AttributeKeys,
-    resolver::{CrateIndex, CrateScope},
-    HashMap,
+    resolver::{CrateScope, DeclarationIndex},
+    util::HashMap,
 };
+use index_map::{Index as _, IndexMap};
 use instruction::{Chunk, ChunkIndex, Instruction};
 
 // pub fn compile_declaration(
@@ -46,20 +45,20 @@ enum LambdaParent {
 }
 
 struct Compiler<'a> {
-    chunks: IndexVec<ChunkIndex, Chunk>, // IndexVec?
+    chunks: IndexMap<ChunkIndex, Chunk>,
     // will be tagless in the bytecode
     constants: Vec<Value>, // IndexVec?
     lambda_amount: usize,
     // @Temporary
     entry: Option<ChunkIndex>,
-    declaration_mapping: HashMap<CrateIndex, ChunkIndex>,
+    declaration_mapping: HashMap<DeclarationIndex, ChunkIndex>,
     scope: &'a CrateScope,
 }
 
 impl<'a> Compiler<'a> {
     fn new(scope: &'a CrateScope) -> Self {
         Self {
-            chunks: IndexVec::new(),
+            chunks: IndexMap::new(),
             constants: Vec::new(),
             lambda_amount: 0,
             entry: None,
@@ -72,8 +71,8 @@ impl<'a> Compiler<'a> {
     fn print_chunks(&self) -> String {
         let mut result = String::new();
 
-        for (index, chunk) in self.chunks.iter().enumerate() {
-            result += &format!("{:04} {}:\n", index, chunk.name);
+        for (index, chunk) in self.chunks.iter() {
+            result += &format!("{:04} {}:\n", index.value(), chunk.name);
 
             for (index, instruction) in chunk.instructions.iter().enumerate() {
                 result += &format!(
@@ -89,7 +88,7 @@ impl<'a> Compiler<'a> {
         result
     }
 
-    fn next_chunk_index_for_declaration(&mut self, index: CrateIndex) -> ChunkIndex {
+    fn next_chunk_index_for_declaration(&mut self, index: DeclarationIndex) -> ChunkIndex {
         if let Some(&index) = self.declaration_mapping.get(&index) {
             index
         } else {
@@ -97,7 +96,11 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn add_next_chunk_from_declaration(&mut self, index: CrateIndex, chunk: Chunk) -> ChunkIndex {
+    fn add_next_chunk_from_declaration(
+        &mut self,
+        index: DeclarationIndex,
+        chunk: Chunk,
+    ) -> ChunkIndex {
         if let Some(&index) = self.declaration_mapping.get(&index) {
             self.chunks[index] = chunk;
             index
@@ -108,10 +111,10 @@ impl<'a> Compiler<'a> {
 
     fn add_chunk_unseen_declaration(
         &mut self,
-        crate_index: CrateIndex,
+        crate_index: DeclarationIndex,
         chunk: Chunk,
     ) -> ChunkIndex {
-        let index = self.chunks.push(chunk);
+        let index = self.chunks.insert(chunk);
         self.declaration_mapping.insert(crate_index, index);
         index
     }
@@ -122,10 +125,10 @@ impl<'a> Compiler<'a> {
     ) -> Result<(), CompilationError> {
         use hir::DeclarationKind::*;
 
-        match &declaration.kind {
+        match &declaration.data {
             Value(value) => {
                 let index = self.add_next_chunk_from_declaration(
-                    value.binder.crate_index().unwrap(),
+                    value.binder.declaration_index().unwrap(),
                     Chunk {
                         name: value.binder.to_string(),
                         instructions: Vec::new(),
@@ -184,7 +187,7 @@ impl<'a> Compiler<'a> {
 
         let mut instructions = Vec::new();
 
-        match &expression.kind {
+        match &expression.data {
             PiType(_pi) => todo!(),
             Application(application) => {
                 let mut argument =
@@ -207,7 +210,7 @@ impl<'a> Compiler<'a> {
                 instructions.push(Instruction::Constant(constant));
             }
             Binding(binding) => {
-                if let Some(index) = binding.binder.crate_index() {
+                if let Some(index) = binding.binder.declaration_index() {
                     // declarations will not always compile to chunks
                     // so we gonna need to push constant in some places
                     instructions.push(Instruction::Closure {
@@ -226,7 +229,7 @@ impl<'a> Compiler<'a> {
                 if parent == LambdaParent::Lambda {
                     let name = format!("$lambda{}", self.next_lambda_chunk_name());
                     body.push(Instruction::Return);
-                    let index = self.chunks.push(Chunk {
+                    let index = self.chunks.insert(Chunk {
                         name,
                         instructions: body,
                     });

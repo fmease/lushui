@@ -1,4 +1,5 @@
 ;;; TEST ignore
+;; @Note the language version used here is soo ancient!
 
 module core
 

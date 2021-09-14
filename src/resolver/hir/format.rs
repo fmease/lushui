@@ -1,15 +1,19 @@
 //! The definition of the textual representation of the [HIR](crate::hir).
 
 use super::{CrateScope, Declaration, Expression, Pattern};
-use crate::format::DisplayWith;
+use crate::{format::DisplayWith, package::BuildSession};
 use joinery::JoinableIterator;
 use std::{default::default, fmt};
 
 impl DisplayWith for Declaration {
-    type Linchpin = CrateScope;
+    type Context<'a> = (&'a CrateScope, &'a BuildSession);
 
-    fn format(&self, linchpin: &Self::Linchpin, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.format_with_depth(linchpin, 0, f)
+    fn format(
+        &self,
+        (scope, session): Self::Context<'_>,
+        f: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
+        self.format_with_depth(scope, session, 0, f)
     }
 }
 
@@ -20,22 +24,24 @@ impl Declaration {
     fn format_with_depth(
         &self,
         scope: &CrateScope,
+        session: &BuildSession,
         depth: usize,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
         use super::DeclarationKind::*;
-        use crate::INDENTATION;
+        use crate::lexer::INDENTATION;
+        let context = (scope, session);
 
-        match &self.kind {
+        match &self.data {
             Value(declaration) => {
                 write!(
                     f,
                     "{}: {}",
                     declaration.binder,
-                    declaration.type_annotation.with(scope)
+                    declaration.type_annotation.with(context)
                 )?;
                 if let Some(expression) = &declaration.expression {
-                    write!(f, " = {}", expression.with(scope))?;
+                    write!(f, " = {}", expression.with(context))?;
                 }
                 writeln!(f)
             }
@@ -45,7 +51,7 @@ impl Declaration {
                         f,
                         "data {}: {} of",
                         declaration.binder,
-                        declaration.type_annotation.with(scope)
+                        declaration.type_annotation.with(context)
                     )?;
                     for constructor in constructors {
                         let depth = depth + 1;
@@ -53,7 +59,7 @@ impl Declaration {
                             f,
                             "{}{}",
                             " ".repeat(depth * INDENTATION.0),
-                            constructor.with(scope)
+                            constructor.with(context)
                         )?;
                     }
                     Ok(())
@@ -62,21 +68,21 @@ impl Declaration {
                     f,
                     "data {}: {}",
                     declaration.binder,
-                    declaration.type_annotation.with(scope)
+                    declaration.type_annotation.with(context)
                 ),
             },
             Constructor(constructor) => writeln!(
                 f,
                 "{}: {}",
                 constructor.binder,
-                constructor.type_annotation.with(scope)
+                constructor.type_annotation.with(context)
             ),
             Module(declaration) => {
                 writeln!(f, "module {} of", declaration.binder)?;
                 for declaration in &declaration.declarations {
                     let depth = depth + 1;
                     write!(f, "{}", " ".repeat(depth * INDENTATION.0))?;
-                    declaration.format_with_depth(scope, depth, f)?;
+                    declaration.format_with_depth(scope, session, depth, f)?;
                 }
                 Ok(())
             }
@@ -91,19 +97,25 @@ impl Declaration {
 
 // @Note many wasted allocations (intermediate Strings)
 impl DisplayWith for Expression {
-    type Linchpin = CrateScope;
+    type Context<'a> = (&'a CrateScope, &'a BuildSession);
 
-    fn format(&self, scope: &CrateScope, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        format_pi_type_literal_or_lower(self, scope, f)
+    fn format(
+        &self,
+        (scope, session): Self::Context<'_>,
+        f: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
+        format_pi_type_literal_or_lower(self, scope, session, f)
     }
 }
 
 fn format_pi_type_literal_or_lower(
     expression: &Expression,
     scope: &CrateScope,
+    session: &BuildSession,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
     use super::ExpressionKind::*;
+    let context = (scope, session);
 
     // In here, we format `Lambda`, `UseIn` and `CaseAnalysis` as a pi-type-literal-or-lower instead of
     // a lowered expression — which you might have expected from reading through the grammar and the parser.
@@ -127,7 +139,7 @@ fn format_pi_type_literal_or_lower(
     // See also `crate::parser::test::application_lambda_literal_argument_{lax,strict}_grouping` and the
     // comment at the grammar definition of `Pi-Type-Literal-Or-Lower` (in `/misc/grammar/lushui.grammar`)
     // for further details.
-    match &expression.kind {
+    match &expression.data {
         PiType(pi) => {
             write!(f, "{}", pi.explicitness)?;
 
@@ -143,13 +155,13 @@ fn format_pi_type_literal_or_lower(
                     write!(f, "{parameter}: ")?;
                 }
 
-                write!(f, "{}", pi.domain.with(scope))?;
+                write!(f, "{}", pi.domain.with(context))?;
                 write!(f, ")")?;
             } else {
-                format_application_or_lower(&pi.domain, scope, f)?;
+                format_application_or_lower(&pi.domain, scope, session, f)?;
             }
             write!(f, " -> ")?;
-            format_pi_type_literal_or_lower(&pi.codomain, scope, f)
+            format_pi_type_literal_or_lower(&pi.codomain, scope, session, f)
         }
         Lambda(lambda) => {
             write!(f, r"\{}", lambda.explicitness)?;
@@ -163,7 +175,7 @@ fn format_pi_type_literal_or_lower(
                 }
                 write!(f, "{}", lambda.parameter)?;
                 if let Some(annotation) = &lambda.parameter_type_annotation {
-                    write!(f, ": {}", annotation.with(scope))?;
+                    write!(f, ": {}", annotation.with(context))?;
                 }
                 write!(f, ")")?;
             } else {
@@ -171,26 +183,26 @@ fn format_pi_type_literal_or_lower(
             }
 
             if let Some(annotation) = &lambda.body_type_annotation {
-                write!(f, ": {}", annotation.with(scope))?;
+                write!(f, ": {}", annotation.with(context))?;
             }
 
-            write!(f, " => {}", lambda.body.with(scope))
+            write!(f, " => {}", lambda.body.with(context))
         }
         UseIn => todo!(),
         // @Task fix indentation
         CaseAnalysis(analysis) => {
-            writeln!(f, "case {} of", analysis.subject.with(scope))?;
+            writeln!(f, "case {} of", analysis.subject.with(context))?;
             for case in &analysis.cases {
                 writeln!(
                     f,
                     "{} => {}",
-                    case.pattern.with(scope),
-                    case.body.with(scope)
+                    case.pattern.with(context),
+                    case.body.with(context)
                 )?;
             }
             Ok(())
         }
-        _ => format_application_or_lower(expression, scope, f),
+        _ => format_application_or_lower(expression, scope, session, f),
     }
 }
 
@@ -198,42 +210,45 @@ fn format_pi_type_literal_or_lower(
 fn format_application_or_lower(
     expression: &Expression,
     scope: &CrateScope,
+    session: &BuildSession,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
     use super::ExpressionKind::*;
 
-    match &expression.kind {
+    match &expression.data {
         Application(application) => {
-            format_application_or_lower(&application.callee, scope, f)?;
+            format_application_or_lower(&application.callee, scope, session, f)?;
             write!(f, " {}", application.explicitness)?;
-            format_lower_expression(&application.argument, scope, f)
+            format_lower_expression(&application.argument, scope, session, f)
         }
         ForeignApplication(application) => {
             write!(f, "{}", application.callee)?;
 
             for argument in &application.arguments {
                 write!(f, " ")?;
-                format_lower_expression(argument, scope, f)?;
+                format_lower_expression(argument, scope, session, f)?;
             }
 
             Ok(())
         }
-        _ => format_lower_expression(expression, scope, f),
+        _ => format_lower_expression(expression, scope, session, f),
     }
 }
 
 fn format_lower_expression(
     expression: &Expression,
     scope: &CrateScope,
+    session: &BuildSession,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
     use super::ExpressionKind::*;
+    let context = (scope, session);
 
     for attribute in expression.attributes.iter() {
         write!(f, "{} ", attribute)?;
     }
 
-    match &expression.kind {
+    match &expression.data {
         Type => write!(f, "Type"),
         Number(literal) => write!(f, "{}", literal),
         // @Bug this uses Rust's way of printing strings, not Lushui's:
@@ -243,7 +258,7 @@ fn format_lower_expression(
         Binding(binding) => write!(
             f,
             "{}",
-            super::FunctionScope::absolute_path(&binding.binder, scope)
+            super::FunctionScope::absolute_path(&binding.binder, scope, session)
         ),
         // @Beacon @Temporary @Task just write out the path
         Projection(_projection) => write!(f, "?(projection)"),
@@ -253,48 +268,53 @@ fn format_lower_expression(
             io.index,
             io.arguments
                 .iter()
-                .map(|argument| argument.with(scope))
+                .map(|argument| argument.with(context))
                 .join_with(' ')
         ),
         Substitution(substitution) => write!(
             f,
             "?(substitution {} {})",
-            substitution.substitution.with(scope),
-            substitution.expression.with(scope)
+            substitution.substitution.with(context),
+            substitution.expression.with(context)
         ),
         Error => write!(f, "?(error)"),
-        _ => write!(f, "({})", expression.with(scope)),
+        _ => write!(f, "({})", expression.with(context)),
     }
 }
 
 // @Task @Beacon update bracket business
 impl DisplayWith for Pattern {
-    type Linchpin = CrateScope;
+    type Context<'a> = (&'a CrateScope, &'a BuildSession);
 
-    fn format(&self, scope: &CrateScope, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn format(
+        &self,
+        context @ (scope, session): Self::Context<'_>,
+        f: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
         use super::PatternKind::*;
 
-        match &self.kind {
+        match &self.data {
             Number(number) => write!(f, "{}", number),
             Text(text) => write!(f, "{:?}", text),
             Binding(binding) => write!(
                 f,
                 "{}",
-                super::FunctionScope::absolute_path(&binding.binder, scope)
+                super::FunctionScope::absolute_path(&binding.binder, scope, session)
             ),
 
             Binder(binder) => write!(f, "\\{}", binder.binder),
             Deapplication(application) => write!(
                 f,
                 "({}) ({})",
-                application.callee.with(scope),
-                application.argument.with(scope)
+                application.callee.with(context),
+                application.argument.with(context)
             ),
             Error => write!(f, "?(error)"),
         }
     }
 }
 
+#[cfg(FALSE)] // @Beacon @Beacon @Temporary
 #[cfg(test)]
 mod test {
     use crate::{
@@ -303,7 +323,8 @@ mod test {
         format::DisplayWith,
         hir::{expr, Expression},
         lowered_ast::{Attribute, AttributeKind, Attributes, Number},
-        resolver::{CrateIndex, CrateScope, Exposure, Identifier},
+        package::CrateIndex,
+        resolver::{scope::LocalDeclarationIndex, CrateScope, Exposure, Identifier},
         span::Span,
     };
     use std::default::default;
@@ -323,8 +344,8 @@ mod test {
     }
 
     impl CrateScope {
-        fn new() -> Self {
-            let mut scope = Self::default();
+        fn test() -> Self {
+            let mut scope = Self::new(CrateIndex(0));
             scope.bindings.push(Entity {
                 source: ast::Identifier::new("test".into(), Span::SHAM),
                 parent: None,
@@ -338,16 +359,21 @@ mod test {
             self.add_below(name, kind, self.root())
         }
 
-        fn add_below(&mut self, name: &str, kind: EntityKind, parent: CrateIndex) -> Identifier {
+        fn add_below(
+            &mut self,
+            name: &str,
+            kind: EntityKind,
+            parent: LocalDeclarationIndex,
+        ) -> Identifier {
             let identifier = ast::Identifier::new(name.into(), Span::SHAM);
             let entity = Entity {
                 source: identifier.clone(),
-                parent: Some(parent),
+                parent: Some(self.global_index(parent)),
                 exposure: Exposure::Unrestricted,
                 kind,
             };
             let index = self.bindings.push(entity);
-            Identifier::new(index, identifier)
+            Identifier::new(self.global_index(index), identifier)
         }
     }
 
@@ -367,7 +393,7 @@ mod test {
 
     #[test]
     fn pi_type_application_argument() {
-        let mut scope = CrateScope::new();
+        let mut scope = CrateScope::test();
 
         let array = scope
             .add("Array", EntityKind::untyped_data_type())
@@ -402,7 +428,7 @@ mod test {
 
     #[test]
     fn pi_type_named_parameter() {
-        let mut scope = CrateScope::new();
+        let mut scope = CrateScope::test();
 
         let array = scope.add("Array", EntityKind::untyped_data_type());
         let int = scope.add("Int", EntityKind::untyped_data_type());
@@ -442,7 +468,7 @@ mod test {
 
     #[test]
     fn pi_type_implicit_parameter() {
-        let scope = CrateScope::new();
+        let scope = CrateScope::test();
 
         assert_eq(
             "'(whatever: Type) -> Type",
@@ -464,7 +490,7 @@ mod test {
     /// Compare with [pi_type_two_curried_arguments].
     #[test]
     fn pi_type_higher_order_argument() {
-        let mut scope = CrateScope::new();
+        let mut scope = CrateScope::test();
         let int = scope
             .add("Int", EntityKind::untyped_data_type())
             .to_expression();
@@ -498,7 +524,7 @@ mod test {
     /// Compare with [pi_type_higher_order_argument].
     #[test]
     fn pi_type_two_curried_arguments() {
-        let mut scope = CrateScope::new();
+        let mut scope = CrateScope::test();
         let int = scope
             .add("Int", EntityKind::untyped_data_type())
             .to_expression();
@@ -539,7 +565,7 @@ mod test {
     /// Compare with [lambda_pi_type_body].
     #[test]
     fn pi_type_lambda_domain() {
-        let scope = CrateScope::new();
+        let scope = CrateScope::test();
 
         let x = Identifier::parameter("x");
 
@@ -572,7 +598,7 @@ mod test {
 
     #[test]
     fn application_three_curried_arguments() {
-        let mut scope = CrateScope::new();
+        let mut scope = CrateScope::test();
 
         let beta = scope.add("beta", EntityKind::UntypedValue);
 
@@ -617,7 +643,7 @@ mod test {
     /// Compare with [application_lambda_argument].
     #[test]
     fn application_lambda_last_argument() {
-        let mut scope = CrateScope::new();
+        let mut scope = CrateScope::test();
 
         let take = scope.add("take", EntityKind::UntypedValue);
         let it = Identifier::parameter("it");
@@ -652,7 +678,7 @@ mod test {
     /// Compare with [application_lambda_last_argument].
     #[test]
     fn application_lambda_argument() {
-        let mut scope = CrateScope::new();
+        let mut scope = CrateScope::test();
 
         let take = scope.add("take", EntityKind::UntypedValue);
         let it = Identifier::parameter("it");
@@ -697,7 +723,7 @@ mod test {
 
     #[test]
     fn application_implicit_argument() {
-        let mut scope = CrateScope::new();
+        let mut scope = CrateScope::test();
 
         let identity = scope.add("identity", EntityKind::UntypedValue);
 
@@ -718,7 +744,7 @@ mod test {
 
     #[test]
     fn application_complex_implicit_argument() {
-        let mut scope = CrateScope::new();
+        let mut scope = CrateScope::test();
 
         let identity = scope.add("identity", EntityKind::UntypedValue);
         let text = scope.add("Text", EntityKind::untyped_data_type());
@@ -747,7 +773,7 @@ mod test {
 
     #[test]
     fn application_foreign_application_callee() {
-        let scope = CrateScope::new();
+        let scope = CrateScope::test();
 
         assert_eq(
             "eta 10 omicron",
@@ -774,7 +800,7 @@ mod test {
 
     #[test]
     fn lambda_body_type_annotation() {
-        let mut scope = CrateScope::new();
+        let mut scope = CrateScope::test();
 
         let output = scope.add("Output", EntityKind::untyped_data_type());
 
@@ -800,7 +826,7 @@ mod test {
 
     #[test]
     fn lambda_parameter_type_annotation_body_type_annotation() {
-        let mut scope = CrateScope::new();
+        let mut scope = CrateScope::test();
 
         let input = scope.add("Input", EntityKind::untyped_data_type());
         let output = scope.add("Output", EntityKind::untyped_data_type());
@@ -825,7 +851,7 @@ mod test {
 
     #[test]
     fn lambda_implicit_parameter() {
-        let scope = CrateScope::new();
+        let scope = CrateScope::test();
 
         assert_eq(
             r"\'(Input: Type) => Type",
@@ -847,7 +873,7 @@ mod test {
 
     #[test]
     fn lambda_implicit_unannotated_parameter() {
-        let scope = CrateScope::new();
+        let scope = CrateScope::test();
         let a = Identifier::parameter("a");
 
         assert_eq(
@@ -881,7 +907,7 @@ mod test {
     /// Compare with [pi_type_lambda_domain].
     #[test]
     fn lambda_pi_type_body() {
-        let scope = CrateScope::new();
+        let scope = CrateScope::test();
 
         let x = Identifier::parameter("x");
 
@@ -914,7 +940,7 @@ mod test {
 
     #[test]
     fn foreign_application_no_arguments() {
-        let mut scope = CrateScope::new();
+        let mut scope = CrateScope::test();
 
         let add = scope.add("add", EntityKind::UntypedValue);
 
@@ -934,7 +960,7 @@ mod test {
 
     #[test]
     fn foreign_application_two_arguments() {
-        let mut scope = CrateScope::new();
+        let mut scope = CrateScope::test();
 
         let add = scope.add("add", EntityKind::UntypedValue);
 
@@ -981,7 +1007,7 @@ mod test {
 
     #[test]
     fn attributes() {
-        let scope = CrateScope::new();
+        let scope = CrateScope::test();
 
         assert_eq(
             "== @static @unsafe 3 @static (increment 1)",
@@ -1025,18 +1051,18 @@ mod test {
 
     #[test]
     fn path() {
-        let mut scope = CrateScope::new();
+        let mut scope = CrateScope::test();
 
         let overarching = scope.add("overarching", EntityKind::module());
         let middle = scope.add_below(
             "middle",
             EntityKind::module(),
-            overarching.crate_index().unwrap(),
+            overarching.declaration_index().unwrap(),
         );
         let sink = scope.add_below(
             "sink",
             EntityKind::UntypedValue,
-            middle.crate_index().unwrap(),
+            middle.declaration_index().unwrap(),
         );
 
         assert_eq(
@@ -1047,19 +1073,23 @@ mod test {
 
     #[test]
     fn path_identifier_punctuation_punctuation_identifier_segments() {
-        let mut scope = CrateScope::new();
+        let mut scope = CrateScope::test();
 
         let overarching = scope.add("overarching", EntityKind::module());
         let noisy = scope.add_below(
             "&/.~##",
             EntityKind::module(),
-            overarching.crate_index().unwrap(),
+            overarching.declaration_index().unwrap(),
         );
-        let zickzack = scope.add_below("^^^", EntityKind::module(), noisy.crate_index().unwrap());
+        let zickzack = scope.add_below(
+            "^^^",
+            EntityKind::module(),
+            noisy.declaration_index().unwrap(),
+        );
         let sink = scope.add_below(
             "sink",
             EntityKind::UntypedValue,
-            zickzack.crate_index().unwrap(),
+            zickzack.declaration_index().unwrap(),
         );
 
         assert_eq(

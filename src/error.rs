@@ -1,6 +1,9 @@
 //! Different error handling mechanisms.
 
-use crate::SmallVec;
+use crate::{
+    diagnostics::{Diagnostic, Reporter},
+    util::SmallVec,
+};
 
 pub type Result<T = (), E = ()> = std::result::Result<T, E>;
 
@@ -33,6 +36,13 @@ impl<T> Outcome<T> {
 
     pub fn map<U>(self, mapper: impl FnOnce(T) -> U) -> Outcome<U> {
         Outcome::new(mapper(self.value), self.health)
+    }
+}
+
+pub macro outcome($value:pat, $health:pat) {
+    crate::error::Outcome {
+        value: $value,
+        health: $health,
     }
 }
 
@@ -80,9 +90,10 @@ impl<T: PossiblyErroneous> PossiblyErroneous for Outcome<T> {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 #[must_use]
 pub enum Health {
+    #[default]
     Untainted,
     /// Marks non-fatal failures.
     Tainted,
@@ -105,12 +116,6 @@ impl Health {
         if *self == Self::Untainted {
             *self = Self::Tainted;
         }
-    }
-}
-
-impl Default for Health {
-    fn default() -> Self {
-        Self::Untainted
     }
 }
 
@@ -172,4 +177,21 @@ impl<T> PossiblyErroneous for Vec<T> {
 // as it allows us to call try_in on functions that merely check (Result<(), Error>)
 impl PossiblyErroneous for () {
     fn error() -> Self {}
+}
+
+pub trait ReportedExt {
+    type Output;
+
+    fn reported(self, reporter: &Reporter) -> Self::Output;
+}
+
+impl<T, E> ReportedExt for Result<T, E>
+where
+    Diagnostic: From<E>,
+{
+    type Output = Result<T>;
+
+    fn reported(self, reporter: &Reporter) -> Self::Output {
+        self.map_err(|error| Diagnostic::from(error).report(reporter))
+    }
 }

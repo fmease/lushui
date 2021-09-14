@@ -14,26 +14,24 @@ use super::{
     Parser, Result,
 };
 use crate::{
-    diagnostics::Handler,
-    error::{Health, Outcome},
+    diagnostics::reporter::SilentReporter,
+    error::{outcome, Health},
     lexer::Lexer,
-    smallvec,
     span::{span, SourceFileIndex, SourceMap, Span},
 };
-use std::{cell::RefCell, default::default, rc::Rc};
+use index_map::Index as _;
+use smallvec::smallvec;
+use std::default::default;
 
 fn parse_expression(source: &str) -> Result<Expression> {
-    let map = Rc::new(RefCell::new(SourceMap::default()));
+    let map = SourceMap::shared();
     let file = map
         .borrow_mut()
         .add(None, source.to_owned())
         .unwrap_or_else(|_| unreachable!());
-    let handler = Handler::silent();
-    let Outcome {
-        value: tokens,
-        health,
-    } = Lexer::new(map.borrow().get(file), &handler).lex()?;
-    let mut parser = Parser::new(file, &tokens, map, &handler);
+    let reporter = SilentReporter.into();
+    let outcome!(tokens, health) = Lexer::new(&map.borrow()[file], &reporter).lex()?;
+    let mut parser = Parser::new(file, &tokens, map, &reporter);
     let expression = parser.parse_expression();
     if health.is_tainted() {
         return Err(());
@@ -42,18 +40,15 @@ fn parse_expression(source: &str) -> Result<Expression> {
 }
 
 fn parse_declaration(source: &str) -> Result<Declaration> {
-    let map = Rc::new(RefCell::new(SourceMap::default()));
+    let map = SourceMap::shared();
     let file = map
         .borrow_mut()
         .add(None, source.to_owned())
         .unwrap_or_else(|_| unreachable!());
-    let handler = Handler::silent();
-    let Outcome {
-        value: tokens,
-        health,
-    } = Lexer::new(map.borrow().get(file), &handler).lex()?;
+    let reporter = SilentReporter.into();
+    let outcome!(tokens, health) = Lexer::new(&map.borrow()[file], &reporter).lex()?;
 
-    let mut parser = Parser::new(file.clone(), &tokens, map, &handler);
+    let mut parser = Parser::new(file.clone(), &tokens, map, &reporter);
     let declaration = parser.parse(test_module_name());
     if health == Health::Tainted {
         return Err(());
@@ -108,7 +103,6 @@ macro no_std_assert($( $anything:tt )*) {
     compile_error!("use function `assert_eq` instead of macro `assert_eq` and similar")
 }
 
-use indexed_vec::Idx;
 #[allow(unused_imports)]
 use no_std_assert as assert_eq;
 #[allow(unused_imports)]

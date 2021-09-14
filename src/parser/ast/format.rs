@@ -1,13 +1,13 @@
 //! The definition of the textual representation(s) of the [AST](crate::ast).
 
 use crate::{
-    span::{SourceFileIndex, Span, Spanned},
-    SmallVec,
+    span::{SourceFileIndex, Span, Spanned, Spanning},
+    util::SmallVec,
 };
 use colored::{Color, Colorize};
 use format_struct::FormatStruct;
 pub use indentation::Indentation;
-use indexed_vec::Idx;
+use index_map::Index as _;
 use joinery::JoinableIterator;
 use std::fmt::{self, Debug, Formatter, Result};
 
@@ -202,7 +202,7 @@ impl<K: Format> Format for Spanned<K> {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         self.span.format(f, indentation)?;
         write!(f, " ")?;
-        self.kind.format(f, indentation)
+        self.data.format(f, indentation)
     }
 }
 
@@ -210,7 +210,7 @@ impl<I: Format> Format for super::Item<I> {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         self.span.format(f, indentation)?;
         write!(f, " ")?;
-        self.kind.format(f, indentation)?;
+        self.data.format(f, indentation)?;
 
         if !self.attributes.is_empty() {
             let indentation = indentation.increased();
@@ -235,7 +235,6 @@ impl Format for super::DeclarationKind {
             Self::Data(declaration) => declaration.format(f, indentation),
             Self::Constructor(declaration) => declaration.format(f, indentation),
             Self::Module(declaration) => declaration.format(f, indentation),
-            Self::Crate(declaration) => declaration.format(f, indentation),
             Self::Header => FormatStruct::new(f, indentation).name("Header").finish(),
             Self::Group(declaration) => declaration.format(f, indentation),
             Self::Use(declaration) => declaration.format(f, indentation),
@@ -301,16 +300,7 @@ impl Format for SourceFileIndex {
         FormatStruct::new(f, indentation)
             .name("Source-File-Index")
             .finish()?;
-        write!(f, " {}", self.index().to_string().color(VERBATIM_COLOR))
-    }
-}
-
-impl Format for super::Crate {
-    fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
-        FormatStruct::new(f, indentation)
-            .name("Crate-Declaration")
-            .field("binder", &self.binder)
-            .finish()
+        write!(f, " {}", self.value().to_string().color(VERBATIM_COLOR))
     }
 }
 
@@ -683,12 +673,12 @@ impl Format for super::Deapplication {
 
 impl Format for Identifier {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
-        self.span.format(f, indentation)?;
+        self.span().format(f, indentation)?;
         write!(f, " ")?;
         FormatStruct::new(f, indentation)
             .name("Identifier")
             .finish()?;
-        write!(f, " {}", self.atom.to_string().color(VERBATIM_COLOR))
+        write!(f, " {}", self.as_str().color(VERBATIM_COLOR))
     }
 }
 
@@ -697,7 +687,7 @@ impl fmt::Display for Identifier {
         write!(
             f,
             "{:width$}",
-            self.atom,
+            self.as_str(),
             width = f.width().unwrap_or_default()
         )
     }

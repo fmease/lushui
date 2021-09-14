@@ -1,32 +1,33 @@
+// @Note all of this is ugly as hell!
+
 use super::{CrateScope, Expression};
 use crate::{
     ast::Explicit,
-    diagnostics::{Code, Diagnostic, Handler},
+    diagnostics::{Code, Diagnostic, Reporter},
     error::Result,
     lowered_ast::{Attribute, Attributes},
+    package::BuildSession,
     resolver::{
         hir::{expr, Constructor, ExpressionKind},
         Identifier,
     },
     span::Span,
     typer::Declaration,
-    HashMap, Int, Nat,
+    util::{HashMap, Int, Nat},
 };
-use indexed_vec::IndexVec;
 
 // @Note ugly data structures in use
 #[derive(Default)]
 pub struct Scope {
     /// Foreign types (`@foreign data`).
-    pub(super) foreign_types: HashMap<&'static str, Option<Identifier>>,
+    pub foreign_types: HashMap<&'static str, Option<Identifier>>,
     /// Foreign bindings (`@foreign`).
-    pub(super) foreign_bindings: HashMap<&'static str, ForeignFunction>,
+    pub foreign_bindings: HashMap<&'static str, ForeignFunction>,
     /// Inherent values (`@inherent`)
     pub(in crate::typer) inherent_values: InherentValueMap,
     /// Inherent types (`@inherent`)
     pub(in crate::typer) inherent_types: InherentTypeMap,
-    pub(super) _runners: IndexVec<IOIndex, IORunner>,
-    // @Question handler: Rc<Handler>,
+    pub(super) _runners: IndexMap<IOIndex, IORunner>,
 }
 
 impl Scope {
@@ -36,7 +37,7 @@ impl Scope {
         mut constructors: impl Iterator<Item = &'a Constructor>,
         declaration: &Declaration,
         attribute: &Attribute,
-        handler: &Handler,
+        reporter: &Reporter,
     ) -> Result {
         // @Task link to previous definition
         let duplicate = || {
@@ -60,7 +61,7 @@ impl Scope {
         match binder.as_str() {
             Type::UNIT => {
                 if self.inherent_types.unit.is_some() {
-                    duplicate().emit(handler);
+                    duplicate().report(reporter);
                     return Err(());
                 }
 
@@ -69,7 +70,7 @@ impl Scope {
             }
             Type::BOOL => {
                 if self.inherent_types.bool.is_some() {
-                    duplicate().emit(handler);
+                    duplicate().report(reporter);
                     return Err(());
                 }
 
@@ -79,7 +80,7 @@ impl Scope {
             }
             Type::OPTION => {
                 if self.inherent_types.option.is_some() {
-                    duplicate().emit(handler);
+                    duplicate().report(reporter);
                     return Err(());
                 }
 
@@ -93,7 +94,7 @@ impl Scope {
                     .message(format!("`{}` is not an inherent type", binder))
                     .primary_span(attribute)
                     .labeled_secondary_span(declaration, "ascribed to this declaration")
-                    .emit(handler);
+                    .report(reporter);
                 return Err(());
             }
         }
@@ -147,7 +148,7 @@ impl Type {
 
         use ExpressionKind::*;
 
-        Some(match &expression.kind {
+        Some(match &expression.data {
             Binding(binding) if matches(&binding.binder, &types.unit)? => Self::Unit,
             Binding(binding) if matches(&binding.binder, &types.bool)? => Self::Bool,
             Binding(binding)
@@ -185,7 +186,7 @@ impl Type {
             {
                 Self::Text
             }
-            Application(application) => match &application.callee.kind {
+            Application(application) => match &application.callee.data {
                 Binding(binding) if matches(&binding.binder, &types.option)? => Self::Option(
                     Box::new(self::Type::from_expression(&application.argument, scope)?),
                 ),
@@ -195,20 +196,25 @@ impl Type {
         })
     }
 
-    fn into_expression(self, scope: &CrateScope, handler: &Handler) -> Result<Expression> {
+    fn into_expression(
+        self,
+        scope: &CrateScope,
+        session: &BuildSession,
+        reporter: &Reporter,
+    ) -> Result<Expression> {
         match self {
-            Self::Unit => scope.lookup_unit_type(None, handler),
-            Self::Bool => scope.lookup_bool_type(None, handler),
-            Self::Nat => scope.lookup_foreign_type(Type::NAT, None, handler),
-            Self::Nat32 => scope.lookup_foreign_type(Type::NAT32, None, handler),
-            Self::Nat64 => scope.lookup_foreign_type(Type::NAT64, None, handler),
-            Self::Int => scope.lookup_foreign_type(Type::INT, None, handler),
-            Self::Int32 => scope.lookup_foreign_type(Type::INT32, None, handler),
-            Self::Int64 => scope.lookup_foreign_type(Type::INT64, None, handler),
-            Self::Text => scope.lookup_foreign_type(Type::TEXT, None, handler),
+            Self::Unit => scope.look_up_unit_type(None, reporter),
+            Self::Bool => scope.look_up_bool_type(None, reporter),
+            Self::Nat => scope.look_up_foreign_type(Type::NAT, None, session, reporter),
+            Self::Nat32 => scope.look_up_foreign_type(Type::NAT32, None, session, reporter),
+            Self::Nat64 => scope.look_up_foreign_type(Type::NAT64, None, session, reporter),
+            Self::Int => scope.look_up_foreign_type(Type::INT, None, session, reporter),
+            Self::Int32 => scope.look_up_foreign_type(Type::INT32, None, session, reporter),
+            Self::Int64 => scope.look_up_foreign_type(Type::INT64, None, session, reporter),
+            Self::Text => scope.look_up_foreign_type(Type::TEXT, None, session, reporter),
             Self::Option(type_) => Ok(application(
-                scope.lookup_option_type(None, handler)?,
-                type_.into_expression(scope, handler)?,
+                scope.look_up_option_type(None, reporter)?,
+                type_.into_expression(scope, session, reporter)?,
             )),
         }
     }
@@ -261,7 +267,7 @@ impl Value {
 
         use ExpressionKind::*;
 
-        Some(match &expression.kind {
+        Some(match &expression.data {
             Text(text) => Self::Text(text.as_ref().clone()),
             Number(number) => {
                 use crate::lowered_ast::Number::*;
@@ -278,12 +284,12 @@ impl Value {
             Binding(binding) if matches(&binding.binder, &values.unit)? => Value::Unit,
             Binding(binding) if matches(&binding.binder, &values.false_)? => Value::Bool(false),
             Binding(binding) if matches(&binding.binder, &values.true_)? => Value::Bool(true),
-            Application(application0) => match &application0.callee.kind {
+            Application(application0) => match &application0.callee.data {
                 Binding(binding) if matches(&binding.binder, &values.none)? => Value::Option {
                     value: None,
                     type_: self::Type::from_expression(&application0.argument, scope)?,
                 },
-                Application(application1) => match &application1.callee.kind {
+                Application(application1) => match &application1.callee.data {
                     Binding(binding) if matches(&binding.binder, &values.some)? => Value::Option {
                         value: Some(Box::new(Self::from_expression(
                             &application0.argument,
@@ -299,7 +305,12 @@ impl Value {
         })
     }
 
-    pub fn into_expression(self, scope: &CrateScope, handler: &Handler) -> Result<Expression> {
+    pub fn into_expression(
+        self,
+        scope: &CrateScope,
+        session: &BuildSession,
+        reporter: &Reporter,
+    ) -> Result<Expression> {
         let values = &scope.ffi.inherent_values;
 
         fn missing_inherent() -> Diagnostic {
@@ -313,11 +324,11 @@ impl Value {
             Self::Unit => values
                 .unit
                 .clone()
-                .ok_or_else(|| missing_inherent().emit(handler))?
+                .ok_or_else(|| missing_inherent().report(reporter))?
                 .to_expression(),
             Self::Bool(value) => (if value { &values.true_ } else { &values.false_ }
                 .clone()
-                .ok_or_else(|| missing_inherent().emit(handler))?)
+                .ok_or_else(|| missing_inherent().report(reporter))?)
             .to_expression(),
             Self::Text(value) => expr! { Text(Attributes::default(), Span::SHAM; value) },
             Self::Nat(value) => expr! { Number(Attributes::default(), Span::SHAM; Nat(value)) },
@@ -332,19 +343,19 @@ impl Value {
                         values
                             .some
                             .clone()
-                            .ok_or_else(|| missing_inherent().emit(handler))?
+                            .ok_or_else(|| missing_inherent().report(reporter))?
                             .to_expression(),
-                        type_.into_expression(scope, handler)?,
+                        type_.into_expression(scope, session, reporter)?,
                     ),
-                    value.into_expression(scope, handler)?,
+                    value.into_expression(scope, session, reporter)?,
                 ),
                 None => application(
                     values
                         .none
                         .clone()
-                        .ok_or_else(|| missing_inherent().emit(handler))?
+                        .ok_or_else(|| missing_inherent().report(reporter))?
                         .to_expression(),
-                    type_.into_expression(scope, handler)?,
+                    type_.into_expression(scope, session, reporter)?,
                 ),
             },
             Self::IO { index, arguments } => expr! {
@@ -353,7 +364,7 @@ impl Value {
                     Span::SHAM;
                     index,
                     arguments: arguments.into_iter()
-                        .map(|argument| argument.into_expression(scope, handler))
+                        .map(|argument| argument.into_expression(scope, session, reporter))
                         .collect::<Result<Vec<_>>>()?,
                 }
             },
@@ -439,20 +450,12 @@ impl<V: IntoValue> IntoValue for Option<V> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, index_map::Index)]
 pub struct IOIndex(usize);
-
-impl indexed_vec::Idx for IOIndex {
-    fn new(index: usize) -> Self {
-        Self(index)
-    }
-    fn index(self) -> usize {
-        self.0
-    }
-}
 
 pub type IORunner = fn(Vec<Value>) -> Value;
 
+use index_map::IndexMap;
 use num_traits::ops::checked::{CheckedDiv, CheckedSub};
 
 pub fn register_foreign_bindings(scope: &mut CrateScope) {

@@ -1,10 +1,7 @@
 ;;; TEST pass run
 
-@(location "../../libs/core/core")
-module core
-
-use core.text.(concat Text)
-use core.nat.(self Nat)
+use extern.core.text.(concat Text)
+use extern.core.nat.(self Nat)
 
 base: Nat = 1034032
 

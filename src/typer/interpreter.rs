@@ -18,60 +18,33 @@ pub(crate) mod scope;
 use super::Expression;
 use crate::{
     ast::Explicit,
-    diagnostics::{Code, Diagnostic, Handler},
+    diagnostics::{Code, Diagnostic, Reporter},
+    entity::Entity,
     error::{PossiblyErroneous, Result},
     format::DisplayWith,
     hir::{self, expr},
     lowered_ast::Attributes,
-    resolver::CrateScope,
+    package::BuildSession,
+    resolver::{CrateScope, DeclarationIndex, Identifier},
     span::{Span, Spanning},
 };
 use scope::{FunctionScope, ValueView};
 use std::fmt;
 
-#[derive(Clone, Copy)]
-pub enum Form {
-    Normal,
-    WeakHeadNormal,
-}
-
-/// Evaluation context.
-// @Task a recursion_depth: usize, @Note if we do that,
-// remove Copy and have a custom Clone impl incrementing the value
-#[derive(Clone, Copy)]
-pub struct Context<'a> {
-    pub(crate) scope: &'a FunctionScope<'a>,
-    pub(crate) form: Form,
-}
-
-impl<'a> Context<'a> {
-    /// Temporarily, for convenience and until we fix some bugs, the form
-    /// is [Form::Normal] by default.
-    pub fn new(scope: &'a FunctionScope<'_>) -> Self {
-        // @Temporary: Normal
-        Self {
-            scope,
-            form: Form::Normal,
-            // form: Form::WeakHeadNormal,
-        }
-    }
-}
-
-impl<'a> Context<'a> {
-    pub(crate) fn with_scope(&self, scope: &'a FunctionScope<'_>) -> Self {
-        Self { scope, ..*self }
-    }
-}
-
 // @Task add recursion depth
 pub struct Interpreter<'a> {
     scope: &'a CrateScope,
-    handler: &'a Handler,
+    session: &'a BuildSession,
+    reporter: &'a Reporter,
 }
 
 impl<'a> Interpreter<'a> {
-    pub fn new(scope: &'a CrateScope, handler: &'a Handler) -> Self {
-        Self { scope, handler }
+    pub fn new(scope: &'a CrateScope, session: &'a BuildSession, reporter: &'a Reporter) -> Self {
+        Self {
+            scope,
+            session,
+            reporter,
+        }
     }
 
     /// Run the entry point of the crate.
@@ -90,7 +63,7 @@ impl<'a> Interpreter<'a> {
             Diagnostic::error()
                 .code(Code::E050)
                 .message("missing program entry")
-                .emit(&self.handler);
+                .report(self.reporter);
             Err(())
         }
     }
@@ -103,7 +76,7 @@ impl<'a> Interpreter<'a> {
         use self::Substitution::*;
         use hir::ExpressionKind::*;
 
-        match (&expression.kind, substitution) {
+        match (&expression.data, substitution) {
             (Binding(binding), Shift(amount)) => {
                 expr! {
                     Binding {
@@ -333,21 +306,23 @@ impl<'a> Interpreter<'a> {
         use hir::ExpressionKind::*;
 
         // @Bug we currently don't support zero-arity foreign functions
-        Ok(match expression.clone().kind {
-            Binding(binding) => match context.scope.lookup_value(&binding.binder, &self.scope) {
-                // @Question is this normalization necessary? I mean, yes, we got a new scope,
-                // but the thing in the previous was already normalized (well, it should have been
-                // at least). I guess it is necessary because it can contain parameters which could not
-                // be resolved yet but potentially can be now.
-                ValueView::Reducible(expression) => {
-                    self.evaluate_expression(expression, context)?
+        Ok(match expression.clone().data {
+            Binding(binding) => {
+                match self.look_up_value(&binding.binder) {
+                    // @Question is this normalization necessary? I mean, yes, we got a new scope,
+                    // but the thing in the previous was already normalized (well, it should have been
+                    // at least). I guess it is necessary because it can contain parameters which could not
+                    // be resolved yet but potentially can be now.
+                    ValueView::Reducible(expression) => {
+                        self.evaluate_expression(expression, context)?
+                    }
+                    ValueView::Neutral => expression,
                 }
-                ValueView::Neutral => expression,
-            },
+            }
             Application(application) => {
                 let callee = self.evaluate_expression(application.callee.clone(), context)?;
                 let argument = application.argument.clone();
-                match callee.kind {
+                match callee.data {
                     Lambda(lambda) => {
                         // @Bug because we don't reduce to weak-head normal form anywhere,
                         // diverging expressions are still going to diverge even if "lazy"/
@@ -362,7 +337,7 @@ impl<'a> Interpreter<'a> {
                                     // an Option<_> (that's gonna happen when we finally implement
                                     // the discarding identifier `_`)
                                     parameter: crate::resolver::Identifier::parameter("__"),
-                                    parameter_type_annotation: Some(self.scope.lookup_unit_type(None, &self.handler)?),
+                                    parameter_type_annotation: Some(self.scope.look_up_unit_type(None, self.reporter)?),
                                     body_type_annotation: None,
                                     body: expr! {
                                         Substitution {
@@ -390,8 +365,8 @@ impl<'a> Interpreter<'a> {
                             context,
                         )?
                     }
-                    Binding(binding) if context.scope.is_foreign(&binding.binder, &self.scope) => {
-                        self.evaluate_expression(
+                    Binding(binding) if self.is_foreign(&binding.binder) => self
+                        .evaluate_expression(
                             expr! {
                                 ForeignApplication {
                                     expression.attributes,
@@ -401,8 +376,7 @@ impl<'a> Interpreter<'a> {
 
                             }},
                             context,
-                        )?
-                    }
+                        )?,
                     Binding(_) | Application(_) => expr! {
                         Application {
                             expression.attributes,
@@ -468,7 +442,7 @@ impl<'a> Interpreter<'a> {
                         lambda
                             .parameter_type_annotation
                             .clone()
-                            .ok_or_else(|| super::missing_annotation().emit(&self.handler))?,
+                            .ok_or_else(|| super::missing_annotation().report(self.reporter))?,
                         context,
                     )?;
                     let body_type = lambda
@@ -522,12 +496,12 @@ impl<'a> Interpreter<'a> {
                 // everything else should be impossible because of type checking but I might be wrong.
                 // possible counter examples: unevaluated case analysis expression
                 // @Note @Beacon think about having a variable `matches: bool` (whatever) to avoid repetition
-                match subject.kind {
+                match subject.data {
                     Binding(subject) => {
                         for case in analysis.cases.iter() {
                             use hir::PatternKind::*;
 
-                            match &case.pattern.kind {
+                            match &case.pattern.data {
                                 Number(_) => todo!(),
                                 Text(_) => todo!(),
                                 Binding(binding) => {
@@ -554,7 +528,7 @@ impl<'a> Interpreter<'a> {
                         for case in analysis.cases.iter() {
                             use hir::PatternKind::*;
 
-                            match &case.pattern.kind {
+                            match &case.pattern.data {
                                 Number(literal1) => {
                                     if &literal0 == literal1 {
                                         return self
@@ -593,12 +567,7 @@ impl<'a> Interpreter<'a> {
                     .into_iter()
                     .map(|argument| self.evaluate_expression(argument, context))
                     .collect::<Result<Vec<_>, _>>()?;
-                self.scope
-                    .apply_foreign_binding(
-                        application.callee.clone(),
-                        arguments.clone(),
-                        &self.handler,
-                    )?
+                self.apply_foreign_binding(application.callee.clone(), arguments.clone())?
                     .unwrap_or_else(|| {
                         expr! {
                             ForeignApplication {
@@ -612,6 +581,50 @@ impl<'a> Interpreter<'a> {
             }
             Error => PossiblyErroneous::error(),
         })
+    }
+
+    /// Try applying foreign binding.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if `binder` is either not bound or not foreign.
+    // @Task correctly handle
+    // * pure vs impure
+    // * polymorphism
+    // * illegal neutrals
+    // * types (arguments of type `Type`): skip them
+    // @Note: we need to convert to be able to convert to ffi::Value
+    pub fn apply_foreign_binding(
+        &self,
+        binder: Identifier,
+        arguments: Vec<Expression>,
+    ) -> Result<Option<Expression>> {
+        match self.look_up(binder.declaration_index().unwrap()).kind {
+            crate::entity::EntityKind::Foreign {
+                arity, function, ..
+            } => Ok(if arguments.len() == arity {
+                let mut value_arguments = Vec::new();
+
+                // @Task tidy up with iterator combinators
+                for argument in arguments {
+                    if let Some(argument) = ffi::Value::from_expression(&argument, &self.scope.ffi)
+                    {
+                        value_arguments.push(argument);
+                    } else {
+                        return Ok(None);
+                    }
+                }
+
+                Some(function(value_arguments).into_expression(
+                    self.scope,
+                    self.session,
+                    self.reporter,
+                )?)
+            } else {
+                None
+            }),
+            _ => unreachable!(),
+        }
     }
 
     // @Question move into its own module?
@@ -631,7 +644,7 @@ impl<'a> Interpreter<'a> {
     ) -> Result<bool> {
         use hir::ExpressionKind::*;
 
-        Ok(match (expression0.kind, expression1.kind) {
+        Ok(match (expression0.data, expression1.data) {
             (Binding(binding0), Binding(binding1)) => binding0.binder == binding1.binder,
             (Application(application0), Application(application1)) => {
                 self.equals(
@@ -686,11 +699,11 @@ impl<'a> Interpreter<'a> {
                 let parameter_type_annotation0 = lambda0
                     .parameter_type_annotation
                     .clone()
-                    .ok_or_else(|| super::missing_annotation().emit(&self.handler))?;
+                    .ok_or_else(|| super::missing_annotation().report(self.reporter))?;
                 let parameter_type_annotation1 = lambda1
                     .parameter_type_annotation
                     .clone()
-                    .ok_or_else(|| super::missing_annotation().emit(&self.handler))?;
+                    .ok_or_else(|| super::missing_annotation().report(self.reporter))?;
 
                 self.equals(
                     parameter_type_annotation0.clone(),
@@ -717,12 +730,53 @@ impl<'a> Interpreter<'a> {
             (Substitution(_), Substitution(_)) => {
                 Diagnostic::bug()
                     .message("attempt to check two substitutions for equivalence")
-                    .note("they should not exist in this part of the code but should have already been evaluated").emit(&self.handler);
+                    .note("they should not exist in this part of the code but should have already been evaluated").report(self.reporter);
                 return Err(());
             }
             (Error, _) | (_, Error) => panic!("trying to check equality on erroneous expressions"),
             _ => false,
         })
+    }
+
+    fn look_up(&self, index: DeclarationIndex) -> &Entity {
+        match self.scope.local_index(index) {
+            Some(index) => &self.scope[index],
+            None => &self.session[index],
+        }
+    }
+
+    pub fn look_up_value(&self, binder: &Identifier) -> ValueView {
+        use crate::resolver::Index;
+
+        match binder.index {
+            Index::Declaration(index) => self.look_up(index).value(),
+            Index::DeBruijn(_) => ValueView::Neutral,
+            Index::DeBruijnParameter => unreachable!(),
+        }
+    }
+
+    pub fn look_up_type(
+        &self,
+        binder: &Identifier,
+        scope: &FunctionScope<'_>,
+    ) -> Option<Expression> {
+        use crate::resolver::Index;
+
+        match binder.index {
+            Index::Declaration(index) => self.look_up(index).type_(),
+            Index::DeBruijn(index) => Some(scope.look_up_type(index)),
+            Index::DeBruijnParameter => unreachable!(),
+        }
+    }
+
+    pub fn is_foreign(&self, binder: &Identifier) -> bool {
+        use crate::resolver::Index;
+
+        match binder.index {
+            Index::Declaration(index) => self.look_up(index).is_foreign(),
+            Index::DeBruijn(_) => false,
+            Index::DeBruijnParameter => unreachable!(),
+        }
     }
 }
 
@@ -755,18 +809,52 @@ impl Substitution {
 }
 
 impl DisplayWith for Substitution {
-    type Linchpin = CrateScope;
+    type Context<'a> = (&'a CrateScope, &'a BuildSession);
 
-    fn format(&self, scope: &CrateScope, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use self::Substitution::*;
         match self {
             Shift(amount) => write!(f, "shift {}", amount),
             Use(substitution, expression) => write!(
                 f,
                 "{}[{}]",
-                expression.with(scope),
-                substitution.with(scope)
+                expression.with(context),
+                substitution.with(context)
             ),
         }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum Form {
+    Normal,
+    WeakHeadNormal,
+}
+
+/// Evaluation context.
+// @Task a recursion_depth: usize, @Note if we do that,
+// remove Copy and have a custom Clone impl incrementing the value
+#[derive(Clone, Copy)]
+pub struct Context<'a> {
+    pub(crate) scope: &'a FunctionScope<'a>,
+    pub(crate) form: Form,
+}
+
+impl<'a> Context<'a> {
+    /// Temporarily, for convenience and until we fix some bugs, the form
+    /// is [Form::Normal] by default.
+    pub fn new(scope: &'a FunctionScope<'_>) -> Self {
+        // @Temporary: Normal
+        Self {
+            scope,
+            form: Form::Normal,
+            // form: Form::WeakHeadNormal,
+        }
+    }
+}
+
+impl<'a> Context<'a> {
+    pub(crate) fn with_scope(&self, scope: &'a FunctionScope<'_>) -> Self {
+        Self { scope, ..*self }
     }
 }

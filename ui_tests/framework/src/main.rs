@@ -2,7 +2,7 @@
     format_args_capture,
     default_free_fn,
     available_concurrency,
-    const_option
+    const_option,
 )]
 #![forbid(rust_2018_idioms, unused_must_use)]
 
@@ -53,6 +53,7 @@ struct Application {
     release_mode: bool,
     gilding: bool,
     filter: Vec<String>,
+    filter_exact: bool,
     number_test_threads: NonZeroUsize,
     test_folder_path: String,
 }
@@ -90,6 +91,12 @@ impl Application {
             )
             .arg(
                 // @Task help
+                clap::Arg::with_name("filter-exact")
+                    .long("filter-exact")
+                    .short("x"),
+            )
+            .arg(
+                // @Task help
                 clap::Arg::with_name("number-test-threads")
                     .long("test-threads")
                     .takes_value(true)
@@ -115,6 +122,7 @@ impl Application {
             filter: matches
                 .values_of("filter")
                 .map_or(Vec::new(), |value| value.map(ToString::to_string).collect()),
+            filter_exact: matches.is_present("filter-exact"),
             number_test_threads: matches
                 .value_of("number-test-threads")
                 .map(|input| input.parse().unwrap())
@@ -128,6 +136,7 @@ const SEPARATOR_WIDTH: usize = 100;
 
 fn main() {
     if main_().is_err() {
+        // all destructors have been run
         std::process::exit(1);
     }
 }
@@ -183,6 +192,7 @@ fn main_() -> Result<(), ()> {
     let statistics: Arc<Mutex<Statistics>> = default();
     let failures: Arc<Mutex<Vec<_>>> = default();
     let filter: &'static _ = Box::leak(application.filter.into_boxed_slice());
+    let filter_exact = application.filter_exact;
     let gilding = application.gilding;
     let number_test_threads = application.number_test_threads.into();
 
@@ -231,6 +241,7 @@ fn main_() -> Result<(), ()> {
                         if has_file_extension(path, "stdout") || has_file_extension(path, "stderr")
                         {
                             // handled later together with the corresponding Lushui file
+                            // @Task throw an error if no corresp. Lushui file is found
                             continue;
                         }
 
@@ -250,12 +261,20 @@ fn main_() -> Result<(), ()> {
                             .strip_suffix(".")
                             .unwrap();
 
-                        if !filter.is_empty()
-                            && !filter.iter().any(|filter| legible_path.contains(filter))
-                        {
-                            statistics.skipped_tests += 1;
-                            continue;
+                        if !filter.is_empty() {
+                            let loose_filter = &|filter| legible_path.contains(filter);
+                            let exact_filter = &|filter| legible_path == filter;
+
+                            if !filter.iter().any::<&dyn Fn(_) -> _>(match filter_exact {
+                                true => exact_filter,
+                                false => loose_filter,
+                            }) {
+                                statistics.skipped_tests += 1;
+                                continue;
+                            }
                         }
+
+                        
 
                         let mut failure = Failure {
                             path: legible_path.to_owned(),
@@ -337,6 +356,7 @@ fn main_() -> Result<(), ()> {
                             .current_dir(lushui_compiler_source_path())
                             .args(&["run", "--quiet", "--"])
                             .args(configuration.arguments)
+                            .arg("--quiet")
                             .arg(entry.path())
                             .output()
                             .unwrap();
@@ -529,7 +549,11 @@ impl Statistics {
     }
 
     fn ratio_passed_vs_executed_tests(&self) -> f32 {
-        let ratio = self.passed_tests as f32 / self.executed_tests() as f32;
+        let ratio = match self.executed_tests() {
+            0 => 1.0,
+            executed_tests => self.passed_tests as f32 / executed_tests as f32,
+        };
+
         ratio * 100.0
     }
 

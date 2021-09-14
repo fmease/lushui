@@ -7,7 +7,7 @@ mod format;
 
 use crate::{
     ast::{self, Explicitness, Identifier, ParameterAspect, Path},
-    diagnostics::{Code, Diagnostic, Handler},
+    diagnostics::{Code, Diagnostic, Reporter},
     error::{PossiblyErroneous, Result},
     span::{PossiblySpanning, SourceFileIndex, Span, Spanned, Spanning},
 };
@@ -170,7 +170,7 @@ pub trait AttributeTarget: Spanning {
 
     /// Target-specific attribute checks
     // @Note weird API
-    fn check_attributes(&self, _attributes: &Attributes, _handler: &Handler) -> Result {
+    fn check_attributes(&self, _attributes: &Attributes, _reporter: &Reporter) -> Result {
         Ok(())
     }
 }
@@ -179,13 +179,12 @@ impl AttributeTarget for ast::Declaration {
     fn name(&self) -> &'static str {
         use ast::DeclarationKind::*;
 
-        match self.kind {
+        match self.data {
             Value(_) => "a value declaration",
             Data(_) => "a data declaration",
             Constructor(_) => "a constructor declaration",
             Module(_) => "a module declaration",
             Header => "a module header declaraiton",
-            Crate(_) => "a crate declaration",
             Group(_) => "an attribute group declaration",
             Use(_) => "a use-declaration",
         }
@@ -194,21 +193,20 @@ impl AttributeTarget for ast::Declaration {
     fn as_attribute_targets(&self) -> AttributeTargets {
         use ast::DeclarationKind::*;
 
-        match self.kind {
+        match self.data {
             Value(_) => AttributeTargets::VALUE_DECLARATION,
             Data(_) => AttributeTargets::DATA_DECLARATION,
             Constructor(_) => AttributeTargets::CONSTRUCTOR_DECLARATION,
             Module(_) | Header => AttributeTargets::MODULE_DECLARATION,
-            Crate(_) => AttributeTargets::CRATE_DECLARATION,
             Group(_) => AttributeTargets::all(),
             Use(_) => AttributeTargets::USE_DECLARATION,
         }
     }
 
-    fn check_attributes(&self, attributes: &Attributes, handler: &Handler) -> Result {
+    fn check_attributes(&self, attributes: &Attributes, reporter: &Reporter) -> Result {
         use ast::DeclarationKind::*;
 
-        let (body, binder, definition_marker) = match &self.kind {
+        let (body, binder, definition_marker) = match &self.data {
             Value(value) => (
                 value.body.as_ref().map(|expression| expression.span),
                 &value.binder,
@@ -230,7 +228,7 @@ impl AttributeTarget for ast::Declaration {
                 .message(format!("declaration `{}` has no definition", binder))
                 .primary_span(self)
                 .help(format!("provide a definition with `{definition_marker}`"))
-                .emit(handler)),
+                .report(reporter)),
             (Some(body), true) => Err(Diagnostic::error()
                 .code(Code::E020)
                 .message(format!(
@@ -243,7 +241,7 @@ impl AttributeTarget for ast::Declaration {
                     "conflicting definition",
                 )
                 .note(format!("declaration is marked `foreign` but it also has a body introduced by `{definition_marker}`"))
-                .emit(handler)),
+                .report(reporter)),
             _ => Ok(()),
         }
     }
@@ -253,7 +251,7 @@ impl AttributeTarget for ast::Expression {
     fn name(&self) -> &'static str {
         use ast::ExpressionKind::*;
 
-        match self.kind {
+        match self.data {
             PiTypeLiteral(_) => "a pi type literal",
             Application(_) => "an application",
             TypeLiteral => "a type literal",
@@ -275,7 +273,7 @@ impl AttributeTarget for ast::Expression {
     fn as_attribute_targets(&self) -> AttributeTargets {
         use ast::ExpressionKind::*;
 
-        match self.kind {
+        match self.data {
             PiTypeLiteral(_) => AttributeTargets::PI_TYPE_LITERAL_EXPRESSION,
             Application(_) => AttributeTargets::APPLICATION_EXPRESSION,
             TypeLiteral => AttributeTargets::TYPE_LITERAL_EXPRESSION,
@@ -299,7 +297,7 @@ impl AttributeTarget for ast::Pattern {
     fn name(&self) -> &'static str {
         use ast::PatternKind::*;
 
-        match self.kind {
+        match self.data {
             NumberLiteral(_) => "a number literal pattern",
             TextLiteral(_) => "a text literal pattern",
             SequenceLiteralPattern(_) => "a sequence literal pattern",
@@ -312,7 +310,7 @@ impl AttributeTarget for ast::Pattern {
     fn as_attribute_targets(&self) -> AttributeTargets {
         use ast::PatternKind::*;
 
-        match self.kind {
+        match self.data {
             NumberLiteral(_) => AttributeTargets::NUMBER_LITERAL_PATTERN,
             TextLiteral(_) => AttributeTargets::TEXT_LITERAL_PATTERN,
             SequenceLiteralPattern(_) => AttributeTargets::SEQUENCE_LITERAL_PATTERN,
@@ -332,14 +330,12 @@ bitflags::bitflags! {
         const DATA_DECLARATION = 1 << 1;
         const CONSTRUCTOR_DECLARATION = 1 << 2;
         const MODULE_DECLARATION = 1 << 3;
-        const CRATE_DECLARATION = 1 << 4;
         const USE_DECLARATION = 1 << 5;
 
         const DECLARATION = Self::VALUE_DECLARATION.bits
             | Self::DATA_DECLARATION.bits
             | Self::CONSTRUCTOR_DECLARATION.bits
             | Self::MODULE_DECLARATION.bits
-            | Self::CRATE_DECLARATION.bits
             | Self::USE_DECLARATION.bits;
 
         const PI_TYPE_LITERAL_EXPRESSION = 1 << 6;
@@ -403,7 +399,7 @@ impl Attributes {
         let mut keys = AttributeKeys::empty();
 
         for attribute in &attributes {
-            keys |= attribute.kind.key();
+            keys |= attribute.data.key();
         }
 
         Self {
@@ -435,7 +431,7 @@ impl Attributes {
     ) -> &'a R {
         self.data
             .iter()
-            .find_map(|attribute| predicate(&attribute.kind))
+            .find_map(|attribute| predicate(&attribute.data))
             .unwrap()
     }
 
@@ -453,15 +449,15 @@ impl PossiblyErroneous for Attributes {
 pub type Attribute = Spanned<AttributeKind>;
 
 impl Attribute {
-    pub fn parse(attribute: &ast::Attribute, handler: &Handler) -> Result<Self> {
+    pub fn parse(attribute: &ast::Attribute, reporter: &Reporter) -> Result<Self> {
         Ok(Attribute::new(
             attribute.span,
-            AttributeKind::parse(attribute, handler)?,
+            AttributeKind::parse(attribute, reporter)?,
         ))
     }
 
     pub fn matches(&self, keys: AttributeKeys) -> bool {
-        keys.contains(self.kind.key())
+        keys.contains(self.data.key())
     }
 }
 
@@ -824,10 +820,10 @@ pub enum Feature {}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Number {
-    Nat(crate::Nat),
+    Nat(crate::util::Nat),
     Nat32(u32),
     Nat64(u64),
-    Int(crate::Int),
+    Int(crate::util::Int),
     Int32(i32),
     Int64(i64),
 }

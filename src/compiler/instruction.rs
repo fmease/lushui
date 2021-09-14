@@ -1,6 +1,6 @@
 //! The bytecode instructions.
 
-use crate::Str;
+use crate::util::Str;
 
 // #[repr(u8)]
 // enum Opcode {
@@ -10,7 +10,7 @@ use crate::Str;
 //     APPLY,
 // }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, index_map::Index)]
 pub struct ChunkIndex(pub usize);
 
 use std::fmt;
@@ -18,15 +18,6 @@ use std::fmt;
 impl fmt::Debug for ChunkIndex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:04}", self.0)
-    }
-}
-
-impl indexed_vec::Idx for ChunkIndex {
-    fn new(v: usize) -> Self {
-        Self(v)
-    }
-    fn index(self) -> usize {
-        self.0
     }
 }
 
