@@ -1,7 +1,7 @@
 ;;; TEST pass check
 
-use crates.core.nat.Nat
-use crates.core.nat
+use extern.core.nat.Nat
+use extern.core.nat
 
 main: Nat =
     let a: Nat = 10 in

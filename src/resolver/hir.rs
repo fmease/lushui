@@ -16,7 +16,7 @@ pub type Declaration = Item<DeclarationKind>;
 
 impl Declaration {
     pub fn unwrap_constructor(&self) -> &Constructor {
-        match &self.kind {
+        match &self.data {
             DeclarationKind::Constructor(constructor) => constructor,
             _ => unreachable!(),
         }

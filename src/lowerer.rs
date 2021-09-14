@@ -30,7 +30,7 @@ use crate::{
     ast::{self, Explicit, ParameterGroup, Path},
     diagnostics::{Code, Diagnostic, Reporter},
     error::{map_outcome_from_result, Health, Outcome, PossiblyErroneous, Result},
-    format::{ordered_listing, pluralize, Conjunction, QuoteExt},
+    format::{ordered_listing, pluralize, Conjunction, DisplayWith, QuoteExt},
     lowered_ast::{decl, expr, pat, AttributeKeys, AttributeKind, Attributes, Number},
     parser::ast::HangerKind,
     span::{SharedSourceMap, Span, Spanned, Spanning},
@@ -80,7 +80,7 @@ impl<'a> Lowerer<'a> {
             Outcome::from(self.lower_attributes(&declaration.attributes, &declaration))
                 .unwrap(&mut health);
 
-        let declarations = match declaration.kind {
+        let declarations = match declaration.data {
             Value(value) => {
                 let context = Context::new(declaration.span);
 
@@ -267,7 +267,7 @@ impl<'a> Lowerer<'a> {
                     Some(declarations) => declarations,
                     // @Bug @Task disallow external module declarations inside of non-file modules
                     None => {
-                        use crate::{lexer::Lexer, parser::Parser, span};
+                        use crate::{lexer::Lexer, parser::Parser};
 
                         // @Task warn on/disallow relative paths pointing "outside" of the project directory
                         // (ofc we would also need to disallow symbolic links to fully(?) guarantee some definition
@@ -303,19 +303,12 @@ impl<'a> Lowerer<'a> {
                         let file = match self.map.borrow_mut().load(path.clone()) {
                             Ok(file) => file,
                             Err(error) => {
-                                match error {
-                                    span::Error::LoadFailure(_) => Diagnostic::error()
-                                        .code(Code::E016)
-                                        .message(format!(
-                                            "could not load module `{}`",
-                                            module.binder
-                                        ))
-                                        .primary_span(declaration_span)
-                                        .note(error.message(Some(&path))),
-                                    // @Task add context information
-                                    error => Diagnostic::from(error),
-                                }
-                                .report(&self.reporter);
+                                Diagnostic::error()
+                                    .code(Code::E016)
+                                    .message(format!("could not load module `{}`", module.binder))
+                                    .primary_span(declaration_span)
+                                    .note(error.with(&path).to_string())
+                                    .report(&self.reporter);
                                 return PossiblyErroneous::error();
                             }
                         };
@@ -339,7 +332,7 @@ impl<'a> Lowerer<'a> {
                         };
                         assert!(health_of_lexer.is_untainted()); // parsing succeeded
 
-                        let module: ast::Module = node.kind.try_into().unwrap();
+                        let module: ast::Module = node.data.try_into().unwrap();
 
                         if !node.attributes.is_empty() {
                             Diagnostic::unimplemented("attributes on module headers")
@@ -423,7 +416,7 @@ impl<'a> Lowerer<'a> {
                     }
 
                     for binding in bindings {
-                        match binding.kind {
+                        match binding.data {
                             Single { target, binder } => {
                                 let combined_target = try_!(path.clone().join(target.clone()));
 
@@ -476,7 +469,7 @@ impl<'a> Lowerer<'a> {
                 }
 
                 'discriminate: {
-                    match use_.bindings.kind {
+                    match use_.bindings.data {
                         Single { target, binder } => {
                             let binder = binder.or_else(|| target.last_identifier().cloned());
                             let binder = match binder {
@@ -484,9 +477,9 @@ impl<'a> Lowerer<'a> {
                                 None => {
                                     // @Task improve the message for `use crate.(self)`: hint that `self`
                                     // is effectively unnamed because `crate` is unnamed
-                                    // @Task the message is even worse (it is misleading!) with `use crates.(self)`
+                                    // @Task the message is even worse (it is misleading!) with `use extern.(self)`
                                     // currently leads to the suggestion to bind `self` to an identifier but
-                                    // for `crates` that is illegal, too
+                                    // for `extern` that is illegal, too
                                     invalid_unnamed_path_hanger(target.hanger.unwrap())
                                         .report(&self.reporter);
                                     health.taint();
@@ -544,7 +537,7 @@ impl<'a> Lowerer<'a> {
         let attributes = Outcome::from(self.lower_attributes(&expression.attributes, &expression))
             .unwrap(&mut health);
 
-        let expression = match expression.kind {
+        let expression = match expression.data {
             PiTypeLiteral(pi) => {
                 health &= self.check_fieldness_location(pi.domain.aspect.fieldness, context);
 
@@ -820,7 +813,7 @@ impl<'a> Lowerer<'a> {
         let attributes =
             Outcome::from(self.lower_attributes(&pattern.attributes, &pattern)).unwrap(&mut health);
 
-        let pattern = match pattern.kind {
+        let pattern = match pattern.data {
             // @Note awkward API!
             NumberLiteral(literal) => {
                 let span = pattern.span;
@@ -906,20 +899,20 @@ impl<'a> Lowerer<'a> {
             };
 
             // non-conforming attributes
-            if !attribute.kind.targets().contains(targets) {
+            if !attribute.data.targets().contains(targets) {
                 Diagnostic::error()
                     .code(Code::E013)
                     .message(format!(
                         "attribute {} cannot be ascribed to {}",
-                        attribute.kind.quoted_name(),
+                        attribute.data.quoted_name(),
                         target.name()
                     ))
                     .labeled_primary_span(&attribute, "misplaced attribute")
                     .labeled_secondary_span(target, "incompatible item")
                     .note(format!(
                         "attribute {} can only be ascribed to {}",
-                        attribute.kind.quoted_name(),
-                        attribute.kind.target_names()
+                        attribute.data.quoted_name(),
+                        attribute.data.target_names()
                     ))
                     .report(&self.reporter);
                 health.taint();
@@ -934,7 +927,7 @@ impl<'a> Lowerer<'a> {
 
         // conflicting or duplicate attributes
         for attribute in lowered_attributes.iter() {
-            let key = attribute.kind.key();
+            let key = attribute.data.key();
             let coexistable = AttributeKeys::COEXISTABLE.contains(key);
 
             if !keys.contains(key) || coexistable {
@@ -959,7 +952,7 @@ impl<'a> Lowerer<'a> {
                     .code(Code::E006)
                     .message(format!(
                         "multiple {} attributes",
-                        faulty_attributes.first().unwrap().kind.quoted_name(),
+                        faulty_attributes.first().unwrap().data.quoted_name(),
                     ))
                     .labeled_primary_spans(
                         faulty_attributes.into_iter(),
@@ -995,7 +988,7 @@ impl<'a> Lowerer<'a> {
                 let listing = ordered_listing(
                     faulty_attributes
                         .iter()
-                        .map(|attribute| attribute.kind.quoted_name()),
+                        .map(|attribute| attribute.data.quoted_name()),
                     Conjunction::And,
                 );
                 return Err(Diagnostic::error()
@@ -1036,7 +1029,7 @@ impl<'a> Lowerer<'a> {
 
         if attributes.within(AttributeKeys::UNSUPPORTED) {
             for attribute in attributes.filter(AttributeKeys::UNSUPPORTED) {
-                Diagnostic::unimplemented(format!("attribute {}", attribute.kind.quoted_name()))
+                Diagnostic::unimplemented(format!("attribute {}", attribute.data.quoted_name()))
                     .primary_span(attribute)
                     .report(&self.reporter);
             }
@@ -1372,11 +1365,11 @@ macro extractor($name:ident $repr:literal: $variant:ident => $ty:ty) {
         name: Option<&'static str>,
         reporter: &Reporter,
     ) -> Result<$ty, AttributeParsingError> {
-        match &self.kind {
+        match &self.data {
             ast::AttributeArgumentKind::$variant(literal) => Ok(literal.as_ref().clone()),
             ast::AttributeArgumentKind::Named(named) => named.handle(
                 name,
-                |argument| match &argument.kind {
+                |argument| match &argument.data {
                     ast::AttributeArgumentKind::$variant(literal) => Ok(literal.as_ref().clone()),
                     kind => {
                         invalid_attribute_argument_type((argument.span, kind.name()), $repr)

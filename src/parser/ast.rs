@@ -267,7 +267,7 @@ impl Path {
     /// Construct a non-identifier-head-only path.
     pub fn hanger(token: Token) -> Self {
         Self {
-            hanger: Some(Hanger::new(token.span, token.kind.try_into().unwrap())),
+            hanger: Some(Hanger::new(token.span, token.data.try_into().unwrap())),
             segments: SmallVec::new(),
         }
     }
@@ -275,7 +275,7 @@ impl Path {
     // @Task make this Option<Self> and move diagnostic construction into lowerer
     pub fn join(mut self, other: Self) -> Result<Self, Diagnostic> {
         if let Some(hanger) = other.hanger {
-            if !matches!(hanger.kind, HangerKind::Self_) {
+            if !matches!(hanger.data, HangerKind::Self_) {
                 return Err(Diagnostic::error()
                     .code(Code::E026)
                     .message(format!("path `{}` not allowed in this position", hanger))
@@ -287,9 +287,9 @@ impl Path {
         Ok(self)
     }
 
-    pub fn bare_hanger(&self, hanger_kind: HangerKind) -> Option<Hanger> {
+    pub fn bare_hanger(&self, queried_hanger: HangerKind) -> Option<Hanger> {
         self.hanger
-            .filter(|hanger| hanger.kind == hanger_kind && self.segments.is_empty())
+            .filter(|hanger| hanger.data == queried_hanger && self.segments.is_empty())
     }
 
     /// Return the path head if it is an identifier.
@@ -422,9 +422,9 @@ pub struct LetIn {
 impl Spanned<&'_ LetIn> {
     pub fn span_without_definition_and_scope(self) -> Span {
         self.span
-            .fit_end(&self.kind.binder)
-            .fit_end(&self.kind.parameters)
-            .fit_end(&self.kind.type_annotation)
+            .fit_end(&self.data.binder)
+            .fit_end(&self.data.parameters)
+            .fit_end(&self.data.type_annotation)
     }
 }
 
@@ -554,7 +554,7 @@ pub type Hanger = Spanned<HangerKind>;
 /// The non-identifier head of a path.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HangerKind {
-    Crates,
+    Extern,
     Crate,
     Super,
     Self_,
@@ -563,7 +563,7 @@ pub enum HangerKind {
 impl HangerKind {
     pub const fn name(self) -> &'static str {
         match self {
-            Self::Crates => "crates",
+            Self::Extern => "extern",
             Self::Crate => "crate",
             Self::Super => "super",
             Self::Self_ => "self",
@@ -576,7 +576,7 @@ impl TryFrom<TokenKind> for HangerKind {
 
     fn try_from(kind: TokenKind) -> Result<Self, Self::Error> {
         Ok(match kind {
-            TokenKind::Crates => Self::Crates,
+            TokenKind::Extern => Self::Extern,
             TokenKind::Crate => Self::Crate,
             TokenKind::Super => Self::Super,
             TokenKind::Self_ => Self::Self_,
@@ -595,7 +595,7 @@ impl Identifier {
     }
 
     fn atom(&self) -> &Atom {
-        &self.0.kind
+        &self.0.data
     }
 
     pub fn as_str(&self) -> &str {
@@ -607,7 +607,7 @@ impl Identifier {
     }
 
     pub fn stripped(self) -> Self {
-        Self::new(self.0.kind, Span::SHAM)
+        Self::new(self.0.data, Span::SHAM)
     }
 
     pub fn is_punctuation(&self) -> bool {

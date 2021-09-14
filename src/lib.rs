@@ -51,9 +51,11 @@
     generic_associated_types,
     path_try_exists,
     extend_one,
-    try_trait_v2
+    try_trait_v2,
+    adt_const_params
 )]
 #![deny(rust_2018_idioms, unused_must_use)]
+#![allow(incomplete_features)] // adt_const_params (we are only doing the basics)
 
 pub mod compiler;
 pub mod diagnostics;

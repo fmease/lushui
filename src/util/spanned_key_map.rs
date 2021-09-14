@@ -4,7 +4,7 @@ use crate::{
     span::{Span, Spanned},
     util::HashMap,
 };
-use std::{hash::Hash, iter::FromIterator};
+use std::{borrow::Borrow, hash::Hash, iter::FromIterator};
 
 #[derive(Debug)]
 pub struct SpannedKeyMap<K, V>(pub(crate) HashMap<K, Store<V>>);
@@ -12,19 +12,6 @@ pub struct SpannedKeyMap<K, V>(pub(crate) HashMap<K, Store<V>>);
 impl<K, V> SpannedKeyMap<K, V> {
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
-    }
-
-    pub fn insert(&mut self, key: Spanned<K>, value: V)
-    where
-        K: Eq + Hash,
-    {
-        self.0.insert(
-            key.kind,
-            Store {
-                key: key.span,
-                value,
-            },
-        );
     }
 
     // @Task impl IntoIterator
@@ -44,6 +31,42 @@ impl<K, V> SpannedKeyMap<K, V> {
         self.0
             .iter()
             .map(|(key, store)| (Spanned::new(store.key, key), &store.value))
+    }
+}
+
+impl<K: Eq + Hash, V> SpannedKeyMap<K, V> {
+    pub fn insert(&mut self, key: Spanned<K>, value: V) {
+        self.0.insert(
+            key.data,
+            Store {
+                key: key.span,
+                value,
+            },
+        );
+    }
+
+    pub fn contains_key<Q>(&self, key: &Q) -> bool
+    where
+        K: Borrow<Q>,
+        Q: ?Sized + Eq + Hash,
+    {
+        self.0.contains_key(key)
+    }
+
+    pub fn get<Q>(&self, key: &Q) -> Option<&V>
+    where
+        K: Borrow<Q>,
+        Q: ?Sized + Eq + Hash,
+    {
+        self.0.get(key).map(|entry| &entry.value)
+    }
+
+    pub fn key_span<Q>(&self, key: &Q) -> Option<Span>
+    where
+        K: Borrow<Q>,
+        Q: ?Sized + Eq + Hash,
+    {
+        self.0.get(key).map(|entry| entry.key)
     }
 }
 
@@ -67,7 +90,7 @@ impl<K: Eq + Hash, V> FromIterator<ExternalEntry<K, V>> for SpannedKeyMap<K, V> 
 
 fn internal_entry<K, V>((key, value): ExternalEntry<K, V>) -> InternalEntry<K, V> {
     (
-        key.kind,
+        key.data,
         Store {
             key: key.span,
             value,

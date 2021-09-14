@@ -202,7 +202,7 @@ impl<K: Format> Format for Spanned<K> {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         self.span.format(f, indentation)?;
         write!(f, " ")?;
-        self.kind.format(f, indentation)
+        self.data.format(f, indentation)
     }
 }
 
@@ -210,7 +210,7 @@ impl<I: Format> Format for super::Item<I> {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         self.span.format(f, indentation)?;
         write!(f, " ")?;
-        self.kind.format(f, indentation)?;
+        self.data.format(f, indentation)?;
 
         if !self.attributes.is_empty() {
             let indentation = indentation.increased();

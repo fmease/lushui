@@ -1,6 +1,6 @@
 ;;; TEST ignore (deapplications not supported yet)
 
-use crates.core.(
+use extern.core.(
     list.(List cons empty)
     bool.(Bool false true))
 

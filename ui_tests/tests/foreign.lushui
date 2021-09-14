@@ -1,6 +1,6 @@
 ;;; TEST pass run
 
-use crates.core.(
+use extern.core.(
     nat.(self Nat)
     bool.Bool
     duple.(Duple duple))

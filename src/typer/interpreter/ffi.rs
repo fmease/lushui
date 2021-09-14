@@ -148,7 +148,7 @@ impl Type {
 
         use ExpressionKind::*;
 
-        Some(match &expression.kind {
+        Some(match &expression.data {
             Binding(binding) if matches(&binding.binder, &types.unit)? => Self::Unit,
             Binding(binding) if matches(&binding.binder, &types.bool)? => Self::Bool,
             Binding(binding)
@@ -186,7 +186,7 @@ impl Type {
             {
                 Self::Text
             }
-            Application(application) => match &application.callee.kind {
+            Application(application) => match &application.callee.data {
                 Binding(binding) if matches(&binding.binder, &types.option)? => Self::Option(
                     Box::new(self::Type::from_expression(&application.argument, scope)?),
                 ),
@@ -267,7 +267,7 @@ impl Value {
 
         use ExpressionKind::*;
 
-        Some(match &expression.kind {
+        Some(match &expression.data {
             Text(text) => Self::Text(text.as_ref().clone()),
             Number(number) => {
                 use crate::lowered_ast::Number::*;
@@ -284,12 +284,12 @@ impl Value {
             Binding(binding) if matches(&binding.binder, &values.unit)? => Value::Unit,
             Binding(binding) if matches(&binding.binder, &values.false_)? => Value::Bool(false),
             Binding(binding) if matches(&binding.binder, &values.true_)? => Value::Bool(true),
-            Application(application0) => match &application0.callee.kind {
+            Application(application0) => match &application0.callee.data {
                 Binding(binding) if matches(&binding.binder, &values.none)? => Value::Option {
                     value: None,
                     type_: self::Type::from_expression(&application0.argument, scope)?,
                 },
-                Application(application1) => match &application1.callee.kind {
+                Application(application1) => match &application1.callee.data {
                     Binding(binding) if matches(&binding.binder, &values.some)? => Value::Option {
                         value: Some(Box::new(Self::from_expression(
                             &application0.argument,

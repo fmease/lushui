@@ -1,11 +1,10 @@
 //! A custom human-readable metadata file format.
 
 // @Task raw text, multi lines text with indentation awareness
+// @Task negative numbers, text escape sequences
 // @Task unit tests
 
 // @Task support keywords as keys e.g. `false: false`
-
-// @Beacon @Task catch duplicate keys!!
 
 use std::{
     convert::{TryFrom, TryInto},
@@ -37,30 +36,6 @@ pub enum ValueKind {
 }
 
 impl ValueKind {
-    fn into_bool(self) -> Option<bool> {
-        obtain!(self, Self::Bool(bool) => bool)
-    }
-
-    fn into_integer(self) -> Option<i64> {
-        obtain!(self, Self::Integer(int) => int)
-    }
-
-    fn into_float(self) -> Option<f64> {
-        obtain!(self, Self::Float(float) => float)
-    }
-
-    fn into_text(self) -> Option<String> {
-        obtain!(self, Self::Text(text) => text)
-    }
-
-    fn into_array(self) -> Option<Array> {
-        obtain!(self, Self::Array(array) => array)
-    }
-
-    fn into_map(self) -> Option<Map> {
-        obtain!(self, Self::Map(map) => map)
-    }
-
     pub fn type_(&self) -> Type {
         self.discriminant()
     }
@@ -72,7 +47,7 @@ impl TryFrom<ValueKind> for bool {
     fn try_from(value: ValueKind) -> Result<Self, Self::Error> {
         let type_ = value.type_();
 
-        value.into_bool().ok_or(TypeError {
+        obtain!(value, ValueKind::Bool(value) => value).ok_or(TypeError {
             expected: Type::Bool,
             actual: type_,
         })
@@ -85,7 +60,7 @@ impl TryFrom<ValueKind> for i64 {
     fn try_from(value: ValueKind) -> Result<Self, Self::Error> {
         let type_ = value.type_();
 
-        value.into_integer().ok_or(TypeError {
+        obtain!(value, ValueKind::Integer(value) => value).ok_or(TypeError {
             expected: Type::Integer,
             actual: type_,
         })
@@ -98,7 +73,7 @@ impl TryFrom<ValueKind> for f64 {
     fn try_from(value: ValueKind) -> Result<Self, Self::Error> {
         let type_ = value.type_();
 
-        value.into_float().ok_or(TypeError {
+        obtain!(value, ValueKind::Float(value) => value).ok_or(TypeError {
             expected: Type::Float,
             actual: type_,
         })
@@ -111,7 +86,7 @@ impl TryFrom<ValueKind> for String {
     fn try_from(value: ValueKind) -> Result<Self, Self::Error> {
         let type_ = value.type_();
 
-        value.into_text().ok_or(TypeError {
+        obtain!(value, ValueKind::Text(value) => value).ok_or(TypeError {
             expected: Type::Text,
             actual: type_,
         })
@@ -124,7 +99,7 @@ impl TryFrom<ValueKind> for Array {
     fn try_from(value: ValueKind) -> Result<Self, Self::Error> {
         let type_ = value.type_();
 
-        value.into_array().ok_or(TypeError {
+        obtain!(value, ValueKind::Array(value) => value).ok_or(TypeError {
             expected: Type::Array,
             actual: type_,
         })
@@ -137,7 +112,7 @@ impl TryFrom<ValueKind> for Map {
     fn try_from(value: ValueKind) -> Result<Self, Self::Error> {
         let type_ = value.type_();
 
-        value.into_map().ok_or(TypeError {
+        obtain!(value, ValueKind::Map(value) => value).ok_or(TypeError {
             expected: Type::Map,
             actual: type_,
         })
@@ -169,7 +144,6 @@ impl Map {
         match self.0.remove(key) {
             Some(entry) => convert(key, entry.value, reporter),
             None => {
-                // @Task imrpove message, add span, add name of map (or "root map")
                 Diagnostic::error()
                     .code(Code::E802)
                     .message(format!(
@@ -225,7 +199,7 @@ pub fn convert<T: TryFrom<ValueKind, Error = TypeError>>(
     reporter: &Reporter,
 ) -> Result<Spanned<T>> {
     let span = value.span;
-    let value = value.kind.try_into().map_err(|error: TypeError| {
+    let value = value.data.try_into().map_err(|error: TypeError| {
         Diagnostic::error()
             .code(Code::E800)
             .message(format!(
@@ -275,15 +249,15 @@ mod lexer {
 
     impl Token {
         pub fn name(&self) -> TokenName {
-            self.kind.discriminant()
+            self.data.discriminant()
         }
 
         pub(super) fn into_identifier(self) -> Option<String> {
-            obtain!(self.kind, Identifier(identifier) => identifier)
+            obtain!(self.data, Identifier(identifier) => identifier)
         }
 
         pub(super) fn into_text(self) -> Option<Result<String, Diagnostic>> {
-            match self.kind {
+            match self.data {
                 Text(text) => Some(match text {
                     Ok(content) => Ok(content),
                     // @Task code
@@ -296,8 +270,8 @@ mod lexer {
         }
 
         // @Task turn this into a diagnostic here
-        pub(super) fn into_int(self) -> Option<Result<i64, IntLexingError>> {
-            obtain!(self.kind, Integer(integer) => integer)
+        pub(super) fn into_integer(self) -> Option<Result<i64, IntLexingError>> {
+            obtain!(self.data, Integer(integer) => integer)
         }
     }
 
@@ -319,6 +293,19 @@ mod lexer {
         Integer(Result<i64, IntLexingError>),
         EndOfInput,
         Illegal(char),
+    }
+
+    impl fmt::Display for TokenKind {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let name = self.discriminant();
+
+            match self {
+                &Self::Illegal(character) => {
+                    write!(f, "{} U+{:04X} `{}`", name, character as u32, character)
+                }
+                _ => write!(f, "{name}"),
+            }
+        }
     }
 
     impl fmt::Display for TokenName {
@@ -593,17 +580,19 @@ mod parser {
             Token,
             TokenName::{self, *},
         },
-        SpannedKeyMap, Value, ValueKind,
+        Map, Value, ValueKind,
     };
     use crate::{
-        diagnostics::{Diagnostic, Reporter},
-        error::{ReportedExt, Result},
+        diagnostics::{Code, Diagnostic, Reporter},
+        error::{Health, ReportedExt, Result},
         span::{SharedSourceMap, SourceFileIndex, Span, Spanned},
     };
+
     pub(super) struct Parser<'a> {
         file: SourceFileIndex,
         tokens: &'a [Token],
         index: usize,
+        health: Health,
         map: SharedSourceMap,
         reporter: &'a Reporter,
     }
@@ -619,6 +608,7 @@ mod parser {
                 file,
                 tokens,
                 index: 0,
+                health: Health::Untainted,
                 map,
                 reporter,
             }
@@ -641,9 +631,8 @@ mod parser {
             if token.name() == expected {
                 Ok(token.clone())
             } else {
-                // @Task flesh out
                 Diagnostic::error()
-                    .message(format!("expected {expected}, but got {}", token.name()))
+                    .message(format!("found {token}, but expected {expected}"))
                     .primary_span(token)
                     .report(self.reporter);
                 Err(())
@@ -664,15 +653,18 @@ mod parser {
         /// Document ::= (Top-Level-Map-Entries | Value) #End-Of-Input
         /// ```
         pub(super) fn parse(&mut self) -> Result<Value> {
-            let value = if matches!(self.current_token().name(), Identifier | Text)
-                && self.succeeding_token().name() == Colon
-            {
-                self.parse_top_level_map_entries()
-            } else {
-                self.parse_value()
+            let value = match self.has_top_level_map_entries() {
+                true => self.parse_top_level_map_entries(),
+                false => self.parse_value(),
             }?;
             self.consume(EndOfInput)?;
-            Ok(value)
+            self.health.of(value).into()
+        }
+
+        fn has_top_level_map_entries(&self) -> bool {
+            matches!(self.current_token().name(), Identifier | Text)
+                && self.succeeding_token().name() == Colon
+                || self.current_token().name() == EndOfInput
         }
 
         /// Parse top-level map entries.
@@ -683,21 +675,11 @@ mod parser {
         /// Top-Level-Map-Entries ::= (Map-Entry ",")* Map-Entry? (> #End-Of-Input)
         /// ```
         fn parse_top_level_map_entries(&mut self) -> Result<Value> {
-            let mut entries = SpannedKeyMap::default();
-
-            while self.current_token().name() != EndOfInput {
-                let entry = self.parse_map_entry()?;
-
-                entries.extend_one(entry);
-
-                if self.current_token().name() != EndOfInput {
-                    self.consume(Comma)?;
-                }
-            }
+            let map = self.parse_map_entries(EndOfInput)?;
 
             Ok(Value::new(
                 self.map.borrow()[self.file].span,
-                ValueKind::Map(entries),
+                ValueKind::Map(map),
             ))
         }
 
@@ -747,7 +729,7 @@ mod parser {
                     Ok(Value::new(span, ValueKind::Text(content)))
                 }
                 Integer => {
-                    let value = self.current_token().clone().into_int().unwrap();
+                    let value = self.current_token().clone().into_integer().unwrap();
                     self.advance();
 
                     let value = match value {
@@ -775,10 +757,11 @@ mod parser {
                     self.advance();
                     self.finish_parse_map(span)
                 }
-                name => {
-                    // @Temporary
+                _ => {
+                    let actual = self.current_token();
+
                     Diagnostic::error()
-                        .message(format!("expected value, but found {name:?}"))
+                        .message(format!("found {actual}, but expected value"))
                         .primary_span(span)
                         .report(self.reporter);
                     Err(())
@@ -824,20 +807,40 @@ mod parser {
         /// ```
         fn finish_parse_map(&mut self, opening_bracket_span: Span) -> Result<Value> {
             let mut span = opening_bracket_span;
-            let mut entries = SpannedKeyMap::default();
 
-            while self.current_token().name() != ClosingCurlyBracket {
-                entries.extend_one(self.parse_map_entry()?);
-
-                if self.current_token().name() != ClosingCurlyBracket {
-                    self.consume(Comma)?;
-                }
-            }
+            let map = self.parse_map_entries(ClosingCurlyBracket)?;
 
             span.merging(self.current_token());
             self.advance();
 
-            Ok(Value::new(span, ValueKind::Map(entries)))
+            Ok(Value::new(span, ValueKind::Map(map)))
+        }
+
+        fn parse_map_entries(&mut self, delimiter: TokenName) -> Result<Map> {
+            let mut map = Map::default();
+
+            while self.current_token().name() != delimiter {
+                let (key, value) = self.parse_map_entry()?;
+
+                if let Some(previous) = map.key_span(&key.data) {
+                    // @Task "is defined multiple times in map `PATH`"
+                    Diagnostic::error()
+                        .code(Code::E803)
+                        .message(format!("the key `{key}` is defined multiple times"))
+                        .labeled_primary_span(key, "redefinition")
+                        .labeled_secondary_span(previous, "previous definition")
+                        .report(self.reporter);
+                    self.health.taint();
+                } else {
+                    map.insert(key, value);
+                }
+
+                if self.current_token().name() != delimiter {
+                    self.consume(Comma)?;
+                }
+            }
+
+            Ok(map)
         }
 
         /// Parse a map entry.

@@ -98,7 +98,7 @@ impl super::Declaration {
         use super::DeclarationKind::*;
         use crate::lexer::INDENTATION;
 
-        match &self.kind {
+        match &self.data {
             Value(declaration) => {
                 write!(
                     f,
@@ -200,7 +200,7 @@ fn format_pi_type_literal_or_lower(
 ) -> fmt::Result {
     use super::ExpressionKind::*;
 
-    match &expression.kind {
+    match &expression.data {
         PiType(pi) => {
             write!(f, "{}", pi.explicitness)?;
 
@@ -309,7 +309,7 @@ fn format_application_or_lower(
 ) -> fmt::Result {
     use super::ExpressionKind::*;
 
-    match &expression.kind {
+    match &expression.data {
         Application(application) => {
             format_application_or_lower(&application.callee, f)?;
             write!(f, " {}", application.explicitness)?;
@@ -329,7 +329,7 @@ fn format_lower_expression(
         write!(f, "{} ", attribute)?;
     }
 
-    match &expression.kind {
+    match &expression.data {
         Type => write!(f, "{Type}", Type = "Type".blue()),
         Number(literal) => write!(f, "{literal}"),
         Text(literal) => write!(f, "{literal:?}"),
@@ -344,7 +344,7 @@ impl fmt::Display for super::Pattern {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use super::PatternKind::*;
 
-        match &self.kind {
+        match &self.data {
             Number(number) => write!(f, "{}", number),
             Text(text) => write!(f, "{:?}", text),
             Binding(binding) => write!(f, "{}", binding.binder),

@@ -35,7 +35,7 @@ error[E021]: binding `bet` is not defined in this scope
    |
   help: a binding with a similar name exists in scope: `beta`
 
-error[E021]: binding `identiti` is not defined in module `crates.core`
+error[E021]: binding `identiti` is not defined in module `extern.core`
   --> ${DIRECTORY}/name_resolution/undefined-but-having-lookalikes.lushui:21:10
    |
 21 |     core.identiti gamha_blocker

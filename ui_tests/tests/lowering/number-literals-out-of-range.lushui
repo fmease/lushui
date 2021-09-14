@@ -1,6 +1,6 @@
 ;;; TEST fail check
 
-use crates.core.nat.Nat
+use extern.core.nat.Nat
 
 unleet: Nat = -1337
 

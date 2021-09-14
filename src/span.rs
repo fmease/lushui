@@ -13,7 +13,7 @@
 // (esp. Diagnostic!!!)
 // we'd like to have fn is_empty(self) { self.start == self.end } in the end
 
-use crate::diagnostics::Diagnostic;
+use crate::format::DisplayWith;
 pub use index::{ByteIndex, LocalByteIndex};
 pub use source_file::SourceFile;
 pub use source_map::{SharedSourceMap, SourceFileIndex, SourceMap};
@@ -22,8 +22,14 @@ pub use spanned::Spanned;
 pub use spanning::{PossiblySpanning, Spanning};
 use std::{io, path::Path};
 
+#[derive(PartialEq, Eq)]
+pub enum Locality {
+    Local,
+    Global,
+}
+
 mod index {
-    use super::{Error, SourceFile};
+    use super::{Error, Locality, SourceFile};
     use std::{
         convert::TryInto,
         ops::{Add, Sub},
@@ -32,18 +38,43 @@ mod index {
     /// A global byte index.
     ///
     /// Here, "global" means local relative to a [source map](super::SourceMap).
-    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
-    pub struct ByteIndex(pub(super) u32);
+    pub type ByteIndex = AbstractByteIndex<{ Locality::Global }>;
 
-    impl ByteIndex {
-        pub const fn new(index: u32) -> Self {
+    /// A file-local byte index.
+    pub type LocalByteIndex = AbstractByteIndex<{ Locality::Local }>;
+
+    pub type Representation = u32;
+
+    /// An locality-abstract byte index.
+    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+    pub struct AbstractByteIndex<const L: Locality>(pub(super) Representation);
+
+    impl<const L: Locality> AbstractByteIndex<L> {
+        pub const fn new(index: Representation) -> Self {
             Self(index)
         }
 
-        pub(super) fn map(self, mapper: impl FnOnce(u32) -> u32) -> Self {
+        pub(super) fn map(self, mapper: impl FnOnce(Representation) -> Representation) -> Self {
             Self(mapper(self.0))
         }
 
+        pub(super) fn offset(self, offset: u32) -> Result<Self, Error> {
+            let sum = self.0.checked_add(offset).ok_or(Error::OffsetOverflow)?;
+
+            Ok(Self::new(sum))
+        }
+
+        pub fn saturating_sub(self, offset: u32) -> Self {
+            Self::new(self.0.saturating_sub(offset))
+        }
+
+        // @Task get rid of this method
+        pub fn from_usize(index: usize) -> Self {
+            Self::new(index.try_into().unwrap())
+        }
+    }
+
+    impl ByteIndex {
         /// Map a local byte index to global global one.
         ///
         /// ## Panics
@@ -52,42 +83,11 @@ mod index {
         pub fn from_local(source: &SourceFile, index: LocalByteIndex) -> Self {
             source.span.start.map(|start| start + index.0)
         }
-
-        pub(super) fn offset(self, offset: u32) -> Result<Self, Error> {
-            let sum = self.0.checked_add(offset).ok_or(Error::OffsetOverflow)?;
-
-            Ok(Self::new(sum))
-        }
     }
 
-    /// A file-local byte index.
-    ///
-    /// It _does not_ store information about the file. Hence, it is not
-    /// [global](ByteIndex).
-    #[derive(Clone, Copy, PartialEq, Eq, Debug, PartialOrd, Ord)]
-    pub struct LocalByteIndex(pub(super) u32);
-
     impl LocalByteIndex {
-        pub const fn new(index: u32) -> Self {
-            Self(index)
-        }
-
-        /// Create a new file-local byte index.
-        ///
-        /// ## Panics
-        ///
-        /// Panics if `index` does not fit into `u32`.
-        // @Task get rid of this method
-        pub fn from_usize(index: usize) -> Self {
-            Self::new(index.try_into().unwrap())
-        }
-
         pub fn from_global(source: &SourceFile, index: ByteIndex) -> Self {
             Self::new(index.0 - source.span.start.0)
-        }
-
-        pub fn saturating_sub(self, offset: u32) -> Self {
-            Self::new(self.0.saturating_sub(offset))
         }
     }
 
@@ -131,23 +131,68 @@ mod index {
 }
 
 mod span {
-    use super::{ByteIndex, LocalByteIndex, PossiblySpanning, SourceFile, Spanning};
+    use super::{
+        index::{AbstractByteIndex, Representation},
+        ByteIndex, LocalByteIndex, Locality, PossiblySpanning, SourceFile, Spanning,
+    };
     use std::{
         fmt,
-        mem::size_of,
         ops::{RangeInclusive, Sub},
     };
 
     /// A global byte span of source code.
-    // @Task re-model with Option and NonZeroU32
+    pub type Span = AbstractSpan<{ Locality::Global }>;
+
+    /// A span inside a single source file.
+    pub type LocalSpan = AbstractSpan<{ Locality::Local }>;
+
     #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-    pub struct Span {
-        pub(super) start: ByteIndex,
-        pub(super) end: ByteIndex,
+    pub struct AbstractSpan<const L: Locality> {
+        pub start: AbstractByteIndex<L>,
+        pub end: AbstractByteIndex<L>,
     }
 
-    const _: () = assert!(size_of::<Span>() == 8);
-    // const _: () = assert!(size_of::<Option<Span>>() == 8); // @Task
+    impl<const L: Locality> AbstractSpan<L> {
+        pub fn new(start: AbstractByteIndex<L>, end: AbstractByteIndex<L>) -> Self {
+            debug_assert!(start <= end);
+
+            Self { start, end }
+        }
+
+        pub fn length(self) -> Representation {
+            self.end.0 + 1 - self.start.0
+        }
+
+        pub fn contains_index(self, index: AbstractByteIndex<L>) -> bool {
+            self.start <= index && index <= self.end
+        }
+
+        #[must_use]
+        pub fn trim_start(self, amount: Representation) -> Self {
+            // debug_assert!(amount < self.length());
+
+            Self {
+                start: self.start.map(|start| start + amount),
+                end: self.end,
+            }
+        }
+
+        #[must_use]
+        pub fn trim_end(self, amount: Representation) -> Self {
+            // debug_assert!(amount < self.length());
+
+            Self {
+                start: self.start,
+                end: self.end.map(|end| end - amount),
+            }
+        }
+    }
+
+    impl<const L: Locality> fmt::Debug for AbstractSpan<L> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}..{}", self.start.0, self.end.0)
+        }
+    }
 
     // @Beacon @Task rename and create operations according to common set operations and adjust the
     // debugging asserts (which in many cases are overly restricted as they originally had a much more
@@ -156,51 +201,16 @@ mod span {
         /// Invalid span used for things without a source location.
         ///
         /// … but where the API requires it.
-        // @Task remove and replace with None once we change the whole code base
         pub const SHAM: Self = Self {
             start: ByteIndex::new(0),
             end: ByteIndex::new(0),
         };
-
-        pub fn new(start: ByteIndex, end: ByteIndex) -> Self {
-            debug_assert!(start <= end);
-
-            Self { start, end }
-        }
-
-        pub fn length(self) -> u32 {
-            self.end.0 + 1 - self.start.0
-        }
-
-        #[must_use]
-        pub fn trim_start(self, amount: u32) -> Self {
-            debug_assert!(amount < self.length());
-
-            Self {
-                start: ByteIndex::new(self.start.0 + amount),
-                end: self.end,
-            }
-        }
-
-        #[must_use]
-        pub fn trim_end(self, amount: u32) -> Self {
-            debug_assert!(amount < self.length());
-
-            Self {
-                start: self.start,
-                end: self.end.map(|end| end - amount),
-            }
-        }
 
         pub fn from_local(source: &SourceFile, span: LocalSpan) -> Self {
             Self::new(
                 ByteIndex::from_local(source, span.start),
                 ByteIndex::from_local(source, span.end),
             )
-        }
-
-        pub fn contains_index(self, index: ByteIndex) -> bool {
-            self.start <= index && index <= self.end
         }
 
         #[must_use]
@@ -273,27 +283,8 @@ mod span {
         }
     }
 
-    impl fmt::Debug for Span {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{}..{}", self.start.0, self.end.0)
-        }
-    }
-
-    /// A span inside a single source file.
-    ///
-    /// This _does not_ include information about the file. Thus, it is not
-    /// [global](Span).
-    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-    pub struct LocalSpan {
-        pub(crate) start: LocalByteIndex,
-        pub(crate) end: LocalByteIndex,
-    }
-
     impl LocalSpan {
-        pub fn new(start: LocalByteIndex, end: LocalByteIndex) -> Self {
-            Self { start, end }
-        }
-
+        // @Beacon @Note this can be removed once we support empty spans!
         pub fn zero() -> Self {
             Self::from(LocalByteIndex::new(0))
         }
@@ -303,29 +294,6 @@ mod span {
                 LocalByteIndex::from_global(source, span.start),
                 LocalByteIndex::from_global(source, span.end),
             )
-        }
-
-        // @Beacon @Task deduplicate by def an AbstractSpan<_>
-
-        #[must_use]
-        pub fn trim_start(self, amount: u32) -> Self {
-            // debug_assert!(amount < self.length());
-
-            Self {
-                start: LocalByteIndex::new(self.start.0 + amount),
-                end: self.end,
-            }
-        }
-
-        #[must_use]
-        pub fn trim_end(self, amount: u32) -> Self {
-            // debug_assert!(amount < self.length());
-
-            Self {
-                start: self.start,
-                // end: self.end.map(|end| end - amount),
-                end: LocalByteIndex::new(self.end.0 - amount),
-            }
         }
     }
 
@@ -444,49 +412,46 @@ mod spanned {
     use std::{fmt, hash::Hash};
 
     #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-    pub struct Spanned<Kind> {
-        pub kind: Kind,
+    pub struct Spanned<T> {
+        pub data: T,
         pub span: Span,
     }
 
-    impl<Kind> Spanned<Kind> {
-        pub const fn new(span: Span, kind: Kind) -> Self {
-            Self { kind, span }
+    impl<T> Spanned<T> {
+        pub const fn new(span: Span, data: T) -> Self {
+            Self { data, span }
         }
 
-        pub fn map<MappedKind>(
-            self,
-            mapper: impl FnOnce(Kind) -> MappedKind,
-        ) -> Spanned<MappedKind> {
+        pub fn map<Mapped>(self, mapper: impl FnOnce(T) -> Mapped) -> Spanned<Mapped> {
             Spanned {
-                kind: mapper(self.kind),
+                data: mapper(self.data),
                 span: self.span,
             }
         }
 
-        pub const fn as_ref(&self) -> Spanned<&Kind> {
+        pub const fn as_ref(&self) -> Spanned<&T> {
             Spanned {
-                kind: &self.kind,
+                data: &self.data,
                 span: self.span,
             }
         }
     }
 
-    impl<S> Spanning for Spanned<S> {
+    impl<T> Spanning for Spanned<T> {
         fn span(&self) -> Span {
             self.span
         }
     }
 
-    impl<Kind: fmt::Debug> fmt::Debug for Spanned<Kind> {
+    impl<T: fmt::Debug> fmt::Debug for Spanned<T> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{:?} {:?}", self.kind, self.span)
+            write!(f, "{:?} {:?}", self.data, self.span)
         }
     }
 
-    impl<Kind: fmt::Display> fmt::Display for Spanned<Kind> {
+    impl<T: fmt::Display> fmt::Display for Spanned<T> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            self.kind.fmt(f)
+            self.data.fmt(f)
         }
     }
 }
@@ -526,8 +491,6 @@ mod source_map {
                 .unwrap_or(Ok(super::START_OF_FIRST_SOURCE_FILE))
         }
 
-        // @Note this could instead return an index, and index into an IndexVec of
-        // SourceFiles
         pub fn load(&mut self, path: PathBuf) -> Result<SourceFileIndex, Error> {
             let source = std::fs::read_to_string(&path).map_err(Error::LoadFailure)?;
             self.add(Some(path), source)
@@ -781,17 +744,17 @@ pub enum Error {
     LoadFailure(io::Error),
 }
 
-impl Error {
-    pub fn message(&self, path: Option<&Path>) -> String {
+impl DisplayWith for Error {
+    type Context<'a> = &'a Path;
+
+    fn format(&self, path: &Path, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use io::ErrorKind::*;
 
-        let mut message = path.map_or("referenced file ".into(), |path| {
-            // @Question should we canonicalize the path? this might be less confusing for users
-            format!("file `{}` ", path.to_string_lossy())
-        });
+        write!(f, "the file `{}` ", path.to_string_lossy())?;
 
-        message += match self {
+        f.write_str(match self {
             Self::OffsetOverflow => "is too large",
+            // @Beacon @Beacon @Beacon @Beacon @Task expand this
             Self::LoadFailure(error) => match error.kind() {
                 NotFound => "does not exist",
                 PermissionDenied => "does not have the required permissions",
@@ -800,14 +763,6 @@ impl Error {
                 // @Task use the provided message
                 _ => "triggered some file system error",
             },
-        };
-
-        message
-    }
-}
-
-impl From<Error> for Diagnostic {
-    fn from(error: Error) -> Self {
-        Diagnostic::error().message(error.message(None))
+        })
     }
 }

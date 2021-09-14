@@ -179,7 +179,7 @@ impl AttributeTarget for ast::Declaration {
     fn name(&self) -> &'static str {
         use ast::DeclarationKind::*;
 
-        match self.kind {
+        match self.data {
             Value(_) => "a value declaration",
             Data(_) => "a data declaration",
             Constructor(_) => "a constructor declaration",
@@ -193,7 +193,7 @@ impl AttributeTarget for ast::Declaration {
     fn as_attribute_targets(&self) -> AttributeTargets {
         use ast::DeclarationKind::*;
 
-        match self.kind {
+        match self.data {
             Value(_) => AttributeTargets::VALUE_DECLARATION,
             Data(_) => AttributeTargets::DATA_DECLARATION,
             Constructor(_) => AttributeTargets::CONSTRUCTOR_DECLARATION,
@@ -206,7 +206,7 @@ impl AttributeTarget for ast::Declaration {
     fn check_attributes(&self, attributes: &Attributes, reporter: &Reporter) -> Result {
         use ast::DeclarationKind::*;
 
-        let (body, binder, definition_marker) = match &self.kind {
+        let (body, binder, definition_marker) = match &self.data {
             Value(value) => (
                 value.body.as_ref().map(|expression| expression.span),
                 &value.binder,
@@ -251,7 +251,7 @@ impl AttributeTarget for ast::Expression {
     fn name(&self) -> &'static str {
         use ast::ExpressionKind::*;
 
-        match self.kind {
+        match self.data {
             PiTypeLiteral(_) => "a pi type literal",
             Application(_) => "an application",
             TypeLiteral => "a type literal",
@@ -273,7 +273,7 @@ impl AttributeTarget for ast::Expression {
     fn as_attribute_targets(&self) -> AttributeTargets {
         use ast::ExpressionKind::*;
 
-        match self.kind {
+        match self.data {
             PiTypeLiteral(_) => AttributeTargets::PI_TYPE_LITERAL_EXPRESSION,
             Application(_) => AttributeTargets::APPLICATION_EXPRESSION,
             TypeLiteral => AttributeTargets::TYPE_LITERAL_EXPRESSION,
@@ -297,7 +297,7 @@ impl AttributeTarget for ast::Pattern {
     fn name(&self) -> &'static str {
         use ast::PatternKind::*;
 
-        match self.kind {
+        match self.data {
             NumberLiteral(_) => "a number literal pattern",
             TextLiteral(_) => "a text literal pattern",
             SequenceLiteralPattern(_) => "a sequence literal pattern",
@@ -310,7 +310,7 @@ impl AttributeTarget for ast::Pattern {
     fn as_attribute_targets(&self) -> AttributeTargets {
         use ast::PatternKind::*;
 
-        match self.kind {
+        match self.data {
             NumberLiteral(_) => AttributeTargets::NUMBER_LITERAL_PATTERN,
             TextLiteral(_) => AttributeTargets::TEXT_LITERAL_PATTERN,
             SequenceLiteralPattern(_) => AttributeTargets::SEQUENCE_LITERAL_PATTERN,
@@ -399,7 +399,7 @@ impl Attributes {
         let mut keys = AttributeKeys::empty();
 
         for attribute in &attributes {
-            keys |= attribute.kind.key();
+            keys |= attribute.data.key();
         }
 
         Self {
@@ -431,7 +431,7 @@ impl Attributes {
     ) -> &'a R {
         self.data
             .iter()
-            .find_map(|attribute| predicate(&attribute.kind))
+            .find_map(|attribute| predicate(&attribute.data))
             .unwrap()
     }
 
@@ -457,7 +457,7 @@ impl Attribute {
     }
 
     pub fn matches(&self, keys: AttributeKeys) -> bool {
-        keys.contains(self.kind.key())
+        keys.contains(self.data.key())
     }
 }
 

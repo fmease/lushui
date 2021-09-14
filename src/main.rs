@@ -10,7 +10,7 @@ use lushui::{
         reporter::{BufferedStderrReporter, StderrReporter},
         Diagnostic, Reporter,
     },
-    error::{outcome, ReportedExt, Result},
+    error::{outcome, Result},
     format::DisplayWith,
     lexer::Lexer,
     lowerer::Lowerer,
@@ -98,15 +98,15 @@ fn check_run_or_build_package(
         Some(source_file_path) => {
             // @Question before building core, should we check the existence of source_file_path?
 
-            build_queue.process_single_file_package(source_file_path, options.unlink_core)
+            build_queue.process_single_file_package(source_file_path, options.no_core)
         }
         None => {
-            if options.unlink_core {
+            if options.no_core {
                 // @Temporary message
                 // @Task add note explaining how one needs to remove the
                 // explicit `core` dep in the manifest to achieve the wanted behavior
                 Diagnostic::error()
-                    .message("option --unlink-core only works with explicit source file paths")
+                    .message("option `--no-core` only works with explicit source file paths")
                     .report(&reporter);
             }
 
@@ -149,7 +149,12 @@ fn check_run_or_build_package(
         let source_file = map
             .borrow_mut()
             .load(crate_.path.clone())
-            .reported(reporter)?;
+            .map_err(|error| {
+                // @Task code
+                Diagnostic::error()
+                    .message(error.with(&crate_.path).to_string())
+                    .report(reporter)
+            })?;
 
         let time = Instant::now();
 
@@ -340,7 +345,7 @@ dependencies: {{
             .join(CrateType::Binary.default_root_file_stem())
             .with_extension(FILE_EXTENSION);
 
-        let content = "main: crates.core.text.Text =\n    \"hello there!\"";
+        let content = "main: extern.core.text.Text =\n    \"hello there!\"";
 
         fs::write(path, content).unwrap();
     }
@@ -363,7 +368,7 @@ fn set_panic_hook() {
 
         Diagnostic::bug()
             .message(message)
-            .when_present(information.location(), |this, location| {
+            .if_present(information.location(), |this, location| {
                 this.note(format!("at `{location}`"))
             })
             .note(

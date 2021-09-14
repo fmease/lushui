@@ -128,7 +128,7 @@ impl BufferedStderrReporter {
                     format!("aborting due to {} previous errors", errors.len()),
                 ))
                 // @Note this not actually implemented yet
-                .when(!codes.is_empty(), |this| {
+                .if_(!codes.is_empty(), |this| {
                     this.note(format!(
                         "the {errors} {codes} {have} a detailed explanation",
                         errors = pluralize!(codes.len(), "error"),

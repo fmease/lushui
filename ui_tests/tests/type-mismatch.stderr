@@ -22,14 +22,14 @@ error[E032]: expected type `Type`, got type `crate.X`
    |           ^^^ has the wrong type
    |
 
-error[E032]: expected type `Type`, got type `crates.core.bool.Bool`
+error[E032]: expected type `Type`, got type `extern.core.bool.Bool`
   --> ${DIRECTORY}/type-mismatch.lushui:20:4
    |
 20 | x: false = false
    |    ^^^^^ has the wrong type
    |
 
-error[E032]: expected type `crates.core.bool.Bool`, got type `crates.core.nat.Nat`
+error[E032]: expected type `extern.core.bool.Bool`, got type `extern.core.nat.Nat`
   --> ${DIRECTORY}/type-mismatch.lushui:22:10
    |
 22 | take (b: Bool): Bool = true

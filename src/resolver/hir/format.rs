@@ -32,7 +32,7 @@ impl Declaration {
         use crate::lexer::INDENTATION;
         let context = (scope, session);
 
-        match &self.kind {
+        match &self.data {
             Value(declaration) => {
                 write!(
                     f,
@@ -139,7 +139,7 @@ fn format_pi_type_literal_or_lower(
     // See also `crate::parser::test::application_lambda_literal_argument_{lax,strict}_grouping` and the
     // comment at the grammar definition of `Pi-Type-Literal-Or-Lower` (in `/misc/grammar/lushui.grammar`)
     // for further details.
-    match &expression.kind {
+    match &expression.data {
         PiType(pi) => {
             write!(f, "{}", pi.explicitness)?;
 
@@ -215,7 +215,7 @@ fn format_application_or_lower(
 ) -> fmt::Result {
     use super::ExpressionKind::*;
 
-    match &expression.kind {
+    match &expression.data {
         Application(application) => {
             format_application_or_lower(&application.callee, scope, session, f)?;
             write!(f, " {}", application.explicitness)?;
@@ -248,7 +248,7 @@ fn format_lower_expression(
         write!(f, "{} ", attribute)?;
     }
 
-    match &expression.kind {
+    match &expression.data {
         Type => write!(f, "Type"),
         Number(literal) => write!(f, "{}", literal),
         // @Bug this uses Rust's way of printing strings, not Lushui's:
@@ -293,7 +293,7 @@ impl DisplayWith for Pattern {
     ) -> fmt::Result {
         use super::PatternKind::*;
 
-        match &self.kind {
+        match &self.data {
             Number(number) => write!(f, "{}", number),
             Text(text) => write!(f, "{:?}", text),
             Binding(binding) => write!(

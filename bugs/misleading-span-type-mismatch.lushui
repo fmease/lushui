@@ -1,5 +1,5 @@
-use crates.core.unit.(Unit unit)
-use crates.core.bool.(Bool false true)
+use extern.core.unit.(Unit unit)
+use extern.core.bool.(Bool false true)
 
 lazy (A: Type): Type = Unit -> A
 

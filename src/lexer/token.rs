@@ -12,13 +12,13 @@ pub type Token = Spanned<TokenKind>;
 
 impl Token {
     pub fn name(&self) -> TokenName {
-        self.kind.discriminant()
+        self.data.discriminant()
     }
 
     pub const fn provenance(&self) -> Provenance {
         use TokenKind::*;
 
-        match self.kind {
+        match self.data {
             Semicolon(provenance)
             | OpeningCurlyBracket(provenance)
             | ClosingCurlyBracket(provenance) => provenance,
@@ -27,23 +27,23 @@ impl Token {
     }
 
     pub fn is_line_break(&self) -> bool {
-        matches!(self.kind, TokenKind::Semicolon(Provenance::Lexer))
+        matches!(self.data, TokenKind::Semicolon(Provenance::Lexer))
     }
 
     pub fn into_identifier(self) -> Option<Atom> {
         use TokenKind::*;
 
-        obtain!(self.kind, Identifier(atom) | Punctuation(atom) => atom)
+        obtain!(self.data, Identifier(atom) | Punctuation(atom) => atom)
     }
 
     pub fn into_number_literal(self) -> Option<String> {
-        obtain!(self.kind, TokenKind::NumberLiteral(number) => number)
+        obtain!(self.data, TokenKind::NumberLiteral(number) => number)
     }
 
     pub fn into_text_literal(self) -> Option<Result<String, Diagnostic>> {
         use TokenKind::*;
 
-        match self.kind {
+        match self.data {
             TextLiteral(Ok(content)) => Some(Ok(content)),
             TextLiteral(Err(_)) => Some(Err(Diagnostic::error()
                 .code(Code::E004)
@@ -51,10 +51,6 @@ impl Token {
                 .primary_span(self.span))),
             _ => None,
         }
-    }
-
-    pub fn as_illegal(&self) -> Option<char> {
-        obtain!(self.kind, TokenKind::Illegal(character) => character)
     }
 }
 
@@ -108,7 +104,7 @@ pub enum TokenKind {
     /// For paths relative to the current crate.
     Crate,
     /// For paths relative to the collection of linked crates.
-    Crates,
+    Extern,
     /// For data declarations.
     Data,
     /// For do-blocks.
@@ -140,6 +136,19 @@ pub enum TokenKind {
     Illegal(char),
 }
 
+impl fmt::Display for TokenKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = self.discriminant();
+
+        match self {
+            &Self::Illegal(character) => {
+                write!(f, "{} U+{:04X} `{}`", name, character as u32, character)
+            }
+            _ => write!(f, "{name}"),
+        }
+    }
+}
+
 impl TokenName {
     /// Test if the token may appear at the start of a [path](crate::ast::Path).
     pub const fn is_path_head(self) -> bool {
@@ -147,7 +156,7 @@ impl TokenName {
     }
 
     pub const fn is_path_hanger(self) -> bool {
-        matches!(self, Crates | Crate | Super | Self_)
+        matches!(self, Extern | Crate | Super | Self_)
     }
 
     pub const fn is_terminator(self) -> bool {
@@ -194,7 +203,7 @@ impl fmt::Display for TokenName {
             As => keyword!(as),
             Case => keyword!(case),
             Crate => keyword!(crate),
-            Crates => keyword!(crates),
+            Extern => keyword!(extern),
             Data => keyword!(data),
             Do => keyword!(do),
             In => keyword!(in),
@@ -252,7 +261,7 @@ pub fn parse_keyword(source: &str) -> Option<TokenKind> {
         "as" => As,
         "case" => Case,
         "crate" => Crate,
-        "crates" => Crates,
+        "extern" => Extern,
         "data" => Data,
         "do" => Do,
         "in" => In,

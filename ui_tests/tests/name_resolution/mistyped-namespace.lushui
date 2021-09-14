@@ -1,6 +1,6 @@
 ;;; TEST fail check
 
-use crates.core.list.List
+use extern.core.list.List
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

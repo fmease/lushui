@@ -1,4 +1,4 @@
 ;;; TEST pass run
 
 ;;; 这件衣服是漂亮的。
-main: crates.core.text.Text = "这件衣服是漂亮的。"
+main: extern.core.text.Text = "这件衣服是漂亮的。"

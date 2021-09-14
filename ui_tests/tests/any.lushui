@@ -1,6 +1,6 @@
 ;;; TEST pass check
 
-use crates.core.(
+use extern.core.(
     list.(List empty cons)
     bool.(Bool false true)
     unit.(Unit unit))

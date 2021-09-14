@@ -1,4 +1,4 @@
-;;; TEST pass check --unlink-core
+;;; TEST pass check --no-core
 
 @foreign
 data Nat32: Type

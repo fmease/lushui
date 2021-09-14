@@ -118,7 +118,7 @@ impl<'a> Resolver<'a> {
             },
         };
 
-        match &declaration.kind {
+        match &declaration.data {
             Value(value) => {
                 let module = module.unwrap();
 
@@ -202,7 +202,7 @@ impl<'a> Resolver<'a> {
 
                 let mut type_annotation = &constructor.type_annotation;
 
-                while let lowered_ast::ExpressionKind::PiType(pi) = &type_annotation.kind {
+                while let lowered_ast::ExpressionKind::PiType(pi) = &type_annotation.data {
                     if pi.aspect.is_field() {
                         let parameter = pi.parameter.as_ref().unwrap();
 
@@ -284,7 +284,7 @@ impl<'a> Resolver<'a> {
     ) -> Result<hir::Declaration> {
         use lowered_ast::DeclarationKind::*;
 
-        Ok(match declaration.kind {
+        Ok(match declaration.data {
             Value(value) => {
                 let module = module.unwrap();
 
@@ -448,7 +448,7 @@ impl<'a> Resolver<'a> {
     ) -> Result<hir::Expression> {
         use lowered_ast::ExpressionKind::*;
 
-        let expression = match expression.kind {
+        let expression = match expression.data {
             PiType(pi) => {
                 let domain = self.resolve_expression(pi.domain.clone(), scope);
                 let codomain = match pi.parameter.clone() {
@@ -568,7 +568,7 @@ impl<'a> Resolver<'a> {
 
         let mut binders = Vec::new();
 
-        let pattern = match pattern.kind.clone() {
+        let pattern = match pattern.data.clone() {
             Number(number) => pat! { Number(pattern.attributes, pattern.span; number) },
             Text(text) => pat! { Text(pattern.attributes, pattern.span; text) },
             Binding(binding) => pat! {
@@ -665,16 +665,16 @@ impl<'a> Resolver<'a> {
         if let Some(hanger) = &path.hanger {
             use ast::HangerKind::*;
 
-            let namespace = match hanger.kind {
-                Crates => {
+            let namespace = match hanger.data {
+                Extern => {
                     let crate_ = match path.segments.first() {
                         Some(crate_) => crate_,
                         None => {
                             // @Task improve the error message, code
                             Diagnostic::error()
-                                .message("path `crates` is used in isolation")
+                                .message("path `extern` is used in isolation")
                                 .primary_span(hanger)
-                                .note("the path segment `crates` is only to be used indirectly to refer to specific crates")
+                                .note("the path segment `extern` is only to be used indirectly to refer to specific crates")
                                 .report(self.reporter);
                             return Err(ResolutionError::Unrecoverable);
                         }
@@ -1335,7 +1335,7 @@ expected the exposure of `{}`
                     .code(Code::E021)
                     .message(message)
                     .primary_span(&identifier)
-                    .when_present(
+                    .if_present(
                         lookalike_finder(identifier.as_str(), namespace),
                         |diagnostic, binding| {
                             diagnostic.help(format!(
@@ -1389,7 +1389,7 @@ expected the exposure of `{}`
             subbinder,
             "requires the preceeding path segment to refer to a namespace",
         )
-        .when_present(
+        .if_present(
             similarly_named_namespace,
             |this, lookalike| {
                 this
@@ -1399,7 +1399,7 @@ expected the exposure of `{}`
                     ))
             }
         )
-        .when(show_very_general_help, |this| {
+        .if_(show_very_general_help, |this| {
             this
                 .note("identifiers following a `.` refer to bindings defined in a namespace (i.e. a module or a data type)")
                 // no type information here yet to check if the non-namespace is indeed a record

@@ -43,7 +43,7 @@ pub fn parse_identifier(source: String) -> Option<Atom> {
         return None;
     }
 
-    let mut tokens = tokens.drain(..).map(|token| token.kind);
+    let mut tokens = tokens.drain(..).map(|token| token.data);
 
     obtain!(
         (tokens.next()?, tokens.next()?),
@@ -206,17 +206,17 @@ impl Brackets {
     fn close(&mut self, closing_bracket: Spanned<Bracket>) -> Result<(), Diagnostic> {
         match self.0.pop() {
             Some(opening_bracket) => {
-                if opening_bracket.kind == closing_bracket.kind {
+                if opening_bracket.data == closing_bracket.data {
                     Ok(())
                 } else {
                     // @Beacon @Bug we are not smart enough here yet, the error messages are too confusing
                     // or even incorrect!
                     Err(Diagnostic::error()
                         .code(Code::E001)
-                        .message(format!("unbalanced {} bracket", closing_bracket.kind))
+                        .message(format!("unbalanced {} bracket", closing_bracket.data))
                         .labeled_primary_span(
                             closing_bracket,
-                            format!("has no matching opening {} bracket", closing_bracket.kind),
+                            format!("has no matching opening {} bracket", closing_bracket.data),
                         ))
                 }
             }
@@ -224,10 +224,10 @@ impl Brackets {
             // or even incorrect!
             None => Err(Diagnostic::error()
                 .code(Code::E001)
-                .message(format!("unbalanced {} bracket", closing_bracket.kind))
+                .message(format!("unbalanced {} bracket", closing_bracket.data))
                 .labeled_primary_span(
                     closing_bracket,
-                    format!("has no matching opening {} bracket", closing_bracket.kind),
+                    format!("has no matching opening {} bracket", closing_bracket.data),
                 )),
         }
     }
@@ -338,10 +338,10 @@ impl<'a> Lexer<'a> {
                 self.health.taint();
                 Diagnostic::error()
                     .code(Code::E001)
-                    .message(format!("unbalanced {} bracket", bracket.kind))
+                    .message(format!("unbalanced {} bracket", bracket.data))
                     .labeled_primary_span(
                         bracket,
-                        format!("has no matching closing {} bracket", bracket.kind),
+                        format!("has no matching closing {} bracket", bracket.data),
                     )
                     .report(&self.reporter);
             }
@@ -728,6 +728,11 @@ impl<'a> Lexer<'a> {
         }
 
         // @Note once we implement escaping, this won't cut it and we need to build our own string
+        // @Beacon @Beacon @Beacon @Note @Bug currently we cannot represent empty spans, so this trimming
+        // below on empty text literals is incorrect but still if we leave out the assertions in
+        // mod span, everything works out fine since interally we just use std::ops::RangeInclusive
+        // which is empty by definition if start > end
+        // @Note this is fixed once we change the definition of AbstractSpans to be exclusive ranges
         let content_span = self.local_span.trim_start(1).trim_end(1);
         let content = self.source_file[content_span].to_owned();
         self.add(TextLiteral(match is_terminated {

@@ -1,9 +1,9 @@
 ;;; TEST fail check
 
-use crates.core.bool.(false true Bool)
+use extern.core.bool.(false true Bool)
 
 is-nat32-or-nat64 (A: Type -> Type): Bool =
     case A of
-        crates.core.nat32.Nat32 => true
-        crates.core.nat64.Nat64 => true
+        extern.core.nat32.Nat32 => true
+        extern.core.nat64.Nat64 => true
         \else => false

@@ -125,7 +125,7 @@ impl<'a> Compiler<'a> {
     ) -> Result<(), CompilationError> {
         use hir::DeclarationKind::*;
 
-        match &declaration.kind {
+        match &declaration.data {
             Value(value) => {
                 let index = self.add_next_chunk_from_declaration(
                     value.binder.declaration_index().unwrap(),
@@ -187,7 +187,7 @@ impl<'a> Compiler<'a> {
 
         let mut instructions = Vec::new();
 
-        match &expression.kind {
+        match &expression.data {
             PiType(_pi) => todo!(),
             Application(application) => {
                 let mut argument =

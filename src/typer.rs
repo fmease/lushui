@@ -65,7 +65,7 @@ impl<'a> Typer<'a> {
     ) -> Result {
         use hir::DeclarationKind::*;
 
-        match &declaration.kind {
+        match &declaration.data {
             Value(value) => {
                 self.evaluate_registration(
                     if declaration.attributes.has(AttributeKeys::FOREIGN) {
@@ -327,7 +327,7 @@ impl<'a> Typer<'a> {
         // @Task replace if possible
         macro recover_error(
             $scope:expr,
-            $crates:expr,
+            $session:expr,
             $reporter:expr,
             $registration:expr;
             $check:expr,
@@ -348,7 +348,7 @@ impl<'a> Typer<'a> {
                                 .code(Code::E032)
                                 .message(format!(
                                     "expected type `{}`, got type `{}`",
-                                    expected.with(($scope, $crates)), actual.with(($scope, $crates))
+                                    expected.with(($scope, $session)), actual.with(($scope, $session))
                                 ))
                                 .labeled_primary_span(
                                     &$actual_value,
@@ -416,7 +416,7 @@ impl<'a> Typer<'a> {
         use hir::ExpressionKind::*;
         use interpreter::Substitution::*;
 
-        Ok(match expression.kind {
+        Ok(match expression.data {
             Binding(binding) => self
                 .interpreter()
                 .look_up_type(&binding.binder, scope)
@@ -500,7 +500,7 @@ impl<'a> Typer<'a> {
                     },
                 )?;
 
-                match &type_of_callee.kind {
+                match &type_of_callee.data {
                     // @Beacon @Task handle `lazy`
                     PiType(pi) => {
                         let argument_type =
@@ -589,7 +589,7 @@ impl<'a> Typer<'a> {
                 // * all constructors are covered
                 // * all analysis.cases>>.expressions are of the same type
 
-                match &subject_type.clone().kind {
+                match &subject_type.clone().data {
                     Binding(_) => {}
                     Application(_application) => todo!("polymorphic types in patterns"),
                     _ if self.is_a_type(subject_type.clone(), scope)? => {
@@ -635,7 +635,7 @@ impl<'a> Typer<'a> {
                     // @Task add help subdiagnostic when a constructor is (de)applied to too few arguments
                     // @Update @Note or just replace the type mismatch error (hmm) with an arity mismatch error
                     // not sure
-                    match &case.pattern.kind {
+                    match &case.pattern.data {
                         Number(number) => {
                             let number_type = self.scope.look_up_foreign_number_type(
                                 number,
@@ -696,7 +696,7 @@ impl<'a> Typer<'a> {
                         Deapplication(deapplication) => {
                             // @Beacon @Task check that subject type is a pi type
 
-                            match (&deapplication.callee.kind, &deapplication.argument.kind) {
+                            match (&deapplication.callee.data, &deapplication.argument.data) {
                                 // @Note should be an error obviously but does this need to be special-cased
                                 // or can we defer this to an it_is_actual call??
                                 (Number(_) | Text(_), _argument) => todo!(),
@@ -860,7 +860,7 @@ impl<'a> Typer<'a> {
     fn result_type(&mut self, expression: Expression, scope: &FunctionScope<'_>) -> Expression {
         use hir::ExpressionKind::*;
 
-        match expression.kind {
+        match expression.data {
             PiType(literal) => {
                 if literal.parameter.is_some() {
                     let scope = scope.extend_with_parameter(literal.domain.clone());
@@ -878,7 +878,7 @@ impl<'a> Typer<'a> {
     /// Example: Returns the `f` in `f a b c`.
     fn callee(&mut self, mut expression: Expression) -> Expression {
         loop {
-            expression = match expression.kind {
+            expression = match expression.data {
                 hir::ExpressionKind::Application(application) => application.callee.clone(),
                 _ => return expression,
             }

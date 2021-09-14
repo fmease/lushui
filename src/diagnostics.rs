@@ -204,7 +204,7 @@ impl Diagnostic {
     }
 
     /// Add to the diagnostic depending on a boolean condition.
-    pub fn when(self, condition: bool, builder: impl FnOnce(Self) -> Self) -> Self {
+    pub fn if_(self, condition: bool, builder: impl FnOnce(Self) -> Self) -> Self {
         match condition {
             true => builder(self),
             false => self,
@@ -212,7 +212,7 @@ impl Diagnostic {
     }
 
     /// Add to the diagnostic if the given resource exists.
-    pub fn when_present<T>(self, value: Option<T>, builder: impl FnOnce(Self, T) -> Self) -> Self {
+    pub fn if_present<T>(self, value: Option<T>, builder: impl FnOnce(Self, T) -> Self) -> Self {
         match value {
             Some(value) => builder(self, value),
             None => self,
@@ -659,6 +659,8 @@ pub enum Code {
     E801,
     /// Metadata: Missing key.
     E802,
+    /// Metadata: Duplicate keys.
+    E803,
 }
 
 impl Code {

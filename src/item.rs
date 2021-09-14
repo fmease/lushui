@@ -8,32 +8,32 @@ use crate::{
 /// Something with a source location and attributes.
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct Item<Kind, Attributes> {
-    pub kind: Kind,
+pub struct Item<T, Attributes> {
+    pub data: T,
     pub span: Span,
     pub attributes: Attributes,
 }
 
-impl<Kind, Attributes> Item<Kind, Attributes> {
-    pub const fn new(attributes: Attributes, span: Span, kind: Kind) -> Self {
+impl<T, Attributes> Item<T, Attributes> {
+    pub const fn new(attributes: Attributes, span: Span, data: T) -> Self {
         Self {
-            kind,
+            data,
             span,
             attributes,
         }
     }
 }
 
-impl<Kind, Attribute> Spanning for Item<Kind, Attribute> {
+impl<T, Attribute> Spanning for Item<T, Attribute> {
     fn span(&self) -> Span {
         self.span
     }
 }
 
-impl<Kind: PossiblyErroneous, Attributes: Default> PossiblyErroneous for Item<Kind, Attributes> {
+impl<T: PossiblyErroneous, Attributes: Default> PossiblyErroneous for Item<T, Attributes> {
     fn error() -> Self {
         Self {
-            kind: Kind::error(),
+            data: T::error(),
             span: Span::SHAM,
             attributes: Attributes::default(),
         }
@@ -44,20 +44,20 @@ impl<Kind: PossiblyErroneous, Attributes: Default> PossiblyErroneous for Item<Ki
 // @Note several hacks going on because apparently, one cannot use a $loc:path directly and concatenate it
 // to the rest of another path. $($seg)::+ does not work either
 pub macro item {
-    ($loc:path, $item_kind:ident, $indirection:ident; $kind:ident { $attrs:expr, $span:expr $(; $( $body:tt )+ )? }) => {{
+    ($loc:path, $item:ident, $indirection:ident; $data:ident { $attrs:expr, $span:expr $(; $( $body:tt )+ )? }) => {{
         #[allow(unused_imports)]
         use $loc as loc;
         Item::new(
             $attrs,
             $span,
-            $item_kind::$kind $( ($indirection::new(loc::$kind { $( $body )+ })) )?,
+            $item::$data $( ($indirection::new(loc::$data { $( $body )+ })) )?,
         )
     }},
-    ($loc:path, $item_kind:ident, $indirection:ident; $kind:ident($attrs:expr, $span:expr; $value:expr $(,)?)) => {
+    ($loc:path, $item:ident, $indirection:ident; $data:ident($attrs:expr, $span:expr; $value:expr $(,)?)) => {
         Item::new(
             $attrs,
             $span,
-            $item_kind::$kind($indirection::from($value)),
+            $item::$data($indirection::from($value)),
         )
     }
 }

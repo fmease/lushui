@@ -141,10 +141,10 @@ impl<'a> Parser<'a> {
     // @Note bad name
     fn consume_after_expecting(
         &mut self,
-        token_kind: TokenName,
+        token: TokenName,
         other_expected: Expected,
     ) -> Result<Token> {
-        let token = self.expect_among_others(token_kind, other_expected)?;
+        let token = self.expect_among_others(token, other_expected)?;
         self.advance();
         Ok(token)
     }
@@ -179,8 +179,8 @@ impl<'a> Parser<'a> {
     /// Conceptually equivalent to `self.manually_reflect(|this| this.consume(..)).is_ok()`
     /// but more memory-efficient as it does not clone the consumed token.
     #[must_use]
-    fn has_consumed(&mut self, kind: TokenName) -> bool {
-        if self.current_token().name() == kind {
+    fn has_consumed(&mut self, token: TokenName) -> bool {
+        if self.current_token().name() == token {
             self.advance();
             true
         } else {
@@ -190,8 +190,8 @@ impl<'a> Parser<'a> {
 
     /// Conceptually equivalent to `Self::consume(..).map(Spanning::span).ok()` but more memory-efficient as
     /// it neither constructs a [crate::diagnostics::Diagnostic] nor clones the consumed token.
-    fn consume_span(&mut self, kind: TokenName) -> Option<Span> {
-        if self.current_token().name() == kind {
+    fn consume_span(&mut self, token: TokenName) -> Option<Span> {
+        if self.current_token().name() == token {
             let span = self.current_token().span;
             self.advance();
             Some(span)
@@ -918,15 +918,15 @@ impl<'a> Parser<'a> {
                 PiTypeLiteral {
                     Attributes::new(),
                     span;
-                    domain: domain.kind,
+                    domain: domain.data,
                     codomain,
                 }
             })
         }
         // the case where we don't actually have a pi type literal but merely
         // an application or lower
-        else if domain.kind.binder.is_none() {
-            Ok(domain.kind.expression)
+        else if domain.data.binder.is_none() {
+            Ok(domain.data.expression)
         } else {
             self.error(|| {
                 Expected::Token(ThinArrowRight)
@@ -1095,7 +1095,7 @@ impl<'a> Parser<'a> {
                         // make a parsing error non-fatal: we can just skip the `->` and keep
                         // parsing w/o introducing too many (any?) useless/confusing consequential
                         // errors!
-                        .when(self.current_token().name() == ThinArrowRight, |this| {
+                        .if_(self.current_token().name() == ThinArrowRight, |this| {
                             this.help(BRACKET_POTENTIAL_PI_TYPE_LITERAL)
                         })
                 });
@@ -1130,7 +1130,7 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Path ::= Path-Head ("." General-Identifier)*
     /// Path-Head ::= Path-Hanger | General-Identifier
-    /// Path-Hanger ::= "crates" | "crate" | "super" | "self"
+    /// Path-Hanger ::= "extern" | "crate" | "super" | "self"
     /// ```
     fn parse_path(&mut self) -> Result<Path> {
         let mut path = self.parse_first_path_segment()?;
@@ -1575,7 +1575,7 @@ impl<'a> Parser<'a> {
             })
         {
             if let Some(token) = &illegal_pi {
-                let explicitness = match argument.kind.explicitness {
+                let explicitness = match argument.data.explicitness {
                     Implicit => "an implicit",
                     Explicit => "a",
                 };
@@ -1593,9 +1593,9 @@ impl<'a> Parser<'a> {
 
             callee = Expat::application_like(
                 callee,
-                argument.kind.expat,
-                argument.kind.explicitness,
-                argument.kind.binder,
+                argument.data.expat,
+                argument.data.explicitness,
+                argument.data.binder,
                 span,
             );
         }
@@ -1847,17 +1847,7 @@ impl Expected {
     fn but_actual_is(self, actual: &Token) -> Diagnostic {
         Diagnostic::error()
             .code(Code::E010)
-            .message(format!(
-                "found {}, but expected {}",
-                match actual.name() {
-                    kind @ TokenName::Illegal => {
-                        let character = actual.as_illegal().unwrap();
-                        format!("{} U+{:04X} `{}`", kind, character as u32, character)
-                    }
-                    kind => kind.to_string(),
-                },
-                self
-            ))
+            .message(format!("found {actual}, but expected {self}"))
             .labeled_primary_span(actual, "unexpected token")
     }
 }

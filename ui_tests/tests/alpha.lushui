@@ -1,6 +1,6 @@
 ;;; TEST pass check
 
-use crates.core.(nat.(Nat multiply) text.(Text concat))
+use extern.core.(nat.(Nat multiply) text.(Text concat))
 
 some-result: Nat = multiply 16 4
 

@@ -145,7 +145,6 @@ impl CrateScope {
         self.absolute_path_with_root(index, HangerKind::Crate.name().to_owned(), session)
     }
 
-    // @Task move to Resolver
     pub fn absolute_path_with_root(
         &self,
         index: DeclarationIndex,
@@ -160,7 +159,7 @@ impl CrateScope {
                 let crate_ = &session[index.crate_index()];
                 let root = format!(
                     "{}.{}",
-                    HangerKind::Crates.name(),
+                    HangerKind::Extern.name(),
                     session[crate_.package].name
                 );
 

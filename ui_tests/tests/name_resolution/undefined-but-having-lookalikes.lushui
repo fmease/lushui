@@ -1,7 +1,7 @@
 ;;; TEST fail check
 ;;; @Task test more branches
 
-use crates.core
+use extern.core
 use core.nat.Nat
 
 a: Nat = tree-sinner

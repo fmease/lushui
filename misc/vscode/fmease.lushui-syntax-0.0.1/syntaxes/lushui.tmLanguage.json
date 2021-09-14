@@ -52,7 +52,7 @@
         "keyword": {
             "patterns": [
                 {
-                    "match": "(?<![\\w\\-])(in|of|self|super|crate|crates)(?![\\w\\-])",
+                    "match": "(?<![\\w\\-])(in|of|self|super|crate|extern)(?![\\w\\-])",
                     "name": "keyword.other.lushui"
                 },
                 {

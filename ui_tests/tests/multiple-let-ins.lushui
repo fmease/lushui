@@ -1,6 +1,6 @@
 ;;; TEST pass run
 
-use crates.core.nat.(Nat + *)
+use extern.core.nat.(Nat + *)
 
 main: Nat =
     let alpha: Nat = 12 in

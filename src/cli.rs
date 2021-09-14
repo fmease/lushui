@@ -41,8 +41,8 @@ pub fn arguments() -> (Command, Options) {
                 .help("@Task"),
         )
         .arg(
-            Arg::with_name("unlink-core")
-                .long("unlink-core")
+            Arg::with_name("no-core")
+                .long("no-core")
                 .global(true)
                 .help("Ceases linking with the library `core`"),
         )
@@ -199,7 +199,7 @@ pub fn arguments() -> (Command, Options) {
     let options = Options {
         source_file_path,
         quiet: matches.is_present("quiet"),
-        unlink_core: matches.is_present("unlink-core"),
+        no_core: matches.is_present("no-core"),
         interpreter: matches
             .value_of("interpreter")
             .map(|input| input.parse().unwrap())
@@ -219,7 +219,7 @@ pub struct Options {
     // (after merging those three commands maybe??)
     pub source_file_path: Option<PathBuf>,
     pub quiet: bool,
-    pub unlink_core: bool,
+    pub no_core: bool,
     pub interpreter: Interpreter,
     pub dump: DumpInformation,
     pub show_binding_indices: bool,
