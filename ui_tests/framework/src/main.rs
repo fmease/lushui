@@ -2,14 +2,13 @@
     format_args_capture,
     default_free_fn,
     available_concurrency,
-    const_option,
+    const_option
 )]
 #![forbid(rust_2018_idioms, unused_must_use)]
 
 // @Task
 // * replace some panics with Testsubfailures
 // * strip rustc warnings from stderr
-// * add help messages
 
 use std::{
     borrow::Cow,
@@ -49,11 +48,13 @@ fn default_test_directory_path() -> String {
         .to_owned()
 }
 
+const AUTHOR: &str = "León Orell Valerian Liehr <liehr.exchange@gmx.net>";
+
 struct Application {
     release_mode: bool,
     gilding: bool,
-    filter: Vec<String>,
-    filter_exact: bool,
+    loose_filters: Vec<String>,
+    exact_filters: Vec<String>,
     number_test_threads: NonZeroUsize,
     test_folder_path: String,
 }
@@ -68,35 +69,41 @@ impl Application {
 
         let matches = clap::App::new(env!("CARGO_PKG_NAME"))
             .version(env!("CARGO_PKG_VERSION"))
-            .author(env!("CARGO_PKG_AUTHORS"))
+            .author(AUTHOR)
             .about(env!("CARGO_PKG_DESCRIPTION"))
             .arg(
                 clap::Arg::with_name("release")
                     .long("release")
-                    .help("Build the Lushui compiler in release mode (i.e. with optimizations)"),
+                    .help("Builds the Lushui compiler in release mode (i.e. with optimizations)"),
             )
             .arg(
                 clap::Arg::with_name("gild")
                     .long("gild")
-                    // @Note description not entirely correct
-                    .help("Update golden files to the current compiler output"),
+                    .help("Updates golden files of all included failing tests to the current compiler output"),
             )
             .arg(
-                // @Task help
                 clap::Arg::with_name("filter")
                     .long("filter")
-                    .short("F")
+                    .short("f")
                     .takes_value(true)
-                    .multiple(true),
+                    .multiple(true)
+                    .help(
+                        "Excludes tests whose file path (relative to the test folder path, without extension) \
+                         does not contain the given filter (and which do not match any other filter)"
+                    ),
             )
             .arg(
-                // @Task help
                 clap::Arg::with_name("filter-exact")
                     .long("filter-exact")
-                    .short("x"),
+                    .short("F")
+                    .takes_value(true)
+                    .multiple(true)
+                    .help(
+                        "Excludes tests whose file path (relative to the test folder path, without extension) \
+                        does not equal the given filter (and which do not match any other filter)"
+                    ),
             )
             .arg(
-                // @Task help
                 clap::Arg::with_name("number-test-threads")
                     .long("test-threads")
                     .takes_value(true)
@@ -105,24 +112,27 @@ impl Application {
                             .map(|_| ())
                             .map_err(|error| error.to_string())
                     })
-                    .default_value(&available_concurrency),
+                    .default_value(&available_concurrency)
+                    .help("The number of threads to use during test execution"),
             )
             .arg(
-                // @Task help
                 clap::Arg::with_name("test-folder-path")
                     .long("test-folder")
                     .takes_value(true)
-                    .default_value(&default_test_directory_path),
+                    .default_value(&default_test_directory_path)
+                    .help("The path to the folder containing the test files"),
             )
             .get_matches();
 
         Application {
             release_mode: matches.is_present("release"),
             gilding: matches.is_present("gild"),
-            filter: matches
+            loose_filters: matches
                 .values_of("filter")
                 .map_or(Vec::new(), |value| value.map(ToString::to_string).collect()),
-            filter_exact: matches.is_present("filter-exact"),
+            exact_filters: matches
+                .values_of("filter-exact")
+                .map_or(Vec::new(), |value| value.map(ToString::to_string).collect()),
             number_test_threads: matches
                 .value_of("number-test-threads")
                 .map(|input| input.parse().unwrap())
@@ -191,8 +201,8 @@ fn main_() -> Result<(), ()> {
     ));
     let statistics: Arc<Mutex<Statistics>> = default();
     let failures: Arc<Mutex<Vec<_>>> = default();
-    let filter: &'static _ = Box::leak(application.filter.into_boxed_slice());
-    let filter_exact = application.filter_exact;
+    let loose_filters: &'static _ = Box::leak(application.loose_filters.into_boxed_slice());
+    let exact_filters: &'static _ = Box::leak(application.exact_filters.into_boxed_slice());
     let gilding = application.gilding;
     let number_test_threads = application.number_test_threads.into();
 
@@ -261,20 +271,15 @@ fn main_() -> Result<(), ()> {
                             .strip_suffix(".")
                             .unwrap();
 
-                        if !filter.is_empty() {
-                            let loose_filter = &|filter| legible_path.contains(filter);
-                            let exact_filter = &|filter| legible_path == filter;
+                        if !(loose_filters.is_empty() && exact_filters.is_empty()) {
+                            let is_included = loose_filters.iter().any(|filter| legible_path.contains(filter))
+                                || exact_filters.iter().any(|filter| legible_path == filter);
 
-                            if !filter.iter().any::<&dyn Fn(_) -> _>(match filter_exact {
-                                true => exact_filter,
-                                false => loose_filter,
-                            }) {
+                            if !is_included {
                                 statistics.skipped_tests += 1;
                                 continue;
                             }
                         }
-
-                        
 
                         let mut failure = Failure {
                             path: legible_path.to_owned(),
@@ -474,7 +479,7 @@ fn main_() -> Result<(), ()> {
         statistics,
         gilding,
         duration,
-        filter,
+        filter: loose_filters,
     };
 
     println!();
