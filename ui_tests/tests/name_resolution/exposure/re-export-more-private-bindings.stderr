@@ -1,4 +1,4 @@
-error[E009]: re-export of the more private binding `Thing`
+error[E009]: re-export of the more private binding `crate.Thing`
  --> ${DIRECTORY}/name_resolution/exposure/re-export-more-private-bindings.lushui:4:14
   |
 4 | use Thing as Piece
@@ -9,11 +9,11 @@ error[E009]: re-export of the more private binding `Thing`
 7 | data Thing: Type of
   |      ----- re-exported binding with lower exposure
   |
- note: expected the exposure of `Piece`
+ note: expected the exposure of `crate.Piece`
                   to be at most `crate`
              but it actually is unrestricted
 
-error[E009]: re-export of the more private binding `Linchpin`
+error[E009]: re-export of the more private binding `crate.alpha.beta.Linchpin`
   --> ${DIRECTORY}/name_resolution/exposure/re-export-more-private-bindings.lushui:12:14
    |
 12 |         data Linchpin: Type of
@@ -24,11 +24,11 @@ error[E009]: re-export of the more private binding `Linchpin`
 16 |             use super.Linchpin as L
    |                                   ^ re-exporting binding with greater exposure
    |
-  note: expected the exposure of `L`
+  note: expected the exposure of `crate.alpha.beta.gamma.L`
                    to be at most `crate.alpha.beta`
               but it actually is `crate`
 
-error[E009]: re-export of the more private binding `Mock`
+error[E009]: re-export of the more private binding `crate.alpha.beta.gamma.Mock`
   --> ${DIRECTORY}/name_resolution/exposure/re-export-more-private-bindings.lushui:19:18
    |
 19 |             data Mock: Type of
@@ -39,7 +39,7 @@ error[E009]: re-export of the more private binding `Mock`
 22 |             use Mock as //>
    |                         ^^^ re-exporting binding with greater exposure
    |
-  note: expected the exposure of `//>`
+  note: expected the exposure of `crate.alpha.beta.gamma.//>`
                    to be at most `crate.alpha.beta`
               but it actually is `crate.alpha`
 

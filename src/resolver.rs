@@ -71,6 +71,7 @@ impl<'a> Resolver<'a> {
             })?;
 
         self.resolve_use_bindings();
+
         // @Task @Beacon don't return early here
         self.resolve_exposure_reaches()?;
 
@@ -1180,10 +1181,10 @@ impl<'a> Resolver<'a> {
     fn resolve_exposure_reaches(&mut self) -> Result {
         let mut health = Health::Untainted;
 
-        for binding in self.scope.bindings.values() {
-            if let Exposure::Restricted(exposure) = &binding.exposure {
+        for (index, entity) in self.scope.bindings.iter() {
+            if let Exposure::Restricted(exposure) = &entity.exposure {
                 // unwrap: root always has Exposure::Unrestricted
-                let definition_site_namespace = self.scope.global_index(binding.parent.unwrap());
+                let definition_site_namespace = self.scope.global_index(entity.parent.unwrap());
 
                 if self
                     .resolve_restricted_exposure(exposure, definition_site_namespace)
@@ -1194,21 +1195,23 @@ impl<'a> Resolver<'a> {
                 };
             }
 
-            if let EntityKind::Use { reference } = binding.kind {
-                let reference = self.look_up(reference);
+            if let EntityKind::Use {
+                reference: reference_index,
+            } = entity.kind
+            {
+                let reference = self.look_up(reference_index);
 
-                if binding.exposure.compare(&reference.exposure, self.scope)
+                if entity.exposure.compare(&reference.exposure, self.scope)
                     == Some(Ordering::Greater)
                 {
                     Diagnostic::error()
                         .code(Code::E009)
-                        // @Question use absolute path?
                         .message(format!(
                             "re-export of the more private binding `{}`",
-                            reference.source
+                            self.scope.absolute_path(reference_index, self.session)
                         ))
                         .labeled_primary_span(
-                            &binding.source,
+                            &entity.source,
                             "re-exporting binding with greater exposure",
                         )
                         .labeled_secondary_span(
@@ -1220,9 +1223,10 @@ impl<'a> Resolver<'a> {
 expected the exposure of `{}`
            to be at most {}
       but it actually is {}",
-                            binding.source, // @Task absolute path
+                            self.scope
+                                .absolute_path(self.scope.global_index(index), self.session),
                             reference.exposure.with((self.scope, self.session)),
-                            binding.exposure.with((self.scope, self.session)),
+                            entity.exposure.with((self.scope, self.session)),
                         ))
                         .report(self.reporter);
                     health.taint();
@@ -1382,29 +1386,29 @@ expected the exposure of `{}`
         let show_very_general_help = similarly_named_namespace.is_none();
 
         Diagnostic::error()
-        .code(Code::E022)
-        .message(format!("value `{non_namespace}` is not a namespace"))
-        .labeled_primary_span(non_namespace, "not a namespace, just a value")
-        .labeled_secondary_span(
-            subbinder,
-            "requires the preceeding path segment to refer to a namespace",
-        )
-        .if_present(
-            similarly_named_namespace,
-            |this, lookalike| {
+            .code(Code::E022)
+            .message(format!("value `{non_namespace}` is not a namespace"))
+            .labeled_primary_span(non_namespace, "not a namespace, just a value")
+            .labeled_secondary_span(
+                subbinder,
+                "requires the preceeding path segment to refer to a namespace",
+            )
+            .if_present(
+                similarly_named_namespace,
+                |this, lookalike| {
+                    this
+                        .help(format!(
+                            "a namespace with a similar name containing the binding exists in scope:\n    {}",
+                            scope::Lookalike { actual: non_namespace.as_str(), lookalike },
+                        ))
+                }
+            )
+            .if_(show_very_general_help, |this| {
                 this
-                    .help(format!(
-                        "a namespace with a similar name containing the binding exists in scope:\n    {}",
-                        scope::Lookalike { actual: non_namespace.as_str(), lookalike },
-                    ))
-            }
-        )
-        .if_(show_very_general_help, |this| {
-            this
-                .note("identifiers following a `.` refer to bindings defined in a namespace (i.e. a module or a data type)")
-                // no type information here yet to check if the non-namespace is indeed a record
-                .help("use `::` to reference a field of a record")
-        })
+                    .note("identifiers following a `.` refer to bindings defined in a namespace (i.e. a module or a data type)")
+                    // no type information here yet to check if the non-namespace is indeed a record
+                    .help("use `::` to reference a field of a record")
+            })
     }
 }
 
