@@ -1,5 +1,0 @@
-@(public crate) use Center as C
-;;; ^ only crashes if this line exists
-@(public krate) data Center: Type =
-
-use crate as krate
