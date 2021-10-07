@@ -28,7 +28,7 @@ pub use scope::{
     LocalDeclarationIndex, Namespace,
 };
 use scope::{RegistrationError, RestrictedExposure};
-use std::{cell::RefCell, cmp::Ordering};
+use std::{cell::RefCell, cmp::Ordering, collections::hash_map::Entry};
 
 const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
 
@@ -56,7 +56,7 @@ impl<'a> Resolver<'a> {
     ///
     /// It performs four passes to resolve all possible out of order declarations.
     ///
-    /// ## Panics
+    /// # Panics
     ///
     /// If the declaration passed is not a module, this function will panic as it
     /// requires a crate root which is defined through the root module.
@@ -90,10 +90,10 @@ impl<'a> Resolver<'a> {
     ///
     /// This also searches the program entry and stores it when it finds it.
     ///
-    /// In contrast to [Self::finish_resolve_declaration], this does not actually return a
+    /// In contrast to [`Self::finish_resolve_declaration`], this does not actually return a
     /// new intermediate HIR because of too much mapping and type-system boilerplate
     /// and it's just not worth it memory-wise.
-    /// For more on this, see [Self::reobtain_resolved_identifier].
+    /// For more on this, see [`Self::reobtain_resolved_identifier`].
     fn start_resolve_declaration(
         &mut self,
         declaration: &lowered_ast::Declaration,
@@ -131,13 +131,14 @@ impl<'a> Resolver<'a> {
                     Some(module),
                 )?;
 
-                if self.scope.program_entry.is_none() && module == self.scope.root() {
-                    if value.binder.as_str() == PROGRAM_ENTRY_IDENTIFIER {
-                        self.scope.program_entry = Some(Identifier::new(
-                            self.scope.global_index(index),
-                            value.binder.clone(),
-                        ));
-                    }
+                if self.scope.program_entry.is_none()
+                    && module == self.scope.root()
+                    && value.binder.as_str() == PROGRAM_ENTRY_IDENTIFIER
+                {
+                    self.scope.program_entry = Some(Identifier::new(
+                        self.scope.global_index(index),
+                        value.binder.clone(),
+                    ));
                 }
             }
             Data(data) => {
@@ -470,7 +471,7 @@ impl<'a> Resolver<'a> {
                         explicitness: pi.explicitness,
                         aspect: pi.aspect,
                         parameter: pi.parameter.clone()
-                            .map(|parameter| Identifier::new(Index::DeBruijnParameter, parameter.clone())),
+                            .map(|parameter| Identifier::new(Index::DeBruijnParameter, parameter)),
                     }
                 });
             }
@@ -528,9 +529,10 @@ impl<'a> Resolver<'a> {
                 }
             }
             UseIn => {
-                return Err(Diagnostic::unimplemented("use/in expression")
+                Diagnostic::unimplemented("use/in expression")
                     .primary_span(&expression)
-                    .report(self.reporter));
+                    .report(self.reporter);
+                return Err(());
             }
             CaseAnalysis(analysis) => {
                 let subject = self.resolve_expression(analysis.subject.clone(), scope)?;
@@ -783,7 +785,7 @@ impl<'a> Resolver<'a> {
                 .code(Code::E021) // @Question use a dedicated code?
                 .message("the crate root does not have a parent")
                 .primary_span(hanger)
-                .report(self.reporter)
+                .report(self.reporter);
         })
     }
 
@@ -899,11 +901,12 @@ impl<'a> Resolver<'a> {
                     .some_ancestor_equals(definition_site_namespace, reach);
 
                 if !reach_is_ancestor {
-                    return Err(Diagnostic::error()
+                    Diagnostic::error()
                         .code(Code::E000)
                         .message("exposure can only be restricted to ancestor modules")
                         .primary_span(unresolved_reach)
-                        .report(self.reporter));
+                        .report(self.reporter);
+                    return Err(());
                 }
 
                 drop(exposure_);
@@ -920,14 +923,15 @@ impl<'a> Resolver<'a> {
 
     /// Reobtain the resolved identifier.
     ///
-    /// Used in [Self::finish_resolve_declaration], the last pass of the
-    /// name resolver, to re-gain some information (the [Identifier]s) collected during the first pass.
+    /// Used in [`Self::finish_resolve_declaration`], the last pass of the
+    /// name resolver, to re-gain some information (the [`Identifier`]s) collected
+    /// during the first pass.
     ///
-    /// This way, [Self::start_resolve_declaration] does not need to return
+    /// This way, [`Self::start_resolve_declaration`] does not need to return
     /// a new intermediate representation being a representation between the
     /// lowered AST and the HIR where all the _binders_ of declarations are resolved
-    /// (i.e. are [Identifier]s) but all _bindings_ (in type annotations, expressions, …)
-    /// are still unresolved (i.e. are [crate::syntax::ast::Identifier]s).
+    /// (i.e. are [`Identifier`]s) but all _bindings_ (in type annotations, expressions, …)
+    /// are still unresolved (i.e. are [`ast::Identifier`]s).
     ///
     /// Such an IR would imply writing a lot of boilerplate if we were to duplicate
     /// definitions & mappings or – if even possible – creating a totally complicated
@@ -986,20 +990,20 @@ impl<'a> Resolver<'a> {
                 .map_err(|error| {
                     self.report_resolution_error_searching_lookalikes(error, |identifier, _| {
                         self.find_similarly_named(origin, identifier)
-                    })
+                    });
                 }),
             // @Note this looks ugly/complicated, use helper functions
             FunctionParameter { parent, binder } => {
                 if let Some(identifier) = query.identifier_head() {
                     if binder == identifier {
                         if query.segments.len() > 1 {
-                            return Err(self
-                                .value_used_as_a_namespace(
-                                    identifier,
-                                    &query.segments[1],
-                                    self.scope.global_index(scope.module()),
-                                )
-                                .report(self.reporter));
+                            self.value_used_as_a_namespace(
+                                identifier,
+                                &query.segments[1],
+                                self.scope.global_index(scope.module()),
+                            )
+                            .report(self.reporter);
+                            return Err(());
                         }
 
                         Ok(Identifier::new(DeBruijnIndex(depth), identifier.clone()))
@@ -1022,13 +1026,13 @@ impl<'a> Resolver<'a> {
                     {
                         Some((_, depth)) => {
                             if query.segments.len() > 1 {
-                                return Err(self
-                                    .value_used_as_a_namespace(
-                                        identifier,
-                                        &query.segments[1],
-                                        self.scope.global_index(scope.module()),
-                                    )
-                                    .report(self.reporter));
+                                self.value_used_as_a_namespace(
+                                    identifier,
+                                    &query.segments[1],
+                                    self.scope.global_index(scope.module()),
+                                )
+                                .report(self.reporter);
+                                return Err(());
                             }
 
                             Ok(Identifier::new(DeBruijnIndex(depth), identifier.clone()))
@@ -1064,7 +1068,7 @@ impl<'a> Resolver<'a> {
         while !self.scope.partially_resolved_use_bindings.is_empty() {
             let mut partially_resolved_use_bindings = HashMap::default();
 
-            for (&index, item) in self.scope.partially_resolved_use_bindings.iter() {
+            for (&index, item) in &self.scope.partially_resolved_use_bindings {
                 match self.resolve_path::<ValueOrModule>(
                     &item.reference,
                     self.scope.global_index(item.module),
@@ -1141,9 +1145,9 @@ impl<'a> Resolver<'a> {
             }
 
             for &index in bindings.keys() {
-                if !visited.contains_key(&index) {
+                if let Entry::Vacant(entry) = visited.entry(index) {
                     let mut worklist = vec![index];
-                    visited.insert(index, Status::InProgress);
+                    entry.insert(Status::InProgress);
                     cycles.extend(find_cycle(&bindings, &mut worklist, &mut visited));
                 }
             }
@@ -1354,7 +1358,7 @@ expected the exposure of `{}`
                     )
                     .report(self.reporter);
             }
-            _ => unreachable!(),
+            ResolutionError::UnresolvedUseBinding { .. } => unreachable!(),
         }
     }
 
@@ -1377,8 +1381,7 @@ expected the exposure of `{}`
                     namespace
                         .binders
                         .iter()
-                        .find(|&&index| &self.look_up(index).source == subbinder)
-                        .is_some()
+                        .any(|&index| &self.look_up(index).source == subbinder)
                 })
             },
             parent,

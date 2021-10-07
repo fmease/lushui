@@ -247,7 +247,7 @@ impl FromStr for Interpreter {
 
 // @Note bad name
 #[derive(Default)]
-
+#[allow(clippy::struct_excessive_bools)]
 pub struct DumpInformation {
     pub tokens: bool,
     pub ast: bool,

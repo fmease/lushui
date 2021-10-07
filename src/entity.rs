@@ -1,6 +1,6 @@
 //! The entity system: Information about bindings for the name resolver _and_ the type checker.
 //!
-//! Just like [CrateScope], [Entity] is a resource shared by those two passes.
+//! Just like [`CrateScope`], [`Entity`] is a resource shared by those two passes.
 
 use crate::{
     error::PossiblyErroneous,
@@ -24,9 +24,10 @@ use EntityKind::*;
 /// This generalizes the notion of a "value" or an "expression" by including
 /// standard _values_ or _expressions_ defined as (in case of values: a normalized
 /// form of) something that can have _type_ (in the semantic sense) **but also**
-/// second-class things like modules, use "links", atomic data types, constructors and foreign functions.
+/// second-class things like modules, use "links", atomic data types,
+/// constructors and foreign functions.
 ///
-/// Most of them are just as well expressions, as can be seen by [Entity::value] which
+/// Most of them are just as well expressions, as can be seen by [`Entity::value`] which
 /// panics on those that are not.
 #[derive(Clone)]
 pub struct Entity {
@@ -124,7 +125,7 @@ impl Entity {
 
     /// Retrieve the value of an entity
     ///
-    /// ## Panics
+    /// # Panics
     ///
     /// Panics if the entity can not be represented as an expression/value like modules
     /// (because they are second-class by specification) or untyped entities which are
@@ -138,8 +139,10 @@ impl Entity {
             Value {
                 expression: None, ..
             }
-            | Error => ValueView::Neutral,
-            DataType { .. } | Constructor { .. } | Foreign { .. } => ValueView::Neutral,
+            | Error
+            | DataType { .. }
+            | Constructor { .. }
+            | Foreign { .. } => ValueView::Neutral,
             UntypedValue
             | UntypedDataType { .. }
             | UntypedConstructor { .. }
@@ -176,16 +179,16 @@ pub enum EntityKind {
     Module {
         namespace: Namespace,
     },
-    /// Data types are not [Self::UntypedValue] as they are also namespaces containing constructors.
+    /// Data types are not [`Self::UntypedValue`] as they are also namespaces containing constructors.
     UntypedDataType {
         namespace: Namespace,
     },
-    /// Constructors are not [Self::UntypedValue] as they are also namespaces containing fields.
+    /// Constructors are not [`Self::UntypedValue`] as they are also namespaces containing fields.
     UntypedConstructor {
         namespace: Namespace,
     },
     /// The `reference is never a `Use` itself.
-    /// Nested aliases were already collapsed by [crate::resolver::Resolver::collapse_use_chain].
+    /// Nested aliases were already collapsed by [`crate::resolver::Resolver::collapse_use_chain`].
     Use {
         reference: DeclarationIndex,
     },

@@ -2,12 +2,12 @@
 //!
 //! There are two types of scopes:
 //!
-//! * [CrateScope] for module-level bindings (may be out of order and recursive)
+//! * [`CrateScope`] for module-level bindings (may be out of order and recursive)
 //!   i.e. bindings defined by declarations in modules, data types and constructors
-//! * [FunctionScope] for bindings defined inside of expressions or functions (order matters)
+//! * [`FunctionScope`] for bindings defined inside of expressions or functions (order matters)
 //!   like parameters, let/in-binders and case-analysis binders
 //!
-//! The equivalent in the type checker is [crate::typer::interpreter::scope].
+//! The equivalent in the type checker is [`crate::typer::interpreter::scope`].
 
 // @Beacon @Beacon @Task don't report similarily named *private* bindings!
 // @Task recognize leaks of private types!
@@ -19,8 +19,11 @@ use crate::{
     format::{AsAutoColoredChangeset, DisplayWith},
     package::{BuildSession, CrateIndex, CrateType, PackageIndex},
     span::{Span, Spanned, Spanning},
-    syntax::ast::{self, HangerKind, Path},
-    typer::interpreter::{ffi, scope::Registration},
+    syntax::{
+        ast::{self, HangerKind, Path},
+        lexer::is_punctuation,
+    },
+    typer::interpreter::{ffi, scope::BindingRegistration},
     utility::{HashMap, SmallVec},
 };
 use colored::Colorize;
@@ -61,7 +64,7 @@ pub struct CrateScope {
     // "circular type" errors or whatever), we can just discriminate by creating sth like
     // UnresolvedThingy/WorlistItem { index: CrateIndex, expression: TypeAnnotation|Value|Both|... }
     // for the typer only!
-    pub(crate) out_of_order_bindings: Vec<Registration>,
+    pub(crate) out_of_order_bindings: Vec<BindingRegistration>,
 }
 
 impl CrateScope {
@@ -132,6 +135,7 @@ impl CrateScope {
     /// Unbeknownst to the subdeclarations of the crate, it takes the name
     /// given by external sources, the crate name. Inside the crate, the root
     /// can only ever be referenced through the keyword `crate` (unless renamed).
+    #[allow(clippy::unused_self)]
     pub(super) fn root(&self) -> LocalDeclarationIndex {
         LocalDeclarationIndex::new(0)
     }
@@ -147,8 +151,6 @@ impl CrateScope {
         root: String,
         session: &BuildSession,
     ) -> String {
-        use crate::syntax::token;
-
         let index = match self.local_index(index) {
             Some(index) => index,
             None => {
@@ -169,8 +171,7 @@ impl CrateScope {
             let mut parent_path =
                 self.absolute_path_with_root(self.global_index(parent), root, session);
 
-            let parent_is_punctuation =
-                token::is_punctuation(parent_path.chars().next_back().unwrap());
+            let parent_is_punctuation = is_punctuation(parent_path.chars().next_back().unwrap());
 
             if parent_is_punctuation {
                 parent_path.push(' ');
@@ -354,7 +355,7 @@ impl Exposure {
 impl fmt::Debug for Exposure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Unrestricted => write!(f, "{}", "unrestricted"),
+            Self::Unrestricted => write!(f, "unrestricted"),
             Self::Restricted(reach) => {
                 write!(f, "restricted(")?;
                 match &*reach.borrow() {
@@ -674,7 +675,7 @@ impl fmt::Display for Lookalike<'_> {
 
         write!(f, "`")?;
 
-        if !purely_additive && !(self.actual.width() == 1 && changeset.distance == 2) {
+        if !(purely_additive || self.actual.width() == 1 && changeset.distance == 2) {
             write!(f, " ({})", changeset.auto_colored())?;
         }
 

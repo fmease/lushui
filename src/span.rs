@@ -14,10 +14,10 @@
 // we'd like to have fn is_empty(self) { self.start == self.end } in the end
 
 use crate::format::DisplayWith;
-pub use index::{ByteIndex, LocalByteIndex};
+pub use abstract_index::{ByteIndex, LocalByteIndex};
+pub use abstract_span::{LocalSpan, Span};
 pub use source_file::SourceFile;
 pub use source_map::{SharedSourceMap, SourceFileIndex, SourceMap};
-pub use span::{LocalSpan, Span};
 pub use spanned::Spanned;
 pub use spanning::{PossiblySpanning, Spanning};
 use std::{io, path::Path};
@@ -28,7 +28,7 @@ pub enum Locality {
     Global,
 }
 
-mod index {
+mod abstract_index {
     use super::{Error, Locality, SourceFile};
     use std::{
         convert::TryInto,
@@ -77,7 +77,7 @@ mod index {
     impl ByteIndex {
         /// Map a local byte index to global global one.
         ///
-        /// ## Panics
+        /// # Panics
         ///
         /// Panics on addition overflow.
         pub fn from_local(source: &SourceFile, index: LocalByteIndex) -> Self {
@@ -130,9 +130,9 @@ mod index {
     }
 }
 
-mod span {
+mod abstract_span {
     use super::{
-        index::{AbstractByteIndex, Representation},
+        abstract_index::{AbstractByteIndex, Representation},
         ByteIndex, LocalByteIndex, Locality, PossiblySpanning, SourceFile, Spanning,
     };
     use std::{
@@ -251,7 +251,6 @@ mod span {
             }
         }
 
-        #[inline(always)]
         fn assert_disjoint_and_consecutive(self, other: Span) {
             debug_assert!(
                 self.start <= other.start && self.end <= other.end,
@@ -263,7 +262,7 @@ mod span {
             );
         }
 
-        /// Similar to [Self::merge] except that the spans do not need to be disjoint.
+        /// Similar to [`Self::merge`] except that the spans do not need to be disjoint.
         #[must_use]
         pub fn fit_end(self, other: impl PossiblySpanning) -> Self {
             match other.possible_span() {
@@ -487,8 +486,9 @@ mod source_map {
         fn next_offset(&self) -> Result<ByteIndex, Error> {
             self.files
                 .last()
-                .map(|file| file.span.end.offset(1))
-                .unwrap_or(Ok(super::START_OF_FIRST_SOURCE_FILE))
+                .map_or(Ok(super::START_OF_FIRST_SOURCE_FILE), |file| {
+                    file.span.end.offset(1)
+                })
         }
 
         pub fn load(&mut self, path: PathBuf) -> Result<SourceFileIndex, Error> {
@@ -496,7 +496,7 @@ mod source_map {
             self.add(Some(path), source)
         }
 
-        /// Add a [SourceFile] to the source map.
+        /// Add a [`SourceFile`] to the source map.
         ///
         /// The first source file always has index `0`.
         pub fn add(
@@ -525,7 +525,7 @@ mod source_map {
         /// This treats line breaks verbatim.
         pub fn snippet_from_span(&self, span: Span) -> &str {
             let file = self.file_from_span(span);
-            let span = LocalSpan::from_global(&file, span);
+            let span = LocalSpan::from_global(file, span);
             &file[span]
         }
 
@@ -535,7 +535,7 @@ mod source_map {
         // @Task update docs
         pub fn lines_from_span(&self, span: Span) -> Lines<'_> {
             let file = self.file_from_span(span);
-            let span = LocalSpan::from_global(&file, span);
+            let span = LocalSpan::from_global(file, span);
 
             let mut first_line = None;
             let mut final_line = None;

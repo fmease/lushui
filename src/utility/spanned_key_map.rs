@@ -72,13 +72,13 @@ impl<K: Eq + Hash, V> SpannedKeyMap<K, V> {
 
 impl<K, V> Default for SpannedKeyMap<K, V> {
     fn default() -> Self {
-        Self(Default::default())
+        Self(HashMap::default())
     }
 }
 
 impl<K: Eq + Hash, V> Extend<ExternalEntry<K, V>> for SpannedKeyMap<K, V> {
     fn extend<T: IntoIterator<Item = ExternalEntry<K, V>>>(&mut self, iterator: T) {
-        self.0.extend(iterator.into_iter().map(internal_entry))
+        self.0.extend(iterator.into_iter().map(internal_entry));
     }
 }
 

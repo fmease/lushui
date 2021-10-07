@@ -21,7 +21,7 @@ use token::TokenKind;
 
 /// Lex and parse a given file module.
 ///
-/// This is a convenience function combining [Lexer::lex] and [Parser::parse].
+/// This is a convenience function combining [`Lexer::lex`] and [`Parser::parse`].
 pub fn parse(
     file: SourceFileIndex,
     module_binder: ast::Identifier,
@@ -29,7 +29,7 @@ pub fn parse(
     reporter: &Reporter,
 ) -> Result<ast::Declaration> {
     let tokens = Lexer::new(&map.borrow()[file], reporter).lex()?.value;
-    Parser::new(file, &tokens, map.clone(), reporter).parse(module_binder)
+    Parser::new(file, &tokens, map, reporter).parse(module_binder)
 }
 
 /// Utility to parse identifiers from a string.

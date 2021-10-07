@@ -57,12 +57,13 @@ pub struct DeclarationIndex(u64);
 
 impl DeclarationIndex {
     pub fn new(crate_index: CrateIndex, local_index: LocalDeclarationIndex) -> Self {
-        let shifted_crate_index = (crate_index.0 as u64) << LocalDeclarationIndex::BIT_WIDTH;
+        let shifted_crate_index = u64::from(crate_index.0) << LocalDeclarationIndex::BIT_WIDTH;
 
         Self(shifted_crate_index | local_index.0)
     }
 
     pub fn crate_index(self) -> CrateIndex {
+        #[allow(clippy::cast_possible_truncation)]
         CrateIndex((self.0 >> LocalDeclarationIndex::BIT_WIDTH) as _)
     }
 
@@ -89,7 +90,7 @@ pub struct LocalDeclarationIndex(u64);
 
 impl LocalDeclarationIndex {
     const BIT_WIDTH: u32 = 48;
-    const MAX: u64 = 2u64.pow(Self::BIT_WIDTH) - 1;
+    const MAX: u64 = 2_u64.pow(Self::BIT_WIDTH) - 1;
 
     pub fn new(index: u64) -> Self {
         assert!(index < Self::MAX);

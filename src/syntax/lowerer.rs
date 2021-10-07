@@ -89,7 +89,7 @@ impl<'a> Lowerer<'a> {
                         declaration.span,
                         AnnotationTarget::Declaration(&value.binder),
                     )
-                    .report(&self.reporter);
+                    .report(self.reporter);
                     health.taint();
                 }
 
@@ -116,7 +116,7 @@ impl<'a> Lowerer<'a> {
                                         parameter_group,
                                         AnnotationTarget::Parameters(parameter_group),
                                     )
-                                    .report(&self.reporter);
+                                    .report(self.reporter);
                                     health.taint();
                                 }
                                 // @Note awkward API! + check above ^
@@ -175,7 +175,7 @@ impl<'a> Lowerer<'a> {
                             declaration.span,
                             AnnotationTarget::Declaration(&data.binder),
                         )
-                        .report(&self.reporter);
+                        .report(self.reporter);
                         health.taint();
                         PossiblyErroneous::error()
                     }
@@ -218,7 +218,7 @@ impl<'a> Lowerer<'a> {
                             declaration.span,
                             AnnotationTarget::Declaration(&constructor.binder),
                         )
-                        .report(&self.reporter);
+                        .report(self.reporter);
                         health.taint();
                         PossiblyErroneous::error()
                     }
@@ -249,7 +249,7 @@ impl<'a> Lowerer<'a> {
                         .labeled_primary_span(&body, "conflicting definition")
                         .note(
                             "the body of the constructor is implied but it also has a body introduced by `=`",
-                        ).report(&self.reporter);
+                        ).report(self.reporter);
                     health.taint();
                 }
 
@@ -306,7 +306,7 @@ impl<'a> Lowerer<'a> {
                                     .message(format!("could not load module `{}`", module.binder))
                                     .primary_span(declaration_span)
                                     .note(error.with(&path).to_string())
-                                    .report(&self.reporter);
+                                    .report(self.reporter);
                                 return PossiblyErroneous::error();
                             }
                         };
@@ -326,8 +326,8 @@ impl<'a> Lowerer<'a> {
 
                         if !node.attributes.is_empty() {
                             Diagnostic::unimplemented("attributes on module headers")
-                                .report(&self.reporter);
-                            health.taint()
+                                .report(self.reporter);
+                            health.taint();
                         }
                         module.declarations.unwrap()
                     }
@@ -354,7 +354,7 @@ impl<'a> Lowerer<'a> {
                 // @Note awkward API!
                 Diagnostic::unimplemented("module headers")
                     .primary_span(declaration.span)
-                    .report(&self.reporter);
+                    .report(self.reporter);
                 health.taint();
                 PossiblyErroneous::error()
             }
@@ -362,7 +362,7 @@ impl<'a> Lowerer<'a> {
             Group(group) => {
                 let group_attributes = declaration.attributes;
 
-                let group = group
+                group
                     .declarations
                     .into_iter()
                     .map(|mut declaration| {
@@ -372,9 +372,7 @@ impl<'a> Lowerer<'a> {
                         declaration
                     })
                     .flat_map(|declaration| self.lower_declaration(declaration).unwrap(&mut health))
-                    .collect();
-
-                group
+                    .collect()
             }
             // @Task verify that the resulting spans are correct
             Use(use_) => {
@@ -471,7 +469,7 @@ impl<'a> Lowerer<'a> {
                                     // currently leads to the suggestion to bind `self` to an identifier but
                                     // for `extern` that is illegal, too
                                     invalid_unnamed_path_hanger(target.hanger.unwrap())
-                                        .report(&self.reporter);
+                                        .report(self.reporter);
                                     health.taint();
                                     break 'discriminate;
                                 }
@@ -484,7 +482,7 @@ impl<'a> Lowerer<'a> {
                                     binder,
                                     target,
                                 }
-                            })
+                            });
                         }
                         Multiple { path, bindings } => Outcome::from(lower_use_path_tree(
                             path,
@@ -554,7 +552,7 @@ impl<'a> Lowerer<'a> {
                 if let Some(binder) = &application.binder {
                     Diagnostic::unimplemented("named arguments")
                         .primary_span(binder)
-                        .report(&self.reporter);
+                        .report(self.reporter);
                     health.taint();
                 }
 
@@ -593,7 +591,7 @@ impl<'a> Lowerer<'a> {
             TypedHole(_hole) => {
                 Diagnostic::unimplemented("typed holes")
                     .primary_span(expression.span)
-                    .report(&self.reporter);
+                    .report(self.reporter);
                 // @Note awkward API!
                 health.taint();
                 PossiblyErroneous::error()
@@ -608,7 +606,7 @@ impl<'a> Lowerer<'a> {
             Field(_field) => {
                 Diagnostic::unimplemented("record fields")
                     .primary_span(expression.span)
-                    .report(&self.reporter);
+                    .report(self.reporter);
                 // @Note awkward API
                 health.taint();
                 PossiblyErroneous::error()
@@ -671,7 +669,7 @@ impl<'a> Lowerer<'a> {
                                 .message(format!("let-binding `{}` has no definition", binder))
                                 .primary_span(span)
                                 .help("provide a definition with `=`")
-                                .report(&self.reporter);
+                                .report(self.reporter);
                             health.taint();
                             PossiblyErroneous::error()
                         }
@@ -743,7 +741,7 @@ impl<'a> Lowerer<'a> {
                 // @Note awkward API
                 Diagnostic::unimplemented("use/in expressions")
                     .primary_span(expression.span)
-                    .report(&self.reporter);
+                    .report(self.reporter);
                 health.taint();
                 PossiblyErroneous::error()
             }
@@ -776,7 +774,7 @@ impl<'a> Lowerer<'a> {
                 // @Note awkward API!
                 Diagnostic::unimplemented("do blocks")
                     .primary_span(expression.span)
-                    .report(&self.reporter);
+                    .report(self.reporter);
                 health.taint();
                 PossiblyErroneous::error()
             }
@@ -784,7 +782,7 @@ impl<'a> Lowerer<'a> {
                 // @Note awkward API!
                 Diagnostic::unimplemented("sequence literals")
                     .primary_span(expression.span)
-                    .report(&self.reporter);
+                    .report(self.reporter);
                 health.taint();
                 PossiblyErroneous::error()
             }
@@ -838,7 +836,7 @@ impl<'a> Lowerer<'a> {
                 if let Some(binder) = &application.binder {
                     Diagnostic::unimplemented("named arguments")
                         .primary_span(binder)
-                        .report(&self.reporter);
+                        .report(self.reporter);
                     health.taint();
                 }
 
@@ -857,7 +855,7 @@ impl<'a> Lowerer<'a> {
             SequenceLiteralPattern(_sequence) => {
                 Diagnostic::unimplemented("sequence literal patterns")
                     .primary_span(pattern.span)
-                    .report(&self.reporter);
+                    .report(self.reporter);
                 // @Note awkward API!
                 health.taint();
                 PossiblyErroneous::error()
@@ -880,7 +878,7 @@ impl<'a> Lowerer<'a> {
         let mut lowered_attributes = Vec::new();
 
         for attribute in attributes {
-            let attribute = match Attribute::parse(attribute, &self.reporter) {
+            let attribute = match Attribute::parse(attribute, self.reporter) {
                 Ok(attribute) => attribute,
                 Err(()) => {
                     health.taint();
@@ -904,7 +902,7 @@ impl<'a> Lowerer<'a> {
                         attribute.data.quoted_name(),
                         attribute.data.target_names()
                     ))
-                    .report(&self.reporter);
+                    .report(self.reporter);
                 health.taint();
                 continue;
             }
@@ -916,7 +914,7 @@ impl<'a> Lowerer<'a> {
         let mut attributes = Vec::new();
 
         // conflicting or duplicate attributes
-        for attribute in lowered_attributes.iter() {
+        for attribute in &lowered_attributes {
             let key = attribute.data.key();
             let coexistable = AttributeKeys::COEXISTABLE.contains(key);
 
@@ -948,7 +946,7 @@ impl<'a> Lowerer<'a> {
                         faulty_attributes.into_iter(),
                         "duplicate or conflicting attribute",
                     )
-                    .report(&self.reporter);
+                    .report(self.reporter);
                 health.taint();
             }
         }
@@ -958,7 +956,7 @@ impl<'a> Lowerer<'a> {
             data: attributes.into_boxed_slice(),
         };
 
-        health &= target.check_attributes(&attributes, &self.reporter);
+        health &= target.check_attributes(&attributes, self.reporter);
 
         if attributes.keys.is_empty() {
             return health.of(attributes).into();
@@ -981,11 +979,12 @@ impl<'a> Lowerer<'a> {
                         .map(|attribute| attribute.data.quoted_name()),
                     Conjunction::And,
                 );
-                return Err(Diagnostic::error()
+                Diagnostic::error()
                     .code(Code::E014)
                     .message(format!("attributes {} are mutually exclusive", listing))
                     .labeled_primary_spans(faulty_attributes.into_iter(), "conflicting attribute")
-                    .report(reporter));
+                    .report(reporter);
+                return Err(());
             }
 
             Ok(())
@@ -993,13 +992,11 @@ impl<'a> Lowerer<'a> {
 
         health &= check_mutual_exclusivity(
             AttributeKeys::FOREIGN | AttributeKeys::INHERENT,
-            &self.reporter,
+            self.reporter,
         );
 
-        health &= check_mutual_exclusivity(
-            AttributeKeys::MOVING | AttributeKeys::OPAQUE,
-            &self.reporter,
-        );
+        health &=
+            check_mutual_exclusivity(AttributeKeys::MOVING | AttributeKeys::OPAQUE, self.reporter);
 
         health &= check_mutual_exclusivity(
             AttributeKeys::INT
@@ -1008,20 +1005,20 @@ impl<'a> Lowerer<'a> {
                 | AttributeKeys::NAT
                 | AttributeKeys::NAT32
                 | AttributeKeys::NAT64,
-            &self.reporter,
+            self.reporter,
         );
 
         health &=
-            check_mutual_exclusivity(AttributeKeys::RUNE | AttributeKeys::TEXT, &self.reporter);
+            check_mutual_exclusivity(AttributeKeys::RUNE | AttributeKeys::TEXT, self.reporter);
 
         health &=
-            check_mutual_exclusivity(AttributeKeys::LIST | AttributeKeys::VECTOR, &self.reporter);
+            check_mutual_exclusivity(AttributeKeys::LIST | AttributeKeys::VECTOR, self.reporter);
 
         if attributes.within(AttributeKeys::UNSUPPORTED) {
             for attribute in attributes.filter(AttributeKeys::UNSUPPORTED) {
                 Diagnostic::unimplemented(format!("attribute {}", attribute.data.quoted_name()))
                     .primary_span(attribute)
-                    .report(&self.reporter);
+                    .report(self.reporter);
             }
             health.taint();
         }
@@ -1076,7 +1073,7 @@ impl<'a> Lowerer<'a> {
                     "values of this type must fit integer interval {}",
                     interval
                 ))
-                .report(&self.reporter);
+                .report(self.reporter);
         })
     }
 
@@ -1099,7 +1096,7 @@ impl<'a> Lowerer<'a> {
                     &parameter_group,
                     AnnotationTarget::Parameters(&parameter_group),
                 )
-                .report(&self.reporter);
+                .report(self.reporter);
                 health.taint();
             }
             // @Note awkward API! + the code above ^
@@ -1135,12 +1132,13 @@ impl<'a> Lowerer<'a> {
             if !context.in_constructor {
                 // @Note it would be helpful to also say the name of the actual declaration
                 // but I think we lack a method for this right now
-                return Err(Diagnostic::error()
+                Diagnostic::error()
                     .code(Code::E017)
                     .message("field marker `::` used outside of a constructor declaration")
                     .primary_span(field)
                     .labeled_secondary_span(context.declaration, "not a constructor")
-                    .report(&self.reporter));
+                    .report(self.reporter);
+                return Err(());
             }
         }
 
@@ -1440,7 +1438,7 @@ impl lowered_ast::Lint {
             .message(format!("lint `{}` does not exist", binder))
             .primary_span(binder.span())
             .report(reporter);
-        return Err(AttributeParsingError::Unrecoverable);
+        Err(AttributeParsingError::Unrecoverable)
     }
 }
 

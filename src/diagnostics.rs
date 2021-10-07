@@ -1,6 +1,6 @@
 //! The diagnostics system.
 //!
-//! ## Unimplemented Features
+//! # Unimplemented Features
 //!
 //! * (maybe) subdiagnostics with a span
 //! * emitting JSON
@@ -12,7 +12,7 @@
 //!   a single one)
 //! * warning API/manager which can understand lushui's allows/denies/… directives
 //!
-//! ## Issues
+//! # Issues
 //!
 //! * diagnostics with primary and secondary spans are not *that* readable because of
 //!   all those lengthy paths. That didn't use to be the case, maybe we should some
@@ -94,7 +94,7 @@ impl Diagnostic {
 
     /// Add a text message describing the issue.
     ///
-    /// ## Strict Guidelines
+    /// # Strict Guidelines
     ///
     /// * No line breaks
     /// * Do not start the message with an upper case letter
@@ -177,9 +177,9 @@ impl Diagnostic {
 
     /// Add further clarifying information.
     ///
-    /// ## Strict Guidelines
+    /// # Strict Guidelines
     ///
-    /// * Same rules as for [Self::message] apply
+    /// * Same rules as for [`Self::message`] apply
     /// * It is allowed to use colons `:` but try not to
     /// * May span multiple lines
     pub fn note(self, message: impl Into<Str>) -> Self {
@@ -188,9 +188,9 @@ impl Diagnostic {
 
     /// Add steps or tips to solve the diagnosed issue.
     ///
-    /// ## Strict Guidelines
+    /// # Strict Guidelines
     ///
-    /// * Same rules as for [Self::message] apply
+    /// * Same rules as for [`Self::message`] apply
     /// * Do not pose a question like `did you mean …?`
     /// * It is allowed to use colons `:` but try not to
     /// * May span multiple lines
@@ -226,7 +226,7 @@ impl Diagnostic {
 
     /// Format the diagnostic for the use in a terminal.
     ///
-    /// ## Panics
+    /// # Panics
     ///
     /// Panics if the diagnostic refers to code snippets by [Span] but no source
     /// map is provided.
@@ -255,7 +255,9 @@ impl Diagnostic {
 
         let padding;
 
-        if !self.0.highlights.is_empty() {
+        if self.0.highlights.is_empty() {
+            padding = " ".into();
+        } else {
             let map = map.unwrap();
 
             let all_lines = self
@@ -427,8 +429,6 @@ impl Diagnostic {
 
                 message += &format!("\n{padding} {bar}");
             }
-        } else {
-            padding = " ".into();
         }
 
         for subdiagnostic in &self.0.subdiagnostics {
@@ -549,14 +549,14 @@ enum Role {
 }
 
 impl Role {
-    const fn color(&self, primary: Color) -> Color {
+    const fn color(self, primary: Color) -> Color {
         match self {
             Self::Primary => primary,
             Self::Secondary => HELP_COLOR,
         }
     }
 
-    const fn symbol(&self) -> &'static str {
+    const fn symbol(self) -> &'static str {
         match self {
             Self::Primary => "^",
             Self::Secondary => "-",
@@ -665,7 +665,7 @@ pub enum Code {
 impl Code {
     /// Provide detailled explanations and code examples per code.
     // @Task
-    #[allow(dead_code)]
+    #[allow(dead_code, clippy::unused_self)]
     pub const fn explanation(self) -> &'static str {
         todo!()
     }

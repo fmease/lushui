@@ -3,17 +3,17 @@
 //! It's not a compiler yet, still a bug-ridden feature-incomplete tree-walk interpreter
 //! with type-checking.
 //!
-//! ## Passes
+//! # Passes
 //!
 //! For both tree-walk interpreter and the byte-code interpreter,
 //! the front-end consists of the three passes/stages lexing, parsing and lowering
-//! defined in [syntax::lexer], [syntax::parser] and [syntax::lowerer] respectively.
+//! defined in [`syntax::lexer`], [`syntax::parser`] and [`syntax::lowerer`] respectively.
 //! They also share a middle-end
 //! immediately after the front-end being made up of name resolution and type checking in
 //! [resolver] and [typer] respectively. After that, the passes differ.
 //! The TWI runs the interpreter which is also being used for type checking in both passes,
-//! namely [typer::interpreter]. On the other hand, BCI first compiles in [compiler] and
-//! finally runs the program with [compiler::interpreter] (meta: that last part is not true
+//! namely [`typer::interpreter`]. On the other hand, BCI first compiles in [compiler] and
+//! finally runs the program with [`compiler::interpreter`] (meta: that last part is not true
 //! yet as that engine is WIP).
 //!
 //! | Engine | Passes and Outputs |
@@ -52,6 +52,21 @@
 )]
 #![deny(rust_2018_idioms, unused_must_use)]
 #![allow(incomplete_features)] // adt_const_params (we are only doing the basics)
+#![warn(clippy::pedantic)]
+#![allow(
+    clippy::result_unit_err, // using a reporter to forward information
+    clippy::items_after_statements,
+    clippy::enum_glob_use,
+    clippy::must_use_candidate,
+    clippy::missing_errors_doc,
+    clippy::too_many_lines,
+    clippy::module_name_repetitions,
+    clippy::match_bool,
+    clippy::empty_enum,
+    clippy::single_match_else,
+    clippy::needless_pass_by_value, // @Temporary
+    clippy::missing_panics_doc, // @Temporary
+)]
 
 pub mod compiler;
 pub mod diagnostics;

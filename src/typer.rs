@@ -7,6 +7,7 @@ use crate::{
     error::{Health, Result},
     format::{pluralize, DisplayWith, QuoteExt},
     hir::{self, expr, Declaration, Expression},
+    item::Item,
     package::BuildSession,
     resolver::{CrateScope, Identifier},
     span::Span,
@@ -17,7 +18,7 @@ use crate::{
 };
 use interpreter::{
     ffi,
-    scope::{FunctionScope, Registration},
+    scope::{BindingRegistration, FunctionScope},
     Form, Interpreter,
 };
 use joinery::JoinableIterator;
@@ -68,12 +69,12 @@ impl<'a> Typer<'a> {
             Value(value) => {
                 self.evaluate_registration(
                     if declaration.attributes.has(AttributeKeys::FOREIGN) {
-                        Registration::ForeignValueBinding {
+                        BindingRegistration::ForeignValue {
                             binder: value.binder.clone(),
                             type_: value.type_annotation.clone(),
                         }
                     } else {
-                        Registration::ValueBinding {
+                        BindingRegistration::Value {
                             binder: value.binder.clone(),
                             type_: value.type_annotation.clone(),
                             value: Some(value.expression.clone().unwrap()),
@@ -83,13 +84,13 @@ impl<'a> Typer<'a> {
             }
             Data(data) => {
                 // @Question don't return early??
-                self.evaluate_registration(Registration::DataBinding {
+                self.evaluate_registration(BindingRegistration::Data {
                     binder: data.binder.clone(),
                     type_: data.type_annotation.clone(),
                 })?;
 
                 if declaration.attributes.has(AttributeKeys::FOREIGN) {
-                    self.evaluate_registration(Registration::ForeignDataBinding {
+                    self.evaluate_registration(BindingRegistration::ForeignData {
                         binder: data.binder.clone(),
                     })?;
                 } else {
@@ -103,9 +104,7 @@ impl<'a> Typer<'a> {
                     {
                         self.scope.ffi.register_inherent_bindings(
                             &data.binder,
-                            constructors
-                                .iter()
-                                .map(|constructor| constructor.unwrap_constructor()),
+                            constructors.iter().map(Item::unwrap_constructor),
                             declaration,
                             inherent,
                             self.reporter,
@@ -129,7 +128,7 @@ impl<'a> Typer<'a> {
             Constructor(constructor) => {
                 let data = context.parent_data_binding.take().unwrap();
 
-                self.evaluate_registration(Registration::ConstructorBinding {
+                self.evaluate_registration(BindingRegistration::Constructor {
                     binder: constructor.binder.clone(),
                     type_: constructor.type_annotation.clone(),
                     data,
@@ -159,16 +158,16 @@ impl<'a> Typer<'a> {
     // @Task @Beacon @Beacon somehow (*somehow*!) restructure this code so it is not DRY.
     // it is DRY even though we use an ugly macro..how sad is that??
     // we need to design the error handling here, it's super difficult, fragile, …
-    fn evaluate_registration(&mut self, registration: Registration) -> Result {
-        use Registration::*;
+    fn evaluate_registration(&mut self, registration: BindingRegistration) -> Result {
+        use BindingRegistration::*;
 
         match registration.clone() {
-            ValueBinding {
+            Value {
                 binder,
                 type_,
                 value,
             } => {
-                let value = value.clone().unwrap();
+                let value = value.unwrap();
 
                 recover_error!(
                     self.scope,
@@ -196,25 +195,28 @@ impl<'a> Typer<'a> {
                             OutOfOrderBinding => {
                                 self.scope.out_of_order_bindings.push(registration);
                                 self.scope.carry_out(
-                                    Registration::ValueBinding {
+                                    BindingRegistration::Value {
                                         binder,
-                                        type_: type_.clone(),
+                                        type_,
                                         value: None,
                                     },
                                     self.reporter,
                                 )
                             }
                             // @Task abstract over explicit diagnostic building
-                            TypeMismatch { expected, actual } => Err(Diagnostic::error()
-                                .code(Code::E032)
-                                .message(format!(
-                                    "expected type `{}`, got type `{}`",
-                                    expected.with((self.scope, self.session)),
-                                    actual.with((self.scope, self.session))
-                                ))
-                                .labeled_primary_span(&actual, "has the wrong type")
-                                .labeled_secondary_span(&expected, "expected due to this")
-                                .report(self.reporter)),
+                            TypeMismatch { expected, actual } => {
+                                Diagnostic::error()
+                                    .code(Code::E032)
+                                    .message(format!(
+                                        "expected type `{}`, got type `{}`",
+                                        expected.with((self.scope, self.session)),
+                                        actual.with((self.scope, self.session))
+                                    ))
+                                    .labeled_primary_span(&actual, "has the wrong type")
+                                    .labeled_secondary_span(&expected, "expected due to this")
+                                    .report(self.reporter);
+                                Err(())
+                            }
                         };
                     }
                 };
@@ -229,7 +231,7 @@ impl<'a> Typer<'a> {
                     expected = type_
                 );
                 self.scope.carry_out(
-                    Registration::ValueBinding {
+                    BindingRegistration::Value {
                         binder,
                         type_: infered_type,
                         value: Some(value),
@@ -237,7 +239,7 @@ impl<'a> Typer<'a> {
                     self.reporter,
                 )?;
             }
-            DataBinding { binder, type_ } => {
+            Data { binder, type_ } => {
                 recover_error!(
                     self.scope,
                     self.session,
@@ -260,9 +262,9 @@ impl<'a> Typer<'a> {
                 )?;
 
                 self.scope
-                    .carry_out(Registration::DataBinding { binder, type_ }, self.reporter)?;
+                    .carry_out(BindingRegistration::Data { binder, type_ }, self.reporter)?;
             }
-            ConstructorBinding {
+            Constructor {
                 binder,
                 type_,
                 data,
@@ -289,15 +291,15 @@ impl<'a> Typer<'a> {
                 )?;
 
                 self.scope.carry_out(
-                    Registration::ConstructorBinding {
+                    BindingRegistration::Constructor {
                         binder,
-                        type_: type_.clone(),
+                        type_,
                         data,
                     },
                     self.reporter,
                 )?;
             }
-            ForeignValueBinding { binder, type_ } => {
+            ForeignValue { binder, type_ } => {
                 recover_error!(
                     self.scope,
                     self.session,
@@ -315,11 +317,11 @@ impl<'a> Typer<'a> {
                 )?;
 
                 self.scope
-                    .carry_out(ForeignValueBinding { binder, type_ }, self.reporter)?;
+                    .carry_out(ForeignValue { binder, type_ }, self.reporter)?;
             }
-            ForeignDataBinding { binder } => {
+            ForeignData { binder } => {
                 self.scope
-                    .carry_out(ForeignDataBinding { binder }, self.reporter)?;
+                    .carry_out(ForeignData { binder }, self.reporter)?;
             }
         }
 
@@ -378,7 +380,7 @@ impl<'a> Typer<'a> {
                     return Ok(());
                 }
 
-                return Err(Diagnostic::bug()
+                Diagnostic::bug()
                     .message(format!(
                         "found unresolvable {} during type checking",
                         pluralize!(previous_amount, "binding")
@@ -391,7 +393,8 @@ impl<'a> Typer<'a> {
                             .map(|binding| binding.with((self.scope, self.session)).quote())
                             .join_with(", ")
                     ))
-                    .report(self.reporter));
+                    .report(self.reporter);
+                return Err(());
             }
         }
 
@@ -499,72 +502,65 @@ impl<'a> Typer<'a> {
                     },
                 )?;
 
-                match &type_of_callee.data {
-                    // @Beacon @Task handle `lazy`
-                    PiType(pi) => {
-                        let argument_type =
-                            self.infer_type_of_expression(application.argument.clone(), scope)?;
+                if let PiType(pi) = &type_of_callee.data {
+                    let argument_type =
+                        self.infer_type_of_expression(application.argument.clone(), scope)?;
 
-                        let argument_type = if pi.aspect.laziness.is_some() {
-                            expr! {
-                                PiType {
-                                    Attributes::default(), argument_type.span;
-                                    explicitness: Explicitness::Explicit,
-                                    aspect: default(),
-                                    parameter: None,
-                                    domain: self.scope.look_up_unit_type(Some(application.callee.span), self.reporter)?,
-                                    codomain: argument_type,
-                                }
+                    let argument_type = if pi.aspect.laziness.is_some() {
+                        expr! {
+                            PiType {
+                                Attributes::default(), argument_type.span;
+                                explicitness: Explicitness::Explicit,
+                                aspect: default(),
+                                parameter: None,
+                                domain: self.scope.look_up_unit_type(Some(application.callee.span), self.reporter)?,
+                                codomain: argument_type,
                             }
-                        } else {
-                            argument_type
-                        };
-
-                        self.it_is_actual(pi.domain.clone(), argument_type, scope)
-                            // @Bug this error handling might *steal* the error from other handlers further
-                            // down the call chain
-                            .map_err(|error| match error {
-                                Unrecoverable => {}
-                                TypeMismatch { expected, actual } => Diagnostic::error()
-                                    .code(Code::E032)
-                                    .message(format!(
-                                        "expected type `{}`, got type `{}`",
-                                        expected.with((self.scope, self.session)),
-                                        actual.with((self.scope, self.session))
-                                    ))
-                                    .labeled_primary_span(
-                                        &application.argument,
-                                        "has the wrong type",
-                                    )
-                                    .labeled_secondary_span(&expected, "expected due to this")
-                                    .report(self.reporter),
-                                _ => unreachable!(),
-                            })?;
-
-                        match pi.parameter.clone() {
-                            Some(_) => expr! {
-                                Substitution {
-                                    Attributes::default(),
-                                    Span::SHAM;
-                                    substitution: Use(Box::new(Shift(0)), application.argument.clone()),
-                                    expression: pi.codomain.clone(),
-                                }
-                            },
-                            None => pi.codomain.clone(),
                         }
+                    } else {
+                        argument_type
+                    };
+
+                    self.it_is_actual(pi.domain.clone(), argument_type, scope)
+                        // @Bug this error handling might *steal* the error from other handlers further
+                        // down the call chain
+                        .map_err(|error| match error {
+                            Unrecoverable => {}
+                            TypeMismatch { expected, actual } => Diagnostic::error()
+                                .code(Code::E032)
+                                .message(format!(
+                                    "expected type `{}`, got type `{}`",
+                                    expected.with((self.scope, self.session)),
+                                    actual.with((self.scope, self.session))
+                                ))
+                                .labeled_primary_span(&application.argument, "has the wrong type")
+                                .labeled_secondary_span(&expected, "expected due to this")
+                                .report(self.reporter),
+                            OutOfOrderBinding => unreachable!(),
+                        })?;
+
+                    match pi.parameter.clone() {
+                        Some(_) => expr! {
+                            Substitution {
+                                Attributes::default(),
+                                Span::SHAM;
+                                substitution: Use(Box::new(Shift(0)), application.argument.clone()),
+                                expression: pi.codomain.clone(),
+                            }
+                        },
+                        None => pi.codomain.clone(),
                     }
-                    _ => {
-                        Diagnostic::error()
-                            .code(Code::E031)
-                            .message(format!(
-                                "expected type `_ -> _`, got type `{}`",
-                                type_of_callee.with((self.scope, self.session))
-                            ))
-                            .labeled_primary_span(&application.callee, "has wrong type")
-                            .labeled_secondary_span(&application.argument, "applied to this")
-                            .report(self.reporter);
-                        return Err(Unrecoverable);
-                    }
+                } else {
+                    Diagnostic::error()
+                        .code(Code::E031)
+                        .message(format!(
+                            "expected type `_ -> _`, got type `{}`",
+                            type_of_callee.with((self.scope, self.session))
+                        ))
+                        .labeled_primary_span(&application.callee, "has wrong type")
+                        .labeled_secondary_span(&application.argument, "applied to this")
+                        .report(self.reporter);
+                    return Err(Unrecoverable);
                 }
             }
             Substitution(substitution) => {
@@ -588,7 +584,7 @@ impl<'a> Typer<'a> {
                 // * all constructors are covered
                 // * all analysis.cases>>.expressions are of the same type
 
-                match &subject_type.clone().data {
+                match &subject_type.data {
                     Binding(_) => {}
                     Application(_application) => todo!("polymorphic types in patterns"),
                     _ if self.is_a_type(subject_type.clone(), scope)? => {
@@ -608,8 +604,10 @@ impl<'a> Typer<'a> {
 
                 let mut type_of_previous_body = None::<Expression>;
 
-                for case in analysis.cases.iter() {
-                    let mut types = Vec::new();
+                for case in &analysis.cases {
+                    use hir::PatternKind::*;
+
+                    let mut binder_types = Vec::new();
 
                     // @Question make more elegant w/ the new error handling system?
                     let handle_type_mismatch = |error, context, reporter| match error {
@@ -628,8 +626,6 @@ impl<'a> Typer<'a> {
                         }
                         error => error,
                     };
-
-                    use hir::PatternKind::*;
 
                     // @Task add help subdiagnostic when a constructor is (de)applied to too few arguments
                     // @Update @Note or just replace the type mismatch error (hmm) with an arity mismatch error
@@ -689,7 +685,7 @@ impl<'a> Typer<'a> {
                         Binder(_) => {
                             // @Temporary @Beacon @Bug error prone (once we try to impl deappl)
                             // @Update @Note don't push the type of subject but the type of the binder
-                            types.push(subject_type.clone());
+                            binder_types.push(subject_type.clone());
                         }
                         // @Task
                         Deapplication(deapplication) => {
@@ -733,17 +729,17 @@ impl<'a> Typer<'a> {
                         Error => unreachable!(),
                     }
 
-                    let type_ = self.infer_type_of_expression(
+                    let body_type = self.infer_type_of_expression(
                         case.body.clone(),
-                        &scope.extend_with_pattern_binders(types),
+                        &scope.extend_with_pattern_binders(binder_types),
                     )?;
 
                     match type_of_previous_body {
                         Some(ref previous_type) => {
-                            self.it_is_actual(previous_type.clone(), type_, scope)?;
+                            self.it_is_actual(previous_type.clone(), body_type, scope)?;
                         }
                         None => {
-                            type_of_previous_body = Some(type_);
+                            type_of_previous_body = Some(body_type);
                         }
                     }
                 }
@@ -752,8 +748,7 @@ impl<'a> Typer<'a> {
                 type_of_previous_body.expect("caseless case analyses")
             }
             // @Beacon @Task
-            ForeignApplication(_) => todo!(),
-            Projection(_) => todo!(),
+            ForeignApplication(_) | Projection(_) => todo!(),
             IO(_) => self.scope.look_up_foreign_type(
                 ffi::Type::IO,
                 Some(expression.span),
@@ -804,7 +799,7 @@ impl<'a> Typer<'a> {
         scope: &FunctionScope<'_>,
     ) -> Result<(), Error> {
         let expected = self.interpreter().evaluate_expression(
-            expected.clone(),
+            expected,
             interpreter::Context {
                 scope,
                 form: Form::Normal, /* Form::WeakHeadNormal */
@@ -835,7 +830,7 @@ impl<'a> Typer<'a> {
         scope: &FunctionScope<'_>,
     ) -> Result<bool> {
         let expected = self.interpreter().evaluate_expression(
-            expected.clone(),
+            expected,
             interpreter::Context {
                 scope,
                 form: Form::Normal, /* Form::WeakHeadNormal */
@@ -849,8 +844,7 @@ impl<'a> Typer<'a> {
             },
         )?;
 
-        self.interpreter()
-            .equals(expected.clone(), actual.clone(), scope)
+        self.interpreter().equals(expected, actual, scope)
     }
 
     // @Question @Bug returns are type that might depend on parameters which we don't supply!!
@@ -872,18 +866,6 @@ impl<'a> Typer<'a> {
         }
     }
 
-    /// Returns the callee of an expression.
-    ///
-    /// Example: Returns the `f` in `f a b c`.
-    fn callee(&mut self, mut expression: Expression) -> Expression {
-        loop {
-            expression = match expression.data {
-                hir::ExpressionKind::Application(application) => application.callee.clone(),
-                _ => return expression,
-            }
-        }
-    }
-
     /// Instance checking.
     ///
     /// I.e. does a constructor of an algebraïc data type return a valid
@@ -900,13 +882,15 @@ impl<'a> Typer<'a> {
         type_: Expression,
     ) -> Result {
         let result_type = self.result_type(constructor, &FunctionScope::CrateScope);
-        let callee = self.callee(result_type.clone());
+        let callee = result_type.clone().callee();
 
-        if !self
+        if self
             .interpreter()
             .equals(type_.clone(), callee, &FunctionScope::CrateScope)?
         {
-            Err(Diagnostic::error()
+            Ok(())
+        } else {
+            Diagnostic::error()
                 .code(Code::E033)
                 .message(format!(
                     "`{}` is not an instance of `{}`",
@@ -914,9 +898,22 @@ impl<'a> Typer<'a> {
                     type_.with((self.scope, self.session))
                 ))
                 .primary_span(result_type.span)
-                .report(self.reporter))
-        } else {
-            Ok(())
+                .report(self.reporter);
+            Err(())
+        }
+    }
+}
+
+impl Expression {
+    /// Returns the callee of an expression.
+    ///
+    /// Example: Returns the `f` in `f a b c`.
+    fn callee(mut self) -> Expression {
+        loop {
+            self = match self.data {
+                hir::ExpressionKind::Application(application) => application.callee.clone(),
+                _ => return self,
+            }
         }
     }
 }

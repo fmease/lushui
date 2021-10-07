@@ -1,8 +1,8 @@
-//! The parser (syntactic analyzer).
+//! The syntactic analyzer (parser).
 //!
 //! I *think* it can be classified as a top-down recursive-descent parser with arbitrary look-ahead.
 //!
-//! ## Grammar Notation
+//! # Grammar Notation
 //!
 //! Most parsing functions in this module are accompanied by a grammar snippet.
 //! These snippets are written in an EBNF explained below:
@@ -24,6 +24,7 @@
 #[cfg(test)]
 mod test;
 
+#[allow(clippy::wildcard_imports)]
 use super::{
     ast::{self, *},
     token::{
@@ -110,7 +111,7 @@ impl<'a> Parser<'a> {
     fn error<T, D: FnOnce() -> Diagnostic>(&self, diagnostic: D) -> Result<T> {
         fn error<D: FnOnce() -> Diagnostic>(parser: &Parser<'_>, diagnostic: D) -> Result<!> {
             if !parser.reflecting() {
-                diagnostic().report(&parser.reporter);
+                diagnostic().report(parser.reporter);
             }
 
             Err(())
@@ -162,7 +163,7 @@ impl<'a> Parser<'a> {
 
     /// A general identifier includes (alphanumeric) identifiers and punctuation.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// General-Identifier ::= #Identifier | #Punctuation
@@ -194,8 +195,10 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Conceptually equivalent to `Self::consume(..).map(Spanning::span).ok()` but more memory-efficient as
-    /// it neither constructs a [crate::diagnostics::Diagnostic] nor clones the consumed token.
+    /// Conceptually equivalent to `Self::consume(..).map(Spanning::span).ok()`.
+    ///
+    /// However, it is more memory-efficient as it neither constructs a [`Diagnostic`]
+    /// nor clones the consumed token.
     fn consume_span(&mut self, token: TokenName) -> Option<Span> {
         if self.current_token().name() == token {
             let span = self.current_token().span;
@@ -231,7 +234,7 @@ impl<'a> Parser<'a> {
 
     /// Inspect the token following the current one.
     ///
-    /// ## Panics
+    /// # Panics
     ///
     /// Panics if the current token is the [end of input](TokenName::EndOfInput).
     fn succeeding_token(&self) -> &Token {
@@ -240,7 +243,7 @@ impl<'a> Parser<'a> {
 
     /// Parse a declaration.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// Declaration ::= (Attribute #Line-Break*)* Naked-Declaration
@@ -279,7 +282,7 @@ impl<'a> Parser<'a> {
 
     /// Parse attributes.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// Attribute ::= Regular-Attribute | Documentation-Comment
@@ -327,7 +330,7 @@ impl<'a> Parser<'a> {
     ///
     /// Regular attributes do not include documentation comments.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// Note: The grammar is not complete yet since we cannot represent the
     /// arguments of `@if` yet which are the most complex.
@@ -377,7 +380,7 @@ impl<'a> Parser<'a> {
 
     /// Parse an argument of an attribute.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// Attribute-Argument ::= Lower-Attribute-Argument | "(" #Identifier Lower-Attribute-Argument ")"
@@ -425,7 +428,7 @@ impl<'a> Parser<'a> {
     /// The leading identifier should have already parsed beforehand.
     /// The span does not include the trailing line break.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// Value-Declaration ::=
@@ -469,7 +472,7 @@ impl<'a> Parser<'a> {
     /// The keyword `data` should have already been parsed beforehand.
     /// The span does not include the trailing line break.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// Data-Declaration ::=
@@ -544,7 +547,7 @@ impl<'a> Parser<'a> {
     ///
     /// This is either a module declaration or an external module declaration.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// Module-Declaration ::=
@@ -584,7 +587,7 @@ impl<'a> Parser<'a> {
                         attributes,
                         span;
                         binder,
-                        file: self.file.clone(),
+                        file: self.file,
                         declarations: None,
                     }
                 })
@@ -605,7 +608,7 @@ impl<'a> Parser<'a> {
                         attributes,
                         span;
                         binder,
-                        file: self.file.clone(),
+                        file: self.file,
                         declarations: Some(declarations),
                     }
                 })
@@ -618,7 +621,7 @@ impl<'a> Parser<'a> {
 
     /// Parse the "top level" aka the body of a module file given the module name.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// Top-Level ::= (#Line-Break | Declaration)* #End-Of-Input
@@ -668,7 +671,7 @@ impl<'a> Parser<'a> {
     /// The keyword `use` should have already been parsed.
     /// The span does not contain the trailing line break.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// Use-Declaration ::= "use" Use-Path-Tree Terminator
@@ -692,7 +695,7 @@ impl<'a> Parser<'a> {
 
     /// Parse a use-path tree.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// Use-Path-Tree ::=
@@ -796,7 +799,7 @@ impl<'a> Parser<'a> {
     ///
     /// The span does not include the trailing line break.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// Constructor ::=
@@ -837,7 +840,7 @@ impl<'a> Parser<'a> {
 
     /// Parse an expression.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// Expression ::= Pi-Type-Literal-Or-Lower
@@ -850,7 +853,7 @@ impl<'a> Parser<'a> {
 
     /// Parse a pi-type literal or a lower expression.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// ; among other things, the grammar for pretty-printers differs from the one for parsers
@@ -935,7 +938,7 @@ impl<'a> Parser<'a> {
 
     /// Parse the aspect of a pi type parameter.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// Parameter-Aspect ::= Laziness Fieldness
@@ -954,7 +957,7 @@ impl<'a> Parser<'a> {
 
     /// Parse an application or a lower expression.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// Application-Or-Lower ::= Lower-Expression Argument*
@@ -976,7 +979,7 @@ impl<'a> Parser<'a> {
 
     /// Parse a lower expression.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// Lower-Expression ::= Attribute* Naked-Lower-Expression
@@ -1122,7 +1125,7 @@ impl<'a> Parser<'a> {
 
     /// Parse a path.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// Path ::= Path-Head ("." General-Identifier)*
@@ -1154,7 +1157,7 @@ impl<'a> Parser<'a> {
     ///
     /// The initial `\` should have already been parsed beforehand.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// Lambda-Literal ::= "\" Parameters Type-Annotation? "=>" Expression
@@ -1184,7 +1187,7 @@ impl<'a> Parser<'a> {
     ///
     /// The initial `let` should have already been parsed beforehand.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// Let-In ::=
@@ -1237,7 +1240,7 @@ impl<'a> Parser<'a> {
 
     /// Finish parsing a use/in-expression.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// Use-In ::=
@@ -1273,7 +1276,7 @@ impl<'a> Parser<'a> {
     ///
     /// The initial `case` should have already been parsed beforehand.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     ///
     /// ```ebnf
@@ -1319,7 +1322,7 @@ impl<'a> Parser<'a> {
     ///
     /// The keyword `do` should have already been consumed.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// Do-Block ::= "do" "{" Statement* "}"
@@ -1338,7 +1341,7 @@ impl<'a> Parser<'a> {
         let mut span = span_of_do;
         let mut statements = Vec::new();
 
-        let _ = self.consume(OpeningCurlyBracket)?;
+        self.consume(OpeningCurlyBracket)?;
 
         while self.current_token().name() != ClosingCurlyBracket {
             // @Note necessary I guess in cases where we have #Line-Break ((Comment)) #Line-Break
@@ -1419,10 +1422,10 @@ impl<'a> Parser<'a> {
     /// Parse parameters until one of the given delimiters is encountered.
     ///
     /// One needs to specify delimiters to allow for better error diagnostics.
-    /// A delimiter must not be [TokenName::OpeningRoundBracket] or [TokenName::Identifier].
-    /// The delimiter list must be non-empty.
+    /// A delimiter must not be [`TokenName::OpeningRoundBracket`] or
+    /// [`TokenName::Identifier`]. The delimiter list must be non-empty.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// Parameters ::= Parameter-Group*
@@ -1442,7 +1445,7 @@ impl<'a> Parser<'a> {
     /// Delimiters are taken as a parameter merely for constructing
     /// the Diagnostic.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// Parameter-Group ::= Explicitness Naked-Parameter-Group
@@ -1451,6 +1454,8 @@ impl<'a> Parser<'a> {
     ///     | "(" Parameter-Aspect #Identifier+ Type-Annotation? ")"
     /// ```
     fn parse_parameter_group(&mut self, delimiters: &[Delimiter]) -> Result<ParameterGroup> {
+        #![allow(clippy::shadow_unrelated)] // false positive
+
         let explicitness = self.parse_optional_implicitness();
         let mut span = self.current_token().span.merge_into(explicitness);
 
@@ -1501,7 +1506,7 @@ impl<'a> Parser<'a> {
 
     /// Parse a pattern.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// Pattern ::= Lower-Pattern Pattern-Argument*
@@ -1602,7 +1607,7 @@ impl<'a> Parser<'a> {
 
     /// Parse a lower pattern.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// Lower-Pattern ::= Attribute* Naked-Lower-Pattern
@@ -1675,7 +1680,7 @@ impl<'a> Parser<'a> {
 
     /// Parse a type annotation.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// Type-Annotation ::= ":" Expression
@@ -1700,7 +1705,7 @@ impl<'a> Parser<'a> {
     ///
     /// If the terminator is a semicolon, consume it.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// Terminator ::= ";" | (> "}" | #End-Of-Input)
@@ -1719,14 +1724,14 @@ impl<'a> Parser<'a> {
         } else {
             Expected::Delimiter(Delimiter::Terminator)
                 .but_actual_is(self.current_token())
-                .report(&self.reporter);
+                .report(self.reporter);
             Err(())
         }
     }
 
     /// Consume the explicitness symbol.
     ///
-    /// ## Grammar
+    /// # Grammar
     ///
     /// ```ebnf
     /// Explicitness ::= "'"?
@@ -1892,9 +1897,9 @@ enum Delimiter {
 impl Delimiter {
     fn matches(self, token: TokenName) -> bool {
         match (self, token) {
-            (Self::TypeAnnotationPrefix, Colon) => true,
-            (Self::DefinitionPrefix, Equals) => true,
-            (Self::Terminator, Semicolon | ClosingCurlyBracket | EndOfInput) => true,
+            (Self::TypeAnnotationPrefix, Colon)
+            | (Self::DefinitionPrefix, Equals)
+            | (Self::Terminator, Semicolon | ClosingCurlyBracket | EndOfInput) => true,
             (Self::Token(expected), actual) => expected == actual,
             _ => false,
         }

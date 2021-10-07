@@ -283,10 +283,10 @@ fn format_pi_type_literal_or_lower(
             )?;
             let mut first = true;
             for case in &analysis.cases {
-                if !first {
-                    write!(f, "; ")?;
-                } else {
+                if first {
                     first = false;
+                } else {
+                    write!(f, "; ")?;
                 }
 
                 write!(

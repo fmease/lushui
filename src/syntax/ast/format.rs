@@ -124,6 +124,7 @@ mod format_struct {
 // @Task make whitespace visible
 fn format_text_literal(content: &str, f: &mut Formatter<'_>) -> Result {
     const MAXIMUM_LENGTH: usize = 20;
+    #[allow(clippy::assertions_on_constants)]
     const _: () = assert!(MAXIMUM_LENGTH % 2 == 0);
 
     let length = content.len();

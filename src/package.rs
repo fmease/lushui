@@ -7,7 +7,7 @@ use crate::{
     format::DisplayWith,
     resolver::{CrateScope, DeclarationIndex, Identifier},
     span::SharedSourceMap,
-    syntax::parse_identifier,
+    syntax::{ast, parse_identifier},
     utility::HashMap,
     FILE_EXTENSION,
 };
@@ -158,7 +158,7 @@ impl BuildQueue<'_> {
                         dependency_exonym.clone(),
                         package.library.ok_or_else(|| {
                             dependency_is_not_a_library(&package.name, &self[package_index].name)
-                                .report(self.reporter)
+                                .report(self.reporter);
                         })?,
                     );
                     continue;
@@ -193,8 +193,7 @@ impl BuildQueue<'_> {
             let alleged_dependency_endonym = unresolved_dependency
                 .name
                 .as_ref()
-                .map(|name| name.as_str())
-                .unwrap_or(dependency_exonym);
+                .map_or(dependency_exonym.as_str(), ast::Identifier::as_str);
 
             if alleged_dependency_endonym != dependency_manifest.details.name.as_str() {
                 // @Task @Beacon @Beacon @Beacon improve error message
@@ -247,7 +246,7 @@ impl BuildQueue<'_> {
                         &self[dependency_package].name,
                         &self[package_index].name,
                     )
-                    .report(self.reporter)
+                    .report(self.reporter);
                 })?,
             );
         }
@@ -272,12 +271,7 @@ impl BuildQueue<'_> {
         let default_library_path = path.join(CrateType::Library.default_root_file_path());
 
         let path = match library {
-            Some(library) => Some(
-                library
-                    .path
-                    .map(|path| path.data)
-                    .unwrap_or(default_library_path),
-            ),
+            Some(library) => Some(library.path.map_or(default_library_path, |path| path.data)),
             None => default_library_path.exists().then(|| default_library_path),
         };
 
@@ -303,10 +297,7 @@ impl BuildQueue<'_> {
 
         // @Beacon @Task also find other binaries in source/binaries/
         let paths = match binary {
-            Some(binary) => vec![binary
-                .path
-                .map(|path| path.data)
-                .unwrap_or(default_binary_path)],
+            Some(binary) => vec![binary.path.map_or(default_binary_path, |path| path.data)],
             None => match default_binary_path.exists() {
                 true => vec![default_binary_path],
                 false => Vec::new(),
@@ -654,7 +645,7 @@ pub fn find_package(path: &Path) -> Option<&Path> {
 pub fn parse_crate_name_from_file_path(
     file: impl AsRef<std::path::Path>,
     reporter: &Reporter,
-) -> Result<crate::syntax::ast::Identifier> {
+) -> Result<ast::Identifier> {
     let file = file.as_ref();
 
     if !crate::utility::has_file_extension(file, crate::FILE_EXTENSION) {
@@ -670,10 +661,7 @@ pub fn parse_crate_name_from_file_path(
         invalid_crate_name(&stem.to_string_lossy()).report(reporter);
     })?;
 
-    Ok(crate::syntax::ast::Identifier::new(
-        atom,
-        crate::span::Span::SHAM,
-    ))
+    Ok(ast::Identifier::new(atom, crate::span::Span::SHAM))
 }
 
 fn invalid_crate_name(name: &str) -> Diagnostic {
@@ -706,7 +694,7 @@ pub mod manifest {
             source_map: SharedSourceMap,
             reporter: &Reporter,
         ) -> Result<Self> {
-            let manifest = metadata::parse(source_file, source_map.clone(), reporter)?;
+            let manifest = metadata::parse(source_file, source_map, reporter)?;
 
             let manifest_span = manifest.span;
             let mut manifest: Map = manifest.data.try_into().map_err(|error: TypeError| {
@@ -717,7 +705,7 @@ pub mod manifest {
                         error.expected, error.actual
                     ))
                     .labeled_primary_span(manifest_span, "has the wrong type")
-                    .report(reporter)
+                    .report(reporter);
             })?;
 
             let name = manifest
@@ -727,9 +715,10 @@ pub mod manifest {
                     parse_identifier(name.data.clone())
                         .map(|identifier| Identifier::new(identifier, name.span))
                         .ok_or_else(|| {
+                            // @Beacon @Beacon @Beacon @Task trim quotes (unless empty)
                             super::invalid_crate_name(&name.data)
-                                .primary_span(name) // @Beacon @Beacon @Beacon @Task trim quotes
-                                .report(reporter)
+                                .primary_span(name)
+                                .report(reporter);
                         })
                 });
             let version = manifest.remove_optional("version", reporter);
@@ -799,9 +788,10 @@ pub mod manifest {
                                     parse_identifier(name.data.clone())
                                         .map(|identifier| Identifier::new(identifier, name.span))
                                         .ok_or_else(|| {
+                                            // @Beacon @Beacon @Beacon @Task trim quotes (unless empty)
                                             super::invalid_crate_name(&name.data)
-                                                .primary_span(name) // @Beacon @Beacon @Beacon @Task trim quotes
-                                                .report(reporter)
+                                                .primary_span(name)
+                                                .report(reporter);
                                         })
                                 })
                                 .transpose()

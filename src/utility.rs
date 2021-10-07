@@ -5,7 +5,7 @@ pub(crate) mod spanned_key_map;
 
 pub(crate) use num_bigint::{BigInt as Int, BigUint as Nat};
 pub(crate) use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
-use std::path::Path;
+use std::{ffi::OsStr, path::Path};
 pub(crate) use string_cache::DefaultAtom as Atom;
 
 pub(crate) type Str = std::borrow::Cow<'static, str>;
@@ -13,7 +13,7 @@ pub(crate) type Str = std::borrow::Cow<'static, str>;
 pub(crate) type SmallVec<T, const N: usize> = smallvec::SmallVec<[T; N]>;
 
 pub(crate) fn has_file_extension(path: &Path, required_extension: &str) -> bool {
-    path.extension().and_then(|extension| extension.to_str()) == Some(required_extension)
+    path.extension().and_then(OsStr::to_str) == Some(required_extension)
 }
 
 pub(crate) macro obtain($expr:expr, $( $pat:pat )|+ $( if $guard:expr )? $(,)? => $mapping:expr $(,)?) {

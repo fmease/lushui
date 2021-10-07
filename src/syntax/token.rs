@@ -142,8 +142,8 @@ impl fmt::Display for TokenKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = self.discriminant();
 
-        match self {
-            &Self::Illegal(character) => {
+        match *self {
+            Self::Illegal(character) => {
                 write!(f, "{} U+{:04X} `{}`", name, character as u32, character)
             }
             _ => write!(f, "{name}"),
@@ -230,69 +230,4 @@ pub struct UnterminatedTextLiteral;
 pub enum Provenance {
     Source,
     Lexer,
-}
-
-pub const fn is_punctuation(character: char) -> bool {
-    #[rustfmt::skip]
-    matches!(
-        character,
-        '.' | ':' | '+' | '-' | '~' | '=' | '<' | '>' | '*' | '^' |
-        '!' | '?' | '|' | '/' | '\\' | '&' | '#' | '%' | '$' | '@'
-    )
-}
-
-pub const fn is_identifier_segment_start(character: char) -> bool {
-    character.is_ascii_alphabetic() || character == '_'
-}
-
-pub const fn is_identifier_segment_middle(character: char) -> bool {
-    character.is_ascii_alphanumeric() || character == '_'
-}
-
-pub const NUMERIC_SEPARATOR: char = '\'';
-
-pub const fn is_number_literal_middle(character: char) -> bool {
-    character.is_ascii_digit() || character == NUMERIC_SEPARATOR
-}
-
-pub fn parse_keyword(source: &str) -> Option<TokenKind> {
-    use TokenKind::*;
-
-    Some(match source {
-        "_" => Underscore,
-        "as" => As,
-        "case" => Case,
-        "crate" => Crate,
-        "extern" => Extern,
-        "data" => Data,
-        "do" => Do,
-        "in" => In,
-        "lazy" => Lazy,
-        "let" => Let,
-        "module" => Module,
-        "of" => Of,
-        "self" => Self_,
-        "super" => Super,
-        "Type" => Type,
-        "use" => Use,
-        _ => return None,
-    })
-}
-
-pub fn parse_reserved_punctuation(source: &str) -> Option<TokenKind> {
-    use TokenKind::*;
-
-    Some(match source {
-        "." => Dot,
-        ":" => Colon,
-        "=" => Equals,
-        "\\" => Backslash,
-        "?" => QuestionMark,
-        "@" => At,
-        "->" => ThinArrowRight,
-        "<-" => ThinArrowLeft,
-        "=>" => WideArrowRight,
-        "::" => DoubleColon,
-        _ => return None,
-    })
 }

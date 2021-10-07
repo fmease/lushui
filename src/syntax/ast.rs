@@ -1,10 +1,13 @@
 //! The abstract syntax tree (AST).
 //!
-//! The most important definitions are [Declaration], [Expression] and [Pattern].
+//! The most important definitions are [`Declaration`], [`Expression`] and [`Pattern`].
 
 mod format;
 
-use super::token::{self, Token, TokenKind};
+use super::{
+    lexer::is_punctuation,
+    token::{Token, TokenKind},
+};
 use crate::{
     diagnostics::{Code, Diagnostic},
     error::PossiblyErroneous,
@@ -42,7 +45,7 @@ impl TryFrom<DeclarationKind> for Module {
 
 /// The syntax node of a value declaration or a let statement.
 ///
-/// See [DeclarationKind::Value] and [Statement::Let].
+/// See [`DeclarationKind::Value`] and [`Statement::Let`].
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Value {
@@ -88,7 +91,7 @@ pub struct Group {
 
 /// The syntax node of a use-declaration or statement.
 ///
-/// See [DeclarationKind::Use] and [Statement::Use].
+/// See [`DeclarationKind::Use`] and [`Statement::Use`].
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Use {
@@ -351,7 +354,7 @@ impl Path {
     // @Task verify
     pub fn prefix(&self) -> Self {
         Self {
-            hanger: self.hanger.clone(),
+            hanger: self.hanger,
             segments: self.segments.iter().rev().skip(1).rev().cloned().collect(),
         }
     }
@@ -611,7 +614,7 @@ impl Identifier {
 
     pub fn is_punctuation(&self) -> bool {
         // either all characters are punctuation or none
-        token::is_punctuation(self.atom().chars().next().unwrap())
+        is_punctuation(self.atom().chars().next().unwrap())
     }
 }
 

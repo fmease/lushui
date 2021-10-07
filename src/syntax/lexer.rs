@@ -3,9 +3,7 @@
 #[cfg(test)]
 mod test;
 
-use super::token::{
-    self, Provenance, Token, TokenKind, UnterminatedTextLiteral, NUMERIC_SEPARATOR,
-};
+use super::token::{Provenance, Token, TokenKind, UnterminatedTextLiteral};
 use crate::{
     diagnostics::{reporter::SilentReporter, Code, Diagnostic, Reporter},
     error::{Health, Outcome, Result},
@@ -71,7 +69,7 @@ impl Sections {
         self.get(0)
     }
 
-    /// Current section stripped from any [Section::Continued]s.
+    /// Current section stripped from any [`Section::Continued`]s.
     fn current_continued(&self) -> (Section, usize) {
         // @Task replace implementation with Iterator::position
 
@@ -240,17 +238,15 @@ impl<'a> Lexer<'a> {
                         self.add(Semicolon(Provenance::Source));
                     }
                 }
-                character if token::is_identifier_segment_start(character) => {
-                    self.lex_identifier()?
-                }
+                character if is_identifier_segment_start(character) => self.lex_identifier()?,
                 '\n' if self.sections.current() != Section::Delimited => self.lex_indentation()?,
                 '\n' => self.advance(),
                 '-' => self.lex_punctuation_or_number_literal()?,
                 character if character.is_ascii_digit() => {
                     self.advance();
-                    self.lex_number_literal()?
+                    self.lex_number_literal()?;
                 }
-                character if token::is_punctuation(character) => self.lex_punctuation(),
+                character if is_punctuation(character) => self.lex_punctuation(),
                 '"' => self.lex_text_literal(),
                 '(' => self.add_opening_bracket(Bracket::Round),
                 '[' => self.add_opening_bracket(Bracket::Square),
@@ -297,7 +293,7 @@ impl<'a> Lexer<'a> {
                         bracket,
                         format!("has no matching closing {} bracket", bracket.data),
                     )
-                    .report(&self.reporter);
+                    .report(self.reporter);
             }
         }
 
@@ -345,7 +341,7 @@ impl<'a> Lexer<'a> {
         self.add(bracket.closing());
         if let Err(error) = self.brackets.close(Spanned::new(self.span(), bracket)) {
             self.health.taint();
-            error.report(&self.reporter);
+            error.report(self.reporter);
         };
         self.advance();
     }
@@ -426,12 +422,12 @@ impl<'a> Lexer<'a> {
                     .code(Code::E002)
                     .message("trailing dash on identifier")
                     .primary_span(self.span())
-                    .report(&self.reporter);
+                    .report(self.reporter);
                 return Err(());
             }
         }
 
-        match token::parse_keyword(self.source()) {
+        match parse_keyword(self.source()) {
             Some(keyword) => self.add(keyword),
             None => {
                 self.add(Identifier(self.source().into()));
@@ -449,10 +445,10 @@ impl<'a> Lexer<'a> {
 
     fn lex_identifier_segment(&mut self) {
         if let Some(character) = self.peek() {
-            if token::is_identifier_segment_start(character) {
+            if is_identifier_segment_start(character) {
                 self.take();
                 self.advance();
-                self.take_while(token::is_identifier_segment_middle);
+                self.take_while(is_identifier_segment_middle);
             }
         }
     }
@@ -506,7 +502,7 @@ impl<'a> Lexer<'a> {
                             INDENTATION.0
                         ),
                     })
-                    .report(&self.reporter);
+                    .report(self.reporter);
                 return Err(());
             }
         };
@@ -547,10 +543,10 @@ impl<'a> Lexer<'a> {
         if change == Less {
             // Remove legal but superfluous virtual semicolons before virtual
             // closing curly brackets (which also act as terminators).
-            if self.sections.current_continued().0.is_indented() {
-                if self.tokens.last().map_or(false, Token::is_line_break) {
-                    self.tokens.pop();
-                }
+            if self.sections.current_continued().0.is_indented()
+                && self.tokens.last().map_or(false, Token::is_line_break)
+            {
+                self.tokens.pop();
             }
 
             for _ in 0..difference.0 {
@@ -586,8 +582,7 @@ impl<'a> Lexer<'a> {
         self.advance();
         if self
             .peek()
-            .map(|character| character.is_ascii_digit())
-            .unwrap_or(false)
+            .map_or(false, |character| character.is_ascii_digit())
         {
             self.lex_number_literal()?;
         } else {
@@ -597,9 +592,9 @@ impl<'a> Lexer<'a> {
     }
 
     fn lex_punctuation(&mut self) {
-        self.take_while(token::is_punctuation);
+        self.take_while(is_punctuation);
 
-        match token::parse_reserved_punctuation(&self.source_file[self.local_span]) {
+        match parse_reserved_punctuation(&self.source_file[self.local_span]) {
             Some(punctuation) => self.add(punctuation),
             None => {
                 self.add(Punctuation(self.source().into()));
@@ -615,23 +610,24 @@ impl<'a> Lexer<'a> {
         let mut consecutive_separators = false;
 
         while let Some(character) = self.peek() {
-            if !token::is_number_literal_middle(character) {
+            if !is_number_literal_middle(character) {
                 break;
             }
             self.take();
             self.advance();
 
-            if character != NUMERIC_SEPARATOR {
-                number.push(character);
-            } else {
+            if character == NUMERIC_SEPARATOR {
                 if let Some(NUMERIC_SEPARATOR) = self.peek() {
                     consecutive_separators = true;
                 }
-                if self.peek().map_or(true, |character| {
-                    !token::is_number_literal_middle(character)
-                }) {
+                if self
+                    .peek()
+                    .map_or(true, |character| !is_number_literal_middle(character))
+                {
                     trailing_separator = true;
                 }
+            } else {
+                number.push(character);
             }
         }
 
@@ -644,7 +640,7 @@ impl<'a> Lexer<'a> {
                     .code(Code::E005)
                     .message("consecutive primes in number literal")
                     .primary_span(self.span())
-                    .report(&self.reporter);
+                    .report(self.reporter);
             }
 
             if trailing_separator {
@@ -652,7 +648,7 @@ impl<'a> Lexer<'a> {
                     .code(Code::E005)
                     .message("trailing prime in number literal")
                     .primary_span(self.span())
-                    .report(&self.reporter);
+                    .report(self.reporter);
             }
 
             // @Task don't return early here, just taint the health and
@@ -698,7 +694,7 @@ impl<'a> Lexer<'a> {
 
 impl<'a> utility::lexer::Lexer<'a, TokenKind> for Lexer<'a> {
     fn source_file(&self) -> &'a SourceFile {
-        &self.source_file
+        self.source_file
     }
 
     fn characters(&mut self) -> &mut Peekable<CharIndices<'a>> {
@@ -716,6 +712,71 @@ impl<'a> utility::lexer::Lexer<'a, TokenKind> for Lexer<'a> {
     fn local_span_mut(&mut self) -> &mut LocalSpan {
         &mut self.local_span
     }
+}
+
+pub(crate) const fn is_punctuation(character: char) -> bool {
+    #[rustfmt::skip]
+    matches!(
+        character,
+        '.' | ':' | '+' | '-' | '~' | '=' | '<' | '>' | '*' | '^' |
+        '!' | '?' | '|' | '/' | '\\' | '&' | '#' | '%' | '$' | '@'
+    )
+}
+
+pub(crate) const fn is_identifier_segment_start(character: char) -> bool {
+    character.is_ascii_alphabetic() || character == '_'
+}
+
+pub(crate) const fn is_identifier_segment_middle(character: char) -> bool {
+    character.is_ascii_alphanumeric() || character == '_'
+}
+
+pub(crate) const NUMERIC_SEPARATOR: char = '\'';
+
+pub(crate) const fn is_number_literal_middle(character: char) -> bool {
+    character.is_ascii_digit() || character == NUMERIC_SEPARATOR
+}
+
+fn parse_keyword(source: &str) -> Option<TokenKind> {
+    use TokenKind::*;
+
+    Some(match source {
+        "_" => Underscore,
+        "as" => As,
+        "case" => Case,
+        "crate" => Crate,
+        "extern" => Extern,
+        "data" => Data,
+        "do" => Do,
+        "in" => In,
+        "lazy" => Lazy,
+        "let" => Let,
+        "module" => Module,
+        "of" => Of,
+        "self" => Self_,
+        "super" => Super,
+        "Type" => Type,
+        "use" => Use,
+        _ => return None,
+    })
+}
+
+fn parse_reserved_punctuation(source: &str) -> Option<TokenKind> {
+    use TokenKind::*;
+
+    Some(match source {
+        "." => Dot,
+        ":" => Colon,
+        "=" => Equals,
+        "\\" => Backslash,
+        "?" => QuestionMark,
+        "@" => At,
+        "->" => ThinArrowRight,
+        "<-" => ThinArrowLeft,
+        "=>" => WideArrowRight,
+        "::" => DoubleColon,
+        _ => return None,
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -744,7 +805,7 @@ impl<S: Into<Spaces>> Sub<S> for Spaces {
 
 impl<S: Into<Spaces>> SubAssign<S> for Spaces {
     fn sub_assign(&mut self, other: S) {
-        *self = *self - other
+        *self = *self - other;
     }
 }
 

@@ -516,7 +516,7 @@ macro pure($scope:ident, $binder:literal, |$( $var:ident: $variant:ident ),*| $b
             };
         )+
 
-        (|| $body )().into()
+        $body.into()
     });
 }
 

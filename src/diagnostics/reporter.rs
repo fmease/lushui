@@ -119,7 +119,7 @@ impl BufferedStderrReporter {
         }
 
         if !errors.is_empty() {
-            let codes: BTreeSet<_> = errors.iter().flat_map(|error| error.0.code).collect();
+            let codes: BTreeSet<_> = errors.iter().filter_map(|error| error.0.code).collect();
 
             let summary = Diagnostic::error()
                 .message(pluralize!(
@@ -155,10 +155,10 @@ impl BufferedStderrReporter {
 
 impl Drop for BufferedStderrReporter {
     fn drop(&mut self) {
-        if !self.errors.borrow().is_empty() || !self.warnings.borrow().is_empty() {
-            if !std::thread::panicking() {
-                panic!("the buffer of the stderr reporter was not released before destruction");
-            }
+        if !(std::thread::panicking()
+            || self.errors.borrow().is_empty() && self.warnings.borrow().is_empty())
+        {
+            panic!("the buffer of the stderr reporter was not released before destruction");
         }
     }
 }

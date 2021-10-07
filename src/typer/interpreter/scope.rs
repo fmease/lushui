@@ -21,11 +21,11 @@ impl CrateScope {
     }
 
     // @Bug does not understand non-local binders
-    pub fn carry_out(&mut self, registration: Registration, reporter: &Reporter) -> Result {
-        use Registration::*;
+    pub fn carry_out(&mut self, registration: BindingRegistration, reporter: &Reporter) -> Result {
+        use BindingRegistration::*;
 
-        Ok(match registration {
-            ValueBinding {
+        match registration {
+            Value {
                 binder,
                 type_,
                 value,
@@ -41,7 +41,7 @@ impl CrateScope {
                     expression: value,
                 };
             }
-            DataBinding { binder, type_ } => {
+            Data { binder, type_ } => {
                 let index = binder.declaration_index().unwrap();
                 // @Bug unwrap None reachable
                 let index = self.local_index(index).unwrap();
@@ -54,7 +54,7 @@ impl CrateScope {
                     constructors: Vec::new(),
                 };
             }
-            ConstructorBinding {
+            Constructor {
                 binder,
                 type_,
                 data,
@@ -81,7 +81,7 @@ impl CrateScope {
                     _ => unreachable!(),
                 }
             }
-            ForeignValueBinding { binder, type_ } => {
+            ForeignValue { binder, type_ } => {
                 let index = binder.declaration_index().unwrap();
                 // @Bug unwrap None reachable
                 let index = self.local_index(index).unwrap();
@@ -107,28 +107,27 @@ impl CrateScope {
             // @Beacon @Beacon @Task throw an error ("redefinition")
             // if an earlier crates has already defined this type
             // (and also if it's defined several times in the same crate!!)
-            ForeignDataBinding { binder } => {
-                match self.ffi.foreign_types.get_mut(binder.as_str()) {
-                    Some(index @ None) => {
-                        *index = Some(binder.clone());
-                    }
-                    Some(Some(_)) => unreachable!(),
-                    None => {
-                        Diagnostic::error()
-                            .code(Code::E060)
-                            .message(format!("foreign data type `{}` is not registered", binder))
-                            .primary_span(&binder)
-                            .report(reporter);
-                        return Err(());
-                    }
+            ForeignData { binder } => match self.ffi.foreign_types.get_mut(binder.as_str()) {
+                Some(index @ None) => {
+                    *index = Some(binder.clone());
                 }
-            }
-        })
+                Some(Some(_)) => unreachable!(),
+                None => {
+                    Diagnostic::error()
+                        .code(Code::E060)
+                        .message(format!("foreign data type `{}` is not registered", binder))
+                        .primary_span(&binder)
+                        .report(reporter);
+                    return Err(());
+                }
+            },
+        }
+        Ok(())
     }
 
     /// Partially register a foreign binding letting it untyped.
     ///
-    /// ## Panics
+    /// # Panics
     ///
     /// Panics under `cfg(debug_assertions)` if the `binder` is already bound.
     pub fn register_pure_foreign_binding(
@@ -146,6 +145,7 @@ impl CrateScope {
     }
 
     // @Task
+    #[allow(clippy::unused_self, clippy::missing_panics_doc)]
     pub fn register_impure_foreign_binding<V: Into<ffi::Value>>(&mut self) {
         todo!("register impure foreign binding")
     }
@@ -261,40 +261,39 @@ fn undefined_inherent_type(name: &'static str, expression_span: Option<Span>) ->
         })
 }
 
-// @Question too big?
 #[derive(Clone)]
-pub enum Registration {
-    ValueBinding {
+pub enum BindingRegistration {
+    Value {
         binder: Identifier,
         type_: Expression,
         value: Option<Expression>,
     },
-    DataBinding {
+    Data {
         binder: Identifier,
         type_: Expression,
     },
-    ConstructorBinding {
+    Constructor {
         binder: Identifier,
         type_: Expression,
         data: Identifier,
     },
-    ForeignValueBinding {
+    ForeignValue {
         binder: Identifier,
         type_: Expression,
     },
-    ForeignDataBinding {
+    ForeignData {
         binder: Identifier,
     },
 }
 
-impl DisplayWith for Registration {
+impl DisplayWith for BindingRegistration {
     type Context<'a> = (&'a CrateScope, &'a BuildSession);
 
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use Registration::*;
+        use BindingRegistration::*;
 
         match self {
-            ValueBinding {
+            Value {
                 binder,
                 type_,
                 value,
@@ -309,12 +308,12 @@ impl DisplayWith for Registration {
                 }
                 .finish()
             }
-            DataBinding { binder, type_ } => f
+            Data { binder, type_ } => f
                 .debug_struct("DataBinding")
                 .field("binder", binder)
                 .field("type", &type_.with(context).as_debug())
                 .finish(),
-            ConstructorBinding {
+            Constructor {
                 binder,
                 type_,
                 data,
@@ -324,12 +323,12 @@ impl DisplayWith for Registration {
                 .field("type", &type_.with(context).as_debug())
                 .field("data", data)
                 .finish(),
-            ForeignValueBinding { binder, type_ } => f
+            ForeignValue { binder, type_ } => f
                 .debug_struct("ForeignValueBinding")
                 .field("binder", binder)
                 .field("type", &type_.with(context).as_debug())
                 .finish(),
-            ForeignDataBinding { binder } => f
+            ForeignData { binder } => f
                 .debug_struct("ForeignDataBinding")
                 .field("binder", binder)
                 .finish(),

@@ -223,13 +223,17 @@ impl AttributeTarget for ast::Declaration {
         };
 
         match (body, attributes.has(AttributeKeys::FOREIGN)) {
-            (None, false) => Err(Diagnostic::error()
-                .code(Code::E012)
-                .message(format!("declaration `{}` has no definition", binder))
-                .primary_span(self)
-                .help(format!("provide a definition with `{definition_marker}`"))
-                .report(reporter)),
-            (Some(body), true) => Err(Diagnostic::error()
+            (None, false) => {
+                Diagnostic::error()
+                    .code(Code::E012)
+                    .message(format!("declaration `{}` has no definition", binder))
+                    .primary_span(self)
+                    .help(format!("provide a definition with `{definition_marker}`"))
+                    .report(reporter);
+                Err(())
+            }
+            (Some(body), true) => {
+                Diagnostic::error()
                 .code(Code::E020)
                 .message(format!(
                     "`{}` is defined multiple times in this scope",
@@ -241,7 +245,9 @@ impl AttributeTarget for ast::Declaration {
                     "conflicting definition",
                 )
                 .note(format!("declaration is marked `foreign` but it also has a body introduced by `{definition_marker}`"))
-                .report(reporter)),
+                .report(reporter);
+                Err(())
+            }
             _ => Ok(()),
         }
     }
@@ -465,7 +471,7 @@ impl Attribute {
 pub enum AttributeKind {
     /// Allow a [lint](Lint).
     ///
-    /// ## Form
+    /// # Form
     ///
     /// ```text
     /// allow <0:lint:Path>
@@ -473,7 +479,7 @@ pub enum AttributeKind {
     Allow { lint: Lint },
     /// Deny a [lint](Lint).
     ///
-    /// ## Form
+    /// # Form
     ///
     /// ```text
     /// deny <0:lint:Path>
@@ -487,7 +493,7 @@ pub enum AttributeKind {
     /// Lastly, a description on how one can replace the deprecated binding. Ideally, this
     /// should not be a text literal but something structured which IDEs etc. can read.
     ///
-    /// ## Form
+    /// # Form
     ///
     /// ```text
     /// deprecated <0:reason:Text-Literal> [<since:Version>] [<replacement:Text-Literal>]
@@ -503,7 +509,7 @@ pub enum AttributeKind {
     /// The format of text is not decided yet. I'd like to have something better than
     /// markdown. There are plenty of options.
     ///
-    /// ## Form
+    /// # Form
     ///
     /// ```text
     /// documentation <0:content:Text-Literal>
@@ -512,7 +518,7 @@ pub enum AttributeKind {
     Documentation { content: String },
     /// Forbid a [lint](Lint).
     ///
-    /// ## Form
+    /// # Form
     ///
     /// ```text
     /// forbid <0:lint:Path>
@@ -524,7 +530,7 @@ pub enum AttributeKind {
     ///
     /// Aka conditional compilation.
     ///
-    /// ## Form
+    /// # Form
     ///
     /// ```text
     /// if <0:condition:Condition>
@@ -551,7 +557,7 @@ pub enum AttributeKind {
     List,
     /// Change the path where the external module resides.
     ///
-    /// ## Form
+    /// # Form
     ///
     /// ```text
     /// location <0:path:Text-Literal>
@@ -571,7 +577,7 @@ pub enum AttributeKind {
     ///
     /// If no `reach` is given, the binding is exposed to other crates.
     ///
-    /// ## Form
+    /// # Form
     ///
     /// ```text
     /// public [<0:reach:Path>]
@@ -579,7 +585,7 @@ pub enum AttributeKind {
     Public { reach: Option<ast::Path> },
     /// Define the recursion limit of the TWI.
     ///
-    /// ## Form
+    /// # Form
     ///
     /// ```text
     /// recursion-limit <0:depth:Number-Literal>
@@ -598,7 +604,7 @@ pub enum AttributeKind {
     Unsafe,
     /// Mark a binding as an unstable part of the public API.
     ///
-    /// ## Form
+    /// # Form
     ///
     /// ```text
     /// unstable <feature:Path> <reason:Text-Literal>
@@ -608,7 +614,7 @@ pub enum AttributeKind {
     Vector,
     /// Warn on a [lint](Lint).
     ///
-    /// ## Form
+    /// # Form
     ///
     /// ```text
     /// warn <0:lint:Path>

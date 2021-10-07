@@ -145,7 +145,7 @@ impl<'a> Compiler<'a> {
                     // } else {
                     //     panic!();
                     // }
-                    panic!()
+                    panic!();
                 } else {
                     self.chunks[index].instructions = self.compile_expression(
                         value.expression.as_ref().unwrap(),
@@ -188,7 +188,6 @@ impl<'a> Compiler<'a> {
         let mut instructions = Vec::new();
 
         match &expression.data {
-            PiType(_pi) => todo!(),
             Application(application) => {
                 let mut argument =
                     self.compile_expression(&application.argument, LambdaParent::Lambda)?;
@@ -198,7 +197,6 @@ impl<'a> Compiler<'a> {
                 instructions.append(&mut callee);
                 instructions.push(Instruction::Apply);
             }
-            Type => todo!(),
             Number(number) => {
                 let constant = self.constants.len();
                 self.constants.push(Value::Number(number.as_ref().clone()));
@@ -242,13 +240,7 @@ impl<'a> Compiler<'a> {
                     instructions.append(&mut body);
                 }
             }
-            UseIn => todo!(),
-            CaseAnalysis(_analysis) => todo!(),
-            Error => todo!(),
-            Substitution(_substitution) => todo!(),
-            ForeignApplication(_application) => todo!(),
-            Projection(_projection) => todo!(),
-            IO(_io) => todo!(),
+            _ => todo!(),
         };
 
         Ok(instructions)
@@ -292,7 +284,7 @@ pub fn compile_and_interpret_declaration(
     scope: &CrateScope,
 ) -> Result<(), Error> {
     let mut compiler = Compiler::new(scope);
-    compiler.compile_declaration(&declaration)?;
+    compiler.compile_declaration(declaration)?;
     // dbg!(&compiler.chunks);
     eprintln!("{}", compiler.print_chunks());
 
@@ -351,10 +343,10 @@ impl<'a> ByteCodeInterpreter<'a> {
 
             match instruction {
                 Instruction::Closure { chunk, captures } => {
-                    self.stack.push(Value::Closure { chunk, captures })
+                    self.stack.push(Value::Closure { chunk, captures });
                 }
                 Instruction::Constant(constant) => {
-                    self.stack.push(self.c.constants[constant].clone())
+                    self.stack.push(self.c.constants[constant].clone());
                 }
                 Instruction::Argument => {
                     self.stack.push(self.stack.get(frame.base).unwrap().clone());

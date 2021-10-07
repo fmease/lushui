@@ -1,8 +1,8 @@
 //! The tree-walk interpreter necessary for type-checking.
 //!
-//! For reference, here is the bytecode interpreter: [crate::compiler::interpreter].
+//! For reference, here is the bytecode interpreter: [`crate::compiler::interpreter`].
 //!
-//! ## Issues
+//! # Issues
 //!
 //! * too many bugs
 //! * full case analysis not implemented
@@ -75,6 +75,7 @@ impl<'a> Interpreter<'a> {
         use self::Substitution::*;
         use hir::ExpressionKind::*;
 
+        #[allow(clippy::match_same_arms)] // @Temporary
         match (&expression.data, substitution) {
             (Binding(binding), Shift(amount)) => {
                 expr! {
@@ -115,8 +116,7 @@ impl<'a> Interpreter<'a> {
             (Type | Number(_) | Text(_), _) => expression,
             // @Task verify
             (Projection(_), _) => expression,
-            // @Temporary @Note once we support next: Expression in IO, we prob. need to substitute
-            // the former
+            // @Temporary
             (IO(_), _) => expression,
             (Application(application), substitution) => {
                 expr! {
@@ -497,12 +497,10 @@ impl<'a> Interpreter<'a> {
                 // @Note @Beacon think about having a variable `matches: bool` (whatever) to avoid repetition
                 match subject.data {
                     Binding(subject) => {
-                        for case in analysis.cases.iter() {
+                        for case in &analysis.cases {
                             use hir::PatternKind::*;
 
                             match &case.pattern.data {
-                                Number(_) => todo!(),
-                                Text(_) => todo!(),
                                 Binding(binding) => {
                                     if binding.binder == subject.binder {
                                         // @Task @Beacon extend with parameters when evaluating
@@ -510,8 +508,7 @@ impl<'a> Interpreter<'a> {
                                             .evaluate_expression(case.body.clone(), context);
                                     }
                                 }
-                                Binder(_) => todo!(),
-                                Deapplication(_) => todo!(),
+                                Number(_) | Text(_) | Binder(_) | Deapplication(_) => todo!(),
                                 Error => unreachable!(),
                             }
                         }
@@ -524,7 +521,7 @@ impl<'a> Interpreter<'a> {
                     // @Beacon @Beacon @Task
                     Application(_application) => todo!(),
                     Number(literal0) => {
-                        for case in analysis.cases.iter() {
+                        for case in &analysis.cases {
                             use hir::PatternKind::*;
 
                             match &case.pattern.data {
@@ -534,8 +531,6 @@ impl<'a> Interpreter<'a> {
                                             .evaluate_expression(case.body.clone(), context);
                                     }
                                 }
-                                Text(_) => todo!(),
-                                Binding(_) => todo!(),
                                 Binder(_) => {
                                     // @Beacon @Beacon @Question whyy do we need type information here in *evaluate*???
                                     let scope = context
@@ -546,7 +541,7 @@ impl<'a> Interpreter<'a> {
                                         context.with_scope(&scope),
                                     );
                                 }
-                                Deapplication(_) => todo!(),
+                                Text(_) | Binding(_) | Deapplication(_) => todo!(),
                                 Error => unreachable!(),
                             }
                         }
@@ -584,7 +579,7 @@ impl<'a> Interpreter<'a> {
 
     /// Try applying foreign binding.
     ///
-    /// ## Panics
+    /// # Panics
     ///
     /// Panics if `binder` is either not bound or not foreign.
     // @Task correctly handle
@@ -627,6 +622,7 @@ impl<'a> Interpreter<'a> {
     }
 
     // @Question move into its own module?
+    #[allow(clippy::unused_self)]
     fn _is_ffi_compatible(&mut self, _expression: Expression) -> bool {
         todo!() // @Task
     }
@@ -841,7 +837,7 @@ pub struct Context<'a> {
 
 impl<'a> Context<'a> {
     /// Temporarily, for convenience and until we fix some bugs, the form
-    /// is [Form::Normal] by default.
+    /// is [`Form::Normal`] by default.
     pub fn new(scope: &'a FunctionScope<'_>) -> Self {
         // @Temporary: Normal
         Self {

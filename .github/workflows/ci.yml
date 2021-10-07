@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    # branches: [ master ]
+  pull_request:
+    # branches: [ master ]
+  schedule:
+    [cron: "0 0 1 * *"]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+  RUSTDOCFLAGS: -D warnings
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        override: true
+    - uses: Swatinem/rust-cache@v1
+    - name: Build in release mode
+      run: cargo build --release
+  
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        override: true
+    - uses: Swatinem/rust-cache@v1
+    - name: Build in release mode
+      run: cargo build --release
+
+  test-linux:
+    needs: build-linux
+  
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        override: true
+    - uses: Swatinem/rust-cache@v1
+    - name: Run unit tests (via the rust testing framework)
+      run: cargo test
+    - name: Run UI tests (via the golden UI testing framework)
+      run: ./tests/ui/run
+  
+  test-windows:
+    needs: build-windows
+  
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        override: true
+    - uses: Swatinem/rust-cache@v1
+    - name: Run unit tests (via the rust testing framework)
+      run: cargo test
+    - name: Run UI tests (via the golden UI testing framework)
+      run: ./tests/ui/run
+
+  build-documentation:
+    needs: build-linux
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+      - uses: Swatinem/rust-cache@v1
+      - name: Build and check documentation
+        run: cargo doc --no-deps
+  
+  clippy:
+    needs: build-linux
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        override: true
+        components: clippy
+    - uses: Swatinem/rust-cache@v1
+    - name: Run clippy
+      run: cargo clippy
+
+  # @Task check cargo fmt

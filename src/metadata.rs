@@ -148,8 +148,7 @@ impl Map {
                     .code(Code::E802)
                     .message(format!(
                         "the {} is missing the key `{key}`",
-                        path.map(|path| format!("map `{path}`"))
-                            .unwrap_or_else(|| "root map".into())
+                        path.map_or_else(|| "root map".into(), |path| format!("map `{path}`"))
                     ))
                     .primary_span(map)
                     .report(reporter);
@@ -172,9 +171,7 @@ impl Map {
     // @Temporary signature
     pub fn check_exhaustion(self, path: Option<String>, reporter: &Reporter) -> Result {
         if !self.is_empty() {
-            let location = path
-                .map(|path| format!("map `{path}`"))
-                .unwrap_or_else(|| "root map".into());
+            let location = path.map_or_else(|| "root map".into(), |path| format!("map `{path}`"));
 
             for key in self.into_keys() {
                 // @Task improve message
@@ -207,7 +204,7 @@ pub fn convert<T: TryFrom<ValueKind, Error = TypeError>>(
                 key, error.expected, error.actual
             ))
             .labeled_primary_span(span, "has the wrong type")
-            .report(reporter)
+            .report(reporter);
     })?;
 
     Ok(Spanned::new(span, value))
@@ -232,12 +229,17 @@ pub fn parse(
 }
 
 mod lexer {
+    #![allow(clippy::blocks_in_if_conditions)]
+
     use crate::{
         diagnostics::Diagnostic,
         error::{Health, Outcome},
         format::quoted,
         span::{LocalByteIndex, LocalSpan, SourceFile, Spanned},
-        syntax::token,
+        syntax::lexer::{
+            is_identifier_segment_middle, is_identifier_segment_start, is_number_literal_middle,
+            NUMERIC_SEPARATOR,
+        },
         utility::{lexer::Lexer as _, obtain},
     };
     use discriminant::Discriminant;
@@ -298,8 +300,8 @@ mod lexer {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             let name = self.discriminant();
 
-            match self {
-                &Self::Illegal(character) => {
+            match *self {
+                Self::Illegal(character) => {
                     write!(f, "{} U+{:04X} `{}`", name, character as u32, character)
                 }
                 _ => write!(f, "{name}"),
@@ -363,9 +365,7 @@ mod lexer {
                     '#' => self.lex_comment(),
                     character if character.is_ascii_whitespace() => self.lex_whitespace(),
                     '"' => self.lex_text(),
-                    character if token::is_identifier_segment_start(character) => {
-                        self.lex_identifier()
-                    }
+                    character if is_identifier_segment_start(character) => self.lex_identifier(),
                     character if character.is_ascii_digit() => self.lex_number(),
                     '-' => todo!(),
                     '[' => {
@@ -449,7 +449,7 @@ mod lexer {
                     let content =
                         self.source_file[self.local_span.trim_start(1).trim_end(1)].to_owned();
 
-                    self.add(Text(Ok(content)))
+                    self.add(Text(Ok(content)));
                 }
                 false => {
                     self.health.taint();
@@ -485,10 +485,10 @@ mod lexer {
 
         fn lex_identifier_segment(&mut self) {
             if let Some(character) = self.peek() {
-                if token::is_identifier_segment_start(character) {
+                if is_identifier_segment_start(character) {
                     self.take();
                     self.advance();
-                    self.take_while(token::is_identifier_segment_middle);
+                    self.take_while(is_identifier_segment_middle);
                 }
             }
         }
@@ -501,23 +501,23 @@ mod lexer {
             let mut consecutive_separators = false;
 
             while let Some(character) = self.peek() {
-                if !token::is_number_literal_middle(character) {
+                if !is_number_literal_middle(character) {
                     break;
                 }
                 self.take();
                 self.advance();
 
-                if character != token::NUMERIC_SEPARATOR {
-                    number.push(character);
-                } else {
-                    if let Some(token::NUMERIC_SEPARATOR) = self.peek() {
+                if character == NUMERIC_SEPARATOR {
+                    if let Some(NUMERIC_SEPARATOR) = self.peek() {
                         consecutive_separators = true;
                     }
                     if self.peek().map_or(true, |character| {
-                        !character.is_ascii_digit() || character == token::NUMERIC_SEPARATOR
+                        !character.is_ascii_digit() || character == NUMERIC_SEPARATOR
                     }) {
                         trailing_separator = true;
                     }
+                } else {
+                    number.push(character);
                 }
             }
 
@@ -543,7 +543,7 @@ mod lexer {
 
     impl<'a> crate::utility::lexer::Lexer<'a, TokenKind> for Lexer<'a> {
         fn source_file(&self) -> &'a SourceFile {
-            &self.source_file
+            self.source_file
         }
 
         fn characters(&mut self) -> &mut Peekable<CharIndices<'a>> {
@@ -649,7 +649,7 @@ mod parser {
 
         /// Parse a metadata document.
         ///
-        /// ## Grammar
+        /// # Grammar
         ///
         /// ```ebnf
         /// Document ::= (Top-Level-Map-Entries | Value) #End-Of-Input
@@ -671,7 +671,7 @@ mod parser {
 
         /// Parse top-level map entries.
         ///
-        /// ## Grammar
+        /// # Grammar
         ///
         /// ```ebnf
         /// Top-Level-Map-Entries ::= (Map-Entry ",")* Map-Entry? (> #End-Of-Input)
@@ -687,7 +687,7 @@ mod parser {
 
         /// Parse a value.
         ///
-        /// ## Grammar
+        /// # Grammar
         ///
         /// ```ebnf
         /// Value ::=
@@ -740,6 +740,7 @@ mod parser {
                             use super::lexer::IntLexingError::*;
 
                             // @Beacon @Task
+                            #[allow(clippy::match_same_arms)]
                             let diagnostic = match error {
                                 ConsecutiveSeparators => Diagnostic::error().message("@Task"),
                                 TrailingSeparators => Diagnostic::error().message("@Task"),
@@ -775,7 +776,7 @@ mod parser {
         ///
         /// The opening square bracket should have already parsed beforehand.
         ///
-        /// ## Grammar
+        /// # Grammar
         ///
         /// ```ebnf
         /// Array ::= "[" (Value ",")* Value? "]"
@@ -802,7 +803,7 @@ mod parser {
         ///
         /// The opening curly bracket should have already parsed beforehand.
         ///
-        /// ## Grammar
+        /// # Grammar
         ///
         /// ```ebnf
         /// Map ::= "{" (Map-Entry ",")* Map-Entry? "}"
@@ -847,7 +848,7 @@ mod parser {
 
         /// Parse a map entry.
         ///
-        /// ## Grammar
+        /// # Grammar
         ///
         /// ```ebnf
         /// Map-Entry ::= Map-Key ":" Value
@@ -862,7 +863,7 @@ mod parser {
 
         /// Parse a map key.
         ///
-        /// ## Grammar
+        /// # Grammar
         ///
         /// ```ebnf
         /// Map-Key ::= #Identifier | #Text

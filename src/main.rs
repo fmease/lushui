@@ -1,5 +1,20 @@
 #![feature(backtrace, format_args_capture, derive_default_enum, decl_macro)]
 #![forbid(rust_2018_idioms, unused_must_use)]
+#![warn(clippy::pedantic)]
+#![allow(
+    clippy::result_unit_err, // using a reporter to forward information
+    clippy::items_after_statements,
+    clippy::enum_glob_use,
+    clippy::must_use_candidate,
+    clippy::missing_errors_doc,
+    clippy::too_many_lines,
+    clippy::module_name_repetitions,
+    clippy::match_bool,
+    clippy::empty_enum,
+    clippy::single_match_else,
+    clippy::needless_pass_by_value, // @Temporary
+    clippy::missing_panics_doc, // @Temporary
+)]
 
 use std::{convert::TryInto, time::Instant};
 
@@ -67,7 +82,7 @@ fn execute_command(
     reporter: &Reporter,
 ) -> Result {
     use cli::GenerationMode;
-    use Command::*;
+    use Command::{Build, Check, Explain, Generate, Run};
 
     match command {
         Check | Run | Build => check_run_or_build_package(command, options, map, reporter),
@@ -105,7 +120,7 @@ fn check_run_or_build_package(
                 // explicit `core` dep in the manifest to achieve the wanted behavior
                 Diagnostic::error()
                     .message("option `--no-core` only works with explicit source file paths")
-                    .report(&reporter);
+                    .report(reporter);
             }
 
             // @Task dont unwrap, handle the error cases
@@ -151,13 +166,13 @@ fn check_run_or_build_package(
                 // @Task code
                 Diagnostic::error()
                     .message(error.with(&crate_.path).to_string())
-                    .report(reporter)
+                    .report(reporter);
             })?;
 
         let time = Instant::now();
 
         let outcome!(tokens, token_health) =
-            Lexer::new(&map.borrow()[source_file], &reporter).lex()?;
+            Lexer::new(&map.borrow()[source_file], reporter).lex()?;
 
         let duration = time.elapsed();
 
@@ -183,7 +198,7 @@ fn check_run_or_build_package(
 
         let time = Instant::now();
 
-        let declaration = Parser::new(source_file, &tokens, map.clone(), &reporter).parse(
+        let declaration = Parser::new(source_file, &tokens, map.clone(), reporter).parse(
             // @Beacon @Note yikes!! we just unwrapped that from a string!
             Identifier::new(built_crates[crate_.package].name.clone().into(), Span::SHAM),
         )?;
@@ -208,7 +223,7 @@ fn check_run_or_build_package(
         let time = Instant::now();
 
         let outcome!(mut declarations, health_of_lowerer) =
-            Lowerer::new(map.clone(), &reporter).lower_declaration(declaration);
+            Lowerer::new(map.clone(), reporter).lower_declaration(declaration);
 
         let duration = time.elapsed();
 
@@ -233,7 +248,7 @@ fn check_run_or_build_package(
 
         let time = Instant::now();
 
-        let mut resolver = Resolver::new(&mut crate_, &built_crates, &reporter);
+        let mut resolver = Resolver::new(&mut crate_, &built_crates, reporter);
         let declaration = resolver.resolve_declaration(declaration)?;
 
         let duration = time.elapsed();
@@ -259,7 +274,7 @@ fn check_run_or_build_package(
 
         let time = Instant::now();
 
-        let mut typer = Typer::new(&mut crate_, &built_crates, &reporter);
+        let mut typer = Typer::new(&mut crate_, &built_crates, reporter);
         typer.infer_types_in_declaration(&declaration)?;
 
         let duration = time.elapsed();
@@ -300,6 +315,7 @@ fn check_run_or_build_package(
 }
 
 // @Task initialize git repository (unless `--vsc=none` or similar)
+#[allow(clippy::unnecessary_wraps)] // @Temporary
 fn create_new_package(
     name: String,
     generation_options: cli::GenerationOptions,
@@ -359,7 +375,7 @@ fn set_panic_hook() {
             .downcast_ref::<&str>()
             .copied()
             .or_else(|| payload.downcast_ref::<String>().map(|payload| &payload[..]))
-            .unwrap_or_else(|| "unknown cause")
+            .unwrap_or("unknown cause")
             .to_owned();
 
         let backtrace = std::backtrace::Backtrace::force_capture();
@@ -369,12 +385,10 @@ fn set_panic_hook() {
             .if_present(information.location(), |this, location| {
                 this.note(format!("at `{location}`"))
             })
-            .note(
-                std::thread::current()
-                    .name()
-                    .map(|name| format!("in thread `{name}`").into())
-                    .unwrap_or(Str::from("in an unnamed thread")),
-            )
+            .note(std::thread::current().name().map_or_else(
+                || Str::from("in an unnamed thread"),
+                |name| format!("in thread `{name}`").into(),
+            ))
             .note(format!("with the following backtrace:\n{backtrace}"))
             .report(&StderrReporter::new(None).into());
     }));
