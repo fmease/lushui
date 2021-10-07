@@ -2,18 +2,18 @@
 
 use super::{CrateScope, Expression};
 use crate::{
-    ast::Explicit,
     diagnostics::{Code, Diagnostic, Reporter},
     error::Result,
-    lowered_ast::{Attribute, Attributes},
+    hir::{expr, Constructor, ExpressionKind},
     package::BuildSession,
-    resolver::{
-        hir::{expr, Constructor, ExpressionKind},
-        Identifier,
-    },
+    resolver::Identifier,
     span::Span,
+    syntax::{
+        ast::Explicit,
+        lowered_ast::{Attribute, Attributes},
+    },
     typer::Declaration,
-    util::{HashMap, Int, Nat},
+    utility::{HashMap, Int, Nat},
 };
 
 // @Note ugly data structures in use
@@ -270,7 +270,7 @@ impl Value {
         Some(match &expression.data {
             Text(text) => Self::Text(text.as_ref().clone()),
             Number(number) => {
-                use crate::lowered_ast::Number::*;
+                use crate::syntax::lowered_ast::Number::*;
 
                 match &**number {
                     Nat(nat) => Self::Nat(nat.clone()),
@@ -318,7 +318,7 @@ impl Value {
             Diagnostic::error().code(Code::E063)
         }
 
-        use crate::lowered_ast::Number::*;
+        use crate::syntax::lowered_ast::Number::*;
 
         Ok(match self {
             Self::Unit => values

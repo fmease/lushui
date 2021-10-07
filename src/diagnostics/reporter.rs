@@ -9,7 +9,7 @@ use super::{Diagnostic, Severity};
 use crate::{
     format::{ordered_listing, pluralize, Conjunction},
     span::SharedSourceMap,
-    util::obtain,
+    utility::obtain,
 };
 use std::{cell::RefCell, collections::BTreeSet, convert::TryFrom, default::default};
 

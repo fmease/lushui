@@ -21,7 +21,7 @@
 
 use crate::{
     span::{SourceMap, Span, Spanning},
-    util::Str,
+    utility::Str,
 };
 use colored::{Color, Colorize};
 pub use reporter::Reporter;
@@ -564,10 +564,7 @@ impl Role {
     }
 }
 
-/// Diagnostic code.
-///
-/// Used for language-related error in contrast to errors emitted because of
-/// faulty interactions with the CLI.
+/// A numeric code identifying a diagnostic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[forbid(missing_docs)]
 pub enum Code {
@@ -643,6 +640,8 @@ pub enum Code {
     E034,
     /// Type analysis.
     E035,
+    /// Invalid crate name.
+    E036,
     /// Missing program entry.
     E050,
     /// Unregistered foreign binding.

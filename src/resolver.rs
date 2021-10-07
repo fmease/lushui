@@ -3,28 +3,26 @@
 //! It traverses the [lowered AST](lowered_ast) and registers bindings
 //! defined both at module-level using declarations and at function
 //! and pattern level as parameters. Furthermore, it resolves all paths inside
-//! expressions and patterns to [resolved identifiers](Identifier) which
-//! links to a [crate-local index](CrateIndex) or a [de Bruijn index](DeBruijnIndex)
+//! expressions and patterns to [(resolved) identifiers](Identifier) which
+//! contain a [declaration index](DeclarationIndex) or a [de Bruijn index](DeBruijnIndex)
 //! respectively.
-//!
-//! It does two main passes and a (hopefully) small one for use-declarations to support
-//! out of order declarations.
 
-pub mod hir;
 mod scope;
 
 use crate::{
-    ast,
     diagnostics::{Code, Diagnostic, Reporter},
     entity::{Entity, EntityKind},
     error::{Health, PossiblyErroneous, ReportedExt, Result},
     format::{pluralize, unordered_listing, Conjunction, DisplayWith, QuoteExt},
-    lowered_ast::{self, AttributeKeys, AttributeKind},
+    hir::{self, decl, expr, pat},
     package::BuildSession,
     span::Spanning,
-    util::{obtain, unrc, HashMap, HashSet},
+    syntax::{
+        ast,
+        lowered_ast::{self, AttributeKeys, AttributeKind},
+    },
+    utility::{obtain, unrc, HashMap, HashSet},
 };
-use hir::{decl, expr, pat};
 pub use scope::{
     CrateScope, DeBruijnIndex, DeclarationIndex, Exposure, FunctionScope, Identifier, Index,
     LocalDeclarationIndex, Namespace,
@@ -56,7 +54,10 @@ impl<'a> Resolver<'a> {
 
     /// Resolve the names of a declaration.
     ///
-    /// It performs three passes to resolve all possible out of order declarations.
+    /// It performs four passes to resolve all possible out of order declarations.
+    ///
+    /// ## Panics
+    ///
     /// If the declaration passed is not a module, this function will panic as it
     /// requires a crate root which is defined through the root module.
     pub fn resolve_declaration(
@@ -92,7 +93,7 @@ impl<'a> Resolver<'a> {
     /// In contrast to [Self::finish_resolve_declaration], this does not actually return a
     /// new intermediate HIR because of too much mapping and type-system boilerplate
     /// and it's just not worth it memory-wise.
-    /// For more on this, see [CrateScope::reobtain_resolved_identifier].
+    /// For more on this, see [Self::reobtain_resolved_identifier].
     fn start_resolve_declaration(
         &mut self,
         declaration: &lowered_ast::Declaration,
@@ -919,14 +920,14 @@ impl<'a> Resolver<'a> {
 
     /// Reobtain the resolved identifier.
     ///
-    /// Used in [super::Resolver::finish_resolve_declaration], the last pass of the
+    /// Used in [Self::finish_resolve_declaration], the last pass of the
     /// name resolver, to re-gain some information (the [Identifier]s) collected during the first pass.
     ///
-    /// This way, [super::Resolver::start_resolve_declaration] does not need to return
+    /// This way, [Self::start_resolve_declaration] does not need to return
     /// a new intermediate representation being a representation between the
     /// lowered AST and the HIR where all the _binders_ of declarations are resolved
     /// (i.e. are [Identifier]s) but all _bindings_ (in type annotations, expressions, …)
-    /// are still unresolved (i.e. are [crate::ast::Identifier]s).
+    /// are still unresolved (i.e. are [crate::syntax::ast::Identifier]s).
     ///
     /// Such an IR would imply writing a lot of boilerplate if we were to duplicate
     /// definitions & mappings or – if even possible – creating a totally complicated
@@ -1562,7 +1563,6 @@ impl ResolutionTarget for OnlyModule {
 }
 
 /// A possibly recoverable error that cab emerge during resolution.
-#[derive(Debug)] // @Temporary
 enum ResolutionError {
     Unrecoverable,
     UnresolvedBinding {

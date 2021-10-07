@@ -1,0 +1,18 @@
+error[E022]: value `Decayed-Alpha` is not a namespace
+  --> ${DIRECTORY}/name-resolution/decayed-namespace.lushui:12:12
+   |
+12 | y: Alpha = Decayed-Alpha.alpha
+   |            ^^^^^^^^^^^^^ not a namespace, just a value
+   |
+  --> ${DIRECTORY}/name-resolution/decayed-namespace.lushui:12:26
+   |
+12 | y: Alpha = Decayed-Alpha.alpha
+   |                          ----- requires the preceeding path segment to refer to a namespace
+   |
+  note: identifiers following a `.` refer to bindings defined in a namespace (i.e. a module or a data type)
+  help: use `::` to reference a field of a record
+
+error: aborting due to previous error
+ note: the error E022 has a detailed explanation
+ help: run `lushui explain E022` to view it
+

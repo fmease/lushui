@@ -13,9 +13,9 @@ use std::{
 
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
-    error::{outcome, Result},
+    error::Result,
     span::{SharedSourceMap, SourceFileIndex, Span, Spanned},
-    util::{obtain, spanned_key_map::SpannedKeyMap},
+    utility::{obtain, spanned_key_map::SpannedKeyMap},
 };
 use discriminant::Discriminant;
 
@@ -225,10 +225,9 @@ pub fn parse(
 ) -> Result<Value> {
     let source_file = &map.borrow()[source_file_index];
     let lexer = lexer::Lexer::new(source_file);
-    let outcome!(tokens, health_of_lexer) = lexer.lex();
+    let tokens = lexer.lex().value;
     let mut parser = parser::Parser::new(source_file_index, &tokens, map.clone(), reporter);
     let value = parser.parse()?;
-    assert!(health_of_lexer.is_untainted()); // the parser succeeded
     Ok(value)
 }
 
@@ -237,9 +236,9 @@ mod lexer {
         diagnostics::Diagnostic,
         error::{Health, Outcome},
         format::quoted,
-        lexer::token,
         span::{LocalByteIndex, LocalSpan, SourceFile, Spanned},
-        util::{lexer::Lexer as _, obtain},
+        syntax::token,
+        utility::{lexer::Lexer as _, obtain},
     };
     use discriminant::Discriminant;
     use std::{fmt, iter::Peekable, str::CharIndices};
@@ -351,10 +350,13 @@ mod lexer {
             }
         }
 
+        /// Lex source code into an array of tokens.
+        ///
+        /// The health of the tokens can be ignored if the tokens are fed into the parser
+        /// immediately after lexing since the parser will handle invalid tokens.
         // @Task lex -infinity, +infinity, +nan, -nan as well
         pub(super) fn lex(mut self) -> Outcome<Vec<Token>> {
-            while let Some(character) = self.peek() {
-                let index = self.index().unwrap();
+            while let Some((index, character)) = self.peek_with_index() {
                 self.local_span = LocalSpan::from(index);
 
                 match character {
@@ -539,7 +541,7 @@ mod lexer {
         }
     }
 
-    impl<'a> crate::util::lexer::Lexer<'a, TokenKind> for Lexer<'a> {
+    impl<'a> crate::utility::lexer::Lexer<'a, TokenKind> for Lexer<'a> {
         fn source_file(&self) -> &'a SourceFile {
             &self.source_file
         }

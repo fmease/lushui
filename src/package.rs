@@ -1,12 +1,14 @@
+//! The package and crate resolver and future package manager.
+
 use crate::{
-    diagnostics::{Diagnostic, Reporter},
+    diagnostics::{Code, Diagnostic, Reporter},
     entity::Entity,
     error::Result,
     format::DisplayWith,
-    lexer::parse_crate_name,
     resolver::{CrateScope, DeclarationIndex, Identifier},
     span::SharedSourceMap,
-    util::HashMap,
+    syntax::parse_identifier,
+    utility::HashMap,
     FILE_EXTENSION,
 };
 use index_map::IndexMap;
@@ -91,7 +93,6 @@ impl IndexMut<PackageIndex> for BuildSession {
     }
 }
 
-// @Temporary
 #[derive(PartialEq, Eq, Clone, Copy, index_map::Index)]
 pub struct PackageIndex(usize);
 
@@ -192,10 +193,10 @@ impl BuildQueue<'_> {
             let alleged_dependency_endonym = unresolved_dependency
                 .name
                 .as_ref()
-                .map(|name| &name.data)
+                .map(|name| name.as_str())
                 .unwrap_or(dependency_exonym);
 
-            if alleged_dependency_endonym != &dependency_manifest.details.name.data {
+            if alleged_dependency_endonym != dependency_manifest.details.name.as_str() {
                 // @Task @Beacon @Beacon @Beacon improve error message
                 // @Beacon @Beacon @Task span information
                 // @Task use primary span (endonym here (key `name` or map key)) &
@@ -412,9 +413,10 @@ impl BuildQueue<'_> {
     pub fn process_single_file_package(
         &mut self,
         source_file_path: PathBuf,
-        unlink_core: bool,
+        no_core: bool,
     ) -> Result {
-        let crate_name = parse_crate_name(source_file_path.clone(), self.reporter)?;
+        // @Beacon @Task inline
+        let crate_name = parse_crate_name_from_file_path(source_file_path.clone(), self.reporter)?;
 
         // @Task dont unwrap, handle error case
         // joining with "." since it might return "" which would fail to canonicalize
@@ -431,7 +433,7 @@ impl BuildQueue<'_> {
 
         let mut resolved_dependencies = HashMap::default();
 
-        if !unlink_core {
+        if !no_core {
             let core_path = distributed_libraries_path().join(CORE_PACKAGE_NAME);
 
             let core_manifest_path = core_path.join(PackageManifest::FILE_NAME);
@@ -605,7 +607,7 @@ pub struct Package {
 impl Package {
     pub fn from_manifest_details(manifest: PackageManifestDetails, path: PathBuf) -> Self {
         Package {
-            name: manifest.name.data,
+            name: manifest.name.as_str().to_owned(),
             path,
             version: manifest.version.map(|version| version.data),
             description: manifest
@@ -649,13 +651,45 @@ pub fn find_package(path: &Path) -> Option<&Path> {
     }
 }
 
+pub fn parse_crate_name_from_file_path(
+    file: impl AsRef<std::path::Path>,
+    reporter: &Reporter,
+) -> Result<crate::syntax::ast::Identifier> {
+    let file = file.as_ref();
+
+    if !crate::utility::has_file_extension(file, crate::FILE_EXTENSION) {
+        Diagnostic::warning()
+            .message("missing or non-standard file extension")
+            .report(reporter);
+    }
+
+    // @Question does unwrap ever fail in a real-world example?
+    let stem = file.file_stem().unwrap();
+
+    let atom = (|| parse_identifier(stem.to_str()?.to_owned()))().ok_or_else(|| {
+        invalid_crate_name(&stem.to_string_lossy()).report(reporter);
+    })?;
+
+    Ok(crate::syntax::ast::Identifier::new(
+        atom,
+        crate::span::Span::SHAM,
+    ))
+}
+
+fn invalid_crate_name(name: &str) -> Diagnostic {
+    Diagnostic::error()
+        .code(Code::E036)
+        .message(format!("the crate name `{name}` is not a valid identifier"))
+}
+
 pub mod manifest {
     use crate::{
         diagnostics::{Code, Diagnostic, Reporter},
         error::{Health, Result},
         metadata::{self, convert, Map, TypeError},
         span::{SharedSourceMap, SourceFileIndex, Spanned},
-        util::{spanned_key_map::SpannedKeyMap, try_all},
+        syntax::{ast::Identifier, parse_identifier},
+        utility::{spanned_key_map::SpannedKeyMap, try_all},
     };
     use std::{convert::TryInto, path::PathBuf};
 
@@ -686,7 +720,18 @@ pub mod manifest {
                     .report(reporter)
             })?;
 
-            let name = manifest.remove("name", None, manifest_span, reporter);
+            let name = manifest
+                .remove::<String>("name", None, manifest_span, reporter)
+                // @Task improve code
+                .and_then(|name| {
+                    parse_identifier(name.data.clone())
+                        .map(|identifier| Identifier::new(identifier, name.span))
+                        .ok_or_else(|| {
+                            super::invalid_crate_name(&name.data)
+                                .primary_span(name) // @Beacon @Beacon @Beacon @Task trim quotes
+                                .report(reporter)
+                        })
+                });
             let version = manifest.remove_optional("version", reporter);
             let description = manifest.remove_optional("description", reporter);
             let is_private = manifest.remove_optional("private", reporter);
@@ -745,7 +790,22 @@ pub mod manifest {
                         let version = dependency_manifest
                             .data
                             .remove_optional::<String>("version", reporter);
-                        let name = dependency_manifest.data.remove_optional("name", reporter);
+                        let name: Result<Option<_>> = dependency_manifest
+                            .data
+                            .remove_optional::<String>("name", reporter)
+                            // @Task improve and deduplicate code
+                            .and_then(|name: Option<_>| {
+                                name.map(|name: Spanned<_>| {
+                                    parse_identifier(name.data.clone())
+                                        .map(|identifier| Identifier::new(identifier, name.span))
+                                        .ok_or_else(|| {
+                                            super::invalid_crate_name(&name.data)
+                                                .primary_span(name) // @Beacon @Beacon @Beacon @Task trim quotes
+                                                .report(reporter)
+                                        })
+                                })
+                                .transpose()
+                            });
                         let path = dependency_manifest
                             .data
                             .remove_optional::<String>("path", reporter);
@@ -806,12 +866,8 @@ pub mod manifest {
         }
     }
 
-    // @Beacon @Task make this a newtype and enforce that it's a valid
-    // alphanumeric identifier
-    pub type CrateName = String;
-
     pub struct PackageManifestDetails {
-        pub name: Spanned<CrateName>,
+        pub name: Identifier,
         pub version: Option<Spanned<Version>>,
         pub description: Option<Spanned<String>>,
         pub is_private: Option<Spanned<bool>>,
@@ -821,18 +877,19 @@ pub mod manifest {
         pub library: Option<Spanned<LibraryManifest>>,
         // @Task Vec<_>
         pub binary: Option<Spanned<BinaryManifest>>,
-        pub dependencies: Option<Spanned<SpannedKeyMap<CrateName, Spanned<DependencyManifest>>>>,
+        // @Beacon @Beacon @Beacon @Task smh replace String with Identifier
+        pub dependencies: Option<Spanned<SpannedKeyMap<String, Spanned<DependencyManifest>>>>,
     }
 
     #[derive(Default)]
     pub struct LibraryManifest {
-        // @Task pub name: Option<Spanned<CrateName>>,
+        // @Task pub name: Option<Identifier>,
         pub path: Option<Spanned<PathBuf>>,
     }
 
     #[derive(Default)]
     pub struct BinaryManifest {
-        // @Task pub name: Option<Spanned<CrateName>>,
+        // @Task pub name: Option<Identifier>,
         pub path: Option<Spanned<PathBuf>>,
     }
 
@@ -840,7 +897,7 @@ pub mod manifest {
     #[derive(Clone)]
     pub struct DependencyManifest {
         pub version: Option<Spanned<VersionRequirement>>,
-        pub name: Option<Spanned<CrateName>>,
+        pub name: Option<Identifier>,
         pub path: Option<Spanned<PathBuf>>,
         // pub url: Option<String>,
         // pub branch: Option<String>,

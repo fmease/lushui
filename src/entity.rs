@@ -11,7 +11,7 @@ use crate::{
         CrateScope, DeclarationIndex, Exposure, Identifier, LocalDeclarationIndex, Namespace,
     },
     typer::interpreter::{ffi::NakedForeignFunction, scope::ValueView},
-    util::obtain,
+    utility::obtain,
 };
 use std::{default::default, fmt};
 use EntityKind::*;
@@ -31,7 +31,7 @@ use EntityKind::*;
 #[derive(Clone)]
 pub struct Entity {
     /// Source information of the definition site.
-    pub source: crate::ast::Identifier,
+    pub source: crate::syntax::ast::Identifier,
     /// The namespace this entity is a member of.
     pub parent: Option<LocalDeclarationIndex>,
     pub exposure: Exposure,
@@ -185,7 +185,7 @@ pub enum EntityKind {
         namespace: Namespace,
     },
     /// The `reference is never a `Use` itself.
-    /// Nested aliases were already collapsed by [CrateScope::collapse_use_chain].
+    /// Nested aliases were already collapsed by [crate::resolver::Resolver::collapse_use_chain].
     Use {
         reference: DeclarationIndex,
     },

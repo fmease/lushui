@@ -36,15 +36,13 @@ impl<T: DisplayWith> fmt::Debug for WithContext<'_, T> {
     }
 }
 
-pub fn ordered_listing<I>(items: I, conjunction: Conjunction) -> String
+pub fn ordered_listing<I>(mut items: I, conjunction: Conjunction) -> String
 where
     I: DoubleEndedIterator<Item: fmt::Display + Clone> + Clone,
 {
     use std::iter::once;
 
-    let mut items = items.rev();
-    let last = items.next().unwrap();
-    let mut items = items.rev();
+    let last = items.next_back().unwrap();
 
     match items.next() {
         Some(item) => {

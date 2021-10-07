@@ -1,4 +1,4 @@
-//! The syntactic analyzer (parser).
+//! The parser (syntactic analyzer).
 //!
 //! I *think* it can be classified as a top-down recursive-descent parser with arbitrary look-ahead.
 //!
@@ -21,42 +21,25 @@
 //! | `#T`      | Named Terminal                      | Lexed token by name                                           |
 //! | `(> A)`   | Positive Look-Ahead                 |                                                               |
 
-pub mod ast;
 #[cfg(test)]
 mod test;
 
-use crate::{
-    diagnostics::{Code, Diagnostic, Reporter},
-    error::{outcome, Result},
-    format::{ordered_listing, Conjunction},
-    lexer::{
-        Token, TokenKind,
+use super::{
+    ast::{self, *},
+    token::{
+        Token,
         TokenName::{self, *},
     },
-    span::{SharedSourceMap, SourceFileIndex, Span, Spanned, Spanning},
-    utility::{obtain, Atom, SmallVec},
 };
-use ast::*;
+use crate::{
+    diagnostics::{Code, Diagnostic, Reporter},
+    error::Result,
+    format::{ordered_listing, Conjunction},
+    span::{SharedSourceMap, SourceFileIndex, Span, Spanned, Spanning},
+    utility::SmallVec,
+};
 use smallvec::smallvec;
 use std::{convert::TryInto, default::default};
-
-/// Utility to parse identifiers from a string.
-///
-/// Used for non-lushui code like crate names.
-pub fn parse_identifier(source: String) -> Option<Atom> {
-    let outcome!(mut tokens, health) = crate::lexer::lex(source).ok()?;
-
-    if health.is_tainted() {
-        return None;
-    }
-
-    let mut tokens = tokens.drain(..).map(|token| token.data);
-
-    obtain!(
-        (tokens.next()?, tokens.next()?),
-        (TokenKind::Identifier(atom), TokenKind::EndOfInput) => atom
-    )
-}
 
 const STANDARD_DECLARATION_DELIMITERS: [Delimiter; 3] = {
     use Delimiter::*;
@@ -92,6 +75,11 @@ impl<'a> Parser<'a> {
             map,
             reporter,
         }
+    }
+
+    /// Parse a file module given its name.
+    pub fn parse(&mut self, module_name: ast::Identifier) -> Result<Declaration> {
+        self.parse_top_level(module_name)
     }
 
     /// Parse in a sandboxed way.
@@ -628,23 +616,14 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Parse a file module.
-    ///
-    /// It takes the identifier of the module as an argument.
-    pub fn parse(&mut self, binder: ast::Identifier) -> Result<Declaration> {
-        self.parse_top_level(binder)
-    }
-
-    /// Parse the "top level" aka the body of a module file.
-    ///
-    /// It takes the identifier of the module as an argument.
+    /// Parse the "top level" aka the body of a module file given the module name.
     ///
     /// ## Grammar
     ///
     /// ```ebnf
     /// Top-Level ::= (#Line-Break | Declaration)* #End-Of-Input
     /// ```
-    fn parse_top_level(&mut self, binder: ast::Identifier) -> Result<Declaration> {
+    fn parse_top_level(&mut self, module_binder: ast::Identifier) -> Result<Declaration> {
         let mut declarations = Vec::new();
 
         loop {
@@ -657,7 +636,7 @@ impl<'a> Parser<'a> {
                     Module {
                         Attributes::new(),
                         self.map.borrow()[self.file].span;
-                        binder,
+                        binder: module_binder,
                         file: self.file,
                         declarations: Some(declarations)
                     }

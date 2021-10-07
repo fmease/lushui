@@ -3,18 +3,17 @@
 pub mod interpreter;
 
 use crate::{
-    ast::ParameterAspect,
     diagnostics::{Code, Diagnostic, Reporter},
     error::{Health, Result},
     format::{pluralize, DisplayWith, QuoteExt},
-    lowered_ast::{AttributeKeys, Attributes},
+    hir::{self, expr, Declaration, Expression},
     package::BuildSession,
-    parser::ast::Explicitness,
-    resolver::{
-        hir::{self, expr, Declaration, Expression},
-        CrateScope, Identifier,
-    },
+    resolver::{CrateScope, Identifier},
     span::Span,
+    syntax::{
+        ast::{Explicitness, ParameterAspect},
+        lowered_ast::{AttributeKeys, Attributes},
+    },
 };
 use interpreter::{
     ffi,

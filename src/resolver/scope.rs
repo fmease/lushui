@@ -7,25 +7,21 @@
 //! * [FunctionScope] for bindings defined inside of expressions or functions (order matters)
 //!   like parameters, let/in-binders and case-analysis binders
 //!
-//! The most important functions are [FunctionScope::resolve_binding] and [CrateScope::resolve_path]
-//! (used by `resolve_binding`).
-//!
 //! The equivalent in the type checker is [crate::typer::interpreter::scope].
 
 // @Beacon @Beacon @Task don't report similarily named *private* bindings!
 // @Task recognize leaks of private types!
 
 use crate::{
-    ast::{self, Path},
     diagnostics::{Code, Diagnostic},
     entity::{Entity, EntityKind},
     error::{Health, Result},
     format::{AsAutoColoredChangeset, DisplayWith},
     package::{BuildSession, CrateIndex, CrateType, PackageIndex},
-    parser::ast::HangerKind,
     span::{Span, Spanned, Spanning},
+    syntax::ast::{self, HangerKind, Path},
     typer::interpreter::{ffi, scope::Registration},
-    util::{HashMap, SmallVec},
+    utility::{HashMap, SmallVec},
 };
 use colored::Colorize;
 pub use index::{DeBruijnIndex, DeclarationIndex, Index, LocalDeclarationIndex};
@@ -151,7 +147,7 @@ impl CrateScope {
         root: String,
         session: &BuildSession,
     ) -> String {
-        use crate::lexer::token::is_punctuation;
+        use crate::syntax::token;
 
         let index = match self.local_index(index) {
             Some(index) => index,
@@ -173,7 +169,8 @@ impl CrateScope {
             let mut parent_path =
                 self.absolute_path_with_root(self.global_index(parent), root, session);
 
-            let parent_is_punctuation = is_punctuation(parent_path.chars().next_back().unwrap());
+            let parent_is_punctuation =
+                token::is_punctuation(parent_path.chars().next_back().unwrap());
 
             if parent_is_punctuation {
                 parent_path.push(' ');
@@ -527,7 +524,7 @@ impl Identifier {
     pub fn to_expression(self) -> crate::hir::Expression {
         crate::hir::expr! {
             Binding {
-                crate::lowered_ast::Attributes::default(), self.span();
+                crate::syntax::lowered_ast::Attributes::default(), self.span();
                 binder: self
             }
         }

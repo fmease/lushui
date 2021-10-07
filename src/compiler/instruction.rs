@@ -1,6 +1,6 @@
 //! The bytecode instructions.
 
-use crate::util::Str;
+use crate::utility::Str;
 
 // #[repr(u8)]
 // enum Opcode {

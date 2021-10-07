@@ -2,7 +2,7 @@
 
 use crate::{
     diagnostics::{Diagnostic, Reporter},
-    util::SmallVec,
+    utility::SmallVec,
 };
 
 pub type Result<T = (), E = ()> = std::result::Result<T, E>;

@@ -12,12 +12,10 @@ use lushui::{
     },
     error::{outcome, Result},
     format::DisplayWith,
-    lexer::Lexer,
-    lowerer::Lowerer,
     package::{BuildQueue, CrateType, PackageManifest, DEFAULT_SOURCE_FOLDER_NAME},
-    parser::{ast::Identifier, Parser},
     resolver,
     span::{SharedSourceMap, SourceMap, Span},
+    syntax::{ast::Identifier, Lexer, Lowerer, Parser},
     typer::Typer,
     FILE_EXTENSION,
 };
@@ -158,7 +156,7 @@ fn check_run_or_build_package(
 
         let time = Instant::now();
 
-        let outcome!(tokens, health_of_lexer) =
+        let outcome!(tokens, token_health) =
             Lexer::new(&map.borrow()[source_file], &reporter).lex()?;
 
         let duration = time.elapsed();
@@ -178,7 +176,7 @@ fn check_run_or_build_package(
 
         check_phase_restriction!(
             PhaseRestriction::Lexer,
-            if health_of_lexer.is_tainted() {
+            if token_health.is_tainted() {
                 return Err(());
             }
         );
@@ -192,7 +190,7 @@ fn check_run_or_build_package(
 
         let duration = time.elapsed();
 
-        assert!(health_of_lexer.is_untainted()); // parsing succeeded
+        assert!(token_health.is_untainted()); // parsing succeeded
 
         if options.dump.ast {
             eprintln!("{declaration:#?}");

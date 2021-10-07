@@ -5,10 +5,10 @@ use crate::{
     error::Result,
     format::{AsDebug, DisplayWith},
     hir::expr,
-    lowered_ast::{Attributes, Number},
     package::BuildSession,
     resolver::{CrateScope, DeBruijnIndex, Identifier},
     span::Span,
+    syntax::lowered_ast::{Attributes, Number},
 };
 use std::fmt;
 

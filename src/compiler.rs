@@ -16,9 +16,9 @@ use std::default::default;
 use crate::{
     grow_array::GrowArray,
     hir::{self, Declaration, Expression},
-    lowered_ast::AttributeKeys,
     resolver::{CrateScope, DeclarationIndex},
-    util::HashMap,
+    syntax::lowered_ast::{AttributeKeys, Number},
+    utility::HashMap,
 };
 use index_map::{Index as _, IndexMap};
 use instruction::{Chunk, ChunkIndex, Instruction};
@@ -258,7 +258,7 @@ impl<'a> Compiler<'a> {
 #[derive(Debug, Clone)]
 // very @Temporary data structure (too much wasted memory)
 enum Value {
-    Number(crate::lowered_ast::Number),
+    Number(Number),
     Text(String),
     Closure {
         chunk: ChunkIndex,
@@ -380,15 +380,14 @@ impl<'a> ByteCodeInterpreter<'a> {
                     let a = self.stack.pop().unwrap();
                     let b = self.stack.pop().unwrap();
                     let a = match a {
-                        Value::Number(crate::lowered_ast::Number::Nat32(a)) => a,
+                        Value::Number(Number::Nat32(a)) => a,
                         _ => unreachable!(),
                     };
                     let b = match b {
-                        Value::Number(crate::lowered_ast::Number::Nat32(b)) => b,
+                        Value::Number(Number::Nat32(b)) => b,
                         _ => unreachable!(),
                     };
-                    self.stack
-                        .push(Value::Number(crate::lowered_ast::Number::Nat32(a + b)));
+                    self.stack.push(Value::Number(Number::Nat32(a + b)));
                 }
             };
         }

@@ -17,16 +17,15 @@ pub(crate) mod scope;
 
 use super::Expression;
 use crate::{
-    ast::Explicit,
     diagnostics::{Code, Diagnostic, Reporter},
     entity::Entity,
     error::{PossiblyErroneous, Result},
     format::DisplayWith,
     hir::{self, expr},
-    lowered_ast::Attributes,
     package::BuildSession,
     resolver::{CrateScope, DeclarationIndex, Identifier},
     span::{Span, Spanning},
+    syntax::{ast::Explicit, lowered_ast::Attributes},
 };
 use scope::{FunctionScope, ValueView};
 use std::fmt;
