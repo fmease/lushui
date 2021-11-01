@@ -30,10 +30,13 @@ use std::{
     collections::BTreeSet,
     fmt::{self, Debug},
     iter::once,
+    path::Path,
 };
 use unicode_width::UnicodeWidthStr;
 
 pub mod reporter;
+#[cfg(test)]
+mod test;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 struct UnboxedDiagnostic {
@@ -232,6 +235,8 @@ impl Diagnostic {
     /// map is provided.
     // @Task if the span equals the span of the entire file, don't output its content
     // @Task add back the alorithm which reduces the amount of paths printed
+    // @Beacon @Beacon @Beacon @Task special case trailing line break in subdiagnostics,
+    // etc
     fn format_for_terminal(&self, map: Option<&SourceMap>) -> String {
         let mut message = String::new();
 
@@ -255,36 +260,34 @@ impl Diagnostic {
 
         let padding;
 
-        if self.0.highlights.is_empty() {
-            padding = " ".into();
-        } else {
+        if !self.0.highlights.is_empty() {
             let map = map.unwrap();
 
             let all_lines = self
                 .0
                 .highlights
                 .iter()
-                .map(|highlight| map.lines_from_span(highlight.span))
+                .map(|highlight| map.lines(highlight.span))
                 .collect::<Vec<_>>();
 
-            let mut padding_length = 0;
+            let mut padding_width = 0;
 
             padding = {
                 let mut largest_line_number = all_lines
                     .iter()
                     .flat_map(|span| {
                         once(span.first_line.number)
-                            .chain(span.final_line.as_ref().map(|line| line.number))
+                            .chain(span.last_line.as_ref().map(|line| line.number))
                     })
                     .max()
                     .unwrap();
 
                 while largest_line_number > 0 {
                     largest_line_number /= 10;
-                    padding_length += 1;
+                    padding_width += 1;
                 }
 
-                " ".repeat(padding_length)
+                " ".repeat(padding_width)
             };
 
             let bar = "|".color(FRAME_COLOR).bold();
@@ -295,7 +298,7 @@ impl Diagnostic {
                     let arrow = "-->".color(FRAME_COLOR).bold();
                     message += &format!("\n{padding}{arrow} ");
 
-                    let file = lines.path.to_string_lossy();
+                    let file = lines.path.map(Path::to_string_lossy).unwrap_or_default();
                     let line = lines.first_line.number;
                     let column = lines.first_line.highlight_start_column;
                     // unbelieveably wasteful memory-wise but inevitable due to the API of `colored`
@@ -311,25 +314,39 @@ impl Diagnostic {
                     None => &Cow::Borrowed(""),
                 };
 
-                match &lines.final_line {
+                match &lines.last_line {
                     // the snippet spans a single line
                     None => {
-                        let line = lines.first_line.number;
-                        // @Question does this *always* end in a line break?
+                        let line_number = lines.first_line.number;
                         let snippet = lines.first_line.content;
-                        let underline_padding = " ".repeat(lines.first_line.highlight_prefix_width);
-                        let underline = highlight
-                            .role
-                            .symbol()
-                            .repeat(lines.first_line.highlight_width)
-                            .color(role_color)
-                            .bold();
+                        let highlight_padding_width = lines.first_line.highlight_padding_width;
+                        let zero_length_highlight = lines.first_line.highlight_width == 0;
+
+                        let snippet_padding =
+                            match zero_length_highlight && highlight_padding_width == 0 {
+                                true => " ",
+                                false => "",
+                            };
 
                         message += &format!(
                             "\n\
                             {padding} {bar}\n\
-                            {line:>padding_length$} {bar} {snippet}"
+                            {line_number:>padding_width$} {bar} {snippet_padding}{snippet}\n"
                         );
+
+                        let underline_padding = " ".repeat(match zero_length_highlight {
+                            true => highlight_padding_width.saturating_sub(1),
+                            false => highlight_padding_width,
+                        });
+                        let underline = if !zero_length_highlight {
+                            highlight
+                                .role
+                                .symbol()
+                                .repeat(lines.first_line.highlight_width)
+                        } else {
+                            "><".to_owned()
+                        };
+                        let underline = underline.color(role_color).bold();
 
                         // the underline and the label
                         {
@@ -344,8 +361,12 @@ impl Diagnostic {
                             }
 
                             let spacing = " ".repeat(
-                                lines.first_line.highlight_prefix_width
-                                    + lines.first_line.highlight_width,
+                                lines.first_line.highlight_padding_width
+                                    + if lines.first_line.highlight_width == 0 {
+                                        1
+                                    } else {
+                                        lines.first_line.highlight_width
+                                    },
                             );
 
                             for label_line in label_lines {
@@ -357,23 +378,18 @@ impl Diagnostic {
                     }
                     // the snippet spans multiple lines
                     Some(final_line) => {
-                        // @Task improve the look & feel of it; it could be better!
-                        let ellipsis = if final_line.number - lines.first_line.number > 1 {
-                            const ELLIPSIS: &str = "...";
-                            let padding_length = ELLIPSIS.len() + padding_length - 1;
-
-                            format!("{ELLIPSIS:<padding_length$}")
+                        let ellipsis_or_bar = if final_line.number - lines.first_line.number > 1 {
+                            "...".into()
                         } else {
-                            format!("{padding} {bar}")
+                            format!(" {bar} ")
                         };
 
                         // the upper arm
                         {
-                            let line = lines.first_line.number;
-                            // @Question does this *always* end in a line break?
+                            let line_number = lines.first_line.number;
                             let snippet = lines.first_line.content;
                             let horizontal_arm = "_"
-                                .repeat(lines.first_line.highlight_prefix_width + 1)
+                                .repeat(lines.first_line.highlight_padding_width + 1)
                                 .color(role_color)
                                 .bold();
                             // the hand is currently not dependent on the Unicode width of the first character
@@ -382,14 +398,13 @@ impl Diagnostic {
                             message += &format!(
                                 "\n\
                                 {padding} {bar}\n\
-                                {line:>padding_length$} {bar}   {snippet}\
-                                {ellipsis:>padding_length$}  {horizontal_arm}{hand}\n"
+                                {line_number:>padding_width$} {bar}   {snippet}\n\
+                                {padding}{ellipsis_or_bar} {horizontal_arm}{hand}\n"
                             );
                         }
                         // the connector and the lower arm
                         {
-                            let line = final_line.number;
-                            // @Question does this *always* end in a line break?
+                            let line_number = final_line.number;
                             let snippet = &final_line.content;
                             // the arm is currently not dependent on the Unicode width of the last character
                             let horizontal_arm = "_"
@@ -400,8 +415,9 @@ impl Diagnostic {
                             // the hand is currently not dependent on the Unicode width of the 1st character
                             let hand = highlight.role.symbol().color(role_color).bold();
 
-                            message +=
-                                &format!("{line:>padding_length$} {bar} {vertical_arm} {snippet}");
+                            message += &format!(
+                                "{line_number:>padding_width$} {bar} {vertical_arm} {snippet}\n"
+                            );
 
                             // the lower arm and the label
                             {
@@ -429,6 +445,8 @@ impl Diagnostic {
 
                 message += &format!("\n{padding} {bar}");
             }
+        } else {
+            padding = " ".into();
         }
 
         for subdiagnostic in &self.0.subdiagnostics {
@@ -513,7 +531,7 @@ impl Subseverity {
         match self {
             Self::Note => "note",
             Self::Help => "help",
-            Self::Debug => "internal debugging message",
+            Self::Debug => "debug",
         }
     }
 
@@ -568,7 +586,8 @@ impl Role {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[forbid(missing_docs)]
 pub enum Code {
-    /// Exposure reach not an ancestor of definition-site namespace.
+    /// _Permanently unassigned_.
+    #[cfg(test)]
     E000,
     /// Unbalanced (round) brackets.
     E001,
@@ -642,6 +661,8 @@ pub enum Code {
     E035,
     /// Invalid crate name.
     E036,
+    /// Exposure reach not an ancestor of definition-site namespace.
+    E037,
     /// Missing program entry.
     E050,
     /// Unregistered foreign binding.

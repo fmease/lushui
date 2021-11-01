@@ -258,7 +258,7 @@ impl<'a> Typer<'a> {
 
                 self.assert_constructor_is_instance_of_type(
                     type_.clone(),
-                    expr! { Type { Attributes::default(), Span::SHAM } },
+                    expr! { Type { Attributes::default(), Span::default() } },
                 )?;
 
                 self.scope
@@ -423,7 +423,7 @@ impl<'a> Typer<'a> {
                 .interpreter()
                 .look_up_type(&binding.binder, scope)
                 .ok_or(OutOfOrderBinding)?,
-            Type => expr! { Type { Attributes::default(), Span::SHAM } },
+            Type => expr! { Type { Attributes::default(), Span::default() } },
             Number(number) => self.scope.look_up_foreign_number_type(
                 &number,
                 Some(expression.span),
@@ -451,7 +451,7 @@ impl<'a> Typer<'a> {
                     self.it_is_a_type(literal.codomain.clone(), scope)?;
                 }
 
-                expr! { Type { Attributes::default(), Span::SHAM } }
+                expr! { Type { Attributes::default(), Span::default() } }
             }
             Lambda(lambda) => {
                 let parameter_type: Expression = lambda
@@ -542,8 +542,7 @@ impl<'a> Typer<'a> {
                     match pi.parameter.clone() {
                         Some(_) => expr! {
                             Substitution {
-                                Attributes::default(),
-                                Span::SHAM;
+                                Attributes::default(), Span::default();
                                 substitution: Use(Box::new(Shift(0)), application.argument.clone()),
                                 expression: pi.codomain.clone(),
                             }
@@ -767,7 +766,7 @@ impl<'a> Typer<'a> {
     ) -> Result<(), Error> {
         let type_ = self.infer_type_of_expression(expression, scope)?;
         self.it_is_actual(
-            expr! { Type { Attributes::default(), Span::SHAM } },
+            expr! { Type { Attributes::default(), Span::default() } },
             type_,
             scope,
         )
@@ -780,7 +779,7 @@ impl<'a> Typer<'a> {
     ) -> Result<bool, Error> {
         let type_ = self.infer_type_of_expression(expression, scope)?;
         self.is_actual(
-            expr! { Type { Attributes::default(), Span::SHAM } },
+            expr! { Type { Attributes::default(), Span::default() } },
             type_,
             scope,
         )

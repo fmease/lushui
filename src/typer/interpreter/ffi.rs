@@ -330,13 +330,31 @@ impl Value {
                 .clone()
                 .ok_or_else(|| missing_inherent().report(reporter))?)
             .to_expression(),
-            Self::Text(value) => expr! { Text(Attributes::default(), Span::SHAM; value) },
-            Self::Nat(value) => expr! { Number(Attributes::default(), Span::SHAM; Nat(value)) },
-            Self::Nat32(value) => expr! { Number(Attributes::default(), Span::SHAM; Nat32(value)) },
-            Self::Nat64(value) => expr! { Number(Attributes::default(), Span::SHAM; Nat64(value)) },
-            Self::Int(value) => expr! { Number(Attributes::default(), Span::SHAM; Int(value)) },
-            Self::Int32(value) => expr! { Number(Attributes::default(), Span::SHAM; Int32(value)) },
-            Self::Int64(value) => expr! { Number(Attributes::default(), Span::SHAM; Int64(value)) },
+            Self::Text(value) => expr! { Text(Attributes::default(), Span::default(); value) },
+            Self::Nat(value) => expr! {
+                Number(Attributes::default(), Span::default();
+                Nat(value))
+            },
+            Self::Nat32(value) => expr! {
+                Number(Attributes::default(), Span::default();
+                Nat32(value))
+            },
+            Self::Nat64(value) => expr! {
+                Number(Attributes::default(), Span::default();
+                Nat64(value))
+            },
+            Self::Int(value) => expr! {
+                Number(Attributes::default(), Span::default();
+                Int(value))
+            },
+            Self::Int32(value) => expr! {
+                Number(Attributes::default(), Span::default();
+                Int32(value))
+            },
+            Self::Int64(value) => expr! {
+                Number(Attributes::default(), Span::default();
+                Int64(value))
+            },
             Self::Option { type_, value } => match value {
                 Some(value) => application(
                     application(
@@ -360,8 +378,7 @@ impl Value {
             },
             Self::IO { index, arguments } => expr! {
                 IO {
-                    Attributes::default(),
-                    Span::SHAM;
+                    Attributes::default(), Span::default();
                     index,
                     arguments: arguments.into_iter()
                         .map(|argument| argument.into_expression(scope, session, reporter))
@@ -528,8 +545,7 @@ macro count {
 fn application(callee: Expression, argument: Expression) -> Expression {
     expr! {
         Application {
-            Attributes::default(),
-            Span::SHAM;
+            Attributes::default(), Span::default();
             callee,
             argument,
             explicitness: Explicit

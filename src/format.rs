@@ -4,7 +4,7 @@ use colored::Colorize;
 use difference::{Changeset, Difference};
 use joinery::JoinableIterator;
 
-use std::fmt;
+use std::{fmt, io::Write};
 
 pub trait DisplayWith: Sized {
     type Context<'a>: Copy;
@@ -147,6 +147,7 @@ impl<T: fmt::Debug> fmt::Display for DebugIsDisplay<'_, T> {
     }
 }
 
+// @Task replace this whole business with a `write_*` function
 pub struct AutoColoredChangeset<'a>(pub &'a Changeset);
 
 impl fmt::Display for AutoColoredChangeset<'_> {
@@ -181,4 +182,31 @@ impl AsAutoColoredChangeset for Changeset {
     fn auto_colored(&self) -> AutoColoredChangeset<'_> {
         AutoColoredChangeset(self)
     }
+}
+
+// the provided Display implementation for Changesets is problematic when whitespace differs
+pub fn differences_with_ledge(differences: &[Difference]) -> String {
+    let mut buffer = Vec::new();
+
+    for difference in differences {
+        match difference {
+            Difference::Same(lines) => {
+                for line in lines.lines() {
+                    writeln!(buffer, "{} {}", " ".on_bright_white(), line).unwrap();
+                }
+            }
+            Difference::Add(lines) => {
+                for line in lines.lines().chain(lines.is_empty().then(|| "")) {
+                    writeln!(buffer, "{} {}", "+".black().on_green(), line.green()).unwrap();
+                }
+            }
+            Difference::Rem(lines) => {
+                for line in lines.lines().chain(lines.is_empty().then(|| "")) {
+                    writeln!(buffer, "{} {}", "-".black().on_red(), line.red()).unwrap();
+                }
+            }
+        }
+    }
+
+    String::from_utf8(buffer).unwrap()
 }

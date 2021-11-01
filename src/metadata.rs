@@ -2,7 +2,6 @@
 
 // @Task raw text, multi lines text with indentation awareness
 // @Task negative numbers, text escape sequences
-// @Task unit tests
 
 // @Task support keywords as keys e.g. `false: false`
 
@@ -18,6 +17,9 @@ use crate::{
     utility::{obtain, spanned_key_map::SpannedKeyMap},
 };
 use discriminant::Discriminant;
+
+#[cfg(test)]
+mod test;
 
 pub type Value = Spanned<ValueKind>;
 pub type Array = Vec<Value>;
@@ -235,7 +237,7 @@ mod lexer {
         diagnostics::Diagnostic,
         error::{Health, Outcome},
         format::quoted,
-        span::{LocalByteIndex, LocalSpan, SourceFile, Spanned},
+        span::{LocalSpan, SourceFile, Spanned},
         syntax::lexer::{
             is_identifier_segment_middle, is_identifier_segment_start, is_number_literal_middle,
             NUMERIC_SEPARATOR,
@@ -347,7 +349,7 @@ mod lexer {
                 characters: source_file.content().char_indices().peekable(),
                 source_file,
                 tokens: Vec::new(),
-                local_span: LocalSpan::zero(),
+                local_span: LocalSpan::default(),
                 health: Health::Untainted,
             }
         }
@@ -359,7 +361,7 @@ mod lexer {
         // @Task lex -infinity, +infinity, +nan, -nan as well
         pub(super) fn lex(mut self) -> Outcome<Vec<Token>> {
             while let Some((index, character)) = self.peek_with_index() {
-                self.local_span = LocalSpan::from(index);
+                self.local_span = LocalSpan::empty(index);
 
                 match character {
                     '#' => self.lex_comment(),
@@ -368,41 +370,20 @@ mod lexer {
                     character if is_identifier_segment_start(character) => self.lex_identifier(),
                     character if character.is_ascii_digit() => self.lex_number(),
                     '-' => todo!(),
-                    '[' => {
-                        self.add(OpeningSquareBracket);
-                        self.advance();
-                    }
-                    ']' => {
-                        self.add(ClosingSquareBracket);
-                        self.advance();
-                    }
-                    '{' => {
-                        self.add(OpeningCurlyBracket);
-                        self.advance();
-                    }
-                    '}' => {
-                        self.add(ClosingCurlyBracket);
-                        self.advance();
-                    }
-                    ',' => {
-                        self.add(Comma);
-                        self.advance();
-                    }
-                    ':' => {
-                        self.add(Colon);
-                        self.advance();
-                    }
+                    '[' => self.consume(OpeningSquareBracket),
+                    ']' => self.consume(ClosingSquareBracket),
+                    '{' => self.consume(OpeningCurlyBracket),
+                    '}' => self.consume(ClosingCurlyBracket),
+                    ',' => self.consume(Comma),
+                    ':' => self.consume(Colon),
                     character => {
-                        self.take();
-                        self.add(Illegal(character));
-                        self.advance();
+                        self.consume(Illegal(character));
+                        self.health.taint();
                     }
                 }
             }
 
-            let last =
-                LocalByteIndex::from_usize(self.source_file.content().len().saturating_sub(1));
-            self.local_span = LocalSpan::from(last);
+            self.local_span = self.source_file.local_span().end();
             self.add(EndOfInput);
             self.health.of(self.tokens)
         }
@@ -446,8 +427,7 @@ mod lexer {
             match is_terminated {
                 true => {
                     // @Note once we implement escaping, this won't cut it and we need to build our own string
-                    let content =
-                        self.source_file[self.local_span.trim_start(1).trim_end(1)].to_owned();
+                    let content = self.source_file[self.local_span.trim(1)].to_owned();
 
                     self.add(Text(Ok(content)));
                 }
@@ -468,7 +448,7 @@ mod lexer {
                 let previous = self.local_span;
                 self.lex_identifier_segment();
                 if self.local_span == previous {
-                    self.local_span = dash.into();
+                    self.local_span = LocalSpan::with_length(dash, 1);
                     // @Task add illegal
                     todo!();
                 }
@@ -507,7 +487,9 @@ mod lexer {
                 self.take();
                 self.advance();
 
-                if character == NUMERIC_SEPARATOR {
+                if character != NUMERIC_SEPARATOR {
+                    number.push(character);
+                } else {
                     if let Some(NUMERIC_SEPARATOR) = self.peek() {
                         consecutive_separators = true;
                     }
@@ -516,8 +498,6 @@ mod lexer {
                     }) {
                         trailing_separator = true;
                     }
-                } else {
-                    number.push(character);
                 }
             }
 
@@ -587,7 +567,7 @@ mod parser {
     use crate::{
         diagnostics::{Code, Diagnostic, Reporter},
         error::{Health, ReportedExt, Result},
-        span::{SharedSourceMap, SourceFileIndex, Span, Spanned},
+        span::{SharedSourceMap, SourceFileIndex, Span, Spanned, Spanning},
     };
 
     pub(super) struct Parser<'a> {
@@ -680,7 +660,7 @@ mod parser {
             let map = self.parse_map_entries(EndOfInput)?;
 
             Ok(Value::new(
-                self.map.borrow()[self.file].span,
+                self.map.borrow()[self.file].span(),
                 ValueKind::Map(map),
             ))
         }

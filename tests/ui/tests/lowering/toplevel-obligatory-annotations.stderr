@@ -1,20 +1,10 @@
 error[E015]: missing mandatory type annotation on declaration `Alpha`
- --> ${DIRECTORY}/lowering/toplevel-obligatory-annotations.lushui:3:1
+ --> ${DIRECTORY}/lowering/toplevel-obligatory-annotations.lushui:3:11
   |
-3 |   data Alpha of
-  |  _^
-4 | |     alpha a
-  | |___________^ 
+3 | data Alpha of
+  |          >< 
   |
- help: provide a type annotation for the declaration with `: TYPE`
-
-error[E015]: missing mandatory type annotation on declaration `alpha`
- --> ${DIRECTORY}/lowering/toplevel-obligatory-annotations.lushui:4:5
-  |
-4 |     alpha a
-  |     ^^^^^^^ 
-  |
- help: provide a type annotation for the declaration with `: TYPE`
+ help: provide a type annotation for the declaration with `: ?type`
 
 error[E015]: missing mandatory type annotation on parameter `a`
  --> ${DIRECTORY}/lowering/toplevel-obligatory-annotations.lushui:4:11
@@ -22,17 +12,15 @@ error[E015]: missing mandatory type annotation on parameter `a`
 4 |     alpha a
   |           ^ 
   |
- help: provide a type annotation for the parameter with `(a: TYPE)`
+ help: provide a type annotation for the parameter with `(a: ?type)`
 
-error[E015]: missing mandatory type annotation on declaration `Beta`
- --> ${DIRECTORY}/lowering/toplevel-obligatory-annotations.lushui:6:1
+error[E015]: missing mandatory type annotation on declaration `alpha`
+ --> ${DIRECTORY}/lowering/toplevel-obligatory-annotations.lushui:4:12
   |
-6 |   data Beta A of
-  |  _^
-7 | |     beta A: Beta A
-  | |__________________^ 
+4 |     alpha a
+  |           >< 
   |
- help: provide a type annotation for the declaration with `: TYPE`
+ help: provide a type annotation for the declaration with `: ?type`
 
 error[E015]: missing mandatory type annotation on parameter `A`
  --> ${DIRECTORY}/lowering/toplevel-obligatory-annotations.lushui:6:11
@@ -40,7 +28,15 @@ error[E015]: missing mandatory type annotation on parameter `A`
 6 | data Beta A of
   |           ^ 
   |
- help: provide a type annotation for the parameter with `(A: TYPE)`
+ help: provide a type annotation for the parameter with `(A: ?type)`
+
+error[E015]: missing mandatory type annotation on declaration `Beta`
+ --> ${DIRECTORY}/lowering/toplevel-obligatory-annotations.lushui:6:12
+  |
+6 | data Beta A of
+  |           >< 
+  |
+ help: provide a type annotation for the declaration with `: ?type`
 
 error[E015]: missing mandatory type annotation on parameter `A`
  --> ${DIRECTORY}/lowering/toplevel-obligatory-annotations.lushui:7:10
@@ -48,23 +44,15 @@ error[E015]: missing mandatory type annotation on parameter `A`
 7 |     beta A: Beta A
   |          ^ 
   |
- help: provide a type annotation for the parameter with `(A: TYPE)`
+ help: provide a type annotation for the parameter with `(A: ?type)`
 
 error[E015]: missing mandatory type annotation on declaration `number`
- --> ${DIRECTORY}/lowering/toplevel-obligatory-annotations.lushui:9:1
+ --> ${DIRECTORY}/lowering/toplevel-obligatory-annotations.lushui:9:7
   |
 9 | number = 0
-  | ^^^^^^^^^^ 
+  |      >< 
   |
- help: provide a type annotation for the declaration with `: TYPE`
-
-error[E015]: missing mandatory type annotation on declaration `apply`
-  --> ${DIRECTORY}/lowering/toplevel-obligatory-annotations.lushui:11:1
-   |
-11 | apply f x (partner in-crime) = f x
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 
-   |
-  help: provide a type annotation for the declaration with `: TYPE`
+ help: provide a type annotation for the declaration with `: ?type`
 
 error[E015]: missing mandatory type annotation on parameter `f`
   --> ${DIRECTORY}/lowering/toplevel-obligatory-annotations.lushui:11:7
@@ -72,7 +60,7 @@ error[E015]: missing mandatory type annotation on parameter `f`
 11 | apply f x (partner in-crime) = f x
    |       ^ 
    |
-  help: provide a type annotation for the parameter with `(f: TYPE)`
+  help: provide a type annotation for the parameter with `(f: ?type)`
 
 error[E015]: missing mandatory type annotation on parameter `x`
   --> ${DIRECTORY}/lowering/toplevel-obligatory-annotations.lushui:11:9
@@ -80,7 +68,7 @@ error[E015]: missing mandatory type annotation on parameter `x`
 11 | apply f x (partner in-crime) = f x
    |         ^ 
    |
-  help: provide a type annotation for the parameter with `(x: TYPE)`
+  help: provide a type annotation for the parameter with `(x: ?type)`
 
 error[E015]: missing mandatory type annotation on parameters `partner` and `in-crime`
   --> ${DIRECTORY}/lowering/toplevel-obligatory-annotations.lushui:11:11
@@ -88,7 +76,15 @@ error[E015]: missing mandatory type annotation on parameters `partner` and `in-c
 11 | apply f x (partner in-crime) = f x
    |           ^^^^^^^^^^^^^^^^^^ 
    |
-  help: provide a type annotation for the parameters with `(partner in-crime: TYPE)`
+  help: provide a type annotation for the parameters with `(partner in-crime: ?type)`
+
+error[E015]: missing mandatory type annotation on declaration `apply`
+  --> ${DIRECTORY}/lowering/toplevel-obligatory-annotations.lushui:11:29
+   |
+11 | apply f x (partner in-crime) = f x
+   |                            >< 
+   |
+  help: provide a type annotation for the declaration with `: ?type`
 
 error: aborting due to 11 previous errors
  note: the error E015 has a detailed explanation

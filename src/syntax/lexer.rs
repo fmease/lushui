@@ -7,12 +7,13 @@ use super::token::{Provenance, Token, TokenKind, UnterminatedTextLiteral};
 use crate::{
     diagnostics::{reporter::SilentReporter, Code, Diagnostic, Reporter},
     error::{Health, Outcome, Result},
-    span::{LocalByteIndex, LocalSpan, SourceFile, SourceMap, Spanned},
+    span::{LocalSpan, SourceFile, SourceMap, Spanned},
     utility::{self, lexer::Lexer as _, GetFromEndExt},
 };
 use std::{
     cmp::Ordering::{self, *},
     convert::{TryFrom, TryInto},
+    default::default,
     fmt,
     iter::Peekable,
     ops::{Sub, SubAssign},
@@ -22,7 +23,7 @@ use TokenKind::*;
 
 pub(crate) fn lex(source: String) -> Result<Outcome<Vec<Token>>> {
     let mut map = SourceMap::default();
-    let file = map.add(None, source).unwrap_or_else(|_| unreachable!());
+    let file = map.add(None, source);
     Lexer::new(&map[file], &SilentReporter.into()).lex()
 }
 
@@ -205,7 +206,7 @@ impl<'a> Lexer<'a> {
             characters: source_file.content().char_indices().peekable(),
             source_file,
             tokens: Vec::new(),
-            local_span: LocalSpan::zero(),
+            local_span: LocalSpan::default(),
             indentation: Spaces(0),
             sections: Sections::default(),
             brackets: Brackets::default(),
@@ -222,14 +223,15 @@ impl<'a> Lexer<'a> {
     // @Task improve diagnostics when encountering "indented sections" inside delimited ones
     pub fn lex(mut self) -> Result<Outcome<Vec<Token>>> {
         while let Some((index, character)) = self.peek_with_index() {
-            self.local_span = LocalSpan::from(index);
+            self.local_span = LocalSpan::empty(index);
 
             match character {
-                '#' if index == LocalByteIndex::new(0) => self.lex_shebang_candidate(),
+                '#' if index == default() => self.lex_shebang_candidate(),
                 // @Bug @Beacon if it is SOI, don't lex_whitespace but lex_indentation
                 // (SOI should act as a line break)
                 ' ' => self.lex_whitespace(),
                 ';' => {
+                    self.take();
                     self.advance();
 
                     if let Some(';') = self.peek() {
@@ -243,10 +245,16 @@ impl<'a> Lexer<'a> {
                 '\n' => self.advance(),
                 '-' => self.lex_punctuation_or_number_literal()?,
                 character if character.is_ascii_digit() => {
+                    self.take();
                     self.advance();
                     self.lex_number_literal()?;
                 }
-                character if is_punctuation(character) => self.lex_punctuation(),
+                character if is_punctuation(character) => {
+                    self.take();
+                    self.advance();
+
+                    self.lex_punctuation();
+                }
                 '"' => self.lex_text_literal(),
                 '(' => self.add_opening_bracket(Bracket::Round),
                 '[' => self.add_opening_bracket(Bracket::Square),
@@ -267,14 +275,10 @@ impl<'a> Lexer<'a> {
                     }
                     self.add_closing_bracket(Bracket::Curly);
                 }
-                '\'' => {
-                    self.add(SingleQuote);
-                    self.advance();
-                }
+                '\'' => self.consume(Apostrophe),
                 character => {
-                    self.take();
-                    self.add(Illegal(character));
-                    self.advance();
+                    self.consume(Illegal(character));
+                    self.health.taint();
                 }
             }
         }
@@ -297,37 +301,29 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        // @Bug panics if last byte is not a valid codepoint, right?
-        let last = LocalByteIndex::from_usize(self.source_file.content().len().saturating_sub(1));
-
-        // Ideally, we'd like to set its span to the index after the last token,
-        // but they way `SourceMap` is currently defined, that would not work,
-        // it would reach into the next `SourceFile` if there even was one
-        // I'd love to put "the red caret" in diagnostics visually after the last
-        // token. However, even with fake source files as separators between real ones,
-        // we would need to add a lot of complexity to be able to handle that in
-        // `Diagnostic::format_for_terminal`.
-        self.local_span = LocalSpan::from(last);
-
+        self.local_span = self.source_file.local_span().end();
         for section in self.sections.exit_all() {
             if section.is_indented() {
                 self.add(ClosingCurlyBracket(Provenance::Lexer));
                 self.add(Semicolon(Provenance::Lexer));
             }
         }
-
         self.add(EndOfInput);
+
         Ok(self.health.of(self.tokens))
     }
 
     fn add_opening_bracket(&mut self, bracket: Bracket) {
+        self.take();
         self.add(bracket.opening());
-        let span = self.span();
-        self.brackets.open(Spanned::new(span, bracket));
+
+        self.brackets.open(Spanned::new(self.span(), bracket));
         self.advance();
     }
 
     fn add_closing_bracket(&mut self, bracket: Bracket) {
+        self.take();
+
         if let (Section::Indented { brackets }, size) = self.sections.current_continued() {
             if self.brackets.0.len() <= brackets {
                 self.add(ClosingCurlyBracket(Provenance::Lexer));
@@ -339,6 +335,7 @@ impl<'a> Lexer<'a> {
         }
 
         self.add(bracket.closing());
+
         if let Err(error) = self.brackets.close(Spanned::new(self.span(), bracket)) {
             self.health.taint();
             error.report(self.reporter);
@@ -347,6 +344,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn lex_shebang_candidate(&mut self) {
+        self.take();
         self.advance();
 
         if let Some('!') = self.peek() {
@@ -375,6 +373,7 @@ impl<'a> Lexer<'a> {
     // @Task merge consecutive documentation comments
     // @Task emit TokenKind::Comment if asked
     fn lex_comment(&mut self) {
+        self.take();
         self.advance();
 
         let mut is_documentation = true;
@@ -417,7 +416,7 @@ impl<'a> Lexer<'a> {
             let previous = self.local_span;
             self.lex_identifier_segment();
             if self.local_span == previous {
-                self.local_span = dash.into();
+                self.local_span = LocalSpan::with_length(dash, 1);
                 Diagnostic::error()
                     .code(Code::E002)
                     .message("trailing dash on identifier")
@@ -434,8 +433,8 @@ impl<'a> Lexer<'a> {
             }
         };
 
-        if self.peek() == Some('.') {
-            self.local_span = LocalSpan::from(self.index().unwrap());
+        if let Some((index, '.')) = self.peek_with_index() {
+            self.local_span = LocalSpan::with_length(index, 1);
             self.add(TokenKind::Dot);
             self.advance();
         }
@@ -461,12 +460,13 @@ impl<'a> Lexer<'a> {
             .map_or(false, |token| token.name().introduces_indented_section());
 
         // squash consecutive line breaks into a single one
+        self.take();
         self.advance();
         self.take_while(|character| character == '\n');
         self.add(Semicolon(Provenance::Lexer));
 
         // self.span = match self.index() {
-        //     Some(index) => LocalSpan::from(index),
+        //     Some(index) => LocalSpan::with_length(index, 1),
         //     None => return Ok(()),
         // };
         let mut spaces = Spaces(0);
@@ -579,15 +579,14 @@ impl<'a> Lexer<'a> {
     }
 
     fn lex_punctuation_or_number_literal(&mut self) -> Result {
+        self.take();
         self.advance();
-        if self
-            .peek()
-            .map_or(false, |character| character.is_ascii_digit())
-        {
-            self.lex_number_literal()?;
-        } else {
-            self.lex_punctuation();
+
+        match self.peek() {
+            Some(character) if character.is_ascii_digit() => self.lex_number_literal()?,
+            _ => self.lex_punctuation(),
         }
+
         Ok(())
     }
 
@@ -616,7 +615,9 @@ impl<'a> Lexer<'a> {
             self.take();
             self.advance();
 
-            if character == NUMERIC_SEPARATOR {
+            if character != NUMERIC_SEPARATOR {
+                number.push(character);
+            } else {
                 if let Some(NUMERIC_SEPARATOR) = self.peek() {
                     consecutive_separators = true;
                 }
@@ -626,8 +627,6 @@ impl<'a> Lexer<'a> {
                 {
                     trailing_separator = true;
                 }
-            } else {
-                number.push(character);
             }
         }
 
@@ -664,8 +663,10 @@ impl<'a> Lexer<'a> {
     // @Task escape sequences @Update do them in the parser (or at least mark them as invalid
     // and do the error reporting in the parser)
     fn lex_text_literal(&mut self) {
-        let mut is_terminated = false;
+        self.take();
         self.advance();
+
+        let mut is_terminated = false;
 
         while let Some(character) = self.peek() {
             self.take();
@@ -678,12 +679,7 @@ impl<'a> Lexer<'a> {
         }
 
         // @Note once we implement escaping, this won't cut it and we need to build our own string
-        // @Beacon @Beacon @Beacon @Note @Bug currently we cannot represent empty spans, so this trimming
-        // below on empty text literals is incorrect but still if we leave out the assertions in
-        // mod span, everything works out fine since interally we just use std::ops::RangeInclusive
-        // which is empty by definition if start > end
-        // @Note this is fixed once we change the definition of AbstractSpans to be exclusive ranges
-        let content_span = self.local_span.trim_start(1).trim_end(1);
+        let content_span = self.local_span.trim(1);
         let content = self.source_file[content_span].to_owned();
         self.add(TextLiteral(match is_terminated {
             true => Ok(content),

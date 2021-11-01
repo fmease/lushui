@@ -2,7 +2,7 @@ error[E035]: attempt to analyze a type
  --> ${DIRECTORY}/analyze-types.lushui:6:5
   |
 6 |       case A of
-...  _____^
+ ... _____^
 9 | |         \else => false
   | |______________________^ 
   |

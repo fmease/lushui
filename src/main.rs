@@ -1,4 +1,10 @@
-#![feature(backtrace, format_args_capture, derive_default_enum, decl_macro)]
+#![feature(
+    backtrace,
+    format_args_capture,
+    derive_default_enum,
+    decl_macro,
+    default_free_fn
+)]
 #![forbid(rust_2018_idioms, unused_must_use)]
 #![warn(clippy::pedantic)]
 #![allow(
@@ -12,13 +18,14 @@
     clippy::match_bool,
     clippy::empty_enum,
     clippy::single_match_else,
+    clippy::if_not_else,
     clippy::needless_pass_by_value, // @Temporary
     clippy::missing_panics_doc, // @Temporary
 )]
 
-use std::{convert::TryInto, time::Instant};
+use std::{convert::TryInto, default::default, time::Instant};
 
-use cli::{Command, PhaseRestriction};
+use cli::{BuildMode, Command, PhaseRestriction};
 use colored::Colorize;
 use lushui::{
     diagnostics::{
@@ -27,9 +34,9 @@ use lushui::{
     },
     error::{outcome, Result},
     format::DisplayWith,
-    package::{BuildQueue, CrateType, PackageManifest, DEFAULT_SOURCE_FOLDER_NAME},
+    package::{find_package, BuildQueue, CrateType, PackageManifest, DEFAULT_SOURCE_FOLDER_NAME},
     resolver,
-    span::{SharedSourceMap, SourceMap, Span},
+    span::{SharedSourceMap, SourceMap},
     syntax::{ast::Identifier, Lexer, Lowerer, Parser},
     typer::Typer,
     FILE_EXTENSION,
@@ -81,53 +88,71 @@ fn execute_command(
     map: &SharedSourceMap,
     reporter: &Reporter,
 ) -> Result {
-    use cli::GenerationMode;
-    use Command::{Build, Check, Explain, Generate, Run};
+    use Command::*;
 
     match command {
-        Check | Run | Build => check_run_or_build_package(command, options, map, reporter),
+        Build { mode, suboptions } => build_package(mode, suboptions, options, map, reporter),
         Explain => todo!(),
-        Generate {
-            mode,
-            options: generation_options,
-        } => match mode {
-            GenerationMode::Initialize => todo!(),
-            GenerationMode::New { package_name } => {
-                create_new_package(package_name, generation_options, options, reporter)
+        Generate { mode, suboptions } => match mode {
+            cli::GenerationMode::Initialize => todo!(),
+            cli::GenerationMode::New { package_name } => {
+                create_new_package(package_name, suboptions, options, reporter)
             }
         },
     }
 }
 
-fn check_run_or_build_package(
-    command: Command,
+/// Check, build or run a given package.
+fn build_package(
+    mode: cli::BuildMode,
+    suboptions: cli::BuildOptions,
     options: cli::Options,
     map: &SharedSourceMap,
     reporter: &Reporter,
 ) -> Result {
     let mut build_queue = BuildQueue::new(map.clone(), reporter);
 
-    match options.source_file_path {
-        Some(source_file_path) => {
-            // @Question before building core, should we check the existence of source_file_path?
-
-            build_queue.process_single_file_package(source_file_path, options.no_core)
+    match suboptions.path {
+        Some(path) if path.is_file() => {
+            build_queue.process_single_file_package(path, options.no_core)?;
         }
-        None => {
+        path => {
             if options.no_core {
-                // @Temporary message
-                // @Task add note explaining how one needs to remove the
-                // explicit `core` dep in the manifest to achieve the wanted behavior
                 Diagnostic::error()
-                    .message("option `--no-core` only works with explicit source file paths")
+                    .message("option `--no-core` is only available for single-file packages")
+                    .help(
+                        "to achieve the same for normal packages, make sure `core` is absent from\n\
+                         the list of dependencies in the package manifest"
+                    )
                     .report(reporter);
             }
 
-            // @Task dont unwrap, handle the error cases
-            let package_path = std::env::current_dir().unwrap();
-            build_queue.process_package(package_path)
+            match path {
+                Some(path) => build_queue.process_package(&path)?,
+                None => {
+                    // @Task dont unwrap, handle the error cases
+                    let path = std::env::current_dir().unwrap();
+                    let path = match find_package(&path) {
+                        Some(path) => path,
+                        None => {
+                            Diagnostic::error()
+                                .message(
+                                    "neither the current directory nor any of its parents is a package",
+                                )
+                                .note(format!(
+                                    "none of the directories contain a package manifest file named `{}`",
+                                    PackageManifest::FILE_NAME
+                                ))
+                                .report(reporter);
+                            return Err(());
+                        }
+                    };
+
+                    build_queue.process_package(path)?;
+                }
+            };
         }
-    }?;
+    };
 
     let (unbuilt_crates, mut built_crates) = build_queue.into_unbuilt_and_built();
 
@@ -146,10 +171,9 @@ fn check_run_or_build_package(
             println!("   {label} {name} ({path})");
         }
 
-        macro check_phase_restriction($restriction:expr $(, $( $action:tt )* )?) {
+        macro check_phase_restriction($restriction:expr) {
             if is_goal_crate && options.phase_restriction == Some($restriction) {
-                $( $( $action )*; )?
-                return Ok(())
+                return Ok(());
             }
         }
 
@@ -189,18 +213,13 @@ fn check_run_or_build_package(
             );
         }
 
-        check_phase_restriction!(
-            PhaseRestriction::Lexer,
-            if token_health.is_tainted() {
-                return Err(());
-            }
-        );
+        check_phase_restriction!(PhaseRestriction::Lexer);
 
         let time = Instant::now();
 
         let declaration = Parser::new(source_file, &tokens, map.clone(), reporter).parse(
             // @Beacon @Note yikes!! we just unwrapped that from a string!
-            Identifier::new(built_crates[crate_.package].name.clone().into(), Span::SHAM),
+            Identifier::new(built_crates[crate_.package].name.clone().into(), default()),
         )?;
 
         let duration = time.elapsed();
@@ -293,7 +312,7 @@ fn check_run_or_build_package(
         // @Beacon @Task dont check for program_entry in scope.run() or compile_and_interp
         // but here (a static error) (if the CLI dictates to run it)
 
-        if let Command::Run = command {
+        if let BuildMode::Run = mode {
             if is_goal_crate {
                 let result = typer.interpreter().run()?;
 
@@ -301,7 +320,7 @@ fn check_run_or_build_package(
             }
         }
         // @Temporary
-        else if let Command::Build = command {
+        else if let BuildMode::Build = mode {
             // @Temporary not just builds, also runs ^^
 
             lushui::compiler::compile_and_interpret_declaration(&declaration, &crate_)
@@ -318,7 +337,7 @@ fn check_run_or_build_package(
 #[allow(clippy::unnecessary_wraps)] // @Temporary
 fn create_new_package(
     name: String,
-    generation_options: cli::GenerationOptions,
+    suboptions: cli::GenerationOptions,
     _options: cli::Options,
     _reporter: &Reporter,
 ) -> Result {
@@ -346,7 +365,7 @@ dependencies: {{
     )
     .unwrap();
 
-    if generation_options.library {
+    if suboptions.library {
         let path = source_folder_path
             .join(CrateType::Library.default_root_file_stem())
             .with_extension(FILE_EXTENSION);
@@ -354,7 +373,7 @@ dependencies: {{
         fs::File::create(path).unwrap();
     }
 
-    if generation_options.binary {
+    if suboptions.binary {
         let path = source_folder_path
             .join(CrateType::Binary.default_root_file_stem())
             .with_extension(FILE_EXTENSION);

@@ -82,7 +82,7 @@ pub enum TokenKind {
     /// For definitions.
     Equals,
     /// For implicit parameters.
-    SingleQuote,
+    Apostrophe,
     /// Delimiter.
     Semicolon(Provenance),
     OpeningRoundBracket,
@@ -190,7 +190,7 @@ impl fmt::Display for TokenName {
             DoubleColon => quoted!("::"),
             Dot => quoted!("."),
             Equals => quoted!("="),
-            SingleQuote => quoted!("'"),
+            Apostrophe => quoted!("'"),
             Semicolon => quoted!(";"),
             OpeningRoundBracket => quoted!("("),
             OpeningSquareBracket => quoted!("["),

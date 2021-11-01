@@ -206,18 +206,33 @@ impl AttributeTarget for ast::Declaration {
     fn check_attributes(&self, attributes: &Attributes, reporter: &Reporter) -> Result {
         use ast::DeclarationKind::*;
 
-        let (body, binder, definition_marker) = match &self.data {
+        let (binder, definition_marker, body) = match &self.data {
             Value(value) => (
-                value.body.as_ref().map(|expression| expression.span),
                 &value.binder,
-                "=",
+                Spanned::new(
+                    value
+                        .binder
+                        .span()
+                        .fit_end(&value.parameters)
+                        .fit_end(&value.type_annotation)
+                        .end(),
+                    "=",
+                ),
+                value.body.as_ref().map(|expression| expression.span),
             ),
             Data(data) => (
+                &data.binder,
+                Spanned::new(
+                    data.binder
+                        .span()
+                        .fit_end(&data.parameters)
+                        .fit_end(&data.type_annotation)
+                        .end(),
+                    "of",
+                ),
                 data.constructors
                     .as_ref()
                     .map(|constructors| constructors.possible_span().unwrap_or(self.span)),
-                &data.binder,
-                "of",
             ),
             _ => return Ok(()),
         };
@@ -227,7 +242,7 @@ impl AttributeTarget for ast::Declaration {
                 Diagnostic::error()
                     .code(Code::E012)
                     .message(format!("declaration `{}` has no definition", binder))
-                    .primary_span(self)
+                    .primary_span(definition_marker)
                     .help(format!("provide a definition with `{definition_marker}`"))
                     .report(reporter);
                 Err(())

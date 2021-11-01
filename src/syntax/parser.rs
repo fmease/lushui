@@ -304,13 +304,10 @@ impl<'a> Parser<'a> {
                 DocumentationComment => {
                     self.advance();
                     let attribute = Attribute {
-                        binder: ast::Identifier::new(
-                            crate::utility::Atom::from("documentation"),
-                            Span::SHAM,
-                        ),
+                        binder: ast::Identifier::new("documentation".into(), default()),
                         span,
                         arguments: smallvec![AttributeArgument::new(
-                            Span::SHAM,
+                            default(),
                             AttributeArgumentKind::TextEncodedInSpan,
                         )],
                     };
@@ -638,7 +635,7 @@ impl<'a> Parser<'a> {
                 break Ok(decl! {
                     Module {
                         Attributes::new(),
-                        self.map.borrow()[self.file].span;
+                        self.map.borrow()[self.file].span();
                         binder: module_binder,
                         file: self.file,
                         declarations: Some(declarations)
@@ -1738,7 +1735,7 @@ impl<'a> Parser<'a> {
     /// ```
     fn parse_optional_implicitness(&mut self) -> SpannedExplicitness {
         match self.current_token().name() {
-            TokenName::SingleQuote => {
+            TokenName::Apostrophe => {
                 let span = self.current_token().span;
                 self.advance();
                 SpannedExplicitness::Implicit { marker: span }
@@ -1836,7 +1833,7 @@ macro expected_one_of($( $expected:expr ),+ $(,)?) {
     Expected::OneOf(vec![$( $expected.into() ),+])
 }
 
-// @Task impprove API
+// @Task improve API
 fn delimiters_with_expected(
     delimiters: &[Delimiter],
     expected: impl IntoIterator<Item = Expected>,

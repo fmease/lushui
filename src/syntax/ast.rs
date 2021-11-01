@@ -15,7 +15,7 @@ use crate::{
     utility::{obtain, Atom, SmallVec},
 };
 use smallvec::smallvec;
-use std::{convert::TryFrom, convert::TryInto};
+use std::{convert::TryFrom, convert::TryInto, default::default};
 
 pub use format::Format;
 
@@ -422,15 +422,6 @@ pub struct LetIn {
     pub scope: Expression,
 }
 
-impl Spanned<&'_ LetIn> {
-    pub fn span_without_definition_and_scope(self) -> Span {
-        self.span
-            .fit_end(&self.data.binder)
-            .fit_end(&self.data.parameters)
-            .fit_end(&self.data.type_annotation)
-    }
-}
-
 /// The syntax node of a use/in expression.
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
@@ -609,7 +600,7 @@ impl Identifier {
     }
 
     pub fn stripped(self) -> Self {
-        Self::new(self.0.data, Span::SHAM)
+        Self::new(self.0.data, default())
     }
 
     pub fn is_punctuation(&self) -> bool {

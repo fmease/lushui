@@ -135,21 +135,29 @@ pub fn arguments() -> (Command, Options) {
         .get_matches();
 
     let command = matches.subcommand.as_ref().unwrap();
-    let source_file_path = command.matches.value_of_os("FILE").map(Into::into);
 
     let command = match &*command.name {
-        "build" => Command::Build,
-        "check" => Command::Check,
+        name @ ("build" | "check" | "run") => Command::Build {
+            mode: match name {
+                "build" => BuildMode::Build,
+                "check" => BuildMode::Check,
+                "run" => BuildMode::Run,
+                _ => unreachable!(),
+            },
+            suboptions: BuildOptions {
+                path: command.matches.value_of_os("FILE").map(Into::into),
+            },
+        },
         "explain" => Command::Explain,
-        "initialize" | "new" => Command::Generate {
-            mode: match &*command.name {
+        name @ ("initialize" | "new") => Command::Generate {
+            mode: match name {
                 "initialize" => GenerationMode::Initialize,
                 "new" => GenerationMode::New {
                     package_name: command.matches.value_of("NAME").unwrap().into(),
                 },
                 _ => unreachable!(),
             },
-            options: {
+            suboptions: {
                 let library = command.matches.is_present("library");
 
                 GenerationOptions {
@@ -159,7 +167,6 @@ pub fn arguments() -> (Command, Options) {
                 }
             },
         },
-        "run" => Command::Run,
         _ => unreachable!(),
     };
 
@@ -197,7 +204,6 @@ pub fn arguments() -> (Command, Options) {
     }
 
     let options = Options {
-        source_file_path,
         quiet: matches.is_present("quiet"),
         no_core: matches.is_present("no-core"),
         interpreter: matches
@@ -215,9 +221,6 @@ pub fn arguments() -> (Command, Options) {
 // @Task add --color=always|never|auto
 // @Task add --link=<crate-name>
 pub struct Options {
-    // @Task don't store this here in Application but in Command
-    // (after merging those three commands maybe??)
-    pub source_file_path: Option<PathBuf>,
     pub quiet: bool,
     pub no_core: bool,
     pub interpreter: Interpreter,
@@ -287,14 +290,25 @@ impl FromStr for PhaseRestriction {
 }
 
 pub enum Command {
-    Build,
-    Check,
+    Build {
+        mode: BuildMode,
+        suboptions: BuildOptions,
+    },
     Explain,
     Generate {
         mode: GenerationMode,
-        options: GenerationOptions,
+        suboptions: GenerationOptions,
     },
+}
+
+pub enum BuildMode {
+    Check,
+    Build,
     Run,
+}
+
+pub struct BuildOptions {
+    pub path: Option<PathBuf>,
 }
 
 pub enum GenerationMode {

@@ -337,22 +337,7 @@ impl BuildQueue<'_> {
         Ok(())
     }
 
-    pub fn process_package(&mut self, path: PathBuf) -> Result {
-        let package_path = match find_package(&path) {
-            Some(path) => path,
-            None => {
-                // @Beacon @Task span info
-                Diagnostic::error()
-                    .message("neither the current directory nor any of its parents is a package")
-                    .note(format!(
-                        "none of the directories contain a package manifest file named `{}`",
-                        PackageManifest::FILE_NAME
-                    ))
-                    .report(self.reporter);
-                return Err(());
-            }
-        };
-
+    pub fn process_package(&mut self, package_path: &Path) -> Result {
         let manifest_path = package_path.join(PackageManifest::FILE_NAME);
         let manifest_file = match self.map.borrow_mut().load(manifest_path.clone()) {
             Ok(file) => file,
@@ -661,7 +646,7 @@ pub fn parse_crate_name_from_file_path(
         invalid_crate_name(&stem.to_string_lossy()).report(reporter);
     })?;
 
-    Ok(ast::Identifier::new(atom, crate::span::Span::SHAM))
+    Ok(ast::Identifier::new(atom, default()))
 }
 
 fn invalid_crate_name(name: &str) -> Diagnostic {
@@ -712,12 +697,13 @@ pub mod manifest {
                 .remove::<String>("name", None, manifest_span, reporter)
                 // @Task improve code
                 .and_then(|name| {
+                    let span = name.span.trim(1); // trimming the quotes
+
                     parse_identifier(name.data.clone())
-                        .map(|identifier| Identifier::new(identifier, name.span))
+                        .map(|identifier| Identifier::new(identifier, span))
                         .ok_or_else(|| {
-                            // @Beacon @Beacon @Beacon @Task trim quotes (unless empty)
                             super::invalid_crate_name(&name.data)
-                                .primary_span(name)
+                                .primary_span(span)
                                 .report(reporter);
                         })
                 });

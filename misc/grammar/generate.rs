@@ -7,7 +7,7 @@
 
 use std::{fs, path::Path};
 
-const PARSER_PATH: &str = "../../src/parser.rs";
+const PARSER_PATH: &str = "../../src/syntax/parser.rs";
 const OUTPUT_PATH: &str = "lushui.grammar";
 
 const PREAMBLE: &str = "\

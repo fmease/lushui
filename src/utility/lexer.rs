@@ -1,5 +1,5 @@
 use crate::span::{LocalByteIndex, LocalSpan, SourceFile, Span, Spanned};
-use std::{iter::Peekable, str::CharIndices};
+use std::{convert::TryInto, iter::Peekable, str::CharIndices};
 
 pub trait Lexer<'source, TokenKind> {
     fn source_file(&self) -> &'source SourceFile;
@@ -13,7 +13,7 @@ pub trait Lexer<'source, TokenKind> {
     fn local_span_mut(&mut self) -> &mut LocalSpan;
 
     fn span(&self) -> Span {
-        Span::from_local(self.source_file(), self.local_span())
+        self.local_span().global(self.source_file())
     }
 
     fn source(&self) -> &'source str {
@@ -29,8 +29,8 @@ pub trait Lexer<'source, TokenKind> {
     ///
     /// Preparation for [`Self::add`] and variants.
     fn take(&mut self) {
-        let &(index, character) = self.characters().peek().unwrap();
-        self.local_span_mut().end = LocalByteIndex::from_usize(index) + character;
+        let (index, character) = self.peek_with_index().unwrap();
+        self.local_span_mut().set_end(index + character);
     }
 
     fn peek(&mut self) -> Option<char> {
@@ -40,7 +40,7 @@ pub trait Lexer<'source, TokenKind> {
     fn peek_with_index(&mut self) -> Option<(LocalByteIndex, char)> {
         self.characters()
             .peek()
-            .map(|&(index, character)| (LocalByteIndex::from_usize(index), character))
+            .map(|&(index, character)| (index.try_into().unwrap(), character))
     }
 
     fn index(&mut self) -> Option<LocalByteIndex> {
@@ -76,5 +76,11 @@ pub trait Lexer<'source, TokenKind> {
     fn add_with(&mut self, constructor: impl FnOnce(Span) -> Spanned<TokenKind>) {
         let span = self.span();
         self.tokens().push(constructor(span));
+    }
+
+    fn consume(&mut self, token: TokenKind) {
+        self.take();
+        self.advance();
+        self.add(token);
     }
 }

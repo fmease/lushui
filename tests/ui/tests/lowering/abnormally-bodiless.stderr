@@ -1,26 +1,26 @@
 error[E012]: declaration `blank` has no definition
- --> ${DIRECTORY}/lowering/abnormally-bodiless.lushui:3:1
+ --> ${DIRECTORY}/lowering/abnormally-bodiless.lushui:3:19
   |
 3 | blank: Declaration
-  | ^^^^^^^^^^^^^^^^^^ 
+  |                  >< 
   |
  help: provide a definition with `=`
 
 error[E012]: declaration `Blank` has no definition
- --> ${DIRECTORY}/lowering/abnormally-bodiless.lushui:5:1
+ --> ${DIRECTORY}/lowering/abnormally-bodiless.lushui:5:11
   |
 5 | data Blank
-  | ^^^^^^^^^^ 
+  |          >< 
   |
  help: provide a definition with `of`
 
 error[E015]: missing mandatory type annotation on declaration `Blank`
- --> ${DIRECTORY}/lowering/abnormally-bodiless.lushui:5:1
+ --> ${DIRECTORY}/lowering/abnormally-bodiless.lushui:5:11
   |
 5 | data Blank
-  | ^^^^^^^^^^ 
+  |          >< 
   |
- help: provide a type annotation for the declaration with `: TYPE`
+ help: provide a type annotation for the declaration with `: ?type`
 
 error: aborting due to 3 previous errors
  note: the errors E012 and E015 have a detailed explanation

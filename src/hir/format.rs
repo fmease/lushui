@@ -347,7 +347,7 @@ mod test {
         fn test() -> Self {
             let mut scope = Self::new(CrateIndex(0));
             scope.bindings.push(Entity {
-                source: ast::Identifier::new("test".into(), Span::SHAM),
+                source: ast::Identifier::new("test".into(), default()),
                 parent: None,
                 exposure: Exposure::Unrestricted,
                 kind: EntityKind::module(),
@@ -365,7 +365,7 @@ mod test {
             kind: EntityKind,
             parent: LocalDeclarationIndex,
         ) -> Identifier {
-            let identifier = ast::Identifier::new(name.into(), Span::SHAM);
+            let identifier = ast::Identifier::new(name.into(), default());
             let entity = Entity {
                 source: identifier.clone(),
                 parent: Some(self.global_index(parent)),
@@ -380,14 +380,14 @@ mod test {
     fn type_() -> Expression {
         expr! {
             Type {
-                Attributes::default(), Span::SHAM
+                Attributes::default(), Span::default()
             }
         }
     }
 
     impl Attribute {
-        const fn sham(kind: AttributeKind) -> Self {
-            Self::new(Span::SHAM, kind)
+        const fn stripped(kind: AttributeKind) -> Self {
+            Self::new(default(), kind)
         }
     }
 
@@ -406,13 +406,13 @@ mod test {
             "crate.Array crate.Int -> Type",
             (expr! {
                 PiType {
-                    Attributes::default(), Span::SHAM;
+                    Attributes::default(), Span::default();
                     explicitness: Explicit,
                     aspect: default(),
                     parameter: None,
                     domain: expr! {
                         Application {
-                            Attributes::default(), Span::SHAM;
+                            Attributes::default(), Span::default();
                             callee: array,
                             argument: int,
                             explicitness: Explicit,
@@ -439,13 +439,13 @@ mod test {
             "(alpha: crate.Array crate.Int) -> crate.Container alpha",
             (expr! {
                 PiType {
-                    Attributes::default(), Span::SHAM;
+                    Attributes::default(), Span::default();
                     explicitness: Explicit,
                     aspect: default(),
                     parameter: Some(alpha.clone()),
                     domain: expr! {
                         Application {
-                            Attributes::default(), Span::SHAM;
+                            Attributes::default(), Span::default();
                             callee: array.to_expression(),
                             argument: int.to_expression(),
                             explicitness: Explicit,
@@ -453,7 +453,7 @@ mod test {
                     },
                     codomain: expr! {
                         Application {
-                            Attributes::default(), Span::SHAM;
+                            Attributes::default(), Span::default();
                             callee: container.to_expression(),
                             argument: alpha.to_expression(),
                             explicitness: Explicit,
@@ -474,7 +474,7 @@ mod test {
             "'(whatever: Type) -> Type",
             (expr! {
                 PiType {
-                    Attributes::default(), Span::SHAM;
+                    Attributes::default(), Span::default();
                     explicitness: Implicit,
                     aspect: default(),
                     parameter: Some(Identifier::parameter("whatever")),
@@ -499,13 +499,13 @@ mod test {
             "(crate.Int -> crate.Int) -> crate.Int",
             (expr! {
                 PiType {
-                    Attributes::default(), Span::SHAM;
+                    Attributes::default(), Span::default();
                     explicitness: Explicit,
                     aspect: default(),
                     parameter: None,
                     domain: expr! {
                         PiType {
-                            Attributes::default(), Span::SHAM;
+                            Attributes::default(), Span::default();
                             explicitness: Explicit,
                             aspect: default(),
                             parameter: None,
@@ -536,21 +536,21 @@ mod test {
             "crate.Int -> crate.Text -> Type",
             (expr! {
                 PiType {
-                    Attributes::default(), Span::SHAM;
+                    Attributes::default(), Span::default();
                     explicitness: Explicit,
                     aspect: default(),
                     parameter: None,
                     domain: int,
                     codomain: expr! {
                         PiType {
-                            Attributes::default(), Span::SHAM;
+                            Attributes::default(), Span::default();
                             explicitness: Explicit,
                             aspect: default(),
                             parameter: None,
                             domain: text,
                             codomain: expr! {
                                 Type {
-                                    Attributes::default(), Span::SHAM
+                                    Attributes::default(), Span::default()
                                 }
                             },
                         }
@@ -573,13 +573,13 @@ mod test {
             r"(\x => x) -> Type",
             (expr! {
                 PiType {
-                    Attributes::default(), Span::SHAM;
+                    Attributes::default(), Span::default();
                     explicitness: Explicit,
                     aspect: default(),
                     parameter: None,
                     domain: expr! {
                         Lambda {
-                            Attributes::default(), Span::SHAM;
+                            Attributes::default(), Span::default();
                             parameter: x.clone(),
                             parameter_type_annotation: None,
                             body_type_annotation: None,
@@ -606,13 +606,13 @@ mod test {
             "alpha crate.beta (gamma Type) 0",
             (expr! {
                 Application {
-                    Attributes::default(), Span::SHAM;
+                    Attributes::default(), Span::default();
                     callee: expr! {
                         Application {
-                            Attributes::default(), Span::SHAM;
+                            Attributes::default(), Span::default();
                             callee: expr! {
                                 Application {
-                                    Attributes::default(), Span::SHAM;
+                                    Attributes::default(), Span::default();
                                     callee: Identifier::parameter("alpha").to_expression(),
                                     argument: beta.to_expression(),
                                     explicitness: Explicit,
@@ -620,7 +620,7 @@ mod test {
                             },
                             argument: expr! {
                                 Application {
-                                    Attributes::default(), Span::SHAM;
+                                    Attributes::default(), Span::default();
                                     callee: Identifier::parameter("gamma").to_expression(),
                                     argument: type_(),
                                     explicitness: Explicit,
@@ -630,7 +630,7 @@ mod test {
                         }
                     },
                     argument: expr! {
-                        Number(Attributes::default(), Span::SHAM; Number::Nat(0u8.into()))
+                        Number(Attributes::default(), Span::default(); Number::Nat(0u8.into()))
                     },
                     explicitness: Explicit,
                 }
@@ -653,11 +653,11 @@ mod test {
             r"crate.take (\it => it)",
             (expr! {
                 Application {
-                    Attributes::default(), Span::SHAM;
+                    Attributes::default(), Span::default();
                     callee: take.to_expression(),
                     argument: expr! {
                         Lambda {
-                            Attributes::default(), Span::SHAM;
+                            Attributes::default(), Span::default();
                             parameter: it.clone(),
                             parameter_type_annotation: None,
                             body_type_annotation: None,
@@ -687,14 +687,14 @@ mod test {
             r#"crate.take (\it => it) "who""#,
             (expr! {
                 Application {
-                    Attributes::default(), Span::SHAM;
+                    Attributes::default(), Span::default();
                     callee: expr! {
                         Application {
-                            Attributes::default(), Span::SHAM;
+                            Attributes::default(), Span::default();
                             callee: take.to_expression(),
                             argument: expr! {
                                 Lambda {
-                                    Attributes::default(), Span::SHAM;
+                                    Attributes::default(), Span::default();
                                     parameter: it.clone(),
                                     parameter_type_annotation: None,
                                     body_type_annotation: None,
@@ -709,7 +709,7 @@ mod test {
                     },
                     argument: expr! {
                         Text(
-                            Attributes::default(), Span::SHAM;
+                            Attributes::default(), Span::default();
                             String::from("who"),
                         )
                     },
@@ -731,7 +731,7 @@ mod test {
             r"crate.identity 'Type",
             (expr! {
                 Application {
-                    Attributes::default(), Span::SHAM;
+                    Attributes::default(), Span::default();
                     callee: identity.to_expression(),
                     argument: type_(),
                     explicitness: Implicit,
@@ -753,11 +753,11 @@ mod test {
             r"crate.identity '(prepare crate.Text)",
             (expr! {
                 Application {
-                    Attributes::default(), Span::SHAM;
+                    Attributes::default(), Span::default();
                     callee: identity.to_expression(),
                     argument: expr! {
                         Application {
-                            Attributes::default(), Span::SHAM;
+                            Attributes::default(), Span::default();
                             callee: Identifier::parameter("prepare").to_expression(),
                             argument: text.to_expression(),
                             explicitness: Explicit,
@@ -779,14 +779,14 @@ mod test {
             "eta 10 omicron",
             (expr! {
                 Application {
-                    Attributes::default(), Span::SHAM;
+                    Attributes::default(), Span::default();
                     callee: expr! {
                         ForeignApplication {
-                            Attributes::default(), Span::SHAM;
+                            Attributes::default(), Span::default();
                             callee: Identifier::parameter("eta"),
                             arguments: vec![
                                 expr! {
-                                    Number(Attributes::default(), Span::SHAM; Number::Nat(10u8.into()))
+                                    Number(Attributes::default(), Span::default(); Number::Nat(10u8.into()))
                                 }
                             ],
                         }
@@ -808,12 +808,12 @@ mod test {
             r"\input: crate.Output => 0",
             (expr! {
                 Lambda {
-                    Attributes::default(), Span::SHAM;
+                    Attributes::default(), Span::default();
                     parameter: Identifier::parameter("input"),
                     parameter_type_annotation: None,
                     body_type_annotation: Some(output.to_expression()),
                     body: expr! {
-                        Number(Attributes::default(), Span::SHAM; Number::Nat(0u8.into()))
+                        Number(Attributes::default(), Span::default(); Number::Nat(0u8.into()))
                     },
                     explicitness: Explicit,
                     laziness: None,
@@ -835,7 +835,7 @@ mod test {
             r"\(input: crate.Input): crate.Output => Type",
             (expr! {
                 Lambda {
-                    Attributes::default(), Span::SHAM;
+                    Attributes::default(), Span::default();
                     parameter: Identifier::parameter("input"),
                     parameter_type_annotation: Some(input.to_expression()),
                     body_type_annotation: Some(output.to_expression()),
@@ -857,7 +857,7 @@ mod test {
             r"\'(Input: Type) => Type",
             (expr! {
                 Lambda {
-                    Attributes::default(), Span::SHAM;
+                    Attributes::default(), Span::default();
                     parameter: Identifier::parameter("Input"),
                     parameter_type_annotation: Some(type_()),
                     body_type_annotation: None,
@@ -880,13 +880,13 @@ mod test {
             r"\'A => \a => a",
             (expr! {
                 Lambda {
-                    Attributes::default(), Span::SHAM;
+                    Attributes::default(), Span::default();
                     parameter: Identifier::parameter("A"),
                     parameter_type_annotation: None,
                     body_type_annotation: None,
                     body: expr! {
                         Lambda {
-                            Attributes::default(), Span::SHAM;
+                            Attributes::default(), Span::default();
                             parameter: a.clone(),
                             parameter_type_annotation: None,
                             body_type_annotation: None,
@@ -915,13 +915,13 @@ mod test {
             r"\x => x -> Type",
             (expr! {
                 Lambda {
-                    Attributes::default(), Span::SHAM;
+                    Attributes::default(), Span::default();
                     parameter: x.clone(),
                     parameter_type_annotation: None,
                     body_type_annotation: None,
                     body: expr! {
                         PiType {
-                            Attributes::default(), Span::SHAM;
+                            Attributes::default(), Span::default();
                             explicitness: Explicit,
                             aspect: default(),
                             parameter: None,
@@ -948,7 +948,7 @@ mod test {
             "add",
             (expr! {
                 ForeignApplication {
-                    Attributes::default(), Span::SHAM;
+                    Attributes::default(), Span::default();
                     callee: add,
                     arguments: Vec::new(),
                 }
@@ -968,23 +968,23 @@ mod test {
             "add (add 1 3000) 0",
             (expr! {
                 ForeignApplication {
-                    Attributes::default(), Span::SHAM;
+                    Attributes::default(), Span::default();
                     callee: add.clone(),
                     arguments: vec![
                         expr! {
                             ForeignApplication {
-                                Attributes::default(), Span::SHAM;
+                                Attributes::default(), Span::default();
                                 callee: add,
                                 arguments: vec![
                                     expr! {
                                         Number(
-                                            Attributes::default(), Span::SHAM;
+                                            Attributes::default(), Span::default();
                                             Number::Nat(1u8.into()),
                                         )
                                     },
                                     expr! {
                                         Number(
-                                            Attributes::default(), Span::SHAM;
+                                            Attributes::default(), Span::default();
                                             Number::Nat(3000u16.into()),
                                         )
                                     },
@@ -993,7 +993,7 @@ mod test {
                         },
                         expr! {
                             Number(
-                                Attributes::default(), Span::SHAM;
+                                Attributes::default(), Span::default();
                                 Number::Nat(0u8.into()),
                             )
                         },
@@ -1013,18 +1013,18 @@ mod test {
             "== @static @unsafe 3 @static (increment 1)",
             (expr! {
                 Application {
-                    Attributes::default(), Span::SHAM;
+                    Attributes::default(), Span::default();
                     callee: expr! {
                         Application {
-                            Attributes::default(), Span::SHAM;
+                            Attributes::default(), Span::default();
                             callee: Identifier::parameter("==").to_expression(),
                             argument: expr! {
                                 Number(
                                     Attributes::new(vec![
-                                        Attribute::sham(AttributeKind::Static),
-                                        Attribute::sham(AttributeKind::Unsafe)
+                                        Attribute::stripped(AttributeKind::Static),
+                                        Attribute::stripped(AttributeKind::Unsafe)
                                     ]),
-                                    Span::SHAM;
+                                    Span::default();
                                     Number::Nat(3u8.into()),
                                 )
                             },
@@ -1033,10 +1033,10 @@ mod test {
                     },
                     argument: expr! {
                         Application {
-                            Attributes::new(vec![Attribute::sham(AttributeKind::Static)]), Span::SHAM;
+                            Attributes::new(vec![Attribute::sham(AttributeKind::Static)]), Span::default();
                             callee: Identifier::parameter("increment").to_expression(),
                             argument: expr! {
-                                Number(Attributes::default(), Span::SHAM; Number::Nat(1u8.into()))
+                                Number(Attributes::default(), Span::default(); Number::Nat(1u8.into()))
                             },
                             explicitness: Explicit,
                         }

@@ -382,8 +382,7 @@ impl<'a> FunctionScope<'a> {
                 if depth == index.0 {
                     expr! {
                         Substitution {
-                            Attributes::default(),
-                            Span::SHAM;
+                            Attributes::default(), Span::default();
                             substitution: Shift(depth + 1),
                             expression: type_.clone(),
                         }
@@ -401,8 +400,7 @@ impl<'a> FunctionScope<'a> {
                 {
                     Some((type_, depth)) => expr! {
                         Substitution {
-                            Attributes::default(),
-                            Span::SHAM;
+                            Attributes::default(), Span::default();
                             // @Task verify this shift
                             substitution: Shift(depth + 1),
                             expression: type_.clone(),

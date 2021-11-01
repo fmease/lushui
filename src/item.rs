@@ -1,5 +1,7 @@
 //! Abstractions for working with things that have a source location and can have attributes.
 
+use std::default::default;
+
 use crate::{
     error::PossiblyErroneous,
     span::{Span, Spanning},
@@ -34,8 +36,8 @@ impl<T: PossiblyErroneous, Attributes: Default> PossiblyErroneous for Item<T, At
     fn error() -> Self {
         Self {
             data: T::error(),
-            span: Span::SHAM,
-            attributes: Attributes::default(),
+            span: default(),
+            attributes: default(),
         }
     }
 }

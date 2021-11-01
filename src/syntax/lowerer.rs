@@ -34,7 +34,7 @@ use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     error::{map_outcome_from_result, Health, Outcome, PossiblyErroneous, Result},
     format::{ordered_listing, pluralize, Conjunction, DisplayWith, QuoteExt},
-    span::{SharedSourceMap, Span, Spanned, Spanning},
+    span::{SharedSourceMap, Span, Spanning},
     utility::{obtain, SmallVec, Str},
 };
 use joinery::JoinableIterator;
@@ -86,7 +86,7 @@ impl<'a> Lowerer<'a> {
 
                 if value.type_annotation.is_none() {
                     missing_mandatory_type_annotation(
-                        declaration.span,
+                        value.binder.span().fit_end(&value.parameters).end(),
                         AnnotationTarget::Declaration(&value.binder),
                     )
                     .report(self.reporter);
@@ -132,7 +132,7 @@ impl<'a> Lowerer<'a> {
                                     body = expr! {
                                         Lambda {
                                             Attributes::default(),
-                                            Span::SHAM;
+                                            Span::default();
                                             parameter: binder.clone(),
                                             parameter_type_annotation: Some(parameter_type_annotation.clone()),
                                             explicitness: parameter_group.explicitness,
@@ -172,7 +172,7 @@ impl<'a> Lowerer<'a> {
                     Some(type_annotation) => type_annotation,
                     None => {
                         missing_mandatory_type_annotation(
-                            declaration.span,
+                            data.binder.span().fit_end(&data.parameters).end(),
                             AnnotationTarget::Declaration(&data.binder),
                         )
                         .report(self.reporter);
@@ -215,7 +215,11 @@ impl<'a> Lowerer<'a> {
                     None => {
                         // @Note awkward API!
                         missing_mandatory_type_annotation(
-                            declaration.span,
+                            constructor
+                                .binder
+                                .span()
+                                .fit_end(&constructor.parameters)
+                                .end(),
                             AnnotationTarget::Declaration(&constructor.binder),
                         )
                         .report(self.reporter);
@@ -284,8 +288,7 @@ impl<'a> Lowerer<'a> {
                         //             deleted by somebody while this program (the frontend) is running but I don't
                         //             care about that edge case right now!
                         let path = self.map.borrow()[module.file]
-                            .path
-                            .as_ref()
+                            .path()
                             .unwrap()
                             .parent()
                             .unwrap()
@@ -638,7 +641,7 @@ impl<'a> Lowerer<'a> {
                         expression = expr! {
                             Lambda {
                                 Attributes::default(),
-                                Span::SHAM;
+                                Span::default();
                                 parameter: binder.clone(),
                                 parameter_type_annotation: parameter.clone(),
                                 explicitness: parameter_group.explicitness,
@@ -655,8 +658,6 @@ impl<'a> Lowerer<'a> {
             LetIn(let_in) => {
                 let expression = {
                     let binder = &let_in.binder;
-                    let span =
-                        Spanned::new(expression.span, &*let_in).span_without_definition_and_scope();
 
                     if let_in.expression.is_none() {}
 
@@ -667,7 +668,14 @@ impl<'a> Lowerer<'a> {
                             Diagnostic::error()
                                 .code(Code::E012)
                                 .message(format!("let-binding `{}` has no definition", binder))
-                                .primary_span(span)
+                                .primary_span(
+                                    let_in
+                                        .binder
+                                        .span()
+                                        .fit_end(&let_in.parameters)
+                                        .fit_end(&let_in.type_annotation)
+                                        .end(),
+                                )
                                 .help("provide a definition with `=`")
                                 .report(self.reporter);
                             health.taint();
@@ -697,7 +705,7 @@ impl<'a> Lowerer<'a> {
                     for binder in parameter_group.parameters.iter().rev() {
                         expression = expr! {
                             Lambda {
-                                Attributes::default(), Span::SHAM;
+                                Attributes::default(), Span::default();
                                 parameter: binder.clone(),
                                 parameter_type_annotation: parameter.clone(),
                                 explicitness: parameter_group.explicitness,
@@ -715,10 +723,10 @@ impl<'a> Lowerer<'a> {
 
                 expr! {
                     Application {
-                        Attributes::default(), Span::SHAM;
+                        Attributes::default(), Span::default();
                         callee: expr! {
                             Lambda {
-                                Attributes::default(), Span::SHAM;
+                                Attributes::default(), Span::default();
                                 parameter: let_in.binder,
                                 // @Note we cannot simply lower parameters and a type annotation because
                                 // in the chain (`->`) of parameters, there might always be one missing and
@@ -1113,7 +1121,7 @@ impl<'a> Lowerer<'a> {
                 expression = expr! {
                     PiType {
                         Attributes::default(),
-                        Span::SHAM;
+                        Span::default();
                         explicitness: parameter_group.explicitness,
                         aspect: parameter_group.aspect,
                         parameter: Some(binder.clone()),
@@ -1450,12 +1458,12 @@ fn missing_mandatory_type_annotation(
 
     let type_annotation_suggestion: Str = match target {
         Parameters(parameter_group) => format!(
-            "`{}({}: TYPE)`",
+            "`{}({}: ?type)`",
             parameter_group.explicitness,
             parameter_group.parameters.iter().join_with(' ')
         )
         .into(),
-        Declaration(_) => "`: TYPE`".into(),
+        Declaration(_) => "`: ?type`".into(),
     };
 
     let binders = match target {

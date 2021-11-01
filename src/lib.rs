@@ -33,11 +33,9 @@
 
 #![feature(
     decl_macro,
-    associated_type_defaults,
     never_type,
     default_free_fn,
     never_type_fallback,
-    map_first_last,
     stmt_expr_attributes,
     format_args_capture,
     associated_type_bounds,
@@ -45,7 +43,6 @@
     type_ascription,
     derive_default_enum,
     generic_associated_types,
-    path_try_exists,
     extend_one,
     try_trait_v2,
     adt_const_params
@@ -64,6 +61,7 @@
     clippy::match_bool,
     clippy::empty_enum,
     clippy::single_match_else,
+    clippy::if_not_else,
     clippy::needless_pass_by_value, // @Temporary
     clippy::missing_panics_doc, // @Temporary
 )]

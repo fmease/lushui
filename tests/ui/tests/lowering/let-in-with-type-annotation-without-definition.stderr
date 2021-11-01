@@ -1,16 +1,16 @@
 error[E015]: missing mandatory type annotation on declaration `foo`
- --> ${DIRECTORY}/lowering/let-in-with-type-annotation-without-definition.lushui:3:1
+ --> ${DIRECTORY}/lowering/let-in-with-type-annotation-without-definition.lushui:3:4
   |
 3 | foo = let x: Int in 0
-  | ^^^^^^^^^^^^^^^^^^^^^ 
+  |   >< 
   |
- help: provide a type annotation for the declaration with `: TYPE`
+ help: provide a type annotation for the declaration with `: ?type`
 
 error[E012]: let-binding `x` has no definition
- --> ${DIRECTORY}/lowering/let-in-with-type-annotation-without-definition.lushui:3:7
+ --> ${DIRECTORY}/lowering/let-in-with-type-annotation-without-definition.lushui:3:17
   |
 3 | foo = let x: Int in 0
-  |       ^^^^^^^^^^ 
+  |                >< 
   |
  help: provide a definition with `=`
 

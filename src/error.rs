@@ -1,5 +1,7 @@
 //! Different error handling mechanisms.
 
+use std::fmt;
+
 use crate::{
     diagnostics::{Diagnostic, Reporter},
     utility::SmallVec,
@@ -150,6 +152,15 @@ impl From<Health> for Result {
         match health {
             Health::Untainted => Ok(()),
             Health::Tainted => Err(()),
+        }
+    }
+}
+
+impl fmt::Display for Health {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Untainted => write!(f, "untainted"),
+            Self::Tainted => write!(f, "tainted"),
         }
     }
 }

@@ -125,16 +125,14 @@ impl<'a> Interpreter<'a> {
                         expression.span;
                         callee: expr! {
                             Substitution {
-                                Attributes::default(),
-                                Span::SHAM;
+                                Attributes::default(), Span::default();
                                 expression: application.callee.clone(),
                                 substitution: substitution.clone(),
                             }
                         },
                         argument: expr! {
                             Substitution {
-                                Attributes::default(),
-                                Span::SHAM;
+                                Attributes::default(), Span::default();
                                 expression: application.argument.clone(),
                                 substitution,
                             }
@@ -146,8 +144,7 @@ impl<'a> Interpreter<'a> {
             (PiType(pi), substitution) => {
                 let domain = expr! {
                     Substitution {
-                        Attributes::default(),
-                        Span::SHAM;
+                        Attributes::default(), Span::default();
                         expression: pi.domain.clone(),
                         substitution: substitution.clone(),
                     }
@@ -155,8 +152,7 @@ impl<'a> Interpreter<'a> {
 
                 let codomain = expr! {
                     Substitution {
-                        Attributes::default(),
-                        Span::SHAM;
+                        Attributes::default(), Span::default();
                         expression: pi.codomain.clone(),
                         substitution: match &pi.parameter {
                             Some(parameter) => {
@@ -190,8 +186,7 @@ impl<'a> Interpreter<'a> {
                     lambda.parameter_type_annotation.clone().map(|type_| {
                         expr! {
                             Substitution {
-                                Attributes::default(),
-                                Span::SHAM;
+                                Attributes::default(), Span::default();
                                 expression: type_,
                                 substitution: substitution.clone(),
                             }
@@ -201,8 +196,7 @@ impl<'a> Interpreter<'a> {
                 let body_type_annotation = lambda.body_type_annotation.clone().map(|type_| {
                     expr! {
                         Substitution {
-                            Attributes::default(),
-                            Span::SHAM;
+                            Attributes::default(), Span::default();
                             expression: type_,
                             substitution: {
                                 let binder = lambda.parameter.as_innermost();
@@ -218,8 +212,7 @@ impl<'a> Interpreter<'a> {
 
                 let body = expr! {
                     Substitution {
-                        Attributes::default(),
-                        Span::SHAM;
+                        Attributes::default(), Span::default();
                         expression: lambda.body.clone(),
                         substitution: {
                                 let binder = lambda.parameter.as_innermost();
@@ -255,8 +248,7 @@ impl<'a> Interpreter<'a> {
                             pattern: case.pattern.clone(),
                             body: expr! {
                                 Substitution {
-                                    Attributes::default(),
-                                    Span::SHAM;
+                                    Attributes::default(), Span::default();
                                     expression: case.body.clone(),
                                     substitution: substitution.clone(),
                                 }
@@ -264,8 +256,7 @@ impl<'a> Interpreter<'a> {
                         }).collect(),
                         subject: expr! {
                             Substitution {
-                                Attributes::default(),
-                                Span::SHAM;
+                                Attributes::default(), Span::default();
                                 expression: analysis.subject.clone(),
                                 substitution,
                             }
@@ -281,8 +272,7 @@ impl<'a> Interpreter<'a> {
                     callee: application.callee.clone(),
                     arguments: application.arguments.iter().map(|argument| expr! {
                         Substitution {
-                            argument.attributes.clone(),
-                            argument.span;
+                            argument.attributes.clone(), argument.span;
                             expression: argument.clone(),
                             substitution: substitution.clone(),
                         }
@@ -340,7 +330,7 @@ impl<'a> Interpreter<'a> {
                                     body_type_annotation: None,
                                     body: expr! {
                                         Substitution {
-                                            Attributes::default(), Span::SHAM;
+                                            Attributes::default(), Span::default();
                                             substitution: Shift(1),
                                             expression: argument,
                                         }
@@ -356,7 +346,7 @@ impl<'a> Interpreter<'a> {
                         self.evaluate_expression(
                             expr! {
                                 Substitution {
-                                    Attributes::default(), Span::SHAM;
+                                    Attributes::default(), Span::default();
                                     substitution: Use(Box::new(Shift(0)), argument),
                                     expression: lambda.body.clone(),
                                 }
@@ -368,8 +358,7 @@ impl<'a> Interpreter<'a> {
                         .evaluate_expression(
                             expr! {
                                 ForeignApplication {
-                                    expression.attributes,
-                                    expression.span;
+                                    expression.attributes, expression.span;
                                     callee: binding.binder.clone(),
                                     arguments: vec![argument],
 
@@ -378,8 +367,7 @@ impl<'a> Interpreter<'a> {
                         )?,
                     Binding(_) | Application(_) => expr! {
                         Application {
-                            expression.attributes,
-                            expression.span;
+                            expression.attributes, expression.span;
                             callee,
                             argument: match context.form {
                                 // Form::Normal => argument.evaluate(context)?,
@@ -392,8 +380,7 @@ impl<'a> Interpreter<'a> {
                     ForeignApplication(application) => self.evaluate_expression(
                         expr! {
                             ForeignApplication {
-                                expression.attributes,
-                                    expression.span;
+                                expression.attributes, expression.span;
                                 callee: application.callee.clone(),
                                 arguments: {
                                     let mut arguments = application.arguments.clone();
@@ -423,8 +410,7 @@ impl<'a> Interpreter<'a> {
 
                     expr! {
                         PiType {
-                            expression.attributes,
-                            expression.span;
+                            expression.attributes, expression.span;
                             explicitness: pi.explicitness,
                             aspect: pi.aspect,
                             parameter: pi.parameter.clone(),
@@ -460,8 +446,7 @@ impl<'a> Interpreter<'a> {
 
                     expr! {
                         Lambda {
-                            expression.attributes,
-                            expression.span;
+                            expression.attributes, expression.span;
                             parameter: lambda.parameter.clone(),
                             parameter_type_annotation: Some(parameter_type),
                             body,
@@ -792,8 +777,7 @@ impl Substitution {
                 Box::new(substitution0.clone().compose(*substitution1)),
                 expr! {
                     Substitution {
-                        Attributes::default(),
-                        Span::SHAM;
+                        Attributes::default(), Span::default();
                         substitution: substitution0,
                         expression,
                     }

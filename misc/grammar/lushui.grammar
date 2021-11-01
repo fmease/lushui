@@ -118,7 +118,7 @@ Sequence-Literal ::= "[" Lower-Expression* "]"
 
 Path ::= Path-Head ("." General-Identifier)*
 Path-Head ::= Path-Hanger | General-Identifier
-Path-Hanger ::= "crates" | "crate" | "super" | "self"
+Path-Hanger ::= "extern" | "crate" | "super" | "self"
 
 Lambda-Literal ::= "\" Parameters Type-Annotation? "=>" Expression
 

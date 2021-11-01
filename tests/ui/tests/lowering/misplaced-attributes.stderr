@@ -144,12 +144,12 @@ error[E013]: attribute `public` cannot be ascribed to a constructor declaration
   note: attribute `public` can only be ascribed to declarations except constructors
 
 error[E015]: missing mandatory type annotation on declaration `manifest`
-  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:15:13
+  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:15:21
    |
 15 |     @public manifest
-   |             ^^^^^^^^ 
+   |                    >< 
    |
-  help: provide a type annotation for the declaration with `: TYPE`
+  help: provide a type annotation for the declaration with `: ?type`
 
 error[E013]: attribute `static` cannot be ascribed to a path pattern
   --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:19:9

@@ -514,7 +514,7 @@ impl Identifier {
     pub(crate) fn parameter(name: &str) -> Self {
         Identifier::new(
             Index::DeBruijnParameter,
-            ast::Identifier::new(name.into(), Span::SHAM),
+            ast::Identifier::new(name.into(), default()),
         )
     }
 
@@ -525,7 +525,7 @@ impl Identifier {
     pub fn to_expression(self) -> crate::hir::Expression {
         crate::hir::expr! {
             Binding {
-                crate::syntax::lowered_ast::Attributes::default(), self.span();
+                default(), self.span();
                 binder: self
             }
         }

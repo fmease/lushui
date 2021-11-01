@@ -240,10 +240,15 @@ fn main_() -> Result<(), ()> {
                         let entry = entry.unwrap();
                         let path = entry.path();
 
+                        // @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Task
+                        // check if this folder is a package and invoke
+                        // lushui with `lushui check <folder>` without passing --quiet!!
                         if entry.file_type().is_dir() {
                             continue;
                         }
 
+                        // @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Task
+                        // skip metadatafiles
                         if !entry.file_type().is_file() {
                             panic!("invalid file type");
                         }

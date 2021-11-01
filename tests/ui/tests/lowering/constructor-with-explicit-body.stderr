@@ -1,10 +1,10 @@
 error[E015]: missing mandatory type annotation on declaration `container`
- --> ${DIRECTORY}/lowering/constructor-with-explicit-body.lushui:4:5
+ --> ${DIRECTORY}/lowering/constructor-with-explicit-body.lushui:4:14
   |
 4 |     container = attachment
-  |     ^^^^^^^^^^^^^^^^^^^^^^ 
+  |             >< 
   |
- help: provide a type annotation for the declaration with `: TYPE`
+ help: provide a type annotation for the declaration with `: ?type`
 
 error[E020]: `container` is defined multiple times in this scope
  --> ${DIRECTORY}/lowering/constructor-with-explicit-body.lushui:4:17

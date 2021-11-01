@@ -902,7 +902,7 @@ impl<'a> Resolver<'a> {
 
                 if !reach_is_ancestor {
                     Diagnostic::error()
-                        .code(Code::E000)
+                        .code(Code::E037)
                         .message("exposure can only be restricted to ancestor modules")
                         .primary_span(unresolved_reach)
                         .report(self.reporter);
