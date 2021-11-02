@@ -1,6 +1,6 @@
 // @Task docs
 
-use std::{convert::TryInto, fmt};
+use std::fmt;
 
 use crate::package::CrateIndex;
 

@@ -5,7 +5,6 @@ use index_map::IndexMap;
 use std::{
     borrow::Borrow,
     cell::RefCell,
-    convert::TryInto,
     default::default,
     io,
     ops::Range,

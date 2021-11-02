@@ -5,10 +5,7 @@
 
 // @Task support keywords as keys e.g. `false: false`
 
-use std::{
-    convert::{TryFrom, TryInto},
-    fmt,
-};
+use std::fmt;
 
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},

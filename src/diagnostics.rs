@@ -362,7 +362,7 @@ impl Diagnostic {
 
                             let spacing = " ".repeat(
                                 lines.first_line.highlight_padding_width
-                                    + if lines.first_line.highlight_width == 0 {
+                                    + if zero_length_highlight {
                                         1
                                     } else {
                                         lines.first_line.highlight_width

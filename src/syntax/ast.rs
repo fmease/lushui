@@ -15,7 +15,7 @@ use crate::{
     utility::{obtain, Atom, SmallVec},
 };
 use smallvec::smallvec;
-use std::{convert::TryFrom, convert::TryInto, default::default};
+use std::default::default;
 
 pub use format::Format;
 

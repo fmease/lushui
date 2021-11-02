@@ -39,7 +39,7 @@ use crate::{
 };
 use joinery::JoinableIterator;
 use smallvec::smallvec;
-use std::{convert::TryInto, iter::once};
+use std::iter::once;
 
 #[derive(Clone, Copy)]
 struct Context {
@@ -658,8 +658,6 @@ impl<'a> Lowerer<'a> {
             LetIn(let_in) => {
                 let expression = {
                     let binder = &let_in.binder;
-
-                    if let_in.expression.is_none() {}
 
                     match let_in.expression {
                         Some(expression) => expression,

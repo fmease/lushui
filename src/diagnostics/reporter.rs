@@ -11,7 +11,7 @@ use crate::{
     span::SharedSourceMap,
     utility::obtain,
 };
-use std::{cell::RefCell, collections::BTreeSet, convert::TryFrom, default::default};
+use std::{cell::RefCell, collections::BTreeSet, default::default};
 
 /// The diagnostic reporter.
 #[non_exhaustive]

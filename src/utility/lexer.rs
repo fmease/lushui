@@ -1,5 +1,5 @@
 use crate::span::{LocalByteIndex, LocalSpan, SourceFile, Span, Spanned};
-use std::{convert::TryInto, iter::Peekable, str::CharIndices};
+use std::{iter::Peekable, str::CharIndices};
 
 pub trait Lexer<'source, TokenKind> {
     fn source_file(&self) -> &'source SourceFile;

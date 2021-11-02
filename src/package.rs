@@ -17,7 +17,6 @@ pub use manifest::{
     PackageManifestDetails, Version,
 };
 use std::{
-    convert::TryInto,
     default::default,
     fmt,
     ops::{Index, IndexMut},
@@ -664,7 +663,7 @@ pub mod manifest {
         syntax::{ast::Identifier, parse_identifier},
         utility::{spanned_key_map::SpannedKeyMap, try_all},
     };
-    use std::{convert::TryInto, path::PathBuf};
+    use std::path::PathBuf;
 
     pub struct PackageManifest {
         pub details: PackageManifestDetails,

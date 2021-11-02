@@ -16,7 +16,9 @@ pub(crate) fn has_file_extension(path: &Path, required_extension: &str) -> bool 
     path.extension().and_then(OsStr::to_str) == Some(required_extension)
 }
 
-pub(crate) macro obtain($expr:expr, $( $pat:pat )|+ $( if $guard:expr )? $(,)? => $mapping:expr $(,)?) {
+// @Task replace `$( $pat:pat_param )|+` with `$pat:pat` once rust-analyzer understands
+// 2021 patterns
+pub(crate) macro obtain($expr:expr, $( $pat:pat_param )|+ $( if $guard:expr )? $(,)? => $mapping:expr $(,)?) {
     match $expr {
         $( $pat )|+ $( if $guard )? => Some($mapping),
         _ => None

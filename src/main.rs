@@ -23,7 +23,7 @@
     clippy::missing_panics_doc, // @Temporary
 )]
 
-use std::{convert::TryInto, default::default, time::Instant};
+use std::{default::default, time::Instant};
 
 use cli::{BuildMode, Command, PhaseRestriction};
 use colored::Colorize;

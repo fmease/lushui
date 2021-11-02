@@ -40,7 +40,7 @@ use crate::{
     utility::SmallVec,
 };
 use smallvec::smallvec;
-use std::{convert::TryInto, default::default};
+use std::default::default;
 
 const STANDARD_DECLARATION_DELIMITERS: [Delimiter; 3] = {
     use Delimiter::*;

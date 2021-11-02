@@ -6,16 +6,12 @@ use generic::Locality::*;
 pub use source_map::{SharedSourceMap, SourceFile, SourceFileIndex, SourceMap};
 pub use spanned::Spanned;
 pub use spanning::{PossiblySpanning, Spanning};
-use std::{
-    convert::TryFrom,
-    ops::{Add, Range, Sub},
-};
+use std::ops::{Add, Range, Sub};
 
 mod source_map;
 
 mod generic {
     use std::{
-        convert::{TryFrom, TryInto},
         fmt,
         num::TryFromIntError,
         ops::{Add, Sub},
