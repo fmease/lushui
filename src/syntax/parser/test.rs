@@ -52,7 +52,7 @@ fn parse_declaration(source: &str) -> Result<Declaration> {
 
 /// The name of the module returned by [parse_declaration].
 fn test_module_name() -> Identifier {
-    Identifier::new("test".into(), default())
+    Identifier::new_unchecked("test".into(), default())
 }
 
 fn test_file_index() -> SourceFileIndex {
@@ -119,7 +119,7 @@ fn application_lambda_literal_argument_lax_grouping() {
                 callee: expr! {
                     Application {
                         Attributes::new(), span(1, 21);
-                        callee: Identifier::new("read".into(), span(2, 6)).into(),
+                        callee: Identifier::new_unchecked("read".into(), span(2, 6)).into(),
                         argument: expr! {
                             LambdaLiteral {
                                 Attributes::new(), span(7, 20);
@@ -127,20 +127,20 @@ fn application_lambda_literal_argument_lax_grouping() {
                                     ParameterGroup {
                                         explicitness: Explicit,
                                         aspect: default(),
-                                        parameters: smallvec![Identifier::new("this".into(), span(8, 12))],
+                                        parameters: smallvec![Identifier::new_unchecked("this".into(), span(8, 12))],
                                         type_annotation: None,
                                         span: span(8, 12),
                                     }
                                 ],
                                 body_type_annotation: None,
-                                body: Identifier::new("this".into(), span(16, 20)).into(),
+                                body: Identifier::new_unchecked("this".into(), span(16, 20)).into(),
                             }
                         },
                         binder: None,
                         explicitness: Explicit,
                     }
                 },
-                argument: Identifier::new("alpha".into(), span(22, 27)).into(),
+                argument: Identifier::new_unchecked("alpha".into(), span(22, 27)).into(),
                 binder: None,
                 explicitness: Explicit,
             }
@@ -160,7 +160,7 @@ fn application_lambda_literal_argument_strict_grouping() {
                 callee: expr! {
                     Application {
                         Attributes::new(), span(1, 21);
-                        callee: Identifier::new("read".into(), span(1, 5)).into(),
+                        callee: Identifier::new_unchecked("read".into(), span(1, 5)).into(),
                         argument: expr! {
                             LambdaLiteral {
                                 Attributes::new(), span(6, 21);
@@ -168,20 +168,20 @@ fn application_lambda_literal_argument_strict_grouping() {
                                     ParameterGroup {
                                         explicitness: Explicit,
                                         aspect: default(),
-                                        parameters: smallvec![Identifier::new("this".into(), span(8, 12))],
+                                        parameters: smallvec![Identifier::new_unchecked("this".into(), span(8, 12))],
                                         type_annotation: None,
                                         span: span(8, 12),
                                     }
                                 ],
                                 body_type_annotation: None,
-                                body: Identifier::new("this".into(), span(16, 20)).into(),
+                                body: Identifier::new_unchecked("this".into(), span(16, 20)).into(),
                             }
                         },
                         binder: None,
                         explicitness: Explicit,
                     }
                 },
-                argument: Identifier::new("alpha".into(), span(22, 27)).into(),
+                argument: Identifier::new_unchecked("alpha".into(), span(22, 27)).into(),
                 binder: None,
                 explicitness: Explicit,
             }
@@ -203,14 +203,14 @@ fn pi_type_literal_application_bracketed_argument_domain() {
                     expression: expr! {
                         Application {
                             Attributes::new(), span(1, 13);
-                            callee: Identifier::new("Alpha".into(), span(1, 6)).into(),
-                            argument: Identifier::new("Beta".into(), span(7, 13)).into(),
+                            callee: Identifier::new_unchecked("Alpha".into(), span(1, 6)).into(),
+                            argument: Identifier::new_unchecked("Beta".into(), span(7, 13)).into(),
                             explicitness: Explicit,
                             binder: None,
                         }
                     },
                 },
-                codomain: Identifier::new("Gamma".into(), span(17, 22)).into(),
+                codomain: Identifier::new_unchecked("Gamma".into(), span(17, 22)).into(),
             }
         }),
     );
@@ -230,14 +230,14 @@ fn bracketed_pi_type_literal_application_bracketed_argument_domain() {
                     expression: expr! {
                         Application {
                             Attributes::new(), span(2, 14);
-                            callee: Identifier::new("Alpha".into(), span(2, 7)).into(),
-                            argument: Identifier::new("Beta".into(), span(8, 14)).into(),
+                            callee: Identifier::new_unchecked("Alpha".into(), span(2, 7)).into(),
+                            argument: Identifier::new_unchecked("Beta".into(), span(8, 14)).into(),
                             explicitness: Explicit,
                             binder: None,
                         }
                     },
                 },
-                codomain: Identifier::new("Gamma".into(), span(18, 23)).into(),
+                codomain: Identifier::new_unchecked("Gamma".into(), span(18, 23)).into(),
             }
         }),
     );
@@ -261,8 +261,8 @@ fn pi_type_literal_application_implicit_argument_domain() {
                     expression: expr! {
                         Application {
                             Attributes::new(), span(1, 7);
-                            callee: Identifier::new("f".into(), span(1, 2)).into(),
-                            argument: Identifier::new("Int".into(), span(4, 7)).into(),
+                            callee: Identifier::new_unchecked("f".into(), span(1, 2)).into(),
+                            argument: Identifier::new_unchecked("Int".into(), span(4, 7)).into(),
                             explicitness: Implicit,
                             binder: None,
                         }
@@ -288,10 +288,10 @@ fn pi_type_literal_application_implicit_named_argument_domain() {
                     expression: expr! {
                         Application {
                             Attributes::new(), span(1, 13);
-                            callee: Identifier::new("f".into(), span(1, 2)).into(),
-                            argument: Identifier::new("Int".into(), span(9, 12)).into(),
+                            callee: Identifier::new_unchecked("f".into(), span(1, 2)).into(),
+                            argument: Identifier::new_unchecked("Int".into(), span(9, 12)).into(),
                             explicitness: Implicit,
-                            binder: Some(Identifier::new("T".into(), span(5, 6))),
+                            binder: Some(Identifier::new_unchecked("T".into(), span(5, 6))),
                         }
                     }
                 },
@@ -309,15 +309,15 @@ fn application_pi_type_literal_implicit_domain() {
         Ok(expr! {
             Application {
                 Attributes::new(), span(1, 28);
-                callee: Identifier::new("receive".into(), span(1, 8)).into(),
+                callee: Identifier::new_unchecked("receive".into(), span(1, 8)).into(),
                 argument: expr! {
                     PiTypeLiteral {
                         Attributes::new(), span(9, 28);
                         domain: Domain {
                             explicitness: Implicit,
                             aspect: default(),
-                            binder: Some(Identifier::new("n".into(), span(12, 13))),
-                            expression: Identifier::new("Int".into(), span(15, 18)).into(),
+                            binder: Some(Identifier::new_unchecked("n".into(), span(12, 13))),
+                            expression: Identifier::new_unchecked("Int".into(), span(15, 18)).into(),
                         },
                         codomain: expr! { TypeLiteral { Attributes::new(), span(23, 27) } },
                     }
@@ -339,11 +339,11 @@ fn chained_fields() {
                 base: expr! {
                     Field {
                         Attributes::new(), span(1, 13);
-                        base: Identifier::new("base".into(), span(1, 5)).into(),
-                        member: Identifier::new("member".into(), span(7, 13))
+                        base: Identifier::new_unchecked("base".into(), span(1, 5)).into(),
+                        member: Identifier::new_unchecked("member".into(), span(7, 13))
                     }
                 },
-                member: Identifier::new("protrusion".into(), span(15, 25))
+                member: Identifier::new_unchecked("protrusion".into(), span(15, 25))
             }
         }),
     );
@@ -361,13 +361,13 @@ fn namespaced_base_with_field() {
                         Attributes::new(), span(1, 13);
                         hanger: None,
                         segments: smallvec![
-                            Identifier::new("path".into(), span(1, 5)),
-                            Identifier::new("to".into(), span(6, 8)),
-                            Identifier::new("base".into(), span(9, 13)),
+                            Identifier::new_unchecked("path".into(), span(1, 5)),
+                            Identifier::new_unchecked("to".into(), span(6, 8)),
+                            Identifier::new_unchecked("base".into(), span(9, 13)),
                         ],
                     }
                 },
-                member: Identifier::new("member".into(), span(15, 21)),
+                member: Identifier::new_unchecked("member".into(), span(15, 21)),
             }
         }),
     );
@@ -381,13 +381,13 @@ fn field_with_attribute() {
         Ok(expr! {
             Field {
                 vec![Attribute {
-                    binder: Identifier::new("overall".into(), span(2, 9)),
+                    binder: Identifier::new_unchecked("overall".into(), span(2, 9)),
                     arguments: default(),
                     span: span(1, 9),
                 }],
                 span(10, 30);
-                base: Identifier::new("compound".into(), span(10, 18)).into(),
-                member: Identifier::new("projection".into(), span(20, 30)),
+                base: Identifier::new_unchecked("compound".into(), span(10, 18)).into(),
+                member: Identifier::new_unchecked("projection".into(), span(20, 30)),
             }
         }),
     );
@@ -404,15 +404,15 @@ fn base_with_attribute_and_field() {
                 base: expr! {
                     Path(
                         vec![Attribute {
-                            binder: Identifier::new("specifically".into(), span(3, 15)),
+                            binder: Identifier::new_unchecked("specifically".into(), span(3, 15)),
                             arguments: default(),
                             span: span(2, 15),
                         }],
                         span(1, 25);
-                        Path::from(Identifier::new("compound".into(), span(16, 24)))
+                        Path::from(Identifier::new_unchecked("compound".into(), span(16, 24)))
                     )
                 },
-                member: Identifier::new("projection".into(), span(27, 37)),
+                member: Identifier::new_unchecked("projection".into(), span(27, 37)),
             }
         }),
     );
@@ -428,15 +428,15 @@ fn field_inside_application() {
                 callee: expr! {
                     Field {
                         Attributes::new(), span(1, 7);
-                        base: Identifier::new("cb".into(), span(1, 3)).into(),
-                        member: Identifier::new("cm".into(), span(5, 7)),
+                        base: Identifier::new_unchecked("cb".into(), span(1, 3)).into(),
+                        member: Identifier::new_unchecked("cm".into(), span(5, 7)),
                     }
                 },
                 argument: expr! {
                     Field {
                         Attributes::new(), span(8, 14);
-                        base: Identifier::new("ab".into(), span(8, 10)).into(),
-                        member: Identifier::new("am".into(), span(12, 14)),
+                        base: Identifier::new_unchecked("ab".into(), span(8, 10)).into(),
+                        member: Identifier::new_unchecked("am".into(), span(12, 14)),
                     }
                 },
                 binder: None,
@@ -454,17 +454,17 @@ fn outer_and_inner_attributes() {
             TypeLiteral {
                 vec![
                     Attribute {
-                        binder: Identifier::new("inner".into(), span(17, 22)),
+                        binder: Identifier::new_unchecked("inner".into(), span(17, 22)),
                         arguments: default(),
                         span: span(16, 22),
                     },
                     Attribute {
-                        binder: Identifier::new("outer".into(), span(2, 7)),
+                        binder: Identifier::new_unchecked("outer".into(), span(2, 7)),
                         arguments: default(),
                         span: span(1, 7),
                     },
                     Attribute {
-                        binder: Identifier::new("outer".into(), span(9, 14)),
+                        binder: Identifier::new_unchecked("outer".into(), span(9, 14)),
                         arguments: default(),
                         span: span(8, 14),
                     }
@@ -518,7 +518,7 @@ lengthy-space-filler (case 0 of
                 Attributes::new(), span(1, 45);
                 explicitness: Explicit,
                 binder: None,
-                callee: Identifier::new("lengthy-space-filler".into(), span(1, 21)).into(),
+                callee: Identifier::new_unchecked("lengthy-space-filler".into(), span(1, 21)).into(),
                 argument: expr! {
                     CaseAnalysis {
                         Attributes::new(), span(22, 45);
@@ -534,10 +534,10 @@ lengthy-space-filler (case 0 of
                                 pattern: pat! {
                                     Binder {
                                         Attributes::new(), span(37, 39);
-                                        binder: Identifier::new("n".into(), span(38, 39)),
+                                        binder: Identifier::new_unchecked("n".into(), span(38, 39)),
                                     }
                                 },
-                                body: Identifier::new("n".into(), span(43, 44)).into(),
+                                body: Identifier::new_unchecked("n".into(), span(43, 44)).into(),
                             }
                         ],
                     }
@@ -586,11 +586,11 @@ fn use_as_plain() {
                                     target: Path {
                                         hanger: None,
                                         segments: smallvec![
-                                            Identifier::new("alpha".into(), span(5, 10)),
-                                            Identifier::new("beta".into(), span(11, 15)),
+                                            Identifier::new_unchecked("alpha".into(), span(5, 10)),
+                                            Identifier::new_unchecked("beta".into(), span(11, 15)),
                                         ],
                                     },
-                                    binder: Some(Identifier::new("gamma".into(),span(19, 24))),
+                                    binder: Some(Identifier::new_unchecked("gamma".into(),span(19, 24))),
                                 }
                             )
                         }
@@ -618,13 +618,13 @@ fn use_as_double_brackets() {
                             bindings: UsePathTree::new(
                                 span(5, 28),
                                 UsePathTreeKind::Multiple {
-                                    path: Identifier::new("alpha".into(), span(5, 10)).into(),
+                                    path: Identifier::new_unchecked("alpha".into(), span(5, 10)).into(),
                                     bindings: vec![
                                         UsePathTree::new(
                                             span(12, 27),
                                             UsePathTreeKind::Single {
-                                                target:  Identifier::new("beta".into(), span(13, 17)).into(),
-                                                binder: Some(Identifier::new("gamma".into(),span(21, 26))),
+                                                target:  Identifier::new_unchecked("beta".into(), span(13, 17)).into(),
+                                                binder: Some(Identifier::new_unchecked("gamma".into(),span(21, 26))),
                                             }
                                         )
                                     ],
@@ -660,19 +660,19 @@ main =
                     decl! {
                         Value {
                             Attributes::new(), span(1, 75);
-                            binder: Identifier::new("main".into(), span(1, 5)),
+                            binder: Identifier::new_unchecked("main".into(), span(1, 5)),
                             parameters: Parameters::new(),
                             type_annotation: None,
                             body: Some(expr! {
                                 CaseAnalysis {
                                     Attributes::new(), span(12, 75);
-                                    scrutinee: Identifier::new("x".into(), span(17, 18)).into(),
+                                    scrutinee: Identifier::new_unchecked("x".into(), span(17, 18)).into(),
                                     cases: vec![
                                         Case {
                                             pattern: pat! {
                                                 Path(
                                                     Attributes::new(), span(30, 35);
-                                                    Path::from(Identifier::new("false".into(), span(30, 35))),
+                                                    Path::from(Identifier::new_unchecked("false".into(), span(30, 35))),
                                                 )
                                             },
                                             body: expr! {
@@ -686,7 +686,7 @@ main =
                                             pattern: pat! {
                                                 Binder {
                                                     Attributes::new(), span(49, 53);
-                                                    binder: Identifier::new("bar".into(), span(50, 53)),
+                                                    binder: Identifier::new_unchecked("bar".into(), span(50, 53)),
                                                 }
                                             },
                                             body: expr! {
@@ -728,19 +728,19 @@ main = case x of
                     decl! {
                         Value {
                             Attributes::new(), span(1, 59);
-                            binder: Identifier::new("main".into(), span(1, 5)),
+                            binder: Identifier::new_unchecked("main".into(), span(1, 5)),
                             parameters: Parameters::new(),
                             type_annotation: None,
                             body: Some(expr! {
                                 CaseAnalysis {
                                     Attributes::new(), span(8, 59);
-                                    scrutinee: Identifier::new("x".into(), span(13, 14)).into(),
+                                    scrutinee: Identifier::new_unchecked("x".into(), span(13, 14)).into(),
                                     cases: vec![
                                         Case {
                                             pattern: pat! {
                                                 Path(
                                                     Attributes::new(), span(22, 27);
-                                                    Path::from(Identifier::new("false".into(), span(22, 27))),
+                                                    Path::from(Identifier::new_unchecked("false".into(), span(22, 27))),
                                                 )
                                             },
                                             body: expr! {
@@ -754,7 +754,7 @@ main = case x of
                                             pattern: pat! {
                                                 Binder {
                                                     Attributes::new(), span(37, 41);
-                                                    binder: Identifier::new("bar".into(), span(38, 41)),
+                                                    binder: Identifier::new_unchecked("bar".into(), span(38, 41)),
                                                 }
                                             },
                                             body: expr! {

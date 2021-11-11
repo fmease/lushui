@@ -16,7 +16,7 @@ use std::default::default;
 use crate::{
     grow_array::GrowArray,
     hir::{self, Declaration, Expression},
-    resolver::{CrateScope, DeclarationIndex},
+    resolver::{Crate, DeclarationIndex},
     syntax::lowered_ast::{AttributeKeys, Number},
     utility::HashMap,
 };
@@ -25,10 +25,10 @@ use instruction::{Chunk, ChunkIndex, Instruction};
 
 // pub fn compile_declaration(
 //     declaration: &Declaration,
-//     scope: &CrateScope,
+//     crate_: &Crate,
 // ) -> Result<Vec<Chunk>, CompilationError> {
 //     let mut compiler = Compiler::new();
-//     compiler.compile_declaration(&declaration, scope)?;
+//     compiler.compile_declaration(&declaration, crate_)?;
 //     // dbg!(&compiler.chunks);
 //     eprintln!("{}", compiler.print_chunks());
 
@@ -52,18 +52,18 @@ struct Compiler<'a> {
     // @Temporary
     entry: Option<ChunkIndex>,
     declaration_mapping: HashMap<DeclarationIndex, ChunkIndex>,
-    scope: &'a CrateScope,
+    crate_: &'a Crate,
 }
 
 impl<'a> Compiler<'a> {
-    fn new(scope: &'a CrateScope) -> Self {
+    fn new(crate_: &'a Crate) -> Self {
         Self {
             chunks: IndexMap::new(),
             constants: Vec::new(),
             lambda_amount: 0,
             entry: None,
             declaration_mapping: default(),
-            scope,
+            crate_,
         }
     }
 
@@ -154,7 +154,7 @@ impl<'a> Compiler<'a> {
                     self.chunks[index].instructions.push(Instruction::Return);
 
                     // @Task obsolete once we map any CrateIndex to a chunk identifier
-                    if self.scope.program_entry.as_ref() == Some(&value.binder) {
+                    if self.crate_.program_entry.as_ref() == Some(&value.binder) {
                         self.entry = Some(index);
                     }
                 }
@@ -281,9 +281,9 @@ pub enum CompilationError {}
 // @Temporary
 pub fn compile_and_interpret_declaration(
     declaration: &Declaration,
-    scope: &CrateScope,
+    crate_: &Crate,
 ) -> Result<(), Error> {
-    let mut compiler = Compiler::new(scope);
+    let mut compiler = Compiler::new(crate_);
     compiler.compile_declaration(declaration)?;
     // dbg!(&compiler.chunks);
     eprintln!("{}", compiler.print_chunks());

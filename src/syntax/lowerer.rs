@@ -33,7 +33,7 @@ use super::{
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     error::{map_outcome_from_result, Health, Outcome, PossiblyErroneous, Result},
-    format::{ordered_listing, pluralize, Conjunction, DisplayWith, QuoteExt},
+    format::{ordered_listing, pluralize, Conjunction, IOError, QuoteExt},
     span::{SharedSourceMap, Span, Spanning},
     utility::{obtain, SmallVec, Str},
 };
@@ -85,7 +85,7 @@ impl<'a> Lowerer<'a> {
                 let context = Context::new(declaration.span);
 
                 if value.type_annotation.is_none() {
-                    missing_mandatory_type_annotation(
+                    Diagnostic::missing_mandatory_type_annotation(
                         value.binder.span().fit_end(&value.parameters).end(),
                         AnnotationTarget::Declaration(&value.binder),
                     )
@@ -112,7 +112,7 @@ impl<'a> Lowerer<'a> {
 
                             for parameter_group in value.parameters.iter().rev() {
                                 if parameter_group.type_annotation.is_none() {
-                                    missing_mandatory_type_annotation(
+                                    Diagnostic::missing_mandatory_type_annotation(
                                         parameter_group,
                                         AnnotationTarget::Parameters(parameter_group),
                                     )
@@ -171,7 +171,7 @@ impl<'a> Lowerer<'a> {
                 let data_type_annotation = match data.type_annotation {
                     Some(type_annotation) => type_annotation,
                     None => {
-                        missing_mandatory_type_annotation(
+                        Diagnostic::missing_mandatory_type_annotation(
                             data.binder.span().fit_end(&data.parameters).end(),
                             AnnotationTarget::Declaration(&data.binder),
                         )
@@ -214,7 +214,7 @@ impl<'a> Lowerer<'a> {
                     Some(type_annotation) => type_annotation,
                     None => {
                         // @Note awkward API!
-                        missing_mandatory_type_annotation(
+                        Diagnostic::missing_mandatory_type_annotation(
                             constructor
                                 .binder
                                 .span()
@@ -271,7 +271,7 @@ impl<'a> Lowerer<'a> {
                     Some(declarations) => declarations,
                     // @Bug @Task disallow external module declarations inside of non-file modules
                     None => {
-                        // @Task warn on/disallow relative paths pointing "outside" of the project directory
+                        // @Task warn on/disallow relative paths pointing "outside" of the project folder
                         // (ofc we would also need to disallow symbolic links to fully(?) guarantee some definition
                         // of source code portability)
                         let relative_path = if attributes.has(AttributeKeys::LOCATION) {
@@ -308,7 +308,7 @@ impl<'a> Lowerer<'a> {
                                     .code(Code::E016)
                                     .message(format!("could not load module `{}`", module.binder))
                                     .primary_span(declaration_span)
-                                    .note(error.with(&path).to_string())
+                                    .note(IOError(error, &path).to_string())
                                     .report(self.reporter);
                                 return PossiblyErroneous::error();
                             }
@@ -407,7 +407,7 @@ impl<'a> Lowerer<'a> {
                     }
 
                     for binding in bindings {
-                        match binding.data {
+                        match binding.value {
                             Single { target, binder } => {
                                 let combined_target = try_!(path.clone().join(target.clone()));
 
@@ -427,7 +427,9 @@ impl<'a> Lowerer<'a> {
                                     .ok_or_else(|| {
                                         // @Task improve the message for `use crate.(self)`: hint that `self`
                                         // is effectively unnamed because `crate` is unnamed
-                                        invalid_unnamed_path_hanger(target.hanger.unwrap())
+                                        Diagnostic::invalid_unnamed_path_hanger(
+                                            target.hanger.unwrap(),
+                                        )
                                     });
                                 let binder = try_!(binder);
 
@@ -460,22 +462,19 @@ impl<'a> Lowerer<'a> {
                 }
 
                 'discriminate: {
-                    match use_.bindings.data {
+                    match use_.bindings.value {
                         Single { target, binder } => {
                             let binder = binder.or_else(|| target.last_identifier().cloned());
-                            let binder = match binder {
-                                Some(binder) => binder,
-                                None => {
-                                    // @Task improve the message for `use crate.(self)`: hint that `self`
-                                    // is effectively unnamed because `crate` is unnamed
-                                    // @Task the message is even worse (it is misleading!) with `use extern.(self)`
-                                    // currently leads to the suggestion to bind `self` to an identifier but
-                                    // for `extern` that is illegal, too
-                                    invalid_unnamed_path_hanger(target.hanger.unwrap())
-                                        .report(self.reporter);
-                                    health.taint();
-                                    break 'discriminate;
-                                }
+                            let Some(binder) = binder else {
+                                // @Task improve the message for `use crate.(self)`: hint that `self`
+                                // is effectively unnamed because `crate` is unnamed
+                                // @Task the message is even worse (it is misleading!) with `use extern.(self)`
+                                // currently leads to the suggestion to bind `self` to an identifier but
+                                // for `extern` that is illegal, too
+                                Diagnostic::invalid_unnamed_path_hanger(target.hanger.unwrap())
+                                    .report(self.reporter);
+                                health.taint();
+                                break 'discriminate;
                             };
 
                             declarations.push(decl! {
@@ -497,15 +496,6 @@ impl<'a> Lowerer<'a> {
                         ))
                         .unwrap(&mut health),
                     }
-                }
-
-                fn invalid_unnamed_path_hanger(hanger: ast::Hanger) -> Diagnostic {
-                    Diagnostic::error()
-                        .code(Code::E025)
-                        .message(format!("path `{hanger}` is not bound to an identifier"))
-                        .primary_span(&hanger)
-                        .note("a use-declaration has to introduce at least one new binder")
-                        .help("bind the path to a name with `as`")
                 }
 
                 declarations
@@ -893,20 +883,20 @@ impl<'a> Lowerer<'a> {
             };
 
             // non-conforming attributes
-            if !attribute.data.targets().contains(targets) {
+            if !attribute.value.targets().contains(targets) {
                 Diagnostic::error()
                     .code(Code::E013)
                     .message(format!(
                         "attribute {} cannot be ascribed to {}",
-                        attribute.data.quoted_name(),
+                        attribute.value.quoted_name(),
                         target.name()
                     ))
                     .labeled_primary_span(&attribute, "misplaced attribute")
                     .labeled_secondary_span(target, "incompatible item")
                     .note(format!(
                         "attribute {} can only be ascribed to {}",
-                        attribute.data.quoted_name(),
-                        attribute.data.target_names()
+                        attribute.value.quoted_name(),
+                        attribute.value.target_names()
                     ))
                     .report(self.reporter);
                 health.taint();
@@ -921,7 +911,7 @@ impl<'a> Lowerer<'a> {
 
         // conflicting or duplicate attributes
         for attribute in &lowered_attributes {
-            let key = attribute.data.key();
+            let key = attribute.value.key();
             let coexistable = AttributeKeys::COEXISTABLE.contains(key);
 
             if !keys.contains(key) || coexistable {
@@ -946,7 +936,7 @@ impl<'a> Lowerer<'a> {
                     .code(Code::E006)
                     .message(format!(
                         "multiple {} attributes",
-                        faulty_attributes.first().unwrap().data.quoted_name(),
+                        faulty_attributes.first().unwrap().value.quoted_name(),
                     ))
                     .labeled_primary_spans(
                         faulty_attributes.into_iter(),
@@ -982,7 +972,7 @@ impl<'a> Lowerer<'a> {
                 let listing = ordered_listing(
                     faulty_attributes
                         .iter()
-                        .map(|attribute| attribute.data.quoted_name()),
+                        .map(|attribute| attribute.value.quoted_name()),
                     Conjunction::And,
                 );
                 Diagnostic::error()
@@ -1022,7 +1012,7 @@ impl<'a> Lowerer<'a> {
 
         if attributes.within(AttributeKeys::UNSUPPORTED) {
             for attribute in attributes.filter(AttributeKeys::UNSUPPORTED) {
-                Diagnostic::unimplemented(format!("attribute {}", attribute.data.quoted_name()))
+                Diagnostic::unimplemented(format!("attribute {}", attribute.value.quoted_name()))
                     .primary_span(attribute)
                     .report(self.reporter);
             }
@@ -1098,7 +1088,7 @@ impl<'a> Lowerer<'a> {
 
         for parameter_group in parameters.into_iter().rev() {
             if parameter_group.type_annotation.is_none() {
-                missing_mandatory_type_annotation(
+                Diagnostic::missing_mandatory_type_annotation(
                     &parameter_group,
                     AnnotationTarget::Parameters(&parameter_group),
                 )
@@ -1359,22 +1349,25 @@ macro extractor($name:ident $repr:literal: $variant:ident => $ty:ty) {
         name: Option<&'static str>,
         reporter: &Reporter,
     ) -> Result<$ty, AttributeParsingError> {
-        match &self.data {
+        match &self.value {
             ast::AttributeArgumentKind::$variant(literal) => Ok(literal.as_ref().clone()),
             ast::AttributeArgumentKind::Named(named) => named.handle(
                 name,
-                |argument| match &argument.data {
+                |argument| match &argument.value {
                     ast::AttributeArgumentKind::$variant(literal) => Ok(literal.as_ref().clone()),
                     kind => {
-                        invalid_attribute_argument_type((argument.span, kind.name()), $repr)
-                            .report(reporter);
+                        Diagnostic::invalid_attribute_argument_type(
+                            (argument.span, kind.name()),
+                            $repr,
+                        )
+                        .report(reporter);
                         Err(AttributeParsingError::Unrecoverable)
                     }
                 },
                 reporter,
             ),
             kind => {
-                invalid_attribute_argument_type(
+                Diagnostic::invalid_attribute_argument_type(
                     (self.span, kind.name()),
                     concat!("positional or named ", $repr),
                 )
@@ -1383,31 +1376,6 @@ macro extractor($name:ident $repr:literal: $variant:ident => $ty:ty) {
             }
         }
     }
-}
-
-// @Temporary signature
-fn unexpected_named_attribute_argument(
-    actual: &ast::Identifier,
-    expected: &'static str,
-) -> Diagnostic {
-    Diagnostic::error()
-        .code(Code::E028)
-        .message(format!(
-            "found named argument `{}`, but expected `{}`",
-            actual, expected
-        ))
-        .primary_span(actual)
-}
-
-// @Temporary signature
-fn invalid_attribute_argument_type(
-    actual: (Span, &'static str),
-    expected: &'static str,
-) -> Diagnostic {
-    Diagnostic::error()
-        .code(Code::E027)
-        .message(format!("found {}, but expected {}", actual.1, expected))
-        .primary_span(actual.0)
 }
 
 impl ast::NamedAttributeArgument {
@@ -1422,7 +1390,8 @@ impl ast::NamedAttributeArgument {
                 if self.binder.as_str() == name {
                     handle(&self.value)
                 } else {
-                    unexpected_named_attribute_argument(&self.binder, name).report(reporter);
+                    Diagnostic::unexpected_named_attribute_argument(&self.binder, name)
+                        .report(reporter);
                     Err(AttributeParsingError::Unrecoverable)
                 }
             }
@@ -1448,43 +1417,79 @@ impl lowered_ast::Lint {
     }
 }
 
-fn missing_mandatory_type_annotation(
-    spanning: impl Spanning,
-    target: AnnotationTarget<'_>,
-) -> Diagnostic {
-    use AnnotationTarget::*;
+impl Diagnostic {
+    fn invalid_unnamed_path_hanger(hanger: ast::Hanger) -> Self {
+        Self::error()
+            .code(Code::E025)
+            .message(format!("path `{hanger}` is not bound to an identifier"))
+            .primary_span(&hanger)
+            .note("a use-declaration has to introduce at least one new binder")
+            .help("bind the path to a name with `as`")
+    }
 
-    let type_annotation_suggestion: Str = match target {
-        Parameters(parameter_group) => format!(
-            "`{}({}: ?type)`",
-            parameter_group.explicitness,
-            parameter_group.parameters.iter().join_with(' ')
-        )
-        .into(),
-        Declaration(_) => "`: ?type`".into(),
-    };
+    // @Temporary signature
+    fn unexpected_named_attribute_argument(
+        actual: &ast::Identifier,
+        expected: &'static str,
+    ) -> Self {
+        Self::error()
+            .code(Code::E028)
+            .message(format!(
+                "found named argument `{}`, but expected `{}`",
+                actual, expected
+            ))
+            .primary_span(actual)
+    }
 
-    let binders = match target {
-        Parameters(parameter_group) => ordered_listing(
-            parameter_group.parameters.iter().map(QuoteExt::quote),
-            Conjunction::And,
-        ),
-        Declaration(binder) => binder.quote(),
-    };
+    // @Temporary signature
+    fn invalid_attribute_argument_type(
+        actual: (Span, &'static str),
+        expected: &'static str,
+    ) -> Self {
+        Self::error()
+            .code(Code::E027)
+            .message(format!("found {}, but expected {}", actual.1, expected))
+            .primary_span(actual.0)
+    }
 
-    Diagnostic::error()
-        .code(Code::E015)
-        .message(format!(
-            "missing mandatory type annotation on {} {}",
-            target.name(),
-            binders,
-        ))
-        .primary_span(spanning)
-        .help(format!(
-            "provide a type annotation for the {} with {}",
-            target.name(),
-            type_annotation_suggestion,
-        ))
+    fn missing_mandatory_type_annotation(
+        spanning: impl Spanning,
+        target: AnnotationTarget<'_>,
+    ) -> Self {
+        use AnnotationTarget::*;
+
+        let type_annotation_suggestion: Str = match target {
+            Parameters(parameter_group) => format!(
+                "`{}({}: ?type)`",
+                parameter_group.explicitness,
+                parameter_group.parameters.iter().join_with(' ')
+            )
+            .into(),
+            Declaration(_) => "`: ?type`".into(),
+        };
+
+        let binders = match target {
+            Parameters(parameter_group) => ordered_listing(
+                parameter_group.parameters.iter().map(QuoteExt::quote),
+                Conjunction::And,
+            ),
+            Declaration(binder) => binder.quote(),
+        };
+
+        Self::error()
+            .code(Code::E015)
+            .message(format!(
+                "missing mandatory type annotation on {} {}",
+                target.name(),
+                binders,
+            ))
+            .primary_span(spanning)
+            .help(format!(
+                "provide a type annotation for the {} with {}",
+                target.name(),
+                type_annotation_suggestion,
+            ))
+    }
 }
 
 /// A place in the AST which can have a syntactically optional type annotation.

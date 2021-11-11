@@ -157,17 +157,17 @@ impl Brackets {
     fn close(&mut self, closing_bracket: Spanned<Bracket>) -> Result<(), Diagnostic> {
         match self.0.pop() {
             Some(opening_bracket) => {
-                if opening_bracket.data == closing_bracket.data {
+                if opening_bracket.value == closing_bracket.value {
                     Ok(())
                 } else {
                     // @Beacon @Bug we are not smart enough here yet, the error messages are too confusing
                     // or even incorrect!
                     Err(Diagnostic::error()
                         .code(Code::E001)
-                        .message(format!("unbalanced {} bracket", closing_bracket.data))
+                        .message(format!("unbalanced {} bracket", closing_bracket.value))
                         .labeled_primary_span(
                             closing_bracket,
-                            format!("has no matching opening {} bracket", closing_bracket.data),
+                            format!("has no matching opening {} bracket", closing_bracket.value),
                         ))
                 }
             }
@@ -175,10 +175,10 @@ impl Brackets {
             // or even incorrect!
             None => Err(Diagnostic::error()
                 .code(Code::E001)
-                .message(format!("unbalanced {} bracket", closing_bracket.data))
+                .message(format!("unbalanced {} bracket", closing_bracket.value))
                 .labeled_primary_span(
                     closing_bracket,
-                    format!("has no matching opening {} bracket", closing_bracket.data),
+                    format!("has no matching opening {} bracket", closing_bracket.value),
                 )),
         }
     }
@@ -291,10 +291,10 @@ impl<'a> Lexer<'a> {
                 self.health.taint();
                 Diagnostic::error()
                     .code(Code::E001)
-                    .message(format!("unbalanced {} bracket", bracket.data))
+                    .message(format!("unbalanced {} bracket", bracket.value))
                     .labeled_primary_span(
                         bracket,
-                        format!("has no matching closing {} bracket", bracket.data),
+                        format!("has no matching closing {} bracket", bracket.value),
                     )
                     .report(self.reporter);
             }
@@ -428,7 +428,7 @@ impl<'a> Lexer<'a> {
         match parse_keyword(self.source()) {
             Some(keyword) => self.add(keyword),
             None => {
-                self.add(Identifier(self.source().into()));
+                self.add(Word(self.source().into()));
             }
         };
 

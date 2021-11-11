@@ -3,7 +3,8 @@
     format_args_capture,
     derive_default_enum,
     decl_macro,
-    default_free_fn
+    default_free_fn,
+    let_else
 )]
 #![forbid(rust_2018_idioms, unused_must_use)]
 #![warn(clippy::pedantic)]
@@ -21,11 +22,12 @@
     clippy::if_not_else,
     clippy::needless_pass_by_value, // @Temporary
     clippy::missing_panics_doc, // @Temporary
+    clippy::semicolon_if_nothing_returned, // @Beacon @Temporary false postives with let/else's
 )]
 
 use std::{default::default, time::Instant};
 
-use cli::{BuildMode, Command, PhaseRestriction};
+use cli::{BuildMode, Command, PassRestriction};
 use colored::Colorize;
 use lushui::{
     diagnostics::{
@@ -33,11 +35,11 @@ use lushui::{
         Diagnostic, Reporter,
     },
     error::{outcome, Result},
-    format::DisplayWith,
+    format::{DisplayWith, IOError},
     package::{find_package, BuildQueue, CrateType, PackageManifest, DEFAULT_SOURCE_FOLDER_NAME},
     resolver,
-    span::{SharedSourceMap, SourceMap},
-    syntax::{ast::Identifier, Lexer, Lowerer, Parser},
+    span::{SharedSourceMap, SourceMap, Spanned},
+    syntax::{CrateName, Lexer, Lowerer, Parser},
     typer::Typer,
     FILE_EXTENSION,
 };
@@ -112,17 +114,30 @@ fn build_package(
 ) -> Result {
     let mut build_queue = BuildQueue::new(map.clone(), reporter);
 
-    match suboptions.path {
+    let path = suboptions
+        .path
+        .map(|path| {
+            path.canonicalize().map_err(|error| {
+                Diagnostic::error()
+                    // @Question code?
+                    .message("the path to the source file or the package folder is invalid")
+                    .note(IOError(error, &path).to_string())
+                    .report(reporter)
+            })
+        })
+        .transpose()?;
+
+    match path {
         Some(path) if path.is_file() => {
             build_queue.process_single_file_package(path, options.no_core)?;
         }
         path => {
             if options.no_core {
                 Diagnostic::error()
-                    .message("option `--no-core` is only available for single-file packages")
+                    .message("the option `--no-core` is only available for single-file packages")
                     .help(
-                        "to achieve the same for normal packages, make sure `core` is absent from\n\
-                         the list of dependencies in the package manifest"
+                        "to achieve the equivalent for normal packages, make sure `core` is\n\
+                         absent from the list of dependencies in the package manifest",
                     )
                     .report(reporter);
             }
@@ -130,22 +145,19 @@ fn build_package(
             match path {
                 Some(path) => build_queue.process_package(&path)?,
                 None => {
-                    // @Task dont unwrap, handle the error cases
+                    // @Beacon @Task dont unwrap, handle the error cases
                     let path = std::env::current_dir().unwrap();
-                    let path = match find_package(&path) {
-                        Some(path) => path,
-                        None => {
-                            Diagnostic::error()
-                                .message(
-                                    "neither the current directory nor any of its parents is a package",
-                                )
-                                .note(format!(
-                                    "none of the directories contain a package manifest file named `{}`",
-                                    PackageManifest::FILE_NAME
-                                ))
-                                .report(reporter);
-                            return Err(());
-                        }
+                    let Some(path) = find_package(&path) else {
+                        Diagnostic::error()
+                            .message(
+                                "neither the current folder nor any of its parents is a package",
+                            )
+                            .note(format!(
+                                "none of the folders contain a package manifest file named `{}`",
+                                PackageManifest::FILE_NAME
+                            ))
+                            .report(reporter);
+                        return Err(());
                     };
 
                     build_queue.process_package(path)?;
@@ -154,7 +166,7 @@ fn build_package(
         }
     };
 
-    let (unbuilt_crates, mut built_crates) = build_queue.into_unbuilt_and_built();
+    let (mut session, unbuilt_crates) = build_queue.into_session_and_unbuilt_crates();
 
     let goal_crate = unbuilt_crates.last().unwrap().index;
 
@@ -164,33 +176,41 @@ fn build_package(
         if !options.quiet {
             // @Task write `Checking` if `lushui check`ing
             let label = "Building".green().bold();
-            let package = &built_crates[crate_.package];
+            let package = &session[crate_.package];
             let name = &package.name;
             let path = package.path.to_string_lossy();
             // @Task print version
             println!("   {label} {name} ({path})");
         }
 
-        macro check_phase_restriction($restriction:expr) {
-            if is_goal_crate && options.phase_restriction == Some($restriction) {
+        macro check_pass_restriction($restriction:expr) {
+            if is_goal_crate && options.pass_restriction == Some($restriction) {
                 return Ok(());
             }
         }
 
-        if options.dump.times {
-            eprintln!("Execution times by phase:");
+        if options.emit.times {
+            eprintln!("Execution times by pass:");
         }
 
-        const EXECUTION_TIME_PHASE_NAME_PADDING: usize = 30;
+        const EXECUTION_TIME_PASS_NAME_PADDING: usize = 30;
 
         let source_file = map
             .borrow_mut()
             .load(crate_.path.clone())
             .map_err(|error| {
-                // @Task code
+                // this error case can be reached with crates specified in library or binary manifests
+                // @Question any other cases?
+
+                // @Task provide more context for transitive dependencies of the goal package
                 Diagnostic::error()
-                    .message(error.with(&crate_.path).to_string())
-                    .report(reporter);
+                    // @Temporary using the name of the package instead of the actual crate name
+                    .message(format!(
+                        "could not load {} crate `{}`",
+                        crate_.type_, session[crate_.package].name,
+                    ))
+                    .note(IOError(error, &crate_.path).to_string())
+                    .report(reporter)
             })?;
 
         let time = Instant::now();
@@ -200,44 +220,45 @@ fn build_package(
 
         let duration = time.elapsed();
 
-        if options.dump.tokens {
+        if is_goal_crate && options.emit.tokens {
             for token in &tokens {
                 eprintln!("{:?}", token);
             }
         }
 
-        if options.dump.times {
+        if options.emit.times {
             eprintln!(
-                "  {:<EXECUTION_TIME_PHASE_NAME_PADDING$}{duration:?}",
+                "  {:<EXECUTION_TIME_PASS_NAME_PADDING$}{duration:?}",
                 "Lexing"
             );
         }
 
-        check_phase_restriction!(PhaseRestriction::Lexer);
+        check_pass_restriction!(PassRestriction::Lexer);
 
         let time = Instant::now();
 
-        let declaration = Parser::new(source_file, &tokens, map.clone(), reporter).parse(
-            // @Beacon @Note yikes!! we just unwrapped that from a string!
-            Identifier::new(built_crates[crate_.package].name.clone().into(), default()),
-        )?;
+        // @Beacon @Task fix this ugly mess, create clean helpers
+        // @Note add one point `Package.name` might become `Spanned<_>` and we
+        // could just use the span, that might be very weird, though
+        let declaration = Parser::new(source_file, &tokens, map.clone(), reporter)
+            .parse(Spanned::new(default(), session[crate_.package].name.clone()).into())?;
 
         let duration = time.elapsed();
 
         assert!(token_health.is_untainted()); // parsing succeeded
 
-        if options.dump.ast {
+        if is_goal_crate && options.emit.ast {
             eprintln!("{declaration:#?}");
         }
 
-        if options.dump.times {
+        if options.emit.times {
             eprintln!(
-                "  {:<EXECUTION_TIME_PHASE_NAME_PADDING$}{duration:?}",
+                "  {:<EXECUTION_TIME_PASS_NAME_PADDING$}{duration:?}",
                 "Parsing"
             );
         }
 
-        check_phase_restriction!(PhaseRestriction::Parser);
+        check_pass_restriction!(PassRestriction::Parser);
 
         let time = Instant::now();
 
@@ -248,13 +269,13 @@ fn build_package(
 
         let declaration = declarations.pop().unwrap();
 
-        if options.dump.lowered_ast {
+        if is_goal_crate && options.emit.lowered_ast {
             eprintln!("{}", declaration);
         }
 
-        if options.dump.times {
+        if options.emit.times {
             eprintln!(
-                "  {:<EXECUTION_TIME_PHASE_NAME_PADDING$}{duration:?}",
+                "  {:<EXECUTION_TIME_PASS_NAME_PADDING$}{duration:?}",
                 "Lowering"
             );
         }
@@ -263,48 +284,55 @@ fn build_package(
             return Err(());
         }
 
-        check_phase_restriction!(PhaseRestriction::Lowerer);
+        check_pass_restriction!(PassRestriction::Lowerer);
 
         let time = Instant::now();
 
-        let mut resolver = Resolver::new(&mut crate_, &built_crates, reporter);
+        let mut resolver = Resolver::new(&mut crate_, &session, reporter);
         let declaration = resolver.resolve_declaration(declaration)?;
 
         let duration = time.elapsed();
 
-        if options.dump.hir {
-            eprintln!("{}", declaration.with((&crate_, &built_crates)));
+        if options.emit.hir {
+            eprintln!("{}", declaration.with((&crate_, &session)));
         }
-        if options.dump.untyped_scope {
-            eprintln!("{}", crate_.with(&built_crates));
+        if is_goal_crate && options.emit.untyped_scope {
+            eprintln!("{}", crate_.with(&session));
         }
 
-        if options.dump.times {
+        if options.emit.times {
             eprintln!(
-                "  {:<EXECUTION_TIME_PHASE_NAME_PADDING$}{duration:?}",
+                "  {:<EXECUTION_TIME_PASS_NAME_PADDING$}{duration:?}",
                 "Name resolution"
             );
         }
 
-        check_phase_restriction!(PhaseRestriction::Resolver);
+        check_pass_restriction!(PassRestriction::Resolver);
 
-        // @Beacon @Temporary only in `core`
-        crate_.register_foreign_bindings();
+        // @Note this condition seems weird but the final result is
+        // that we only ever call register_foreign_bindings once
+        // (unless we start supporting --extern for single-file packages
+        // (which are also --no-core)). ideally, we would not
+        // store those "FFI bindings" (more like "intrinstincs")
+        // in crate::resolver::scope::Crate but in a separate location! (@Task)
+        if options.no_core || crate_.is_core_library(&session) {
+            crate_.register_foreign_bindings();
+        }
 
         let time = Instant::now();
 
-        let mut typer = Typer::new(&mut crate_, &built_crates, reporter);
+        let mut typer = Typer::new(&mut crate_, &session, reporter);
         typer.infer_types_in_declaration(&declaration)?;
 
         let duration = time.elapsed();
 
-        if options.dump.scope {
-            eprintln!("{}", typer.scope.with(&built_crates));
+        if is_goal_crate && options.emit.scope {
+            eprintln!("{}", typer.crate_.with(&session));
         }
 
-        if options.dump.times {
+        if options.emit.times {
             eprintln!(
-                "  {:<EXECUTION_TIME_PHASE_NAME_PADDING$}{duration:?}",
+                "  {:<EXECUTION_TIME_PASS_NAME_PADDING$}{duration:?}",
                 "Type checking & inference"
             );
         }
@@ -316,7 +344,7 @@ fn build_package(
             if is_goal_crate {
                 let result = typer.interpreter().run()?;
 
-                println!("{}", result.with((&crate_, &built_crates)));
+                println!("{}", result.with((&crate_, &session)));
             }
         }
         // @Temporary
@@ -327,27 +355,27 @@ fn build_package(
                 .unwrap_or_else(|_| panic!());
         }
 
-        built_crates.add(crate_);
+        session.add(crate_);
     }
 
     Ok(())
 }
 
-// @Task initialize git repository (unless `--vsc=none` or similar)
-#[allow(clippy::unnecessary_wraps)] // @Temporary
 fn create_new_package(
     name: String,
     suboptions: cli::GenerationOptions,
     _options: cli::Options,
-    _reporter: &Reporter,
+    reporter: &Reporter,
 ) -> Result {
+    // @Task initialize git repository (unless `--vsc=none` (…))
+
     use std::fs;
 
-    // @Task verify name is a valid crate name
+    let name = CrateName::parse(&name).map_err(|error| error.report(reporter))?;
 
     // @Task handle errors properly
     let current_path = std::env::current_dir().unwrap();
-    let package_path = current_path.join(&name);
+    let package_path = current_path.join(name.as_str());
     fs::create_dir(&package_path).unwrap();
     let source_folder_path = package_path.join(DEFAULT_SOURCE_FOLDER_NAME);
     fs::create_dir(&source_folder_path).unwrap();
@@ -378,7 +406,7 @@ dependencies: {{
             .join(CrateType::Binary.default_root_file_stem())
             .with_extension(FILE_EXTENSION);
 
-        let content = "main: extern.core.text.Text =\n    \"hello there!\"";
+        let content = "main: extern.core.text.Text =\n    \"Hello there!\"";
 
         fs::write(path, content).unwrap();
     }

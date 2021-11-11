@@ -1,15 +1,13 @@
 //! The entity system: Information about bindings for the name resolver _and_ the type checker.
 //!
-//! Just like [`CrateScope`], [`Entity`] is a resource shared by those two passes.
+//! Just like [`Crate`], [`Entity`] is a resource shared by those two passes.
 
 use crate::{
     error::PossiblyErroneous,
     format::DisplayWith,
     hir::Expression,
     package::BuildSession,
-    resolver::{
-        CrateScope, DeclarationIndex, Exposure, Identifier, LocalDeclarationIndex, Namespace,
-    },
+    resolver::{Crate, DeclarationIndex, Exposure, Identifier, LocalDeclarationIndex, Namespace},
     typer::interpreter::{ffi::NakedForeignFunction, scope::ValueView},
     utility::obtain,
 };
@@ -34,6 +32,7 @@ pub struct Entity {
     /// Source information of the definition site.
     pub source: crate::syntax::ast::Identifier,
     /// The namespace this entity is a member of.
+    // @Question should we make this a DeclarationIndex?
     pub parent: Option<LocalDeclarationIndex>,
     pub exposure: Exposure,
     pub kind: EntityKind,
@@ -244,7 +243,7 @@ impl EntityKind {
 }
 
 impl DisplayWith for EntityKind {
-    type Context<'a> = (&'a CrateScope, &'a BuildSession);
+    type Context<'a> = (&'a Crate, &'a BuildSession);
 
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

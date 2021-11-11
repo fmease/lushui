@@ -202,9 +202,6 @@ pub type Span = generic::Span<{ Global }>;
 /// A span inside a single source file.
 pub type LocalSpan = generic::Span<{ Local }>;
 
-// @Beacon @Task rename and create operations according to common set operations and adjust the
-// debugging asserts (which in many cases are overly restricted as they originally had a much more
-// narrow scope in mind)
 impl Span {
     pub fn local(self, file: &SourceFile) -> LocalSpan {
         LocalSpan::new(self.start.local(file), self.end.local(file))
@@ -386,27 +383,40 @@ mod spanned {
 
     #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
     pub struct Spanned<T> {
-        pub data: T,
+        pub value: T,
         pub span: Span,
     }
 
     impl<T> Spanned<T> {
-        pub const fn new(span: Span, data: T) -> Self {
-            Self { data, span }
+        pub const fn new(span: Span, value: T) -> Self {
+            Self { value, span }
         }
 
         pub fn map<U>(self, mapper: impl FnOnce(T) -> U) -> Spanned<U> {
-            Spanned {
-                data: mapper(self.data),
-                span: self.span,
-            }
+            Spanned::new(self.span, mapper(self.value))
+        }
+
+        pub fn map_span(mut self, mapper: impl FnOnce(Span) -> Span) -> Self {
+            self.span = mapper(self.span);
+            self
         }
 
         pub const fn as_ref(&self) -> Spanned<&T> {
-            Spanned {
-                data: &self.data,
-                span: self.span,
-            }
+            Spanned::new(self.span, &self.value)
+        }
+
+        pub fn as_deref(&self) -> Spanned<&T::Target>
+        where
+            T: std::ops::Deref,
+        {
+            Spanned::new(self.span, &self.value)
+        }
+    }
+
+    // @Temporary
+    impl<T: Clone> Spanned<&T> {
+        pub fn cloned(&self) -> Spanned<T> {
+            self.map(Clone::clone)
         }
     }
 
@@ -418,13 +428,13 @@ mod spanned {
 
     impl<T: fmt::Debug> fmt::Debug for Spanned<T> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{:?} {:?}", self.data, self.span)
+            write!(f, "{:?} {:?}", self.value, self.span)
         }
     }
 
     impl<T: fmt::Display> fmt::Display for Spanned<T> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            self.data.fmt(f)
+            self.value.fmt(f)
         }
     }
 }

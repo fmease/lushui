@@ -203,7 +203,7 @@ impl<K: Format> Format for Spanned<K> {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         self.span.format(f, indentation)?;
         write!(f, " ")?;
-        self.data.format(f, indentation)
+        self.value.format(f, indentation)
     }
 }
 

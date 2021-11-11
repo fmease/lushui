@@ -4,7 +4,7 @@ use colored::Colorize;
 use difference::{Changeset, Difference};
 use joinery::JoinableIterator;
 
-use std::{fmt, io::Write};
+use std::{fmt, io::Write, path::Path};
 
 pub trait DisplayWith: Sized {
     type Context<'a>: Copy;
@@ -209,4 +209,13 @@ pub fn differences_with_ledge(differences: &[Difference]) -> String {
     }
 
     String::from_utf8(buffer).unwrap()
+}
+
+pub struct IOError<'a>(pub std::io::Error, pub &'a Path);
+
+impl fmt::Display for IOError<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // @Question custom messages?
+        write!(f, "`{}`: {}", self.1.to_string_lossy(), self.0)
+    }
 }

@@ -45,7 +45,8 @@
     generic_associated_types,
     extend_one,
     try_trait_v2,
-    adt_const_params
+    adt_const_params,
+    let_else
 )]
 #![deny(rust_2018_idioms, unused_must_use)]
 #![allow(incomplete_features)] // adt_const_params (we are only doing the basics)
@@ -64,6 +65,7 @@
     clippy::if_not_else,
     clippy::needless_pass_by_value, // @Temporary
     clippy::missing_panics_doc, // @Temporary
+    clippy::semicolon_if_nothing_returned, // @Beacon @Temporary false postives with let/else's
 )]
 
 pub mod compiler;

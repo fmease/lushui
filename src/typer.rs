@@ -7,9 +7,8 @@ use crate::{
     error::{Health, Result},
     format::{pluralize, DisplayWith, QuoteExt},
     hir::{self, expr, Declaration, Expression},
-    item::Item,
     package::BuildSession,
-    resolver::{CrateScope, Identifier},
+    resolver::{Crate, Identifier},
     span::Span,
     syntax::{
         ast::{Explicitness, ParameterAspect},
@@ -27,20 +26,16 @@ use std::default::default;
 /// The state of the typer.
 // @Task add recursion depth field
 pub struct Typer<'a> {
-    pub scope: &'a mut CrateScope,
+    pub crate_: &'a mut Crate,
     session: &'a BuildSession,
     reporter: &'a Reporter,
     health: Health,
 }
 
 impl<'a> Typer<'a> {
-    pub fn new(
-        scope: &'a mut CrateScope,
-        session: &'a BuildSession,
-        reporter: &'a Reporter,
-    ) -> Self {
+    pub fn new(crate_: &'a mut Crate, session: &'a BuildSession, reporter: &'a Reporter) -> Self {
         Self {
-            scope,
+            crate_,
             session,
             reporter,
             health: Health::Untainted,
@@ -48,7 +43,7 @@ impl<'a> Typer<'a> {
     }
 
     pub fn interpreter(&mut self) -> Interpreter<'_> {
-        Interpreter::new(self.scope, self.session, self.reporter)
+        Interpreter::new(self.crate_, self.session, self.reporter)
     }
 
     pub fn infer_types_in_declaration(&mut self, declaration: &Declaration) -> Result {
@@ -102,9 +97,11 @@ impl<'a> Typer<'a> {
                         .filter(AttributeKeys::INHERENT)
                         .next()
                     {
-                        self.scope.ffi.register_inherent_bindings(
+                        self.crate_.ffi.register_inherent_bindings(
                             &data.binder,
-                            constructors.iter().map(Item::unwrap_constructor),
+                            constructors
+                                .iter()
+                                .map(|declaration| declaration.constructor().unwrap()),
                             declaration,
                             inherent,
                             self.reporter,
@@ -170,67 +167,66 @@ impl<'a> Typer<'a> {
                 let value = value.unwrap();
 
                 recover_error!(
-                    self.scope,
+                    self.crate_,
                     self.session,
                     self.reporter,
                     registration;
-                    self.it_is_a_type(type_.clone(), &FunctionScope::CrateScope),
+                    self.it_is_a_type(type_.clone(), &FunctionScope::Crate),
                     actual = type_
                 );
                 let type_ = self.interpreter().evaluate_expression(
                     type_,
                     interpreter::Context {
-                        scope: &FunctionScope::CrateScope,
+                        scope: &FunctionScope::Crate,
                         form: Form::Normal, /* Form::WeakHeadNormal */
                     },
                 )?;
 
-                let infered_type = match self
-                    .infer_type_of_expression(value.clone(), &FunctionScope::CrateScope)
-                {
-                    Ok(expression) => expression,
-                    Err(error) => {
-                        return match error {
-                            Unrecoverable => Err(()),
-                            OutOfOrderBinding => {
-                                self.scope.out_of_order_bindings.push(registration);
-                                self.scope.carry_out(
-                                    BindingRegistration::Value {
-                                        binder,
-                                        type_,
-                                        value: None,
-                                    },
-                                    self.reporter,
-                                )
-                            }
-                            // @Task abstract over explicit diagnostic building
-                            TypeMismatch { expected, actual } => {
-                                Diagnostic::error()
-                                    .code(Code::E032)
-                                    .message(format!(
-                                        "expected type `{}`, got type `{}`",
-                                        expected.with((self.scope, self.session)),
-                                        actual.with((self.scope, self.session))
-                                    ))
-                                    .labeled_primary_span(&actual, "has the wrong type")
-                                    .labeled_secondary_span(&expected, "expected due to this")
-                                    .report(self.reporter);
-                                Err(())
-                            }
-                        };
-                    }
-                };
+                let infered_type =
+                    match self.infer_type_of_expression(value.clone(), &FunctionScope::Crate) {
+                        Ok(expression) => expression,
+                        Err(error) => {
+                            return match error {
+                                Unrecoverable => Err(()),
+                                OutOfOrderBinding => {
+                                    self.crate_.out_of_order_bindings.push(registration);
+                                    self.crate_.carry_out(
+                                        BindingRegistration::Value {
+                                            binder,
+                                            type_,
+                                            value: None,
+                                        },
+                                        self.reporter,
+                                    )
+                                }
+                                // @Task abstract over explicit diagnostic building
+                                TypeMismatch { expected, actual } => {
+                                    Diagnostic::error()
+                                        .code(Code::E032)
+                                        .message(format!(
+                                            "expected type `{}`, got type `{}`",
+                                            expected.with((self.crate_, self.session)),
+                                            actual.with((self.crate_, self.session))
+                                        ))
+                                        .labeled_primary_span(&actual, "has the wrong type")
+                                        .labeled_secondary_span(&expected, "expected due to this")
+                                        .report(self.reporter);
+                                    Err(())
+                                }
+                            };
+                        }
+                    };
 
                 recover_error!(
-                    self.scope,
+                    self.crate_,
                     self.session,
                     self.reporter,
                     registration;
-                    self.it_is_actual(type_.clone(), infered_type.clone(), &FunctionScope::CrateScope),
+                    self.it_is_actual(type_.clone(), infered_type.clone(), &FunctionScope::Crate),
                     actual = value,
                     expected = type_
                 );
-                self.scope.carry_out(
+                self.crate_.carry_out(
                     BindingRegistration::Value {
                         binder,
                         type_: infered_type,
@@ -241,17 +237,17 @@ impl<'a> Typer<'a> {
             }
             Data { binder, type_ } => {
                 recover_error!(
-                    self.scope,
+                    self.crate_,
                     self.session,
                     self.reporter,
                     registration;
-                    self.it_is_a_type(type_.clone(), &FunctionScope::CrateScope),
+                    self.it_is_a_type(type_.clone(), &FunctionScope::Crate),
                     actual = type_
                 );
                 let type_ = self.interpreter().evaluate_expression(
                     type_,
                     interpreter::Context {
-                        scope: &FunctionScope::CrateScope,
+                        scope: &FunctionScope::Crate,
                         form: Form::Normal, /* Form::WeakHeadNormal */
                     },
                 )?;
@@ -261,7 +257,7 @@ impl<'a> Typer<'a> {
                     expr! { Type { Attributes::default(), Span::default() } },
                 )?;
 
-                self.scope
+                self.crate_
                     .carry_out(BindingRegistration::Data { binder, type_ }, self.reporter)?;
             }
             Constructor {
@@ -270,17 +266,17 @@ impl<'a> Typer<'a> {
                 data,
             } => {
                 recover_error!(
-                    self.scope,
+                    self.crate_,
                     self.session,
                     self.reporter,
                     registration;
-                    self.it_is_a_type(type_.clone(), &FunctionScope::CrateScope),
+                    self.it_is_a_type(type_.clone(), &FunctionScope::Crate),
                     actual = type_
                 );
                 let type_ = self.interpreter().evaluate_expression(
                     type_,
                     interpreter::Context {
-                        scope: &FunctionScope::CrateScope,
+                        scope: &FunctionScope::Crate,
                         form: Form::Normal, /* Form::WeakHeadNormal */
                     },
                 )?;
@@ -290,7 +286,7 @@ impl<'a> Typer<'a> {
                     data.clone().to_expression(),
                 )?;
 
-                self.scope.carry_out(
+                self.crate_.carry_out(
                     BindingRegistration::Constructor {
                         binder,
                         type_,
@@ -301,26 +297,26 @@ impl<'a> Typer<'a> {
             }
             ForeignValue { binder, type_ } => {
                 recover_error!(
-                    self.scope,
+                    self.crate_,
                     self.session,
                     self.reporter,
                     registration;
-                    self.it_is_a_type(type_.clone(), &FunctionScope::CrateScope),
+                    self.it_is_a_type(type_.clone(), &FunctionScope::Crate),
                     actual = type_
                 );
                 let type_ = self.interpreter().evaluate_expression(
                     type_,
                     interpreter::Context {
-                        scope: &FunctionScope::CrateScope,
+                        scope: &FunctionScope::Crate,
                         form: Form::Normal, /* Form::WeakHeadNormal */
                     },
                 )?;
 
-                self.scope
+                self.crate_
                     .carry_out(ForeignValue { binder, type_ }, self.reporter)?;
             }
             ForeignData { binder } => {
-                self.scope
+                self.crate_
                     .carry_out(ForeignData { binder }, self.reporter)?;
             }
         }
@@ -367,15 +363,15 @@ impl<'a> Typer<'a> {
     }
 
     fn infer_types_of_out_of_order_bindings(&mut self) -> Result {
-        while !self.scope.out_of_order_bindings.is_empty() {
-            let bindings = std::mem::take(&mut self.scope.out_of_order_bindings);
+        while !self.crate_.out_of_order_bindings.is_empty() {
+            let bindings = std::mem::take(&mut self.crate_.out_of_order_bindings);
             let previous_amount = bindings.len();
 
             for binding in bindings {
                 self.evaluate_registration(binding)?;
             }
 
-            if previous_amount == self.scope.out_of_order_bindings.len() {
+            if previous_amount == self.crate_.out_of_order_bindings.len() {
                 if self.health.is_tainted() {
                     return Ok(());
                 }
@@ -387,10 +383,10 @@ impl<'a> Typer<'a> {
                     ))
                     .note(format!(
                         "namely {}",
-                        self.scope
+                        self.crate_
                             .out_of_order_bindings
                             .iter()
-                            .map(|binding| binding.with((self.scope, self.session)).quote())
+                            .map(|binding| binding.with((self.crate_, self.session)).quote())
                             .join_with(", ")
                     ))
                     .report(self.reporter);
@@ -408,9 +404,9 @@ impl<'a> Typer<'a> {
     // type error in possible cases
     fn infer_type_of_expression(
         // @Task change to &mut self (for warnings), this also means
-        // changing the definition of FunctionScope... it's FunctionScope::CrateScope now, no payload
+        // changing the definition of FunctionScope... it's FunctionScope::Crate now, no payload
         // this means more boilerplate methods (either duplication or as in resolver: every FunctionScope method takes
-        // a scope: &CrateScope parameter)
+        // a crate_: &Crate parameter)
         &mut self,
         expression: Expression,
         scope: &FunctionScope<'_>,
@@ -424,13 +420,13 @@ impl<'a> Typer<'a> {
                 .look_up_type(&binding.binder, scope)
                 .ok_or(OutOfOrderBinding)?,
             Type => expr! { Type { Attributes::default(), Span::default() } },
-            Number(number) => self.scope.look_up_foreign_number_type(
+            Number(number) => self.crate_.look_up_foreign_number_type(
                 &number,
                 Some(expression.span),
                 self.session,
                 self.reporter,
             )?,
-            Text(_) => self.scope.look_up_foreign_type(
+            Text(_) => self.crate_.look_up_foreign_type(
                 ffi::Type::TEXT,
                 Some(expression.span),
                 self.session,
@@ -457,7 +453,7 @@ impl<'a> Typer<'a> {
                 let parameter_type: Expression = lambda
                     .parameter_type_annotation
                     .clone()
-                    .ok_or_else(|| missing_annotation().report(self.reporter))?;
+                    .ok_or_else(|| Diagnostic::missing_annotation().report(self.reporter))?;
 
                 self.it_is_a_type(parameter_type.clone(), scope)?;
 
@@ -513,7 +509,7 @@ impl<'a> Typer<'a> {
                                 explicitness: Explicitness::Explicit,
                                 aspect: default(),
                                 parameter: None,
-                                domain: self.scope.look_up_unit_type(Some(application.callee.span), self.reporter)?,
+                                domain: self.crate_.look_up_unit_type(Some(application.callee.span), self.reporter)?,
                                 codomain: argument_type,
                             }
                         }
@@ -530,8 +526,8 @@ impl<'a> Typer<'a> {
                                 .code(Code::E032)
                                 .message(format!(
                                     "expected type `{}`, got type `{}`",
-                                    expected.with((self.scope, self.session)),
-                                    actual.with((self.scope, self.session))
+                                    expected.with((self.crate_, self.session)),
+                                    actual.with((self.crate_, self.session))
                                 ))
                                 .labeled_primary_span(&application.argument, "has the wrong type")
                                 .labeled_secondary_span(&expected, "expected due to this")
@@ -554,7 +550,7 @@ impl<'a> Typer<'a> {
                         .code(Code::E031)
                         .message(format!(
                             "expected type `_ -> _`, got type `{}`",
-                            type_of_callee.with((self.scope, self.session))
+                            type_of_callee.with((self.crate_, self.session))
                         ))
                         .labeled_primary_span(&application.callee, "has wrong type")
                         .labeled_secondary_span(&application.argument, "applied to this")
@@ -597,7 +593,7 @@ impl<'a> Typer<'a> {
                     }
                     _ => todo!(
                         "encountered unsupported type to be case-analysed type={}",
-                        subject_type.with((self.scope, self.session))
+                        subject_type.with((self.crate_, self.session))
                     ),
                 };
 
@@ -631,7 +627,7 @@ impl<'a> Typer<'a> {
                     // not sure
                     match &case.pattern.data {
                         Number(number) => {
-                            let number_type = self.scope.look_up_foreign_number_type(
+                            let number_type = self.crate_.look_up_foreign_number_type(
                                 number,
                                 Some(case.pattern.span),
                                 self.session,
@@ -641,13 +637,13 @@ impl<'a> Typer<'a> {
                                 .map_err(|error| {
                                     handle_type_mismatch(
                                         error,
-                                        (self.scope, self.session),
+                                        (self.crate_, self.session),
                                         self.reporter,
                                     )
                                 })?;
                         }
                         Text(_) => {
-                            let text_type = self.scope.look_up_foreign_type(
+                            let text_type = self.crate_.look_up_foreign_type(
                                 ffi::Type::TEXT,
                                 Some(case.pattern.span),
                                 self.session,
@@ -657,7 +653,7 @@ impl<'a> Typer<'a> {
                                 .map_err(|error| {
                                     handle_type_mismatch(
                                         error,
-                                        (self.scope, self.session),
+                                        (self.crate_, self.session),
                                         self.reporter,
                                     )
                                 })?;
@@ -676,7 +672,7 @@ impl<'a> Typer<'a> {
                             .map_err(|error| {
                                 handle_type_mismatch(
                                     error,
-                                    (self.scope, self.session),
+                                    (self.crate_, self.session),
                                     self.reporter,
                                 )
                             })?;
@@ -701,9 +697,9 @@ impl<'a> Typer<'a> {
                                         .unwrap();
 
                                     dbg!(
-                                        &subject_type.with((self.scope, self.session)),
-                                        deapplication.callee.with((self.scope, self.session)),
-                                        &constructor_type.with((self.scope, self.session))
+                                        &subject_type.with((self.crate_, self.session)),
+                                        deapplication.callee.with((self.crate_, self.session)),
+                                        &constructor_type.with((self.crate_, self.session))
                                     );
 
                                     todo!();
@@ -748,7 +744,7 @@ impl<'a> Typer<'a> {
             }
             // @Beacon @Task
             ForeignApplication(_) | Projection(_) => todo!(),
-            IO(_) => self.scope.look_up_foreign_type(
+            IO(_) => self.crate_.look_up_foreign_type(
                 ffi::Type::IO,
                 Some(expression.span),
                 self.session,
@@ -880,12 +876,12 @@ impl<'a> Typer<'a> {
         constructor: Expression,
         type_: Expression,
     ) -> Result {
-        let result_type = self.result_type(constructor, &FunctionScope::CrateScope);
+        let result_type = self.result_type(constructor, &FunctionScope::Crate);
         let callee = result_type.clone().callee();
 
         if self
             .interpreter()
-            .equals(type_.clone(), callee, &FunctionScope::CrateScope)?
+            .equals(type_.clone(), callee, &FunctionScope::Crate)?
         {
             Ok(())
         } else {
@@ -893,8 +889,8 @@ impl<'a> Typer<'a> {
                 .code(Code::E033)
                 .message(format!(
                     "`{}` is not an instance of `{}`",
-                    result_type.with((self.scope, self.session)),
-                    type_.with((self.scope, self.session))
+                    result_type.with((self.crate_, self.session)),
+                    type_.with((self.crate_, self.session))
                 ))
                 .primary_span(result_type.span)
                 .report(self.reporter);
@@ -922,11 +918,13 @@ struct Context {
     parent_data_binding: Option<Identifier>,
 }
 
-pub(crate) fn missing_annotation() -> Diagnostic {
-    // @Task add span
-    Diagnostic::bug()
-        .code(Code::E030)
-        .message("currently lambda literal parameters and patterns must be type-annotated")
+impl Diagnostic {
+    fn missing_annotation() -> Self {
+        // @Task add span
+        Self::bug()
+            .code(Code::E030)
+            .message("currently lambda literal parameters and patterns must be type-annotated")
+    }
 }
 
 // @Note maybe we should redesign this as a trait (object) looking at those

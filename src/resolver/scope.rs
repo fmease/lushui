@@ -2,7 +2,7 @@
 //!
 //! There are two types of scopes:
 //!
-//! * [`CrateScope`] for module-level bindings (may be out of order and recursive)
+//! * [`Crate`] for module-level bindings (may be out of order and recursive)
 //!   i.e. bindings defined by declarations in modules, data types and constructors
 //! * [`FunctionScope`] for bindings defined inside of expressions or functions (order matters)
 //!   like parameters, let/in-binders and case-analysis binders
@@ -22,6 +22,7 @@ use crate::{
     syntax::{
         ast::{self, HangerKind, Path},
         lexer::is_punctuation,
+        CrateName,
     },
     typer::interpreter::{ffi, scope::BindingRegistration},
     utility::{HashMap, SmallVec},
@@ -40,17 +41,16 @@ mod index;
 /// The crate scope for module-level bindings.
 ///
 /// This structure is used not only by the name resolver but also the type checker.
-// @Question rename to just "Crate"?
-pub struct CrateScope {
+// @Task move out of this module
+pub struct Crate {
     pub index: CrateIndex,
     pub package: PackageIndex,
     pub path: PathBuf,
     pub type_: CrateType,
-    // @Question move??
+    // @Task move out of this struct, only the goal crate has a program entry
     pub(crate) program_entry: Option<Identifier>,
-    /// All bindings inside of a crate.
-    ///
-    /// The first element must always be the root module.
+    /// All bindings inside of the crate.
+    // The first element has to be the root module.
     pub(crate) bindings: IndexMap<LocalDeclarationIndex, Entity>,
     /// For resolving out of order use-declarations.
     pub(super) partially_resolved_use_bindings:
@@ -67,7 +67,7 @@ pub struct CrateScope {
     pub(crate) out_of_order_bindings: Vec<BindingRegistration>,
 }
 
-impl CrateScope {
+impl Crate {
     pub fn new(index: CrateIndex, package: PackageIndex, path: PathBuf, type_: CrateType) -> Self {
         Self {
             index,
@@ -84,7 +84,16 @@ impl CrateScope {
         }
     }
 
-    pub(super) fn dependency(&self, name: &str, session: &BuildSession) -> Option<CrateIndex> {
+    /// Test if this crate is the standard library `core`.
+    pub fn is_core_library(&self, session: &BuildSession) -> bool {
+        session[self.package].is_core() && self.type_ == CrateType::Library
+    }
+
+    pub(super) fn dependency(
+        &self,
+        name: &CrateName,
+        session: &BuildSession,
+    ) -> Option<CrateIndex> {
         let package = &session[self.package];
         let dependency = package.dependencies.get(name).copied();
 
@@ -93,7 +102,7 @@ impl CrateScope {
         match self.type_ {
             CrateType::Library => dependency,
             CrateType::Binary => {
-                dependency.or_else(|| (name == package.name).then(|| package.library).flatten())
+                dependency.or_else(|| (name == &package.name).then(|| package.library).flatten())
             }
         }
     }
@@ -129,14 +138,9 @@ impl CrateScope {
         }
     }
 
-    // @Task update/refine the docs
-    /// The crate root.
-    ///
-    /// Unbeknownst to the subdeclarations of the crate, it takes the name
-    /// given by external sources, the crate name. Inside the crate, the root
-    /// can only ever be referenced through the keyword `crate` (unless renamed).
-    #[allow(clippy::unused_self)]
-    pub(super) fn root(&self) -> LocalDeclarationIndex {
+    /// The crate root aka `crate`.
+    #[allow(clippy::unused_self)] // nicer API
+    pub fn root(&self) -> LocalDeclarationIndex {
         LocalDeclarationIndex::new(0)
     }
 
@@ -151,18 +155,15 @@ impl CrateScope {
         root: String,
         session: &BuildSession,
     ) -> String {
-        let index = match self.local_index(index) {
-            Some(index) => index,
-            None => {
-                let crate_ = &session[index.crate_index()];
-                let root = format!(
-                    "{}.{}",
-                    HangerKind::Extern.name(),
-                    session[crate_.package].name
-                );
+        let Some(index) = self.local_index(index) else {
+            let crate_ = &session[index.crate_index()];
+            let root = format!(
+                "{}.{}",
+                HangerKind::Extern.name(),
+                session[crate_.package].name
+            );
 
-                return crate_.absolute_path_with_root(index, root, session);
-            }
+            return crate_.absolute_path_with_root(index, root, session);
         };
 
         let entity = &self[index];
@@ -276,7 +277,7 @@ impl CrateScope {
     }
 }
 
-impl std::ops::Index<LocalDeclarationIndex> for CrateScope {
+impl std::ops::Index<LocalDeclarationIndex> for Crate {
     type Output = Entity;
 
     #[track_caller]
@@ -285,29 +286,15 @@ impl std::ops::Index<LocalDeclarationIndex> for CrateScope {
     }
 }
 
-impl std::ops::IndexMut<LocalDeclarationIndex> for CrateScope {
+impl std::ops::IndexMut<LocalDeclarationIndex> for Crate {
     #[track_caller]
     fn index_mut(&mut self, index: LocalDeclarationIndex) -> &mut Self::Output {
         &mut self.bindings[index]
     }
 }
 
-// @Temporary
-impl fmt::Debug for CrateScope {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("CrateScope")
-            .field("index", &self.index)
-            .field("package", &self.package)
-            .field("path", &self.path)
-            .field("type_", &self.type_)
-            .field("program_entry", &self.program_entry)
-            .field("bindings", &self.bindings.indices().collect::<Vec<_>>())
-            .finish()
-    }
-}
-
 // @Note it would be better if we had `DebugWith`
-impl DisplayWith for CrateScope {
+impl DisplayWith for Crate {
     type Context<'a> = &'a BuildSession;
 
     fn format(&self, session: &BuildSession, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -340,14 +327,14 @@ pub enum Exposure {
 }
 
 impl Exposure {
-    pub(super) fn compare(&self, other: &Self, scope: &CrateScope) -> Option<Ordering> {
+    pub(super) fn compare(&self, other: &Self, crate_: &Crate) -> Option<Ordering> {
         use Exposure::*;
 
         match (self, other) {
             (Unrestricted, Unrestricted) => Some(Ordering::Equal),
             (Unrestricted, Restricted(_)) => Some(Ordering::Greater),
             (Restricted(_), Unrestricted) => Some(Ordering::Less),
-            (Restricted(this), Restricted(other)) => this.borrow().compare(&other.borrow(), scope),
+            (Restricted(this), Restricted(other)) => this.borrow().compare(&other.borrow(), crate_),
         }
     }
 }
@@ -369,7 +356,7 @@ impl fmt::Debug for Exposure {
 }
 
 impl DisplayWith for Exposure {
-    type Context<'a> = (&'a CrateScope, &'a BuildSession);
+    type Context<'a> = (&'a Crate, &'a BuildSession);
 
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -391,19 +378,19 @@ pub enum RestrictedExposure {
 }
 
 impl RestrictedExposure {
-    fn compare(&self, other: &Self, scope: &CrateScope) -> Option<Ordering> {
+    fn compare(&self, other: &Self, crate_: &Crate) -> Option<Ordering> {
         use RestrictedExposure::*;
 
         Some(match (self, other) {
             (&Resolved { reach: this }, &Resolved { reach: other }) => {
-                let this = scope.global_index(this);
-                let other = scope.global_index(other);
+                let this = crate_.global_index(this);
+                let other = crate_.global_index(other);
 
                 if this == other {
                     Ordering::Equal
-                } else if scope.some_ancestor_equals(other, this) {
+                } else if crate_.some_ancestor_equals(other, this) {
                     Ordering::Greater
-                } else if scope.some_ancestor_equals(this, other) {
+                } else if crate_.some_ancestor_equals(this, other) {
                     Ordering::Less
                 } else {
                     return None;
@@ -415,7 +402,7 @@ impl RestrictedExposure {
 }
 
 impl DisplayWith for RestrictedExposure {
-    type Context<'a> = (&'a CrateScope, &'a BuildSession);
+    type Context<'a> = (&'a Crate, &'a BuildSession);
 
     fn format(
         &self,
@@ -504,7 +491,7 @@ pub struct Identifier {
 }
 
 impl Identifier {
-    pub(super) fn new(index: impl Into<Index>, source: ast::Identifier) -> Self {
+    pub fn new(index: impl Into<Index>, source: ast::Identifier) -> Self {
         Self {
             index: index.into(),
             source,
@@ -514,7 +501,7 @@ impl Identifier {
     pub(crate) fn parameter(name: &str) -> Self {
         Identifier::new(
             Index::DeBruijnParameter,
-            ast::Identifier::new(name.into(), default()),
+            ast::Identifier::new_unchecked(name.into(), default()),
         )
     }
 
@@ -632,21 +619,16 @@ impl<'a> FunctionScope<'a> {
         }
     }
 
-    pub fn absolute_path(
-        binder: &Identifier,
-        scope: &CrateScope,
-        session: &BuildSession,
-    ) -> String {
+    pub fn absolute_path(binder: &Identifier, crate_: &Crate, session: &BuildSession) -> String {
         match binder.index {
-            Index::Declaration(index) => scope.absolute_path(index, session),
+            Index::Declaration(index) => crate_.absolute_path(index, session),
             Index::DeBruijn(_) | Index::DeBruijnParameter => binder.as_str().into(),
         }
     }
 }
 
-pub(super) fn is_similar(queried_identifier: &str, other_identifier: &str) -> bool {
-    strsim::levenshtein(other_identifier, queried_identifier)
-        <= std::cmp::max(queried_identifier.len(), 3) / 3
+pub(super) fn is_similar(identifier: &str, other_identifier: &str) -> bool {
+    strsim::levenshtein(other_identifier, identifier) <= std::cmp::max(identifier.len(), 3) / 3
 }
 
 pub(super) struct Lookalike<'a> {
@@ -683,15 +665,17 @@ impl fmt::Display for Lookalike<'_> {
     }
 }
 
-pub(super) fn module_used_as_a_value(module: Spanned<impl fmt::Display>) -> Diagnostic {
-    // @Task levenshtein-search for similar named bindings which are in fact values and suggest the first one
-    // @Task print absolute path of the module in question and use highlight the entire path, not just the last
-    // segment
-    Diagnostic::error()
-        .code(Code::E023)
-        .message(format!("module `{module}` is used as a value"))
-        .primary_span(module)
-        .help("modules are not first-class citizens, consider utilizing records for such cases instead")
+impl Diagnostic {
+    pub(super) fn module_used_as_a_value(module: Spanned<impl fmt::Display>) -> Self {
+        // @Task levenshtein-search for similar named bindings which are in fact values and suggest the first one
+        // @Task print absolute path of the module in question and use highlight the entire path, not just the last
+        // segment
+        Self::error()
+            .code(Code::E023)
+            .message(format!("module `{module}` is used as a value"))
+            .primary_span(module)
+            .help("modules are not first-class citizens, consider utilizing records for such cases instead")
+    }
 }
 
 pub(super) enum RegistrationError {

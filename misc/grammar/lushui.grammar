@@ -18,10 +18,10 @@
 ; | `#T`      | Named Terminal                      | Lexed token by name                                           |
 ; | `(> A)`   | Positive Look-Ahead                 |                                                               |
 
-General-Identifier ::= #Identifier | #Punctuation
+Identifier ::= #Word | #Punctuation
 
-Declaration ::= (Attribute #Line-Break*)* Naked-Declaration
-Naked-Declaration ::=
+Declaration ::= (Attribute #Line-Break*)* Bare-Declaration
+Bare-Declaration ::=
     | Value-Declaration
     | Data-Declaration
     | Module-Declaration
@@ -29,26 +29,26 @@ Naked-Declaration ::=
 
 Attribute ::= Regular-Attribute | Documentation-Comment
 
-Regular-Attribute ::= "@" (#Identifier | "(" #Identifier Attribute-Argument* ")")
+Regular-Attribute ::= "@" (#Word | "(" #Word Attribute-Argument* ")")
 
-Attribute-Argument ::= Lower-Attribute-Argument | "(" #Identifier Lower-Attribute-Argument ")"
+Attribute-Argument ::= Lower-Attribute-Argument | "(" #Word Lower-Attribute-Argument ")"
 Lower-Attribute-Argument ::= Path | #Number-Literal | #Text-Literal
 
 Value-Declaration ::=
-    #Identifier
+    #Word
     Parameters Type-Annotation?
     ("=" Expression)?
     Terminator
 
 Data-Declaration ::=
-    "data" #Identifier
+    "data" #Word
     Parameters Type-Annotation?
     ("of" ("{" (Terminator | Constructor)* "}")?)?
     Terminator
 
 Module-Declaration ::=
     | Header
-    | "module" #Identifier ("of" ("{" (Terminator | Declaration)* "}")?)? Terminator
+    | "module" #Word ("of" ("{" (Terminator | Declaration)* "}")?)? Terminator
 Header ::= "module" Terminator
 
 Top-Level ::= (#Line-Break | Declaration)* #End-Of-Input
@@ -59,11 +59,11 @@ Use-Path-Tree ::=
     | Path
     | Path "." "(" (Use-Path-Tree | "(" Renaming ")")* ")"
     | Renaming
-Renaming ::= Path "as" General-Identifier
+Renaming ::= Path "as" Identifier
 
 Constructor ::=
     (Attribute #Line-Break*)*
-    #Identifier Parameters Type-Annotation?
+    #Word Parameters Type-Annotation?
     ("=" Expression)?
     Terminator
 
@@ -78,7 +78,7 @@ Pi-Type-Literal-Or-Lower ::=
     "->" Pi-Type-Literal-Or-Lower
 Designated-Pi-Type-Domain ::=
     Explicitness
-    "(" Parameter-Aspect #Identifier Type-Annotation ")"
+    "(" Parameter-Aspect #Word Type-Annotation ")"
 
 Parameter-Aspect ::= Laziness Fieldness
 Laziness ::= "lazy"?
@@ -87,7 +87,7 @@ Fieldness ::= "::"?
 Application-Or-Lower ::= Lower-Expression Argument*
 Argument ::=
     | Explicitness Lower-Expression
-    | Explicitness "(" (#Identifier "=")? Expression ")"
+    | Explicitness "(" (#Word "=")? Expression ")"
 
 ; ; left-recursive version unsuitable for the recursive descent parser
 ; ; but indeed usable for pretty-printers:
@@ -95,11 +95,11 @@ Argument ::=
 ; Application-Or-Lower ::= Application-Or-Lower? Argument*
 ; Argument ::=
 ;     | Lower-Expression
-;     | Explicitness "(" (#Identifier "=")? Expression ")"
+;     | Explicitness "(" (#Word "=")? Expression ")"
 
-Lower-Expression ::= Attribute* Naked-Lower-Expression
+Lower-Expression ::= Attribute* Bare-Lower-Expression
 ; @Task rename into Field-Or-Lower
-Naked-Lower-Expression ::= Lowest-Expression ("::" Identifier)*
+Bare-Lower-Expression ::= Lowest-Expression ("::" Identifier)*
 Lowest-Expression ::=
     | Path
     | "Type"
@@ -113,17 +113,17 @@ Lowest-Expression ::=
     | Do-Block
     | Sequence-Literal
     | "(" Expression ")"
-Typed-Hole ::= "?" #Identifier
+Typed-Hole ::= "?" #Word
 Sequence-Literal ::= "[" Lower-Expression* "]"
 
-Path ::= Path-Head ("." General-Identifier)*
-Path-Head ::= Path-Hanger | General-Identifier
+Path ::= Path-Head ("." Identifier)*
+Path-Head ::= Path-Hanger | Identifier
 Path-Hanger ::= "extern" | "crate" | "super" | "self"
 
 Lambda-Literal ::= "\" Parameters Type-Annotation? "=>" Expression
 
 Let-In ::=
-    "let" #Identifier Parameters Type-Annotation?
+    "let" #Word Parameters Type-Annotation?
     ("=" Expression)?
     #Virtual-Semicolon?
     "in" Expression
@@ -139,30 +139,30 @@ Case ::= Pattern "=>" Expression Terminator
 Do-Block ::= "do" "{" Statement* "}"
 Statement ::= Let-Statement | Use-Declaration | Bind-Statement | Expression-Statement
 Let-Statement ::= "let" Value-Declaration
-Bind-Statement ::= #Identifier Type-Annotation? "<-" Expression Terminator
+Bind-Statement ::= #Word Type-Annotation? "<-" Expression Terminator
 Expression-Statement ::= Expression Terminator
 
 Parameters ::= Parameter-Group*
 
-Parameter-Group ::= Explicitness Naked-Parameter-Group
-Naked-Parameter-Group ::=
-    | #Identifier
-    | "(" Parameter-Aspect #Identifier+ Type-Annotation? ")"
+Parameter-Group ::= Explicitness Bare-Parameter-Group
+Bare-Parameter-Group ::=
+    | #Word
+    | "(" Parameter-Aspect #Word+ Type-Annotation? ")"
 
 Pattern ::= Lower-Pattern Pattern-Argument*
 Pattern-Argument ::=
     | Explicitness Lower-Pattern
-    | Explicitness "(" (#Identifier "=")? Pattern ")"
+    | Explicitness "(" (#Word "=")? Pattern ")"
 
-Lower-Pattern ::= Attribute* Naked-Lower-Pattern
-Naked-Lower-Pattern ::=
+Lower-Pattern ::= Attribute* Bare-Lower-Pattern
+Bare-Lower-Pattern ::=
     | Path
     | #Number-Literal
     | #Text-Literal
     | Binder
     | Sequence-Literal-Pattern
     | "(" Pattern ")"
-Binder ::= "\" #Identifier
+Binder ::= "\" #Word
 Sequence-Literal-Pattern ::= "[" Lower-Pattern* "]"
 
 Type-Annotation ::= ":" Expression

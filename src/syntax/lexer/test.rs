@@ -83,7 +83,7 @@ alpha;;;文本
 ;; next one
 ;;有意思的信"),
         vec![
-            Token::new(span(1, 6), Identifier("alpha".into())),
+            Token::new(span(1, 6), Word("alpha".into())),
             Token::new(span(16, 20), NumberLiteral("0401".into())),
             Token::new(span(21, 52), DocumentationComment),
             Token::new(span(52, 64), DocumentationComment),
@@ -100,7 +100,7 @@ fn shebang() {
 #!/usr/bin/lushui run
 it"),
         vec![
-            Token::new(span(23, 25), Identifier("it".into())),
+            Token::new(span(23, 25), Word("it".into())),
             Token::new(span(25, 25), EndOfInput),
         ],
     )
@@ -113,7 +113,7 @@ fn not_a_shebang_but_a_hashtag() {
 #hashtag"),
         vec![
             Token::new(span(1, 2), Punctuation("#".into())),
-            Token::new(span(2, 9), Identifier("hashtag".into())),
+            Token::new(span(2, 9), Word("hashtag".into())),
             Token::new(span(9, 9), EndOfInput),
         ],
     );
@@ -138,7 +138,7 @@ fn not_a_shebang_but_punctuation() {
 #?/WEIRD"),
         vec![
             Token::new(span(1, 4), Punctuation("#?/".into())),
-            Token::new(span(4, 9), Identifier("WEIRD".into())),
+            Token::new(span(4, 9), Word("WEIRD".into())),
             Token::new(span(9, 9), EndOfInput),
         ],
     );
@@ -153,12 +153,12 @@ fn shebang_lookalike_not_first_line() {
         vec![
             Token::new(span(1, 2), Semicolon(Provenance::Lexer)),
             Token::new(span(2, 5), Punctuation("#!/".into())),
-            Token::new(span(5, 8), Identifier("usr".into())),
+            Token::new(span(5, 8), Word("usr".into())),
             Token::new(span(8, 9), Punctuation("/".into())),
-            Token::new(span(9, 12), Identifier("bin".into())),
+            Token::new(span(9, 12), Word("bin".into())),
             Token::new(span(12, 13), Punctuation("/".into())),
-            Token::new(span(13, 19), Identifier("lushui".into())),
-            Token::new(span(20, 23), Identifier("run".into())),
+            Token::new(span(13, 19), Word("lushui".into())),
+            Token::new(span(20, 23), Word("run".into())),
             Token::new(span(23, 24), Semicolon(Provenance::Lexer)),
             Token::new(span(24, 24), EndOfInput),
         ],
@@ -170,10 +170,10 @@ fn identifiers() {
     assert_eq(
         lex("alpha alpha0 _alpha al6ha_beta_"),
         vec![
-            Token::new(span(1, 6), Identifier("alpha".into())),
-            Token::new(span(7, 13), Identifier("alpha0".into())),
-            Token::new(span(14, 20), Identifier("_alpha".into())),
-            Token::new(span(21, 32), Identifier("al6ha_beta_".into())),
+            Token::new(span(1, 6), Word("alpha".into())),
+            Token::new(span(7, 13), Word("alpha0".into())),
+            Token::new(span(14, 20), Word("_alpha".into())),
+            Token::new(span(21, 32), Word("al6ha_beta_".into())),
             Token::new(span(32, 32), EndOfInput),
         ],
     );
@@ -184,9 +184,9 @@ fn dashed_identifiers() {
     assert_eq(
         lex("ALPH4-G4MM4 alpha-gamma _-_"),
         vec![
-            Token::new(span(1, 12), Identifier("ALPH4-G4MM4".into())),
-            Token::new(span(13, 24), Identifier("alpha-gamma".into())),
-            Token::new(span(25, 28), Identifier("_-_".into())),
+            Token::new(span(1, 12), Word("ALPH4-G4MM4".into())),
+            Token::new(span(13, 24), Word("alpha-gamma".into())),
+            Token::new(span(25, 28), Word("_-_".into())),
             Token::new(span(28, 28), EndOfInput),
         ],
     );
@@ -199,8 +199,8 @@ fn keywords_and_lookalikes() {
         vec![
             Token::new(span(1, 5), Self_),
             Token::new(span(8, 12), Type),
-            Token::new(span(13, 18), Identifier("Type_".into())),
-            Token::new(span(19, 28), Identifier("Type-Type".into())),
+            Token::new(span(13, 18), Word("Type_".into())),
+            Token::new(span(19, 28), Word("Type-Type".into())),
             Token::new(span(29, 31), In),
             Token::new(span(32, 33), Underscore),
             Token::new(span(33, 33), EndOfInput),
@@ -239,7 +239,7 @@ fn punctuation() {
         vec![
             Token::new(span(1, 2), Punctuation("+".into())),
             Token::new(span(3, 5), Punctuation("+>".into())),
-            Token::new(span(5, 10), Identifier("alpha".into())),
+            Token::new(span(5, 10), Word("alpha".into())),
             Token::new(span(10, 15), Punctuation("//$~%".into())),
             Token::new(span(17, 18), Punctuation("#".into())),
             Token::new(span(18, 19), NumberLiteral("0".into())),
@@ -255,7 +255,7 @@ fn identifier_with_trailing_dot() {
     assert_eq(
         lex("namespace."),
         vec![
-            Token::new(span(1, 10), Identifier("namespace".into())),
+            Token::new(span(1, 10), Word("namespace".into())),
             Token::new(span(10, 11), Dot),
             Token::new(span(11, 11), EndOfInput),
         ],
@@ -267,7 +267,7 @@ fn identifier_dot_punctuation() {
     assert_eq(
         lex("namespace.+>!"),
         vec![
-            Token::new(span(1, 10), Identifier("namespace".into())),
+            Token::new(span(1, 10), Word("namespace".into())),
             Token::new(span(10, 11), Dot),
             Token::new(span(11, 14), Punctuation("+>!".into())),
             Token::new(span(14, 14), EndOfInput),
@@ -280,7 +280,7 @@ fn lex_identifier_dot_dotted_punctuation() {
     assert_eq(
         lex("namespace.$.?!."),
         vec![
-            Token::new(span(1, 10), Identifier("namespace".into())),
+            Token::new(span(1, 10), Word("namespace".into())),
             Token::new(span(10, 11), Dot),
             Token::new(span(11, 16), Punctuation("$.?!.".into())),
             Token::new(span(16, 16), EndOfInput),
@@ -293,7 +293,7 @@ fn lex_identifier_and_dotted_punctuation_after_space() {
     assert_eq(
         lex("namespace .$.?!."),
         vec![
-            Token::new(span(1, 10), Identifier("namespace".into())),
+            Token::new(span(1, 10), Word("namespace".into())),
             Token::new(span(11, 17), Punctuation(".$.?!.".into())),
             Token::new(span(17, 17), EndOfInput),
         ],
@@ -335,7 +335,7 @@ fn lex_number_literals_with_separators() {
         vec![
             Token::new(span(1, 4), NumberLiteral("334".into())),
             Token::new(span(5, 10), NumberLiteral("1000".into())),
-            Token::new(span(10, 14), Identifier("what".into())),
+            Token::new(span(10, 14), Word("what".into())),
             Token::new(span(15, 22), NumberLiteral("3221".into())),
             Token::new(span(22, 24), TextLiteral(Ok(String::new()))),
             Token::new(span(25, 28), NumberLiteral("500".into())),
@@ -454,7 +454,7 @@ fn bare_non_ascii_are_illegal_but_non_fatal() {
         vec![
             Token::new(span(2, 5), Illegal('函')),
             Token::new(span(5, 8), Illegal('数')),
-            Token::new(span(9, 17), Identifier("function".into())),
+            Token::new(span(9, 17), Word("function".into())),
             Token::new(span(17, 17), EndOfInput),
         ],
     );
@@ -504,11 +504,11 @@ alpha #?
 
 \"moot\""),
         vec![
-            Token::new(span(1, 6), Identifier("alpha".into())),
+            Token::new(span(1, 6), Word("alpha".into())),
             Token::new(span(7, 9), Punctuation("#?".into())),
             Token::new(span(9, 10), Semicolon(Provenance::Lexer)),
             Token::new(span(10, 13), NumberLiteral("100".into())),
-            Token::new(span(14, 16), Identifier("it".into())),
+            Token::new(span(14, 16), Word("it".into())),
             Token::new(span(16, 18), Semicolon(Provenance::Lexer)),
             Token::new(span(18, 24), TextLiteral(Ok("moot".into()))),
             Token::new(span(24, 24), EndOfInput),
@@ -538,9 +538,9 @@ start middle
 $%&~~
     .!^  \\/"),
         vec![
-            Token::new(span(1, 6), Identifier("start".into())),
-            Token::new(span(7, 13), Identifier("middle".into())),
-            Token::new(span(18, 21), Identifier("end".into())),
+            Token::new(span(1, 6), Word("start".into())),
+            Token::new(span(7, 13), Word("middle".into())),
+            Token::new(span(18, 21), Word("end".into())),
             Token::new(span(21, 22), Semicolon(Provenance::Lexer)),
             Token::new(span(22, 43), TextLiteral(Ok("anything\n    really".into()))),
             Token::new(span(48, 55), NumberLiteral("3291238".into())),
@@ -575,16 +575,16 @@ fn line_breaks_are_not_terminators_in_continued_sections() {
 "),
         vec![
             Token::new(span(1, 3), NumberLiteral("-0".into())),
-            Token::new(span(8, 11), Identifier("off".into())),
-            Token::new(span(16, 20), Identifier("side".into())),
+            Token::new(span(8, 11), Word("off".into())),
+            Token::new(span(16, 20), Word("side".into())),
             Token::new(span(25, 27), TextLiteral(Ok(String::new()))),
             Token::new(span(27, 28), Semicolon(Provenance::Lexer)),
             Token::new(span(28, 31), Punctuation("@@@".into())),
             Token::new(span(32, 33), At),
-            Token::new(span(40, 44), Identifier("lvl1".into())),
-            Token::new(span(53, 57), Identifier("lvl2".into())),
-            Token::new(span(66, 70), Identifier("lvl2".into())),
-            Token::new(span(75, 79), Identifier("lvl1".into())),
+            Token::new(span(40, 44), Word("lvl1".into())),
+            Token::new(span(53, 57), Word("lvl2".into())),
+            Token::new(span(66, 70), Word("lvl2".into())),
+            Token::new(span(75, 79), Word("lvl1".into())),
             Token::new(span(84, 85), NumberLiteral("1".into())),
             Token::new(span(85, 86), Semicolon(Provenance::Lexer)),
             Token::new(span(86, 86), EndOfInput),
@@ -614,9 +614,9 @@ of
             Token::new(span(1, 3), Of),
             // @Task we need to associate the token with a more useful span
             Token::new(span(3, 8), OpeningCurlyBracket(Provenance::Lexer)),
-            Token::new(span(8, 17), Identifier("something".into())),
+            Token::new(span(8, 17), Word("something".into())),
             Token::new(span(17, 18), Semicolon(Provenance::Lexer)),
-            Token::new(span(22, 26), Identifier("more".into())),
+            Token::new(span(22, 26), Word("more".into())),
             // @Task we need to associate the token with a more useful span
             Token::new(span(26, 27), ClosingCurlyBracket(Provenance::Lexer)),
             Token::new(span(26, 27), Semicolon(Provenance::Lexer)),
@@ -635,7 +635,7 @@ of
             Token::new(span(56, 58), Of),
             // @Task we need to associate the token with a more useful span
             Token::new(span(58, 67), OpeningCurlyBracket(Provenance::Lexer)),
-            Token::new(span(67, 74), Identifier("CONTENT".into())),
+            Token::new(span(67, 74), Word("CONTENT".into())),
             // @Task we need to associate the token with a more useful span
             Token::new(span(74, 79), ClosingCurlyBracket(Provenance::Lexer)),
             // @Bug wrong span?
@@ -666,8 +666,8 @@ of
         vec![
             Token::new(span(1, 3), Of),
             Token::new(span(3, 8), OpeningCurlyBracket(Provenance::Lexer)),
-            Token::new(span(8, 9), Identifier("a".into())),
-            Token::new(span(18, 19), Identifier("b".into())),
+            Token::new(span(8, 9), Word("a".into())),
+            Token::new(span(18, 19), Word("b".into())),
             Token::new(span(19, 20), ClosingCurlyBracket(Provenance::Lexer)),
             Token::new(span(19, 20), Semicolon(Provenance::Lexer)),
             Token::new(span(20, 20), EndOfInput),
@@ -729,7 +729,7 @@ of"it"
         vec![
             Token::new(span(1, 2), Semicolon(Provenance::Lexer)),
             Token::new(span(2, 4), Do),
-            Token::new(span(5, 7), Identifier("it".into())),
+            Token::new(span(5, 7), Word("it".into())),
             Token::new(span(7, 8), Semicolon(Provenance::Lexer)),
             Token::new(span(8, 10), Of),
             Token::new(span(10, 14), TextLiteral(Ok("it".into()))),
@@ -762,7 +762,7 @@ fn round_bracket_closes_indented_section() {
             Token::new(span(2, 4), Of),
             // @Bug wrong span
             Token::new(span(4, 9), OpeningCurlyBracket(Provenance::Lexer)),
-            Token::new(span(9, 11), Identifier("fo".into())),
+            Token::new(span(9, 11), Word("fo".into())),
             // @Question better span?
             Token::new(span(11, 12), ClosingCurlyBracket(Provenance::Lexer)),
             Token::new(span(11, 12), ClosingRoundBracket),
@@ -771,7 +771,7 @@ fn round_bracket_closes_indented_section() {
             Token::new(span(14, 16), Of),
             // @Bug wrong span
             Token::new(span(16, 21), OpeningCurlyBracket(Provenance::Lexer)),
-            Token::new(span(21, 23), Identifier("fo".into())),
+            Token::new(span(21, 23), Word("fo".into())),
             Token::new(span(23, 24), Semicolon(Provenance::Lexer)),
             // @Question better span?
             Token::new(span(28, 29), ClosingCurlyBracket(Provenance::Lexer)),
@@ -800,12 +800,12 @@ of
             // @Bug wrong span
             Token::new(span(3, 8), OpeningCurlyBracket(Provenance::Lexer)),
             Token::new(span(8, 9), OpeningRoundBracket),
-            Token::new(span(9, 10), Identifier("f".into())),
+            Token::new(span(9, 10), Word("f".into())),
             Token::new(span(11, 12), OpeningSquareBracket),
             Token::new(span(12, 13), ClosingSquareBracket),
             Token::new(span(13, 14), ClosingRoundBracket),
             Token::new(span(14, 15), Semicolon(Provenance::Lexer)),
-            Token::new(span(19, 25), Identifier("inside".into())),
+            Token::new(span(19, 25), Word("inside".into())),
             Token::new(span(25, 26), ClosingCurlyBracket(Provenance::Lexer)),
             Token::new(span(25, 26), Semicolon(Provenance::Lexer)),
             Token::new(span(26, 26), EndOfInput),

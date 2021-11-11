@@ -11,7 +11,7 @@ use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     error::Result,
     span::{SharedSourceMap, SourceFileIndex, Span, Spanned},
-    utility::{obtain, spanned_key_map::SpannedKeyMap},
+    utility::{obtain, HashMap},
 };
 use discriminant::Discriminant;
 
@@ -19,10 +19,7 @@ use discriminant::Discriminant;
 mod test;
 
 pub type Value = Spanned<ValueKind>;
-pub type Array = Vec<Value>;
-pub type Map = SpannedKeyMap<String, Value>;
 
-// @Task version, version requirement
 #[derive(Debug, Discriminant)]
 #[discriminant(Type)]
 pub enum ValueKind {
@@ -30,8 +27,8 @@ pub enum ValueKind {
     Integer(i64),
     Float(f64),
     Text(String),
-    Array(Array),
-    Map(Map),
+    Array(Vec<Value>),
+    Map(HashMap<Key, Value>),
 }
 
 impl ValueKind {
@@ -92,7 +89,7 @@ impl TryFrom<ValueKind> for String {
     }
 }
 
-impl TryFrom<ValueKind> for Array {
+impl TryFrom<ValueKind> for Vec<Value> {
     type Error = TypeError;
 
     fn try_from(value: ValueKind) -> Result<Self, Self::Error> {
@@ -105,7 +102,7 @@ impl TryFrom<ValueKind> for Array {
     }
 }
 
-impl TryFrom<ValueKind> for Map {
+impl TryFrom<ValueKind> for HashMap<Key, Value> {
     type Error = TypeError;
 
     fn try_from(value: ValueKind) -> Result<Self, Self::Error> {
@@ -131,61 +128,115 @@ impl fmt::Display for Type {
     }
 }
 
-impl Map {
-    // @Beacon @Temporary signature
-    pub fn remove<T: TryFrom<ValueKind, Error = TypeError>>(
-        &mut self,
-        key: &str,
-        path: Option<String>,
-        map: Span,
-        reporter: &Reporter,
-    ) -> Result<Spanned<T>> {
-        match self.0.remove(key) {
-            Some(entry) => convert(key, entry.value, reporter),
-            None => {
-                Diagnostic::error()
-                    .code(Code::E802)
-                    .message(format!(
-                        "the {} is missing the key `{key}`",
-                        path.map_or_else(|| "root map".into(), |path| format!("map `{path}`"))
-                    ))
-                    .primary_span(map)
-                    .report(reporter);
-                Err(())
-            }
+#[derive(Clone, Debug)]
+pub struct Key<K = String> {
+    pub value: K,
+    pub span: KeySpan,
+}
+
+impl<K> Key<K> {
+    pub fn new(value: K, span: Span, is_quoted: bool) -> Self {
+        Self {
+            value,
+            span: KeySpan {
+                literal: span,
+                content: match is_quoted {
+                    true => span.trim(1),
+                    false => span,
+                },
+            },
         }
     }
+}
 
-    pub fn remove_optional<T: TryFrom<ValueKind, Error = TypeError>>(
-        &mut self,
-        key: &str,
-        reporter: &Reporter,
-    ) -> Result<Option<Spanned<T>>> {
-        match self.0.remove(key) {
-            Some(entry) => convert(key, entry.value, reporter).map(Some),
-            None => Ok(None),
+impl<K: PartialEq> PartialEq for Key<K> {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value
+    }
+}
+
+impl<K: Eq> Eq for Key<K> {}
+
+impl<K: std::hash::Hash> std::hash::Hash for Key<K> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.value.hash(state);
+    }
+}
+
+impl std::borrow::Borrow<str> for Key<String> {
+    fn borrow(&self) -> &str {
+        &self.value
+    }
+}
+
+impl<K: fmt::Display> fmt::Display for Key<K> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.value.fmt(f)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct KeySpan {
+    pub literal: Span,
+    pub content: Span,
+}
+
+// @Beacon @Temporary signature
+pub fn remove_map_entry<T: TryFrom<ValueKind, Error = TypeError>>(
+    map: Spanned<&mut HashMap<Key, Value>>,
+    key: &str,
+    path: Option<String>,
+    reporter: &Reporter,
+) -> Result<Spanned<T>> {
+    match map.value.remove(key) {
+        Some(value) => convert(key, value, reporter),
+        None => {
+            Diagnostic::error()
+                .code(Code::E802)
+                .message(format!(
+                    "the {} is missing the key `{key}`",
+                    path.map_or_else(|| "root map".into(), |path| format!("map `{path}`"))
+                ))
+                .primary_span(map)
+                .report(reporter);
+            Err(())
         }
     }
+}
 
-    // @Temporary signature
-    pub fn check_exhaustion(self, path: Option<String>, reporter: &Reporter) -> Result {
-        if !self.is_empty() {
-            let location = path.map_or_else(|| "root map".into(), |path| format!("map `{path}`"));
+pub fn remove_optional_map_entry<T: TryFrom<ValueKind, Error = TypeError>>(
+    map: &mut HashMap<Key, Value>,
+    key: &str,
+    reporter: &Reporter,
+) -> Result<Option<Spanned<T>>> {
+    match map.remove(key) {
+        Some(value) => convert(key, value, reporter).map(Some),
+        None => Ok(None),
+    }
+}
 
-            for key in self.into_keys() {
-                // @Task improve message
-                Diagnostic::error()
-                    .code(Code::E801)
-                    .message(format!("unknown key `{key}` in {location}"))
-                    .primary_span(key)
-                    .report(reporter);
-            }
+// @Temporary signature
+pub fn check_map_is_empty(
+    map: HashMap<Key, Value>,
+    path: Option<String>,
+    reporter: &Reporter,
+) -> Result {
+    if !map.is_empty() {
+        let location = path.map_or_else(|| "root map".into(), |path| format!("map `{path}`"));
 
-            return Err(());
+        for key in map.into_keys() {
+            // @Task improve message
+            Diagnostic::error()
+                .code(Code::E801)
+                .message(format!("unknown key `{key}` in {location}"))
+                .primary_span(key.span.literal)
+                .report(reporter);
         }
 
-        Ok(())
+        return Err(());
     }
+
+    Ok(())
 }
 
 // @Temporary name
@@ -195,7 +246,7 @@ pub fn convert<T: TryFrom<ValueKind, Error = TypeError>>(
     reporter: &Reporter,
 ) -> Result<Spanned<T>> {
     let span = value.span;
-    let value = value.data.try_into().map_err(|error: TypeError| {
+    let value = value.value.try_into().map_err(|error: TypeError| {
         Diagnostic::error()
             .code(Code::E800)
             .message(format!(
@@ -249,15 +300,15 @@ mod lexer {
 
     impl Token {
         pub fn name(&self) -> TokenName {
-            self.data.discriminant()
+            self.value.discriminant()
         }
 
         pub(super) fn into_identifier(self) -> Option<String> {
-            obtain!(self.data, Identifier(identifier) => identifier)
+            obtain!(self.value, Identifier(identifier) => identifier)
         }
 
         pub(super) fn into_text(self) -> Option<Result<String, Diagnostic>> {
-            match self.data {
+            match self.value {
                 Text(text) => Some(match text {
                     Ok(content) => Ok(content),
                     // @Task code
@@ -271,7 +322,7 @@ mod lexer {
 
         // @Task turn this into a diagnostic here
         pub(super) fn into_integer(self) -> Option<Result<i64, IntLexingError>> {
-            obtain!(self.data, Integer(integer) => integer)
+            obtain!(self.value, Integer(integer) => integer)
         }
     }
 
@@ -559,12 +610,13 @@ mod parser {
             Token,
             TokenName::{self, *},
         },
-        Map, Value, ValueKind,
+        Key, Value, ValueKind,
     };
     use crate::{
         diagnostics::{Code, Diagnostic, Reporter},
         error::{Health, ReportedExt, Result},
-        span::{SharedSourceMap, SourceFileIndex, Span, Spanned, Spanning},
+        span::{SharedSourceMap, SourceFileIndex, Span, Spanning},
+        utility::HashMap,
     };
 
     pub(super) struct Parser<'a> {
@@ -796,19 +848,19 @@ mod parser {
             Ok(Value::new(span, ValueKind::Map(map)))
         }
 
-        fn parse_map_entries(&mut self, delimiter: TokenName) -> Result<Map> {
-            let mut map = Map::default();
+        fn parse_map_entries(&mut self, delimiter: TokenName) -> Result<HashMap<Key, Value>> {
+            let mut map = HashMap::<Key, Value>::default();
 
             while self.current_token().name() != delimiter {
                 let (key, value) = self.parse_map_entry()?;
 
-                if let Some(previous) = map.key_span(&key.data) {
+                if let Some(previous_key) = map.keys().find(|&some_key| some_key == &key) {
                     // @Task "is defined multiple times in map `PATH`"
                     Diagnostic::error()
                         .code(Code::E803)
-                        .message(format!("the key `{key}` is defined multiple times"))
-                        .labeled_primary_span(key, "redefinition")
-                        .labeled_secondary_span(previous, "previous definition")
+                        .message(format!("the key `{}` is defined multiple times", key))
+                        .labeled_primary_span(key.span.literal, "redefinition")
+                        .labeled_secondary_span(previous_key.span.literal, "previous definition")
                         .report(self.reporter);
                     self.health.taint();
                 } else {
@@ -830,7 +882,7 @@ mod parser {
         /// ```ebnf
         /// Map-Entry ::= Map-Key ":" Value
         /// ```
-        fn parse_map_entry(&mut self) -> Result<(Spanned<String>, Value)> {
+        fn parse_map_entry(&mut self) -> Result<(Key, Value)> {
             let key = self.parse_map_key()?;
             self.consume(Colon)?;
             let value = self.parse_value()?;
@@ -845,14 +897,14 @@ mod parser {
         /// ```ebnf
         /// Map-Key ::= #Identifier | #Text
         /// ```
-        fn parse_map_key(&mut self) -> Result<Spanned<String>> {
+        fn parse_map_key(&mut self) -> Result<Key> {
             let span = self.current_token().span;
-            let key = match self.current_token().name() {
+            let (key, is_quoted) = match self.current_token().name() {
                 Identifier => {
                     // @Task avoid cloning
                     let key = self.current_token().clone().into_identifier().unwrap();
                     self.advance();
-                    key
+                    (key, false)
                 }
                 Text => {
                     // @Task avoid cloning
@@ -863,7 +915,7 @@ mod parser {
                         .unwrap()
                         .reported(self.reporter)?;
                     self.advance();
-                    key
+                    (key, true)
                 }
                 _ => {
                     // @Task
@@ -878,7 +930,7 @@ mod parser {
                 }
             };
 
-            Ok(Spanned::new(span, key))
+            Ok(Key::new(key, span, is_quoted))
         }
     }
 }

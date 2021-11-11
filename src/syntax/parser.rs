@@ -79,7 +79,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Parse a file module given its name.
-    pub fn parse(&mut self, module_name: ast::Identifier) -> Result<Declaration> {
+    pub fn parse(&mut self, module_name: Identifier) -> Result<Declaration> {
         self.parse_top_level(module_name)
     }
 
@@ -156,28 +156,29 @@ impl<'a> Parser<'a> {
         Ok(token)
     }
 
-    fn consume_identifier(&mut self) -> Result<ast::Identifier> {
-        self.consume(TokenName::Identifier)
+    fn consume_word(&mut self) -> Result<Identifier> {
+        self.consume(TokenName::Word)
             .map(|identifier| identifier.try_into().unwrap())
     }
 
-    /// A general identifier includes (alphanumeric) identifiers and punctuation.
+    /// Consume an identifier.
     ///
     /// # Grammar
     ///
     /// ```ebnf
-    /// General-Identifier ::= #Identifier | #Punctuation
+    /// Identifier ::= #Word | #Punctuation
     /// ```
-    fn consume_general_identifier(&mut self) -> Result<ast::Identifier> {
+    // @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Task rename to consume_identifier
+    fn consume_identifier(&mut self) -> Result<Identifier> {
         match self.current_token().name() {
-            Identifier | Punctuation => {
+            Word | Punctuation => {
                 let identifier = self.current_token_into_identifier();
                 self.advance();
                 Ok(identifier)
             }
-            _ => self.error(|| {
-                expected_one_of![Identifier, Punctuation].but_actual_is(self.current_token())
-            }),
+            // @Question should we introduce Expected::Identifier for added clarity?
+            _ => self
+                .error(|| expected_one_of![Word, Punctuation].but_actual_is(self.current_token())),
         }
     }
 
@@ -212,7 +213,7 @@ impl<'a> Parser<'a> {
     /// Try to turn the current token into an identifier.
     ///
     /// May panic if the token is neither an identifier nor punctuation.
-    fn current_token_into_identifier(&self) -> ast::Identifier {
+    fn current_token_into_identifier(&self) -> Identifier {
         self.current_token().clone().try_into().unwrap()
     }
 
@@ -246,8 +247,8 @@ impl<'a> Parser<'a> {
     /// # Grammar
     ///
     /// ```ebnf
-    /// Declaration ::= (Attribute #Line-Break*)* Naked-Declaration
-    /// Naked-Declaration ::=
+    /// Declaration ::= (Attribute #Line-Break*)* Bare-Declaration
+    /// Bare-Declaration ::=
     ///     | Value-Declaration
     ///     | Data-Declaration
     ///     | Module-Declaration
@@ -259,7 +260,7 @@ impl<'a> Parser<'a> {
 
         let span = self.current_token().span;
         match self.current_token().name() {
-            Identifier => {
+            Word => {
                 let identifier = self.current_token_into_identifier();
                 self.advance();
                 self.finish_parse_value_declaration(identifier, attributes)
@@ -304,7 +305,7 @@ impl<'a> Parser<'a> {
                 DocumentationComment => {
                     self.advance();
                     let attribute = Attribute {
-                        binder: ast::Identifier::new("documentation".into(), default()),
+                        binder: Identifier::new_unchecked("documentation".into(), default()),
                         span,
                         arguments: smallvec![AttributeArgument::new(
                             default(),
@@ -333,7 +334,7 @@ impl<'a> Parser<'a> {
     /// arguments of `@if` yet which are the most complex.
     ///
     /// ```ebnf
-    /// Regular-Attribute ::= "@" (#Identifier | "(" #Identifier Attribute-Argument* ")")
+    /// Regular-Attribute ::= "@" (#Word | "(" #Word Attribute-Argument* ")")
     /// ```
     fn finish_parse_regular_attribute(&mut self, keyword_span: Span) -> Result<Attribute> {
         let mut span = keyword_span;
@@ -342,13 +343,13 @@ impl<'a> Parser<'a> {
         let mut arguments = SmallVec::new();
 
         match self.current_token().name() {
-            Identifier => {
+            Word => {
                 binder = span.merging(self.current_token_into_identifier());
                 self.advance();
             }
             OpeningRoundBracket => {
                 self.advance();
-                binder = self.consume_identifier()?;
+                binder = self.consume_word()?;
 
                 while self.current_token().name() != ClosingRoundBracket {
                     arguments.push(self.parse_attribute_argument()?);
@@ -361,7 +362,7 @@ impl<'a> Parser<'a> {
             }
             _ => {
                 return self.error(|| {
-                    expected_one_of![Identifier, OpeningRoundBracket]
+                    expected_one_of![Word, OpeningRoundBracket]
                         .but_actual_is(self.current_token())
                         .note("`@` introduces attributes")
                 });
@@ -380,7 +381,7 @@ impl<'a> Parser<'a> {
     /// # Grammar
     ///
     /// ```ebnf
-    /// Attribute-Argument ::= Lower-Attribute-Argument | "(" #Identifier Lower-Attribute-Argument ")"
+    /// Attribute-Argument ::= Lower-Attribute-Argument | "(" #Word Lower-Attribute-Argument ")"
     /// Lower-Attribute-Argument ::= Path | #Number-Literal | #Text-Literal
     /// ```
     fn parse_attribute_argument(&mut self) -> Result<AttributeArgument> {
@@ -408,7 +409,7 @@ impl<'a> Parser<'a> {
             OpeningRoundBracket => {
                 let mut span = self.current_token().span;
                 self.advance();
-                let binder = self.consume_identifier()?;
+                let binder = self.consume_word()?;
                 let value = self.parse_attribute_argument()?;
                 span.merging(&self.consume(ClosingRoundBracket)?);
                 attrarg! { Named(span; NamedAttributeArgument { binder, value }) }
@@ -429,14 +430,14 @@ impl<'a> Parser<'a> {
     ///
     /// ```ebnf
     /// Value-Declaration ::=
-    ///     #Identifier
+    ///     #Word
     ///     Parameters Type-Annotation?
     ///     ("=" Expression)?
     ///     Terminator
     /// ```
     fn finish_parse_value_declaration(
         &mut self,
-        binder: ast::Identifier,
+        binder: Identifier,
         attributes: Attributes,
     ) -> Result<Declaration> {
         let mut span = binder.span();
@@ -473,7 +474,7 @@ impl<'a> Parser<'a> {
     ///
     /// ```ebnf
     /// Data-Declaration ::=
-    ///     "data" #Identifier
+    ///     "data" #Word
     ///     Parameters Type-Annotation?
     ///     ("of" ("{" (Terminator | Constructor)* "}")?)?
     ///     Terminator
@@ -485,7 +486,7 @@ impl<'a> Parser<'a> {
     ) -> Result<Declaration> {
         let mut span = keyword_span;
 
-        let binder = span.merging(self.consume_identifier()?);
+        let binder = span.merging(self.consume_word()?);
         let parameters = span.merging(self.parse_parameters(&[
             Delimiter::Terminator,
             Delimiter::TypeAnnotationPrefix,
@@ -549,7 +550,7 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Module-Declaration ::=
     ///     | Header
-    ///     | "module" #Identifier ("of" ("{" (Terminator | Declaration)* "}")?)? Terminator
+    ///     | "module" #Word ("of" ("{" (Terminator | Declaration)* "}")?)? Terminator
     /// Header ::= "module" Terminator
     /// ```
     fn finish_parse_module_declaration(
@@ -570,7 +571,7 @@ impl<'a> Parser<'a> {
             _ => {}
         }
 
-        let binder = span.merging(self.consume_identifier()?);
+        let binder = span.merging(self.consume_word()?);
 
         match self.current_token().name() {
             // external module declaration
@@ -623,7 +624,7 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Top-Level ::= (#Line-Break | Declaration)* #End-Of-Input
     /// ```
-    fn parse_top_level(&mut self, module_binder: ast::Identifier) -> Result<Declaration> {
+    fn parse_top_level(&mut self, module_binder: Identifier) -> Result<Declaration> {
         let mut declarations = Vec::new();
 
         loop {
@@ -699,7 +700,7 @@ impl<'a> Parser<'a> {
     ///     | Path
     ///     | Path "." "(" (Use-Path-Tree | "(" Renaming ")")* ")"
     ///     | Renaming
-    /// Renaming ::= Path "as" General-Identifier
+    /// Renaming ::= Path "as" Identifier
     /// ```
     // @Task rewrite this following a simpler grammar mirroring expression applications
     fn parse_use_path_tree(&mut self, delimiters: &[Delimiter]) -> Result<UsePathTree> {
@@ -707,7 +708,7 @@ impl<'a> Parser<'a> {
 
         while self.has_consumed(Dot) {
             match self.current_token().name() {
-                Identifier | Punctuation => {
+                Word | Punctuation => {
                     let identifier = self.current_token_into_identifier();
                     self.advance();
                     path.segments.push(identifier);
@@ -726,7 +727,7 @@ impl<'a> Parser<'a> {
 
                             let target = self.parse_path()?;
                             self.consume(As)?;
-                            let binder = self.consume_general_identifier()?;
+                            let binder = self.consume_identifier()?;
                             span.merging(&self.consume(ClosingRoundBracket)?);
 
                             bindings.push(UsePathTree::new(
@@ -741,7 +742,8 @@ impl<'a> Parser<'a> {
                             bindings.push(self.parse_use_path_tree(&[
                                 OpeningRoundBracket.into(),
                                 ClosingRoundBracket.into(),
-                                Identifier.into(),
+                                // @Question Expected::Identifier?
+                                Word.into(),
                                 Punctuation.into(),
                                 Self_.into(),
                                 Super.into(),
@@ -762,9 +764,10 @@ impl<'a> Parser<'a> {
                 }
                 _ => {
                     return self.error(|| {
-                        expected_one_of![Identifier, Punctuation, OpeningRoundBracket]
+                        // @Question Expected::Identifier?
+                        expected_one_of![Word, Punctuation, OpeningRoundBracket]
                             .but_actual_is(self.current_token())
-                    })
+                    });
                 }
             }
         }
@@ -775,7 +778,7 @@ impl<'a> Parser<'a> {
             None
         } else if self.has_consumed(As) {
             self.current_token();
-            Some(self.consume_general_identifier()?)
+            Some(self.consume_identifier()?)
         } else {
             return self.error(|| {
                 delimiters_with_expected(delimiters, Some(As.into()))
@@ -801,14 +804,14 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Constructor ::=
     ///     (Attribute #Line-Break*)*
-    ///     #Identifier Parameters Type-Annotation?
+    ///     #Word Parameters Type-Annotation?
     ///     ("=" Expression)?
     ///     Terminator
     /// ```
     fn parse_constructor(&mut self) -> Result<Declaration> {
         let attributes = self.parse_attributes(SkipLineBreaks::Yes)?;
 
-        let binder = self.consume_identifier()?;
+        let binder = self.consume_word()?;
         let mut span = binder.span();
 
         let parameters = span.merging(self.parse_parameters(&STANDARD_DECLARATION_DELIMITERS)?);
@@ -862,7 +865,7 @@ impl<'a> Parser<'a> {
     ///     "->" Pi-Type-Literal-Or-Lower
     /// Designated-Pi-Type-Domain ::=
     ///     Explicitness
-    ///     "(" Parameter-Aspect #Identifier Type-Annotation ")"
+    ///     "(" Parameter-Aspect #Word Type-Annotation ")"
     /// ```
     fn parse_pi_type_literal_or_lower(&mut self) -> Result<Expression> {
         let domain = self
@@ -874,7 +877,7 @@ impl<'a> Parser<'a> {
                     .merge_into(explicitness);
 
                 let aspect = this.parse_parameter_aspect();
-                let binder = this.consume_identifier()?;
+                let binder = this.consume_word()?;
                 // @Question should this be fatal in respect to reflecting?
                 let domain = this.parse_type_annotation(ClosingRoundBracket.into())?;
 
@@ -915,15 +918,15 @@ impl<'a> Parser<'a> {
                 PiTypeLiteral {
                     Attributes::new(),
                     span;
-                    domain: domain.data,
+                    domain: domain.value,
                     codomain,
                 }
             })
         }
         // the case where we don't actually have a pi type literal but merely
         // an application or lower
-        else if domain.data.binder.is_none() {
-            Ok(domain.data.expression)
+        else if domain.value.binder.is_none() {
+            Ok(domain.value.expression)
         } else {
             self.error(|| {
                 Expected::Token(ThinArrowRight)
@@ -960,7 +963,7 @@ impl<'a> Parser<'a> {
     /// Application-Or-Lower ::= Lower-Expression Argument*
     /// Argument ::=
     ///     | Explicitness Lower-Expression
-    ///     | Explicitness "(" (#Identifier "=")? Expression ")"
+    ///     | Explicitness "(" (#Word "=")? Expression ")"
     ///
     /// ; ; left-recursive version unsuitable for the recursive descent parser
     /// ; ; but indeed usable for pretty-printers:
@@ -968,7 +971,7 @@ impl<'a> Parser<'a> {
     /// ; Application-Or-Lower ::= Application-Or-Lower? Argument*
     /// ; Argument ::=
     /// ;     | Lower-Expression
-    /// ;     | Explicitness "(" (#Identifier "=")? Expression ")"
+    /// ;     | Explicitness "(" (#Word "=")? Expression ")"
     /// ```
     fn parse_application_or_lower(&mut self) -> Result<Expression> {
         self.parse_application_like_or_lower()
@@ -979,9 +982,9 @@ impl<'a> Parser<'a> {
     /// # Grammar
     ///
     /// ```ebnf
-    /// Lower-Expression ::= Attribute* Naked-Lower-Expression
+    /// Lower-Expression ::= Attribute* Bare-Lower-Expression
     /// ; @Task rename into Field-Or-Lower
-    /// Naked-Lower-Expression ::= Lowest-Expression ("::" Identifier)*
+    /// Bare-Lower-Expression ::= Lowest-Expression ("::" Identifier)*
     /// Lowest-Expression ::=
     ///     | Path
     ///     | "Type"
@@ -995,7 +998,7 @@ impl<'a> Parser<'a> {
     ///     | Do-Block
     ///     | Sequence-Literal
     ///     | "(" Expression ")"
-    /// Typed-Hole ::= "?" #Identifier
+    /// Typed-Hole ::= "?" #Word
     /// Sequence-Literal ::= "[" Lower-Expression* "]"
     /// ```
     fn parse_lower_expression(&mut self) -> Result<Expression> {
@@ -1036,7 +1039,7 @@ impl<'a> Parser<'a> {
             }
             QuestionMark => {
                 self.advance();
-                let tag = self.consume_identifier()?;
+                let tag = self.consume_word()?;
                 expr! { TypedHole { default(), span.merge(&tag); tag } }
             }
             Let => {
@@ -1102,7 +1105,7 @@ impl<'a> Parser<'a> {
         let mut attributes = Some(attributes);
 
         while self.has_consumed(DoubleColon) {
-            let member = self.consume_identifier()?;
+            let member = self.consume_word()?;
 
             expression = expr! {
                 Field {
@@ -1125,15 +1128,15 @@ impl<'a> Parser<'a> {
     /// # Grammar
     ///
     /// ```ebnf
-    /// Path ::= Path-Head ("." General-Identifier)*
-    /// Path-Head ::= Path-Hanger | General-Identifier
+    /// Path ::= Path-Head ("." Identifier)*
+    /// Path-Head ::= Path-Hanger | Identifier
     /// Path-Hanger ::= "extern" | "crate" | "super" | "self"
     /// ```
     fn parse_path(&mut self) -> Result<Path> {
         let mut path = self.parse_first_path_segment()?;
 
         while self.has_consumed(TokenName::Dot) {
-            path.segments.push(self.consume_general_identifier()?);
+            path.segments.push(self.consume_identifier()?);
         }
 
         Ok(path)
@@ -1142,7 +1145,7 @@ impl<'a> Parser<'a> {
     /// Parse the first segment of a path.
     fn parse_first_path_segment(&mut self) -> Result<Path> {
         let path = match self.current_token().name() {
-            Identifier | Punctuation => Path::try_from_token(self.current_token().clone()).unwrap(),
+            Word | Punctuation => Path::try_from_token(self.current_token().clone()).unwrap(),
             name if name.is_path_hanger() => Path::hanger(self.current_token().clone()),
             _ => return self.error(|| Expected::Path.but_actual_is(self.current_token())),
         };
@@ -1188,7 +1191,7 @@ impl<'a> Parser<'a> {
     ///
     /// ```ebnf
     /// Let-In ::=
-    ///     "let" #Identifier Parameters Type-Annotation?
+    ///     "let" #Word Parameters Type-Annotation?
     ///     ("=" Expression)?
     ///     #Virtual-Semicolon?
     ///     "in" Expression
@@ -1198,7 +1201,7 @@ impl<'a> Parser<'a> {
 
         let mut span = span_of_let;
 
-        let binder = self.consume_identifier()?;
+        let binder = self.consume_word()?;
 
         // @Task smh add line break aka virtual semicolon
         let parameters = self.parse_parameters(&[
@@ -1325,7 +1328,7 @@ impl<'a> Parser<'a> {
     /// Do-Block ::= "do" "{" Statement* "}"
     /// Statement ::= Let-Statement | Use-Declaration | Bind-Statement | Expression-Statement
     /// Let-Statement ::= "let" Value-Declaration
-    /// Bind-Statement ::= #Identifier Type-Annotation? "<-" Expression Terminator
+    /// Bind-Statement ::= #Word Type-Annotation? "<-" Expression Terminator
     /// Expression-Statement ::= Expression Terminator
     /// ```
     ///
@@ -1350,7 +1353,7 @@ impl<'a> Parser<'a> {
                 // @Task move to its own function
                 Let => {
                     self.advance();
-                    let binder = self.consume_identifier()?;
+                    let binder = self.consume_word()?;
                     let parameters = self.parse_parameters(&[
                         Delimiter::TypeAnnotationPrefix,
                         Delimiter::DefinitionPrefix,
@@ -1375,7 +1378,7 @@ impl<'a> Parser<'a> {
                     Statement::Use(ast::Use { bindings })
                 }
                 _ => {
-                    if self.current_token().name() == Identifier
+                    if self.current_token().name() == Word
                         && matches!(self.succeeding_token().name(), Colon | ThinArrowLeft)
                     {
                         // @Task move to its own function
@@ -1420,7 +1423,7 @@ impl<'a> Parser<'a> {
     ///
     /// One needs to specify delimiters to allow for better error diagnostics.
     /// A delimiter must not be [`TokenName::OpeningRoundBracket`] or
-    /// [`TokenName::Identifier`]. The delimiter list must be non-empty.
+    /// [`TokenName::Word`]. The delimiter list must be non-empty.
     ///
     /// # Grammar
     ///
@@ -1445,10 +1448,10 @@ impl<'a> Parser<'a> {
     /// # Grammar
     ///
     /// ```ebnf
-    /// Parameter-Group ::= Explicitness Naked-Parameter-Group
-    /// Naked-Parameter-Group ::=
-    ///     | #Identifier
-    ///     | "(" Parameter-Aspect #Identifier+ Type-Annotation? ")"
+    /// Parameter-Group ::= Explicitness Bare-Parameter-Group
+    /// Bare-Parameter-Group ::=
+    ///     | #Word
+    ///     | "(" Parameter-Aspect #Word+ Type-Annotation? ")"
     /// ```
     fn parse_parameter_group(&mut self, delimiters: &[Delimiter]) -> Result<ParameterGroup> {
         #![allow(clippy::shadow_unrelated)] // false positive
@@ -1457,7 +1460,7 @@ impl<'a> Parser<'a> {
         let mut span = self.current_token().span.merge_into(explicitness);
 
         match self.current_token().name() {
-            Identifier => {
+            Word => {
                 let binder = self.current_token_into_identifier();
                 self.advance();
 
@@ -1474,12 +1477,12 @@ impl<'a> Parser<'a> {
                 let aspect = self.parse_parameter_aspect();
                 let mut parameters = SmallVec::new();
 
-                parameters.push(self.consume_identifier()?);
+                parameters.push(self.consume_word()?);
 
                 let delimiters = [Delimiter::TypeAnnotationPrefix, ClosingRoundBracket.into()];
 
                 while !self.current_token_is_delimiter(&delimiters) {
-                    parameters.push(self.consume_identifier()?);
+                    parameters.push(self.consume_word()?);
                 }
 
                 let type_annotation = self.parse_optional_type_annotation()?;
@@ -1509,7 +1512,7 @@ impl<'a> Parser<'a> {
     /// Pattern ::= Lower-Pattern Pattern-Argument*
     /// Pattern-Argument ::=
     ///     | Explicitness Lower-Pattern
-    ///     | Explicitness "(" (#Identifier "=")? Pattern ")"
+    ///     | Explicitness "(" (#Word "=")? Pattern ")"
     /// ```
     // @Task add alternative precedence for formatting to the documentation above
     fn parse_pattern(&mut self) -> Result<Pattern> {
@@ -1522,7 +1525,7 @@ impl<'a> Parser<'a> {
         let mut callee = Expat::parse_lower(self)?;
         struct Argument<Expat> {
             explicitness: Explicitness,
-            binder: Option<ast::Identifier>,
+            binder: Option<Identifier>,
             expat: Expat,
         }
 
@@ -1549,7 +1552,7 @@ impl<'a> Parser<'a> {
                     let mut span = this.consume(OpeningRoundBracket)?.span;
                     span.merging_from(explicitness);
 
-                    let binder = this.consume_identifier()?;
+                    let binder = this.consume_word()?;
 
                     if Expat::IS_EXPRESSION && this.current_token().name() == Colon {
                         illegal_pi = Some(this.current_token().clone());
@@ -1574,7 +1577,7 @@ impl<'a> Parser<'a> {
             })
         {
             if let Some(token) = &illegal_pi {
-                let explicitness = match argument.data.explicitness {
+                let explicitness = match argument.value.explicitness {
                     Implicit => "an implicit",
                     Explicit => "a",
                 };
@@ -1592,9 +1595,9 @@ impl<'a> Parser<'a> {
 
             callee = Expat::application_like(
                 callee,
-                argument.data.expat,
-                argument.data.explicitness,
-                argument.data.binder,
+                argument.value.expat,
+                argument.value.explicitness,
+                argument.value.binder,
                 span,
             );
         }
@@ -1607,15 +1610,15 @@ impl<'a> Parser<'a> {
     /// # Grammar
     ///
     /// ```ebnf
-    /// Lower-Pattern ::= Attribute* Naked-Lower-Pattern
-    /// Naked-Lower-Pattern ::=
+    /// Lower-Pattern ::= Attribute* Bare-Lower-Pattern
+    /// Bare-Lower-Pattern ::=
     ///     | Path
     ///     | #Number-Literal
     ///     | #Text-Literal
     ///     | Binder
     ///     | Sequence-Literal-Pattern
     ///     | "(" Pattern ")"
-    /// Binder ::= "\" #Identifier
+    /// Binder ::= "\" #Word
     /// Sequence-Literal-Pattern ::= "[" Lower-Pattern* "]"
     /// ```
     fn parse_lower_pattern(&mut self) -> Result<Pattern> {
@@ -1646,7 +1649,7 @@ impl<'a> Parser<'a> {
             }
             Backslash => {
                 self.advance();
-                self.consume_identifier()
+                self.consume_word()
                     .map(|binder| pat! { Binder { attributes, span.merge(&binder); binder } })
             }
             OpeningSquareBracket => {
@@ -1752,7 +1755,7 @@ trait ExpressionOrPattern: Sized + Spanning + std::fmt::Debug {
         callee: Self,
         argument: Self,
         explicitness: Explicitness,
-        binder: Option<ast::Identifier>,
+        binder: Option<Identifier>,
         span: Span,
     ) -> Self;
     fn parse(parser: &mut Parser<'_>) -> Result<Self>;
@@ -1766,7 +1769,7 @@ impl ExpressionOrPattern for Expression {
         callee: Self,
         argument: Self,
         explicitness: Explicitness,
-        binder: Option<ast::Identifier>,
+        binder: Option<Identifier>,
         span: Span,
     ) -> Self {
         expr! { Application { Attributes::new(), span; callee, argument, explicitness, binder } }
@@ -1786,7 +1789,7 @@ impl ExpressionOrPattern for Pattern {
         callee: Self,
         argument: Self,
         explicitness: Explicitness,
-        binder: Option<ast::Identifier>,
+        binder: Option<Identifier>,
         span: Span,
     ) -> Self {
         pat! { Deapplication { Attributes::new(), span; callee, argument, explicitness, binder } }

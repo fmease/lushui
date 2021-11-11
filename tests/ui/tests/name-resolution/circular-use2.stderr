@@ -1,4 +1,4 @@
-error[E024]: declarations `crate.indirect.thing` and `crate.thing` are circular
+error[E024]: the declarations `crate.indirect.thing` and `crate.thing` are circular
  --> ${DIRECTORY}/name-resolution/circular-use2.lushui:3:14
   |
 3 | use indirect.thing
@@ -10,14 +10,14 @@ error[E024]: declarations `crate.indirect.thing` and `crate.thing` are circular
   |                                        ^^^^^ 
   |
 
-error[E024]: declaration `crate.alpha` is circular
+error[E024]: the declaration `crate.alpha` is circular
  --> ${DIRECTORY}/name-resolution/circular-use2.lushui:6:11
   |
 6 | use alpha.alpha
   |           ^^^^^ 
   |
 
-error[E024]: declarations `crate.omega` and `crate.bridge` are circular
+error[E024]: the declarations `crate.omega` and `crate.bridge` are circular
  --> ${DIRECTORY}/name-resolution/circular-use2.lushui:8:20
   |
 8 | use omega.omega as bridge
@@ -29,7 +29,7 @@ error[E024]: declarations `crate.omega` and `crate.bridge` are circular
   |               ^^^^^ 
   |
 
-error[E024]: declaration `crate.cycle` is circular
+error[E024]: the declaration `crate.cycle` is circular
   --> ${DIRECTORY}/name-resolution/circular-use2.lushui:11:5
    |
 11 | use cycle

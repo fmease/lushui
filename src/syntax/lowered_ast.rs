@@ -420,7 +420,7 @@ impl Attributes {
         let mut keys = AttributeKeys::empty();
 
         for attribute in &attributes {
-            keys |= attribute.data.key();
+            keys |= attribute.value.key();
         }
 
         Self {
@@ -452,7 +452,7 @@ impl Attributes {
     ) -> &'a R {
         self.data
             .iter()
-            .find_map(|attribute| predicate(&attribute.data))
+            .find_map(|attribute| predicate(&attribute.value))
             .unwrap()
     }
 
@@ -478,7 +478,7 @@ impl Attribute {
     }
 
     pub fn matches(&self, keys: AttributeKeys) -> bool {
-        keys.contains(self.data.key())
+        keys.contains(self.value.key())
     }
 }
 

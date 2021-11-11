@@ -6,7 +6,7 @@ use crate::{
     format::{AsDebug, DisplayWith},
     hir::expr,
     package::BuildSession,
-    resolver::{CrateScope, DeBruijnIndex, Identifier},
+    resolver::{Crate, DeBruijnIndex, Identifier},
     span::Span,
     syntax::lowered_ast::{Attributes, Number},
 };
@@ -15,7 +15,7 @@ use std::fmt;
 /// Many methods of module scope panic instead of returning a `Result` because
 /// the invariants are expected to be checked beforehand by using the predicate
 /// methods also found here. This design is most ergonomic for the caller.
-impl CrateScope {
+impl Crate {
     pub fn register_foreign_bindings(&mut self) {
         ffi::register_foreign_bindings(self);
     }
@@ -219,7 +219,9 @@ impl CrateScope {
             .inherent_types
             .unit
             .clone()
-            .ok_or_else(|| undefined_inherent_type("Unit", expression_span).report(reporter))?
+            .ok_or_else(|| {
+                Diagnostic::undefined_inherent_type("Unit", expression_span).report(reporter);
+            })?
             .to_expression())
     }
 
@@ -233,7 +235,9 @@ impl CrateScope {
             .inherent_types
             .bool
             .clone()
-            .ok_or_else(|| undefined_inherent_type("Bool", expression_span).report(reporter))?
+            .ok_or_else(|| {
+                Diagnostic::undefined_inherent_type("Bool", expression_span).report(reporter);
+            })?
             .to_expression())
     }
 
@@ -247,18 +251,22 @@ impl CrateScope {
             .inherent_types
             .option
             .clone()
-            .ok_or_else(|| undefined_inherent_type("Option", expression_span).report(reporter))?
+            .ok_or_else(|| {
+                Diagnostic::undefined_inherent_type("Option", expression_span).report(reporter);
+            })?
             .to_expression())
     }
 }
 
-fn undefined_inherent_type(name: &'static str, expression_span: Option<Span>) -> Diagnostic {
-    Diagnostic::error()
-        .code(Code::E063)
-        .message(format!("inherent type `{}` is not defined", name))
-        .if_present(expression_span, |diagnostic, span| {
-            diagnostic.labeled_primary_span(span, "the type of this expression")
-        })
+impl Diagnostic {
+    fn undefined_inherent_type(name: &'static str, expression_span: Option<Span>) -> Self {
+        Self::error()
+            .code(Code::E063)
+            .message(format!("inherent type `{}` is not defined", name))
+            .if_present(expression_span, |diagnostic, span| {
+                diagnostic.labeled_primary_span(span, "the type of this expression")
+            })
+    }
 }
 
 #[derive(Clone)]
@@ -287,7 +295,7 @@ pub enum BindingRegistration {
 }
 
 impl DisplayWith for BindingRegistration {
-    type Context<'a> = (&'a CrateScope, &'a BuildSession);
+    type Context<'a> = (&'a Crate, &'a BuildSession);
 
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use BindingRegistration::*;
@@ -345,7 +353,7 @@ pub enum ValueView {
 
 /// The scope of bindings inside of a function.
 pub enum FunctionScope<'a> {
-    CrateScope,
+    Crate,
     FunctionParameter {
         parent: &'a Self,
         type_: Expression,
@@ -409,7 +417,7 @@ impl<'a> FunctionScope<'a> {
                     None => parent.look_up_type_with_depth(index, depth + types.len()),
                 }
             }
-            Self::CrateScope => unreachable!(),
+            Self::Crate => unreachable!(),
         }
     }
 }

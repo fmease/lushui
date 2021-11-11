@@ -20,11 +20,12 @@ use crate::{
     syntax::{
         ast,
         lowered_ast::{self, AttributeKeys, AttributeKind},
+        CrateName,
     },
     utility::{obtain, unrc, HashMap, HashSet},
 };
 pub use scope::{
-    CrateScope, DeBruijnIndex, DeclarationIndex, Exposure, FunctionScope, Identifier, Index,
+    Crate, DeBruijnIndex, DeclarationIndex, Exposure, FunctionScope, Identifier, Index,
     LocalDeclarationIndex, Namespace,
 };
 use scope::{RegistrationError, RestrictedExposure};
@@ -34,19 +35,15 @@ const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
 
 /// The state of the resolver.
 pub struct Resolver<'a> {
-    scope: &'a mut CrateScope,
+    crate_: &'a mut Crate,
     session: &'a BuildSession,
     reporter: &'a Reporter,
 }
 
 impl<'a> Resolver<'a> {
-    pub fn new(
-        scope: &'a mut CrateScope,
-        session: &'a BuildSession,
-        reporter: &'a Reporter,
-    ) -> Self {
+    pub fn new(crate_: &'a mut Crate, session: &'a BuildSession, reporter: &'a Reporter) -> Self {
         Self {
-            scope,
+            crate_,
             session,
             reporter,
         }
@@ -66,7 +63,7 @@ impl<'a> Resolver<'a> {
     ) -> Result<hir::Declaration> {
         self.start_resolve_declaration(&declaration, None, Context::default())
             .map_err(|_| {
-                std::mem::take(&mut self.scope.duplicate_definitions)
+                std::mem::take(&mut self.crate_.duplicate_definitions)
                     .into_values()
                     .for_each(|error| Diagnostic::from(error).report(self.reporter));
             })?;
@@ -78,7 +75,7 @@ impl<'a> Resolver<'a> {
 
         let declaration = self.finish_resolve_declaration(declaration, None, Context::default());
 
-        Result::from(self.scope.health).and(declaration)
+        Result::from(self.crate_.health).and(declaration)
     }
 
     /// Partially resolve a declaration merely registering declarations.
@@ -124,19 +121,19 @@ impl<'a> Resolver<'a> {
             Value(value) => {
                 let module = module.unwrap();
 
-                let index = self.scope.register_binding(
+                let index = self.crate_.register_binding(
                     value.binder.clone(),
                     exposure,
                     EntityKind::UntypedValue,
                     Some(module),
                 )?;
 
-                if self.scope.program_entry.is_none()
-                    && module == self.scope.root()
+                if self.crate_.program_entry.is_none()
+                    && module == self.crate_.root()
                     && value.binder.as_str() == PROGRAM_ENTRY_IDENTIFIER
                 {
-                    self.scope.program_entry = Some(Identifier::new(
-                        self.scope.global_index(index),
+                    self.crate_.program_entry = Some(Identifier::new(
+                        self.crate_.global_index(index),
                         value.binder.clone(),
                     ));
                 }
@@ -146,7 +143,7 @@ impl<'a> Resolver<'a> {
                 let module = module.unwrap();
 
                 // @Task don't return early, see analoguous code for modules
-                let namespace = self.scope.register_binding(
+                let namespace = self.crate_.register_binding(
                     data.binder.clone(),
                     exposure,
                     EntityKind::untyped_data_type(),
@@ -188,13 +185,13 @@ impl<'a> Resolver<'a> {
                 let (namespace, module_opacity) = context.parent_data_binding.unwrap();
 
                 let exposure = match module_opacity.unwrap() {
-                    Opacity::Transparent => self.scope[namespace].exposure.clone(),
+                    Opacity::Transparent => self.crate_[namespace].exposure.clone(),
                     // as if a @(public super) was attached to the constructor
                     Opacity::Opaque => RestrictedExposure::Resolved { reach: module }.into(),
                 };
 
                 // @Task don't return early, see analoguous code for modules
-                let namespace = self.scope.register_binding(
+                let namespace = self.crate_.register_binding(
                     constructor.binder.clone(),
                     exposure,
                     EntityKind::untyped_constructor(),
@@ -210,7 +207,7 @@ impl<'a> Resolver<'a> {
                         let parameter = pi.parameter.as_ref().unwrap();
 
                         overall_result = self
-                            .scope
+                            .crate_
                             .register_binding(
                                 parameter.clone(),
                                 Exposure::Unrestricted, // @Temporary
@@ -228,7 +225,7 @@ impl<'a> Resolver<'a> {
                 // @Task @Beacon don't return early on error
                 // @Note you need to create a fake index for this (an index which points to
                 // a fake, nameless binding)
-                let index = self.scope.register_binding(
+                let index = self.crate_.register_binding(
                     submodule.binder.clone(),
                     exposure,
                     EntityKind::module(),
@@ -256,14 +253,14 @@ impl<'a> Resolver<'a> {
                 // there is always a root module
                 let module = module.unwrap();
 
-                let index = self.scope.register_binding(
+                let index = self.crate_.register_binding(
                     use_.binder.clone(),
                     exposure,
                     EntityKind::UnresolvedUse,
                     Some(module),
                 )?;
 
-                self.scope
+                self.crate_
                     .register_use_binding(index, use_.target.clone(), module);
             }
             Error => {}
@@ -333,7 +330,7 @@ impl<'a> Resolver<'a> {
                                 Some(module),
                                 Context {
                                     parent_data_binding: Some((
-                                        self.scope
+                                        self.crate_
                                             .local_index(binder.declaration_index().unwrap())
                                             .unwrap(),
                                         None,
@@ -381,14 +378,14 @@ impl<'a> Resolver<'a> {
                     // unwrap: could only ever be non-local if the binder was a use-binding
                     // but it is module binding
                     Some(module) => {
-                        self.scope
+                        self.crate_
                             .local_index(self.reobtain_resolved_identifier::<OnlyModule>(
                                 &submodule.binder,
                                 module,
                             ))
                             .unwrap()
                     }
-                    None => self.scope.root(),
+                    None => self.crate_.root(),
                 };
 
                 let mut health = Health::Untainted;
@@ -416,7 +413,7 @@ impl<'a> Resolver<'a> {
                     Module {
                         declaration.attributes,
                         declaration.span;
-                        binder: Identifier::new(self.scope.global_index(index), submodule.binder),
+                        binder: Identifier::new(self.crate_.global_index(index), submodule.binder),
                         file: submodule.file,
                         declarations,
                     }
@@ -618,8 +615,8 @@ impl<'a> Resolver<'a> {
     }
 
     fn look_up(&self, index: DeclarationIndex) -> &Entity {
-        match self.scope.local_index(index) {
-            Some(index) => &self.scope[index],
+        match self.crate_.local_index(index) {
+            Some(index) => &self.crate_[index],
             None => &self.session[index],
         }
     }
@@ -669,44 +666,42 @@ impl<'a> Resolver<'a> {
         if let Some(hanger) = &path.hanger {
             use ast::HangerKind::*;
 
-            let namespace = match hanger.data {
+            let namespace = match hanger.value {
                 Extern => {
-                    let crate_ = match path.segments.first() {
-                        Some(crate_) => crate_,
-                        None => {
-                            // @Task improve the error message, code
-                            Diagnostic::error()
-                                .message("path `extern` is used in isolation")
-                                .primary_span(hanger)
-                                .note("the path segment `extern` is only to be used indirectly to refer to specific crates")
-                                .report(self.reporter);
-                            return Err(ResolutionError::Unrecoverable);
-                        }
+                    let Some(crate_) = path.segments.first() else {
+                        // @Task improve the error message, code
+                        Diagnostic::error()
+                            .message("path `extern` is used in isolation")
+                            .primary_span(hanger)
+                            .note("the path segment `extern` is only to be used indirectly to refer to specific crates")
+                            .report(self.reporter);
+                        return Err(ResolutionError::Unrecoverable);
                     };
 
-                    let crate_ = match self.scope.dependency(crate_.as_str(), self.session) {
-                        Some(crate_) => crate_,
-                        None => {
-                            // @Temporary message
-                            // @Task add help:
-                            // * if it's a single-file-crate (@Task smh propagate??)
-                            //   then suggest `--link`ing
-                            // * otherwise suggest adding to `dependencies` section in
-                            //   the package manifest (@Note does not scale to dev-deps)
-                            // @Task suggest similarly named dep(s)!
-                            // @Task check if a dependency has a (transitive) dependency
-                            // with the *same* name and add the note that they (trans deps) have to be
-                            // explicitly added to the deps list to be referenceable in this crate
-                            Diagnostic::error()
-                                .message(format!("crate `{crate_}` does not exist"))
-                                .primary_span(crate_)
-                                .report(self.reporter);
-                            return Err(ResolutionError::Unrecoverable);
-                        }
+                    // @Beacon @Task add test for error case
+                    let crate_ = CrateName::from_identifier(crate_.clone())
+                        .map_err(|error| error.primary_span(crate_).report(self.reporter))?;
+
+                    let Some(crate_) = self.crate_.dependency(&crate_.value, self.session) else {
+                        // @Temporary message
+                        // @Task add help:
+                        // * if it's a single-file-crate (@Task smh propagate??)
+                        //   then suggest `--link`ing
+                        // * otherwise suggest adding to `dependencies` section in
+                        //   the package manifest (@Note does not scale to dev-deps)
+                        // @Task suggest similarly named dep(s)!
+                        // @Task check if a dependency has a (transitive) dependency
+                        // with the *same* name and add the note that they (trans deps) have to be
+                        // explicitly added to the deps list to be referenceable in this crate
+                        Diagnostic::error()
+                            .message(format!("crate `{crate_}` does not exist"))
+                            .primary_span(crate_)
+                            .report(self.reporter);
+                        return Err(ResolutionError::Unrecoverable);
                     };
 
-                    let scope = &self.session[crate_];
-                    let root = scope.global_index(scope.root());
+                    let crate_ = &self.session[crate_];
+                    let root = crate_.global_index(crate_.root());
 
                     return match &*path.segments {
                         [identifier] => Ok(Target::output(root, identifier)),
@@ -722,9 +717,9 @@ impl<'a> Resolver<'a> {
                         [] => unreachable!(),
                     };
                 }
-                Crate => self.scope.global_index(self.scope.root()),
-                Super => self.scope.global_index(
-                    self.resolve_super(hanger, self.scope.local_index(namespace).unwrap())?,
+                Crate => self.crate_.global_index(self.crate_.root()),
+                Super => self.crate_.global_index(
+                    self.resolve_super(hanger, self.crate_.local_index(namespace).unwrap())?,
                 ),
                 Self_ => namespace,
             };
@@ -780,7 +775,7 @@ impl<'a> Resolver<'a> {
         hanger: &ast::Hanger,
         module: LocalDeclarationIndex,
     ) -> Result<LocalDeclarationIndex> {
-        self.scope[module].parent.ok_or_else(|| {
+        self.crate_[module].parent.ok_or_else(|| {
             Diagnostic::error()
                 .code(Code::E021) // @Question use a dedicated code?
                 .message("the crate root does not have a parent")
@@ -832,19 +827,19 @@ impl<'a> Resolver<'a> {
             let definition_site_namespace = entity.parent.unwrap();
             let reach = self.resolve_restricted_exposure(
                 exposure,
-                self.scope.global_index(definition_site_namespace),
+                self.crate_.global_index(definition_site_namespace),
             )?;
 
-            if !self.scope.is_allowed_to_access(
+            if !self.crate_.is_allowed_to_access(
                 origin_namespace,
-                self.scope.global_index(definition_site_namespace),
+                self.crate_.global_index(definition_site_namespace),
                 reach,
             ) {
                 Diagnostic::error()
                     .code(Code::E029)
                     .message(format!(
                         "binding `{}` is private",
-                        self.scope.absolute_path(index, self.session)
+                        self.crate_.absolute_path(index, self.session)
                     ))
                     .primary_span(identifier)
                     .report(self.reporter);
@@ -897,7 +892,7 @@ impl<'a> Resolver<'a> {
                     .map_err(|error| self.report_resolution_error(error))?;
 
                 let reach_is_ancestor = self
-                    .scope
+                    .crate_
                     .some_ancestor_equals(definition_site_namespace, reach);
 
                 if !reach_is_ancestor {
@@ -912,12 +907,12 @@ impl<'a> Resolver<'a> {
                 drop(exposure_);
                 *exposure.borrow_mut() = RestrictedExposure::Resolved {
                     // @Beacon @Bug unwrap not verified
-                    reach: self.scope.local_index(reach).unwrap(),
+                    reach: self.crate_.local_index(reach).unwrap(),
                 };
 
                 reach
             }
-            &RestrictedExposure::Resolved { reach } => self.scope.global_index(reach),
+            &RestrictedExposure::Resolved { reach } => self.crate_.global_index(reach),
         })
     }
 
@@ -947,16 +942,16 @@ impl<'a> Resolver<'a> {
         identifier: &ast::Identifier,
         namespace: LocalDeclarationIndex,
     ) -> Target::Output {
-        let index = self.scope[namespace]
+        let index = self.crate_[namespace]
             .namespace()
             .unwrap()
             .binders
             .iter()
-            .map(|&index| self.scope.local_index(index).unwrap())
-            .find(|&index| &self.scope[index].source == identifier)
+            .map(|&index| self.crate_.local_index(index).unwrap())
+            .find(|&index| &self.crate_[index].source == identifier)
             .unwrap();
         let index = self
-            .collapse_use_chain(self.scope.global_index(index))
+            .collapse_use_chain(self.crate_.global_index(index))
             .unwrap_or_else(|_| unreachable!());
 
         Target::output(index, identifier)
@@ -986,7 +981,7 @@ impl<'a> Resolver<'a> {
         // @Note kinda awkward API with map_err
         match scope {
             &Module(module) => self
-                .resolve_path::<OnlyValue>(query, self.scope.global_index(module))
+                .resolve_path::<OnlyValue>(query, self.crate_.global_index(module))
                 .map_err(|error| {
                     self.report_resolution_error_searching_lookalikes(error, |identifier, _| {
                         self.find_similarly_named(origin, identifier)
@@ -1000,7 +995,7 @@ impl<'a> Resolver<'a> {
                             self.value_used_as_a_namespace(
                                 identifier,
                                 &query.segments[1],
-                                self.scope.global_index(scope.module()),
+                                self.crate_.global_index(scope.module()),
                             )
                             .report(self.reporter);
                             return Err(());
@@ -1011,7 +1006,7 @@ impl<'a> Resolver<'a> {
                         self.resolve_binding_with_depth(query, parent, depth + 1, origin)
                     }
                 } else {
-                    self.resolve_path::<OnlyValue>(query, self.scope.global_index(parent.module()))
+                    self.resolve_path::<OnlyValue>(query, self.crate_.global_index(parent.module()))
                         .map_err(|error| self.report_resolution_error(error))
                 }
             }
@@ -1029,7 +1024,7 @@ impl<'a> Resolver<'a> {
                                 self.value_used_as_a_namespace(
                                     identifier,
                                     &query.segments[1],
-                                    self.scope.global_index(scope.module()),
+                                    self.crate_.global_index(scope.module()),
                                 )
                                 .report(self.reporter);
                                 return Err(());
@@ -1045,7 +1040,7 @@ impl<'a> Resolver<'a> {
                         ),
                     }
                 } else {
-                    self.resolve_path::<OnlyValue>(query, self.scope.global_index(parent.module()))
+                    self.resolve_path::<OnlyValue>(query, self.crate_.global_index(parent.module()))
                         .map_err(|error| self.report_resolution_error(error))
                 }
             }
@@ -1060,26 +1055,26 @@ impl<'a> Resolver<'a> {
     /// all out of order use-bindings are successfully resolved or until
     /// no progress can be made anymore in which case all remaining
     /// use-bindings are actually circular and are thus reported.
-    // @Task update docs in regards to number of phases
+    // @Task update docs in regards to number of passes
     // @Task update docs regarding errors
     pub(super) fn resolve_use_bindings(&mut self) {
         use ResolutionError::*;
 
-        while !self.scope.partially_resolved_use_bindings.is_empty() {
+        while !self.crate_.partially_resolved_use_bindings.is_empty() {
             let mut partially_resolved_use_bindings = HashMap::default();
 
-            for (&index, item) in &self.scope.partially_resolved_use_bindings {
+            for (&index, item) in &self.crate_.partially_resolved_use_bindings {
                 match self.resolve_path::<ValueOrModule>(
                     &item.reference,
-                    self.scope.global_index(item.module),
+                    self.crate_.global_index(item.module),
                 ) {
                     Ok(reference) => {
-                        self.scope.bindings[index].kind = EntityKind::Use { reference };
+                        self.crate_.bindings[index].kind = EntityKind::Use { reference };
                     }
                     Err(error @ (UnresolvedBinding { .. } | Unrecoverable)) => {
-                        self.scope.bindings[index].mark_as_error();
+                        self.crate_.bindings[index].mark_as_error();
                         self.report_resolution_error(error);
-                        self.scope.health.taint();
+                        self.crate_.health.taint();
                     }
                     Err(UnresolvedUseBinding { inquirer }) => {
                         partially_resolved_use_bindings.insert(
@@ -1088,7 +1083,7 @@ impl<'a> Resolver<'a> {
                                 reference: item.reference.clone(),
                                 module: item.module,
                                 // @Beacon @Bug unwrap not verified
-                                inquirer: Some(self.scope.local_index(inquirer).unwrap()),
+                                inquirer: Some(self.crate_.local_index(inquirer).unwrap()),
                             },
                         );
                     }
@@ -1097,40 +1092,40 @@ impl<'a> Resolver<'a> {
 
             // resolution stalled; therefore there are circular bindings
             if partially_resolved_use_bindings.len()
-                == self.scope.partially_resolved_use_bindings.len()
+                == self.crate_.partially_resolved_use_bindings.len()
             {
                 for &index in partially_resolved_use_bindings.keys() {
-                    self.scope[index].mark_as_error();
+                    self.crate_[index].mark_as_error();
                 }
 
                 for cycle in find_cycles(partially_resolved_use_bindings) {
                     let paths = cycle.iter().map(|&index| {
-                        self.scope
-                            .absolute_path(self.scope.global_index(index), self.session)
+                        self.crate_
+                            .absolute_path(self.crate_.global_index(index), self.session)
                             .quote()
                     });
                     let paths = unordered_listing(paths, Conjunction::And);
-                    let spans = cycle.iter().map(|&index| self.scope[index].source.span());
+                    let spans = cycle.iter().map(|&index| self.crate_[index].source.span());
 
                     Diagnostic::error()
                         .code(Code::E024)
                         .message(pluralize!(
                             cycle.len(),
-                            format!("declaration {paths} is circular"),
-                            format!("declarations {paths} are circular"),
+                            format!("the declaration {paths} is circular"),
+                            format!("the declarations {paths} are circular"),
                         ))
                         .primary_spans(spans)
                         .report(self.reporter);
                 }
 
-                self.scope.health.taint();
+                self.crate_.health.taint();
                 break;
             }
 
-            self.scope.partially_resolved_use_bindings = partially_resolved_use_bindings;
+            self.crate_.partially_resolved_use_bindings = partially_resolved_use_bindings;
         }
 
-        self.scope.partially_resolved_use_bindings.clear();
+        self.crate_.partially_resolved_use_bindings.clear();
 
         type UseBindings = HashMap<LocalDeclarationIndex, scope::PartiallyResolvedUseBinding>;
         type Cycle = HashSet<LocalDeclarationIndex>;
@@ -1186,10 +1181,10 @@ impl<'a> Resolver<'a> {
     fn resolve_exposure_reaches(&mut self) -> Result {
         let mut health = Health::Untainted;
 
-        for (index, entity) in self.scope.bindings.iter() {
+        for (index, entity) in self.crate_.bindings.iter() {
             if let Exposure::Restricted(exposure) = &entity.exposure {
                 // unwrap: root always has Exposure::Unrestricted
-                let definition_site_namespace = self.scope.global_index(entity.parent.unwrap());
+                let definition_site_namespace = self.crate_.global_index(entity.parent.unwrap());
 
                 if self
                     .resolve_restricted_exposure(exposure, definition_site_namespace)
@@ -1206,14 +1201,14 @@ impl<'a> Resolver<'a> {
             {
                 let reference = self.look_up(reference_index);
 
-                if entity.exposure.compare(&reference.exposure, self.scope)
+                if entity.exposure.compare(&reference.exposure, self.crate_)
                     == Some(Ordering::Greater)
                 {
                     Diagnostic::error()
                         .code(Code::E009)
                         .message(format!(
                             "re-export of the more private binding `{}`",
-                            self.scope.absolute_path(reference_index, self.session)
+                            self.crate_.absolute_path(reference_index, self.session)
                         ))
                         .labeled_primary_span(
                             &entity.source,
@@ -1228,10 +1223,10 @@ impl<'a> Resolver<'a> {
 expected the exposure of `{}`
            to be at most {}
       but it actually is {}",
-                            self.scope
-                                .absolute_path(self.scope.global_index(index), self.session),
-                            reference.exposure.with((self.scope, self.session)),
-                            entity.exposure.with((self.scope, self.session)),
+                            self.crate_
+                                .absolute_path(self.crate_.global_index(index), self.session),
+                            reference.exposure.with((self.crate_, self.session)),
+                            entity.exposure.with((self.crate_, self.session)),
                         ))
                         .report(self.reporter);
                     health.taint();
@@ -1249,7 +1244,7 @@ expected the exposure of `{}`
     /// but that would be computationally heavier.
     fn find_similarly_named_declaration(
         &self,
-        queried_identifier: &str,
+        identifier: &str,
         predicate: impl Fn(&Entity) -> bool,
         namespace: DeclarationIndex,
     ) -> Option<&str> {
@@ -1261,7 +1256,7 @@ expected the exposure of `{}`
             .map(|&index| self.look_up(index))
             .filter(|entity| !entity.is_error() && predicate(entity))
             .map(|entity| entity.source.as_str())
-            .find(|identifier| scope::is_similar(identifier, queried_identifier))
+            .find(|some_identifier| scope::is_similar(some_identifier, identifier))
     }
 
     /// Find a similarly named binding in the scope.
@@ -1284,7 +1279,7 @@ expected the exposure of `{}`
             &Module(module) => self.find_similarly_named_declaration(
                 identifier,
                 |_| true,
-                self.scope.global_index(module),
+                self.crate_.global_index(module),
             ),
             FunctionParameter { parent, binder } => {
                 if scope::is_similar(identifier, binder.as_str()) {
@@ -1335,7 +1330,7 @@ expected the exposure of `{}`
                             false => "namespace",
                         };
                         message += " `";
-                        message += &self.scope.absolute_path(namespace, self.session);
+                        message += &self.crate_.absolute_path(namespace, self.session);
                         message += "`";
                     }
                 }
@@ -1523,12 +1518,14 @@ impl ResolutionTarget for OnlyValue {
         hanger: &ast::Hanger,
         _: DeclarationIndex,
     ) -> Result<Self::Output, Diagnostic> {
-        Err(scope::module_used_as_a_value(hanger.as_ref()))
+        Err(Diagnostic::module_used_as_a_value(hanger.as_ref()))
     }
 
     fn handle_simple_path(identifier: &ast::Identifier, entity: &Entity) -> Result<(), Diagnostic> {
         if entity.is_module() {
-            return Err(scope::module_used_as_a_value(identifier.as_spanned_str()));
+            return Err(Diagnostic::module_used_as_a_value(
+                identifier.as_spanned_str(),
+            ));
         }
 
         Ok(())

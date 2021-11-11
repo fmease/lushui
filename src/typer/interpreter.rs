@@ -23,7 +23,7 @@ use crate::{
     format::DisplayWith,
     hir::{self, expr},
     package::BuildSession,
-    resolver::{CrateScope, DeclarationIndex, Identifier},
+    resolver::{Crate, DeclarationIndex, Identifier},
     span::{Span, Spanning},
     syntax::{ast::Explicit, lowered_ast::Attributes},
 };
@@ -32,15 +32,15 @@ use std::fmt;
 
 // @Task add recursion depth
 pub struct Interpreter<'a> {
-    scope: &'a CrateScope,
+    crate_: &'a Crate,
     session: &'a BuildSession,
     reporter: &'a Reporter,
 }
 
 impl<'a> Interpreter<'a> {
-    pub fn new(scope: &'a CrateScope, session: &'a BuildSession, reporter: &'a Reporter) -> Self {
+    pub fn new(crate_: &'a Crate, session: &'a BuildSession, reporter: &'a Reporter) -> Self {
         Self {
-            scope,
+            crate_,
             session,
             reporter,
         }
@@ -48,11 +48,11 @@ impl<'a> Interpreter<'a> {
 
     /// Run the entry point of the crate.
     pub fn run(&mut self) -> Result<Expression> {
-        if let Some(program_entry) = &self.scope.program_entry {
+        if let Some(program_entry) = &self.crate_.program_entry {
             self.evaluate_expression(
                 program_entry.clone().to_expression(),
                 Context {
-                    scope: &FunctionScope::CrateScope,
+                    scope: &FunctionScope::Crate,
                     // form: Form::Normal,
                     form: Form::WeakHeadNormal,
                 },
@@ -326,7 +326,7 @@ impl<'a> Interpreter<'a> {
                                     // an Option<_> (that's gonna happen when we finally implement
                                     // the discarding identifier `_`)
                                     parameter: crate::resolver::Identifier::parameter("__"),
-                                    parameter_type_annotation: Some(self.scope.look_up_unit_type(None, self.reporter)?),
+                                    parameter_type_annotation: Some(self.crate_.look_up_unit_type(None, self.reporter)?),
                                     body_type_annotation: None,
                                     body: expr! {
                                         Substitution {
@@ -424,10 +424,9 @@ impl<'a> Interpreter<'a> {
             Lambda(lambda) => match context.form {
                 Form::Normal => {
                     let parameter_type = self.evaluate_expression(
-                        lambda
-                            .parameter_type_annotation
-                            .clone()
-                            .ok_or_else(|| super::missing_annotation().report(self.reporter))?,
+                        lambda.parameter_type_annotation.clone().ok_or_else(|| {
+                            Diagnostic::missing_annotation().report(self.reporter);
+                        })?,
                         context,
                     )?;
                     let body_type = lambda
@@ -586,7 +585,7 @@ impl<'a> Interpreter<'a> {
 
                 // @Task tidy up with iterator combinators
                 for argument in arguments {
-                    if let Some(argument) = ffi::Value::from_expression(&argument, &self.scope.ffi)
+                    if let Some(argument) = ffi::Value::from_expression(&argument, &self.crate_.ffi)
                     {
                         value_arguments.push(argument);
                     } else {
@@ -595,7 +594,7 @@ impl<'a> Interpreter<'a> {
                 }
 
                 Some(function(value_arguments).into_expression(
-                    self.scope,
+                    self.crate_,
                     self.session,
                     self.reporter,
                 )?)
@@ -679,11 +678,11 @@ impl<'a> Interpreter<'a> {
                 let parameter_type_annotation0 = lambda0
                     .parameter_type_annotation
                     .clone()
-                    .ok_or_else(|| super::missing_annotation().report(self.reporter))?;
+                    .ok_or_else(|| Diagnostic::missing_annotation().report(self.reporter))?;
                 let parameter_type_annotation1 = lambda1
                     .parameter_type_annotation
                     .clone()
-                    .ok_or_else(|| super::missing_annotation().report(self.reporter))?;
+                    .ok_or_else(|| Diagnostic::missing_annotation().report(self.reporter))?;
 
                 self.equals(
                     parameter_type_annotation0.clone(),
@@ -719,8 +718,8 @@ impl<'a> Interpreter<'a> {
     }
 
     fn look_up(&self, index: DeclarationIndex) -> &Entity {
-        match self.scope.local_index(index) {
-            Some(index) => &self.scope[index],
+        match self.crate_.local_index(index) {
+            Some(index) => &self.crate_[index],
             None => &self.session[index],
         }
     }
@@ -788,7 +787,7 @@ impl Substitution {
 }
 
 impl DisplayWith for Substitution {
-    type Context<'a> = (&'a CrateScope, &'a BuildSession);
+    type Context<'a> = (&'a Crate, &'a BuildSession);
 
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use self::Substitution::*;

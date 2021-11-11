@@ -12,19 +12,19 @@ const VERSION: &str = concat!(
 );
 
 pub fn arguments() -> (Command, Options) {
-    let source_file_argument = Arg::with_name("FILE")
+    let source_file_argument = Arg::with_name("PATH")
         .index(1)
-        .help("The source file to run");
+        .help("The path to a source file or a package folder");
 
     let package_creation_options = [
         Arg::with_name("binary")
             .long("binary")
             .short("b")
-            .help("@Task"),
+            .help("Creates a binary (executable) crate in the package"),
         Arg::with_name("library")
             .long("library")
             .short("l")
-            .help("@Task"),
+            .help("Creates a library crate in the package"),
     ];
 
     let matches = clap::App::new(env!("CARGO_PKG_NAME"))
@@ -38,14 +38,11 @@ pub fn arguments() -> (Command, Options) {
                 .long("quiet")
                 .short("q")
                 .global(true)
-                .help("@Task"),
+                .help("No status output printed to stdout"),
         )
-        .arg(
-            Arg::with_name("no-core")
-                .long("no-core")
-                .global(true)
-                .help("Ceases linking with the library `core`"),
-        )
+        .arg(Arg::with_name("no-core").long("no-core").global(true).help(
+            "Removes the dependency to the library `core` from the given single-file package",
+        ))
         .arg(
             Arg::with_name("interpreter")
                 .long("interpreter")
@@ -64,13 +61,13 @@ pub fn arguments() -> (Command, Options) {
                 .possible_values(&[
                     "help",
                     // @Task smh group
-                    "dump-tokens",
-                    "dump-ast",
-                    "dump-lowered-ast",
-                    "dump-hir",
-                    "dump-untyped-scope",
-                    "dump-scope",
-                    "dump-times",
+                    "emit-tokens",
+                    "emit-ast",
+                    "emit-lowered-ast",
+                    "emit-hir",
+                    "emit-untyped-scope",
+                    "emit-scope",
+                    "emit-times",
                     // @Beacon @Task rename to show-declaration-indices
                     "show-binding-indices",
                     "lex-only",
@@ -78,20 +75,20 @@ pub fn arguments() -> (Command, Options) {
                     "lower-only",
                     "resolve-only",
                 ])
-                .help("@Task"),
+                .help("Sets unstable options (options excluded from any stability guarantees)"),
         )
         .subcommand(
             SubCommand::with_name("build")
                 .visible_alias("b")
                 .setting(AppSettings::DisableVersion)
-                .about("Compiles the given program")
+                .about("Compiles the given source file or package or the current package")
                 .arg(source_file_argument.clone()),
         )
         .subcommand(
             SubCommand::with_name("check")
                 .visible_alias("c")
                 .setting(AppSettings::DisableVersion)
-                .about("Type-checks the given program")
+                .about("Type-checks the given source file or package or the current package")
                 .arg(source_file_argument.clone()),
         )
         .subcommand(
@@ -103,25 +100,25 @@ pub fn arguments() -> (Command, Options) {
                         .index(1)
                         .multiple(true)
                         .required(true)
-                        .help("@Task"),
+                        .help("The error codes that need explanation"),
                 ),
         )
         .subcommand(
             SubCommand::with_name("initialize")
                 .visible_alias("init")
                 .setting(AppSettings::DisableVersion)
-                .about("@Task")
+                .about("Creates a new package in the current folder")
                 .args(&package_creation_options),
         )
         .subcommand(
             SubCommand::with_name("new")
                 .setting(AppSettings::DisableVersion)
-                .about("@Task")
+                .about("Creates a new package")
                 .arg(
                     Arg::with_name("NAME")
                         .index(1)
                         .required(true)
-                        .help("Creates a new package with given name"),
+                        .help("The name of the package"),
                 )
                 .args(&package_creation_options),
         )
@@ -129,7 +126,7 @@ pub fn arguments() -> (Command, Options) {
             SubCommand::with_name("run")
                 .visible_alias("r")
                 .setting(AppSettings::DisableVersion)
-                .about("Compiles and runs the given program")
+                .about("Compiles and runs the given source file or package or the current package")
                 .arg(source_file_argument),
         )
         .get_matches();
@@ -145,7 +142,7 @@ pub fn arguments() -> (Command, Options) {
                 _ => unreachable!(),
             },
             suboptions: BuildOptions {
-                path: command.matches.value_of_os("FILE").map(Into::into),
+                path: command.matches.value_of_os("PATH").map(Into::into),
             },
         },
         "explain" => Command::Explain,
@@ -167,38 +164,38 @@ pub fn arguments() -> (Command, Options) {
                 }
             },
         },
-        _ => unreachable!(),
+        _ => unreachable!(), // handled by clap
     };
 
-    let mut dump = DumpInformation::default();
+    let mut emit = Emissions::default();
     let mut show_binding_indices = false;
-    let mut phase_restriction = None;
+    let mut pass_restriction = None;
 
     if let Some(unstable_options) = matches.values_of("unstable-options") {
         for unstable_option in unstable_options {
             match unstable_option {
                 "help" => todo!(),
-                "dump-tokens" => dump.tokens = true,
-                "dump-ast" => dump.ast = true,
-                "dump-lowered-ast" => dump.lowered_ast = true,
-                "dump-hir" => dump.hir = true,
-                "dump-untyped-scope" => dump.untyped_scope = true,
-                "dump-scope" => dump.scope = true,
-                "dump-times" => dump.times = true,
+                "emit-tokens" => emit.tokens = true,
+                "emit-ast" => emit.ast = true,
+                "emit-lowered-ast" => emit.lowered_ast = true,
+                "emit-hir" => emit.hir = true,
+                "emit-untyped-scope" => emit.untyped_scope = true,
+                "emit-scope" => emit.scope = true,
+                "emit-times" => emit.times = true,
                 "show-binding-indices" => show_binding_indices = true,
                 "lex-only" => {
-                    PhaseRestriction::update(&mut phase_restriction, PhaseRestriction::Lexer);
+                    PassRestriction::update(&mut pass_restriction, PassRestriction::Lexer);
                 }
                 "parse-only" => {
-                    PhaseRestriction::update(&mut phase_restriction, PhaseRestriction::Parser);
+                    PassRestriction::update(&mut pass_restriction, PassRestriction::Parser);
                 }
                 "lower-only" => {
-                    PhaseRestriction::update(&mut phase_restriction, PhaseRestriction::Lowerer);
+                    PassRestriction::update(&mut pass_restriction, PassRestriction::Lowerer);
                 }
                 "resolve-only" => {
-                    PhaseRestriction::update(&mut phase_restriction, PhaseRestriction::Resolver);
+                    PassRestriction::update(&mut pass_restriction, PassRestriction::Resolver);
                 }
-                _ => unreachable!(),
+                _ => unreachable!(), // handled by clap
             }
         }
     }
@@ -210,23 +207,22 @@ pub fn arguments() -> (Command, Options) {
             .value_of("interpreter")
             .map(|input| input.parse().unwrap())
             .unwrap_or_default(),
-        dump,
+        emit,
         show_binding_indices,
-        phase_restriction,
+        pass_restriction,
     };
 
     (command, options)
 }
 
 // @Task add --color=always|never|auto
-// @Task add --link=<crate-name>
 pub struct Options {
     pub quiet: bool,
     pub no_core: bool,
     pub interpreter: Interpreter,
-    pub dump: DumpInformation,
+    pub emit: Emissions,
     pub show_binding_indices: bool,
-    pub phase_restriction: Option<PhaseRestriction>,
+    pub pass_restriction: Option<PassRestriction>,
 }
 
 #[derive(Default)]
@@ -251,7 +247,7 @@ impl FromStr for Interpreter {
 // @Note bad name
 #[derive(Default)]
 #[allow(clippy::struct_excessive_bools)]
-pub struct DumpInformation {
+pub struct Emissions {
     pub tokens: bool,
     pub ast: bool,
     pub lowered_ast: bool,
@@ -262,20 +258,20 @@ pub struct DumpInformation {
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
-pub enum PhaseRestriction {
+pub enum PassRestriction {
     Resolver,
     Lowerer,
     Parser,
     Lexer,
 }
 
-impl PhaseRestriction {
+impl PassRestriction {
     pub fn update(this: &mut Option<Self>, other: Self) {
         *this = std::cmp::max(*this, Some(other));
     }
 }
 
-impl FromStr for PhaseRestriction {
+impl FromStr for PassRestriction {
     type Err = ();
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {

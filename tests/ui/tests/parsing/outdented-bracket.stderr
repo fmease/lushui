@@ -1,4 +1,4 @@
-error[E010]: found keyword `case`, but expected identifier
+error[E010]: found keyword `case`, but expected word
  --> ${DIRECTORY}/parsing/outdented-bracket.lushui:4:23
   |
 4 | lengthy-space-filler (case 0 of

@@ -1,21 +1,19 @@
 //! The package and crate resolver and future package manager.
 
 use crate::{
-    diagnostics::{Code, Diagnostic, Reporter},
+    diagnostics::{Diagnostic, Reporter},
     entity::Entity,
-    error::Result,
-    format::DisplayWith,
-    resolver::{CrateScope, DeclarationIndex, Identifier},
-    span::SharedSourceMap,
-    syntax::{ast, parse_identifier},
+    error::{Health, ReportedExt, Result},
+    format::IOError,
+    metadata::Key,
+    resolver::{Crate, DeclarationIndex, Identifier},
+    span::{SharedSourceMap, Spanned},
+    syntax::CrateName,
     utility::HashMap,
     FILE_EXTENSION,
 };
 use index_map::IndexMap;
-pub use manifest::{
-    BinaryManifest, DependencyManifest, LibraryManifest, PackageManifest, PackageManifestCrates,
-    PackageManifestDetails, Version,
-};
+pub use manifest::{BinaryManifest, DependencyManifest, LibraryManifest, PackageManifest, Version};
 use std::{
     default::default,
     fmt,
@@ -23,10 +21,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use self::manifest::PackageProfile;
+
 #[derive(Default)]
 pub struct BuildSession {
-    // @Question BTreeSet<CrateScope> (CrateScope.index) ?
-    built_crates: HashMap<CrateIndex, CrateScope>,
+    // @Question BTreeSet<Crate> (Crate.index) ?
+    built_crates: HashMap<CrateIndex, Crate>,
     built_packages: IndexMap<PackageIndex, Package>,
 }
 
@@ -38,7 +38,7 @@ impl BuildSession {
         }
     }
 
-    pub fn add(&mut self, crate_: CrateScope) {
+    pub fn add(&mut self, crate_: Crate) {
         self.built_crates.insert(crate_.index, crate_);
     }
 
@@ -71,7 +71,7 @@ impl Index<DeclarationIndex> for BuildSession {
 }
 
 impl Index<CrateIndex> for BuildSession {
-    type Output = CrateScope;
+    type Output = Crate;
 
     fn index(&self, index: CrateIndex) -> &Self::Output {
         &self.built_crates[&index]
@@ -100,8 +100,9 @@ impl fmt::Debug for PackageIndex {
         write!(f, "{}p", self.0)
     }
 }
+
 pub struct BuildQueue<'r> {
-    unbuilt_crates: IndexMap<CrateIndex, CrateScope>,
+    unbuilt_crates: IndexMap<CrateIndex, Crate>,
     unbuilt_packages: IndexMap<PackageIndex, Package>,
     map: SharedSourceMap,
     reporter: &'r Reporter,
@@ -119,45 +120,78 @@ impl<'r> BuildQueue<'r> {
 }
 
 impl BuildQueue<'_> {
+    // @Note this does not scale to single-file packages with --extern dependencies
     fn enqueue_dependencies(
         &mut self,
         package_index: PackageIndex,
-        dependencies: &HashMap<String, DependencyManifest>,
-    ) -> Result<HashMap<String, CrateIndex>> {
-        let package_path = self[package_index].path.clone();
+    ) -> Result<HashMap<CrateName, CrateIndex>> {
+        let package_path = &self[package_index].path.clone();
         let mut resolved_dependencies = HashMap::default();
+        let mut health = Health::Untainted;
 
-        for (dependency_exonym, unresolved_dependency) in dependencies {
-            let mut dependency_path = match &unresolved_dependency.path {
-                Some(path) => package_path.join(&path.data),
-                None => distributed_libraries_path().join(dependency_exonym),
+        let dependencies = match self[package_index].dependency_manifest.clone() {
+            Some(dependencies) => dependencies.value,
+            None => return Ok(resolved_dependencies),
+        };
+
+        for (dependency_exonym, unresolved_dependency) in &dependencies {
+            let mut dependency_path = match &unresolved_dependency.value.path {
+                // @Note this won't scale to `--extern=NAME:REL_PATH` (for single-file packages)
+                // since the package_path points to a file, not a folder and the REL_PATH
+                // should be relative to CWD
+                Some(path) => package_path.join(&path.value),
+                None => distributed_packages_path().join(dependency_exonym.value.as_str()),
             };
 
             if let Ok(path) = dependency_path.canonicalize() {
-                // error case handled later via `SourceMap::load` for uniform error messages and to anchieve DRY
+                // error case handled later via `SourceMap::load` for uniform error messages and to achieve DRY
+                // @Update ^^^ we no longer have that formatting code in place, can we improve this?
                 dependency_path = path;
 
-                if let Some(package) = self
+                if let Some(dependency) = self
                     .unbuilt_packages
                     .values()
                     .find(|package| package.path == dependency_path)
                 {
-                    if !package.is_fully_resolved {
-                        // @Beacon @Beacon @Beacon @Task embellish
-                        // @Beacon @Beacon @Task span info
+                    if !dependency.is_fully_resolved {
+                        // @Note the message does not scale to more complex cycles (e.g. a cycle of three packages)
+                        // @Task provide more context for transitive dependencies of the goal crate
+                        // @Task code
                         Diagnostic::error()
-                            .message("circular crates")
+                            .message(format!(
+                                "the packages `{}` and `{}` are circular",
+                                self[package_index].name, dependency.name
+                            ))
+                            .primary_span(dependency_exonym.span.content)
+                            .primary_span(
+                                // @Beacon @Bug probably does not work if exonym != endonym (but that can be fixed easily!)
+                                dependency
+                                    .dependency_manifest
+                                    .as_ref()
+                                    .unwrap()
+                                    .value
+                                    .keys()
+                                    .find(|key| key.value == self[package_index].name)
+                                    .unwrap()
+                                    .span
+                                    .content,
+                            )
                             .report(self.reporter);
                         return Err(());
                     }
 
                     // deduplicating packages by absolute path
-                    // @Note the error case can only be reached if we don't bail out early (which we don't)
                     resolved_dependencies.insert(
-                        dependency_exonym.clone(),
-                        package.library.ok_or_else(|| {
-                            dependency_is_not_a_library(&package.name, &self[package_index].name)
-                                .report(self.reporter);
+                        dependency_exonym.value.clone(),
+                        dependency.library.ok_or_else(|| {
+                            // @Question is this reachable?
+                            // my past self wrote yes if some specific (?) could not be loaded
+                            // since we just continue in this case
+                            Diagnostic::dependency_is_not_a_library(
+                                dependency.name.as_str(),
+                                self[package_index].name.as_str(),
+                            )
+                            .report(self.reporter);
                         })?,
                     );
                     continue;
@@ -169,20 +203,20 @@ impl BuildQueue<'_> {
                 match self.map.borrow_mut().load(dependency_manifest_path.clone()) {
                     Ok(file) => file,
                     Err(error) => {
-                        // @Task "could not find a package manifest for the package XY
-                        // specified as a path dependency" (sth sim to this)
-                        // @Beacon @Beacon @Beacon @Task
-                        Diagnostic::error()
-                            .message("could not load package manifest [[[dependency package]]]")
-                            .note(error.with(&dependency_manifest_path).to_string())
-                            // @Task point to `dependency_name` if not available and adjust message ^
-                            // @Note we need to thread through the Span first, np tho
-                            .if_present(unresolved_dependency.path.as_ref(), |this, path| {
-                                this.primary_span(path)
-                            })
-                            .report(self.reporter);
-                        // @Task don't return early here!
-                        return Err(());
+                        // @Task provide more context for transitive dependencies of the goal crate
+                        // @Question code?
+                        let diagnostic = Diagnostic::error()
+                            .message(format!(
+                                "could not load the dependency `{dependency_exonym}`",
+                            ))
+                            .note(IOError(error, &dependency_manifest_path).to_string());
+                        let diagnostic = match &unresolved_dependency.value.path {
+                            Some(path) => diagnostic.primary_span(path.span.trim(1)), // trimming quotes
+                            None => diagnostic.primary_span(dependency_exonym.span.content),
+                        };
+                        diagnostic.report(self.reporter);
+                        health.taint();
+                        continue;
                     }
                 };
 
@@ -190,11 +224,12 @@ impl BuildQueue<'_> {
                 PackageManifest::parse(dependency_manifest_file, self.map.clone(), self.reporter)?;
 
             let alleged_dependency_endonym = unresolved_dependency
+                .value
                 .name
                 .as_ref()
-                .map_or(dependency_exonym.as_str(), ast::Identifier::as_str);
+                .map_or(&dependency_exonym.value, |name| &name.value);
 
-            if alleged_dependency_endonym != dependency_manifest.details.name.as_str() {
+            if alleged_dependency_endonym != &dependency_manifest.profile.name.value {
                 // @Task @Beacon @Beacon @Beacon improve error message
                 // @Beacon @Beacon @Task span information
                 // @Task use primary span (endonym here (key `name` or map key)) &
@@ -209,78 +244,61 @@ impl BuildQueue<'_> {
 
             // @Task assert version requirement (if any) is fulfilled
 
-            let dependency_package =
-                Package::from_manifest_details(dependency_manifest.details, dependency_path);
+            let dependency_package = Package::from_manifest(
+                dependency_manifest.profile,
+                dependency_manifest.crates.dependencies,
+                dependency_path,
+            );
             let dependency_package = self.unbuilt_packages.insert(dependency_package);
 
             // @Note we probably need to disallow referencing the same package through different
             // names from the same package to be able to generate a correct lock-file
-            let resolved_transitive_dependencies = self.enqueue_dependencies(
-                dependency_package,
-                &dependency_manifest
-                    .crates
-                    .dependencies
-                    .map(|dependencies| dependencies.data)
-                    .unwrap_or_default()
-                    .iter()
-                    .map(|(key, value)| (key.data.clone(), value.data.clone()))
-                    .collect(),
-            )?;
+            let resolved_transitive_dependencies = self.enqueue_dependencies(dependency_package)?;
 
-            self.resolve_library_manifest(
-                dependency_package,
-                dependency_manifest
-                    .crates
-                    .library
-                    .map(|library| library.data),
-            );
+            self.resolve_library_manifest(dependency_package, dependency_manifest.crates.library);
             self[dependency_package].dependencies = resolved_transitive_dependencies;
             self[dependency_package].is_fully_resolved = true;
 
             resolved_dependencies.insert(
-                dependency_exonym.clone(),
-                // @Temporary try op
+                dependency_exonym.value.clone(),
                 self[dependency_package].library.ok_or_else(|| {
-                    dependency_is_not_a_library(
-                        &self[dependency_package].name,
-                        &self[package_index].name,
+                    Diagnostic::dependency_is_not_a_library(
+                        self[dependency_package].name.as_str(),
+                        self[package_index].name.as_str(),
                     )
                     .report(self.reporter);
                 })?,
             );
         }
 
-        // @Temporary
-        fn dependency_is_not_a_library(dependency: &str, dependent: &str) -> Diagnostic {
-            // @Beacon @Beacon @Beacon @Task message, span!!
-            Diagnostic::error().message(format!(
-                "dependency `{dependency}` of `{dependent}` is not a library"
-            ))
-        }
-
-        Ok(resolved_dependencies)
+        health.of(resolved_dependencies).into()
     }
 
     fn resolve_library_manifest(
         &mut self,
-        package_index: PackageIndex,
-        library: Option<LibraryManifest>,
+        package: PackageIndex,
+        library: Option<Spanned<LibraryManifest>>,
     ) -> bool {
-        let path = &self[package_index].path;
+        let path = &self[package].path;
         let default_library_path = path.join(CrateType::Library.default_root_file_path());
 
         let path = match library {
-            Some(library) => Some(library.path.map_or(default_library_path, |path| path.data)),
+            Some(library) => Some(
+                library
+                    .value
+                    .path
+                    .map_or(default_library_path, |path| path.value),
+            ),
             None => default_library_path.exists().then(|| default_library_path),
         };
 
         let package_contains_library = path.is_some();
 
         if let Some(path) = path {
-            let index = self.unbuilt_crates.insert_with(|index| {
-                CrateScope::new(index, package_index, path, CrateType::Library)
-            });
-            self[package_index].library = Some(index);
+            let index = self
+                .unbuilt_crates
+                .insert_with(|index| Crate::new(index, package, path, CrateType::Library));
+            self[package].library = Some(index);
         }
 
         package_contains_library
@@ -288,15 +306,18 @@ impl BuildQueue<'_> {
 
     fn resolve_binary_manifest(
         &mut self,
-        package_index: PackageIndex,
-        binary: Option<BinaryManifest>,
+        package: PackageIndex,
+        binary: Option<Spanned<BinaryManifest>>,
     ) -> bool {
-        let path = &self[package_index].path;
+        let path = &self[package].path;
         let default_binary_path = path.join(CrateType::Binary.default_root_file_path());
 
         // @Beacon @Task also find other binaries in source/binaries/
         let paths = match binary {
-            Some(binary) => vec![binary.path.map_or(default_binary_path, |path| path.data)],
+            Some(binary) => vec![binary
+                .value
+                .path
+                .map_or(default_binary_path, |path| path.value)],
             None => match default_binary_path.exists() {
                 true => vec![default_binary_path],
                 false => Vec::new(),
@@ -306,10 +327,10 @@ impl BuildQueue<'_> {
         let package_contains_binaries = !paths.is_empty();
 
         for path in paths {
-            let index = self.unbuilt_crates.insert_with(|index| {
-                CrateScope::new(index, package_index, path, CrateType::Binary)
-            });
-            self[package_index].binaries.push(index);
+            let index = self
+                .unbuilt_crates
+                .insert_with(|index| Crate::new(index, package, path, CrateType::Binary));
+            self[package].binaries.push(index);
         }
 
         package_contains_binaries
@@ -317,18 +338,21 @@ impl BuildQueue<'_> {
 
     fn resolve_library_and_binary_manifests(
         &mut self,
-        package_index: PackageIndex,
-        library: Option<LibraryManifest>,
-        binary: Option<BinaryManifest>,
+        package: PackageIndex,
+        library: Option<Spanned<LibraryManifest>>,
+        binary: Option<Spanned<BinaryManifest>>,
     ) -> Result {
-        let package_contains_library = self.resolve_library_manifest(package_index, library);
-        let package_contains_binaries = self.resolve_binary_manifest(package_index, binary);
+        let package_contains_library = self.resolve_library_manifest(package, library);
+        let package_contains_binaries = self.resolve_binary_manifest(package, binary);
 
         if !(package_contains_library || package_contains_binaries) {
-            // @Task embellish
-            // @Beacon @Task span info
+            // @Task provide more context for transitive dependencies of the goal crate
+            // @Task code
             Diagnostic::error()
-                .message("package does neither contain a library nor any binaries")
+                .message(format!(
+                    "the package `{}` does not contain a library or any binaries",
+                    self[package].name,
+                ))
                 .report(self.reporter);
             return Err(());
         }
@@ -336,48 +360,36 @@ impl BuildQueue<'_> {
         Ok(())
     }
 
-    pub fn process_package(&mut self, package_path: &Path) -> Result {
-        let manifest_path = package_path.join(PackageManifest::FILE_NAME);
+    pub fn process_package(&mut self, path: &Path) -> Result {
+        let manifest_path = path.join(PackageManifest::FILE_NAME);
         let manifest_file = match self.map.borrow_mut().load(manifest_path.clone()) {
             Ok(file) => file,
             Err(error) => {
-                // @Beacon @Beacon @Beacon @Task
                 Diagnostic::error()
-                    .message("could not load package manifest [[[goal package]]]")
-                    .note(error.with(&manifest_path).to_string())
+                    // @Question code?
+                    .message("could not load the package")
+                    .note(IOError(error, &manifest_path).to_string())
                     .report(self.reporter);
                 return Err(());
             }
         };
 
-        // @Task verify name and version matches (unless overwritten!)
-        // @Task don't return early here!
-        // @Task don't bubble up with `?` but once `open` returns a proper error type,
-        // report a custom diagnostic saying ~ "could not find a package manifest for the package XY
-        // specified as a path dependency" (sth sim to this)
         let manifest = PackageManifest::parse(manifest_file, self.map.clone(), self.reporter)?;
-
-        let package = Package::from_manifest_details(manifest.details, package_path.to_owned());
+        let package = Package::from_manifest(
+            manifest.profile,
+            manifest.crates.dependencies,
+            path.to_owned(),
+        );
         let package = self.unbuilt_packages.insert(package);
 
         // @Note we probably need to disallow referencing the same package through different
         // names from the same package to be able to generate a correct lock-file
-        let resolved_dependencies = self.enqueue_dependencies(
-            package,
-            &manifest
-                .crates
-                .dependencies
-                .map(|dependencies| dependencies.data)
-                .unwrap_or_default()
-                .iter()
-                .map(|(key, value)| (key.data.clone(), value.data.clone()))
-                .collect(),
-        )?;
+        let resolved_dependencies = self.enqueue_dependencies(package)?;
 
         self.resolve_library_and_binary_manifests(
             package,
-            manifest.crates.library.map(|library| library.data),
-            manifest.crates.binary.map(|binary| binary.data),
+            manifest.crates.library,
+            manifest.crates.binary,
         )?;
         self[package].dependencies = resolved_dependencies;
         self[package].is_fully_resolved = true;
@@ -385,40 +397,25 @@ impl BuildQueue<'_> {
         Ok(())
     }
 
-    pub fn process_single_file_package(
-        &mut self,
-        source_file_path: PathBuf,
-        no_core: bool,
-    ) -> Result {
-        // @Beacon @Task inline
-        let crate_name = parse_crate_name_from_file_path(source_file_path.clone(), self.reporter)?;
+    pub fn process_single_file_package(&mut self, path: PathBuf, no_core: bool) -> Result {
+        let package_name = parse_crate_name_from_file_path(&path, self.reporter)?;
 
-        // @Task dont unwrap, handle error case
-        // joining with "." since it might return "" which would fail to canonicalize
-        let path = source_file_path
-            .parent()
-            .unwrap()
-            .join(".")
-            .canonicalize()
-            .unwrap();
-
-        // @Note wasteful name cloning
-        let package = Package::single_file_package(crate_name.as_str().to_owned(), path);
+        let package = Package::single_file_package(package_name, path.clone());
         let package = self.unbuilt_packages.insert(package);
 
         let mut resolved_dependencies = HashMap::default();
 
         if !no_core {
-            let core_path = distributed_libraries_path().join(CORE_PACKAGE_NAME);
+            let core_path = core_package_path();
 
             let core_manifest_path = core_path.join(PackageManifest::FILE_NAME);
             let core_manifest_file = match self.map.borrow_mut().load(core_manifest_path.clone()) {
                 Ok(file) => file,
                 Err(error) => {
-                    // @Beacon @Beacon @Beacon @Task
                     Diagnostic::error()
-                        .message("could not load package manifest [[[core package]]]")
-                        .note(error.with(&core_manifest_path).to_string())
+                        // @Question code?
+                        .message("could not load the package `core`")
+                        .note(IOError(error, &core_manifest_path).to_string())
                         .report(self.reporter);
                     return Err(());
                 }
@@ -426,40 +423,30 @@ impl BuildQueue<'_> {
 
             let core_manifest =
                 PackageManifest::parse(core_manifest_file, self.map.clone(), self.reporter)?;
-
-            let core_package = Package::from_manifest_details(core_manifest.details, core_path);
+            let core_package = Package::from_manifest(
+                core_manifest.profile,
+                core_manifest.crates.dependencies,
+                core_path,
+            );
             let core_package = self.unbuilt_packages.insert(core_package);
 
             // @Note we probably need to disallow referencing the same package through different
             // names from the same package to be able to generate a correct lock-fil
-            let resolved_transitive_core_dependencies = self.enqueue_dependencies(
-                core_package,
-                &core_manifest
-                    .crates
-                    .dependencies
-                    .map(|dependencies| dependencies.data)
-                    .unwrap_or_default()
-                    .iter()
-                    .map(|(key, value)| (key.data.clone(), value.data.clone()))
-                    .collect(),
-            )?;
+            let resolved_transitive_core_dependencies = self.enqueue_dependencies(core_package)?;
 
-            self.resolve_library_manifest(
-                core_package,
-                core_manifest.crates.library.map(|library| library.data),
-            );
+            self.resolve_library_manifest(core_package, core_manifest.crates.library);
             self[core_package].dependencies = resolved_transitive_core_dependencies;
             self[core_package].is_fully_resolved = true;
 
             resolved_dependencies.insert(
-                CORE_PACKAGE_NAME.to_string(),
+                CrateName::core_package_name(),
                 self[core_package].library.unwrap(),
             );
         }
 
-        let binary = self.unbuilt_crates.insert_with(|index| {
-            CrateScope::new(index, package, source_file_path, CrateType::Binary)
-        });
+        let binary = self
+            .unbuilt_crates
+            .insert_with(|index| Crate::new(index, package, path, CrateType::Binary));
         let package = &mut self[package];
         package.binaries.push(binary);
         package.dependencies = resolved_dependencies;
@@ -468,16 +455,27 @@ impl BuildQueue<'_> {
         Ok(())
     }
 
-    pub fn into_unbuilt_and_built(self) -> (IndexMap<CrateIndex, CrateScope>, BuildSession) {
+    pub fn into_session_and_unbuilt_crates(self) -> (BuildSession, IndexMap<CrateIndex, Crate>) {
         (
-            self.unbuilt_crates,
             BuildSession::with_packages(self.unbuilt_packages),
+            self.unbuilt_crates,
         )
     }
 }
 
+impl Diagnostic {
+    fn dependency_is_not_a_library(dependency: &str, dependent: &str) -> Self {
+        // @Task provide more context for transitive dependencies of the goal crate
+        // @Task code
+        // @Beacon @Task span
+        Self::error().message(format!(
+            "dependency `{dependency}` of `{dependent}` is not a library"
+        ))
+    }
+}
+
 impl Index<CrateIndex> for BuildQueue<'_> {
-    type Output = CrateScope;
+    type Output = Crate;
 
     fn index(&self, index: CrateIndex) -> &Self::Output {
         &self.unbuilt_crates[index]
@@ -523,20 +521,22 @@ impl index_map::Index for CrateIndex {
     }
 }
 
-// @Temporary location
-/// The path to the folder of libraries shipped with the compiler/interpreter.
-// @Task make this configurable via CLI option & env var & config file
-pub fn distributed_libraries_path() -> PathBuf {
+/// The path to the folder of packages shipped with the compiler.
+pub fn distributed_packages_path() -> PathBuf {
+    // @Task make this configurable via CLI option & env var & config file
+
     const DISTRIBUTED_LIBRARIES_FOLDER: &str = "libraries";
 
     Path::new(env!("CARGO_MANIFEST_DIR")).join(DISTRIBUTED_LIBRARIES_FOLDER)
 }
 
-pub const CORE_PACKAGE_NAME: &str = "core";
+pub fn core_package_path() -> PathBuf {
+    distributed_packages_path().join(CrateName::core_package_name().as_str())
+}
 
 pub const DEFAULT_SOURCE_FOLDER_NAME: &str = "source";
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CrateType {
     Library,
     Binary,
@@ -566,41 +566,67 @@ impl fmt::Display for CrateType {
     }
 }
 
+/// A collection of crates and some metadata.
+///
+/// More concretely, it consists of zero or more binary (executable) crates
+/// and of zero or one library crate but of always at least one crate.
+/// The most important metadatum is the list of dependencies (external crates).
 #[derive(Debug)]
 pub struct Package {
-    pub name: String,
+    /// The name of the package.
+    ///
+    /// The library and the default binary crate share this name
+    /// unless overwritten in their manifests.
+    pub name: CrateName,
+    /// The file or folder path of the package.
+    ///
+    /// For single-file packages, this points to a file.
+    /// For normal packages, it points to the package folder
+    /// which contains the package manifest.
     pub path: PathBuf,
     pub version: Option<Version>,
     pub description: String,
+    /// States if the package is allowed to be published to a package repository.
     pub is_private: bool,
     pub library: Option<CrateIndex>,
     pub binaries: Vec<CrateIndex>,
-    pub dependencies: HashMap<String, CrateIndex>,
+    pub dependencies: HashMap<CrateName, CrateIndex>,
+    /// Indicates if the library, binary and dependency crates are fully resolved.
+    ///
+    /// Packages are resolved in two steps to allow the library crate and the binary
+    /// crates to keep an [index to the owning package](PackageIndex) and the package to
+    /// keep [indices to its crates](CrateIndex).
     pub is_fully_resolved: bool,
+    pub dependency_manifest: Option<Spanned<HashMap<Key<CrateName>, Spanned<DependencyManifest>>>>,
 }
 
 impl Package {
-    pub fn from_manifest_details(manifest: PackageManifestDetails, path: PathBuf) -> Self {
+    pub fn from_manifest(
+        profile: PackageProfile,
+        dependency_manifest: Option<Spanned<HashMap<Key<CrateName>, Spanned<DependencyManifest>>>>,
+        path: PathBuf,
+    ) -> Self {
         Package {
-            name: manifest.name.as_str().to_owned(),
+            name: profile.name.value,
             path,
-            version: manifest.version.map(|version| version.data),
-            description: manifest
+            version: profile.version.map(|version| version.value),
+            description: profile
                 .description
-                .map(|description| description.data)
+                .map(|description| description.value)
                 .unwrap_or_default(),
-            is_private: manifest
+            is_private: profile
                 .is_private
-                .map(|is_private| is_private.data)
+                .map(|is_private| is_private.value)
                 .unwrap_or_default(),
             library: None,
             binaries: Vec::new(),
-            dependencies: HashMap::default(),
+            dependencies: default(),
             is_fully_resolved: false,
+            dependency_manifest,
         }
     }
 
-    pub fn single_file_package(name: String, path: PathBuf) -> Self {
+    pub fn single_file_package(name: CrateName, path: PathBuf) -> Self {
         Self {
             name,
             path,
@@ -609,16 +635,21 @@ impl Package {
             is_private: true,
             library: None,
             binaries: Vec::new(),
-            dependencies: HashMap::default(),
+            dependencies: default(),
             is_fully_resolved: false,
+            dependency_manifest: None,
         }
+    }
+
+    /// Test if this package is the standard library `core`.
+    pub fn is_core(&self) -> bool {
+        self.path == core_package_path()
     }
 }
 
 pub fn find_package(path: &Path) -> Option<&Path> {
     let manifest_path = path.join(PackageManifest::FILE_NAME);
 
-    // `try_exists` not suitable here
     if manifest_path.exists() {
         Some(path)
     } else {
@@ -626,98 +657,95 @@ pub fn find_package(path: &Path) -> Option<&Path> {
     }
 }
 
-pub fn parse_crate_name_from_file_path(
-    file: impl AsRef<std::path::Path>,
-    reporter: &Reporter,
-) -> Result<ast::Identifier> {
-    let file = file.as_ref();
-
-    if !crate::utility::has_file_extension(file, crate::FILE_EXTENSION) {
+pub fn parse_crate_name_from_file_path(path: &Path, reporter: &Reporter) -> Result<CrateName> {
+    if !crate::utility::has_file_extension(path, crate::FILE_EXTENSION) {
         Diagnostic::warning()
             .message("missing or non-standard file extension")
             .report(reporter);
     }
 
-    // @Question does unwrap ever fail in a real-world example?
-    let stem = file.file_stem().unwrap();
+    // @Question can the file stem ever be empty in our case?
+    let name = path.file_stem().unwrap();
 
-    let atom = (|| parse_identifier(stem.to_str()?.to_owned()))().ok_or_else(|| {
-        invalid_crate_name(&stem.to_string_lossy()).report(reporter);
-    })?;
-
-    Ok(ast::Identifier::new(atom, default()))
-}
-
-fn invalid_crate_name(name: &str) -> Diagnostic {
-    Diagnostic::error()
-        .code(Code::E036)
-        .message(format!("the crate name `{name}` is not a valid identifier"))
+    // @Beacon @Beacon @Beacon @Task do not unwrap! provide custom error
+    CrateName::parse(name.to_str().unwrap()).reported(reporter)
 }
 
 pub mod manifest {
     use crate::{
         diagnostics::{Code, Diagnostic, Reporter},
-        error::{Health, Result},
-        metadata::{self, convert, Map, TypeError},
+        error::{Health, ReportedExt, Result},
+        metadata::{self, convert, Key, TypeError},
         span::{SharedSourceMap, SourceFileIndex, Spanned},
-        syntax::{ast::Identifier, parse_identifier},
-        utility::{spanned_key_map::SpannedKeyMap, try_all},
+        syntax::CrateName,
+        utility::{try_all, HashMap},
     };
     use std::path::PathBuf;
 
+    // @Note missing span of PackageManifest itself
     pub struct PackageManifest {
-        pub details: PackageManifestDetails,
-        pub crates: PackageManifestCrates,
+        pub profile: PackageProfile,
+        pub crates: PackageCrates,
     }
 
     impl PackageManifest {
         pub const FILE_NAME: &'static str = "package.metadata";
 
         pub fn parse(
-            source_file: SourceFileIndex,
-            source_map: SharedSourceMap,
+            file: SourceFileIndex,
+            map: SharedSourceMap,
             reporter: &Reporter,
         ) -> Result<Self> {
-            let manifest = metadata::parse(source_file, source_map, reporter)?;
+            let manifest = metadata::parse(file, map, reporter)?;
 
             let manifest_span = manifest.span;
-            let mut manifest: Map = manifest.data.try_into().map_err(|error: TypeError| {
-                Diagnostic::error()
-                    .code(Code::E800)
-                    .message(format!(
-                        "the type of the root should be {} but it is {}",
-                        error.expected, error.actual
-                    ))
-                    .labeled_primary_span(manifest_span, "has the wrong type")
-                    .report(reporter);
-            })?;
+            let mut manifest: HashMap<_, _> =
+                manifest.value.try_into().map_err(|error: TypeError| {
+                    Diagnostic::error()
+                        .code(Code::E800)
+                        .message(format!(
+                            "the type of the root should be {} but it is {}",
+                            error.expected, error.actual
+                        ))
+                        .labeled_primary_span(manifest_span, "has the wrong type")
+                        .report(reporter);
+                })?;
 
-            let name = manifest
-                .remove::<String>("name", None, manifest_span, reporter)
-                // @Task improve code
-                .and_then(|name| {
-                    let span = name.span.trim(1); // trimming the quotes
+            let name = metadata::remove_map_entry::<String>(
+                Spanned::new(manifest_span, &mut manifest),
+                "name",
+                None,
+                reporter,
+            )
+            .and_then(|name| {
+                // trimming quotes
+                CrateName::parse_spanned(name.map_span(|span| span.trim(1)).as_deref())
+                    .reported(reporter)
+            });
+            let version = metadata::remove_optional_map_entry(&mut manifest, "version", reporter);
+            let description =
+                metadata::remove_optional_map_entry(&mut manifest, "description", reporter);
+            let is_private =
+                metadata::remove_optional_map_entry(&mut manifest, "private", reporter);
 
-                    parse_identifier(name.data.clone())
-                        .map(|identifier| Identifier::new(identifier, span))
-                        .ok_or_else(|| {
-                            super::invalid_crate_name(&name.data)
-                                .primary_span(span)
-                                .report(reporter);
-                        })
-                });
-            let version = manifest.remove_optional("version", reporter);
-            let description = manifest.remove_optional("description", reporter);
-            let is_private = manifest.remove_optional("private", reporter);
-
-            let library = match manifest.remove_optional::<Map>("library", reporter) {
+            let library = match metadata::remove_optional_map_entry::<HashMap<_, _>>(
+                &mut manifest,
+                "library",
+                reporter,
+            ) {
                 Ok(Some(mut library)) => {
-                    let path = library.data.remove_optional::<String>("path", reporter);
-                    let exhaustion = library
-                        .data
-                        .check_exhaustion(Some("library".into()), reporter);
+                    let path = metadata::remove_optional_map_entry::<String>(
+                        &mut library.value,
+                        "path",
+                        reporter,
+                    );
+                    let exhaustion = metadata::check_map_is_empty(
+                        library.value,
+                        Some("library".into()),
+                        reporter,
+                    );
 
-                    try_all! { path, exhaustion => return Err(()) };
+                    try_all! { path, exhaustion; return Err(()) };
                     Ok(Some(Spanned::new(
                         library.span,
                         LibraryManifest {
@@ -729,14 +757,21 @@ pub mod manifest {
                 Err(()) => Err(()),
             };
 
-            let binary = match manifest.remove_optional::<Map>("binary", reporter) {
+            let binary = match metadata::remove_optional_map_entry::<HashMap<_, _>>(
+                &mut manifest,
+                "binary",
+                reporter,
+            ) {
                 Ok(Some(mut binary)) => {
-                    let path = binary.data.remove_optional::<String>("path", reporter);
-                    let exhaustion = binary
-                        .data
-                        .check_exhaustion(Some("binary".into()), reporter);
+                    let path = metadata::remove_optional_map_entry::<String>(
+                        &mut binary.value,
+                        "path",
+                        reporter,
+                    );
+                    let exhaustion =
+                        metadata::check_map_is_empty(binary.value, Some("binary".into()), reporter);
 
-                    try_all! { path, exhaustion => return Err(()) };
+                    try_all! { path, exhaustion; return Err(()) };
                     Ok(Some(Spanned::new(
                         binary.span,
                         BinaryManifest {
@@ -748,50 +783,76 @@ pub mod manifest {
                 Err(()) => Err(()),
             };
 
-            let dependencies = match manifest.remove_optional::<Map>("dependencies", reporter) {
+            let dependencies = match metadata::remove_optional_map_entry::<HashMap<_, _>>(
+                &mut manifest,
+                "dependencies",
+                reporter,
+            ) {
                 Ok(Some(dependencies)) => {
                     let mut health = Health::Untainted;
-                    let mut parsed_dependencies = SpannedKeyMap::default();
+                    let mut parsed_dependencies = HashMap::default();
 
-                    for (dependency_name, dependency_manifest) in dependencies.data.into_iter() {
+                    for (dependency_name, dependency_manifest) in dependencies.value {
+                        let dependency_name = match CrateName::parse(&dependency_name.value) {
+                            Ok(name) => Key {
+                                value: name,
+                                span: dependency_name.span,
+                            },
+                            Err(error) => {
+                                error
+                                    // .primary_span(dependency_name.span.content)
+                                    .report(reporter);
+                                health.taint();
+                                continue;
+                            }
+                        };
+
                         // @Task custom error message (maybe)
-                        let dependency_manifest =
-                            convert::<Map>(&dependency_name.data, dependency_manifest, reporter);
+                        let Ok(mut dependency_manifest) = convert::<HashMap<_, _>>(
+                            dependency_name.value.as_str(),
+                            dependency_manifest,
+                            reporter,
+                        ) else {
+                            health.taint();
+                            continue;
+                        };
 
-                        try_all! { dependency_manifest => health.taint(); continue };
-                        let mut dependency_manifest = dependency_manifest;
-
-                        let version = dependency_manifest
-                            .data
-                            .remove_optional::<String>("version", reporter);
-                        let name: Result<Option<_>> = dependency_manifest
-                            .data
-                            .remove_optional::<String>("name", reporter)
-                            // @Task improve and deduplicate code
-                            .and_then(|name: Option<_>| {
-                                name.map(|name: Spanned<_>| {
-                                    parse_identifier(name.data.clone())
-                                        .map(|identifier| Identifier::new(identifier, name.span))
-                                        .ok_or_else(|| {
-                                            // @Beacon @Beacon @Beacon @Task trim quotes (unless empty)
-                                            super::invalid_crate_name(&name.data)
-                                                .primary_span(name)
-                                                .report(reporter);
-                                        })
+                        let version = metadata::remove_optional_map_entry::<String>(
+                            &mut dependency_manifest.value,
+                            "version",
+                            reporter,
+                        );
+                        let name: Result<Option<_>> =
+                            metadata::remove_optional_map_entry::<String>(
+                                &mut dependency_manifest.value,
+                                "name",
+                                reporter,
+                            )
+                            .and_then(|name| {
+                                // trimming quotes
+                                name.map(|name| {
+                                    CrateName::parse_spanned(
+                                        name.map_span(|span| span.trim(1)).as_deref(),
+                                    )
+                                    .reported(reporter)
                                 })
                                 .transpose()
                             });
-                        let path = dependency_manifest
-                            .data
-                            .remove_optional::<String>("path", reporter);
+                        let path = metadata::remove_optional_map_entry::<String>(
+                            &mut dependency_manifest.value,
+                            "path",
+                            reporter,
+                        );
 
                         // @Temporary path
-                        let exhaustion = dependency_manifest
-                            .data
-                            .check_exhaustion(Some("dependency".into()), reporter);
+                        let exhaustion = metadata::check_map_is_empty(
+                            dependency_manifest.value,
+                            Some("dependency".into()),
+                            reporter,
+                        );
 
                         try_all! {
-                            version, name, path, exhaustion =>
+                            version, name, path, exhaustion;
                             health.taint(); continue
                         };
 
@@ -815,76 +876,68 @@ pub mod manifest {
                 Err(()) => Err(()),
             };
 
-            manifest.check_exhaustion(None, reporter)?;
+            metadata::check_map_is_empty(manifest, None, reporter)?;
 
             try_all! {
                 name, version, description, is_private,
-                library, binary, dependencies =>
+                library, binary, dependencies;
                 return Err(())
             };
 
-            let manifest = PackageManifest {
-                details: PackageManifestDetails {
+            Ok(PackageManifest {
+                profile: PackageProfile {
                     name,
                     version: version.map(|version| version.map(Version)),
                     description,
                     is_private,
                 },
-                crates: PackageManifestCrates {
+                crates: PackageCrates {
                     library,
                     binary,
                     dependencies,
                 },
-            };
-
-            Ok(manifest)
+            })
         }
     }
 
-    pub struct PackageManifestDetails {
-        pub name: Identifier,
+    /// Crate-indepedent package information.
+    pub struct PackageProfile {
+        pub name: Spanned<CrateName>,
         pub version: Option<Spanned<Version>>,
         pub description: Option<Spanned<String>>,
         pub is_private: Option<Spanned<bool>>,
     }
 
-    pub struct PackageManifestCrates {
+    /// Information about the crates of a package.
+    pub struct PackageCrates {
         pub library: Option<Spanned<LibraryManifest>>,
         // @Task Vec<_>
         pub binary: Option<Spanned<BinaryManifest>>,
-        // @Beacon @Beacon @Beacon @Task smh replace String with Identifier
-        pub dependencies: Option<Spanned<SpannedKeyMap<String, Spanned<DependencyManifest>>>>,
+        pub dependencies: Option<Spanned<HashMap<Key<CrateName>, Spanned<DependencyManifest>>>>,
     }
 
     #[derive(Default)]
     pub struct LibraryManifest {
-        // @Task pub name: Option<Identifier>,
+        // @Task pub name: Option<Spanned<CrateName>>,
         pub path: Option<Spanned<PathBuf>>,
     }
 
     #[derive(Default)]
     pub struct BinaryManifest {
-        // @Task pub name: Option<Identifier>,
+        // @Task pub name: Option<Spanned<CrateName>>,
         pub path: Option<Spanned<PathBuf>>,
     }
 
-    // @Beacon @Temporary clone
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     pub struct DependencyManifest {
         pub version: Option<Spanned<VersionRequirement>>,
-        pub name: Option<Identifier>,
+        pub name: Option<Spanned<CrateName>>,
         pub path: Option<Spanned<PathBuf>>,
-        // pub url: Option<String>,
-        // pub branch: Option<String>,
-        // pub tag: Option<String>,
-        // pub revision: Option<String>,
     }
 
-    // @Temporary
     #[derive(Debug)]
     pub struct Version(pub String);
 
-    // @Temporary
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     pub struct VersionRequirement(pub String);
 }

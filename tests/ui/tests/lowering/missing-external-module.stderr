@@ -4,7 +4,7 @@ error[E016]: could not load module `external-module-really-nowhere-to-be-found`
 4 | module external-module-really-nowhere-to-be-found
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 
   |
- note: the file `${DIRECTORY}/lowering/external-module-really-nowhere-to-be-found.lushui` does not exist
+ note: `${DIRECTORY}/lowering/external-module-really-nowhere-to-be-found.lushui`: No such file or directory (os error 2)
 
 error[E016]: could not load module `meaningless`
  --> ${DIRECTORY}/lowering/missing-external-module.lushui:7:1
@@ -12,7 +12,7 @@ error[E016]: could not load module `meaningless`
 7 | module meaningless
   | ^^^^^^^^^^^^^^^^^^ 
   |
- note: the file `${DIRECTORY}/lowering/expansion-of-void-until-eternity.lushui` does not exist
+ note: `${DIRECTORY}/lowering/expansion-of-void-until-eternity.lushui`: No such file or directory (os error 2)
 
 error: aborting due to 2 previous errors
  note: the error E016 has a detailed explanation

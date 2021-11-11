@@ -4,24 +4,22 @@ mod format;
 
 use crate::{
     error::PossiblyErroneous,
-    resolver::{CrateScope, FunctionScope, Identifier},
+    resolver::{Crate, FunctionScope, Identifier},
     span::{SourceFileIndex, Span},
     syntax::{
         ast::{Explicitness, ParameterAspect},
         lowered_ast::{Item, Number},
     },
     typer::interpreter,
+    utility::obtain,
 };
 use std::rc::Rc;
 
 pub type Declaration = Item<DeclarationKind>;
 
 impl Declaration {
-    pub fn unwrap_constructor(&self) -> &Constructor {
-        match &self.data {
-            DeclarationKind::Constructor(constructor) => constructor,
-            _ => unreachable!(),
-        }
+    pub fn constructor(&self) -> Option<&Constructor> {
+        obtain!(&self.data, DeclarationKind::Constructor(constructor) => constructor)
     }
 }
 

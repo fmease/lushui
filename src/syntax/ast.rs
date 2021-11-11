@@ -270,7 +270,7 @@ impl Path {
     /// Construct a non-identifier-head-only path.
     pub fn hanger(token: Token) -> Self {
         Self {
-            hanger: Some(Hanger::new(token.span, token.data.try_into().unwrap())),
+            hanger: Some(Hanger::new(token.span, token.value.try_into().unwrap())),
             segments: SmallVec::new(),
         }
     }
@@ -278,7 +278,7 @@ impl Path {
     // @Task make this Option<Self> and move diagnostic construction into lowerer
     pub fn join(mut self, other: Self) -> Result<Self, Diagnostic> {
         if let Some(hanger) = other.hanger {
-            if !matches!(hanger.data, HangerKind::Self_) {
+            if !matches!(hanger.value, HangerKind::Self_) {
                 return Err(Diagnostic::error()
                     .code(Code::E026)
                     .message(format!("path `{}` not allowed in this position", hanger))
@@ -290,9 +290,9 @@ impl Path {
         Ok(self)
     }
 
-    pub fn bare_hanger(&self, queried_hanger: HangerKind) -> Option<Hanger> {
+    pub fn bare_hanger(&self, hanger: HangerKind) -> Option<Hanger> {
         self.hanger
-            .filter(|hanger| hanger.data == queried_hanger && self.segments.is_empty())
+            .filter(|some_hanger| some_hanger.value == hanger && self.segments.is_empty())
     }
 
     /// Return the path head if it is an identifier.
@@ -579,20 +579,26 @@ impl TryFrom<TokenKind> for HangerKind {
     }
 }
 
+/// Either a word or punctuation.
 #[derive(Clone, Eq)]
 pub struct Identifier(Spanned<Atom>);
 
 impl Identifier {
-    pub const fn new(atom: Atom, span: Span) -> Self {
+    // @Beacon @Task docs why unchecked
+    pub const fn new_unchecked(atom: Atom, span: Span) -> Self {
         Self(Spanned::new(span, atom))
     }
 
-    fn atom(&self) -> &Atom {
-        &self.0.data
+    pub fn as_atom(&self) -> &Atom {
+        &self.0.value
+    }
+
+    pub fn into_atom(self) -> Atom {
+        self.0.value
     }
 
     pub fn as_str(&self) -> &str {
-        self.atom()
+        self.as_atom()
     }
 
     pub fn as_spanned_str(&self) -> Spanned<&str> {
@@ -600,12 +606,17 @@ impl Identifier {
     }
 
     pub fn stripped(self) -> Self {
-        Self::new(self.0.data, default())
+        Self::new_unchecked(self.0.value, default())
     }
 
     pub fn is_punctuation(&self) -> bool {
         // either all characters are punctuation or none
-        is_punctuation(self.atom().chars().next().unwrap())
+        is_punctuation(self.as_atom().chars().next().unwrap())
+    }
+
+    pub fn is_word(&self) -> bool {
+        // either all characters are letters or none
+        !self.is_punctuation()
     }
 }
 
@@ -636,13 +647,13 @@ impl Spanning for Identifier {
 
 impl PartialEq for Identifier {
     fn eq(&self, other: &Self) -> bool {
-        self.atom() == other.atom()
+        self.as_atom() == other.as_atom()
     }
 }
 
 impl std::hash::Hash for Identifier {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.atom().hash(state);
+        self.as_atom().hash(state);
     }
 }
 

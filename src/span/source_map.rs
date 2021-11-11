@@ -1,5 +1,3 @@
-use crate::format::DisplayWith;
-
 use super::{ByteIndex, LocalByteIndex, LocalSpan, Span, Spanning};
 use index_map::IndexMap;
 use std::{
@@ -62,8 +60,8 @@ impl SourceMap {
     }
 
     /// Open a file given its path and add it as a [`SourceFile`] to the map.
-    pub fn load(&mut self, path: PathBuf) -> Result<SourceFileIndex, Error> {
-        let source = std::fs::read_to_string(&path).map_err(Error)?;
+    pub fn load(&mut self, path: PathBuf) -> Result<SourceFileIndex, io::Error> {
+        let source = std::fs::read_to_string(&path)?;
         Ok(self.add(Some(path), source))
     }
 
@@ -343,28 +341,5 @@ impl std::ops::Index<LocalSpan> for SourceFile {
 
     fn index(&self, index: LocalSpan) -> &Self::Output {
         &self.content[Range::from(index)]
-    }
-}
-
-pub struct Error(io::Error);
-
-impl DisplayWith for Error {
-    type Context<'a> = &'a Path;
-
-    fn format(&self, path: &Path, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use io::ErrorKind::*;
-
-        write!(f, "the file `{}` ", path.to_string_lossy())?;
-
-        // @Task move this logic out of this module
-        f.write_str(match self.0.kind() {
-            // @Beacon @Beacon @Beacon @Beacon @Task expand this
-            NotFound => "does not exist",
-            PermissionDenied => "does not have the required permissions",
-            // @Task reword
-            InvalidData => "contains invalid UTF-8",
-            // @Task use the provided message
-            _ => "triggered some file system error",
-        })
     }
 }

@@ -1,6 +1,6 @@
 // @Note all of this is ugly as hell!
 
-use super::{CrateScope, Expression};
+use super::{Crate, Expression};
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     error::Result,
@@ -198,23 +198,23 @@ impl Type {
 
     fn into_expression(
         self,
-        scope: &CrateScope,
+        crate_: &Crate,
         session: &BuildSession,
         reporter: &Reporter,
     ) -> Result<Expression> {
         match self {
-            Self::Unit => scope.look_up_unit_type(None, reporter),
-            Self::Bool => scope.look_up_bool_type(None, reporter),
-            Self::Nat => scope.look_up_foreign_type(Type::NAT, None, session, reporter),
-            Self::Nat32 => scope.look_up_foreign_type(Type::NAT32, None, session, reporter),
-            Self::Nat64 => scope.look_up_foreign_type(Type::NAT64, None, session, reporter),
-            Self::Int => scope.look_up_foreign_type(Type::INT, None, session, reporter),
-            Self::Int32 => scope.look_up_foreign_type(Type::INT32, None, session, reporter),
-            Self::Int64 => scope.look_up_foreign_type(Type::INT64, None, session, reporter),
-            Self::Text => scope.look_up_foreign_type(Type::TEXT, None, session, reporter),
+            Self::Unit => crate_.look_up_unit_type(None, reporter),
+            Self::Bool => crate_.look_up_bool_type(None, reporter),
+            Self::Nat => crate_.look_up_foreign_type(Type::NAT, None, session, reporter),
+            Self::Nat32 => crate_.look_up_foreign_type(Type::NAT32, None, session, reporter),
+            Self::Nat64 => crate_.look_up_foreign_type(Type::NAT64, None, session, reporter),
+            Self::Int => crate_.look_up_foreign_type(Type::INT, None, session, reporter),
+            Self::Int32 => crate_.look_up_foreign_type(Type::INT32, None, session, reporter),
+            Self::Int64 => crate_.look_up_foreign_type(Type::INT64, None, session, reporter),
+            Self::Text => crate_.look_up_foreign_type(Type::TEXT, None, session, reporter),
             Self::Option(type_) => Ok(application(
-                scope.look_up_option_type(None, reporter)?,
-                type_.into_expression(scope, session, reporter)?,
+                crate_.look_up_option_type(None, reporter)?,
+                type_.into_expression(crate_, session, reporter)?,
             )),
         }
     }
@@ -307,11 +307,11 @@ impl Value {
 
     pub fn into_expression(
         self,
-        scope: &CrateScope,
+        crate_: &Crate,
         session: &BuildSession,
         reporter: &Reporter,
     ) -> Result<Expression> {
-        let values = &scope.ffi.inherent_values;
+        let values = &crate_.ffi.inherent_values;
 
         fn missing_inherent() -> Diagnostic {
             // @Task message, span
@@ -363,9 +363,9 @@ impl Value {
                             .clone()
                             .ok_or_else(|| missing_inherent().report(reporter))?
                             .to_expression(),
-                        type_.into_expression(scope, session, reporter)?,
+                        type_.into_expression(crate_, session, reporter)?,
                     ),
-                    value.into_expression(scope, session, reporter)?,
+                    value.into_expression(crate_, session, reporter)?,
                 ),
                 None => application(
                     values
@@ -373,7 +373,7 @@ impl Value {
                         .clone()
                         .ok_or_else(|| missing_inherent().report(reporter))?
                         .to_expression(),
-                    type_.into_expression(scope, session, reporter)?,
+                    type_.into_expression(crate_, session, reporter)?,
                 ),
             },
             Self::IO { index, arguments } => expr! {
@@ -381,7 +381,7 @@ impl Value {
                     Attributes::default(), Span::default();
                     index,
                     arguments: arguments.into_iter()
-                        .map(|argument| argument.into_expression(scope, session, reporter))
+                        .map(|argument| argument.into_expression(crate_, session, reporter))
                         .collect::<Result<Vec<_>>>()?,
                 }
             },
@@ -475,40 +475,40 @@ pub type IORunner = fn(Vec<Value>) -> Value;
 use index_map::IndexMap;
 use num_traits::ops::checked::{CheckedDiv, CheckedSub};
 
-pub fn register_foreign_bindings(scope: &mut CrateScope) {
-    scope.register_foreign_type(Type::NAT);
-    scope.register_foreign_type(Type::NAT32);
-    scope.register_foreign_type(Type::NAT64);
-    scope.register_foreign_type(Type::INT);
-    scope.register_foreign_type(Type::INT32);
-    scope.register_foreign_type(Type::INT64);
-    scope.register_foreign_type(Type::TEXT);
-    scope.register_foreign_type(Type::IO); // @Temporary
+pub fn register_foreign_bindings(crate_: &mut Crate) {
+    crate_.register_foreign_type(Type::NAT);
+    crate_.register_foreign_type(Type::NAT32);
+    crate_.register_foreign_type(Type::NAT64);
+    crate_.register_foreign_type(Type::INT);
+    crate_.register_foreign_type(Type::INT32);
+    crate_.register_foreign_type(Type::INT64);
+    crate_.register_foreign_type(Type::TEXT);
+    crate_.register_foreign_type(Type::IO); // @Temporary
 
     // @Task make this module aware
 
-    pure!(scope, "add", |x: Nat, y: Nat| x + y);
-    pure!(scope, "subtract", |x: Nat, y: Nat| x.checked_sub(&y));
+    pure!(crate_, "add", |x: Nat, y: Nat| x + y);
+    pure!(crate_, "subtract", |x: Nat, y: Nat| x.checked_sub(&y));
     // @Temporary until we get option.unwrap
-    pure!(scope, "panicking-subtract", |x: Nat, y: Nat| x - y);
-    pure!(scope, "multiply", |x: Nat, y: Nat| x * y);
-    pure!(scope, "divide", |x: Nat, y: Nat| x.checked_div(&y));
-    pure!(scope, "equal", |x: Nat, y: Nat| x == y);
-    pure!(scope, "less", |x: Nat, y: Nat| x < y);
-    pure!(scope, "less-equal", |x: Nat, y: Nat| x <= y);
-    pure!(scope, "greater", |x: Nat, y: Nat| x > y);
-    pure!(scope, "greater-equal", |x: Nat, y: Nat| x >= y);
-    pure!(scope, "display", |x: Nat| x.to_string());
-    pure!(scope, "concat", |a: Text, b: Text| a + &b);
+    pure!(crate_, "panicking-subtract", |x: Nat, y: Nat| x - y);
+    pure!(crate_, "multiply", |x: Nat, y: Nat| x * y);
+    pure!(crate_, "divide", |x: Nat, y: Nat| x.checked_div(&y));
+    pure!(crate_, "equal", |x: Nat, y: Nat| x == y);
+    pure!(crate_, "less", |x: Nat, y: Nat| x < y);
+    pure!(crate_, "less-equal", |x: Nat, y: Nat| x <= y);
+    pure!(crate_, "greater", |x: Nat, y: Nat| x > y);
+    pure!(crate_, "greater-equal", |x: Nat, y: Nat| x >= y);
+    pure!(crate_, "display", |x: Nat| x.to_string());
+    pure!(crate_, "concat", |a: Text, b: Text| a + &b);
     // @Temporary until we can target specific modules
-    pure!(scope, "add-nat32", |a: Nat32, b: Nat32| a + b);
+    pure!(crate_, "add-nat32", |a: Nat32, b: Nat32| a + b);
     // @Temporary
-    pure!(scope, "print", |message: Text| Value::IO {
+    pure!(crate_, "print", |message: Text| Value::IO {
         index: 0,
         arguments: vec![Value::Text(message)]
     });
 
-    // @Beacon @Task write impure!/register_impure: add field to CrateScope: IndexVec<IOIndex, IO> with function (IO performer/runner)
+    // @Beacon @Task write impure!/register_impure: add field to Crate: IndexVec<IOIndex, IO> with function (IO performer/runner)
     // meaninh `IO` does not mean hir::IO here but IO { runner: IORunner } (...)
     // then do the Value::IO { index: MOST_RECENT_INDEX, args } automatically
     // @Note this function won't rely on a Display/Show trait for now

@@ -1,19 +1,19 @@
 //! The definition of the textual representation of the [HIR](crate::hir).
 
-use super::{CrateScope, Declaration, Expression, Pattern};
+use super::{Crate, Declaration, Expression, Pattern};
 use crate::{format::DisplayWith, package::BuildSession};
 use joinery::JoinableIterator;
 use std::{default::default, fmt};
 
 impl DisplayWith for Declaration {
-    type Context<'a> = (&'a CrateScope, &'a BuildSession);
+    type Context<'a> = (&'a Crate, &'a BuildSession);
 
     fn format(
         &self,
-        (scope, session): Self::Context<'_>,
+        (crate_, session): Self::Context<'_>,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
-        self.format_with_depth(scope, session, 0, f)
+        self.format_with_depth(crate_, session, 0, f)
     }
 }
 
@@ -23,14 +23,14 @@ impl DisplayWith for Declaration {
 impl Declaration {
     fn format_with_depth(
         &self,
-        scope: &CrateScope,
+        crate_: &Crate,
         session: &BuildSession,
         depth: usize,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
         use super::DeclarationKind::*;
         use crate::syntax::lexer::INDENTATION;
-        let context = (scope, session);
+        let context = (crate_, session);
 
         match &self.data {
             Value(declaration) => {
@@ -82,7 +82,7 @@ impl Declaration {
                 for declaration in &declaration.declarations {
                     let depth = depth + 1;
                     write!(f, "{}", " ".repeat(depth * INDENTATION.0))?;
-                    declaration.format_with_depth(scope, session, depth, f)?;
+                    declaration.format_with_depth(crate_, session, depth, f)?;
                 }
                 Ok(())
             }
@@ -97,25 +97,25 @@ impl Declaration {
 
 // @Note many wasted allocations (intermediate Strings)
 impl DisplayWith for Expression {
-    type Context<'a> = (&'a CrateScope, &'a BuildSession);
+    type Context<'a> = (&'a Crate, &'a BuildSession);
 
     fn format(
         &self,
-        (scope, session): Self::Context<'_>,
+        (crate_, session): Self::Context<'_>,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
-        format_pi_type_literal_or_lower(self, scope, session, f)
+        format_pi_type_literal_or_lower(self, crate_, session, f)
     }
 }
 
 fn format_pi_type_literal_or_lower(
     expression: &Expression,
-    scope: &CrateScope,
+    crate_: &Crate,
     session: &BuildSession,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
     use super::ExpressionKind::*;
-    let context = (scope, session);
+    let context = (crate_, session);
 
     // In here, we format `Lambda`, `UseIn` and `CaseAnalysis` as a pi-type-literal-or-lower instead of
     // a lowered expression — which you might have expected from reading through the grammar and the parser.
@@ -158,10 +158,10 @@ fn format_pi_type_literal_or_lower(
                 write!(f, "{}", pi.domain.with(context))?;
                 write!(f, ")")?;
             } else {
-                format_application_or_lower(&pi.domain, scope, session, f)?;
+                format_application_or_lower(&pi.domain, crate_, session, f)?;
             }
             write!(f, " -> ")?;
-            format_pi_type_literal_or_lower(&pi.codomain, scope, session, f)
+            format_pi_type_literal_or_lower(&pi.codomain, crate_, session, f)
         }
         Lambda(lambda) => {
             write!(f, r"\{}", lambda.explicitness)?;
@@ -202,14 +202,14 @@ fn format_pi_type_literal_or_lower(
             }
             Ok(())
         }
-        _ => format_application_or_lower(expression, scope, session, f),
+        _ => format_application_or_lower(expression, crate_, session, f),
     }
 }
 
 // @Task write named arguments
 fn format_application_or_lower(
     expression: &Expression,
-    scope: &CrateScope,
+    crate_: &Crate,
     session: &BuildSession,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
@@ -217,32 +217,32 @@ fn format_application_or_lower(
 
     match &expression.data {
         Application(application) => {
-            format_application_or_lower(&application.callee, scope, session, f)?;
+            format_application_or_lower(&application.callee, crate_, session, f)?;
             write!(f, " {}", application.explicitness)?;
-            format_lower_expression(&application.argument, scope, session, f)
+            format_lower_expression(&application.argument, crate_, session, f)
         }
         ForeignApplication(application) => {
             write!(f, "{}", application.callee)?;
 
             for argument in &application.arguments {
                 write!(f, " ")?;
-                format_lower_expression(argument, scope, session, f)?;
+                format_lower_expression(argument, crate_, session, f)?;
             }
 
             Ok(())
         }
-        _ => format_lower_expression(expression, scope, session, f),
+        _ => format_lower_expression(expression, crate_, session, f),
     }
 }
 
 fn format_lower_expression(
     expression: &Expression,
-    scope: &CrateScope,
+    crate_: &Crate,
     session: &BuildSession,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
     use super::ExpressionKind::*;
-    let context = (scope, session);
+    let context = (crate_, session);
 
     for attribute in expression.attributes.iter() {
         write!(f, "{} ", attribute)?;
@@ -258,7 +258,7 @@ fn format_lower_expression(
         Binding(binding) => write!(
             f,
             "{}",
-            super::FunctionScope::absolute_path(&binding.binder, scope, session)
+            super::FunctionScope::absolute_path(&binding.binder, crate_, session)
         ),
         // @Beacon @Temporary @Task just write out the path
         Projection(_projection) => write!(f, "?(projection)"),
@@ -284,11 +284,11 @@ fn format_lower_expression(
 
 // @Task @Beacon update bracket business
 impl DisplayWith for Pattern {
-    type Context<'a> = (&'a CrateScope, &'a BuildSession);
+    type Context<'a> = (&'a Crate, &'a BuildSession);
 
     fn format(
         &self,
-        context @ (scope, session): Self::Context<'_>,
+        context @ (crate_, session): Self::Context<'_>,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
         use super::PatternKind::*;
@@ -299,7 +299,7 @@ impl DisplayWith for Pattern {
             Binding(binding) => write!(
                 f,
                 "{}",
-                super::FunctionScope::absolute_path(&binding.binder, scope, session)
+                super::FunctionScope::absolute_path(&binding.binder, crate_, session)
             ),
 
             Binder(binder) => write!(f, "\\{}", binder.binder),
@@ -314,20 +314,23 @@ impl DisplayWith for Pattern {
     }
 }
 
-#[cfg(FALSE)] // @Beacon @Beacon @Temporary
 #[cfg(test)]
 mod test {
+    use index_map::Index;
+
     use crate::{
-        ast::{self, Explicitness::*},
         entity::{Entity, EntityKind},
         format::DisplayWith,
         hir::{expr, Expression},
-        lowered_ast::{Attribute, AttributeKind, Attributes, Number},
-        package::CrateIndex,
-        resolver::{scope::LocalDeclarationIndex, CrateScope, Exposure, Identifier},
+        package::{BuildSession, CrateIndex, CrateType, PackageIndex},
+        resolver::{Crate, Exposure, Identifier, LocalDeclarationIndex},
         span::Span,
+        syntax::{
+            ast::{self, Explicitness::*},
+            lowered_ast::{Attribute, AttributeKind, Attributes, Number},
+        },
     };
-    use std::default::default;
+    use std::{default::default, path::PathBuf};
 
     // @Beacon @Task do something smart if spaces differ (which cannot have color)
     // like replacing them with a different character like the Unicode space symbol
@@ -343,16 +346,21 @@ mod test {
         }
     }
 
-    impl CrateScope {
+    impl Crate {
         fn test() -> Self {
-            let mut scope = Self::new(CrateIndex(0));
-            scope.bindings.push(Entity {
-                source: ast::Identifier::new("test".into(), default()),
+            let mut crate_ = Self::new(
+                CrateIndex(0),
+                PackageIndex::new(0),
+                PathBuf::new(),
+                CrateType::Library,
+            );
+            crate_.bindings.insert(Entity {
+                source: ast::Identifier::new_unchecked("test".into(), default()),
                 parent: None,
                 exposure: Exposure::Unrestricted,
                 kind: EntityKind::module(),
             });
-            scope
+            crate_
         }
 
         fn add(&mut self, name: &str, kind: EntityKind) -> Identifier {
@@ -365,15 +373,21 @@ mod test {
             kind: EntityKind,
             parent: LocalDeclarationIndex,
         ) -> Identifier {
-            let identifier = ast::Identifier::new(name.into(), default());
+            let identifier = ast::Identifier::new_unchecked(name.into(), default());
             let entity = Entity {
                 source: identifier.clone(),
-                parent: Some(self.global_index(parent)),
+                parent: Some(parent),
                 exposure: Exposure::Unrestricted,
                 kind,
             };
-            let index = self.bindings.push(entity);
+            let index = self.bindings.insert(entity);
             Identifier::new(self.global_index(index), identifier)
+        }
+    }
+
+    impl Identifier {
+        fn local_declaration_index(&self, crate_: &Crate) -> Option<LocalDeclarationIndex> {
+            crate_.local_index(self.declaration_index()?)
         }
     }
 
@@ -386,19 +400,20 @@ mod test {
     }
 
     impl Attribute {
-        const fn stripped(kind: AttributeKind) -> Self {
+        fn stripped(kind: AttributeKind) -> Self {
             Self::new(default(), kind)
         }
     }
 
     #[test]
     fn pi_type_application_argument() {
-        let mut scope = CrateScope::test();
+        let session = BuildSession::default();
+        let mut crate_ = Crate::test();
 
-        let array = scope
+        let array = crate_
             .add("Array", EntityKind::untyped_data_type())
             .to_expression();
-        let int = scope
+        let int = crate_
             .add("Int", EntityKind::untyped_data_type())
             .to_expression();
 
@@ -421,18 +436,19 @@ mod test {
                     codomain: type_(),
                 }
             })
-            .with(&scope)
+            .with((&crate_, &session))
             .to_string(),
         );
     }
 
     #[test]
     fn pi_type_named_parameter() {
-        let mut scope = CrateScope::test();
+        let session = BuildSession::default();
+        let mut crate_ = Crate::test();
 
-        let array = scope.add("Array", EntityKind::untyped_data_type());
-        let int = scope.add("Int", EntityKind::untyped_data_type());
-        let container = scope.add("Container", EntityKind::untyped_data_type());
+        let array = crate_.add("Array", EntityKind::untyped_data_type());
+        let int = crate_.add("Int", EntityKind::untyped_data_type());
+        let container = crate_.add("Container", EntityKind::untyped_data_type());
         let alpha = Identifier::parameter("alpha");
 
         assert_eq(
@@ -461,14 +477,15 @@ mod test {
                     },
                 }
             })
-            .with(&scope)
+            .with((&crate_, &session))
             .to_string(),
         );
     }
 
     #[test]
     fn pi_type_implicit_parameter() {
-        let scope = CrateScope::test();
+        let session = BuildSession::default();
+        let crate_ = Crate::test();
 
         assert_eq(
             "'(whatever: Type) -> Type",
@@ -482,7 +499,7 @@ mod test {
                     codomain: type_(),
                 }
             })
-            .with(&scope)
+            .with((&crate_, &session))
             .to_string(),
         );
     }
@@ -490,8 +507,9 @@ mod test {
     /// Compare with [pi_type_two_curried_arguments].
     #[test]
     fn pi_type_higher_order_argument() {
-        let mut scope = CrateScope::test();
-        let int = scope
+        let session = BuildSession::default();
+        let mut crate_ = Crate::test();
+        let int = crate_
             .add("Int", EntityKind::untyped_data_type())
             .to_expression();
 
@@ -516,7 +534,7 @@ mod test {
                     codomain: int,
                 }
             })
-            .with(&scope)
+            .with((&crate_, &session))
             .to_string(),
         );
     }
@@ -524,11 +542,12 @@ mod test {
     /// Compare with [pi_type_higher_order_argument].
     #[test]
     fn pi_type_two_curried_arguments() {
-        let mut scope = CrateScope::test();
-        let int = scope
+        let session = BuildSession::default();
+        let mut crate_ = Crate::test();
+        let int = crate_
             .add("Int", EntityKind::untyped_data_type())
             .to_expression();
-        let text = scope
+        let text = crate_
             .add("Text", EntityKind::untyped_data_type())
             .to_expression();
 
@@ -557,7 +576,7 @@ mod test {
                     },
                 }
             })
-            .with(&scope)
+            .with((&crate_, &session))
             .to_string(),
         );
     }
@@ -565,7 +584,8 @@ mod test {
     /// Compare with [lambda_pi_type_body].
     #[test]
     fn pi_type_lambda_domain() {
-        let scope = CrateScope::test();
+        let session = BuildSession::default();
+        let crate_ = Crate::test();
 
         let x = Identifier::parameter("x");
 
@@ -591,16 +611,17 @@ mod test {
                     codomain: type_(),
                 }
             })
-            .with(&scope)
+            .with((&crate_, &session))
             .to_string(),
         );
     }
 
     #[test]
     fn application_three_curried_arguments() {
-        let mut scope = CrateScope::test();
+        let session = BuildSession::default();
+        let mut crate_ = Crate::test();
 
-        let beta = scope.add("beta", EntityKind::UntypedValue);
+        let beta = crate_.add("beta", EntityKind::UntypedValue);
 
         assert_eq(
             "alpha crate.beta (gamma Type) 0",
@@ -635,7 +656,7 @@ mod test {
                     explicitness: Explicit,
                 }
             })
-            .with(&scope)
+            .with((&crate_, &session))
             .to_string(),
         );
     }
@@ -643,9 +664,10 @@ mod test {
     /// Compare with [application_lambda_argument].
     #[test]
     fn application_lambda_last_argument() {
-        let mut scope = CrateScope::test();
+        let session = BuildSession::default();
+        let mut crate_ = Crate::test();
 
-        let take = scope.add("take", EntityKind::UntypedValue);
+        let take = crate_.add("take", EntityKind::UntypedValue);
         let it = Identifier::parameter("it");
 
         // we might want to format this special case as `crate.take \it => it` in the future
@@ -670,7 +692,7 @@ mod test {
                     explicitness: Explicit,
                 }
             })
-            .with(&scope)
+            .with((&crate_, &session))
             .to_string(),
         );
     }
@@ -678,9 +700,10 @@ mod test {
     /// Compare with [application_lambda_last_argument].
     #[test]
     fn application_lambda_argument() {
-        let mut scope = CrateScope::test();
+        let session = BuildSession::default();
+        let mut crate_ = Crate::test();
 
-        let take = scope.add("take", EntityKind::UntypedValue);
+        let take = crate_.add("take", EntityKind::UntypedValue);
         let it = Identifier::parameter("it");
 
         assert_eq(
@@ -716,16 +739,17 @@ mod test {
                     explicitness: Explicit,
                 }
             })
-            .with(&scope)
+            .with((&crate_, &session))
             .to_string(),
         );
     }
 
     #[test]
     fn application_implicit_argument() {
-        let mut scope = CrateScope::test();
+        let session = BuildSession::default();
+        let mut crate_ = Crate::test();
 
-        let identity = scope.add("identity", EntityKind::UntypedValue);
+        let identity = crate_.add("identity", EntityKind::UntypedValue);
 
         assert_eq(
             r"crate.identity 'Type",
@@ -737,17 +761,18 @@ mod test {
                     explicitness: Implicit,
                 }
             })
-            .with(&scope)
+            .with((&crate_, &session))
             .to_string(),
         );
     }
 
     #[test]
     fn application_complex_implicit_argument() {
-        let mut scope = CrateScope::test();
+        let session = BuildSession::default();
+        let mut crate_ = Crate::test();
 
-        let identity = scope.add("identity", EntityKind::UntypedValue);
-        let text = scope.add("Text", EntityKind::untyped_data_type());
+        let identity = crate_.add("identity", EntityKind::UntypedValue);
+        let text = crate_.add("Text", EntityKind::untyped_data_type());
 
         assert_eq(
             r"crate.identity '(prepare crate.Text)",
@@ -766,14 +791,15 @@ mod test {
                     explicitness: Implicit,
                 }
             })
-            .with(&scope)
+            .with((&crate_, &session))
             .to_string(),
         );
     }
 
     #[test]
     fn application_foreign_application_callee() {
-        let scope = CrateScope::test();
+        let session = BuildSession::default();
+        let crate_ = Crate::test();
 
         assert_eq(
             "eta 10 omicron",
@@ -794,15 +820,16 @@ mod test {
                     argument: Identifier::parameter("omicron").to_expression(),
                     explicitness: Explicit,
                 }
-            }).with(&scope).to_string(),
+            }).with((&crate_, &session)).to_string(),
         );
     }
 
     #[test]
     fn lambda_body_type_annotation() {
-        let mut scope = CrateScope::test();
+        let session = BuildSession::default();
+        let mut crate_ = Crate::test();
 
-        let output = scope.add("Output", EntityKind::untyped_data_type());
+        let output = crate_.add("Output", EntityKind::untyped_data_type());
 
         assert_eq(
             r"\input: crate.Output => 0",
@@ -819,17 +846,18 @@ mod test {
                     laziness: None,
                 }
             })
-            .with(&scope)
+            .with((&crate_, &session))
             .to_string(),
         );
     }
 
     #[test]
     fn lambda_parameter_type_annotation_body_type_annotation() {
-        let mut scope = CrateScope::test();
+        let session = BuildSession::default();
+        let mut crate_ = Crate::test();
 
-        let input = scope.add("Input", EntityKind::untyped_data_type());
-        let output = scope.add("Output", EntityKind::untyped_data_type());
+        let input = crate_.add("Input", EntityKind::untyped_data_type());
+        let output = crate_.add("Output", EntityKind::untyped_data_type());
 
         assert_eq(
             r"\(input: crate.Input): crate.Output => Type",
@@ -844,14 +872,15 @@ mod test {
                     laziness: None,
                 }
             })
-            .with(&scope)
+            .with((&crate_, &session))
             .to_string(),
         );
     }
 
     #[test]
     fn lambda_implicit_parameter() {
-        let scope = CrateScope::test();
+        let session = BuildSession::default();
+        let crate_ = Crate::test();
 
         assert_eq(
             r"\'(Input: Type) => Type",
@@ -866,14 +895,15 @@ mod test {
                     laziness: None,
                 }
             })
-            .with(&scope)
+            .with((&crate_, &session))
             .to_string(),
         );
     }
 
     #[test]
     fn lambda_implicit_unannotated_parameter() {
-        let scope = CrateScope::test();
+        let session = BuildSession::default();
+        let crate_ = Crate::test();
         let a = Identifier::parameter("a");
 
         assert_eq(
@@ -899,7 +929,7 @@ mod test {
                     laziness: None,
                 }
             })
-            .with(&scope)
+            .with((&crate_, &session))
             .to_string(),
         );
     }
@@ -907,7 +937,8 @@ mod test {
     /// Compare with [pi_type_lambda_domain].
     #[test]
     fn lambda_pi_type_body() {
-        let scope = CrateScope::test();
+        let session = BuildSession::default();
+        let crate_ = Crate::test();
 
         let x = Identifier::parameter("x");
 
@@ -933,16 +964,17 @@ mod test {
                     laziness: None,
                 }
             })
-            .with(&scope)
+            .with((&crate_, &session))
             .to_string(),
         );
     }
 
     #[test]
     fn foreign_application_no_arguments() {
-        let mut scope = CrateScope::test();
+        let session = BuildSession::default();
+        let mut crate_ = Crate::test();
 
-        let add = scope.add("add", EntityKind::UntypedValue);
+        let add = crate_.add("add", EntityKind::UntypedValue);
 
         assert_eq(
             "add",
@@ -953,16 +985,17 @@ mod test {
                     arguments: Vec::new(),
                 }
             })
-            .with(&scope)
+            .with((&crate_, &session))
             .to_string(),
         );
     }
 
     #[test]
     fn foreign_application_two_arguments() {
-        let mut scope = CrateScope::test();
+        let session = BuildSession::default();
+        let mut crate_ = Crate::test();
 
-        let add = scope.add("add", EntityKind::UntypedValue);
+        let add = crate_.add("add", EntityKind::UntypedValue);
 
         assert_eq(
             "add (add 1 3000) 0",
@@ -1000,14 +1033,15 @@ mod test {
                     ],
                 }
             })
-            .with(&scope)
+            .with((&crate_, &session))
             .to_string(),
         );
     }
 
     #[test]
     fn attributes() {
-        let scope = CrateScope::test();
+        let session = BuildSession::default();
+        let crate_ = Crate::test();
 
         assert_eq(
             "== @static @unsafe 3 @static (increment 1)",
@@ -1033,7 +1067,7 @@ mod test {
                     },
                     argument: expr! {
                         Application {
-                            Attributes::new(vec![Attribute::sham(AttributeKind::Static)]), Span::default();
+                            Attributes::new(vec![Attribute::stripped(AttributeKind::Static)]), Span::default();
                             callee: Identifier::parameter("increment").to_expression(),
                             argument: expr! {
                                 Number(Attributes::default(), Span::default(); Number::Nat(1u8.into()))
@@ -1044,57 +1078,59 @@ mod test {
                     explicitness: Explicit,
                 }
             })
-            .with(&scope)
+            .with((&crate_, &session))
             .to_string(),
         )
     }
 
     #[test]
     fn path() {
-        let mut scope = CrateScope::test();
+        let session = BuildSession::default();
+        let mut crate_ = Crate::test();
 
-        let overarching = scope.add("overarching", EntityKind::module());
-        let middle = scope.add_below(
+        let overarching = crate_.add("overarching", EntityKind::module());
+        let middle = crate_.add_below(
             "middle",
             EntityKind::module(),
-            overarching.declaration_index().unwrap(),
+            overarching.local_declaration_index(&crate_).unwrap(),
         );
-        let sink = scope.add_below(
+        let sink = crate_.add_below(
             "sink",
             EntityKind::UntypedValue,
-            middle.declaration_index().unwrap(),
+            middle.local_declaration_index(&crate_).unwrap(),
         );
 
         assert_eq(
             "crate.overarching.middle.sink",
-            sink.to_expression().with(&scope).to_string(),
+            sink.to_expression().with((&crate_, &session)).to_string(),
         );
     }
 
     #[test]
     fn path_identifier_punctuation_punctuation_identifier_segments() {
-        let mut scope = CrateScope::test();
+        let session = BuildSession::default();
+        let mut crate_ = Crate::test();
 
-        let overarching = scope.add("overarching", EntityKind::module());
-        let noisy = scope.add_below(
+        let overarching = crate_.add("overarching", EntityKind::module());
+        let noisy = crate_.add_below(
             "&/.~##",
             EntityKind::module(),
-            overarching.declaration_index().unwrap(),
+            overarching.local_declaration_index(&crate_).unwrap(),
         );
-        let zickzack = scope.add_below(
+        let zickzack = crate_.add_below(
             "^^^",
             EntityKind::module(),
-            noisy.declaration_index().unwrap(),
+            noisy.local_declaration_index(&crate_).unwrap(),
         );
-        let sink = scope.add_below(
+        let sink = crate_.add_below(
             "sink",
             EntityKind::UntypedValue,
-            zickzack.declaration_index().unwrap(),
+            zickzack.local_declaration_index(&crate_).unwrap(),
         );
 
         assert_eq(
             "crate.overarching.&/.~## . ^^^ .sink",
-            sink.to_expression().with(&scope).to_string(),
+            sink.to_expression().with((&crate_, &session)).to_string(),
         );
     }
 }

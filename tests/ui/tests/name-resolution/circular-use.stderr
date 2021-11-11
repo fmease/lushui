@@ -1,4 +1,4 @@
-error[E024]: declarations `crate.alpha1` and `crate.fake-my-dude.alpha0` are circular
+error[E024]: the declarations `crate.alpha1` and `crate.fake-my-dude.alpha0` are circular
  --> ${DIRECTORY}/name-resolution/circular-use.lushui:3:35
   |
 3 | use fake-my-dude.alpha0.((self as alpha1))
@@ -10,7 +10,7 @@ error[E024]: declarations `crate.alpha1` and `crate.fake-my-dude.alpha0` are cir
   |                         ^^^^^^ 
   |
 
-error[E024]: declarations `crate.fake-my-dude.beta0`, `crate.fake-my-dude.beta1` and `crate.fake-my-dude.beta2` are circular
+error[E024]: the declarations `crate.fake-my-dude.beta0`, `crate.fake-my-dude.beta1` and `crate.fake-my-dude.beta2` are circular
   --> ${DIRECTORY}/name-resolution/circular-use.lushui:6:18
    |
  6 |     use beta0 as beta1
