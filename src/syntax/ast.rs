@@ -15,7 +15,7 @@ use crate::{
     utility::{obtain, Atom, SmallVec},
 };
 use smallvec::smallvec;
-use std::default::default;
+use std::{default::default, hash::Hash};
 
 pub use format::Format;
 
@@ -580,7 +580,7 @@ impl TryFrom<TokenKind> for HangerKind {
 }
 
 /// Either a word or punctuation.
-#[derive(Clone, Eq)]
+#[derive(Clone)]
 pub struct Identifier(Spanned<Atom>);
 
 impl Identifier {
@@ -651,7 +651,9 @@ impl PartialEq for Identifier {
     }
 }
 
-impl std::hash::Hash for Identifier {
+impl Eq for Identifier {}
+
+impl Hash for Identifier {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.as_atom().hash(state);
     }

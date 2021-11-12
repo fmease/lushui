@@ -1,7 +1,11 @@
 #![deny(rust_2018_idioms, unused_must_use)]
 
 pub use derive::Index;
-use std::{fmt, marker::PhantomData};
+use std::{
+    fmt,
+    hash::{Hash, Hasher},
+    marker::PhantomData,
+};
 
 // @Task impl IntoIterator, Extend, docs
 
@@ -144,8 +148,8 @@ impl<I, T: Ord> Ord for IndexMap<I, T> {
     }
 }
 
-impl<I, T: std::hash::Hash> std::hash::Hash for IndexMap<I, T> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+impl<I, T: Hash> Hash for IndexMap<I, T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
         self.values.hash(state);
     }
 }

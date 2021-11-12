@@ -27,18 +27,19 @@ jobs:
     - name: Build in release mode
       run: cargo build --release
   
-  build-windows:
-    runs-on: windows-latest
-
-    steps:
-    - uses: actions/checkout@v2
-    - uses: actions-rs/toolchain@v1
-      with:
-        toolchain: nightly
-        override: true
-    - uses: Swatinem/rust-cache@v1
-    - name: Build in release mode
-      run: cargo build --release
+  # not necessary right now
+  # build-windows:
+  #   runs-on: windows-latest
+  #
+  #   steps:
+  #   - uses: actions/checkout@v2
+  #   - uses: actions-rs/toolchain@v1
+  #     with:
+  #       toolchain: nightly
+  #       override: true
+  #   - uses: Swatinem/rust-cache@v1
+  #   - name: Build in release mode
+  #     run: cargo build --release
 
   test-linux:
     needs: build-linux
@@ -57,22 +58,23 @@ jobs:
     - name: Run UI tests (via the golden UI testing framework)
       run: ./tests/ui/run
   
-  test-windows:
-    needs: build-windows
-  
-    runs-on: windows-latest
-
-    steps:
-    - uses: actions/checkout@v2
-    - uses: actions-rs/toolchain@v1
-      with:
-        toolchain: nightly
-        override: true
-    - uses: Swatinem/rust-cache@v1
-    - name: Run unit tests (via the rust testing framework)
-      run: cargo test
-    - name: Run UI tests (via the golden UI testing framework)
-      run: ./tests/ui/run
+  # # not necessary right now
+  # test-windows:
+  #   needs: build-windows
+  #
+  #   runs-on: windows-latest
+  #
+  #   steps:
+  #   - uses: actions/checkout@v2
+  #   - uses: actions-rs/toolchain@v1
+  #     with:
+  #       toolchain: nightly
+  #       override: true
+  #   - uses: Swatinem/rust-cache@v1
+  #   - name: Run unit tests (via the rust testing framework)
+  #     run: cargo test
+  #   - name: Run UI tests (via the golden UI testing framework)
+  #     run: ./tests/ui/run
 
   build-documentation:
     needs: build-linux
@@ -103,6 +105,6 @@ jobs:
         components: clippy
     - uses: Swatinem/rust-cache@v1
     - name: Run clippy
-      run: cargo clippy
+      run: cargo clippy --all-features
 
   # @Task check cargo fmt

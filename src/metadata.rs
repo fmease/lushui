@@ -1,11 +1,18 @@
 //! A custom human-readable metadata file format.
+//!
+//! # Missing Features
+//!
+//! * raw text
+//! * multi-line text with indentation awareness
+//! * text escape sequences
+//! * negative numbers
+//! * keywords as keys (e.g. `false: false`)
+#![allow(clippy::implicit_hasher)] // false positive
 
-// @Task raw text, multi lines text with indentation awareness
-// @Task negative numbers, text escape sequences
-
-// @Task support keywords as keys e.g. `false: false`
-
-use std::fmt;
+use std::{
+    fmt,
+    hash::{Hash, Hasher},
+};
 
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
@@ -128,6 +135,10 @@ impl fmt::Display for Type {
     }
 }
 
+// @Beacon @Beacon @Task think about making this just Spanned<_> (removing this type
+// + KeySpan) and calculating span.content by storing the SourceMap in BuildQueue/Session/
+// a parameter to the relevant functions and doing SourceMap::snippet(key.span).starts_with('"')
+// etc and trimming (but still encapsulate this in a new fn key_span(span: Span, map: SourceMap) -> Span)
 #[derive(Clone, Debug)]
 pub struct Key<K = String> {
     pub value: K,
@@ -157,8 +168,8 @@ impl<K: PartialEq> PartialEq for Key<K> {
 
 impl<K: Eq> Eq for Key<K> {}
 
-impl<K: std::hash::Hash> std::hash::Hash for Key<K> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+impl<K: Hash> Hash for Key<K> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
         self.value.hash(state);
     }
 }
