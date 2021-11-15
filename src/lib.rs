@@ -46,7 +46,8 @@
     extend_one,
     try_trait_v2,
     adt_const_params,
-    let_else
+    let_else,
+    min_specialization
 )]
 #![deny(rust_2018_idioms, unused_must_use)]
 #![allow(incomplete_features)] // adt_const_params (we are only doing the basics)

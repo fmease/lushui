@@ -9,15 +9,12 @@
 //! * keywords as keys (e.g. `false: false`)
 #![allow(clippy::implicit_hasher)] // false positive
 
-use std::{
-    fmt,
-    hash::{Hash, Hasher},
-};
+use std::fmt;
 
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     error::Result,
-    span::{SharedSourceMap, SourceFileIndex, Span, Spanned},
+    span::{SharedSourceMap, SourceFileIndex, SourceMap, Span, Spanned, Spanning, WeaklySpanned},
     utility::{obtain, HashMap},
 };
 use discriminant::Discriminant;
@@ -35,7 +32,7 @@ pub enum ValueKind {
     Float(f64),
     Text(String),
     Array(Vec<Value>),
-    Map(HashMap<Key, Value>),
+    Map(HashMap<WeaklySpanned<String>, Value>),
 }
 
 impl ValueKind {
@@ -109,7 +106,7 @@ impl TryFrom<ValueKind> for Vec<Value> {
     }
 }
 
-impl TryFrom<ValueKind> for HashMap<Key, Value> {
+impl TryFrom<ValueKind> for HashMap<WeaklySpanned<String>, Value> {
     type Error = TypeError;
 
     fn try_from(value: ValueKind) -> Result<Self, Self::Error> {
@@ -135,55 +132,18 @@ impl fmt::Display for Type {
     }
 }
 
-// @Beacon @Beacon @Task think about making this just Spanned<_> (removing this type
-// + KeySpan) and calculating span.content by storing the SourceMap in BuildQueue/Session/
-// a parameter to the relevant functions and doing SourceMap::snippet(key.span).starts_with('"')
-// etc and trimming (but still encapsulate this in a new fn key_span(span: Span, map: SourceMap) -> Span)
-#[derive(Clone, Debug)]
-pub struct Key<K = String> {
-    pub value: K,
-    pub span: KeySpan,
-}
+pub fn content_span_of_key(key: impl Spanning, map: &SourceMap) -> Span {
+    fn content_span_of_key(span: Span, map: &SourceMap) -> Span {
+        let is_quoted = map.snippet(span).starts_with('"');
 
-impl<K> Key<K> {
-    pub fn new(value: K, span: Span, is_quoted: bool) -> Self {
-        Self {
-            value,
-            span: KeySpan {
-                literal: span,
-                content: match is_quoted {
-                    true => span.trim(1),
-                    false => span,
-                },
-            },
+        if is_quoted {
+            span.trim(1)
+        } else {
+            span
         }
     }
-}
 
-impl<K: PartialEq> PartialEq for Key<K> {
-    fn eq(&self, other: &Self) -> bool {
-        self.value == other.value
-    }
-}
-
-impl<K: Eq> Eq for Key<K> {}
-
-impl<K: Hash> Hash for Key<K> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.value.hash(state);
-    }
-}
-
-impl std::borrow::Borrow<str> for Key<String> {
-    fn borrow(&self) -> &str {
-        &self.value
-    }
-}
-
-impl<K: fmt::Display> fmt::Display for Key<K> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.value.fmt(f)
-    }
+    content_span_of_key(key.span(), map)
 }
 
 #[derive(Clone, Debug)]
@@ -194,7 +154,7 @@ pub struct KeySpan {
 
 // @Beacon @Temporary signature
 pub fn remove_map_entry<T: TryFrom<ValueKind, Error = TypeError>>(
-    map: Spanned<&mut HashMap<Key, Value>>,
+    map: Spanned<&mut HashMap<WeaklySpanned<String>, Value>>,
     key: &str,
     path: Option<String>,
     reporter: &Reporter,
@@ -216,7 +176,7 @@ pub fn remove_map_entry<T: TryFrom<ValueKind, Error = TypeError>>(
 }
 
 pub fn remove_optional_map_entry<T: TryFrom<ValueKind, Error = TypeError>>(
-    map: &mut HashMap<Key, Value>,
+    map: &mut HashMap<WeaklySpanned<String>, Value>,
     key: &str,
     reporter: &Reporter,
 ) -> Result<Option<Spanned<T>>> {
@@ -228,7 +188,7 @@ pub fn remove_optional_map_entry<T: TryFrom<ValueKind, Error = TypeError>>(
 
 // @Temporary signature
 pub fn check_map_is_empty(
-    map: HashMap<Key, Value>,
+    map: HashMap<WeaklySpanned<String>, Value>,
     path: Option<String>,
     reporter: &Reporter,
 ) -> Result {
@@ -240,7 +200,7 @@ pub fn check_map_is_empty(
             Diagnostic::error()
                 .code(Code::E801)
                 .message(format!("unknown key `{key}` in {location}"))
-                .primary_span(key.span.literal)
+                .primary_span(key.span)
                 .report(reporter);
         }
 
@@ -621,12 +581,12 @@ mod parser {
             Token,
             TokenName::{self, *},
         },
-        Key, Value, ValueKind,
+        Value, ValueKind,
     };
     use crate::{
         diagnostics::{Code, Diagnostic, Reporter},
         error::{Health, ReportedExt, Result},
-        span::{SharedSourceMap, SourceFileIndex, Span, Spanning},
+        span::{SharedSourceMap, SourceFileIndex, Span, Spanning, WeaklySpanned},
         utility::HashMap,
     };
 
@@ -859,8 +819,11 @@ mod parser {
             Ok(Value::new(span, ValueKind::Map(map)))
         }
 
-        fn parse_map_entries(&mut self, delimiter: TokenName) -> Result<HashMap<Key, Value>> {
-            let mut map = HashMap::<Key, Value>::default();
+        fn parse_map_entries(
+            &mut self,
+            delimiter: TokenName,
+        ) -> Result<HashMap<WeaklySpanned<String>, Value>> {
+            let mut map = HashMap::<WeaklySpanned<String>, Value>::default();
 
             while self.current_token().name() != delimiter {
                 let (key, value) = self.parse_map_entry()?;
@@ -870,8 +833,8 @@ mod parser {
                     Diagnostic::error()
                         .code(Code::E803)
                         .message(format!("the key `{}` is defined multiple times", key))
-                        .labeled_primary_span(key.span.literal, "redefinition")
-                        .labeled_secondary_span(previous_key.span.literal, "previous definition")
+                        .labeled_primary_span(key.span, "redefinition")
+                        .labeled_secondary_span(previous_key.span, "previous definition")
                         .report(self.reporter);
                     self.health.taint();
                 } else {
@@ -893,7 +856,7 @@ mod parser {
         /// ```ebnf
         /// Map-Entry ::= Map-Key ":" Value
         /// ```
-        fn parse_map_entry(&mut self) -> Result<(Key, Value)> {
+        fn parse_map_entry(&mut self) -> Result<(WeaklySpanned<String>, Value)> {
             let key = self.parse_map_key()?;
             self.consume(Colon)?;
             let value = self.parse_value()?;
@@ -908,14 +871,14 @@ mod parser {
         /// ```ebnf
         /// Map-Key ::= #Identifier | #Text
         /// ```
-        fn parse_map_key(&mut self) -> Result<Key> {
+        fn parse_map_key(&mut self) -> Result<WeaklySpanned<String>> {
             let span = self.current_token().span;
-            let (key, is_quoted) = match self.current_token().name() {
+            let key = match self.current_token().name() {
                 Identifier => {
                     // @Task avoid cloning
                     let key = self.current_token().clone().into_identifier().unwrap();
                     self.advance();
-                    (key, false)
+                    key
                 }
                 Text => {
                     // @Task avoid cloning
@@ -926,7 +889,7 @@ mod parser {
                         .unwrap()
                         .reported(self.reporter)?;
                     self.advance();
-                    (key, true)
+                    key
                 }
                 _ => {
                     // @Task
@@ -941,7 +904,7 @@ mod parser {
                 }
             };
 
-            Ok(Key::new(key, span, is_quoted))
+            Ok(WeaklySpanned::new(span, key))
         }
     }
 }

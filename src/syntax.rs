@@ -36,7 +36,6 @@ pub mod crate_name {
     use crate::{
         diagnostics::{Code, Diagnostic},
         error::outcome,
-        metadata::Key,
         span::{Spanned, Spanning},
         utility::{obtain, Atom},
     };
@@ -92,12 +91,6 @@ pub mod crate_name {
     impl From<Spanned<CrateName>> for Identifier {
         fn from(name: Spanned<CrateName>) -> Self {
             Self::new_unchecked(name.value.0, name.span)
-        }
-    }
-
-    impl std::borrow::Borrow<CrateName> for Key<CrateName> {
-        fn borrow(&self) -> &CrateName {
-            &self.value
         }
     }
 

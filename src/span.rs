@@ -7,6 +7,7 @@ pub use source_map::{SharedSourceMap, SourceFile, SourceFileIndex, SourceMap};
 pub use spanned::Spanned;
 pub use spanning::{PossiblySpanning, Spanning};
 use std::ops::{Add, Range, Sub};
+pub use weakly_spanned::WeaklySpanned;
 
 mod source_map;
 
@@ -377,9 +378,11 @@ mod spanning {
     }
 }
 
+// @Task combine Spanned, WeaklySpanned via parameter <const I: Influence = {Weak, Strong}>
+
 mod spanned {
-    use super::{Span, Spanning};
-    use std::{fmt, hash::Hash};
+    use super::{Span, Spanning, WeaklySpanned};
+    use std::{fmt, hash::Hash, ops::Deref};
 
     #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
     pub struct Spanned<T> {
@@ -407,9 +410,16 @@ mod spanned {
 
         pub fn as_deref(&self) -> Spanned<&T::Target>
         where
-            T: std::ops::Deref,
+            T: Deref,
         {
             Spanned::new(self.span, &self.value)
+        }
+
+        pub fn weak(self) -> WeaklySpanned<T> {
+            WeaklySpanned {
+                value: self.value,
+                span: self.span,
+            }
         }
     }
 
@@ -433,6 +443,87 @@ mod spanned {
     }
 
     impl<T: fmt::Display> fmt::Display for Spanned<T> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.value.fmt(f)
+        }
+    }
+}
+
+mod weakly_spanned {
+    use super::{Span, Spanned, Spanning};
+    use std::{
+        borrow::Borrow,
+        fmt,
+        hash::{Hash, Hasher},
+        ops::Deref,
+    };
+
+    #[derive(Clone, Debug)]
+    pub struct WeaklySpanned<T> {
+        pub value: T,
+        pub span: Span,
+    }
+
+    impl<T> WeaklySpanned<T> {
+        pub fn new(span: Span, value: T) -> Self {
+            Self { value, span }
+        }
+
+        pub fn map_span(self, mapper: impl FnOnce(Span) -> Span) -> Self {
+            Self {
+                value: self.value,
+                span: mapper(self.span),
+            }
+        }
+
+        pub fn as_deref(&self) -> WeaklySpanned<&T::Target>
+        where
+            T: Deref,
+        {
+            WeaklySpanned::new(self.span, &self.value)
+        }
+
+        pub fn strong(self) -> Spanned<T> {
+            Spanned {
+                value: self.value,
+                span: self.span,
+            }
+        }
+    }
+
+    impl<T> Spanning for WeaklySpanned<T> {
+        fn span(&self) -> Span {
+            self.span
+        }
+    }
+
+    impl<T: PartialEq> PartialEq for WeaklySpanned<T> {
+        fn eq(&self, other: &Self) -> bool {
+            self.value == other.value
+        }
+    }
+
+    impl<T: Eq> Eq for WeaklySpanned<T> {}
+
+    impl<T: Hash> Hash for WeaklySpanned<T> {
+        fn hash<H: Hasher>(&self, state: &mut H) {
+            self.value.hash(state);
+        }
+    }
+
+    impl<T> Borrow<T> for WeaklySpanned<T> {
+        default fn borrow(&self) -> &T {
+            &self.value
+        }
+    }
+
+    impl Borrow<str> for WeaklySpanned<String> {
+        fn borrow(&self) -> &str {
+            &self.value
+        }
+    }
+
+    impl<K: fmt::Display> fmt::Display for WeaklySpanned<K> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             self.value.fmt(f)
         }

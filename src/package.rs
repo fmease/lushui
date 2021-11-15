@@ -5,9 +5,9 @@ use crate::{
     entity::Entity,
     error::{Health, ReportedExt, Result},
     format::IOError,
-    metadata::Key,
+    metadata::content_span_of_key,
     resolver::{Crate, DeclarationIndex, Identifier},
-    span::{SharedSourceMap, Spanned},
+    span::{SharedSourceMap, Spanned, WeaklySpanned},
     syntax::CrateName,
     utility::HashMap,
     FILE_EXTENSION,
@@ -154,6 +154,8 @@ impl BuildQueue<'_> {
                     .find(|package| package.path == dependency_path)
                 {
                     if !dependency.is_fully_resolved {
+                        let map = self.map.borrow();
+
                         // @Note the message does not scale to more complex cycles (e.g. a cycle of three packages)
                         // @Task provide more context for transitive dependencies of the goal crate
                         // @Task code
@@ -162,19 +164,20 @@ impl BuildQueue<'_> {
                                 "the packages `{}` and `{}` are circular",
                                 self[package_index].name, dependency.name
                             ))
-                            .primary_span(dependency_exonym.span.content)
+                            .primary_span(content_span_of_key(dependency_exonym, &map))
                             .primary_span(
                                 // @Beacon @Bug probably does not work if exonym != endonym (but that can be fixed easily!)
-                                dependency
-                                    .dependency_manifest
-                                    .as_ref()
-                                    .unwrap()
-                                    .value
-                                    .keys()
-                                    .find(|key| key.value == self[package_index].name)
-                                    .unwrap()
-                                    .span
-                                    .content,
+                                content_span_of_key(
+                                    dependency
+                                        .dependency_manifest
+                                        .as_ref()
+                                        .unwrap()
+                                        .value
+                                        .keys()
+                                        .find(|key| key.value == self[package_index].name)
+                                        .unwrap(),
+                                    &map,
+                                ),
                             )
                             .report(self.reporter);
                         return Err(());
@@ -199,26 +202,29 @@ impl BuildQueue<'_> {
             }
 
             let dependency_manifest_path = dependency_path.join(PackageManifest::FILE_NAME);
-            let dependency_manifest_file =
-                match self.map.borrow_mut().load(dependency_manifest_path.clone()) {
-                    Ok(file) => file,
-                    Err(error) => {
-                        // @Task provide more context for transitive dependencies of the goal crate
-                        // @Question code?
-                        let diagnostic = Diagnostic::error()
-                            .message(format!(
-                                "could not load the dependency `{dependency_exonym}`",
-                            ))
-                            .note(IOError(error, &dependency_manifest_path).to_string());
-                        let diagnostic = match &unresolved_dependency.value.path {
-                            Some(path) => diagnostic.primary_span(path.span.trim(1)), // trimming quotes
-                            None => diagnostic.primary_span(dependency_exonym.span.content),
-                        };
-                        diagnostic.report(self.reporter);
-                        health.taint();
-                        continue;
-                    }
-                };
+            let file = self.map.borrow_mut().load(dependency_manifest_path.clone());
+            let dependency_manifest_file = match file {
+                Ok(file) => file,
+                Err(error) => {
+                    // @Task provide more context for transitive dependencies of the goal crate
+                    // @Question code?
+                    let diagnostic = Diagnostic::error()
+                        .message(format!(
+                            "could not load the dependency `{dependency_exonym}`",
+                        ))
+                        .note(IOError(error, &dependency_manifest_path).to_string());
+                    let diagnostic = match &unresolved_dependency.value.path {
+                        Some(path) => diagnostic.primary_span(path.span.trim(1)), // trimming quotes
+                        None => diagnostic.primary_span(content_span_of_key(
+                            dependency_exonym,
+                            &self.map.borrow(),
+                        )),
+                    };
+                    diagnostic.report(self.reporter);
+                    health.taint();
+                    continue;
+                }
+            };
 
             let dependency_manifest =
                 PackageManifest::parse(dependency_manifest_file, self.map.clone(), self.reporter)?;
@@ -597,13 +603,16 @@ pub struct Package {
     /// crates to keep an [index to the owning package](PackageIndex) and the package to
     /// keep [indices to its crates](CrateIndex).
     pub is_fully_resolved: bool,
-    pub dependency_manifest: Option<Spanned<HashMap<Key<CrateName>, Spanned<DependencyManifest>>>>,
+    pub dependency_manifest:
+        Option<Spanned<HashMap<WeaklySpanned<CrateName>, Spanned<DependencyManifest>>>>,
 }
 
 impl Package {
     pub fn from_manifest(
         profile: PackageProfile,
-        dependency_manifest: Option<Spanned<HashMap<Key<CrateName>, Spanned<DependencyManifest>>>>,
+        dependency_manifest: Option<
+            Spanned<HashMap<WeaklySpanned<CrateName>, Spanned<DependencyManifest>>>,
+        >,
         path: PathBuf,
     ) -> Self {
         Package {
@@ -675,8 +684,8 @@ pub mod manifest {
     use crate::{
         diagnostics::{Code, Diagnostic, Reporter},
         error::{Health, ReportedExt, Result},
-        metadata::{self, convert, Key, TypeError},
-        span::{SharedSourceMap, SourceFileIndex, Spanned},
+        metadata::{self, content_span_of_key, convert, TypeError},
+        span::{SharedSourceMap, SourceFileIndex, Spanned, WeaklySpanned},
         syntax::CrateName,
         utility::{try_all, HashMap},
     };
@@ -696,7 +705,7 @@ pub mod manifest {
             map: SharedSourceMap,
             reporter: &Reporter,
         ) -> Result<Self> {
-            let manifest = metadata::parse(file, map, reporter)?;
+            let manifest = metadata::parse(file, map.clone(), reporter)?;
 
             let manifest_span = manifest.span;
             let mut manifest: HashMap<_, _> =
@@ -793,15 +802,16 @@ pub mod manifest {
                     let mut parsed_dependencies = HashMap::default();
 
                     for (dependency_name, dependency_manifest) in dependencies.value {
-                        let dependency_name = match CrateName::parse(&dependency_name.value) {
-                            Ok(name) => Key {
-                                value: name,
-                                span: dependency_name.span,
-                            },
+                        // @Task generalize parse_spanned over I: Influence on future param on Spanned
+                        let dependency_name = match CrateName::parse_spanned(
+                            dependency_name
+                                .map_span(|span| content_span_of_key(span, &map.borrow()))
+                                .as_deref()
+                                .strong(),
+                        ) {
+                            Ok(name) => name.weak(),
                             Err(error) => {
-                                error
-                                    // .primary_span(dependency_name.span.content)
-                                    .report(reporter);
+                                error.report(reporter);
                                 health.taint();
                                 continue;
                             }
@@ -913,7 +923,8 @@ pub mod manifest {
         pub library: Option<Spanned<LibraryManifest>>,
         // @Task Vec<_>
         pub binary: Option<Spanned<BinaryManifest>>,
-        pub dependencies: Option<Spanned<HashMap<Key<CrateName>, Spanned<DependencyManifest>>>>,
+        pub dependencies:
+            Option<Spanned<HashMap<WeaklySpanned<CrateName>, Spanned<DependencyManifest>>>>,
     }
 
     #[derive(Default)]
