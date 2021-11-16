@@ -19,6 +19,7 @@ use std::{
     fmt,
     ops::{Index, IndexMut},
     path::{Path, PathBuf},
+    str::FromStr,
 };
 
 use self::manifest::PackageProfile;
@@ -403,7 +404,12 @@ impl BuildQueue<'_> {
         Ok(())
     }
 
-    pub fn process_single_file_package(&mut self, path: PathBuf, no_core: bool) -> Result {
+    pub fn process_single_file_package(
+        &mut self,
+        path: PathBuf,
+        crate_type: CrateType,
+        no_core: bool,
+    ) -> Result {
         let package_name = parse_crate_name_from_file_path(&path, self.reporter)?;
 
         let package = Package::single_file_package(package_name, path.clone());
@@ -450,11 +456,11 @@ impl BuildQueue<'_> {
             );
         }
 
-        let binary = self
+        let crate_ = self
             .unbuilt_crates
-            .insert_with(|index| Crate::new(index, package, path, CrateType::Binary));
+            .insert_with(|index| Crate::new(index, package, path, crate_type));
         let package = &mut self[package];
-        package.binaries.push(binary);
+        package.binaries.push(crate_);
         package.dependencies = resolved_dependencies;
         package.is_fully_resolved = true;
 
@@ -569,6 +575,18 @@ impl fmt::Display for CrateType {
             Self::Library => write!(f, "library"),
             Self::Binary => write!(f, "binary"),
         }
+    }
+}
+
+impl FromStr for CrateType {
+    type Err = ();
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        Ok(match input {
+            "binary" => Self::Binary,
+            "library" => Self::Library,
+            _ => return Err(()),
+        })
     }
 }
 

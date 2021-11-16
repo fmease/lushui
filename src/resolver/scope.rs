@@ -47,8 +47,7 @@ pub struct Crate {
     pub package: PackageIndex,
     pub path: PathBuf,
     pub type_: CrateType,
-    // @Task move out of this struct, only the goal crate has a program entry
-    pub(crate) program_entry: Option<Identifier>,
+    pub program_entry: Option<Identifier>,
     /// All bindings inside of the crate.
     // The first element has to be the root module.
     pub(crate) bindings: IndexMap<LocalDeclarationIndex, Entity>,

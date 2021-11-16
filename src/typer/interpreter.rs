@@ -17,7 +17,7 @@ pub(crate) mod scope;
 
 use super::Expression;
 use crate::{
-    diagnostics::{Code, Diagnostic, Reporter},
+    diagnostics::{Diagnostic, Reporter},
     entity::Entity,
     error::{PossiblyErroneous, Result},
     format::DisplayWith,
@@ -48,23 +48,14 @@ impl<'a> Interpreter<'a> {
 
     /// Run the entry point of the crate.
     pub fn run(&mut self) -> Result<Expression> {
-        if let Some(program_entry) = &self.crate_.program_entry {
-            self.evaluate_expression(
-                program_entry.clone().to_expression(),
-                Context {
-                    scope: &FunctionScope::Crate,
-                    // form: Form::Normal,
-                    form: Form::WeakHeadNormal,
-                },
-            )
-        } else {
-            // @Task this should be checked statically
-            Diagnostic::error()
-                .code(Code::E050)
-                .message("missing program entry")
-                .report(self.reporter);
-            Err(())
-        }
+        self.evaluate_expression(
+            self.crate_.program_entry.clone().unwrap().to_expression(),
+            Context {
+                scope: &FunctionScope::Crate,
+                // form: Form::Normal,
+                form: Form::WeakHeadNormal,
+            },
+        )
     }
 
     pub(crate) fn substitute_expression(

@@ -15,7 +15,7 @@ use crate::{
     error::{Health, PossiblyErroneous, ReportedExt, Result},
     format::{pluralize, unordered_listing, Conjunction, DisplayWith, QuoteExt},
     hir::{self, decl, expr, pat},
-    package::BuildSession,
+    package::{BuildSession, CrateType},
     span::Spanning,
     syntax::{
         ast,
@@ -31,7 +31,7 @@ pub use scope::{
 use scope::{RegistrationError, RestrictedExposure};
 use std::{cell::RefCell, cmp::Ordering, collections::hash_map::Entry};
 
-const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
+pub const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
 
 /// The state of the resolver.
 pub struct Resolver<'a> {
@@ -121,22 +121,12 @@ impl<'a> Resolver<'a> {
             Value(value) => {
                 let module = module.unwrap();
 
-                let index = self.crate_.register_binding(
+                self.crate_.register_binding(
                     value.binder.clone(),
                     exposure,
                     EntityKind::UntypedValue,
                     Some(module),
                 )?;
-
-                if self.crate_.program_entry.is_none()
-                    && module == self.crate_.root()
-                    && value.binder.as_str() == PROGRAM_ENTRY_IDENTIFIER
-                {
-                    self.crate_.program_entry = Some(Identifier::new(
-                        self.crate_.global_index(index),
-                        value.binder.clone(),
-                    ));
-                }
             }
             Data(data) => {
                 // there is always a root module
@@ -299,6 +289,13 @@ impl<'a> Resolver<'a> {
                     .transpose();
 
                 let binder = self.reobtain_resolved_identifier::<OnlyValue>(&value.binder, module);
+
+                if module == self.crate_.root()
+                    && self.crate_.type_ == CrateType::Binary
+                    && value.binder.as_str() == PROGRAM_ENTRY_IDENTIFIER
+                {
+                    self.crate_.program_entry = Some(binder.clone());
+                }
 
                 decl! {
                     Value {

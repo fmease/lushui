@@ -1,9 +1,4 @@
-#![feature(
-    format_args_capture,
-    default_free_fn,
-    available_parallelism,
-    const_option
-)]
+#![feature(default_free_fn, available_parallelism, const_option)]
 #![forbid(rust_2018_idioms, unused_must_use)]
 
 // @Task
@@ -269,11 +264,11 @@ fn main_() -> Result<(), ()> {
                             .unwrap()
                             .strip_prefix(test_folder_path)
                             .unwrap()
-                            .strip_prefix("/")
+                            .strip_prefix('/')
                             .unwrap()
                             .strip_suffix("lushui")
                             .unwrap()
-                            .strip_suffix(".")
+                            .strip_suffix('.')
                             .unwrap();
 
                         if !(loose_filters.is_empty() && exact_filters.is_empty()) {
@@ -365,7 +360,18 @@ fn main_() -> Result<(), ()> {
                         let output = Command::new("cargo")
                             .current_dir(lushui_compiler_source_path())
                             .args(&["run", "--quiet", "--"])
-                            .args(configuration.arguments)
+                            .args(&configuration.arguments)
+                            .arg(
+                                if configuration
+                                    .arguments
+                                    .first()
+                                    .map_or(false, |&command| command == "run")
+                                {
+                                    "--crate-type=binary"
+                                } else {
+                                    "--crate-type=library"
+                                },
+                            )
                             .arg("--quiet")
                             .arg(entry.path())
                             .output()
@@ -425,15 +431,13 @@ fn main_() -> Result<(), ()> {
                             if stderr_was_gilded {
                                 message += &format!(" {}", "stderr".blue());
                             };
+                        } else if failure.subfailures.is_empty() {
+                            message += &format!(" {}", "ok".green());
+                            statistics.passed_tests += 1;
                         } else {
-                            if failure.subfailures.is_empty() {
-                                message += &format!(" {}", "ok".green());
-                                statistics.passed_tests += 1;
-                            } else {
-                                message += &format!(" {}", "FAIL".red());
-                                statistics.failed_tests += 1;
-                                failures.push(failure);
-                            }
+                            message += &format!(" {}", "FAIL".red());
+                            statistics.failed_tests += 1;
+                            failures.push(failure);
                         }
 
                         println!("{}", message);
@@ -527,7 +531,7 @@ fn check_against_golden_file(
 
             File::create(golden_file_path)
                 .unwrap()
-                .write_all(&actual.as_bytes())
+                .write_all(actual.as_bytes())
                 .unwrap();
 
             Ok(true)
@@ -620,12 +624,10 @@ impl fmt::Display for Summary {
         let status = if self.statistics.tests_passed() {
             if !self.gilding {
                 "ALL TESTS PASSED!".green()
+            } else if self.statistics.gilded_tests == 0 {
+                "ALL TESTS PASSED WITHOUT GILDING!".green()
             } else {
-                if self.statistics.gilded_tests == 0 {
-                    "ALL TESTS PASSED WITHOUT GILDING!".green()
-                } else {
-                    "SOME TESTS WERE GILDED!".blue()
-                }
+                "SOME TESTS WERE GILDED!".blue()
             }
         } else {
             let mut message = String::new();

@@ -1,6 +1,5 @@
 #![feature(
     backtrace,
-    format_args_capture,
     derive_default_enum,
     decl_macro,
     default_free_fn,
@@ -32,12 +31,12 @@ use colored::Colorize;
 use lushui::{
     diagnostics::{
         reporter::{BufferedStderrReporter, StderrReporter},
-        Diagnostic, Reporter,
+        Code, Diagnostic, Reporter,
     },
     error::{outcome, Result},
     format::{DisplayWith, IOError},
     package::{find_package, BuildQueue, CrateType, PackageManifest, DEFAULT_SOURCE_FOLDER_NAME},
-    resolver,
+    resolver::{self, PROGRAM_ENTRY_IDENTIFIER},
     span::{SharedSourceMap, SourceMap, Spanned},
     syntax::{CrateName, Lexer, Lowerer, Parser},
     typer::Typer,
@@ -129,16 +128,26 @@ fn build_package(
 
     match path {
         Some(path) if path.is_file() => {
-            build_queue.process_single_file_package(path, options.no_core)?;
+            build_queue.process_single_file_package(
+                path,
+                options.crate_type.unwrap_or(CrateType::Binary),
+                options.no_core,
+            )?;
         }
         path => {
             if options.no_core {
                 Diagnostic::error()
-                    .message("the option `--no-core` is only available for single-file packages")
+                    .message("the flag `--no-core` is only available for single-file packages")
                     .help(
                         "to achieve the equivalent for normal packages, make sure `core` is\n\
                          absent from the list of dependencies in the package manifest",
                     )
+                    .report(reporter);
+            }
+            if options.crate_type.is_some() {
+                // @Task add help explaining the equivalent for normal packages
+                Diagnostic::error()
+                    .message("the option `--crate-type` is only available for single-file packages")
                     .report(reporter);
             }
 
@@ -168,6 +177,7 @@ fn build_package(
 
     let (mut session, unbuilt_crates) = build_queue.into_session_and_unbuilt_crates();
 
+    // @Note not extensible to multiple binary crates
     let goal_crate = unbuilt_crates.last().unwrap().index;
 
     for mut crate_ in unbuilt_crates.into_values() {
@@ -337,11 +347,31 @@ fn build_package(
             );
         }
 
-        // @Beacon @Task dont check for program_entry in scope.run() or compile_and_interp
-        // but here (a static error) (if the CLI dictates to run it)
+        if typer.crate_.type_ == CrateType::Binary && typer.crate_.program_entry.is_none() {
+            // @Temporary using the name of the package instead of the actual crate name
+            Diagnostic::error()
+                .code(Code::E050)
+                .message(format!(
+                    "the crate `{}` is missing a program entry named `{}`",
+                    session[crate_.package].name, PROGRAM_ENTRY_IDENTIFIER,
+                ))
+                .report(reporter);
+            return Err(());
+        }
 
         if let BuildMode::Run = mode {
             if is_goal_crate {
+                if typer.crate_.type_ != CrateType::Binary {
+                    // @Question code?
+                    Diagnostic::error()
+                        .message(format!(
+                            "the package `{}` does not contain any binary to run",
+                            session[crate_.package].name,
+                        ))
+                        .report(reporter);
+                    return Err(());
+                }
+
                 let result = typer.interpreter().run()?;
 
                 println!("{}", result.with((&crate_, &session)));

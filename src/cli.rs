@@ -1,6 +1,7 @@
 use std::{path::PathBuf, str::FromStr};
 
 use clap::{AppSettings, Arg, SubCommand};
+use lushui::package::CrateType;
 
 const VERSION: &str = concat!(
     env!("CARGO_PKG_VERSION"),
@@ -44,11 +45,19 @@ pub fn arguments() -> (Command, Options) {
             "Removes the dependency to the library `core` from the given single-file package",
         ))
         .arg(
+            Arg::with_name("crate-type")
+                .long("crate-type")
+                .takes_value(true)
+                .global(true)
+                .possible_values(&["binary", "library"])
+                .help("Sets the crate type of the given single-file package"),
+        )
+        .arg(
             Arg::with_name("interpreter")
                 .long("interpreter")
                 .takes_value(true)
                 .global(true)
-                .possible_values(&["tree-walk", "byte-code"])
+                .possible_values(&["byte-code", "tree-walk"])
                 .help("Sets the interpreter"),
         )
         .arg(
@@ -203,6 +212,9 @@ pub fn arguments() -> (Command, Options) {
     let options = Options {
         quiet: matches.is_present("quiet"),
         no_core: matches.is_present("no-core"),
+        crate_type: matches
+            .value_of("crate-type")
+            .map(|input| input.parse().unwrap()),
         interpreter: matches
             .value_of("interpreter")
             .map(|input| input.parse().unwrap())
@@ -219,6 +231,7 @@ pub fn arguments() -> (Command, Options) {
 pub struct Options {
     pub quiet: bool,
     pub no_core: bool,
+    pub crate_type: Option<CrateType>,
     pub interpreter: Interpreter,
     pub emit: Emissions,
     pub show_binding_indices: bool,

@@ -37,7 +37,6 @@
     default_free_fn,
     never_type_fallback,
     stmt_expr_attributes,
-    format_args_capture,
     associated_type_bounds,
     label_break_value,
     type_ascription,
