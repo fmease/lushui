@@ -10,6 +10,7 @@ use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     error::{PossiblyErroneous, Result},
     span::{PossiblySpanning, SourceFileIndex, Span, Spanned, Spanning},
+    utility::condition,
 };
 use std::rc::Rc;
 
@@ -184,7 +185,7 @@ impl AttributeTarget for ast::Declaration {
             Data(_) => "a data declaration",
             Constructor(_) => "a constructor declaration",
             Module(_) => "a module declaration",
-            Header => "a module header declaraiton",
+            ModuleHeader => "a module header declaration",
             Group(_) => "an attribute group declaration",
             Use(_) => "a use-declaration",
         }
@@ -197,7 +198,8 @@ impl AttributeTarget for ast::Declaration {
             Value(_) => AttributeTargets::VALUE_DECLARATION,
             Data(_) => AttributeTargets::DATA_DECLARATION,
             Constructor(_) => AttributeTargets::CONSTRUCTOR_DECLARATION,
-            Module(_) | Header => AttributeTargets::MODULE_DECLARATION,
+            Module(_) => AttributeTargets::MODULE_DECLARATION,
+            ModuleHeader => AttributeTargets::MODULE_HEADER_DECLARATION,
             Group(_) => AttributeTargets::all(),
             Use(_) => AttributeTargets::USE_DECLARATION,
         }
@@ -351,12 +353,14 @@ bitflags::bitflags! {
         const DATA_DECLARATION = 1 << 1;
         const CONSTRUCTOR_DECLARATION = 1 << 2;
         const MODULE_DECLARATION = 1 << 3;
+        const MODULE_HEADER_DECLARATION = 1 << 4;
         const USE_DECLARATION = 1 << 5;
 
         const DECLARATION = Self::VALUE_DECLARATION.bits
             | Self::DATA_DECLARATION.bits
             | Self::CONSTRUCTOR_DECLARATION.bits
             | Self::MODULE_DECLARATION.bits
+            | Self::MODULE_HEADER_DECLARATION.bits
             | Self::USE_DECLARATION.bits;
 
         const PI_TYPE_LITERAL_EXPRESSION = 1 << 6;
@@ -403,9 +407,37 @@ bitflags::bitflags! {
             | Self::BINDER_PATTERN.bits
             | Self::DEAPPLICATION_PATTERN.bits;
 
-        const NUMBER_LITERAL = Self::NUMBER_LITERAL_EXPRESSION.bits | Self::NUMBER_LITERAL_PATTERN.bits;
-        const TEXT_LITERAL = Self::TEXT_LITERAL_EXPRESSION.bits | Self::TEXT_LITERAL_PATTERN.bits;
-        const SEQUENCE_LITERAL = Self::SEQUENCE_LITERAL_EXPRESSION.bits | Self::SEQUENCE_LITERAL_PATTERN.bits;
+        const NUMBER_LITERAL = Self::NUMBER_LITERAL_EXPRESSION.bits
+            | Self::NUMBER_LITERAL_PATTERN.bits;
+        const TEXT_LITERAL = Self::TEXT_LITERAL_EXPRESSION.bits
+            | Self::TEXT_LITERAL_PATTERN.bits;
+        const SEQUENCE_LITERAL = Self::SEQUENCE_LITERAL_EXPRESSION.bits
+            | Self::SEQUENCE_LITERAL_PATTERN.bits;
+    }
+}
+
+impl AttributeTargets {
+    pub fn description(self) -> &'static str {
+        // @Task use match + inline consts once derived operations are const
+        condition! {
+            self == Self::all() => "anything",
+            self == Self::DECLARATION => "declarations",
+            self == Self::VALUE_DECLARATION | Self::DATA_DECLARATION => "value or data declarations",
+            self == Self::TEXT_LITERAL => "text literals",
+            self == Self::DATA_DECLARATION => "data declarations",
+            self == Self::NUMBER_LITERAL => "number literals",
+            self == Self::SEQUENCE_LITERAL => "sequence literals",
+            self == Self::DECLARATION - Self::CONSTRUCTOR_DECLARATION => "declarations except constructors",
+            self == Self::MODULE_DECLARATION => "module declarations",
+            self == Self::VALUE_DECLARATION | Self::MODULE_DECLARATION => "value or module declarations",
+            self == Self::EXPRESSION => "expressions",
+            self == Self::VALUE_DECLARATION
+                | Self::CONSTRUCTOR_DECLARATION
+                | Self::EXPRESSION
+                | Self::PATTERN => "value or constructor declarations, expressions or patterns",
+            // the particular description is not needed for `AttributeKinds::target` and thus it is not defined
+            else => unreachable!(),
+        }
     }
 }
 
@@ -678,11 +710,11 @@ impl AttributeKind {
         }
     }
 
-    // keep this in sync with Self::target_names
     pub fn targets(&self) -> AttributeTargets {
         use AttributeKind::*;
         use AttributeTargets as Targets;
 
+        // when updating, update `AttributeTargets::description` accordingly
         match self {
             Allow { .. } | Deny { .. } | Forbid { .. } | Warn { .. } => Targets::all(),
             Deprecated { .. } | Documentation { .. } | If { .. } | Ignore | Unstable { .. } => {
@@ -704,29 +736,6 @@ impl AttributeKind {
                     | Targets::EXPRESSION
                     | Targets::PATTERN
             }
-        }
-    }
-
-    // keep this in sync with Self::targets!
-    // @Task find a way to get around this manual work
-    pub fn target_names(&self) -> &'static str {
-        use AttributeKind::*;
-
-        match self {
-            Allow { .. } | Deny { .. } | Forbid { .. } | Warn { .. } => "anything",
-            Deprecated { .. } | Documentation { .. } | If { .. } | Ignore | Unstable { .. } => {
-                "declarations"
-            }
-            Foreign => "value or data declarations",
-            Include | Rune | Text => "text literals",
-            Inherent | Moving | Opaque => "data declarations",
-            Int | Int32 | Int64 | Nat | Nat32 | Nat64 => "number literals",
-            List | Vector => "sequence literals",
-            Public { .. } => "declarations except constructors",
-            Location { .. } | RecursionLimit { .. } => "module declarations",
-            Test => "value or module declarations",
-            Static => "expressions",
-            Unsafe => "value or constructor declarations, expressions or patterns",
         }
     }
 

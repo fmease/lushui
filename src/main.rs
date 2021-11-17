@@ -1,10 +1,4 @@
-#![feature(
-    backtrace,
-    derive_default_enum,
-    decl_macro,
-    default_free_fn,
-    let_else
-)]
+#![feature(backtrace, derive_default_enum, decl_macro, default_free_fn, let_else)]
 #![forbid(rust_2018_idioms, unused_must_use)]
 #![warn(clippy::pedantic)]
 #![allow(

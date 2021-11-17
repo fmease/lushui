@@ -54,3 +54,10 @@ pub(crate) macro unrc($compound:ident.$projection:ident) {
         .map(|compound| compound.$projection)
         .unwrap_or_else(|compound| compound.$projection.clone())
 }
+
+pub(crate) macro condition($( $condition:expr => $consequence:expr ),+ $(, else => $alternative:expr )? $(,)?) {
+    match () {
+        $( _ if $condition => $consequence, )+
+        $( _ => $alternative )?
+    }
+}

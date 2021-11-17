@@ -4,8 +4,11 @@ use colored::{Color, Colorize};
 
 use std::{default::default, fmt};
 
+use crate::syntax::lexer::INDENTATION;
+
 const KEYWORD_COLOR: Color = Color::Cyan;
 const PUNCTUATION_COLOR: Color = Color::BrightMagenta;
+const ATTRIBUTE_COLOR: Color = Color::BrightWhite;
 
 impl fmt::Display for super::AttributeKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -24,7 +27,6 @@ impl fmt::Display for super::AttributeKind {
                 "(deprecated (reason {:?}) (since {:?}) (until {:?}) (replacement {:?}))",
                 reason, since, until, replacement
             ),
-            // Self::Documentation { content } => writeln!(f, ";{:?}", content),
             Self::Documentation { content } => write!(f, "(documentation {:?})", content),
             Self::Forbid { lint } => write!(f, "(forbid {})", lint),
             Self::Foreign => write!(f, "foreign"),
@@ -91,23 +93,32 @@ impl fmt::Display for super::Number {
 }
 
 // @Task reduce amount of (String) allocations
-// @Bug indentation not correctly handled
-// @Task display attributes
 impl super::Declaration {
     fn format_with_depth(&self, depth: usize, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use super::DeclarationKind::*;
-        use crate::syntax::lexer::INDENTATION;
+
+        for attribute in self.attributes.iter() {
+            // @Task get rid of extra alloc
+            writeln!(
+                f,
+                "{}{}",
+                " ".repeat(depth * INDENTATION.0),
+                attribute.to_string().color(ATTRIBUTE_COLOR)
+            )?;
+        }
+
+        write!(f, "{}", " ".repeat(depth * INDENTATION.0))?;
 
         match &self.data {
-            Value(declaration) => {
+            Value(value) => {
                 write!(
                     f,
                     "{}{colon} {}",
-                    declaration.binder,
-                    declaration.type_annotation,
+                    value.binder,
+                    value.type_annotation,
                     colon = ":".color(PUNCTUATION_COLOR)
                 )?;
-                if let Some(expression) = &declaration.expression {
+                if let Some(expression) = &value.expression {
                     write!(
                         f,
                         " {equals} {}",
@@ -117,20 +128,19 @@ impl super::Declaration {
                 }
                 writeln!(f)
             }
-            Data(declaration) => match &declaration.constructors {
+            Data(data) => match &data.constructors {
                 Some(constructors) => {
                     writeln!(
                         f,
                         "{data} {binder}{colon} {type_} {of}",
-                        binder = declaration.binder,
+                        binder = data.binder,
                         colon = ":".color(PUNCTUATION_COLOR),
-                        type_ = declaration.type_annotation,
+                        type_ = data.type_annotation,
                         data = "data".color(KEYWORD_COLOR),
                         of = "of".color(KEYWORD_COLOR)
                     )?;
                     for constructor in constructors {
-                        let depth = depth + 1;
-                        write!(f, "{}{}", " ".repeat(depth * INDENTATION.0), constructor)?;
+                        constructor.format_with_depth(depth + 1, f)?;
                     }
                     Ok(())
                 }
@@ -138,9 +148,9 @@ impl super::Declaration {
                     f,
                     "{data} {binder}{colon} {type_}",
                     data = "data".color(KEYWORD_COLOR),
-                    binder = declaration.binder,
+                    binder = data.binder,
                     colon = ":".color(PUNCTUATION_COLOR),
-                    type_ = declaration.type_annotation,
+                    type_ = data.type_annotation,
                 ),
             },
             Constructor(constructor) => {
@@ -152,28 +162,26 @@ impl super::Declaration {
                     type_ = constructor.type_annotation
                 )
             }
-            Module(declaration) => {
+            Module(module) => {
                 writeln!(
                     f,
                     "{module} {binder} {of}",
                     module = "module".color(KEYWORD_COLOR),
-                    binder = declaration.binder,
+                    binder = module.binder,
                     of = "of".color(KEYWORD_COLOR)
                 )?;
-                for declaration in &declaration.declarations {
-                    let depth = depth + 1;
-                    write!(f, "{}", " ".repeat(depth * INDENTATION.0))?;
-                    declaration.format_with_depth(depth, f)?;
+                for declaration in &module.declarations {
+                    declaration.format_with_depth(depth + 1, f)?;
                 }
                 Ok(())
             }
-            Use(declaration) => writeln!(
+            Use(use_) => writeln!(
                 f,
                 "{use_} {target} {as_} {binder}",
                 use_ = "use".color(KEYWORD_COLOR),
-                target = declaration.target,
+                target = use_.target,
                 as_ = "as".color(KEYWORD_COLOR),
-                binder = declaration.binder,
+                binder = use_.binder,
             ),
             Error => write!(f, "{}", "?(error)".red()),
         }
@@ -326,7 +334,8 @@ fn format_lower_expression(
     use super::ExpressionKind::*;
 
     for attribute in expression.attributes.iter() {
-        write!(f, "{} ", attribute)?;
+        // @Task get rid of wasted alloc
+        write!(f, "{} ", attribute.to_string().color(ATTRIBUTE_COLOR))?;
     }
 
     match &expression.data {

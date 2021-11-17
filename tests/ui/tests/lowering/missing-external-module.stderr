@@ -1,4 +1,4 @@
-error[E016]: could not load module `external-module-really-nowhere-to-be-found`
+error[E016]: could not load the module `external-module-really-nowhere-to-be-found`
  --> ${DIRECTORY}/lowering/missing-external-module.lushui:4:1
   |
 4 | module external-module-really-nowhere-to-be-found
@@ -6,7 +6,7 @@ error[E016]: could not load module `external-module-really-nowhere-to-be-found`
   |
  note: `${DIRECTORY}/lowering/external-module-really-nowhere-to-be-found.lushui`: No such file or directory (os error 2)
 
-error[E016]: could not load module `meaningless`
+error[E016]: could not load the module `meaningless`
  --> ${DIRECTORY}/lowering/missing-external-module.lushui:7:1
   |
 7 | module meaningless

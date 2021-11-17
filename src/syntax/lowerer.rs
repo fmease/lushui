@@ -41,13 +41,25 @@ use joinery::JoinableIterator;
 use smallvec::smallvec;
 use std::iter::once;
 
+struct DeclarationContext {
+    is_root: bool,
+    /// The path of internal module declarations leading to a declaration.
+    ///
+    /// The path starts either at the root module declaration (excluding it) or
+    /// at the closest external module (including it).
+    ///
+    /// Exclusively used to compute the path of external modules inside of internal
+    /// modules!
+    internal_modules: Vec<String>,
+}
+
 #[derive(Clone, Copy)]
-struct Context {
+struct ExpressionContext {
     in_constructor: bool,
     declaration: Span,
 }
 
-impl Context {
+impl ExpressionContext {
     fn new(declaration: Span) -> Self {
         Self {
             in_constructor: false,
@@ -72,6 +84,20 @@ impl<'a> Lowerer<'a> {
         &mut self,
         declaration: ast::Declaration,
     ) -> Outcome<SmallVec<lowered_ast::Declaration, 1>> {
+        self.lower_declaration_with_context(
+            declaration,
+            &DeclarationContext {
+                is_root: true,
+                internal_modules: Vec::new(),
+            },
+        )
+    }
+
+    fn lower_declaration_with_context(
+        &mut self,
+        declaration: ast::Declaration,
+        context: &DeclarationContext,
+    ) -> Outcome<SmallVec<lowered_ast::Declaration, 1>> {
         use ast::DeclarationKind::*;
 
         let mut health = Health::Untainted;
@@ -82,7 +108,7 @@ impl<'a> Lowerer<'a> {
 
         let declarations = match declaration.data {
             Value(value) => {
-                let context = Context::new(declaration.span);
+                let context = ExpressionContext::new(declaration.span);
 
                 if value.type_annotation.is_none() {
                     Diagnostic::missing_mandatory_type_annotation(
@@ -185,15 +211,21 @@ impl<'a> Lowerer<'a> {
                     .lower_parameters_to_annotated_ones(
                         data.parameters,
                         data_type_annotation,
-                        Context::new(declaration.span),
+                        ExpressionContext::new(declaration.span),
                     )
                     .unwrap(&mut health);
+
+                let context = DeclarationContext {
+                    is_root: false,
+                    internal_modules: Vec::new(),
+                };
 
                 let constructors = data.constructors.map(|constructors| {
                     constructors
                         .into_iter()
                         .flat_map(|constructor| {
-                            self.lower_declaration(constructor).unwrap(&mut health)
+                            self.lower_declaration_with_context(constructor, &context)
+                                .unwrap(&mut health)
                         })
                         .collect()
                 });
@@ -232,7 +264,7 @@ impl<'a> Lowerer<'a> {
                     .lower_parameters_to_annotated_ones(
                         constructor.parameters,
                         constructor_type_annotation,
-                        Context {
+                        ExpressionContext {
                             in_constructor: true,
                             declaration: declaration.span,
                         },
@@ -241,7 +273,7 @@ impl<'a> Lowerer<'a> {
 
                 if let Some(body) = constructor.body {
                     let body = self
-                        .lower_expression(body, Context::new(declaration.span))
+                        .lower_expression(body, ExpressionContext::new(declaration.span))
                         .unwrap(&mut health);
 
                     Diagnostic::error()
@@ -267,35 +299,26 @@ impl<'a> Lowerer<'a> {
                 }]
             }
             Module(module) => {
+                let is_external_module = module.declarations.is_none();
+
                 let declarations = match module.declarations {
                     Some(declarations) => declarations,
-                    // @Bug @Task disallow external module declarations inside of non-file modules
                     None => {
-                        // @Task warn on/disallow relative paths pointing "outside" of the project folder
-                        // (ofc we would also need to disallow symbolic links to fully(?) guarantee some definition
-                        // of source code portability)
-                        let relative_path = if attributes.has(AttributeKeys::LOCATION) {
+                        let path_suffix = if attributes.has(AttributeKeys::LOCATION) {
                             attributes
                                 .get(|kind| obtain!(kind, AttributeKind::Location { path } => path))
                         } else {
                             module.binder.as_str()
                         };
 
-                        // 1st unwrap: the file has to have a path since it was loaded with `SourceMap::load`
-                        // 2nd unwrap: the file has to be contained within some folder and the permissions
-                        //             should be at least as liberal as the ones of the file (which could be
-                        //             loaded). of course, the permissions might have changed or it was entirely
-                        //             deleted by somebody while this program (the frontend) is running but I don't
-                        //             care about that edge case right now!
-                        let path = self.map.borrow()[module.file]
+                        let mut path = self.map.borrow()[module.file]
                             .path()
                             .unwrap()
                             .parent()
                             .unwrap()
-                            .join(relative_path)
-                            .with_extension(crate::FILE_EXTENSION);
-
-                        let declaration_span = declaration.span;
+                            .to_owned();
+                        path.extend(&context.internal_modules);
+                        let path = path.join(path_suffix).with_extension(crate::FILE_EXTENSION);
 
                         // @Task instead of a note saying the error, print a help message
                         // saying to create the missing file or change the access rights etc.
@@ -306,8 +329,11 @@ impl<'a> Lowerer<'a> {
                             Err(error) => {
                                 Diagnostic::error()
                                     .code(Code::E016)
-                                    .message(format!("could not load module `{}`", module.binder))
-                                    .primary_span(declaration_span)
+                                    .message(format!(
+                                        "could not load the module `{}`",
+                                        module.binder
+                                    ))
+                                    .primary_span(declaration.span)
                                     .note(IOError(error, &path).to_string())
                                     .report(self.reporter);
                                 return PossiblyErroneous::error();
@@ -332,13 +358,31 @@ impl<'a> Lowerer<'a> {
                                 .report(self.reporter);
                             health.taint();
                         }
+
                         module.declarations.unwrap()
                     }
                 };
 
+                let mut internal_modules = if is_external_module {
+                    Vec::new()
+                } else {
+                    context.internal_modules.clone()
+                };
+                if !context.is_root {
+                    internal_modules.push(module.binder.to_string());
+                }
+
+                let context = DeclarationContext {
+                    is_root: false,
+                    internal_modules,
+                };
+
                 let declarations = declarations
                     .into_iter()
-                    .flat_map(|declaration| self.lower_declaration(declaration).unwrap(&mut health))
+                    .flat_map(|declaration| {
+                        self.lower_declaration_with_context(declaration, &context)
+                            .unwrap(&mut health)
+                    })
                     .collect();
 
                 smallvec![decl! {
@@ -353,7 +397,7 @@ impl<'a> Lowerer<'a> {
             }
             // @Beacon @Task merge attributes with parent module
             // (through a `Context`) and ensure it's the first declaration in the whole module
-            Header => {
+            ModuleHeader => {
                 // @Note awkward API!
                 Diagnostic::unimplemented("module headers")
                     .primary_span(declaration.span)
@@ -509,7 +553,7 @@ impl<'a> Lowerer<'a> {
     fn lower_expression(
         &mut self,
         expression: ast::Expression,
-        context: Context,
+        context: ExpressionContext,
     ) -> Outcome<lowered_ast::Expression> {
         use ast::ExpressionKind::*;
 
@@ -869,7 +913,7 @@ impl<'a> Lowerer<'a> {
     ) -> Result<Attributes> {
         use lowered_ast::Attribute;
 
-        let targets = target.as_attribute_targets();
+        let actual_targets = target.as_attribute_targets();
         let mut health = Health::Untainted;
         let mut lowered_attributes = Vec::new();
 
@@ -883,11 +927,13 @@ impl<'a> Lowerer<'a> {
             };
 
             // non-conforming attributes
-            if !attribute.value.targets().contains(targets) {
+            let expected_targets = attribute.value.targets();
+
+            if !expected_targets.contains(actual_targets) {
                 Diagnostic::error()
                     .code(Code::E013)
                     .message(format!(
-                        "attribute {} cannot be ascribed to {}",
+                        "attribute {} is ascribed to {}",
                         attribute.value.quoted_name(),
                         target.name()
                     ))
@@ -896,7 +942,7 @@ impl<'a> Lowerer<'a> {
                     .note(format!(
                         "attribute {} can only be ascribed to {}",
                         attribute.value.quoted_name(),
-                        attribute.value.target_names()
+                        expected_targets.description(),
                     ))
                     .report(self.reporter);
                 health.taint();
@@ -1078,7 +1124,7 @@ impl<'a> Lowerer<'a> {
         &mut self,
         parameters: ast::Parameters,
         type_annotation: ast::Expression,
-        context: Context,
+        context: ExpressionContext,
     ) -> Outcome<lowered_ast::Expression> {
         let mut health = Health::Untainted;
 
@@ -1123,7 +1169,11 @@ impl<'a> Lowerer<'a> {
         health.of(expression)
     }
 
-    fn check_fieldness_location(&mut self, fieldness: Option<Span>, context: Context) -> Result {
+    fn check_fieldness_location(
+        &mut self,
+        fieldness: Option<Span>,
+        context: ExpressionContext,
+    ) -> Result {
         if let Some(field) = fieldness {
             if !context.in_constructor {
                 // @Note it would be helpful to also say the name of the actual declaration
@@ -1202,7 +1252,7 @@ impl lowered_ast::AttributeKind {
                     )?,
                 },
                 "deprecated" => {
-                    Diagnostic::unimplemented("attribute `deprecated")
+                    Diagnostic::unimplemented("attribute `deprecated`")
                         .primary_span(attribute)
                         .report(reporter);
                     return Err(AttributeParsingError::Unrecoverable);

@@ -1,4 +1,4 @@
-error[E013]: attribute `public` cannot be ascribed to a constructor declaration
+error[E013]: attribute `public` is ascribed to a constructor declaration
   --> ${DIRECTORY}/lowering/constructor-with-explicit-public.lushui:14:5
    |
 14 |     @public Unit: Unit -> Universe
@@ -11,7 +11,7 @@ error[E013]: attribute `public` cannot be ascribed to a constructor declaration
    |
   note: attribute `public` can only be ascribed to declarations except constructors
 
-error[E013]: attribute `public` cannot be ascribed to a constructor declaration
+error[E013]: attribute `public` is ascribed to a constructor declaration
   --> ${DIRECTORY}/lowering/constructor-with-explicit-public.lushui:15:5
    |
 15 |     @(public self) Bool: Bool -> Universe = Universe.Bool

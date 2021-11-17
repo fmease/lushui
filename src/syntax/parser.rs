@@ -566,7 +566,7 @@ impl<'a> Parser<'a> {
                     self.advance();
                 }
 
-                return Ok(decl! { Header { attributes, span } });
+                return Ok(decl! { ModuleHeader { attributes, span } });
             }
             _ => {}
         }

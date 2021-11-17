@@ -5,7 +5,7 @@ error: module headers not supported yet
   | ^^^^^^ 
   |
 
-error[E013]: attribute `foreign` cannot be ascribed to a module header declaraiton
+error[E013]: attribute `foreign` is ascribed to a module header declaration
  --> ${DIRECTORY}/lowering/module-headers-unsupported.lushui:8:1
   |
 8 | @foreign

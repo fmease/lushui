@@ -30,7 +30,7 @@ pub enum DeclarationKind {
     Data(Box<Data>),
     Constructor(Box<Constructor>),
     Module(Box<Module>),
-    Header,
+    ModuleHeader,
     Group(Box<Group>),
     Use(Box<Use>),
 }

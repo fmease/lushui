@@ -236,7 +236,9 @@ impl Format for super::DeclarationKind {
             Self::Data(declaration) => declaration.format(f, indentation),
             Self::Constructor(declaration) => declaration.format(f, indentation),
             Self::Module(declaration) => declaration.format(f, indentation),
-            Self::Header => FormatStruct::new(f, indentation).name("Header").finish(),
+            Self::ModuleHeader => FormatStruct::new(f, indentation)
+                .name("ModuleHeader")
+                .finish(),
             Self::Group(declaration) => declaration.format(f, indentation),
             Self::Use(declaration) => declaration.format(f, indentation),
         }

@@ -1,4 +1,4 @@
-error[E013]: attribute `foreign` cannot be ascribed to a use-declaration
+error[E013]: attribute `foreign` is ascribed to a use-declaration
  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:3:1
   |
 3 | @foreign
@@ -11,7 +11,7 @@ error[E013]: attribute `foreign` cannot be ascribed to a use-declaration
   |
  note: attribute `foreign` can only be ascribed to value or data declarations
 
-error[E013]: attribute `foreign` cannot be ascribed to a use-declaration
+error[E013]: attribute `foreign` is ascribed to a use-declaration
  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:4:1
   |
 4 | @foreign @Int32
@@ -24,7 +24,7 @@ error[E013]: attribute `foreign` cannot be ascribed to a use-declaration
   |
  note: attribute `foreign` can only be ascribed to value or data declarations
 
-error[E013]: attribute `Int32` cannot be ascribed to a use-declaration
+error[E013]: attribute `Int32` is ascribed to a use-declaration
  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:4:10
   |
 4 | @foreign @Int32
@@ -37,7 +37,7 @@ error[E013]: attribute `Int32` cannot be ascribed to a use-declaration
   |
  note: attribute `Int32` can only be ascribed to number literals
 
-error[E013]: attribute `foreign` cannot be ascribed to a use-declaration
+error[E013]: attribute `foreign` is ascribed to a use-declaration
  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:7:1
   |
 7 | @foreign @opaque @(location "/")
@@ -50,7 +50,7 @@ error[E013]: attribute `foreign` cannot be ascribed to a use-declaration
   |
  note: attribute `foreign` can only be ascribed to value or data declarations
 
-error[E013]: attribute `opaque` cannot be ascribed to a use-declaration
+error[E013]: attribute `opaque` is ascribed to a use-declaration
  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:7:10
   |
 7 | @foreign @opaque @(location "/")
@@ -63,7 +63,7 @@ error[E013]: attribute `opaque` cannot be ascribed to a use-declaration
   |
  note: attribute `opaque` can only be ascribed to data declarations
 
-error[E013]: attribute `location` cannot be ascribed to a use-declaration
+error[E013]: attribute `location` is ascribed to a use-declaration
  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:7:18
   |
 7 | @foreign @opaque @(location "/")
@@ -76,7 +76,7 @@ error[E013]: attribute `location` cannot be ascribed to a use-declaration
   |
  note: attribute `location` can only be ascribed to module declarations
 
-error[E013]: attribute `include` cannot be ascribed to a value declaration
+error[E013]: attribute `include` is ascribed to a value declaration
   --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:10:1
    |
 10 | @include
@@ -91,7 +91,7 @@ error[E013]: attribute `include` cannot be ascribed to a value declaration
    |
   note: attribute `include` can only be ascribed to text literals
 
-error[E013]: attribute `foreign` cannot be ascribed to a path expression
+error[E013]: attribute `foreign` is ascribed to a path expression
   --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:12:5
    |
 12 |     @foreign @Text make-binding @(public super) resource
@@ -104,7 +104,7 @@ error[E013]: attribute `foreign` cannot be ascribed to a path expression
    |
   note: attribute `foreign` can only be ascribed to value or data declarations
 
-error[E013]: attribute `Text` cannot be ascribed to a path expression
+error[E013]: attribute `Text` is ascribed to a path expression
   --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:12:14
    |
 12 |     @foreign @Text make-binding @(public super) resource
@@ -117,7 +117,7 @@ error[E013]: attribute `Text` cannot be ascribed to a path expression
    |
   note: attribute `Text` can only be ascribed to text literals
 
-error[E013]: attribute `public` cannot be ascribed to a path expression
+error[E013]: attribute `public` is ascribed to a path expression
   --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:12:33
    |
 12 |     @foreign @Text make-binding @(public super) resource
@@ -130,7 +130,7 @@ error[E013]: attribute `public` cannot be ascribed to a path expression
    |
   note: attribute `public` can only be ascribed to declarations except constructors
 
-error[E013]: attribute `public` cannot be ascribed to a constructor declaration
+error[E013]: attribute `public` is ascribed to a constructor declaration
   --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:15:5
    |
 15 |     @public manifest
@@ -151,7 +151,7 @@ error[E015]: missing mandatory type annotation on declaration `manifest`
    |
   help: provide a type annotation for the declaration with `: ?type`
 
-error[E013]: attribute `static` cannot be ascribed to a path pattern
+error[E013]: attribute `static` is ascribed to a path pattern
   --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:19:9
    |
 19 |         @static box => it
