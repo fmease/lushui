@@ -54,7 +54,7 @@ fn main_() -> Result {
 
     // @Task get rid of this!
     lushui::set_global_options(lushui::GlobalOptions {
-        show_binding_indices: options.show_binding_indices,
+        show_indices: options.show_indices,
     });
 
     let map = SourceMap::shared();
@@ -124,12 +124,12 @@ fn build_package(
         Some(path) if path.is_file() => {
             build_queue.process_single_file_package(
                 path,
-                options.crate_type.unwrap_or(CrateType::Binary),
-                options.no_core,
+                suboptions.crate_type.unwrap_or(CrateType::Binary),
+                suboptions.no_core,
             )?;
         }
         path => {
-            if options.no_core {
+            if suboptions.no_core {
                 Diagnostic::error()
                     .message("the flag `--no-core` is only available for single-file packages")
                     .help(
@@ -138,7 +138,7 @@ fn build_package(
                     )
                     .report(reporter);
             }
-            if options.crate_type.is_some() {
+            if suboptions.crate_type.is_some() {
                 // @Task add help explaining the equivalent for normal packages
                 Diagnostic::error()
                     .message("the option `--crate-type` is only available for single-file packages")
@@ -193,7 +193,7 @@ fn build_package(
             }
         }
 
-        if options.emit.times {
+        if options.times {
             eprintln!("Execution times by pass:");
         }
 
@@ -224,13 +224,13 @@ fn build_package(
 
         let duration = time.elapsed();
 
-        if is_goal_crate && options.emit.tokens {
+        if is_goal_crate && options.emit_tokens {
             for token in &tokens {
                 eprintln!("{:?}", token);
             }
         }
 
-        if options.emit.times {
+        if options.times {
             eprintln!(
                 "  {:<EXECUTION_TIME_PASS_NAME_PADDING$}{duration:?}",
                 "Lexing"
@@ -251,11 +251,11 @@ fn build_package(
 
         assert!(token_health.is_untainted()); // parsing succeeded
 
-        if is_goal_crate && options.emit.ast {
+        if is_goal_crate && options.emit_ast {
             eprintln!("{declaration:#?}");
         }
 
-        if options.emit.times {
+        if options.times {
             eprintln!(
                 "  {:<EXECUTION_TIME_PASS_NAME_PADDING$}{duration:?}",
                 "Parsing"
@@ -273,11 +273,11 @@ fn build_package(
 
         let declaration = declarations.pop().unwrap();
 
-        if is_goal_crate && options.emit.lowered_ast {
+        if is_goal_crate && options.emit_lowered_ast {
             eprintln!("{}", declaration);
         }
 
-        if options.emit.times {
+        if options.times {
             eprintln!(
                 "  {:<EXECUTION_TIME_PASS_NAME_PADDING$}{duration:?}",
                 "Lowering"
@@ -297,14 +297,14 @@ fn build_package(
 
         let duration = time.elapsed();
 
-        if options.emit.hir {
+        if options.emit_hir {
             eprintln!("{}", declaration.with((&crate_, &session)));
         }
-        if is_goal_crate && options.emit.untyped_scope {
+        if is_goal_crate && options.emit_untyped_scope {
             eprintln!("{}", crate_.with(&session));
         }
 
-        if options.emit.times {
+        if options.times {
             eprintln!(
                 "  {:<EXECUTION_TIME_PASS_NAME_PADDING$}{duration:?}",
                 "Name resolution"
@@ -319,7 +319,7 @@ fn build_package(
         // (which are also --no-core)). ideally, we would not
         // store those "FFI bindings" (more like "intrinstincs")
         // in crate::resolver::scope::Crate but in a separate location! (@Task)
-        if options.no_core || crate_.is_core_library(&session) {
+        if suboptions.no_core || crate_.is_core_library(&session) {
             crate_.register_foreign_bindings();
         }
 
@@ -330,11 +330,11 @@ fn build_package(
 
         let duration = time.elapsed();
 
-        if is_goal_crate && options.emit.scope {
+        if is_goal_crate && options.emit_scope {
             eprintln!("{}", typer.crate_.with(&session));
         }
 
-        if options.emit.times {
+        if options.times {
             eprintln!(
                 "  {:<EXECUTION_TIME_PASS_NAME_PADDING$}{duration:?}",
                 "Type checking & inference"

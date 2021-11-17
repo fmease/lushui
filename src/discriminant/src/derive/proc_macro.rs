@@ -8,9 +8,7 @@ use quote::quote;
 #[proc_macro_derive(Discriminant, attributes(discriminant))]
 pub fn derive_discriminant(input: TokenStream1) -> TokenStream1 {
     let input = syn::parse_macro_input!(input as syn::ItemEnum);
-
     let visibility = input.vis;
-
     let type_name = input.ident;
 
     // @Task throw an error if there are several `#[discriminant]`s
@@ -76,4 +74,42 @@ impl syn::parse::Parse for DiscriminantTypeInfo {
             identifier: content.parse()?,
         })
     }
+}
+
+// @Task use the Trait `Elements` for this
+#[proc_macro_derive(Elements)]
+pub fn derive_elements(input: TokenStream1) -> TokenStream1 {
+    let input = syn::parse_macro_input!(input as syn::ItemEnum);
+
+    let visibility = input.vis;
+    let type_name = input.ident;
+
+    let variants = input.variants.iter().map(|variant| {
+        let fields = match &variant.fields {
+            syn::Fields::Named(fields) => {
+                let fields = fields.named.iter().map(|field| &field.ident);
+
+                quote! { { #( #fields: ::std::default::Default::default() ),* } }
+            }
+            syn::Fields::Unnamed(fields) => {
+                let fields = fields.unnamed.iter().map(|field| &field.ident);
+
+                quote! { ( #( #fields ::std::default::Default::default() ),* ) }
+            }
+            syn::Fields::Unit => quote! {},
+        };
+        let name = &variant.ident;
+
+        quote! { Self::#name #fields }
+    });
+
+    let stream = quote! {
+        impl #type_name {
+            #visibility fn elements() -> impl ::std::iter::Iterator<Item = Self> {
+                ::std::iter::IntoIterator::into_iter([#( #variants ),*])
+            }
+        }
+    };
+
+    stream.into()
 }

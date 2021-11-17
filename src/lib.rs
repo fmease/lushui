@@ -94,7 +94,7 @@ use once_cell::sync::OnceCell;
 static OPTIONS: OnceCell<GlobalOptions> = OnceCell::new();
 
 pub struct GlobalOptions {
-    pub show_binding_indices: bool,
+    pub show_indices: bool,
 }
 
 pub fn set_global_options(options: GlobalOptions) {

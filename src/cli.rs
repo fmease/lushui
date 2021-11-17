@@ -1,7 +1,11 @@
-use std::{path::PathBuf, str::FromStr};
+use std::{cmp::max, default::default, path::PathBuf, str::FromStr};
 
 use clap::{AppSettings, Arg, SubCommand};
-use lushui::package::CrateType;
+use discriminant::Elements;
+use lushui::{
+    diagnostics::{reporter::StderrReporter, Diagnostic},
+    package::CrateType,
+};
 
 const VERSION: &str = concat!(
     env!("CARGO_PKG_VERSION"),
@@ -28,11 +32,26 @@ pub fn arguments() -> (Command, Options) {
             .help("Creates a library crate in the package"),
     ];
 
+    let build_options = [
+        Arg::with_name("no-core").long("no-core").help(
+            "Removes the dependency to the library `core` from the given single-file package",
+        ),
+        Arg::with_name("crate-type")
+            .long("crate-type")
+            .takes_value(true)
+            .possible_values(&["binary", "library"])
+            .help("Sets the crate type of the given single-file package"),
+        Arg::with_name("interpreter")
+            .long("interpreter")
+            .takes_value(true)
+            .possible_values(&["byte-code", "tree-walk"])
+            .help("Sets the interpreter"),
+    ];
+
     let matches = clap::App::new(env!("CARGO_PKG_NAME"))
         .version(VERSION)
         .author(env!("CARGO_PKG_AUTHORS"))
         .about(env!("CARGO_PKG_DESCRIPTION"))
-        // .setting(AppSettings::HidePossibleValuesInHelp)
         .setting(AppSettings::SubcommandRequiredElseHelp)
         .arg(
             Arg::with_name("quiet")
@@ -41,25 +60,6 @@ pub fn arguments() -> (Command, Options) {
                 .global(true)
                 .help("No status output printed to stdout"),
         )
-        .arg(Arg::with_name("no-core").long("no-core").global(true).help(
-            "Removes the dependency to the library `core` from the given single-file package",
-        ))
-        .arg(
-            Arg::with_name("crate-type")
-                .long("crate-type")
-                .takes_value(true)
-                .global(true)
-                .possible_values(&["binary", "library"])
-                .help("Sets the crate type of the given single-file package"),
-        )
-        .arg(
-            Arg::with_name("interpreter")
-                .long("interpreter")
-                .takes_value(true)
-                .global(true)
-                .possible_values(&["byte-code", "tree-walk"])
-                .help("Sets the interpreter"),
-        )
         .arg(
             Arg::with_name("unstable-options")
                 .short("Z")
@@ -67,23 +67,6 @@ pub fn arguments() -> (Command, Options) {
                 .multiple(true)
                 .number_of_values(1)
                 .global(true)
-                .possible_values(&[
-                    "help",
-                    // @Task smh group
-                    "emit-tokens",
-                    "emit-ast",
-                    "emit-lowered-ast",
-                    "emit-hir",
-                    "emit-untyped-scope",
-                    "emit-scope",
-                    "emit-times",
-                    // @Beacon @Task rename to show-declaration-indices
-                    "show-binding-indices",
-                    "lex-only",
-                    "parse-only",
-                    "lower-only",
-                    "resolve-only",
-                ])
                 .help("Sets unstable options (options excluded from any stability guarantees)"),
         )
         .subcommand(
@@ -91,14 +74,16 @@ pub fn arguments() -> (Command, Options) {
                 .visible_alias("b")
                 .setting(AppSettings::DisableVersion)
                 .about("Compiles the given source file or package or the current package")
-                .arg(source_file_argument.clone()),
+                .arg(source_file_argument.clone())
+                .args(&build_options),
         )
         .subcommand(
             SubCommand::with_name("check")
                 .visible_alias("c")
                 .setting(AppSettings::DisableVersion)
                 .about("Type-checks the given source file or package or the current package")
-                .arg(source_file_argument.clone()),
+                .arg(source_file_argument.clone())
+                .args(&build_options),
         )
         .subcommand(
             SubCommand::with_name("explain")
@@ -136,8 +121,10 @@ pub fn arguments() -> (Command, Options) {
                 .visible_alias("r")
                 .setting(AppSettings::DisableVersion)
                 .about("Compiles and runs the given source file or package or the current package")
-                .arg(source_file_argument),
+                .arg(source_file_argument)
+                .args(&build_options),
         )
+        .after_help(AFTER_HELP)
         .get_matches();
 
     let command = matches.subcommand.as_ref().unwrap();
@@ -152,6 +139,16 @@ pub fn arguments() -> (Command, Options) {
             },
             suboptions: BuildOptions {
                 path: command.matches.value_of_os("PATH").map(Into::into),
+                no_core: command.matches.is_present("no-core"),
+                crate_type: command
+                    .matches
+                    .value_of("crate-type")
+                    .map(|input| input.parse().unwrap()),
+                interpreter: command
+                    .matches
+                    .value_of("interpreter")
+                    .map(|input| input.parse().unwrap())
+                    .unwrap_or_default(),
             },
         },
         "explain" => Command::Explain,
@@ -176,65 +173,77 @@ pub fn arguments() -> (Command, Options) {
         _ => unreachable!(), // handled by clap
     };
 
-    let mut emit = Emissions::default();
-    let mut show_binding_indices = false;
-    let mut pass_restriction = None;
+    let mut options = Options {
+        quiet: matches.is_present("quiet"),
+        ..default()
+    };
 
     if let Some(unstable_options) = matches.values_of("unstable-options") {
         for unstable_option in unstable_options {
+            use UnstableOption::*;
+
+            let Ok(unstable_option) = unstable_option.parse() else {
+                Diagnostic::error()
+                    .message(format!("invalid unstable option `{unstable_option}`"))
+                    .report(&StderrReporter::new(None).into());
+                std::process::exit(1);
+            };
+
             match unstable_option {
-                "help" => todo!(),
-                "emit-tokens" => emit.tokens = true,
-                "emit-ast" => emit.ast = true,
-                "emit-lowered-ast" => emit.lowered_ast = true,
-                "emit-hir" => emit.hir = true,
-                "emit-untyped-scope" => emit.untyped_scope = true,
-                "emit-scope" => emit.scope = true,
-                "emit-times" => emit.times = true,
-                "show-binding-indices" => show_binding_indices = true,
-                "lex-only" => {
-                    PassRestriction::update(&mut pass_restriction, PassRestriction::Lexer);
+                Help => {
+                    let mut message =
+                        "UNSTABLE OPTIONS (not subject to any stability guarantees):\n".to_string();
+                    for option in UnstableOption::elements() {
+                        message += &format!("    -Z {:>25}    {}\n", option.name(), option.help());
+                    }
+                    println!("{message}");
+                    std::process::exit(0);
                 }
-                "parse-only" => {
-                    PassRestriction::update(&mut pass_restriction, PassRestriction::Parser);
+                EmitTokens => options.emit_tokens = true,
+                EmitAst => options.emit_ast = true,
+                EmitLoweredAst => options.emit_lowered_ast = true,
+                EmitHir => options.emit_hir = true,
+                EmitUntypedScope => options.emit_untyped_scope = true,
+                EmitScope => options.emit_scope = true,
+                Times => options.times = true,
+                ShowIndices => options.show_indices = true,
+                LexOnly | ParseOnly | LowerOnly | ResolveOnly => {
+                    options.pass_restriction = max(
+                        options.pass_restriction,
+                        Some(match unstable_option {
+                            LexOnly => PassRestriction::Lexer,
+                            ParseOnly => PassRestriction::Parser,
+                            LowerOnly => PassRestriction::Lowerer,
+                            ResolveOnly => PassRestriction::Resolver,
+                            _ => unreachable!(),
+                        }),
+                    )
                 }
-                "lower-only" => {
-                    PassRestriction::update(&mut pass_restriction, PassRestriction::Lowerer);
-                }
-                "resolve-only" => {
-                    PassRestriction::update(&mut pass_restriction, PassRestriction::Resolver);
-                }
-                _ => unreachable!(), // handled by clap
             }
         }
     }
 
-    let options = Options {
-        quiet: matches.is_present("quiet"),
-        no_core: matches.is_present("no-core"),
-        crate_type: matches
-            .value_of("crate-type")
-            .map(|input| input.parse().unwrap()),
-        interpreter: matches
-            .value_of("interpreter")
-            .map(|input| input.parse().unwrap())
-            .unwrap_or_default(),
-        emit,
-        show_binding_indices,
-        pass_restriction,
-    };
-
     (command, options)
 }
 
+const AFTER_HELP: &str = "\
+ADDITIONAL HELP:
+    -Z help    Prints unstable options
+";
+
 // @Task add --color=always|never|auto
+#[derive(Default)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct Options {
     pub quiet: bool,
-    pub no_core: bool,
-    pub crate_type: Option<CrateType>,
-    pub interpreter: Interpreter,
-    pub emit: Emissions,
-    pub show_binding_indices: bool,
+    pub emit_tokens: bool,
+    pub emit_ast: bool,
+    pub emit_lowered_ast: bool,
+    pub emit_hir: bool,
+    pub emit_untyped_scope: bool,
+    pub emit_scope: bool,
+    pub times: bool,
+    pub show_indices: bool,
     pub pass_restriction: Option<PassRestriction>,
 }
 
@@ -257,45 +266,12 @@ impl FromStr for Interpreter {
     }
 }
 
-// @Note bad name
-#[derive(Default)]
-#[allow(clippy::struct_excessive_bools)]
-pub struct Emissions {
-    pub tokens: bool,
-    pub ast: bool,
-    pub lowered_ast: bool,
-    pub hir: bool,
-    pub untyped_scope: bool,
-    pub scope: bool,
-    pub times: bool,
-}
-
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum PassRestriction {
     Resolver,
     Lowerer,
     Parser,
     Lexer,
-}
-
-impl PassRestriction {
-    pub fn update(this: &mut Option<Self>, other: Self) {
-        *this = std::cmp::max(*this, Some(other));
-    }
-}
-
-impl FromStr for PassRestriction {
-    type Err = ();
-
-    fn from_str(input: &str) -> Result<Self, Self::Err> {
-        Ok(match input {
-            "resolve-only" => Self::Resolver,
-            "lower-only" => Self::Lowerer,
-            "parse-only" => Self::Parser,
-            "lex-only" => Self::Lexer,
-            _ => return Err(()),
-        })
-    }
 }
 
 pub enum Command {
@@ -318,6 +294,9 @@ pub enum BuildMode {
 
 pub struct BuildOptions {
     pub path: Option<PathBuf>,
+    pub no_core: bool,
+    pub crate_type: Option<CrateType>,
+    pub interpreter: Interpreter,
 }
 
 pub enum GenerationMode {
@@ -328,4 +307,86 @@ pub enum GenerationMode {
 pub struct GenerationOptions {
     pub library: bool,
     pub binary: bool,
+}
+
+#[derive(Clone, Copy, Elements)]
+enum UnstableOption {
+    Help,
+    EmitTokens,
+    EmitAst,
+    EmitLoweredAst,
+    EmitHir,
+    EmitUntypedScope,
+    EmitScope,
+    ShowIndices,
+    Times,
+    LexOnly,
+    ParseOnly,
+    LowerOnly,
+    ResolveOnly,
+}
+
+impl UnstableOption {
+    // @Task derive this (write proc macro, rename dash case)
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Help => "help",
+            Self::EmitTokens => "emit-tokens",
+            Self::EmitAst => "emit-ast",
+            Self::EmitLoweredAst => "emit-lowered-ast",
+            Self::EmitHir => "emit-hir",
+            Self::EmitUntypedScope => "emit-untyped-scope",
+            Self::EmitScope => "emit-scope",
+            Self::ShowIndices => "show-indices",
+            Self::Times => "times",
+            Self::LexOnly => "lex-only",
+            Self::ParseOnly => "parse-only",
+            Self::LowerOnly => "lower-only",
+            Self::ResolveOnly => "resolve-only",
+        }
+    }
+
+    const fn help(self) -> &'static str {
+        match self {
+            Self::Help => "Prints help information and halts",
+            Self::EmitTokens => "Emits the tokens of the current crate output by the lexer",
+            Self::EmitAst => "Emits the abstract syntax tree (AST) of the current crate output by the parser",
+            Self::EmitLoweredAst => "Emits the lowered AST of the current crate",
+            Self::EmitHir => {
+                "Emits the high-level intermediate representation (HIR) of the current crate output by the resolver"
+            }
+            Self::EmitUntypedScope => "Emits the untyped scope of the current crate output by the resolver",
+            Self::EmitScope => "Emits the typed scope of the current crate output by the typer",
+            Self::ShowIndices => "Shows the internal indices of bindings in other output or error messages",
+            Self::Times => "Prints timing statistics of each pass through the current crate",
+            Self::LexOnly => "Halts the execution after lexing the current crate",
+            Self::ParseOnly => "Halts the execution after parsing the current crate",
+            Self::LowerOnly => "Halts the execution after lowering the current crate",
+            Self::ResolveOnly => "Halts the execution after resolving the names of the current crate",
+        }
+    }
+}
+
+// @Task derive this
+impl FromStr for UnstableOption {
+    type Err = ();
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        Ok(match input {
+            "help" => Self::Help,
+            "emit-tokens" => Self::EmitTokens,
+            "emit-ast" => Self::EmitAst,
+            "emit-lowered-ast" => Self::EmitLoweredAst,
+            "emit-hir" => Self::EmitHir,
+            "emit-untyped-scope" => Self::EmitUntypedScope,
+            "emit-scope" => Self::EmitScope,
+            "show-indices" => Self::ShowIndices,
+            "times" => Self::Times,
+            "lex-only" => Self::LexOnly,
+            "parse-only" => Self::ParseOnly,
+            "lower-only" => Self::LowerOnly,
+            "resolve-only" => Self::ResolveOnly,
+            _ => return Err(()),
+        })
+    }
 }
