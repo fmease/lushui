@@ -41,42 +41,20 @@ use joinery::JoinableIterator;
 use smallvec::smallvec;
 use std::iter::once;
 
-struct DeclarationContext {
-    is_root: bool,
-    /// The path of internal module declarations leading to a declaration.
-    ///
-    /// The path starts either at the root module declaration (excluding it) or
-    /// at the closest external module (including it).
-    ///
-    /// Exclusively used to compute the path of external modules inside of internal
-    /// modules!
-    internal_modules: Vec<String>,
-}
-
-#[derive(Clone, Copy)]
-struct ExpressionContext {
-    in_constructor: bool,
-    declaration: Span,
-}
-
-impl ExpressionContext {
-    fn new(declaration: Span) -> Self {
-        Self {
-            in_constructor: false,
-            declaration,
-        }
-    }
-}
-
 /// The state of the lowering pass.
 pub struct Lowerer<'a> {
+    options: LoweringOptions,
     map: SharedSourceMap,
     reporter: &'a Reporter,
 }
 
 impl<'a> Lowerer<'a> {
-    pub fn new(map: SharedSourceMap, reporter: &'a Reporter) -> Self {
-        Self { map, reporter }
+    pub fn new(options: LoweringOptions, map: SharedSourceMap, reporter: &'a Reporter) -> Self {
+        Self {
+            options,
+            map,
+            reporter,
+        }
     }
 
     /// Lower a declaration.
@@ -1033,7 +1011,7 @@ impl<'a> Lowerer<'a> {
         };
 
         health &= check_mutual_exclusivity(
-            AttributeKeys::FOREIGN | AttributeKeys::INHERENT,
+            AttributeKeys::INTRINSIC | AttributeKeys::KNOWN,
             self.reporter,
         );
 
@@ -1056,9 +1034,28 @@ impl<'a> Lowerer<'a> {
         health &=
             check_mutual_exclusivity(AttributeKeys::LIST | AttributeKeys::VECTOR, self.reporter);
 
-        if attributes.within(AttributeKeys::UNSUPPORTED) {
+        if attributes.keys.intersects(AttributeKeys::UNSUPPORTED) {
             for attribute in attributes.filter(AttributeKeys::UNSUPPORTED) {
                 Diagnostic::unimplemented(format!("attribute {}", attribute.value.quoted_name()))
+                    .primary_span(attribute)
+                    .report(self.reporter);
+            }
+            health.taint();
+        }
+
+        // @Task replace this concept with a feature system
+        if attributes.keys.intersects(AttributeKeys::INTERNAL) && !self.options.enable_internals {
+            for attribute in attributes.filter(AttributeKeys::INTERNAL) {
+                Diagnostic::error()
+                    .code(Code::E038)
+                    .message(format!(
+                        "attribute {} is an internal feature",
+                        attribute.value.quoted_name()
+                    ))
+                    .help(
+                        "add the command-line option `-Z internals` to use the attribute anyway\n\
+                         opting out of any stability guarantees in the process!",
+                    )
                     .primary_span(attribute)
                     .report(self.reporter);
             }
@@ -1192,6 +1189,39 @@ impl<'a> Lowerer<'a> {
     }
 }
 
+#[derive(Default)]
+pub struct LoweringOptions {
+    /// Enable internal language and library features.
+    pub enable_internals: bool,
+}
+
+struct DeclarationContext {
+    is_root: bool,
+    /// The path of internal module declarations leading to a declaration.
+    ///
+    /// The path starts either at the root module declaration (excluding it) or
+    /// at the closest external module (including it).
+    ///
+    /// Exclusively used to compute the path of external modules inside of internal
+    /// modules!
+    internal_modules: Vec<String>,
+}
+
+#[derive(Clone, Copy)]
+struct ExpressionContext {
+    in_constructor: bool,
+    declaration: Span,
+}
+
+impl ExpressionContext {
+    fn new(declaration: Span) -> Self {
+        Self {
+            in_constructor: false,
+            declaration,
+        }
+    }
+}
+
 const NAT32_INTERVAL_REPRESENTATION: &str = "[0, 2^32-1]";
 const NAT64_INTERVAL_REPRESENTATION: &str = "[0, 2^64-1]";
 const NAT_INTERVAL_REPRESENTATION: &str = "[0, infinity)";
@@ -1271,7 +1301,7 @@ impl lowered_ast::AttributeKind {
                         reporter,
                     )?,
                 },
-                "foreign" => Self::Foreign,
+                "intrinsic" => Self::Intrinsic,
                 "if" => {
                     Diagnostic::unimplemented("attribute `if`")
                         .primary_span(attribute)
@@ -1280,7 +1310,7 @@ impl lowered_ast::AttributeKind {
                 }
                 "ignore" => Self::Ignore,
                 "include" => Self::Include,
-                "inherent" => Self::Inherent,
+                "known" => Self::Known,
                 "Int" => Self::Int,
                 "Int32" => Self::Int32,
                 "Int64" => Self::Int64,
@@ -1529,7 +1559,7 @@ impl Diagnostic {
         Self::error()
             .code(Code::E015)
             .message(format!(
-                "missing mandatory type annotation on {} {}",
+                "a mandatory type annotation is missing on the {} {}",
                 target.name(),
                 binders,
             ))

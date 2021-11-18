@@ -14,7 +14,7 @@ error[E012]: declaration `Blank` has no definition
   |
  help: provide a definition with `of`
 
-error[E015]: missing mandatory type annotation on declaration `Blank`
+error[E015]: a mandatory type annotation is missing on the declaration `Blank`
  --> ${DIRECTORY}/lowering/abnormally-bodiless.lushui:5:11
   |
 5 | data Blank

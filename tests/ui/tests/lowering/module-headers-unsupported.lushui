@@ -5,5 +5,5 @@
 ;; here
 module
 
-@foreign
+@intrinsic
 module

@@ -6,9 +6,9 @@ use crate::{
     error::PossiblyErroneous,
     format::DisplayWith,
     hir::Expression,
-    package::BuildSession,
+    package::{session::BareIntrinsicFunctionValue, BuildSession},
     resolver::{Crate, DeclarationIndex, Exposure, Identifier, LocalDeclarationIndex, Namespace},
-    typer::interpreter::{ffi::NakedForeignFunction, scope::ValueView},
+    typer::interpreter::scope::ValueView,
     utility::obtain,
 };
 use std::{default::default, fmt};
@@ -23,7 +23,7 @@ use EntityKind::*;
 /// standard _values_ or _expressions_ defined as (in case of values: a normalized
 /// form of) something that can have _type_ (in the semantic sense) **but also**
 /// second-class things like modules, use "links", atomic data types,
-/// constructors and foreign functions.
+/// constructors and intrinsic functions.
 ///
 /// Most of them are just as well expressions, as can be seen by [`Entity::value`] which
 /// panics on those that are not.
@@ -65,8 +65,8 @@ impl Entity {
         matches!(self.kind, Module { .. })
     }
 
-    pub const fn is_foreign(&self) -> bool {
-        matches!(self.kind, Foreign { .. })
+    pub const fn is_intrinsic(&self) -> bool {
+        matches!(self.kind, Intrinsic { .. })
     }
 
     pub const fn is_error(&self) -> bool {
@@ -118,7 +118,7 @@ impl Entity {
             Value { type_, .. } |
             DataType { type_, .. } |
             Constructor { type_, .. } |
-            Foreign { type_, .. } => type_.clone(),
+            Intrinsic { type_, .. } => type_.clone(),
         )
     }
 
@@ -141,7 +141,7 @@ impl Entity {
             | Error
             | DataType { .. }
             | Constructor { .. }
-            | Foreign { .. } => ValueView::Neutral,
+            | Intrinsic { .. } => ValueView::Neutral,
             UntypedValue
             | UntypedDataType { .. }
             | UntypedConstructor { .. }
@@ -207,10 +207,11 @@ pub enum EntityKind {
         namespace: Namespace,
         type_: Expression,
     },
-    Foreign {
+    Intrinsic {
         type_: Expression,
+        // @Beacon @Beacon @Beacon @Task wrap this in an IntrinsicFnVal
         arity: usize,
-        function: NakedForeignFunction,
+        function: BareIntrinsicFunctionValue,
     },
     // @Task explain why we want entities to be possibly erroneous
     Error,
@@ -273,7 +274,7 @@ impl DisplayWith for EntityKind {
                     .collect::<String>()
             ),
             Constructor { type_, .. } => write!(f, "constructor: {}", type_.with(context)),
-            Foreign { type_, .. } => write!(f, "foreign: {}", type_.with(context)),
+            Intrinsic { type_, .. } => write!(f, "intrinsic: {}", type_.with(context)),
             Error => write!(f, "error"),
         }
     }

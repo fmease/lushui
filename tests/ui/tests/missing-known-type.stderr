@@ -1,0 +1,6 @@
+error[E062]: the known binding `Bool.false` is missing
+
+error: aborting due to previous error
+ note: the error E062 has a detailed explanation
+ help: run `lushui explain E062` to view it
+

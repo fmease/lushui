@@ -1,4 +1,4 @@
-;;; TEST fail check
+;;; TEST fail check -Z internals
 
-@foreign @inherent
+@intrinsic @known
 data Typ: const Type @Int @Int32 (@Nat 12)

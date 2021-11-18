@@ -1,6 +1,6 @@
 ;;; TEST fail check
 
-@foreign
+@intrinsic
 data Void: Type of
 
-@foreign thing = 0
+@intrinsic thing = 0

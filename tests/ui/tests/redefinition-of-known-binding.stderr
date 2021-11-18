@@ -1,0 +1,16 @@
+error[E039]: the known binding `Unit` is defined multiple times
+  --> ${DIRECTORY}/redefinition-of-known-binding.lushui:4:6
+   |
+ 4 | data Unit: Type of
+   |      ---- previous definition
+   |
+  --> ${DIRECTORY}/redefinition-of-known-binding.lushui:10:10
+   |
+10 |     data Unit: Type of
+   |          ^^^^ conflicting definition
+   |
+
+error: aborting due to previous error
+ note: the error E039 has a detailed explanation
+ help: run `lushui explain E039` to view it
+

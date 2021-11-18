@@ -1,0 +1,10 @@
+;;; TEST fail check -Z internals
+
+@known
+data I-Am-Definitely-Unknown: Type of
+
+;;; ;;; not supported yet 
+;;; @known
+;;; i-am-definitely-unknown:
+;;;     extern.core.unit.Unit =
+;;;     extern.core.unit.unit

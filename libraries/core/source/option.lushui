@@ -1,4 +1,4 @@
-@public @inherent
+@public @known
 data Option (A: Type): Type of
     none (A: Type): Option A
     some (A: Type): A -> Option A

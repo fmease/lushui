@@ -1,4 +1,4 @@
-@public @inherent
+@public @known
 data Unit: Type of
     unit: Unit
 

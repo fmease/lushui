@@ -3,7 +3,7 @@
 
 module core
 
-@foreign
+@intrinsic
 panic (A: Type) (message: Text): A
 
 main: Unit = panic Unit "this is not going well"

@@ -239,7 +239,7 @@ impl AttributeTarget for ast::Declaration {
             _ => return Ok(()),
         };
 
-        match (body, attributes.has(AttributeKeys::FOREIGN)) {
+        match (body, attributes.has(AttributeKeys::INTRINSIC)) {
             (None, false) => {
                 Diagnostic::error()
                     .code(Code::E012)
@@ -251,18 +251,20 @@ impl AttributeTarget for ast::Declaration {
             }
             (Some(body), true) => {
                 Diagnostic::error()
-                .code(Code::E020)
-                .message(format!(
-                    "`{}` is defined multiple times in this scope",
-                    binder
-                ))
-                .labeled_primary_span(&body, "conflicting definition")
-                .labeled_secondary_span(
-                    attributes.filter(AttributeKeys::FOREIGN).next().unwrap(),
-                    "conflicting definition",
-                )
-                .note(format!("declaration is marked `foreign` but it also has a body introduced by `{definition_marker}`"))
-                .report(reporter);
+                    .code(Code::E020)
+                    .message(format!(
+                        "`{}` is defined multiple times in this scope",
+                        binder
+                    ))
+                    .labeled_primary_span(&body, "conflicting definition")
+                    .labeled_secondary_span(
+                        attributes.filter(AttributeKeys::INTRINSIC).next().unwrap(),
+                        "conflicting definition",
+                    )
+                    .note(format!(
+                        "declaration is marked as `intrinsic` but it also has a body introduced by `{definition_marker}`"
+                    ))
+                    .report(reporter);
                 Err(())
             }
             _ => Ok(()),
@@ -465,10 +467,6 @@ impl Attributes {
         self.keys.contains(keys)
     }
 
-    pub fn within(&self, keys: AttributeKeys) -> bool {
-        keys.contains(self.keys)
-    }
-
     pub fn filter(
         &self,
         keys: AttributeKeys,
@@ -571,8 +569,6 @@ pub enum AttributeKind {
     /// forbid <0:lint:Path>
     /// ```
     Forbid { lint: Lint },
-    /// Mark a binding as having a definition outside of this language.
-    Foreign,
     /// Make the inclusion of the attribute target dependent on a [condition](Condition).
     ///
     /// Aka conditional compilation.
@@ -583,23 +579,25 @@ pub enum AttributeKind {
     /// if <0:condition:Condition>
     /// ```
     If { condition: Condition },
+    /// Identify a binding as an intrinsic.
+    Intrinsic,
     /// Exclude the attribute target from further processing.
     ///
     /// Basically `@(if false)` but `if` won't be implemented anytime soon.
     Ignore,
     /// Statically include the contents of file given by path.
     Include,
-    /// Declare a binding Rust FFI compatible for the TWI.
-    ///
-    /// This is an implementation detail right now and will likely removed
-    /// once our FFI story grows stronger.
-    Inherent,
     /// Specify the concrete type of a number literal to be `Int`.
     Int,
     /// Specify the concrete type of a number literal to be `Int32`.
     Int32,
     /// Specify the concrete type of a number literal to be `Int64`.
     Int64,
+    /// Identify a binding intrinsic to the language.
+    ///
+    /// Currently only used for bindings that are required for some
+    /// intrinsic bindings in the core library.
+    Known,
     /// Specify the concrete type of a sequence literal to be `List`.
     List,
     /// Change the path where the external module resides.
@@ -671,6 +669,7 @@ pub enum AttributeKind {
 
 impl AttributeKind {
     // @Question is outputting "attribute `documentation`" bad output for documentation comments?
+    // @Task derive this (without quotes)
     pub const fn quoted_name(&self) -> &'static str {
         macro quoted($name:literal) {
             concat!("`", $name, "`")
@@ -682,14 +681,14 @@ impl AttributeKind {
             Self::Deprecated { .. } => quoted!("deprecated"),
             Self::Documentation { .. } => quoted!("documentation"),
             Self::Forbid { .. } => quoted!("forbid"),
-            Self::Foreign => quoted!("foreign"),
             Self::If { .. } => quoted!("if"),
+            Self::Intrinsic => quoted!("intrinsic"),
             Self::Ignore => quoted!("ignore"),
             Self::Include => quoted!("include"),
-            Self::Inherent => quoted!("inherent"),
             Self::Int => quoted!("Int"),
             Self::Int32 => quoted!("Int32"),
             Self::Int64 => quoted!("Int64"),
+            Self::Known => quoted!("known"),
             Self::List => quoted!("List"),
             Self::Location { .. } => quoted!("location"),
             Self::Moving => quoted!("moving"),
@@ -720,9 +719,9 @@ impl AttributeKind {
             Deprecated { .. } | Documentation { .. } | If { .. } | Ignore | Unstable { .. } => {
                 Targets::DECLARATION
             }
-            Foreign => Targets::VALUE_DECLARATION | Targets::DATA_DECLARATION,
+            Intrinsic => Targets::VALUE_DECLARATION | Targets::DATA_DECLARATION,
             Include | Rune | Text => Targets::TEXT_LITERAL,
-            Inherent | Moving | Opaque => Targets::DATA_DECLARATION,
+            Known | Moving | Opaque => Targets::DATA_DECLARATION,
             Int | Int32 | Int64 | Nat | Nat32 | Nat64 => Targets::NUMBER_LITERAL,
             List | Vector => Targets::SEQUENCE_LITERAL,
             // @Task but smh add extra diagnostic note saying they are public automatically
@@ -746,11 +745,11 @@ impl AttributeKind {
             Self::Deprecated { .. } => AttributeKeys::DEPRECATED,
             Self::Documentation { .. } => AttributeKeys::DOCUMENTATION,
             Self::Forbid { .. } => AttributeKeys::FORBID,
-            Self::Foreign => AttributeKeys::FOREIGN,
+            Self::Intrinsic => AttributeKeys::INTRINSIC,
             Self::If { .. } => AttributeKeys::IF,
             Self::Ignore => AttributeKeys::IGNORE,
             Self::Include => AttributeKeys::INCLUDE,
-            Self::Inherent => AttributeKeys::INHERENT,
+            Self::Known => AttributeKeys::KNOWN,
             Self::Int => AttributeKeys::INT,
             Self::Int32 => AttributeKeys::INT32,
             Self::Int64 => AttributeKeys::INT64,
@@ -782,11 +781,11 @@ bitflags::bitflags! {
         const DEPRECATED = 1 << 2;
         const DOCUMENTATION = 1 << 3;
         const FORBID = 1 << 4;
-        const FOREIGN = 1 << 5;
+        const INTRINSIC = 1 << 5;
         const IF = 1 << 6;
         const IGNORE = 1 << 7;
         const INCLUDE = 1 << 8;
-        const INHERENT = 1 << 9;
+        const KNOWN = 1 << 9;
         const INT = 1 << 10;
         const INT32 = 1 << 11;
         const INT64 = 1 << 12;
@@ -808,15 +807,17 @@ bitflags::bitflags! {
         const VECTOR = 1 << 28;
         const WARN = 1 << 29;
 
+        /// Attributes that can be applied several times to the same item.
         const COEXISTABLE = Self::ALLOW.bits
             | Self::DENY.bits
             | Self::DOCUMENTATION.bits
             | Self::FORBID.bits
             | Self::WARN.bits;
 
+        /// Attributes that are implemented.
         const SUPPORTED = Self::DOCUMENTATION.bits
-            | Self::FOREIGN.bits
-            | Self::INHERENT.bits
+            | Self::INTRINSIC.bits
+            | Self::KNOWN.bits
             | Self::INT.bits
             | Self::INT32.bits
             | Self::INT64.bits
@@ -826,7 +827,12 @@ bitflags::bitflags! {
             | Self::NAT64.bits
             | Self::OPAQUE.bits
             | Self::PUBLIC.bits;
+
+        /// Attributes that are unimplemented.
         const UNSUPPORTED = !Self::SUPPORTED.bits;
+
+        /// Attributes that are internal to the standard library `core`.
+        const INTERNAL = Self::INTRINSIC.bits | Self::KNOWN.bits;
     }
 }
 

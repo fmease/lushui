@@ -1,6 +1,6 @@
 ;;; TEST ignore
 
-@foreign
+@intrinsic
 data Nat: Type
 
 ;;; @Bug the commented out snippet
@@ -16,14 +16,14 @@ data Nat: Type
 ;;; for example but that's just a minor thingy)
 ;;; xxx: "foo" = "bar"
 
-;;; @foreign
+;;; @intrinsic
 ;;; data Text: Type
 
 
-@foreign
+@intrinsic
 data Text: Type
 
-@foreign
+@intrinsic
 add: Nat -> Nat -> Nat
 
 use add as +

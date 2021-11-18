@@ -1,43 +1,43 @@
 use crate.(option.Option bool.Bool text.Text)
 
-@public @foreign
+@public @intrinsic
 data Nat: Type
 
 @public
 use add as +
 
-@public @foreign
+@public @intrinsic
 add: Nat -> Nat -> Nat
 
 @public
 use subtract as -
 
-@public @foreign
+@public @intrinsic
 subtract: Nat -> Nat -> Option Nat
 
 @public
 use panicking-subtract as -?
 
 ;;; @Temporary
-@public @foreign
+@public @intrinsic
 panicking-subtract: Nat -> Nat -> Nat
 
 @public
 use multiply as *
 
-@public @foreign
+@public @intrinsic
 multiply: Nat -> Nat -> Nat
 
 @public
 use divide as /
 
-@public @foreign
+@public @intrinsic
 divide: Nat -> Nat -> Option Nat
 
 @public
 use equal as ==
 
-@public @foreign
+@public @intrinsic
 equal: Nat -> Nat -> Bool
 
 ;;; equal (n m: Nat): Bool =
@@ -48,28 +48,28 @@ equal: Nat -> Nat -> Bool
 @public
 use less as <
 
-@public @foreign
+@public @intrinsic
 less: Nat -> Nat -> Bool
 
 @public
 use less-equal as =<
 
-@public @foreign
+@public @intrinsic
 less-equal: Nat -> Nat -> Bool
 
 @public
 use greater as >
 
-@public @foreign
+@public @intrinsic
 greater: Nat -> Nat -> Bool
 
 @public
 use greater-equal as >=
 
-@public @foreign
+@public @intrinsic
 greater-equal: Nat -> Nat -> Bool
 
-@public @foreign
+@public @intrinsic
 display: Nat -> Text
 
 use crate.(bool ordering)
@@ -82,5 +82,5 @@ compare (n m: Nat): ordering.Ordering =
             bool.true => ordering.less
             bool.false => ordering.greater
 
-;;; @public @foreign
+;;; @public @intrinsic
 ;;; to-int: Nat -> Nat -> crate.int.Int

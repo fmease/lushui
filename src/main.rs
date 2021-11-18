@@ -32,7 +32,7 @@ use lushui::{
     package::{find_package, BuildQueue, CrateType, PackageManifest, DEFAULT_SOURCE_FOLDER_NAME},
     resolver::{self, PROGRAM_ENTRY_IDENTIFIER},
     span::{SharedSourceMap, SourceMap, Spanned},
-    syntax::{CrateName, Lexer, Lowerer, Parser},
+    syntax::{lowerer::LoweringOptions, CrateName, Lexer, Lowerer, Parser},
     typer::Typer,
     FILE_EXTENSION,
 };
@@ -86,12 +86,18 @@ fn execute_command(
     use Command::*;
 
     match command {
-        Build { mode, suboptions } => build_package(mode, suboptions, options, map, reporter),
+        Build {
+            mode,
+            options: build_options,
+        } => build_package(mode, build_options, options, map, reporter),
         Explain => todo!(),
-        Generate { mode, suboptions } => match mode {
+        Generate {
+            mode,
+            options: generation_options,
+        } => match mode {
             cli::GenerationMode::Initialize => todo!(),
             cli::GenerationMode::New { package_name } => {
-                create_new_package(package_name, suboptions, options, reporter)
+                create_new_package(package_name, generation_options, reporter)
             }
         },
     }
@@ -100,14 +106,14 @@ fn execute_command(
 /// Check, build or run a given package.
 fn build_package(
     mode: cli::BuildMode,
-    suboptions: cli::BuildOptions,
+    build_options: cli::BuildOptions,
     options: cli::Options,
     map: &SharedSourceMap,
     reporter: &Reporter,
 ) -> Result {
     let mut build_queue = BuildQueue::new(map.clone(), reporter);
 
-    let path = suboptions
+    let path = build_options
         .path
         .map(|path| {
             path.canonicalize().map_err(|error| {
@@ -124,12 +130,12 @@ fn build_package(
         Some(path) if path.is_file() => {
             build_queue.process_single_file_package(
                 path,
-                suboptions.crate_type.unwrap_or(CrateType::Binary),
-                suboptions.no_core,
+                build_options.crate_type.unwrap_or(CrateType::Binary),
+                build_options.no_core,
             )?;
         }
         path => {
-            if suboptions.no_core {
+            if build_options.no_core {
                 Diagnostic::error()
                     .message("the flag `--no-core` is only available for single-file packages")
                     .help(
@@ -138,7 +144,7 @@ fn build_package(
                     )
                     .report(reporter);
             }
-            if suboptions.crate_type.is_some() {
+            if build_options.crate_type.is_some() {
                 // @Task add help explaining the equivalent for normal packages
                 Diagnostic::error()
                     .message("the option `--crate-type` is only available for single-file packages")
@@ -266,8 +272,14 @@ fn build_package(
 
         let time = Instant::now();
 
-        let outcome!(mut declarations, health_of_lowerer) =
-            Lowerer::new(map.clone(), reporter).lower_declaration(declaration);
+        let outcome!(mut declarations, health_of_lowerer) = Lowerer::new(
+            LoweringOptions {
+                enable_internals: options.internals || crate_.is_core_library(&session),
+            },
+            map.clone(),
+            reporter,
+        )
+        .lower_declaration(declaration);
 
         let duration = time.elapsed();
 
@@ -313,25 +325,15 @@ fn build_package(
 
         check_pass_restriction!(PassRestriction::Resolver);
 
-        // @Note this condition seems weird but the final result is
-        // that we only ever call register_foreign_bindings once
-        // (unless we start supporting --extern for single-file packages
-        // (which are also --no-core)). ideally, we would not
-        // store those "FFI bindings" (more like "intrinstincs")
-        // in crate::resolver::scope::Crate but in a separate location! (@Task)
-        if suboptions.no_core || crate_.is_core_library(&session) {
-            crate_.register_foreign_bindings();
-        }
-
         let time = Instant::now();
 
-        let mut typer = Typer::new(&mut crate_, &session, reporter);
+        let mut typer = Typer::new(&mut crate_, &mut session, reporter);
         typer.infer_types_in_declaration(&declaration)?;
 
         let duration = time.elapsed();
 
         if is_goal_crate && options.emit_scope {
-            eprintln!("{}", typer.crate_.with(&session));
+            eprintln!("{}", typer.crate_.with(typer.session));
         }
 
         if options.times {
@@ -387,12 +389,9 @@ fn build_package(
 
 fn create_new_package(
     name: String,
-    suboptions: cli::GenerationOptions,
-    _options: cli::Options,
+    generation_options: cli::GenerationOptions,
     reporter: &Reporter,
 ) -> Result {
-    // @Task initialize git repository (unless `--vsc=none` (…))
-
     use std::fs;
 
     let name = CrateName::parse(&name).map_err(|error| error.report(reporter))?;
@@ -417,7 +416,7 @@ dependencies: {{
     )
     .unwrap();
 
-    if suboptions.library {
+    if generation_options.library {
         let path = source_folder_path
             .join(CrateType::Library.default_root_file_stem())
             .with_extension(FILE_EXTENSION);
@@ -425,7 +424,7 @@ dependencies: {{
         fs::File::create(path).unwrap();
     }
 
-    if suboptions.binary {
+    if generation_options.binary {
         let path = source_folder_path
             .join(CrateType::Binary.default_root_file_stem())
             .with_extension(FILE_EXTENSION);

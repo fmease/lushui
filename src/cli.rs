@@ -67,7 +67,8 @@ pub fn arguments() -> (Command, Options) {
                 .multiple(true)
                 .number_of_values(1)
                 .global(true)
-                .help("Sets unstable options (options excluded from any stability guarantees)"),
+                .hidden(true) // mentioned in AFTER_HELP
+                .help("Sets unstable options (options not subject to any stability guarantees)"),
         )
         .subcommand(
             SubCommand::with_name("build")
@@ -137,7 +138,7 @@ pub fn arguments() -> (Command, Options) {
                 "run" => BuildMode::Run,
                 _ => unreachable!(),
             },
-            suboptions: BuildOptions {
+            options: BuildOptions {
                 path: command.matches.value_of_os("PATH").map(Into::into),
                 no_core: command.matches.is_present("no-core"),
                 crate_type: command
@@ -160,7 +161,7 @@ pub fn arguments() -> (Command, Options) {
                 },
                 _ => unreachable!(),
             },
-            suboptions: {
+            options: {
                 let library = command.matches.is_present("library");
 
                 GenerationOptions {
@@ -194,11 +195,12 @@ pub fn arguments() -> (Command, Options) {
                     let mut message =
                         "UNSTABLE OPTIONS (not subject to any stability guarantees):\n".to_string();
                     for option in UnstableOption::elements() {
-                        message += &format!("    -Z {:>25}    {}\n", option.name(), option.help());
+                        message += &format!("    -Z {:<25}    {}\n", option.name(), option.help());
                     }
                     println!("{message}");
                     std::process::exit(0);
                 }
+                Internals => options.internals = true,
                 EmitTokens => options.emit_tokens = true,
                 EmitAst => options.emit_ast = true,
                 EmitLoweredAst => options.emit_lowered_ast = true,
@@ -228,7 +230,7 @@ pub fn arguments() -> (Command, Options) {
 
 const AFTER_HELP: &str = "\
 ADDITIONAL HELP:
-    -Z help    Prints unstable options
+    -Z help    Prints unstable options (options not subject to any stability guarantees)
 ";
 
 // @Task add --color=always|never|auto
@@ -236,6 +238,7 @@ ADDITIONAL HELP:
 #[allow(clippy::struct_excessive_bools)]
 pub struct Options {
     pub quiet: bool,
+    pub internals: bool,
     pub emit_tokens: bool,
     pub emit_ast: bool,
     pub emit_lowered_ast: bool,
@@ -277,12 +280,12 @@ pub enum PassRestriction {
 pub enum Command {
     Build {
         mode: BuildMode,
-        suboptions: BuildOptions,
+        options: BuildOptions,
     },
     Explain,
     Generate {
         mode: GenerationMode,
-        suboptions: GenerationOptions,
+        options: GenerationOptions,
     },
 }
 
@@ -312,6 +315,7 @@ pub struct GenerationOptions {
 #[derive(Clone, Copy, Elements)]
 enum UnstableOption {
     Help,
+    Internals,
     EmitTokens,
     EmitAst,
     EmitLoweredAst,
@@ -331,6 +335,7 @@ impl UnstableOption {
     const fn name(self) -> &'static str {
         match self {
             Self::Help => "help",
+            Self::Internals => "internals",
             Self::EmitTokens => "emit-tokens",
             Self::EmitAst => "emit-ast",
             Self::EmitLoweredAst => "emit-lowered-ast",
@@ -349,6 +354,7 @@ impl UnstableOption {
     const fn help(self) -> &'static str {
         match self {
             Self::Help => "Prints help information and halts",
+            Self::Internals => "Enables internal language and library features",
             Self::EmitTokens => "Emits the tokens of the current crate output by the lexer",
             Self::EmitAst => "Emits the abstract syntax tree (AST) of the current crate output by the parser",
             Self::EmitLoweredAst => "Emits the lowered AST of the current crate",
@@ -374,6 +380,7 @@ impl FromStr for UnstableOption {
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         Ok(match input {
             "help" => Self::Help,
+            "internals" => Self::Internals,
             "emit-tokens" => Self::EmitTokens,
             "emit-ast" => Self::EmitAst,
             "emit-lowered-ast" => Self::EmitLoweredAst,

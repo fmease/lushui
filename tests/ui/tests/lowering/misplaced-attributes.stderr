@@ -1,34 +1,34 @@
-error[E013]: attribute `foreign` is ascribed to a use-declaration
+error[E013]: attribute `intrinsic` is ascribed to a use-declaration
  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:3:1
   |
-3 | @foreign
-  | ^^^^^^^^ misplaced attribute
+3 | @intrinsic
+  | ^^^^^^^^^^ misplaced attribute
   |
  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:5:1
   |
 5 | use self.()
   | ----------- incompatible item
   |
- note: attribute `foreign` can only be ascribed to value or data declarations
+ note: attribute `intrinsic` can only be ascribed to value or data declarations
 
-error[E013]: attribute `foreign` is ascribed to a use-declaration
+error[E013]: attribute `intrinsic` is ascribed to a use-declaration
  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:4:1
   |
-4 | @foreign @Int32
-  | ^^^^^^^^ misplaced attribute
+4 | @intrinsic @Int32
+  | ^^^^^^^^^^ misplaced attribute
   |
  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:5:1
   |
 5 | use self.()
   | ----------- incompatible item
   |
- note: attribute `foreign` can only be ascribed to value or data declarations
+ note: attribute `intrinsic` can only be ascribed to value or data declarations
 
 error[E013]: attribute `Int32` is ascribed to a use-declaration
- --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:4:10
+ --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:4:12
   |
-4 | @foreign @Int32
-  |          ^^^^^^ misplaced attribute
+4 | @intrinsic @Int32
+  |            ^^^^^^ misplaced attribute
   |
  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:5:1
   |
@@ -37,24 +37,24 @@ error[E013]: attribute `Int32` is ascribed to a use-declaration
   |
  note: attribute `Int32` can only be ascribed to number literals
 
-error[E013]: attribute `foreign` is ascribed to a use-declaration
+error[E013]: attribute `intrinsic` is ascribed to a use-declaration
  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:7:1
   |
-7 | @foreign @opaque @(location "/")
-  | ^^^^^^^^ misplaced attribute
+7 | @intrinsic @opaque @(location "/")
+  | ^^^^^^^^^^ misplaced attribute
   |
  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:8:1
   |
 8 | use something.substantial.(root0 root1)
   | --------------------------------------- incompatible item
   |
- note: attribute `foreign` can only be ascribed to value or data declarations
+ note: attribute `intrinsic` can only be ascribed to value or data declarations
 
 error[E013]: attribute `opaque` is ascribed to a use-declaration
- --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:7:10
+ --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:7:12
   |
-7 | @foreign @opaque @(location "/")
-  |          ^^^^^^^ misplaced attribute
+7 | @intrinsic @opaque @(location "/")
+  |            ^^^^^^^ misplaced attribute
   |
  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:8:1
   |
@@ -64,10 +64,10 @@ error[E013]: attribute `opaque` is ascribed to a use-declaration
  note: attribute `opaque` can only be ascribed to data declarations
 
 error[E013]: attribute `location` is ascribed to a use-declaration
- --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:7:18
+ --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:7:20
   |
-7 | @foreign @opaque @(location "/")
-  |                  ^^^^^^^^^^^^^^^ misplaced attribute
+7 | @intrinsic @opaque @(location "/")
+  |                    ^^^^^^^^^^^^^^^ misplaced attribute
   |
  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:8:1
   |
@@ -86,47 +86,47 @@ error[E013]: attribute `include` is ascribed to a value declaration
    |
 11 |   binding: Binding =
    |  _-
-12 | |     @foreign @Text make-binding @(public super) resource
-   | |________________________________________________________- incompatible item
+12 | |     @intrinsic @Text make-binding @(public super) resource
+   | |__________________________________________________________- incompatible item
    |
   note: attribute `include` can only be ascribed to text literals
 
-error[E013]: attribute `foreign` is ascribed to a path expression
+error[E013]: attribute `intrinsic` is ascribed to a path expression
   --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:12:5
    |
-12 |     @foreign @Text make-binding @(public super) resource
-   |     ^^^^^^^^ misplaced attribute
+12 |     @intrinsic @Text make-binding @(public super) resource
+   |     ^^^^^^^^^^ misplaced attribute
    |
-  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:12:20
+  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:12:22
    |
-12 |     @foreign @Text make-binding @(public super) resource
-   |                    ------------ incompatible item
+12 |     @intrinsic @Text make-binding @(public super) resource
+   |                      ------------ incompatible item
    |
-  note: attribute `foreign` can only be ascribed to value or data declarations
+  note: attribute `intrinsic` can only be ascribed to value or data declarations
 
 error[E013]: attribute `Text` is ascribed to a path expression
-  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:12:14
+  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:12:16
    |
-12 |     @foreign @Text make-binding @(public super) resource
-   |              ^^^^^ misplaced attribute
+12 |     @intrinsic @Text make-binding @(public super) resource
+   |                ^^^^^ misplaced attribute
    |
-  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:12:20
+  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:12:22
    |
-12 |     @foreign @Text make-binding @(public super) resource
-   |                    ------------ incompatible item
+12 |     @intrinsic @Text make-binding @(public super) resource
+   |                      ------------ incompatible item
    |
   note: attribute `Text` can only be ascribed to text literals
 
 error[E013]: attribute `public` is ascribed to a path expression
-  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:12:33
+  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:12:35
    |
-12 |     @foreign @Text make-binding @(public super) resource
-   |                                 ^^^^^^^^^^^^^^^ misplaced attribute
+12 |     @intrinsic @Text make-binding @(public super) resource
+   |                                   ^^^^^^^^^^^^^^^ misplaced attribute
    |
-  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:12:49
+  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:12:51
    |
-12 |     @foreign @Text make-binding @(public super) resource
-   |                                                 -------- incompatible item
+12 |     @intrinsic @Text make-binding @(public super) resource
+   |                                                   -------- incompatible item
    |
   note: attribute `public` can only be ascribed to declarations except constructors
 
@@ -143,7 +143,7 @@ error[E013]: attribute `public` is ascribed to a constructor declaration
    |
   note: attribute `public` can only be ascribed to declarations except constructors
 
-error[E015]: missing mandatory type annotation on declaration `manifest`
+error[E015]: a mandatory type annotation is missing on the declaration `manifest`
   --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:15:21
    |
 15 |     @public manifest

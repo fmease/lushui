@@ -1,13 +1,13 @@
-error[E014]: attributes `foreign` and `inherent` are mutually exclusive
+error[E014]: attributes `intrinsic` and `known` are mutually exclusive
  --> ${DIRECTORY}/lowering/mutually-exclusive-attributes.lushui:3:1
   |
-3 | @foreign @inherent
-  | ^^^^^^^^ conflicting attribute
+3 | @intrinsic @known
+  | ^^^^^^^^^^ conflicting attribute
   |
- --> ${DIRECTORY}/lowering/mutually-exclusive-attributes.lushui:3:10
+ --> ${DIRECTORY}/lowering/mutually-exclusive-attributes.lushui:3:12
   |
-3 | @foreign @inherent
-  |          ^^^^^^^^^ conflicting attribute
+3 | @intrinsic @known
+  |            ^^^^^^ conflicting attribute
   |
 
 error[E014]: attributes `Nat`, `Int` and `Int32` are mutually exclusive

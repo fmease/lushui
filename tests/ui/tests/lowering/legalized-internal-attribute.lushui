@@ -1,0 +1,5 @@
+;;; TEST pass check -Z internals --no-core
+
+@known
+data Unit: Type of
+    unit: Unit

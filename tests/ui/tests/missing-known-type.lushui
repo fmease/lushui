@@ -1,0 +1,14 @@
+;;; TEST fail run --no-core -Z internals
+;;; @Note unfortunately, this is a runtime error right now
+
+@intrinsic
+data Nat: Type
+
+@intrinsic
+equal: Nat -> Nat -> Bool
+
+data Bool: Type of
+    false: Bool
+    true: Bool
+
+main: Bool = equal 0 1

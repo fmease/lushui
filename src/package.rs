@@ -2,18 +2,19 @@
 
 use crate::{
     diagnostics::{Diagnostic, Reporter},
-    entity::Entity,
     error::{Health, ReportedExt, Result},
     format::IOError,
     metadata::content_span_of_key,
-    resolver::{Crate, DeclarationIndex, Identifier},
+    resolver::Crate,
     span::{SharedSourceMap, Spanned, WeaklySpanned},
     syntax::CrateName,
     utility::HashMap,
     FILE_EXTENSION,
 };
 use index_map::IndexMap;
+use manifest::PackageProfile;
 pub use manifest::{BinaryManifest, DependencyManifest, LibraryManifest, PackageManifest, Version};
+pub use session::BuildSession;
 use std::{
     default::default,
     fmt,
@@ -22,76 +23,7 @@ use std::{
     str::FromStr,
 };
 
-use self::manifest::PackageProfile;
-
-#[derive(Default)]
-pub struct BuildSession {
-    // @Question BTreeSet<Crate> (Crate.index) ?
-    built_crates: HashMap<CrateIndex, Crate>,
-    built_packages: IndexMap<PackageIndex, Package>,
-}
-
-impl BuildSession {
-    pub fn with_packages(packages: IndexMap<PackageIndex, Package>) -> Self {
-        Self {
-            built_crates: HashMap::default(),
-            built_packages: packages,
-        }
-    }
-
-    pub fn add(&mut self, crate_: Crate) {
-        self.built_crates.insert(crate_.index, crate_);
-    }
-
-    pub fn foreign_type(&self, binder: &'static str) -> Option<&Identifier> {
-        // @Task don't just search through all crates (linearly) but
-        // respect the (not yet existing) dependency graph:
-        // crates farther away have higher priority meaning
-        // crates trying to (re-)define the foreign type is illegal
-        // equally far crates (e.g. `core` and a no-core library) trying
-        // to define the same foreign type leads to an error
-        // (a different one)
-        for crate_ in self.built_crates.values() {
-            match crate_.ffi.foreign_types.get(binder) {
-                Some(Some(binder)) => return Some(binder),
-                Some(None) => continue,
-                None => unreachable!(),
-            }
-        }
-
-        None
-    }
-}
-
-impl Index<DeclarationIndex> for BuildSession {
-    type Output = Entity;
-
-    fn index(&self, index: DeclarationIndex) -> &Self::Output {
-        &self.built_crates[&index.crate_index()][index.local_index()]
-    }
-}
-
-impl Index<CrateIndex> for BuildSession {
-    type Output = Crate;
-
-    fn index(&self, index: CrateIndex) -> &Self::Output {
-        &self.built_crates[&index]
-    }
-}
-
-impl Index<PackageIndex> for BuildSession {
-    type Output = Package;
-
-    fn index(&self, index: PackageIndex) -> &Self::Output {
-        &self.built_packages[index]
-    }
-}
-
-impl IndexMut<PackageIndex> for BuildSession {
-    fn index_mut(&mut self, index: PackageIndex) -> &mut Self::Output {
-        &mut self.built_packages[index]
-    }
-}
+pub mod session;
 
 #[derive(PartialEq, Eq, Clone, Copy, index_map::Index)]
 pub struct PackageIndex(usize);

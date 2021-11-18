@@ -1,0 +1,13 @@
+;;; TEST fail check
+
+@known
+data Unit: Type of
+    unit: Unit
+
+@public @known
+data Bool: Type of
+    true: Bool
+    false: Bool
+
+@intrinsic
+data Text: Type

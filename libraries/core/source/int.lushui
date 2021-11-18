@@ -1,9 +1,9 @@
-@public @foreign
+@public @intrinsic
 data Int: Type
 
-;;; @public @foreign
+;;; @public @intrinsic
 ;;; to-nat: Int -> Option crate.nat.Nat
 
-;;; @public @foreign
+;;; @public @intrinsic
 ;;; absolute: Int -> crate.nat.Nat
 

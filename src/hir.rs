@@ -80,7 +80,7 @@ pub enum ExpressionKind {
     UseIn,
     CaseAnalysis(Rc<CaseAnalysis>),
     Substitution(Rc<Substitution>),
-    ForeignApplication(Rc<ForeignApplication>),
+    IntrinsicApplication(Rc<IntrinsicApplication>),
     Projection(Rc<Projection>),
     IO(Rc<IO>),
     Error,
@@ -138,7 +138,7 @@ pub struct Substitution {
 }
 
 #[derive(Clone)]
-pub struct ForeignApplication {
+pub struct IntrinsicApplication {
     pub callee: Identifier,
     pub arguments: Vec<Expression>,
 }

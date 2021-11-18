@@ -12,7 +12,6 @@
 
 // @Beacon @Task use weak-normal form extensively again!!!
 
-pub(crate) mod ffi;
 pub(crate) mod scope;
 
 use super::Expression;
@@ -22,7 +21,10 @@ use crate::{
     error::{PossiblyErroneous, Result},
     format::DisplayWith,
     hir::{self, expr},
-    package::BuildSession,
+    package::{
+        session::{KnownBinding, Value},
+        BuildSession,
+    },
     resolver::{Crate, DeclarationIndex, Identifier},
     span::{Span, Spanning},
     syntax::{ast::Explicit, lowered_ast::Attributes},
@@ -256,8 +258,8 @@ impl<'a> Interpreter<'a> {
                 }
             }
             (UseIn, _) => todo!("substitute use/in"),
-            (ForeignApplication(application), substitution) => expr! {
-                ForeignApplication {
+            (IntrinsicApplication(application), substitution) => expr! {
+                IntrinsicApplication {
                     expression.attributes,
                     expression.span;
                     callee: application.callee.clone(),
@@ -285,7 +287,7 @@ impl<'a> Interpreter<'a> {
         use self::Substitution::*;
         use hir::ExpressionKind::*;
 
-        // @Bug we currently don't support zero-arity foreign functions
+        // @Bug we currently don't support zero-arity intrinsic functions
         Ok(match expression.clone().data {
             Binding(binding) => {
                 match self.look_up_value(&binding.binder) {
@@ -317,7 +319,7 @@ impl<'a> Interpreter<'a> {
                                     // an Option<_> (that's gonna happen when we finally implement
                                     // the discarding identifier `_`)
                                     parameter: crate::resolver::Identifier::parameter("__"),
-                                    parameter_type_annotation: Some(self.crate_.look_up_unit_type(None, self.reporter)?),
+                                    parameter_type_annotation: Some(self.session.look_up_known_binding(KnownBinding::Unit, self.reporter)?),
                                     body_type_annotation: None,
                                     body: expr! {
                                         Substitution {
@@ -345,10 +347,10 @@ impl<'a> Interpreter<'a> {
                             context,
                         )?
                     }
-                    Binding(binding) if self.is_foreign(&binding.binder) => self
+                    Binding(binding) if self.is_intrinsic(&binding.binder) => self
                         .evaluate_expression(
                             expr! {
-                                ForeignApplication {
+                                IntrinsicApplication {
                                     expression.attributes, expression.span;
                                     callee: binding.binder.clone(),
                                     arguments: vec![argument],
@@ -368,9 +370,9 @@ impl<'a> Interpreter<'a> {
                             explicitness: Explicit,
                         }
                     },
-                    ForeignApplication(application) => self.evaluate_expression(
+                    IntrinsicApplication(application) => self.evaluate_expression(
                         expr! {
-                            ForeignApplication {
+                            IntrinsicApplication {
                                 expression.attributes, expression.span;
                                 callee: application.callee.clone(),
                                 arguments: {
@@ -529,17 +531,17 @@ impl<'a> Interpreter<'a> {
                     _ => unreachable!(),
                 }
             }
-            ForeignApplication(application) => {
+            IntrinsicApplication(application) => {
                 let arguments = application
                     .arguments
                     .clone()
                     .into_iter()
                     .map(|argument| self.evaluate_expression(argument, context))
                     .collect::<Result<Vec<_>, _>>()?;
-                self.apply_foreign_binding(application.callee.clone(), arguments.clone())?
+                self.apply_intrinsic_function(application.callee.clone(), arguments.clone())?
                     .unwrap_or_else(|| {
                         expr! {
-                            ForeignApplication {
+                            IntrinsicApplication {
                                 expression.attributes,
                                 expression.span;
                                 callee: application.callee.clone(),
@@ -552,32 +554,31 @@ impl<'a> Interpreter<'a> {
         })
     }
 
-    /// Try applying foreign binding.
+    /// Try applying an intrinsic function.
     ///
     /// # Panics
     ///
-    /// Panics if `binder` is either not bound or not foreign.
+    /// Panics if `binder` is either not bound or not an intrinsic.
     // @Task correctly handle
     // * pure vs impure
     // * polymorphism
     // * illegal neutrals
     // * types (arguments of type `Type`): skip them
     // @Note: we need to convert to be able to convert to ffi::Value
-    pub fn apply_foreign_binding(
+    pub fn apply_intrinsic_function(
         &self,
         binder: Identifier,
         arguments: Vec<Expression>,
     ) -> Result<Option<Expression>> {
         match self.look_up(binder.declaration_index().unwrap()).kind {
-            crate::entity::EntityKind::Foreign {
+            crate::entity::EntityKind::Intrinsic {
                 arity, function, ..
             } => Ok(if arguments.len() == arity {
                 let mut value_arguments = Vec::new();
 
                 // @Task tidy up with iterator combinators
                 for argument in arguments {
-                    if let Some(argument) = ffi::Value::from_expression(&argument, &self.crate_.ffi)
-                    {
+                    if let Some(argument) = Value::from_expression(&argument, self.session) {
                         value_arguments.push(argument);
                     } else {
                         return Ok(None);
@@ -686,13 +687,13 @@ impl<'a> Interpreter<'a> {
                 )?
             }
             (CaseAnalysis(_), CaseAnalysis(_)) => unreachable!(),
-            (ForeignApplication(foreign0), ForeignApplication(foreign1)) => {
-                foreign0.callee == foreign1.callee
-                    && foreign0
+            (IntrinsicApplication(intrinsic0), IntrinsicApplication(intrinsic1)) => {
+                intrinsic0.callee == intrinsic1.callee
+                    && intrinsic0
                         .arguments
                         .clone()
                         .into_iter()
-                        .zip(foreign1.arguments.clone())
+                        .zip(intrinsic1.arguments.clone())
                         .map(|(argument0, argument1)| self.equals(argument0, argument1, scope))
                         .fold(Ok(true), |all: Result<_>, this| Ok(all? && this?))?
             }
@@ -739,11 +740,11 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    pub fn is_foreign(&self, binder: &Identifier) -> bool {
+    pub fn is_intrinsic(&self, binder: &Identifier) -> bool {
         use crate::resolver::Index;
 
         match binder.index {
-            Index::Declaration(index) => self.look_up(index).is_foreign(),
+            Index::Declaration(index) => self.look_up(index).is_intrinsic(),
             Index::DeBruijn(_) => false,
             Index::DeBruijnParameter => unreachable!(),
         }

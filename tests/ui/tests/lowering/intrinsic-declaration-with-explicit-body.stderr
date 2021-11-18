@@ -1,0 +1,56 @@
+error[E038]: attribute `intrinsic` is an internal feature
+ --> ${DIRECTORY}/lowering/intrinsic-declaration-with-explicit-body.lushui:3:1
+  |
+3 | @intrinsic
+  | ^^^^^^^^^^ 
+  |
+ help: add the command-line option `-Z internals` to use the attribute anyway
+       opting out of any stability guarantees in the process!
+
+error[E020]: `Void` is defined multiple times in this scope
+ --> ${DIRECTORY}/lowering/intrinsic-declaration-with-explicit-body.lushui:3:1
+  |
+3 | @intrinsic
+  | ---------- conflicting definition
+  |
+ --> ${DIRECTORY}/lowering/intrinsic-declaration-with-explicit-body.lushui:4:1
+  |
+4 | data Void: Type of
+  | ^^^^^^^^^^^^^^^^^^ conflicting definition
+  |
+ note: declaration is marked as `intrinsic` but it also has a body introduced by `of`
+
+error[E038]: attribute `intrinsic` is an internal feature
+ --> ${DIRECTORY}/lowering/intrinsic-declaration-with-explicit-body.lushui:6:1
+  |
+6 | @intrinsic thing = 0
+  | ^^^^^^^^^^ 
+  |
+ help: add the command-line option `-Z internals` to use the attribute anyway
+       opting out of any stability guarantees in the process!
+
+error[E020]: `thing` is defined multiple times in this scope
+ --> ${DIRECTORY}/lowering/intrinsic-declaration-with-explicit-body.lushui:6:1
+  |
+6 | @intrinsic thing = 0
+  | ---------- conflicting definition
+  |
+ --> ${DIRECTORY}/lowering/intrinsic-declaration-with-explicit-body.lushui:6:20
+  |
+6 | @intrinsic thing = 0
+  |                    ^ conflicting definition
+  |
+ note: declaration is marked as `intrinsic` but it also has a body introduced by `=`
+
+error[E015]: a mandatory type annotation is missing on the declaration `thing`
+ --> ${DIRECTORY}/lowering/intrinsic-declaration-with-explicit-body.lushui:6:17
+  |
+6 | @intrinsic thing = 0
+  |                >< 
+  |
+ help: provide a type annotation for the declaration with `: ?type`
+
+error: aborting due to 5 previous errors
+ note: the errors E015, E020 and E038 have a detailed explanation
+ help: run `lushui explain <codes...>` to view a selection of them
+

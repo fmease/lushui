@@ -221,7 +221,7 @@ fn format_application_or_lower(
             write!(f, " {}", application.explicitness)?;
             format_lower_expression(&application.argument, crate_, session, f)
         }
-        ForeignApplication(application) => {
+        IntrinsicApplication(application) => {
             write!(f, "{}", application.callee)?;
 
             for argument in &application.arguments {
@@ -797,7 +797,7 @@ mod test {
     }
 
     #[test]
-    fn application_foreign_application_callee() {
+    fn application_intrinsic_application_callee() {
         let session = BuildSession::default();
         let crate_ = Crate::test();
 
@@ -807,7 +807,7 @@ mod test {
                 Application {
                     Attributes::default(), Span::default();
                     callee: expr! {
-                        ForeignApplication {
+                        IntrinsicApplication {
                             Attributes::default(), Span::default();
                             callee: Identifier::parameter("eta"),
                             arguments: vec![
@@ -970,7 +970,7 @@ mod test {
     }
 
     #[test]
-    fn foreign_application_no_arguments() {
+    fn intrinsic_application_no_arguments() {
         let session = BuildSession::default();
         let mut crate_ = Crate::test();
 
@@ -979,7 +979,7 @@ mod test {
         assert_eq(
             "add",
             (expr! {
-                ForeignApplication {
+                IntrinsicApplication {
                     Attributes::default(), Span::default();
                     callee: add,
                     arguments: Vec::new(),
@@ -991,7 +991,7 @@ mod test {
     }
 
     #[test]
-    fn foreign_application_two_arguments() {
+    fn intrinsic_application_two_arguments() {
         let session = BuildSession::default();
         let mut crate_ = Crate::test();
 
@@ -1000,12 +1000,12 @@ mod test {
         assert_eq(
             "add (add 1 3000) 0",
             (expr! {
-                ForeignApplication {
+                IntrinsicApplication {
                     Attributes::default(), Span::default();
                     callee: add.clone(),
                     arguments: vec![
                         expr! {
-                            ForeignApplication {
+                            IntrinsicApplication {
                                 Attributes::default(), Span::default();
                                 callee: add,
                                 arguments: vec![

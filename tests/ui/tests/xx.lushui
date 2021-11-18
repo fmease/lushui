@@ -1,6 +1,6 @@
 ;;; TEST ignore
 
-@foreign
+@intrinsic
 data Nat32: Type
 
 ;;; module core

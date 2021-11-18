@@ -1,0 +1,25 @@
+error[E060]: the intrinsic type `Text` is missing
+ --> ${DIRECTORY}/missing-intrinsic-type.lushui:7:16
+  |
+7 | it0: It = make "test"
+  |                ^^^^^^ the type of this expression
+  |
+
+error[E060]: the intrinsic type `Nat` is missing
+ --> ${DIRECTORY}/missing-intrinsic-type.lushui:8:16
+  |
+8 | it1: It = make 344
+  |                ^^^ the type of this expression
+  |
+
+error[E060]: the intrinsic type `Int32` is missing
+ --> ${DIRECTORY}/missing-intrinsic-type.lushui:9:23
+  |
+9 | it2: It = make @Int32 0 
+  |                       ^ the type of this expression
+  |
+
+error: aborting due to 3 previous errors
+ note: the error E060 has a detailed explanation
+ help: run `lushui explain E060` to view it
+

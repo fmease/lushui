@@ -1,15 +1,15 @@
 ;;; TEST fail check
 
-@foreign
-@foreign @Int32
+@intrinsic
+@intrinsic @Int32
 use self.()
 
-@foreign @opaque @(location "/")
+@intrinsic @opaque @(location "/")
 use something.substantial.(root0 root1)
 
 @include
 binding: Binding =
-    @foreign @Text make-binding @(public super) resource
+    @intrinsic @Text make-binding @(public super) resource
 
 data Manifest: Type of
     @public manifest

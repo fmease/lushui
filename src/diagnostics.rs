@@ -663,15 +663,21 @@ pub enum Code {
     E036,
     /// Exposure reach not an ancestor of definition-site namespace.
     E037,
+    /// Use of internal binding.
+    E038,
+    /// Redefinition of known binding.
+    E039,
+    /// Redefinition of intrinsic binding.
+    E040,
     /// Missing program entry.
     E050,
-    /// Unregistered foreign binding.
+    /// Missing intrinsic binding.
     E060,
-    /// Undefined foreign type.
+    /// Unrecognized intrinsic binding.
     E061,
-    /// Invalid inherent type.
+    /// Missing known binding.
     E062,
-    /// Undefined inherent type.
+    /// Unrecognized known binding.
     E063,
     /// Metadata: Type mismatch.
     E800,

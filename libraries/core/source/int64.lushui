@@ -1,2 +1,2 @@
-@public @foreign
+@public @intrinsic
 data Int64: Type

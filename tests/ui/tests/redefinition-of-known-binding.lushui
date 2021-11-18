@@ -1,0 +1,11 @@
+;;; TEST fail check --no-core -Z internals
+
+@public @known
+data Unit: Type of
+    unit: Unit
+
+module disambiguator of
+
+    @public @known
+    data Unit: Type of
+        unit: Unit

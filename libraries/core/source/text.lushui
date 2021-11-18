@@ -1,8 +1,8 @@
-@public @foreign
+@public @intrinsic
 data Text: Type
 
 @public
 use concat as ++
 
-@public @foreign
+@public @intrinsic
 concat: Text -> Text -> Text

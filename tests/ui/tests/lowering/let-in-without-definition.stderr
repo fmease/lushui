@@ -1,4 +1,4 @@
-error[E015]: missing mandatory type annotation on declaration `foo`
+error[E015]: a mandatory type annotation is missing on the declaration `foo`
  --> ${DIRECTORY}/lowering/let-in-without-definition.lushui:3:4
   |
 3 | foo = let x f in 0

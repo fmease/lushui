@@ -7,33 +7,43 @@ use crate::{
     error::{Health, Result},
     format::{pluralize, DisplayWith, QuoteExt},
     hir::{self, expr, Declaration, Expression},
-    package::BuildSession,
+    package::{
+        session::{IntrinsicType, KnownBinding},
+        BuildSession,
+    },
     resolver::{Crate, Identifier},
     span::Span,
     syntax::{
         ast::{Explicitness, ParameterAspect},
         lowered_ast::{AttributeKeys, Attributes},
     },
+    typer::interpreter::scope::BindingRegistrationKind,
 };
 use interpreter::{
-    ffi,
     scope::{BindingRegistration, FunctionScope},
     Form, Interpreter,
 };
 use joinery::JoinableIterator;
 use std::default::default;
 
+// @Beacon @Task introduce an Error variant to hir::{Expression, Declaration}
+// to be able to continue type checking on errors
+
 /// The state of the typer.
 // @Task add recursion depth field
 pub struct Typer<'a> {
     pub crate_: &'a mut Crate,
-    session: &'a BuildSession,
+    pub session: &'a mut BuildSession,
     reporter: &'a Reporter,
     health: Health,
 }
 
 impl<'a> Typer<'a> {
-    pub fn new(crate_: &'a mut Crate, session: &'a BuildSession, reporter: &'a Reporter) -> Self {
+    pub fn new(
+        crate_: &'a mut Crate,
+        session: &'a mut BuildSession,
+        reporter: &'a Reporter,
+    ) -> Self {
         Self {
             crate_,
             session,
@@ -62,48 +72,52 @@ impl<'a> Typer<'a> {
 
         match &declaration.data {
             Value(value) => {
-                self.evaluate_registration(
-                    if declaration.attributes.has(AttributeKeys::FOREIGN) {
-                        BindingRegistration::ForeignValue {
+                self.evaluate_registration(BindingRegistration {
+                    attributes: declaration.attributes.clone(),
+                    kind: if declaration.attributes.has(AttributeKeys::INTRINSIC) {
+                        BindingRegistrationKind::IntrinsicFunction {
                             binder: value.binder.clone(),
                             type_: value.type_annotation.clone(),
                         }
                     } else {
-                        BindingRegistration::Value {
+                        BindingRegistrationKind::Value {
                             binder: value.binder.clone(),
                             type_: value.type_annotation.clone(),
                             value: Some(value.expression.clone().unwrap()),
                         }
                     },
-                )?;
+                })?;
             }
             Data(data) => {
                 // @Question don't return early??
-                self.evaluate_registration(BindingRegistration::Data {
-                    binder: data.binder.clone(),
-                    type_: data.type_annotation.clone(),
+                self.evaluate_registration(BindingRegistration {
+                    attributes: declaration.attributes.clone(),
+                    kind: BindingRegistrationKind::Data {
+                        binder: data.binder.clone(),
+                        type_: data.type_annotation.clone(),
+                    },
                 })?;
 
-                if declaration.attributes.has(AttributeKeys::FOREIGN) {
-                    self.evaluate_registration(BindingRegistration::ForeignData {
-                        binder: data.binder.clone(),
+                if declaration.attributes.has(AttributeKeys::INTRINSIC) {
+                    self.evaluate_registration(BindingRegistration {
+                        attributes: declaration.attributes.clone(),
+                        kind: BindingRegistrationKind::IntrinsicType {
+                            binder: data.binder.clone(),
+                        },
                     })?;
                 } else {
                     let constructors = data.constructors.as_ref().unwrap();
 
                     // @Task @Beacon move to resolver
-                    if let Some(inherent) = declaration
-                        .attributes
-                        .filter(AttributeKeys::INHERENT)
-                        .next()
+                    if let Some(known) = declaration.attributes.filter(AttributeKeys::KNOWN).next()
                     {
-                        self.crate_.ffi.register_inherent_bindings(
+                        self.session.register_known_type(
                             &data.binder,
                             constructors
                                 .iter()
-                                .map(|declaration| declaration.constructor().unwrap()),
-                            declaration,
-                            inherent,
+                                .map(|declaration| declaration.constructor().unwrap())
+                                .collect(),
+                            known,
                             self.reporter,
                         )?;
                     }
@@ -125,10 +139,13 @@ impl<'a> Typer<'a> {
             Constructor(constructor) => {
                 let data = context.parent_data_binding.take().unwrap();
 
-                self.evaluate_registration(BindingRegistration::Constructor {
-                    binder: constructor.binder.clone(),
-                    type_: constructor.type_annotation.clone(),
-                    data,
+                self.evaluate_registration(BindingRegistration {
+                    attributes: declaration.attributes.clone(),
+                    kind: BindingRegistrationKind::Constructor {
+                        binder: constructor.binder.clone(),
+                        type_: constructor.type_annotation.clone(),
+                        data,
+                    },
                 })?;
 
                 // @Beacon @Task register field projections
@@ -156,9 +173,9 @@ impl<'a> Typer<'a> {
     // it is DRY even though we use an ugly macro..how sad is that??
     // we need to design the error handling here, it's super difficult, fragile, …
     fn evaluate_registration(&mut self, registration: BindingRegistration) -> Result {
-        use BindingRegistration::*;
+        use BindingRegistrationKind::*;
 
-        match registration.clone() {
+        match registration.clone().kind {
             Value {
                 binder,
                 type_,
@@ -189,13 +206,17 @@ impl<'a> Typer<'a> {
                             return match error {
                                 Unrecoverable => Err(()),
                                 OutOfOrderBinding => {
-                                    self.crate_.out_of_order_bindings.push(registration);
+                                    self.crate_.out_of_order_bindings.push(registration.clone());
                                     self.crate_.carry_out(
-                                        BindingRegistration::Value {
-                                            binder,
-                                            type_,
-                                            value: None,
+                                        BindingRegistration {
+                                            attributes: registration.attributes,
+                                            kind: Value {
+                                                binder,
+                                                type_,
+                                                value: None,
+                                            },
                                         },
+                                        self.session,
                                         self.reporter,
                                     )
                                 }
@@ -227,11 +248,15 @@ impl<'a> Typer<'a> {
                     expected = type_
                 );
                 self.crate_.carry_out(
-                    BindingRegistration::Value {
-                        binder,
-                        type_: infered_type,
-                        value: Some(value),
+                    BindingRegistration {
+                        attributes: registration.attributes,
+                        kind: Value {
+                            binder,
+                            type_: infered_type,
+                            value: Some(value),
+                        },
                     },
+                    self.session,
                     self.reporter,
                 )?;
             }
@@ -257,8 +282,14 @@ impl<'a> Typer<'a> {
                     expr! { Type { Attributes::default(), Span::default() } },
                 )?;
 
-                self.crate_
-                    .carry_out(BindingRegistration::Data { binder, type_ }, self.reporter)?;
+                self.crate_.carry_out(
+                    BindingRegistration {
+                        attributes: registration.attributes,
+                        kind: Data { binder, type_ },
+                    },
+                    self.session,
+                    self.reporter,
+                )?;
             }
             Constructor {
                 binder,
@@ -287,15 +318,19 @@ impl<'a> Typer<'a> {
                 )?;
 
                 self.crate_.carry_out(
-                    BindingRegistration::Constructor {
-                        binder,
-                        type_,
-                        data,
+                    BindingRegistration {
+                        attributes: registration.attributes,
+                        kind: Constructor {
+                            binder,
+                            type_,
+                            data,
+                        },
                     },
+                    self.session,
                     self.reporter,
                 )?;
             }
-            ForeignValue { binder, type_ } => {
+            IntrinsicFunction { binder, type_ } => {
                 recover_error!(
                     self.crate_,
                     self.session,
@@ -312,12 +347,24 @@ impl<'a> Typer<'a> {
                     },
                 )?;
 
-                self.crate_
-                    .carry_out(ForeignValue { binder, type_ }, self.reporter)?;
+                self.crate_.carry_out(
+                    BindingRegistration {
+                        attributes: registration.attributes,
+                        kind: IntrinsicFunction { binder, type_ },
+                    },
+                    self.session,
+                    self.reporter,
+                )?;
             }
-            ForeignData { binder } => {
-                self.crate_
-                    .carry_out(ForeignData { binder }, self.reporter)?;
+            IntrinsicType { binder } => {
+                self.crate_.carry_out(
+                    BindingRegistration {
+                        attributes: registration.attributes,
+                        kind: IntrinsicType { binder },
+                    },
+                    self.session,
+                    self.reporter,
+                )?;
             }
         }
 
@@ -420,16 +467,14 @@ impl<'a> Typer<'a> {
                 .look_up_type(&binding.binder, scope)
                 .ok_or(OutOfOrderBinding)?,
             Type => expr! { Type { Attributes::default(), Span::default() } },
-            Number(number) => self.crate_.look_up_foreign_number_type(
-                &number,
+            Number(number) => self.session.look_up_intrinsic_type(
+                IntrinsicType::numeric(&number),
                 Some(expression.span),
-                self.session,
                 self.reporter,
             )?,
-            Text(_) => self.crate_.look_up_foreign_type(
-                ffi::Type::TEXT,
+            Text(_) => self.session.look_up_intrinsic_type(
+                IntrinsicType::Text,
                 Some(expression.span),
-                self.session,
                 self.reporter,
             )?,
             PiType(literal) => {
@@ -509,7 +554,7 @@ impl<'a> Typer<'a> {
                                 explicitness: Explicitness::Explicit,
                                 aspect: default(),
                                 parameter: None,
-                                domain: self.crate_.look_up_unit_type(Some(application.callee.span), self.reporter)?,
+                                domain: self.session.look_up_known_type(KnownBinding::Unit, application.callee.span, self.reporter)?,
                                 codomain: argument_type,
                             }
                         }
@@ -627,10 +672,9 @@ impl<'a> Typer<'a> {
                     // not sure
                     match &case.pattern.data {
                         Number(number) => {
-                            let number_type = self.crate_.look_up_foreign_number_type(
-                                number,
+                            let number_type = self.session.look_up_intrinsic_type(
+                                IntrinsicType::numeric(number),
                                 Some(case.pattern.span),
-                                self.session,
                                 self.reporter,
                             )?;
                             self.it_is_actual(subject_type.clone(), number_type, scope)
@@ -643,10 +687,9 @@ impl<'a> Typer<'a> {
                                 })?;
                         }
                         Text(_) => {
-                            let text_type = self.crate_.look_up_foreign_type(
-                                ffi::Type::TEXT,
+                            let text_type = self.session.look_up_intrinsic_type(
+                                IntrinsicType::Text,
                                 Some(case.pattern.span),
-                                self.session,
                                 self.reporter,
                             )?;
                             self.it_is_actual(subject_type.clone(), text_type, scope)
@@ -743,11 +786,10 @@ impl<'a> Typer<'a> {
                 type_of_previous_body.expect("caseless case analyses")
             }
             // @Beacon @Task
-            ForeignApplication(_) | Projection(_) => todo!(),
-            IO(_) => self.crate_.look_up_foreign_type(
-                ffi::Type::IO,
+            IntrinsicApplication(_) | Projection(_) => todo!(),
+            IO(_) => self.session.look_up_intrinsic_type(
+                IntrinsicType::IO,
                 Some(expression.span),
-                self.session,
                 self.reporter,
             )?,
             Error => expression,

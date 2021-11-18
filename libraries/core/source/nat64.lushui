@@ -1,2 +1,2 @@
-@public @foreign
+@public @intrinsic
 data Nat64: Type

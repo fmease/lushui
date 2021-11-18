@@ -1,4 +1,4 @@
-@public @inherent
+@public @known
 data Bool: Type of
     false: Bool
     true: Bool

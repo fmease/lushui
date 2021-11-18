@@ -24,7 +24,7 @@ use crate::{
         lexer::is_punctuation,
         CrateName,
     },
-    typer::interpreter::{ffi, scope::BindingRegistration},
+    typer::interpreter::scope::BindingRegistration,
     utility::{HashMap, SmallVec},
 };
 use colored::Colorize;
@@ -56,14 +56,13 @@ pub struct Crate {
         HashMap<LocalDeclarationIndex, PartiallyResolvedUseBinding>,
     /// For error reporting.
     pub(super) duplicate_definitions: HashMap<LocalDeclarationIndex, DuplicateDefinition>,
-    pub(super) health: Health,
-    pub(crate) ffi: ffi::Scope,
     // @Note this is very coarse-grained: as soon as we cannot resolve EITHER type annotation (for example)
     // OR actual value(s), we bail out and add this here. This might be too conversative (leading to more
     // "circular type" errors or whatever), we can just discriminate by creating sth like
     // UnresolvedThingy/WorlistItem { index: CrateIndex, expression: TypeAnnotation|Value|Both|... }
     // for the typer only!
     pub(crate) out_of_order_bindings: Vec<BindingRegistration>,
+    pub(super) health: Health,
 }
 
 impl Crate {
@@ -78,7 +77,6 @@ impl Crate {
             partially_resolved_use_bindings: default(),
             duplicate_definitions: default(),
             health: default(),
-            ffi: default(),
             out_of_order_bindings: default(),
         }
     }

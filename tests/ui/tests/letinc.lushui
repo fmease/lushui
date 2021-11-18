@@ -1,6 +1,6 @@
-;;; TEST pass check --no-core
+;;; TEST pass check --no-core -Z internals
 
-@foreign
+@intrinsic
 data Nat32: Type
 
 second (x y: Nat32): Nat32 = y

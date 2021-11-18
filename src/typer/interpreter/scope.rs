@@ -1,6 +1,6 @@
-use super::{ffi, Expression, Substitution::Shift};
+use super::{Expression, Substitution::Shift};
 use crate::{
-    diagnostics::{Code, Diagnostic, Reporter},
+    diagnostics::Reporter,
     entity::EntityKind,
     error::Result,
     format::{AsDebug, DisplayWith},
@@ -8,23 +8,22 @@ use crate::{
     package::BuildSession,
     resolver::{Crate, DeBruijnIndex, Identifier},
     span::Span,
-    syntax::lowered_ast::{Attributes, Number},
+    syntax::lowered_ast::{AttributeKeys, Attributes},
 };
 use std::fmt;
 
-/// Many methods of module scope panic instead of returning a `Result` because
-/// the invariants are expected to be checked beforehand by using the predicate
-/// methods also found here. This design is most ergonomic for the caller.
 impl Crate {
-    pub fn register_foreign_bindings(&mut self) {
-        ffi::register_foreign_bindings(self);
-    }
-
     // @Bug does not understand non-local binders
-    pub fn carry_out(&mut self, registration: BindingRegistration, reporter: &Reporter) -> Result {
-        use BindingRegistration::*;
+    // @Beacon @Beacon @Beacon @Task make this a method of Typer instead
+    pub fn carry_out(
+        &mut self,
+        registration: BindingRegistration,
+        session: &mut BuildSession,
+        reporter: &Reporter,
+    ) -> Result {
+        use BindingRegistrationKind::*;
 
-        match registration {
+        match registration.kind {
             Value {
                 binder,
                 type_,
@@ -81,196 +80,45 @@ impl Crate {
                     _ => unreachable!(),
                 }
             }
-            ForeignValue { binder, type_ } => {
+            IntrinsicFunction { binder, type_ } => {
                 let index = binder.declaration_index().unwrap();
                 // @Bug unwrap None reachable
                 let index = self.local_index(index).unwrap();
                 debug_assert!(self[index].is_untyped_value());
 
-                self[index].kind = match &self.ffi.foreign_bindings.remove(binder.as_str()) {
-                    Some(ffi::ForeignFunction { arity, function }) => EntityKind::Foreign {
-                        type_,
-                        arity: *arity,
-                        function: *function,
-                    },
-                    None => {
-                        // @Task better message
-                        Diagnostic::error()
-                            .code(Code::E060)
-                            .message(format!("foreign binding `{}` is not registered", binder))
-                            .primary_span(&binder)
-                            .report(reporter);
-                        return Err(());
-                    }
-                };
+                self[index].kind = session.register_intrinsic_function(
+                    binder,
+                    type_,
+                    registration
+                        .attributes
+                        .filter(AttributeKeys::INTRINSIC)
+                        .next()
+                        .unwrap(),
+                    reporter,
+                )?
             }
-            // @Beacon @Beacon @Task throw an error ("redefinition")
-            // if an earlier crates has already defined this type
-            // (and also if it's defined several times in the same crate!!)
-            ForeignData { binder } => match self.ffi.foreign_types.get_mut(binder.as_str()) {
-                Some(index @ None) => {
-                    *index = Some(binder.clone());
-                }
-                Some(Some(_)) => unreachable!(),
-                None => {
-                    Diagnostic::error()
-                        .code(Code::E060)
-                        .message(format!("foreign data type `{}` is not registered", binder))
-                        .primary_span(&binder)
-                        .report(reporter);
-                    return Err(());
-                }
-            },
+            IntrinsicType { binder } => session.register_intrinsic_type(
+                binder,
+                registration
+                    .attributes
+                    .filter(AttributeKeys::INTRINSIC)
+                    .next()
+                    .unwrap(),
+                reporter,
+            )?,
         }
         Ok(())
     }
-
-    /// Partially register a foreign binding letting it untyped.
-    ///
-    /// # Panics
-    ///
-    /// Panics under `cfg(debug_assertions)` if the `binder` is already bound.
-    pub fn register_pure_foreign_binding(
-        &mut self,
-        binder: &'static str,
-        arity: usize,
-        function: ffi::NakedForeignFunction,
-    ) {
-        let old = self
-            .ffi
-            .foreign_bindings
-            .insert(binder, ffi::ForeignFunction { arity, function });
-
-        debug_assert!(old.is_none());
-    }
-
-    // @Task
-    #[allow(clippy::unused_self, clippy::missing_panics_doc)]
-    pub fn register_impure_foreign_binding<V: Into<ffi::Value>>(&mut self) {
-        todo!("register impure foreign binding")
-    }
-
-    pub fn register_foreign_type(&mut self, binder: &'static str) {
-        let old = self.ffi.foreign_types.insert(binder, None);
-        debug_assert!(old.is_none());
-    }
-
-    // @Note does not scale to modules
-    // @Task don't take expression as an argument to get access to span information.
-    // rather, return a custom error type, so that the caller can append the label
-    // @Temporary signature
-    pub fn look_up_foreign_type(
-        &self,
-        binder: &'static str,
-        expression_span: Option<Span>,
-        session: &BuildSession,
-        reporter: &Reporter,
-    ) -> Result<Expression> {
-        if let Some(binder) = session.foreign_type(binder) {
-            return Ok(binder.clone().to_expression());
-        }
-
-        match self.ffi.foreign_types.get(binder) {
-            Some(Some(binder)) => Ok(binder.clone().to_expression()),
-            Some(None) => {
-                Diagnostic::error()
-                    .code(Code::E061)
-                    // @Beacon @Task write a waaay better message!!
-                    .message(format!("foreign type `{}` is not defined", binder))
-                    .if_present(expression_span, |diagnostic, span| {
-                        diagnostic.labeled_primary_span(span, "the type of this expression")
-                    })
-                    .report(reporter);
-                Err(())
-            }
-            None => unreachable!(),
-        }
-    }
-
-    pub fn look_up_foreign_number_type(
-        &self,
-        number: &Number,
-        expression_span: Option<Span>,
-        session: &BuildSession,
-        reporter: &Reporter,
-    ) -> Result<Expression> {
-        self.look_up_foreign_type(
-            match number {
-                Number::Nat(_) => ffi::Type::NAT,
-                Number::Nat32(_) => ffi::Type::NAT32,
-                Number::Nat64(_) => ffi::Type::NAT64,
-                Number::Int(_) => ffi::Type::INT,
-                Number::Int32(_) => ffi::Type::INT32,
-                Number::Int64(_) => ffi::Type::INT64,
-            },
-            expression_span,
-            session,
-            reporter,
-        )
-    }
-
-    pub fn look_up_unit_type(
-        &self,
-        expression_span: Option<Span>,
-        reporter: &Reporter,
-    ) -> Result<Expression> {
-        Ok(self
-            .ffi
-            .inherent_types
-            .unit
-            .clone()
-            .ok_or_else(|| {
-                Diagnostic::undefined_inherent_type("Unit", expression_span).report(reporter);
-            })?
-            .to_expression())
-    }
-
-    pub fn look_up_bool_type(
-        &self,
-        expression_span: Option<Span>,
-        reporter: &Reporter,
-    ) -> Result<Expression> {
-        Ok(self
-            .ffi
-            .inherent_types
-            .bool
-            .clone()
-            .ok_or_else(|| {
-                Diagnostic::undefined_inherent_type("Bool", expression_span).report(reporter);
-            })?
-            .to_expression())
-    }
-
-    pub fn look_up_option_type(
-        &self,
-        expression_span: Option<Span>,
-        reporter: &Reporter,
-    ) -> Result<Expression> {
-        Ok(self
-            .ffi
-            .inherent_types
-            .option
-            .clone()
-            .ok_or_else(|| {
-                Diagnostic::undefined_inherent_type("Option", expression_span).report(reporter);
-            })?
-            .to_expression())
-    }
 }
 
-impl Diagnostic {
-    fn undefined_inherent_type(name: &'static str, expression_span: Option<Span>) -> Self {
-        Self::error()
-            .code(Code::E063)
-            .message(format!("inherent type `{}` is not defined", name))
-            .if_present(expression_span, |diagnostic, span| {
-                diagnostic.labeled_primary_span(span, "the type of this expression")
-            })
-    }
+#[derive(Clone)] // @Question expensive attributes clone?
+pub struct BindingRegistration {
+    pub attributes: Attributes,
+    pub kind: BindingRegistrationKind,
 }
 
 #[derive(Clone)]
-pub enum BindingRegistration {
+pub enum BindingRegistrationKind {
     Value {
         binder: Identifier,
         type_: Expression,
@@ -285,11 +133,11 @@ pub enum BindingRegistration {
         type_: Expression,
         data: Identifier,
     },
-    ForeignValue {
+    IntrinsicFunction {
         binder: Identifier,
         type_: Expression,
     },
-    ForeignData {
+    IntrinsicType {
         binder: Identifier,
     },
 }
@@ -298,15 +146,15 @@ impl DisplayWith for BindingRegistration {
     type Context<'a> = (&'a Crate, &'a BuildSession);
 
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use BindingRegistration::*;
+        use BindingRegistrationKind::*;
 
-        match self {
+        match &self.kind {
             Value {
                 binder,
                 type_,
                 value,
             } => {
-                let mut compound = f.debug_struct("ValueBinding");
+                let mut compound = f.debug_struct("Value");
                 compound
                     .field("binder", binder)
                     .field("type", &type_.with(context).as_debug());
@@ -317,7 +165,7 @@ impl DisplayWith for BindingRegistration {
                 .finish()
             }
             Data { binder, type_ } => f
-                .debug_struct("DataBinding")
+                .debug_struct("Data")
                 .field("binder", binder)
                 .field("type", &type_.with(context).as_debug())
                 .finish(),
@@ -326,18 +174,18 @@ impl DisplayWith for BindingRegistration {
                 type_,
                 data,
             } => f
-                .debug_struct("ConstructorBinding")
+                .debug_struct("Constructor")
                 .field("binder", binder)
                 .field("type", &type_.with(context).as_debug())
                 .field("data", data)
                 .finish(),
-            ForeignValue { binder, type_ } => f
-                .debug_struct("ForeignValueBinding")
+            IntrinsicFunction { binder, type_ } => f
+                .debug_struct("IntrinsicFunction")
                 .field("binder", binder)
                 .field("type", &type_.with(context).as_debug())
                 .finish(),
-            ForeignData { binder } => f
-                .debug_struct("ForeignDataBinding")
+            IntrinsicType { binder } => f
+                .debug_struct("IntrinsicType")
                 .field("binder", binder)
                 .finish(),
         }

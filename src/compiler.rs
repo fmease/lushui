@@ -135,7 +135,7 @@ impl<'a> Compiler<'a> {
                     },
                 );
 
-                if declaration.attributes.has(AttributeKeys::FOREIGN) {
+                if declaration.attributes.has(AttributeKeys::INTRINSIC) {
                     // @Bug can actually have arity > 1
                     // @Task handle currying/partial evaluation
                     // do nothing right now

@@ -1,0 +1,9 @@
+;;; TEST fail check --no-core -Z internals
+
+@intrinsic
+data Text: Type
+
+module disambiguator of
+    @intrinsic
+    data Text: Type
+

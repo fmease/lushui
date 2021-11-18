@@ -1,4 +1,4 @@
-error[E015]: missing mandatory type annotation on declaration `container`
+error[E015]: a mandatory type annotation is missing on the declaration `container`
  --> ${DIRECTORY}/lowering/constructor-with-explicit-body.lushui:4:14
   |
 4 |     container = attachment

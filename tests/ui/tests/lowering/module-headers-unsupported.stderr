@@ -5,18 +5,18 @@ error: module headers not supported yet
   | ^^^^^^ 
   |
 
-error[E013]: attribute `foreign` is ascribed to a module header declaration
+error[E013]: attribute `intrinsic` is ascribed to a module header declaration
  --> ${DIRECTORY}/lowering/module-headers-unsupported.lushui:8:1
   |
-8 | @foreign
-  | ^^^^^^^^ misplaced attribute
+8 | @intrinsic
+  | ^^^^^^^^^^ misplaced attribute
   |
  --> ${DIRECTORY}/lowering/module-headers-unsupported.lushui:9:1
   |
 9 | module
   | ------ incompatible item
   |
- note: attribute `foreign` can only be ascribed to value or data declarations
+ note: attribute `intrinsic` can only be ascribed to value or data declarations
 
 error: module headers not supported yet
  --> ${DIRECTORY}/lowering/module-headers-unsupported.lushui:9:1
