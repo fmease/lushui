@@ -23,7 +23,8 @@ use boundary.(T Th inner.D)
 
 D_: Type = D
 
-;;; Description: Bindings marked with a plain `@public` are exposed/public
+;;; [Description]
+;;; Bindings marked with a plain `@public` are exposed/public
 ;;; to any ancestor modules and also other extern. Out of order bindings should
 ;;; not confuse the algorithm. Also, even though `crate.boundary.Intermediate` is
 ;;; not exposed to the root module *directly*, it is indirectly.

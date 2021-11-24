@@ -21,7 +21,8 @@ Beta: Type = Type
 data Unit: Type of
     unit: Unit
 
-;;; Description: Privacy is only one-way: Descendant modules or namespaces
+;;; [Description]
+;;; Privacy is only one-way: Descendant modules or namespaces
 ;;; are in all cases permitted to refer to and use-bindings defined in
 ;;; parent/ancestor modules (unless such a binding breaks exposure rules to begin with)
 ;;; no matter their declared exposure reach (which is directed upwards).

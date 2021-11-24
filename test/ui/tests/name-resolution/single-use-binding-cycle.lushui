@@ -3,7 +3,8 @@
 use instantly-circular
 use instantly-circular.dependency
 
-;;; Description: The first use-declaration is equivalent to `use instantly-circular as instantly-circular`
+;;; [Description]
+;;; The first use-declaration is equivalent to `use instantly-circular as instantly-circular`
 ;;; defining the binding `instantly-circular` in the current module to be itself.
 ;;; The second declaration is also erroneous (`instantly-circular` does not have a proper value) but it
 ;;; clearly depends on the first error. Hence, it is but a mere consequential error and will not be reported

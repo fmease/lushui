@@ -1,0 +1,14 @@
+;;; TEST pass check
+
+use extern.core.unit.Unit
+
+module alpha of { @public inner: super.Unit = super.Unit.unit }
+
+mapping (alpha: Unit): Unit =
+    let beta: Unit = Unit.unit in
+    let dummy: Unit = alpha.inner in
+    let dummy: Unit = beta.body in
+    Unit.unit
+
+module beta of { @public body: super.Unit = super.Unit.unit }
+

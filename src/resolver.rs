@@ -961,55 +961,30 @@ impl<'a> Resolver<'a> {
 
     /// Resolve a binding in a function scope given a depth.
     ///
-    /// The `depth` is necessary for the recursion to successfully create DeBruijn-indices.
+    /// The `depth` is necessary for the recursion to successfully create de Bruijn indices.
     ///
     /// The `origin` signifies the innermost function scope from where the resolution was first requested.
     /// This information is used for diagnostics, namely typo flagging where we once again start at the origin
     /// and walk back out.
-    fn resolve_binding_with_depth<'s: 'a>(
+    fn resolve_binding_with_depth(
         &self,
         query: &ast::Path,
-        scope: &'s FunctionScope<'_>,
+        scope: &FunctionScope<'_>,
         depth: usize,
-        origin: &'s FunctionScope<'_>,
+        origin: &FunctionScope<'_>,
     ) -> Result<Identifier> {
         use FunctionScope::*;
 
-        // @Note kinda awkward API with map_err
-        match scope {
-            &Module(module) => self
-                .resolve_path::<OnlyValue>(query, self.crate_.global_index(module))
-                .map_err(|error| {
-                    self.report_resolution_error_searching_lookalikes(error, |identifier, _| {
-                        self.find_similarly_named(origin, identifier)
-                    });
-                }),
-            // @Note this looks ugly/complicated, use helper functions
-            FunctionParameter { parent, binder } => {
-                if let Some(identifier) = query.identifier_head() {
+        if let (false, Some(identifier)) = (matches!(scope, Module(_)), query.identifier_head()) {
+            match scope {
+                FunctionParameter { parent, binder } => {
                     if binder == identifier {
-                        if query.segments.len() > 1 {
-                            self.value_used_as_a_namespace(
-                                identifier,
-                                &query.segments[1],
-                                self.crate_.global_index(scope.module()),
-                            )
-                            .report(self.reporter);
-                            return Err(());
-                        }
-
                         Ok(Identifier::new(DeBruijnIndex(depth), identifier.clone()))
                     } else {
                         self.resolve_binding_with_depth(query, parent, depth + 1, origin)
                     }
-                } else {
-                    self.resolve_path::<OnlyValue>(query, self.crate_.global_index(parent.module()))
-                        .map_err(|error| self.report_resolution_error(error))
                 }
-            }
-            // @Note this looks ugly/complicated, use helper functions
-            PatternBinders { parent, binders } => {
-                if let Some(identifier) = query.identifier_head() {
+                PatternBinders { parent, binders } => {
                     match binders
                         .iter()
                         .rev()
@@ -1017,16 +992,6 @@ impl<'a> Resolver<'a> {
                         .find(|(binder, _)| binder == &identifier)
                     {
                         Some((_, depth)) => {
-                            if query.segments.len() > 1 {
-                                self.value_used_as_a_namespace(
-                                    identifier,
-                                    &query.segments[1],
-                                    self.crate_.global_index(scope.module()),
-                                )
-                                .report(self.reporter);
-                                return Err(());
-                            }
-
                             Ok(Identifier::new(DeBruijnIndex(depth), identifier.clone()))
                         }
                         None => self.resolve_binding_with_depth(
@@ -1036,11 +1001,16 @@ impl<'a> Resolver<'a> {
                             origin,
                         ),
                     }
-                } else {
-                    self.resolve_path::<OnlyValue>(query, self.crate_.global_index(parent.module()))
-                        .map_err(|error| self.report_resolution_error(error))
                 }
+                Module(_) => unreachable!(),
             }
+        } else {
+            self.resolve_path::<OnlyValue>(query, self.crate_.global_index(scope.module()))
+                .map_err(|error| {
+                    self.report_resolution_error_searching_lookalikes(error, |identifier, _| {
+                        self.find_similarly_named(origin, identifier)
+                    });
+                })
         }
     }
 
