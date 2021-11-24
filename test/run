@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+
+FOLDER="$(dirname $(realpath $0))"
+
+# Run unit tests (via the rust testing framework)
+cargo test --quiet --manifest-path="$FOLDER/../Cargo.toml" -- --format pretty
+
+# Run UI tests (via the golden UI testing framework)
+"$FOLDER/ui/run"

@@ -56,7 +56,7 @@ jobs:
     - name: Run unit tests (via the rust testing framework)
       run: cargo test
     - name: Run UI tests (via the golden UI testing framework)
-      run: ./tests/ui/run
+      run: ./test/ui/run
   
   # # not necessary right now
   # test-windows:
