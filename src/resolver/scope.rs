@@ -32,7 +32,10 @@ pub use index::{DeBruijnIndex, DeclarationIndex, Index, LocalDeclarationIndex};
 use index_map::IndexMap;
 use joinery::JoinableIterator;
 use smallvec::smallvec;
-use std::{cell::RefCell, cmp::Ordering, default::default, fmt, path::PathBuf, usize};
+use std::{
+    cell::RefCell, cmp::Ordering, collections::VecDeque, default::default, fmt, path::PathBuf,
+    usize,
+};
 use unicode_width::UnicodeWidthStr;
 
 mod index;
@@ -141,12 +144,29 @@ impl Crate {
         LocalDeclarationIndex::new(0)
     }
 
-    /// Build a textual representation of the absolute path of a binding.
-    pub fn absolute_path(&self, index: DeclarationIndex, session: &BuildSession) -> String {
-        self.absolute_path_with_root(index, HangerKind::Crate.name().to_owned(), session)
+    pub fn unhanged_local_path(&self, mut index: LocalDeclarationIndex) -> Path {
+        let mut segments = VecDeque::default();
+
+        loop {
+            let entity = &self[index];
+
+            if let Some(parent) = entity.parent {
+                segments.push_front(entity.source.clone());
+                index = parent;
+            } else {
+                break;
+            }
+        }
+
+        Path::with_segments(Vec::from(segments).into())
     }
 
-    fn absolute_path_with_root(
+    /// Build a textual representation of the absolute path of a binding.
+    pub fn display_absolute_path(&self, index: DeclarationIndex, session: &BuildSession) -> String {
+        self.display_absolute_path_with_root(index, HangerKind::Crate.name().to_owned(), session)
+    }
+
+    pub fn display_absolute_path_with_root(
         &self,
         index: DeclarationIndex,
         root: String,
@@ -157,17 +177,18 @@ impl Crate {
             let root = format!(
                 "{}.{}",
                 HangerKind::Extern.name(),
-                session[crate_.package].name
+                session[crate_.package].name,
             );
 
-            return crate_.absolute_path_with_root(index, root, session);
+            return crate_.display_absolute_path_with_root(index, root, session);
         };
 
         let entity = &self[index];
 
+        // @Task transform into a while loop w/o recursion
         if let Some(parent) = entity.parent {
             let mut parent_path =
-                self.absolute_path_with_root(self.global_index(parent), root, session);
+                self.display_absolute_path_with_root(self.global_index(parent), root, session);
 
             let parent_is_punctuation = is_punctuation(parent_path.chars().next_back().unwrap());
 
@@ -411,7 +432,7 @@ impl DisplayWith for RestrictedExposure {
             &Self::Resolved { reach } => write!(
                 f,
                 "{}",
-                scope.absolute_path(scope.global_index(reach), session)
+                scope.display_absolute_path(scope.global_index(reach), session)
             ),
         }
     }
@@ -616,9 +637,13 @@ impl<'a> FunctionScope<'a> {
         }
     }
 
-    pub fn absolute_path(binder: &Identifier, crate_: &Crate, session: &BuildSession) -> String {
+    pub fn display_absolute_path(
+        binder: &Identifier,
+        crate_: &Crate,
+        session: &BuildSession,
+    ) -> String {
         match binder.index {
-            Index::Declaration(index) => crate_.absolute_path(index, session),
+            Index::Declaration(index) => crate_.display_absolute_path(index, session),
             Index::DeBruijn(_) | Index::DeBruijnParameter => binder.as_str().into(),
         }
     }

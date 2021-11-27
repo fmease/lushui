@@ -565,6 +565,8 @@ impl Format for super::ParameterGroup {
     }
 }
 
+// @Beacon @Beacon @Beacon @Bug this does not properly handle punctuation in paths
+// @Task take a look at Crate::display_absolute_path
 impl fmt::Display for super::Path {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         if let Some(hanger) = &self.hanger {

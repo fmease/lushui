@@ -102,7 +102,7 @@ impl<'a> Resolver<'a> {
         let exposure = match declaration.attributes.has(AttributeKeys::PUBLIC) {
             true => match declaration
                 .attributes
-                .get(|kind| obtain!(kind, AttributeKind::Public { reach } => reach))
+                .find_map(|attribute| obtain!(attribute, AttributeKind::Public { reach } => reach))
             {
                 Some(reach) => RestrictedExposure::Unresolved {
                     reach: reach.clone(),
@@ -703,6 +703,7 @@ impl<'a> Resolver<'a> {
                     return match &*path.segments {
                         [identifier] => Ok(Target::output(root, identifier)),
                         [_, identifiers @ ..] => self.resolve_path_with_origin::<Target>(
+                            // @Task use PathView once available!
                             &ast::Path::with_segments(identifiers.to_owned().into()),
                             root,
                             PathResolutionContext {
@@ -728,6 +729,7 @@ impl<'a> Resolver<'a> {
                 })
             } else {
                 self.resolve_path_with_origin::<Target>(
+                    // @Task use PathView once available!
                     &ast::Path::with_segments(path.segments.clone()),
                     namespace,
                     context.qualified_identifier(),
@@ -746,6 +748,7 @@ impl<'a> Resolver<'a> {
             [identifier, identifiers @ ..] => {
                 if entity.is_namespace() {
                     self.resolve_path_with_origin::<Target>(
+                        // @Task use PathView once available
                         &ast::Path::with_segments(identifiers.to_owned().into()),
                         index,
                         context.qualified_identifier(),
@@ -836,7 +839,7 @@ impl<'a> Resolver<'a> {
                     .code(Code::E029)
                     .message(format!(
                         "binding `{}` is private",
-                        self.crate_.absolute_path(index, self.session)
+                        self.crate_.display_absolute_path(index, self.session)
                     ))
                     .primary_span(identifier)
                     .report(self.reporter);
@@ -1068,7 +1071,7 @@ impl<'a> Resolver<'a> {
                 for cycle in find_cycles(partially_resolved_use_bindings) {
                     let paths = cycle.iter().map(|&index| {
                         self.crate_
-                            .absolute_path(self.crate_.global_index(index), self.session)
+                            .display_absolute_path(self.crate_.global_index(index), self.session)
                             .quote()
                     });
                     let paths = unordered_listing(paths, Conjunction::And);
@@ -1175,7 +1178,8 @@ impl<'a> Resolver<'a> {
                         .code(Code::E009)
                         .message(format!(
                             "re-export of the more private binding `{}`",
-                            self.crate_.absolute_path(reference_index, self.session)
+                            self.crate_
+                                .display_absolute_path(reference_index, self.session)
                         ))
                         .labeled_primary_span(
                             &entity.source,
@@ -1190,8 +1194,10 @@ impl<'a> Resolver<'a> {
 expected the exposure of `{}`
            to be at most {}
       but it actually is {}",
-                            self.crate_
-                                .absolute_path(self.crate_.global_index(index), self.session),
+                            self.crate_.display_absolute_path(
+                                self.crate_.global_index(index),
+                                self.session
+                            ),
                             reference.exposure.with((self.crate_, self.session)),
                             entity.exposure.with((self.crate_, self.session)),
                         ))
@@ -1297,7 +1303,7 @@ expected the exposure of `{}`
                             false => "namespace",
                         };
                         message += " `";
-                        message += &self.crate_.absolute_path(namespace, self.session);
+                        message += &self.crate_.display_absolute_path(namespace, self.session);
                         message += "`";
                     }
                 }

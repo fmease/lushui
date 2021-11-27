@@ -162,6 +162,7 @@ impl Brackets {
                 } else {
                     // @Beacon @Bug we are not smart enough here yet, the error messages are too confusing
                     // or even incorrect!
+                    // @Question should the label become the message?
                     Err(Diagnostic::error()
                         .code(Code::E001)
                         .message(format!("unbalanced {} bracket", closing_bracket.value))
@@ -173,6 +174,7 @@ impl Brackets {
             }
             // @Beacon @Bug we are not smart enough here yet, the error messages are too confusing
             // or even incorrect!
+            // @Question should the label become the message?
             None => Err(Diagnostic::error()
                 .code(Code::E001)
                 .message(format!("unbalanced {} bracket", closing_bracket.value))
@@ -289,6 +291,7 @@ impl<'a> Lexer<'a> {
 
             for bracket in &self.brackets.0 {
                 self.health.taint();
+                // @Question should the label become the message?
                 Diagnostic::error()
                     .code(Code::E001)
                     .message(format!("unbalanced {} bracket", bracket.value))

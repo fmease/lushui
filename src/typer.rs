@@ -109,8 +109,7 @@ impl<'a> Typer<'a> {
                     let constructors = data.constructors.as_ref().unwrap();
 
                     // @Task @Beacon move to resolver
-                    if let Some(known) = declaration.attributes.filter(AttributeKeys::KNOWN).next()
-                    {
+                    if let Some(known) = declaration.attributes.find(AttributeKeys::KNOWN) {
                         self.session.register_known_type(
                             &data.binder,
                             constructors

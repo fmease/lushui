@@ -1,9 +1,21 @@
-;;; TEST ignore
+;;; TEST ignore -Z internals --no-core
 
 @intrinsic
 data Nat32: Type
 
-@intrinsic
-add-nat32: Nat32 -> Nat32 -> Nat32
+@(intrinsic nat32.add)
+add: Nat32 -> Nat32 -> Nat32
 
-main: Nat32 = add-nat32 @Nat32 1 @Nat32 0
+module a of
+    module b of
+        module c of
+            use crate.Nat32
+
+            ;;; @(intrinsic nat32.who)
+            @(intrinsic nat32.add)
+            xoo0: Nat32 -> Nat32 -> Nat32
+
+            ;;; @intrinsic
+            ;;; xoo1: Nat32 -> Nat32 -> Nat32
+
+main: Nat32 = add @Nat32 3 @Nat32 9

@@ -17,7 +17,7 @@ pub(crate) mod scope;
 use super::Expression;
 use crate::{
     diagnostics::{Diagnostic, Reporter},
-    entity::Entity,
+    entity::{Entity, EntityKind},
     error::{PossiblyErroneous, Result},
     format::DisplayWith,
     hir::{self, expr},
@@ -570,29 +570,29 @@ impl<'a> Interpreter<'a> {
         binder: Identifier,
         arguments: Vec<Expression>,
     ) -> Result<Option<Expression>> {
-        match self.look_up(binder.declaration_index().unwrap()).kind {
-            crate::entity::EntityKind::Intrinsic {
-                arity, function, ..
-            } => Ok(if arguments.len() == arity {
-                let mut value_arguments = Vec::new();
+        match &self.look_up(binder.declaration_index().unwrap()).kind {
+            EntityKind::IntrinsicFunction { value, .. } => {
+                Ok(if arguments.len() == value.arity {
+                    let mut value_arguments = Vec::new();
 
-                // @Task tidy up with iterator combinators
-                for argument in arguments {
-                    if let Some(argument) = Value::from_expression(&argument, self.session) {
-                        value_arguments.push(argument);
-                    } else {
-                        return Ok(None);
+                    // @Task tidy up with iterator combinators
+                    for argument in arguments {
+                        if let Some(argument) = Value::from_expression(&argument, self.session) {
+                            value_arguments.push(argument);
+                        } else {
+                            return Ok(None);
+                        }
                     }
-                }
 
-                Some(function(value_arguments).into_expression(
-                    self.crate_,
-                    self.session,
-                    self.reporter,
-                )?)
-            } else {
-                None
-            }),
+                    Some((value.function)(value_arguments).into_expression(
+                        self.crate_,
+                        self.session,
+                        self.reporter,
+                    )?)
+                } else {
+                    None
+                })
+            }
             _ => unreachable!(),
         }
     }

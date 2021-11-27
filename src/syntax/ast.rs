@@ -14,10 +14,9 @@ use crate::{
     span::{PossiblySpanning, SourceFileIndex, Span, Spanned, Spanning},
     utility::{obtain, Atom, SmallVec},
 };
-use smallvec::smallvec;
-use std::{default::default, hash::Hash};
-
 pub use format::Format;
+use smallvec::smallvec;
+use std::{default::default, fmt, hash::Hash};
 
 pub type Item<Kind> = crate::item::Item<Kind, Attributes>;
 
@@ -245,8 +244,7 @@ pub struct TypedHole {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Path {
     pub hanger: Option<Hanger>,
-    // @Task better name: identifier_segments
-    // @Note non-empty if hanger is None
+    /// non-empty if hanger is None
     pub segments: SmallVec<Identifier, 1>,
 }
 
@@ -255,23 +253,6 @@ impl Path {
         Self {
             hanger: None,
             segments,
-        }
-    }
-
-    /// Construct a single identifier segment path.
-    ///
-    /// May panic.
-    // @Note bad naming try_from_token (only for ids) <-> hanger only for hangers
-    // unify?
-    pub fn try_from_token(token: Token) -> Option<Self> {
-        Some(Identifier::try_from(token).ok()?.into())
-    }
-
-    /// Construct a non-identifier-head-only path.
-    pub fn hanger(token: Token) -> Self {
-        Self {
-            hanger: Some(Hanger::new(token.span, token.value.try_into().unwrap())),
-            segments: SmallVec::new(),
         }
     }
 
@@ -290,9 +271,10 @@ impl Path {
         Ok(self)
     }
 
-    pub fn bare_hanger(&self, hanger: HangerKind) -> Option<Hanger> {
+    pub fn is_bare_hanger(&self, hanger: HangerKind) -> bool {
         self.hanger
-            .filter(|some_hanger| some_hanger.value == hanger && self.segments.is_empty())
+            .map_or(false, |some_hanger| some_hanger.value == hanger)
+            && self.segments.is_empty()
     }
 
     /// Return the path head if it is an identifier.
@@ -302,10 +284,6 @@ impl Path {
         }
 
         Some(&self.segments[0])
-    }
-
-    pub fn last_identifier(&self) -> Option<&Identifier> {
-        self.segments.last()
     }
 
     /// Try to debase a path to a single identifier.
@@ -329,38 +307,7 @@ impl Path {
             segments: self.segments,
         }
     }
-
-    // @Task replace thing function with something that does not allocate
-    // @Note we'd like to have a PathView which uses slices of segments
-    pub fn tail(&self) -> Option<Self> {
-        let segments = if self.hanger.is_some() {
-            self.segments.clone()
-        } else {
-            let segments: SmallVec<_, 1> = self.segments.iter().skip(1).cloned().collect();
-            match segments.is_empty() {
-                true => return None,
-                false => segments,
-            }
-        };
-
-        Some(Self {
-            hanger: None,
-            segments,
-        })
-    }
-
-    // @Task avoid allocation, try to design it as a slice `&self.segments[..LEN - 1]`
-    /// Path consisting of segments 0 to n-1
-    // @Task verify
-    pub fn prefix(&self) -> Self {
-        Self {
-            hanger: self.hanger,
-            segments: self.segments.iter().rev().skip(1).rev().cloned().collect(),
-        }
-    }
 }
-
-use std::fmt;
 
 // @Question bad idea?
 impl fmt::Debug for Path {
@@ -378,12 +325,19 @@ impl From<Identifier> for Path {
     }
 }
 
+impl From<Hanger> for Path {
+    fn from(hanger: Hanger) -> Self {
+        Self {
+            hanger: Some(hanger),
+            segments: SmallVec::new(),
+        }
+    }
+}
+
 impl Spanning for Path {
     fn span(&self) -> Span {
         if let Some(head) = &self.hanger {
-            head.span()
-                .merge(self.segments.first())
-                .merge(self.segments.last())
+            head.span().merge(self.segments.last())
         } else {
             self.segments
                 .first()
@@ -545,6 +499,14 @@ pub struct SequenceLiteralPattern {
 
 pub type Hanger = Spanned<HangerKind>;
 
+impl TryFrom<Token> for Hanger {
+    type Error = ();
+
+    fn try_from(token: Token) -> Result<Self, Self::Error> {
+        Ok(Self::new(token.span, token.value.try_into()?))
+    }
+}
+
 /// The non-identifier head of a path.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HangerKind {
@@ -580,7 +542,7 @@ impl TryFrom<TokenKind> for HangerKind {
 }
 
 /// Either a word or punctuation.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Identifier(Spanned<Atom>);
 
 impl Identifier {

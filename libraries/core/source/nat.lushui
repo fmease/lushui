@@ -16,11 +16,11 @@ use subtract as -
 subtract: Nat -> Nat -> Option Nat
 
 @public
-use panicking-subtract as -?
+use unchecked-subtract as -?
 
 ;;; @Temporary
 @public @intrinsic
-panicking-subtract: Nat -> Nat -> Nat
+unchecked-subtract: Nat -> Nat -> Nat
 
 @public
 use multiply as *

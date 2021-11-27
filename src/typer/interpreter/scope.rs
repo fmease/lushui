@@ -5,12 +5,13 @@ use crate::{
     error::Result,
     format::{AsDebug, DisplayWith},
     hir::expr,
-    package::BuildSession,
+    package::{session::IntrinsicNameStyle, BuildSession},
     resolver::{Crate, DeBruijnIndex, Identifier},
     span::Span,
-    syntax::lowered_ast::{AttributeKeys, Attributes},
+    syntax::lowered_ast::{AttributeKeys, AttributeKind, Attributes},
+    utility::obtain,
 };
-use std::fmt;
+use std::{borrow::Cow, fmt};
 
 impl Crate {
     // @Bug does not understand non-local binders
@@ -86,16 +87,34 @@ impl Crate {
                 let index = self.local_index(index).unwrap();
                 debug_assert!(self[index].is_untyped_value());
 
-                self[index].kind = session.register_intrinsic_function(
-                    binder,
+                let (name, style) = match registration.attributes.find_map(
+                    |attribute| obtain!(attribute, AttributeKind::Intrinsic { name } => name.as_ref()),
+                ) {
+                    Some(name) => (Cow::Borrowed(name), IntrinsicNameStyle::Explicit),
+                    None => {
+                        let index = self
+                            .local_index(binder.declaration_index().unwrap())
+                            .unwrap();
+                        let name = self.unhanged_local_path(index);
+
+                        (
+                            Cow::Owned(name),
+                            IntrinsicNameStyle::Implicit {
+                                attribute: registration
+                                    .attributes
+                                    .find(AttributeKeys::INTRINSIC).unwrap(),
+                            },
+                        )
+                    }
+                };
+
+                let function =
+                    session.register_intrinsic_function(name, style, binder, reporter)?;
+
+                self[index].kind = EntityKind::IntrinsicFunction {
                     type_,
-                    registration
-                        .attributes
-                        .filter(AttributeKeys::INTRINSIC)
-                        .next()
-                        .unwrap(),
-                    reporter,
-                )?
+                    value: session.intrinsic_function(function).1,
+                };
             }
             IntrinsicType { binder } => session.register_intrinsic_type(
                 binder,

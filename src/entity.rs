@@ -6,7 +6,7 @@ use crate::{
     error::PossiblyErroneous,
     format::DisplayWith,
     hir::Expression,
-    package::{session::BareIntrinsicFunctionValue, BuildSession},
+    package::{session::IntrinsicFunctionValue, BuildSession},
     resolver::{Crate, DeclarationIndex, Exposure, Identifier, LocalDeclarationIndex, Namespace},
     typer::interpreter::scope::ValueView,
     utility::obtain,
@@ -66,7 +66,7 @@ impl Entity {
     }
 
     pub const fn is_intrinsic(&self) -> bool {
-        matches!(self.kind, Intrinsic { .. })
+        matches!(self.kind, IntrinsicFunction { .. })
     }
 
     pub const fn is_error(&self) -> bool {
@@ -118,7 +118,7 @@ impl Entity {
             Value { type_, .. } |
             DataType { type_, .. } |
             Constructor { type_, .. } |
-            Intrinsic { type_, .. } => type_.clone(),
+            IntrinsicFunction { type_, .. } => type_.clone(),
         )
     }
 
@@ -141,7 +141,7 @@ impl Entity {
             | Error
             | DataType { .. }
             | Constructor { .. }
-            | Intrinsic { .. } => ValueView::Neutral,
+            | IntrinsicFunction { .. } => ValueView::Neutral,
             UntypedValue
             | UntypedDataType { .. }
             | UntypedConstructor { .. }
@@ -197,21 +197,21 @@ pub enum EntityKind {
         type_: Expression,
         expression: Option<Expression>,
     },
-    // @Question should we store the constructors?
+    /// Normal data types as well as intrinsic ones.
     DataType {
         namespace: Namespace,
         type_: Expression,
+        // @Question should we store the constructors?
         constructors: Vec<Identifier>,
     },
     Constructor {
         namespace: Namespace,
         type_: Expression,
     },
-    Intrinsic {
+    // @Beacon @Beacon @Beacon @Task don't store arity and function inline
+    IntrinsicFunction {
         type_: Expression,
-        // @Beacon @Beacon @Beacon @Task wrap this in an IntrinsicFnVal
-        arity: usize,
-        function: BareIntrinsicFunctionValue,
+        value: IntrinsicFunctionValue,
     },
     // @Task explain why we want entities to be possibly erroneous
     Error,
@@ -274,7 +274,7 @@ impl DisplayWith for EntityKind {
                     .collect::<String>()
             ),
             Constructor { type_, .. } => write!(f, "constructor: {}", type_.with(context)),
-            Intrinsic { type_, .. } => write!(f, "intrinsic: {}", type_.with(context)),
+            IntrinsicFunction { type_, .. } => write!(f, "intrinsic: {}", type_.with(context)),
             Error => write!(f, "error"),
         }
     }

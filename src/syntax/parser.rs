@@ -1144,10 +1144,11 @@ impl<'a> Parser<'a> {
 
     /// Parse the first segment of a path.
     fn parse_first_path_segment(&mut self) -> Result<Path> {
-        let path = match self.current_token().name() {
-            Word | Punctuation => Path::try_from_token(self.current_token().clone()).unwrap(),
-            name if name.is_path_hanger() => Path::hanger(self.current_token().clone()),
-            _ => return self.error(|| Expected::Path.but_actual_is(self.current_token())),
+        let token = self.current_token();
+        let path = match token.name() {
+            Word | Punctuation => Path::from(Identifier::try_from(token.clone()).unwrap()),
+            name if name.is_path_hanger() => Path::from(Hanger::try_from(token.clone()).unwrap()),
+            _ => return self.error(|| Expected::Path.but_actual_is(token)),
         };
         self.advance();
         Ok(path)

@@ -1,6 +1,6 @@
 //! The definition of the textual representation of the [HIR](crate::hir).
 
-use super::{Crate, Declaration, Expression, Pattern};
+use super::{Crate, Declaration, Expression, FunctionScope, Pattern};
 use crate::{format::DisplayWith, package::BuildSession};
 use joinery::JoinableIterator;
 use std::{default::default, fmt};
@@ -258,7 +258,7 @@ fn format_lower_expression(
         Binding(binding) => write!(
             f,
             "{}",
-            super::FunctionScope::absolute_path(&binding.binder, crate_, session)
+            FunctionScope::display_absolute_path(&binding.binder, crate_, session)
         ),
         // @Beacon @Temporary @Task just write out the path
         Projection(_projection) => write!(f, "?(projection)"),
@@ -299,7 +299,7 @@ impl DisplayWith for Pattern {
             Binding(binding) => write!(
                 f,
                 "{}",
-                super::FunctionScope::absolute_path(&binding.binder, crate_, session)
+                super::FunctionScope::display_absolute_path(&binding.binder, crate_, session)
             ),
 
             Binder(binder) => write!(f, "\\{}", binder.binder),

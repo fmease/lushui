@@ -283,8 +283,9 @@ impl<'a> Lowerer<'a> {
                     Some(declarations) => declarations,
                     None => {
                         let path_suffix = if attributes.has(AttributeKeys::LOCATION) {
-                            attributes
-                                .get(|kind| obtain!(kind, AttributeKind::Location { path } => path))
+                            attributes.find_map(
+                                |kind| obtain!(kind, AttributeKind::Location { path } => path),
+                            )
                         } else {
                             module.binder.as_str()
                         };
@@ -438,12 +439,13 @@ impl<'a> Lowerer<'a> {
                                 // the parent path
                                 let binder = binder
                                     .or_else(|| {
-                                        if target.bare_hanger(HangerKind::Self_).is_some() {
+                                        if target.is_bare_hanger(HangerKind::Self_) {
                                             &path
                                         } else {
                                             &target
                                         }
-                                        .last_identifier()
+                                        .segments
+                                        .last()
                                         .cloned()
                                     })
                                     .ok_or_else(|| {
@@ -486,7 +488,7 @@ impl<'a> Lowerer<'a> {
                 'discriminate: {
                     match use_.bindings.value {
                         Single { target, binder } => {
-                            let binder = binder.or_else(|| target.last_identifier().cloned());
+                            let binder = binder.or_else(|| target.segments.last().cloned());
                             let Some(binder) = binder else {
                                 // @Task improve the message for `use crate.(self)`: hint that `self`
                                 // is effectively unnamed because `crate` is unnamed
@@ -674,6 +676,7 @@ impl<'a> Lowerer<'a> {
                     match let_in.expression {
                         Some(expression) => expression,
                         None => {
+                            // @Task use diagnostic suggestion API once available
                             // @Note awkward API!
                             Diagnostic::error()
                                 .code(Code::E012)
@@ -1301,7 +1304,13 @@ impl lowered_ast::AttributeKind {
                         reporter,
                     )?,
                 },
-                "intrinsic" => Self::Intrinsic,
+                "intrinsic" => {
+                    let name = optional_argument(arguments)
+                        .map(|argument| argument.path(Some("name"), reporter))
+                        .transpose()?;
+
+                    Self::Intrinsic { name }
+                }
                 "if" => {
                     Diagnostic::unimplemented("attribute `if`")
                         .primary_span(attribute)
@@ -1538,6 +1547,7 @@ impl Diagnostic {
     ) -> Self {
         use AnnotationTarget::*;
 
+        // @Task use diagnostic suggestion API once available
         let type_annotation_suggestion: Str = match target {
             Parameters(parameter_group) => format!(
                 "`{}({}: ?type)`",

@@ -1,13 +1,13 @@
 use super::{CrateIndex, Package, PackageIndex};
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
-    entity::{Entity, EntityKind},
+    entity::Entity,
     error::Result,
     hir::{expr, Constructor, Expression, ExpressionKind},
     resolver::{Crate, DeclarationIndex, Identifier},
-    span::Span,
+    span::{Span, Spanning},
     syntax::{
-        ast::Explicitness,
+        ast::{Explicitness, Path},
         lowered_ast::{Attribute, Attributes, Number},
     },
     utility::{condition, HashMap, Int, Nat},
@@ -15,6 +15,7 @@ use crate::{
 use index_map::IndexMap;
 use num_traits::{CheckedDiv, CheckedSub};
 use std::{
+    borrow::Cow,
     default::default,
     fmt,
     ops::{Index, IndexMut},
@@ -27,7 +28,8 @@ pub struct BuildSession {
     built_packages: IndexMap<PackageIndex, Package>,
     known_bindings: HashMap<KnownBinding, Identifier>,
     intrinsic_types: HashMap<IntrinsicType, Identifier>,
-    intrinsic_functions: HashMap<IntrinsicFunction, IntrinsicFunctionValue>,
+    // @Temporary type
+    intrinsic_functions: HashMap<IntrinsicFunction, (Option<Identifier>, IntrinsicFunctionValue)>,
 }
 
 impl BuildSession {
@@ -99,7 +101,7 @@ impl BuildSession {
                 .code(Code::E063)
                 .message(format!("`{}` is not a known binding", binder))
                 .primary_span(binder)
-                .secondary_span(attribute)
+                .labeled_secondary_span(attribute, "marks the binding as known to the compiler")
                 .report(reporter);
             return Err(());
         };
@@ -151,7 +153,7 @@ impl BuildSession {
         reporter: &Reporter,
     ) -> Result {
         let Ok(intrinsic) = binder.as_str().parse::<IntrinsicType>() else {
-            Diagnostic::unrecognized_intrinsic_binding(binder.as_str(), IntrinsicKind::Type)
+            Diagnostic::unrecognized_intrinsic_binding(&binder.source.clone().into(), IntrinsicKind::Type)
                 .primary_span(&binder)
                 .secondary_span(attribute)
                 .report(reporter);
@@ -175,30 +177,57 @@ impl BuildSession {
         Ok(())
     }
 
+    pub fn intrinsic_function(
+        &self,
+        intrinsic: IntrinsicFunction,
+    ) -> &(Option<Identifier>, IntrinsicFunctionValue) {
+        &self.intrinsic_functions[&intrinsic]
+    }
+
     pub fn register_intrinsic_function(
         &mut self,
+        name: Cow<'_, Path>,
+        style: IntrinsicNameStyle<'_>,
         binder: Identifier,
-        type_: Expression,
-        attribute: &Attribute,
         reporter: &Reporter,
-    ) -> Result<EntityKind, ()> {
-        let Ok(intrinsic) = binder.as_str().parse() else {
-            Diagnostic::unrecognized_intrinsic_binding(binder.as_str(), IntrinsicKind::Function)
-                .primary_span(&binder)
-                .secondary_span(attribute)
+    ) -> Result<IntrinsicFunction, ()> {
+        let Ok(intrinsic) = IntrinsicFunction::parse(&name) else {
+            let diagnostic = Diagnostic::unrecognized_intrinsic_binding(&name, IntrinsicKind::Function);
+
+            match style {
+                // @Task use diagnostic suggestion API once available
+                IntrinsicNameStyle::Implicit { attribute } => diagnostic
+                    .labeled_primary_span(&binder, "unrecognized intrinsic")
+                    .labeled_secondary_span(attribute, "marks the binding as intrinsic to the language")
+                    .note(format!("the name of the alleged intrinsic, `{name}`, is derived from the absolute path of `{binder}`"))
+                    .help("consider adding an explicit name to the attribute `diagnostic` to overwrite"),
+                IntrinsicNameStyle::Explicit => diagnostic
+                    .primary_span(name.span()),
+            }
+            .report(reporter);
+
+            return Err(());
+        };
+
+        let function = self.intrinsic_function(intrinsic);
+
+        if let Some(previous) = &function.0 {
+            Diagnostic::error()
+                .code(Code::E040)
+                .message(format!(
+                    "the intrinsic function `{intrinsic}` is defined multiple times",
+                ))
+                .labeled_primary_span(&binder, "conflicting definition")
+                .labeled_secondary_span(previous, "previous definition")
                 .report(reporter);
             return Err(());
         };
 
-        // @Task explain why we remove here
-        // @Task explain why unwrap
-        let function = self.intrinsic_functions.remove(&intrinsic).unwrap();
+        // @Beacon @Beacon @Beacon
+        // @Beacon @Beacon @Beacon @Task dont just store the binder at 0 but dep on the style the path or the binder
+        self.intrinsic_functions.get_mut(&intrinsic).unwrap().0 = Some(binder);
 
-        Ok(EntityKind::Intrinsic {
-            type_,
-            arity: function.arity,
-            function: function.function,
-        })
+        Ok(intrinsic)
     }
 
     pub fn look_up_intrinsic_type(
@@ -263,7 +292,7 @@ impl Diagnostic {
             .labeled_primary_span(expression, "the type of this expression")
     }
 
-    fn unrecognized_intrinsic_binding(name: &str, kind: IntrinsicKind) -> Self {
+    fn unrecognized_intrinsic_binding(name: &Path, kind: IntrinsicKind) -> Self {
         Self::error()
             .code(Code::E061)
             .message(format!("`{name}` is not an intrinsic {kind}"))
@@ -343,6 +372,13 @@ impl FromStr for KnownBinding {
     }
 }
 
+pub enum IntrinsicNameStyle<'a> {
+    /// Intrinsic binding is marked `@intrinsic`.
+    Implicit { attribute: &'a Attribute },
+    /// Intrinsic binding is marked `@(intrinsic qualified.name)`.
+    Explicit,
+}
+
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub enum IntrinsicType {
     Nat,
@@ -408,80 +444,84 @@ impl fmt::Display for IntrinsicType {
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub enum IntrinsicFunction {
-    Add,
-    Subtract,
-    // @Temporary existence
-    PanickingSubtract,
-    Multiply,
-    Divide,
-    Equal,
-    Less,
-    LessEqual,
-    Greater,
-    GreaterEqual,
-    Display,
-    Concat,
-    AddNat32,
-    Print,
+    NatAdd,
+    NatSubtract,
+    NatUncheckedSubtract,
+    NatMultiply,
+    NatDivide,
+    NatEqual,
+    NatLess,
+    NatLessEqual,
+    NatGreater,
+    NatGreaterEqual,
+    NatDisplay,
+    TextConcat,
+    Nat32Add,
 }
 
-// @Beacon @Beacon @Beacon @Temporary
-// @Task derive this
-impl FromStr for IntrinsicFunction {
-    type Err = ();
+impl IntrinsicFunction {
+    fn parse(name: &Path) -> Result<Self, ()> {
+        if name.hanger.is_some() {
+            return Err(());
+        }
 
-    fn from_str(input: &str) -> Result<Self, Self::Err> {
-        Ok(match input {
-            "add" => Self::Add,
-            "subtract" => Self::Subtract,
-            "panicking-subtract" => Self::PanickingSubtract,
-            "multiply" => Self::Multiply,
-            "divide" => Self::Divide,
-            "equal" => Self::Equal,
-            "less" => Self::Less,
-            "less-equal" => Self::LessEqual,
-            "greater" => Self::Greater,
-            "greater-equal" => Self::GreaterEqual,
-            "display" => Self::Display,
-            "concat" => Self::Concat,
-            "add-nat32" => Self::AddNat32,
-            "print" => Self::Print,
-            _ => return Err(()),
-        })
+        Ok(
+            match &*name
+                .segments
+                .iter()
+                .map(|identifier| identifier.as_str())
+                .collect::<Vec<_>>()
+            {
+                ["nat", "add"] => Self::NatAdd,
+                ["nat", "subtract"] => Self::NatSubtract,
+                ["nat", "unchecked-subtract"] => Self::NatUncheckedSubtract,
+                ["nat", "multiply"] => Self::NatMultiply,
+                ["nat", "divide"] => Self::NatDivide,
+                ["nat", "equal"] => Self::NatEqual,
+                ["nat", "less"] => Self::NatLess,
+                ["nat", "less-equal"] => Self::NatLessEqual,
+                ["nat", "greater"] => Self::NatGreater,
+                ["nat", "greater-equal"] => Self::NatGreaterEqual,
+                ["nat", "display"] => Self::NatDisplay,
+                ["text", "concat"] => Self::TextConcat,
+                ["nat32", "add"] => Self::Nat32Add,
+                _ => return Err(()),
+            },
+        )
     }
 }
 
-// @Task derive this
+// @Task derive this smh
 impl fmt::Display for IntrinsicFunction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "{}",
             match self {
-                Self::Add => "add",
-                Self::Subtract => "subtract",
-                Self::PanickingSubtract => "panicking-subtract",
-                Self::Multiply => "multiply",
-                Self::Divide => "divide",
-                Self::Equal => "equal",
-                Self::Less => "less",
-                Self::LessEqual => "less-equal",
-                Self::Greater => "greater",
-                Self::GreaterEqual => "greater-equal",
-                Self::Display => "display",
-                Self::Concat => "concat",
-                Self::AddNat32 => "add-nat32",
-                Self::Print => "print",
+                Self::NatAdd => "nat.add",
+                Self::NatSubtract => "nat.subtract",
+                Self::NatUncheckedSubtract => "nat.unchecked-subtract",
+                Self::NatMultiply => "nat.multiply",
+                Self::NatDivide => "nat.divide",
+                Self::NatEqual => "nat.equal",
+                Self::NatLess => "nat.less",
+                Self::NatLessEqual => "nat.less-equal",
+                Self::NatGreater => "nat.greater",
+                Self::NatGreaterEqual => "nat.greater-equal",
+                Self::NatDisplay => "nat.display",
+                Self::TextConcat => "text.concat",
+                Self::Nat32Add => "nat32.add",
             }
         )
     }
 }
 
-pub type BareIntrinsicFunctionValue = fn(arguments: Vec<Value>) -> Value;
+pub type IntrinsicFunctionPointer = fn(arguments: Vec<Value>) -> Value;
 
+#[derive(Clone, Copy)]
 pub struct IntrinsicFunctionValue {
     pub arity: usize,
-    pub function: BareIntrinsicFunctionValue,
+    pub function: IntrinsicFunctionPointer,
 }
 
 // @Question naming etc
@@ -503,33 +543,29 @@ impl fmt::Display for IntrinsicKind {
     }
 }
 
-fn intrinsic_functions() -> HashMap<IntrinsicFunction, IntrinsicFunctionValue> {
+// @Temporary ret ty
+fn intrinsic_functions() -> HashMap<IntrinsicFunction, (Option<Identifier>, IntrinsicFunctionValue)>
+{
     use IntrinsicFunction::*;
 
     let mut intrinsics = HashMap::default();
 
-    intrinsics.insert(Add, pure!(|x: Nat, y: Nat| x + y));
-    intrinsics.insert(Subtract, pure!(|x: Nat, y: Nat| x.checked_sub(&y)));
-    intrinsics.insert(PanickingSubtract, pure!(|x: Nat, y: Nat| x - y));
-    intrinsics.insert(Multiply, pure!(|x: Nat, y: Nat| x * y));
-    intrinsics.insert(Divide, pure!(|x: Nat, y: Nat| x.checked_div(&y)));
-    intrinsics.insert(Equal, pure!(|x: Nat, y: Nat| x == y));
-    intrinsics.insert(Less, pure!(|x: Nat, y: Nat| x < y));
-    intrinsics.insert(LessEqual, pure!(|x: Nat, y: Nat| x <= y));
-    intrinsics.insert(Greater, pure!(|x: Nat, y: Nat| x > y));
-    intrinsics.insert(GreaterEqual, pure!(|x: Nat, y: Nat| x >= y));
-    intrinsics.insert(Display, pure!(|x: Nat| x.to_string()));
-    intrinsics.insert(Concat, pure!(|a: Text, b: Text| a + &b));
-    // @Temporary until we can target specific modules
-    intrinsics.insert(AddNat32, pure!(|a: Nat32, b: Nat32| a + b));
-    // @Temporary
+    intrinsics.insert(NatAdd, (None, pure!(|x: Nat, y: Nat| x + y)));
     intrinsics.insert(
-        Print,
-        pure!(|message: Text| Value::IO {
-            index: 0,
-            arguments: vec![Value::Text(message)],
-        }),
+        NatSubtract,
+        (None, pure!(|x: Nat, y: Nat| x.checked_sub(&y))),
     );
+    intrinsics.insert(NatUncheckedSubtract, (None, pure!(|x: Nat, y: Nat| x - y)));
+    intrinsics.insert(NatMultiply, (None, pure!(|x: Nat, y: Nat| x * y)));
+    intrinsics.insert(NatDivide, (None, pure!(|x: Nat, y: Nat| x.checked_div(&y))));
+    intrinsics.insert(NatEqual, (None, pure!(|x: Nat, y: Nat| x == y)));
+    intrinsics.insert(NatLess, (None, pure!(|x: Nat, y: Nat| x < y)));
+    intrinsics.insert(NatLessEqual, (None, pure!(|x: Nat, y: Nat| x <= y)));
+    intrinsics.insert(NatGreater, (None, pure!(|x: Nat, y: Nat| x > y)));
+    intrinsics.insert(NatGreaterEqual, (None, pure!(|x: Nat, y: Nat| x >= y)));
+    intrinsics.insert(NatDisplay, (None, pure!(|x: Nat| x.to_string())));
+    intrinsics.insert(TextConcat, (None, pure!(|a: Text, b: Text| a + &b)));
+    intrinsics.insert(Nat32Add, (None, pure!(|a: Nat32, b: Nat32| a + b)));
 
     intrinsics
 }

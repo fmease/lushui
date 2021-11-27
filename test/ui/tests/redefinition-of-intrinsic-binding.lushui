@@ -3,7 +3,15 @@
 @intrinsic
 data Text: Type
 
+@(intrinsic text.concat)
+join: Text -> Text -> Text
+
 module disambiguator of
     @intrinsic
     data Text: Type
 
+module text of
+    use crate.Text
+
+    @intrinsic
+    concat: Text -> Text -> Text

@@ -15,8 +15,8 @@ impl fmt::Display for super::AttributeKind {
         write!(f, "@")?;
 
         match self {
-            Self::Allow { lint } => write!(f, "(allow {})", lint),
-            Self::Deny { lint } => write!(f, "(deny {})", lint),
+            Self::Allow { lint } => write!(f, "(allow {lint})"),
+            Self::Deny { lint } => write!(f, "(deny {lint})"),
             Self::Deprecated {
                 reason,
                 since,
@@ -24,39 +24,41 @@ impl fmt::Display for super::AttributeKind {
                 replacement,
             } => write!(
                 f,
-                "(deprecated (reason {:?}) (since {:?}) (until {:?}) (replacement {:?}))",
-                reason, since, until, replacement
+                "(deprecated (reason {reason:?}) (since {since:?}) (until {until:?}) (replacement {replacement:?}))",
             ),
-            Self::Documentation { content } => write!(f, "(documentation {:?})", content),
-            Self::Forbid { lint } => write!(f, "(forbid {})", lint),
-            Self::Intrinsic => write!(f, "intrinsic"),
-            Self::If { condition } => write!(f, "(if {})", condition),
+            Self::Documentation { content } => write!(f, "(documentation {content:?})"),
+            Self::Forbid { lint } => write!(f, "(forbid {lint})"),
+            Self::If { condition } => write!(f, "(if {condition})"),
             Self::Ignore => write!(f, "ignore"),
             Self::Include => write!(f, "include"),
+            Self::Intrinsic { name } => match name {
+                Some(name) => write!(f, "(intrinsic {name})"),
+                None => write!(f, "intrinsic"),
+            },
             Self::Known => write!(f, "known"),
             Self::Int => write!(f, "Int"),
             Self::Int32 => write!(f, "Int32"),
             Self::Int64 => write!(f, "Int64"),
             Self::List => write!(f, "List"),
-            Self::Location { path } => write!(f, "(location {})", path),
+            Self::Location { path } => write!(f, "(location {path})"),
             Self::Moving => write!(f, "moving"),
             Self::Nat => write!(f, "Nat"),
             Self::Nat32 => write!(f, "Nat32"),
             Self::Nat64 => write!(f, "Nat64"),
             Self::Opaque => write!(f, "opaque"),
             Self::Public { reach } => match reach {
-                Some(reach) => write!(f, "(public {})", reach),
+                Some(reach) => write!(f, "(public {reach})"),
                 None => write!(f, "public"),
             },
-            Self::RecursionLimit { depth } => write!(f, "(recursion-limit {})", depth),
+            Self::RecursionLimit { depth } => write!(f, "(recursion-limit {depth})"),
             Self::Rune => write!(f, "Rune"),
             Self::Static => write!(f, "static"),
             Self::Test => write!(f, "test"),
             Self::Text => write!(f, "Text"),
             Self::Unsafe => write!(f, "unsafe"),
-            Self::Unstable { feature, reason } => write!(f, "(feature {} {:?})", feature, reason),
+            Self::Unstable { feature, reason } => write!(f, "(feature {feature} {reason:?})"),
             Self::Vector => write!(f, "Vector"),
-            Self::Warn { lint } => write!(f, "(warn {})", lint),
+            Self::Warn { lint } => write!(f, "(warn {lint})"),
         }
     }
 }

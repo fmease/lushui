@@ -250,6 +250,8 @@ impl AttributeTarget for ast::Declaration {
                 Err(())
             }
             (Some(body), true) => {
+                // @Beacon @Beacon @Beacon @Task improve this diagnostic, don't use the non-descriptive label "conflicting" (twice!)
+                // @Note the labels should be so descriptive that the note becomes redundant
                 Diagnostic::error()
                     .code(Code::E020)
                     .message(format!(
@@ -258,7 +260,7 @@ impl AttributeTarget for ast::Declaration {
                     ))
                     .labeled_primary_span(&body, "conflicting definition")
                     .labeled_secondary_span(
-                        attributes.filter(AttributeKeys::INTRINSIC).next().unwrap(),
+                        attributes.find(AttributeKeys::INTRINSIC).unwrap(),
                         "conflicting definition",
                     )
                     .note(format!(
@@ -476,10 +478,15 @@ impl Attributes {
             .filter(move |attribute| attribute.matches(keys))
     }
 
-    pub fn get<'a, R: ?Sized>(
+    pub fn find(&self, keys: AttributeKeys) -> Option<&Attribute> {
+        self.data.iter().find(|attribute| attribute.matches(keys))
+    }
+
+    // @Question should we add `keys: AttributeKeys` and do the `.has()` logic before `find_map`?
+    pub fn find_map<'a, R>(
         &'a self,
-        mut predicate: impl FnMut(&'a AttributeKind) -> Option<&'a R>,
-    ) -> &'a R {
+        mut predicate: impl FnMut(&'a AttributeKind) -> Option<R>,
+    ) -> R {
         self.data
             .iter()
             .find_map(|attribute| predicate(&attribute.value))
@@ -580,7 +587,13 @@ pub enum AttributeKind {
     /// ```
     If { condition: Condition },
     /// Identify a binding as an intrinsic.
-    Intrinsic,
+    ///
+    /// # Form
+    ///
+    /// ```text
+    /// intrinsic [<0:name:Path>]
+    /// ```
+    Intrinsic { name: Option<Path> },
     /// Exclude the attribute target from further processing.
     ///
     /// Basically `@(if false)` but `if` won't be implemented anytime soon.
@@ -682,7 +695,7 @@ impl AttributeKind {
             Self::Documentation { .. } => quoted!("documentation"),
             Self::Forbid { .. } => quoted!("forbid"),
             Self::If { .. } => quoted!("if"),
-            Self::Intrinsic => quoted!("intrinsic"),
+            Self::Intrinsic { .. } => quoted!("intrinsic"),
             Self::Ignore => quoted!("ignore"),
             Self::Include => quoted!("include"),
             Self::Int => quoted!("Int"),
@@ -719,7 +732,7 @@ impl AttributeKind {
             Deprecated { .. } | Documentation { .. } | If { .. } | Ignore | Unstable { .. } => {
                 Targets::DECLARATION
             }
-            Intrinsic => Targets::VALUE_DECLARATION | Targets::DATA_DECLARATION,
+            Intrinsic { .. } => Targets::VALUE_DECLARATION | Targets::DATA_DECLARATION,
             Include | Rune | Text => Targets::TEXT_LITERAL,
             Known | Moving | Opaque => Targets::DATA_DECLARATION,
             Int | Int32 | Int64 | Nat | Nat32 | Nat64 => Targets::NUMBER_LITERAL,
@@ -745,10 +758,10 @@ impl AttributeKind {
             Self::Deprecated { .. } => AttributeKeys::DEPRECATED,
             Self::Documentation { .. } => AttributeKeys::DOCUMENTATION,
             Self::Forbid { .. } => AttributeKeys::FORBID,
-            Self::Intrinsic => AttributeKeys::INTRINSIC,
             Self::If { .. } => AttributeKeys::IF,
             Self::Ignore => AttributeKeys::IGNORE,
             Self::Include => AttributeKeys::INCLUDE,
+            Self::Intrinsic { .. } => AttributeKeys::INTRINSIC,
             Self::Known => AttributeKeys::KNOWN,
             Self::Int => AttributeKeys::INT,
             Self::Int32 => AttributeKeys::INT32,
