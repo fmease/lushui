@@ -11,7 +11,7 @@ use crate::{
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Item<T, Attributes> {
-    pub data: T,
+    pub value: T,
     pub span: Span,
     pub attributes: Attributes,
 }
@@ -19,7 +19,7 @@ pub struct Item<T, Attributes> {
 impl<T, Attributes> Item<T, Attributes> {
     pub const fn new(attributes: Attributes, span: Span, data: T) -> Self {
         Self {
-            data,
+            value: data,
             span,
             attributes,
         }
@@ -35,7 +35,7 @@ impl<T, Attribute> Spanning for Item<T, Attribute> {
 impl<T: PossiblyErroneous, Attributes: Default> PossiblyErroneous for Item<T, Attributes> {
     fn error() -> Self {
         Self {
-            data: T::error(),
+            value: T::error(),
             span: default(),
             attributes: default(),
         }

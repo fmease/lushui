@@ -34,7 +34,7 @@ use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     error::{map_outcome_from_result, Health, Outcome, PossiblyErroneous, Result},
     format::{ordered_listing, pluralize, Conjunction, IOError, QuoteExt},
-    span::{SharedSourceMap, Span, Spanning},
+    span::{SharedSourceMap, SourceMap, Span, Spanning},
     utility::{obtain, SmallVec, Str},
 };
 use joinery::JoinableIterator;
@@ -84,7 +84,7 @@ impl<'a> Lowerer<'a> {
             Outcome::from(self.lower_attributes(&declaration.attributes, &declaration))
                 .unwrap(&mut health);
 
-        let declarations = match declaration.data {
+        let declarations = match declaration.value {
             Value(value) => {
                 let context = ExpressionContext::new(declaration.span);
 
@@ -329,7 +329,7 @@ impl<'a> Lowerer<'a> {
                             Err(()) => return PossiblyErroneous::error(),
                         };
 
-                        let module: ast::Module = node.data.try_into().unwrap();
+                        let module: ast::Module = node.value.try_into().unwrap();
 
                         if !node.attributes.is_empty() {
                             Diagnostic::unimplemented("attributes on module headers")
@@ -540,7 +540,7 @@ impl<'a> Lowerer<'a> {
         let attributes = Outcome::from(self.lower_attributes(&expression.attributes, &expression))
             .unwrap(&mut health);
 
-        let expression = match expression.data {
+        let expression = match expression.value {
             PiTypeLiteral(pi) => {
                 health &= self.check_fieldness_location(pi.domain.aspect.fieldness, context);
 
@@ -819,7 +819,7 @@ impl<'a> Lowerer<'a> {
         let attributes =
             Outcome::from(self.lower_attributes(&pattern.attributes, &pattern)).unwrap(&mut health);
 
-        let pattern = match pattern.data {
+        let pattern = match pattern.value {
             // @Note awkward API!
             NumberLiteral(literal) => {
                 let span = pattern.span;
@@ -884,6 +884,7 @@ impl<'a> Lowerer<'a> {
     }
 
     /// Lower attributes.
+    // @Task filter out documentation attributes if !options.keep_documentation_comments
     fn lower_attributes(
         &mut self,
         attributes: &[ast::Attribute],
@@ -896,13 +897,15 @@ impl<'a> Lowerer<'a> {
         let mut lowered_attributes = Vec::new();
 
         for attribute in attributes {
-            let attribute = match Attribute::parse(attribute, self.reporter) {
-                Ok(attribute) => attribute,
-                Err(()) => {
-                    health.taint();
-                    continue;
-                }
-            };
+            let attribute =
+                match Attribute::parse(attribute, &self.options, &self.map.borrow(), self.reporter)
+                {
+                    Ok(attribute) => attribute,
+                    Err(()) => {
+                        health.taint();
+                        continue;
+                    }
+                };
 
             // non-conforming attributes
             let expected_targets = attribute.value.targets();
@@ -933,7 +936,7 @@ impl<'a> Lowerer<'a> {
         let mut keys = AttributeKeys::empty();
         let mut attributes = Vec::new();
 
-        // conflicting or duplicate attributes
+        // search for conflicting or duplicate attributes
         for attribute in &lowered_attributes {
             let key = attribute.value.key();
             let coexistable = AttributeKeys::COEXISTABLE.contains(key);
@@ -1044,7 +1047,9 @@ impl<'a> Lowerer<'a> {
         }
 
         // @Task replace this concept with a feature system
-        if attributes.keys.intersects(AttributeKeys::INTERNAL) && !self.options.enable_internals {
+        if attributes.keys.intersects(AttributeKeys::INTERNAL)
+            && !self.options.internal_features_enabled
+        {
             for attribute in attributes.filter(AttributeKeys::INTERNAL) {
                 Diagnostic::error()
                     .code(Code::E038)
@@ -1191,8 +1196,10 @@ impl<'a> Lowerer<'a> {
 
 #[derive(Default)]
 pub struct LoweringOptions {
-    /// Enable internal language and library features.
-    pub enable_internals: bool,
+    /// Specifies if internal language and library features are enabled.
+    pub internal_features_enabled: bool,
+    /// Specifies if documentation comments should be kept in the lowered AST.
+    pub keep_document_comments: bool,
 }
 
 struct DeclarationContext {
@@ -1234,7 +1241,12 @@ const INT64_INTERVAL_REPRESENTATION: &str = "[-2^63, 2^63-1]";
 
 impl lowered_ast::AttributeKind {
     // @Task allow unordered named attributes e.g. `@(unstable (reason "x") (feature thing))`
-    pub fn parse(attribute: &ast::Attribute, reporter: &Reporter) -> Result<Self> {
+    pub fn parse(
+        attribute: &ast::Attribute,
+        options: &LoweringOptions,
+        map: &SourceMap,
+        reporter: &Reporter,
+    ) -> Result<Self> {
         let arguments = &mut &*attribute.arguments;
 
         fn optional_argument<'a>(
@@ -1287,13 +1299,15 @@ impl lowered_ast::AttributeKind {
                         .report(reporter);
                     return Err(AttributeParsingError::Unrecoverable);
                 }
-                // @Beacon @Temporary @Bug the whole code for this
-                "documentation" => {
-                    let _ = argument(arguments, attribute.span, reporter)?;
-                    Self::Documentation {
-                        content: String::new(),
-                    }
-                }
+                "documentation" => Self::Documentation {
+                    content: if options.keep_document_comments {
+                        argument(arguments, attribute.span, reporter)?
+                            .text_literal_or_encoded_text(map, reporter)?
+                    } else {
+                        *arguments = &arguments[1..];
+                        String::new()
+                    },
+                },
                 "forbid" => Self::Forbid {
                     lint: lowered_ast::Lint::parse(
                         argument(arguments, attribute.span, reporter)?
@@ -1415,11 +1429,45 @@ enum AttributeParsingError {
     UndefinedAttribute(ast::Identifier),
 }
 
+// @Beacon @Note the following attribute argument parsing logic is soo hideous!
+
 impl ast::AttributeArgument {
     extractor!(number_literal "number literal": NumberLiteral => String);
-    // @Bug does not handle AttributeArgumentKind::Generated
     extractor!(text_literal "text literal": TextLiteral => String);
     extractor!(path "path": Path => Path);
+
+    // @Note argh! the macro cannot handle this
+    fn text_literal_or_encoded_text(
+        &self,
+        map: &SourceMap,
+        reporter: &Reporter,
+    ) -> Result<String, AttributeParsingError> {
+        match &self.value {
+            ast::AttributeArgumentKind::TextLiteral(literal) => Ok(literal.as_ref().clone()),
+            // @Note horrendous!
+            // @Beacon @Note we assume this is meant for documentation comments
+            // (the only user of TextEncodedInSpan) to cut off the leading `;;`
+            // Honestly, we should replace this stupid system
+            ast::AttributeArgumentKind::TextEncodedInSpan => {
+                Ok(map.snippet(self.span.trim_start(2)).to_owned())
+            }
+            ast::AttributeArgumentKind::Named(_) => {
+                // @Beacon @Beacon @Task span
+                Diagnostic::error()
+                    .message("unexpected named attribute argument")
+                    .report(reporter);
+                Err(AttributeParsingError::Unrecoverable)
+            }
+            kind => {
+                Diagnostic::invalid_attribute_argument_type(
+                    (self.span, kind.name()),
+                    "positional or named text literal",
+                )
+                .report(reporter);
+                Err(AttributeParsingError::Unrecoverable)
+            }
+        }
+    }
 }
 
 // @Note not that extensible and well worked out API
@@ -1475,8 +1523,8 @@ impl ast::NamedAttributeArgument {
                     Err(AttributeParsingError::Unrecoverable)
                 }
             }
-            // @Beacon @Beacon @Task span
             None => {
+                // @Beacon @Beacon @Task span
                 Diagnostic::error()
                     .message("unexpected named attribute argument")
                     .report(reporter);

@@ -369,35 +369,38 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    // @Task merge consecutive documentation comments
+    // @Task merge consecutive documentation comments, smh
     // @Task emit TokenKind::Comment if asked
     fn lex_comment(&mut self) {
         self.take();
         self.advance();
 
         let mut is_documentation = true;
+        let mut found_immediate_line_break = false;
 
         if let Some(character) = self.peek() {
-            if character == ';' {
-                is_documentation = false;
-            } else {
-                self.take();
-            }
             self.advance();
+
+            match character {
+                ';' => is_documentation = false,
+                '\n' => found_immediate_line_break = true,
+                _ => self.take(),
+            }
         }
 
-        while let Some(character) = self.peek() {
-            if character == '\n' {
-                self.take();
+        if !found_immediate_line_break {
+            while let Some(character) = self.peek() {
+                if character == '\n' {
+                    self.advance();
+                    break;
+                }
+
+                if is_documentation {
+                    self.take();
+                }
+
                 self.advance();
-                break;
             }
-
-            if is_documentation {
-                self.take();
-            }
-
-            self.advance();
         }
 
         if is_documentation {

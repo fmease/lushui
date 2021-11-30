@@ -22,3 +22,4 @@ strsim = "0.10.0"
 rustc-hash = "1.1.0"
 difference = "2.0.0"
 discriminant = { path = "src/discriminant" }
+html-escape = "0.2.9"

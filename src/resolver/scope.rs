@@ -17,7 +17,7 @@ use crate::{
     entity::{Entity, EntityKind},
     error::{Health, Result},
     format::{AsAutoColoredChangeset, DisplayWith},
-    package::{BuildSession, CrateIndex, CrateType, PackageIndex},
+    package::{BuildSession, CrateIndex, CrateType, Package, PackageIndex},
     span::{Span, Spanned, Spanning},
     syntax::{
         ast::{self, HangerKind, Path},
@@ -32,7 +32,10 @@ pub use index::{DeBruijnIndex, DeclarationIndex, Index, LocalDeclarationIndex};
 use index_map::IndexMap;
 use joinery::JoinableIterator;
 use smallvec::smallvec;
-use std::{cell::RefCell, cmp::Ordering, default::default, fmt, path::PathBuf, usize};
+use std::{
+    cell::RefCell, cmp::Ordering, collections::VecDeque, default::default, fmt, path::PathBuf,
+    usize,
+};
 use unicode_width::UnicodeWidthStr;
 
 mod index;
@@ -81,9 +84,30 @@ impl Crate {
         }
     }
 
+    pub fn name<'s>(&self, session: &'s BuildSession) -> &'s CrateName {
+        // @Beacon @Temporary
+        // @Note currently, the name of a crate coincides with the name of the package which
+        // contains it. in the future, this will not be the case once users can overwrite
+        // {Library,Binary}Manifest.name
+
+        &self.package(session).name
+    }
+
+    pub fn package<'s>(&self, session: &'s BuildSession) -> &'s Package {
+        &session[self.package]
+    }
+
+    pub fn is_library(&self) -> bool {
+        self.type_ == CrateType::Library
+    }
+
+    pub fn is_binary(&self) -> bool {
+        self.type_ == CrateType::Binary
+    }
+
     /// Test if this crate is the standard library `core`.
     pub fn is_core_library(&self, session: &BuildSession) -> bool {
-        session[self.package].is_core() && self.type_ == CrateType::Library
+        session[self.package].is_core() && self.is_library()
     }
 
     pub(super) fn dependency(
@@ -108,14 +132,6 @@ impl Crate {
         DeclarationIndex::new(self.index, index)
     }
 
-    pub fn is_local(&self, index: DeclarationIndex) -> bool {
-        index.crate_index() == self.index
-    }
-
-    pub fn local_index(&self, index: DeclarationIndex) -> Option<LocalDeclarationIndex> {
-        self.is_local(index).then(|| index.local_index())
-    }
-
     // @Beacon @Question shouldn't `index` be a LocalDeclarationIndex?
     pub(super) fn some_ancestor_equals(
         &self,
@@ -128,7 +144,7 @@ impl Crate {
             }
 
             // @Beacon @Question can this ever panic?
-            index = match self[self.local_index(index).unwrap()].parent {
+            index = match self[index.local_index(self).unwrap()].parent {
                 Some(parent) => self.global_index(parent),
                 None => break false,
             }
@@ -142,32 +158,45 @@ impl Crate {
     }
 
     /// Build a textual representation of the absolute path of a binding.
-    pub fn absolute_path(&self, index: DeclarationIndex, session: &BuildSession) -> String {
-        self.absolute_path_with_root(index, HangerKind::Crate.name().to_owned(), session)
+    // @Task extend docs
+    pub fn display_absolute_path(&self, index: DeclarationIndex, session: &BuildSession) -> String {
+        self.display_absolute_path_with_root(index, HangerKind::Crate.name().to_owned(), session)
     }
 
-    fn absolute_path_with_root(
+    fn display_absolute_path_with_root(
         &self,
         index: DeclarationIndex,
         root: String,
         session: &BuildSession,
     ) -> String {
-        let Some(index) = self.local_index(index) else {
-            let crate_ = &session[index.crate_index()];
-            let root = format!(
-                "{}.{}",
-                HangerKind::Extern.name(),
-                session[crate_.package].name
-            );
+        match index.local_index(self) {
+            Some(index) => self.display_local_path_with_root(index, root),
+            None => {
+                let crate_ = &session[index.crate_index()];
+                let root = format!("{}.{}", HangerKind::Extern.name(), crate_.name(session));
 
-            return crate_.absolute_path_with_root(index, root, session);
-        };
+                crate_.display_absolute_path_with_root(index, root, session)
+            }
+        }
+    }
 
+    // @Note bad name
+    // @Task add docs
+    pub fn display_local_path(
+        &self,
+        index: LocalDeclarationIndex,
+        session: &BuildSession,
+    ) -> String {
+        self.display_local_path_with_root(index, self.name(session).to_string())
+    }
+
+    // @Note bad name
+    fn display_local_path_with_root(&self, index: LocalDeclarationIndex, root: String) -> String {
         let entity = &self[index];
 
+        // @Task rewrite this recursive approach to an iterative one!
         if let Some(parent) = entity.parent {
-            let mut parent_path =
-                self.absolute_path_with_root(self.global_index(parent), root, session);
+            let mut parent_path = self.display_local_path_with_root(parent, root);
 
             let parent_is_punctuation = is_punctuation(parent_path.chars().next_back().unwrap());
 
@@ -188,6 +217,24 @@ impl Crate {
         }
     }
 
+    // @Note bad name
+    pub fn local_path_segments(&self, mut index: LocalDeclarationIndex) -> VecDeque<&str> {
+        let mut segments = VecDeque::new();
+
+        loop {
+            let entity = &self[index];
+            segments.push_front(entity.source.as_str());
+
+            if let Some(parent) = entity.parent {
+                index = parent;
+            } else {
+                break;
+            }
+        }
+
+        segments
+    }
+
     /// Register a binding to a given entity.
     ///
     /// Apart from actually registering, it mainly checks for name duplication.
@@ -205,7 +252,7 @@ impl Crate {
                 .unwrap()
                 .binders
                 .iter()
-                .map(|&index| self.local_index(index).unwrap())
+                .map(|&index| index.local_index(self).unwrap())
                 .find(|&index| self[index].source == binder);
 
             if let Some(index) = index {
@@ -411,7 +458,7 @@ impl DisplayWith for RestrictedExposure {
             &Self::Resolved { reach } => write!(
                 f,
                 "{}",
-                scope.absolute_path(scope.global_index(reach), session)
+                scope.display_absolute_path(scope.global_index(reach), session)
             ),
         }
     }
@@ -549,6 +596,10 @@ impl Identifier {
         self.index.declaration_index()
     }
 
+    pub fn local_declaration_index(&self, crate_: &Crate) -> Option<LocalDeclarationIndex> {
+        self.declaration_index()?.local_index(crate_)
+    }
+
     pub fn de_bruijn_index(&self) -> Option<DeBruijnIndex> {
         self.index.de_bruijn_index()
     }
@@ -616,10 +667,14 @@ impl<'a> FunctionScope<'a> {
         }
     }
 
-    pub fn absolute_path(binder: &Identifier, crate_: &Crate, session: &BuildSession) -> String {
+    pub fn display_absolute_path(
+        binder: &Identifier,
+        crate_: &Crate,
+        session: &BuildSession,
+    ) -> String {
         match binder.index {
-            Index::Declaration(index) => crate_.absolute_path(index, session),
-            Index::DeBruijn(_) | Index::DeBruijnParameter => binder.as_str().into(),
+            Index::Declaration(index) => crate_.display_absolute_path(index, session),
+            Index::DeBruijn(_) | Index::DeBruijnParameter => binder.to_string(),
         }
     }
 }

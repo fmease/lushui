@@ -5,11 +5,14 @@
 
 mod format;
 
-use super::ast::{self, Explicitness, Identifier, ParameterAspect, Path};
+use super::{
+    ast::{self, Explicitness, Identifier, ParameterAspect, Path},
+    lowerer::LoweringOptions,
+};
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     error::{PossiblyErroneous, Result},
-    span::{PossiblySpanning, SourceFileIndex, Span, Spanned, Spanning},
+    span::{PossiblySpanning, SourceFileIndex, SourceMap, Span, Spanned, Spanning},
     utility::condition,
 };
 use std::rc::Rc;
@@ -180,7 +183,7 @@ impl AttributeTarget for ast::Declaration {
     fn name(&self) -> &'static str {
         use ast::DeclarationKind::*;
 
-        match self.data {
+        match self.value {
             Value(_) => "a value declaration",
             Data(_) => "a data declaration",
             Constructor(_) => "a constructor declaration",
@@ -194,7 +197,7 @@ impl AttributeTarget for ast::Declaration {
     fn as_attribute_targets(&self) -> AttributeTargets {
         use ast::DeclarationKind::*;
 
-        match self.data {
+        match self.value {
             Value(_) => AttributeTargets::VALUE_DECLARATION,
             Data(_) => AttributeTargets::DATA_DECLARATION,
             Constructor(_) => AttributeTargets::CONSTRUCTOR_DECLARATION,
@@ -208,7 +211,7 @@ impl AttributeTarget for ast::Declaration {
     fn check_attributes(&self, attributes: &Attributes, reporter: &Reporter) -> Result {
         use ast::DeclarationKind::*;
 
-        let (binder, definition_marker, body) = match &self.data {
+        let (binder, definition_marker, body) = match &self.value {
             Value(value) => (
                 &value.binder,
                 Spanned::new(
@@ -276,7 +279,7 @@ impl AttributeTarget for ast::Expression {
     fn name(&self) -> &'static str {
         use ast::ExpressionKind::*;
 
-        match self.data {
+        match self.value {
             PiTypeLiteral(_) => "a pi type literal",
             Application(_) => "an application",
             TypeLiteral => "a type literal",
@@ -298,7 +301,7 @@ impl AttributeTarget for ast::Expression {
     fn as_attribute_targets(&self) -> AttributeTargets {
         use ast::ExpressionKind::*;
 
-        match self.data {
+        match self.value {
             PiTypeLiteral(_) => AttributeTargets::PI_TYPE_LITERAL_EXPRESSION,
             Application(_) => AttributeTargets::APPLICATION_EXPRESSION,
             TypeLiteral => AttributeTargets::TYPE_LITERAL_EXPRESSION,
@@ -322,7 +325,7 @@ impl AttributeTarget for ast::Pattern {
     fn name(&self) -> &'static str {
         use ast::PatternKind::*;
 
-        match self.data {
+        match self.value {
             NumberLiteral(_) => "a number literal pattern",
             TextLiteral(_) => "a text literal pattern",
             SequenceLiteralPattern(_) => "a sequence literal pattern",
@@ -335,7 +338,7 @@ impl AttributeTarget for ast::Pattern {
     fn as_attribute_targets(&self) -> AttributeTargets {
         use ast::PatternKind::*;
 
-        match self.data {
+        match self.value {
             NumberLiteral(_) => AttributeTargets::NUMBER_LITERAL_PATTERN,
             TextLiteral(_) => AttributeTargets::TEXT_LITERAL_PATTERN,
             SequenceLiteralPattern(_) => AttributeTargets::SEQUENCE_LITERAL_PATTERN,
@@ -500,10 +503,15 @@ impl PossiblyErroneous for Attributes {
 pub type Attribute = Spanned<AttributeKind>;
 
 impl Attribute {
-    pub fn parse(attribute: &ast::Attribute, reporter: &Reporter) -> Result<Self> {
+    pub fn parse(
+        attribute: &ast::Attribute,
+        options: &LoweringOptions,
+        map: &SourceMap,
+        reporter: &Reporter,
+    ) -> Result<Self> {
         Ok(Attribute::new(
             attribute.span,
-            AttributeKind::parse(attribute, reporter)?,
+            AttributeKind::parse(attribute, options, map, reporter)?,
         ))
     }
 

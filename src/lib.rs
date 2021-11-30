@@ -70,6 +70,7 @@
 
 pub mod compiler;
 pub mod diagnostics;
+pub mod documenter;
 mod entity;
 pub mod error;
 pub mod format;

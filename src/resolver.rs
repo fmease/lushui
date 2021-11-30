@@ -15,7 +15,7 @@ use crate::{
     error::{Health, PossiblyErroneous, ReportedExt, Result},
     format::{pluralize, unordered_listing, Conjunction, DisplayWith, QuoteExt},
     hir::{self, decl, expr, pat},
-    package::{BuildSession, CrateType},
+    package::BuildSession,
     span::Spanning,
     syntax::{
         ast,
@@ -117,7 +117,7 @@ impl<'a> Resolver<'a> {
             },
         };
 
-        match &declaration.data {
+        match &declaration.value {
             Value(value) => {
                 let module = module.unwrap();
 
@@ -192,7 +192,7 @@ impl<'a> Resolver<'a> {
 
                 let mut type_annotation = &constructor.type_annotation;
 
-                while let lowered_ast::ExpressionKind::PiType(pi) = &type_annotation.data {
+                while let lowered_ast::ExpressionKind::PiType(pi) = &type_annotation.value {
                     if pi.aspect.is_field() {
                         let parameter = pi.parameter.as_ref().unwrap();
 
@@ -274,7 +274,7 @@ impl<'a> Resolver<'a> {
     ) -> Result<hir::Declaration> {
         use lowered_ast::DeclarationKind::*;
 
-        Ok(match declaration.data {
+        Ok(match declaration.value {
             Value(value) => {
                 let module = module.unwrap();
 
@@ -291,7 +291,7 @@ impl<'a> Resolver<'a> {
                 let binder = self.reobtain_resolved_identifier::<OnlyValue>(&value.binder, module);
 
                 if module == self.crate_.root()
-                    && self.crate_.type_ == CrateType::Binary
+                    && self.crate_.is_binary()
                     && value.binder.as_str() == PROGRAM_ENTRY_IDENTIFIER
                 {
                     self.crate_.program_entry = Some(binder.clone());
@@ -327,9 +327,7 @@ impl<'a> Resolver<'a> {
                                 Some(module),
                                 Context {
                                     parent_data_binding: Some((
-                                        self.crate_
-                                            .local_index(binder.declaration_index().unwrap())
-                                            .unwrap(),
+                                        binder.local_declaration_index(self.crate_).unwrap(),
                                         None,
                                     )),
                                 },
@@ -374,14 +372,10 @@ impl<'a> Resolver<'a> {
                 let index = match module {
                     // unwrap: could only ever be non-local if the binder was a use-binding
                     // but it is module binding
-                    Some(module) => {
-                        self.crate_
-                            .local_index(self.reobtain_resolved_identifier::<OnlyModule>(
-                                &submodule.binder,
-                                module,
-                            ))
-                            .unwrap()
-                    }
+                    Some(module) => self
+                        .reobtain_resolved_identifier::<OnlyModule>(&submodule.binder, module)
+                        .local_index(self.crate_)
+                        .unwrap(),
                     None => self.crate_.root(),
                 };
 
@@ -445,7 +439,7 @@ impl<'a> Resolver<'a> {
     ) -> Result<hir::Expression> {
         use lowered_ast::ExpressionKind::*;
 
-        let expression = match expression.data {
+        let expression = match expression.value {
             PiType(pi) => {
                 let domain = self.resolve_expression(pi.domain.clone(), scope);
                 let codomain = match pi.parameter.clone() {
@@ -566,7 +560,7 @@ impl<'a> Resolver<'a> {
 
         let mut binders = Vec::new();
 
-        let pattern = match pattern.data.clone() {
+        let pattern = match pattern.value.clone() {
             Number(number) => pat! { Number(pattern.attributes, pattern.span; number) },
             Text(text) => pat! { Text(pattern.attributes, pattern.span; text) },
             Binding(binding) => pat! {
@@ -612,7 +606,7 @@ impl<'a> Resolver<'a> {
     }
 
     fn look_up(&self, index: DeclarationIndex) -> &Entity {
-        match self.crate_.local_index(index) {
+        match index.local_index(self.crate_) {
             Some(index) => &self.crate_[index],
             None => &self.session[index],
         }
@@ -716,7 +710,7 @@ impl<'a> Resolver<'a> {
                 }
                 Crate => self.crate_.global_index(self.crate_.root()),
                 Super => self.crate_.global_index(
-                    self.resolve_super(hanger, self.crate_.local_index(namespace).unwrap())?,
+                    self.resolve_super(hanger, namespace.local_index(self.crate_).unwrap())?,
                 ),
                 Self_ => namespace,
             };
@@ -836,7 +830,7 @@ impl<'a> Resolver<'a> {
                     .code(Code::E029)
                     .message(format!(
                         "binding `{}` is private",
-                        self.crate_.absolute_path(index, self.session)
+                        self.crate_.display_absolute_path(index, self.session)
                     ))
                     .primary_span(identifier)
                     .report(self.reporter);
@@ -904,7 +898,7 @@ impl<'a> Resolver<'a> {
                 drop(exposure_);
                 *exposure.borrow_mut() = RestrictedExposure::Resolved {
                     // @Beacon @Bug unwrap not verified
-                    reach: self.crate_.local_index(reach).unwrap(),
+                    reach: reach.local_index(self.crate_).unwrap(),
                 };
 
                 reach
@@ -944,7 +938,7 @@ impl<'a> Resolver<'a> {
             .unwrap()
             .binders
             .iter()
-            .map(|&index| self.crate_.local_index(index).unwrap())
+            .map(|&index| index.local_index(self.crate_).unwrap())
             .find(|&index| &self.crate_[index].source == identifier)
             .unwrap();
         let index = self
@@ -1050,7 +1044,7 @@ impl<'a> Resolver<'a> {
                                 reference: item.reference.clone(),
                                 module: item.module,
                                 // @Beacon @Bug unwrap not verified
-                                inquirer: Some(self.crate_.local_index(inquirer).unwrap()),
+                                inquirer: Some(inquirer.local_index(self.crate_).unwrap()),
                             },
                         );
                     }
@@ -1068,7 +1062,7 @@ impl<'a> Resolver<'a> {
                 for cycle in find_cycles(partially_resolved_use_bindings) {
                     let paths = cycle.iter().map(|&index| {
                         self.crate_
-                            .absolute_path(self.crate_.global_index(index), self.session)
+                            .display_absolute_path(self.crate_.global_index(index), self.session)
                             .quote()
                     });
                     let paths = unordered_listing(paths, Conjunction::And);
@@ -1175,7 +1169,8 @@ impl<'a> Resolver<'a> {
                         .code(Code::E009)
                         .message(format!(
                             "re-export of the more private binding `{}`",
-                            self.crate_.absolute_path(reference_index, self.session)
+                            self.crate_
+                                .display_absolute_path(reference_index, self.session)
                         ))
                         .labeled_primary_span(
                             &entity.source,
@@ -1190,8 +1185,10 @@ impl<'a> Resolver<'a> {
 expected the exposure of `{}`
            to be at most {}
       but it actually is {}",
-                            self.crate_
-                                .absolute_path(self.crate_.global_index(index), self.session),
+                            self.crate_.display_absolute_path(
+                                self.crate_.global_index(index),
+                                self.session
+                            ),
                             reference.exposure.with((self.crate_, self.session)),
                             entity.exposure.with((self.crate_, self.session)),
                         ))
@@ -1297,7 +1294,7 @@ expected the exposure of `{}`
                             false => "namespace",
                         };
                         message += " `";
-                        message += &self.crate_.absolute_path(namespace, self.session);
+                        message += &self.crate_.display_absolute_path(namespace, self.session);
                         message += "`";
                     }
                 }

@@ -225,7 +225,7 @@ impl Index<DeclarationIndex> for BuildSession {
     type Output = Entity;
 
     fn index(&self, index: DeclarationIndex) -> &Self::Output {
-        &self.built_crates[&index.crate_index()][index.local_index()]
+        &self.built_crates[&index.crate_index()][index.local_index_unchecked()]
     }
 }
 
@@ -567,7 +567,7 @@ impl Type {
                 .map_or(false, |intrinsic| &binding.binder == intrinsic)
         };
 
-        Some(match &expression.data {
+        Some(match &expression.value {
             // @Note this lookup looks incredibly inefficient
             ExpressionKind::Binding(binding) => condition! {
                 known(binding, Unit) => Self::Unit,
@@ -581,7 +581,7 @@ impl Type {
                 intrinsic(binding, Text) => Self::Text,
                 else => return None,
             },
-            ExpressionKind::Application(application) => match &application.callee.data {
+            ExpressionKind::Application(application) => match &application.callee.value {
                 ExpressionKind::Binding(binding) if known(binding, Option) => Self::Option(
                     Box::new(Self::from_expression(&application.argument, session)?),
                 ),
@@ -655,7 +655,7 @@ impl Value {
                 .map_or(false, |known| &binding.binder == known)
         };
 
-        Some(match &expression.data {
+        Some(match &expression.value {
             Text(text) => Self::Text(text.as_ref().clone()),
             Number(number) => {
                 use crate::syntax::lowered_ast::Number::*;
@@ -676,12 +676,12 @@ impl Value {
                 else => return None,
             },
 
-            Application(application0) => match &application0.callee.data {
+            Application(application0) => match &application0.callee.value {
                 Binding(binding) if known(binding, OptionNone) => Value::Option {
                     value: None,
                     type_: self::Type::from_expression(&application0.argument, session)?,
                 },
-                Application(application1) => match &application1.callee.data {
+                Application(application1) => match &application1.callee.value {
                     Binding(binding) if known(binding, OptionSome) => Value::Option {
                         value: Some(Box::new(Self::from_expression(
                             &application0.argument,

@@ -70,7 +70,7 @@ impl<'a> Typer<'a> {
     ) -> Result {
         use hir::DeclarationKind::*;
 
-        match &declaration.data {
+        match &declaration.value {
             Value(value) => {
                 self.evaluate_registration(BindingRegistration {
                     attributes: declaration.attributes.clone(),
@@ -461,7 +461,7 @@ impl<'a> Typer<'a> {
         use hir::ExpressionKind::*;
         use interpreter::Substitution::*;
 
-        Ok(match expression.data {
+        Ok(match expression.value {
             Binding(binding) => self
                 .interpreter()
                 .look_up_type(&binding.binder, scope)
@@ -543,7 +543,7 @@ impl<'a> Typer<'a> {
                     },
                 )?;
 
-                if let PiType(pi) = &type_of_callee.data {
+                if let PiType(pi) = &type_of_callee.value {
                     let argument_type =
                         self.infer_type_of_expression(application.argument.clone(), scope)?;
 
@@ -624,7 +624,7 @@ impl<'a> Typer<'a> {
                 // * all constructors are covered
                 // * all analysis.cases>>.expressions are of the same type
 
-                match &subject_type.data {
+                match &subject_type.value {
                     Binding(_) => {}
                     Application(_application) => todo!("polymorphic types in patterns"),
                     _ if self.is_a_type(subject_type.clone(), scope)? => {
@@ -670,7 +670,7 @@ impl<'a> Typer<'a> {
                     // @Task add help subdiagnostic when a constructor is (de)applied to too few arguments
                     // @Update @Note or just replace the type mismatch error (hmm) with an arity mismatch error
                     // not sure
-                    match &case.pattern.data {
+                    match &case.pattern.value {
                         Number(number) => {
                             let number_type = self.session.look_up_intrinsic_type(
                                 IntrinsicType::numeric(number),
@@ -729,7 +729,7 @@ impl<'a> Typer<'a> {
                         Deapplication(deapplication) => {
                             // @Beacon @Task check that subject type is a pi type
 
-                            match (&deapplication.callee.data, &deapplication.argument.data) {
+                            match (&deapplication.callee.value, &deapplication.argument.value) {
                                 // @Note should be an error obviously but does this need to be special-cased
                                 // or can we defer this to an it_is_actual call??
                                 (Number(_) | Text(_), _argument) => todo!(),
@@ -890,7 +890,7 @@ impl<'a> Typer<'a> {
     fn result_type(&mut self, expression: Expression, scope: &FunctionScope<'_>) -> Expression {
         use hir::ExpressionKind::*;
 
-        match expression.data {
+        match expression.value {
             PiType(literal) => {
                 if literal.parameter.is_some() {
                     let scope = scope.extend_with_parameter(literal.domain.clone());
@@ -947,7 +947,7 @@ impl Expression {
     /// Example: Returns the `f` in `f a b c`.
     fn callee(mut self) -> Expression {
         loop {
-            self = match self.data {
+            self = match self.value {
                 hir::ExpressionKind::Application(application) => application.callee.clone(),
                 _ => return self,
             }

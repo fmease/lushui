@@ -29,9 +29,8 @@ impl Crate {
                 type_,
                 value,
             } => {
-                let index = binder.declaration_index().unwrap();
-                // @Bug unwrap None reachable
-                let index = self.local_index(index).unwrap();
+                // @Bug may be non-local thus panic
+                let index = binder.local_declaration_index(self).unwrap();
                 let entity = &mut self[index];
                 debug_assert!(entity.is_untyped_value() || entity.is_value_without_value());
 
@@ -41,9 +40,8 @@ impl Crate {
                 };
             }
             Data { binder, type_ } => {
-                let index = binder.declaration_index().unwrap();
-                // @Bug unwrap None reachable
-                let index = self.local_index(index).unwrap();
+                // @Bug may be non-local thus panic
+                let index = binder.local_declaration_index(self).unwrap();
                 let entity = &mut self[index];
                 debug_assert!(entity.is_untyped_value());
 
@@ -58,9 +56,8 @@ impl Crate {
                 type_,
                 data,
             } => {
-                let index = binder.declaration_index().unwrap();
-                // @Bug unwrap None reachable
-                let index = self.local_index(index).unwrap();
+                // @Bug may be non-local thus panic
+                let index = binder.local_declaration_index(self).unwrap();
                 let entity = &mut self[index];
                 debug_assert!(entity.is_untyped_value());
 
@@ -69,8 +66,8 @@ impl Crate {
                     type_,
                 };
 
-                // @Bug unwrap None reachable
-                let data_index = self.local_index(data.declaration_index().unwrap()).unwrap();
+                // @Bug may be non-local thus panic
+                let data_index = data.local_declaration_index(self).unwrap();
 
                 match self[data_index].kind {
                     EntityKind::DataType {
@@ -81,9 +78,8 @@ impl Crate {
                 }
             }
             IntrinsicFunction { binder, type_ } => {
-                let index = binder.declaration_index().unwrap();
-                // @Bug unwrap None reachable
-                let index = self.local_index(index).unwrap();
+                // @Bug may be non-local thus panic
+                let index = binder.local_declaration_index(self).unwrap();
                 debug_assert!(self[index].is_untyped_value());
 
                 self[index].kind = session.register_intrinsic_function(

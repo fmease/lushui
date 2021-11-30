@@ -18,7 +18,10 @@
     clippy::semicolon_if_nothing_returned, // @Beacon @Temporary false postives with let/else's
 )]
 
-use std::{default::default, time::Instant};
+use std::{
+    default::default,
+    time::{Duration, Instant},
+};
 
 use cli::{BuildMode, Command, PassRestriction};
 use colored::Colorize;
@@ -27,6 +30,7 @@ use lushui::{
         reporter::{BufferedStderrReporter, StderrReporter},
         Code, Diagnostic, Reporter,
     },
+    documenter::Documenter,
     error::{outcome, Result},
     format::{DisplayWith, IOError},
     package::{find_package, BuildQueue, CrateType, PackageManifest, DEFAULT_SOURCE_FOLDER_NAME},
@@ -97,7 +101,7 @@ fn execute_command(
         } => match mode {
             cli::GenerationMode::Initialize => todo!(),
             cli::GenerationMode::New { package_name } => {
-                create_new_package(package_name, generation_options, reporter)
+                generate_package(package_name, generation_options, reporter)
             }
         },
     }
@@ -199,11 +203,9 @@ fn build_package(
             }
         }
 
-        if options.times {
+        if options.durations {
             eprintln!("Execution times by pass:");
         }
-
-        const EXECUTION_TIME_PASS_NAME_PADDING: usize = 30;
 
         let source_file = map
             .borrow_mut()
@@ -214,10 +216,10 @@ fn build_package(
 
                 // @Task provide more context for transitive dependencies of the goal package
                 Diagnostic::error()
-                    // @Temporary using the name of the package instead of the actual crate name
                     .message(format!(
                         "could not load {} crate `{}`",
-                        crate_.type_, session[crate_.package].name,
+                        crate_.type_,
+                        crate_.name(&session),
                     ))
                     .note(IOError(error, &crate_.path).to_string())
                     .report(reporter)
@@ -236,22 +238,13 @@ fn build_package(
             }
         }
 
-        if options.times {
-            eprintln!(
-                "  {:<EXECUTION_TIME_PASS_NAME_PADDING$}{duration:?}",
-                "Lexing"
-            );
-        }
-
+        print_pass_duration("Lexing", duration, &options);
         check_pass_restriction!(PassRestriction::Lexer);
-
         let time = Instant::now();
 
         // @Beacon @Task fix this ugly mess, create clean helpers
-        // @Note add one point `Package.name` might become `Spanned<_>` and we
-        // could just use the span, that might be very weird, though
         let declaration = Parser::new(source_file, &tokens, map.clone(), reporter)
-            .parse(Spanned::new(default(), session[crate_.package].name.clone()).into())?;
+            .parse(Spanned::new(default(), crate_.name(&session).clone()).into())?;
 
         let duration = time.elapsed();
 
@@ -261,20 +254,14 @@ fn build_package(
             eprintln!("{declaration:#?}");
         }
 
-        if options.times {
-            eprintln!(
-                "  {:<EXECUTION_TIME_PASS_NAME_PADDING$}{duration:?}",
-                "Parsing"
-            );
-        }
-
+        print_pass_duration("Parsing", duration, &options);
         check_pass_restriction!(PassRestriction::Parser);
-
         let time = Instant::now();
 
         let outcome!(mut declarations, health_of_lowerer) = Lowerer::new(
             LoweringOptions {
-                enable_internals: options.internals || crate_.is_core_library(&session),
+                internal_features_enabled: options.internals || crate_.is_core_library(&session),
+                keep_document_comments: matches!(mode, BuildMode::Document { .. }),
             },
             map.clone(),
             reporter,
@@ -289,19 +276,11 @@ fn build_package(
             eprintln!("{}", declaration);
         }
 
-        if options.times {
-            eprintln!(
-                "  {:<EXECUTION_TIME_PASS_NAME_PADDING$}{duration:?}",
-                "Lowering"
-            );
-        }
-
+        print_pass_duration("Lowering", duration, &options);
         if health_of_lowerer.is_tainted() {
             return Err(());
         }
-
         check_pass_restriction!(PassRestriction::Lowerer);
-
         let time = Instant::now();
 
         let mut resolver = Resolver::new(&mut crate_, &session, reporter);
@@ -316,15 +295,8 @@ fn build_package(
             eprintln!("{}", crate_.with(&session));
         }
 
-        if options.times {
-            eprintln!(
-                "  {:<EXECUTION_TIME_PASS_NAME_PADDING$}{duration:?}",
-                "Name resolution"
-            );
-        }
-
+        print_pass_duration("Name resolution", duration, &options);
         check_pass_restriction!(PassRestriction::Resolver);
-
         let time = Instant::now();
 
         let mut typer = Typer::new(&mut crate_, &mut session, reporter);
@@ -336,49 +308,65 @@ fn build_package(
             eprintln!("{}", typer.crate_.with(typer.session));
         }
 
-        if options.times {
-            eprintln!(
-                "  {:<EXECUTION_TIME_PASS_NAME_PADDING$}{duration:?}",
-                "Type checking & inference"
-            );
-        }
+        print_pass_duration("Type checking & inference", duration, &options);
 
-        if typer.crate_.type_ == CrateType::Binary && typer.crate_.program_entry.is_none() {
-            // @Temporary using the name of the package instead of the actual crate name
+        if typer.crate_.is_binary() && typer.crate_.program_entry.is_none() {
             Diagnostic::error()
                 .code(Code::E050)
                 .message(format!(
                     "the crate `{}` is missing a program entry named `{}`",
-                    session[crate_.package].name, PROGRAM_ENTRY_IDENTIFIER,
+                    crate_.name(&session),
+                    PROGRAM_ENTRY_IDENTIFIER,
                 ))
                 .report(reporter);
             return Err(());
         }
 
-        if let BuildMode::Run = mode {
-            if is_goal_crate {
-                if typer.crate_.type_ != CrateType::Binary {
-                    // @Question code?
-                    Diagnostic::error()
-                        .message(format!(
-                            "the package `{}` does not contain any binary to run",
-                            session[crate_.package].name,
-                        ))
-                        .report(reporter);
-                    return Err(());
+        match &mode {
+            BuildMode::Run => {
+                if is_goal_crate {
+                    if !typer.crate_.is_binary() {
+                        // @Question code?
+                        Diagnostic::error()
+                            .message(format!(
+                                "the package `{}` does not contain any binary to run",
+                                session[crate_.package].name,
+                            ))
+                            .report(reporter);
+                        return Err(());
+                    }
+
+                    let result = typer.interpreter().run()?;
+
+                    println!("{}", result.with((&crate_, &session)));
+                }
+            }
+            BuildMode::Build => {
+                // @Temporary not just builds, also runs ^^
+
+                lushui::compiler::compile_and_interpret_declaration(&declaration, &crate_)
+                    .unwrap_or_else(|_| panic!());
+            }
+            BuildMode::Document {
+                options: documentation_options,
+            } => {
+                // @Task implement opening
+
+                if documentation_options.no_dependencies && !is_goal_crate {
+                    continue;
                 }
 
-                let result = typer.interpreter().run()?;
+                let mut documenter = Documenter::new(&crate_, &session, reporter);
 
-                println!("{}", result.with((&crate_, &session)));
+                let time = Instant::now();
+
+                documenter.document(&declaration)?;
+
+                let duration = time.elapsed();
+
+                print_pass_duration("Documentation", duration, &options);
             }
-        }
-        // @Temporary
-        else if let BuildMode::Build = mode {
-            // @Temporary not just builds, also runs ^^
-
-            lushui::compiler::compile_and_interpret_declaration(&declaration, &crate_)
-                .unwrap_or_else(|_| panic!());
+            BuildMode::Check => {}
         }
 
         session.add(crate_);
@@ -387,7 +375,15 @@ fn build_package(
     Ok(())
 }
 
-fn create_new_package(
+fn print_pass_duration(pass: &str, duration: Duration, options: &cli::Options) {
+    const PADDING: usize = 30;
+
+    if options.durations {
+        println!("  {pass:<PADDING$}{duration:?}");
+    }
+}
+
+fn generate_package(
     name: String,
     generation_options: cli::GenerationOptions,
     reporter: &Reporter,
@@ -413,6 +409,13 @@ dependencies: {{
 }},
 "
         ),
+    )
+    .unwrap();
+    fs::write(
+        package_path.join(".gitignore"),
+        "\
+build/
+",
     )
     .unwrap();
 

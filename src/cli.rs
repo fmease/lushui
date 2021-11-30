@@ -75,7 +75,7 @@ pub fn arguments() -> (Command, Options) {
                 .visible_alias("b")
                 .setting(AppSettings::DisableVersion)
                 .about("Compiles the given source file or package or the current package")
-                .arg(source_file_argument.clone())
+                .arg(&source_file_argument)
                 .args(&build_options),
         )
         .subcommand(
@@ -83,8 +83,26 @@ pub fn arguments() -> (Command, Options) {
                 .visible_alias("c")
                 .setting(AppSettings::DisableVersion)
                 .about("Type-checks the given source file or package or the current package")
-                .arg(source_file_argument.clone())
+                .arg(&source_file_argument)
                 .args(&build_options),
+        )
+        .subcommand(
+            SubCommand::with_name("document")
+                .visible_aliases(&["doc", "d"])
+                .setting(AppSettings::DisableVersion)
+                .about("Document the given source file or package or the current package")
+                .arg(&source_file_argument)
+                .args(&build_options)
+                .arg(
+                    Arg::with_name("open")
+                        .long("open")
+                        .help("Opens the documentation in a browser after building it"),
+                )
+                .arg(
+                    Arg::with_name("no-dependencies")
+                        .long("no-deps")
+                        .help("The dependencies are not documented"),
+                ),
         )
         .subcommand(
             SubCommand::with_name("explain")
@@ -122,7 +140,7 @@ pub fn arguments() -> (Command, Options) {
                 .visible_alias("r")
                 .setting(AppSettings::DisableVersion)
                 .about("Compiles and runs the given source file or package or the current package")
-                .arg(source_file_argument)
+                .arg(&source_file_argument)
                 .args(&build_options),
         )
         .after_help(AFTER_HELP)
@@ -131,11 +149,17 @@ pub fn arguments() -> (Command, Options) {
     let command = matches.subcommand.as_ref().unwrap();
 
     let command = match &*command.name {
-        name @ ("build" | "check" | "run") => Command::Build {
+        name @ ("build" | "check" | "run" | "document") => Command::Build {
             mode: match name {
                 "build" => BuildMode::Build,
                 "check" => BuildMode::Check,
                 "run" => BuildMode::Run,
+                "document" => BuildMode::Document {
+                    options: DocumentationOptions {
+                        open: command.matches.is_present("open"),
+                        no_dependencies: command.matches.is_present("no-dependencies"),
+                    },
+                },
                 _ => unreachable!(),
             },
             options: BuildOptions {
@@ -207,7 +231,7 @@ pub fn arguments() -> (Command, Options) {
                 EmitHir => options.emit_hir = true,
                 EmitUntypedScope => options.emit_untyped_scope = true,
                 EmitScope => options.emit_scope = true,
-                Times => options.times = true,
+                Durations => options.durations = true,
                 ShowIndices => options.show_indices = true,
                 LexOnly | ParseOnly | LowerOnly | ResolveOnly => {
                     options.pass_restriction = max(
@@ -245,7 +269,7 @@ pub struct Options {
     pub emit_hir: bool,
     pub emit_untyped_scope: bool,
     pub emit_scope: bool,
-    pub times: bool,
+    pub durations: bool,
     pub show_indices: bool,
     pub pass_restriction: Option<PassRestriction>,
 }
@@ -293,6 +317,7 @@ pub enum BuildMode {
     Check,
     Build,
     Run,
+    Document { options: DocumentationOptions },
 }
 
 pub struct BuildOptions {
@@ -312,6 +337,11 @@ pub struct GenerationOptions {
     pub binary: bool,
 }
 
+pub struct DocumentationOptions {
+    pub open: bool,
+    pub no_dependencies: bool,
+}
+
 #[derive(Clone, Copy, Elements)]
 enum UnstableOption {
     Help,
@@ -323,7 +353,7 @@ enum UnstableOption {
     EmitUntypedScope,
     EmitScope,
     ShowIndices,
-    Times,
+    Durations,
     LexOnly,
     ParseOnly,
     LowerOnly,
@@ -343,7 +373,7 @@ impl UnstableOption {
             Self::EmitUntypedScope => "emit-untyped-scope",
             Self::EmitScope => "emit-scope",
             Self::ShowIndices => "show-indices",
-            Self::Times => "times",
+            Self::Durations => "durations",
             Self::LexOnly => "lex-only",
             Self::ParseOnly => "parse-only",
             Self::LowerOnly => "lower-only",
@@ -364,7 +394,7 @@ impl UnstableOption {
             Self::EmitUntypedScope => "Emits the untyped scope of the current crate output by the resolver",
             Self::EmitScope => "Emits the typed scope of the current crate output by the typer",
             Self::ShowIndices => "Shows the internal indices of bindings in other output or error messages",
-            Self::Times => "Prints timing statistics of each pass through the current crate",
+            Self::Durations => "Prints the duration of each pass through the current crate",
             Self::LexOnly => "Halts the execution after lexing the current crate",
             Self::ParseOnly => "Halts the execution after parsing the current crate",
             Self::LowerOnly => "Halts the execution after lowering the current crate",
@@ -388,7 +418,7 @@ impl FromStr for UnstableOption {
             "emit-untyped-scope" => Self::EmitUntypedScope,
             "emit-scope" => Self::EmitScope,
             "show-indices" => Self::ShowIndices,
-            "times" => Self::Times,
+            "durations" => Self::Durations,
             "lex-only" => Self::LexOnly,
             "parse-only" => Self::ParseOnly,
             "lower-only" => Self::LowerOnly,

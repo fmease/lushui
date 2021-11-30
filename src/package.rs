@@ -123,7 +123,7 @@ impl BuildQueue<'_> {
                             // @Question is this reachable?
                             // my past self wrote yes if some specific (?) could not be loaded
                             // since we just continue in this case
-                            Diagnostic::dependency_is_not_a_library(
+                            Diagnostic::dependent_package_does_not_contain_a_library(
                                 dependency.name.as_str(),
                                 self[package_index].name.as_str(),
                             )
@@ -201,7 +201,7 @@ impl BuildQueue<'_> {
             resolved_dependencies.insert(
                 dependency_exonym.value.clone(),
                 self[dependency_package].library.ok_or_else(|| {
-                    Diagnostic::dependency_is_not_a_library(
+                    Diagnostic::dependent_package_does_not_contain_a_library(
                         self[dependency_package].name.as_str(),
                         self[package_index].name.as_str(),
                     )
@@ -408,10 +408,11 @@ impl BuildQueue<'_> {
 }
 
 impl Diagnostic {
-    fn dependency_is_not_a_library(dependency: &str, dependent: &str) -> Self {
+    fn dependent_package_does_not_contain_a_library(dependency: &str, dependent: &str) -> Self {
         // @Task provide more context for transitive dependencies of the goal crate
         // @Task code
         // @Beacon @Task span
+        // @Update better message: dependent (?) package does not contain a library
         Self::error().message(format!(
             "dependency `{dependency}` of `{dependent}` is not a library"
         ))
@@ -522,6 +523,9 @@ impl FromStr for CrateType {
     }
 }
 
+/// The name of the folder containing the build artifacts and the documentation.
+pub const BUILD_FOLDER_NAME: &str = "build";
+
 /// A collection of crates and some metadata.
 ///
 /// More concretely, it consists of zero or more binary (executable) crates
@@ -539,6 +543,8 @@ pub struct Package {
     /// For single-file packages, this points to a file.
     /// For normal packages, it points to the package folder
     /// which contains the package manifest.
+    // @Beacon @Task make this of type PackagePath,
+    // enum PackageLocation { NormalPackage(PathBuf), SingleFilePackage(PathBuf) }
     pub path: PathBuf,
     pub version: Option<Version>,
     pub description: String,
@@ -603,6 +609,12 @@ impl Package {
     /// Test if this package is the standard library `core`.
     pub fn is_core(&self) -> bool {
         self.path == core_package_path()
+    }
+
+    /// The path to the folder containing the build artifacts and the documentation.
+    // @Beacon @Bug does not work with single-file packages!
+    pub fn build_path(&self) -> PathBuf {
+        self.path.join(BUILD_FOLDER_NAME)
     }
 }
 

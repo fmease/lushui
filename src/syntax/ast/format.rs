@@ -211,7 +211,7 @@ impl<I: Format> Format for super::Item<I> {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         self.span.format(f, indentation)?;
         write!(f, " ")?;
-        self.data.format(f, indentation)?;
+        self.value.format(f, indentation)?;
 
         if !self.attributes.is_empty() {
             let indentation = indentation.increased();

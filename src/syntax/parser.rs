@@ -305,10 +305,10 @@ impl<'a> Parser<'a> {
                 DocumentationComment => {
                     self.advance();
                     let attribute = Attribute {
-                        binder: Identifier::new_unchecked("documentation".into(), default()),
+                        binder: Identifier::new_unchecked("documentation".into(), span),
                         span,
                         arguments: smallvec![AttributeArgument::new(
-                            default(),
+                            span,
                             AttributeArgumentKind::TextEncodedInSpan,
                         )],
                     };

@@ -4,6 +4,8 @@ use std::fmt;
 
 use crate::package::CrateIndex;
 
+use super::Crate;
+
 #[derive(Clone, Copy, PartialEq)]
 pub enum Index {
     Declaration(DeclarationIndex),
@@ -67,14 +69,28 @@ impl DeclarationIndex {
         CrateIndex((self.0 >> LocalDeclarationIndex::BIT_WIDTH) as _)
     }
 
-    pub fn local_index(self) -> LocalDeclarationIndex {
+    // @Task better name
+    pub fn local_index_unchecked(self) -> LocalDeclarationIndex {
         LocalDeclarationIndex(self.0 & LocalDeclarationIndex::MAX)
+    }
+
+    pub fn is_local(self, crate_: &Crate) -> bool {
+        self.crate_index() == crate_.index
+    }
+
+    pub fn local_index(self, crate_: &Crate) -> Option<LocalDeclarationIndex> {
+        self.is_local(crate_).then(|| self.local_index_unchecked())
     }
 }
 
 impl fmt::Debug for DeclarationIndex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}{:?}", self.crate_index(), self.local_index())
+        write!(
+            f,
+            "{:?}{:?}",
+            self.crate_index(),
+            self.local_index_unchecked(),
+        )
     }
 }
 

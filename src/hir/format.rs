@@ -32,7 +32,7 @@ impl Declaration {
         use crate::syntax::lexer::INDENTATION;
         let context = (crate_, session);
 
-        match &self.data {
+        match &self.value {
             Value(declaration) => {
                 write!(
                     f,
@@ -139,7 +139,7 @@ fn format_pi_type_literal_or_lower(
     // See also `crate::parser::test::application_lambda_literal_argument_{lax,strict}_grouping` and the
     // comment at the grammar definition of `Pi-Type-Literal-Or-Lower` (in `/misc/grammar/lushui.grammar`)
     // for further details.
-    match &expression.data {
+    match &expression.value {
         PiType(pi) => {
             write!(f, "{}", pi.explicitness)?;
 
@@ -215,7 +215,7 @@ fn format_application_or_lower(
 ) -> fmt::Result {
     use super::ExpressionKind::*;
 
-    match &expression.data {
+    match &expression.value {
         Application(application) => {
             format_application_or_lower(&application.callee, crate_, session, f)?;
             write!(f, " {}", application.explicitness)?;
@@ -248,7 +248,7 @@ fn format_lower_expression(
         write!(f, "{} ", attribute)?;
     }
 
-    match &expression.data {
+    match &expression.value {
         Type => write!(f, "Type"),
         Number(literal) => write!(f, "{}", literal),
         // @Bug this uses Rust's way of printing strings, not Lushui's:
@@ -258,7 +258,7 @@ fn format_lower_expression(
         Binding(binding) => write!(
             f,
             "{}",
-            super::FunctionScope::absolute_path(&binding.binder, crate_, session)
+            super::FunctionScope::display_absolute_path(&binding.binder, crate_, session)
         ),
         // @Beacon @Temporary @Task just write out the path
         Projection(_projection) => write!(f, "?(projection)"),
@@ -293,13 +293,13 @@ impl DisplayWith for Pattern {
     ) -> fmt::Result {
         use super::PatternKind::*;
 
-        match &self.data {
+        match &self.value {
             Number(number) => write!(f, "{}", number),
             Text(text) => write!(f, "{:?}", text),
             Binding(binding) => write!(
                 f,
                 "{}",
-                super::FunctionScope::absolute_path(&binding.binder, crate_, session)
+                super::FunctionScope::display_absolute_path(&binding.binder, crate_, session)
             ),
 
             Binder(binder) => write!(f, "\\{}", binder.binder),
@@ -382,12 +382,6 @@ mod test {
             };
             let index = self.bindings.insert(entity);
             Identifier::new(self.global_index(index), identifier)
-        }
-    }
-
-    impl Identifier {
-        fn local_declaration_index(&self, crate_: &Crate) -> Option<LocalDeclarationIndex> {
-            crate_.local_index(self.declaration_index()?)
         }
     }
 

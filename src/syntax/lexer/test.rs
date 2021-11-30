@@ -85,10 +85,25 @@ alpha;;;文本
         vec![
             Token::new(span(1, 6), Word("alpha".into())),
             Token::new(span(16, 20), NumberLiteral("0401".into())),
-            Token::new(span(21, 52), DocumentationComment),
-            Token::new(span(52, 64), DocumentationComment),
+            Token::new(span(21, 51), DocumentationComment),
+            Token::new(span(52, 63), DocumentationComment),
             Token::new(span(64, 81), DocumentationComment),
             Token::new(span(81, 81), EndOfInput),
+        ],
+    );
+}
+
+#[test]
+fn empty_documentation_comment_followed_by_non_empty_one() {
+    assert_eq(
+        lex("\
+;;
+;; non-empty
+"),
+        vec![
+            Token::new(span(1, 3), DocumentationComment),
+            Token::new(span(4, 16), DocumentationComment),
+            Token::new(span(17, 17), EndOfInput),
         ],
     );
 }
