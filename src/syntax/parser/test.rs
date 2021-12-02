@@ -658,7 +658,7 @@ main =
                 file: test_file_index(),
                 declarations: Some(vec![
                     decl! {
-                        Value {
+                        Function {
                             Attributes::new(), span(1, 75);
                             binder: Identifier::new_unchecked("main".into(), span(1, 5)),
                             parameters: Parameters::new(),
@@ -726,7 +726,7 @@ main = case x of
                 file: test_file_index(),
                 declarations: Some(vec![
                     decl! {
-                        Value {
+                        Function {
                             Attributes::new(), span(1, 59);
                             binder: Identifier::new_unchecked("main".into(), span(1, 5)),
                             parameters: Parameters::new(),

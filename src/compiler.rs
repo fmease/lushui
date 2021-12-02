@@ -126,11 +126,11 @@ impl<'a> Compiler<'a> {
         use hir::DeclarationKind::*;
 
         match &declaration.value {
-            Value(value) => {
+            Function(function) => {
                 let index = self.add_next_chunk_from_declaration(
-                    value.binder.declaration_index().unwrap(),
+                    function.binder.declaration_index().unwrap(),
                     Chunk {
-                        name: value.binder.to_string(),
+                        name: function.binder.to_string(),
                         instructions: Vec::new(),
                     },
                 );
@@ -148,13 +148,13 @@ impl<'a> Compiler<'a> {
                     panic!();
                 } else {
                     self.chunks[index].instructions = self.compile_expression(
-                        value.expression.as_ref().unwrap(),
+                        function.expression.as_ref().unwrap(),
                         LambdaParent::Declaration,
                     )?;
                     self.chunks[index].instructions.push(Instruction::Return);
 
                     // @Task obsolete once we map any CrateIndex to a chunk identifier
-                    if self.crate_.program_entry.as_ref() == Some(&value.binder) {
+                    if self.crate_.program_entry.as_ref() == Some(&function.binder) {
                         self.entry = Some(index);
                     }
                 }

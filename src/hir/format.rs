@@ -33,25 +33,25 @@ impl Declaration {
         let context = (crate_, session);
 
         match &self.value {
-            Value(declaration) => {
+            Function(function) => {
                 write!(
                     f,
                     "{}: {}",
-                    declaration.binder,
-                    declaration.type_annotation.with(context)
+                    function.binder,
+                    function.type_annotation.with(context)
                 )?;
-                if let Some(expression) = &declaration.expression {
+                if let Some(expression) = &function.expression {
                     write!(f, " = {}", expression.with(context))?;
                 }
                 writeln!(f)
             }
-            Data(declaration) => match &declaration.constructors {
+            Data(type_) => match &type_.constructors {
                 Some(constructors) => {
                     writeln!(
                         f,
                         "data {}: {} of",
-                        declaration.binder,
-                        declaration.type_annotation.with(context)
+                        type_.binder,
+                        type_.type_annotation.with(context)
                     )?;
                     for constructor in constructors {
                         let depth = depth + 1;
@@ -67,8 +67,8 @@ impl Declaration {
                 None => writeln!(
                     f,
                     "data {}: {}",
-                    declaration.binder,
-                    declaration.type_annotation.with(context)
+                    type_.binder,
+                    type_.type_annotation.with(context)
                 ),
             },
             Constructor(constructor) => writeln!(
@@ -77,18 +77,18 @@ impl Declaration {
                 constructor.binder,
                 constructor.type_annotation.with(context)
             ),
-            Module(declaration) => {
-                writeln!(f, "module {} of", declaration.binder)?;
-                for declaration in &declaration.declarations {
+            Module(module) => {
+                writeln!(f, "module {} of", module.binder)?;
+                for declaration in &module.declarations {
                     let depth = depth + 1;
                     write!(f, "{}", " ".repeat(depth * INDENTATION.0))?;
                     declaration.format_with_depth(crate_, session, depth, f)?;
                 }
                 Ok(())
             }
-            Use(declaration) => match &declaration.binder {
-                Some(binder) => writeln!(f, "use {} as {}", declaration.target, binder),
-                None => writeln!(f, "use {}", declaration.target),
+            Use(use_) => match &use_.binder {
+                Some(binder) => writeln!(f, "use {} as {}", use_.target, binder),
+                None => writeln!(f, "use {}", use_.target),
             },
             Error => writeln!(f, "?(error)"),
         }
@@ -615,7 +615,7 @@ mod test {
         let session = BuildSession::default();
         let mut crate_ = Crate::test();
 
-        let beta = crate_.add("beta", EntityKind::UntypedValue);
+        let beta = crate_.add("beta", EntityKind::UntypedFunction);
 
         assert_eq(
             "alpha crate.beta (gamma Type) 0",
@@ -661,7 +661,7 @@ mod test {
         let session = BuildSession::default();
         let mut crate_ = Crate::test();
 
-        let take = crate_.add("take", EntityKind::UntypedValue);
+        let take = crate_.add("take", EntityKind::UntypedFunction);
         let it = Identifier::parameter("it");
 
         // we might want to format this special case as `crate.take \it => it` in the future
@@ -697,7 +697,7 @@ mod test {
         let session = BuildSession::default();
         let mut crate_ = Crate::test();
 
-        let take = crate_.add("take", EntityKind::UntypedValue);
+        let take = crate_.add("take", EntityKind::UntypedFunction);
         let it = Identifier::parameter("it");
 
         assert_eq(
@@ -743,7 +743,7 @@ mod test {
         let session = BuildSession::default();
         let mut crate_ = Crate::test();
 
-        let identity = crate_.add("identity", EntityKind::UntypedValue);
+        let identity = crate_.add("identity", EntityKind::UntypedFunction);
 
         assert_eq(
             r"crate.identity 'Type",
@@ -765,7 +765,7 @@ mod test {
         let session = BuildSession::default();
         let mut crate_ = Crate::test();
 
-        let identity = crate_.add("identity", EntityKind::UntypedValue);
+        let identity = crate_.add("identity", EntityKind::UntypedFunction);
         let text = crate_.add("Text", EntityKind::untyped_data_type());
 
         assert_eq(
@@ -968,7 +968,7 @@ mod test {
         let session = BuildSession::default();
         let mut crate_ = Crate::test();
 
-        let add = crate_.add("add", EntityKind::UntypedValue);
+        let add = crate_.add("add", EntityKind::UntypedFunction);
 
         assert_eq(
             "add",
@@ -989,7 +989,7 @@ mod test {
         let session = BuildSession::default();
         let mut crate_ = Crate::test();
 
-        let add = crate_.add("add", EntityKind::UntypedValue);
+        let add = crate_.add("add", EntityKind::UntypedFunction);
 
         assert_eq(
             "add (add 1 3000) 0",
@@ -1090,7 +1090,7 @@ mod test {
         );
         let sink = crate_.add_below(
             "sink",
-            EntityKind::UntypedValue,
+            EntityKind::UntypedFunction,
             middle.local_declaration_index(&crate_).unwrap(),
         );
 
@@ -1118,7 +1118,7 @@ mod test {
         );
         let sink = crate_.add_below(
             "sink",
-            EntityKind::UntypedValue,
+            EntityKind::UntypedFunction,
             zickzack.local_declaration_index(&crate_).unwrap(),
         );
 

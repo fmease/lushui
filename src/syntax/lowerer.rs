@@ -85,13 +85,13 @@ impl<'a> Lowerer<'a> {
                 .unwrap(&mut health);
 
         let declarations = match declaration.value {
-            Value(value) => {
+            Function(function) => {
                 let context = ExpressionContext::new(declaration.span);
 
-                if value.type_annotation.is_none() {
+                if function.type_annotation.is_none() {
                     Diagnostic::missing_mandatory_type_annotation(
-                        value.binder.span().fit_end(&value.parameters).end(),
-                        AnnotationTarget::Declaration(&value.binder),
+                        function.binder.span().fit_end(&function.parameters).end(),
+                        AnnotationTarget::Declaration(&function.binder),
                     )
                     .report(self.reporter);
                     health.taint();
@@ -99,12 +99,12 @@ impl<'a> Lowerer<'a> {
 
                 // @Note awkward API! + check above ^
                 let declaration_type_annotation =
-                    Outcome::from(value.type_annotation).unwrap(&mut health);
+                    Outcome::from(function.type_annotation).unwrap(&mut health);
 
                 // @Note type_annotation is currently lowered twice @Task remove duplicate work
                 // @Task find a way to use `Option::map` (currently does not work because of
                 // partial moves, I hate those), use local bindings
-                let body = match value.body {
+                let body = match function.body {
                     Some(body) => {
                         let mut body = self.lower_expression(body, context).unwrap(&mut health);
 
@@ -114,7 +114,7 @@ impl<'a> Lowerer<'a> {
                                     .unwrap(&mut health),
                             );
 
-                            for parameter_group in value.parameters.iter().rev() {
+                            for parameter_group in function.parameters.iter().rev() {
                                 if parameter_group.type_annotation.is_none() {
                                     Diagnostic::missing_mandatory_type_annotation(
                                         parameter_group,
@@ -155,29 +155,29 @@ impl<'a> Lowerer<'a> {
 
                 let type_annotation = self
                     .lower_parameters_to_annotated_ones(
-                        value.parameters,
+                        function.parameters,
                         declaration_type_annotation,
                         context,
                     )
                     .unwrap(&mut health);
 
                 smallvec![decl! {
-                    Value {
+                    Function {
                         attributes,
                         declaration.span;
-                        binder: value.binder,
+                        binder: function.binder,
                         type_annotation,
                         expression: body,
                     }
                 }]
             }
-            Data(data) => {
-                let data_type_annotation = match data.type_annotation {
+            Data(type_) => {
+                let data_type_annotation = match type_.type_annotation {
                     Some(type_annotation) => type_annotation,
                     None => {
                         Diagnostic::missing_mandatory_type_annotation(
-                            data.binder.span().fit_end(&data.parameters).end(),
-                            AnnotationTarget::Declaration(&data.binder),
+                            type_.binder.span().fit_end(&type_.parameters).end(),
+                            AnnotationTarget::Declaration(&type_.binder),
                         )
                         .report(self.reporter);
                         health.taint();
@@ -187,7 +187,7 @@ impl<'a> Lowerer<'a> {
 
                 let type_annotation = self
                     .lower_parameters_to_annotated_ones(
-                        data.parameters,
+                        type_.parameters,
                         data_type_annotation,
                         ExpressionContext::new(declaration.span),
                     )
@@ -198,7 +198,7 @@ impl<'a> Lowerer<'a> {
                     internal_modules: Vec::new(),
                 };
 
-                let constructors = data.constructors.map(|constructors| {
+                let constructors = type_.constructors.map(|constructors| {
                     constructors
                         .into_iter()
                         .flat_map(|constructor| {
@@ -212,7 +212,7 @@ impl<'a> Lowerer<'a> {
                     Data{
                         attributes,
                         declaration.span;
-                        binder: data.binder,
+                        binder: type_.binder,
                         type_annotation,
                         constructors,
                     }

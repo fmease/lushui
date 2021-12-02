@@ -232,15 +232,15 @@ impl<I: Format> Debug for super::Item<I> {
 impl Format for super::DeclarationKind {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         match self {
-            Self::Value(declaration) => declaration.format(f, indentation),
-            Self::Data(declaration) => declaration.format(f, indentation),
-            Self::Constructor(declaration) => declaration.format(f, indentation),
-            Self::Module(declaration) => declaration.format(f, indentation),
+            Self::Function(function) => function.format(f, indentation),
+            Self::Data(type_) => type_.format(f, indentation),
+            Self::Constructor(constructor) => constructor.format(f, indentation),
+            Self::Module(module) => module.format(f, indentation),
             Self::ModuleHeader => FormatStruct::new(f, indentation)
                 .name("ModuleHeader")
                 .finish(),
-            Self::Group(declaration) => declaration.format(f, indentation),
-            Self::Use(declaration) => declaration.format(f, indentation),
+            Self::Group(group) => group.format(f, indentation),
+            Self::Use(use_) => use_.format(f, indentation),
         }
     }
 }
@@ -251,10 +251,10 @@ impl Debug for super::DeclarationKind {
     }
 }
 
-impl Format for super::Value {
+impl Format for super::Function {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         FormatStruct::new(f, indentation)
-            .name("Value-Declaration")
+            .name("Function-Declaration")
             .field("binder", &self.binder)
             .field("parameters", &self.parameters)
             .field("type-annotation", &self.type_annotation)

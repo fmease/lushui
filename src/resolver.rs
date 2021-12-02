@@ -118,29 +118,29 @@ impl<'a> Resolver<'a> {
         };
 
         match &declaration.value {
-            Value(value) => {
+            Function(function) => {
                 let module = module.unwrap();
 
                 self.crate_.register_binding(
-                    value.binder.clone(),
+                    function.binder.clone(),
                     exposure,
-                    EntityKind::UntypedValue,
+                    EntityKind::UntypedFunction,
                     Some(module),
                 )?;
             }
-            Data(data) => {
+            Data(type_) => {
                 // there is always a root module
                 let module = module.unwrap();
 
                 // @Task don't return early, see analoguous code for modules
                 let namespace = self.crate_.register_binding(
-                    data.binder.clone(),
+                    type_.binder.clone(),
                     exposure,
                     EntityKind::untyped_data_type(),
                     Some(module),
                 )?;
 
-                if let Some(constructors) = &data.constructors {
+                if let Some(constructors) = &type_.constructors {
                     // @Task awkward API: Result <-> Result<(), RegistrationError>
                     let health =
                         constructors
@@ -201,7 +201,7 @@ impl<'a> Resolver<'a> {
                             .register_binding(
                                 parameter.clone(),
                                 Exposure::Unrestricted, // @Temporary
-                                EntityKind::UntypedValue,
+                                EntityKind::UntypedFunction,
                                 Some(namespace),
                             )
                             .map(|_| ());
@@ -275,30 +275,31 @@ impl<'a> Resolver<'a> {
         use lowered_ast::DeclarationKind::*;
 
         Ok(match declaration.value {
-            Value(value) => {
+            Function(function) => {
                 let module = module.unwrap();
 
-                let type_annotation =
-                    self.resolve_expression(value.type_annotation, &FunctionScope::Module(module));
+                let type_annotation = self
+                    .resolve_expression(function.type_annotation, &FunctionScope::Module(module));
 
-                let expression = value
+                let expression = function
                     .expression
                     .map(|expression| {
                         self.resolve_expression(expression, &FunctionScope::Module(module))
                     })
                     .transpose();
 
-                let binder = self.reobtain_resolved_identifier::<OnlyValue>(&value.binder, module);
+                let binder =
+                    self.reobtain_resolved_identifier::<OnlyValue>(&function.binder, module);
 
                 if module == self.crate_.root()
                     && self.crate_.is_binary()
-                    && value.binder.as_str() == PROGRAM_ENTRY_IDENTIFIER
+                    && function.binder.as_str() == PROGRAM_ENTRY_IDENTIFIER
                 {
                     self.crate_.program_entry = Some(binder.clone());
                 }
 
                 decl! {
-                    Value {
+                    Function {
                         declaration.attributes,
                         declaration.span;
                         type_annotation: type_annotation?,
@@ -307,18 +308,18 @@ impl<'a> Resolver<'a> {
                     }
                 }
             }
-            Data(data) => {
+            Data(type_) => {
                 let module = module.unwrap();
 
                 let type_annotation =
-                    self.resolve_expression(data.type_annotation, &FunctionScope::Module(module));
+                    self.resolve_expression(type_.type_annotation, &FunctionScope::Module(module));
 
                 // @Beacon @Question wouldn't it be great if that method returned a
                 // LocalDeclarationIndex instead of an Identifier?
                 // or maybe even a *LocalIdentifier?
-                let binder = self.reobtain_resolved_identifier::<OnlyValue>(&data.binder, module);
+                let binder = self.reobtain_resolved_identifier::<OnlyValue>(&type_.binder, module);
 
-                let constructors = data.constructors.map(|constructors| {
+                let constructors = type_.constructors.map(|constructors| {
                     constructors
                         .into_iter()
                         .map(|constructor| {

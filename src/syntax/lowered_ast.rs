@@ -22,7 +22,7 @@ pub type Item<Kind> = crate::item::Item<Kind, Attributes>;
 pub type Declaration = Item<DeclarationKind>;
 
 pub enum DeclarationKind {
-    Value(Box<Value>),
+    Function(Box<Function>),
     Data(Box<Data>),
     Constructor(Box<Constructor>),
     Module(Box<Module>),
@@ -36,7 +36,7 @@ impl PossiblyErroneous for DeclarationKind {
     }
 }
 
-pub struct Value {
+pub struct Function {
     pub binder: Identifier,
     pub type_annotation: Expression,
     pub expression: Option<Expression>,
@@ -184,7 +184,7 @@ impl AttributeTarget for ast::Declaration {
         use ast::DeclarationKind::*;
 
         match self.value {
-            Value(_) => "a value declaration",
+            Function(_) => "a function declaration",
             Data(_) => "a data declaration",
             Constructor(_) => "a constructor declaration",
             Module(_) => "a module declaration",
@@ -198,7 +198,7 @@ impl AttributeTarget for ast::Declaration {
         use ast::DeclarationKind::*;
 
         match self.value {
-            Value(_) => AttributeTargets::VALUE_DECLARATION,
+            Function(_) => AttributeTargets::FUNCTION_DECLARATION,
             Data(_) => AttributeTargets::DATA_DECLARATION,
             Constructor(_) => AttributeTargets::CONSTRUCTOR_DECLARATION,
             Module(_) => AttributeTargets::MODULE_DECLARATION,
@@ -212,30 +212,32 @@ impl AttributeTarget for ast::Declaration {
         use ast::DeclarationKind::*;
 
         let (binder, definition_marker, body) = match &self.value {
-            Value(value) => (
-                &value.binder,
+            Function(function) => (
+                &function.binder,
                 Spanned::new(
-                    value
+                    function
                         .binder
                         .span()
-                        .fit_end(&value.parameters)
-                        .fit_end(&value.type_annotation)
+                        .fit_end(&function.parameters)
+                        .fit_end(&function.type_annotation)
                         .end(),
                     "=",
                 ),
-                value.body.as_ref().map(|expression| expression.span),
+                function.body.as_ref().map(|expression| expression.span),
             ),
-            Data(data) => (
-                &data.binder,
+            Data(type_) => (
+                &type_.binder,
                 Spanned::new(
-                    data.binder
+                    type_
+                        .binder
                         .span()
-                        .fit_end(&data.parameters)
-                        .fit_end(&data.type_annotation)
+                        .fit_end(&type_.parameters)
+                        .fit_end(&type_.type_annotation)
                         .end(),
                     "of",
                 ),
-                data.constructors
+                type_
+                    .constructors
                     .as_ref()
                     .map(|constructors| constructors.possible_span().unwrap_or(self.span)),
             ),
@@ -354,14 +356,14 @@ impl AttributeTarget for ast::Pattern {
 bitflags::bitflags! {
     /// Attribute targets.
     pub struct AttributeTargets: u32 {
-        const VALUE_DECLARATION = 1 << 0;
+        const FUNCTION_DECLARATION = 1 << 0;
         const DATA_DECLARATION = 1 << 1;
         const CONSTRUCTOR_DECLARATION = 1 << 2;
         const MODULE_DECLARATION = 1 << 3;
         const MODULE_HEADER_DECLARATION = 1 << 4;
         const USE_DECLARATION = 1 << 5;
 
-        const DECLARATION = Self::VALUE_DECLARATION.bits
+        const DECLARATION = Self::FUNCTION_DECLARATION.bits
             | Self::DATA_DECLARATION.bits
             | Self::CONSTRUCTOR_DECLARATION.bits
             | Self::MODULE_DECLARATION.bits
@@ -427,19 +429,19 @@ impl AttributeTargets {
         condition! {
             self == Self::all() => "anything",
             self == Self::DECLARATION => "declarations",
-            self == Self::VALUE_DECLARATION | Self::DATA_DECLARATION => "value or data declarations",
+            self == Self::FUNCTION_DECLARATION | Self::DATA_DECLARATION => "function or data declarations",
             self == Self::TEXT_LITERAL => "text literals",
             self == Self::DATA_DECLARATION => "data declarations",
             self == Self::NUMBER_LITERAL => "number literals",
             self == Self::SEQUENCE_LITERAL => "sequence literals",
             self == Self::DECLARATION - Self::CONSTRUCTOR_DECLARATION => "declarations except constructors",
             self == Self::MODULE_DECLARATION => "module declarations",
-            self == Self::VALUE_DECLARATION | Self::MODULE_DECLARATION => "value or module declarations",
+            self == Self::FUNCTION_DECLARATION | Self::MODULE_DECLARATION => "function or module declarations",
             self == Self::EXPRESSION => "expressions",
-            self == Self::VALUE_DECLARATION
+            self == Self::FUNCTION_DECLARATION
                 | Self::CONSTRUCTOR_DECLARATION
                 | Self::EXPRESSION
-                | Self::PATTERN => "value or constructor declarations, expressions or patterns",
+                | Self::PATTERN => "function or constructor declarations, expressions or patterns",
             // the particular description is not needed for `AttributeKinds::target` and thus it is not defined
             else => unreachable!(),
         }
@@ -727,7 +729,7 @@ impl AttributeKind {
             Deprecated { .. } | Documentation { .. } | If { .. } | Ignore | Unstable { .. } => {
                 Targets::DECLARATION
             }
-            Intrinsic => Targets::VALUE_DECLARATION | Targets::DATA_DECLARATION,
+            Intrinsic => Targets::FUNCTION_DECLARATION | Targets::DATA_DECLARATION,
             Include | Rune | Text => Targets::TEXT_LITERAL,
             Known | Moving | Opaque => Targets::DATA_DECLARATION,
             Int | Int32 | Int64 | Nat | Nat32 | Nat64 => Targets::NUMBER_LITERAL,
@@ -735,10 +737,10 @@ impl AttributeKind {
             // @Task but smh add extra diagnostic note saying they are public automatically
             Public { .. } => Targets::DECLARATION - Targets::CONSTRUCTOR_DECLARATION,
             Location { .. } | RecursionLimit { .. } => Targets::MODULE_DECLARATION,
-            Test => Targets::VALUE_DECLARATION | Targets::MODULE_DECLARATION,
+            Test => Targets::FUNCTION_DECLARATION | Targets::MODULE_DECLARATION,
             Static => Targets::EXPRESSION,
             Unsafe => {
-                Targets::VALUE_DECLARATION
+                Targets::FUNCTION_DECLARATION
                     | Targets::CONSTRUCTOR_DECLARATION
                     | Targets::EXPRESSION
                     | Targets::PATTERN

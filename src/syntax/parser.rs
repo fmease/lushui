@@ -249,7 +249,7 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Declaration ::= (Attribute #Line-Break*)* Bare-Declaration
     /// Bare-Declaration ::=
-    ///     | Value-Declaration
+    ///     | Function-Declaration
     ///     | Data-Declaration
     ///     | Module-Declaration
     ///     | Use-Declaration
@@ -263,7 +263,7 @@ impl<'a> Parser<'a> {
             Word => {
                 let identifier = self.current_token_into_identifier();
                 self.advance();
-                self.finish_parse_value_declaration(identifier, attributes)
+                self.finish_parse_function_declaration(identifier, attributes)
             }
             Data => {
                 self.advance();
@@ -410,9 +410,9 @@ impl<'a> Parser<'a> {
                 let mut span = self.current_token().span;
                 self.advance();
                 let binder = self.consume_word()?;
-                let value = self.parse_attribute_argument()?;
+                let argument = self.parse_attribute_argument()?;
                 span.merging(&self.consume(ClosingRoundBracket)?);
-                attrarg! { Named(span; NamedAttributeArgument { binder, value }) }
+                attrarg! { Named(span; NamedAttributeArgument { binder, value: argument }) }
             }
             _ => {
                 return self
@@ -421,7 +421,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// Finish parsing a value declaration.
+    /// Finish parsing a function declaration.
     ///
     /// The leading identifier should have already parsed beforehand.
     /// The span does not include the trailing line break.
@@ -429,13 +429,13 @@ impl<'a> Parser<'a> {
     /// # Grammar
     ///
     /// ```ebnf
-    /// Value-Declaration ::=
+    /// Function-Declaration ::=
     ///     #Word
     ///     Parameters Type-Annotation?
     ///     ("=" Expression)?
     ///     Terminator
     /// ```
-    fn finish_parse_value_declaration(
+    fn finish_parse_function_declaration(
         &mut self,
         binder: Identifier,
         attributes: Attributes,
@@ -454,7 +454,7 @@ impl<'a> Parser<'a> {
         self.expect_terminator()?;
 
         Ok(decl! {
-            Value {
+            Function {
                 attributes,
                 span;
                 binder,
@@ -795,7 +795,7 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    /// Parse a (value) constructor.
+    /// Parse a (non-type) constructor.
     ///
     /// The span does not include the trailing line break.
     ///
@@ -1327,7 +1327,7 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Do-Block ::= "do" "{" Statement* "}"
     /// Statement ::= Let-Statement | Use-Declaration | Bind-Statement | Expression-Statement
-    /// Let-Statement ::= "let" Value-Declaration
+    /// Let-Statement ::= "let" Function-Declaration
     /// Bind-Statement ::= #Word Type-Annotation? "<-" Expression Terminator
     /// Expression-Statement ::= Expression Terminator
     /// ```

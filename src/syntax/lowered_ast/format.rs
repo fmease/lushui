@@ -110,15 +110,15 @@ impl super::Declaration {
         write!(f, "{}", " ".repeat(depth * INDENTATION.0))?;
 
         match &self.value {
-            Value(value) => {
+            Function(function) => {
                 write!(
                     f,
                     "{}{colon} {}",
-                    value.binder,
-                    value.type_annotation,
+                    function.binder,
+                    function.type_annotation,
                     colon = ":".color(PUNCTUATION_COLOR)
                 )?;
-                if let Some(expression) = &value.expression {
+                if let Some(expression) = &function.expression {
                     write!(
                         f,
                         " {equals} {}",
@@ -128,14 +128,14 @@ impl super::Declaration {
                 }
                 writeln!(f)
             }
-            Data(data) => match &data.constructors {
+            Data(type_) => match &type_.constructors {
                 Some(constructors) => {
                     writeln!(
                         f,
                         "{data} {binder}{colon} {type_} {of}",
-                        binder = data.binder,
+                        binder = type_.binder,
                         colon = ":".color(PUNCTUATION_COLOR),
-                        type_ = data.type_annotation,
+                        type_ = type_.type_annotation,
                         data = "data".color(KEYWORD_COLOR),
                         of = "of".color(KEYWORD_COLOR)
                     )?;
@@ -148,9 +148,9 @@ impl super::Declaration {
                     f,
                     "{data} {binder}{colon} {type_}",
                     data = "data".color(KEYWORD_COLOR),
-                    binder = data.binder,
+                    binder = type_.binder,
                     colon = ":".color(PUNCTUATION_COLOR),
-                    type_ = data.type_annotation,
+                    type_ = type_.type_annotation,
                 ),
             },
             Constructor(constructor) => {

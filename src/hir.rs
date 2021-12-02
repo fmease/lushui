@@ -24,7 +24,7 @@ impl Declaration {
 }
 
 pub enum DeclarationKind {
-    Value(Box<Value>),
+    Function(Box<Function>),
     Data(Box<Data>),
     Constructor(Box<Constructor>),
     Module(Box<Module>),
@@ -38,7 +38,7 @@ impl PossiblyErroneous for DeclarationKind {
     }
 }
 
-pub struct Value {
+pub struct Function {
     pub binder: Identifier,
     pub type_annotation: Expression,
     pub expression: Option<Expression>,

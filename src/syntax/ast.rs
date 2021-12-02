@@ -26,7 +26,7 @@ pub type Declaration = Item<DeclarationKind>;
 /// The syntax node of a declaration.
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub enum DeclarationKind {
-    Value(Box<Value>),
+    Function(Box<Function>),
     Data(Box<Data>),
     Constructor(Box<Constructor>),
     Module(Box<Module>),
@@ -45,10 +45,10 @@ impl TryFrom<DeclarationKind> for Module {
 
 /// The syntax node of a value declaration or a let statement.
 ///
-/// See [`DeclarationKind::Value`] and [`Statement::Let`].
+/// See [`DeclarationKind::Function`] and [`Statement::Let`].
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct Value {
+pub struct Function {
     pub binder: Identifier,
     pub parameters: Parameters,
     pub type_annotation: Option<Expression>,
@@ -459,7 +459,7 @@ pub enum Statement {
     Expression(Expression),
 }
 
-// @Note has a lot of overlap with [StatementKind::Value] (and a bit with [ExpressionKind::LetIn])
+// @Note has a lot of overlap with [StatementKind::Let] (and a bit with [ExpressionKind::LetIn])
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct LetStatement {

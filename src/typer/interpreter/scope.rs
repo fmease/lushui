@@ -24,7 +24,7 @@ impl Crate {
         use BindingRegistrationKind::*;
 
         match registration.kind {
-            Value {
+            Function {
                 binder,
                 type_,
                 value,
@@ -34,7 +34,7 @@ impl Crate {
                 let entity = &mut self[index];
                 debug_assert!(entity.is_untyped_value() || entity.is_value_without_value());
 
-                entity.kind = EntityKind::Value {
+                entity.kind = EntityKind::Function {
                     type_,
                     expression: value,
                 };
@@ -54,7 +54,7 @@ impl Crate {
             Constructor {
                 binder,
                 type_,
-                data,
+                owner_data_type: data,
             } => {
                 // @Bug may be non-local thus panic
                 let index = binder.local_declaration_index(self).unwrap();
@@ -115,7 +115,7 @@ pub struct BindingRegistration {
 
 #[derive(Clone)]
 pub enum BindingRegistrationKind {
-    Value {
+    Function {
         binder: Identifier,
         type_: Expression,
         value: Option<Expression>,
@@ -127,7 +127,7 @@ pub enum BindingRegistrationKind {
     Constructor {
         binder: Identifier,
         type_: Expression,
-        data: Identifier,
+        owner_data_type: Identifier,
     },
     IntrinsicFunction {
         binder: Identifier,
@@ -145,7 +145,7 @@ impl DisplayWith for BindingRegistration {
         use BindingRegistrationKind::*;
 
         match &self.kind {
-            Value {
+            Function {
                 binder,
                 type_,
                 value,
@@ -168,7 +168,7 @@ impl DisplayWith for BindingRegistration {
             Constructor {
                 binder,
                 type_,
-                data,
+                owner_data_type: data,
             } => f
                 .debug_struct("Constructor")
                 .field("binder", binder)

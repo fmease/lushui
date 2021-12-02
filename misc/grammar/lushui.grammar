@@ -22,7 +22,7 @@ Identifier ::= #Word | #Punctuation
 
 Declaration ::= (Attribute #Line-Break*)* Bare-Declaration
 Bare-Declaration ::=
-    | Value-Declaration
+    | Function-Declaration
     | Data-Declaration
     | Module-Declaration
     | Use-Declaration
@@ -34,7 +34,7 @@ Regular-Attribute ::= "@" (#Word | "(" #Word Attribute-Argument* ")")
 Attribute-Argument ::= Lower-Attribute-Argument | "(" #Word Lower-Attribute-Argument ")"
 Lower-Attribute-Argument ::= Path | #Number-Literal | #Text-Literal
 
-Value-Declaration ::=
+Function-Declaration ::=
     #Word
     Parameters Type-Annotation?
     ("=" Expression)?
@@ -138,7 +138,7 @@ Case ::= Pattern "=>" Expression Terminator
 
 Do-Block ::= "do" "{" Statement* "}"
 Statement ::= Let-Statement | Use-Declaration | Bind-Statement | Expression-Statement
-Let-Statement ::= "let" Value-Declaration
+Let-Statement ::= "let" Function-Declaration
 Bind-Statement ::= #Word Type-Annotation? "<-" Expression Terminator
 Expression-Statement ::= Expression Terminator
 

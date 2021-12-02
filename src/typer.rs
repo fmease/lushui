@@ -71,30 +71,30 @@ impl<'a> Typer<'a> {
         use hir::DeclarationKind::*;
 
         match &declaration.value {
-            Value(value) => {
+            Function(function) => {
                 self.evaluate_registration(BindingRegistration {
                     attributes: declaration.attributes.clone(),
                     kind: if declaration.attributes.has(AttributeKeys::INTRINSIC) {
                         BindingRegistrationKind::IntrinsicFunction {
-                            binder: value.binder.clone(),
-                            type_: value.type_annotation.clone(),
+                            binder: function.binder.clone(),
+                            type_: function.type_annotation.clone(),
                         }
                     } else {
-                        BindingRegistrationKind::Value {
-                            binder: value.binder.clone(),
-                            type_: value.type_annotation.clone(),
-                            value: Some(value.expression.clone().unwrap()),
+                        BindingRegistrationKind::Function {
+                            binder: function.binder.clone(),
+                            type_: function.type_annotation.clone(),
+                            value: Some(function.expression.clone().unwrap()),
                         }
                     },
                 })?;
             }
-            Data(data) => {
+            Data(type_) => {
                 // @Question don't return early??
                 self.evaluate_registration(BindingRegistration {
                     attributes: declaration.attributes.clone(),
                     kind: BindingRegistrationKind::Data {
-                        binder: data.binder.clone(),
-                        type_: data.type_annotation.clone(),
+                        binder: type_.binder.clone(),
+                        type_: type_.type_annotation.clone(),
                     },
                 })?;
 
@@ -102,17 +102,17 @@ impl<'a> Typer<'a> {
                     self.evaluate_registration(BindingRegistration {
                         attributes: declaration.attributes.clone(),
                         kind: BindingRegistrationKind::IntrinsicType {
-                            binder: data.binder.clone(),
+                            binder: type_.binder.clone(),
                         },
                     })?;
                 } else {
-                    let constructors = data.constructors.as_ref().unwrap();
+                    let constructors = type_.constructors.as_ref().unwrap();
 
                     // @Task @Beacon move to resolver
                     if let Some(known) = declaration.attributes.filter(AttributeKeys::KNOWN).next()
                     {
                         self.session.register_known_type(
-                            &data.binder,
+                            &type_.binder,
                             constructors
                                 .iter()
                                 .map(|declaration| declaration.constructor().unwrap())
@@ -129,7 +129,7 @@ impl<'a> Typer<'a> {
                                 & self.start_infer_types_in_declaration(
                                     constructor,
                                     Context {
-                                        parent_data_binding: Some(data.binder.clone()),
+                                        owning_data_type: Some(type_.binder.clone()),
                                     },
                                 )
                         })
@@ -137,14 +137,14 @@ impl<'a> Typer<'a> {
                 }
             }
             Constructor(constructor) => {
-                let data = context.parent_data_binding.take().unwrap();
+                let owner_data_type = context.owning_data_type.take().unwrap();
 
                 self.evaluate_registration(BindingRegistration {
                     attributes: declaration.attributes.clone(),
                     kind: BindingRegistrationKind::Constructor {
                         binder: constructor.binder.clone(),
                         type_: constructor.type_annotation.clone(),
-                        data,
+                        owner_data_type,
                     },
                 })?;
 
@@ -176,7 +176,7 @@ impl<'a> Typer<'a> {
         use BindingRegistrationKind::*;
 
         match registration.clone().kind {
-            Value {
+            Function {
                 binder,
                 type_,
                 value,
@@ -210,7 +210,7 @@ impl<'a> Typer<'a> {
                                     self.crate_.carry_out(
                                         BindingRegistration {
                                             attributes: registration.attributes,
-                                            kind: Value {
+                                            kind: Function {
                                                 binder,
                                                 type_,
                                                 value: None,
@@ -250,7 +250,7 @@ impl<'a> Typer<'a> {
                 self.crate_.carry_out(
                     BindingRegistration {
                         attributes: registration.attributes,
-                        kind: Value {
+                        kind: Function {
                             binder,
                             type_: infered_type,
                             value: Some(value),
@@ -294,7 +294,7 @@ impl<'a> Typer<'a> {
             Constructor {
                 binder,
                 type_,
-                data,
+                owner_data_type: data,
             } => {
                 recover_error!(
                     self.crate_,
@@ -323,7 +323,7 @@ impl<'a> Typer<'a> {
                         kind: Constructor {
                             binder,
                             type_,
-                            data,
+                            owner_data_type: data,
                         },
                     },
                     self.session,
@@ -957,7 +957,7 @@ impl Expression {
 
 #[derive(Default)]
 struct Context {
-    parent_data_binding: Option<Identifier>,
+    owning_data_type: Option<Identifier>,
 }
 
 impl Diagnostic {

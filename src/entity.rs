@@ -42,13 +42,13 @@ impl Entity {
     pub const fn is_untyped_value(&self) -> bool {
         matches!(
             self.kind,
-            UntypedValue | UntypedDataType { .. } | UntypedConstructor { .. }
+            UntypedFunction | UntypedDataType { .. } | UntypedConstructor { .. }
         )
     }
 
-    /// Returns `true` if the entity is a typed or untyped value.
-    pub const fn is_value(&self) -> bool {
-        matches!(self.kind, UntypedValue | Value { .. })
+    /// Returns `true` if the entity is a typed or untyped function.
+    pub const fn is_function(&self) -> bool {
+        matches!(self.kind, UntypedFunction | Function { .. })
     }
 
     /// Returns `true` if the entity is a typed or untyped data type.
@@ -105,7 +105,7 @@ impl Entity {
     pub const fn is_value_without_value(&self) -> bool {
         matches!(
             self.kind,
-            Value {
+            Function {
                 expression: None,
                 ..
             }
@@ -115,7 +115,7 @@ impl Entity {
     pub fn type_(&self) -> Option<Expression> {
         obtain!(
             &self.kind,
-            Value { type_, .. } |
+            Function { type_, .. } |
             DataType { type_, .. } |
             Constructor { type_, .. } |
             Intrinsic { type_, .. } => type_.clone(),
@@ -131,18 +131,18 @@ impl Entity {
     /// not ready yet.
     pub fn value(&self) -> ValueView {
         match &self.kind {
-            Value {
+            Function {
                 expression: Some(expression),
                 ..
             } => ValueView::Reducible(expression.clone()),
-            Value {
+            Function {
                 expression: None, ..
             }
             | Error
             | DataType { .. }
             | Constructor { .. }
             | Intrinsic { .. } => ValueView::Neutral,
-            UntypedValue
+            UntypedFunction
             | UntypedDataType { .. }
             | UntypedConstructor { .. }
             | Module { .. }
@@ -174,15 +174,15 @@ impl DisplayWith for Entity {
 
 #[derive(Clone)]
 pub enum EntityKind {
-    UntypedValue,
+    UntypedFunction,
     Module {
         namespace: Namespace,
     },
-    /// Data types are not [`Self::UntypedValue`] as they are also namespaces containing constructors.
+    /// Data types are not [`Self::UntypedFunction`] as they are also namespaces containing constructors.
     UntypedDataType {
         namespace: Namespace,
     },
-    /// Constructors are not [`Self::UntypedValue`] as they are also namespaces containing fields.
+    /// Constructors are not [`Self::UntypedFunction`] as they are also namespaces containing fields.
     UntypedConstructor {
         namespace: Namespace,
     },
@@ -193,7 +193,7 @@ pub enum EntityKind {
     },
     UnresolvedUse,
 
-    Value {
+    Function {
         type_: Expression,
         expression: Option<Expression>,
     },
@@ -248,13 +248,13 @@ impl DisplayWith for EntityKind {
 
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            UntypedValue => write!(f, "untyped value"),
+            UntypedFunction => write!(f, "untyped value"),
             Module { namespace } => write!(f, "module of {:?}", namespace),
             UntypedDataType { namespace } => write!(f, "untyped data type of {:?}", namespace),
             UntypedConstructor { namespace } => write!(f, "untyped constructor of {:?}", namespace),
             Use { reference } => write!(f, "use {:?}", reference),
             UnresolvedUse => write!(f, "unresolved use"),
-            Value { type_, expression } => match expression {
+            Function { type_, expression } => match expression {
                 Some(expression) => {
                     write!(f, "{}: {}", expression.with(context), type_.with(context))
                 }
