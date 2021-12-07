@@ -147,8 +147,8 @@ impl<'a> Resolver<'a> {
                             .iter()
                             .fold(Health::Untainted, |health, constructor| {
                                 let opacity =
-                                    match declaration.attributes.has(AttributeKeys::OPAQUE) {
-                                        true => Opacity::Opaque,
+                                    match declaration.attributes.has(AttributeKeys::ABSTRACT) {
+                                        true => Opacity::Abstract,
                                         false => Opacity::Transparent,
                                     };
 
@@ -177,7 +177,7 @@ impl<'a> Resolver<'a> {
                 let exposure = match module_opacity.unwrap() {
                     Opacity::Transparent => self.crate_[namespace].exposure.clone(),
                     // as if a @(public super) was attached to the constructor
-                    Opacity::Opaque => RestrictedExposure::Resolved { reach: module }.into(),
+                    Opacity::Abstract => RestrictedExposure::Resolved { reach: module }.into(),
                 };
 
                 // @Task don't return early, see analoguous code for modules
@@ -1389,7 +1389,7 @@ struct Context {
 #[derive(Debug)]
 enum Opacity {
     Transparent,
-    Opaque,
+    Abstract,
 }
 
 // @Temporary location

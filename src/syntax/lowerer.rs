@@ -1018,8 +1018,10 @@ impl<'a> Lowerer<'a> {
             self.reporter,
         );
 
-        health &=
-            check_mutual_exclusivity(AttributeKeys::MOVING | AttributeKeys::OPAQUE, self.reporter);
+        health &= check_mutual_exclusivity(
+            AttributeKeys::MOVING | AttributeKeys::ABSTRACT,
+            self.reporter,
+        );
 
         health &= check_mutual_exclusivity(
             AttributeKeys::INT
@@ -1281,6 +1283,7 @@ impl lowered_ast::AttributeKind {
 
         let result = (|| {
             Ok(match attribute.binder.as_str() {
+                "abstract" => Self::Abstract,
                 "allow" => Self::Allow {
                     lint: lowered_ast::Lint::parse(
                         argument(arguments, attribute.span, reporter)?
@@ -1341,7 +1344,6 @@ impl lowered_ast::AttributeKind {
                 "Nat" => Self::Nat,
                 "Nat32" => Self::Nat32,
                 "Nat64" => Self::Nat64,
-                "opaque" => Self::Opaque,
                 "public" => {
                     let reach = optional_argument(arguments)
                         .map(|argument| argument.path(Some("reach"), reporter))

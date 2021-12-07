@@ -6,7 +6,7 @@ data Bool: Type of
     false: Bool
     true: Bool
 
-@opaque
+@abstract
 data Switch: Type of
     on: Switch
     off: crate.Switch
@@ -24,6 +24,6 @@ lever: self.Switch = Switch.on
 ;;; Nonetheless, they are effectively public to the module where the
 ;;; corresp. data type is defined in if the data type is module not
 ;;; exposed to any ancestors. This is not influenced by the presence
-;;; of `@opaque` which is solely useful when the data type is a bit
+;;; of `@abstract` which is solely useful when the data type is a bit
 ;;; more exposed. If the data type is annotated with an explicit exposure
 ;;; reach, then the constructors take the same exposure as their type.

@@ -4,7 +4,7 @@
 @intrinsic @Int32
 use self.()
 
-@intrinsic @opaque @(location "/")
+@intrinsic @abstract @(location "/")
 use something.substantial.(root0 root1)
 
 @include

@@ -118,9 +118,6 @@ impl<'a> Documenter<'a> {
             fs::write(path.join("index.html"), &page.content).unwrap();
         }
 
-        // @Temporary
-        // fs::write(self.destination.join("all.txt"), self.bindings.join("\n")).unwrap();
-
         Ok(())
     }
 

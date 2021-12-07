@@ -524,6 +524,8 @@ impl Attribute {
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum AttributeKind {
+    /// Hide the constructors of a (public) data type.
+    Abstract,
     /// Allow a [lint](Lint).
     ///
     /// # Form
@@ -626,8 +628,6 @@ pub enum AttributeKind {
     Nat32,
     /// Specify the concrete type of a number literal to be `Nat64`.
     Nat64,
-    /// Hide the constructors/implementation details of a (public) data type binding.
-    Opaque,
     /// Make the binding part of the public API or at least visible in modules higher up.
     ///
     /// If no `reach` is given, the binding is exposed to other crates.
@@ -686,6 +686,7 @@ impl AttributeKind {
         }
 
         match self {
+            Self::Abstract => quoted!("abstract"),
             Self::Allow { .. } => quoted!("allow"),
             Self::Deny { .. } => quoted!("deny"),
             Self::Deprecated { .. } => quoted!("deprecated"),
@@ -705,7 +706,6 @@ impl AttributeKind {
             Self::Nat => quoted!("Nat"),
             Self::Nat32 => quoted!("Nat32"),
             Self::Nat64 => quoted!("Nat64"),
-            Self::Opaque => quoted!("opaque"),
             Self::Public { .. } => quoted!("public"),
             Self::RecursionLimit { .. } => quoted!("recursion-limit"),
             Self::Rune => quoted!("Rune"),
@@ -731,7 +731,7 @@ impl AttributeKind {
             }
             Intrinsic => Targets::FUNCTION_DECLARATION | Targets::DATA_DECLARATION,
             Include | Rune | Text => Targets::TEXT_LITERAL,
-            Known | Moving | Opaque => Targets::DATA_DECLARATION,
+            Known | Moving | Abstract => Targets::DATA_DECLARATION,
             Int | Int32 | Int64 | Nat | Nat32 | Nat64 => Targets::NUMBER_LITERAL,
             List | Vector => Targets::SEQUENCE_LITERAL,
             // @Task but smh add extra diagnostic note saying they are public automatically
@@ -769,7 +769,7 @@ impl AttributeKind {
             Self::Nat => AttributeKeys::NAT,
             Self::Nat32 => AttributeKeys::NAT32,
             Self::Nat64 => AttributeKeys::NAT64,
-            Self::Opaque => AttributeKeys::OPAQUE,
+            Self::Abstract => AttributeKeys::ABSTRACT,
             Self::Public { .. } => AttributeKeys::PUBLIC,
             Self::RecursionLimit { .. } => AttributeKeys::RECURSION_LIMIT,
             Self::Rune => AttributeKeys::RUNE,
@@ -805,7 +805,7 @@ bitflags::bitflags! {
         const NAT = 1 << 16;
         const NAT32 = 1 << 17;
         const NAT64 = 1 << 18;
-        const OPAQUE = 1 << 19;
+        const ABSTRACT = 1 << 19;
         const PUBLIC = 1 << 20;
         const RECURSION_LIMIT = 1 << 21;
         const RUNE = 1 << 22;
@@ -835,7 +835,7 @@ bitflags::bitflags! {
             | Self::NAT.bits
             | Self::NAT32.bits
             | Self::NAT64.bits
-            | Self::OPAQUE.bits
+            | Self::ABSTRACT.bits
             | Self::PUBLIC.bits;
 
         /// Attributes that are unimplemented.

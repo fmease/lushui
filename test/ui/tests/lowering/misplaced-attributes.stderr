@@ -40,7 +40,7 @@ error[E013]: attribute `Int32` is ascribed to a use-declaration
 error[E013]: attribute `intrinsic` is ascribed to a use-declaration
  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:7:1
   |
-7 | @intrinsic @opaque @(location "/")
+7 | @intrinsic @abstract @(location "/")
   | ^^^^^^^^^^ misplaced attribute
   |
  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:8:1
@@ -50,24 +50,24 @@ error[E013]: attribute `intrinsic` is ascribed to a use-declaration
   |
  note: attribute `intrinsic` can only be ascribed to function or data declarations
 
-error[E013]: attribute `opaque` is ascribed to a use-declaration
+error[E013]: attribute `abstract` is ascribed to a use-declaration
  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:7:12
   |
-7 | @intrinsic @opaque @(location "/")
-  |            ^^^^^^^ misplaced attribute
+7 | @intrinsic @abstract @(location "/")
+  |            ^^^^^^^^^ misplaced attribute
   |
  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:8:1
   |
 8 | use something.substantial.(root0 root1)
   | --------------------------------------- incompatible item
   |
- note: attribute `opaque` can only be ascribed to data declarations
+ note: attribute `abstract` can only be ascribed to data declarations
 
 error[E013]: attribute `location` is ascribed to a use-declaration
- --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:7:20
+ --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:7:22
   |
-7 | @intrinsic @opaque @(location "/")
-  |                    ^^^^^^^^^^^^^^^ misplaced attribute
+7 | @intrinsic @abstract @(location "/")
+  |                      ^^^^^^^^^^^^^^^ misplaced attribute
   |
  --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:8:1
   |

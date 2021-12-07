@@ -15,6 +15,7 @@ impl fmt::Display for super::AttributeKind {
         write!(f, "@")?;
 
         match self {
+            Self::Abstract => write!(f, "abstract"),
             Self::Allow { lint } => write!(f, "(allow {})", lint),
             Self::Deny { lint } => write!(f, "(deny {})", lint),
             Self::Deprecated {
@@ -43,7 +44,6 @@ impl fmt::Display for super::AttributeKind {
             Self::Nat => write!(f, "Nat"),
             Self::Nat32 => write!(f, "Nat32"),
             Self::Nat64 => write!(f, "Nat64"),
-            Self::Opaque => write!(f, "opaque"),
             Self::Public { reach } => match reach {
                 Some(reach) => write!(f, "(public {})", reach),
                 None => write!(f, "public"),

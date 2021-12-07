@@ -4,13 +4,13 @@ module separation of
     data Private: Type of
         private: Private
     
-    @opaque
-    data Private-Opaque: Type of
-        private: Private-Opaque
+    @abstract
+    data Private-Abstract: Type of
+        private: Private-Abstract
 
-    @public @opaque
-    data Public-Opaque: Type of
-        private: Public-Opaque
+    @public @abstract
+    data Public-Abstract: Type of
+        private: Public-Abstract
     
     @(public crate)
     module further-separation of
@@ -18,14 +18,14 @@ module separation of
         data Hidden: Type of
             hidden: Hidden
         
-        @(public crate) @opaque
-        data Opaque: Type of
-            hidden: Opaque
+        @(public crate) @abstract
+        data Abstract: Type of
+            hidden: Abstract
 
 use separation.Private.private as p0
-use separation.Private-Opaque.private as p1
-use separation.Public-Opaque.private as p2
+use separation.Private-Abstract.private as p1
+use separation.Public-Abstract.private as p2
 
-p3: separation.Public-Opaque = separation.Public-Opaque.private
+p3: separation.Public-Abstract = separation.Public-Abstract.private
 
-use separation.further-separation.((Hidden.hidden as h) (Opaque.hidden as ho))
+use separation.further-separation.((Hidden.hidden as h) (Abstract.hidden as ho))
