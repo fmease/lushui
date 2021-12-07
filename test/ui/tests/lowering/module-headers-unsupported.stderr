@@ -16,7 +16,7 @@ error[E013]: attribute `intrinsic` is ascribed to a module header declaration
 9 | module
   | ------ incompatible item
   |
- note: attribute `intrinsic` can only be ascribed to value or data declarations
+ note: attribute `intrinsic` can only be ascribed to function or data declarations
 
 error: module headers not supported yet
  --> ${DIRECTORY}/lowering/module-headers-unsupported.lushui:9:1

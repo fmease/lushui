@@ -14,7 +14,10 @@ use crate::{
     entity::{Entity, EntityKind},
     error::{Health, PossiblyErroneous, ReportedExt, Result},
     format::{pluralize, unordered_listing, Conjunction, DisplayWith, QuoteExt},
-    hir::{self, decl, expr, pat},
+    hir::{
+        self, decl, expr, pat, DeBruijnIndex, DeclarationIndex, Identifier, Index,
+        LocalDeclarationIndex,
+    },
     package::BuildSession,
     span::Spanning,
     syntax::{
@@ -24,10 +27,7 @@ use crate::{
     },
     utility::{obtain, unrc, HashMap, HashSet},
 };
-pub use scope::{
-    Crate, DeBruijnIndex, DeclarationIndex, Exposure, FunctionScope, Identifier, Index,
-    LocalDeclarationIndex, Namespace,
-};
+pub use scope::{Crate, Exposure, FunctionScope, Namespace};
 use scope::{RegistrationError, RestrictedExposure};
 use std::{cell::RefCell, cmp::Ordering, collections::hash_map::Entry};
 
@@ -831,7 +831,7 @@ impl<'a> Resolver<'a> {
                     .code(Code::E029)
                     .message(format!(
                         "binding `{}` is private",
-                        self.crate_.display_absolute_path(index, self.session)
+                        self.crate_.absolute_path_to_string(index, self.session)
                     ))
                     .primary_span(identifier)
                     .report(self.reporter);
@@ -1063,7 +1063,7 @@ impl<'a> Resolver<'a> {
                 for cycle in find_cycles(partially_resolved_use_bindings) {
                     let paths = cycle.iter().map(|&index| {
                         self.crate_
-                            .display_absolute_path(self.crate_.global_index(index), self.session)
+                            .absolute_path_to_string(self.crate_.global_index(index), self.session)
                             .quote()
                     });
                     let paths = unordered_listing(paths, Conjunction::And);
@@ -1171,7 +1171,7 @@ impl<'a> Resolver<'a> {
                         .message(format!(
                             "re-export of the more private binding `{}`",
                             self.crate_
-                                .display_absolute_path(reference_index, self.session)
+                                .absolute_path_to_string(reference_index, self.session)
                         ))
                         .labeled_primary_span(
                             &entity.source,
@@ -1186,7 +1186,7 @@ impl<'a> Resolver<'a> {
 expected the exposure of `{}`
            to be at most {}
       but it actually is {}",
-                            self.crate_.display_absolute_path(
+                            self.crate_.absolute_path_to_string(
                                 self.crate_.global_index(index),
                                 self.session
                             ),
@@ -1295,7 +1295,7 @@ expected the exposure of `{}`
                             false => "namespace",
                         };
                         message += " `";
-                        message += &self.crate_.display_absolute_path(namespace, self.session);
+                        message += &self.crate_.absolute_path_to_string(namespace, self.session);
                         message += "`";
                     }
                 }

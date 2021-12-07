@@ -17,6 +17,7 @@ use crate::{
     entity::{Entity, EntityKind},
     error::{Health, Result},
     format::{AsAutoColoredChangeset, DisplayWith},
+    hir::{DeclarationIndex, Identifier, Index, LocalDeclarationIndex},
     package::{BuildSession, CrateIndex, CrateType, Package, PackageIndex},
     span::{Span, Spanned, Spanning},
     syntax::{
@@ -28,17 +29,13 @@ use crate::{
     utility::{HashMap, SmallVec},
 };
 use colored::Colorize;
-pub use index::{DeBruijnIndex, DeclarationIndex, Index, LocalDeclarationIndex};
 use index_map::IndexMap;
 use joinery::JoinableIterator;
 use smallvec::smallvec;
 use std::{
     cell::RefCell, cmp::Ordering, collections::VecDeque, default::default, fmt, path::PathBuf,
-    usize,
 };
 use unicode_width::UnicodeWidthStr;
-
-mod index;
 
 // @Task better docs
 /// The crate scope for module-level bindings.
@@ -84,6 +81,7 @@ impl Crate {
         }
     }
 
+    // @Task store this in Crate directly!
     pub fn name<'s>(&self, session: &'s BuildSession) -> &'s CrateName {
         // @Beacon @Temporary
         // @Note currently, the name of a crate coincides with the name of the package which
@@ -103,6 +101,11 @@ impl Crate {
 
     pub fn is_binary(&self) -> bool {
         self.type_ == CrateType::Binary
+    }
+
+    /// Test if this is crate is the goal crate.
+    pub fn is_goal(&self, session: &BuildSession) -> bool {
+        self.index == session.goal_crate()
     }
 
     /// Test if this crate is the standard library `core`.
@@ -159,44 +162,48 @@ impl Crate {
 
     /// Build a textual representation of the absolute path of a binding.
     // @Task extend docs
-    pub fn display_absolute_path(&self, index: DeclarationIndex, session: &BuildSession) -> String {
-        self.display_absolute_path_with_root(index, HangerKind::Crate.name().to_owned(), session)
+    pub fn absolute_path_to_string(
+        &self,
+        index: DeclarationIndex,
+        session: &BuildSession,
+    ) -> String {
+        self.absolute_path_with_root_to_string(index, HangerKind::Crate.name().to_owned(), session)
     }
 
-    fn display_absolute_path_with_root(
+    fn absolute_path_with_root_to_string(
         &self,
         index: DeclarationIndex,
         root: String,
         session: &BuildSession,
     ) -> String {
         match index.local_index(self) {
-            Some(index) => self.display_local_path_with_root(index, root),
+            Some(index) => self.local_path_with_root_to_string(index, root),
             None => {
                 let crate_ = &session[index.crate_index()];
                 let root = format!("{}.{}", HangerKind::Extern.name(), crate_.name(session));
 
-                crate_.display_absolute_path_with_root(index, root, session)
+                crate_.absolute_path_with_root_to_string(index, root, session)
             }
         }
     }
 
     // @Note bad name
     // @Task add docs
-    pub fn display_local_path(
+    pub fn local_path_to_string(
         &self,
         index: LocalDeclarationIndex,
         session: &BuildSession,
     ) -> String {
-        self.display_local_path_with_root(index, self.name(session).to_string())
+        self.local_path_with_root_to_string(index, self.name(session).to_string())
     }
 
     // @Note bad name
-    fn display_local_path_with_root(&self, index: LocalDeclarationIndex, root: String) -> String {
+    fn local_path_with_root_to_string(&self, index: LocalDeclarationIndex, root: String) -> String {
         let entity = &self[index];
 
         // @Task rewrite this recursive approach to an iterative one!
         if let Some(parent) = entity.parent {
-            let mut parent_path = self.display_local_path_with_root(parent, root);
+            let mut parent_path = self.local_path_with_root_to_string(parent, root);
 
             let parent_is_punctuation = is_punctuation(parent_path.chars().next_back().unwrap());
 
@@ -458,7 +465,7 @@ impl DisplayWith for RestrictedExposure {
             &Self::Resolved { reach } => write!(
                 f,
                 "{}",
-                scope.display_absolute_path(scope.global_index(reach), session)
+                scope.absolute_path_to_string(scope.global_index(reach), session)
             ),
         }
     }
@@ -525,112 +532,6 @@ impl fmt::Debug for Namespace {
     }
 }
 
-// @Question move to resolver/hir.rs?
-/// A name-resolved identifier.
-#[derive(Clone, PartialEq)]
-pub struct Identifier {
-    /// Source at the use-site/call-site or def-site if definition.
-    pub(crate) source: ast::Identifier,
-    pub(crate) index: Index,
-}
-
-impl Identifier {
-    pub fn new(index: impl Into<Index>, source: ast::Identifier) -> Self {
-        Self {
-            index: index.into(),
-            source,
-        }
-    }
-
-    pub(crate) fn parameter(name: &str) -> Self {
-        Identifier::new(
-            Index::DeBruijnParameter,
-            ast::Identifier::new_unchecked(name.into(), default()),
-        )
-    }
-
-    pub fn as_str(&self) -> &str {
-        self.source.as_str()
-    }
-
-    pub fn to_expression(self) -> crate::hir::Expression {
-        crate::hir::expr! {
-            Binding {
-                default(), self.span();
-                binder: self
-            }
-        }
-    }
-
-    // @Note bad name
-    pub fn as_innermost(&self) -> Self {
-        Self::new(DeBruijnIndex(0), self.source.clone())
-    }
-
-    pub fn stripped(self) -> Self {
-        Self {
-            source: self.source.stripped(),
-            ..self
-        }
-    }
-
-    pub fn is_innermost(&self) -> bool {
-        self.index == DeBruijnIndex(0).into()
-    }
-
-    pub fn shift(self, amount: usize) -> Self {
-        Self {
-            index: self.index.shift(amount),
-            ..self
-        }
-    }
-
-    pub fn unshift(self) -> Self {
-        Self {
-            index: self.index.unshift(),
-            ..self
-        }
-    }
-
-    pub fn declaration_index(&self) -> Option<DeclarationIndex> {
-        self.index.declaration_index()
-    }
-
-    pub fn local_declaration_index(&self, crate_: &Crate) -> Option<LocalDeclarationIndex> {
-        self.declaration_index()?.local_index(crate_)
-    }
-
-    pub fn de_bruijn_index(&self) -> Option<DeBruijnIndex> {
-        self.index.de_bruijn_index()
-    }
-}
-
-impl Spanning for Identifier {
-    fn span(&self) -> Span {
-        self.source.span()
-    }
-}
-
-impl fmt::Display for Identifier {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.source)?;
-        if crate::OPTIONS
-            .get()
-            .map_or(false, |options| options.show_indices)
-        {
-            // @Note does not work well with punctuation..
-            write!(f, "#{:?}", self.index)?;
-        }
-        Ok(())
-    }
-}
-
-impl fmt::Debug for Identifier {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self)
-    }
-}
-
 pub enum FunctionScope<'a> {
     Module(LocalDeclarationIndex),
     FunctionParameter {
@@ -667,13 +568,13 @@ impl<'a> FunctionScope<'a> {
         }
     }
 
-    pub fn display_absolute_path(
+    pub fn absolute_path_to_string(
         binder: &Identifier,
         crate_: &Crate,
         session: &BuildSession,
     ) -> String {
         match binder.index {
-            Index::Declaration(index) => crate_.display_absolute_path(index, session),
+            Index::Declaration(index) => crate_.absolute_path_to_string(index, session),
             Index::DeBruijn(_) | Index::DeBruijnParameter => binder.to_string(),
         }
     }

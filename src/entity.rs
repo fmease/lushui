@@ -5,9 +5,9 @@
 use crate::{
     error::PossiblyErroneous,
     format::DisplayWith,
-    hir::Expression,
+    hir::{DeclarationIndex, Expression, Identifier, LocalDeclarationIndex},
     package::{session::BareIntrinsicFunctionValue, BuildSession},
-    resolver::{Crate, DeclarationIndex, Exposure, Identifier, LocalDeclarationIndex, Namespace},
+    resolver::{Crate, Exposure, Namespace},
     typer::interpreter::scope::ValueView,
     utility::obtain,
 };

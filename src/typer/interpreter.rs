@@ -20,12 +20,12 @@ use crate::{
     entity::Entity,
     error::{PossiblyErroneous, Result},
     format::DisplayWith,
-    hir::{self, expr},
+    hir::{self, expr, DeclarationIndex, Identifier},
     package::{
         session::{KnownBinding, Value},
         BuildSession,
     },
-    resolver::{Crate, DeclarationIndex, Identifier},
+    resolver::Crate,
     span::{Span, Spanning},
     syntax::{ast::Explicit, lowered_ast::Attributes},
 };
@@ -318,7 +318,7 @@ impl<'a> Interpreter<'a> {
                                     // @Note this problem is solved once we allow identifier to be
                                     // an Option<_> (that's gonna happen when we finally implement
                                     // the discarding identifier `_`)
-                                    parameter: crate::resolver::Identifier::parameter("__"),
+                                    parameter: Identifier::parameter("__"),
                                     parameter_type_annotation: Some(self.session.look_up_known_binding(KnownBinding::Unit, self.reporter)?),
                                     body_type_annotation: None,
                                     body: expr! {
@@ -474,11 +474,25 @@ impl<'a> Interpreter<'a> {
                 // @Note @Beacon think about having a variable `matches: bool` (whatever) to avoid repetition
                 match subject.value {
                     Binding(subject) => {
+                        // @Temporary hack (bc we do not follow any principled implementation right now):
+                        // a case analysis is indirectly neutral if the subject is a neutral binding
+                        if self.look_up_value(&subject.binder).is_neutral() {
+                            return Ok(expr! {
+                                CaseAnalysis {
+                                    expression.attributes, expression.span;
+                                    subject: subject.binder.clone().to_expression(),
+                                    cases: analysis.cases.clone(),
+                                }
+                            });
+                        }
+
                         for case in &analysis.cases {
                             use hir::PatternKind::*;
 
                             match &case.pattern.value {
                                 Binding(binding) => {
+                                    dbg!(&binding.binder);
+
                                     if binding.binder == subject.binder {
                                         // @Task @Beacon extend with parameters when evaluating
                                         return self
@@ -604,29 +618,21 @@ impl<'a> Interpreter<'a> {
     }
 
     /// Dictates if two expressions are alpha-equivalent.
-    // @Note this function is not powerful enough, it cannot handle equi-recursive types,
     // @Task write a unifier
     // @Task rename to expressions_equal
     pub(crate) fn equals(
         &mut self,
-        expression0: Expression,
-        expression1: Expression,
+        expression0: &Expression,
+        expression1: &Expression,
         scope: &FunctionScope<'_>,
     ) -> Result<bool> {
         use hir::ExpressionKind::*;
 
-        Ok(match (expression0.value, expression1.value) {
+        Ok(match (&expression0.value, &expression1.value) {
             (Binding(binding0), Binding(binding1)) => binding0.binder == binding1.binder,
             (Application(application0), Application(application1)) => {
-                self.equals(
-                    application0.callee.clone(),
-                    application1.callee.clone(),
-                    scope,
-                )? && self.equals(
-                    application0.argument.clone(),
-                    application1.argument.clone(),
-                    scope,
-                )?
+                self.equals(&application0.callee, &application1.callee, scope)?
+                    && self.equals(&application0.argument, &application1.argument, scope)?
             }
             (Type, Type) => true,
             (Number(number0), Number(number1)) => number0 == number1,
@@ -635,19 +641,19 @@ impl<'a> Interpreter<'a> {
             (PiType(pi0), PiType(pi1)) => {
                 use self::Substitution::Shift;
 
-                self.equals(pi0.domain.clone(), pi1.domain.clone(), scope)?
+                self.equals(&pi0.domain, &pi1.domain, scope)?
                     && match (pi0.parameter.clone(), pi1.parameter.clone()) {
                         (Some(_), Some(_)) => self.equals(
-                            pi0.codomain.clone(),
-                            pi1.codomain.clone(),
+                            &pi0.codomain,
+                            &pi1.codomain,
                             &scope.extend_with_parameter(pi0.domain.clone()),
                         )?,
                         (Some(_), None) => {
                             let codomain1 =
                                 self.substitute_expression(pi1.codomain.clone(), Shift(1));
                             self.equals(
-                                codomain1,
-                                pi0.codomain.clone(),
+                                &codomain1,
+                                &pi0.codomain,
                                 &scope.extend_with_parameter(pi0.domain.clone()),
                             )?
                         }
@@ -655,14 +661,12 @@ impl<'a> Interpreter<'a> {
                             let codomain0 =
                                 self.substitute_expression(pi0.codomain.clone(), Shift(1));
                             self.equals(
-                                pi1.codomain.clone(),
-                                codomain0,
+                                &pi1.codomain,
+                                &codomain0,
                                 &scope.extend_with_parameter(pi1.domain.clone()),
                             )?
                         }
-                        (None, None) => {
-                            self.equals(pi0.codomain.clone(), pi1.codomain.clone(), scope)?
-                        }
+                        (None, None) => self.equals(&pi0.codomain, &pi1.codomain, scope)?,
                     }
             }
             // @Question what about the body_type_annotation? what about explicitness?
@@ -677,23 +681,25 @@ impl<'a> Interpreter<'a> {
                     .ok_or_else(|| Diagnostic::missing_annotation().report(self.reporter))?;
 
                 self.equals(
-                    parameter_type_annotation0.clone(),
-                    parameter_type_annotation1,
+                    &parameter_type_annotation0,
+                    &parameter_type_annotation1,
                     scope,
                 )? && self.equals(
-                    lambda0.body.clone(),
-                    lambda1.body.clone(),
+                    &lambda0.body,
+                    &lambda1.body,
                     &scope.extend_with_parameter(parameter_type_annotation0),
                 )?
             }
-            (CaseAnalysis(_), CaseAnalysis(_)) => unreachable!(),
+            // @Temporary implementation
+            (CaseAnalysis(analysis0), CaseAnalysis(analysis1)) => {
+                self.equals(&analysis0.subject, &analysis1.subject, scope)?
+            }
             (IntrinsicApplication(intrinsic0), IntrinsicApplication(intrinsic1)) => {
                 intrinsic0.callee == intrinsic1.callee
                     && intrinsic0
                         .arguments
-                        .clone()
-                        .into_iter()
-                        .zip(intrinsic1.arguments.clone())
+                        .iter()
+                        .zip(&intrinsic1.arguments)
                         .map(|(argument0, argument1)| self.equals(argument0, argument1, scope))
                         .fold(Ok(true), |all: Result<_>, this| Ok(all? && this?))?
             }
@@ -704,6 +710,7 @@ impl<'a> Interpreter<'a> {
                     .note("they should not exist in this part of the code but should have already been evaluated").report(self.reporter);
                 return Err(());
             }
+            // @Task probably should just be `true` once we support errors in subexpressions
             (Error, _) | (_, Error) => panic!("trying to check equality on erroneous expressions"),
             _ => false,
         })
@@ -717,12 +724,10 @@ impl<'a> Interpreter<'a> {
     }
 
     pub fn look_up_value(&self, binder: &Identifier) -> ValueView {
-        use crate::resolver::Index;
-
         match binder.index {
-            Index::Declaration(index) => self.look_up(index).value(),
-            Index::DeBruijn(_) => ValueView::Neutral,
-            Index::DeBruijnParameter => unreachable!(),
+            hir::Index::Declaration(index) => self.look_up(index).value(),
+            hir::Index::DeBruijn(_) => ValueView::Neutral,
+            hir::Index::DeBruijnParameter => unreachable!(),
         }
     }
 
@@ -731,22 +736,18 @@ impl<'a> Interpreter<'a> {
         binder: &Identifier,
         scope: &FunctionScope<'_>,
     ) -> Option<Expression> {
-        use crate::resolver::Index;
-
         match binder.index {
-            Index::Declaration(index) => self.look_up(index).type_(),
-            Index::DeBruijn(index) => Some(scope.look_up_type(index)),
-            Index::DeBruijnParameter => unreachable!(),
+            hir::Index::Declaration(index) => self.look_up(index).type_(),
+            hir::Index::DeBruijn(index) => Some(scope.look_up_type(index)),
+            hir::Index::DeBruijnParameter => unreachable!(),
         }
     }
 
     pub fn is_intrinsic(&self, binder: &Identifier) -> bool {
-        use crate::resolver::Index;
-
         match binder.index {
-            Index::Declaration(index) => self.look_up(index).is_intrinsic(),
-            Index::DeBruijn(_) => false,
-            Index::DeBruijnParameter => unreachable!(),
+            hir::Index::Declaration(index) => self.look_up(index).is_intrinsic(),
+            hir::Index::DeBruijn(_) => false,
+            hir::Index::DeBruijnParameter => unreachable!(),
         }
     }
 }

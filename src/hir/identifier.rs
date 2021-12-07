@@ -1,10 +1,117 @@
 // @Task docs
 
-use std::fmt;
-
-use crate::package::CrateIndex;
-
 use super::Crate;
+use crate::{
+    package::CrateIndex,
+    span::{Span, Spanning},
+    syntax::ast,
+};
+use std::{default::default, fmt};
+
+/// A name-resolved identifier.
+#[derive(Clone, PartialEq)]
+pub struct Identifier {
+    /// Source at the use-site/call-site or def-site if definition.
+    pub(crate) source: ast::Identifier,
+    pub(crate) index: Index,
+}
+
+impl Identifier {
+    pub fn new(index: impl Into<Index>, source: ast::Identifier) -> Self {
+        Self {
+            index: index.into(),
+            source,
+        }
+    }
+
+    pub(crate) fn parameter(name: &str) -> Self {
+        Identifier::new(
+            Index::DeBruijnParameter,
+            ast::Identifier::new_unchecked(name.into(), default()),
+        )
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.source.as_str()
+    }
+
+    pub fn to_expression(self) -> crate::hir::Expression {
+        crate::hir::expr! {
+            Binding {
+                default(), self.span();
+                binder: self
+            }
+        }
+    }
+
+    // @Note bad name
+    pub fn as_innermost(&self) -> Self {
+        Self::new(DeBruijnIndex(0), self.source.clone())
+    }
+
+    pub fn stripped(self) -> Self {
+        Self {
+            source: self.source.stripped(),
+            ..self
+        }
+    }
+
+    pub fn is_innermost(&self) -> bool {
+        self.index == DeBruijnIndex(0).into()
+    }
+
+    pub fn shift(self, amount: usize) -> Self {
+        Self {
+            index: self.index.shift(amount),
+            ..self
+        }
+    }
+
+    pub fn unshift(self) -> Self {
+        Self {
+            index: self.index.unshift(),
+            ..self
+        }
+    }
+
+    pub fn declaration_index(&self) -> Option<DeclarationIndex> {
+        self.index.declaration_index()
+    }
+
+    pub fn local_declaration_index(&self, crate_: &Crate) -> Option<LocalDeclarationIndex> {
+        self.declaration_index()?.local_index(crate_)
+    }
+
+    pub fn de_bruijn_index(&self) -> Option<DeBruijnIndex> {
+        self.index.de_bruijn_index()
+    }
+}
+
+impl Spanning for Identifier {
+    fn span(&self) -> Span {
+        self.source.span()
+    }
+}
+
+impl fmt::Display for Identifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.source)?;
+        if crate::OPTIONS
+            .get()
+            .map_or(false, |options| options.show_indices)
+        {
+            // @Note does not work well with punctuation..
+            write!(f, "#{:?}", self.index)?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Debug for Identifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Index {

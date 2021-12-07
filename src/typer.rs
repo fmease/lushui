@@ -6,12 +6,12 @@ use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     error::{Health, Result},
     format::{pluralize, DisplayWith, QuoteExt},
-    hir::{self, expr, Declaration, Expression},
+    hir::{self, expr, Declaration, Expression, Identifier},
     package::{
         session::{IntrinsicType, KnownBinding},
         BuildSession,
     },
-    resolver::{Crate, Identifier},
+    resolver::Crate,
     span::Span,
     syntax::{
         ast::{Explicitness, ParameterAspect},
@@ -52,7 +52,7 @@ impl<'a> Typer<'a> {
         }
     }
 
-    pub fn interpreter(&mut self) -> Interpreter<'_> {
+    fn interpreter(&mut self) -> Interpreter<'_> {
         Interpreter::new(self.crate_, self.session, self.reporter)
     }
 
@@ -850,10 +850,7 @@ impl<'a> Typer<'a> {
             },
         )?;
 
-        if !self
-            .interpreter()
-            .equals(expected.clone(), actual.clone(), scope)?
-        {
+        if !self.interpreter().equals(&expected, &actual, scope)? {
             return Err(TypeMismatch { expected, actual });
         }
 
@@ -881,7 +878,7 @@ impl<'a> Typer<'a> {
             },
         )?;
 
-        self.interpreter().equals(expected, actual, scope)
+        self.interpreter().equals(&expected, &actual, scope)
     }
 
     // @Question @Bug returns are type that might depend on parameters which we don't supply!!
@@ -923,7 +920,7 @@ impl<'a> Typer<'a> {
 
         if self
             .interpreter()
-            .equals(type_.clone(), callee, &FunctionScope::Crate)?
+            .equals(&type_, &callee, &FunctionScope::Crate)?
         {
             Ok(())
         } else {

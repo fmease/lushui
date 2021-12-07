@@ -1,16 +1,104 @@
+:root {
+    --ledge-height: 3em;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html {
+    scroll-padding-top: var(--ledge-height);
+}
+
 body {
     margin: 0;
     padding: 0;
 }
 
-.content {
+.ledge-container {
+    height: var(--ledge-height);
+}
+
+.ledge {
+    display: flex;
+    position: fixed;
+    z-index: 999;
+    top: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: var(--ledge-height);
+    background: #1d434d;
+    justify-content: center;
+    align-items: center;
+    box-shadow: 0 2px 4px #0004;
+    --search-padding-y: 5px;
+    --search-padding-x: 10px;
+}
+
+#search {
+    display: block;
+    width: 40em;
+    border: none;
+    font-size: 16px;
+    padding: var(--search-padding-y) var(--search-padding-x);
+    border-radius: 4px;
+    background-color: #ffffff50;
+    color: white;
+    transition: background-color 50ms linear;
+}
+
+#search:focus {
+    outline: none;
+    background-color: #ffffff60;
+}
+
+#search:focus::placeholder {
+    color: transparent;
+}
+
+#search.performed {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+#search-results-container {
+    position: relative;
+    left: auto;
+    right: auto;
+    width: 100%;
+}
+
+#search-results {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: auto;
+    right: auto;
+    width: 100%;
+    padding: var(--search-padding-y) var(--search-padding-x);
+    /* @Note maybe white background with light gray border */
+    background: white;
+    /* @Temporary */
+    box-shadow: 0 2px 4px #0004;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+}
+
+#search:not(.performed) + #search-results-container {
+    display: none;
+}
+
+.main {
     width: 70%;
-    margin: 2em auto;
+    margin: 0 auto;
 }
 
 h1, h2, h3, h4, h5, h6 {
     font-family: sans-serif;
 }
+
+/* @Task don't use h1 stuff for this but sth like .module-path/.path-breadcrumb-bar */
 
 h1 > a {
     color: inherit;
@@ -21,6 +109,40 @@ h1 > a:hover {
     text-decoration: underline;
 }
 
-.module {
-    color: rgb(216, 79, 79);
+h1 > a.current {
+    color: rgb(28, 130, 177);
+}
+
+.section-header.code {
+    font-family: 'DejaVu Sans Mono', 'Source Code Pro', monospace;
+}
+
+.identifier {
+    font-family: sans-serif;
+    text-decoration: inherit;
+    color: inherit;
+}
+
+:target {
+    background-color: rgb(255, 255, 117);
+}
+
+.section-header {
+    position: relative;
+}
+
+.section-header:hover::before {
+    content: '§';
+    position: absolute;
+    left: -1em;
+}
+
+.section-header a {
+    color: inherit;
+    text-decoration: inherit;
+}
+
+a.reference {
+    color: rgb(101, 148, 13);
+    text-decoration: inherit;
 }

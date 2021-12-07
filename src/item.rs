@@ -17,9 +17,9 @@ pub struct Item<T, Attributes> {
 }
 
 impl<T, Attributes> Item<T, Attributes> {
-    pub const fn new(attributes: Attributes, span: Span, data: T) -> Self {
+    pub const fn new(attributes: Attributes, span: Span, value: T) -> Self {
         Self {
-            value: data,
+            value,
             span,
             attributes,
         }
@@ -45,6 +45,7 @@ impl<T: PossiblyErroneous, Attributes: Default> PossiblyErroneous for Item<T, At
 /// Construct an [Item].
 // @Note several hacks going on because apparently, one cannot use a $loc:path directly and concatenate it
 // to the rest of another path. $($seg)::+ does not work either
+// @Task rename $data (outdated name)
 pub macro item {
     ($loc:path, $item:ident, $indirection:ident; $data:ident { $attrs:expr, $span:expr $(; $( $body:tt )+ )? }) => {{
         #[allow(unused_imports)]

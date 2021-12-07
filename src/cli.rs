@@ -7,15 +7,6 @@ use lushui::{
     package::CrateType,
 };
 
-const VERSION: &str = concat!(
-    env!("CARGO_PKG_VERSION"),
-    " (",
-    env!("GIT_COMMIT_HASH"),
-    " ",
-    env!("GIT_COMMIT_DATE"),
-    ")"
-);
-
 pub fn arguments() -> (Command, Options) {
     let source_file_argument = Arg::with_name("PATH")
         .index(1)
@@ -49,8 +40,7 @@ pub fn arguments() -> (Command, Options) {
     ];
 
     let matches = clap::App::new(env!("CARGO_PKG_NAME"))
-        .version(VERSION)
-        .author(env!("CARGO_PKG_AUTHORS"))
+        .version(super::VERSION)
         .about(env!("CARGO_PKG_DESCRIPTION"))
         .setting(AppSettings::SubcommandRequiredElseHelp)
         .arg(

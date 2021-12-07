@@ -1,4 +1,11 @@
-#![feature(backtrace, derive_default_enum, decl_macro, default_free_fn, let_else)]
+#![feature(
+    backtrace,
+    derive_default_enum,
+    decl_macro,
+    default_free_fn,
+    let_else,
+    label_break_value
+)]
 #![forbid(rust_2018_idioms, unused_must_use)]
 #![warn(clippy::pedantic)]
 #![allow(
@@ -37,12 +44,21 @@ use lushui::{
     resolver::{self, PROGRAM_ENTRY_IDENTIFIER},
     span::{SharedSourceMap, SourceMap, Spanned},
     syntax::{lowerer::LoweringOptions, CrateName, Lexer, Lowerer, Parser},
-    typer::Typer,
+    typer::{interpreter::Interpreter, Typer},
     FILE_EXTENSION,
 };
 use resolver::Resolver;
 
 mod cli;
+
+const VERSION: &str = concat!(
+    env!("CARGO_PKG_VERSION"),
+    " (",
+    env!("GIT_COMMIT_HASH"),
+    " ",
+    env!("GIT_COMMIT_DATE"),
+    ")"
+);
 
 fn main() {
     if main_().is_err() {
@@ -179,17 +195,19 @@ fn build_package(
         }
     };
 
-    let (mut session, unbuilt_crates) = build_queue.into_session_and_unbuilt_crates();
-
-    // @Note not extensible to multiple binary crates
-    let goal_crate = unbuilt_crates.last().unwrap().index;
+    let (mut session, unbuilt_crates) = build_queue.finalize();
 
     for mut crate_ in unbuilt_crates.into_values() {
-        let is_goal_crate = crate_.index == goal_crate;
-
+        // @Task abstract over this as print_status_report and report w/ label="Running" for
+        // goal crate if mode==Run (in addition to initial "Building")
         if !options.quiet {
-            // @Task write `Checking` if `lushui check`ing
-            let label = "Building".green().bold();
+            let label = match mode {
+                BuildMode::Check => "Checking",
+                BuildMode::Build | BuildMode::Run => "Building",
+                // @Bug this should not be printed for non-goal crates and --no-deps
+                BuildMode::Document { .. } => "Documenting",
+            };
+            let label = label.green().bold();
             let package = &session[crate_.package];
             let name = &package.name;
             let path = package.path.to_string_lossy();
@@ -197,8 +215,9 @@ fn build_package(
             println!("   {label} {name} ({path})");
         }
 
+        // @Task make this a fn if possible
         macro check_pass_restriction($restriction:expr) {
-            if is_goal_crate && options.pass_restriction == Some($restriction) {
+            if crate_.is_goal(&session) && options.pass_restriction == Some($restriction) {
                 return Ok(());
             }
         }
@@ -232,7 +251,7 @@ fn build_package(
 
         let duration = time.elapsed();
 
-        if is_goal_crate && options.emit_tokens {
+        if crate_.is_goal(&session) && options.emit_tokens {
             for token in &tokens {
                 eprintln!("{:?}", token);
             }
@@ -250,7 +269,7 @@ fn build_package(
 
         assert!(token_health.is_untainted()); // parsing succeeded
 
-        if is_goal_crate && options.emit_ast {
+        if crate_.is_goal(&session) && options.emit_ast {
             eprintln!("{declaration:#?}");
         }
 
@@ -261,7 +280,7 @@ fn build_package(
         let outcome!(mut declarations, health_of_lowerer) = Lowerer::new(
             LoweringOptions {
                 internal_features_enabled: options.internals || crate_.is_core_library(&session),
-                keep_document_comments: matches!(mode, BuildMode::Document { .. }),
+                keep_documentation_comments: matches!(mode, BuildMode::Document { .. }),
             },
             map.clone(),
             reporter,
@@ -272,7 +291,7 @@ fn build_package(
 
         let declaration = declarations.pop().unwrap();
 
-        if is_goal_crate && options.emit_lowered_ast {
+        if crate_.is_goal(&session) && options.emit_lowered_ast {
             eprintln!("{}", declaration);
         }
 
@@ -291,7 +310,7 @@ fn build_package(
         if options.emit_hir {
             eprintln!("{}", declaration.with((&crate_, &session)));
         }
-        if is_goal_crate && options.emit_untyped_scope {
+        if crate_.is_goal(&session) && options.emit_untyped_scope {
             eprintln!("{}", crate_.with(&session));
         }
 
@@ -299,18 +318,17 @@ fn build_package(
         check_pass_restriction!(PassRestriction::Resolver);
         let time = Instant::now();
 
-        let mut typer = Typer::new(&mut crate_, &mut session, reporter);
-        typer.infer_types_in_declaration(&declaration)?;
+        Typer::new(&mut crate_, &mut session, reporter).infer_types_in_declaration(&declaration)?;
 
         let duration = time.elapsed();
 
-        if is_goal_crate && options.emit_scope {
-            eprintln!("{}", typer.crate_.with(typer.session));
+        if crate_.is_goal(&session) && options.emit_scope {
+            eprintln!("{}", crate_.with(&session));
         }
 
         print_pass_duration("Type checking & inference", duration, &options);
 
-        if typer.crate_.is_binary() && typer.crate_.program_entry.is_none() {
+        if crate_.is_binary() && crate_.program_entry.is_none() {
             Diagnostic::error()
                 .code(Code::E050)
                 .message(format!(
@@ -322,51 +340,53 @@ fn build_package(
             return Err(());
         }
 
-        match &mode {
-            BuildMode::Run => {
-                if is_goal_crate {
-                    if !typer.crate_.is_binary() {
-                        // @Question code?
-                        Diagnostic::error()
-                            .message(format!(
-                                "the package `{}` does not contain any binary to run",
-                                session[crate_.package].name,
-                            ))
-                            .report(reporter);
-                        return Err(());
+        'ending: {
+            match &mode {
+                BuildMode::Run => {
+                    if crate_.is_goal(&session) {
+                        if !crate_.is_binary() {
+                            // @Question code?
+                            Diagnostic::error()
+                                .message(format!(
+                                    "the package `{}` does not contain any binary to run",
+                                    session[crate_.package].name,
+                                ))
+                                .report(reporter);
+                            return Err(());
+                        }
+
+                        let result = Interpreter::new(&crate_, &session, reporter).run()?;
+
+                        println!("{}", result.with((&crate_, &session)));
+                    }
+                }
+                BuildMode::Build => {
+                    // @Temporary not just builds, also runs ^^
+
+                    lushui::compiler::compile_and_interpret_declaration(&declaration, &crate_)
+                        .unwrap_or_else(|_| panic!());
+                }
+                BuildMode::Document {
+                    options: documentation_options,
+                } => {
+                    // @Task implement `--open`ing
+
+                    if documentation_options.no_dependencies && !crate_.is_goal(&session) {
+                        break 'ending;
                     }
 
-                    let result = typer.interpreter().run()?;
+                    let mut documenter = Documenter::new(&crate_, &session, reporter);
 
-                    println!("{}", result.with((&crate_, &session)));
+                    let time = Instant::now();
+
+                    documenter.document(&declaration)?;
+
+                    let duration = time.elapsed();
+
+                    print_pass_duration("Documentation", duration, &options);
                 }
+                BuildMode::Check => {}
             }
-            BuildMode::Build => {
-                // @Temporary not just builds, also runs ^^
-
-                lushui::compiler::compile_and_interpret_declaration(&declaration, &crate_)
-                    .unwrap_or_else(|_| panic!());
-            }
-            BuildMode::Document {
-                options: documentation_options,
-            } => {
-                // @Task implement opening
-
-                if documentation_options.no_dependencies && !is_goal_crate {
-                    continue;
-                }
-
-                let mut documenter = Documenter::new(&crate_, &session, reporter);
-
-                let time = Instant::now();
-
-                documenter.document(&declaration)?;
-
-                let duration = time.elapsed();
-
-                print_pass_duration("Documentation", duration, &options);
-            }
-            BuildMode::Check => {}
         }
 
         session.add(crate_);
@@ -451,7 +471,9 @@ fn set_panic_hook() {
             .unwrap_or("unknown cause")
             .to_owned();
 
-        let backtrace = std::backtrace::Backtrace::force_capture();
+        let backtrace = std::env::var("LUSHUI_BACKTRACE")
+            .map_or(false, |variable| variable != "0")
+            .then(std::backtrace::Backtrace::force_capture);
 
         Diagnostic::bug()
             .message(message)
@@ -459,12 +481,19 @@ fn set_panic_hook() {
                 this.note(format!("at `{location}`"))
             })
             .note(std::thread::current().name().map_or_else(
-                || Str::from("in an unnamed thread"),
-                |name| format!("in thread `{name}`").into(),
+                || "in an unnamed thread".into(),
+                |name| format!("in thread `{name}`"),
             ))
-            .note(format!("with the following backtrace:\n{backtrace}"))
+            .note("the compiler unexpectedly panicked. this is a bug. we would appreciate a bug report")
+            .note(format!("lushui {VERSION}"))
+            .if_(backtrace.is_none(), |this| {
+                this.help(
+                    "rerun with the environment variable `LUSHUI_BACKTRACE=1` to display a backtrace",
+                )
+            })
+            .if_present(backtrace, |this, backtrace| {
+                this.note(format!("with the following backtrace:\n{backtrace}"))
+            })
             .report(&StderrReporter::new(None).into());
     }));
 }
-
-type Str = std::borrow::Cow<'static, str>;

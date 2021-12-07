@@ -3,8 +3,8 @@ use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     entity::{Entity, EntityKind},
     error::Result,
-    hir::{expr, Constructor, Expression, ExpressionKind},
-    resolver::{Crate, DeclarationIndex, Identifier},
+    hir::{expr, Constructor, DeclarationIndex, Expression, ExpressionKind, Identifier},
+    resolver::Crate,
     span::Span,
     syntax::{
         ast::Explicitness,
@@ -18,29 +18,65 @@ use std::{
     default::default,
     fmt,
     ops::{Index, IndexMut},
+    path::PathBuf,
     str::FromStr,
 };
 
-#[derive(Default)]
+const BUILD_FOLDER_NAME: &str = "build";
+
 pub struct BuildSession {
-    built_crates: HashMap<CrateIndex, Crate>,
-    built_packages: IndexMap<PackageIndex, Package>,
+    /// The crates which have already been built.
+    crates: HashMap<CrateIndex, Crate>,
+    packages: IndexMap<PackageIndex, Package>,
+    goal_crate: CrateIndex,
+    goal_package: PackageIndex,
     known_bindings: HashMap<KnownBinding, Identifier>,
     intrinsic_types: HashMap<IntrinsicType, Identifier>,
     intrinsic_functions: HashMap<IntrinsicFunction, IntrinsicFunctionValue>,
 }
 
 impl BuildSession {
-    pub fn with_packages(packages: IndexMap<PackageIndex, Package>) -> Self {
+    /// Create a new build session with intrinsic functions registered.
+    pub fn new(
+        packages: IndexMap<PackageIndex, Package>,
+        goal_crate: CrateIndex,
+        goal_package: PackageIndex,
+    ) -> Self {
         Self {
-            built_packages: packages,
+            crates: default(),
+            packages,
+            goal_crate,
+            goal_package,
+            known_bindings: default(),
+            intrinsic_types: default(),
             intrinsic_functions: intrinsic_functions(),
-            ..default()
         }
     }
 
+    pub fn empty(goal_crate: CrateIndex, goal_package: PackageIndex) -> Self {
+        Self {
+            crates: default(),
+            packages: default(),
+            goal_crate,
+            goal_package,
+            known_bindings: default(),
+            intrinsic_types: default(),
+            intrinsic_functions: default(),
+        }
+    }
+
+    pub fn goal_crate(&self) -> CrateIndex {
+        self.goal_crate
+    }
+
+    /// The path to the folder containing the build artifacts and the documentation.
+    pub fn build_folder(&self) -> PathBuf {
+        // @Beacon @Beacon @Bug does not work with single-file packages!
+        self[self.goal_package].path.join(BUILD_FOLDER_NAME)
+    }
+
     pub fn add(&mut self, crate_: Crate) {
-        self.built_crates.insert(crate_.index, crate_);
+        self.crates.insert(crate_.index, crate_);
     }
 
     pub fn known_binding(&self, known: KnownBinding) -> Option<&Identifier> {
@@ -225,7 +261,7 @@ impl Index<DeclarationIndex> for BuildSession {
     type Output = Entity;
 
     fn index(&self, index: DeclarationIndex) -> &Self::Output {
-        &self.built_crates[&index.crate_index()][index.local_index_unchecked()]
+        &self.crates[&index.crate_index()][index.local_index_unchecked()]
     }
 }
 
@@ -233,7 +269,7 @@ impl Index<CrateIndex> for BuildSession {
     type Output = Crate;
 
     fn index(&self, index: CrateIndex) -> &Self::Output {
-        &self.built_crates[&index]
+        &self.crates[&index]
     }
 }
 
@@ -241,13 +277,13 @@ impl Index<PackageIndex> for BuildSession {
     type Output = Package;
 
     fn index(&self, index: PackageIndex) -> &Self::Output {
-        &self.built_packages[index]
+        &self.packages[index]
     }
 }
 
 impl IndexMut<PackageIndex> for BuildSession {
     fn index_mut(&mut self, index: PackageIndex) -> &mut Self::Output {
-        &mut self.built_packages[index]
+        &mut self.packages[index]
     }
 }
 

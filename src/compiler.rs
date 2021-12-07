@@ -15,8 +15,8 @@ use std::default::default;
 
 use crate::{
     grow_array::GrowArray,
-    hir::{self, Declaration, Expression},
-    resolver::{Crate, DeclarationIndex},
+    hir::{self, Declaration, DeclarationIndex, Expression},
+    resolver::Crate,
     syntax::lowered_ast::{AttributeKeys, Number},
     utility::HashMap,
 };

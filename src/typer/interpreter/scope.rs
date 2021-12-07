@@ -4,9 +4,9 @@ use crate::{
     entity::EntityKind,
     error::Result,
     format::{AsDebug, DisplayWith},
-    hir::expr,
+    hir::{expr, DeBruijnIndex, Identifier},
     package::BuildSession,
-    resolver::{Crate, DeBruijnIndex, Identifier},
+    resolver::Crate,
     span::Span,
     syntax::lowered_ast::{AttributeKeys, Attributes},
 };
@@ -193,6 +193,12 @@ impl DisplayWith for BindingRegistration {
 pub enum ValueView {
     Reducible(Expression),
     Neutral,
+}
+
+impl ValueView {
+    pub fn is_neutral(&self) -> bool {
+        matches!(self, Self::Neutral)
+    }
 }
 
 /// The scope of bindings inside of a function.

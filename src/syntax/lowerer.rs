@@ -1057,6 +1057,8 @@ impl<'a> Lowerer<'a> {
                         "attribute {} is an internal feature",
                         attribute.value.quoted_name()
                     ))
+                    // @Task improve the phrasing (this action should be discouraged)
+                    // @Question should this be shown at all?
                     .help(
                         "add the command-line option `-Z internals` to use the attribute anyway\n\
                          opting out of any stability guarantees in the process!",
@@ -1199,7 +1201,7 @@ pub struct LoweringOptions {
     /// Specifies if internal language and library features are enabled.
     pub internal_features_enabled: bool,
     /// Specifies if documentation comments should be kept in the lowered AST.
-    pub keep_document_comments: bool,
+    pub keep_documentation_comments: bool,
 }
 
 struct DeclarationContext {
@@ -1300,7 +1302,7 @@ impl lowered_ast::AttributeKind {
                     return Err(AttributeParsingError::Unrecoverable);
                 }
                 "documentation" => Self::Documentation {
-                    content: if options.keep_document_comments {
+                    content: if options.keep_documentation_comments {
                         argument(arguments, attribute.span, reporter)?
                             .text_literal_or_encoded_text(map, reporter)?
                     } else {

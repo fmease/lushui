@@ -144,6 +144,7 @@ dependencies = [
  "html-escape",
  "index_map",
  "joinery",
+ "minifier",
  "num-bigint",
  "num-traits",
  "once_cell",
@@ -152,6 +153,21 @@ dependencies = [
  "string_cache",
  "strsim 0.10.0",
  "unicode-width",
+]
+
+[[package]]
+name = "macro-utils"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e72f7deb758fea9ea7d290aebfa788763d0bffae12caa6406a25baaf8fa68a8"
+
+[[package]]
+name = "minifier"
+version = "0.0.41"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5594542d20834f2b974f5e5fb8e0cf1c67a2119dcadc29ef5d93a081fb30cc08"
+dependencies = [
+ "macro-utils",
 ]
 
 [[package]]

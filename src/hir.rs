@@ -1,10 +1,8 @@
 //! The high-level intermediate representation.
 
-mod format;
-
 use crate::{
     error::PossiblyErroneous,
-    resolver::{Crate, FunctionScope, Identifier},
+    resolver::{Crate, FunctionScope},
     span::{SourceFileIndex, Span},
     syntax::{
         ast::{Explicitness, ParameterAspect},
@@ -13,7 +11,11 @@ use crate::{
     typer::interpreter,
     utility::obtain,
 };
+pub use identifier::{DeBruijnIndex, DeclarationIndex, Identifier, Index, LocalDeclarationIndex};
 use std::rc::Rc;
+
+mod format;
+pub mod identifier;
 
 pub type Declaration = Item<DeclarationKind>;
 

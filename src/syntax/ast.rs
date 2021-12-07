@@ -133,7 +133,6 @@ pub type AttributeArgument = Spanned<AttributeArgumentKind>;
 
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
-#[derive(Debug)] // @Temporary
 pub enum AttributeArgumentKind {
     NumberLiteral(Box<String>),
     TextLiteral(Box<String>),
@@ -156,7 +155,6 @@ impl AttributeArgumentKind {
 
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
-#[derive(Debug)] // @Temporary
 pub struct NamedAttributeArgument {
     pub binder: Identifier,
     pub value: AttributeArgument,
@@ -582,7 +580,7 @@ impl TryFrom<TokenKind> for HangerKind {
 }
 
 /// Either a word or punctuation.
-#[derive(Clone, Debug)] // @Temporary Debug
+#[derive(Clone, Debug)]
 pub struct Identifier(Spanned<Atom>);
 
 impl Identifier {

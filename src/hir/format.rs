@@ -258,7 +258,7 @@ fn format_lower_expression(
         Binding(binding) => write!(
             f,
             "{}",
-            super::FunctionScope::display_absolute_path(&binding.binder, crate_, session)
+            super::FunctionScope::absolute_path_to_string(&binding.binder, crate_, session)
         ),
         // @Beacon @Temporary @Task just write out the path
         Projection(_projection) => write!(f, "?(projection)"),
@@ -299,7 +299,7 @@ impl DisplayWith for Pattern {
             Binding(binding) => write!(
                 f,
                 "{}",
-                super::FunctionScope::display_absolute_path(&binding.binder, crate_, session)
+                super::FunctionScope::absolute_path_to_string(&binding.binder, crate_, session)
             ),
 
             Binder(binder) => write!(f, "\\{}", binder.binder),
@@ -316,14 +316,12 @@ impl DisplayWith for Pattern {
 
 #[cfg(test)]
 mod test {
-    use index_map::Index;
-
     use crate::{
         entity::{Entity, EntityKind},
         format::DisplayWith,
-        hir::{expr, Expression},
+        hir::{expr, Expression, Identifier, LocalDeclarationIndex},
         package::{BuildSession, CrateIndex, CrateType, PackageIndex},
-        resolver::{Crate, Exposure, Identifier, LocalDeclarationIndex},
+        resolver::{Crate, Exposure},
         span::Span,
         syntax::{
             ast::{self, Explicitness::*},
@@ -346,11 +344,14 @@ mod test {
         }
     }
 
+    const CRATE_INDEX: CrateIndex = CrateIndex(0);
+    const PACKAGE_INDEX: PackageIndex = PackageIndex(0);
+
     impl Crate {
         fn test() -> Self {
             let mut crate_ = Self::new(
-                CrateIndex(0),
-                PackageIndex::new(0),
+                CRATE_INDEX,
+                PACKAGE_INDEX,
                 PathBuf::new(),
                 CrateType::Library,
             );
@@ -401,7 +402,7 @@ mod test {
 
     #[test]
     fn pi_type_application_argument() {
-        let session = BuildSession::default();
+        let session = BuildSession::empty(CRATE_INDEX, PACKAGE_INDEX);
         let mut crate_ = Crate::test();
 
         let array = crate_
@@ -437,7 +438,7 @@ mod test {
 
     #[test]
     fn pi_type_named_parameter() {
-        let session = BuildSession::default();
+        let session = BuildSession::empty(CRATE_INDEX, PACKAGE_INDEX);
         let mut crate_ = Crate::test();
 
         let array = crate_.add("Array", EntityKind::untyped_data_type());
@@ -478,7 +479,7 @@ mod test {
 
     #[test]
     fn pi_type_implicit_parameter() {
-        let session = BuildSession::default();
+        let session = BuildSession::empty(CRATE_INDEX, PACKAGE_INDEX);
         let crate_ = Crate::test();
 
         assert_eq(
@@ -501,7 +502,7 @@ mod test {
     /// Compare with [pi_type_two_curried_arguments].
     #[test]
     fn pi_type_higher_order_argument() {
-        let session = BuildSession::default();
+        let session = BuildSession::empty(CRATE_INDEX, PACKAGE_INDEX);
         let mut crate_ = Crate::test();
         let int = crate_
             .add("Int", EntityKind::untyped_data_type())
@@ -536,7 +537,7 @@ mod test {
     /// Compare with [pi_type_higher_order_argument].
     #[test]
     fn pi_type_two_curried_arguments() {
-        let session = BuildSession::default();
+        let session = BuildSession::empty(CRATE_INDEX, PACKAGE_INDEX);
         let mut crate_ = Crate::test();
         let int = crate_
             .add("Int", EntityKind::untyped_data_type())
@@ -578,7 +579,7 @@ mod test {
     /// Compare with [lambda_pi_type_body].
     #[test]
     fn pi_type_lambda_domain() {
-        let session = BuildSession::default();
+        let session = BuildSession::empty(CRATE_INDEX, PACKAGE_INDEX);
         let crate_ = Crate::test();
 
         let x = Identifier::parameter("x");
@@ -612,7 +613,7 @@ mod test {
 
     #[test]
     fn application_three_curried_arguments() {
-        let session = BuildSession::default();
+        let session = BuildSession::empty(CRATE_INDEX, PACKAGE_INDEX);
         let mut crate_ = Crate::test();
 
         let beta = crate_.add("beta", EntityKind::UntypedFunction);
@@ -658,7 +659,7 @@ mod test {
     /// Compare with [application_lambda_argument].
     #[test]
     fn application_lambda_last_argument() {
-        let session = BuildSession::default();
+        let session = BuildSession::empty(CRATE_INDEX, PACKAGE_INDEX);
         let mut crate_ = Crate::test();
 
         let take = crate_.add("take", EntityKind::UntypedFunction);
@@ -694,7 +695,7 @@ mod test {
     /// Compare with [application_lambda_last_argument].
     #[test]
     fn application_lambda_argument() {
-        let session = BuildSession::default();
+        let session = BuildSession::empty(CRATE_INDEX, PACKAGE_INDEX);
         let mut crate_ = Crate::test();
 
         let take = crate_.add("take", EntityKind::UntypedFunction);
@@ -740,7 +741,7 @@ mod test {
 
     #[test]
     fn application_implicit_argument() {
-        let session = BuildSession::default();
+        let session = BuildSession::empty(CRATE_INDEX, PACKAGE_INDEX);
         let mut crate_ = Crate::test();
 
         let identity = crate_.add("identity", EntityKind::UntypedFunction);
@@ -762,7 +763,7 @@ mod test {
 
     #[test]
     fn application_complex_implicit_argument() {
-        let session = BuildSession::default();
+        let session = BuildSession::empty(CRATE_INDEX, PACKAGE_INDEX);
         let mut crate_ = Crate::test();
 
         let identity = crate_.add("identity", EntityKind::UntypedFunction);
@@ -792,7 +793,7 @@ mod test {
 
     #[test]
     fn application_intrinsic_application_callee() {
-        let session = BuildSession::default();
+        let session = BuildSession::empty(CRATE_INDEX, PACKAGE_INDEX);
         let crate_ = Crate::test();
 
         assert_eq(
@@ -820,7 +821,7 @@ mod test {
 
     #[test]
     fn lambda_body_type_annotation() {
-        let session = BuildSession::default();
+        let session = BuildSession::empty(CRATE_INDEX, PACKAGE_INDEX);
         let mut crate_ = Crate::test();
 
         let output = crate_.add("Output", EntityKind::untyped_data_type());
@@ -847,7 +848,7 @@ mod test {
 
     #[test]
     fn lambda_parameter_type_annotation_body_type_annotation() {
-        let session = BuildSession::default();
+        let session = BuildSession::empty(CRATE_INDEX, PACKAGE_INDEX);
         let mut crate_ = Crate::test();
 
         let input = crate_.add("Input", EntityKind::untyped_data_type());
@@ -873,7 +874,7 @@ mod test {
 
     #[test]
     fn lambda_implicit_parameter() {
-        let session = BuildSession::default();
+        let session = BuildSession::empty(CRATE_INDEX, PACKAGE_INDEX);
         let crate_ = Crate::test();
 
         assert_eq(
@@ -896,7 +897,7 @@ mod test {
 
     #[test]
     fn lambda_implicit_unannotated_parameter() {
-        let session = BuildSession::default();
+        let session = BuildSession::empty(CRATE_INDEX, PACKAGE_INDEX);
         let crate_ = Crate::test();
         let a = Identifier::parameter("a");
 
@@ -931,7 +932,7 @@ mod test {
     /// Compare with [pi_type_lambda_domain].
     #[test]
     fn lambda_pi_type_body() {
-        let session = BuildSession::default();
+        let session = BuildSession::empty(CRATE_INDEX, PACKAGE_INDEX);
         let crate_ = Crate::test();
 
         let x = Identifier::parameter("x");
@@ -965,7 +966,7 @@ mod test {
 
     #[test]
     fn intrinsic_application_no_arguments() {
-        let session = BuildSession::default();
+        let session = BuildSession::empty(CRATE_INDEX, PACKAGE_INDEX);
         let mut crate_ = Crate::test();
 
         let add = crate_.add("add", EntityKind::UntypedFunction);
@@ -986,7 +987,7 @@ mod test {
 
     #[test]
     fn intrinsic_application_two_arguments() {
-        let session = BuildSession::default();
+        let session = BuildSession::empty(CRATE_INDEX, PACKAGE_INDEX);
         let mut crate_ = Crate::test();
 
         let add = crate_.add("add", EntityKind::UntypedFunction);
@@ -1034,7 +1035,7 @@ mod test {
 
     #[test]
     fn attributes() {
-        let session = BuildSession::default();
+        let session = BuildSession::empty(CRATE_INDEX, PACKAGE_INDEX);
         let crate_ = Crate::test();
 
         assert_eq(
@@ -1079,7 +1080,7 @@ mod test {
 
     #[test]
     fn path() {
-        let session = BuildSession::default();
+        let session = BuildSession::empty(CRATE_INDEX, PACKAGE_INDEX);
         let mut crate_ = Crate::test();
 
         let overarching = crate_.add("overarching", EntityKind::module());
@@ -1102,7 +1103,7 @@ mod test {
 
     #[test]
     fn path_identifier_punctuation_punctuation_identifier_segments() {
-        let session = BuildSession::default();
+        let session = BuildSession::empty(CRATE_INDEX, PACKAGE_INDEX);
         let mut crate_ = Crate::test();
 
         let overarching = crate_.add("overarching", EntityKind::module());

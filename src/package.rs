@@ -26,7 +26,7 @@ use std::{
 pub mod session;
 
 #[derive(PartialEq, Eq, Clone, Copy, index_map::Index)]
-pub struct PackageIndex(usize);
+pub struct PackageIndex(pub usize);
 
 impl fmt::Debug for PackageIndex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -35,8 +35,9 @@ impl fmt::Debug for PackageIndex {
 }
 
 pub struct BuildQueue<'r> {
-    unbuilt_crates: IndexMap<CrateIndex, Crate>,
-    unbuilt_packages: IndexMap<PackageIndex, Package>,
+    /// The crates which have not been built yet.
+    crates: IndexMap<CrateIndex, Crate>,
+    packages: IndexMap<PackageIndex, Package>,
     map: SharedSourceMap,
     reporter: &'r Reporter,
 }
@@ -44,8 +45,8 @@ pub struct BuildQueue<'r> {
 impl<'r> BuildQueue<'r> {
     pub fn new(map: SharedSourceMap, reporter: &'r Reporter) -> Self {
         Self {
-            unbuilt_crates: default(),
-            unbuilt_packages: default(),
+            crates: default(),
+            packages: default(),
             map,
             reporter,
         }
@@ -82,7 +83,7 @@ impl BuildQueue<'_> {
                 dependency_path = path;
 
                 if let Some(dependency) = self
-                    .unbuilt_packages
+                    .packages
                     .values()
                     .find(|package| package.path == dependency_path)
                 {
@@ -188,7 +189,7 @@ impl BuildQueue<'_> {
                 dependency_manifest.crates.dependencies,
                 dependency_path,
             );
-            let dependency_package = self.unbuilt_packages.insert(dependency_package);
+            let dependency_package = self.packages.insert(dependency_package);
 
             // @Note we probably need to disallow referencing the same package through different
             // names from the same package to be able to generate a correct lock-file
@@ -235,7 +236,7 @@ impl BuildQueue<'_> {
 
         if let Some(path) = path {
             let index = self
-                .unbuilt_crates
+                .crates
                 .insert_with(|index| Crate::new(index, package, path, CrateType::Library));
             self[package].library = Some(index);
         }
@@ -267,7 +268,7 @@ impl BuildQueue<'_> {
 
         for path in paths {
             let index = self
-                .unbuilt_crates
+                .crates
                 .insert_with(|index| Crate::new(index, package, path, CrateType::Binary));
             self[package].binaries.push(index);
         }
@@ -319,7 +320,7 @@ impl BuildQueue<'_> {
             manifest.crates.dependencies,
             path.to_owned(),
         );
-        let package = self.unbuilt_packages.insert(package);
+        let package = self.packages.insert(package);
 
         // @Note we probably need to disallow referencing the same package through different
         // names from the same package to be able to generate a correct lock-file
@@ -345,7 +346,7 @@ impl BuildQueue<'_> {
         let package_name = parse_crate_name_from_file_path(&path, self.reporter)?;
 
         let package = Package::single_file_package(package_name, path.clone());
-        let package = self.unbuilt_packages.insert(package);
+        let package = self.packages.insert(package);
 
         let mut resolved_dependencies = HashMap::default();
 
@@ -372,7 +373,7 @@ impl BuildQueue<'_> {
                 core_manifest.crates.dependencies,
                 core_path,
             );
-            let core_package = self.unbuilt_packages.insert(core_package);
+            let core_package = self.packages.insert(core_package);
 
             // @Note we probably need to disallow referencing the same package through different
             // names from the same package to be able to generate a correct lock-fil
@@ -389,7 +390,7 @@ impl BuildQueue<'_> {
         }
 
         let crate_ = self
-            .unbuilt_crates
+            .crates
             .insert_with(|index| Crate::new(index, package, path, crate_type));
         let package = &mut self[package];
         package.binaries.push(crate_);
@@ -399,10 +400,13 @@ impl BuildQueue<'_> {
         Ok(())
     }
 
-    pub fn into_session_and_unbuilt_crates(self) -> (BuildSession, IndexMap<CrateIndex, Crate>) {
+    pub fn finalize(self) -> (BuildSession, IndexMap<CrateIndex, Crate>) {
+        // @Note this is not extensible to multiple binary crates
+        let goal_crate = self.crates.last().unwrap();
+
         (
-            BuildSession::with_packages(self.unbuilt_packages),
-            self.unbuilt_crates,
+            BuildSession::new(self.packages, goal_crate.index, goal_crate.package),
+            self.crates,
         )
     }
 }
@@ -423,13 +427,13 @@ impl Index<CrateIndex> for BuildQueue<'_> {
     type Output = Crate;
 
     fn index(&self, index: CrateIndex) -> &Self::Output {
-        &self.unbuilt_crates[index]
+        &self.crates[index]
     }
 }
 
 impl IndexMut<CrateIndex> for BuildQueue<'_> {
     fn index_mut(&mut self, index: CrateIndex) -> &mut Self::Output {
-        &mut self.unbuilt_crates[index]
+        &mut self.crates[index]
     }
 }
 
@@ -437,13 +441,13 @@ impl Index<PackageIndex> for BuildQueue<'_> {
     type Output = Package;
 
     fn index(&self, index: PackageIndex) -> &Self::Output {
-        &self.unbuilt_packages[index]
+        &self.packages[index]
     }
 }
 
 impl IndexMut<PackageIndex> for BuildQueue<'_> {
     fn index_mut(&mut self, index: PackageIndex) -> &mut Self::Output {
-        &mut self.unbuilt_packages[index]
+        &mut self.packages[index]
     }
 }
 
@@ -522,9 +526,6 @@ impl FromStr for CrateType {
         })
     }
 }
-
-/// The name of the folder containing the build artifacts and the documentation.
-pub const BUILD_FOLDER_NAME: &str = "build";
 
 /// A collection of crates and some metadata.
 ///
@@ -609,12 +610,6 @@ impl Package {
     /// Test if this package is the standard library `core`.
     pub fn is_core(&self) -> bool {
         self.path == core_package_path()
-    }
-
-    /// The path to the folder containing the build artifacts and the documentation.
-    // @Beacon @Bug does not work with single-file packages!
-    pub fn build_path(&self) -> PathBuf {
-        self.path.join(BUILD_FOLDER_NAME)
     }
 }
 
