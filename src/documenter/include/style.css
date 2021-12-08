@@ -1,13 +1,19 @@
 :root {
     --ledge-height: 3em;
+    --ledge-margin-bottom: 1em;
+    /* colors */
+    --mint: #DDFFE7;
+    --spearmint: #98D7C2;
+    --teal-green: #167D7F;
+    --teal: #29A0B1;
 }
 
-* {
+*, *::before, *::after {
     box-sizing: border-box;
 }
 
 html {
-    scroll-padding-top: var(--ledge-height);
+    scroll-padding-top: calc(var(--ledge-height) + var(--ledge-margin-bottom));
 }
 
 body {
@@ -15,8 +21,9 @@ body {
     padding: 0;
 }
 
-.ledge-container {
+.ledge__positioner {
     height: var(--ledge-height);
+    margin-bottom: var(--ledge-margin-bottom);
 }
 
 .ledge {
@@ -28,7 +35,7 @@ body {
     right: 0;
     width: 100%;
     height: var(--ledge-height);
-    background: #1d434d;
+    background: var(--teal-green);
     justify-content: center;
     align-items: center;
     box-shadow: 0 2px 4px #0004;
@@ -36,7 +43,7 @@ body {
     --search-padding-x: 10px;
 }
 
-#search {
+#js-searchbar {
     display: block;
     width: 40em;
     border: none;
@@ -48,21 +55,21 @@ body {
     transition: background-color 50ms linear;
 }
 
-#search:focus {
+#js-searchbar:focus {
     outline: none;
     background-color: #ffffff60;
 }
 
-#search:focus::placeholder {
+#js-searchbar:focus::placeholder {
     color: transparent;
 }
 
-#search.performed {
+/* #js-searchbar.performed {
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
-}
+} */
 
-#search-results-container {
+#search-results__positioner {
     position: relative;
     left: auto;
     right: auto;
@@ -77,21 +84,52 @@ body {
     right: auto;
     width: 100%;
     padding: var(--search-padding-y) var(--search-padding-x);
-    /* @Note maybe white background with light gray border */
     background: white;
-    /* @Temporary */
     box-shadow: 0 2px 4px #0004;
     border-bottom-left-radius: 4px;
     border-bottom-right-radius: 4px;
 }
 
-#search:not(.performed) + #search-results-container {
-    display: none;
+#js-searchbar:not(.performed) + #search-results__positioner {
+    visibility: hidden;
+}
+
+.container {
+    display: flex;
+    justify-content: space-between;
+    margin: 1em auto;
+    width: 90%;
 }
 
 .main {
-    width: 70%;
-    margin: 0 auto;
+    width: 50%;
+}
+
+.sidebar > .title {
+    display: block;
+    font-size: 18px;
+    font-weight: 900;
+    font-family: sans-serif;
+    margin: 0.5em 0;
+    text-decoration: inherit;
+    color: inherit;
+}
+
+.sidebar > ul {
+    list-style-type: none;
+    margin: 0;
+    padding-left: 0.5em;
+}
+
+.sidebar > ul > li {
+    line-height: 1.4;
+}
+
+/* @Task introduce class for robustness */
+.sidebar > ul > li > a {
+    color: inherit;
+    text-decoration: none;
+    font-family: sans-serif;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -113,7 +151,8 @@ h1 > a.current {
     color: rgb(28, 130, 177);
 }
 
-.section-header.code {
+code {
+    font-size: normal;
     font-family: 'DejaVu Sans Mono', 'Source Code Pro', monospace;
 }
 
@@ -124,25 +163,69 @@ h1 > a.current {
 }
 
 :target {
-    background-color: rgb(255, 255, 117);
+    background-color: var(--spearmint);
 }
 
-.section-header {
+.heading {
     position: relative;
+    margin: 0;
+    padding: 0.5em 0;
 }
 
-.section-header:hover::before {
+.heading:hover::before {
     content: '§';
     position: absolute;
     left: -1em;
 }
 
-.section-header a {
+.heading a:not(.source), code > a {
     color: inherit;
     text-decoration: inherit;
 }
 
-a.reference {
-    color: rgb(101, 148, 13);
+.heading.binding {
+    display: flex;
+    justify-content: space-between;
+
+    /* @Beacon @Beacon @Beacon @Temporary */
+    /* border: 1px solid red; */
+}
+
+/* @Note this still looks ugly! */
+.heading a.source {
+    display: block;
+    margin: auto 0;
+    font-weight: bold;
+    font-size: 80%;
+    color: #bbb;
     text-decoration: inherit;
+}
+
+/* @Beacon @Beacon @Beacon @Temporary  */
+/* section {
+    border: 1px solid blue;
+} */
+
+section > * {
+    margin-left: 1em;
+}
+
+a.reference {
+    color: var(--teal);
+    text-decoration: inherit;
+}
+
+p {
+    padding-left: 1em;
+    width: 90%;
+    line-height: 1.5;
+}
+
+/* @Temporary */
+.attributes {
+    color: gray;
+}
+
+.keyword {
+    color: var(--teal-green); 
 }

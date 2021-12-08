@@ -12,7 +12,6 @@ impl<'a> Node<'a> {
 
     pub fn render(self, output: &mut String) {
         match self.0 {
-            NodeKind::Document(document) => document.render(output),
             NodeKind::Element(element) => element.render(output),
             NodeKind::VoidElement(element) => element.render(output),
             NodeKind::Text(text) => {
@@ -20,12 +19,6 @@ impl<'a> Node<'a> {
             }
             NodeKind::Verbatim(verbatim) => *output += &verbatim,
         }
-    }
-}
-
-impl<'a> From<Document<'a>> for Node<'a> {
-    fn from(document: Document<'a>) -> Self {
-        Self(NodeKind::Document(document))
     }
 }
 
@@ -48,7 +41,6 @@ impl<'a, S: Into<Cow<'a, str>>> From<S> for Node<'a> {
 }
 
 enum NodeKind<'a> {
-    Document(Document<'a>),
     Element(Element<'a>),
     VoidElement(VoidElement<'a>),
     Text(Cow<'a, str>),

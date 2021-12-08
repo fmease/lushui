@@ -1,25 +1,46 @@
-use crate::{format::DisplayWith, hir, package::BuildSession, resolver::Crate};
+use super::{
+    declaration_id,
+    node::{Attributable, Element},
+};
+use crate::{
+    format::DisplayWith,
+    hir::{self, DeclarationIndex},
+    package::BuildSession,
+    resolver::Crate,
+};
 use std::default::default;
 
 pub(super) fn format_expression(
     expression: &hir::Expression,
+    depth: usize,
     crate_: &Crate,
     session: &BuildSession,
 ) -> String {
-    let mut formatter = Formatter::new(crate_, session);
+    let mut formatter = Formatter::new(depth, crate_, session);
     formatter.format_expression(expression);
     formatter.finish()
 }
 
+pub(super) fn declaration_url_fragment(
+    index: DeclarationIndex,
+    crate_: &Crate,
+    session: &BuildSession,
+) -> String {
+    Formatter::new(0, crate_, session).declaration_url_fragment(index)
+}
+
 struct Formatter<'a> {
+    // @Note bad name
+    depth: usize,
     crate_: &'a Crate,
     session: &'a BuildSession,
     output: String,
 }
 
 impl<'a> Formatter<'a> {
-    fn new(crate_: &'a Crate, session: &'a BuildSession) -> Self {
+    fn new(depth: usize, crate_: &'a Crate, session: &'a BuildSession) -> Self {
         Self {
+            depth,
             crate_,
             session,
             output: String::new(),
@@ -209,17 +230,90 @@ impl<'a> Formatter<'a> {
         }
     }
 
+    fn module_url_fragment(&self, index: DeclarationIndex) -> String {
+        std::iter::repeat("..".into())
+            .take(self.depth)
+            .chain(
+                self.crate_(index)
+                    .local_path_segments(index.local_index_unchecked())
+                    .into_iter()
+                    .map(urlencoding::encode),
+            )
+            .chain(Some("index.html".into()))
+            .intersperse("/".into())
+            .collect()
+    }
+
+    fn declaration_url_fragment(&self, index: DeclarationIndex) -> String {
+        use crate::entity::EntityKind::*;
+
+        let binder = self.look_up(index).source.as_str();
+
+        match self.look_up(index).kind {
+            Use { .. } => "#".to_string(), // @Task
+            Module { .. } => self.module_url_fragment(index),
+            Function { .. } | Intrinsic { .. } | DataType { .. } => {
+                let module_link = self.module_url_fragment(self.parent(index).unwrap());
+                format!("{module_link}#{}", declaration_id(binder))
+            }
+            Constructor { .. } => {
+                let data_type = self.parent(index).unwrap();
+                let module_link = self.module_url_fragment(self.parent(data_type).unwrap());
+
+                format!(
+                    "{module_link}#{}",
+                    declaration_id(&format!("{}.{}", self.look_up(data_type).source, binder))
+                )
+            }
+            _ => unreachable!(),
+        }
+    }
+
     fn format_binder(&mut self, binder: &hir::Identifier) {
         if let Some(index) = binder.declaration_index() {
+            let declaration_url = self.declaration_url_fragment(index);
+
+            // @Task don't use absolute_path for this but don't use local_path either
+            // (just something without the `extern`/`core` prefix)
             let path = self.crate_.absolute_path_to_string(index, self.session);
 
-            self.write(r##"<a href="#" class="reference" title=""##);
-            self.write(&path);
-            self.write(r#"">"#);
-            self.write(&binder.to_string());
-            self.write("</a>");
+            Element::new("a")
+                .attribute("href", declaration_url)
+                .class("reference")
+                .attribute("title", path)
+                .child(binder.to_string())
+                .render(&mut self.output);
         } else {
             self.write(&binder.to_string());
+        }
+    }
+
+    // @Task move look_up{_parent} to some utility module (one which offers functions relying on &Crate together with &BuildSession)
+    // @Note look_up is copy-pasted from Resolver::_
+
+    fn crate_(&self, index: DeclarationIndex) -> &Crate {
+        if index.is_local(self.crate_) {
+            self.crate_
+        } else {
+            &self.session[index.crate_index()]
+        }
+    }
+
+    fn look_up(&self, index: DeclarationIndex) -> &crate::entity::Entity {
+        match index.local_index(self.crate_) {
+            Some(index) => &self.crate_[index],
+            None => &self.session[index],
+        }
+    }
+
+    fn parent(&self, index: DeclarationIndex) -> Option<DeclarationIndex> {
+        match index.local_index(self.crate_) {
+            Some(index) => self.crate_[index]
+                .parent
+                .map(|parent| self.crate_.global_index(parent)),
+            None => self.session[index]
+                .parent
+                .map(|parent| DeclarationIndex::new(index.crate_index(), parent)),
         }
     }
 }

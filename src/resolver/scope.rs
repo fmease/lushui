@@ -113,6 +113,21 @@ impl Crate {
         session[self.package].is_core() && self.is_library()
     }
 
+    pub fn dependencies<'s>(
+        &self,
+        session: &'s BuildSession,
+    ) -> impl Iterator<Item = CrateIndex> + 's {
+        let package = &session[self.package];
+        // @Question should we forbid direct dependencies with the same name as the current package
+        // (in a prior step)?
+        match self.type_ {
+            CrateType::Library => None,
+            CrateType::Binary => package.library,
+        }
+        .into_iter()
+        .chain(package.dependencies.values().copied())
+    }
+
     pub(super) fn dependency(
         &self,
         name: &CrateName,

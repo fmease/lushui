@@ -24,6 +24,14 @@ static SCRIPT_CONTENT: &str = include_str!("documenter/include/script.js");
 const SCRIPT_FILE_NAME: &str = "script.min.js";
 const SEARCH_INDEX_FILE_NAME: &str = "search-index.min.js";
 
+// @Temporary
+static LOREM_IPSUM: &str = "\
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, \
+sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. \
+Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. \
+Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. \
+Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.";
+
 const DEVELOPING: bool = true;
 
 pub struct Documenter<'a> {
@@ -32,7 +40,7 @@ pub struct Documenter<'a> {
     #[allow(dead_code)]
     reporter: &'a Reporter,
     pages: Vec<Page<'a>>,
-    bindings: Vec<String>,
+    bindings: Vec<hir::DeclarationIndex>,
     destination: PathBuf,
 }
 
@@ -50,17 +58,9 @@ impl<'a> Documenter<'a> {
         }
     }
 
-    // @Question inline?
-    fn module_folder_path(&self, path_segments: &VecDeque<&str>) -> PathBuf {
-        let mut path = self.destination.clone();
-        // @Bug modules names that are punctuation instead of words generally cannot
-        // be used as paths on Windows! @Task implement an escaping logic!
-        path.extend(path_segments);
-        path
-    }
-
     pub fn document(&mut self, declaration: &hir::Declaration) -> Result<()> {
         self.document_declaration(declaration)?;
+
         self.collect_all_bindings(declaration);
         self.write()?;
 
@@ -98,8 +98,22 @@ impl<'a> Documenter<'a> {
                 .join(SEARCH_INDEX_FILE_NAME),
             {
                 let mut search_index = String::from("window.searchIndex=[");
-                for binding in &self.bindings {
-                    search_index += &format!("{binding:?}");
+                for &index in &self.bindings {
+                    // @Beacon @Task don't use the to_string variant, so we don't need to split() JS (which would be
+                    // incorrect on top of that!)
+                    let path = self.crate_.local_path_to_string(
+                        index.local_index(self.crate_).unwrap(),
+                        self.session,
+                    );
+
+                    search_index += "[";
+                    search_index += &format!("{path:?}");
+                    search_index += ",";
+                    search_index += &format!(
+                        "{:?}",
+                        format::declaration_url_fragment(index, self.crate_, self.session)
+                    );
+                    search_index += "]";
                     search_index += ",";
                 }
                 search_index += "];";
@@ -109,7 +123,15 @@ impl<'a> Documenter<'a> {
         .unwrap();
 
         for page in &self.pages {
-            let path = self.module_folder_path(&page.module_path_segments);
+            let mut path = self.destination.clone();
+
+            for segment in &page.module_path_segments {
+                // *URL*-encoding the *folder names* also ensures that we always
+                // create a valid Windows file path:
+                // https://docs.microsoft.com/en-us/windows/win32/fileio/naming-a-file#file-and-directory-names
+                // @Update @Bug this double-escapes, right??
+                path.extend_one(&*urlencoding::encode(segment));
+            }
 
             if !path.exists() {
                 fs::create_dir(&path).unwrap();
@@ -124,18 +146,14 @@ impl<'a> Documenter<'a> {
     // @Task merge this with `document_declaration` (once we move out `generate_module_page` out of it!)
     // to avoid traversing the crate graph too often
     fn collect_all_bindings(&mut self, declaration: &hir::Declaration) {
-        let local_path = |identifier: &hir::Identifier| {
-            let index = identifier.local_declaration_index(self.crate_).unwrap();
-            // @Beacon @Task don't use the to_string variant!
-            self.crate_.local_path_to_string(index, self.session)
-        };
-
         match &declaration.value {
             hir::DeclarationKind::Function(function) => {
-                self.bindings.push(local_path(&function.binder));
+                self.bindings
+                    .push(function.binder.declaration_index().unwrap());
             }
             hir::DeclarationKind::Data(type_) => {
-                self.bindings.push(local_path(&type_.binder));
+                self.bindings
+                    .push(type_.binder.declaration_index().unwrap());
 
                 if let Some(constructors) = &type_.constructors {
                     for declaration in constructors {
@@ -144,10 +162,12 @@ impl<'a> Documenter<'a> {
                 }
             }
             hir::DeclarationKind::Constructor(constructor) => {
-                self.bindings.push(local_path(&constructor.binder));
+                self.bindings
+                    .push(constructor.binder.declaration_index().unwrap());
             }
             hir::DeclarationKind::Module(module) => {
-                self.bindings.push(local_path(&module.binder));
+                self.bindings
+                    .push(module.binder.declaration_index().unwrap());
 
                 for declaration in &module.declarations {
                     self.collect_all_bindings(declaration);
@@ -173,11 +193,88 @@ impl<'a> Documenter<'a> {
         Ok(())
     }
 
+    // @Note this is an ugly abstraction
+    fn collect_subsections<'m>(
+        &mut self,
+        module: &'m hir::Module,
+        depth: usize,
+    ) -> Subsections<'m> {
+        let mut subsections = Subsections::default();
+
+        for declaration in &module.declarations {
+            match &declaration.value {
+                hir::DeclarationKind::Function(function) => {
+                    subsections.functions.push(Function {
+                        binder: function.binder.as_str(),
+                        type_: format::format_expression(
+                            &function.type_annotation,
+                            depth,
+                            self.crate_,
+                            self.session,
+                        ),
+                    });
+                }
+                // @Task collect constructors
+                hir::DeclarationKind::Data(type_) => {
+                    let mut formatted_constructors = Vec::new();
+
+                    if let Some(constructors) = &type_.constructors {
+                        for declaration in constructors {
+                            let constructor = declaration.constructor().unwrap();
+
+                            formatted_constructors.push(Constructor {
+                                binder: constructor.binder.as_str(),
+                                type_: format::format_expression(
+                                    &constructor.type_annotation,
+                                    depth,
+                                    self.crate_,
+                                    self.session,
+                                ),
+                            });
+                        }
+                    }
+
+                    subsections.types.push(Type {
+                        // @Task write a custom formatter for this which prints links to the documentation
+                        // of the specific attributes
+                        attributes: declaration
+                            .attributes
+                            .iter()
+                            .map(ToString::to_string)
+                            .intersperse(" ".into())
+                            .collect::<String>(),
+                        binder: type_.binder.as_str(),
+                        type_: format::format_expression(
+                            &type_.type_annotation,
+                            depth,
+                            self.crate_,
+                            self.session,
+                        ),
+                        constructors: formatted_constructors,
+                    });
+                }
+                hir::DeclarationKind::Module(module) => {
+                    subsections.modules.push(Module {
+                        binder: module.binder.as_str(),
+                        description: "XXX".to_owned(),
+                    });
+                }
+                // @Task re-exports, only public//(public crate) for --doc-priv-decls??) ones!
+                // hir::DeclarationKind::Use(_) => todo!(),
+                _ => {}
+            }
+        }
+
+        subsections
+    }
+
     fn generate_module_page(&mut self, module: &hir::Module, attributes: &lowered_ast::Attributes) {
         let index = module.binder.local_declaration_index(self.crate_).unwrap();
         let module_path_segments = self.crate_.local_path_segments(index);
         let module_path = self.crate_.local_path_to_string(index, self.session);
-        let documentation_folder = "../".repeat(module_path_segments.len());
+        // @Note bad name
+        let depth = module_path_segments.len();
+        let documentation_folder = "../".repeat(depth);
 
         let mut head = Element::new("head")
             .child(VoidElement::new("meta").attribute("charset", "utf-8"))
@@ -212,10 +309,7 @@ impl<'a> Documenter<'a> {
                 Element::new("script")
                     .attribute(
                         "src",
-                        format!(
-                            "{}{SEARCH_INDEX_FILE_NAME}",
-                            "../".repeat(module_path_segments.len() - 1)
-                        ),
+                        format!("{}{SEARCH_INDEX_FILE_NAME}", "../".repeat(depth - 1)),
                     )
                     .boolean_attribute("defer"),
             );
@@ -231,11 +325,99 @@ impl<'a> Documenter<'a> {
         let mut body = Element::new("body");
 
         // ledge
-        body.add_child(Node::verbatim(r#"<div class="ledge-container"><div class="ledge"><div><input type="search" id="search" placeholder="Search…" autocomplete="off"><div id="search-results-container"><div id="search-results"></div></div></div></div></div>"#));
+        body.add_child(
+            Element::new("div").class("ledge__positioner").child(
+                Element::new("div").class("ledge").child(
+                    Element::new("div")
+                        .child(
+                            VoidElement::new("input")
+                                .attribute("type", "search")
+                                .attribute("id", "js-searchbar")
+                                .attribute("placeholder", "Search…")
+                                .attribute("autocomplete", "off")
+                                .attribute("data-url-prefix", documentation_folder),
+                        )
+                        .child(
+                            Element::new("div")
+                                .attribute("id", "js-search-results")
+                                .child(
+                                    Element::new("div")
+                                        .attribute("id", "search-results__positioner"),
+                                ),
+                        ),
+                ),
+            ),
+        );
+
+        let mut container = Element::new("div").class("container");
+
+        let subsections = self.collect_subsections(module, depth);
+
+        // table of contents
+        {
+            let mut table_of_contents = Element::new("div").class("sidebar");
+
+            if !subsections.modules.is_empty() {
+                table_of_contents.add_child(
+                    Element::new("a")
+                        .attribute("href", format!("#{}", Subsections::MODULES))
+                        .class("title")
+                        .child(Subsections::HEADING_MODULES),
+                );
+            }
+
+            if !subsections.types.is_empty() {
+                table_of_contents.add_child(
+                    Element::new("a")
+                        .attribute("href", format!("#{}", Subsections::TYPES))
+                        .class("title")
+                        .child(Subsections::HEADING_TYPES),
+                );
+
+                let mut list = Element::new("ul");
+
+                for type_ in &subsections.types {
+                    list.add_child(
+                        Element::new("li").child(
+                            Element::new("a")
+                                .attribute("href", format!("#{}", declaration_id(type_.binder)))
+                                .child(type_.binder),
+                        ),
+                    );
+                }
+
+                table_of_contents.add_child(list);
+            }
+
+            if !subsections.functions.is_empty() {
+                table_of_contents.add_child(
+                    Element::new("a")
+                        .attribute("href", format!("#{}", Subsections::FUNCTIONS))
+                        .class("title")
+                        .child(Subsections::HEADING_FUNCTIONS),
+                );
+
+                let mut list = Element::new("ul");
+
+                for function in &subsections.functions {
+                    list.add_child(
+                        Element::new("li").child(
+                            Element::new("a")
+                                .attribute("href", format!("#{}", declaration_id(function.binder)))
+                                .child(function.binder),
+                        ),
+                    );
+                }
+
+                table_of_contents.add_child(list);
+            }
+
+            container.add_child(table_of_contents);
+        }
 
         // main content
         {
-            let mut main = Element::new("div").attribute("class", "main");
+            let mut main = Element::new("div").class("main");
 
             // section header
             {
@@ -249,17 +431,14 @@ impl<'a> Documenter<'a> {
                 section_header.add_child(" ");
 
                 for (position, &path_segment) in module_path_segments.iter().enumerate() {
-                    let is_last_segment = position + 1 == module_path_segments.len();
+                    let is_last_segment = position + 1 == depth;
 
                     let mut anchor = Element::new("a").attribute(
                         "href",
-                        format!(
-                            "{}index.html",
-                            "../".repeat(module_path_segments.len() - 1 - position)
-                        ),
+                        format!("{}index.html", "../".repeat(depth - 1 - position)),
                     );
                     if is_last_segment {
-                        anchor.add_attribute("class", "current");
+                        anchor.add_class("current");
                     }
                     anchor.add_child(path_segment);
 
@@ -295,46 +474,12 @@ impl<'a> Documenter<'a> {
                 }
 
                 main.add_child(paragraph);
+
+                // @Temporary
+                main.add_child(Element::new("p").child(LOREM_IPSUM));
             }
 
-            let mut subsections = Subsections::default();
-
-            for declaration in &module.declarations {
-                match &declaration.value {
-                    hir::DeclarationKind::Function(function) => {
-                        subsections.functions.push(Function {
-                            binder: function.binder.as_str(),
-                            type_: format::format_expression(
-                                &function.type_annotation,
-                                self.crate_,
-                                self.session,
-                            ),
-                        });
-                    }
-                    // @Task collect constructors
-                    hir::DeclarationKind::Data(type_) => {
-                        subsections.types.push(Type {
-                            binder: type_.binder.as_str(),
-                            type_: format::format_expression(
-                                &type_.type_annotation,
-                                self.crate_,
-                                self.session,
-                            ),
-                        });
-                    }
-                    hir::DeclarationKind::Module(module) => {
-                        subsections.modules.push(Module {
-                            binder: module.binder.as_str(),
-                            description: "XXX".to_owned(),
-                        });
-                    }
-                    // @Task re-exports, only public//(public crate) for --doc-priv-decls??) ones!
-                    // hir::DeclarationKind::Use(_) => todo!(),
-                    _ => {}
-                }
-            }
-
-            fn section_header<'a>(
+            fn heading<'a>(
                 level: u8,
                 id: impl Into<Cow<'a, str>>,
                 content: impl Into<Cow<'a, str>>,
@@ -346,7 +491,7 @@ impl<'a> Documenter<'a> {
                 ) -> Element<'a> {
                     Element::new(format!("h{level}"))
                         .attribute("id", id.clone())
-                        .attribute("class", "section-header")
+                        .class("heading")
                         .child(
                             Element::new("a")
                                 .attribute("href", format!("#{id}"))
@@ -357,7 +502,11 @@ impl<'a> Documenter<'a> {
             }
 
             if !subsections.modules.is_empty() {
-                main.add_child(section_header(2, "modules", "Modules"));
+                main.add_child(heading(
+                    2,
+                    Subsections::MODULES,
+                    Subsections::HEADING_MODULES,
+                ));
 
                 let mut table = Element::new("table");
 
@@ -367,9 +516,14 @@ impl<'a> Documenter<'a> {
                             .child(
                                 Element::new("td").child(
                                     Element::new("a")
-                                        // @Task url-encode the binder (it may be punctuation!)
-                                        .attribute("href", format!("{}/index.html", module.binder))
-                                        .attribute("class", "identifier")
+                                        .attribute(
+                                            "href",
+                                            format!(
+                                                "{}/index.html",
+                                                urlencoding::encode(module.binder)
+                                            ),
+                                        )
+                                        .class("identifier")
                                         .child(module.binder),
                                 ),
                             )
@@ -381,45 +535,151 @@ impl<'a> Documenter<'a> {
             }
 
             if !subsections.types.is_empty() {
-                main.add_child(section_header(2, "types", "Data Types"));
+                let mut section = Element::new("section").child(heading(
+                    2,
+                    Subsections::TYPES,
+                    Subsections::HEADING_TYPES,
+                ));
 
                 for type_ in subsections.types {
-                    // @Task URL-escape the binder here!
-                    let link = format!(
-                        "type.{}",
-                        html_escape::encode_quoted_attribute(type_.binder),
+                    let id = declaration_id(type_.binder);
+
+                    section.add_child(
+                        heading(3, id.clone(), type_.binder).class("binding").child(
+                            Element::new("a")
+                                .attribute("href", "#")
+                                .class("source")
+                                .child("source"),
+                        ),
                     );
 
-                    main.add_child(
-                        section_header(3, link, type_.binder)
-                            .class("code")
+                    section.add_child(
+                        Element::new("code")
+                            .child(
+                                Element::new("div")
+                                    .class("attributes")
+                                    .child(type_.attributes),
+                            )
+                            .child(Element::new("span").class("keyword").child("data "))
+                            .child(
+                                Element::new("a")
+                                    .attribute("href", format!("#{id}"))
+                                    .child(type_.binder),
+                            )
                             .child(": ")
                             .child(Node::verbatim(type_.type_)),
                     );
+
+                    // @Temporary
+                    section.add_child(Element::new("p").child(LOREM_IPSUM));
+
+                    // @Task don't do that for abstract or intrinsic types
+                    // @Question what if there are no constructors?
+                    let mut subsection = Element::new("section").child(heading(
+                        4,
+                        format!("constructors.{}", type_.binder),
+                        "Constructors",
+                    ));
+
+                    for constructor in type_.constructors {
+                        let id =
+                            declaration_id(&format!("{}.{}", type_.binder, constructor.binder));
+
+                        subsection.add_child(
+                            heading(5, id.clone(), constructor.binder)
+                                .class("binding")
+                                .child(
+                                    Element::new("a")
+                                        .attribute("href", "#")
+                                        .class("source")
+                                        .child("source"),
+                                ),
+                        );
+
+                        subsection.add_child(
+                            Element::new("code")
+                                .child(
+                                    Element::new("a")
+                                        .attribute("href", format!("#{id}"))
+                                        .child(constructor.binder),
+                                )
+                                .child(": ")
+                                .child(Node::verbatim(constructor.type_)),
+                        );
+
+                        // @Temporary
+                        subsection.add_child(Element::new("p").child(LOREM_IPSUM));
+                    }
+
+                    section.add_child(subsection);
                 }
+
+                main.add_child(section)
             }
 
             if !subsections.functions.is_empty() {
-                main.add_child(section_header(2, "functions", "Functions"));
+                let mut section = Element::new("section").child(heading(
+                    2,
+                    Subsections::FUNCTIONS,
+                    Subsections::HEADING_FUNCTIONS,
+                ));
 
                 for function in subsections.functions {
-                    // @Task URL-escape the binder here!
-                    let link = format!(
-                        "function.{}",
-                        html_escape::encode_quoted_attribute(function.binder),
+                    let id = declaration_id(function.binder);
+
+                    section.add_child(
+                        heading(3, id.clone(), function.binder)
+                            .class("binding")
+                            .child(
+                                Element::new("a")
+                                    .attribute("href", "#")
+                                    .class("source")
+                                    .child("source"),
+                            ),
                     );
 
-                    main.add_child(
-                        section_header(3, link, function.binder)
-                            .class("code")
+                    section.add_child(
+                        Element::new("code")
+                            .child(
+                                Element::new("a")
+                                    .attribute("href", format!("#{id}"))
+                                    .child(function.binder),
+                            )
                             .child(": ")
                             .child(Node::verbatim(function.type_)),
                     );
+
+                    // @Temporary
+                    section.add_child(Element::new("p").child(LOREM_IPSUM));
                 }
+
+                main.add_child(section);
             }
 
-            body.add_child(main);
+            container.add_child(main);
         }
+
+        // crates side bar
+        {
+            let mut sidebar = Element::new("div").class("sidebar");
+            sidebar.add_child(Element::new("div").class("title").child("Crates"));
+
+            sidebar.add_child(Element::new("em").child("not yet implemented"));
+            // let mut crate_list = Element::new("ul");
+
+            // for dependency in self.crate_.dependencies(&self.session) {
+            //     dbg!();
+
+            //     crate_list.add_child(
+            //         Element::new("li").child(self.session[dependency].name(self.session).as_str()),
+            //     );
+            // }
+
+            // sidebar.add_child(crate_list);
+            container.add_child(sidebar);
+        }
+
+        body.add_child(container);
 
         let mut html = Element::new("html");
         html.add_attribute("lang", "en");
@@ -447,12 +707,28 @@ struct Subsections<'a> {
     functions: Vec<Function<'a>>,
 }
 
+impl Subsections<'_> {
+    const HEADING_MODULES: &'static str = "Modules";
+    const MODULES: &'static str = "modules";
+    const HEADING_TYPES: &'static str = "Data Types";
+    const TYPES: &'static str = "types";
+    const HEADING_FUNCTIONS: &'static str = "Functions";
+    const FUNCTIONS: &'static str = "functions";
+}
+
 struct Module<'a> {
     binder: &'a str,
     description: String,
 }
 
 struct Type<'a> {
+    attributes: String,
+    binder: &'a str,
+    type_: String,
+    constructors: Vec<Constructor<'a>>,
+}
+
+struct Constructor<'a> {
     binder: &'a str,
     type_: String,
 }
@@ -467,4 +743,8 @@ struct Page<'a> {
     module_path_segments: VecDeque<&'a str>,
     // @Temporary
     content: String,
+}
+
+fn declaration_id(binder: &str) -> String {
+    format!("decl.{}", urlencoding::encode(binder))
 }

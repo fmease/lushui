@@ -2,15 +2,18 @@
     'use strict';
 
     /** @type {HTMLInputElement} */
-    const searchbar = document.getElementById('search');
+    const searchbar = document.getElementById('js-searchbar');
     /** @type {HTMLDivElement} */
-    const searchResults = document.getElementById('search-results');
+    const searchResults = document.getElementById('js-search-results');
+
+    /** @type {string} */
+    const urlPrefix = searchbar.dataset.urlPrefix;
 
     /**
      * @param {string} query 
      * @returns {string[]}
      */
-    const search = (query) => window.searchIndex.filter(item => item.toLowerCase().includes(query.trim().toLowerCase()));
+    const search = (query) => window.searchIndex.filter(([path, _url]) => path.toLowerCase().includes(query.trim().toLowerCase()));
 
     document.addEventListener('keyup', event => {
         if (event.key === 's') {
@@ -21,7 +24,9 @@
     searchbar.addEventListener('keyup', event => {
         if (event.key === 'Escape') {
             searchbar.blur();
+            searchbar.classList.remove('performed');
         } else if (event.key === 'Enter') {
+            // @Question is this responsive enough?
             while (searchResults.firstChild) {
                 searchResults.removeChild(searchResults.lastChild);
             }
@@ -31,9 +36,12 @@
                 // @Temporary 
                 searchResults.append('*No results*');
             } else {
-                for (const result of results) {
+                for (const [path, url] of results) {
                     const row = document.createElement('div');
-                    row.textContent = result;
+                    const link = document.createElement('a');
+                    link.href = urlPrefix + url;
+                    link.textContent = path;
+                    row.appendChild(link);
                     searchResults.appendChild(row);
                 }
             }
@@ -41,7 +49,7 @@
         }
     });
 
-    searchbar.addEventListener('blur', _event => {
-        searchbar.classList.remove('performed');
-    });
+    // searchbar.addEventListener('blur', _event => {
+    //     searchbar.classList.remove('performed');
+    // });
 }

@@ -261,7 +261,12 @@ impl Index<DeclarationIndex> for BuildSession {
     type Output = Entity;
 
     fn index(&self, index: DeclarationIndex) -> &Self::Output {
-        &self.crates[&index.crate_index()][index.local_index_unchecked()]
+        let crate_ = index.crate_index();
+        let crate_ = self.crates.get(&crate_).unwrap_or_else(|| {
+            panic!("attempt to look up unbuilt or invalid crate {crate_:?} in the build session")
+        });
+
+        &crate_[index.local_index_unchecked()]
     }
 }
 
