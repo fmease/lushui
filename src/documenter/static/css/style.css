@@ -1,3 +1,5 @@
+@import 'fonts.css';
+
 :root {
     --ledge-height: 3em;
     --ledge-margin-bottom: 1em;
@@ -6,6 +8,8 @@
     --spearmint: #98D7C2;
     --teal-green: #167D7F;
     --teal: #29A0B1;
+    --sans-serif: 'Open Sans', sans-serif;
+    --monospace: 'Source Code Pro', monospace;
 }
 
 *, *::before, *::after {
@@ -19,6 +23,8 @@ html {
 body {
     margin: 0;
     padding: 0;
+    font-family: var(--sans-serif);
+    font-size: 16px;
 }
 
 .ledge__positioner {
@@ -64,10 +70,10 @@ body {
     color: transparent;
 }
 
-/* #js-searchbar.performed {
+#js-searchbar.performed {
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
-} */
+}
 
 #search-results__positioner {
     position: relative;
@@ -76,7 +82,7 @@ body {
     width: 100%;
 }
 
-#search-results {
+#js-search-results {
     display: block;
     position: absolute;
     top: 0;
@@ -109,7 +115,6 @@ body {
     display: block;
     font-size: 18px;
     font-weight: 900;
-    font-family: sans-serif;
     margin: 0.5em 0;
     text-decoration: inherit;
     color: inherit;
@@ -129,103 +134,109 @@ body {
 .sidebar > ul > li > a {
     color: inherit;
     text-decoration: none;
-    font-family: sans-serif;
 }
 
 h1, h2, h3, h4, h5, h6 {
-    font-family: sans-serif;
+    margin: 0;
+    padding: 0.5em 0;
+    font-weight: bold;
 }
 
-/* @Task don't use h1 stuff for this but sth like .module-path/.path-breadcrumb-bar */
-
-h1 > a {
+h1 a, .subheading a {
     color: inherit;
     text-decoration: inherit;
 }
 
-h1 > a:hover {
+h1 a:hover {
+    /* @Note inconsistent with .subheading.declaration:hover (no underline) */
     text-decoration: underline;
 }
 
-h1 > a.current {
+h1 a.active {
     color: rgb(28, 130, 177);
 }
 
-code {
-    font-size: normal;
-    font-family: 'DejaVu Sans Mono', 'Source Code Pro', monospace;
-}
-
-.identifier {
-    font-family: sans-serif;
-    text-decoration: inherit;
-    color: inherit;
-}
-
 :target {
-    background-color: var(--spearmint);
+    animation: flash 0.5s ease-in;
+    animation-fill-mode: forwards;
+    border-radius: 4px;
 }
 
-.heading {
+@keyframes flash {
+    0% {
+        background-color: var(--spearmint);
+    }
+    
+    100% {
+        background-color: #eee;
+    }
+}
+
+h1 {
+    font-size: 24px;
+}
+
+h2 {
+    font-size: 20px;
+}
+
+h3 {
+    font-size: 19px;
+}
+
+h4 {
+    font-size: 18px;
+}
+
+h5 {
+    font-size: 17px;
+}
+
+.subheading {
     position: relative;
-    margin: 0;
-    padding: 0.5em 0;
 }
 
-.heading:hover::before {
+.subheading:not(.declaration) {
+    border-top: 1px solid #ddd;
+}
+
+.subheading > a:first-of-type:hover::before {
     content: '§';
     position: absolute;
     left: -1em;
 }
 
-.heading a:not(.source), code > a {
-    color: inherit;
-    text-decoration: inherit;
+.subheading.declaration {
+    font-weight: normal;
+    font-family: var(--monospace);
 }
 
-.heading.binding {
-    display: flex;
-    justify-content: space-between;
-
-    /* @Beacon @Beacon @Beacon @Temporary */
-    /* border: 1px solid red; */
-}
-
-/* @Note this still looks ugly! */
-.heading a.source {
-    display: block;
-    margin: auto 0;
+.subheading.declaration a.binder {
     font-weight: bold;
-    font-size: 80%;
-    color: #bbb;
-    text-decoration: inherit;
 }
 
-/* @Beacon @Beacon @Beacon @Temporary  */
-/* section {
-    border: 1px solid blue;
-} */
+.indent {
+    margin-left: 2em;
+}
 
-section > * {
-    margin-left: 1em;
+section {
+    padding: 0.5em 0;
 }
 
 a.reference {
-    color: var(--teal);
+    color: #1d90a1;
     text-decoration: inherit;
 }
 
 p {
-    padding-left: 1em;
-    width: 90%;
-    line-height: 1.5;
+    /* @Question hoist the line-height? */
+    line-height: 1.7;
+    margin: 0.25em 0 0.25em 2em;
+    padding: 0;
+    text-align: justify;
 }
 
 /* @Temporary */
 .attributes {
     color: gray;
-}
-
-.keyword {
-    color: var(--teal-green); 
 }

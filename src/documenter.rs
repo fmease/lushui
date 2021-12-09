@@ -1,5 +1,22 @@
 //! The documentation generator.
 
+// @Tasks:
+// * collapsible declaration descriptions
+// * "collapse all" functionality
+// * descriptions extracted from documentation comments
+// * link to source (generate html files per source file)
+// * list of all crates (self/goal, direct deps, transitive deps)
+// * search functionality using levenshtein
+// * description next to search result
+// * good looking fonts
+// * manually switching between a light and a dark mode + automatic mode detection
+// * asciidoc integration
+// * print attributes
+// * de-lower parameter lists
+// * add fonts via @font-face and use them (properly define font-weights of h1 etc)
+// * convert ttfs to woffs (1 + 2) and change @font-faces
+// * fill the COPYRIGHT file
+
 use crate::{
     diagnostics::Reporter,
     error::Result,
@@ -13,15 +30,13 @@ use node::Document;
 use node::{Attributable, Element, Node, VoidElement};
 use std::{borrow::Cow, collections::VecDeque, default::default, fs, path::PathBuf};
 
+mod fonts;
 mod format;
 mod node;
 
 const DOCUMENTATION_FOLDER_NAME: &str = "doc";
-
-static STYLE_SHEET_CONTENT: &str = include_str!("documenter/include/style.css");
-const STYLE_SHEET_FILE_NAME: &str = "style.min.css";
-static SCRIPT_CONTENT: &str = include_str!("documenter/include/script.js");
-const SCRIPT_FILE_NAME: &str = "script.min.js";
+const MAIN_STYLE_SHEET_FILE_NAME: &str = "style.min.css";
+const MAIN_SCRIPT_FILE_NAME: &str = "script.min.js";
 const SEARCH_INDEX_FILE_NAME: &str = "search-index.min.js";
 
 // @Temporary
@@ -60,7 +75,6 @@ impl<'a> Documenter<'a> {
 
     pub fn document(&mut self, declaration: &hir::Declaration) -> Result<()> {
         self.document_declaration(declaration)?;
-
         self.collect_all_bindings(declaration);
         self.write()?;
 
@@ -77,19 +91,32 @@ impl<'a> Documenter<'a> {
             fs::create_dir_all(&self.destination).unwrap();
         }
 
-        let style_sheet_path = self.destination.join(STYLE_SHEET_FILE_NAME);
-        let script_path = self.destination.join(SCRIPT_FILE_NAME);
+        {
+            let path = self.destination.join(MAIN_STYLE_SHEET_FILE_NAME);
+            if DEVELOPING || !path.exists() {
+                static STYLE_SHEET: &str = include_str!("documenter/static/css/style.css");
+                fs::write(path, minifier::css::minify(STYLE_SHEET).unwrap()).unwrap();
+            }
+        }
 
-        if DEVELOPING || !style_sheet_path.exists() {
-            fs::write(
-                style_sheet_path,
-                minifier::css::minify(STYLE_SHEET_CONTENT).unwrap(),
-            )
-            .unwrap();
+        {
+            let path = self.destination.join("fonts.css");
+            if !path.exists() {
+                static STYLE_SHEET: &str = include_str!("documenter/static/css/fonts.css");
+                fs::write(path, minifier::css::minify(STYLE_SHEET).unwrap()).unwrap();
+            }
         }
-        if DEVELOPING || !script_path.exists() {
-            fs::write(script_path, minifier::js::minify(SCRIPT_CONTENT)).unwrap();
+
+        {
+            let path = self.destination.join(MAIN_SCRIPT_FILE_NAME);
+            if DEVELOPING || !path.exists() {
+                static SCRIPT: &str = include_str!("documenter/static/js/script.js");
+                fs::write(path, minifier::js::minify(SCRIPT)).unwrap();
+            }
         }
+
+        fonts::copy_over(&self.destination).unwrap();
+
         // @Task use BufWriter
         // @Task put it in self.destination instead once the search index contains all crates
         fs::write(
@@ -106,15 +133,10 @@ impl<'a> Documenter<'a> {
                         self.session,
                     );
 
-                    search_index += "[";
-                    search_index += &format!("{path:?}");
-                    search_index += ",";
                     search_index += &format!(
-                        "{:?}",
+                        "[{path:?},{:?}],",
                         format::declaration_url_fragment(index, self.crate_, self.session)
                     );
-                    search_index += "]";
-                    search_index += ",";
                 }
                 search_index += "];";
                 search_index
@@ -237,7 +259,7 @@ impl<'a> Documenter<'a> {
                     subsections.types.push(Type {
                         // @Task write a custom formatter for this which prints links to the documentation
                         // of the specific attributes
-                        attributes: declaration
+                        _attributes: declaration
                             .attributes
                             .iter()
                             .map(ToString::to_string)
@@ -297,12 +319,15 @@ impl<'a> Documenter<'a> {
                     .attribute("rel", "stylesheet")
                     .attribute(
                         "href",
-                        format!("{documentation_folder}{STYLE_SHEET_FILE_NAME}"),
+                        format!("{documentation_folder}{MAIN_STYLE_SHEET_FILE_NAME}"),
                     ),
             )
             .child(
                 Element::new("script")
-                    .attribute("src", format!("{documentation_folder}{SCRIPT_FILE_NAME}"))
+                    .attribute(
+                        "src",
+                        format!("{documentation_folder}{MAIN_SCRIPT_FILE_NAME}"),
+                    )
                     .boolean_attribute("defer"),
             )
             .child(
@@ -339,11 +364,8 @@ impl<'a> Documenter<'a> {
                         )
                         .child(
                             Element::new("div")
-                                .attribute("id", "js-search-results")
-                                .child(
-                                    Element::new("div")
-                                        .attribute("id", "search-results__positioner"),
-                                ),
+                                .attribute("id", "search-results__positioner")
+                                .child(Element::new("div").attribute("id", "js-search-results")),
                         ),
                 ),
             ),
@@ -417,18 +439,18 @@ impl<'a> Documenter<'a> {
 
         // main content
         {
-            let mut main = Element::new("div").class("main");
+            let mut main = Element::new("section").class("main");
 
-            // section header
+            // main heading
             {
-                let mut section_header = Element::new("h1");
+                let mut heading = Element::new("h1");
 
-                section_header.add_child(match index == self.crate_.root() {
+                heading.add_child(match index == self.crate_.root() {
                     true => "Crate",
                     false => "Module",
                 });
 
-                section_header.add_child(" ");
+                heading.add_child(" ");
 
                 for (position, &path_segment) in module_path_segments.iter().enumerate() {
                     let is_last_segment = position + 1 == depth;
@@ -438,20 +460,20 @@ impl<'a> Documenter<'a> {
                         format!("{}index.html", "../".repeat(depth - 1 - position)),
                     );
                     if is_last_segment {
-                        anchor.add_class("current");
+                        anchor.add_class("active");
                     }
                     anchor.add_child(path_segment);
 
-                    section_header.add_child(anchor);
+                    heading.add_child(anchor);
 
                     if !is_last_segment {
                         // @Task add extra spacing (left or right, depends) for
                         // non-word module names
-                        section_header.add_child(Node::verbatim(".<wbr>"));
+                        heading.add_child(Node::verbatim(".<wbr>"));
                     }
                 }
 
-                main.add_child(section_header);
+                main.add_child(heading);
             }
 
             // description
@@ -491,7 +513,7 @@ impl<'a> Documenter<'a> {
                 ) -> Element<'a> {
                     Element::new(format!("h{level}"))
                         .attribute("id", id.clone())
-                        .class("heading")
+                        .class("subheading")
                         .child(
                             Element::new("a")
                                 .attribute("href", format!("#{id}"))
@@ -502,13 +524,13 @@ impl<'a> Documenter<'a> {
             }
 
             if !subsections.modules.is_empty() {
-                main.add_child(heading(
+                let mut section = Element::new("section").child(heading(
                     2,
                     Subsections::MODULES,
                     Subsections::HEADING_MODULES,
                 ));
 
-                let mut table = Element::new("table");
+                let mut table = Element::new("table").class("indent");
 
                 for module in subsections.modules {
                     table.add_child(
@@ -523,7 +545,7 @@ impl<'a> Documenter<'a> {
                                                 urlencoding::encode(module.binder)
                                             ),
                                         )
-                                        .class("identifier")
+                                        .class("reference")
                                         .child(module.binder),
                                 ),
                             )
@@ -531,7 +553,8 @@ impl<'a> Documenter<'a> {
                     );
                 }
 
-                main.add_child(table);
+                section.add_child(table);
+                main.add_child(section);
             }
 
             if !subsections.types.is_empty() {
@@ -545,24 +568,12 @@ impl<'a> Documenter<'a> {
                     let id = declaration_id(type_.binder);
 
                     section.add_child(
-                        heading(3, id.clone(), type_.binder).class("binding").child(
-                            Element::new("a")
-                                .attribute("href", "#")
-                                .class("source")
-                                .child("source"),
-                        ),
-                    );
-
-                    section.add_child(
-                        Element::new("code")
-                            .child(
-                                Element::new("div")
-                                    .class("attributes")
-                                    .child(type_.attributes),
-                            )
-                            .child(Element::new("span").class("keyword").child("data "))
+                        Element::new("h3")
+                            .attribute("id", id.clone())
+                            .class("subheading declaration")
                             .child(
                                 Element::new("a")
+                                    .class("binder")
                                     .attribute("href", format!("#{id}"))
                                     .child(type_.binder),
                             )
@@ -570,12 +581,18 @@ impl<'a> Documenter<'a> {
                             .child(Node::verbatim(type_.type_)),
                     );
 
+                    // .child(
+                    //     Element::new("div")
+                    //         .class("attributes")
+                    //         .child(type_.attributes),
+                    // )
+
                     // @Temporary
                     section.add_child(Element::new("p").child(LOREM_IPSUM));
 
                     // @Task don't do that for abstract or intrinsic types
                     // @Question what if there are no constructors?
-                    let mut subsection = Element::new("section").child(heading(
+                    let mut subsection = Element::new("section").class("indent").child(heading(
                         4,
                         format!("constructors.{}", type_.binder),
                         "Constructors",
@@ -586,20 +603,12 @@ impl<'a> Documenter<'a> {
                             declaration_id(&format!("{}.{}", type_.binder, constructor.binder));
 
                         subsection.add_child(
-                            heading(5, id.clone(), constructor.binder)
-                                .class("binding")
+                            Element::new("h5")
+                                .attribute("id", id.clone())
+                                .class("subheading declaration")
                                 .child(
                                     Element::new("a")
-                                        .attribute("href", "#")
-                                        .class("source")
-                                        .child("source"),
-                                ),
-                        );
-
-                        subsection.add_child(
-                            Element::new("code")
-                                .child(
-                                    Element::new("a")
+                                        .class("binder")
                                         .attribute("href", format!("#{id}"))
                                         .child(constructor.binder),
                                 )
@@ -628,20 +637,12 @@ impl<'a> Documenter<'a> {
                     let id = declaration_id(function.binder);
 
                     section.add_child(
-                        heading(3, id.clone(), function.binder)
-                            .class("binding")
+                        Element::new("h3")
+                            .attribute("id", id.clone())
+                            .class("subheading declaration")
                             .child(
                                 Element::new("a")
-                                    .attribute("href", "#")
-                                    .class("source")
-                                    .child("source"),
-                            ),
-                    );
-
-                    section.add_child(
-                        Element::new("code")
-                            .child(
-                                Element::new("a")
+                                    .class("binder")
                                     .attribute("href", format!("#{id}"))
                                     .child(function.binder),
                             )
@@ -722,7 +723,7 @@ struct Module<'a> {
 }
 
 struct Type<'a> {
-    attributes: String,
+    _attributes: String,
     binder: &'a str,
     type_: String,
     constructors: Vec<Constructor<'a>>,
