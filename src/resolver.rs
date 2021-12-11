@@ -21,7 +21,7 @@ use crate::{
     package::BuildSession,
     span::Spanning,
     syntax::{
-        ast,
+        ast::{self, Path},
         lowered_ast::{self, AttributeKeys, AttributeKind},
         CrateName,
     },
@@ -29,7 +29,7 @@ use crate::{
 };
 pub use scope::{Crate, Exposure, FunctionScope, Namespace};
 use scope::{RegistrationError, RestrictedExposure};
-use std::{cell::RefCell, cmp::Ordering, collections::hash_map::Entry};
+use std::{cell::RefCell, cmp::Ordering, collections::hash_map::Entry, fmt};
 
 pub const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
 
@@ -64,7 +64,7 @@ pub fn resolve(
 
     let declaration = resolver.finish_resolve_declaration(declaration, None, Context::default());
 
-    Result::from(resolver.crate_.health).and(declaration)
+    Result::from(resolver.health).and(declaration)
 }
 
 /// The state of the resolver.
@@ -72,6 +72,9 @@ struct Resolver<'a> {
     crate_: &'a mut Crate,
     session: &'a BuildSession,
     reporter: &'a Reporter,
+    /// For resolving out of order use-declarations.
+    partially_resolved_use_bindings: HashMap<LocalDeclarationIndex, PartiallyResolvedUseBinding>,
+    health: Health,
 }
 
 impl<'a> Resolver<'a> {
@@ -80,6 +83,8 @@ impl<'a> Resolver<'a> {
             crate_,
             session,
             reporter,
+            partially_resolved_use_bindings: HashMap::default(),
+            health: Health::Untainted,
         }
     }
 
@@ -255,8 +260,18 @@ impl<'a> Resolver<'a> {
                     Some(module),
                 )?;
 
-                self.crate_
-                    .register_use_binding(index, use_.target.clone(), module);
+                {
+                    let previous = self.partially_resolved_use_bindings.insert(
+                        index,
+                        PartiallyResolvedUseBinding {
+                            reference: use_.target.clone(),
+                            module,
+                            inquirer: None,
+                        },
+                    );
+
+                    debug_assert!(previous.is_none());
+                };
             }
             Error => {}
         }
@@ -1027,10 +1042,10 @@ impl<'a> Resolver<'a> {
     pub(super) fn resolve_use_bindings(&mut self) {
         use ResolutionError::*;
 
-        while !self.crate_.partially_resolved_use_bindings.is_empty() {
+        while !self.partially_resolved_use_bindings.is_empty() {
             let mut partially_resolved_use_bindings = HashMap::default();
 
-            for (&index, item) in &self.crate_.partially_resolved_use_bindings {
+            for (&index, item) in &self.partially_resolved_use_bindings {
                 match self.resolve_path::<ValueOrModule>(
                     &item.reference,
                     self.crate_.global_index(item.module),
@@ -1041,12 +1056,12 @@ impl<'a> Resolver<'a> {
                     Err(error @ (UnresolvedBinding { .. } | Unrecoverable)) => {
                         self.crate_.bindings[index].mark_as_error();
                         self.report_resolution_error(error);
-                        self.crate_.health.taint();
+                        self.health.taint();
                     }
                     Err(UnresolvedUseBinding { inquirer }) => {
                         partially_resolved_use_bindings.insert(
                             index,
-                            scope::PartiallyResolvedUseBinding {
+                            PartiallyResolvedUseBinding {
                                 reference: item.reference.clone(),
                                 module: item.module,
                                 // @Beacon @Bug unwrap not verified
@@ -1058,9 +1073,7 @@ impl<'a> Resolver<'a> {
             }
 
             // resolution stalled; therefore there are circular bindings
-            if partially_resolved_use_bindings.len()
-                == self.crate_.partially_resolved_use_bindings.len()
-            {
+            if partially_resolved_use_bindings.len() == self.partially_resolved_use_bindings.len() {
                 for &index in partially_resolved_use_bindings.keys() {
                     self.crate_[index].mark_as_error();
                 }
@@ -1085,16 +1098,16 @@ impl<'a> Resolver<'a> {
                         .report(self.reporter);
                 }
 
-                self.crate_.health.taint();
+                self.health.taint();
                 break;
             }
 
-            self.crate_.partially_resolved_use_bindings = partially_resolved_use_bindings;
+            self.partially_resolved_use_bindings = partially_resolved_use_bindings;
         }
 
-        self.crate_.partially_resolved_use_bindings.clear();
+        self.partially_resolved_use_bindings.clear();
 
-        type UseBindings = HashMap<LocalDeclarationIndex, scope::PartiallyResolvedUseBinding>;
+        type UseBindings = HashMap<LocalDeclarationIndex, PartiallyResolvedUseBinding>;
         type Cycle = HashSet<LocalDeclarationIndex>;
 
         fn find_cycles(bindings: UseBindings) -> Vec<Cycle> {
@@ -1411,6 +1424,25 @@ impl PathResolutionContext {
             usage: IdentifierUsage::Qualified,
             ..self
         }
+    }
+}
+
+struct PartiallyResolvedUseBinding {
+    reference: Path,
+    module: LocalDeclarationIndex,
+    // @Beacon @Question local or global??
+    inquirer: Option<LocalDeclarationIndex>,
+}
+
+impl fmt::Debug for PartiallyResolvedUseBinding {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}.{}", self.module, self.reference)?;
+
+        if let Some(inquirer) = self.inquirer {
+            write!(f, " (inquired by {inquirer:?})")?;
+        }
+
+        Ok(())
     }
 }
 

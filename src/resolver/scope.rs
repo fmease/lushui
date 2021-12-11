@@ -15,7 +15,7 @@
 use crate::{
     diagnostics::{Code, Diagnostic},
     entity::{Entity, EntityKind},
-    error::{Health, Result},
+    error::Result,
     format::{AsAutoColoredChangeset, DisplayWith},
     hir::{DeclarationIndex, Identifier, Index, LocalDeclarationIndex},
     package::{BuildSession, CrateIndex, CrateType, PackageIndex},
@@ -25,7 +25,6 @@ use crate::{
         lexer::is_punctuation,
         CrateName,
     },
-    typer::interpreter::scope::BindingRegistration,
     utility::{HashMap, SmallVec},
 };
 use colored::Colorize;
@@ -40,9 +39,6 @@ use unicode_width::UnicodeWidthStr;
 // @Task better docs
 /// The crate scope for module-level bindings.
 // @Task move out of this module
-// @Task encapsulate transient data in new field
-// `transient: enum TransientData { Resolver(TransientResolutionData), Typer(TransientTyperData) }`,
-// or better yet move them out of `Crate` entirely into `Resolver` and `Typer` resp.
 pub struct Crate {
     pub name: CrateName,
     pub index: CrateIndex,
@@ -57,20 +53,10 @@ pub struct Crate {
     /// All bindings inside of the crate.
     // The first element has to be the root module.
     pub(crate) bindings: IndexMap<LocalDeclarationIndex, Entity>,
-    /// For resolving out of order use-declarations.
-    pub(super) partially_resolved_use_bindings:
-        HashMap<LocalDeclarationIndex, PartiallyResolvedUseBinding>,
     /// For error reporting.
+    // @Task try to move this into `Resolver`
+    // #[deprecated]
     pub(super) duplicate_definitions: HashMap<LocalDeclarationIndex, DuplicateDefinition>,
-    // @Note this is very coarse-grained: as soon as we cannot resolve EITHER type annotation (for example)
-    // OR actual value(s), we bail out and add this here. This might be too conversative (leading to more
-    // "circular type" errors or whatever), we can just discriminate by creating sth like
-    // UnresolvedThingy/WorlistItem { index: CrateIndex, expression: TypeAnnotation|Value|Both|... }
-    // for the typer only!
-    pub(crate) out_of_order_bindings: Vec<BindingRegistration>,
-    // @Task figure out how we can move this field; it's only used in the resolver but Crate is used
-    // in a lot of different places
-    pub(super) health: Health,
 }
 
 impl Crate {
@@ -90,10 +76,7 @@ impl Crate {
             is_ambiguously_named_within_package: false,
             program_entry: default(),
             bindings: default(),
-            partially_resolved_use_bindings: default(),
             duplicate_definitions: default(),
-            health: default(),
-            out_of_order_bindings: default(),
         }
     }
 
@@ -302,24 +285,6 @@ impl Crate {
         Ok(index)
     }
 
-    pub(super) fn register_use_binding(
-        &mut self,
-        index: LocalDeclarationIndex,
-        reference: Path,
-        module: LocalDeclarationIndex,
-    ) {
-        let previous = self.partially_resolved_use_bindings.insert(
-            index,
-            PartiallyResolvedUseBinding {
-                reference,
-                module,
-                inquirer: None,
-            },
-        );
-
-        debug_assert!(previous.is_none());
-    }
-
     /// Indicate if the definition-site namespace can be accessed from the given namespace.
     pub(super) fn is_allowed_to_access(
         &self,
@@ -367,12 +332,6 @@ impl DisplayWith for Crate {
 
         for (index, entity) in self.bindings.iter() {
             writeln!(f, "    {index:?}: {}", entity.with((self, session)))?;
-        }
-
-        writeln!(f, "  partially unresolved use-bindings:")?;
-
-        for (index, binding) in &self.partially_resolved_use_bindings {
-            writeln!(f, "    {index:?}: {binding:?}")?;
         }
 
         Ok(())
@@ -500,25 +459,6 @@ impl From<DuplicateDefinition> for Diagnostic {
                 definition.binder
             ))
             .labeled_primary_spans(definition.occurrences.into_iter(), "conflicting definition")
-    }
-}
-
-pub(super) struct PartiallyResolvedUseBinding {
-    pub(super) reference: Path,
-    pub(super) module: LocalDeclarationIndex,
-    // @Beacon @Question local or global??
-    pub(super) inquirer: Option<LocalDeclarationIndex>,
-}
-
-impl fmt::Debug for PartiallyResolvedUseBinding {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}.{}", self.module, self.reference)?;
-
-        if let Some(inquirer) = self.inquirer {
-            write!(f, " (inquired by {inquirer:?})")?;
-        }
-
-        Ok(())
     }
 }
 

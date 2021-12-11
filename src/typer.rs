@@ -47,6 +47,11 @@ struct Typer<'a> {
     crate_: &'a mut Crate,
     session: &'a mut BuildSession,
     reporter: &'a Reporter,
+    // @Note this is very coarse-grained: as soon as we cannot resolve EITHER type annotation (for example)
+    // OR actual value(s), we bail out and add this here. This might be too conversative (leading to more
+    // "circular type" errors or whatever), we can just discriminate by creating sth like
+    // UnresolvedThingy/WorlistItem { index: CrateIndex, expression: TypeAnnotation|Value|Both|... }
+    out_of_order_bindings: Vec<BindingRegistration>,
     health: Health,
 }
 
@@ -56,6 +61,7 @@ impl<'a> Typer<'a> {
             crate_,
             session,
             reporter,
+            out_of_order_bindings: Vec::new(),
             health: Health::Untainted,
         }
     }
@@ -186,10 +192,7 @@ impl<'a> Typer<'a> {
                 let value = value.unwrap();
 
                 recover_error!(
-                    self.crate_,
-                    self.session,
-                    self.reporter,
-                    registration;
+                    self, registration;
                     self.it_is_a_type(type_.clone(), &FunctionScope::Crate),
                     actual = type_
                 );
@@ -208,7 +211,7 @@ impl<'a> Typer<'a> {
                             return match error {
                                 Unrecoverable => Err(()),
                                 OutOfOrderBinding => {
-                                    self.crate_.out_of_order_bindings.push(registration.clone());
+                                    self.out_of_order_bindings.push(registration.clone());
                                     self.crate_.carry_out(
                                         BindingRegistration {
                                             attributes: registration.attributes,
@@ -241,10 +244,7 @@ impl<'a> Typer<'a> {
                     };
 
                 recover_error!(
-                    self.crate_,
-                    self.session,
-                    self.reporter,
-                    registration;
+                    self, registration;
                     self.it_is_actual(type_.clone(), infered_type.clone(), &FunctionScope::Crate),
                     actual = value,
                     expected = type_
@@ -264,10 +264,7 @@ impl<'a> Typer<'a> {
             }
             Data { binder, type_ } => {
                 recover_error!(
-                    self.crate_,
-                    self.session,
-                    self.reporter,
-                    registration;
+                    self, registration;
                     self.it_is_a_type(type_.clone(), &FunctionScope::Crate),
                     actual = type_
                 );
@@ -299,10 +296,7 @@ impl<'a> Typer<'a> {
                 owner_data_type: data,
             } => {
                 recover_error!(
-                    self.crate_,
-                    self.session,
-                    self.reporter,
-                    registration;
+                    self, registration;
                     self.it_is_a_type(type_.clone(), &FunctionScope::Crate),
                     actual = type_
                 );
@@ -334,10 +328,7 @@ impl<'a> Typer<'a> {
             }
             IntrinsicFunction { binder, type_ } => {
                 recover_error!(
-                    self.crate_,
-                    self.session,
-                    self.reporter,
-                    registration;
+                    self, registration;
                     self.it_is_a_type(type_.clone(), &FunctionScope::Crate),
                     actual = type_
                 );
@@ -372,9 +363,7 @@ impl<'a> Typer<'a> {
 
         // @Task replace if possible
         macro recover_error(
-            $scope:expr,
-            $session:expr,
-            $reporter:expr,
+            $typer:expr,
             $registration:expr;
             $check:expr,
             actual = $actual_value:expr
@@ -386,7 +375,7 @@ impl<'a> Typer<'a> {
                     return match error {
                         Unrecoverable => Err(()),
                         OutOfOrderBinding => {
-                            $scope.out_of_order_bindings.push($registration);
+                            $typer.out_of_order_bindings.push($registration);
                             Ok(())
                         }
                         TypeMismatch { expected, actual } => {
@@ -394,14 +383,15 @@ impl<'a> Typer<'a> {
                                 .code(Code::E032)
                                 .message(format!(
                                     "expected type `{}`, got type `{}`",
-                                    expected.with(($scope, $session)), actual.with(($scope, $session))
+                                    expected.with(($typer.crate_, $typer.session)),
+                                    actual.with(($typer.crate_, $typer.session))
                                 ))
                                 .labeled_primary_span(
                                     &$actual_value,
                                     "has the wrong type",
                                 )
                                 $( .labeled_secondary_span(&$expected_reason, "expected due to this") )?
-                                .report(&$reporter))
+                                .report(&$typer.reporter))
                         }
                     }
                 }
@@ -412,15 +402,15 @@ impl<'a> Typer<'a> {
     }
 
     fn infer_types_of_out_of_order_bindings(&mut self) -> Result {
-        while !self.crate_.out_of_order_bindings.is_empty() {
-            let bindings = std::mem::take(&mut self.crate_.out_of_order_bindings);
+        while !self.out_of_order_bindings.is_empty() {
+            let bindings = std::mem::take(&mut self.out_of_order_bindings);
             let previous_amount = bindings.len();
 
             for binding in bindings {
                 self.evaluate_registration(binding)?;
             }
 
-            if previous_amount == self.crate_.out_of_order_bindings.len() {
+            if previous_amount == self.out_of_order_bindings.len() {
                 if self.health.is_tainted() {
                     return Ok(());
                 }
@@ -432,8 +422,7 @@ impl<'a> Typer<'a> {
                     ))
                     .note(format!(
                         "namely {}",
-                        self.crate_
-                            .out_of_order_bindings
+                        self.out_of_order_bindings
                             .iter()
                             .map(|binding| binding.with((self.crate_, self.session)).quote())
                             .join_with(", ")
