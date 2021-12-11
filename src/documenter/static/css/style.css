@@ -27,6 +27,15 @@ body {
     font-size: 16px;
 }
 
+a {
+    color: inherit;
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
 .ledge__positioner {
     height: var(--ledge-height);
     margin-bottom: var(--ledge-margin-bottom);
@@ -111,13 +120,15 @@ body {
     width: 50%;
 }
 
+.sidebar {
+    width: 10%;
+}
+
 .sidebar > .title {
     display: block;
     font-size: 18px;
     font-weight: 900;
     margin: 0.5em 0;
-    text-decoration: inherit;
-    color: inherit;
 }
 
 .sidebar > ul {
@@ -130,29 +141,14 @@ body {
     line-height: 1.4;
 }
 
-/* @Task introduce class for robustness */
-.sidebar > ul > li > a {
-    color: inherit;
-    text-decoration: none;
-}
-
 h1, h2, h3, h4, h5, h6 {
     margin: 0;
     padding: 0.5em 0;
     font-weight: bold;
 }
 
-h1 a, .subheading a {
-    color: inherit;
-    text-decoration: inherit;
-}
-
-h1 a:hover {
-    /* @Note inconsistent with .subheading.declaration:hover (no underline) */
-    text-decoration: underline;
-}
-
 h1 a.active {
+    /* @Task use a color from a (newly extended) palette */
     color: rgb(28, 130, 177);
 }
 
@@ -221,11 +217,6 @@ h5 {
 
 section {
     padding: 0.5em 0;
-}
-
-a.reference {
-    color: #1d90a1;
-    text-decoration: inherit;
 }
 
 p {

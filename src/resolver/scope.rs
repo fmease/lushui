@@ -18,7 +18,7 @@ use crate::{
     error::{Health, Result},
     format::{AsAutoColoredChangeset, DisplayWith},
     hir::{DeclarationIndex, Identifier, Index, LocalDeclarationIndex},
-    package::{BuildSession, CrateIndex, CrateType, Package, PackageIndex},
+    package::{BuildSession, CrateIndex, CrateType, PackageIndex},
     span::{Span, Spanned, Spanning},
     syntax::{
         ast::{self, HangerKind, Path},
@@ -39,14 +39,20 @@ use unicode_width::UnicodeWidthStr;
 
 // @Task better docs
 /// The crate scope for module-level bindings.
-///
-/// This structure is used not only by the name resolver but also the type checker.
 // @Task move out of this module
+// @Task encapsulate transient data in new field
+// `transient: enum TransientData { Resolver(TransientResolutionData), Typer(TransientTyperData) }`,
+// or better yet move them out of `Crate` entirely into `Resolver` and `Typer` resp.
 pub struct Crate {
+    pub name: CrateName,
     pub index: CrateIndex,
     pub package: PackageIndex,
     pub path: PathBuf,
     pub type_: CrateType,
+    /// Indicates if the name of the library or binary crate coincides with the name of the binary\* or library crate, respectively.
+    ///
+    /// \* We haven't yet implemented multiple binary crates per package.
+    pub is_ambiguously_named_within_package: bool,
     pub program_entry: Option<Identifier>,
     /// All bindings inside of the crate.
     // The first element has to be the root module.
@@ -62,16 +68,26 @@ pub struct Crate {
     // UnresolvedThingy/WorlistItem { index: CrateIndex, expression: TypeAnnotation|Value|Both|... }
     // for the typer only!
     pub(crate) out_of_order_bindings: Vec<BindingRegistration>,
+    // @Task figure out how we can move this field; it's only used in the resolver but Crate is used
+    // in a lot of different places
     pub(super) health: Health,
 }
 
 impl Crate {
-    pub fn new(index: CrateIndex, package: PackageIndex, path: PathBuf, type_: CrateType) -> Self {
+    pub fn new(
+        name: CrateName,
+        index: CrateIndex,
+        package: PackageIndex,
+        path: PathBuf,
+        type_: CrateType,
+    ) -> Self {
         Self {
+            name,
             index,
             package,
             path,
             type_,
+            is_ambiguously_named_within_package: false,
             program_entry: default(),
             bindings: default(),
             partially_resolved_use_bindings: default(),
@@ -81,31 +97,12 @@ impl Crate {
         }
     }
 
-    // @Task store this in Crate directly!
-    pub fn name<'s>(&self, session: &'s BuildSession) -> &'s CrateName {
-        // @Beacon @Temporary
-        // @Note currently, the name of a crate coincides with the name of the package which
-        // contains it. in the future, this will not be the case once users can overwrite
-        // {Library,Binary}Manifest.name
-
-        &self.package(session).name
-    }
-
-    pub fn package<'s>(&self, session: &'s BuildSession) -> &'s Package {
-        &session[self.package]
-    }
-
     pub fn is_library(&self) -> bool {
         self.type_ == CrateType::Library
     }
 
     pub fn is_binary(&self) -> bool {
         self.type_ == CrateType::Binary
-    }
-
-    /// Test if this is crate is the goal crate.
-    pub fn is_goal(&self, session: &BuildSession) -> bool {
-        self.index == session.goal_crate()
     }
 
     /// Test if this crate is the standard library `core`.
@@ -195,7 +192,7 @@ impl Crate {
             Some(index) => self.local_path_with_root_to_string(index, root),
             None => {
                 let crate_ = &session[index.crate_index()];
-                let root = format!("{}.{}", HangerKind::Extern.name(), crate_.name(session));
+                let root = format!("{}.{}", HangerKind::Extern.name(), crate_.name);
 
                 crate_.absolute_path_with_root_to_string(index, root, session)
             }
@@ -204,12 +201,8 @@ impl Crate {
 
     // @Note bad name
     // @Task add docs
-    pub fn local_path_to_string(
-        &self,
-        index: LocalDeclarationIndex,
-        session: &BuildSession,
-    ) -> String {
-        self.local_path_with_root_to_string(index, self.name(session).to_string())
+    pub fn local_path_to_string(&self, index: LocalDeclarationIndex) -> String {
+        self.local_path_with_root_to_string(index, self.name.to_string())
     }
 
     // @Note bad name

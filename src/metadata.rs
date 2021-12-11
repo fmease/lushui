@@ -250,8 +250,6 @@ pub fn parse(
 }
 
 mod lexer {
-    #![allow(clippy::blocks_in_if_conditions)]
-
     use crate::{
         diagnostics::Diagnostic,
         error::{Health, Outcome},

@@ -233,7 +233,7 @@ pub fn arguments() -> (Command, Options) {
                             ResolveOnly => PassRestriction::Resolver,
                             _ => unreachable!(),
                         }),
-                    )
+                    );
                 }
             }
         }

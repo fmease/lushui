@@ -33,49 +33,54 @@ use std::{cell::RefCell, cmp::Ordering, collections::hash_map::Entry};
 
 pub const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
 
+/// Resolve the names of a declaration.
+///
+/// It performs four passes to resolve all possible out of order declarations.
+///
+/// # Panics
+///
+/// If the declaration passed is not a module, this function will panic as it
+/// requires a crate root which is defined through the root module.
+pub fn resolve(
+    declaration: lowered_ast::Declaration,
+    crate_: &mut Crate,
+    session: &BuildSession,
+    reporter: &Reporter,
+) -> Result<hir::Declaration> {
+    let mut resolver = Resolver::new(crate_, session, reporter);
+
+    resolver
+        .start_resolve_declaration(&declaration, None, Context::default())
+        .map_err(|_| {
+            std::mem::take(&mut resolver.crate_.duplicate_definitions)
+                .into_values()
+                .for_each(|error| Diagnostic::from(error).report(resolver.reporter));
+        })?;
+
+    resolver.resolve_use_bindings();
+
+    // @Task @Beacon don't return early here
+    resolver.resolve_exposure_reaches()?;
+
+    let declaration = resolver.finish_resolve_declaration(declaration, None, Context::default());
+
+    Result::from(resolver.crate_.health).and(declaration)
+}
+
 /// The state of the resolver.
-pub struct Resolver<'a> {
+struct Resolver<'a> {
     crate_: &'a mut Crate,
     session: &'a BuildSession,
     reporter: &'a Reporter,
 }
 
 impl<'a> Resolver<'a> {
-    pub fn new(crate_: &'a mut Crate, session: &'a BuildSession, reporter: &'a Reporter) -> Self {
+    fn new(crate_: &'a mut Crate, session: &'a BuildSession, reporter: &'a Reporter) -> Self {
         Self {
             crate_,
             session,
             reporter,
         }
-    }
-
-    /// Resolve the names of a declaration.
-    ///
-    /// It performs four passes to resolve all possible out of order declarations.
-    ///
-    /// # Panics
-    ///
-    /// If the declaration passed is not a module, this function will panic as it
-    /// requires a crate root which is defined through the root module.
-    pub fn resolve_declaration(
-        &mut self,
-        declaration: lowered_ast::Declaration,
-    ) -> Result<hir::Declaration> {
-        self.start_resolve_declaration(&declaration, None, Context::default())
-            .map_err(|_| {
-                std::mem::take(&mut self.crate_.duplicate_definitions)
-                    .into_values()
-                    .for_each(|error| Diagnostic::from(error).report(self.reporter));
-            })?;
-
-        self.resolve_use_bindings();
-
-        // @Task @Beacon don't return early here
-        self.resolve_exposure_reaches()?;
-
-        let declaration = self.finish_resolve_declaration(declaration, None, Context::default());
-
-        Result::from(self.crate_.health).and(declaration)
     }
 
     /// Partially resolve a declaration merely registering declarations.

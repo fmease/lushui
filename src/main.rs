@@ -20,9 +20,11 @@
     clippy::empty_enum,
     clippy::single_match_else,
     clippy::if_not_else,
+    clippy::blocks_in_if_conditions, // too many false positives with rustfmt's output
+    clippy::similar_names, // too many false positives (#6479)
+    clippy::semicolon_if_nothing_returned, // @Temporary false positives with let/else, still
     clippy::needless_pass_by_value, // @Temporary
     clippy::missing_panics_doc, // @Temporary
-    clippy::semicolon_if_nothing_returned, // @Beacon @Temporary false postives with let/else's
 )]
 
 use std::{
@@ -37,17 +39,15 @@ use lushui::{
         reporter::{BufferedStderrReporter, StderrReporter},
         Code, Diagnostic, Reporter,
     },
-    documenter::Documenter,
+    documenter,
     error::{outcome, Result},
     format::{DisplayWith, IOError},
     package::{find_package, BuildQueue, CrateType, PackageManifest, DEFAULT_SOURCE_FOLDER_NAME},
     resolver::{self, PROGRAM_ENTRY_IDENTIFIER},
     span::{SharedSourceMap, SourceMap, Spanned},
-    syntax::{lowerer::LoweringOptions, CrateName, Lexer, Lowerer, Parser},
-    typer::{interpreter::Interpreter, Typer},
-    FILE_EXTENSION,
+    syntax::{lexer, lowerer, parser, CrateName},
+    typer, FILE_EXTENSION,
 };
-use resolver::Resolver;
 
 mod cli;
 
@@ -141,7 +141,7 @@ fn build_package(
                     // @Question code?
                     .message("the path to the source file or the package folder is invalid")
                     .note(IOError(error, &path).to_string())
-                    .report(reporter)
+                    .report(reporter);
             })
         })
         .transpose()?;
@@ -197,6 +197,19 @@ fn build_package(
 
     let (mut session, unbuilt_crates) = build_queue.finalize();
 
+    // @Note we don't try to handle duplicate names yet
+    // cargo disallows them since its lock-file format is flat
+    // npm allows them since it stores transitive dependencies in the folder
+    // of the respective dependent crate (in the build folder)
+    // it's a tiny edge case but I feel like we should allow a transitive dependency to
+    // be named exactly like the goal crate
+    // (analogous cases for direct and transitive dependencies follow the same way)
+    // since the end user might not have control over those dependencies to patch them
+    let crates: Vec<_> = unbuilt_crates
+        .values()
+        .map(documenter::CrateSketch::new)
+        .collect();
+
     for mut crate_ in unbuilt_crates.into_values() {
         // @Task abstract over this as print_status_report and report w/ label="Running" for
         // goal crate if mode==Run (in addition to initial "Building")
@@ -208,16 +221,25 @@ fn build_package(
                 BuildMode::Document { .. } => "Documenting",
             };
             let label = label.green().bold();
-            let package = &session[crate_.package];
-            let name = &package.name;
-            let path = package.path.to_string_lossy();
+            let path = &session[crate_.package].path.to_string_lossy();
             // @Task print version
-            println!("   {label} {name} ({path})");
+            println!(
+                "   {label} {} ({path})",
+                if crate_.package == session.goal_package()
+                    && crate_.is_ambiguously_named_within_package
+                {
+                    format!("{} ({})", crate_.name, crate_.type_)
+                } else {
+                    crate_.name.to_string()
+                }
+            );
         }
 
         // @Task make this a fn if possible
         macro check_pass_restriction($restriction:expr) {
-            if crate_.is_goal(&session) && options.pass_restriction == Some($restriction) {
+            if crate_.index == session.goal_crate()
+                && options.pass_restriction == Some($restriction)
+            {
                 return Ok(());
             }
         }
@@ -237,21 +259,19 @@ fn build_package(
                 Diagnostic::error()
                     .message(format!(
                         "could not load {} crate `{}`",
-                        crate_.type_,
-                        crate_.name(&session),
+                        crate_.type_, crate_.name,
                     ))
                     .note(IOError(error, &crate_.path).to_string())
-                    .report(reporter)
+                    .report(reporter);
             })?;
 
         let time = Instant::now();
 
-        let outcome!(tokens, token_health) =
-            Lexer::new(&map.borrow()[source_file], reporter).lex()?;
+        let outcome!(tokens, token_health) = lexer::lex(&map.borrow()[source_file], reporter)?;
 
         let duration = time.elapsed();
 
-        if crate_.is_goal(&session) && options.emit_tokens {
+        if crate_.index == session.goal_crate() && options.emit_tokens {
             for token in &tokens {
                 eprintln!("{:?}", token);
             }
@@ -262,14 +282,14 @@ fn build_package(
         let time = Instant::now();
 
         // @Beacon @Task fix this ugly mess, create clean helpers
-        let declaration = Parser::new(source_file, &tokens, map.clone(), reporter)
-            .parse(Spanned::new(default(), crate_.name(&session).clone()).into())?;
+        let module_name = Spanned::new(default(), crate_.name.clone()).into();
+        let declaration = parser::parse(&tokens, source_file, module_name, map.clone(), reporter)?;
 
         let duration = time.elapsed();
 
         assert!(token_health.is_untainted()); // parsing succeeded
 
-        if crate_.is_goal(&session) && options.emit_ast {
+        if crate_.index == session.goal_crate() && options.emit_ast {
             eprintln!("{declaration:#?}");
         }
 
@@ -277,21 +297,17 @@ fn build_package(
         check_pass_restriction!(PassRestriction::Parser);
         let time = Instant::now();
 
-        let outcome!(mut declarations, health_of_lowerer) = Lowerer::new(
-            LoweringOptions {
-                internal_features_enabled: options.internals || crate_.is_core_library(&session),
-                keep_documentation_comments: matches!(mode, BuildMode::Document { .. }),
-            },
-            map.clone(),
-            reporter,
-        )
-        .lower_declaration(declaration);
-
+        let lowering_options = lowerer::Options {
+            internal_features_enabled: options.internals || crate_.is_core_library(&session),
+            keep_documentation_comments: matches!(mode, BuildMode::Document { .. }),
+        };
+        let outcome!(mut declarations, health_of_lowerer) =
+            lowerer::lower(declaration, lowering_options, map.clone(), reporter);
         let duration = time.elapsed();
 
         let declaration = declarations.pop().unwrap();
 
-        if crate_.is_goal(&session) && options.emit_lowered_ast {
+        if crate_.index == session.goal_crate() && options.emit_lowered_ast {
             eprintln!("{}", declaration);
         }
 
@@ -301,28 +317,23 @@ fn build_package(
         }
         check_pass_restriction!(PassRestriction::Lowerer);
         let time = Instant::now();
-
-        let mut resolver = Resolver::new(&mut crate_, &session, reporter);
-        let declaration = resolver.resolve_declaration(declaration)?;
-
+        let declaration = resolver::resolve(declaration, &mut crate_, &session, reporter)?;
         let duration = time.elapsed();
 
         if options.emit_hir {
             eprintln!("{}", declaration.with((&crate_, &session)));
         }
-        if crate_.is_goal(&session) && options.emit_untyped_scope {
+        if crate_.index == session.goal_crate() && options.emit_untyped_scope {
             eprintln!("{}", crate_.with(&session));
         }
 
         print_pass_duration("Name resolution", duration, &options);
         check_pass_restriction!(PassRestriction::Resolver);
         let time = Instant::now();
-
-        Typer::new(&mut crate_, &mut session, reporter).infer_types_in_declaration(&declaration)?;
-
+        typer::check(&declaration, &mut crate_, &mut session, reporter)?;
         let duration = time.elapsed();
 
-        if crate_.is_goal(&session) && options.emit_scope {
+        if crate_.index == session.goal_crate() && options.emit_scope {
             eprintln!("{}", crate_.with(&session));
         }
 
@@ -333,8 +344,7 @@ fn build_package(
                 .code(Code::E050)
                 .message(format!(
                     "the crate `{}` is missing a program entry named `{}`",
-                    crate_.name(&session),
-                    PROGRAM_ENTRY_IDENTIFIER,
+                    crate_.name, PROGRAM_ENTRY_IDENTIFIER,
                 ))
                 .report(reporter);
             return Err(());
@@ -343,7 +353,7 @@ fn build_package(
         'ending: {
             match &mode {
                 BuildMode::Run => {
-                    if crate_.is_goal(&session) {
+                    if crate_.index == session.goal_crate() {
                         if !crate_.is_binary() {
                             // @Question code?
                             Diagnostic::error()
@@ -355,7 +365,9 @@ fn build_package(
                             return Err(());
                         }
 
-                        let result = Interpreter::new(&crate_, &session, reporter).run()?;
+                        let result = typer::interpreter::evaluate_main_function(
+                            &crate_, &session, reporter,
+                        )?;
 
                         println!("{}", result.with((&crate_, &session)));
                     }
@@ -371,16 +383,28 @@ fn build_package(
                 } => {
                     // @Task implement `--open`ing
 
-                    if documentation_options.no_dependencies && !crate_.is_goal(&session) {
+                    // @Bug leads to broken links, the documenter has to handle this itself
+                    if documentation_options.no_dependencies && crate_.index != session.goal_crate()
+                    {
                         break 'ending;
                     }
 
-                    let mut documenter = Documenter::new(&crate_, &session, reporter);
-
                     let time = Instant::now();
-
-                    documenter.document(&declaration)?;
-
+                    let documenter_options = documenter::Options {
+                        // @Beacon @Beacon @Beacon @Bug no_core is the wrong thing!
+                        // we want to know whether we have core but we also have to look
+                        // in the list of deps whether core is present or not (even transitively)
+                        // `no_core` is only for single-file packages
+                        no_core: build_options.no_core,
+                    };
+                    documenter::document(
+                        &declaration,
+                        documenter_options,
+                        &crates,
+                        &crate_,
+                        &session,
+                        reporter,
+                    )?;
                     let duration = time.elapsed();
 
                     print_pass_duration("Documentation", duration, &options);

@@ -91,7 +91,7 @@ impl Crate {
                         .next()
                         .unwrap(),
                     reporter,
-                )?
+                )?;
             }
             IntrinsicType { binder } => session.register_intrinsic_type(
                 binder,

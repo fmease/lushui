@@ -326,6 +326,7 @@ mod test {
         syntax::{
             ast::{self, Explicitness::*},
             lowered_ast::{Attribute, AttributeKind, Attributes, Number},
+            CrateName,
         },
     };
     use std::{default::default, path::PathBuf};
@@ -350,6 +351,7 @@ mod test {
     impl Crate {
         fn test() -> Self {
             let mut crate_ = Self::new(
+                CrateName::parse("test").ok().unwrap(),
                 CRATE_INDEX,
                 PACKAGE_INDEX,
                 PathBuf::new(),

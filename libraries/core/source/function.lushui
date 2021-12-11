@@ -1,0 +1,14 @@
+@public
+identity (A: Type) (a: A): A = a
+
+@public
+constant (A B: Type) (a: A) (b: B): A = a
+
+;;; @Task write a more general version (wrt dependent typing)
+@public
+compose (A B C: Type) (f: A -> B) (g: B -> C) (a: A): C =
+    g (f a)
+
+@public
+flip (A B C: Type) (f: A -> B -> C) (b: B) (a: A): C =
+    f a b

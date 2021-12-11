@@ -5,7 +5,7 @@ use crate::{
 };
 
 fn lex(source: &'static str) -> Result<Outcome<Vec<Token>>> {
-    super::lex(source.to_owned())
+    super::lex_string(source.to_owned())
 }
 
 fn assert_eq(actual: Result<Outcome<Vec<Token>>>, expected: Vec<Token>) {

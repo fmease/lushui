@@ -32,32 +32,47 @@ use crate::{
 use scope::{FunctionScope, ValueView};
 use std::fmt;
 
-// @Task add recursion depth
-pub struct Interpreter<'a> {
+/// Run the entry point of the crate.
+pub fn evaluate_main_function(
+    crate_: &Crate,
+    session: &BuildSession,
+    reporter: &Reporter,
+) -> Result<Expression> {
+    let mut interpreter = Interpreter::new(crate_, session, reporter);
+
+    interpreter.evaluate_expression(
+        interpreter
+            .crate_
+            .program_entry
+            .clone()
+            .unwrap()
+            .to_expression(),
+        Context {
+            scope: &FunctionScope::Crate,
+            // form: Form::Normal,
+            form: Form::WeakHeadNormal,
+        },
+    )
+}
+
+pub(crate) struct Interpreter<'a> {
+    // @Task add recursion depth
     crate_: &'a Crate,
     session: &'a BuildSession,
     reporter: &'a Reporter,
 }
 
 impl<'a> Interpreter<'a> {
-    pub fn new(crate_: &'a Crate, session: &'a BuildSession, reporter: &'a Reporter) -> Self {
+    pub(super) fn new(
+        crate_: &'a Crate,
+        session: &'a BuildSession,
+        reporter: &'a Reporter,
+    ) -> Self {
         Self {
             crate_,
             session,
             reporter,
         }
-    }
-
-    /// Run the entry point of the crate.
-    pub fn run(&mut self) -> Result<Expression> {
-        self.evaluate_expression(
-            self.crate_.program_entry.clone().unwrap().to_expression(),
-            Context {
-                scope: &FunctionScope::Crate,
-                // form: Form::Normal,
-                form: Form::WeakHeadNormal,
-            },
-        )
     }
 
     pub(crate) fn substitute_expression(

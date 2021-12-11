@@ -29,6 +29,11 @@ impl fmt::Display for super::AttributeKind {
                 reason, since, until, replacement
             ),
             Self::Documentation { content } => write!(f, "(documentation {:?})", content),
+            // @Temporary
+            Self::DocAttribute { name } => write!(f, "(doc-attribute {name:?})"),
+            Self::DocAttributes => write!(f, "doc-attributes"),
+            Self::DocReservedIdentifier { name } => write!(f, "(doc-reserved-identifier {name:?})"),
+            Self::DocReservedIdentifiers => write!(f, "doc-reserved-identifiers"),
             Self::Forbid { lint } => write!(f, "(forbid {})", lint),
             Self::Intrinsic => write!(f, "intrinsic"),
             Self::If { condition } => write!(f, "(if {})", condition),

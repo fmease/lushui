@@ -232,12 +232,15 @@ impl BuildQueue<'_> {
             None => default_library_path.exists().then(|| default_library_path),
         };
 
+        // @Task use `library.name` if available once implemented
+        let name = self[package].name.clone();
+
         let package_contains_library = path.is_some();
 
         if let Some(path) = path {
             let index = self
                 .crates
-                .insert_with(|index| Crate::new(index, package, path, CrateType::Library));
+                .insert_with(|index| Crate::new(name, index, package, path, CrateType::Library));
             self[package].library = Some(index);
         }
 
@@ -264,12 +267,22 @@ impl BuildQueue<'_> {
             },
         };
 
+        // @Task use `binary.name` if available once implemented
+        let mut name = Some(self[package].name.clone());
+
         let package_contains_binaries = !paths.is_empty();
 
         for path in paths {
-            let index = self
-                .crates
-                .insert_with(|index| Crate::new(index, package, path, CrateType::Binary));
+            let index = self.crates.insert_with(|index| {
+                Crate::new(
+                    name.take()
+                        .expect("multiple binaries in a single not yet implemented"),
+                    index,
+                    package,
+                    path,
+                    CrateType::Binary,
+                )
+            });
             self[package].binaries.push(index);
         }
 
@@ -343,9 +356,10 @@ impl BuildQueue<'_> {
         crate_type: CrateType,
         no_core: bool,
     ) -> Result {
-        let package_name = parse_crate_name_from_file_path(&path, self.reporter)?;
+        // package and crate name
+        let name = parse_crate_name_from_file_path(&path, self.reporter)?;
 
-        let package = Package::single_file_package(package_name, path.clone());
+        let package = Package::single_file_package(name.clone(), path.clone());
         let package = self.packages.insert(package);
 
         let mut resolved_dependencies = HashMap::default();
@@ -391,7 +405,7 @@ impl BuildQueue<'_> {
 
         let crate_ = self
             .crates
-            .insert_with(|index| Crate::new(index, package, path, crate_type));
+            .insert_with(|index| Crate::new(name, index, package, path, crate_type));
         let package = &mut self[package];
         package.binaries.push(crate_);
         package.dependencies = resolved_dependencies;
@@ -400,12 +414,33 @@ impl BuildQueue<'_> {
         Ok(())
     }
 
-    pub fn finalize(self) -> (BuildSession, IndexMap<CrateIndex, Crate>) {
+    pub fn finalize(mut self) -> (BuildSession, IndexMap<CrateIndex, Crate>) {
         // @Note this is not extensible to multiple binary crates
         let goal_crate = self.crates.last().unwrap();
+        let goal_crate_index = goal_crate.index;
+        let goal_package = &self.packages[goal_crate.package];
+        let goal_package_index = goal_crate.package;
+        let homonymous = |&crate_: &CrateIndex| goal_crate.name == self.crates[crate_].name;
+
+        let library_lookalike = goal_package
+            .library
+            .filter(|_| goal_crate.is_binary())
+            .filter(homonymous);
+        // @Note this is not extensible to multiple binary crates
+        let binary_lookalike = goal_package
+            .binaries
+            .get(0)
+            .copied()
+            .filter(|_| goal_crate.is_library())
+            .filter(homonymous);
+
+        if let Some(lookalike) = library_lookalike.or(binary_lookalike) {
+            self.crates[goal_crate_index].is_ambiguously_named_within_package = true;
+            self.crates[lookalike].is_ambiguously_named_within_package = true;
+        }
 
         (
-            BuildSession::new(self.packages, goal_crate.index, goal_crate.package),
+            BuildSession::new(self.packages, goal_crate_index, goal_package_index),
             self.crates,
         )
     }

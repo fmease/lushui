@@ -20,7 +20,7 @@ use std::{
 };
 use TokenKind::*;
 
-pub(crate) fn lex(source: String) -> Result<Outcome<Vec<Token>>> {
+pub(crate) fn lex_string(source: String) -> Result<Outcome<Vec<Token>>> {
     let mut map = SourceMap::default();
     let file = map.add(None, source);
     Lexer::new(&map[file], &SilentReporter.into()).lex()
@@ -186,8 +186,16 @@ impl Brackets {
 
 type Stack<T> = Vec<T>;
 
+/// Lex source code into an array of tokens
+///
+/// The health of the tokens can be ignored if the tokens are fed into the parser
+/// immediately after lexing since the parser will handle invalid tokens.
+pub fn lex(source_file: &SourceFile, reporter: &Reporter) -> Result<Outcome<Vec<Token>>> {
+    Lexer::new(source_file, reporter).lex()
+}
+
 /// The state of the lexer.
-pub struct Lexer<'a> {
+struct Lexer<'a> {
     source_file: &'a SourceFile,
     characters: Peekable<CharIndices<'a>>,
     tokens: Vec<Token>,
@@ -200,7 +208,7 @@ pub struct Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(source_file: &'a SourceFile, reporter: &'a Reporter) -> Self {
+    fn new(source_file: &'a SourceFile, reporter: &'a Reporter) -> Self {
         Self {
             characters: source_file.content().char_indices().peekable(),
             source_file,
@@ -214,13 +222,9 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    /// Lex source code into an array of tokens
-    ///
-    /// The health of the tokens can be ignored if the tokens are fed into the parser
-    /// immediately after lexing since the parser will handle invalid tokens.
     // @Task return (Vec<Token>, Diagnostics)
     // @Task improve diagnostics when encountering "indented sections" inside delimited ones
-    pub fn lex(mut self) -> Result<Outcome<Vec<Token>>> {
+    fn lex(mut self) -> Result<Outcome<Vec<Token>>> {
         while let Some((index, character)) = self.peek_with_index() {
             self.local_span = LocalSpan::empty(index);
 

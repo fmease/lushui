@@ -1,5 +1,8 @@
 //! The type checker.
 
+// @Beacon @Task introduce an Error variant to hir::{Expression, Declaration}
+// to be able to continue type checking on errors
+
 pub mod interpreter;
 
 use crate::{
@@ -26,24 +29,29 @@ use interpreter::{
 use joinery::JoinableIterator;
 use std::default::default;
 
-// @Beacon @Task introduce an Error variant to hir::{Expression, Declaration}
-// to be able to continue type checking on errors
+pub fn check(
+    declaration: &Declaration,
+    crate_: &mut Crate,
+    session: &mut BuildSession,
+    reporter: &Reporter,
+) -> Result {
+    let mut typer = Typer::new(crate_, session, reporter);
+    let first_pass = typer.start_infer_types_in_declaration(declaration, Context::default());
+    typer.health &= first_pass;
+    first_pass.and(typer.infer_types_of_out_of_order_bindings())
+}
 
 /// The state of the typer.
-// @Task add recursion depth field
-pub struct Typer<'a> {
-    pub crate_: &'a mut Crate,
-    pub session: &'a mut BuildSession,
+struct Typer<'a> {
+    // @Task add recursion depth field
+    crate_: &'a mut Crate,
+    session: &'a mut BuildSession,
     reporter: &'a Reporter,
     health: Health,
 }
 
 impl<'a> Typer<'a> {
-    pub fn new(
-        crate_: &'a mut Crate,
-        session: &'a mut BuildSession,
-        reporter: &'a Reporter,
-    ) -> Self {
+    fn new(crate_: &'a mut Crate, session: &'a mut BuildSession, reporter: &'a Reporter) -> Self {
         Self {
             crate_,
             session,
@@ -54,12 +62,6 @@ impl<'a> Typer<'a> {
 
     fn interpreter(&mut self) -> Interpreter<'_> {
         Interpreter::new(self.crate_, self.session, self.reporter)
-    }
-
-    pub fn infer_types_in_declaration(&mut self, declaration: &Declaration) -> Result {
-        let first_pass = self.start_infer_types_in_declaration(declaration, Context::default());
-        self.health &= first_pass;
-        first_pass.and(self.infer_types_of_out_of_order_bindings())
     }
 
     // @Task documentation

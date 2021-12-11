@@ -42,7 +42,6 @@
     type_ascription,
     derive_default_enum,
     generic_associated_types,
-    extend_one,
     try_trait_v2,
     adt_const_params,
     let_else,
@@ -64,9 +63,11 @@
     clippy::empty_enum,
     clippy::single_match_else,
     clippy::if_not_else,
+    clippy::blocks_in_if_conditions, // too many false positives with rustfmt's output
+    clippy::similar_names, // too many false positives (#6479)
+    clippy::semicolon_if_nothing_returned, // @Temporary false positives with let/else, still
     clippy::needless_pass_by_value, // @Temporary
     clippy::missing_panics_doc, // @Temporary
-    clippy::semicolon_if_nothing_returned, // @Beacon @Temporary false postives with let/else's
 )]
 
 pub mod compiler;

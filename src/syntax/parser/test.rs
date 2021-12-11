@@ -11,13 +11,13 @@ use super::{
         Expression, Format, Identifier, Item, ParameterGroup, Parameters, Path, UsePathTree,
         UsePathTreeKind,
     },
-    Parser, Result,
+    parse, Parser, Result,
 };
 use crate::{
     diagnostics::reporter::SilentReporter,
     error::{outcome, Health},
     span::{span, SourceFileIndex, SourceMap},
-    syntax::Lexer,
+    syntax::lexer::lex,
 };
 use index_map::Index as _;
 use smallvec::smallvec;
@@ -27,9 +27,8 @@ fn parse_expression(source: &str) -> Result<Expression> {
     let map = SourceMap::shared();
     let file = map.borrow_mut().add(None, source.to_owned());
     let reporter = SilentReporter.into();
-    let outcome!(tokens, health) = Lexer::new(&map.borrow()[file], &reporter).lex()?;
-    let mut parser = Parser::new(file, &tokens, map, &reporter);
-    let expression = parser.parse_expression();
+    let outcome!(tokens, health) = lex(&map.borrow()[file], &reporter)?;
+    let expression = Parser::new(&tokens, file, map, &reporter).parse_expression();
     if health.is_tainted() {
         return Err(());
     }
@@ -40,10 +39,9 @@ fn parse_declaration(source: &str) -> Result<Declaration> {
     let map = SourceMap::shared();
     let file = map.borrow_mut().add(None, source.to_owned());
     let reporter = SilentReporter.into();
-    let outcome!(tokens, health) = Lexer::new(&map.borrow()[file], &reporter).lex()?;
+    let outcome!(tokens, health) = lex(&map.borrow()[file], &reporter)?;
 
-    let mut parser = Parser::new(file.clone(), &tokens, map, &reporter);
-    let declaration = parser.parse(test_module_name());
+    let declaration = parse(&tokens, file.clone(), test_module_name(), map, &reporter);
     if health == Health::Tainted {
         return Err(());
     }

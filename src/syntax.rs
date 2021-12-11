@@ -8,9 +8,6 @@ pub mod parser;
 pub mod token;
 
 pub use crate_name::CrateName;
-pub use lexer::Lexer;
-pub use lowerer::Lowerer;
-pub use parser::Parser;
 
 use crate::{
     diagnostics::Reporter,
@@ -20,15 +17,15 @@ use crate::{
 
 /// Lex and parse a given file module.
 ///
-/// This is a convenience function combining [`Lexer::lex`] and [`Parser::parse`].
+/// This is a convenience function combining [`lexer::lex`] and [`parser::parse`].
 pub fn parse(
     file: SourceFileIndex,
-    module_binder: ast::Identifier,
+    module: ast::Identifier,
     map: SharedSourceMap,
     reporter: &Reporter,
 ) -> Result<ast::Declaration> {
-    let tokens = Lexer::new(&map.borrow()[file], reporter).lex()?.value;
-    Parser::new(file, &tokens, map, reporter).parse(module_binder)
+    let tokens = lexer::lex(&map.borrow()[file], reporter)?.value;
+    parser::parse(&tokens, file, module, map, reporter)
 }
 
 pub mod crate_name {
@@ -104,7 +101,7 @@ pub mod crate_name {
 
     // @Beacon @Beacon @Beacon @Note might need to move! (once we have Word)
     fn parse_word(source: String) -> Option<Atom> {
-        let outcome!(mut tokens, health) = lexer::lex(source).ok()?;
+        let outcome!(mut tokens, health) = lexer::lex_string(source).ok()?;
 
         if health.is_tainted() {
             return None;

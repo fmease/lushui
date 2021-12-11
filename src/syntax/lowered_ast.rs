@@ -7,7 +7,7 @@ mod format;
 
 use super::{
     ast::{self, Explicitness, Identifier, ParameterAspect, Path},
-    lowerer::LoweringOptions,
+    lowerer::Options,
 };
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
@@ -507,7 +507,7 @@ pub type Attribute = Spanned<AttributeKind>;
 impl Attribute {
     pub fn parse(
         attribute: &ast::Attribute,
-        options: &LoweringOptions,
+        options: &Options,
         map: &SourceMap,
         reporter: &Reporter,
     ) -> Result<Self> {
@@ -533,7 +533,9 @@ pub enum AttributeKind {
     /// ```text
     /// allow <0:lint:Path>
     /// ```
-    Allow { lint: Lint },
+    Allow {
+        lint: Lint,
+    },
     /// Deny a [lint](Lint).
     ///
     /// # Form
@@ -541,7 +543,9 @@ pub enum AttributeKind {
     /// ```text
     /// deny <0:lint:Path>
     /// ```
-    Deny { lint: Lint },
+    Deny {
+        lint: Lint,
+    },
     /// Deprecate a binding providing a reason.
     ///
     /// … and optionally a [version](Version) marking the start of the deprecation,
@@ -572,7 +576,19 @@ pub enum AttributeKind {
     /// documentation <0:content:Text-Literal>
     /// ```
     // @Task change to enum { (String), (Span) }
-    Documentation { content: String },
+    // @Beacon @Task rename `@documentation` to `@doc`
+    Documentation {
+        content: String,
+    },
+    // @Temporary
+    DocReservedIdentifiers,
+    DocReservedIdentifier {
+        name: String,
+    },
+    DocAttributes,
+    DocAttribute {
+        name: String,
+    },
     /// Forbid a [lint](Lint).
     ///
     /// # Form
@@ -580,7 +596,9 @@ pub enum AttributeKind {
     /// ```text
     /// forbid <0:lint:Path>
     /// ```
-    Forbid { lint: Lint },
+    Forbid {
+        lint: Lint,
+    },
     /// Make the inclusion of the attribute target dependent on a [condition](Condition).
     ///
     /// Aka conditional compilation.
@@ -590,7 +608,9 @@ pub enum AttributeKind {
     /// ```text
     /// if <0:condition:Condition>
     /// ```
-    If { condition: Condition },
+    If {
+        condition: Condition,
+    },
     /// Identify a binding as an intrinsic.
     Intrinsic,
     /// Exclude the attribute target from further processing.
@@ -619,7 +639,9 @@ pub enum AttributeKind {
     /// ```text
     /// location <0:path:Text-Literal>
     /// ```
-    Location { path: String },
+    Location {
+        path: String,
+    },
     /// Mark a data type binding to be likely expanded in the number of constructors.
     Moving,
     /// Specify the concrete type of a number literal to be `Nat`.
@@ -637,7 +659,9 @@ pub enum AttributeKind {
     /// ```text
     /// public [<0:reach:Path>]
     ///
-    Public { reach: Option<ast::Path> },
+    Public {
+        reach: Option<ast::Path>,
+    },
     /// Define the recursion limit of the TWI.
     ///
     /// # Form
@@ -646,7 +670,9 @@ pub enum AttributeKind {
     /// recursion-limit <0:depth:Number-Literal>
     /// ```
     // @Task define allowed range
-    RecursionLimit { depth: u32 },
+    RecursionLimit {
+        depth: u32,
+    },
     /// Specify the concrete type of a text literal to be `Rune`.
     Rune,
     /// Force an expression to be evaluated at compile-time.
@@ -664,7 +690,10 @@ pub enum AttributeKind {
     /// ```text
     /// unstable <feature:Path> <reason:Text-Literal>
     /// ```
-    Unstable { feature: Feature, reason: String },
+    Unstable {
+        feature: Feature,
+        reason: String,
+    },
     /// Specify the concrete type of a sequence literal to be `Vector`.
     Vector,
     /// Warn on a [lint](Lint).
@@ -674,7 +703,9 @@ pub enum AttributeKind {
     /// ```text
     /// warn <0:lint:Path>
     /// ```
-    Warn { lint: Lint },
+    Warn {
+        lint: Lint,
+    },
 }
 
 impl AttributeKind {
@@ -691,6 +722,11 @@ impl AttributeKind {
             Self::Deny { .. } => quoted!("deny"),
             Self::Deprecated { .. } => quoted!("deprecated"),
             Self::Documentation { .. } => quoted!("documentation"),
+            // @Temporary
+            Self::DocAttribute { .. } => quoted!("doc-attribute"),
+            Self::DocAttributes => quoted!("doc-attributes"),
+            Self::DocReservedIdentifier { .. } => quoted!("doc-reserved-identifier"),
+            Self::DocReservedIdentifiers => quoted!("doc-reserved-identifiers"),
             Self::Forbid { .. } => quoted!("forbid"),
             Self::If { .. } => quoted!("if"),
             Self::Intrinsic => quoted!("intrinsic"),
@@ -731,12 +767,16 @@ impl AttributeKind {
             }
             Intrinsic => Targets::FUNCTION_DECLARATION | Targets::DATA_DECLARATION,
             Include | Rune | Text => Targets::TEXT_LITERAL,
-            Known | Moving | Abstract => Targets::DATA_DECLARATION,
+            Known | Moving | Abstract | DocAttribute { .. } | DocReservedIdentifier { .. } => {
+                Targets::DATA_DECLARATION
+            }
             Int | Int32 | Int64 | Nat | Nat32 | Nat64 => Targets::NUMBER_LITERAL,
             List | Vector => Targets::SEQUENCE_LITERAL,
             // @Task but smh add extra diagnostic note saying they are public automatically
             Public { .. } => Targets::DECLARATION - Targets::CONSTRUCTOR_DECLARATION,
-            Location { .. } | RecursionLimit { .. } => Targets::MODULE_DECLARATION,
+            Location { .. } | RecursionLimit { .. } | DocAttributes | DocReservedIdentifiers => {
+                Targets::MODULE_DECLARATION
+            }
             Test => Targets::FUNCTION_DECLARATION | Targets::MODULE_DECLARATION,
             Static => Targets::EXPRESSION,
             Unsafe => {
@@ -754,6 +794,11 @@ impl AttributeKind {
             Self::Deny { .. } => AttributeKeys::DENY,
             Self::Deprecated { .. } => AttributeKeys::DEPRECATED,
             Self::Documentation { .. } => AttributeKeys::DOCUMENTATION,
+            // @Temporary
+            Self::DocAttribute { .. } => AttributeKeys::DOC_ATTRIBUTE,
+            Self::DocAttributes => AttributeKeys::DOC_ATTRIBUTES,
+            Self::DocReservedIdentifier { .. } => AttributeKeys::DOC_RESERVED_IDENTIFIER,
+            Self::DocReservedIdentifiers => AttributeKeys::DOC_RESERVED_IDENTIFIERS,
             Self::Forbid { .. } => AttributeKeys::FORBID,
             Self::Intrinsic => AttributeKeys::INTRINSIC,
             Self::If { .. } => AttributeKeys::IF,
@@ -816,6 +861,11 @@ bitflags::bitflags! {
         const UNSTABLE = 1 << 27;
         const VECTOR = 1 << 28;
         const WARN = 1 << 29;
+        // @Temporary
+        const DOC_ATTRIBUTE = 1 << 30;
+        const DOC_ATTRIBUTES = 1 << 31;
+        const DOC_RESERVED_IDENTIFIER = 1 << 32;
+        const DOC_RESERVED_IDENTIFIERS = 1 << 33;
 
         /// Attributes that can be applied several times to the same item.
         const COEXISTABLE = Self::ALLOW.bits
@@ -826,6 +876,10 @@ bitflags::bitflags! {
 
         /// Attributes that are implemented.
         const SUPPORTED = Self::DOCUMENTATION.bits
+            | Self::DOC_ATTRIBUTE.bits
+            | Self::DOC_ATTRIBUTES.bits
+            | Self::DOC_RESERVED_IDENTIFIER.bits
+            | Self::DOC_RESERVED_IDENTIFIERS.bits
             | Self::INTRINSIC.bits
             | Self::KNOWN.bits
             | Self::INT.bits
@@ -842,7 +896,12 @@ bitflags::bitflags! {
         const UNSUPPORTED = !Self::SUPPORTED.bits;
 
         /// Attributes that are internal to the standard library `core`.
-        const INTERNAL = Self::INTRINSIC.bits | Self::KNOWN.bits;
+        const INTERNAL = Self::INTRINSIC.bits
+            | Self::KNOWN.bits
+            | Self::DOC_ATTRIBUTE.bits
+            | Self::DOC_ATTRIBUTES.bits
+            | Self::DOC_RESERVED_IDENTIFIER.bits
+            | Self::DOC_RESERVED_IDENTIFIERS.bits;
     }
 }
 

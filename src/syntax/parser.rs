@@ -51,10 +51,21 @@ const STANDARD_DECLARATION_DELIMITERS: [Delimiter; 3] = {
 const BRACKET_POTENTIAL_PI_TYPE_LITERAL: &str =
     "add round brackets around the potential pi type literal to disambiguate the expression";
 
-/// The state of the parser.
-pub struct Parser<'a> {
+/// Parse a file module.
+pub fn parse(
+    tokens: &[Token],
     file: SourceFileIndex,
+    module: Identifier,
+    map: SharedSourceMap,
+    reporter: &Reporter,
+) -> Result<Declaration> {
+    Parser::new(tokens, file, map, reporter).parse_top_level(module)
+}
+
+/// The state of the parser.
+struct Parser<'a> {
     tokens: &'a [Token],
+    file: SourceFileIndex,
     reflection_depth: u16,
     index: usize,
     map: SharedSourceMap,
@@ -62,25 +73,20 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(
-        file: SourceFileIndex,
+    fn new(
         tokens: &'a [Token],
+        file: SourceFileIndex,
         map: SharedSourceMap,
         reporter: &'a Reporter,
     ) -> Self {
         Self {
-            file,
             tokens,
+            file,
             reflection_depth: 0,
             index: 0,
             map,
             reporter,
         }
-    }
-
-    /// Parse a file module given its name.
-    pub fn parse(&mut self, module_name: Identifier) -> Result<Declaration> {
-        self.parse_top_level(module_name)
     }
 
     /// Parse in a sandboxed way.

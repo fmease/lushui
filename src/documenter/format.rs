@@ -1,6 +1,9 @@
+use joinery::JoinableIterator;
+
 use super::{
     declaration_id,
     node::{Attributable, Element},
+    Options,
 };
 use crate::{
     format::DisplayWith,
@@ -12,11 +15,12 @@ use std::default::default;
 
 pub(super) fn format_expression(
     expression: &hir::Expression,
-    depth: usize,
+    url_prefix: &str,
+    options: &Options,
     crate_: &Crate,
     session: &BuildSession,
 ) -> String {
-    let mut formatter = Formatter::new(depth, crate_, session);
+    let mut formatter = Formatter::new(url_prefix, options, crate_, session);
     formatter.format_expression(expression);
     formatter.finish()
 }
@@ -26,21 +30,27 @@ pub(super) fn declaration_url_fragment(
     crate_: &Crate,
     session: &BuildSession,
 ) -> String {
-    Formatter::new(0, crate_, session).declaration_url_fragment(index)
+    Formatter::new("./", &default(), crate_, session).declaration_url_fragment(index)
 }
 
 struct Formatter<'a> {
-    // @Note bad name
-    depth: usize,
+    url_prefix: &'a str,
+    options: &'a Options,
     crate_: &'a Crate,
     session: &'a BuildSession,
     output: String,
 }
 
 impl<'a> Formatter<'a> {
-    fn new(depth: usize, crate_: &'a Crate, session: &'a BuildSession) -> Self {
+    fn new(
+        url_prefix: &'a str,
+        options: &'a Options,
+        crate_: &'a Crate,
+        session: &'a BuildSession,
+    ) -> Self {
         Self {
-            depth,
+            url_prefix,
+            options,
             crate_,
             session,
             output: String::new(),
@@ -56,7 +66,7 @@ impl<'a> Formatter<'a> {
     }
 
     fn format_expression(&mut self, expression: &hir::Expression) {
-        self.format_pi_type_literal_or_lower(expression)
+        self.format_pi_type_literal_or_lower(expression);
     }
 
     fn format_pi_type_literal_or_lower(&mut self, expression: &hir::Expression) {
@@ -113,7 +123,7 @@ impl<'a> Formatter<'a> {
                     self.format_expression(annotation);
                 }
 
-                self.write(" => ");
+                self.write(" =&gt; ");
                 self.format_expression(&lambda.body);
             }
             UseIn => todo!(),
@@ -126,7 +136,7 @@ impl<'a> Formatter<'a> {
                 // @Task spacing
                 for case in &analysis.cases {
                     self.format_pattern(&case.pattern);
-                    self.write(" => ");
+                    self.write(" =&gt; ");
                     self.format_expression(&case.body);
                     self.write(";");
                 }
@@ -169,7 +179,19 @@ impl<'a> Formatter<'a> {
         }
 
         match &expression.value {
-            Type => self.write("Type"),
+            Type => {
+                if self.options.no_core {
+                    self.write("Type");
+                } else {
+                    Element::new("a")
+                        .attribute(
+                            "href",
+                            format!("{}reserved.html#word.Type", self.url_prefix),
+                        )
+                        .child("Type")
+                        .render(&mut self.output);
+                }
+            }
             Number(literal) => self.write(&literal.to_string()),
             // @Task use custom escaping logic
             Text(literal) => self.write(&format!("{literal:?}")),
@@ -231,17 +253,15 @@ impl<'a> Formatter<'a> {
     }
 
     fn module_url_fragment(&self, index: DeclarationIndex) -> String {
-        std::iter::repeat("..".into())
-            .take(self.depth)
-            .chain(
-                self.crate_(index)
-                    .local_path_segments(index.local_index_unchecked())
-                    .into_iter()
-                    .map(urlencoding::encode),
-            )
-            .chain(Some("index.html".into()))
-            .intersperse("/".into())
-            .collect()
+        format!(
+            "{}{}/index.html",
+            self.url_prefix,
+            self.crate_(index)
+                .local_path_segments(index.local_index_unchecked())
+                .into_iter()
+                .map(urlencoding::encode)
+                .join_with("/")
+        )
     }
 
     fn declaration_url_fragment(&self, index: DeclarationIndex) -> String {

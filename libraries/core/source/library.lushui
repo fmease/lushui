@@ -1,18 +1,3 @@
-@public
-identity (A: Type) (a: A): A = a
-
-@public
-constant (A B: Type) (a: A) (b: B): A = a
-
-;;; @Task write a more general version (wrt dependent typing)
-@public
-compose (A B C: Type) (f: A -> B) (g: B -> C) (a: A): C =
-    g (f a)
-
-@public
-flip (A B C: Type) (f: A -> B -> C) (b: B) (a: A): C =
-    f a b
-
 @public module void
 @public module unit
 @public module bool
@@ -23,6 +8,7 @@ flip (A B C: Type) (f: A -> B -> C) (b: B) (a: A): C =
 @public module int
 @public module int32
 @public module int64
+@public module function
 @public module duple
 @public module triple
 @public module option
@@ -32,3 +18,11 @@ flip (A B C: Type) (f: A -> B -> C) (b: B) (a: A): C =
 @public module tuple
 @public module vector
 @public module ordering
+
+;;; @Task use namespaced attributes `doc.keywords` and `doc.attributes` instead once we support them
+
+@doc-reserved-identifiers
+module reserved
+
+@doc-attributes
+module attributes

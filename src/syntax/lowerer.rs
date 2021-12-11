@@ -41,15 +41,25 @@ use joinery::JoinableIterator;
 use smallvec::smallvec;
 use std::iter::once;
 
+/// Lower a declaration.
+pub fn lower(
+    declaration: ast::Declaration,
+    options: Options,
+    map: SharedSourceMap,
+    reporter: &Reporter,
+) -> Outcome<SmallVec<lowered_ast::Declaration, 1>> {
+    Lowerer::new(options, map, reporter).lower_declaration(declaration)
+}
+
 /// The state of the lowering pass.
-pub struct Lowerer<'a> {
-    options: LoweringOptions,
+struct Lowerer<'a> {
+    options: Options,
     map: SharedSourceMap,
     reporter: &'a Reporter,
 }
 
 impl<'a> Lowerer<'a> {
-    pub fn new(options: LoweringOptions, map: SharedSourceMap, reporter: &'a Reporter) -> Self {
+    fn new(options: Options, map: SharedSourceMap, reporter: &'a Reporter) -> Self {
         Self {
             options,
             map,
@@ -57,8 +67,7 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    /// Lower a declaration.
-    pub fn lower_declaration(
+    fn lower_declaration(
         &mut self,
         declaration: ast::Declaration,
     ) -> Outcome<SmallVec<lowered_ast::Declaration, 1>> {
@@ -1199,7 +1208,7 @@ impl<'a> Lowerer<'a> {
 }
 
 #[derive(Default)]
-pub struct LoweringOptions {
+pub struct Options {
     /// Specifies if internal language and library features are enabled.
     pub internal_features_enabled: bool,
     /// Specifies if documentation comments should be kept in the lowered AST.
@@ -1247,7 +1256,7 @@ impl lowered_ast::AttributeKind {
     // @Task allow unordered named attributes e.g. `@(unstable (reason "x") (feature thing))`
     pub fn parse(
         attribute: &ast::Attribute,
-        options: &LoweringOptions,
+        options: &Options,
         map: &SourceMap,
         reporter: &Reporter,
     ) -> Result<Self> {
@@ -1313,6 +1322,17 @@ impl lowered_ast::AttributeKind {
                         String::new()
                     },
                 },
+                // @Temporary
+                "doc-attribute" => Self::DocAttribute {
+                    name: argument(arguments, attribute.span, reporter)?
+                        .text_literal(None, reporter)?,
+                },
+                "doc-attributes" => Self::DocAttributes,
+                "doc-reserved-identifier" => Self::DocReservedIdentifier {
+                    name: argument(arguments, attribute.span, reporter)?
+                        .text_literal(None, reporter)?,
+                },
+                "doc-reserved-identifiers" => Self::DocReservedIdentifiers,
                 "forbid" => Self::Forbid {
                     lint: lowered_ast::Lint::parse(
                         argument(arguments, attribute.span, reporter)?
