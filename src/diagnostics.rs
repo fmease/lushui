@@ -619,7 +619,7 @@ pub enum Code {
     E014,
     /// Missing mandatory type annotations.
     E015,
-    /// Unable to load external module.
+    /// Unable to load out-of-line module.
     E016,
     /// Field declared outside of constructor declaration.
     E017,

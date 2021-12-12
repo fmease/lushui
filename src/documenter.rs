@@ -1,15 +1,15 @@
 //! The documentation generator.
 
 // @Tasks:
-// * add descriptions extracted from documentation comments
-// * link to source (generate html files per source file)
 // * search functionality using levenshtein
-// * description next to search result
-// * manually switching between a light and a dark mode + automatic mode detection
 // * asciidoc integration
+//
+// * link to source (generate html files per source file)
+// * description next to search result
+// * good color palette
+// * light + dark theme, automatic detection + manual setting
 // * print attributes (and link them)
 // * de-lower parameter lists
-// * add fonts via @font-face and use them (properly define font-weights of h1 etc)
 // * convert ttfs to woffs (1 + 2) and change @font-faces
 // * fill the COPYRIGHT file
 // * render unstable bindings special
@@ -24,11 +24,12 @@ use crate::{
     resolver::Crate,
     syntax::{
         ast,
-        lowered_ast::{self, AttributeKeys, AttributeKind},
+        lowered_ast::{AttributeKeys, AttributeKind, Attributes},
         CrateName,
     },
     utility::obtain,
 };
+use joinery::JoinableIterator;
 use node::{Attributable, Document, Element, Node, VoidElement};
 use std::{borrow::Cow, default::default, fs, path::PathBuf};
 
@@ -40,14 +41,6 @@ const DOCUMENTATION_FOLDER_NAME: &str = "doc";
 const MAIN_STYLE_SHEET_FILE_NAME: &str = "style.min.css";
 const MAIN_SCRIPT_FILE_NAME: &str = "script.min.js";
 const SEARCH_INDEX_FILE_NAME: &str = "search-index.min.js";
-
-// @Temporary
-static LOREM_IPSUM: &str = "\
-Lorem ipsum dolor sit amet, consectetur adipiscing elit, \
-sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. \
-Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. \
-Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. \
-Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.";
 
 const DEVELOPING: bool = true;
 
@@ -299,6 +292,7 @@ impl<'a> Documenter<'a> {
             match &declaration.value {
                 hir::DeclarationKind::Function(function) => {
                     subsections.functions.0.push(subsections::Function {
+                        attributes: &declaration.attributes,
                         binder: function.binder.as_str(),
                         type_: format::format_expression(
                             &function.type_annotation,
@@ -346,6 +340,7 @@ impl<'a> Documenter<'a> {
                                 let constructor = declaration.constructor().unwrap();
 
                                 formatted_constructors.push(subsections::Constructor {
+                                    attributes: &declaration.attributes,
                                     binder: constructor.binder.as_str(),
                                     type_: format::format_expression(
                                         &constructor.type_annotation,
@@ -361,12 +356,7 @@ impl<'a> Documenter<'a> {
                         subsections.types.0.push(subsections::Type {
                             // @Task write a custom formatter for this which prints links to the documentation
                             // of the specific attributes
-                            _attributes: declaration
-                                .attributes
-                                .iter()
-                                .map(ToString::to_string)
-                                .intersperse(" ".into())
-                                .collect::<String>(),
+                            attributes: &declaration.attributes,
                             binder: type_.binder.as_str(),
                             type_: format::format_expression(
                                 &type_.type_annotation,
@@ -394,7 +384,7 @@ impl<'a> Documenter<'a> {
         subsections
     }
 
-    fn render_module_page(&mut self, module: &hir::Module, attributes: &lowered_ast::Attributes) {
+    fn render_module_page(&mut self, module: &hir::Module, attributes: &Attributes) {
         let is_attribute_page = attributes.has(AttributeKeys::DOC_ATTRIBUTES);
         let is_reserved_identifier_page = attributes.has(AttributeKeys::DOC_RESERVED_IDENTIFIERS);
 
@@ -538,29 +528,9 @@ impl<'a> Documenter<'a> {
                 main.add_child(heading);
             }
 
-            // description
-            {
-                let mut paragraph = Element::new("p");
+            render_documentation(attributes, &mut main, &self.options);
 
-                // unrelated @Task, create a better attribute API! for real!
-                // @Beacon @Task combine the lines and send the blob to asciidoctor!
-                for line in attributes.filter(AttributeKeys::DOC).map(|attribute| {
-                    obtain!(
-                        &attribute.value,
-                        AttributeKind::Doc { content } => content
-                    )
-                    .unwrap()
-                }) {
-                    paragraph.add_child(line);
-                }
-
-                main.add_child(paragraph);
-
-                // @Temporary
-                main.add_child(Element::new("p").child(LOREM_IPSUM));
-            }
-
-            subsections.render(&mut main);
+            subsections.render(&mut main, &self.options);
 
             container.add_child(main);
         }
@@ -644,9 +614,31 @@ impl<'a> Documenter<'a> {
     }
 }
 
+fn render_documentation(attributes: &Attributes, parent: &mut Element<'_>, options: &Options) {
+    // @Beacon @Beacon @Task pass this stuff to asciidoctor instead
+
+    if let Some(amount) = options.lorem_ipsum {
+        for _ in 0..amount {
+            parent.add_child(Element::new("p").child(LOREM_IPSUM));
+        }
+        return;
+    }
+
+    parent.add_child(Element::new("p").child(documentation(attributes)));
+}
+
+fn documentation(attributes: &Attributes) -> String {
+    attributes
+        .filter2(AttributeKind::doc)
+        .map(|content| content.trim_start_matches(' '))
+        .join_with('\n')
+        .to_string()
+}
+
 #[derive(Default)]
 pub struct Options {
     pub no_core: bool,
+    pub lorem_ipsum: Option<usize>,
 }
 
 // @Note ideally, we wouldn't need this extra boiled-down version of Crate
@@ -694,10 +686,12 @@ fn anchored_heading<'a>(
 }
 
 mod subsections {
+    use crate::syntax::lowered_ast;
+
     use super::{
         anchored_heading, declaration_id,
         node::{Attributable, Element, Node},
-        LOREM_IPSUM,
+        render_documentation, Options,
     };
 
     #[derive(Default)]
@@ -721,13 +715,13 @@ mod subsections {
             self.reserved_punctuation.render_table_of_contents(parent);
         }
 
-        pub fn render(self, parent: &mut Element<'a>) {
-            self.modules.render(parent);
-            self.types.render(parent);
-            self.functions.render(parent);
-            self.attributes.render(parent);
-            self.keywords.render(parent);
-            self.reserved_punctuation.render(parent);
+        pub fn render(self, parent: &mut Element<'a>, options: &Options) {
+            self.modules.render(parent, options);
+            self.types.render(parent, options);
+            self.functions.render(parent, options);
+            self.attributes.render(parent, options);
+            self.keywords.render(parent, options);
+            self.reserved_punctuation.render(parent, options);
         }
     }
 
@@ -800,7 +794,7 @@ mod subsections {
     }
 
     impl<'a> Modules<'a> {
-        fn render(self, parent: &mut Element<'a>) {
+        fn render(self, parent: &mut Element<'a>, _options: &Options) {
             if self.0.is_empty() {
                 return;
             }
@@ -859,7 +853,7 @@ mod subsections {
     }
 
     impl<'a> Types<'a> {
-        fn render(self, parent: &mut Element<'a>) {
+        fn render(self, parent: &mut Element<'a>, options: &Options) {
             if self.0.is_empty() {
                 return;
             }
@@ -884,8 +878,7 @@ mod subsections {
                         .child(Node::verbatim(type_.type_)),
                 );
 
-                // @Temporary
-                section.add_child(Element::new("p").child(LOREM_IPSUM));
+                render_documentation(type_.attributes, &mut section, options);
 
                 // @Task don't do that for abstract or intrinsic types
                 // @Question what if there are no constructors?
@@ -915,8 +908,7 @@ mod subsections {
                             .child(Node::verbatim(constructor.type_)),
                     );
 
-                    // @Temporary
-                    subsection.add_child(Element::new("p").child(LOREM_IPSUM));
+                    render_documentation(constructor.attributes, &mut subsection, options);
                 }
 
                 section.add_child(subsection);
@@ -927,7 +919,7 @@ mod subsections {
     }
 
     pub(super) struct Type<'a> {
-        pub(super) _attributes: String,
+        pub(super) attributes: &'a lowered_ast::Attributes,
         pub(super) binder: &'a str,
         pub(super) type_: String,
         pub(super) constructors: Vec<Constructor<'a>>,
@@ -944,6 +936,7 @@ mod subsections {
     }
 
     pub(super) struct Constructor<'a> {
+        pub(super) attributes: &'a lowered_ast::Attributes,
         pub(super) binder: &'a str,
         pub(super) type_: String,
     }
@@ -963,7 +956,7 @@ mod subsections {
     }
 
     impl<'a> Functions<'a> {
-        fn render(self, parent: &mut Element<'a>) {
+        fn render(self, parent: &mut Element<'a>, options: &Options) {
             if self.0.is_empty() {
                 return;
             }
@@ -988,8 +981,7 @@ mod subsections {
                         .child(Node::verbatim(function.type_)),
                 );
 
-                // @Temporary
-                section.add_child(Element::new("p").child(LOREM_IPSUM));
+                render_documentation(function.attributes, &mut section, options);
             }
 
             parent.add_child(section);
@@ -997,6 +989,7 @@ mod subsections {
     }
 
     pub(super) struct Function<'a> {
+        pub(super) attributes: &'a lowered_ast::Attributes,
         pub(super) binder: &'a str,
         pub(super) type_: String,
     }
@@ -1026,7 +1019,7 @@ mod subsections {
     }
 
     impl<'a> Keywords<'a> {
-        fn render(self, parent: &mut Element<'a>) {
+        fn render(self, parent: &mut Element<'a>, options: &Options) {
             if self.0.is_empty() {
                 return;
             }
@@ -1049,8 +1042,7 @@ mod subsections {
                         ),
                 );
 
-                // @Temporary
-                section.add_child(Element::new("p").child(LOREM_IPSUM));
+                render_documentation(&lowered_ast::Attributes::default(), &mut section, options);
             }
 
             parent.add_child(section);
@@ -1086,7 +1078,7 @@ mod subsections {
     }
 
     impl<'a> ReservedPunctuation<'a> {
-        fn render(self, parent: &mut Element<'a>) {
+        fn render(self, parent: &mut Element<'a>, options: &Options) {
             if self.0.is_empty() {
                 return;
             }
@@ -1109,8 +1101,7 @@ mod subsections {
                         ),
                 );
 
-                // @Temporary
-                section.add_child(Element::new("p").child(LOREM_IPSUM));
+                render_documentation(&lowered_ast::Attributes::default(), &mut section, options);
             }
 
             parent.add_child(section);
@@ -1146,7 +1137,7 @@ mod subsections {
     }
 
     impl<'a> Attributes<'a> {
-        pub(super) fn render(self, parent: &mut Element<'a>) {
+        pub(super) fn render(self, parent: &mut Element<'a>, options: &Options) {
             if self.0.is_empty() {
                 return;
             }
@@ -1169,8 +1160,7 @@ mod subsections {
                         ),
                 );
 
-                // @Temporary
-                section.add_child(Element::new("p").child(LOREM_IPSUM));
+                render_documentation(&lowered_ast::Attributes::default(), &mut section, options);
             }
 
             parent.add_child(section);
@@ -1194,10 +1184,19 @@ mod subsections {
 
 struct Page {
     path: PathBuf,
-    // @Temporary
     content: String,
 }
 
 fn declaration_id(binder: &str) -> String {
     format!("decl.{}", urlencoding::encode(binder))
 }
+
+static LOREM_IPSUM: &str = "\
+    Lorem ipsum dolor sit amet, consectetur adipiscing elit, \
+    sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. \
+    Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi \
+    ut aliquip ex ea commodo consequat. \
+    Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu \
+    fugiat nulla pariatur. \
+    Excepteur sint occaecat cupidatat non proident, \
+    sunt in culpa qui officia deserunt mollit anim id est laborum.";

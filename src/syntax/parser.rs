@@ -540,7 +540,7 @@ impl<'a> Parser<'a> {
 
     /// Finish parsing module declaration.
     ///
-    /// This is either a module declaration or an external module declaration.
+    /// This is either an inline or an out-of-line module declaration.
     ///
     /// # Grammar
     ///
@@ -571,7 +571,7 @@ impl<'a> Parser<'a> {
         let binder = span.merging(self.consume_word()?);
 
         match self.current_token().name() {
-            // external module declaration
+            // out-of-line module declaration
             name if name.is_terminator() => {
                 if name == Semicolon {
                     self.advance();

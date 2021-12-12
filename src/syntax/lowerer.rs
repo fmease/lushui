@@ -8,7 +8,7 @@
 //!
 //! * lower let/in expressions to lambda literals
 //! * lower parameters to simple lambda literals
-//! * open external modules (this will probably move to the parser in the future
+//! * open out-of-line modules (this will probably move to the parser in the future
 //!   for parallel reading and independent error reporting)
 //! * simplify use-declarations by unfolding use-path trees
 //! * apply attribute groups (unimplemented right now)
@@ -75,7 +75,7 @@ impl<'a> Lowerer<'a> {
             declaration,
             &DeclarationContext {
                 is_root: true,
-                internal_modules: Vec::new(),
+                inline_modules: Vec::new(),
             },
         )
     }
@@ -203,7 +203,7 @@ impl<'a> Lowerer<'a> {
 
                 let context = DeclarationContext {
                     is_root: false,
-                    internal_modules: Vec::new(),
+                    inline_modules: Vec::new(),
                 };
 
                 let constructors = type_.constructors.map(|constructors| {
@@ -285,7 +285,7 @@ impl<'a> Lowerer<'a> {
                 }]
             }
             Module(module) => {
-                let is_external_module = module.declarations.is_none();
+                let is_out_of_line_module = module.declarations.is_none();
 
                 let declarations = match module.declarations {
                     Some(declarations) => declarations,
@@ -303,7 +303,7 @@ impl<'a> Lowerer<'a> {
                             .parent()
                             .unwrap()
                             .to_owned();
-                        path.extend(&context.internal_modules);
+                        path.extend(&context.inline_modules);
                         let path = path.join(path_suffix).with_extension(crate::FILE_EXTENSION);
 
                         // @Task instead of a note saying the error, print a help message
@@ -349,18 +349,18 @@ impl<'a> Lowerer<'a> {
                     }
                 };
 
-                let mut internal_modules = if is_external_module {
+                let mut inline_modules = if is_out_of_line_module {
                     Vec::new()
                 } else {
-                    context.internal_modules.clone()
+                    context.inline_modules.clone()
                 };
                 if !context.is_root {
-                    internal_modules.push(module.binder.to_string());
+                    inline_modules.push(module.binder.to_string());
                 }
 
                 let context = DeclarationContext {
                     is_root: false,
-                    internal_modules,
+                    inline_modules,
                 };
 
                 let declarations = declarations
@@ -1210,14 +1210,14 @@ pub struct Options {
 
 struct DeclarationContext {
     is_root: bool,
-    /// The path of internal module declarations leading to a declaration.
+    /// The path of inline module declarations leading to a declaration.
     ///
     /// The path starts either at the root module declaration (excluding it) or
-    /// at the closest external module (including it).
+    /// at the closest out-of-line module (including it).
     ///
-    /// Exclusively used to compute the path of external modules inside of internal
+    /// Exclusively used to compute the path of out-of-line modules inside of inline
     /// modules!
-    internal_modules: Vec<String>,
+    inline_modules: Vec<String>,
 }
 
 #[derive(Clone, Copy)]

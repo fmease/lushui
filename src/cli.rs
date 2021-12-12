@@ -209,7 +209,8 @@ pub fn arguments() -> (Command, Options) {
                     let mut message =
                         "UNSTABLE OPTIONS (not subject to any stability guarantees):\n".to_string();
                     for option in UnstableOption::elements() {
-                        message += &format!("    -Z {:<25}    {}\n", option.name(), option.help());
+                        message +=
+                            &format!("    -Z {:<25}    {}\n", option.syntax(), option.help());
                     }
                     println!("{message}");
                     std::process::exit(0);
@@ -235,6 +236,7 @@ pub fn arguments() -> (Command, Options) {
                         }),
                     );
                 }
+                LoremIpsum(amount) => options.lorem_ipsum = amount,
             }
         }
     }
@@ -262,6 +264,7 @@ pub struct Options {
     pub durations: bool,
     pub show_indices: bool,
     pub pass_restriction: Option<PassRestriction>,
+    pub lorem_ipsum: Option<usize>,
 }
 
 #[derive(Default)]
@@ -348,11 +351,11 @@ enum UnstableOption {
     ParseOnly,
     LowerOnly,
     ResolveOnly,
+    LoremIpsum(Option<usize>),
 }
 
 impl UnstableOption {
-    // @Task derive this (write proc macro, rename dash case)
-    const fn name(self) -> &'static str {
+    const fn syntax(self) -> &'static str {
         match self {
             Self::Help => "help",
             Self::Internals => "internals",
@@ -368,6 +371,7 @@ impl UnstableOption {
             Self::ParseOnly => "parse-only",
             Self::LowerOnly => "lower-only",
             Self::ResolveOnly => "resolve-only",
+            Self::LoremIpsum(_) => "lorem-ipsum=[<amount=1>]",
         }
     }
 
@@ -389,6 +393,7 @@ impl UnstableOption {
             Self::ParseOnly => "Halts the execution after parsing the current crate",
             Self::LowerOnly => "Halts the execution after lowering the current crate",
             Self::ResolveOnly => "Halts the execution after resolving the names of the current crate",
+            Self::LoremIpsum(_) => "Replaces the documentation of every declaration with `amount` paragraphs of Lorem Ipsum",
         }
     }
 }
@@ -413,7 +418,11 @@ impl FromStr for UnstableOption {
             "parse-only" => Self::ParseOnly,
             "lower-only" => Self::LowerOnly,
             "resolve-only" => Self::ResolveOnly,
-            _ => return Err(()),
+            "lorem-ipsum" => Self::LoremIpsum(Some(1)),
+            _ => match input.split_once('=').ok_or(())? {
+                ("lorem-ipsum", amount) => Self::LoremIpsum(Some(amount.parse().map_err(|_| ())?)),
+                _ => return Err(()),
+            },
         })
     }
 }

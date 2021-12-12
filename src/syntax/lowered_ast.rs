@@ -13,7 +13,7 @@ use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     error::{PossiblyErroneous, Result},
     span::{PossiblySpanning, SourceFileIndex, SourceMap, Span, Spanned, Spanning},
-    utility::condition,
+    utility::{condition, obtain},
 };
 use std::rc::Rc;
 
@@ -255,6 +255,7 @@ impl AttributeTarget for ast::Declaration {
                 Err(())
             }
             (Some(body), true) => {
+                // @Task better labeks ("conflicting definition" is non-descriptive and confusing)
                 Diagnostic::error()
                     .code(Code::E020)
                     .message(format!(
@@ -448,6 +449,7 @@ impl AttributeTargets {
     }
 }
 
+// @Task get rid of this type once we got rid of AttributeKeys
 #[derive(Clone, Default)]
 pub struct Attributes {
     pub(super) data: Box<[Attribute]>,
@@ -493,6 +495,16 @@ impl Attributes {
 
     pub fn iter(&self) -> impl Iterator<Item = &Attribute> {
         self.data.iter()
+    }
+
+    // @Temporary name
+    pub fn filter2<'a, R: ?Sized + 'a>(
+        &'a self,
+        predicate: impl Fn(&'a AttributeKind) -> Option<&'a R> + Clone,
+    ) -> impl Iterator<Item = &'a R> + Clone {
+        self.data
+            .iter()
+            .filter_map(move |attribute| predicate(&attribute.value))
     }
 }
 
@@ -630,7 +642,7 @@ pub enum AttributeKind {
     Known,
     /// Specify the concrete type of a sequence literal to be `List`.
     List,
-    /// Change the path where the external module resides.
+    /// Change the path where the out-of-line module resides.
     ///
     /// # Form
     ///
@@ -707,6 +719,10 @@ pub enum AttributeKind {
 }
 
 impl AttributeKind {
+    pub fn doc(&self) -> Option<&str> {
+        obtain!(self, Self::Doc { content } => content)
+    }
+
     // @Question is outputting "attribute `documentation`" bad output for documentation comments?
     // @Beacon @Task derive this (without quotes)
     pub const fn quoted_name(&self) -> &'static str {
@@ -827,6 +843,8 @@ impl AttributeKind {
     }
 }
 
+// @Beacon @Task get rid of this smh. using bitflags is not extensible to an
+// arbitrary number of attributes (current limit: 64 attributes)
 bitflags::bitflags! {
     pub struct AttributeKeys: u64 {
         const ALLOW = 1 << 0;

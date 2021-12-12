@@ -396,6 +396,7 @@ fn build_package(
                         // in the list of deps whether core is present or not (even transitively)
                         // `no_core` is only for single-file packages
                         no_core: build_options.no_core,
+                        lorem_ipsum: options.lorem_ipsum,
                     };
                     documenter::document(
                         &declaration,
