@@ -299,7 +299,6 @@ impl<'a> Formatter<'a> {
 
             Element::new("a")
                 .attribute("href", declaration_url)
-                .class("reference")
                 .attribute("title", path)
                 .child(binder.to_string())
                 .render(&mut self.output);

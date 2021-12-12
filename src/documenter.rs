@@ -544,16 +544,13 @@ impl<'a> Documenter<'a> {
 
                 // unrelated @Task, create a better attribute API! for real!
                 // @Beacon @Task combine the lines and send the blob to asciidoctor!
-                for line in attributes
-                    .filter(AttributeKeys::DOCUMENTATION)
-                    .map(|attribute| {
-                        obtain!(
-                            &attribute.value,
-                            AttributeKind::Documentation { content } => content
-                        )
-                        .unwrap()
-                    })
-                {
+                for line in attributes.filter(AttributeKeys::DOC).map(|attribute| {
+                    obtain!(
+                        &attribute.value,
+                        AttributeKind::Doc { content } => content
+                    )
+                    .unwrap()
+                }) {
                     paragraph.add_child(line);
                 }
 

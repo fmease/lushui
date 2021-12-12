@@ -303,25 +303,17 @@ impl<'a> Parser<'a> {
                 At => {
                     self.advance();
                     let attribute = self.finish_parse_regular_attribute(span)?;
-                    if matches!(skip_line_breaks, SkipLineBreaks::Yes) {
+                    if skip_line_breaks == SkipLineBreaks::Yes {
                         while self.has_consumed(Semicolon) {}
                     }
                     attribute
                 }
                 DocumentationComment => {
                     self.advance();
-                    let attribute = Attribute {
-                        binder: Identifier::new_unchecked("documentation".into(), span),
-                        span,
-                        arguments: smallvec![AttributeArgument::new(
-                            span,
-                            AttributeArgumentKind::TextEncodedInSpan,
-                        )],
-                    };
-                    if matches!(skip_line_breaks, SkipLineBreaks::Yes) {
+                    if skip_line_breaks == SkipLineBreaks::Yes {
                         while self.has_consumed(Semicolon) {}
                     }
-                    attribute
+                    Attribute::new(span, AttributeKind::Documentation)
                 }
                 _ => break,
             });
@@ -375,11 +367,10 @@ impl<'a> Parser<'a> {
             }
         }
 
-        Ok(Attribute {
-            binder,
-            arguments,
+        Ok(Attribute::new(
             span,
-        })
+            AttributeKind::Regular { binder, arguments },
+        ))
     }
 
     /// Parse an argument of an attribute.
@@ -1930,6 +1921,7 @@ impl From<TokenName> for Delimiter {
     }
 }
 
+#[derive(PartialEq, Eq)]
 enum SkipLineBreaks {
     Yes,
     No,

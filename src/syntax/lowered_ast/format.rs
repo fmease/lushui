@@ -28,7 +28,7 @@ impl fmt::Display for super::AttributeKind {
                 "(deprecated (reason {:?}) (since {:?}) (until {:?}) (replacement {:?}))",
                 reason, since, until, replacement
             ),
-            Self::Documentation { content } => write!(f, "(documentation {:?})", content),
+            Self::Doc { content } => write!(f, "(doc {:?})", content),
             // @Temporary
             Self::DocAttribute { name } => write!(f, "(doc-attribute {name:?})"),
             Self::DocAttributes => write!(f, "doc-attributes"),

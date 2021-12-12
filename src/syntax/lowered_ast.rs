@@ -573,11 +573,9 @@ pub enum AttributeKind {
     /// # Form
     ///
     /// ```text
-    /// documentation <0:content:Text-Literal>
+    /// doc <0:content:Text-Literal>
     /// ```
-    // @Task change to enum { (String), (Span) }
-    // @Beacon @Task rename `@documentation` to `@doc`
-    Documentation {
+    Doc {
         content: String,
     },
     // @Temporary
@@ -710,7 +708,7 @@ pub enum AttributeKind {
 
 impl AttributeKind {
     // @Question is outputting "attribute `documentation`" bad output for documentation comments?
-    // @Task derive this (without quotes)
+    // @Beacon @Task derive this (without quotes)
     pub const fn quoted_name(&self) -> &'static str {
         macro quoted($name:literal) {
             concat!("`", $name, "`")
@@ -721,7 +719,7 @@ impl AttributeKind {
             Self::Allow { .. } => quoted!("allow"),
             Self::Deny { .. } => quoted!("deny"),
             Self::Deprecated { .. } => quoted!("deprecated"),
-            Self::Documentation { .. } => quoted!("documentation"),
+            Self::Doc { .. } => quoted!("doc"),
             // @Temporary
             Self::DocAttribute { .. } => quoted!("doc-attribute"),
             Self::DocAttributes => quoted!("doc-attributes"),
@@ -762,7 +760,7 @@ impl AttributeKind {
         // when updating, update `AttributeTargets::description` accordingly
         match self {
             Allow { .. } | Deny { .. } | Forbid { .. } | Warn { .. } => Targets::all(),
-            Deprecated { .. } | Documentation { .. } | If { .. } | Ignore | Unstable { .. } => {
+            Deprecated { .. } | Doc { .. } | If { .. } | Ignore | Unstable { .. } => {
                 Targets::DECLARATION
             }
             Intrinsic => Targets::FUNCTION_DECLARATION | Targets::DATA_DECLARATION,
@@ -793,7 +791,7 @@ impl AttributeKind {
             Self::Allow { .. } => AttributeKeys::ALLOW,
             Self::Deny { .. } => AttributeKeys::DENY,
             Self::Deprecated { .. } => AttributeKeys::DEPRECATED,
-            Self::Documentation { .. } => AttributeKeys::DOCUMENTATION,
+            Self::Doc { .. } => AttributeKeys::DOC,
             // @Temporary
             Self::DocAttribute { .. } => AttributeKeys::DOC_ATTRIBUTE,
             Self::DocAttributes => AttributeKeys::DOC_ATTRIBUTES,
@@ -834,7 +832,7 @@ bitflags::bitflags! {
         const ALLOW = 1 << 0;
         const DENY = 1 << 1;
         const DEPRECATED = 1 << 2;
-        const DOCUMENTATION = 1 << 3;
+        const DOC = 1 << 3;
         const FORBID = 1 << 4;
         const INTRINSIC = 1 << 5;
         const IF = 1 << 6;
@@ -870,12 +868,12 @@ bitflags::bitflags! {
         /// Attributes that can be applied several times to the same item.
         const COEXISTABLE = Self::ALLOW.bits
             | Self::DENY.bits
-            | Self::DOCUMENTATION.bits
+            | Self::DOC.bits
             | Self::FORBID.bits
             | Self::WARN.bits;
 
         /// Attributes that are implemented.
-        const SUPPORTED = Self::DOCUMENTATION.bits
+        const SUPPORTED = Self::DOC.bits
             | Self::DOC_ATTRIBUTE.bits
             | Self::DOC_ATTRIBUTES.bits
             | Self::DOC_RESERVED_IDENTIFIER.bits

@@ -115,18 +115,16 @@ pub enum UsePathTreeKind {
 
 pub type Attributes = Vec<Attribute>;
 
+pub type Attribute = Spanned<AttributeKind>;
+
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct Attribute {
-    pub binder: Identifier,
-    pub arguments: SmallVec<AttributeArgument, 1>,
-    pub span: Span,
-}
-
-impl Spanning for Attribute {
-    fn span(&self) -> Span {
-        self.span
-    }
+pub enum AttributeKind {
+    Regular {
+        binder: Identifier,
+        arguments: SmallVec<AttributeArgument, 1>,
+    },
+    Documentation,
 }
 
 pub type AttributeArgument = Spanned<AttributeArgumentKind>;
@@ -136,8 +134,6 @@ pub type AttributeArgument = Spanned<AttributeArgumentKind>;
 pub enum AttributeArgumentKind {
     NumberLiteral(Box<String>),
     TextLiteral(Box<String>),
-    /// To be able to lower documentation comments without immense memory wastage.
-    TextEncodedInSpan,
     Path(Box<Path>),
     Named(Box<NamedAttributeArgument>),
 }
@@ -146,7 +142,7 @@ impl AttributeArgumentKind {
     pub const fn name(&self) -> &'static str {
         match self {
             Self::NumberLiteral(_) => "number literal",
-            Self::TextLiteral(_) | Self::TextEncodedInSpan => "text literal",
+            Self::TextLiteral(_) => "text literal",
             Self::Path(_) => "path",
             Self::Named(_) => "named argument",
         }

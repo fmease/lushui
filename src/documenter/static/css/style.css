@@ -211,6 +211,10 @@ h5 {
     font-weight: bold;
 }
 
+.subheading.declaration a.binder.deprecated {
+    text-decoration: line-through;
+}
+
 .indent {
     margin-left: 2em;
 }

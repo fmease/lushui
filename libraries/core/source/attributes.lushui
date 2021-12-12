@@ -14,8 +14,8 @@ data Deny: Type of
 @(doc-attribute "deprecated")
 data Deprecated: Type of
 
-@(doc-attribute "documentation")
-data Documentation: Type of
+@(doc-attribute "doc")
+data Doc: Type of
 
 @(doc-attribute "forbid")
 data Forbid: Type of

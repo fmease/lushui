@@ -7,9 +7,9 @@
 
 use super::{
     ast::{
-        decl, expr, pat, Attribute, Attributes, Case, Declaration, Domain, Explicitness::*,
-        Expression, Format, Identifier, Item, ParameterGroup, Parameters, Path, UsePathTree,
-        UsePathTreeKind,
+        decl, expr, pat, Attribute, AttributeKind, Attributes, Case, Declaration, Domain,
+        Explicitness::*, Expression, Format, Identifier, Item, ParameterGroup, Parameters, Path,
+        UsePathTree, UsePathTreeKind,
     },
     parse, Parser, Result,
 };
@@ -378,11 +378,10 @@ fn field_with_attribute() {
         parse_expression("@overall compound::projection"),
         Ok(expr! {
             Field {
-                vec![Attribute {
+                vec![Attribute::new(span(1, 9), AttributeKind::Regular {
                     binder: Identifier::new_unchecked("overall".into(), span(2, 9)),
                     arguments: default(),
-                    span: span(1, 9),
-                }],
+                })],
                 span(10, 30);
                 base: Identifier::new_unchecked("compound".into(), span(10, 18)).into(),
                 member: Identifier::new_unchecked("projection".into(), span(20, 30)),
@@ -401,11 +400,10 @@ fn base_with_attribute_and_field() {
                 Attributes::new(), span(1, 37);
                 base: expr! {
                     Path(
-                        vec![Attribute {
+                        vec![Attribute::new(span(2, 15), AttributeKind::Regular {
                             binder: Identifier::new_unchecked("specifically".into(), span(3, 15)),
                             arguments: default(),
-                            span: span(2, 15),
-                        }],
+                        })],
                         span(1, 25);
                         Path::from(Identifier::new_unchecked("compound".into(), span(16, 24)))
                     )
@@ -451,21 +449,18 @@ fn outer_and_inner_attributes() {
         Ok(expr! {
             TypeLiteral {
                 vec![
-                    Attribute {
+                    Attribute::new(span(16, 22), AttributeKind::Regular {
                         binder: Identifier::new_unchecked("inner".into(), span(17, 22)),
                         arguments: default(),
-                        span: span(16, 22),
-                    },
-                    Attribute {
+                    }),
+                    Attribute::new(span(1, 7), AttributeKind::Regular {
                         binder: Identifier::new_unchecked("outer".into(), span(2, 7)),
                         arguments: default(),
-                        span: span(1, 7),
-                    },
-                    Attribute {
+                    }),
+                    Attribute::new(span(8, 14), AttributeKind::Regular {
                         binder: Identifier::new_unchecked("outer".into(), span(9, 14)),
                         arguments: default(),
-                        span: span(8, 14),
-                    }
+                    })
                 ],
                 span(15, 28)
             }

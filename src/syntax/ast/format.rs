@@ -237,7 +237,7 @@ impl Format for super::DeclarationKind {
             Self::Constructor(constructor) => constructor.format(f, indentation),
             Self::Module(module) => module.format(f, indentation),
             Self::ModuleHeader => FormatStruct::new(f, indentation)
-                .name("ModuleHeader")
+                .name("Module-Header")
                 .finish(),
             Self::Group(group) => group.format(f, indentation),
             Self::Use(use_) => use_.format(f, indentation),
@@ -719,16 +719,17 @@ impl fmt::Display for Explicitness {
     }
 }
 
-impl Format for super::Attribute {
+impl Format for super::AttributeKind {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
-        self.span.format(f, indentation)?;
-        write!(f, " ")?;
-
-        FormatStruct::new(f, indentation)
-            .name("Attribute")
-            .field("binder", &self.binder)
-            .field("arguments", &self.arguments)
-            .finish()
+        let struct_ = FormatStruct::new(f, indentation);
+        match self {
+            Self::Regular { binder, arguments } => struct_
+                .name("Attribute")
+                .field("binder", binder)
+                .field("arguments", arguments),
+            Self::Documentation => struct_.name("Documentation"),
+        }
+        .finish()
     }
 }
 
@@ -748,9 +749,6 @@ impl Format for super::AttributeArgumentKind {
                 write!(f, " ")?;
                 format_text_literal(text, f)
             }
-            Self::TextEncodedInSpan => FormatStruct::new(f, indentation)
-                .name("Text-Encoded-In-Span")
-                .finish(),
             Self::Path(path) => path.format(f, indentation),
             Self::Named(named) => named.format(f, indentation),
         }

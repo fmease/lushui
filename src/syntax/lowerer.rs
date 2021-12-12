@@ -92,7 +92,6 @@ impl<'a> Lowerer<'a> {
         let attributes =
             Outcome::from(self.lower_attributes(&declaration.attributes, &declaration))
                 .unwrap(&mut health);
-
         let declarations = match declaration.value {
             Function(function) => {
                 let context = ExpressionContext::new(declaration.span);
@@ -1254,7 +1253,19 @@ impl lowered_ast::AttributeKind {
         map: &SourceMap,
         reporter: &Reporter,
     ) -> Result<Self> {
-        let arguments = &mut &*attribute.arguments;
+        let ast::AttributeKind::Regular { binder, arguments } = &attribute.value else {
+            return Ok(Self::Doc {
+                content: if options.keep_documentation_comments {
+                    map.snippet(attribute.span)
+                        .trim_start_matches(";;")
+                        .to_owned()
+                } else {
+                    String::new()
+                },
+            })
+        };
+
+        let arguments: &mut &[_] = &mut &**arguments;
 
         fn optional_argument<'a>(
             arguments: &mut &'a [ast::AttributeArgument],
@@ -1285,7 +1296,7 @@ impl lowered_ast::AttributeKind {
         }
 
         let result = (|| {
-            Ok(match attribute.binder.as_str() {
+            Ok(match binder.as_str() {
                 "abstract" => Self::Abstract,
                 "allow" => Self::Allow {
                     lint: lowered_ast::Lint::parse(
@@ -1307,10 +1318,10 @@ impl lowered_ast::AttributeKind {
                         .report(reporter);
                     return Err(AttributeParsingError::Unrecoverable);
                 }
-                "documentation" => Self::Documentation {
+                "doc" => Self::Doc {
                     content: if options.keep_documentation_comments {
                         argument(arguments, attribute.span, reporter)?
-                            .text_literal_or_encoded_text(map, reporter)?
+                            .text_literal(None, reporter)?
                     } else {
                         *arguments = &arguments[1..];
                         String::new()
@@ -1404,11 +1415,7 @@ impl lowered_ast::AttributeKind {
                         reporter,
                     )?,
                 },
-                _ => {
-                    return Err(AttributeParsingError::UndefinedAttribute(
-                        attribute.binder.clone(),
-                    ))
-                }
+                _ => return Err(AttributeParsingError::UndefinedAttribute(binder.clone())),
             })
         })();
 
@@ -1453,39 +1460,6 @@ impl ast::AttributeArgument {
     extractor!(number_literal "number literal": NumberLiteral => String);
     extractor!(text_literal "text literal": TextLiteral => String);
     extractor!(path "path": Path => Path);
-
-    // @Note argh! the macro cannot handle this
-    fn text_literal_or_encoded_text(
-        &self,
-        map: &SourceMap,
-        reporter: &Reporter,
-    ) -> Result<String, AttributeParsingError> {
-        match &self.value {
-            ast::AttributeArgumentKind::TextLiteral(literal) => Ok(literal.as_ref().clone()),
-            // @Note horrendous!
-            // @Beacon @Note we assume this is meant for documentation comments
-            // (the only user of TextEncodedInSpan) to cut off the leading `;;`
-            // Honestly, we should replace this stupid system
-            ast::AttributeArgumentKind::TextEncodedInSpan => {
-                Ok(map.snippet(self.span.trim_start(2)).to_owned())
-            }
-            ast::AttributeArgumentKind::Named(_) => {
-                // @Beacon @Beacon @Task span
-                Diagnostic::error()
-                    .message("unexpected named attribute argument")
-                    .report(reporter);
-                Err(AttributeParsingError::Unrecoverable)
-            }
-            kind => {
-                Diagnostic::invalid_attribute_argument_type(
-                    (self.span, kind.name()),
-                    "positional or named text literal",
-                )
-                .report(reporter);
-                Err(AttributeParsingError::Unrecoverable)
-            }
-        }
-    }
 }
 
 // @Note not that extensible and well worked out API

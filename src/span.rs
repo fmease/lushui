@@ -423,13 +423,6 @@ mod spanned {
         }
     }
 
-    // @Temporary
-    impl<T: Clone> Spanned<&T> {
-        pub fn cloned(&self) -> Spanned<T> {
-            self.map(Clone::clone)
-        }
-    }
-
     impl<T> Spanning for Spanned<T> {
         fn span(&self) -> Span {
             self.span
