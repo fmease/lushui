@@ -4,8 +4,6 @@ error[E038]: attribute `intrinsic` is an internal feature
 3 | @intrinsic
   | ^^^^^^^^^^ 
   |
- help: add the command-line option `-Z internals` to use the attribute anyway
-       opting out of any stability guarantees in the process!
 
 error[E020]: `Void` is defined multiple times in this scope
  --> ${DIRECTORY}/lowering/intrinsic-declaration-with-explicit-body.lushui:3:1
@@ -26,8 +24,6 @@ error[E038]: attribute `intrinsic` is an internal feature
 6 | @intrinsic thing = 0
   | ^^^^^^^^^^ 
   |
- help: add the command-line option `-Z internals` to use the attribute anyway
-       opting out of any stability guarantees in the process!
 
 error[E020]: `thing` is defined multiple times in this scope
  --> ${DIRECTORY}/lowering/intrinsic-declaration-with-explicit-body.lushui:6:1

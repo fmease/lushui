@@ -4,8 +4,6 @@ error[E038]: attribute `known` is an internal feature
 3 | @known
   | ^^^^^^ 
   |
- help: add the command-line option `-Z internals` to use the attribute anyway
-       opting out of any stability guarantees in the process!
 
 error[E038]: attribute `known` is an internal feature
  --> ${DIRECTORY}/lowering/illegal-internal-attribute.lushui:7:9
@@ -13,8 +11,6 @@ error[E038]: attribute `known` is an internal feature
 7 | @public @known
   |         ^^^^^^ 
   |
- help: add the command-line option `-Z internals` to use the attribute anyway
-       opting out of any stability guarantees in the process!
 
 error[E038]: attribute `intrinsic` is an internal feature
   --> ${DIRECTORY}/lowering/illegal-internal-attribute.lushui:12:1
@@ -22,8 +18,6 @@ error[E038]: attribute `intrinsic` is an internal feature
 12 | @intrinsic
    | ^^^^^^^^^^ 
    |
-  help: add the command-line option `-Z internals` to use the attribute anyway
-        opting out of any stability guarantees in the process!
 
 error: aborting due to 3 previous errors
  note: the error E038 has a detailed explanation

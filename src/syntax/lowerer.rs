@@ -1068,12 +1068,6 @@ impl<'a> Lowerer<'a> {
                         "attribute {} is an internal feature",
                         attribute.value.quoted_name()
                     ))
-                    // @Task improve the phrasing (this action should be discouraged)
-                    // @Question should this be shown at all?
-                    .help(
-                        "add the command-line option `-Z internals` to use the attribute anyway\n\
-                         opting out of any stability guarantees in the process!",
-                    )
                     .primary_span(attribute)
                     .report(self.reporter);
             }
