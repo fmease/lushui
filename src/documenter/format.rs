@@ -173,7 +173,7 @@ impl<'a> Formatter<'a> {
     fn format_lower_expression(&mut self, expression: &hir::Expression) {
         use hir::ExpressionKind::*;
 
-        for attribute in expression.attributes.iter() {
+        for attribute in &expression.attributes.0 {
             self.write(&attribute.to_string());
             self.write(" ");
         }

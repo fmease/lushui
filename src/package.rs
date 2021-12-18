@@ -420,19 +420,19 @@ impl BuildQueue<'_> {
         let goal_crate_index = goal_crate.index;
         let goal_package = &self.packages[goal_crate.package];
         let goal_package_index = goal_crate.package;
-        let homonymous = |&crate_: &CrateIndex| goal_crate.name == self.crates[crate_].name;
+        let is_homonymous = |&crate_: &CrateIndex| goal_crate.name == self.crates[crate_].name;
 
         let library_lookalike = goal_package
             .library
             .filter(|_| goal_crate.is_binary())
-            .filter(homonymous);
+            .filter(is_homonymous);
         // @Note this is not extensible to multiple binary crates
         let binary_lookalike = goal_package
             .binaries
             .get(0)
             .copied()
             .filter(|_| goal_crate.is_library())
-            .filter(homonymous);
+            .filter(is_homonymous);
 
         if let Some(lookalike) = library_lookalike.or(binary_lookalike) {
             self.crates[goal_crate_index].is_ambiguously_named_within_package = true;

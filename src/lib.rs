@@ -66,6 +66,8 @@
     clippy::blocks_in_if_conditions, // too many false positives with rustfmt's output
     clippy::similar_names, // too many false positives (#6479)
     clippy::semicolon_if_nothing_returned, // @Temporary false positives with let/else, still
+    clippy::same_functions_in_if_condition, // @Temporary false positives with const generics (#8139)
+    clippy::return_self_not_must_use, // @Temporary false positives with must-use-types (#8140)
     clippy::needless_pass_by_value, // @Temporary
     clippy::missing_panics_doc, // @Temporary
 )]

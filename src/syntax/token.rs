@@ -13,8 +13,8 @@ use TokenName::*;
 pub type Token = Spanned<TokenKind>;
 
 impl Token {
-    pub fn name(&self) -> TokenName {
-        self.value.discriminant()
+    pub const fn name(&self) -> TokenName {
+        self.value.name()
     }
 
     pub const fn provenance(&self) -> Provenance {
@@ -57,7 +57,7 @@ impl Token {
 }
 
 #[derive(Clone, PartialEq, Eq, Discriminant, Debug)]
-#[discriminant(TokenName)]
+#[discriminant(TokenName::name)]
 pub enum TokenKind {
     Comment,
     DocumentationComment,
@@ -140,7 +140,7 @@ pub enum TokenKind {
 
 impl fmt::Display for TokenKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let name = self.discriminant();
+        let name = self.name();
 
         match *self {
             Self::Illegal(character) => {

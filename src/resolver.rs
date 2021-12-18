@@ -22,10 +22,10 @@ use crate::{
     span::Spanning,
     syntax::{
         ast::{self, Path},
-        lowered_ast::{self, AttributeKeys, AttributeKind},
+        lowered_ast::{self, AttributeName},
         CrateName,
     },
-    utility::{obtain, unrc, HashMap, HashSet},
+    utility::{unrc, HashMap, HashSet},
 };
 pub use scope::{Crate, Exposure, FunctionScope, Namespace};
 use scope::{RegistrationError, RestrictedExposure};
@@ -109,18 +109,15 @@ impl<'a> Resolver<'a> {
     ) -> Result<(), RegistrationError> {
         use lowered_ast::DeclarationKind::*;
 
-        let exposure = match declaration.attributes.has(AttributeKeys::PUBLIC) {
-            true => match declaration
-                .attributes
-                .get(|kind| obtain!(kind, AttributeKind::Public { reach } => reach))
-            {
+        let exposure = match declaration.attributes.get::<{ AttributeName::Public }>() {
+            Some(public) => match &public.reach {
                 Some(reach) => RestrictedExposure::Unresolved {
                     reach: reach.clone(),
                 }
                 .into(),
                 None => Exposure::Unrestricted,
             },
-            false => match module {
+            None => match module {
                 // a lack of `@public` means private i.e. restricted to `self` i.e. `@(public self)`
                 Some(module) => RestrictedExposure::Resolved { reach: module }.into(),
                 None => Exposure::Unrestricted,
@@ -156,10 +153,11 @@ impl<'a> Resolver<'a> {
                         constructors
                             .iter()
                             .fold(Health::Untainted, |health, constructor| {
-                                let opacity =
-                                    match declaration.attributes.has(AttributeKeys::ABSTRACT) {
-                                        true => Opacity::Abstract,
-                                        false => Opacity::Transparent,
+                                let transparency =
+                                    if declaration.attributes.contains(AttributeName::Abstract) {
+                                        Transparency::Abstract
+                                    } else {
+                                        Transparency::Transparent
                                     };
 
                                 health
@@ -170,7 +168,7 @@ impl<'a> Resolver<'a> {
                                             Context {
                                                 parent_data_binding: Some((
                                                     namespace,
-                                                    Some(opacity),
+                                                    Some(transparency),
                                                 )),
                                             },
                                         )
@@ -185,9 +183,9 @@ impl<'a> Resolver<'a> {
                 let (namespace, module_opacity) = context.parent_data_binding.unwrap();
 
                 let exposure = match module_opacity.unwrap() {
-                    Opacity::Transparent => self.crate_[namespace].exposure.clone(),
+                    Transparency::Transparent => self.crate_[namespace].exposure.clone(),
                     // as if a @(public super) was attached to the constructor
-                    Opacity::Abstract => RestrictedExposure::Resolved { reach: module }.into(),
+                    Transparency::Abstract => RestrictedExposure::Resolved { reach: module }.into(),
                 };
 
                 // @Task don't return early, see analoguous code for modules
@@ -1401,11 +1399,11 @@ struct Context {
     // @Note if we were to rewrite/refactor the lowered AST to use indices for nested
     // declarations, then we could simply loop up the AST node and wouldn't need
     // `Opacity`
-    parent_data_binding: Option<(LocalDeclarationIndex, Option<Opacity>)>,
+    parent_data_binding: Option<(LocalDeclarationIndex, Option<Transparency>)>,
 }
 
 #[derive(Debug)]
-enum Opacity {
+enum Transparency {
     Transparent,
     Abstract,
 }

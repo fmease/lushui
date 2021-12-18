@@ -40,7 +40,7 @@ pub mod crate_name {
 
     const CORE_PACKAGE_NAME: &str = "core";
 
-    #[derive(Clone, PartialEq, Eq, Hash, Debug)]
+    #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
     pub struct CrateName(Atom);
 
     impl CrateName {

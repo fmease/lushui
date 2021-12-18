@@ -27,7 +27,7 @@
 use super::{
     ast::{self, Explicit, HangerKind, ParameterGroup, Path},
     lowered_ast::{
-        self, decl, expr, pat, AttributeKeys, AttributeKind, AttributeTarget, Attributes, Number,
+        self, attributes::Target, decl, expr, pat, AttributeKind, AttributeName, Attributes, Number,
     },
 };
 use crate::{
@@ -35,7 +35,8 @@ use crate::{
     error::{map_outcome_from_result, Health, Outcome, PossiblyErroneous, Result},
     format::{ordered_listing, pluralize, Conjunction, IOError, QuoteExt},
     span::{SharedSourceMap, SourceMap, Span, Spanning},
-    utility::{obtain, SmallVec, Str},
+    syntax::lowered_ast::attributes::{Lint, Predicate, Public, Query},
+    utility::{SmallVec, Str},
 };
 use joinery::JoinableIterator;
 use smallvec::smallvec;
@@ -290,12 +291,9 @@ impl<'a> Lowerer<'a> {
                 let declarations = match module.declarations {
                     Some(declarations) => declarations,
                     None => {
-                        let path_suffix = if attributes.has(AttributeKeys::LOCATION) {
-                            attributes
-                                .get(|kind| obtain!(kind, AttributeKind::Location { path } => path))
-                        } else {
-                            module.binder.as_str()
-                        };
+                        let path_suffix = attributes
+                            .get::<{ AttributeName::Location }>()
+                            .unwrap_or_else(|| module.binder.as_str());
 
                         let mut path = self.map.borrow()[module.file]
                             .path()
@@ -418,7 +416,7 @@ impl<'a> Lowerer<'a> {
                     path: Path,
                     bindings: Vec<UsePathTree>,
                     span: Span,
-                    attributes: lowered_ast::Attributes,
+                    attributes: lowered_ast::attributes::Attributes,
                     declarations: &mut SmallVec<lowered_ast::Declaration, 1>,
                     reporter: &Reporter,
                 ) -> Result {
@@ -895,86 +893,74 @@ impl<'a> Lowerer<'a> {
     // @Task filter out documentation attributes if !options.keep_documentation_comments
     fn lower_attributes(
         &mut self,
-        attributes: &[ast::Attribute],
-        target: &impl AttributeTarget,
+        unchecked_attributes: &[ast::Attribute],
+        target: &impl Target,
     ) -> Result<Attributes> {
         use lowered_ast::Attribute;
 
-        let actual_targets = target.as_attribute_targets();
+        let actual_targets = target.as_targets();
         let mut health = Health::Untainted;
-        let mut lowered_attributes = Vec::new();
+        let mut conforming_attributes = Attributes::default();
 
-        for attribute in attributes {
-            let attribute =
-                match Attribute::parse(attribute, &self.options, &self.map.borrow(), self.reporter)
-                {
-                    Ok(attribute) => attribute,
-                    Err(()) => {
-                        health.taint();
-                        continue;
-                    }
-                };
-
-            // non-conforming attributes
-            let expected_targets = attribute.value.targets();
-
-            if !expected_targets.contains(actual_targets) {
-                Diagnostic::error()
-                    .code(Code::E013)
-                    .message(format!(
-                        "attribute {} is ascribed to {}",
-                        attribute.value.quoted_name(),
-                        target.name()
-                    ))
-                    .labeled_primary_span(&attribute, "misplaced attribute")
-                    .labeled_secondary_span(target, "incompatible item")
-                    .note(format!(
-                        "attribute {} can only be ascribed to {}",
-                        attribute.value.quoted_name(),
-                        expected_targets.description(),
-                    ))
-                    .report(self.reporter);
+        for attribute in unchecked_attributes {
+            let Ok(attribute) = Attribute::parse(attribute, &self.options, &self.map.borrow(), self.reporter) else {
                 health.taint();
                 continue;
+            };
+
+            // search for non-conforming attributes
+            {
+                let expected_targets = attribute.value.targets();
+
+                if !expected_targets.contains(actual_targets) {
+                    Diagnostic::error()
+                        .code(Code::E013)
+                        .message(format!(
+                            "attribute `{}` is ascribed to {}",
+                            attribute.value.name(),
+                            target.name()
+                        ))
+                        .labeled_primary_span(&attribute, "misplaced attribute")
+                        .labeled_secondary_span(target, "incompatible item")
+                        .note(format!(
+                            "attribute `{}` can only be ascribed to {}",
+                            attribute.value.name(),
+                            expected_targets.description(),
+                        ))
+                        .report(self.reporter);
+                    health.taint();
+                    continue;
+                }
             }
 
-            lowered_attributes.push(attribute);
+            conforming_attributes.0.push(attribute);
         }
 
-        let mut keys = AttributeKeys::empty();
-        let mut attributes = Vec::new();
+        let mut attributes = Attributes::default();
 
         // search for conflicting or duplicate attributes
-        for attribute in &lowered_attributes {
-            let key = attribute.value.key();
-            let coexistable = AttributeKeys::COEXISTABLE.contains(key);
-
-            if !keys.contains(key) || coexistable {
-                attributes.push(attribute.clone());
-            }
-
-            keys |= key;
-
-            if coexistable {
+        for attribute in &conforming_attributes.0 {
+            if attribute.value.can_be_applied_multiple_times() {
+                attributes.0.push(attribute.clone());
                 continue;
             }
 
-            let matching_attributes: Vec<_> = lowered_attributes
-                .iter()
-                .filter(|attribute| attribute.matches(key))
-                .collect();
+            let is_homonymous =
+                Predicate(|some_attribute| some_attribute.name() == attribute.value.name());
 
-            if matching_attributes.len() > 1 {
-                let faulty_attributes = matching_attributes;
+            let homonymous_attributes: Vec<_> =
+                conforming_attributes.filter(is_homonymous).collect();
 
+            if !attributes.contains(is_homonymous) {
+                attributes.0.push(attribute.clone());
+            }
+
+            if let [first, _second, ..] = &*homonymous_attributes {
                 Diagnostic::error()
                     .code(Code::E006)
-                    .message(format!(
-                        "multiple {} attributes",
-                        faulty_attributes.first().unwrap().value.quoted_name(),
-                    ))
+                    .message(format!("multiple `{}` attributes", first.value.name()))
                     .labeled_primary_spans(
-                        faulty_attributes.into_iter(),
+                        homonymous_attributes.into_iter(),
                         "duplicate or conflicting attribute",
                     )
                     .report(self.reporter);
@@ -982,95 +968,74 @@ impl<'a> Lowerer<'a> {
             }
         }
 
-        let attributes = Attributes {
-            keys,
-            data: attributes.into_boxed_slice(),
-        };
-
         health &= target.check_attributes(&attributes, self.reporter);
 
-        if attributes.keys.is_empty() {
+        // no further checks necessary if empty
+        if attributes.0.is_empty() {
             return health.of(attributes).into();
         }
 
-        let check_mutual_exclusivity = |mutually_exclusive_attributes: AttributeKeys,
-                                        reporter: &Reporter|
-         -> Result {
-            if (attributes.keys & mutually_exclusive_attributes)
-                .bits()
-                .count_ones()
-                > 1
-            {
-                let faulty_attributes = attributes
-                    .filter(mutually_exclusive_attributes)
-                    .collect::<Vec<_>>();
+        fn check_mutual_exclusivity<Q: Query>(
+            query: Q,
+            attributes: &Attributes,
+            reporter: &Reporter,
+        ) -> Result {
+            let attributes = attributes.filter(query).collect::<Vec<_>>();
+
+            if attributes.len() > 1 {
                 let listing = ordered_listing(
-                    faulty_attributes
+                    attributes
                         .iter()
-                        .map(|attribute| attribute.value.quoted_name()),
+                        .map(|attribute| attribute.value.name().to_str().quote()),
                     Conjunction::And,
                 );
+
                 Diagnostic::error()
                     .code(Code::E014)
                     .message(format!("attributes {} are mutually exclusive", listing))
-                    .labeled_primary_spans(faulty_attributes.into_iter(), "conflicting attribute")
+                    .labeled_primary_spans(attributes.into_iter(), "conflicting attribute")
                     .report(reporter);
                 return Err(());
             }
 
             Ok(())
-        };
+        }
 
-        health &= check_mutual_exclusivity(
-            AttributeKeys::INTRINSIC | AttributeKeys::KNOWN,
-            self.reporter,
-        );
+        {
+            use AttributeName::*;
 
-        health &= check_mutual_exclusivity(
-            AttributeKeys::MOVING | AttributeKeys::ABSTRACT,
-            self.reporter,
-        );
+            health &= check_mutual_exclusivity(Intrinsic.or(Known), &attributes, self.reporter);
+            health &= check_mutual_exclusivity(Moving.or(Abstract), &attributes, self.reporter);
+            health &= check_mutual_exclusivity(
+                Int.or(Int32).or(Int64).or(Nat).or(Nat32).or(Nat64),
+                &attributes,
+                self.reporter,
+            );
+            health &= check_mutual_exclusivity(Rune.or(Text), &attributes, self.reporter);
+            health &= check_mutual_exclusivity(List.or(Vector), &attributes, self.reporter);
+        }
 
-        health &= check_mutual_exclusivity(
-            AttributeKeys::INT
-                | AttributeKeys::INT32
-                | AttributeKeys::INT64
-                | AttributeKeys::NAT
-                | AttributeKeys::NAT32
-                | AttributeKeys::NAT64,
-            self.reporter,
-        );
-
-        health &=
-            check_mutual_exclusivity(AttributeKeys::RUNE | AttributeKeys::TEXT, self.reporter);
-
-        health &=
-            check_mutual_exclusivity(AttributeKeys::LIST | AttributeKeys::VECTOR, self.reporter);
-
-        if attributes.keys.intersects(AttributeKeys::UNSUPPORTED) {
-            for attribute in attributes.filter(AttributeKeys::UNSUPPORTED) {
-                Diagnostic::unimplemented(format!("attribute {}", attribute.value.quoted_name()))
-                    .primary_span(attribute)
-                    .report(self.reporter);
-            }
+        for attribute in attributes.filter(Predicate(|attribute| !attribute.is_fully_implemented()))
+        {
+            Diagnostic::unimplemented(format!("attribute `{}`", attribute.value.name()))
+                .primary_span(attribute)
+                .report(self.reporter);
             health.taint();
         }
 
         // @Task replace this concept with a feature system
-        if attributes.keys.intersects(AttributeKeys::INTERNAL)
-            && !self.options.internal_features_enabled
-        {
-            for attribute in attributes.filter(AttributeKeys::INTERNAL) {
+        if !self.options.internal_features_enabled {
+            for attribute in attributes.filter(Predicate(AttributeKind::is_internal)) {
                 Diagnostic::error()
                     .code(Code::E038)
                     .message(format!(
-                        "attribute {} is an internal feature",
-                        attribute.value.quoted_name()
+                        "attribute `{}` is an internal feature",
+                        attribute.value.name()
                     ))
                     .primary_span(attribute)
                     .report(self.reporter);
+                health.taint();
             }
-            health.taint();
         }
 
         health.of(attributes).into()
@@ -1082,30 +1047,30 @@ impl<'a> Lowerer<'a> {
         span: Span,
         attributes: &Attributes,
     ) -> Result<Number> {
-        (if attributes.has(AttributeKeys::NAT32) {
+        (if attributes.contains(AttributeName::Nat32) {
             number
                 .parse()
                 .map_err(|_| ("Nat32", NAT32_INTERVAL_REPRESENTATION))
                 .map(Number::Nat32)
-        } else if attributes.has(AttributeKeys::NAT64) {
+        } else if attributes.contains(AttributeName::Nat64) {
             number
                 .parse()
                 .map_err(|_| ("Nat64", NAT64_INTERVAL_REPRESENTATION))
                 .map(Number::Nat64)
-        } else if attributes.has(AttributeKeys::INT) {
+        } else if attributes.contains(AttributeName::Int) {
             Ok(Number::Int(number.parse().unwrap()))
-        } else if attributes.has(AttributeKeys::INT32) {
+        } else if attributes.contains(AttributeName::Int32) {
             number
                 .parse()
                 .map_err(|_| ("Int32", INT32_INTERVAL_REPRESENTATION))
                 .map(Number::Int32)
-        } else if attributes.has(AttributeKeys::INT64) {
+        } else if attributes.contains(AttributeName::Int64) {
             number
                 .parse()
                 .map_err(|_| ("Int64", INT64_INTERVAL_REPRESENTATION))
                 .map(Number::Int64)
         } else {
-            // optionally attributes.has(AttributeKeys::NAT)
+            // and optionally attributes.has(AttributeKind::nat)
             number
                 .parse()
                 .map_err(|_| ("Nat", NAT_INTERVAL_REPRESENTATION))
@@ -1245,7 +1210,21 @@ const INT64_INTERVAL_REPRESENTATION: &str = "[-2^63, 2^63-1]";
 // a custom error type (w/o ::Unrecoverable)
 // and turn that stuff into stuff later
 
-impl lowered_ast::AttributeKind {
+impl lowered_ast::attributes::Attribute {
+    pub fn parse(
+        attribute: &ast::Attribute,
+        options: &Options,
+        map: &SourceMap,
+        reporter: &Reporter,
+    ) -> Result<Self> {
+        Ok(Self::new(
+            attribute.span,
+            AttributeKind::parse(attribute, options, map, reporter)?,
+        ))
+    }
+}
+
+impl lowered_ast::attributes::AttributeKind {
     // @Task allow unordered named attributes e.g. `@(unstable (reason "x") (feature thing))`
     pub fn parse(
         attribute: &ast::Attribute,
@@ -1299,14 +1278,14 @@ impl lowered_ast::AttributeKind {
             Ok(match binder.as_str() {
                 "abstract" => Self::Abstract,
                 "allow" => Self::Allow {
-                    lint: lowered_ast::Lint::parse(
+                    lint: lowered_ast::attributes::Lint::parse(
                         argument(arguments, attribute.span, reporter)?
                             .path(Some("lint"), reporter)?,
                         reporter,
                     )?,
                 },
                 "deny" => Self::Deny {
-                    lint: lowered_ast::Lint::parse(
+                    lint: lowered_ast::attributes::Lint::parse(
                         argument(arguments, attribute.span, reporter)?
                             .path(Some("lint"), reporter)?,
                         reporter,
@@ -1339,7 +1318,7 @@ impl lowered_ast::AttributeKind {
                 },
                 "doc-reserved-identifiers" => Self::DocReservedIdentifiers,
                 "forbid" => Self::Forbid {
-                    lint: lowered_ast::Lint::parse(
+                    lint: Lint::parse(
                         argument(arguments, attribute.span, reporter)?
                             .path(Some("lint"), reporter)?,
                         reporter,
@@ -1374,7 +1353,7 @@ impl lowered_ast::AttributeKind {
                         .map(|argument| argument.path(Some("reach"), reporter))
                         .transpose()?;
 
-                    Self::Public { reach }
+                    Self::Public(Public { reach })
                 }
                 "recursion-limit" => {
                     let depth = argument(arguments, attribute.span, reporter)?;
@@ -1409,7 +1388,7 @@ impl lowered_ast::AttributeKind {
                 }
                 "Vector" => Self::Vector,
                 "warn" => Self::Warn {
-                    lint: lowered_ast::Lint::parse(
+                    lint: lowered_ast::attributes::Lint::parse(
                         argument(arguments, attribute.span, reporter)?
                             .path(Some("lint"), reporter)?,
                         reporter,
@@ -1526,7 +1505,7 @@ impl ast::NamedAttributeArgument {
     }
 }
 
-impl lowered_ast::Lint {
+impl lowered_ast::attributes::Lint {
     fn parse(binder: Path, reporter: &Reporter) -> Result<Self, AttributeParsingError> {
         Diagnostic::error()
             .code(Code::E018)

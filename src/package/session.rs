@@ -8,7 +8,7 @@ use crate::{
     span::Span,
     syntax::{
         ast::Explicitness,
-        lowered_ast::{Attribute, Attributes, Number},
+        lowered_ast::{attributes::Attributes, Number},
     },
     utility::{condition, HashMap, Int, Nat},
 };
@@ -118,7 +118,7 @@ impl BuildSession {
         &mut self,
         binder: &Identifier,
         constructors: Vec<&'a Constructor>,
-        attribute: &Attribute,
+        attribute: Span,
         reporter: &Reporter,
     ) -> Result {
         use KnownBinding::*;
@@ -187,7 +187,7 @@ impl BuildSession {
     pub fn register_intrinsic_type(
         &mut self,
         binder: Identifier,
-        attribute: &Attribute,
+        attribute: Span,
         reporter: &Reporter,
     ) -> Result {
         let Ok(intrinsic) = binder.as_str().parse::<IntrinsicType>() else {
@@ -219,7 +219,7 @@ impl BuildSession {
         &mut self,
         binder: Identifier,
         type_: Expression,
-        attribute: &Attribute,
+        attribute: Span,
         reporter: &Reporter,
     ) -> Result<EntityKind, ()> {
         let Ok(intrinsic) = binder.as_str().parse() else {

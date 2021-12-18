@@ -9,8 +9,6 @@
 //! * keywords as keys (e.g. `false: false`)
 #![allow(clippy::implicit_hasher)] // false positive
 
-use std::fmt;
-
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     error::Result,
@@ -18,6 +16,7 @@ use crate::{
     utility::{obtain, HashMap},
 };
 use discriminant::Discriminant;
+use std::fmt;
 
 #[cfg(test)]
 mod test;
@@ -25,7 +24,7 @@ mod test;
 pub type Value = Spanned<ValueKind>;
 
 #[derive(Debug, Discriminant)]
-#[discriminant(Type)]
+#[discriminant(Type::type_)]
 pub enum ValueKind {
     Bool(bool),
     Integer(i64),
@@ -33,12 +32,6 @@ pub enum ValueKind {
     Text(String),
     Array(Vec<Value>),
     Map(HashMap<WeaklySpanned<String>, Value>),
-}
-
-impl ValueKind {
-    pub fn type_(&self) -> Type {
-        self.discriminant()
-    }
 }
 
 impl TryFrom<ValueKind> for bool {
@@ -268,8 +261,8 @@ mod lexer {
     pub(super) type Token = Spanned<TokenKind>;
 
     impl Token {
-        pub fn name(&self) -> TokenName {
-            self.value.discriminant()
+        pub const fn name(&self) -> TokenName {
+            self.value.name()
         }
 
         pub(super) fn into_identifier(self) -> Option<String> {
@@ -296,7 +289,7 @@ mod lexer {
     }
 
     #[derive(Clone, Debug, Discriminant)]
-    #[discriminant(TokenName)]
+    #[discriminant(TokenName::name)]
     pub(super) enum TokenKind {
         Comma,
         Colon,
@@ -317,7 +310,7 @@ mod lexer {
 
     impl fmt::Display for TokenKind {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            let name = self.discriminant();
+            let name = self.name();
 
             match *self {
                 Self::Illegal(character) => {

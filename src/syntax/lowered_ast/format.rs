@@ -10,7 +10,7 @@ const KEYWORD_COLOR: Color = Color::Cyan;
 const PUNCTUATION_COLOR: Color = Color::BrightMagenta;
 const ATTRIBUTE_COLOR: Color = Color::BrightWhite;
 
-impl fmt::Display for super::AttributeKind {
+impl fmt::Display for super::attributes::AttributeKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "@")?;
 
@@ -18,18 +18,12 @@ impl fmt::Display for super::AttributeKind {
             Self::Abstract => write!(f, "abstract"),
             Self::Allow { lint } => write!(f, "(allow {})", lint),
             Self::Deny { lint } => write!(f, "(deny {})", lint),
-            Self::Deprecated {
-                reason,
-                since,
-                until,
-                replacement,
-            } => write!(
+            Self::Deprecated(deprecated) => write!(
                 f,
-                "(deprecated (reason {:?}) (since {:?}) (until {:?}) (replacement {:?}))",
-                reason, since, until, replacement
+                "(deprecated (reason {:?}) (since {:?}) (removal {:?}) (replacement {:?}))",
+                deprecated.reason, deprecated.since, deprecated.removal, deprecated.replacement
             ),
             Self::Doc { content } => write!(f, "(doc {:?})", content),
-            // @Temporary
             Self::DocAttribute { name } => write!(f, "(doc-attribute {name:?})"),
             Self::DocAttributes => write!(f, "doc-attributes"),
             Self::DocReservedIdentifier { name } => write!(f, "(doc-reserved-identifier {name:?})"),
@@ -49,7 +43,7 @@ impl fmt::Display for super::AttributeKind {
             Self::Nat => write!(f, "Nat"),
             Self::Nat32 => write!(f, "Nat32"),
             Self::Nat64 => write!(f, "Nat64"),
-            Self::Public { reach } => match reach {
+            Self::Public(public) => match &public.reach {
                 Some(reach) => write!(f, "(public {})", reach),
                 None => write!(f, "public"),
             },
@@ -59,26 +53,28 @@ impl fmt::Display for super::AttributeKind {
             Self::Test => write!(f, "test"),
             Self::Text => write!(f, "Text"),
             Self::Unsafe => write!(f, "unsafe"),
-            Self::Unstable { feature, reason } => write!(f, "(feature {} {:?})", feature, reason),
+            Self::Unstable(unstable) => {
+                write!(f, "(feature {} {:?})", unstable.feature, unstable.reason)
+            }
             Self::Vector => write!(f, "Vector"),
             Self::Warn { lint } => write!(f, "(warn {})", lint),
         }
     }
 }
 
-impl fmt::Display for super::Lint {
+impl fmt::Display for super::attributes::Lint {
     fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {}
     }
 }
 
-impl fmt::Display for super::Condition {
+impl fmt::Display for super::attributes::Condition {
     fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {}
     }
 }
 
-impl fmt::Display for super::Feature {
+impl fmt::Display for super::attributes::Feature {
     fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {}
     }
@@ -102,7 +98,7 @@ impl super::Declaration {
     fn format_with_depth(&self, depth: usize, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use super::DeclarationKind::*;
 
-        for attribute in self.attributes.iter() {
+        for attribute in &self.attributes.0 {
             // @Task get rid of extra alloc
             writeln!(
                 f,
@@ -338,7 +334,7 @@ fn format_lower_expression(
 ) -> fmt::Result {
     use super::ExpressionKind::*;
 
-    for attribute in expression.attributes.iter() {
+    for attribute in &expression.attributes.0 {
         // @Task get rid of wasted alloc
         write!(f, "{} ", attribute.to_string().color(ATTRIBUTE_COLOR))?;
     }

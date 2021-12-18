@@ -17,7 +17,7 @@ use crate::{
     grow_array::GrowArray,
     hir::{self, Declaration, DeclarationIndex, Expression},
     resolver::Crate,
-    syntax::lowered_ast::{AttributeKeys, Number},
+    syntax::lowered_ast::{attributes::AttributeName, Number},
     utility::HashMap,
 };
 use index_map::{Index as _, IndexMap};
@@ -135,7 +135,7 @@ impl<'a> Compiler<'a> {
                     },
                 );
 
-                if declaration.attributes.has(AttributeKeys::INTRINSIC) {
+                if declaration.attributes.contains(AttributeName::Intrinsic) {
                     // @Bug can actually have arity > 1
                     // @Task handle currying/partial evaluation
                     // do nothing right now

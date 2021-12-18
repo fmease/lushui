@@ -203,13 +203,14 @@ pub trait Attributable<'a>: Sized {
     }
 
     fn add_class(&mut self, name: &'a str) {
-        let classes = self
-            .attributes()
-            .key_value
-            .entry("class".into())
-            .or_default()
-            .to_mut();
-        *classes += " ";
+        let key_value = &mut self.attributes().key_value;
+
+        let classes = key_value.entry("class".into()).or_default().to_mut();
+
+        if !classes.is_empty() {
+            *classes += " ";
+        }
+
         *classes += name;
     }
 }

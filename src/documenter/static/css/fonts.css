@@ -44,7 +44,7 @@
 
 /* MEDIUM (500) */
 
-@font-face {
+/* @font-face {
     font-family: 'Open Sans';
     font-style: normal;
     font-weight: 500;
@@ -60,11 +60,11 @@
     src:
         local(''),
         url('OpenSans-MediumItalic.ttf') format('truetype')
-}
+} */
 
 /* SEMI BOLD (600) */
 
-/* @font-face {
+@font-face {
     font-family: 'Open Sans';
     font-style: normal;
     font-weight: 600;
@@ -80,7 +80,7 @@
     src:
         local(''),
         url('OpenSans-SemiBoldItalic.ttf') format('truetype')
-} */
+}
 
 /* BOLD (700) */
 
@@ -166,7 +166,7 @@
 
 /* MEDIUM (500) */
 
-@font-face {
+/* @font-face {
     font-family: 'Source Code Pro';
     font-style: normal;
     font-weight: 500;
@@ -182,7 +182,7 @@
     src:
         local(''),
         url('SourceCodePro-MediumItalic.ttf') format('truetype')
-}
+} */
 
 /* SEMI BOLD (600) */
 

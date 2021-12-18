@@ -18,7 +18,7 @@ use crate::{
     span::Span,
     syntax::{
         ast::{Explicitness, ParameterAspect},
-        lowered_ast::{AttributeKeys, Attributes},
+        lowered_ast::{AttributeName, Attributes},
     },
     typer::interpreter::scope::BindingRegistrationKind,
 };
@@ -82,7 +82,7 @@ impl<'a> Typer<'a> {
             Function(function) => {
                 self.evaluate_registration(BindingRegistration {
                     attributes: declaration.attributes.clone(),
-                    kind: if declaration.attributes.has(AttributeKeys::INTRINSIC) {
+                    kind: if declaration.attributes.contains(AttributeName::Intrinsic) {
                         BindingRegistrationKind::IntrinsicFunction {
                             binder: function.binder.clone(),
                             type_: function.type_annotation.clone(),
@@ -106,7 +106,7 @@ impl<'a> Typer<'a> {
                     },
                 })?;
 
-                if declaration.attributes.has(AttributeKeys::INTRINSIC) {
+                if declaration.attributes.contains(AttributeName::Intrinsic) {
                     self.evaluate_registration(BindingRegistration {
                         attributes: declaration.attributes.clone(),
                         kind: BindingRegistrationKind::IntrinsicType {
@@ -117,8 +117,7 @@ impl<'a> Typer<'a> {
                     let constructors = type_.constructors.as_ref().unwrap();
 
                     // @Task @Beacon move to resolver
-                    if let Some(known) = declaration.attributes.filter(AttributeKeys::KNOWN).next()
-                    {
+                    if let Some(known) = declaration.attributes.span(AttributeName::Known) {
                         self.session.register_known_type(
                             &type_.binder,
                             constructors

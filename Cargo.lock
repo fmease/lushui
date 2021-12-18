@@ -152,6 +152,7 @@ dependencies = [
  "smallvec",
  "string_cache",
  "strsim 0.10.0",
+ "unicode-segmentation",
  "unicode-width",
  "urlencoding",
 ]
@@ -307,6 +308,12 @@ checksum = "d326610f408c7a4eb6f51c37c330e496b08506c9457c9d34287ecc38809fb060"
 dependencies = [
  "unicode-width",
 ]
+
+[[package]]
+name = "unicode-segmentation"
+version = "1.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8895849a949e7845e06bd6dc1aa51731a103c42707010a5b591c0038fb73385b"
 
 [[package]]
 name = "unicode-width"

@@ -244,7 +244,7 @@ fn format_lower_expression(
     use super::ExpressionKind::*;
     let context = (crate_, session);
 
-    for attribute in expression.attributes.iter() {
+    for attribute in &expression.attributes.0 {
         write!(f, "{} ", attribute)?;
     }
 
@@ -325,7 +325,10 @@ mod test {
         span::Span,
         syntax::{
             ast::{self, Explicitness::*},
-            lowered_ast::{Attribute, AttributeKind, Attributes, Number},
+            lowered_ast::{
+                attributes::{Attribute, AttributeKind, Attributes},
+                Number,
+            },
             CrateName,
         },
     };
@@ -1051,7 +1054,7 @@ mod test {
                             callee: Identifier::parameter("==").to_expression(),
                             argument: expr! {
                                 Number(
-                                    Attributes::new(vec![
+                                    Attributes(vec![
                                         Attribute::stripped(AttributeKind::Static),
                                         Attribute::stripped(AttributeKind::Unsafe)
                                     ]),
@@ -1064,7 +1067,7 @@ mod test {
                     },
                     argument: expr! {
                         Application {
-                            Attributes::new(vec![Attribute::stripped(AttributeKind::Static)]), Span::default();
+                            Attributes(vec![Attribute::stripped(AttributeKind::Static)]), Span::default();
                             callee: Identifier::parameter("increment").to_expression(),
                             argument: expr! {
                                 Number(Attributes::default(), Span::default(); Number::Nat(1u8.into()))

@@ -1,15 +1,18 @@
-@import 'fonts.css';
+@import 'fonts.min.css';
 
 :root {
+    --sans-serif: 'Open Sans', sans-serif;
+    --monospace: 'Source Code Pro', monospace;
     --ledge-height: 3em;
     --ledge-margin-bottom: 1em;
+
     /* colors */
     --mint: #DDFFE7;
     --spearmint: #98D7C2;
     --teal-green: #167D7F;
     --teal: #29A0B1;
-    --sans-serif: 'Open Sans', sans-serif;
-    --monospace: 'Source Code Pro', monospace;
+    --light-gray: #DDD;
+    --ice-gray: #F5F5F5;
 }
 
 *, *::before, *::after {
@@ -25,6 +28,7 @@ body {
     padding: 0;
     font-family: var(--sans-serif);
     font-size: 16px;
+    line-height: 1.5;
 }
 
 a {
@@ -53,12 +57,12 @@ a:hover {
     background: var(--teal-green);
     justify-content: center;
     align-items: center;
-    box-shadow: 0 2px 4px #0004;
+    box-shadow: 0 2px 4px #0003;
     --search-padding-y: 5px;
     --search-padding-x: 10px;
 }
 
-#js-searchbar {
+#searchbar {
     display: block;
     width: 40em;
     border: none;
@@ -70,16 +74,16 @@ a:hover {
     transition: background-color 50ms linear;
 }
 
-#js-searchbar:focus {
+#searchbar:focus {
     outline: none;
     background-color: #ffffff60;
 }
 
-#js-searchbar:focus::placeholder {
+#searchbar:focus::placeholder {
     color: transparent;
 }
 
-#js-searchbar.performed {
+#searchbar.performed {
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
 }
@@ -91,21 +95,40 @@ a:hover {
     width: 100%;
 }
 
-#js-search-results {
+#search-results {
     display: block;
     position: absolute;
     top: 0;
     left: auto;
     right: auto;
     width: 100%;
-    padding: var(--search-padding-y) var(--search-padding-x);
+    max-height: 20ex;
+    overflow-y: scroll;
     background: white;
-    box-shadow: 0 2px 4px #0004;
+    box-shadow: 0 2px 4px #0003;
     border-bottom-left-radius: 4px;
     border-bottom-right-radius: 4px;
 }
 
-#js-searchbar:not(.performed) + #search-results__positioner {
+#search-results > * {
+    padding: 0 var(--search-padding-x);
+}
+
+#search-results > .no-results {
+    font-style: italic;
+}
+
+#search-results > a {
+    display: block;
+    width: 100%;
+}
+
+#search-results > a:hover {
+    background: var(--spearmint);
+    text-decoration: none;
+}
+
+#searchbar:not(.performed) + #search-results__positioner {
     visibility: hidden;
 }
 
@@ -137,19 +160,10 @@ a:hover {
     padding-left: 0.5em;
 }
 
-.sidebar > ul > li {
-    line-height: 1.4;
-}
-
 h1, h2, h3, h4, h5, h6 {
-    margin: 0;
-    padding: 0.5em 0;
+    margin: 0.2em 0;
+    padding: 0.2em 0;
     font-weight: bold;
-}
-
-h1 a.active {
-    /* @Task use a color from a (newly extended) palette */
-    color: rgb(28, 130, 177);
 }
 
 :target {
@@ -164,7 +178,7 @@ h1 a.active {
     }
     
     100% {
-        background-color: #eee;
+        background-color: var(--ice-gray);
     }
 }
 
@@ -193,7 +207,7 @@ h5 {
 }
 
 .subheading:not(.declaration) {
-    border-top: 1px solid #ddd;
+    border-top: 1px solid var(--light-gray);
 }
 
 .subheading > a:first-of-type:hover::before {
@@ -211,11 +225,11 @@ h5 {
     font-weight: bold;
 }
 
-.subheading.declaration a.binder.deprecated {
+.binder.deprecated {
     text-decoration: line-through;
 }
 
-.indent {
+.indented {
     margin-left: 2em;
 }
 
@@ -223,15 +237,67 @@ section {
     padding: 0.5em 0;
 }
 
+.labels {
+    display: flex;
+    gap: 10px;
+    font-size: 15px;
+    margin-left: 4em;
+}
+
+.labels > * {
+    padding: 0 14px;
+    border-radius: 2px;
+}
+
+.labels .attribute {
+    background-color: var(--ice-gray);
+}
+
+.labels .attribute::before {
+    content: '@';
+}
+
+.labels .deprecated {
+    background: rgb(253, 224, 160);
+}
+
+.labels .experimental {
+    background: rgb(144, 240, 253);
+}
+
+.labels .unsafe {
+    background: rgb(255, 163, 130);
+}
+
+.labels .internal {
+    background: rgb(206, 168, 255);
+}
+
+.labels .source {
+    border: 1px solid var(--ice-gray);
+}
+
 p {
-    /* @Question hoist the line-height? */
-    line-height: 1.7;
     margin: 0.25em 0 0.25em 2em;
     padding: 0;
     text-align: justify;
+    line-height: 1.7;
 }
 
-/* @Temporary */
-.attributes {
-    color: gray;
+table {
+    border-collapse: collapse;
+}
+
+table td {
+    vertical-align: text-top;
+    border: none;
+    padding: 0;
+}
+
+table td:not(:last-of-type) {
+    padding-right: 3em;
+}
+
+table a.binder {
+    font-weight: 600;
 }

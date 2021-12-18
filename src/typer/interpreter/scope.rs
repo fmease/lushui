@@ -8,7 +8,7 @@ use crate::{
     package::BuildSession,
     resolver::Crate,
     span::Span,
-    syntax::lowered_ast::{AttributeKeys, Attributes},
+    syntax::lowered_ast::{AttributeName, Attributes},
 };
 use std::fmt;
 
@@ -87,8 +87,7 @@ impl Crate {
                     type_,
                     registration
                         .attributes
-                        .filter(AttributeKeys::INTRINSIC)
-                        .next()
+                        .span(AttributeName::Intrinsic)
                         .unwrap(),
                     reporter,
                 )?;
@@ -97,8 +96,7 @@ impl Crate {
                 binder,
                 registration
                     .attributes
-                    .filter(AttributeKeys::INTRINSIC)
-                    .next()
+                    .span(AttributeName::Intrinsic)
                     .unwrap(),
                 reporter,
             )?,

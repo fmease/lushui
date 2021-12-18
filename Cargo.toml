@@ -24,3 +24,4 @@ discriminant = { path = "src/discriminant" }
 html-escape = "0.2.9"
 minifier = "0.0.41"
 urlencoding = "2.1.0"
+unicode-segmentation = "1.8.0"
