@@ -356,7 +356,7 @@ fn main_() -> Result<(), ()> {
                         let time = Instant::now();
 
                         // @Beacon @Question how can we filter out rustc's warnings from stderr?
-
+                        // @Task automatically set --no-core for -Zparse-only, -Zlex-only tests
                         let output = Command::new("cargo")
                             .current_dir(lushui_compiler_source_path())
                             .args(&["run", "--quiet", "--"])

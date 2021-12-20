@@ -47,7 +47,7 @@
             "patterns": [
                 {
                     "name": "keyword.operator.grammar",
-                    "match": "(?:[|?*+]|::=|<!)"
+                    "match": "(?:[|?*+]|::=|<|>)"
                 }
             ]
         },

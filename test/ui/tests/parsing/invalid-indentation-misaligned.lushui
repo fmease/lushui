@@ -1,0 +1,5 @@
+;;; TEST fail check
+
+module m of
+  data V
+

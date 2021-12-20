@@ -1,4 +1,5 @@
 ;;; TEST ignore
+;;;      ^ incorrect diagnostics, see #113
 
 { ( } )
 

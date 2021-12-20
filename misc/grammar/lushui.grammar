@@ -17,6 +17,7 @@
 ; | `"T"`     | Terminal                            | Lexed token by textual content                                |
 ; | `#T`      | Named Terminal                      | Lexed token by name                                           |
 ; | `(> A)`   | Positive Look-Ahead                 |                                                               |
+; | `(< A)`   | Positive Look-Behind                |                                                               |
 
 Identifier ::= #Word | #Punctuation
 
@@ -167,7 +168,8 @@ Sequence-Literal-Pattern ::= "[" Lower-Pattern* "]"
 
 Type-Annotation ::= ":" Expression
 
-Terminator ::= ";" | (> "}" | #End-Of-Input)
+; #Start-Of-Input is not actually emitted by the lexer, the parsers needs to bound-check instead.
+Terminator ::= ";" | (> "}" | #End-Of-Input) | (< #Start-Of-Input | ";" | "}")
 
 Explicitness ::= "'"?
 

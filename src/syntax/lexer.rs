@@ -287,9 +287,8 @@ impl<'a> Lexer<'a> {
         }
 
         if !self.brackets.0.is_empty() {
-            // @Task don't report all remaining brackets in the stack, only unclosed ones!
-            // @Beacon @Bug we are not smart enough here yet, the error messages are too confusing
-            // or even incorrect!
+            // @Task don't report all remaining brackets in the stack, only unclosed ones! See #113.
+            // @Bug we are not smart enough here yet, the error messages are too confusing / even incorrect!
 
             for bracket in &self.brackets.0 {
                 self.health.taint();
@@ -441,7 +440,7 @@ impl<'a> Lexer<'a> {
 
         if let Some((index, '.')) = self.peek_with_index() {
             self.local_span = LocalSpan::with_length(index, 1);
-            self.add(TokenKind::Dot);
+            self.add(Dot);
             self.advance();
         }
 
@@ -459,7 +458,6 @@ impl<'a> Lexer<'a> {
     }
 
     fn lex_indentation(&mut self) -> Result {
-        // @Note not extensible to Section::Delimited
         let is_start_of_indented_section = self
             .tokens
             .last()
@@ -469,12 +467,13 @@ impl<'a> Lexer<'a> {
         self.take();
         self.advance();
         self.take_while(|character| character == '\n');
+        // might be removed again in certain conditions later on
         self.add(Semicolon(Provenance::Lexer));
 
-        // self.span = match self.index() {
-        //     Some(index) => LocalSpan::with_length(index, 1),
-        //     None => return Ok(()),
-        // };
+        self.local_span = self
+            .index()
+            .map_or_else(|| self.source_file.local_span().end(), LocalSpan::empty);
+
         let mut spaces = Spaces(0);
         self.take_while_with(|character| character == ' ', || spaces.0 += 1);
 
@@ -484,8 +483,6 @@ impl<'a> Lexer<'a> {
         }
 
         let (change, difference) = spaces.difference(self.indentation);
-
-        // self.span = LocalSpan::new(self.span.end + 1 - absolute_difference, self.span.end);
 
         let difference: Indentation = match (change, difference).try_into() {
             Ok(difference) => difference,
@@ -519,7 +516,6 @@ impl<'a> Lexer<'a> {
             if change == Greater {
                 // remove the line break again
                 self.tokens.pop();
-                // @Bug wrong span
                 self.add(OpeningCurlyBracket(Provenance::Lexer));
                 self.sections.enter(Section::Indented {
                     brackets: self.brackets.0.len(),
@@ -527,8 +523,8 @@ impl<'a> Lexer<'a> {
             }
         } else {
             // Remove the line break again if the next line is indented or if we are in a section
-            // where line breaks are not terminators or if we dedent by some amount and the
-            // section reached treats line breaks as terminators.
+            // where line breaks ((virtual) semicolons) are not terminators (which include semicolons)
+            // or if we dedent by some amount and the section reached treats line breaks as terminators.
             if change == Greater
                 || change == Equal && !section.line_breaks_are_terminators()
                 || change == Less
@@ -547,7 +543,7 @@ impl<'a> Lexer<'a> {
         };
 
         if change == Less {
-            // Remove legal but superfluous virtual semicolons before virtual
+            // Remove syntactically legal but superfluous virtual semicolons before virtual
             // closing curly brackets (which also act as terminators).
             if self.sections.current_continued().0.is_indented()
                 && self.tokens.last().map_or(false, Token::is_line_break)
@@ -558,10 +554,8 @@ impl<'a> Lexer<'a> {
             for _ in 0..difference.0 {
                 let section = self.sections.exit();
 
+                // @Beacon @Task handle the case where `!section.brackets.is_empty()`
                 if section.is_indented() {
-                    // @Beacon @Task handle the case where `!section.brackets.is_empty()`
-
-                    // @Bug wrong span
                     self.add(ClosingCurlyBracket(Provenance::Lexer));
                     self.add(Semicolon(Provenance::Lexer));
                 }
@@ -740,8 +734,6 @@ pub(crate) const fn is_number_literal_middle(character: char) -> bool {
 }
 
 fn parse_keyword(source: &str) -> Option<TokenKind> {
-    use TokenKind::*;
-
     Some(match source {
         "_" => Underscore,
         "as" => As,
@@ -764,8 +756,6 @@ fn parse_keyword(source: &str) -> Option<TokenKind> {
 }
 
 fn parse_reserved_punctuation(source: &str) -> Option<TokenKind> {
-    use TokenKind::*;
-
     Some(match source {
         "." => Dot,
         ":" => Colon,

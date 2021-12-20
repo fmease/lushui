@@ -1,0 +1,5 @@
+;;; TEST fail check
+
+data X of
+        x: X
+

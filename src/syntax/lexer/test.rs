@@ -1,3 +1,5 @@
+// Some negative behavior tests are UI tests in `parsing/`.
+
 use super::{Provenance, Token, TokenKind::*, UnterminatedTextLiteral};
 use crate::{
     error::{outcome, Health, Outcome, Result},
@@ -437,19 +439,6 @@ fn lex_brackets() {
     );
 }
 
-// @Task update to the new system
-#[test]
-#[ignore]
-fn do_not_lex_unbalanced_round_brackets_too_few_closing() {
-    assert!(lex("((").is_err());
-}
-
-#[test]
-#[ignore]
-fn do_not_lex_unbalanced_round_brackets_too_few_opening() {
-    assert!(lex(")))").is_err());
-}
-
 #[test]
 fn bare_non_ascii_is_illegal() {
     assert_eq_tainted(
@@ -627,44 +616,34 @@ of
 "),
         vec![
             Token::new(span(1, 3), Of),
-            // @Task we need to associate the token with a more useful span
-            Token::new(span(3, 8), OpeningCurlyBracket(Provenance::Lexer)),
+            Token::new(span(4, 8), OpeningCurlyBracket(Provenance::Lexer)),
             Token::new(span(8, 17), Word("something".into())),
             Token::new(span(17, 18), Semicolon(Provenance::Lexer)),
             Token::new(span(22, 26), Word("more".into())),
-            // @Task we need to associate the token with a more useful span
-            Token::new(span(26, 27), ClosingCurlyBracket(Provenance::Lexer)),
-            Token::new(span(26, 27), Semicolon(Provenance::Lexer)),
+            Token::new(span(27, 27), ClosingCurlyBracket(Provenance::Lexer)),
+            Token::new(span(27, 27), Semicolon(Provenance::Lexer)),
             Token::new(span(27, 29), Of),
-            // @Task we need to associate the token with a more useful span
-            Token::new(span(29, 35), OpeningCurlyBracket(Provenance::Lexer)),
+            Token::new(span(31, 35), OpeningCurlyBracket(Provenance::Lexer)),
             Token::new(span(35, 39), NumberLiteral("1980".into())),
-            // @Task we need to associate the token with a more useful span
-            Token::new(span(39, 41), ClosingCurlyBracket(Provenance::Lexer)),
-            Token::new(span(39, 41), Semicolon(Provenance::Lexer)),
+            Token::new(span(41, 41), ClosingCurlyBracket(Provenance::Lexer)),
+            Token::new(span(41, 41), Semicolon(Provenance::Lexer)),
             Token::new(span(41, 42), Punctuation(">".into())),
             Token::new(span(42, 44), Of),
-            // @Task we need to associate the token with a more useful span
-            Token::new(span(44, 49), OpeningCurlyBracket(Provenance::Lexer)),
+            Token::new(span(45, 49), OpeningCurlyBracket(Provenance::Lexer)),
             Token::new(span(49, 55), Module),
             Token::new(span(56, 58), Of),
-            // @Task we need to associate the token with a more useful span
-            Token::new(span(58, 67), OpeningCurlyBracket(Provenance::Lexer)),
+            Token::new(span(59, 67), OpeningCurlyBracket(Provenance::Lexer)),
             Token::new(span(67, 74), Word("CONTENT".into())),
-            // @Task we need to associate the token with a more useful span
-            Token::new(span(74, 79), ClosingCurlyBracket(Provenance::Lexer)),
-            // @Bug wrong span?
-            Token::new(span(74, 79), Semicolon(Provenance::Lexer)),
+            Token::new(span(75, 79), ClosingCurlyBracket(Provenance::Lexer)),
+            // @Task this span should be empty, right?
+            Token::new(span(75, 79), Semicolon(Provenance::Lexer)),
             Token::new(span(79, 81), Of),
-            // @Task we need to associate the token with a more useful span
-            Token::new(span(81, 90), OpeningCurlyBracket(Provenance::Lexer)),
+            Token::new(span(82, 90), OpeningCurlyBracket(Provenance::Lexer)),
             Token::new(span(90, 95), Punctuation(">>!<<".into())),
-            // @Task we need to associate the token with a more useful span
-            Token::new(span(95, 96), ClosingCurlyBracket(Provenance::Lexer)),
-            Token::new(span(95, 96), Semicolon(Provenance::Lexer)),
-            // // @Task we need to associate the token with a more useful span
-            Token::new(span(95, 96), ClosingCurlyBracket(Provenance::Lexer)),
-            Token::new(span(95, 96), Semicolon(Provenance::Lexer)),
+            Token::new(span(96, 96), ClosingCurlyBracket(Provenance::Lexer)),
+            Token::new(span(96, 96), Semicolon(Provenance::Lexer)),
+            Token::new(span(96, 96), ClosingCurlyBracket(Provenance::Lexer)),
+            Token::new(span(96, 96), Semicolon(Provenance::Lexer)),
             Token::new(span(96, 96), EndOfInput),
         ],
     );
@@ -680,11 +659,11 @@ of
 "),
         vec![
             Token::new(span(1, 3), Of),
-            Token::new(span(3, 8), OpeningCurlyBracket(Provenance::Lexer)),
+            Token::new(span(4, 8), OpeningCurlyBracket(Provenance::Lexer)),
             Token::new(span(8, 9), Word("a".into())),
             Token::new(span(18, 19), Word("b".into())),
-            Token::new(span(19, 20), ClosingCurlyBracket(Provenance::Lexer)),
-            Token::new(span(19, 20), Semicolon(Provenance::Lexer)),
+            Token::new(span(20, 20), ClosingCurlyBracket(Provenance::Lexer)),
+            Token::new(span(20, 20), Semicolon(Provenance::Lexer)),
             Token::new(span(20, 20), EndOfInput),
         ],
     );
@@ -693,7 +672,7 @@ of
 #[test]
 #[ignore]
 fn keyword_do_introduces_indented_sections() {
-    todo!()
+    todo!() // @Task
 }
 
 #[test]
@@ -712,27 +691,18 @@ of
             Token::new(span(4, 6), Do),
             Token::new(span(6, 8), Semicolon(Provenance::Lexer)),
             Token::new(span(8, 10), Of),
-            Token::new(span(10, 15), OpeningCurlyBracket(Provenance::Lexer)),
+            Token::new(span(11, 15), OpeningCurlyBracket(Provenance::Lexer)),
             Token::new(span(15, 17), Do),
-            // Token::new(span(17, 17), Semicolon(Provenance::Lexer)), // @Beacon hmm
-            Token::new(span(17, 18), ClosingCurlyBracket(Provenance::Lexer)),
-            Token::new(span(17, 18), Semicolon(Provenance::Lexer)),
+            Token::new(span(18, 18), ClosingCurlyBracket(Provenance::Lexer)),
+            Token::new(span(18, 18), Semicolon(Provenance::Lexer)),
             Token::new(span(18, 18), EndOfInput),
         ],
     )
 }
 
-// @Beacon @Task smh create a Stack<Section> of the form [TopLevel,Continued,Indented]
-// #[test]
-// fn yyyy() {
-//     todo!()
-// }
+// @Task smh create a Stack<Section> of the form [TopLevel, Continued, Indented]
 
-// @Beacon @Task smh create a Vec<Section> of the form [TopLevel,Indented,Continued]
-// #[test]
-// fn yyyy() {
-//     todo!()
-// }
+// @Task smh create a Vec<Section> of the form [TopLevel, Indented, Continued]
 
 #[test]
 fn keyword_do_and_of_and_no_block_follows() {
@@ -754,12 +724,10 @@ of"it"
     );
 }
 
-// @Task
-
 // #[test]
-// fn xxxxxx() {
+// fn _() {
 //     let _ = lex("\n    \n");
-//     todo!();
+//     todo!(); // @Tasl
 // }
 
 #[test]
@@ -775,8 +743,7 @@ fn round_bracket_closes_indented_section() {
         vec![
             Token::new(span(1, 2), OpeningRoundBracket),
             Token::new(span(2, 4), Of),
-            // @Bug wrong span
-            Token::new(span(4, 9), OpeningCurlyBracket(Provenance::Lexer)),
+            Token::new(span(5, 9), OpeningCurlyBracket(Provenance::Lexer)),
             Token::new(span(9, 11), Word("fo".into())),
             // @Question better span?
             Token::new(span(11, 12), ClosingCurlyBracket(Provenance::Lexer)),
@@ -784,8 +751,7 @@ fn round_bracket_closes_indented_section() {
             Token::new(span(12, 13), Semicolon(Provenance::Lexer)),
             Token::new(span(13, 14), OpeningRoundBracket),
             Token::new(span(14, 16), Of),
-            // @Bug wrong span
-            Token::new(span(16, 21), OpeningCurlyBracket(Provenance::Lexer)),
+            Token::new(span(17, 21), OpeningCurlyBracket(Provenance::Lexer)),
             Token::new(span(21, 23), Word("fo".into())),
             Token::new(span(23, 24), Semicolon(Provenance::Lexer)),
             // @Question better span?
@@ -797,10 +763,27 @@ fn round_bracket_closes_indented_section() {
     );
 }
 
-// @Task
 #[test]
-#[ignore]
-fn square_bracket_closes_indented_section() {}
+fn square_bracket_closes_indented_section() {
+    assert_eq(
+        lex("\
+[of
+    fo]
+#"),
+        vec![
+            Token::new(span(1, 2), OpeningSquareBracket),
+            Token::new(span(2, 4), Of),
+            Token::new(span(5, 9), OpeningCurlyBracket(Provenance::Lexer)),
+            Token::new(span(9, 11), Word("fo".into())),
+            // @Question better span?
+            Token::new(span(11, 12), ClosingCurlyBracket(Provenance::Lexer)),
+            Token::new(span(11, 12), ClosingSquareBracket),
+            Token::new(span(12, 13), Semicolon(Provenance::Lexer)),
+            Token::new(span(13, 14), Punctuation("#".into())),
+            Token::new(span(14, 14), EndOfInput),
+        ],
+    );
+}
 
 #[test]
 fn pair_of_brackets_does_not_close_indented_section() {
@@ -812,8 +795,7 @@ of
 "),
         vec![
             Token::new(span(1, 3), Of),
-            // @Bug wrong span
-            Token::new(span(3, 8), OpeningCurlyBracket(Provenance::Lexer)),
+            Token::new(span(4, 8), OpeningCurlyBracket(Provenance::Lexer)),
             Token::new(span(8, 9), OpeningRoundBracket),
             Token::new(span(9, 10), Word("f".into())),
             Token::new(span(11, 12), OpeningSquareBracket),
@@ -821,19 +803,16 @@ of
             Token::new(span(13, 14), ClosingRoundBracket),
             Token::new(span(14, 15), Semicolon(Provenance::Lexer)),
             Token::new(span(19, 25), Word("inside".into())),
-            Token::new(span(25, 26), ClosingCurlyBracket(Provenance::Lexer)),
-            Token::new(span(25, 26), Semicolon(Provenance::Lexer)),
+            Token::new(span(26, 26), ClosingCurlyBracket(Provenance::Lexer)),
+            Token::new(span(26, 26), Semicolon(Provenance::Lexer)),
             Token::new(span(26, 26), EndOfInput),
         ],
     );
 }
 
-// @Question should the single dot really be a Dot? shouldn't it be
-// punctuation?
-/// Yes, `=>` and `=` are aligned *but* the `)` outdents the first indentation and
+/// Yes, `=>` and `=` are aligned *but* the `)` “outdents” the first indentation and
 /// and such, the `=` should be considered (more) indented relative to the line with
 /// the closing bracket.
-// @Task rephrase the above
 #[test]
 fn brackets_reset_indentation() {
     assert_eq(
@@ -845,28 +824,15 @@ fn brackets_reset_indentation() {
         vec![
             Token::new(span(1, 2), OpeningRoundBracket),
             Token::new(span(2, 4), Of),
-            Token::new(span(4, 9), OpeningCurlyBracket(Provenance::Lexer)),
+            Token::new(span(5, 9), OpeningCurlyBracket(Provenance::Lexer)),
             Token::new(span(9, 11), WideArrowRight),
             Token::new(span(11, 12), ClosingCurlyBracket(Provenance::Lexer)),
             Token::new(span(11, 12), ClosingRoundBracket),
             Token::new(span(17, 18), Equals),
+            // @Question should this be Punctuation?
             Token::new(span(19, 20), Dot),
             Token::new(span(20, 21), Semicolon(Provenance::Lexer)),
             Token::new(span(21, 21), EndOfInput),
         ],
     )
-}
-
-// @Task make this a UI test (maybe?)
-#[test]
-#[ignore]
-fn do_not_lex_too_shallow_indentation() {
-    todo!()
-}
-
-// @Task make this a UI test (maybe?)
-#[test]
-#[ignore]
-fn do_not_lex_too_deep_indentation() {
-    todo!()
 }

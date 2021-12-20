@@ -1,3 +1,3 @@
 ;;; TEST fail check
 
-)) it ]
+data X: (

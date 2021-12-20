@@ -1,0 +1,18 @@
+error[E001]: unbalanced round bracket
+ --> ${DIRECTORY}/parsing/unexpected-line-break.lushui:3:9
+  |
+3 | data X: (
+  |         ^ has no matching closing round bracket
+  |
+
+error[E010]: found line break, but expected expression
+ --> ${DIRECTORY}/parsing/unexpected-line-break.lushui:3:10
+  |
+3 | data X: (
+  |         >< unexpected token
+  |
+
+error: aborting due to 2 previous errors
+ note: the errors E001 and E010 have a detailed explanation
+ help: run `lushui explain <codes...>` to view a selection of them
+

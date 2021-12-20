@@ -20,6 +20,7 @@
 //! | `"T"`     | Terminal                            | Lexed token by textual content                                |
 //! | `#T`      | Named Terminal                      | Lexed token by name                                           |
 //! | `(> A)`   | Positive Look-Ahead                 |                                                               |
+//! | `(< A)`   | Positive Look-Behind                |                                                               |
 
 #[cfg(test)]
 mod test;
@@ -246,6 +247,10 @@ impl<'a> Parser<'a> {
     /// Panics if the current token is the [end of input](TokenName::EndOfInput).
     fn succeeding_token(&self) -> &Token {
         &self.tokens[self.index + 1]
+    }
+
+    fn preceeding_token(&self) -> Option<&Token> {
+        Some(&self.tokens[self.index.checked_sub(1)?])
     }
 
     /// Parse a declaration.
@@ -1705,11 +1710,16 @@ impl<'a> Parser<'a> {
     /// # Grammar
     ///
     /// ```ebnf
-    /// Terminator ::= ";" | (> "}" | #End-Of-Input)
+    /// ; #Start-Of-Input is not actually emitted by the lexer, the parsers needs to bound-check instead.
+    /// Terminator ::= ";" | (> "}" | #End-Of-Input) | (< #Start-Of-Input | ";" | "}")
     /// ```
     fn expect_terminator(&mut self) -> Result<Option<Token>> {
         let token = self.current_token();
-        if token.name().is_terminator() {
+        if token.name().is_terminator()
+            || self
+                .preceeding_token()
+                .map_or(true, |token| token.name().is_terminator())
+        {
             if token.name() == Semicolon {
                 let token = token.clone();
                 self.advance();
