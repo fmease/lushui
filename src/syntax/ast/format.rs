@@ -399,36 +399,10 @@ impl Format for super::Domain {
         FormatStruct::new(f, indentation)
             .name("Domain")
             .field("explicitness", &self.explicitness)
-            .field("aspect", &self.aspect)
+            .field("laziness", &self.laziness)
             .field("binder", &self.binder)
             .field("expression", &self.expression)
             .finish()
-    }
-}
-
-impl Format for super::ParameterAspect {
-    fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
-        FormatStruct::new(f, indentation)
-            .name("Parameter-Aspect")
-            .inline()
-            .field("laziness", &self.laziness)
-            .field("fieldness", &self.fieldness)
-            .finish()
-    }
-}
-
-/// Potentially with trailing whitespace.
-impl fmt::Display for super::ParameterAspect {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        if self.is_lazy() {
-            write!(f, "lazy ")?;
-        }
-
-        if self.is_field() {
-            write!(f, "::")?;
-        }
-
-        Ok(())
     }
 }
 
@@ -556,7 +530,7 @@ impl Format for super::ParameterKind {
         FormatStruct::new(f, indentation)
             .name("Parameter")
             .field("explicitness", &self.explicitness)
-            .field("aspect", &self.aspect)
+            .field("laziness", &self.laziness)
             .field("binder", &self.binder)
             .field("type-annotation", &self.type_annotation)
             .finish()

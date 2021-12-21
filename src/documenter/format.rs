@@ -77,12 +77,14 @@ impl<'a> Formatter<'a> {
                 self.write(&pi.explicitness.to_string());
 
                 // @Note fragile
-                let domain_needs_brackets = pi.parameter.is_some() || pi.aspect != default();
+                let domain_needs_brackets = pi.parameter.is_some() || pi.laziness.is_some();
 
                 // @Task add tests to check if parameter aspect is handled correctly
                 if domain_needs_brackets {
                     self.write("(");
-                    self.write(&pi.aspect.to_string());
+                    if pi.laziness.is_some() {
+                        self.write("lazy ");
+                    }
 
                     if let Some(parameter) = &pi.parameter {
                         self.write(&parameter.to_string());

@@ -94,8 +94,6 @@ impl<'a> Lowerer<'a> {
                 .unwrap(&mut health);
         let declarations = match declaration.value {
             Function(function) => {
-                let context = ExpressionContext::new(declaration.span);
-
                 if function.type_annotation.is_none() {
                     Diagnostic::missing_mandatory_type_annotation(
                         function.binder.span().fit_end(&function.parameters).end(),
@@ -114,11 +112,11 @@ impl<'a> Lowerer<'a> {
                 // partial moves, I hate those), use local bindings
                 let body = match function.body {
                     Some(body) => {
-                        let mut body = self.lower_expression(body, context).unwrap(&mut health);
+                        let mut body = self.lower_expression(body).unwrap(&mut health);
 
                         {
                             let mut type_annotation = once(
-                                self.lower_expression(declaration_type_annotation.clone(), context)
+                                self.lower_expression(declaration_type_annotation.clone())
                                     .unwrap(&mut health),
                             );
 
@@ -137,7 +135,7 @@ impl<'a> Lowerer<'a> {
                                         .unwrap(&mut health);
 
                                 let parameter_type_annotation = self
-                                    .lower_expression(parameter_type_annotation, context)
+                                    .lower_expression(parameter_type_annotation)
                                     .unwrap(&mut health);
 
                                 body = expr! {
@@ -147,7 +145,7 @@ impl<'a> Lowerer<'a> {
                                         parameter: parameter.value.binder.clone(),
                                         parameter_type_annotation: Some(parameter_type_annotation.clone()),
                                         explicitness: parameter.value.explicitness,
-                                        laziness: parameter.value.aspect.laziness,
+                                        laziness: parameter.value.laziness,
                                         body_type_annotation: type_annotation.next(),
                                         body,
                                     }
@@ -163,7 +161,6 @@ impl<'a> Lowerer<'a> {
                     .lower_parameters_to_annotated_ones(
                         function.parameters,
                         declaration_type_annotation,
-                        context,
                     )
                     .unwrap(&mut health);
 
@@ -192,11 +189,7 @@ impl<'a> Lowerer<'a> {
                 };
 
                 let type_annotation = self
-                    .lower_parameters_to_annotated_ones(
-                        type_.parameters,
-                        data_type_annotation,
-                        ExpressionContext::new(declaration.span),
-                    )
+                    .lower_parameters_to_annotated_ones(type_.parameters, data_type_annotation)
                     .unwrap(&mut health);
 
                 let context = DeclarationContext {
@@ -248,17 +241,11 @@ impl<'a> Lowerer<'a> {
                     .lower_parameters_to_annotated_ones(
                         constructor.parameters,
                         constructor_type_annotation,
-                        ExpressionContext {
-                            in_constructor: true,
-                            declaration: declaration.span,
-                        },
                     )
                     .unwrap(&mut health);
 
                 if let Some(body) = constructor.body {
-                    let body = self
-                        .lower_expression(body, ExpressionContext::new(declaration.span))
-                        .unwrap(&mut health);
+                    let body = self.lower_expression(body).unwrap(&mut health);
 
                     Diagnostic::error()
                         .code(Code::E020)
@@ -534,7 +521,6 @@ impl<'a> Lowerer<'a> {
     fn lower_expression(
         &mut self,
         expression: ast::Expression,
-        context: ExpressionContext,
     ) -> Outcome<lowered_ast::Expression> {
         use ast::ExpressionKind::*;
 
@@ -545,21 +531,17 @@ impl<'a> Lowerer<'a> {
 
         let expression = match expression.value {
             PiTypeLiteral(pi) => {
-                health &= self.check_fieldness_location(pi.domain.aspect.fieldness, context);
-
                 let domain = self
-                    .lower_expression(pi.domain.expression, context)
+                    .lower_expression(pi.domain.expression)
                     .unwrap(&mut health);
-                let codomain = self
-                    .lower_expression(pi.codomain, context)
-                    .unwrap(&mut health);
+                let codomain = self.lower_expression(pi.codomain).unwrap(&mut health);
 
                 expr! {
                     PiType {
                         attributes,
                         expression.span;
                         explicitness: pi.domain.explicitness,
-                        aspect: pi.domain.aspect,
+                        laziness: pi.domain.laziness,
                         parameter: pi.domain.binder.clone(),
                         domain,
                         codomain,
@@ -575,10 +557,10 @@ impl<'a> Lowerer<'a> {
                 }
 
                 let callee = self
-                    .lower_expression(application.callee, context)
+                    .lower_expression(application.callee)
                     .unwrap(&mut health);
                 let argument = self
-                    .lower_expression(application.argument, context)
+                    .lower_expression(application.argument)
                     .unwrap(&mut health);
 
                 expr! {
@@ -630,15 +612,12 @@ impl<'a> Lowerer<'a> {
                 PossiblyErroneous::error()
             }
             LambdaLiteral(lambda) => {
-                let mut expression = self
-                    .lower_expression(lambda.body, context)
-                    .unwrap(&mut health);
+                let mut expression = self.lower_expression(lambda.body).unwrap(&mut health);
 
                 let mut type_annotation = lambda
                     .body_type_annotation
                     .map(|type_annotation| {
-                        self.lower_expression(type_annotation, context)
-                            .unwrap(&mut health)
+                        self.lower_expression(type_annotation).unwrap(&mut health)
                     })
                     .into_iter();
 
@@ -649,8 +628,7 @@ impl<'a> Lowerer<'a> {
                             .type_annotation
                             .clone()
                             .map(|type_annotation| {
-                                self.lower_expression(type_annotation, context)
-                                    .unwrap(&mut health)
+                                self.lower_expression(type_annotation).unwrap(&mut health)
                             });
 
                     expression = expr! {
@@ -660,7 +638,7 @@ impl<'a> Lowerer<'a> {
                             parameter: parameter.value.binder.clone(),
                             parameter_type_annotation,
                             explicitness: parameter.value.explicitness,
-                            laziness: parameter.value.aspect.laziness,
+                            laziness: parameter.value.laziness,
                             body_type_annotation: type_annotation.next(),
                             body: expression,
                         }
@@ -696,23 +674,19 @@ impl<'a> Lowerer<'a> {
                     }
                 };
 
-                let mut expression = self
-                    .lower_expression(expression, context)
-                    .unwrap(&mut health);
+                let mut expression = self.lower_expression(expression).unwrap(&mut health);
 
                 let mut type_annotation = let_in
                     .type_annotation
                     .map(|type_annotation| {
-                        self.lower_expression(type_annotation, context)
-                            .unwrap(&mut health)
+                        self.lower_expression(type_annotation).unwrap(&mut health)
                     })
                     .into_iter();
 
                 for parameter in let_in.parameters.iter().rev() {
                     let parameter_type_annotation =
                         parameter.value.type_annotation.clone().map(|expression| {
-                            self.lower_expression(expression, context)
-                                .unwrap(&mut health)
+                            self.lower_expression(expression).unwrap(&mut health)
                         });
 
                     expression = expr! {
@@ -721,16 +695,14 @@ impl<'a> Lowerer<'a> {
                             parameter: parameter.value.binder.clone(),
                             parameter_type_annotation,
                             explicitness: parameter.value.explicitness,
-                            laziness: parameter.value.aspect.laziness,
+                            laziness: parameter.value.laziness,
                             body_type_annotation: type_annotation.next(),
                             body: expression,
                         }
                     };
                 }
 
-                let body = self
-                    .lower_expression(let_in.scope, context)
-                    .unwrap(&mut health);
+                let body = self.lower_expression(let_in.scope).unwrap(&mut health);
 
                 expr! {
                     Application {
@@ -770,14 +742,12 @@ impl<'a> Lowerer<'a> {
                 for case in analysis.cases {
                     cases.push(lowered_ast::Case {
                         pattern: self.lower_pattern(case.pattern).unwrap(&mut health),
-                        body: self
-                            .lower_expression(case.body.clone(), context)
-                            .unwrap(&mut health),
+                        body: self.lower_expression(case.body.clone()).unwrap(&mut health),
                     });
                 }
 
                 let subject = self
-                    .lower_expression(analysis.scrutinee, context)
+                    .lower_expression(analysis.scrutinee)
                     .unwrap(&mut health);
 
                 expr! {
@@ -1092,13 +1062,10 @@ impl<'a> Lowerer<'a> {
         &mut self,
         parameters: ast::Parameters,
         type_annotation: ast::Expression,
-        context: ExpressionContext,
     ) -> Outcome<lowered_ast::Expression> {
         let mut health = Health::Untainted;
 
-        let mut expression = self
-            .lower_expression(type_annotation, context)
-            .unwrap(&mut health);
+        let mut expression = self.lower_expression(type_annotation).unwrap(&mut health);
 
         for parameter in parameters.into_iter().rev() {
             if parameter.value.type_annotation.is_none() {
@@ -1114,17 +1081,15 @@ impl<'a> Lowerer<'a> {
                 Outcome::from(parameter.value.type_annotation).unwrap(&mut health);
 
             let parameter_type_annotation = self
-                .lower_expression(parameter_type_annotation, context)
+                .lower_expression(parameter_type_annotation)
                 .unwrap(&mut health);
-
-            health &= self.check_fieldness_location(parameter.value.aspect.fieldness, context);
 
             expression = expr! {
                 PiType {
                     Attributes::default(),
                     Span::default();
                     explicitness: parameter.value.explicitness,
-                    aspect: parameter.value.aspect,
+                    laziness: parameter.value.laziness,
                     parameter: Some(parameter.value.binder),
                     domain: parameter_type_annotation.clone(),
                     codomain: expression,
@@ -1133,28 +1098,6 @@ impl<'a> Lowerer<'a> {
         }
 
         health.of(expression)
-    }
-
-    fn check_fieldness_location(
-        &mut self,
-        fieldness: Option<Span>,
-        context: ExpressionContext,
-    ) -> Result {
-        if let Some(field) = fieldness {
-            if !context.in_constructor {
-                // @Note it would be helpful to also say the name of the actual declaration
-                // but I think we lack a method for this right now
-                Diagnostic::error()
-                    .code(Code::E017)
-                    .message("field marker `::` used outside of a constructor declaration")
-                    .primary_span(field)
-                    .labeled_secondary_span(context.declaration, "not a constructor")
-                    .report(self.reporter);
-                return Err(());
-            }
-        }
-
-        Ok(())
     }
 }
 
@@ -1176,21 +1119,6 @@ struct DeclarationContext {
     /// Exclusively used to compute the path of out-of-line modules inside of inline
     /// modules!
     inline_modules: Vec<String>,
-}
-
-#[derive(Clone, Copy)]
-struct ExpressionContext {
-    in_constructor: bool,
-    declaration: Span,
-}
-
-impl ExpressionContext {
-    fn new(declaration: Span) -> Self {
-        Self {
-            in_constructor: false,
-            declaration,
-        }
-    }
 }
 
 const NAT32_INTERVAL_REPRESENTATION: &str = "[0, 2^32-1]";

@@ -3,7 +3,7 @@
 use super::{Crate, Declaration, Expression, Pattern};
 use crate::{format::DisplayWith, package::BuildSession};
 use joinery::JoinableIterator;
-use std::{default::default, fmt};
+use std::fmt;
 
 impl DisplayWith for Declaration {
     type Context<'a> = (&'a Crate, &'a BuildSession);
@@ -144,12 +144,13 @@ fn format_pi_type_literal_or_lower(
             write!(f, "{}", pi.explicitness)?;
 
             // @Note fragile
-            let domain_needs_brackets = pi.parameter.is_some() || pi.aspect != default();
+            let domain_needs_brackets = pi.parameter.is_some() || pi.laziness.is_some();
 
-            // @Task add tests to check if parameter aspect is handled correctly
             if domain_needs_brackets {
                 write!(f, "(")?;
-                write!(f, "{}", pi.aspect)?;
+                if pi.laziness.is_some() {
+                    write!(f, "lazy ")?;
+                }
 
                 if let Some(parameter) = &pi.parameter {
                     write!(f, "{parameter}: ")?;
@@ -423,7 +424,7 @@ mod test {
                 PiType {
                     Attributes::default(), Span::default();
                     explicitness: Explicit,
-                    aspect: default(),
+                    laziness: None,
                     parameter: None,
                     domain: expr! {
                         Application {
@@ -457,7 +458,7 @@ mod test {
                 PiType {
                     Attributes::default(), Span::default();
                     explicitness: Explicit,
-                    aspect: default(),
+                    laziness: None,
                     parameter: Some(alpha.clone()),
                     domain: expr! {
                         Application {
@@ -493,7 +494,7 @@ mod test {
                 PiType {
                     Attributes::default(), Span::default();
                     explicitness: Implicit,
-                    aspect: default(),
+                    laziness: None,
                     parameter: Some(Identifier::parameter("whatever")),
                     domain: type_(),
                     codomain: type_(),
@@ -519,13 +520,13 @@ mod test {
                 PiType {
                     Attributes::default(), Span::default();
                     explicitness: Explicit,
-                    aspect: default(),
+                    laziness: None,
                     parameter: None,
                     domain: expr! {
                         PiType {
                             Attributes::default(), Span::default();
                             explicitness: Explicit,
-                            aspect: default(),
+                            laziness: None,
                             parameter: None,
                             domain: int.clone(),
                             codomain: int.clone(),
@@ -557,14 +558,14 @@ mod test {
                 PiType {
                     Attributes::default(), Span::default();
                     explicitness: Explicit,
-                    aspect: default(),
+                    laziness: None,
                     parameter: None,
                     domain: int,
                     codomain: expr! {
                         PiType {
                             Attributes::default(), Span::default();
                             explicitness: Explicit,
-                            aspect: default(),
+                            laziness: None,
                             parameter: None,
                             domain: text,
                             codomain: expr! {
@@ -595,7 +596,7 @@ mod test {
                 PiType {
                     Attributes::default(), Span::default();
                     explicitness: Explicit,
-                    aspect: default(),
+                    laziness: None,
                     parameter: None,
                     domain: expr! {
                         Lambda {
@@ -954,7 +955,7 @@ mod test {
                         PiType {
                             Attributes::default(), Span::default();
                             explicitness: Explicit,
-                            aspect: default(),
+                            laziness: None,
                             parameter: None,
                             domain: x.to_expression(),
                             codomain: type_(),

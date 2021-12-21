@@ -5,7 +5,7 @@ use crate::{
     resolver::{Crate, FunctionScope},
     span::{SourceFileIndex, Span},
     syntax::{
-        ast::{Explicitness, ParameterAspect},
+        ast::Explicitness,
         lowered_ast::{Item, Number},
     },
     typer::interpreter,
@@ -97,8 +97,7 @@ impl PossiblyErroneous for ExpressionKind {
 #[derive(Clone)]
 pub struct PiType {
     pub explicitness: Explicitness,
-    // @Question should the concept of fieldness still exist in this pass?
-    pub aspect: ParameterAspect,
+    pub laziness: Option<Span>,
     pub parameter: Option<Identifier>,
     pub domain: Expression,
     pub codomain: Expression,

@@ -2,7 +2,7 @@
 
 use colored::{Color, Colorize};
 
-use std::{default::default, fmt};
+use std::fmt;
 
 use crate::syntax::lexer::INDENTATION;
 
@@ -214,11 +214,13 @@ fn format_pi_type_literal_or_lower(
             write!(f, "{}", pi.explicitness)?;
 
             // @Note fragile
-            let domain_needs_brackets = pi.parameter.is_some() || pi.aspect != default();
+            let domain_needs_brackets = pi.parameter.is_some() || pi.laziness.is_some();
 
             if domain_needs_brackets {
                 write!(f, "(")?;
-                write!(f, "{}", pi.aspect)?;
+                if pi.laziness.is_some() {
+                    write!(f, "lazy ")?;
+                }
 
                 if let Some(parameter) = &pi.parameter {
                     write!(

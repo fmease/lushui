@@ -74,10 +74,7 @@ impl Entity {
     }
 
     pub const fn is_namespace(&self) -> bool {
-        // @Note constructors are still namespaces until we throw out the old
-        // record field semanantics!
-
-        self.is_module() || self.is_data_type() || self.is_constructor()
+        self.is_module() || self.is_data_type()
     }
 
     pub const fn namespace(&self) -> Option<&Namespace> {
@@ -85,9 +82,7 @@ impl Entity {
             &self.kind,
             Module { namespace }
             | UntypedDataType { namespace }
-            | DataType { namespace, .. }
-            | UntypedConstructor { namespace }
-            | Constructor { namespace, .. } => namespace,
+            | DataType { namespace, .. } => namespace,
         )
     }
 
@@ -96,9 +91,7 @@ impl Entity {
             &mut self.kind,
             Module { namespace }
             | UntypedDataType { namespace }
-            | DataType { namespace, .. }
-            | UntypedConstructor { namespace }
-            | Constructor { namespace, .. } => namespace,
+            | DataType { namespace, .. } => namespace,
         )
     }
 
@@ -182,10 +175,7 @@ pub enum EntityKind {
     UntypedDataType {
         namespace: Namespace,
     },
-    /// Constructors are not [`Self::UntypedFunction`] as they are also namespaces containing fields.
-    UntypedConstructor {
-        namespace: Namespace,
-    },
+    UntypedConstructor,
     /// The `reference is never a `Use` itself.
     /// Nested aliases were already collapsed by [`crate::resolver::Resolver::collapse_use_chain`].
     Use {
@@ -204,7 +194,6 @@ pub enum EntityKind {
         constructors: Vec<Identifier>,
     },
     Constructor {
-        namespace: Namespace,
         type_: Expression,
     },
     Intrinsic {
@@ -230,12 +219,6 @@ impl EntityKind {
         }
     }
 
-    pub fn untyped_constructor() -> Self {
-        UntypedConstructor {
-            namespace: default(),
-        }
-    }
-
     pub fn untyped_data_type() -> Self {
         UntypedDataType {
             namespace: default(),
@@ -251,7 +234,7 @@ impl DisplayWith for EntityKind {
             UntypedFunction => write!(f, "untyped value"),
             Module { namespace } => write!(f, "module of {:?}", namespace),
             UntypedDataType { namespace } => write!(f, "untyped data type of {:?}", namespace),
-            UntypedConstructor { namespace } => write!(f, "untyped constructor of {:?}", namespace),
+            UntypedConstructor => write!(f, "untyped constructor"),
             Use { reference } => write!(f, "use {:?}", reference),
             UnresolvedUse => write!(f, "unresolved use"),
             Function { type_, expression } => match expression {

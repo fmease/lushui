@@ -17,7 +17,7 @@ use crate::{
     resolver::Crate,
     span::Span,
     syntax::{
-        ast::{Explicitness, ParameterAspect},
+        ast::Explicitness,
         lowered_ast::{AttributeName, Attributes},
     },
     typer::interpreter::scope::BindingRegistrationKind,
@@ -27,7 +27,6 @@ use interpreter::{
     Form, Interpreter,
 };
 use joinery::JoinableIterator;
-use std::default::default;
 
 pub fn check(
     declaration: &Declaration,
@@ -501,19 +500,12 @@ impl<'a> Typer<'a> {
                     self.it_is_actual(body_type_annotation, infered_body_type.clone(), &scope)?;
                 }
 
-                let aspect = ParameterAspect {
-                    laziness: lambda.laziness,
-                    ..default()
-                };
-
                 expr! {
                     PiType {
                         expression.attributes,
                         expression.span;
                         explicitness: Explicitness::Explicit,
-                        // @Temporary
-                        // aspect: ParameterAspect { laziness: lambda.laziness, ..default() },
-                        aspect,
+                        laziness: lambda.laziness,
                         parameter: Some(lambda.parameter.clone()),
                         domain: parameter_type,
                         codomain: infered_body_type,
@@ -537,12 +529,12 @@ impl<'a> Typer<'a> {
                     let argument_type =
                         self.infer_type_of_expression(application.argument.clone(), scope)?;
 
-                    let argument_type = if pi.aspect.laziness.is_some() {
+                    let argument_type = if pi.laziness.is_some() {
                         expr! {
                             PiType {
                                 Attributes::default(), argument_type.span;
                                 explicitness: Explicitness::Explicit,
-                                aspect: default(),
+                                laziness: None,
                                 parameter: None,
                                 domain: self.session.look_up_known_type(KnownBinding::Unit, application.callee.span, self.reporter)?,
                                 codomain: argument_type,

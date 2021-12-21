@@ -77,13 +77,7 @@ Expression ::= Pi-Type-Literal-Or-Lower
 Pi-Type-Literal-Or-Lower ::=
     (Designated-Pi-Type-Domain | Application-Or-Lower)
     "->" Pi-Type-Literal-Or-Lower
-Designated-Pi-Type-Domain ::=
-    Explicitness
-    "(" Parameter-Aspect #Word Type-Annotation ")"
-
-Parameter-Aspect ::= Laziness Fieldness
-Laziness ::= "lazy"?
-Fieldness ::= "::"?
+Designated-Pi-Type-Domain ::= Explicitness "(" "lazy"? #Word Type-Annotation ")"
 
 Application-Or-Lower ::= Lower-Expression Argument*
 Argument ::=
@@ -146,9 +140,7 @@ Expression-Statement ::= Expression Terminator
 Parameters ::= Parameter*
 
 Parameter ::= Explicitness Bare-Parameter
-Bare-Parameter ::=
-    | #Word
-    | "(" Parameter-Aspect #Word Type-Annotation? ")"
+Bare-Parameter ::= #Word | "(" "lazy"? #Word Type-Annotation? ")"
 
 Pattern ::= Lower-Pattern Pattern-Argument*
 Pattern-Argument ::=

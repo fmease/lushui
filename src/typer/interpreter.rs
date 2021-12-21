@@ -182,7 +182,7 @@ impl<'a> Interpreter<'a> {
                         expression.attributes,
                         expression.span;
                         explicitness: pi.explicitness,
-                        aspect: pi.aspect,
+                        laziness: pi.laziness,
                         parameter: pi.parameter.clone(),
                         domain,
                         codomain,
@@ -420,7 +420,7 @@ impl<'a> Interpreter<'a> {
                         PiType {
                             expression.attributes, expression.span;
                             explicitness: pi.explicitness,
-                            aspect: pi.aspect,
+                            laziness: pi.laziness,
                             parameter: pi.parameter.clone(),
                             domain,
                             codomain,

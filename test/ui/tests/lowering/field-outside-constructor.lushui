@@ -1,3 +1,0 @@
-;;; TEST fail check
-
-data X (::A: Type): (::m: M) -> X of

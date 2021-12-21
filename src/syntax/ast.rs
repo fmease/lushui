@@ -200,27 +200,9 @@ pub struct PiTypeLiteral {
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Domain {
     pub explicitness: Explicitness,
-    pub aspect: ParameterAspect,
+    pub laziness: Option<Span>,
     pub binder: Option<Identifier>,
     pub expression: Expression,
-}
-
-/// The extra qualities a parameter of a pi type can posses.
-// @Task maybe change types to Spanned<Laziness>, Spanned<Fieldness>
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct ParameterAspect {
-    pub laziness: Option<Span>,
-    pub fieldness: Option<Span>,
-}
-
-impl ParameterAspect {
-    pub const fn is_lazy(self) -> bool {
-        self.laziness.is_some()
-    }
-
-    pub const fn is_field(self) -> bool {
-        self.fieldness.is_some()
-    }
 }
 
 /// The syntax node of function application.
@@ -494,7 +476,7 @@ pub type Parameter = Spanned<ParameterKind>;
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct ParameterKind {
     pub explicitness: Explicitness,
-    pub aspect: ParameterAspect,
+    pub laziness: Option<Span>,
     pub binder: Identifier,
     pub type_annotation: Option<Expression>,
 }

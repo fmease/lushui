@@ -621,8 +621,6 @@ pub enum Code {
     E015,
     /// Unable to load out-of-line module.
     E016,
-    /// Field declared outside of constructor declaration.
-    E017,
     /// Undefined lint.
     E018,
     /// Attribute arguments arity mismatch.

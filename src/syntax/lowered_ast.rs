@@ -6,7 +6,7 @@
 pub mod attributes;
 mod format;
 
-use super::ast::{Explicitness, Identifier, ParameterAspect, Path};
+use super::ast::{Explicitness, Identifier, Path};
 use crate::{
     error::PossiblyErroneous,
     span::{SourceFileIndex, Span},
@@ -85,11 +85,8 @@ impl PossiblyErroneous for ExpressionKind {
 
 #[derive(Clone)]
 pub struct PiType {
-    // @Question should we move `aspect`, `parameter` and `domain` to
-    // separate `Domain` type like in `crate::syntax::ast` or should we keep it
-    // flat and also inline `Domain` in the non-lowered AST?
     pub explicitness: Explicitness,
-    pub aspect: ParameterAspect,
+    pub laziness: Option<Span>,
     pub parameter: Option<Identifier>,
     pub domain: Expression,
     pub codomain: Expression,

@@ -180,44 +180,20 @@ impl<'a> Resolver<'a> {
             Constructor(constructor) => {
                 // there is always a root module
                 let module = module.unwrap();
-                let (namespace, module_opacity) = context.parent_data_binding.unwrap();
+                let (namespace, module_transparency) = context.parent_data_binding.unwrap();
 
-                let exposure = match module_opacity.unwrap() {
+                let exposure = match module_transparency.unwrap() {
                     Transparency::Transparent => self.crate_[namespace].exposure.clone(),
                     // as if a @(public super) was attached to the constructor
                     Transparency::Abstract => RestrictedExposure::Resolved { reach: module }.into(),
                 };
 
-                // @Task don't return early, see analoguous code for modules
-                let namespace = self.crate_.register_binding(
+                self.crate_.register_binding(
                     constructor.binder.clone(),
                     exposure,
-                    EntityKind::untyped_constructor(),
+                    EntityKind::UntypedConstructor,
                     Some(namespace),
                 )?;
-
-                let mut overall_result = Ok(());
-
-                let mut type_annotation = &constructor.type_annotation;
-
-                while let lowered_ast::ExpressionKind::PiType(pi) = &type_annotation.value {
-                    if pi.aspect.is_field() {
-                        let parameter = pi.parameter.as_ref().unwrap();
-
-                        overall_result = self
-                            .crate_
-                            .register_binding(
-                                parameter.clone(),
-                                Exposure::Unrestricted, // @Temporary
-                                EntityKind::UntypedFunction,
-                                Some(namespace),
-                            )
-                            .map(|_| ());
-                    }
-                    type_annotation = &pi.codomain;
-                }
-
-                overall_result?;
             }
             Module(submodule) => {
                 // @Task @Beacon don't return early on error
@@ -245,6 +221,7 @@ impl<'a> Resolver<'a> {
                                     )
                                     .map_err(|_| ())
                         });
+
                 return Result::from(health).map_err(|_| RegistrationError::Unrecoverable);
             }
             Use(use_) => {
@@ -476,7 +453,7 @@ impl<'a> Resolver<'a> {
                         domain: domain?,
                         codomain: codomain?,
                         explicitness: pi.explicitness,
-                        aspect: pi.aspect,
+                        laziness: pi.laziness,
                         parameter: pi.parameter.clone()
                             .map(|parameter| Identifier::new(Index::DeBruijnParameter, parameter)),
                     }

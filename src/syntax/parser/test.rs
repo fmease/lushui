@@ -126,7 +126,7 @@ fn application_lambda_literal_argument_lax_grouping() {
                                         span(8, 12),
                                         ParameterKind {
                                             explicitness: Explicit,
-                                            aspect: default(),
+                                            laziness: None,
                                             binder: Identifier::new_unchecked("this".into(), span(8, 12)),
                                             type_annotation: None,
                                         }
@@ -169,7 +169,7 @@ fn application_lambda_literal_argument_strict_grouping() {
                                         span(8, 12),
                                         ParameterKind {
                                             explicitness: Explicit,
-                                            aspect: default(),
+                                            laziness: None,
                                             binder: Identifier::new_unchecked("this".into(), span(8, 12)),
                                             type_annotation: None,
                                         }
@@ -200,7 +200,7 @@ fn pi_type_literal_application_bracketed_argument_domain() {
                 Attributes::new(), span(1, 22);
                 domain: Domain {
                     explicitness: Explicit,
-                    aspect: default(),
+                    laziness: None,
                     binder: None,
                     expression: expr! {
                         Application {
@@ -227,7 +227,7 @@ fn bracketed_pi_type_literal_application_bracketed_argument_domain() {
                 Attributes::new(), span(1, 24);
                 domain: Domain {
                     explicitness: Explicit,
-                    aspect: default(),
+                    laziness: None,
                     binder: None,
                     expression: expr! {
                         Application {
@@ -258,7 +258,7 @@ fn pi_type_literal_application_implicit_argument_domain() {
                 Attributes::new(), span(1, 15);
                 domain: Domain {
                     explicitness: Explicit,
-                    aspect: default(),
+                    laziness: None,
                     binder: None,
                     expression: expr! {
                         Application {
@@ -285,7 +285,7 @@ fn pi_type_literal_application_implicit_named_argument_domain() {
                 Attributes::new(), span(1, 21);
                 domain: Domain {
                     explicitness: Explicit,
-                    aspect: default(),
+                    laziness: None,
                     binder: None,
                     expression: expr! {
                         Application {
@@ -317,7 +317,7 @@ fn application_pi_type_literal_implicit_domain() {
                         Attributes::new(), span(9, 28);
                         domain: Domain {
                             explicitness: Implicit,
-                            aspect: default(),
+                            laziness: None,
                             binder: Some(Identifier::new_unchecked("n".into(), span(12, 13))),
                             expression: Identifier::new_unchecked("Int".into(), span(15, 18)).into(),
                         },

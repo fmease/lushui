@@ -864,9 +864,7 @@ impl<'a> Parser<'a> {
     /// Pi-Type-Literal-Or-Lower ::=
     ///     (Designated-Pi-Type-Domain | Application-Or-Lower)
     ///     "->" Pi-Type-Literal-Or-Lower
-    /// Designated-Pi-Type-Domain ::=
-    ///     Explicitness
-    ///     "(" Parameter-Aspect #Word Type-Annotation ")"
+    /// Designated-Pi-Type-Domain ::= Explicitness "(" "lazy"? #Word Type-Annotation ")"
     /// ```
     fn parse_pi_type_literal_or_lower(&mut self) -> Result<Expression> {
         let domain = self
@@ -877,7 +875,7 @@ impl<'a> Parser<'a> {
                     .span
                     .merge_into(explicitness);
 
-                let aspect = this.parse_parameter_aspect();
+                let laziness = this.consume_span(Lazy);
                 let binder = this.consume_word()?;
                 // @Question should this be fatal in respect to reflecting?
                 let domain = this.parse_type_annotation(ClosingRoundBracket.into())?;
@@ -888,7 +886,7 @@ impl<'a> Parser<'a> {
                     span,
                     Domain {
                         explicitness: explicitness.into(),
-                        aspect,
+                        laziness,
                         binder: Some(binder),
                         expression: domain,
                     },
@@ -902,7 +900,7 @@ impl<'a> Parser<'a> {
                     domain.span,
                     Domain {
                         explicitness: Explicit,
-                        aspect: default(),
+                        laziness: None,
                         binder: None,
                         expression: domain,
                     },
@@ -934,25 +932,6 @@ impl<'a> Parser<'a> {
                     .but_actual_is(self.current_token())
                     .labeled_secondary_span(domain, "start of a pi type literal")
             })
-        }
-    }
-
-    /// Parse the aspect of a pi type parameter.
-    ///
-    /// # Grammar
-    ///
-    /// ```ebnf
-    /// Parameter-Aspect ::= Laziness Fieldness
-    /// Laziness ::= "lazy"?
-    /// Fieldness ::= "::"?
-    /// ```
-    fn parse_parameter_aspect(&mut self) -> ParameterAspect {
-        let laziness = self.consume_span(Lazy);
-        let fieldness = self.consume_span(DoubleColon);
-
-        ParameterAspect {
-            laziness,
-            fieldness,
         }
     }
 
@@ -1451,9 +1430,7 @@ impl<'a> Parser<'a> {
     ///
     /// ```ebnf
     /// Parameter ::= Explicitness Bare-Parameter
-    /// Bare-Parameter ::=
-    ///     | #Word
-    ///     | "(" Parameter-Aspect #Word Type-Annotation? ")"
+    /// Bare-Parameter ::= #Word | "(" "lazy"? #Word Type-Annotation? ")"
     /// ```
     fn parse_parameter(&mut self, delimiters: &[Delimiter]) -> Result<Parameter> {
         #![allow(clippy::shadow_unrelated)] // false positive
@@ -1470,7 +1447,7 @@ impl<'a> Parser<'a> {
                     span,
                     ParameterKind {
                         explicitness: explicitness.into(),
-                        aspect: default(),
+                        laziness: None,
                         binder,
                         type_annotation: None,
                     },
@@ -1479,7 +1456,7 @@ impl<'a> Parser<'a> {
             OpeningRoundBracket => {
                 self.advance();
 
-                let aspect = self.parse_parameter_aspect();
+                let laziness = self.consume_span(Lazy);
                 let binder = self.consume_word()?;
                 let type_annotation = self.parse_optional_type_annotation()?;
 
@@ -1492,7 +1469,7 @@ impl<'a> Parser<'a> {
                     span,
                     ParameterKind {
                         explicitness: explicitness.into(),
-                        aspect,
+                        laziness,
                         binder,
                         type_annotation,
                     },

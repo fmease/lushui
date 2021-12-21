@@ -61,10 +61,7 @@ impl Crate {
                 let entity = &mut self[index];
                 debug_assert!(entity.is_untyped_value());
 
-                entity.kind = EntityKind::Constructor {
-                    namespace: std::mem::take(entity.namespace_mut().unwrap()),
-                    type_,
-                };
+                entity.kind = EntityKind::Constructor { type_ };
 
                 // @Bug may be non-local thus panic
                 let data_index = data.local_declaration_index(self).unwrap();
