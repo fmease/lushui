@@ -24,7 +24,7 @@ then (o: Ordering) (lazy p: Thunk Ordering): Ordering =
         \o => o
 
 @public
-then_ (o p: Ordering): Ordering =
+then_ (o: Ordering) (p: Ordering): Ordering =
     case o of
         equal => p
         \o => o

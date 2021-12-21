@@ -1,9 +1,0 @@
-;;; TEST ignore
-
-@intrinsic
-data Nat32: Type
-
-@intrinsic
-add-nat32: Nat32 -> Nat32 -> Nat32
-
-main: Nat32 = add-nat32 @Nat32 1 @Nat32 0

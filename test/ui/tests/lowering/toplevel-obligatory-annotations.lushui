@@ -8,4 +8,4 @@ data Beta A of
 
 number = 0
 
-apply f x (partner in-crime) = f x
+apply f x (y) = f x

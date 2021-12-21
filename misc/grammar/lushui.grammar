@@ -143,12 +143,12 @@ Let-Statement ::= "let" Function-Declaration
 Bind-Statement ::= #Word Type-Annotation? "<-" Expression Terminator
 Expression-Statement ::= Expression Terminator
 
-Parameters ::= Parameter-Group*
+Parameters ::= Parameter*
 
-Parameter-Group ::= Explicitness Bare-Parameter-Group
-Bare-Parameter-Group ::=
+Parameter ::= Explicitness Bare-Parameter
+Bare-Parameter ::=
     | #Word
-    | "(" Parameter-Aspect #Word+ Type-Annotation? ")"
+    | "(" Parameter-Aspect #Word Type-Annotation? ")"
 
 Pattern ::= Lower-Pattern Pattern-Argument*
 Pattern-Argument ::=

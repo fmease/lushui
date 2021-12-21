@@ -40,7 +40,6 @@ use crate::{
     span::{SharedSourceMap, SourceFileIndex, Span, Spanned, Spanning},
     utility::SmallVec,
 };
-use smallvec::smallvec;
 use std::default::default;
 
 const STANDARD_DECLARATION_DELIMITERS: [Delimiter; 3] = {
@@ -1007,8 +1006,6 @@ impl<'a> Parser<'a> {
         let attributes = self.parse_attributes(SkipLineBreaks::No)?;
 
         let mut span = self.current_token().span;
-        // @Task don't pass attributes down but make them empty at first, then update the attributes
-        // dependeninh on if it's a field or not
         let mut expression = match self.current_token().name() {
             name if name.is_path_head() => {
                 let path = self.parse_path()?;
@@ -1430,13 +1427,16 @@ impl<'a> Parser<'a> {
     /// # Grammar
     ///
     /// ```ebnf
-    /// Parameters ::= Parameter-Group*
+    /// Parameters ::= Parameter*
     /// ```
     fn parse_parameters(&mut self, delimiters: &[Delimiter]) -> Result<Parameters> {
         let mut parameters = Vec::new();
 
+        // @Task rewrite to check whether self.current_token().name().is_parameter_prefix()
+        // with the def: matches!(_, Apostrophe, Word, OpeningCurlyBracket)
+        // @Note however, keep using the parameter `delimiters` for error reporting!
         while !self.current_token_is_delimiter(delimiters) {
-            parameters.push(self.parse_parameter_group(delimiters)?);
+            parameters.push(self.parse_parameter(delimiters)?);
         }
 
         Ok(parameters)
@@ -1450,12 +1450,12 @@ impl<'a> Parser<'a> {
     /// # Grammar
     ///
     /// ```ebnf
-    /// Parameter-Group ::= Explicitness Bare-Parameter-Group
-    /// Bare-Parameter-Group ::=
+    /// Parameter ::= Explicitness Bare-Parameter
+    /// Bare-Parameter ::=
     ///     | #Word
-    ///     | "(" Parameter-Aspect #Word+ Type-Annotation? ")"
+    ///     | "(" Parameter-Aspect #Word Type-Annotation? ")"
     /// ```
-    fn parse_parameter_group(&mut self, delimiters: &[Delimiter]) -> Result<ParameterGroup> {
+    fn parse_parameter(&mut self, delimiters: &[Delimiter]) -> Result<Parameter> {
         #![allow(clippy::shadow_unrelated)] // false positive
 
         let explicitness = self.parse_optional_implicitness();
@@ -1466,38 +1466,37 @@ impl<'a> Parser<'a> {
                 let binder = self.current_token_into_identifier();
                 self.advance();
 
-                Ok(ParameterGroup {
-                    explicitness: explicitness.into(),
-                    aspect: default(),
-                    parameters: smallvec![binder],
-                    type_annotation: None,
+                Ok(Parameter::new(
                     span,
-                })
+                    ParameterKind {
+                        explicitness: explicitness.into(),
+                        aspect: default(),
+                        binder,
+                        type_annotation: None,
+                    },
+                ))
             }
             OpeningRoundBracket => {
                 self.advance();
+
                 let aspect = self.parse_parameter_aspect();
-                let mut parameters = SmallVec::new();
-
-                parameters.push(self.consume_word()?);
-
-                let delimiters = [Delimiter::TypeAnnotationPrefix, ClosingRoundBracket.into()];
-
-                while !self.current_token_is_delimiter(&delimiters) {
-                    parameters.push(self.consume_word()?);
-                }
-
+                let binder = self.consume_word()?;
                 let type_annotation = self.parse_optional_type_annotation()?;
 
-                span.merging(self.consume(ClosingRoundBracket)?);
+                span.merging(self.consume_after_expecting(
+                    ClosingRoundBracket,
+                    Delimiter::TypeAnnotationPrefix.into(),
+                )?);
 
-                Ok(ParameterGroup {
-                    explicitness: explicitness.into(),
-                    aspect,
-                    parameters,
-                    type_annotation,
+                Ok(Parameter::new(
                     span,
-                })
+                    ParameterKind {
+                        explicitness: explicitness.into(),
+                        aspect,
+                        binder,
+                        type_annotation,
+                    },
+                ))
             }
             _ => self.error(|| {
                 delimiters_with_expected(delimiters, Some(Expected::Parameter))

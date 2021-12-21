@@ -12,4 +12,4 @@ module realm of
 data Thing: Type of
     thing: Thing
 
-ex-nihilo (x y: Thing): Thing = f z Thing.thing
+ex-nihilo (x: Thing) (y: Thing): Thing = f z Thing.thing

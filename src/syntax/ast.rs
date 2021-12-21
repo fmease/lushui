@@ -486,23 +486,17 @@ pub struct Case {
     pub body: Expression,
 }
 
-pub type Parameters = Vec<ParameterGroup>;
+pub type Parameters = Vec<Parameter>;
+
+pub type Parameter = Spanned<ParameterKind>;
 
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct ParameterGroup {
+pub struct ParameterKind {
     pub explicitness: Explicitness,
     pub aspect: ParameterAspect,
-    /// non-empty
-    pub parameters: SmallVec<Identifier, 1>,
+    pub binder: Identifier,
     pub type_annotation: Option<Expression>,
-    pub span: Span,
-}
-
-impl Spanning for ParameterGroup {
-    fn span(&self) -> Span {
-        self.span
-    }
 }
 
 pub type Pattern = Item<PatternKind>;

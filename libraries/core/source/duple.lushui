@@ -1,6 +1,6 @@
 @public
-data Duple (A B: Type): Type of
-    duple (A B: Type): A -> B -> Duple A B
+data Duple (A: Type) (B: Type): Type of
+    duple (A: Type) (B: Type): A -> B -> Duple A B
 
 @public
 use Duple.duple

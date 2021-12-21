@@ -28,10 +28,10 @@ error[E021]: binding `tree-sinner` is not defined in this scope
    |
 
 error[E021]: binding `bet` is not defined in this scope
-  --> ${DIRECTORY}/name-resolution/undefined-but-having-lookalikes.lushui:18:47
+  --> ${DIRECTORY}/name-resolution/undefined-but-having-lookalikes.lushui:18:57
    |
-18 | func (A: Type) (alpha beta gamma-blocker: A): bet =
-   |                                               ^^^ 
+18 | func (A: Type) (alpha: A) (beta: A) (gamma-blocker: A): bet =
+   |                                                         ^^^ 
    |
   help: a binding with a similar name exists in scope: `beta`
 

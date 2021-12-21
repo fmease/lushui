@@ -25,7 +25,7 @@
 // @Task ungate named arguments but validate them in the resolver (and/or typer)
 
 use super::{
-    ast::{self, Explicit, HangerKind, ParameterGroup, Path},
+    ast::{self, Explicit, HangerKind, Parameter, Path},
     lowered_ast::{
         self, attributes::Target, decl, expr, pat, AttributeKind, AttributeName, Attributes, Number,
     },
@@ -33,12 +33,11 @@ use super::{
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     error::{map_outcome_from_result, Health, Outcome, PossiblyErroneous, Result},
-    format::{ordered_listing, pluralize, Conjunction, IOError, QuoteExt},
+    format::{ordered_listing, Conjunction, IOError, QuoteExt},
     span::{SharedSourceMap, SourceMap, Span, Spanning},
     syntax::lowered_ast::attributes::{Lint, Predicate, Public, Query},
     utility::{SmallVec, Str},
 };
-use joinery::JoinableIterator;
 use smallvec::smallvec;
 use std::iter::once;
 
@@ -123,36 +122,34 @@ impl<'a> Lowerer<'a> {
                                     .unwrap(&mut health),
                             );
 
-                            for parameter_group in function.parameters.iter().rev() {
-                                if parameter_group.type_annotation.is_none() {
+                            for parameter in function.parameters.iter().rev() {
+                                if parameter.value.type_annotation.is_none() {
                                     Diagnostic::missing_mandatory_type_annotation(
-                                        parameter_group,
-                                        AnnotationTarget::Parameters(parameter_group),
+                                        parameter,
+                                        AnnotationTarget::Parameter(parameter),
                                     )
                                     .report(self.reporter);
                                     health.taint();
                                 }
                                 // @Note awkward API! + check above ^
                                 let parameter_type_annotation =
-                                    Outcome::from(parameter_group.type_annotation.clone())
+                                    Outcome::from(parameter.value.type_annotation.clone())
                                         .unwrap(&mut health);
 
                                 let parameter_type_annotation = self
                                     .lower_expression(parameter_type_annotation, context)
                                     .unwrap(&mut health);
 
-                                for binder in parameter_group.parameters.iter().rev() {
-                                    body = expr! {
-                                        Lambda {
-                                            Attributes::default(),
-                                            Span::default();
-                                            parameter: binder.clone(),
-                                            parameter_type_annotation: Some(parameter_type_annotation.clone()),
-                                            explicitness: parameter_group.explicitness,
-                                            laziness: parameter_group.aspect.laziness,
-                                            body_type_annotation: type_annotation.next(),
-                                            body,
-                                        }
+                                body = expr! {
+                                    Lambda {
+                                        Attributes::default(),
+                                        Span::default();
+                                        parameter: parameter.value.binder.clone(),
+                                        parameter_type_annotation: Some(parameter_type_annotation.clone()),
+                                        explicitness: parameter.value.explicitness,
+                                        laziness: parameter.value.aspect.laziness,
+                                        body_type_annotation: type_annotation.next(),
+                                        body,
                                     }
                                 }
                             }
@@ -645,9 +642,10 @@ impl<'a> Lowerer<'a> {
                     })
                     .into_iter();
 
-                for parameter_group in lambda.parameters.iter().rev() {
-                    let parameter =
-                        parameter_group
+                for parameter in lambda.parameters.iter().rev() {
+                    let parameter_type_annotation =
+                        parameter
+                            .value
                             .type_annotation
                             .clone()
                             .map(|type_annotation| {
@@ -655,20 +653,18 @@ impl<'a> Lowerer<'a> {
                                     .unwrap(&mut health)
                             });
 
-                    for binder in parameter_group.parameters.iter().rev() {
-                        expression = expr! {
-                            Lambda {
-                                Attributes::default(),
-                                Span::default();
-                                parameter: binder.clone(),
-                                parameter_type_annotation: parameter.clone(),
-                                explicitness: parameter_group.explicitness,
-                                laziness: parameter_group.aspect.laziness,
-                                body_type_annotation: type_annotation.next(),
-                                body: expression,
-                            }
-                        };
-                    }
+                    expression = expr! {
+                        Lambda {
+                            Attributes::default(),
+                            Span::default();
+                            parameter: parameter.value.binder.clone(),
+                            parameter_type_annotation,
+                            explicitness: parameter.value.explicitness,
+                            laziness: parameter.value.aspect.laziness,
+                            body_type_annotation: type_annotation.next(),
+                            body: expression,
+                        }
+                    };
                 }
 
                 expression
@@ -712,25 +708,24 @@ impl<'a> Lowerer<'a> {
                     })
                     .into_iter();
 
-                for parameter_group in let_in.parameters.iter().rev() {
-                    let parameter = parameter_group.type_annotation.clone().map(|expression| {
-                        self.lower_expression(expression, context)
-                            .unwrap(&mut health)
-                    });
+                for parameter in let_in.parameters.iter().rev() {
+                    let parameter_type_annotation =
+                        parameter.value.type_annotation.clone().map(|expression| {
+                            self.lower_expression(expression, context)
+                                .unwrap(&mut health)
+                        });
 
-                    for binder in parameter_group.parameters.iter().rev() {
-                        expression = expr! {
-                            Lambda {
-                                Attributes::default(), Span::default();
-                                parameter: binder.clone(),
-                                parameter_type_annotation: parameter.clone(),
-                                explicitness: parameter_group.explicitness,
-                                laziness: parameter_group.aspect.laziness,
-                                body_type_annotation: type_annotation.next(),
-                                body: expression,
-                            }
-                        };
-                    }
+                    expression = expr! {
+                        Lambda {
+                            Attributes::default(), Span::default();
+                            parameter: parameter.value.binder.clone(),
+                            parameter_type_annotation,
+                            explicitness: parameter.value.explicitness,
+                            laziness: parameter.value.aspect.laziness,
+                            body_type_annotation: type_annotation.next(),
+                            body: expression,
+                        }
+                    };
                 }
 
                 let body = self
@@ -772,11 +767,11 @@ impl<'a> Lowerer<'a> {
             CaseAnalysis(analysis) => {
                 let mut cases = Vec::new();
 
-                for case_group in analysis.cases {
+                for case in analysis.cases {
                     cases.push(lowered_ast::Case {
-                        pattern: self.lower_pattern(case_group.pattern).unwrap(&mut health),
+                        pattern: self.lower_pattern(case.pattern).unwrap(&mut health),
                         body: self
-                            .lower_expression(case_group.body.clone(), context)
+                            .lower_expression(case.body.clone(), context)
                             .unwrap(&mut health),
                     });
                 }
@@ -1105,38 +1100,36 @@ impl<'a> Lowerer<'a> {
             .lower_expression(type_annotation, context)
             .unwrap(&mut health);
 
-        for parameter_group in parameters.into_iter().rev() {
-            if parameter_group.type_annotation.is_none() {
+        for parameter in parameters.into_iter().rev() {
+            if parameter.value.type_annotation.is_none() {
                 Diagnostic::missing_mandatory_type_annotation(
-                    &parameter_group,
-                    AnnotationTarget::Parameters(&parameter_group),
+                    &parameter,
+                    AnnotationTarget::Parameter(&parameter),
                 )
                 .report(self.reporter);
                 health.taint();
             }
             // @Note awkward API! + the code above ^
             let parameter_type_annotation =
-                Outcome::from(parameter_group.type_annotation).unwrap(&mut health);
+                Outcome::from(parameter.value.type_annotation).unwrap(&mut health);
 
             let parameter_type_annotation = self
                 .lower_expression(parameter_type_annotation, context)
                 .unwrap(&mut health);
 
-            health &= self.check_fieldness_location(parameter_group.aspect.fieldness, context);
+            health &= self.check_fieldness_location(parameter.value.aspect.fieldness, context);
 
-            for binder in parameter_group.parameters.iter().rev() {
-                expression = expr! {
-                    PiType {
-                        Attributes::default(),
-                        Span::default();
-                        explicitness: parameter_group.explicitness,
-                        aspect: parameter_group.aspect,
-                        parameter: Some(binder.clone()),
-                        domain: parameter_type_annotation.clone(),
-                        codomain: expression,
-                    }
-                };
-            }
+            expression = expr! {
+                PiType {
+                    Attributes::default(),
+                    Span::default();
+                    explicitness: parameter.value.explicitness,
+                    aspect: parameter.value.aspect,
+                    parameter: Some(parameter.value.binder),
+                    domain: parameter_type_annotation.clone(),
+                    codomain: expression,
+                }
+            };
         }
 
         health.of(expression)
@@ -1558,20 +1551,16 @@ impl Diagnostic {
         use AnnotationTarget::*;
 
         let type_annotation_suggestion: Str = match target {
-            Parameters(parameter_group) => format!(
+            Parameter(parameter) => format!(
                 "`{}({}: ?type)`",
-                parameter_group.explicitness,
-                parameter_group.parameters.iter().join_with(' ')
+                parameter.value.explicitness, parameter.value.binder
             )
             .into(),
             Declaration(_) => "`: ?type`".into(),
         };
 
         let binders = match target {
-            Parameters(parameter_group) => ordered_listing(
-                parameter_group.parameters.iter().map(QuoteExt::quote),
-                Conjunction::And,
-            ),
+            Parameter(parameter) => (&parameter.value.binder).quote(),
             Declaration(binder) => binder.quote(),
         };
 
@@ -1595,16 +1584,14 @@ impl Diagnostic {
 ///
 /// Exclusively used for error reporting.
 enum AnnotationTarget<'a> {
-    Parameters(&'a ParameterGroup),
+    Parameter(&'a Parameter),
     Declaration(&'a ast::Identifier),
 }
 
 impl AnnotationTarget<'_> {
     fn name(&self) -> &'static str {
         match self {
-            Self::Parameters(parameter_group) => {
-                pluralize!(parameter_group.parameters.len(), "parameter")
-            }
+            Self::Parameter(_) => "parameter",
             Self::Declaration(_) => "declaration",
         }
     }

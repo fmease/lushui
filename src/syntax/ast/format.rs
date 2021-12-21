@@ -551,15 +551,13 @@ impl Format for super::SequenceLiteral {
     }
 }
 
-impl Format for super::ParameterGroup {
+impl Format for super::ParameterKind {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
-        self.span.format(f, indentation)?;
-        write!(f, " ")?;
         FormatStruct::new(f, indentation)
-            .name("Parameter-Group")
+            .name("Parameter")
             .field("explicitness", &self.explicitness)
             .field("aspect", &self.aspect)
-            .field("parameters", &self.parameters)
+            .field("binder", &self.binder)
             .field("type-annotation", &self.type_annotation)
             .finish()
     }

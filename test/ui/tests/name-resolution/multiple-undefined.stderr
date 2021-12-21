@@ -62,18 +62,18 @@ error[E021]: binding `Void` is not defined in this scope
    |
 
 error[E021]: binding `f` is not defined in this scope
-  --> ${DIRECTORY}/name-resolution/multiple-undefined.lushui:15:33
+  --> ${DIRECTORY}/name-resolution/multiple-undefined.lushui:15:42
    |
-15 | ex-nihilo (x y: Thing): Thing = f z Thing.thing
-   |                                 ^ 
+15 | ex-nihilo (x: Thing) (y: Thing): Thing = f z Thing.thing
+   |                                          ^ 
    |
   help: a binding with a similar name exists in scope: `y`
 
 error[E021]: binding `z` is not defined in this scope
-  --> ${DIRECTORY}/name-resolution/multiple-undefined.lushui:15:35
+  --> ${DIRECTORY}/name-resolution/multiple-undefined.lushui:15:44
    |
-15 | ex-nihilo (x y: Thing): Thing = f z Thing.thing
-   |                                   ^ 
+15 | ex-nihilo (x: Thing) (y: Thing): Thing = f z Thing.thing
+   |                                            ^ 
    |
   help: a binding with a similar name exists in scope: `y`
 

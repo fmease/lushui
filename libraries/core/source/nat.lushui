@@ -75,7 +75,7 @@ display: Nat -> Text
 use crate.(bool ordering)
 
 @public
-compare (n m: Nat): ordering.Ordering =
+compare (n: Nat) (m: Nat): ordering.Ordering =
     case equal n m of
         bool.true => ordering.equal
         bool.false => case less n m of

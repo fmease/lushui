@@ -1,9 +1,9 @@
 ;;; @Task better name for this type, module and constructors!
 
 @public
-data Either (A B: Type): Type of
-    first (A B: Type): A -> Either A B
-    second (A B: Type): B -> Either A B
+data Either (A: Type) (B: Type): Type of
+    first (A: Type) (B: Type): A -> Either A B
+    second (A: Type) (B: Type): B -> Either A B
 
 @public
 use Either.(first second)

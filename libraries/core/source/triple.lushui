@@ -1,6 +1,6 @@
 @public
-data Triple (A B C: Type): Type of
-    triple (A B C: Type): A -> B -> C -> Triple A B C
+data Triple (A: Type) (B: Type) (C: Type): Type of
+    triple (A: Type) (B: Type) (C: Type): A -> B -> C -> Triple A B C
 
 @public
 use Triple.triple

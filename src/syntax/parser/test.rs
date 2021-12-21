@@ -8,7 +8,7 @@
 use super::{
     ast::{
         decl, expr, pat, Attribute, AttributeKind, Attributes, Case, Declaration, Domain,
-        Explicitness::*, Expression, Format, Identifier, Item, ParameterGroup, Parameters, Path,
+        Explicitness::*, Expression, Format, Identifier, Item, Parameter, Parameters, Path,
         UsePathTree, UsePathTreeKind,
     },
     parse, Parser, Result,
@@ -17,7 +17,7 @@ use crate::{
     diagnostics::reporter::SilentReporter,
     error::{outcome, Health},
     span::{span, SourceFileIndex, SourceMap},
-    syntax::lexer::lex,
+    syntax::{ast::ParameterKind, lexer::lex},
 };
 use index_map::Index as _;
 use smallvec::smallvec;
@@ -122,13 +122,15 @@ fn application_lambda_literal_argument_lax_grouping() {
                             LambdaLiteral {
                                 Attributes::new(), span(7, 20);
                                 parameters: vec![
-                                    ParameterGroup {
-                                        explicitness: Explicit,
-                                        aspect: default(),
-                                        parameters: smallvec![Identifier::new_unchecked("this".into(), span(8, 12))],
-                                        type_annotation: None,
-                                        span: span(8, 12),
-                                    }
+                                    Parameter::new(
+                                        span(8, 12),
+                                        ParameterKind {
+                                            explicitness: Explicit,
+                                            aspect: default(),
+                                            binder: Identifier::new_unchecked("this".into(), span(8, 12)),
+                                            type_annotation: None,
+                                        }
+                                    )
                                 ],
                                 body_type_annotation: None,
                                 body: Identifier::new_unchecked("this".into(), span(16, 20)).into(),
@@ -163,13 +165,15 @@ fn application_lambda_literal_argument_strict_grouping() {
                             LambdaLiteral {
                                 Attributes::new(), span(6, 21);
                                 parameters: vec![
-                                    ParameterGroup {
-                                        explicitness: Explicit,
-                                        aspect: default(),
-                                        parameters: smallvec![Identifier::new_unchecked("this".into(), span(8, 12))],
-                                        type_annotation: None,
-                                        span: span(8, 12),
-                                    }
+                                    Parameter::new(
+                                        span(8, 12),
+                                        ParameterKind {
+                                            explicitness: Explicit,
+                                            aspect: default(),
+                                            binder: Identifier::new_unchecked("this".into(), span(8, 12)),
+                                            type_annotation: None,
+                                        }
+                                    )
                                 ],
                                 body_type_annotation: None,
                                 body: Identifier::new_unchecked("this".into(), span(16, 20)).into(),

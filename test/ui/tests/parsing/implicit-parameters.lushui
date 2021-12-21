@@ -1,6 +1,6 @@
 ;;; TEST pass check -Z parse-only
 
-data X 'A '(B C): '(b: Bool) -> Type of
+data X 'A '(B): '(b: Bool) -> Type of
     x'z'z'(p: P): X
 
 binding = \'A '(a: A) => a

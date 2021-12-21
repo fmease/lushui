@@ -15,7 +15,7 @@ not (b: Bool): Bool =
 use crate.unit.(Unit Thunk (force as !))
 
 @public
-if (A: Type) (condition: Bool) (lazy consequent alternate: Thunk A): A =
+if (A: Type) (condition: Bool) (lazy consequent: Thunk A) (lazy alternate: Thunk A): A =
     case condition of
         false => ! A alternate
         true => ! A consequent

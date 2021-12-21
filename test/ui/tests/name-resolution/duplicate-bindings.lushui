@@ -16,7 +16,7 @@ module capsule of
         zero: Nat
         successor: Nat -> Nat
 
-beta (x y: Nat): Nat = y
+beta (x: Nat) (y: Nat): Nat = y
 
 capsule: Nat = beta
 

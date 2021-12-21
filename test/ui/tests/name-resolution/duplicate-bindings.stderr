@@ -18,7 +18,7 @@ error[E020]: `beta` is defined multiple times in this scope
    |
   --> ${DIRECTORY}/name-resolution/duplicate-bindings.lushui:19:1
    |
-19 | beta (x y: Nat): Nat = y
+19 | beta (x: Nat) (y: Nat): Nat = y
    | ^^^^ conflicting definition
    |
 
