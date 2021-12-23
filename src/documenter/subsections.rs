@@ -28,7 +28,7 @@ impl<'a> Subsections<'a> {
         self.reserved_punctuation.render_table_of_contents(parent);
     }
 
-    pub fn render(self, url_prefix: &str, parent: &mut Element<'a>, options: &Options) {
+    pub(crate) fn render(self, url_prefix: &str, parent: &mut Element<'a>, options: &Options) {
         self.modules.render(parent, options);
         self.types.render(url_prefix, parent, options);
         self.functions.render(url_prefix, parent, options);

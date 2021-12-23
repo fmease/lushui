@@ -27,7 +27,7 @@ use crate::{
     },
     utility::{unrc, HashMap, HashSet},
 };
-pub use scope::{Crate, Exposure, FunctionScope, Namespace};
+pub(crate) use scope::{Crate, Exposure, FunctionScope, Namespace};
 use scope::{RegistrationError, RestrictedExposure};
 use std::{cell::RefCell, cmp::Ordering, collections::hash_map::Entry, fmt};
 

@@ -27,7 +27,7 @@ pub(crate) fn lex_string(source: String) -> Result<Outcome<Vec<Token>>> {
 }
 
 /// The unit indentation in spaces.
-pub const INDENTATION: Spaces = Indentation::UNIT.to_spaces();
+pub(crate) const INDENTATION: Spaces = Indentation::UNIT.to_spaces();
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 enum Section {
@@ -772,11 +772,11 @@ fn parse_reserved_punctuation(source: &str) -> Option<TokenKind> {
 }
 
 #[derive(Clone, Copy)]
-pub struct Spaces(pub usize);
+pub(crate) struct Spaces(pub(crate) usize);
 
 impl Spaces {
     /// Return the ordering / direction / sign and the absolute difference.
-    pub fn difference(self, other: Self) -> (Ordering, Self) {
+    pub(crate) fn difference(self, other: Self) -> (Ordering, Self) {
         let change = self.0.cmp(&other.0);
         let difference = match change {
             Greater => self.0 - other.0,
@@ -802,12 +802,12 @@ impl<S: Into<Spaces>> SubAssign<S> for Spaces {
 }
 
 #[derive(Clone, Copy)]
-pub struct Indentation(pub usize);
+pub(crate) struct Indentation(pub(crate) usize);
 
 impl Indentation {
-    pub const UNIT: Self = Self(1);
+    pub(crate) const UNIT: Self = Self(1);
 
-    pub const fn to_spaces(self) -> Spaces {
+    pub(crate) const fn to_spaces(self) -> Spaces {
         const INDENTATION_IN_SPACES: usize = 4;
 
         Spaces(self.0 * INDENTATION_IN_SPACES)
@@ -836,7 +836,7 @@ impl TryFrom<(Ordering, Spaces)> for Indentation {
     }
 }
 
-pub enum IndentationError {
+pub(crate) enum IndentationError {
     Misaligned,
     TooDeep,
 }

@@ -3,8 +3,7 @@
 use colored::Colorize;
 use difference::{Changeset, Difference};
 use joinery::JoinableIterator;
-
-use std::{fmt, io::Write, path::Path};
+use std::{fmt, path::Path};
 
 pub trait DisplayWith: Sized {
     type Context<'a>: Copy;
@@ -20,8 +19,8 @@ pub trait DisplayWith: Sized {
 }
 
 pub struct WithContext<'a, T: DisplayWith> {
-    pub subject: &'a T,
-    pub context: T::Context<'a>,
+    subject: &'a T,
+    context: T::Context<'a>,
 }
 
 impl<T: DisplayWith> fmt::Display for WithContext<'_, T> {
@@ -36,7 +35,7 @@ impl<T: DisplayWith> fmt::Debug for WithContext<'_, T> {
     }
 }
 
-pub fn ordered_listing<I>(mut items: I, conjunction: Conjunction) -> String
+pub(crate) fn ordered_listing<I>(mut items: I, conjunction: Conjunction) -> String
 where
     I: DoubleEndedIterator<Item: fmt::Display + Clone> + Clone,
 {
@@ -53,7 +52,7 @@ where
     }
 }
 
-pub fn unordered_listing<I>(mut items: I, conjunction: Conjunction) -> String
+pub(crate) fn unordered_listing<I>(mut items: I, conjunction: Conjunction) -> String
 where
     I: Iterator<Item: Clone + fmt::Display> + Clone,
 {
@@ -71,7 +70,7 @@ where
 }
 
 #[derive(Clone, Copy)]
-pub enum Conjunction {
+pub(crate) enum Conjunction {
     And,
     Or,
 }
@@ -85,7 +84,7 @@ impl fmt::Display for Conjunction {
     }
 }
 
-pub macro pluralize {
+pub(crate) macro pluralize {
     ($amount:expr, $singular:expr, $plural:expr $(,)?) => {
         match $amount {
             1 => $singular.into(),
@@ -100,7 +99,7 @@ pub macro pluralize {
     }
 }
 
-pub trait QuoteExt {
+pub(crate) trait QuoteExt {
     fn quote(self) -> String;
 }
 
@@ -111,11 +110,11 @@ impl<D: fmt::Display> QuoteExt for D {
     }
 }
 
-pub macro quoted($code:expr) {
+pub(crate) macro quoted($code:expr) {
     concat!("`", $code, "`")
 }
 
-pub trait AsDebug: fmt::Display + Sized {
+pub(crate) trait AsDebug: fmt::Display + Sized {
     fn as_debug(&self) -> DisplayIsDebug<'_, Self> {
         DisplayIsDebug(self)
     }
@@ -123,7 +122,7 @@ pub trait AsDebug: fmt::Display + Sized {
 
 impl<T: fmt::Display> AsDebug for T {}
 
-pub struct DisplayIsDebug<'a, T: fmt::Display>(&'a T);
+pub(crate) struct DisplayIsDebug<'a, T: fmt::Display>(&'a T);
 
 impl<T: fmt::Display> fmt::Debug for DisplayIsDebug<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -131,7 +130,7 @@ impl<T: fmt::Display> fmt::Debug for DisplayIsDebug<'_, T> {
     }
 }
 
-pub trait AsDisplay: fmt::Debug + Sized {
+pub(crate) trait AsDisplay: fmt::Debug + Sized {
     fn as_display(&self) -> DebugIsDisplay<'_, Self> {
         DebugIsDisplay(self)
     }
@@ -139,7 +138,7 @@ pub trait AsDisplay: fmt::Debug + Sized {
 
 impl<T: fmt::Debug> AsDisplay for T {}
 
-pub struct DebugIsDisplay<'a, T: fmt::Debug>(&'a T);
+pub(crate) struct DebugIsDisplay<'a, T: fmt::Debug>(&'a T);
 
 impl<T: fmt::Debug> fmt::Display for DebugIsDisplay<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -148,7 +147,7 @@ impl<T: fmt::Debug> fmt::Display for DebugIsDisplay<'_, T> {
 }
 
 // @Task replace this whole business with a `write_*` function
-pub struct AutoColoredChangeset<'a>(pub &'a Changeset);
+pub(crate) struct AutoColoredChangeset<'a>(pub(crate) &'a Changeset);
 
 impl fmt::Display for AutoColoredChangeset<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -174,7 +173,7 @@ impl fmt::Display for AutoColoredChangeset<'_> {
     }
 }
 
-pub trait AsAutoColoredChangeset {
+pub(crate) trait AsAutoColoredChangeset {
     fn auto_colored(&self) -> AutoColoredChangeset<'_>;
 }
 
@@ -185,7 +184,10 @@ impl AsAutoColoredChangeset for Changeset {
 }
 
 // the provided Display implementation for Changesets is problematic when whitespace differs
-pub fn differences_with_ledge(differences: &[Difference]) -> String {
+#[cfg(test)]
+pub(crate) fn differences_with_ledge(differences: &[Difference]) -> String {
+    use std::io::Write as _;
+
     let mut buffer = Vec::new();
 
     for difference in differences {

@@ -13,11 +13,12 @@ use TokenName::*;
 pub type Token = Spanned<TokenKind>;
 
 impl Token {
-    pub const fn name(&self) -> TokenName {
+    pub(crate) const fn name(&self) -> TokenName {
         self.value.name()
     }
 
-    pub const fn provenance(&self) -> Provenance {
+    #[allow(dead_code)]
+    pub(crate) const fn provenance(&self) -> Provenance {
         use TokenKind::*;
 
         match self.value {
@@ -28,21 +29,21 @@ impl Token {
         }
     }
 
-    pub fn is_line_break(&self) -> bool {
+    pub(crate) fn is_line_break(&self) -> bool {
         matches!(self.value, TokenKind::Semicolon(Provenance::Lexer))
     }
 
-    pub fn into_identifier(self) -> Option<Atom> {
+    pub(crate) fn into_identifier(self) -> Option<Atom> {
         use TokenKind::*;
 
         obtain!(self.value, Word(atom) | Punctuation(atom) => atom)
     }
 
-    pub fn into_number_literal(self) -> Option<String> {
+    pub(crate) fn into_number_literal(self) -> Option<String> {
         obtain!(self.value, TokenKind::NumberLiteral(number) => number)
     }
 
-    pub fn into_text_literal(self) -> Option<Result<String, Diagnostic>> {
+    pub(crate) fn into_text_literal(self) -> Option<Result<String, Diagnostic>> {
         use TokenKind::*;
 
         match self.value {
@@ -154,20 +155,20 @@ impl fmt::Display for TokenKind {
 
 impl TokenName {
     /// Test if the token may appear at the start of a [path](crate::syntax::ast::Path).
-    pub const fn is_path_head(self) -> bool {
+    pub(crate) const fn is_path_head(self) -> bool {
         matches!(self, Word | Punctuation) || self.is_path_hanger()
     }
 
-    pub const fn is_path_hanger(self) -> bool {
+    pub(crate) const fn is_path_hanger(self) -> bool {
         matches!(self, Extern | Crate | Super | Self_)
     }
 
     /// Test if the token may terminate declarations.
-    pub const fn is_terminator(self) -> bool {
+    pub(crate) const fn is_terminator(self) -> bool {
         matches!(self, Semicolon | ClosingCurlyBracket | EndOfInput)
     }
 
-    pub const fn introduces_indented_section(self) -> bool {
+    pub(crate) const fn introduces_indented_section(self) -> bool {
         matches!(self, Do | Of)
     }
 }

@@ -3,7 +3,7 @@
 // @Task rename a bunch of syntax node to make them more like the ones of the AST
 // i.e. not Number but NumberLiteral etc
 
-pub mod attributes;
+pub(crate) mod attributes;
 mod format;
 
 use super::ast::{Explicitness, Identifier, Path};
@@ -11,10 +11,10 @@ use crate::{
     error::PossiblyErroneous,
     span::{SourceFileIndex, Span},
 };
-pub use attributes::{Attribute, AttributeKind, AttributeName, Attributes};
+pub(crate) use attributes::{Attribute, AttributeKind, AttributeName, Attributes};
 use std::rc::Rc;
 
-pub type Item<Kind> = crate::item::Item<Kind, attributes::Attributes>;
+pub(crate) type Item<Kind> = crate::item::Item<Kind, attributes::Attributes>;
 
 pub type Declaration = Item<DeclarationKind>;
 
@@ -109,7 +109,6 @@ pub struct Lambda {
     pub parameter: Identifier,
     pub parameter_type_annotation: Option<Expression>,
     pub explicitness: Explicitness,
-    // @Temporary
     pub laziness: Option<Span>,
     pub body_type_annotation: Option<Expression>,
     pub body: Expression,
@@ -167,14 +166,14 @@ pub enum Number {
     Int64(i64),
 }
 
-pub macro decl($( $tree:tt )+) {
+pub(crate) macro decl($( $tree:tt )+) {
     crate::item::item!(crate::syntax::lowered_ast, DeclarationKind, Box; $( $tree )+)
 }
 
-pub macro expr($( $tree:tt )+) {
+pub(crate) macro expr($( $tree:tt )+) {
     crate::item::item!(crate::syntax::lowered_ast, ExpressionKind, Rc; $( $tree )+)
 }
 
-pub macro pat($( $tree:tt )+) {
+pub(crate) macro pat($( $tree:tt )+) {
     crate::item::item!(crate::syntax::lowered_ast, PatternKind, Rc; $( $tree )+)
 }

@@ -428,7 +428,7 @@ impl<'a> Lowerer<'a> {
                     let mut health = Health::Untainted;
 
                     // @Note awkward API!
-                    pub macro try_($subject:expr) {
+                    pub(crate) macro try_($subject:expr) {
                         match $subject {
                             Ok(subject) => subject,
                             Err(error) => {
@@ -1164,7 +1164,7 @@ const INT64_INTERVAL_REPRESENTATION: &str = "[-2^63, 2^63-1]";
 // and turn that stuff into stuff later
 
 impl lowered_ast::attributes::Attribute {
-    pub fn parse(
+    pub(crate) fn parse(
         attribute: &ast::Attribute,
         options: &Options,
         map: &SourceMap,
@@ -1179,7 +1179,7 @@ impl lowered_ast::attributes::Attribute {
 
 impl lowered_ast::attributes::AttributeKind {
     // @Task allow unordered named attributes e.g. `@(unstable (reason "x") (feature thing))`
-    pub fn parse(
+    pub(crate) fn parse(
         attribute: &ast::Attribute,
         options: &Options,
         map: &SourceMap,

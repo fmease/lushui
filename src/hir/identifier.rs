@@ -17,7 +17,7 @@ pub struct Identifier {
 }
 
 impl Identifier {
-    pub fn new(index: impl Into<Index>, source: ast::Identifier) -> Self {
+    pub(crate) fn new(index: impl Into<Index>, source: ast::Identifier) -> Self {
         Self {
             index: index.into(),
             source,
@@ -31,11 +31,11 @@ impl Identifier {
         )
     }
 
-    pub fn as_str(&self) -> &str {
+    pub(crate) fn as_str(&self) -> &str {
         self.source.as_str()
     }
 
-    pub fn to_expression(self) -> crate::hir::Expression {
+    pub(crate) fn into_expression(self) -> crate::hir::Expression {
         crate::hir::expr! {
             Binding {
                 default(), self.span();
@@ -45,44 +45,38 @@ impl Identifier {
     }
 
     // @Note bad name
-    pub fn as_innermost(&self) -> Self {
+    pub(crate) fn as_innermost(&self) -> Self {
         Self::new(DeBruijnIndex(0), self.source.clone())
     }
 
-    pub fn stripped(self) -> Self {
-        Self {
-            source: self.source.stripped(),
-            ..self
-        }
-    }
-
-    pub fn is_innermost(&self) -> bool {
+    pub(crate) fn is_innermost(&self) -> bool {
         self.index == DeBruijnIndex(0).into()
     }
 
-    pub fn shift(self, amount: usize) -> Self {
+    pub(crate) fn shift(self, amount: usize) -> Self {
         Self {
             index: self.index.shift(amount),
             ..self
         }
     }
 
-    pub fn unshift(self) -> Self {
+    pub(crate) fn unshift(self) -> Self {
         Self {
             index: self.index.unshift(),
             ..self
         }
     }
 
-    pub fn declaration_index(&self) -> Option<DeclarationIndex> {
+    pub(crate) fn declaration_index(&self) -> Option<DeclarationIndex> {
         self.index.declaration_index()
     }
 
-    pub fn local_declaration_index(&self, crate_: &Crate) -> Option<LocalDeclarationIndex> {
+    pub(crate) fn local_declaration_index(&self, crate_: &Crate) -> Option<LocalDeclarationIndex> {
         self.declaration_index()?.local_index(crate_)
     }
 
-    pub fn de_bruijn_index(&self) -> Option<DeBruijnIndex> {
+    #[allow(dead_code)]
+    pub(crate) fn de_bruijn_index(&self) -> Option<DeBruijnIndex> {
         self.index.de_bruijn_index()
     }
 }
@@ -114,7 +108,8 @@ impl fmt::Debug for Identifier {
 }
 
 #[derive(Clone, Copy, PartialEq)]
-pub enum Index {
+#[allow(clippy::enum_variant_names)] // @Temporary false positive, see rust-clippy #8090, #8127
+pub(crate) enum Index {
     Declaration(DeclarationIndex),
     DeBruijn(DeBruijnIndex),
     DeBruijnParameter,
@@ -135,14 +130,14 @@ impl Index {
         }
     }
 
-    pub fn declaration_index(self) -> Option<DeclarationIndex> {
+    pub(crate) fn declaration_index(self) -> Option<DeclarationIndex> {
         match self {
             Self::Declaration(index) => Some(index),
             _ => None,
         }
     }
 
-    pub fn de_bruijn_index(self) -> Option<DeBruijnIndex> {
+    pub(crate) fn de_bruijn_index(self) -> Option<DeBruijnIndex> {
         match self {
             Self::DeBruijn(index) => Some(index),
             _ => None,
@@ -162,30 +157,30 @@ impl fmt::Debug for Index {
 
 /// Crate-global index identifying bindings defined by declarations.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct DeclarationIndex(u64);
+pub(crate) struct DeclarationIndex(u64);
 
 impl DeclarationIndex {
-    pub fn new(crate_index: CrateIndex, local_index: LocalDeclarationIndex) -> Self {
+    pub(crate) fn new(crate_index: CrateIndex, local_index: LocalDeclarationIndex) -> Self {
         let shifted_crate_index = u64::from(crate_index.0) << LocalDeclarationIndex::BIT_WIDTH;
 
         Self(shifted_crate_index | local_index.0)
     }
 
-    pub fn crate_index(self) -> CrateIndex {
+    pub(crate) fn crate_index(self) -> CrateIndex {
         #[allow(clippy::cast_possible_truncation)]
         CrateIndex((self.0 >> LocalDeclarationIndex::BIT_WIDTH) as _)
     }
 
     // @Task better name
-    pub fn local_index_unchecked(self) -> LocalDeclarationIndex {
+    pub(crate) fn local_index_unchecked(self) -> LocalDeclarationIndex {
         LocalDeclarationIndex(self.0 & LocalDeclarationIndex::MAX)
     }
 
-    pub fn is_local(self, crate_: &Crate) -> bool {
+    pub(crate) fn is_local(self, crate_: &Crate) -> bool {
         self.crate_index() == crate_.index
     }
 
-    pub fn local_index(self, crate_: &Crate) -> Option<LocalDeclarationIndex> {
+    pub(crate) fn local_index(self, crate_: &Crate) -> Option<LocalDeclarationIndex> {
         self.is_local(crate_).then(|| self.local_index_unchecked())
     }
 }
@@ -209,13 +204,13 @@ impl From<DeclarationIndex> for Index {
 
 /// Crate-local index identifying bindings defined by declarations.
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
-pub struct LocalDeclarationIndex(u64);
+pub(crate) struct LocalDeclarationIndex(u64);
 
 impl LocalDeclarationIndex {
     const BIT_WIDTH: u32 = 48;
     const MAX: u64 = 2_u64.pow(Self::BIT_WIDTH) - 1;
 
-    pub fn new(index: u64) -> Self {
+    pub(crate) fn new(index: u64) -> Self {
         assert!(index < Self::MAX);
 
         Self(index)
@@ -240,7 +235,7 @@ impl index_map::Index for LocalDeclarationIndex {
 
 /// De Bruijn index — index for bindings defined by function parameters.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct DeBruijnIndex(pub usize);
+pub(crate) struct DeBruijnIndex(pub(crate) usize);
 
 impl fmt::Debug for DeBruijnIndex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

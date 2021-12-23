@@ -413,10 +413,10 @@ mod test {
 
         let array = crate_
             .add("Array", EntityKind::untyped_data_type())
-            .to_expression();
+            .into_expression();
         let int = crate_
             .add("Int", EntityKind::untyped_data_type())
-            .to_expression();
+            .into_expression();
 
         assert_eq(
             "crate.Array crate.Int -> Type",
@@ -463,16 +463,16 @@ mod test {
                     domain: expr! {
                         Application {
                             Attributes::default(), Span::default();
-                            callee: array.to_expression(),
-                            argument: int.to_expression(),
+                            callee: array.into_expression(),
+                            argument: int.into_expression(),
                             explicitness: Explicit,
                         }
                     },
                     codomain: expr! {
                         Application {
                             Attributes::default(), Span::default();
-                            callee: container.to_expression(),
-                            argument: alpha.to_expression(),
+                            callee: container.into_expression(),
+                            argument: alpha.into_expression(),
                             explicitness: Explicit,
                         }
                     },
@@ -512,7 +512,7 @@ mod test {
         let mut crate_ = Crate::test();
         let int = crate_
             .add("Int", EntityKind::untyped_data_type())
-            .to_expression();
+            .into_expression();
 
         assert_eq(
             "(crate.Int -> crate.Int) -> crate.Int",
@@ -547,10 +547,10 @@ mod test {
         let mut crate_ = Crate::test();
         let int = crate_
             .add("Int", EntityKind::untyped_data_type())
-            .to_expression();
+            .into_expression();
         let text = crate_
             .add("Text", EntityKind::untyped_data_type())
-            .to_expression();
+            .into_expression();
 
         assert_eq(
             "crate.Int -> crate.Text -> Type",
@@ -604,7 +604,7 @@ mod test {
                             parameter: x.clone(),
                             parameter_type_annotation: None,
                             body_type_annotation: None,
-                            body: x.to_expression(),
+                            body: x.into_expression(),
                             explicitness: Explicit,
                             laziness: None,
                         }
@@ -635,15 +635,15 @@ mod test {
                             callee: expr! {
                                 Application {
                                     Attributes::default(), Span::default();
-                                    callee: Identifier::parameter("alpha").to_expression(),
-                                    argument: beta.to_expression(),
+                                    callee: Identifier::parameter("alpha").into_expression(),
+                                    argument: beta.into_expression(),
                                     explicitness: Explicit,
                                 }
                             },
                             argument: expr! {
                                 Application {
                                     Attributes::default(), Span::default();
-                                    callee: Identifier::parameter("gamma").to_expression(),
+                                    callee: Identifier::parameter("gamma").into_expression(),
                                     argument: type_(),
                                     explicitness: Explicit,
                                 }
@@ -677,7 +677,7 @@ mod test {
             (expr! {
                 Application {
                     Attributes::default(), Span::default();
-                    callee: take.to_expression(),
+                    callee: take.into_expression(),
                     argument: expr! {
                         Lambda {
                             Attributes::default(), Span::default();
@@ -685,7 +685,7 @@ mod test {
                             parameter_type_annotation: None,
                             body_type_annotation: None,
                             // technically not correct
-                            body: it.to_expression(),
+                            body: it.into_expression(),
                             explicitness: Explicit,
                             laziness: None,
                         }
@@ -715,7 +715,7 @@ mod test {
                     callee: expr! {
                         Application {
                             Attributes::default(), Span::default();
-                            callee: take.to_expression(),
+                            callee: take.into_expression(),
                             argument: expr! {
                                 Lambda {
                                     Attributes::default(), Span::default();
@@ -723,7 +723,7 @@ mod test {
                                     parameter_type_annotation: None,
                                     body_type_annotation: None,
                                     // technically not correct
-                                    body: it.to_expression(),
+                                    body: it.into_expression(),
                                     explicitness: Explicit,
                                     laziness: None,
                                 }
@@ -757,7 +757,7 @@ mod test {
             (expr! {
                 Application {
                     Attributes::default(), Span::default();
-                    callee: identity.to_expression(),
+                    callee: identity.into_expression(),
                     argument: type_(),
                     explicitness: Implicit,
                 }
@@ -780,12 +780,12 @@ mod test {
             (expr! {
                 Application {
                     Attributes::default(), Span::default();
-                    callee: identity.to_expression(),
+                    callee: identity.into_expression(),
                     argument: expr! {
                         Application {
                             Attributes::default(), Span::default();
-                            callee: Identifier::parameter("prepare").to_expression(),
-                            argument: text.to_expression(),
+                            callee: Identifier::parameter("prepare").into_expression(),
+                            argument: text.into_expression(),
                             explicitness: Explicit,
                         }
                     },
@@ -818,7 +818,7 @@ mod test {
                             ],
                         }
                     },
-                    argument: Identifier::parameter("omicron").to_expression(),
+                    argument: Identifier::parameter("omicron").into_expression(),
                     explicitness: Explicit,
                 }
             }).with((&crate_, &session)).to_string(),
@@ -839,7 +839,7 @@ mod test {
                     Attributes::default(), Span::default();
                     parameter: Identifier::parameter("input"),
                     parameter_type_annotation: None,
-                    body_type_annotation: Some(output.to_expression()),
+                    body_type_annotation: Some(output.into_expression()),
                     body: expr! {
                         Number(Attributes::default(), Span::default(); Number::Nat(0u8.into()))
                     },
@@ -866,8 +866,8 @@ mod test {
                 Lambda {
                     Attributes::default(), Span::default();
                     parameter: Identifier::parameter("input"),
-                    parameter_type_annotation: Some(input.to_expression()),
-                    body_type_annotation: Some(output.to_expression()),
+                    parameter_type_annotation: Some(input.into_expression()),
+                    body_type_annotation: Some(output.into_expression()),
                     body: type_(),
                     explicitness: Explicit,
                     laziness: None,
@@ -921,7 +921,7 @@ mod test {
                             parameter: a.clone(),
                             parameter_type_annotation: None,
                             body_type_annotation: None,
-                            body: a.to_expression(),
+                            body: a.into_expression(),
                             explicitness: Explicit,
                             laziness: None,
                         }
@@ -957,7 +957,7 @@ mod test {
                             explicitness: Explicit,
                             laziness: None,
                             parameter: None,
-                            domain: x.to_expression(),
+                            domain: x.into_expression(),
                             codomain: type_(),
                         }
                     },
@@ -1052,7 +1052,7 @@ mod test {
                     callee: expr! {
                         Application {
                             Attributes::default(), Span::default();
-                            callee: Identifier::parameter("==").to_expression(),
+                            callee: Identifier::parameter("==").into_expression(),
                             argument: expr! {
                                 Number(
                                     Attributes(vec![
@@ -1069,7 +1069,7 @@ mod test {
                     argument: expr! {
                         Application {
                             Attributes(vec![Attribute::stripped(AttributeKind::Static)]), Span::default();
-                            callee: Identifier::parameter("increment").to_expression(),
+                            callee: Identifier::parameter("increment").into_expression(),
                             argument: expr! {
                                 Number(Attributes::default(), Span::default(); Number::Nat(1u8.into()))
                             },
@@ -1103,7 +1103,7 @@ mod test {
 
         assert_eq(
             "crate.overarching.middle.sink",
-            sink.to_expression().with((&crate_, &session)).to_string(),
+            sink.into_expression().with((&crate_, &session)).to_string(),
         );
     }
 
@@ -1131,7 +1131,7 @@ mod test {
 
         assert_eq(
             "crate.overarching.&/.~## . ^^^ .sink",
-            sink.to_expression().with((&crate_, &session)).to_string(),
+            sink.into_expression().with((&crate_, &session)).to_string(),
         );
     }
 }

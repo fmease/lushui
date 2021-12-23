@@ -21,11 +21,11 @@ use std::fmt;
 #[cfg(test)]
 mod test;
 
-pub type Value = Spanned<ValueKind>;
+pub(crate) type Value = Spanned<ValueKind>;
 
 #[derive(Debug, Discriminant)]
 #[discriminant(Type::type_)]
-pub enum ValueKind {
+pub(crate) enum ValueKind {
     Bool(bool),
     Integer(i64),
     Float(f64),
@@ -125,7 +125,7 @@ impl fmt::Display for Type {
     }
 }
 
-pub fn content_span_of_key(key: impl Spanning, map: &SourceMap) -> Span {
+pub(crate) fn content_span_of_key(key: impl Spanning, map: &SourceMap) -> Span {
     fn content_span_of_key(span: Span, map: &SourceMap) -> Span {
         let is_quoted = map.snippet(span).starts_with('"');
 
@@ -139,14 +139,8 @@ pub fn content_span_of_key(key: impl Spanning, map: &SourceMap) -> Span {
     content_span_of_key(key.span(), map)
 }
 
-#[derive(Clone, Debug)]
-pub struct KeySpan {
-    pub literal: Span,
-    pub content: Span,
-}
-
 // @Beacon @Temporary signature
-pub fn remove_map_entry<T: TryFrom<ValueKind, Error = TypeError>>(
+pub(crate) fn remove_map_entry<T: TryFrom<ValueKind, Error = TypeError>>(
     map: Spanned<&mut HashMap<WeaklySpanned<String>, Value>>,
     key: &str,
     path: Option<String>,
@@ -168,7 +162,7 @@ pub fn remove_map_entry<T: TryFrom<ValueKind, Error = TypeError>>(
     }
 }
 
-pub fn remove_optional_map_entry<T: TryFrom<ValueKind, Error = TypeError>>(
+pub(crate) fn remove_optional_map_entry<T: TryFrom<ValueKind, Error = TypeError>>(
     map: &mut HashMap<WeaklySpanned<String>, Value>,
     key: &str,
     reporter: &Reporter,
@@ -180,7 +174,7 @@ pub fn remove_optional_map_entry<T: TryFrom<ValueKind, Error = TypeError>>(
 }
 
 // @Temporary signature
-pub fn check_map_is_empty(
+pub(crate) fn check_map_is_empty(
     map: HashMap<WeaklySpanned<String>, Value>,
     path: Option<String>,
     reporter: &Reporter,
@@ -204,7 +198,7 @@ pub fn check_map_is_empty(
 }
 
 // @Temporary name
-pub fn convert<T: TryFrom<ValueKind, Error = TypeError>>(
+pub(crate) fn convert<T: TryFrom<ValueKind, Error = TypeError>>(
     key: &str,
     value: Value,
     reporter: &Reporter,
@@ -224,12 +218,12 @@ pub fn convert<T: TryFrom<ValueKind, Error = TypeError>>(
     Ok(Spanned::new(span, value))
 }
 
-pub struct TypeError {
-    pub expected: Type,
-    pub actual: Type,
+pub(crate) struct TypeError {
+    pub(crate) expected: Type,
+    pub(crate) actual: Type,
 }
 
-pub fn parse(
+pub(crate) fn parse(
     source_file_index: SourceFileIndex,
     map: SharedSourceMap,
     reporter: &Reporter,
@@ -261,7 +255,7 @@ mod lexer {
     pub(super) type Token = Spanned<TokenKind>;
 
     impl Token {
-        pub const fn name(&self) -> TokenName {
+        pub(crate) const fn name(&self) -> TokenName {
             self.value.name()
         }
 
@@ -554,12 +548,12 @@ mod lexer {
     }
 
     #[derive(Clone, Copy, Debug)]
-    pub enum TextLexingError {
+    pub(crate) enum TextLexingError {
         Unterminated,
     }
 
     #[derive(Clone, Copy, Debug)]
-    pub enum IntLexingError {
+    pub(crate) enum IntLexingError {
         ConsecutiveSeparators,
         TrailingSeparators,
         SizeExceedance,

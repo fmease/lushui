@@ -11,16 +11,18 @@ use crate::{
     typer::interpreter,
     utility::obtain,
 };
-pub use identifier::{DeBruijnIndex, DeclarationIndex, Identifier, Index, LocalDeclarationIndex};
+pub(crate) use identifier::{
+    DeBruijnIndex, DeclarationIndex, Identifier, Index, LocalDeclarationIndex,
+};
 use std::rc::Rc;
 
 mod format;
-pub mod identifier;
+pub(crate) mod identifier;
 
 pub type Declaration = Item<DeclarationKind>;
 
 impl Declaration {
-    pub fn constructor(&self) -> Option<&Constructor> {
+    pub(crate) fn constructor(&self) -> Option<&Constructor> {
         obtain!(&self.value, DeclarationKind::Constructor(constructor) => constructor)
     }
 }
@@ -120,7 +122,6 @@ pub struct Lambda {
     pub parameter: Identifier,
     pub parameter_type_annotation: Option<Expression>,
     pub explicitness: Explicitness,
-    // @Temporary
     pub laziness: Option<Span>,
     pub body_type_annotation: Option<Expression>,
     pub body: Expression,
@@ -144,15 +145,15 @@ pub struct IntrinsicApplication {
     pub arguments: Vec<Expression>,
 }
 
-// @Temporary until we have better case analysis support to replace it with
-// @Task @Beacon
 #[derive(Clone)]
-pub struct Projection {}
+pub struct Projection {
+    // @Task
+}
 
 #[derive(Clone)]
 pub struct IO {
-    pub index: usize, // @Task IOIndex
-    pub arguments: Vec<Expression>,
+    pub(crate) index: usize, // @Task IOIndex
+    pub(crate) arguments: Vec<Expression>,
     // @Task continuation: Option<Expression>
 }
 
@@ -192,14 +193,14 @@ pub struct Deapplication {
     pub argument: Pattern,
 }
 
-pub macro decl($( $tree:tt )+) {
+pub(crate) macro decl($( $tree:tt )+) {
     crate::item::item!(crate::hir, DeclarationKind, Box; $( $tree )+)
 }
 
-pub macro expr($( $tree:tt )+) {
+pub(crate) macro expr($( $tree:tt )+) {
     crate::item::item!(crate::hir, ExpressionKind, Rc; $( $tree )+)
 }
 
-pub macro pat($( $tree:tt )+) {
+pub(crate) macro pat($( $tree:tt )+) {
     crate::item::item!(crate::hir, PatternKind, Rc; $( $tree )+)
 }

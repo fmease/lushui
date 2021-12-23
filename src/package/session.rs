@@ -37,7 +37,7 @@ pub struct BuildSession {
 
 impl BuildSession {
     /// Create a new build session with intrinsic functions registered.
-    pub fn new(
+    pub(crate) fn new(
         packages: IndexMap<PackageIndex, Package>,
         goal_crate: CrateIndex,
         goal_package: PackageIndex,
@@ -53,7 +53,8 @@ impl BuildSession {
         }
     }
 
-    pub fn empty(goal_crate: CrateIndex, goal_package: PackageIndex) -> Self {
+    #[cfg(test)]
+    pub(crate) fn empty(goal_crate: CrateIndex, goal_package: PackageIndex) -> Self {
         Self {
             crates: default(),
             packages: default(),
@@ -74,7 +75,7 @@ impl BuildSession {
     }
 
     /// The path to the folder containing the build artifacts and the documentation.
-    pub fn build_folder(&self) -> PathBuf {
+    pub(crate) fn build_folder(&self) -> PathBuf {
         // @Beacon @Beacon @Bug does not work with single-file packages!
         self[self.goal_package].path.join(BUILD_FOLDER_NAME)
     }
@@ -83,11 +84,11 @@ impl BuildSession {
         self.crates.insert(crate_.index, crate_);
     }
 
-    pub fn known_binding(&self, known: KnownBinding) -> Option<&Identifier> {
+    pub(crate) fn known_binding(&self, known: KnownBinding) -> Option<&Identifier> {
         self.known_bindings.get(&known)
     }
 
-    pub fn look_up_known_binding(
+    pub(crate) fn look_up_known_binding(
         &self,
         known: KnownBinding,
         reporter: &Reporter,
@@ -96,10 +97,10 @@ impl BuildSession {
             .known_binding(known)
             .cloned()
             .ok_or_else(|| Diagnostic::missing_known_binding(known).report(reporter))?
-            .to_expression())
+            .into_expression())
     }
 
-    pub fn look_up_known_type(
+    pub(crate) fn look_up_known_type(
         &self,
         known: KnownBinding,
         expression: Span,
@@ -111,10 +112,10 @@ impl BuildSession {
             .ok_or_else(|| {
                 Diagnostic::missing_known_type(known, expression).report(reporter);
             })?
-            .to_expression())
+            .into_expression())
     }
 
-    pub fn register_known_type<'a>(
+    pub(crate) fn register_known_type<'a>(
         &mut self,
         binder: &Identifier,
         constructors: Vec<&'a Constructor>,
@@ -179,12 +180,12 @@ impl BuildSession {
         Ok(())
     }
 
-    pub fn intrinsic_type(&self, intrinsic: IntrinsicType) -> Option<&Identifier> {
+    pub(crate) fn intrinsic_type(&self, intrinsic: IntrinsicType) -> Option<&Identifier> {
         self.intrinsic_types.get(&intrinsic)
     }
 
     // @Beacon @Task support paths!
-    pub fn register_intrinsic_type(
+    pub(crate) fn register_intrinsic_type(
         &mut self,
         binder: Identifier,
         attribute: Span,
@@ -215,7 +216,7 @@ impl BuildSession {
         Ok(())
     }
 
-    pub fn register_intrinsic_function(
+    pub(crate) fn register_intrinsic_function(
         &mut self,
         binder: Identifier,
         type_: Expression,
@@ -241,14 +242,14 @@ impl BuildSession {
         })
     }
 
-    pub fn look_up_intrinsic_type(
+    pub(crate) fn look_up_intrinsic_type(
         &self,
         intrinsic: IntrinsicType,
         expression: Option<Span>,
         reporter: &Reporter,
     ) -> Result<Expression> {
         if let Some(intrinsic) = self.intrinsic_type(intrinsic) {
-            return Ok(intrinsic.clone().to_expression());
+            return Ok(intrinsic.clone().into_expression());
         }
 
         Diagnostic::missing_intrinsic_binding(intrinsic, IntrinsicKind::Type)
@@ -319,7 +320,7 @@ impl Diagnostic {
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
-pub enum KnownBinding {
+pub(crate) enum KnownBinding {
     /// The type `Unit`.
     Unit,
     /// The value `Unit.unit`.
@@ -340,7 +341,7 @@ pub enum KnownBinding {
 
 impl KnownBinding {
     // @Task derive this
-    pub const fn name(&self) -> &'static str {
+    pub(crate) const fn name(self) -> &'static str {
         match self {
             Self::Unit => "Unit",
             Self::UnitUnit => "unit",
@@ -353,7 +354,7 @@ impl KnownBinding {
         }
     }
 
-    pub const fn path(&self) -> &'static str {
+    pub(crate) const fn path(self) -> &'static str {
         match self {
             Self::Unit => "Unit",
             Self::UnitUnit => "Unit.unit",
@@ -386,7 +387,7 @@ impl FromStr for KnownBinding {
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
-pub enum IntrinsicType {
+pub(crate) enum IntrinsicType {
     Nat,
     Nat32,
     Nat64,
@@ -398,7 +399,7 @@ pub enum IntrinsicType {
 }
 
 impl IntrinsicType {
-    pub fn numeric(number: &Number) -> Self {
+    pub(crate) fn numeric(number: &Number) -> Self {
         match number {
             Number::Nat(_) => Self::Nat,
             Number::Nat32(_) => Self::Nat32,
@@ -449,7 +450,7 @@ impl fmt::Display for IntrinsicType {
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
-pub enum IntrinsicFunction {
+pub(crate) enum IntrinsicFunction {
     Add,
     Subtract,
     // @Temporary existence
@@ -519,15 +520,15 @@ impl fmt::Display for IntrinsicFunction {
     }
 }
 
-pub type BareIntrinsicFunctionValue = fn(arguments: Vec<Value>) -> Value;
+pub(crate) type BareIntrinsicFunctionValue = fn(arguments: Vec<Value>) -> Value;
 
-pub struct IntrinsicFunctionValue {
-    pub arity: usize,
-    pub function: BareIntrinsicFunctionValue,
+pub(crate) struct IntrinsicFunctionValue {
+    pub(crate) arity: usize,
+    pub(crate) function: BareIntrinsicFunctionValue,
 }
 
 // @Question naming etc
-pub enum IntrinsicKind {
+pub(crate) enum IntrinsicKind {
     Type,
     Function,
 }
@@ -579,7 +580,7 @@ fn intrinsic_functions() -> HashMap<IntrinsicFunction, IntrinsicFunctionValue> {
 /// An FFI-compatible type.
 ///
 /// Except `Type` and `->`.
-pub enum Type {
+pub(crate) enum Type {
     Unit,
     Bool,
     Nat,
@@ -666,7 +667,7 @@ impl Type {
 /// An FFI-compatible value.
 ///
 /// Except `Type` and `->`.
-pub enum Value {
+pub(crate) enum Value {
     Unit,
     Bool(bool),
     Text(String),
@@ -687,7 +688,7 @@ pub enum Value {
 }
 
 impl Value {
-    pub fn from_expression(expression: &Expression, session: &BuildSession) -> Option<Self> {
+    pub(crate) fn from_expression(expression: &Expression, session: &BuildSession) -> Option<Self> {
         use ExpressionKind::*;
         use KnownBinding::*;
 
@@ -739,7 +740,7 @@ impl Value {
         })
     }
 
-    pub fn into_expression(
+    pub(crate) fn into_expression(
         self,
         crate_: &Crate,
         session: &BuildSession,
@@ -812,7 +813,7 @@ impl Value {
 ///
 /// This trait is not strictly necessary but it makes defining intrinsic functions on
 /// the Rust side much more ergonomic!
-pub trait IntoValue {
+pub(crate) trait IntoValue {
     fn into_type() -> Type;
     fn into_value(self) -> Value;
 }

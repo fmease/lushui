@@ -1,7 +1,7 @@
 use crate::span::{LocalByteIndex, LocalSpan, SourceFile, Span, Spanned};
 use std::{iter::Peekable, str::CharIndices};
 
-pub trait Lexer<'source, TokenKind> {
+pub(crate) trait Lexer<'source, TokenKind> {
     fn source_file(&self) -> &'source SourceFile;
 
     fn characters(&mut self) -> &mut Peekable<CharIndices<'source>>;

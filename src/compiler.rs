@@ -9,7 +9,7 @@
 // @Note naming swap out with name&concept bytecode
 mod instruction;
 // @Task move stuff from here to there
-pub mod interpreter;
+pub(crate) mod interpreter;
 
 use std::default::default;
 
@@ -23,7 +23,7 @@ use crate::{
 use index_map::{Index as _, IndexMap};
 use instruction::{Chunk, ChunkIndex, Instruction};
 
-// pub fn compile_declaration(
+// pub(crate) fn compile_declaration(
 //     declaration: &Declaration,
 //     crate_: &Crate,
 // ) -> Result<Vec<Chunk>, CompilationError> {
@@ -119,7 +119,7 @@ impl<'a> Compiler<'a> {
         index
     }
 
-    pub fn compile_declaration(
+    pub(crate) fn compile_declaration(
         &mut self,
         declaration: &Declaration,
     ) -> Result<(), CompilationError> {

@@ -46,7 +46,7 @@ pub fn evaluate_main_function(
             .program_entry
             .clone()
             .unwrap()
-            .to_expression(),
+            .into_expression(),
         Context {
             scope: &FunctionScope::Crate,
             // form: Form::Normal,
@@ -294,7 +294,7 @@ impl<'a> Interpreter<'a> {
     /// Try to evaluate an expression.
     ///
     /// This is beta-reduction I think.
-    pub fn evaluate_expression(
+    pub(crate) fn evaluate_expression(
         &mut self,
         expression: Expression,
         context: Context<'_>,
@@ -495,7 +495,7 @@ impl<'a> Interpreter<'a> {
                             return Ok(expr! {
                                 CaseAnalysis {
                                     expression.attributes, expression.span;
-                                    subject: subject.binder.clone().to_expression(),
+                                    subject: subject.binder.clone().into_expression(),
                                     cases: analysis.cases.clone(),
                                 }
                             });
@@ -594,7 +594,7 @@ impl<'a> Interpreter<'a> {
     // * illegal neutrals
     // * types (arguments of type `Type`): skip them
     // @Note: we need to convert to be able to convert to ffi::Value
-    pub fn apply_intrinsic_function(
+    pub(crate) fn apply_intrinsic_function(
         &self,
         binder: Identifier,
         arguments: Vec<Expression>,
@@ -738,7 +738,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    pub fn look_up_value(&self, binder: &Identifier) -> ValueView {
+    pub(crate) fn look_up_value(&self, binder: &Identifier) -> ValueView {
         match binder.index {
             hir::Index::Declaration(index) => self.look_up(index).value(),
             hir::Index::DeBruijn(_) => ValueView::Neutral,
@@ -746,7 +746,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    pub fn look_up_type(
+    pub(crate) fn look_up_type(
         &self,
         binder: &Identifier,
         scope: &FunctionScope<'_>,
@@ -758,7 +758,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    pub fn is_intrinsic(&self, binder: &Identifier) -> bool {
+    pub(crate) fn is_intrinsic(&self, binder: &Identifier) -> bool {
         match binder.index {
             hir::Index::Declaration(index) => self.look_up(index).is_intrinsic(),
             hir::Index::DeBruijn(_) => false,
@@ -812,7 +812,7 @@ impl DisplayWith for Substitution {
 }
 
 #[derive(Clone, Copy)]
-pub enum Form {
+pub(crate) enum Form {
     Normal,
     WeakHeadNormal,
 }
@@ -821,7 +821,7 @@ pub enum Form {
 // @Task a recursion_depth: usize, @Note if we do that,
 // remove Copy and have a custom Clone impl incrementing the value
 #[derive(Clone, Copy)]
-pub struct Context<'a> {
+pub(crate) struct Context<'a> {
     pub(crate) scope: &'a FunctionScope<'a>,
     pub(crate) form: Form,
 }
@@ -829,7 +829,7 @@ pub struct Context<'a> {
 impl<'a> Context<'a> {
     /// Temporarily, for convenience and until we fix some bugs, the form
     /// is [`Form::Normal`] by default.
-    pub fn new(scope: &'a FunctionScope<'_>) -> Self {
+    pub(crate) fn new(scope: &'a FunctionScope<'_>) -> Self {
         // @Temporary: Normal
         Self {
             scope,

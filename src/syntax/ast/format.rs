@@ -151,6 +151,7 @@ fn format_text_literal(content: &str, f: &mut Formatter<'_>) -> Result {
     write!(f, "{}", content)
 }
 
+// @Task make this pub(crate) once the type-leak rules are relaxed
 pub trait Format {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result;
 }

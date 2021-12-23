@@ -13,7 +13,7 @@ use crate::{
 /// Something attributes can be ascribed to.
 ///
 /// This is the trait version of the struct [`super::Item`].
-pub trait Target: Spanning {
+pub(crate) trait Target: Spanning {
     /// Used in diagnostics.
     fn name(&self) -> &'static str;
 
@@ -204,7 +204,7 @@ impl Target for ast::Pattern {
 // @Beacon @Beacon @Beacon @Task replace this!
 bitflags::bitflags! {
     /// Attribute targets.
-    pub struct Targets: u32 {
+    pub(crate) struct Targets: u32 {
         const FUNCTION_DECLARATION = 1 << 0;
         const DATA_DECLARATION = 1 << 1;
         const CONSTRUCTOR_DECLARATION = 1 << 2;
@@ -274,7 +274,7 @@ bitflags::bitflags! {
 
 impl Targets {
     // @Beacon @Beacon @Beacon @Bug this is soo fragile!
-    pub fn description(self) -> &'static str {
+    pub(crate) fn description(self) -> &'static str {
         // @Task use match + inline consts once derived operations are const
         condition! {
             self == Self::all() => "anything",
@@ -304,13 +304,13 @@ impl Targets {
 pub struct Attributes(pub(crate) Vec<Attribute>);
 
 impl Attributes {
-    pub fn contains<Q: Query>(&self, query: Q) -> bool {
+    pub(crate) fn contains<Q: Query>(&self, query: Q) -> bool {
         self.0
             .iter()
             .any(move |attribute| query.matches(&attribute.value))
     }
 
-    pub fn filter<Q: Query>(&self, query: Q) -> impl Iterator<Item = &Attribute> {
+    pub(crate) fn filter<Q: Query>(&self, query: Q) -> impl Iterator<Item = &Attribute> {
         self.0
             .iter()
             .filter(move |attribute| query.matches(&attribute.value))
@@ -350,11 +350,11 @@ impl PossiblyErroneous for Attributes {
     }
 }
 
-pub type Attribute = Spanned<AttributeKind>;
+pub(crate) type Attribute = Spanned<AttributeKind>;
 
 #[derive(Clone, PartialEq, Eq, Hash, Discriminant)]
 #[discriminant(AttributeName::name)]
-pub enum AttributeKind {
+pub(crate) enum AttributeKind {
     /// Hide the constructors of a (public) data type.
     Abstract,
     /// Allow a [lint](Lint).
@@ -390,6 +390,7 @@ pub enum AttributeKind {
     /// ```text
     /// deprecated <0:reason:Text-Literal> [<since:Version>] [<removal:Version>] [<replacement:Text-Literal>]
     /// ```
+    #[allow(dead_code)]
     Deprecated(Deprecated),
     /// Documentation of a binding.
     ///
@@ -432,6 +433,7 @@ pub enum AttributeKind {
     /// ```text
     /// if <0:condition:Condition>
     /// ```
+    #[allow(dead_code)]
     If {
         condition: Condition,
     },
@@ -512,6 +514,7 @@ pub enum AttributeKind {
     /// ```text
     /// unstable <feature:Path> <reason:Text-Literal>
     /// ```
+    #[allow(dead_code)]
     Unstable(Unstable),
     /// Specify the concrete type of a sequence literal to be `Vector`.
     Vector,
@@ -528,7 +531,7 @@ pub enum AttributeKind {
 }
 
 impl AttributeKind {
-    pub fn targets(&self) -> Targets {
+    pub(crate) fn targets(&self) -> Targets {
         use AttributeKind::*;
 
         // when updating, update `AttributeTargets::description` accordingly
@@ -570,7 +573,7 @@ impl AttributeKind {
         }
     }
 
-    pub const fn is_fully_implemented(&self) -> bool {
+    pub(crate) const fn is_fully_implemented(&self) -> bool {
         matches!(
             self,
             Self::Doc { .. }
@@ -592,7 +595,7 @@ impl AttributeKind {
         )
     }
 
-    pub const fn is_internal(&self) -> bool {
+    pub(crate) const fn is_internal(&self) -> bool {
         matches!(
             self,
             Self::Intrinsic
@@ -604,7 +607,7 @@ impl AttributeKind {
         )
     }
 
-    pub const fn can_be_applied_multiple_times(&self) -> bool {
+    pub(crate) const fn can_be_applied_multiple_times(&self) -> bool {
         matches!(
             self,
             Self::Allow { .. }
@@ -618,7 +621,7 @@ impl AttributeKind {
 
 impl AttributeName {
     // @Task smh derive this!
-    pub const fn to_str(&self) -> &'static str {
+    pub(crate) const fn to_str(self) -> &'static str {
         match self {
             Self::Abstract => "abstract",
             Self::Allow => "allow",
@@ -664,7 +667,7 @@ impl fmt::Display for AttributeName {
     }
 }
 
-pub trait Query: Copy {
+pub(crate) trait Query: Copy {
     fn matches(self, attribute: &AttributeKind) -> bool;
 
     fn or<Q: Query>(self, other: Q) -> Or<Self, Q> {
@@ -682,7 +685,7 @@ impl Query for AttributeName {
 }
 
 #[derive(Clone, Copy)]
-pub struct Or<L: Query, R: Query> {
+pub(crate) struct Or<L: Query, R: Query> {
     left: L,
     right: R,
 }
@@ -700,18 +703,18 @@ impl<F: Fn(&AttributeKind) -> bool + Copy> Query for Predicate<F> {
 }
 
 #[derive(Clone, Copy)]
-pub struct Predicate<F: Fn(&AttributeKind) -> bool>(pub F);
+pub(crate) struct Predicate<F: Fn(&AttributeKind) -> bool>(pub(crate) F);
 
-pub trait DataQuery: Copy {
+pub(crate) trait DataQuery: Copy {
     type Output: ?Sized;
 
     fn obtain(attribute: &AttributeKind) -> Option<&Self::Output>;
 }
 
 #[derive(Clone, Copy)]
-pub struct NameQuery<const NAME: AttributeName>;
+pub(crate) struct NameQuery<const NAME: AttributeName>;
 
-pub type DataQueryOutput<const NAME: AttributeName> = <NameQuery<NAME> as DataQuery>::Output;
+pub(crate) type DataQueryOutput<const NAME: AttributeName> = <NameQuery<NAME> as DataQuery>::Output;
 
 // @Task use proc macro to derive non-unit getters
 macro data_queries($( $name:ident: $Output:ty = $pat:pat => $expr:expr ),+ $(,)?) {
@@ -737,32 +740,32 @@ data_queries! {
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 
-pub struct Deprecated {
-    pub reason: String,
-    pub since: Option<Version>,
-    pub removal: Option<Version>,
-    pub replacement: Option<String>,
+pub(crate) struct Deprecated {
+    pub(crate) reason: String,
+    pub(crate) since: Option<Version>,
+    pub(crate) removal: Option<Version>,
+    pub(crate) replacement: Option<String>,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub struct Public {
-    pub reach: Option<ast::Path>,
+pub(crate) struct Public {
+    pub(crate) reach: Option<ast::Path>,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub struct Unstable {
-    pub feature: Feature,
-    pub reason: String,
+pub(crate) struct Unstable {
+    pub(crate) feature: Feature,
+    pub(crate) reason: String,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub enum Lint {}
+pub(crate) enum Lint {}
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub enum Version {}
+pub(crate) enum Version {}
 
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub enum Condition {}
+pub(crate) enum Condition {}
 
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub enum Feature {}
+pub(crate) enum Feature {}

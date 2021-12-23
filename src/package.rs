@@ -12,9 +12,10 @@ use crate::{
     FILE_EXTENSION,
 };
 use index_map::IndexMap;
+pub use manifest::PackageManifest;
 use manifest::PackageProfile;
-pub use manifest::{BinaryManifest, DependencyManifest, LibraryManifest, PackageManifest, Version};
-pub use session::BuildSession;
+pub(crate) use manifest::{BinaryManifest, DependencyManifest, LibraryManifest, Version};
+pub(crate) use session::BuildSession;
 use std::{
     default::default,
     fmt,
@@ -23,10 +24,10 @@ use std::{
     str::FromStr,
 };
 
-pub mod session;
+pub(crate) mod session;
 
 #[derive(PartialEq, Eq, Clone, Copy, index_map::Index)]
-pub struct PackageIndex(pub usize);
+pub struct PackageIndex(pub(crate) usize);
 
 impl fmt::Debug for PackageIndex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -487,7 +488,7 @@ impl IndexMut<PackageIndex> for BuildQueue<'_> {
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Hash)]
-pub struct CrateIndex(pub u16);
+pub struct CrateIndex(pub(crate) u16);
 
 impl fmt::Debug for CrateIndex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -506,7 +507,7 @@ impl index_map::Index for CrateIndex {
 }
 
 /// The path to the folder of packages shipped with the compiler.
-pub fn distributed_packages_path() -> PathBuf {
+pub(crate) fn distributed_packages_path() -> PathBuf {
     // @Task make this configurable via CLI option & env var & config file
 
     const DISTRIBUTED_LIBRARIES_FOLDER: &str = "libraries";
@@ -514,7 +515,7 @@ pub fn distributed_packages_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join(DISTRIBUTED_LIBRARIES_FOLDER)
 }
 
-pub fn core_package_path() -> PathBuf {
+pub(crate) fn core_package_path() -> PathBuf {
     distributed_packages_path().join(CrateName::core_package_name().as_str())
 }
 
@@ -534,7 +535,7 @@ impl CrateType {
         }
     }
 
-    pub fn default_root_file_path(self) -> PathBuf {
+    pub(crate) fn default_root_file_path(self) -> PathBuf {
         Path::new(DEFAULT_SOURCE_FOLDER_NAME)
             .join(self.default_root_file_stem())
             .with_extension(FILE_EXTENSION)
@@ -582,25 +583,27 @@ pub struct Package {
     // @Beacon @Task make this of type PackagePath,
     // enum PackageLocation { NormalPackage(PathBuf), SingleFilePackage(PathBuf) }
     pub path: PathBuf,
-    pub version: Option<Version>,
-    pub description: String,
+    #[allow(dead_code)]
+    pub(crate) version: Option<Version>,
+    pub(crate) description: String,
     /// States if the package is allowed to be published to a package repository.
-    pub is_private: bool,
-    pub library: Option<CrateIndex>,
-    pub binaries: Vec<CrateIndex>,
-    pub dependencies: HashMap<CrateName, CrateIndex>,
+    #[allow(dead_code)]
+    pub(crate) is_private: bool,
+    pub(crate) library: Option<CrateIndex>,
+    pub(crate) binaries: Vec<CrateIndex>,
+    pub(crate) dependencies: HashMap<CrateName, CrateIndex>,
     /// Indicates if the library, binary and dependency crates are fully resolved.
     ///
     /// Packages are resolved in two steps to allow the library crate and the binary
     /// crates to keep an [index to the owning package](PackageIndex) and the package to
     /// keep [indices to its crates](CrateIndex).
-    pub is_fully_resolved: bool,
-    pub dependency_manifest:
+    pub(crate) is_fully_resolved: bool,
+    pub(crate) dependency_manifest:
         Option<Spanned<HashMap<WeaklySpanned<CrateName>, Spanned<DependencyManifest>>>>,
 }
 
 impl Package {
-    pub fn from_manifest(
+    pub(crate) fn from_manifest(
         profile: PackageProfile,
         dependency_manifest: Option<
             Spanned<HashMap<WeaklySpanned<CrateName>, Spanned<DependencyManifest>>>,
@@ -627,7 +630,7 @@ impl Package {
         }
     }
 
-    pub fn single_file_package(name: CrateName, path: PathBuf) -> Self {
+    pub(crate) fn single_file_package(name: CrateName, path: PathBuf) -> Self {
         Self {
             name,
             path,
@@ -643,7 +646,7 @@ impl Package {
     }
 
     /// Test if this package is the standard library `core`.
-    pub fn is_core(&self) -> bool {
+    pub(crate) fn is_core(&self) -> bool {
         self.path == core_package_path()
     }
 }
@@ -658,7 +661,10 @@ pub fn find_package(path: &Path) -> Option<&Path> {
     }
 }
 
-pub fn parse_crate_name_from_file_path(path: &Path, reporter: &Reporter) -> Result<CrateName> {
+pub(crate) fn parse_crate_name_from_file_path(
+    path: &Path,
+    reporter: &Reporter,
+) -> Result<CrateName> {
     if !crate::utility::has_file_extension(path, crate::FILE_EXTENSION) {
         Diagnostic::warning()
             .message("missing or non-standard file extension")
@@ -672,7 +678,7 @@ pub fn parse_crate_name_from_file_path(path: &Path, reporter: &Reporter) -> Resu
     CrateName::parse(name.to_str().unwrap()).reported(reporter)
 }
 
-pub mod manifest {
+pub(crate) mod manifest {
     use crate::{
         diagnostics::{Code, Diagnostic, Reporter},
         error::{Health, ReportedExt, Result},
@@ -685,14 +691,14 @@ pub mod manifest {
 
     // @Note missing span of PackageManifest itself
     pub struct PackageManifest {
-        pub profile: PackageProfile,
-        pub crates: PackageCrates,
+        pub(crate) profile: PackageProfile,
+        pub(crate) crates: PackageCrates,
     }
 
     impl PackageManifest {
         pub const FILE_NAME: &'static str = "package.metadata";
 
-        pub fn parse(
+        pub(crate) fn parse(
             file: SourceFileIndex,
             map: SharedSourceMap,
             reporter: &Reporter,
@@ -903,44 +909,45 @@ pub mod manifest {
     }
 
     /// Crate-indepedent package information.
-    pub struct PackageProfile {
-        pub name: Spanned<CrateName>,
-        pub version: Option<Spanned<Version>>,
-        pub description: Option<Spanned<String>>,
-        pub is_private: Option<Spanned<bool>>,
+    pub(crate) struct PackageProfile {
+        pub(crate) name: Spanned<CrateName>,
+        pub(crate) version: Option<Spanned<Version>>,
+        pub(crate) description: Option<Spanned<String>>,
+        pub(crate) is_private: Option<Spanned<bool>>,
     }
 
     /// Information about the crates of a package.
-    pub struct PackageCrates {
-        pub library: Option<Spanned<LibraryManifest>>,
+    pub(crate) struct PackageCrates {
+        pub(crate) library: Option<Spanned<LibraryManifest>>,
         // @Task Vec<_>
-        pub binary: Option<Spanned<BinaryManifest>>,
-        pub dependencies:
+        pub(crate) binary: Option<Spanned<BinaryManifest>>,
+        pub(crate) dependencies:
             Option<Spanned<HashMap<WeaklySpanned<CrateName>, Spanned<DependencyManifest>>>>,
     }
 
     #[derive(Default)]
-    pub struct LibraryManifest {
-        // @Task pub name: Option<Spanned<CrateName>>,
-        pub path: Option<Spanned<PathBuf>>,
+    pub(crate) struct LibraryManifest {
+        // @Task pub(crate) name: Option<Spanned<CrateName>>,
+        pub(crate) path: Option<Spanned<PathBuf>>,
     }
 
     #[derive(Default)]
-    pub struct BinaryManifest {
-        // @Task pub name: Option<Spanned<CrateName>>,
-        pub path: Option<Spanned<PathBuf>>,
+    pub(crate) struct BinaryManifest {
+        // @Task pub(crate) name: Option<Spanned<CrateName>>,
+        pub(crate) path: Option<Spanned<PathBuf>>,
     }
 
     #[derive(Clone, Debug)]
-    pub struct DependencyManifest {
-        pub version: Option<Spanned<VersionRequirement>>,
-        pub name: Option<Spanned<CrateName>>,
-        pub path: Option<Spanned<PathBuf>>,
+    pub(crate) struct DependencyManifest {
+        #[allow(dead_code)]
+        pub(crate) version: Option<Spanned<VersionRequirement>>,
+        pub(crate) name: Option<Spanned<CrateName>>,
+        pub(crate) path: Option<Spanned<PathBuf>>,
     }
 
     #[derive(Debug)]
-    pub struct Version(pub String);
+    pub(crate) struct Version(pub(crate) String);
 
     #[derive(Clone, Debug)]
-    pub struct VersionRequirement(pub String);
+    pub(crate) struct VersionRequirement(pub(crate) String);
 }

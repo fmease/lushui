@@ -45,9 +45,9 @@ pub struct Crate {
     pub package: PackageIndex,
     pub path: PathBuf,
     pub type_: CrateType,
-    /// Indicates if the name of the library or binary crate coincides with the name of the binary\* or library crate, respectively.
+    /// Indicates if the name of the library or binary crate coincides with the name of the binary¹ or library crate, respectively.
     ///
-    /// \* We haven't yet implemented multiple binary crates per package.
+    /// ¹: We haven't implemented multiple binary crates per package yet.
     pub is_ambiguously_named_within_package: bool,
     pub program_entry: Option<Identifier>,
     /// All bindings inside of the crate.
@@ -60,7 +60,7 @@ pub struct Crate {
 }
 
 impl Crate {
-    pub fn new(
+    pub(crate) fn new(
         name: CrateName,
         index: CrateIndex,
         package: PackageIndex,
@@ -93,21 +93,6 @@ impl Crate {
         session[self.package].is_core() && self.is_library()
     }
 
-    pub fn dependencies<'s>(
-        &self,
-        session: &'s BuildSession,
-    ) -> impl Iterator<Item = CrateIndex> + 's {
-        let package = &session[self.package];
-        // @Question should we forbid direct dependencies with the same name as the current package
-        // (in a prior step)?
-        match self.type_ {
-            CrateType::Library => None,
-            CrateType::Binary => package.library,
-        }
-        .into_iter()
-        .chain(package.dependencies.values().copied())
-    }
-
     pub(super) fn dependency(
         &self,
         name: &CrateName,
@@ -126,7 +111,7 @@ impl Crate {
         }
     }
 
-    pub fn global_index(&self, index: LocalDeclarationIndex) -> DeclarationIndex {
+    pub(crate) fn global_index(&self, index: LocalDeclarationIndex) -> DeclarationIndex {
         DeclarationIndex::new(self.index, index)
     }
 
@@ -151,13 +136,13 @@ impl Crate {
 
     /// The crate root aka `crate`.
     #[allow(clippy::unused_self)] // nicer API
-    pub fn root(&self) -> LocalDeclarationIndex {
+    pub(crate) fn root(&self) -> LocalDeclarationIndex {
         LocalDeclarationIndex::new(0)
     }
 
     /// Build a textual representation of the absolute path of a binding.
     // @Task extend docs
-    pub fn absolute_path_to_string(
+    pub(crate) fn absolute_path_to_string(
         &self,
         index: DeclarationIndex,
         session: &BuildSession,
@@ -184,7 +169,7 @@ impl Crate {
 
     // @Note bad name
     // @Task add docs
-    pub fn local_path_to_string(&self, index: LocalDeclarationIndex) -> String {
+    pub(crate) fn local_path_to_string(&self, index: LocalDeclarationIndex) -> String {
         self.local_path_with_root_to_string(index, self.name.to_string())
     }
 
@@ -216,7 +201,7 @@ impl Crate {
     }
 
     // @Note bad name
-    pub fn local_path_segments(&self, mut index: LocalDeclarationIndex) -> VecDeque<&str> {
+    pub(crate) fn local_path_segments(&self, mut index: LocalDeclarationIndex) -> VecDeque<&str> {
         let mut segments = VecDeque::new();
 
         loop {
@@ -339,7 +324,7 @@ impl DisplayWith for Crate {
 }
 
 #[derive(Clone, PartialEq, Eq)]
-pub enum Exposure {
+pub(crate) enum Exposure {
     Unrestricted,
     Restricted(RefCell<RestrictedExposure>),
 }
@@ -385,7 +370,7 @@ impl DisplayWith for Exposure {
 }
 
 #[derive(Clone, PartialEq, Eq)]
-pub enum RestrictedExposure {
+pub(crate) enum RestrictedExposure {
     // @Beacon @Question does it yield an advantage if we make this more fine-grained
     // with the concept of partially resolved restricted exposure reaches
     // i.e. RestrictedExposureReach::PartiallyResolved {
@@ -463,8 +448,8 @@ impl From<DuplicateDefinition> for Diagnostic {
 }
 
 #[derive(Clone, Default)]
-pub struct Namespace {
-    pub binders: Vec<DeclarationIndex>,
+pub(crate) struct Namespace {
+    pub(crate) binders: Vec<DeclarationIndex>,
 }
 
 impl fmt::Debug for Namespace {
@@ -480,7 +465,7 @@ impl fmt::Debug for Namespace {
     }
 }
 
-pub enum FunctionScope<'a> {
+pub(crate) enum FunctionScope<'a> {
     Module(LocalDeclarationIndex),
     FunctionParameter {
         parent: &'a Self,
@@ -516,7 +501,7 @@ impl<'a> FunctionScope<'a> {
         }
     }
 
-    pub fn absolute_path_to_string(
+    pub(crate) fn absolute_path_to_string(
         binder: &Identifier,
         crate_: &Crate,
         session: &BuildSession,

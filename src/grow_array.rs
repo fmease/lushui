@@ -1,5 +1,7 @@
 //! Stack-allocated growable array.
 
+// @Task replace this!
+
 // @Note lacks a lot of general purpose methods like turning it into an iterator
 // and so on.. (we don't need them right now) and constructing it with several elements
 // others than calling `new` and using `push` (and a macro), also equality, Debug and so on...
@@ -7,13 +9,13 @@
 use std::mem::{replace, MaybeUninit};
 use std::{fmt, ptr::drop_in_place};
 
-pub struct GrowArray<T, const N: usize> {
+pub(crate) struct GrowArray<T, const N: usize> {
     items: [MaybeUninit<T>; N],
     length: usize,
 }
 
 impl<T, const N: usize> GrowArray<T, N> {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             // items: [const { MaybeUninit::uninit() }; N],
             items: unsafe { MaybeUninit::<[MaybeUninit<T>; N]>::uninit().assume_init() },
@@ -21,43 +23,44 @@ impl<T, const N: usize> GrowArray<T, N> {
         }
     }
 
-    // pub const fn from_array(array: [T; N]) -> Self {
+    // pub(crate) const fn from_array(array: [T; N]) -> Self {
     //     Self {
     //         items: unsafe { std::mem::transmute(array) },
     //         length: N,
     //     }
     // }
 
-    pub const fn len(&self) -> usize {
+    pub(crate) const fn len(&self) -> usize {
         self.length
     }
 
-    pub const fn is_empty(&self) -> bool {
+    pub(crate) const fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    pub const fn is_non_empty(&self) -> bool {
+    pub(crate) const fn is_non_empty(&self) -> bool {
         !self.is_empty()
     }
 
-    pub fn push(&mut self, value: T) {
+    pub(crate) fn push(&mut self, value: T) {
         self.items[self.length] = MaybeUninit::new(value);
         self.length += 1;
     }
 
-    pub fn try_push(&mut self, value: T) -> Result<(), OverflowError> {
+    #[allow(dead_code)]
+    pub(crate) fn try_push(&mut self, value: T) -> Result<(), OverflowError> {
         *self.items.get_mut(self.length).ok_or(OverflowError)? = MaybeUninit::new(value);
         self.length += 1;
         Ok(())
     }
 
-    #[allow(unused_unsafe)]
-    pub unsafe fn push_unchecked(&mut self, value: T) {
+    #[allow(unused_unsafe, dead_code)]
+    pub(crate) unsafe fn push_unchecked(&mut self, value: T) {
         *unsafe { self.items.get_unchecked_mut(self.length) } = MaybeUninit::new(value);
         self.length += 1;
     }
 
-    pub fn pop(&mut self) -> Option<T> {
+    pub(crate) fn pop(&mut self) -> Option<T> {
         if self.is_empty() {
             return None;
         }
@@ -72,7 +75,7 @@ impl<T, const N: usize> GrowArray<T, N> {
         Some(item)
     }
 
-    pub fn truncate(&mut self, length: usize) {
+    pub(crate) fn truncate(&mut self, length: usize) {
         if length >= self.length {
             return;
         }
@@ -85,39 +88,43 @@ impl<T, const N: usize> GrowArray<T, N> {
         }
     }
 
-    pub fn get(&self, index: usize) -> Option<&T> {
+    pub(crate) fn get(&self, index: usize) -> Option<&T> {
         (index < self.length).then(|| unsafe { self.get_unchecked(index) })
     }
 
     #[allow(unused_unsafe)]
-    pub unsafe fn get_unchecked(&self, index: usize) -> &T {
+    pub(crate) unsafe fn get_unchecked(&self, index: usize) -> &T {
         unsafe { &*self.items.get_unchecked(index).as_ptr() }
     }
 
-    pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
+    #[allow(dead_code)]
+    pub(crate) fn get_mut(&mut self, index: usize) -> Option<&mut T> {
         (index < self.length).then(move || unsafe { self.get_unchecked_mut(index) })
     }
 
     #[allow(unused_unsafe)]
-    pub unsafe fn get_unchecked_mut(&mut self, index: usize) -> &mut T {
+    pub(crate) unsafe fn get_unchecked_mut(&mut self, index: usize) -> &mut T {
         unsafe { &mut *self.items.get_unchecked_mut(index).as_mut_ptr() }
     }
 
     // redundant once we impl Deref/DerefMut
-    pub fn first(&self) -> Option<&T> {
+    #[allow(dead_code)]
+    pub(crate) fn first(&self) -> Option<&T> {
         self.get(0)
     }
 
-    pub fn first_mut(&mut self) -> Option<&mut T> {
+    #[allow(dead_code)]
+    pub(crate) fn first_mut(&mut self) -> Option<&mut T> {
         self.get_mut(0)
     }
 
-    pub fn last(&self) -> Option<&T> {
+    #[allow(dead_code)]
+    pub(crate) fn last(&self) -> Option<&T> {
         self.is_non_empty()
             .then(|| unsafe { self.get_unchecked(self.length - 1) })
     }
 
-    pub fn last_mut(&mut self) -> Option<&mut T> {
+    pub(crate) fn last_mut(&mut self) -> Option<&mut T> {
         self.is_non_empty()
             .then(move || unsafe { self.get_unchecked_mut(self.length - 1) })
     }
@@ -156,4 +163,4 @@ impl<T: fmt::Debug, const N: usize> fmt::Debug for GrowArray<T, N> {
 }
 
 #[derive(Debug)]
-pub struct OverflowError;
+pub(crate) struct OverflowError;

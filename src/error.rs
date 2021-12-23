@@ -42,14 +42,14 @@ impl<T> Outcome<T> {
 }
 
 pub macro outcome($value:pat, $health:pat) {
-    crate::error::Outcome {
+    $crate::error::Outcome {
         value: $value,
         health: $health,
     }
 }
 
 // @Temporary API
-pub fn map_outcome_from_result<T, U: PossiblyErroneous>(
+pub(crate) fn map_outcome_from_result<T, U: PossiblyErroneous>(
     result: Result<T>,
     mapper: impl FnOnce(T) -> U,
 ) -> Outcome<U> {
@@ -165,8 +165,7 @@ impl fmt::Display for Health {
     }
 }
 
-// @Beacon @Task documentation
-// @Task move (maybe)
+// @Task make this pub(crate) once the type-leak rules are relaxed
 pub trait PossiblyErroneous {
     fn error() -> Self;
 }
@@ -190,7 +189,7 @@ impl PossiblyErroneous for () {
     fn error() -> Self {}
 }
 
-pub trait ReportedExt {
+pub(crate) trait ReportedExt {
     type Output;
 
     fn reported(self, reporter: &Reporter) -> Self::Output;

@@ -1,11 +1,11 @@
 //! The front-end concerned with lexing, parsing and lowering.
 
-pub mod ast;
+pub(crate) mod ast;
 pub mod lexer;
-pub mod lowered_ast;
+pub(crate) mod lowered_ast;
 pub mod lowerer;
 pub mod parser;
-pub mod token;
+pub(crate) mod token;
 
 pub use crate_name::CrateName;
 
@@ -18,7 +18,7 @@ use crate::{
 /// Lex and parse a given file module.
 ///
 /// This is a convenience function combining [`lexer::lex`] and [`parser::parse`].
-pub fn parse(
+pub(crate) fn parse(
     file: SourceFileIndex,
     module: ast::Identifier,
     map: SharedSourceMap,
@@ -28,7 +28,7 @@ pub fn parse(
     parser::parse(&tokens, file, module, map, reporter)
 }
 
-pub mod crate_name {
+pub(crate) mod crate_name {
     use super::{ast::Identifier, lexer, token::TokenKind};
     use crate::{
         diagnostics::{Code, Diagnostic},
@@ -51,7 +51,7 @@ pub mod crate_name {
             }
         }
 
-        pub fn parse_spanned(
+        pub(crate) fn parse_spanned(
             Spanned { value: name, span }: Spanned<&str>,
         ) -> Result<Spanned<Self>, Diagnostic> {
             Self::parse(name)
@@ -59,7 +59,7 @@ pub mod crate_name {
                 .map_err(|error| error.primary_span(span))
         }
 
-        pub fn from_identifier(identifier: Identifier) -> Result<Spanned<Self>, Diagnostic> {
+        pub(crate) fn from_identifier(identifier: Identifier) -> Result<Spanned<Self>, Diagnostic> {
             if identifier.is_word() {
                 Ok(Spanned::new(
                     identifier.span(),
@@ -70,7 +70,7 @@ pub mod crate_name {
             }
         }
 
-        pub fn core_package_name() -> Self {
+        pub(crate) fn core_package_name() -> Self {
             Self(CORE_PACKAGE_NAME.into())
         }
 

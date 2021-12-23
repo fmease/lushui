@@ -66,12 +66,12 @@ impl SourceMap {
     }
 
     /// Add text to the map creating a [`SourceFile`] in the process.
-    pub fn add(&mut self, path: Option<PathBuf>, source: String) -> SourceFileIndex {
+    pub(crate) fn add(&mut self, path: Option<PathBuf>, source: String) -> SourceFileIndex {
         self.files
             .insert(SourceFile::new(path, source, self.next_offset()))
     }
 
-    pub fn file(&self, span: Span) -> &SourceFile {
+    pub(crate) fn file(&self, span: Span) -> &SourceFile {
         debug_assert!(span != default());
 
         // @Task do binary search (by span)
@@ -84,7 +84,7 @@ impl SourceMap {
     /// Resolve a span to the string content it points to.
     ///
     /// This treats line breaks verbatim.
-    pub fn snippet(&self, span: Span) -> &str {
+    pub(crate) fn snippet(&self, span: Span) -> &str {
         let file = self.file(span);
         let span = span.local(file);
         &file[span]
@@ -93,7 +93,7 @@ impl SourceMap {
     /// Resolve a span to various information useful for highlighting.
     // @Task update docs
     // @Task better name
-    pub fn lines(&self, span: Span) -> Lines<'_> {
+    pub(crate) fn lines(&self, span: Span) -> Lines<'_> {
         let file = self.file(span);
         let span = span.local(file);
 
@@ -273,28 +273,28 @@ pub struct SourceFileIndex(usize);
 
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct Lines<'a> {
-    pub path: Option<&'a Path>,
-    pub first_line: Line<'a>,
+pub(crate) struct Lines<'a> {
+    pub(crate) path: Option<&'a Path>,
+    pub(crate) first_line: Line<'a>,
     /// This is `None` if the last is the first line.
-    pub last_line: Option<Line<'a>>,
+    pub(crate) last_line: Option<Line<'a>>,
 }
 
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct Line<'a> {
-    pub number: u32,
+pub(crate) struct Line<'a> {
+    pub(crate) number: u32,
     /// The content of the entire line that contains the to-be-highlighted snippet.
     ///
     /// It may contain the whole snippet or only the starting or the ending part of it
     /// if the snippet spans multiple lines.
-    pub content: &'a str,
+    pub(crate) content: &'a str,
     /// The Unicode width of the to-be-highlighted snippet.
-    pub highlight_width: usize,
+    pub(crate) highlight_width: usize,
     // @Beacon @Beacon @Beacon @Task docs
-    pub highlight_padding_width: usize,
+    pub(crate) highlight_padding_width: usize,
     // @Beacon @Beacon @Beacon @Bug this uses #bytes but it should use #chars
-    pub highlight_start_column: usize,
+    pub(crate) highlight_start_column: usize,
 }
 
 /// A file, its content and its [`Span`].
@@ -309,7 +309,7 @@ impl SourceFile {
     /// Create a new source file.
     ///
     /// The [byte index](ByteIndex) `start` locates the file in a [source map](SourceMap).
-    pub fn new(path: Option<PathBuf>, content: String, start: ByteIndex) -> Self {
+    pub(crate) fn new(path: Option<PathBuf>, content: String, start: ByteIndex) -> Self {
         Self {
             span: Span::with_length(start, content.len().try_into().unwrap()),
             path,
@@ -317,15 +317,15 @@ impl SourceFile {
         }
     }
 
-    pub fn path(&self) -> Option<&Path> {
+    pub(crate) fn path(&self) -> Option<&Path> {
         self.path.as_deref()
     }
 
-    pub fn content(&self) -> &str {
+    pub(crate) fn content(&self) -> &str {
         &self.content
     }
 
-    pub fn local_span(&self) -> LocalSpan {
+    pub(crate) fn local_span(&self) -> LocalSpan {
         self.span.local(self)
     }
 }

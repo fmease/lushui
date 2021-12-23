@@ -3,8 +3,6 @@
 // @Beacon @Task introduce an Error variant to hir::{Expression, Declaration}
 // to be able to continue type checking on errors
 
-pub mod interpreter;
-
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     error::{Health, Result},
@@ -27,6 +25,8 @@ use interpreter::{
     Form, Interpreter,
 };
 use joinery::JoinableIterator;
+
+pub mod interpreter;
 
 pub fn check(
     declaration: &Declaration,
@@ -308,7 +308,7 @@ impl<'a> Typer<'a> {
 
                 self.assert_constructor_is_instance_of_type(
                     type_.clone(),
-                    data.clone().to_expression(),
+                    data.clone().into_expression(),
                 )?;
 
                 self.crate_.carry_out(
@@ -950,7 +950,7 @@ impl Diagnostic {
 
 // @Note maybe we should redesign this as a trait (object) looking at those
 // methods mirroring the variants
-pub enum Error {
+pub(crate) enum Error {
     Unrecoverable,
     OutOfOrderBinding,
     TypeMismatch {

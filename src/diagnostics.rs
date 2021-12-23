@@ -85,7 +85,7 @@ impl Diagnostic {
     }
 
     /// Create a diagnostic for an unimplemented language feature.
-    pub fn unimplemented(message: impl Into<Str>) -> Self {
+    pub(crate) fn unimplemented(message: impl Into<Str>) -> Self {
         Self::error().message(format!("{} not supported yet", message.into()))
     }
 
@@ -122,22 +122,30 @@ impl Diagnostic {
     }
 
     /// Reference a code snippet as one of the focal points of the diagnostic.
-    pub fn primary_span(self, spanning: impl Spanning) -> Self {
+    pub(crate) fn primary_span(self, spanning: impl Spanning) -> Self {
         self.span(spanning, None, Role::Primary)
     }
 
     /// Reference and label a code snippet as one of the focal points of the diagnostic.
-    pub fn labeled_primary_span(self, spanning: impl Spanning, label: impl Into<Str>) -> Self {
+    pub(crate) fn labeled_primary_span(
+        self,
+        spanning: impl Spanning,
+        label: impl Into<Str>,
+    ) -> Self {
         self.span(spanning, Some(label.into()), Role::Primary)
     }
 
     /// Reference a code snippet as auxiliary information for the diagnostic.
-    pub fn secondary_span(self, spanning: impl Spanning) -> Self {
+    pub(crate) fn secondary_span(self, spanning: impl Spanning) -> Self {
         self.span(spanning, None, Role::Secondary)
     }
 
     /// Reference and label a code snippet as auxiliary information for the diagnostic.
-    pub fn labeled_secondary_span(self, spanning: impl Spanning, label: impl Into<Str>) -> Self {
+    pub(crate) fn labeled_secondary_span(
+        self,
+        spanning: impl Spanning,
+        label: impl Into<Str>,
+    ) -> Self {
         self.span(spanning, Some(label.into()), Role::Secondary)
     }
 
@@ -156,7 +164,7 @@ impl Diagnostic {
     }
 
     /// Reference several equally important code snippets.
-    pub fn primary_spans<I>(self, spannings: I) -> Self
+    pub(crate) fn primary_spans<I>(self, spannings: I) -> Self
     where
         I: Iterator<Item: Spanning>,
     {
@@ -164,7 +172,7 @@ impl Diagnostic {
     }
 
     /// Reference and label several very and equally important code snippets.
-    pub fn labeled_primary_spans<I>(self, spannings: I, label: impl Into<Str>) -> Self
+    pub(crate) fn labeled_primary_spans<I>(self, spannings: I, label: impl Into<Str>) -> Self
     where
         I: Iterator<Item: Spanning>,
     {
@@ -693,7 +701,7 @@ impl Code {
     /// Provide detailled explanations and code examples per code.
     // @Task
     #[allow(dead_code, clippy::unused_self)]
-    pub const fn explanation(self) -> &'static str {
+    pub(crate) const fn explanation(self) -> &'static str {
         todo!()
     }
 }

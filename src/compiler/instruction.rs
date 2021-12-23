@@ -11,7 +11,7 @@ use crate::utility::Str;
 // }
 
 #[derive(Clone, Copy, PartialEq, Eq, index_map::Index)]
-pub struct ChunkIndex(pub usize);
+pub(crate) struct ChunkIndex(pub(crate) usize);
 
 use std::fmt;
 
@@ -22,7 +22,7 @@ impl fmt::Debug for ChunkIndex {
 }
 
 #[derive(Debug, Clone)]
-pub enum Instruction {
+pub(crate) enum Instruction {
     Closure {
         chunk: ChunkIndex,
         captures: Vec<()>,
@@ -64,14 +64,14 @@ impl Instruction {
 }
 
 // #[derive(Debug)]
-pub struct Chunk {
+pub(crate) struct Chunk {
     // debug
-    pub name: String,
-    pub instructions: Vec<Instruction>,
+    pub(crate) name: String,
+    pub(crate) instructions: Vec<Instruction>,
 }
 
 impl Chunk {
-    pub const fn dummy() -> Self {
+    pub(crate) const fn dummy() -> Self {
         Self {
             name: String::new(),
             instructions: Vec::new(),

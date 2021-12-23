@@ -3,11 +3,12 @@
 // @Task handle overflows showing errors like "file too big" to the user
 
 use generic::Locality::*;
-pub use source_map::{SharedSourceMap, SourceFile, SourceFileIndex, SourceMap};
+pub use source_map::{SharedSourceMap, SourceMap};
+pub(crate) use source_map::{SourceFile, SourceFileIndex};
 pub use spanned::Spanned;
-pub use spanning::{PossiblySpanning, Spanning};
+pub(crate) use spanning::{PossiblySpanning, Spanning};
 use std::ops::{Add, Range, Sub};
-pub use weakly_spanned::WeaklySpanned;
+pub(crate) use weakly_spanned::WeaklySpanned;
 
 mod source_map;
 
@@ -20,15 +21,11 @@ mod generic {
 
     /// An locality-abstract byte index.
     #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Default)]
-    pub struct ByteIndex<const L: Locality>(pub(super) u32);
+    pub(crate) struct ByteIndex<const L: Locality>(pub(super) u32);
 
     impl<const L: Locality> ByteIndex<L> {
-        pub const fn new(index: u32) -> Self {
+        pub(crate) const fn new(index: u32) -> Self {
             Self(index)
-        }
-
-        pub fn saturating_sub(self, offset: u32) -> Self {
-            Self::new(self.0.saturating_sub(offset))
         }
     }
 
@@ -75,7 +72,7 @@ mod generic {
 
     impl<const L: Locality> Span<L> {
         #[cfg_attr(debug_assertions, track_caller)]
-        pub fn new(start: ByteIndex<L>, end: ByteIndex<L>) -> Self {
+        pub(crate) fn new(start: ByteIndex<L>, end: ByteIndex<L>) -> Self {
             debug_assert!(
                 start <= end,
                 "span start ({}) > span end ({})",
@@ -87,50 +84,53 @@ mod generic {
         }
 
         /// Create an empty span at the given index.
-        pub fn empty(index: ByteIndex<L>) -> Self {
+        pub(crate) fn empty(index: ByteIndex<L>) -> Self {
             Self::new(index, index)
         }
 
-        pub fn with_length(start: ByteIndex<L>, length: u32) -> Self {
+        pub(crate) fn with_length(start: ByteIndex<L>, length: u32) -> Self {
             Self::new(start, ByteIndex(start.0 + length))
         }
 
-        pub fn length(self) -> u32 {
+        #[allow(dead_code)]
+        pub(crate) fn length(self) -> u32 {
             self.end.0 - self.start.0
         }
 
-        pub fn is_empty(self) -> bool {
+        #[allow(dead_code)]
+        pub(crate) fn is_empty(self) -> bool {
             self.start == self.end
         }
 
-        pub fn contains(self, index: ByteIndex<L>) -> bool {
+        pub(crate) fn contains(self, index: ByteIndex<L>) -> bool {
             self.start <= index && index <= self.end
         }
 
-        pub fn start(self) -> Self {
+        #[allow(dead_code)]
+        pub(crate) fn start(self) -> Self {
             Self::empty(self.start)
         }
 
-        pub fn end(self) -> Self {
+        pub(crate) fn end(self) -> Self {
             Self::empty(self.end)
         }
 
-        pub fn set_end(&mut self, index: ByteIndex<L>) {
+        pub(crate) fn set_end(&mut self, index: ByteIndex<L>) {
             self.end = index;
         }
 
         #[must_use]
-        pub fn trim(self, amount: u32) -> Self {
+        pub(crate) fn trim(self, amount: u32) -> Self {
             self.trim_start(amount).trim_end(amount)
         }
 
         #[must_use]
-        pub fn trim_start(self, amount: u32) -> Self {
+        pub(crate) fn trim_start(self, amount: u32) -> Self {
             Self::new(self.start + amount, self.end)
         }
 
         #[must_use]
-        pub fn trim_end(self, amount: u32) -> Self {
+        pub(crate) fn trim_end(self, amount: u32) -> Self {
             Self::new(self.start, self.end - amount)
         }
     }
@@ -151,10 +151,10 @@ mod generic {
 /// A global byte index.
 ///
 /// Here, "global" means local relative to a [source map](SourceMap).
-pub type ByteIndex = generic::ByteIndex<{ Global }>;
+pub(crate) type ByteIndex = generic::ByteIndex<{ Global }>;
 
 /// A file-local byte index.
-pub type LocalByteIndex = generic::ByteIndex<{ Local }>;
+pub(crate) type LocalByteIndex = generic::ByteIndex<{ Local }>;
 
 // @Task replace
 impl From<LocalByteIndex> for usize {
@@ -183,14 +183,14 @@ impl Sub<usize> for LocalByteIndex {
 
 impl ByteIndex {
     /// Map a global byte index to a local one.
-    pub fn local(self, file: &SourceFile) -> LocalByteIndex {
+    pub(crate) fn local(self, file: &SourceFile) -> LocalByteIndex {
         LocalByteIndex::new(self.0 - file.span().start.0)
     }
 }
 
 impl LocalByteIndex {
     /// Map a local byte index to a global one.
-    pub fn global(self, file: &SourceFile) -> ByteIndex {
+    pub(crate) fn global(self, file: &SourceFile) -> ByteIndex {
         ByteIndex::new(file.span().start.0 + self.0)
     }
 }
@@ -201,10 +201,10 @@ impl LocalByteIndex {
 pub type Span = generic::Span<{ Global }>;
 
 /// A span inside a single source file.
-pub type LocalSpan = generic::Span<{ Local }>;
+pub(crate) type LocalSpan = generic::Span<{ Local }>;
 
 impl Span {
-    pub fn local(self, file: &SourceFile) -> LocalSpan {
+    pub(crate) fn local(self, file: &SourceFile) -> LocalSpan {
         LocalSpan::new(self.start.local(file), self.end.local(file))
     }
 
@@ -212,7 +212,7 @@ impl Span {
     // documentation
 
     #[must_use]
-    pub fn merge(self, other: impl PossiblySpanning) -> Self {
+    pub(crate) fn merge(self, other: impl PossiblySpanning) -> Self {
         match other.possible_span() {
             Some(other) => {
                 // self.assert_disjoint_and_consecutive(other);
@@ -223,7 +223,7 @@ impl Span {
     }
 
     #[must_use]
-    pub fn merge_into(self, other: impl PossiblySpanning) -> Self {
+    pub(crate) fn merge_into(self, other: impl PossiblySpanning) -> Self {
         if let Some(other) = other.possible_span() {
             // other.assert_disjoint_and_consecutive(self);
             Self::new(other.start, self.end)
@@ -232,7 +232,7 @@ impl Span {
         }
     }
 
-    pub fn merging<S: PossiblySpanning>(&mut self, other: S) -> S {
+    pub(crate) fn merging<S: PossiblySpanning>(&mut self, other: S) -> S {
         if let Some(other) = other.possible_span() {
             // self.assert_disjoint_and_consecutive(other);
             self.end = other.end;
@@ -241,7 +241,7 @@ impl Span {
     }
 
     // @Note naming is not great
-    pub fn merging_from(&mut self, other: impl PossiblySpanning) {
+    pub(crate) fn merging_from(&mut self, other: impl PossiblySpanning) {
         if let Some(other) = other.possible_span() {
             // self.assert_disjoint_and_consecutive(other);
             debug_assert!(other.start <= self.start && other.end <= self.end);
@@ -251,7 +251,7 @@ impl Span {
 
     /// Similar to [`Self::merge`] except that the spans do not need to be disjoint.
     #[must_use]
-    pub fn fit_end(self, other: impl PossiblySpanning) -> Self {
+    pub(crate) fn fit_end(self, other: impl PossiblySpanning) -> Self {
         match other.possible_span() {
             Some(other) => {
                 // debug_assert!(self.start <= other.start && self.start <= other.end);
@@ -270,7 +270,7 @@ impl Spanning for Span {
 }
 
 impl LocalSpan {
-    pub fn global(self, file: &SourceFile) -> Span {
+    pub(crate) fn global(self, file: &SourceFile) -> Span {
         Span::new(self.start.global(file), self.end.global(file))
     }
 }
@@ -290,7 +290,8 @@ impl Sub<LocalByteIndex> for LocalSpan {
 }
 
 /// Convenience function for for constructing a global span for test code.
-pub fn span(start: u32, end: u32) -> Span {
+#[cfg(test)]
+pub(crate) fn span(start: u32, end: u32) -> Span {
     Span::new(ByteIndex::new(start), ByteIndex::new(end))
 }
 
@@ -298,7 +299,7 @@ mod spanning {
     use super::Span;
     use crate::utility::SmallVec;
 
-    pub trait Spanning: PossiblySpanning {
+    pub(crate) trait Spanning: PossiblySpanning {
         fn span(&self) -> Span;
     }
 
@@ -314,7 +315,7 @@ mod spanning {
         }
     }
 
-    pub trait PossiblySpanning {
+    pub(crate) trait PossiblySpanning {
         fn possible_span(&self) -> Option<Span>;
     }
 
@@ -415,7 +416,7 @@ mod spanned {
             Spanned::new(self.span, &self.value)
         }
 
-        pub fn weak(self) -> WeaklySpanned<T> {
+        pub(crate) fn weak(self) -> WeaklySpanned<T> {
             WeaklySpanned {
                 value: self.value,
                 span: self.span,
@@ -452,31 +453,31 @@ mod weakly_spanned {
     };
 
     #[derive(Clone, Debug)]
-    pub struct WeaklySpanned<T> {
-        pub value: T,
-        pub span: Span,
+    pub(crate) struct WeaklySpanned<T> {
+        pub(crate) value: T,
+        pub(crate) span: Span,
     }
 
     impl<T> WeaklySpanned<T> {
-        pub fn new(span: Span, value: T) -> Self {
+        pub(crate) fn new(span: Span, value: T) -> Self {
             Self { value, span }
         }
 
-        pub fn map_span(self, mapper: impl FnOnce(Span) -> Span) -> Self {
+        pub(crate) fn map_span(self, mapper: impl FnOnce(Span) -> Span) -> Self {
             Self {
                 value: self.value,
                 span: mapper(self.span),
             }
         }
 
-        pub fn as_deref(&self) -> WeaklySpanned<&T::Target>
+        pub(crate) fn as_deref(&self) -> WeaklySpanned<&T::Target>
         where
             T: Deref,
         {
             WeaklySpanned::new(self.span, &self.value)
         }
 
-        pub fn strong(self) -> Spanned<T> {
+        pub(crate) fn strong(self) -> Spanned<T> {
             Spanned {
                 value: self.value,
                 span: self.span,

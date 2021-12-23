@@ -3,14 +3,14 @@ use std::{
     collections::{BTreeMap, BTreeSet},
 };
 
-pub struct Node<'a>(NodeKind<'a>);
+pub(crate) struct Node<'a>(NodeKind<'a>);
 
 impl<'a> Node<'a> {
-    pub fn verbatim(content: impl Into<Cow<'a, str>>) -> Self {
+    pub(crate) fn verbatim(content: impl Into<Cow<'a, str>>) -> Self {
         Self(NodeKind::Verbatim(content.into()))
     }
 
-    pub fn render(self, output: &mut String) {
+    pub(crate) fn render(self, output: &mut String) {
         match self.0 {
             NodeKind::Element(element) => element.render(output),
             NodeKind::VoidElement(element) => element.render(output),
@@ -48,35 +48,35 @@ enum NodeKind<'a> {
 }
 
 #[derive(Default)]
-pub struct Document<'a> {
+pub(crate) struct Document<'a> {
     children: NodeList<'a>,
 }
 
 impl<'a> Document<'a> {
     #[allow(dead_code)]
-    pub fn child(mut self, child: impl Into<Node<'a>>) -> Self {
+    pub(crate) fn child(mut self, child: impl Into<Node<'a>>) -> Self {
         self.add_child(child);
         self
     }
 
-    pub fn add_child(&mut self, child: impl Into<Node<'a>>) {
+    pub(crate) fn add_child(&mut self, child: impl Into<Node<'a>>) {
         self.children.0.push(child.into());
     }
 
-    pub fn render(self, output: &mut String) {
+    pub(crate) fn render(self, output: &mut String) {
         *output += "<!doctype html>";
         self.children.render(output);
     }
 }
 
-pub struct Element<'a> {
+pub(crate) struct Element<'a> {
     tag: Cow<'a, str>,
     attributes: Attributes<'a>,
     children: NodeList<'a>,
 }
 
 impl<'a> Element<'a> {
-    pub fn new(tag: impl Into<Cow<'a, str>>) -> Self {
+    pub(crate) fn new(tag: impl Into<Cow<'a, str>>) -> Self {
         Self {
             tag: tag.into(),
             attributes: Attributes::default(),
@@ -84,16 +84,16 @@ impl<'a> Element<'a> {
         }
     }
 
-    pub fn child(mut self, child: impl Into<Node<'a>>) -> Self {
+    pub(crate) fn child(mut self, child: impl Into<Node<'a>>) -> Self {
         self.add_child(child);
         self
     }
 
-    pub fn add_child(&mut self, child: impl Into<Node<'a>>) {
+    pub(crate) fn add_child(&mut self, child: impl Into<Node<'a>>) {
         self.children.0.push(child.into());
     }
 
-    pub fn render(self, output: &mut String) {
+    pub(crate) fn render(self, output: &mut String) {
         *output += "<";
         *output += &self.tag;
         self.attributes.render(output);
@@ -113,20 +113,20 @@ impl<'a> Attributable<'a> for Element<'a> {
     }
 }
 
-pub struct VoidElement<'a> {
+pub(crate) struct VoidElement<'a> {
     tag: Cow<'a, str>,
     attributes: Attributes<'a>,
 }
 
 impl<'a> VoidElement<'a> {
-    pub fn new(tag: impl Into<Cow<'a, str>>) -> Self {
+    pub(crate) fn new(tag: impl Into<Cow<'a, str>>) -> Self {
         Self {
             tag: tag.into(),
             attributes: Attributes::default(),
         }
     }
 
-    pub fn render(self, output: &mut String) {
+    pub(crate) fn render(self, output: &mut String) {
         *output += "<";
         *output += &self.tag;
         self.attributes.render(output);
@@ -152,7 +152,7 @@ impl NodeList<'_> {
 }
 
 #[derive(Default)]
-pub struct Attributes<'a> {
+pub(crate) struct Attributes<'a> {
     key_value: BTreeMap<Cow<'a, str>, Cow<'a, str>>,
     boolean: BTreeSet<Cow<'a, str>>,
 }
@@ -174,7 +174,7 @@ impl Attributes<'_> {
     }
 }
 
-pub trait Attributable<'a>: Sized {
+pub(crate) trait Attributable<'a>: Sized {
     fn attributes(&mut self) -> &mut Attributes<'a>;
 
     fn add_attribute(&mut self, name: &'a str, value: impl Into<Cow<'a, str>>) {

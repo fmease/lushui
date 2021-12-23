@@ -28,18 +28,18 @@ use EntityKind::*;
 /// Most of them are just as well expressions, as can be seen by [`Entity::value`] which
 /// panics on those that are not.
 #[derive(Clone)]
-pub struct Entity {
+pub(crate) struct Entity {
     /// Source information of the definition site.
-    pub source: crate::syntax::ast::Identifier,
+    pub(crate) source: crate::syntax::ast::Identifier,
     /// The namespace this entity is a member of.
     // @Question should we make this a DeclarationIndex?
-    pub parent: Option<LocalDeclarationIndex>,
-    pub exposure: Exposure,
-    pub kind: EntityKind,
+    pub(crate) parent: Option<LocalDeclarationIndex>,
+    pub(crate) exposure: Exposure,
+    pub(crate) kind: EntityKind,
 }
 
 impl Entity {
-    pub const fn is_untyped_value(&self) -> bool {
+    pub(crate) const fn is_untyped_value(&self) -> bool {
         matches!(
             self.kind,
             UntypedFunction | UntypedDataType { .. } | UntypedConstructor { .. }
@@ -47,37 +47,39 @@ impl Entity {
     }
 
     /// Returns `true` if the entity is a typed or untyped function.
-    pub const fn is_function(&self) -> bool {
+    #[allow(dead_code)]
+    pub(crate) const fn is_function(&self) -> bool {
         matches!(self.kind, UntypedFunction | Function { .. })
     }
 
     /// Returns `true` if the entity is a typed or untyped data type.
-    pub const fn is_data_type(&self) -> bool {
+    pub(crate) const fn is_data_type(&self) -> bool {
         matches!(self.kind, UntypedDataType { .. } | DataType { .. })
     }
 
     /// Returns `true` if the entity is a typed or untyped constructor.
-    pub const fn is_constructor(&self) -> bool {
+    #[allow(dead_code)]
+    pub(crate) const fn is_constructor(&self) -> bool {
         matches!(self.kind, UntypedConstructor { .. } | Constructor { .. })
     }
 
-    pub const fn is_module(&self) -> bool {
+    pub(crate) const fn is_module(&self) -> bool {
         matches!(self.kind, Module { .. })
     }
 
-    pub const fn is_intrinsic(&self) -> bool {
+    pub(crate) const fn is_intrinsic(&self) -> bool {
         matches!(self.kind, Intrinsic { .. })
     }
 
-    pub const fn is_error(&self) -> bool {
+    pub(crate) const fn is_error(&self) -> bool {
         matches!(self.kind, EntityKind::Error)
     }
 
-    pub const fn is_namespace(&self) -> bool {
+    pub(crate) const fn is_namespace(&self) -> bool {
         self.is_module() || self.is_data_type()
     }
 
-    pub const fn namespace(&self) -> Option<&Namespace> {
+    pub(crate) const fn namespace(&self) -> Option<&Namespace> {
         obtain!(
             &self.kind,
             Module { namespace }
@@ -86,7 +88,7 @@ impl Entity {
         )
     }
 
-    pub fn namespace_mut(&mut self) -> Option<&mut Namespace> {
+    pub(crate) fn namespace_mut(&mut self) -> Option<&mut Namespace> {
         obtain!(
             &mut self.kind,
             Module { namespace }
@@ -95,7 +97,7 @@ impl Entity {
         )
     }
 
-    pub const fn is_value_without_value(&self) -> bool {
+    pub(crate) const fn is_value_without_value(&self) -> bool {
         matches!(
             self.kind,
             Function {
@@ -105,7 +107,7 @@ impl Entity {
         )
     }
 
-    pub fn type_(&self) -> Option<Expression> {
+    pub(crate) fn type_(&self) -> Option<Expression> {
         obtain!(
             &self.kind,
             Function { type_, .. } |
@@ -122,7 +124,7 @@ impl Entity {
     /// Panics if the entity can not be represented as an expression/value like modules
     /// (because they are second-class by specification) or untyped entities which are
     /// not ready yet.
-    pub fn value(&self) -> ValueView {
+    pub(crate) fn value(&self) -> ValueView {
         match &self.kind {
             Function {
                 expression: Some(expression),
@@ -144,7 +146,7 @@ impl Entity {
         }
     }
 
-    pub fn mark_as_error(&mut self) {
+    pub(crate) fn mark_as_error(&mut self) {
         self.kind = Error;
     }
 }
@@ -166,7 +168,7 @@ impl DisplayWith for Entity {
 }
 
 #[derive(Clone)]
-pub enum EntityKind {
+pub(crate) enum EntityKind {
     UntypedFunction,
     Module {
         namespace: Namespace,
@@ -213,13 +215,13 @@ impl PossiblyErroneous for EntityKind {
 }
 
 impl EntityKind {
-    pub fn module() -> Self {
+    pub(crate) fn module() -> Self {
         Module {
             namespace: default(),
         }
     }
 
-    pub fn untyped_data_type() -> Self {
+    pub(crate) fn untyped_data_type() -> Self {
         UntypedDataType {
             namespace: default(),
         }

@@ -15,7 +15,7 @@ use std::fmt;
 impl Crate {
     // @Bug does not understand non-local binders
     // @Beacon @Beacon @Beacon @Task make this a method of Typer instead
-    pub fn carry_out(
+    pub(crate) fn carry_out(
         &mut self,
         registration: BindingRegistration,
         session: &mut BuildSession,
@@ -103,13 +103,13 @@ impl Crate {
 }
 
 #[derive(Clone)] // @Question expensive attributes clone?
-pub struct BindingRegistration {
-    pub attributes: Attributes,
-    pub kind: BindingRegistrationKind,
+pub(crate) struct BindingRegistration {
+    pub(crate) attributes: Attributes,
+    pub(crate) kind: BindingRegistrationKind,
 }
 
 #[derive(Clone)]
-pub enum BindingRegistrationKind {
+pub(crate) enum BindingRegistrationKind {
     Function {
         binder: Identifier,
         type_: Expression,
@@ -185,19 +185,19 @@ impl DisplayWith for BindingRegistration {
 
 // @Task find out if we can get rid of this type by letting `ModuleScope::lookup_value` resolve to the Binder
 // if it's neutral
-pub enum ValueView {
+pub(crate) enum ValueView {
     Reducible(Expression),
     Neutral,
 }
 
 impl ValueView {
-    pub fn is_neutral(&self) -> bool {
+    pub(crate) fn is_neutral(&self) -> bool {
         matches!(self, Self::Neutral)
     }
 }
 
 /// The scope of bindings inside of a function.
-pub enum FunctionScope<'a> {
+pub(crate) enum FunctionScope<'a> {
     Crate,
     FunctionParameter {
         parent: &'a Self,
@@ -211,14 +211,14 @@ pub enum FunctionScope<'a> {
 }
 
 impl<'a> FunctionScope<'a> {
-    pub fn extend_with_parameter(&'a self, type_: Expression) -> Self {
+    pub(crate) fn extend_with_parameter(&'a self, type_: Expression) -> Self {
         Self::FunctionParameter {
             parent: self,
             type_,
         }
     }
 
-    pub fn extend_with_pattern_binders(&'a self, types: Vec<Expression>) -> Self {
+    pub(crate) fn extend_with_pattern_binders(&'a self, types: Vec<Expression>) -> Self {
         Self::PatternBinders {
             parent: self,
             types,
