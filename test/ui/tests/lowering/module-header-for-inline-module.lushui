@@ -1,0 +1,11 @@
+;;; TEST pass check
+;;; @Task smh test that the attributes are merged. instead of `@doc`, maybe introduce
+;;; test attributes (internal attributes) which have an observable effect but hmm, that might be hacky
+;;; (very far from a (realistic) "UI" test)
+
+;; description, part 1
+module inline of
+
+    ;; description, part 2
+    module
+

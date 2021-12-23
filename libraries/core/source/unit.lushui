@@ -1,3 +1,6 @@
+;; The canonical unit type and related functions.
+module
+
 @public @known
 data Unit: Type of
     unit: Unit

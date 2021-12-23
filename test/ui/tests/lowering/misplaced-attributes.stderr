@@ -128,7 +128,7 @@ error[E013]: attribute `public` is ascribed to a path expression
 12 |     @intrinsic @Text make-binding @(public super) resource
    |                                                   -------- incompatible item
    |
-  note: attribute `public` can only be ascribed to declarations except constructors
+  note: attribute `public` can only be ascribed to declarations except constructors and module headers
 
 error[E013]: attribute `public` is ascribed to a constructor declaration
   --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:15:5
@@ -141,7 +141,7 @@ error[E013]: attribute `public` is ascribed to a constructor declaration
 15 |     @public manifest
    |             -------- incompatible item
    |
-  note: attribute `public` can only be ascribed to declarations except constructors
+  note: attribute `public` can only be ascribed to declarations except constructors and module headers
 
 error[E015]: a mandatory type annotation is missing on the declaration `manifest`
   --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:15:21

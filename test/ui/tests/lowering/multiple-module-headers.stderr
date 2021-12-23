@@ -1,0 +1,20 @@
+error[E041]: the module header has to be the first declaration of the module
+ --> ${DIRECTORY}/lowering/multiple-module-headers.lushui:5:1
+  |
+5 | module
+  | ^^^^^^ 
+  |
+ note: however, the current module already has a module header
+
+error[E041]: the module header has to be the first declaration of the module
+ --> ${DIRECTORY}/lowering/multiple-module-headers.lushui:9:1
+  |
+9 | module
+  | ^^^^^^ 
+  |
+ note: however, the current module already has a module header
+
+error: aborting due to 2 previous errors
+ note: the error E041 has a detailed explanation
+ help: run `lushui explain E041` to view it
+

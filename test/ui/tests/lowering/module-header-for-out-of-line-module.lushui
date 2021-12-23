@@ -1,0 +1,5 @@
+;;; TEST pass check
+
+@public
+module with-module-header
+

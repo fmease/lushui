@@ -1,2 +1,5 @@
+;; Natural numbers (unsigned integers) with 32-bit precision and related functions.
+module
+
 @public @intrinsic
 data Nat32: Type

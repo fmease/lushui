@@ -1138,7 +1138,7 @@ impl<'a> Resolver<'a> {
 
         for (index, entity) in self.crate_.bindings.iter() {
             if let Exposure::Restricted(exposure) = &entity.exposure {
-                // unwrap: root always has Exposure::Unrestricted
+                // unwrap: root always has Exposure::Unrestricted, it won't reach this branch
                 let definition_site_namespace = self.crate_.global_index(entity.parent.unwrap());
 
                 if self

@@ -1,3 +1,6 @@
+;; Types and functions related to comparing and ordering.
+module
+
 @public
 data Ordering: Type of
     less: Ordering

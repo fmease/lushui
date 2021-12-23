@@ -1,3 +1,6 @@
+;; Canonical non-dependent sum types and related functions.
+module
+
 ;;; @Task better name for this type, module and constructors!
 
 @public

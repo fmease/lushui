@@ -1,3 +1,6 @@
+;; Error handling with the Result type.
+module
+
 @public
 data Result (A: Type) (Error: Type): Type of
     failure (A: Type) (Error: Type): Error -> Result A Error

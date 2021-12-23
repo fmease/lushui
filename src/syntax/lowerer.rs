@@ -89,9 +89,10 @@ impl<'a> Lowerer<'a> {
 
         let mut health = Health::Untainted;
 
-        let attributes =
-            Outcome::from(self.lower_attributes(&declaration.attributes, &declaration))
-                .unwrap(&mut health);
+        let mut attributes = self
+            .lower_attributes(&declaration.attributes, &declaration)
+            .unwrap(&mut health);
+
         let declarations = match declaration.value {
             Function(function) => {
                 if function.type_annotation.is_none() {
@@ -217,7 +218,6 @@ impl<'a> Lowerer<'a> {
                     }
                 }]
             }
-            // @Beacon @Task check multiple record constructors
             Constructor(constructor) => {
                 let constructor_type_annotation = match constructor.type_annotation {
                     Some(type_annotation) => type_annotation,
@@ -247,6 +247,8 @@ impl<'a> Lowerer<'a> {
                 if let Some(body) = constructor.body {
                     let body = self.lower_expression(body).unwrap(&mut health);
 
+                    // @Task improve the labels etc, don't say "conflicting definition"
+                    // it's technically true, but we can do so much better!
                     Diagnostic::error()
                         .code(Code::E020)
                         .message(format!(
@@ -270,7 +272,7 @@ impl<'a> Lowerer<'a> {
                 }]
             }
             Module(module) => {
-                let is_out_of_line_module = module.declarations.is_none();
+                let is_inline_module = module.declarations.is_some();
 
                 let declarations = match module.declarations {
                     Some(declarations) => declarations,
@@ -308,35 +310,30 @@ impl<'a> Lowerer<'a> {
                             }
                         };
 
-                        // @Note awkward error handling API
-                        let node = match crate::syntax::parse(
+                        let Ok(declaration) = crate::syntax::parse(
                             file,
                             module.binder.clone(),
                             self.map.clone(),
                             self.reporter,
-                        ) {
-                            Ok(node) => node,
-                            Err(()) => return PossiblyErroneous::error(),
+                        ) else {
+                            return PossiblyErroneous::error();
                         };
 
-                        let module: ast::Module = node.value.try_into().unwrap();
+                        // at this point in time, they are still on the module header if at all
+                        assert!(declaration.attributes.is_empty());
 
-                        if !node.attributes.is_empty() {
-                            Diagnostic::unimplemented("attributes on module headers")
-                                .report(self.reporter);
-                            health.taint();
-                        }
-
+                        let module: ast::Module = declaration.value.try_into().unwrap();
                         module.declarations.unwrap()
                     }
                 };
 
-                let mut inline_modules = if is_out_of_line_module {
-                    Vec::new()
-                } else {
+                let mut inline_modules = if is_inline_module {
                     context.inline_modules.clone()
+                } else {
+                    Vec::new()
                 };
                 if !context.is_root {
+                    // @Bug does not respect @location
                     inline_modules.push(module.binder.to_string());
                 }
 
@@ -345,13 +342,45 @@ impl<'a> Lowerer<'a> {
                     inline_modules,
                 };
 
-                let declarations = declarations
-                    .into_iter()
-                    .flat_map(|declaration| {
+                let mut lowered_declarations = Vec::new();
+                let mut possesses_header = false;
+
+                for (index, declaration) in declarations.into_iter().enumerate() {
+                    if matches!(declaration.value, ModuleHeader) {
+                        if index == 0 {
+                            // @Bug this sequence may lead to some unnecessary diagnostics being emitted
+                            // since the "synergy check" (which filters duplicate attribute) is run too late
+
+                            let module_header_attributes = self
+                                .lower_attributes(&declaration.attributes, &declaration)
+                                .unwrap(&mut health);
+                            attributes.0.extend(module_header_attributes.0);
+                            attributes =
+                                self.check_attribute_synergy(attributes).unwrap(&mut health);
+                        } else {
+                            Diagnostic::error()
+                                .code(Code::E041)
+                                .message(
+                                    "the module header has to be the first declaration of the module",
+                                )
+                                .primary_span(&declaration)
+                                .if_(possesses_header, |this| {
+                                    // @Task make this a note with a span/highlight!
+                                    this.note("however, the current module already has a module header")
+                                })
+                                .report(self.reporter);
+                            health.taint();
+                        }
+
+                        possesses_header = true;
+                        continue;
+                    }
+
+                    lowered_declarations.extend(
                         self.lower_declaration_with_context(declaration, &context)
-                            .unwrap(&mut health)
-                    })
-                    .collect();
+                            .unwrap(&mut health),
+                    );
+                }
 
                 smallvec![decl! {
                     Module {
@@ -359,20 +388,12 @@ impl<'a> Lowerer<'a> {
                         declaration.span;
                         binder: module.binder,
                         file: module.file,
-                        declarations,
+                        declarations: lowered_declarations,
                     }
                 }]
             }
-            // @Beacon @Task merge attributes with parent module
-            // (through a `Context`) and ensure it's the first declaration in the whole module
-            ModuleHeader => {
-                // @Note awkward API!
-                Diagnostic::unimplemented("module headers")
-                    .primary_span(declaration.span)
-                    .report(self.reporter);
-                health.taint();
-                PossiblyErroneous::error()
-            }
+            // handled in the module case
+            ModuleHeader => unreachable!(),
             // overarching attributes be placed *above* the subdeclaration attributes
             Group(group) => {
                 let group_attributes = declaration.attributes;
@@ -526,7 +547,8 @@ impl<'a> Lowerer<'a> {
 
         let mut health = Health::Untainted;
 
-        let attributes = Outcome::from(self.lower_attributes(&expression.attributes, &expression))
+        let attributes = self
+            .lower_attributes(&expression.attributes, &expression)
             .unwrap(&mut health);
 
         let expression = match expression.value {
@@ -787,8 +809,9 @@ impl<'a> Lowerer<'a> {
 
         let mut health = Health::Untainted;
 
-        let attributes =
-            Outcome::from(self.lower_attributes(&pattern.attributes, &pattern)).unwrap(&mut health);
+        let attributes = self
+            .lower_attributes(&pattern.attributes, &pattern)
+            .unwrap(&mut health);
 
         let pattern = match pattern.value {
             // @Note awkward API!
@@ -857,10 +880,10 @@ impl<'a> Lowerer<'a> {
     /// Lower attributes.
     // @Task filter out documentation attributes if !options.keep_documentation_comments
     fn lower_attributes(
-        &mut self,
+        &self,
         unchecked_attributes: &[ast::Attribute],
         target: &impl Target,
-    ) -> Result<Attributes> {
+    ) -> Outcome<Attributes> {
         use lowered_ast::Attribute;
 
         let actual_targets = target.as_targets();
@@ -901,7 +924,18 @@ impl<'a> Lowerer<'a> {
             conforming_attributes.0.push(attribute);
         }
 
+        let attributes = self
+            .check_attribute_synergy(conforming_attributes)
+            .unwrap(&mut health);
+
+        health &= target.check_attributes(&attributes, self.reporter);
+
+        health.of(attributes)
+    }
+
+    fn check_attribute_synergy(&self, conforming_attributes: Attributes) -> Outcome<Attributes> {
         let mut attributes = Attributes::default();
+        let mut health = Health::Untainted;
 
         // search for conflicting or duplicate attributes
         for attribute in &conforming_attributes.0 {
@@ -933,11 +967,9 @@ impl<'a> Lowerer<'a> {
             }
         }
 
-        health &= target.check_attributes(&attributes, self.reporter);
-
         // no further checks necessary if empty
         if attributes.0.is_empty() {
-            return health.of(attributes).into();
+            return health.of(attributes);
         }
 
         fn check_mutual_exclusivity<Q: Query>(
@@ -1003,7 +1035,7 @@ impl<'a> Lowerer<'a> {
             }
         }
 
-        health.of(attributes).into()
+        health.of(attributes)
     }
 
     fn lower_number_literal(

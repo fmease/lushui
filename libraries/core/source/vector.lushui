@@ -1,3 +1,6 @@
+;; Homogeneous lists with a fixed length and related functions.
+module
+
 use crate.nat.(Nat +)
 
 @public

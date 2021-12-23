@@ -1,0 +1,16 @@
+error[E006]: multiple `doc-attributes` attributes
+ --> ${DIRECTORY}/lowering/module-header-attributes-conflict-with-out-of-line-module-ones.lushui:6:1
+  |
+6 | @doc-attributes
+  | ^^^^^^^^^^^^^^^ duplicate or conflicting attribute
+  |
+ --> ${DIRECTORY}/lowering/module-header-attributes-conflict-with-out-of-line-module-ones.lushui:8:5
+  |
+8 |     @doc-attributes
+  |     ^^^^^^^^^^^^^^^ duplicate or conflicting attribute
+  |
+
+error: aborting due to previous error
+ note: the error E006 has a detailed explanation
+ help: run `lushui explain E006` to view it
+

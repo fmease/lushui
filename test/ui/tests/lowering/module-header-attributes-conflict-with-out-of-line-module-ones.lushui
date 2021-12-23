@@ -1,0 +1,10 @@
+;;; TEST fail check --no-core -Z internals
+;;; we are using `@doc-attributes` right now since it's allowed on both modules and module headers, it's
+;;; not "coexistable" (old terminology) and it's implemented.
+;;; @Task use `@recursion-limit` (or anything non-internal) instead once it's implemented.
+
+@doc-attributes
+module attrs of
+    @doc-attributes
+    module
+

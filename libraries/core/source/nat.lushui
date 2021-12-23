@@ -1,3 +1,6 @@
+;; Natural numbers and related functions.
+module
+
 use crate.(option.Option bool.Bool text.Text)
 
 @public @intrinsic

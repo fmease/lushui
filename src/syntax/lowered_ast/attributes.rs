@@ -201,6 +201,7 @@ impl Target for ast::Pattern {
 
 // excluded: crate::syntax::ast::DeclarationKind::{Header, Group}
 // @Task somehow generate the explicit bits
+// @Beacon @Beacon @Beacon @Task replace this!
 bitflags::bitflags! {
     /// Attribute targets.
     pub struct Targets: u32 {
@@ -272,6 +273,7 @@ bitflags::bitflags! {
 }
 
 impl Targets {
+    // @Beacon @Beacon @Beacon @Bug this is soo fragile!
     pub fn description(self) -> &'static str {
         // @Task use match + inline consts once derived operations are const
         condition! {
@@ -282,9 +284,11 @@ impl Targets {
             self == Self::DATA_DECLARATION => "data declarations",
             self == Self::NUMBER_LITERAL => "number literals",
             self == Self::SEQUENCE_LITERAL => "sequence literals",
-            self == Self::DECLARATION - Self::CONSTRUCTOR_DECLARATION => "declarations except constructors",
+            // @Note hideous description!
+            self == Self::DECLARATION - Self::CONSTRUCTOR_DECLARATION - Self::MODULE_HEADER_DECLARATION => "declarations except constructors and module headers",
             self == Self::MODULE_DECLARATION => "module declarations",
-            self == Self::FUNCTION_DECLARATION | Self::MODULE_DECLARATION => "function or module declarations",
+            self == Self::MODULE_DECLARATION | Self::MODULE_HEADER_DECLARATION => "module (header) declarations",
+            self == Self::FUNCTION_DECLARATION | Self::MODULE_DECLARATION | Self::MODULE_HEADER_DECLARATION => "function or module (header) declarations",
             self == Self::EXPRESSION => "expressions",
             self == Self::FUNCTION_DECLARATION
                 | Self::CONSTRUCTOR_DECLARATION
@@ -540,12 +544,22 @@ impl AttributeKind {
             }
             Int | Int32 | Int64 | Nat | Nat32 | Nat64 => Targets::NUMBER_LITERAL,
             List | Vector => Targets::SEQUENCE_LITERAL,
-            // @Task but smh add extra diagnostic note saying they are public automatically
-            Public { .. } => Targets::DECLARATION - Targets::CONSTRUCTOR_DECLARATION,
-            Location { .. } | RecursionLimit { .. } | DocAttributes | DocReservedIdentifiers => {
-                Targets::MODULE_DECLARATION
+            // @Task for constructors, smh add extra diagnostic note saying they are public automatically
+            // @Update with `@transparent` implemented, suggest `@transparent` on the data decl
+            Public { .. } => {
+                Targets::DECLARATION
+                    - Targets::CONSTRUCTOR_DECLARATION
+                    - Targets::MODULE_HEADER_DECLARATION
             }
-            Test => Targets::FUNCTION_DECLARATION | Targets::MODULE_DECLARATION,
+            RecursionLimit { .. } | DocAttributes | DocReservedIdentifiers => {
+                Targets::MODULE_DECLARATION | Targets::MODULE_HEADER_DECLARATION
+            }
+            Location { .. } => Targets::MODULE_DECLARATION,
+            Test => {
+                Targets::FUNCTION_DECLARATION
+                    | Targets::MODULE_DECLARATION
+                    | Targets::MODULE_HEADER_DECLARATION
+            }
             Static => Targets::EXPRESSION,
             Unsafe => {
                 Targets::FUNCTION_DECLARATION

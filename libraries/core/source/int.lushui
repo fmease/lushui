@@ -1,3 +1,6 @@
+;; Integers and related functions.
+module
+
 @public @intrinsic
 data Int: Type
 

@@ -1,0 +1,7 @@
+;;; TEST fail check
+
+data Void: Type of
+
+;; What is this?
+module
+

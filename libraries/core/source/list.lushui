@@ -1,3 +1,6 @@
+;; Homogeneous list types and related functions.
+module
+
 @public
 data List (A: Type): Type of
     empty (A: Type): List A

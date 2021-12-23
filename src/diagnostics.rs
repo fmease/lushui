@@ -667,6 +667,8 @@ pub enum Code {
     E039,
     /// Redefinition of intrinsic binding.
     E040,
+    /// Module header is not the first declaration.
+    E041,
     /// Missing program entry.
     E050,
     /// Missing intrinsic binding.

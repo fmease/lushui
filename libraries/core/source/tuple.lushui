@@ -1,3 +1,6 @@
+;; Canonical tuples (heterogeneous lists) and related functions.
+module
+
 ;;; @Question tuple backed by List or by Vector in core (or both implementations)?
 
 use crate.list.(List self)
