@@ -35,7 +35,7 @@ use crate::{
     error::{map_outcome_from_result, Health, Outcome, PossiblyErroneous, Result},
     format::{ordered_listing, Conjunction, IOError, QuoteExt},
     span::{SharedSourceMap, SourceMap, Span, Spanning},
-    syntax::lowered_ast::attributes::{Lint, Predicate, Public, Query},
+    syntax::lowered_ast::attributes::{Predicate, Public, Query},
     utility::{SmallVec, Str},
 };
 use smallvec::smallvec;
@@ -1002,6 +1002,16 @@ impl<'a> Lowerer<'a> {
             use AttributeName::*;
 
             health &= check_mutual_exclusivity(Intrinsic.or(Known), &attributes, self.reporter);
+            health &= check_mutual_exclusivity(
+                DocAttributes.or(DocReservedIdentifiers),
+                &attributes,
+                self.reporter,
+            );
+            health &= check_mutual_exclusivity(
+                DocAttribute.or(DocReservedIdentifier),
+                &attributes,
+                self.reporter,
+            );
             health &= check_mutual_exclusivity(Moving.or(Abstract), &attributes, self.reporter);
             health &= check_mutual_exclusivity(
                 Int.or(Int32).or(Int64).or(Nat).or(Nat32).or(Nat64),
@@ -1180,6 +1190,7 @@ impl lowered_ast::attributes::Attribute {
 impl lowered_ast::attributes::AttributeKind {
     // @Task allow unordered named attributes e.g. `@(unstable (reason "x") (feature thing))`
     pub(crate) fn parse(
+        // @Task take by value and create parsing helpers on ast::Attribute and ast::Attributes
         attribute: &ast::Attribute,
         options: &Options,
         map: &SourceMap,
@@ -1228,29 +1239,37 @@ impl lowered_ast::attributes::AttributeKind {
         }
 
         let result = (|| {
-            Ok(match binder.as_str() {
-                "abstract" => Self::Abstract,
-                "allow" => Self::Allow {
-                    lint: lowered_ast::attributes::Lint::parse(
+            use AttributeName::*;
+
+            let name: AttributeName = binder
+                .as_str()
+                .parse()
+                .map_err(|_| AttributeParsingError::UndefinedAttribute(binder.clone()))?;
+
+            Ok(match name {
+                Abstract => Self::Abstract,
+                Allow | Deny | Forbid | Warn => {
+                    let lint = lowered_ast::attributes::Lint::parse(
                         argument(arguments, attribute.span, reporter)?
                             .path(Some("lint"), reporter)?,
                         reporter,
-                    )?,
-                },
-                "deny" => Self::Deny {
-                    lint: lowered_ast::attributes::Lint::parse(
-                        argument(arguments, attribute.span, reporter)?
-                            .path(Some("lint"), reporter)?,
-                        reporter,
-                    )?,
-                },
-                "deprecated" => {
+                    )?;
+
+                    match name {
+                        Allow => Self::Allow { lint },
+                        Deny => Self::Deny { lint },
+                        Forbid => Self::Forbid { lint },
+                        Warn => Self::Warn { lint },
+                        _ => unreachable!(),
+                    }
+                }
+                Deprecated => {
                     Diagnostic::unimplemented("attribute `deprecated`")
                         .primary_span(attribute)
                         .report(reporter);
                     return Err(AttributeParsingError::Unrecoverable);
                 }
-                "doc" => Self::Doc {
+                Doc => Self::Doc {
                     content: if options.keep_documentation_comments {
                         argument(arguments, attribute.span, reporter)?
                             .text_literal(None, reporter)?
@@ -1259,56 +1278,48 @@ impl lowered_ast::attributes::AttributeKind {
                         String::new()
                     },
                 },
-                // @Temporary
-                "doc-attribute" => Self::DocAttribute {
+                DocAttribute => Self::DocAttribute {
                     name: argument(arguments, attribute.span, reporter)?
                         .text_literal(None, reporter)?,
                 },
-                "doc-attributes" => Self::DocAttributes,
-                "doc-reserved-identifier" => Self::DocReservedIdentifier {
+                DocAttributes => Self::DocAttributes,
+                DocReservedIdentifier => Self::DocReservedIdentifier {
                     name: argument(arguments, attribute.span, reporter)?
                         .text_literal(None, reporter)?,
                 },
-                "doc-reserved-identifiers" => Self::DocReservedIdentifiers,
-                "forbid" => Self::Forbid {
-                    lint: Lint::parse(
-                        argument(arguments, attribute.span, reporter)?
-                            .path(Some("lint"), reporter)?,
-                        reporter,
-                    )?,
-                },
-                "intrinsic" => Self::Intrinsic,
-                "if" => {
+                DocReservedIdentifiers => Self::DocReservedIdentifiers,
+                Intrinsic => Self::Intrinsic,
+                If => {
                     Diagnostic::unimplemented("attribute `if`")
                         .primary_span(attribute)
                         .report(reporter);
                     return Err(AttributeParsingError::Unrecoverable);
                 }
-                "ignore" => Self::Ignore,
-                "include" => Self::Include,
-                "known" => Self::Known,
-                "Int" => Self::Int,
-                "Int32" => Self::Int32,
-                "Int64" => Self::Int64,
-                "List" => Self::List,
-                "location" => {
+                Ignore => Self::Ignore,
+                Include => Self::Include,
+                Known => Self::Known,
+                Int => Self::Int,
+                Int32 => Self::Int32,
+                Int64 => Self::Int64,
+                List => Self::List,
+                Location => {
                     let path = argument(arguments, attribute.span, reporter)?
                         .text_literal(Some("path"), reporter)?;
 
                     Self::Location { path }
                 }
-                "moving" => Self::Moving,
-                "Nat" => Self::Nat,
-                "Nat32" => Self::Nat32,
-                "Nat64" => Self::Nat64,
-                "public" => {
+                Moving => Self::Moving,
+                Nat => Self::Nat,
+                Nat32 => Self::Nat32,
+                Nat64 => Self::Nat64,
+                Public => {
                     let reach = optional_argument(arguments)
                         .map(|argument| argument.path(Some("reach"), reporter))
                         .transpose()?;
 
-                    Self::Public(Public { reach })
+                    Self::Public(self::Public { reach })
                 }
-                "recursion-limit" => {
+                RecursionLimit => {
                     let depth = argument(arguments, attribute.span, reporter)?;
                     let depth = depth
                         .number_literal(Some("depth"), reporter)?
@@ -1327,27 +1338,19 @@ impl lowered_ast::attributes::AttributeKind {
 
                     Self::RecursionLimit { depth }
                 }
-                "Rune" => Self::Rune,
-                "static" => Self::Static,
-                "test" => Self::Test,
-                "Text" => Self::Text,
-                "unsafe" => Self::Unsafe,
-                "unstable" => {
+                Rune => Self::Rune,
+                Static => Self::Static,
+                Test => Self::Test,
+                Text => Self::Text,
+                Unsafe => Self::Unsafe,
+                Unstable => {
                     Diagnostic::unimplemented("attribute `unstable`")
                         .primary_span(attribute)
                         .report(reporter);
 
                     return Err(AttributeParsingError::Unrecoverable);
                 }
-                "Vector" => Self::Vector,
-                "warn" => Self::Warn {
-                    lint: lowered_ast::attributes::Lint::parse(
-                        argument(arguments, attribute.span, reporter)?
-                            .path(Some("lint"), reporter)?,
-                        reporter,
-                    )?,
-                },
-                _ => return Err(AttributeParsingError::UndefinedAttribute(binder.clone())),
+                Vector => Self::Vector,
             })
         })();
 

@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, str::FromStr};
 
 use discriminant::Discriminant;
 
@@ -405,15 +405,14 @@ pub(crate) enum AttributeKind {
     Doc {
         content: String,
     },
-    // @Temporary
-    DocReservedIdentifiers,
-    DocReservedIdentifier {
-        name: String, // @Task make this an ast::Identifier
-    },
-    DocAttributes,
     DocAttribute {
         name: String, // @Task make this an ast::Identifier/ast::Path
     },
+    DocAttributes,
+    DocReservedIdentifier {
+        name: String, // @Task make this an ast::Identifier
+    },
+    DocReservedIdentifiers,
     /// Forbid a [lint](Lint).
     ///
     /// # Form
@@ -619,6 +618,64 @@ impl AttributeKind {
     }
 }
 
+impl fmt::Display for AttributeKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "@")?;
+
+        let name = self.name().to_str();
+
+        match self {
+            Self::Abstract
+            | Self::DocAttributes
+            | Self::DocReservedIdentifiers
+            | Self::Intrinsic
+            | Self::Ignore
+            | Self::Include
+            | Self::Known
+            | Self::Int
+            | Self::Int32
+            | Self::Int64
+            | Self::List
+            | Self::Moving
+            | Self::Nat
+            | Self::Nat32
+            | Self::Nat64
+            | Self::Rune
+            | Self::Static
+            | Self::Test
+            | Self::Text
+            | Self::Unsafe
+            | Self::Vector => write!(f, "{name}"),
+
+            Self::Allow { lint }
+            | Self::Deny { lint }
+            | Self::Forbid { lint }
+            | Self::Warn { lint } => write!(f, "({name} {})", lint),
+
+            Self::Deprecated(deprecated) => write!(
+                f,
+                "({name} (reason {:?}) (since {:?}) (removal {:?}) (replacement {:?}))",
+                deprecated.reason, deprecated.since, deprecated.removal, deprecated.replacement
+            ),
+            Self::Doc { content } => write!(f, "({name} {content:?})"),
+            Self::DocAttribute { name: identifier } => write!(f, "({name} {identifier:?})"),
+            Self::DocReservedIdentifier { name: identifier } => {
+                write!(f, "({name} {identifier:?})")
+            }
+            Self::If { condition } => write!(f, "({name} {condition})"),
+            Self::Location { path } => write!(f, "({name} {path})"),
+            Self::Public(public) => match &public.reach {
+                Some(reach) => write!(f, "({name} {reach})"),
+                None => write!(f, "{name}"),
+            },
+            Self::RecursionLimit { depth } => write!(f, "({name} {depth})"),
+            Self::Unstable(unstable) => {
+                write!(f, "({name} {} {:?})", unstable.feature, unstable.reason)
+            }
+        }
+    }
+}
+
 impl AttributeName {
     // @Task smh derive this!
     pub(crate) const fn to_str(self) -> &'static str {
@@ -658,6 +715,51 @@ impl AttributeName {
             Self::Vector => "Vector",
             Self::Warn => "warn",
         }
+    }
+}
+
+// @Task smh derive this!
+impl FromStr for AttributeName {
+    type Err = ();
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        Ok(match input {
+            "abstract" => Self::Abstract,
+            "allow" => Self::Allow,
+            "deny" => Self::Deny,
+            "deprecated" => Self::Deprecated,
+            "doc" => Self::Doc,
+            "doc-attribute" => Self::DocAttribute,
+            "doc-attributes" => Self::DocAttributes,
+            "doc-reserved-identifier" => Self::DocReservedIdentifier,
+            "doc-reserved-identifiers" => Self::DocReservedIdentifiers,
+            "forbid" => Self::Forbid,
+            "intrinsic" => Self::Intrinsic,
+            "if" => Self::If,
+            "ignore" => Self::Ignore,
+            "include" => Self::Include,
+            "known" => Self::Known,
+            "Int" => Self::Int,
+            "Int32" => Self::Int32,
+            "Int64" => Self::Int64,
+            "List" => Self::List,
+            "location" => Self::Location,
+            "moving" => Self::Moving,
+            "Nat" => Self::Nat,
+            "Nat32" => Self::Nat32,
+            "Nat64" => Self::Nat64,
+            "public" => Self::Public,
+            "recursion-limit" => Self::RecursionLimit,
+            "Rune" => Self::Rune,
+            "static" => Self::Static,
+            "test" => Self::Test,
+            "Text" => Self::Text,
+            "unsafe" => Self::Unsafe,
+            "unstable" => Self::Unstable,
+            "Vector" => Self::Vector,
+            "warn" => Self::Warn,
+            _ => return Err(()),
+        })
     }
 }
 
@@ -761,11 +863,29 @@ pub(crate) struct Unstable {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub(crate) enum Lint {}
 
+impl fmt::Display for Lint {
+    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {}
+    }
+}
+
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub(crate) enum Version {}
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub(crate) enum Condition {}
 
+impl fmt::Display for Condition {
+    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {}
+    }
+}
+
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub(crate) enum Feature {}
+
+impl fmt::Display for Feature {
+    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {}
+    }
+}

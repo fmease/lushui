@@ -10,85 +10,15 @@ const KEYWORD_COLOR: Color = Color::Cyan;
 const PUNCTUATION_COLOR: Color = Color::BrightMagenta;
 const ATTRIBUTE_COLOR: Color = Color::BrightWhite;
 
-impl fmt::Display for super::attributes::AttributeKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "@")?;
-
-        match self {
-            Self::Abstract => write!(f, "abstract"),
-            Self::Allow { lint } => write!(f, "(allow {})", lint),
-            Self::Deny { lint } => write!(f, "(deny {})", lint),
-            Self::Deprecated(deprecated) => write!(
-                f,
-                "(deprecated (reason {:?}) (since {:?}) (removal {:?}) (replacement {:?}))",
-                deprecated.reason, deprecated.since, deprecated.removal, deprecated.replacement
-            ),
-            Self::Doc { content } => write!(f, "(doc {:?})", content),
-            Self::DocAttribute { name } => write!(f, "(doc-attribute {name:?})"),
-            Self::DocAttributes => write!(f, "doc-attributes"),
-            Self::DocReservedIdentifier { name } => write!(f, "(doc-reserved-identifier {name:?})"),
-            Self::DocReservedIdentifiers => write!(f, "doc-reserved-identifiers"),
-            Self::Forbid { lint } => write!(f, "(forbid {})", lint),
-            Self::Intrinsic => write!(f, "intrinsic"),
-            Self::If { condition } => write!(f, "(if {})", condition),
-            Self::Ignore => write!(f, "ignore"),
-            Self::Include => write!(f, "include"),
-            Self::Known => write!(f, "known"),
-            Self::Int => write!(f, "Int"),
-            Self::Int32 => write!(f, "Int32"),
-            Self::Int64 => write!(f, "Int64"),
-            Self::List => write!(f, "List"),
-            Self::Location { path } => write!(f, "(location {})", path),
-            Self::Moving => write!(f, "moving"),
-            Self::Nat => write!(f, "Nat"),
-            Self::Nat32 => write!(f, "Nat32"),
-            Self::Nat64 => write!(f, "Nat64"),
-            Self::Public(public) => match &public.reach {
-                Some(reach) => write!(f, "(public {})", reach),
-                None => write!(f, "public"),
-            },
-            Self::RecursionLimit { depth } => write!(f, "(recursion-limit {})", depth),
-            Self::Rune => write!(f, "Rune"),
-            Self::Static => write!(f, "static"),
-            Self::Test => write!(f, "test"),
-            Self::Text => write!(f, "Text"),
-            Self::Unsafe => write!(f, "unsafe"),
-            Self::Unstable(unstable) => {
-                write!(f, "(feature {} {:?})", unstable.feature, unstable.reason)
-            }
-            Self::Vector => write!(f, "Vector"),
-            Self::Warn { lint } => write!(f, "(warn {})", lint),
-        }
-    }
-}
-
-impl fmt::Display for super::attributes::Lint {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {}
-    }
-}
-
-impl fmt::Display for super::attributes::Condition {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {}
-    }
-}
-
-impl fmt::Display for super::attributes::Feature {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {}
-    }
-}
-
 impl fmt::Display for super::Number {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Nat(value) => write!(f, "{}", value),
-            Self::Nat32(value) => write!(f, "{}", value),
-            Self::Nat64(value) => write!(f, "{}", value),
-            Self::Int(value) => write!(f, "{}", value),
-            Self::Int32(value) => write!(f, "{}", value),
-            Self::Int64(value) => write!(f, "{}", value),
+            Self::Nat(value) => write!(f, "{value}"),
+            Self::Nat32(value) => write!(f, "{value}"),
+            Self::Nat64(value) => write!(f, "{value}"),
+            Self::Int(value) => write!(f, "{value}"),
+            Self::Int32(value) => write!(f, "{value}"),
+            Self::Int64(value) => write!(f, "{value}"),
         }
     }
 }

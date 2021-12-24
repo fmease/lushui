@@ -15,18 +15,21 @@
 use crate::{
     diagnostics::Reporter,
     error::Result,
-    hir,
+    hir::{self, LocalDeclarationIndex},
     package::{BuildSession, CrateType, PackageIndex},
     resolver::Crate,
     syntax::{
         ast,
-        lowered_ast::{attributes::Query as _, AttributeName, Attributes},
+        lowered_ast::{
+            attributes::Query as _, Attribute, AttributeKind, AttributeName, Attributes,
+        },
         CrateName,
     },
+    utility::condition,
 };
 use joinery::JoinableIterator;
 use node::{Attributable, Document, Element, Node, VoidElement};
-use std::{borrow::Cow, default::default, fs, path::PathBuf};
+use std::{default::default, fs, path::PathBuf};
 
 mod fonts;
 mod format;
@@ -38,6 +41,7 @@ const MAIN_STYLE_SHEET_FILE_NAME: &str = "style.min.css";
 const MAIN_SCRIPT_FILE_NAME: &str = "script.min.js";
 const SEARCH_INDEX_FILE_NAME: &str = "search-index.min.js";
 
+// @Task make this an unstable option instead
 const DEVELOPING: bool = true;
 
 pub fn document(
@@ -372,70 +376,19 @@ impl<'a> Documenter<'a> {
     }
 
     fn render_module_page(&mut self, module: &hir::Module, attributes: &Attributes) {
-        let is_attribute_page = attributes.contains(AttributeName::DocAttributes);
-        let is_reserved_identifier_page =
-            attributes.contains(AttributeName::DocReservedIdentifiers);
+        let content_type = condition! {
+            attributes.contains(AttributeName::DocAttributes) => PageContentType::Attributes,
+            attributes.contains(AttributeName::DocReservedIdentifiers) => PageContentType::ReservedIdentifiers,
+            else => PageContentType::Module,
+        };
 
         let index = module.binder.local_declaration_index(self.crate_).unwrap();
         let path_segments = self.crate_.local_path_segments(index);
-        let page_depth = if is_attribute_page || is_reserved_identifier_page {
-            0
-        } else {
-            path_segments.len()
+        let page_depth = match content_type {
+            PageContentType::Module => path_segments.len(),
+            PageContentType::Attributes | PageContentType::ReservedIdentifiers => 0,
         };
-
         let url_prefix = format!("./{}", "../".repeat(page_depth));
-
-        let mut head = Element::new("head")
-            .child(VoidElement::new("meta").attribute("charset", "utf-8"))
-            .child(
-                VoidElement::new("meta")
-                    .attribute("name", "viewport")
-                    .attribute("content", "width=device-width, initial-scale=1.0"),
-            )
-            // @Task respect self.crate_.is_ambiguously_named_within_package
-            .child(Element::new("title").child(if is_attribute_page {
-                "Attributes".into()
-            } else if is_reserved_identifier_page {
-                "Reserved Identifiers".into()
-            } else {
-                self.crate_.local_path_to_string(index)
-            }))
-            .child(
-                VoidElement::new("meta")
-                    .attribute("name", "generator")
-                    .attribute(
-                        "content",
-                        format!("lushui documenter {}", env!("CARGO_PKG_VERSION")),
-                    ),
-            )
-            .child(
-                VoidElement::new("link")
-                    .attribute("rel", "stylesheet")
-                    .attribute("href", format!("{url_prefix}{MAIN_STYLE_SHEET_FILE_NAME}")),
-            )
-            .child(
-                Element::new("script")
-                    .attribute("src", format!("{url_prefix}{MAIN_SCRIPT_FILE_NAME}"))
-                    .boolean_attribute("defer"),
-            )
-            .child(
-                Element::new("script")
-                    .attribute(
-                        "src",
-                        // @Temporary
-                        format!("{url_prefix}/{}/{SEARCH_INDEX_FILE_NAME}", self.crate_.name),
-                    )
-                    .boolean_attribute("defer"),
-            );
-        let description = &self.session[self.crate_.package].description;
-        if !description.is_empty() {
-            head.add_child(
-                VoidElement::new("meta")
-                    .attribute("name", "description")
-                    .attribute("content", description),
-            );
-        }
 
         let mut body = Element::new("body");
 
@@ -465,64 +418,12 @@ impl<'a> Documenter<'a> {
 
         let subsections = self.collect_subsections(module, &url_prefix);
 
-        {
-            let mut table_of_contents = Element::new("div").class("sidebar");
-            subsections.render_table_of_contents(&mut table_of_contents);
-            container.add_child(table_of_contents);
-        }
-
-        // main content
-        {
-            let mut main = Element::new("section").class("main");
-
-            // main heading
-            {
-                let mut heading = Element::new("h1");
-
-                if is_attribute_page {
-                    heading.add_child("Attributes");
-                } else if is_reserved_identifier_page {
-                    heading.add_child("Reserved Identifiers");
-                } else {
-                    heading.add_child(match index == self.crate_.root() {
-                        true => "Crate",
-                        false => "Module",
-                    });
-
-                    heading.add_child(" ");
-
-                    for (position, &path_segment) in path_segments.iter().enumerate() {
-                        let is_last_segment = position + 1 == page_depth;
-
-                        let mut anchor = Element::new("a").attribute(
-                            "href",
-                            format!("{}index.html", "../".repeat(page_depth - 1 - position)),
-                        );
-                        anchor.add_child(path_segment);
-
-                        heading.add_child(anchor);
-
-                        if !is_last_segment {
-                            // @Task add extra spacing (left or right, depends) for
-                            // non-word module names
-                            heading.add_child(Node::verbatim(".<wbr>"));
-                        }
-                    }
-                }
-
-                main.add_child(heading);
-            }
-
-            render_declaration_attributes(attributes, &url_prefix, &mut main, &self.options);
-
-            subsections.render(&url_prefix, &mut main, &self.options);
-
-            container.add_child(main);
-        }
-
-        // crates side bar
+        // sidebar
         {
             let mut sidebar = Element::new("div").class("sidebar");
+
+            subsections.render_table_of_contents(&mut sidebar);
+
             sidebar.add_child(Element::new("div").class("title").child("Crates"));
 
             let mut list = Element::new("ul");
@@ -564,11 +465,62 @@ impl<'a> Documenter<'a> {
             container.add_child(sidebar);
         }
 
+        // main content
+        {
+            let mut main = Element::new("section").class("main");
+
+            // main heading
+            {
+                let mut heading = Element::new("h1");
+
+                match content_type {
+                    PageContentType::Module => {
+                        heading.add_child(match index == self.crate_.root() {
+                            true => "Crate",
+                            false => "Module",
+                        });
+
+                        heading.add_child(" ");
+
+                        for (position, &path_segment) in path_segments.iter().enumerate() {
+                            let is_last_segment = position + 1 == page_depth;
+
+                            let mut anchor = Element::new("a").attribute(
+                                "href",
+                                format!("{}index.html", "../".repeat(page_depth - 1 - position)),
+                            );
+                            anchor.add_child(path_segment);
+
+                            heading.add_child(anchor);
+
+                            if !is_last_segment {
+                                // @Task add extra spacing (left or right, depends) for
+                                // non-word module names
+                                heading.add_child(Node::verbatim(".<wbr>"));
+                            }
+                        }
+                    }
+                    PageContentType::Attributes => heading.add_child("Attributes"),
+                    PageContentType::ReservedIdentifiers => {
+                        heading.add_child("Reserved Identifiers")
+                    }
+                }
+
+                main.add_child(heading);
+            }
+
+            render_declaration_attributes(attributes, &url_prefix, &mut main, &self.options);
+
+            subsections.render(&url_prefix, &mut main, &self.options);
+
+            container.add_child(main);
+        }
+
         body.add_child(container);
 
         let mut html = Element::new("html");
         html.add_attribute("lang", "en");
-        html.add_child(head);
+        html.add_child(self.render_document_head(index, &url_prefix, content_type));
         html.add_child(body);
 
         let mut document = Document::default();
@@ -577,28 +529,86 @@ impl<'a> Documenter<'a> {
         let mut content = String::new();
         document.render(&mut content);
 
-        let path = if is_attribute_page {
-            self.destination.join("attributes.html")
-        } else if is_reserved_identifier_page {
-            self.destination.join("reserved.html")
-        } else {
-            let mut path = self.destination.clone();
-            let mut path_segments = path_segments.into_iter();
+        let path = match content_type {
+            PageContentType::Module => {
+                let mut path = self.destination.clone();
+                let mut path_segments = path_segments.into_iter();
 
-            if self.crate_.is_binary() && self.crate_.is_ambiguously_named_within_package {
-                path_segments.next();
-                // @Note does not scale to multiple binaries per package
-                path.push(format!("{}.binary", self.crate_.name));
+                if self.crate_.is_binary() && self.crate_.is_ambiguously_named_within_package {
+                    path_segments.next();
+                    // @Note does not scale to multiple binaries per package
+                    path.push(format!("{}.binary", self.crate_.name));
+                }
+
+                for segment in path_segments {
+                    path.push(segment);
+                }
+
+                path.join("index.html")
             }
-
-            for segment in path_segments {
-                path.push(segment);
-            }
-
-            path.join("index.html")
+            PageContentType::Attributes => self.destination.join("attributes.html"),
+            PageContentType::ReservedIdentifiers => self.destination.join("reserved.html"),
         };
 
         self.pages.push(Page { path, content });
+    }
+
+    fn render_document_head(
+        &self,
+        index: LocalDeclarationIndex,
+        url_prefix: &str,
+        content_type: PageContentType,
+    ) -> Element<'_> {
+        let mut head = Element::new("head")
+            .child(VoidElement::new("meta").attribute("charset", "utf-8"))
+            .child(
+                VoidElement::new("meta")
+                    .attribute("name", "viewport")
+                    .attribute("content", "width=device-width, initial-scale=1.0"),
+            )
+            .child(Element::new("title").child(match content_type {
+                // @Task respect self.crate_.is_ambiguously_named_within_package
+                PageContentType::Module => self.crate_.local_path_to_string(index),
+                PageContentType::Attributes => "Attributes".into(),
+                PageContentType::ReservedIdentifiers => "Reserved Identifiers".into(),
+            }))
+            .child(
+                VoidElement::new("meta")
+                    .attribute("name", "generator")
+                    .attribute(
+                        "content",
+                        format!("lushui documenter {}", env!("CARGO_PKG_VERSION")),
+                    ),
+            )
+            .child(
+                VoidElement::new("link")
+                    .attribute("rel", "stylesheet")
+                    .attribute("href", format!("{url_prefix}{MAIN_STYLE_SHEET_FILE_NAME}")),
+            )
+            .child(
+                Element::new("script")
+                    .attribute("src", format!("{url_prefix}{MAIN_SCRIPT_FILE_NAME}"))
+                    .boolean_attribute("defer"),
+            )
+            .child(
+                Element::new("script")
+                    .attribute(
+                        "src",
+                        // @Temporary
+                        format!("{url_prefix}/{}/{SEARCH_INDEX_FILE_NAME}", self.crate_.name),
+                    )
+                    .boolean_attribute("defer"),
+            );
+        let description = &self.session[self.crate_.package].description;
+        if !description.is_empty() {
+            head.add_child(
+                VoidElement::new("meta")
+                    .attribute("name", "description")
+                    .attribute("content", description),
+            );
+        }
+
+        head
     }
 }
 
@@ -612,58 +622,85 @@ fn render_declaration_attributes(
 
     // @Task sort attributes
 
-    // @Task improve attr API to simplify this logic here!
     for attribute in &attributes.0 {
-        if AttributeName::Doc.matches(&attribute.value) {
-            continue;
-        }
-
-        let name = attribute.value.name().to_str();
-
-        // @Task handle each attribute kind indivually (whether it's shown at all +
-        // styling + content)
-        labels.add_child(
-            Element::new("div").class("attribute").child(
-                Element::new("a")
-                    .attribute(
-                        "href",
-                        format!(
-                            "{url_prefix}attributes.html#attribute.{}",
-                            urlencoding::encode(name)
-                        ),
-                    )
-                    .child(name),
-            ),
-        );
+        render_declaration_attribute(attribute, &mut labels, url_prefix);
     }
 
-    // @Temporary
-    labels.add_child(Element::new("div").class("deprecated").child("deprecated"));
-    labels.add_child(
-        Element::new("div")
-            .class("experimental")
-            .child("experimental"),
-    );
-    labels.add_child(Element::new("div").class("unsafe").child("unsafe"));
-    labels.add_child(Element::new("div").class("internal").child("internal"));
-
-    // @Task add link
-    labels.add_child(
-        Element::new("div")
-            .class("source")
-            .child(Element::new("a").attribute("href", "#").child("source")),
-    );
+    // @Task currently only for some stuff
+    // labels.add_child(Element::new("div").class("internal").child("internal"));
 
     parent.add_child(labels);
 
     // @Beacon @Beacon @Task pass this stuff to asciidoctor instead
-
     if let Some(amount) = options.lorem_ipsum {
         for _ in 0..amount {
             parent.add_child(Element::new("p").child(LOREM_IPSUM));
         }
     } else {
         parent.add_child(Element::new("p").child(documentation(attributes)));
+    }
+}
+
+fn render_declaration_attribute(attribute: &Attribute, parent: &mut Element<'_>, url_prefix: &str) {
+    use AttributeKind::*;
+
+    #[allow(clippy::match_same_arms)]
+    match &attribute.value {
+        // plain style
+        Abstract | Static | If { .. } | Intrinsic | Moving => {
+            let name = attribute.value.name().to_str();
+
+            parent.add_child(
+                Element::new("div").class("attribute").child(
+                    Element::new("a")
+                        .attribute(
+                            "href",
+                            format!(
+                                "{url_prefix}attributes.html#attribute.{}",
+                                urlencoding::encode(name)
+                            ),
+                        )
+                        .child(name),
+                ),
+            );
+        }
+
+        // @Task make the path a link; only display this with --document-private-items
+        Public(_) => {}
+
+        // @Task incorporate message contain within the attribute etc
+        Deprecated(_) => {
+            parent.add_child(Element::new("div").class("deprecated").child("deprecated"))
+        }
+        // @Task incorporate message contain within the attribute etc
+        Unstable(_) => parent.add_child(
+            Element::new("div")
+                .class("experimental")
+                .child("experimental"),
+        ),
+        Unsafe => parent.add_child(Element::new("div").class("unsafe").child("unsafe")),
+
+        // rendered separately
+        Doc { .. } => {}
+
+        // not rendered
+        Allow { .. }
+        | Deny { .. }
+        | DocAttributes
+        | DocAttribute { .. }
+        | DocReservedIdentifier { .. }
+        | DocReservedIdentifiers
+        | Forbid { .. }
+        | Known
+        | Location { .. }
+        | RecursionLimit { .. }
+        | Warn { .. } => {}
+
+        // not declaration attributes
+        Int | Int32 | Int64 | List | Nat | Nat32 | Nat64 | Rune | Text | Vector => unreachable!(),
+
+        // should not exist at this point in time
+        Ignore | Include | Test => unreachable!(),
     }
 }
 
@@ -701,28 +738,17 @@ impl CrateSketch {
     }
 }
 
+#[derive(Clone, Copy)]
+enum PageContentType {
+    Module,
+    Attributes,
+    ReservedIdentifiers,
+}
+
 enum SearchItem {
     Declaration(hir::DeclarationIndex),
     ReservedIdentifier(String),
     Attribute(String),
-}
-
-fn anchored_heading<'a>(
-    level: u8,
-    id: impl Into<Cow<'a, str>>,
-    content: impl Into<Cow<'a, str>>,
-) -> Element<'a> {
-    fn anchored_heading<'a>(level: u8, id: Cow<'a, str>, content: Cow<'a, str>) -> Element<'a> {
-        Element::new(format!("h{level}"))
-            .attribute("id", id.clone())
-            .class("subheading")
-            .child(
-                Element::new("a")
-                    .attribute("href", format!("#{id}"))
-                    .child(content),
-            )
-    }
-    anchored_heading(level, id.into(), content.into())
 }
 
 struct Page {

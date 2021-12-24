@@ -17,12 +17,18 @@ data Deprecated: Type of
 @(doc-attribute "doc")
 data Doc: Type of
 
+;;; @Beacon @Beacon @Beacon @Task doc.* 
+
 @(doc-attribute "forbid")
 data Forbid: Type of
 
 @(doc-attribute "if")
 data If: Type of
 
+;;; @Beacon @Task mark this internal
+;;; @(doc.label (attribute "intrinsic"))
+;;; @(doc.label internal)
+;;; alternatively, parse what's inside of the quotes and look up if it is internal better!
 @(doc-attribute "intrinsic")
 data Intrinsic: Type of
 

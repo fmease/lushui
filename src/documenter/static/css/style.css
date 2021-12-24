@@ -133,18 +133,16 @@ a:hover {
 }
 
 .container {
+    /* @Task use grid */
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
+    gap: 0 5em;
     margin: 1em auto;
     width: 90%;
 }
 
 .main {
     width: 50%;
-}
-
-.sidebar {
-    width: 10%;
 }
 
 .sidebar > .title {
@@ -225,6 +223,15 @@ h5 {
     font-weight: bold;
 }
 
+.subheading a.source {
+    float: right;
+    font-family: var(--sans-serif);
+    font-style: italic;
+    font-size: smaller;
+    /* @Task add to palette */
+    color: #999;
+}
+
 .binder.deprecated {
     text-decoration: line-through;
 }
@@ -271,10 +278,6 @@ section {
 
 .labels .internal {
     background: rgb(206, 168, 255);
-}
-
-.labels .source {
-    border: 1px solid var(--ice-gray);
 }
 
 p {

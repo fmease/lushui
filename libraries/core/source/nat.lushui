@@ -86,4 +86,4 @@ compare (n: Nat) (m: Nat): ordering.Ordering =
             bool.false => ordering.greater
 
 ;;; @public @intrinsic
-;;; to-int: Nat -> Nat -> crate.int.Int
+;;; to-int: Nat -> crate.int.Int
