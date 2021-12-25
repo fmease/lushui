@@ -1,7 +1,9 @@
 use super::{
     declaration_id, documentation,
     node::{Attributable, Element, Node},
-    render_declaration_attributes, Options, LOREM_IPSUM,
+    render_declaration_attributes,
+    text_processor::{self, TextProcessor},
+    Options, LOREM_IPSUM,
 };
 use crate::syntax::lowered_ast::{self, attributes::Query as _, AttributeName};
 use std::{borrow::Cow, default::default};
@@ -28,14 +30,24 @@ impl<'a> Subsections<'a> {
         self.reserved_punctuation.render_table_of_contents(parent);
     }
 
-    pub(crate) fn render(self, url_prefix: &str, parent: &mut Element<'a>, options: &Options) {
+    pub(crate) fn render(
+        self,
+        url_prefix: &str,
+        parent: &mut Element<'a>,
+        text_processor: &mut TextProcessor,
+        options: &Options,
+    ) {
         self.modules.render(parent, options);
-        self.types.render(url_prefix, parent, options);
-        self.functions.render(url_prefix, parent, options);
-        self.attributes.render(url_prefix, parent, options);
-        self.keywords.render(url_prefix, parent, options);
+        self.types
+            .render(url_prefix, parent, text_processor, options);
+        self.functions
+            .render(url_prefix, parent, text_processor, options);
+        self.attributes
+            .render(url_prefix, parent, text_processor, options);
+        self.keywords
+            .render(url_prefix, parent, text_processor, options);
         self.reserved_punctuation
-            .render(url_prefix, parent, options);
+            .render(url_prefix, parent, text_processor, options);
     }
 }
 
@@ -120,7 +132,7 @@ impl<'a> Modules<'a> {
         let mut section =
             Element::new("section").child(anchored_subheading(2, Self::ID, Self::TITLE));
 
-        let mut table = Element::new("table").class("indented");
+        let mut table = Element::new("table").class("modules indented");
 
         for module in self.0 {
             let mut table_definition = Element::new("td");
@@ -192,7 +204,13 @@ impl<'a> Subsection<'a> for Types<'a> {
 }
 
 impl<'a> Types<'a> {
-    fn render(self, url_prefix: &str, parent: &mut Element<'a>, options: &Options) {
+    fn render(
+        self,
+        url_prefix: &str,
+        parent: &mut Element<'a>,
+        text_processor: &mut text_processor::TextProcessor,
+        options: &Options,
+    ) {
         if self.0.is_empty() {
             return;
         }
@@ -229,7 +247,13 @@ impl<'a> Types<'a> {
 
             section.add_child(subheading);
 
-            render_declaration_attributes(type_.attributes, url_prefix, &mut section, options);
+            render_declaration_attributes(
+                type_.attributes,
+                url_prefix,
+                &mut section,
+                text_processor,
+                options,
+            );
 
             // @Beacon @Beacon @Task for abstract data types, only continue if this type is not local
             // and if --doc-priv-decls was not specified
@@ -272,6 +296,7 @@ impl<'a> Types<'a> {
                     constructor.attributes,
                     url_prefix,
                     &mut subsection,
+                    text_processor,
                     options,
                 );
             }
@@ -323,7 +348,13 @@ impl<'a> Subsection<'a> for Functions<'a> {
 }
 
 impl<'a> Functions<'a> {
-    fn render(self, url_prefix: &str, parent: &mut Element<'a>, options: &Options) {
+    fn render(
+        self,
+        url_prefix: &str,
+        parent: &mut Element<'a>,
+        text_processor: &mut text_processor::TextProcessor,
+        options: &Options,
+    ) {
         if self.0.is_empty() {
             return;
         }
@@ -354,7 +385,13 @@ impl<'a> Functions<'a> {
                     .child(source_link()),
             );
 
-            render_declaration_attributes(function.attributes, url_prefix, &mut section, options);
+            render_declaration_attributes(
+                function.attributes,
+                url_prefix,
+                &mut section,
+                text_processor,
+                options,
+            );
         }
 
         parent.add_child(section);
@@ -393,7 +430,13 @@ impl<'a> Subsection<'a> for Keywords<'a> {
 }
 
 impl<'a> Keywords<'a> {
-    fn render(self, url_prefix: &str, parent: &mut Element<'a>, options: &Options) {
+    fn render(
+        self,
+        url_prefix: &str,
+        parent: &mut Element<'a>,
+        text_processor: &mut text_processor::TextProcessor,
+        options: &Options,
+    ) {
         if self.0.is_empty() {
             return;
         }
@@ -416,7 +459,13 @@ impl<'a> Keywords<'a> {
                     ),
             );
 
-            render_declaration_attributes(&default(), url_prefix, &mut section, options);
+            render_declaration_attributes(
+                &default(),
+                url_prefix,
+                &mut section,
+                text_processor,
+                options,
+            );
         }
 
         parent.add_child(section);
@@ -452,7 +501,13 @@ impl<'a> Subsection<'a> for ReservedPunctuation<'a> {
 }
 
 impl<'a> ReservedPunctuation<'a> {
-    fn render(self, url_prefix: &str, parent: &mut Element<'a>, options: &Options) {
+    fn render(
+        self,
+        url_prefix: &str,
+        parent: &mut Element<'a>,
+        text_processor: &mut text_processor::TextProcessor,
+        options: &Options,
+    ) {
         if self.0.is_empty() {
             return;
         }
@@ -475,7 +530,13 @@ impl<'a> ReservedPunctuation<'a> {
                     ),
             );
 
-            render_declaration_attributes(&default(), url_prefix, &mut section, options);
+            render_declaration_attributes(
+                &default(),
+                url_prefix,
+                &mut section,
+                text_processor,
+                options,
+            );
         }
 
         parent.add_child(section);
@@ -511,7 +572,13 @@ impl<'a> Subsection<'a> for Attributes<'a> {
 }
 
 impl<'a> Attributes<'a> {
-    pub(super) fn render(self, url_prefix: &str, parent: &mut Element<'a>, options: &Options) {
+    pub(super) fn render(
+        self,
+        url_prefix: &str,
+        parent: &mut Element<'a>,
+        text_processor: &mut text_processor::TextProcessor,
+        options: &Options,
+    ) {
         if self.0.is_empty() {
             return;
         }
@@ -534,7 +601,13 @@ impl<'a> Attributes<'a> {
                     ),
             );
 
-            render_declaration_attributes(&default(), url_prefix, &mut section, options);
+            render_declaration_attributes(
+                &default(),
+                url_prefix,
+                &mut section,
+                text_processor,
+                options,
+            );
         }
 
         parent.add_child(section);

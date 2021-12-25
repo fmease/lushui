@@ -3,7 +3,6 @@ use joinery::JoinableIterator;
 use super::{
     declaration_id,
     node::{Attributable, Element},
-    Options,
 };
 use crate::{
     format::DisplayWith,
@@ -11,16 +10,14 @@ use crate::{
     package::BuildSession,
     resolver::Crate,
 };
-use std::default::default;
 
 pub(super) fn format_expression(
     expression: &hir::Expression,
     url_prefix: &str,
-    options: &Options,
     crate_: &Crate,
     session: &BuildSession,
 ) -> String {
-    let mut formatter = Formatter::new(url_prefix, options, crate_, session);
+    let mut formatter = Formatter::new(url_prefix, crate_, session);
     formatter.format_expression(expression);
     formatter.finish()
 }
@@ -30,27 +27,20 @@ pub(super) fn declaration_url_fragment(
     crate_: &Crate,
     session: &BuildSession,
 ) -> String {
-    Formatter::new("./", &default(), crate_, session).declaration_url_fragment(index)
+    Formatter::new("./", crate_, session).declaration_url_fragment(index)
 }
 
 struct Formatter<'a> {
     url_prefix: &'a str,
-    options: &'a Options,
     crate_: &'a Crate,
     session: &'a BuildSession,
     output: String,
 }
 
 impl<'a> Formatter<'a> {
-    fn new(
-        url_prefix: &'a str,
-        options: &'a Options,
-        crate_: &'a Crate,
-        session: &'a BuildSession,
-    ) -> Self {
+    fn new(url_prefix: &'a str, crate_: &'a Crate, session: &'a BuildSession) -> Self {
         Self {
             url_prefix,
-            options,
             crate_,
             session,
             output: String::new(),
@@ -182,17 +172,13 @@ impl<'a> Formatter<'a> {
 
         match &expression.value {
             Type => {
-                if self.options.no_core {
-                    self.write("Type");
-                } else {
-                    Element::new("a")
-                        .attribute(
-                            "href",
-                            format!("{}reserved.html#word.Type", self.url_prefix),
-                        )
-                        .child("Type")
-                        .render(&mut self.output);
-                }
+                Element::new("a")
+                    .attribute(
+                        "href",
+                        format!("{}reserved.html#word.Type", self.url_prefix),
+                    )
+                    .child("Type")
+                    .render(&mut self.output);
             }
             Number(literal) => self.write(&literal.to_string()),
             // @Task use custom escaping logic

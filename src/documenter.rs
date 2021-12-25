@@ -1,17 +1,5 @@
 //! The documentation generator.
 
-// @Tasks:
-// * search functionality using levenshtein
-// * asciidoc integration
-//
-// * link to source (generate html files per source file)
-// * description next to search result
-// * good color palette
-// * light + dark theme, automatic detection + manual setting
-// * de-lower parameter lists
-// * convert ttfs to woffs (1 + 2) and change @font-faces
-// * fill the COPYRIGHT file
-
 use crate::{
     diagnostics::Reporter,
     error::Result,
@@ -30,6 +18,7 @@ use crate::{
 use joinery::JoinableIterator;
 use node::{Attributable, Document, Element, Node, VoidElement};
 use std::{default::default, fs, path::PathBuf};
+use text_processor::TextProcessor;
 
 mod fonts;
 mod format;
@@ -52,11 +41,14 @@ pub fn document(
     session: &BuildSession,
     reporter: &Reporter,
 ) -> Result<()> {
-    let mut documenter = Documenter::new(options, crates, crate_, session, reporter);
+    // @Task handle/propagate I/O errors!
+    let mut documenter = Documenter::new(options, crates, crate_, session, reporter).unwrap();
 
     documenter.document_declaration(declaration)?;
     documenter.collect_search_items(declaration);
     documenter.write()?;
+
+    documenter.text_processor.clean_up().unwrap();
 
     Ok(())
 }
@@ -68,9 +60,10 @@ struct Documenter<'a> {
     session: &'a BuildSession,
     #[allow(dead_code)]
     reporter: &'a Reporter,
+    text_processor: TextProcessor,
     pages: Vec<Page>,
     search_items: Vec<SearchItem>,
-    destination: PathBuf,
+    path: PathBuf,
 }
 
 impl<'a> Documenter<'a> {
@@ -80,19 +73,26 @@ impl<'a> Documenter<'a> {
         crate_: &'a Crate,
         session: &'a BuildSession,
         reporter: &'a Reporter,
-    ) -> Self {
-        let destination = session.build_folder().join(DOCUMENTATION_FOLDER_NAME);
+    ) -> Result<Self, std::io::Error> {
+        let path = session.build_folder().join(DOCUMENTATION_FOLDER_NAME);
 
-        Self {
+        if !path.exists() {
+            fs::create_dir_all(&path)?;
+        }
+
+        let processor = TextProcessor::new(&path, &options)?;
+
+        Ok(Self {
             options,
             crates: crate_names,
             crate_,
             session,
             reporter,
+            text_processor: processor,
             pages: default(),
             search_items: default(),
-            destination,
-        }
+            path,
+        })
     }
 
     // @Task handle the case where two+ crates (goal and/or (transitive) deps)
@@ -101,12 +101,8 @@ impl<'a> Documenter<'a> {
     fn write(&self) -> Result<()> {
         // @Beacon @Task handle I/O errors properly
 
-        if !self.destination.exists() {
-            fs::create_dir_all(&self.destination).unwrap();
-        }
-
         {
-            let path = self.destination.join(MAIN_STYLE_SHEET_FILE_NAME);
+            let path = self.path.join(MAIN_STYLE_SHEET_FILE_NAME);
             // @Task instead of `DEVELOPING`, compare hash (maybe)?
             if DEVELOPING || !path.exists() {
                 static STYLE_SHEET: &str = include_str!("documenter/static/css/style.css");
@@ -115,7 +111,7 @@ impl<'a> Documenter<'a> {
         }
 
         {
-            let path = self.destination.join("fonts.min.css");
+            let path = self.path.join("fonts.min.css");
             if !path.exists() {
                 static STYLE_SHEET: &str = include_str!("documenter/static/css/fonts.css");
                 fs::write(path, minifier::css::minify(STYLE_SHEET).unwrap()).unwrap();
@@ -123,7 +119,7 @@ impl<'a> Documenter<'a> {
         }
 
         {
-            let path = self.destination.join(MAIN_SCRIPT_FILE_NAME);
+            let path = self.path.join(MAIN_SCRIPT_FILE_NAME);
             // @Task instead of `DEVELOPING`, compare hash (maybe)?
             if DEVELOPING || !path.exists() {
                 static SCRIPT: &str = include_str!("documenter/static/js/script.js");
@@ -131,7 +127,7 @@ impl<'a> Documenter<'a> {
             }
         }
 
-        fonts::copy_over(&self.destination).unwrap();
+        fonts::copy_over(&self.path).unwrap();
 
         for page in &self.pages {
             let parent = page.path.parent().unwrap();
@@ -146,7 +142,7 @@ impl<'a> Documenter<'a> {
         // @Task use BufWriter
         // @Task put it in self.destination instead once the search index contains all crates
         fs::write(
-            self.destination
+            self.path
                 .join(self.crate_.name.as_str())
                 .join(SEARCH_INDEX_FILE_NAME),
             {
@@ -290,7 +286,6 @@ impl<'a> Documenter<'a> {
                         type_: format::format_expression(
                             &function.type_annotation,
                             url_prefix,
-                            &self.options,
                             self.crate_,
                             self.session,
                         ),
@@ -330,7 +325,6 @@ impl<'a> Documenter<'a> {
                                     type_: format::format_expression(
                                         &constructor.type_annotation,
                                         url_prefix,
-                                        &self.options,
                                         self.crate_,
                                         self.session,
                                     ),
@@ -346,7 +340,6 @@ impl<'a> Documenter<'a> {
                             type_: format::format_expression(
                                 &type_.type_annotation,
                                 url_prefix,
-                                &self.options,
                                 self.crate_,
                                 self.session,
                             ),
@@ -509,9 +502,20 @@ impl<'a> Documenter<'a> {
                 main.add_child(heading);
             }
 
-            render_declaration_attributes(attributes, &url_prefix, &mut main, &self.options);
+            render_declaration_attributes(
+                attributes,
+                &url_prefix,
+                &mut main,
+                &mut self.text_processor,
+                &self.options,
+            );
 
-            subsections.render(&url_prefix, &mut main, &self.options);
+            subsections.render(
+                &url_prefix,
+                &mut main,
+                &mut self.text_processor,
+                &self.options,
+            );
 
             container.add_child(main);
         }
@@ -531,7 +535,7 @@ impl<'a> Documenter<'a> {
 
         let path = match content_type {
             PageContentType::Module => {
-                let mut path = self.destination.clone();
+                let mut path = self.path.clone();
                 let mut path_segments = path_segments.into_iter();
 
                 if self.crate_.is_binary() && self.crate_.is_ambiguously_named_within_package {
@@ -546,8 +550,8 @@ impl<'a> Documenter<'a> {
 
                 path.join("index.html")
             }
-            PageContentType::Attributes => self.destination.join("attributes.html"),
-            PageContentType::ReservedIdentifiers => self.destination.join("reserved.html"),
+            PageContentType::Attributes => self.path.join("attributes.html"),
+            PageContentType::ReservedIdentifiers => self.path.join("reserved.html"),
         };
 
         self.pages.push(Page { path, content });
@@ -616,6 +620,7 @@ fn render_declaration_attributes(
     attributes: &Attributes,
     url_prefix: &str,
     parent: &mut Element<'_>,
+    text_processor: &mut TextProcessor,
     options: &Options,
 ) {
     let mut labels = Element::new("div").class("labels");
@@ -631,14 +636,18 @@ fn render_declaration_attributes(
 
     parent.add_child(labels);
 
-    // @Beacon @Beacon @Task pass this stuff to asciidoctor instead
+    let mut description = Element::new("div").class("description");
+
     if let Some(amount) = options.lorem_ipsum {
         for _ in 0..amount {
-            parent.add_child(Element::new("p").child(LOREM_IPSUM));
+            description.add_child(Element::new("p").child(LOREM_IPSUM));
         }
     } else {
-        parent.add_child(Element::new("p").child(documentation(attributes)));
+        // @Task handle errors properly!
+        description.add_child(text_processor.convert(documentation(attributes)).unwrap());
     }
+
+    parent.add_child(description);
 }
 
 fn render_declaration_attribute(attribute: &Attribute, parent: &mut Element<'_>, url_prefix: &str) {
@@ -714,7 +723,7 @@ fn documentation(attributes: &Attributes) -> String {
 
 #[derive(Default)]
 pub struct Options {
-    pub no_core: bool,
+    pub asciidoc: bool,
     pub lorem_ipsum: Option<usize>,
 }
 
@@ -754,6 +763,99 @@ enum SearchItem {
 struct Page {
     path: PathBuf,
     content: String,
+}
+
+mod text_processor {
+    use std::{
+        fs::File,
+        io::{BufWriter, Error, ErrorKind, Read, Write},
+        path::{Path, PathBuf},
+        process::Command,
+    };
+
+    use super::node::Node;
+
+    pub(super) struct TextProcessor(Option<AsciiDoctor>);
+
+    struct AsciiDoctor {
+        process: Command,
+        input_path: PathBuf,
+        input_file: File,
+        output_path: PathBuf,
+        output_file: File,
+    }
+
+    impl TextProcessor {
+        const INPUT_FILE_NAME: &'static str = "_description.adoc";
+        const OUTPUT_FILE_NAME: &'static str = "_description.html";
+
+        pub(super) fn new(folder: &Path, options: &super::Options) -> Result<Self, Error> {
+            if !options.asciidoc {
+                return Ok(Self(None));
+            }
+
+            let mut process = Command::new("asciidoctor");
+            process.current_dir(folder);
+            process.args(&[
+                Self::INPUT_FILE_NAME,
+                "--embedded",
+                "--safe",
+                "--out-file",
+                Self::OUTPUT_FILE_NAME,
+            ]);
+
+            let input_path = folder.join(Self::INPUT_FILE_NAME);
+            let output_path = folder.join(Self::OUTPUT_FILE_NAME);
+
+            Ok(Self(Some(AsciiDoctor {
+                process,
+                input_file: File::create(&input_path)?,
+                input_path,
+                output_file: File::options()
+                    .read(true)
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .open(&output_path)?,
+                output_path,
+            })))
+        }
+
+        // @Question does this work on Windows as well? Is the AsciiDoctor process
+        // allowed to read from those files that we keep open in write mode?
+        pub(super) fn convert(&mut self, description: String) -> Result<Node<'static>, Error> {
+            let Some(asciidoctor) = &mut self.0 else { return Ok(description.into()); };
+
+            write!(BufWriter::new(&mut asciidoctor.input_file), "{description}")?;
+            // asciidoctor.input_file.sync_data()?;
+
+            // @Task capture stderr messages and add them to the error
+            let status = asciidoctor.process.status()?;
+            if !status.success() {
+                // @Temporary error handling
+                return Err(Error::new(ErrorKind::Other, "!status.success()"));
+            }
+
+            let mut output = String::new();
+            asciidoctor.output_file.read_to_string(&mut output)?;
+
+            Ok(Node::verbatim(output))
+        }
+
+        pub(super) fn clean_up(&mut self) -> Result<(), Error> {
+            let Some(asciidoctor) = &self.0 else { return Ok(()); };
+            std::fs::remove_file(&asciidoctor.input_path)?;
+            std::fs::remove_file(&asciidoctor.output_path)?;
+            Ok(())
+        }
+    }
+
+    impl Drop for TextProcessor {
+        fn drop(&mut self) {
+            #[allow(clippy::let_underscore_drop)] // false positive, #6841
+            let _ = self.clean_up();
+        }
+    }
 }
 
 fn declaration_id(binder: &str) -> String {

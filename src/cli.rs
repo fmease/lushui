@@ -236,6 +236,7 @@ pub fn arguments() -> (Command, Options) {
                         }),
                     );
                 }
+                AsciiDoc => options.asciidoc = true,
                 LoremIpsum(amount) => options.lorem_ipsum = amount,
             }
         }
@@ -264,6 +265,7 @@ pub struct Options {
     pub durations: bool,
     pub show_indices: bool,
     pub pass_restriction: Option<PassRestriction>,
+    pub asciidoc: bool,
     pub lorem_ipsum: Option<usize>,
 }
 
@@ -351,6 +353,7 @@ enum UnstableOption {
     ParseOnly,
     LowerOnly,
     ResolveOnly,
+    AsciiDoc,
     LoremIpsum(Option<usize>),
 }
 
@@ -371,6 +374,7 @@ impl UnstableOption {
             Self::ParseOnly => "parse-only",
             Self::LowerOnly => "lower-only",
             Self::ResolveOnly => "resolve-only",
+            Self::AsciiDoc => "asciidoc",
             Self::LoremIpsum(_) => "lorem-ipsum=[<amount=1>]",
         }
     }
@@ -393,6 +397,7 @@ impl UnstableOption {
             Self::ParseOnly => "Halts the execution after parsing the current crate",
             Self::LowerOnly => "Halts the execution after lowering the current crate",
             Self::ResolveOnly => "Halts the execution after resolving the names of the current crate",
+            Self::AsciiDoc => "Interprets documentation comments as AsciiDoc when generating documentation",
             Self::LoremIpsum(_) => "Replaces the documentation of every declaration with `amount` paragraphs of Lorem Ipsum",
         }
     }
@@ -418,6 +423,7 @@ impl FromStr for UnstableOption {
             "parse-only" => Self::ParseOnly,
             "lower-only" => Self::LowerOnly,
             "resolve-only" => Self::ResolveOnly,
+            "asciidoc" => Self::AsciiDoc,
             "lorem-ipsum" => Self::LoremIpsum(Some(1)),
             _ => match input.split_once('=').ok_or(())? {
                 ("lorem-ipsum", amount) => Self::LoremIpsum(Some(amount.parse().map_err(|_| ())?)),

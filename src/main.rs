@@ -393,11 +393,7 @@ fn build_package(
 
                     let time = Instant::now();
                     let documenter_options = documenter::Options {
-                        // @Beacon @Beacon @Beacon @Bug no_core is the wrong thing!
-                        // we want to know whether we have core but we also have to look
-                        // in the list of deps whether core is present or not (even transitively)
-                        // `no_core` is only for single-file packages
-                        no_core: build_options.no_core,
+                        asciidoc: options.asciidoc,
                         lorem_ipsum: options.lorem_ipsum,
                     };
                     documenter::document(
