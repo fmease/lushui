@@ -245,7 +245,7 @@ impl<'a> Formatter<'a> {
             "{}{}/index.html",
             self.url_prefix,
             self.crate_(index)
-                .local_path_segments(index.local_index_unchecked())
+                .local_path_segments(index.local_unchecked())
                 .into_iter()
                 .map(urlencoding::encode)
                 .join_with("/")
@@ -302,25 +302,25 @@ impl<'a> Formatter<'a> {
         if index.is_local(self.crate_) {
             self.crate_
         } else {
-            &self.session[index.crate_index()]
+            &self.session[index.crate_()]
         }
     }
 
     fn look_up(&self, index: DeclarationIndex) -> &crate::entity::Entity {
-        match index.local_index(self.crate_) {
+        match index.local(self.crate_) {
             Some(index) => &self.crate_[index],
             None => &self.session[index],
         }
     }
 
     fn parent(&self, index: DeclarationIndex) -> Option<DeclarationIndex> {
-        match index.local_index(self.crate_) {
+        match index.local(self.crate_) {
             Some(index) => self.crate_[index]
                 .parent
-                .map(|parent| self.crate_.global_index(parent)),
+                .map(|parent| parent.global(self.crate_)),
             None => self.session[index]
                 .parent
-                .map(|parent| DeclarationIndex::new(index.crate_index(), parent)),
+                .map(|parent| DeclarationIndex::new(index.crate_(), parent)),
         }
     }
 }

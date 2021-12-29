@@ -72,7 +72,7 @@ impl Identifier {
     }
 
     pub(crate) fn local_declaration_index(&self, crate_: &Crate) -> Option<LocalDeclarationIndex> {
-        self.declaration_index()?.local_index(crate_)
+        self.declaration_index()?.local(crate_)
     }
 
     #[allow(dead_code)]
@@ -166,33 +166,27 @@ impl DeclarationIndex {
         Self(shifted_crate_index | local_index.0)
     }
 
-    pub(crate) fn crate_index(self) -> CrateIndex {
+    pub(crate) fn crate_(self) -> CrateIndex {
         #[allow(clippy::cast_possible_truncation)]
         CrateIndex((self.0 >> LocalDeclarationIndex::BIT_WIDTH) as _)
     }
 
-    // @Task better name
-    pub(crate) fn local_index_unchecked(self) -> LocalDeclarationIndex {
+    pub(crate) fn local_unchecked(self) -> LocalDeclarationIndex {
         LocalDeclarationIndex(self.0 & LocalDeclarationIndex::MAX)
     }
 
     pub(crate) fn is_local(self, crate_: &Crate) -> bool {
-        self.crate_index() == crate_.index
+        self.crate_() == crate_.index
     }
 
-    pub(crate) fn local_index(self, crate_: &Crate) -> Option<LocalDeclarationIndex> {
-        self.is_local(crate_).then(|| self.local_index_unchecked())
+    pub(crate) fn local(self, crate_: &Crate) -> Option<LocalDeclarationIndex> {
+        self.is_local(crate_).then(|| self.local_unchecked())
     }
 }
 
 impl fmt::Debug for DeclarationIndex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{:?}{:?}",
-            self.crate_index(),
-            self.local_index_unchecked(),
-        )
+        write!(f, "{:?}{:?}", self.crate_(), self.local_unchecked(),)
     }
 }
 
@@ -214,6 +208,10 @@ impl LocalDeclarationIndex {
         assert!(index < Self::MAX);
 
         Self(index)
+    }
+
+    pub(crate) fn global(self, crate_: &Crate) -> DeclarationIndex {
+        DeclarationIndex::new(crate_.index, self)
     }
 }
 

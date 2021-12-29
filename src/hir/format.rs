@@ -388,7 +388,7 @@ mod test {
                 kind,
             };
             let index = self.bindings.insert(entity);
-            Identifier::new(self.global_index(index), identifier)
+            Identifier::new(index.global(self), identifier)
         }
     }
 

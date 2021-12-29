@@ -15,17 +15,27 @@ use crate::{
     span::{SharedSourceMap, SourceFileIndex},
 };
 
-/// Lex and parse a given file module.
+/// Lex and parse a given file (the crate root or an out-of-line module).
 ///
 /// This is a convenience function combining [`lexer::lex`] and [`parser::parse`].
-pub(crate) fn parse(
+pub(crate) fn parse_file(
     file: SourceFileIndex,
     module: ast::Identifier,
     map: SharedSourceMap,
     reporter: &Reporter,
 ) -> Result<ast::Declaration> {
     let tokens = lexer::lex(&map.borrow()[file], reporter)?.value;
-    parser::parse(&tokens, file, module, map, reporter)
+    parser::parse_file(&tokens, file, module, map, reporter)
+}
+
+// @Task try to get rid of file+map params (just take a &str (maybe, but what about span info?))!
+pub(crate) fn parse_path(
+    file: SourceFileIndex,
+    map: SharedSourceMap,
+    reporter: &Reporter,
+) -> Result<ast::Path> {
+    let tokens = lexer::lex(&map.borrow()[file], reporter)?.value;
+    parser::parse_path(&tokens, file, map, reporter)
 }
 
 pub(crate) mod crate_name {

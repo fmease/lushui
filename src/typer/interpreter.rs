@@ -732,7 +732,7 @@ impl<'a> Interpreter<'a> {
     }
 
     fn look_up(&self, index: DeclarationIndex) -> &Entity {
-        match index.local_index(self.crate_) {
+        match index.local(self.crate_) {
             Some(index) => &self.crate_[index],
             None => &self.session[index],
         }

@@ -310,7 +310,7 @@ impl<'a> Lowerer<'a> {
                             }
                         };
 
-                        let Ok(declaration) = crate::syntax::parse(
+                        let Ok(declaration) = crate::syntax::parse_file(
                             file,
                             module.binder.clone(),
                             self.map.clone(),

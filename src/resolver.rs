@@ -1,6 +1,6 @@
 //! The name resolver.
 //!
-//! It traverses the [lowered AST](lowered_ast) and registers bindings
+//! It traverses the [lowered AST](lowered_ast) and registers/defines bindings
 //! defined both at module-level using declarations and at function
 //! and pattern level as parameters. Furthermore, it resolves all paths inside
 //! expressions and patterns to [(resolved) identifiers](Identifier) which
@@ -25,11 +25,11 @@ use crate::{
         lowered_ast::{self, AttributeName},
         CrateName,
     },
-    utility::{unrc, HashMap, HashSet},
+    utility::{HashMap, HashSet},
 };
 pub(crate) use scope::{Crate, Exposure, FunctionScope, Namespace};
 use scope::{RegistrationError, RestrictedExposure};
-use std::{cell::RefCell, cmp::Ordering, collections::hash_map::Entry, fmt};
+use std::{cmp::Ordering, collections::hash_map::Entry, fmt, sync::Mutex};
 
 pub const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
 
@@ -41,8 +41,11 @@ pub const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
 ///
 /// If the declaration passed is not a module, this function will panic as it
 /// requires a crate root which is defined through the root module.
-pub fn resolve(
-    declaration: lowered_ast::Declaration,
+// @Task improve docs: mention that it not only looks things up but also defines bindings
+// and that `resolve` should only be called once per Crate (bc it would fail anyways the 2nd
+// time (to re-define root (I think)))
+pub fn resolve_declarations(
+    crate_root: lowered_ast::Declaration,
     crate_: &mut Crate,
     session: &BuildSession,
     reporter: &Reporter,
@@ -50,7 +53,7 @@ pub fn resolve(
     let mut resolver = Resolver::new(crate_, session, reporter);
 
     resolver
-        .start_resolve_declaration(&declaration, None, Context::default())
+        .start_resolve_declaration(&crate_root, None, Context::default())
         .map_err(|_| {
             std::mem::take(&mut resolver.crate_.duplicate_definitions)
                 .into_values()
@@ -62,9 +65,24 @@ pub fn resolve(
     // @Task @Beacon don't return early here
     resolver.resolve_exposure_reaches()?;
 
-    let declaration = resolver.finish_resolve_declaration(declaration, None, Context::default());
+    let declaration = resolver.finish_resolve_declaration(crate_root, None, Context::default());
 
     Result::from(resolver.health).and(declaration)
+}
+
+// @Task docs: mention that Crate should be pre-populated before calling this (using resolver::resolve)
+pub(crate) fn resolve_path(
+    path: &ast::Path,
+    namespace: DeclarationIndex,
+    crate_: &Crate,
+    session: &BuildSession,
+    reporter: &Reporter,
+) -> Result<DeclarationIndex> {
+    let resolver = ResolverRef::new(crate_, session, reporter);
+
+    resolver
+        .resolve_path::<target::Any>(path, namespace)
+        .map_err(|error| resolver.report_resolution_error(error))
 }
 
 /// The state of the resolver.
@@ -85,6 +103,14 @@ impl<'a> Resolver<'a> {
             reporter,
             partially_resolved_use_bindings: HashMap::default(),
             health: Health::Untainted,
+        }
+    }
+
+    fn as_ref(&self) -> ResolverRef<'_> {
+        ResolverRef {
+            crate_: self.crate_,
+            session: self.session,
+            reporter: self.reporter,
         }
     }
 
@@ -274,17 +300,20 @@ impl<'a> Resolver<'a> {
                 let module = module.unwrap();
 
                 let type_annotation = self
+                    .as_ref()
                     .resolve_expression(function.type_annotation, &FunctionScope::Module(module));
 
                 let expression = function
                     .expression
                     .map(|expression| {
-                        self.resolve_expression(expression, &FunctionScope::Module(module))
+                        self.as_ref()
+                            .resolve_expression(expression, &FunctionScope::Module(module))
                     })
                     .transpose();
 
-                let binder =
-                    self.reobtain_resolved_identifier::<OnlyValue>(&function.binder, module);
+                let binder = self
+                    .as_ref()
+                    .reobtain_resolved_identifier::<target::Value>(&function.binder, module);
 
                 if module == self.crate_.root()
                     && self.crate_.is_binary()
@@ -306,13 +335,16 @@ impl<'a> Resolver<'a> {
             Data(type_) => {
                 let module = module.unwrap();
 
-                let type_annotation =
-                    self.resolve_expression(type_.type_annotation, &FunctionScope::Module(module));
+                let type_annotation = self
+                    .as_ref()
+                    .resolve_expression(type_.type_annotation, &FunctionScope::Module(module));
 
                 // @Beacon @Question wouldn't it be great if that method returned a
                 // LocalDeclarationIndex instead of an Identifier?
                 // or maybe even a *LocalIdentifier?
-                let binder = self.reobtain_resolved_identifier::<OnlyValue>(&type_.binder, module);
+                let binder = self
+                    .as_ref()
+                    .reobtain_resolved_identifier::<target::Value>(&type_.binder, module);
 
                 let constructors = type_.constructors.map(|constructors| {
                     constructors
@@ -345,12 +377,12 @@ impl<'a> Resolver<'a> {
             Constructor(constructor) => {
                 let module = module.unwrap();
 
-                let type_annotation = self.resolve_expression(
+                let type_annotation = self.as_ref().resolve_expression(
                     constructor.type_annotation,
                     &FunctionScope::Module(module),
                 )?;
 
-                let binder = self.reobtain_resolved_identifier::<OnlyValue>(
+                let binder = self.as_ref().reobtain_resolved_identifier::<target::Value>(
                     &constructor.binder,
                     context.parent_data_binding.unwrap().0,
                 );
@@ -369,8 +401,9 @@ impl<'a> Resolver<'a> {
                     // unwrap: could only ever be non-local if the binder was a use-binding
                     // but it is module binding
                     Some(module) => self
-                        .reobtain_resolved_identifier::<OnlyModule>(&submodule.binder, module)
-                        .local_index(self.crate_)
+                        .as_ref()
+                        .reobtain_resolved_identifier::<target::Module>(&submodule.binder, module)
+                        .local(self.crate_)
                         .unwrap(),
                     None => self.crate_.root(),
                 };
@@ -400,7 +433,7 @@ impl<'a> Resolver<'a> {
                     Module {
                         declaration.attributes,
                         declaration.span;
-                        binder: Identifier::new(self.crate_.global_index(index), submodule.binder),
+                        binder: Identifier::new(index.global(self.crate_), submodule.binder),
                         file: submodule.file,
                         declarations,
                     }
@@ -410,7 +443,8 @@ impl<'a> Resolver<'a> {
                 let module = module.unwrap();
 
                 let binder = Identifier::new(
-                    self.reobtain_resolved_identifier::<ValueOrModule>(&use_.binder, module),
+                    self.as_ref()
+                        .reobtain_resolved_identifier::<target::Any>(&use_.binder, module),
                     use_.binder,
                 );
 
@@ -427,9 +461,215 @@ impl<'a> Resolver<'a> {
         })
     }
 
+    /// Resolve use-bindings.
+    ///
+    /// This is the second pass of three of the name resolver.
+    ///
+    /// This uses a queue to resolve use-bindings over and over until
+    /// all out of order use-bindings are successfully resolved or until
+    /// no progress can be made anymore in which case all remaining
+    /// use-bindings are actually circular and are thus reported.
+    // @Task update docs in regards to number of passes
+    // @Task update docs regarding errors
+    pub(super) fn resolve_use_bindings(&mut self) {
+        use ResolutionError::*;
+
+        while !self.partially_resolved_use_bindings.is_empty() {
+            let mut partially_resolved_use_bindings = HashMap::default();
+
+            for (&index, item) in &self.partially_resolved_use_bindings {
+                match self
+                    .as_ref()
+                    .resolve_path::<target::Any>(&item.reference, item.module.global(self.crate_))
+                {
+                    Ok(reference) => {
+                        self.crate_.bindings[index].kind = EntityKind::Use { reference };
+                    }
+                    Err(error @ (UnresolvedBinding { .. } | Unrecoverable)) => {
+                        self.crate_.bindings[index].mark_as_error();
+                        self.as_ref().report_resolution_error(error);
+                        self.health.taint();
+                    }
+                    Err(UnresolvedUseBinding { inquirer }) => {
+                        partially_resolved_use_bindings.insert(
+                            index,
+                            PartiallyResolvedUseBinding {
+                                reference: item.reference.clone(),
+                                module: item.module,
+                                // @Beacon @Bug unwrap not verified
+                                inquirer: Some(inquirer.local(self.crate_).unwrap()),
+                            },
+                        );
+                    }
+                }
+            }
+
+            // resolution stalled; therefore there are circular bindings
+            if partially_resolved_use_bindings.len() == self.partially_resolved_use_bindings.len() {
+                for &index in partially_resolved_use_bindings.keys() {
+                    self.crate_[index].mark_as_error();
+                }
+
+                for cycle in find_cycles(partially_resolved_use_bindings) {
+                    let paths = cycle.iter().map(|&index| {
+                        self.crate_
+                            .absolute_path_to_string(index.global(self.crate_), self.session)
+                            .quote()
+                    });
+                    let paths = unordered_listing(paths, Conjunction::And);
+                    let spans = cycle.iter().map(|&index| self.crate_[index].source.span());
+
+                    Diagnostic::error()
+                        .code(Code::E024)
+                        .message(pluralize!(
+                            cycle.len(),
+                            format!("the declaration {paths} is circular"),
+                            format!("the declarations {paths} are circular"),
+                        ))
+                        .primary_spans(spans)
+                        .report(self.reporter);
+                }
+
+                self.health.taint();
+                break;
+            }
+
+            self.partially_resolved_use_bindings = partially_resolved_use_bindings;
+        }
+
+        self.partially_resolved_use_bindings.clear();
+
+        type UseBindings = HashMap<LocalDeclarationIndex, PartiallyResolvedUseBinding>;
+        type Cycle = HashSet<LocalDeclarationIndex>;
+
+        fn find_cycles(bindings: UseBindings) -> Vec<Cycle> {
+            let mut cycles = Vec::new();
+            let mut visited = HashMap::default();
+
+            enum Status {
+                InProgress,
+                Finished,
+            }
+
+            for &index in bindings.keys() {
+                if let Entry::Vacant(entry) = visited.entry(index) {
+                    let mut worklist = vec![index];
+                    entry.insert(Status::InProgress);
+                    cycles.extend(find_cycle(&bindings, &mut worklist, &mut visited));
+                }
+            }
+
+            fn find_cycle(
+                bindings: &UseBindings,
+                worklist: &mut Vec<LocalDeclarationIndex>,
+                visited: &mut HashMap<LocalDeclarationIndex, Status>,
+            ) -> Option<Cycle> {
+                let target = bindings[worklist.last().unwrap()].inquirer.unwrap();
+
+                let cycle = match visited.get(&target) {
+                    Some(Status::InProgress) => Some(
+                        worklist
+                            .iter()
+                            .copied()
+                            .skip_while(|&vertex| vertex != target)
+                            .collect(),
+                    ),
+                    Some(Status::Finished) => None,
+                    None => {
+                        worklist.push(target);
+                        visited.insert(target, Status::InProgress);
+                        find_cycle(bindings, worklist, visited)
+                    }
+                };
+                visited.insert(worklist.pop().unwrap(), Status::Finished);
+
+                cycle
+            }
+
+            cycles
+        }
+    }
+
+    fn resolve_exposure_reaches(&mut self) -> Result {
+        let mut health = Health::Untainted;
+
+        for (index, entity) in self.crate_.bindings.iter() {
+            if let Exposure::Restricted(exposure) = &entity.exposure {
+                // unwrap: root always has Exposure::Unrestricted, it won't reach this branch
+                let definition_site_namespace = entity.parent.unwrap().global(self.crate_);
+
+                if self
+                    .as_ref()
+                    .resolve_restricted_exposure(exposure, definition_site_namespace)
+                    .is_err()
+                {
+                    health.taint();
+                    continue;
+                };
+            }
+
+            if let EntityKind::Use {
+                reference: reference_index,
+            } = entity.kind
+            {
+                let reference = self.as_ref().look_up(reference_index);
+
+                if entity.exposure.compare(&reference.exposure, self.crate_)
+                    == Some(Ordering::Greater)
+                {
+                    Diagnostic::error()
+                        .code(Code::E009)
+                        .message(format!(
+                            "re-export of the more private binding `{}`",
+                            self.crate_
+                                .absolute_path_to_string(reference_index, self.session)
+                        ))
+                        .labeled_primary_span(
+                            &entity.source,
+                            "re-exporting binding with greater exposure",
+                        )
+                        .labeled_secondary_span(
+                            &reference.source,
+                            "re-exported binding with lower exposure",
+                        )
+                        .note(format!(
+                            "\
+expected the exposure of `{}`
+           to be at most {}
+      but it actually is {}",
+                            self.crate_
+                                .absolute_path_to_string(index.global(self.crate_), self.session),
+                            reference.exposure.with((self.crate_, self.session)),
+                            entity.exposure.with((self.crate_, self.session)),
+                        ))
+                        .report(self.reporter);
+                    health.taint();
+                }
+            }
+        }
+
+        health.into()
+    }
+}
+
+struct ResolverRef<'a> {
+    crate_: &'a Crate,
+    session: &'a BuildSession,
+    reporter: &'a Reporter,
+}
+
+impl<'a> ResolverRef<'a> {
+    fn new(crate_: &'a Crate, session: &'a BuildSession, reporter: &'a Reporter) -> Self {
+        Self {
+            crate_,
+            session,
+            reporter,
+        }
+    }
+
     // @Task @Beacon use Rc::try_unwrap more instead of clone
     fn resolve_expression(
-        &mut self,
+        &self,
         expression: lowered_ast::Expression,
         scope: &FunctionScope<'_>,
     ) -> Result<hir::Expression> {
@@ -548,7 +788,7 @@ impl<'a> Resolver<'a> {
     }
 
     fn resolve_pattern(
-        &mut self,
+        &self,
         pattern: lowered_ast::Pattern,
         scope: &FunctionScope<'_>,
     ) -> Result<(hir::Pattern, Vec<ast::Identifier>)> {
@@ -572,7 +812,7 @@ impl<'a> Resolver<'a> {
                     Binder {
                         pattern.attributes,
                         pattern.span;
-                        binder: Identifier::new(Index::DeBruijnParameter, unrc!(binder.binder)),
+                        binder: Identifier::new(Index::DeBruijnParameter, binder.binder),
                     }
                 }
             }
@@ -601,8 +841,8 @@ impl<'a> Resolver<'a> {
         Ok((pattern, binders))
     }
 
-    fn look_up(&self, index: DeclarationIndex) -> &Entity {
-        match index.local_index(self.crate_) {
+    fn look_up(&self, index: DeclarationIndex) -> &'a Entity {
+        match index.local(self.crate_) {
             Some(index) => &self.crate_[index],
             None => &self.session[index],
         }
@@ -688,7 +928,7 @@ impl<'a> Resolver<'a> {
                     };
 
                     let crate_ = &self.session[crate_];
-                    let root = crate_.global_index(crate_.root());
+                    let root = crate_.root().global(crate_);
 
                     return match &*path.segments {
                         [identifier] => Ok(Target::output(root, identifier)),
@@ -704,10 +944,10 @@ impl<'a> Resolver<'a> {
                         [] => unreachable!(),
                     };
                 }
-                Crate => self.crate_.global_index(self.crate_.root()),
-                Super => self.crate_.global_index(
-                    self.resolve_super(hanger, namespace.local_index(self.crate_).unwrap())?,
-                ),
+                Crate => self.crate_.root().global(self.crate_),
+                Super => self
+                    .resolve_super(hanger, namespace.local(self.crate_).unwrap())?
+                    .global(self.crate_),
                 Self_ => namespace,
             };
 
@@ -814,12 +1054,12 @@ impl<'a> Resolver<'a> {
             let definition_site_namespace = entity.parent.unwrap();
             let reach = self.resolve_restricted_exposure(
                 exposure,
-                self.crate_.global_index(definition_site_namespace),
+                definition_site_namespace.global(self.crate_),
             )?;
 
             if !self.crate_.is_allowed_to_access(
                 origin_namespace,
-                self.crate_.global_index(definition_site_namespace),
+                definition_site_namespace.global(self.crate_),
                 reach,
             ) {
                 Diagnostic::error()
@@ -855,10 +1095,10 @@ impl<'a> Resolver<'a> {
 
     fn resolve_restricted_exposure(
         &self,
-        exposure: &RefCell<RestrictedExposure>,
+        exposure: &Mutex<RestrictedExposure>,
         definition_site_namespace: DeclarationIndex,
     ) -> Result<DeclarationIndex> {
-        let exposure_ = exposure.borrow();
+        let exposure_ = exposure.lock().unwrap();
 
         Ok(match &*exposure_ {
             RestrictedExposure::Unresolved {
@@ -872,7 +1112,7 @@ impl<'a> Resolver<'a> {
                 // It's not possible to use `resolve_path` as that can lead to infinite
                 // loops with out of order use-bindings.
                 let reach = self
-                    .resolve_path_unchecked_exposure::<OnlyModule>(
+                    .resolve_path_unchecked_exposure::<target::Module>(
                         unresolved_reach,
                         definition_site_namespace,
                     )
@@ -892,14 +1132,14 @@ impl<'a> Resolver<'a> {
                 }
 
                 drop(exposure_);
-                *exposure.borrow_mut() = RestrictedExposure::Resolved {
+                *exposure.lock().unwrap() = RestrictedExposure::Resolved {
                     // @Beacon @Bug unwrap not verified
-                    reach: reach.local_index(self.crate_).unwrap(),
+                    reach: reach.local(self.crate_).unwrap(),
                 };
 
                 reach
             }
-            &RestrictedExposure::Resolved { reach } => self.crate_.global_index(reach),
+            &RestrictedExposure::Resolved { reach } => reach.global(self.crate_),
         })
     }
 
@@ -934,11 +1174,11 @@ impl<'a> Resolver<'a> {
             .unwrap()
             .binders
             .iter()
-            .map(|&index| index.local_index(self.crate_).unwrap())
+            .map(|index| index.local(self.crate_).unwrap())
             .find(|&index| &self.crate_[index].source == identifier)
             .unwrap();
         let index = self
-            .collapse_use_chain(self.crate_.global_index(index))
+            .collapse_use_chain(index.global(self.crate_))
             .unwrap_or_else(|_| unreachable!());
 
         Target::output(index, identifier)
@@ -995,7 +1235,7 @@ impl<'a> Resolver<'a> {
                 Module(_) => unreachable!(),
             }
         } else {
-            self.resolve_path::<OnlyValue>(query, self.crate_.global_index(scope.module()))
+            self.resolve_path::<target::Value>(query, scope.module().global(self.crate_))
                 .map_err(|error| {
                     self.report_resolution_error_searching_lookalikes(error, |identifier, _| {
                         self.find_similarly_named(origin, identifier)
@@ -1004,208 +1244,17 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    /// Resolve use-bindings.
-    ///
-    /// This is the second pass of three of the name resolver.
-    ///
-    /// This uses a queue to resolve use-bindings over and over until
-    /// all out of order use-bindings are successfully resolved or until
-    /// no progress can be made anymore in which case all remaining
-    /// use-bindings are actually circular and are thus reported.
-    // @Task update docs in regards to number of passes
-    // @Task update docs regarding errors
-    pub(super) fn resolve_use_bindings(&mut self) {
-        use ResolutionError::*;
-
-        while !self.partially_resolved_use_bindings.is_empty() {
-            let mut partially_resolved_use_bindings = HashMap::default();
-
-            for (&index, item) in &self.partially_resolved_use_bindings {
-                match self.resolve_path::<ValueOrModule>(
-                    &item.reference,
-                    self.crate_.global_index(item.module),
-                ) {
-                    Ok(reference) => {
-                        self.crate_.bindings[index].kind = EntityKind::Use { reference };
-                    }
-                    Err(error @ (UnresolvedBinding { .. } | Unrecoverable)) => {
-                        self.crate_.bindings[index].mark_as_error();
-                        self.report_resolution_error(error);
-                        self.health.taint();
-                    }
-                    Err(UnresolvedUseBinding { inquirer }) => {
-                        partially_resolved_use_bindings.insert(
-                            index,
-                            PartiallyResolvedUseBinding {
-                                reference: item.reference.clone(),
-                                module: item.module,
-                                // @Beacon @Bug unwrap not verified
-                                inquirer: Some(inquirer.local_index(self.crate_).unwrap()),
-                            },
-                        );
-                    }
-                }
-            }
-
-            // resolution stalled; therefore there are circular bindings
-            if partially_resolved_use_bindings.len() == self.partially_resolved_use_bindings.len() {
-                for &index in partially_resolved_use_bindings.keys() {
-                    self.crate_[index].mark_as_error();
-                }
-
-                for cycle in find_cycles(partially_resolved_use_bindings) {
-                    let paths = cycle.iter().map(|&index| {
-                        self.crate_
-                            .absolute_path_to_string(self.crate_.global_index(index), self.session)
-                            .quote()
-                    });
-                    let paths = unordered_listing(paths, Conjunction::And);
-                    let spans = cycle.iter().map(|&index| self.crate_[index].source.span());
-
-                    Diagnostic::error()
-                        .code(Code::E024)
-                        .message(pluralize!(
-                            cycle.len(),
-                            format!("the declaration {paths} is circular"),
-                            format!("the declarations {paths} are circular"),
-                        ))
-                        .primary_spans(spans)
-                        .report(self.reporter);
-                }
-
-                self.health.taint();
-                break;
-            }
-
-            self.partially_resolved_use_bindings = partially_resolved_use_bindings;
-        }
-
-        self.partially_resolved_use_bindings.clear();
-
-        type UseBindings = HashMap<LocalDeclarationIndex, PartiallyResolvedUseBinding>;
-        type Cycle = HashSet<LocalDeclarationIndex>;
-
-        fn find_cycles(bindings: UseBindings) -> Vec<Cycle> {
-            let mut cycles = Vec::new();
-            let mut visited = HashMap::default();
-
-            enum Status {
-                InProgress,
-                Finished,
-            }
-
-            for &index in bindings.keys() {
-                if let Entry::Vacant(entry) = visited.entry(index) {
-                    let mut worklist = vec![index];
-                    entry.insert(Status::InProgress);
-                    cycles.extend(find_cycle(&bindings, &mut worklist, &mut visited));
-                }
-            }
-
-            fn find_cycle(
-                bindings: &UseBindings,
-                worklist: &mut Vec<LocalDeclarationIndex>,
-                visited: &mut HashMap<LocalDeclarationIndex, Status>,
-            ) -> Option<Cycle> {
-                let target = bindings[worklist.last().unwrap()].inquirer.unwrap();
-
-                let cycle = match visited.get(&target) {
-                    Some(Status::InProgress) => Some(
-                        worklist
-                            .iter()
-                            .copied()
-                            .skip_while(|&vertex| vertex != target)
-                            .collect(),
-                    ),
-                    Some(Status::Finished) => None,
-                    None => {
-                        worklist.push(target);
-                        visited.insert(target, Status::InProgress);
-                        find_cycle(bindings, worklist, visited)
-                    }
-                };
-                visited.insert(worklist.pop().unwrap(), Status::Finished);
-
-                cycle
-            }
-
-            cycles
-        }
-    }
-
-    fn resolve_exposure_reaches(&mut self) -> Result {
-        let mut health = Health::Untainted;
-
-        for (index, entity) in self.crate_.bindings.iter() {
-            if let Exposure::Restricted(exposure) = &entity.exposure {
-                // unwrap: root always has Exposure::Unrestricted, it won't reach this branch
-                let definition_site_namespace = self.crate_.global_index(entity.parent.unwrap());
-
-                if self
-                    .resolve_restricted_exposure(exposure, definition_site_namespace)
-                    .is_err()
-                {
-                    health.taint();
-                    continue;
-                };
-            }
-
-            if let EntityKind::Use {
-                reference: reference_index,
-            } = entity.kind
-            {
-                let reference = self.look_up(reference_index);
-
-                if entity.exposure.compare(&reference.exposure, self.crate_)
-                    == Some(Ordering::Greater)
-                {
-                    Diagnostic::error()
-                        .code(Code::E009)
-                        .message(format!(
-                            "re-export of the more private binding `{}`",
-                            self.crate_
-                                .absolute_path_to_string(reference_index, self.session)
-                        ))
-                        .labeled_primary_span(
-                            &entity.source,
-                            "re-exporting binding with greater exposure",
-                        )
-                        .labeled_secondary_span(
-                            &reference.source,
-                            "re-exported binding with lower exposure",
-                        )
-                        .note(format!(
-                            "\
-expected the exposure of `{}`
-           to be at most {}
-      but it actually is {}",
-                            self.crate_.absolute_path_to_string(
-                                self.crate_.global_index(index),
-                                self.session
-                            ),
-                            reference.exposure.with((self.crate_, self.session)),
-                            entity.exposure.with((self.crate_, self.session)),
-                        ))
-                        .report(self.reporter);
-                    health.taint();
-                }
-            }
-        }
-
-        health.into()
-    }
-
     /// Find a similarly named binding in the same namespace.
     ///
     /// Used for error reporting when an undefined binding was encountered.
     /// In the future, we might decide to find not one but several similar names
     /// but that would be computationally heavier.
-    fn find_similarly_named_declaration(
-        &self,
+    fn find_similarly_named_declaration<'s>(
+        &'s self,
         identifier: &str,
-        predicate: impl Fn(&Entity) -> bool,
+        predicate: impl Fn(&'s Entity) -> bool,
         namespace: DeclarationIndex,
-    ) -> Option<&str> {
+    ) -> Option<&'s str> {
         self.look_up(namespace)
             .namespace()
             .unwrap()
@@ -1225,10 +1274,9 @@ expected the exposure of `{}`
     /// In the future, we might decide to find not one but several similar names
     /// but that would be computationally heavier and we would need to be careful
     /// and consider the effects of shadowing.
-    // @Task make lifetimes less restrictive: &'s <'s> => &'s <'z>
     pub(super) fn find_similarly_named<'s>(
         &'s self,
-        scope: &'s FunctionScope<'s>,
+        scope: &'s FunctionScope<'_>,
         identifier: &str,
     ) -> Option<&'s str> {
         use FunctionScope::*;
@@ -1237,7 +1285,7 @@ expected the exposure of `{}`
             &Module(module) => self.find_similarly_named_declaration(
                 identifier,
                 |_| true,
-                self.crate_.global_index(module),
+                module.global(self.crate_),
             ),
             FunctionParameter { parent, binder } => {
                 if scope::is_similar(identifier, binder.as_str()) {
@@ -1266,10 +1314,10 @@ expected the exposure of `{}`
         });
     }
 
-    fn report_resolution_error_searching_lookalikes(
+    fn report_resolution_error_searching_lookalikes<'s>(
         &self,
         error: ResolutionError,
-        lookalike_finder: impl FnOnce(&str, DeclarationIndex) -> Option<&'a str>,
+        lookalike_finder: impl FnOnce(&str, DeclarationIndex) -> Option<&'s str>,
     ) {
         match error {
             ResolutionError::Unrecoverable => {}
@@ -1299,12 +1347,12 @@ expected the exposure of `{}`
                     .primary_span(&identifier)
                     .if_present(
                         lookalike_finder(identifier.as_str(), namespace),
-                        |diagnostic, binding| {
-                            diagnostic.help(format!(
+                        |this, lookalike| {
+                            this.help(format!(
                                 "a binding with a similar name exists in scope: {}",
                                 scope::Lookalike {
                                     actual: identifier.as_str(),
-                                    lookalike: binding
+                                    lookalike,
                                 },
                             ))
                         },
@@ -1459,83 +1507,93 @@ trait ResolutionTarget {
     fn handle_simple_path(identifier: &ast::Identifier, entity: &Entity) -> Result<(), Diagnostic>;
 }
 
-/// Marker to specify it's okay to resolve to either value or module.
-enum ValueOrModule {}
+mod target {
+    #[allow(clippy::wildcard_imports)]
+    use super::*;
 
-impl ResolutionTarget for ValueOrModule {
-    type Output = DeclarationIndex;
+    pub(super) enum Any {}
 
-    fn output(index: DeclarationIndex, _: &ast::Identifier) -> Self::Output {
-        index
-    }
+    impl ResolutionTarget for Any {
+        type Output = DeclarationIndex;
 
-    fn output_bare_path_hanger(
-        _: &ast::Hanger,
-        index: DeclarationIndex,
-    ) -> Result<Self::Output, Diagnostic> {
-        Ok(index)
-    }
-
-    fn handle_simple_path(_: &ast::Identifier, _: &Entity) -> Result<(), Diagnostic> {
-        Ok(())
-    }
-}
-
-/// Marker to specify to only resolve to values.
-enum OnlyValue {}
-
-impl ResolutionTarget for OnlyValue {
-    type Output = Identifier;
-
-    fn output(index: DeclarationIndex, identifier: &ast::Identifier) -> Self::Output {
-        Identifier::new(index, identifier.clone())
-    }
-
-    fn output_bare_path_hanger(
-        hanger: &ast::Hanger,
-        _: DeclarationIndex,
-    ) -> Result<Self::Output, Diagnostic> {
-        Err(Diagnostic::module_used_as_a_value(hanger.as_ref()))
-    }
-
-    fn handle_simple_path(identifier: &ast::Identifier, entity: &Entity) -> Result<(), Diagnostic> {
-        if entity.is_module() {
-            return Err(Diagnostic::module_used_as_a_value(
-                identifier.as_spanned_str(),
-            ));
+        fn output(index: DeclarationIndex, _: &ast::Identifier) -> Self::Output {
+            index
         }
 
-        Ok(())
-    }
-}
-
-enum OnlyModule {}
-
-impl ResolutionTarget for OnlyModule {
-    type Output = DeclarationIndex;
-
-    fn output(index: DeclarationIndex, _: &ast::Identifier) -> Self::Output {
-        index
-    }
-
-    fn output_bare_path_hanger(
-        _: &ast::Hanger,
-        index: DeclarationIndex,
-    ) -> Result<Self::Output, Diagnostic> {
-        Ok(index)
-    }
-
-    fn handle_simple_path(identifier: &ast::Identifier, entity: &Entity) -> Result<(), Diagnostic> {
-        // @Task print absolute path!
-        if !entity.is_module() {
-            return Err(Diagnostic::error()
-                // @Task custom code
-                .code(Code::E022)
-                .message(format!("value `{}` is not a module", identifier))
-                .primary_span(identifier));
+        fn output_bare_path_hanger(
+            _: &ast::Hanger,
+            index: DeclarationIndex,
+        ) -> Result<Self::Output, Diagnostic> {
+            Ok(index)
         }
 
-        Ok(())
+        fn handle_simple_path(_: &ast::Identifier, _: &Entity) -> Result<(), Diagnostic> {
+            Ok(())
+        }
+    }
+
+    /// Marker to specify to only resolve to values.
+    pub(super) enum Value {}
+
+    impl ResolutionTarget for Value {
+        type Output = Identifier;
+
+        fn output(index: DeclarationIndex, identifier: &ast::Identifier) -> Self::Output {
+            Identifier::new(index, identifier.clone())
+        }
+
+        fn output_bare_path_hanger(
+            hanger: &ast::Hanger,
+            _: DeclarationIndex,
+        ) -> Result<Self::Output, Diagnostic> {
+            Err(Diagnostic::module_used_as_a_value(hanger.as_ref()))
+        }
+
+        fn handle_simple_path(
+            identifier: &ast::Identifier,
+            entity: &Entity,
+        ) -> Result<(), Diagnostic> {
+            if entity.is_module() {
+                return Err(Diagnostic::module_used_as_a_value(
+                    identifier.as_spanned_str(),
+                ));
+            }
+
+            Ok(())
+        }
+    }
+
+    pub(super) enum Module {}
+
+    impl ResolutionTarget for Module {
+        type Output = DeclarationIndex;
+
+        fn output(index: DeclarationIndex, _: &ast::Identifier) -> Self::Output {
+            index
+        }
+
+        fn output_bare_path_hanger(
+            _: &ast::Hanger,
+            index: DeclarationIndex,
+        ) -> Result<Self::Output, Diagnostic> {
+            Ok(index)
+        }
+
+        fn handle_simple_path(
+            identifier: &ast::Identifier,
+            entity: &Entity,
+        ) -> Result<(), Diagnostic> {
+            // @Task print absolute path!
+            if !entity.is_module() {
+                return Err(Diagnostic::error()
+                    // @Task custom code
+                    .code(Code::E022)
+                    .message(format!("value `{}` is not a module", identifier))
+                    .primary_span(identifier));
+            }
+
+            Ok(())
+        }
     }
 }
 

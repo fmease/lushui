@@ -11,7 +11,7 @@ use super::{
         Explicitness::*, Expression, Format, Identifier, Item, Parameter, Parameters, Path,
         UsePathTree, UsePathTreeKind,
     },
-    parse, Parser, Result,
+    parse_file, Parser, Result,
 };
 use crate::{
     diagnostics::reporter::SilentReporter,
@@ -41,7 +41,7 @@ fn parse_declaration(source: &str) -> Result<Declaration> {
     let reporter = SilentReporter.into();
     let outcome!(tokens, health) = lex(&map.borrow()[file], &reporter)?;
 
-    let declaration = parse(&tokens, file.clone(), test_module_name(), map, &reporter);
+    let declaration = parse_file(&tokens, file.clone(), test_module_name(), map, &reporter);
     if health == Health::Tainted {
         return Err(());
     }

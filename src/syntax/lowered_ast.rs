@@ -12,7 +12,6 @@ use crate::{
     span::{SourceFileIndex, Span},
 };
 pub(crate) use attributes::{Attribute, AttributeKind, AttributeName, Attributes};
-use std::rc::Rc;
 
 pub(crate) type Item<Kind> = crate::item::Item<Kind, attributes::Attributes>;
 
@@ -64,16 +63,17 @@ pub struct Use {
 pub type Expression = Item<ExpressionKind>;
 
 #[derive(Clone)]
+#[allow(clippy::box_collection)]
 pub enum ExpressionKind {
-    PiType(Rc<PiType>),
-    Application(Rc<Application>),
+    PiType(Box<PiType>),
+    Application(Box<Application>),
     Type,
-    Number(Rc<Number>),
-    Text(Rc<String>),
-    Binding(Rc<Binding>),
-    Lambda(Rc<Lambda>),
+    Number(Box<Number>),
+    Text(Box<String>),
+    Binding(Box<Binding>),
+    Lambda(Box<Lambda>),
     UseIn,
-    CaseAnalysis(Rc<CaseAnalysis>),
+    CaseAnalysis(Box<CaseAnalysis>),
     Error,
 }
 
@@ -129,12 +129,13 @@ pub struct Case {
 pub type Pattern = Item<PatternKind>;
 
 #[derive(Clone)]
+#[allow(clippy::box_collection)]
 pub enum PatternKind {
-    Number(Rc<Number>),
-    Text(Rc<String>),
-    Binding(Rc<Binding>),
-    Binder(Rc<Binder>),
-    Deapplication(Rc<Deapplication>),
+    Number(Box<Number>),
+    Text(Box<String>),
+    Binding(Box<Binding>),
+    Binder(Box<Binder>),
+    Deapplication(Box<Deapplication>),
     Error,
 }
 
@@ -171,9 +172,9 @@ pub(crate) macro decl($( $tree:tt )+) {
 }
 
 pub(crate) macro expr($( $tree:tt )+) {
-    crate::item::item!(crate::syntax::lowered_ast, ExpressionKind, Rc; $( $tree )+)
+    crate::item::item!(crate::syntax::lowered_ast, ExpressionKind, Box; $( $tree )+)
 }
 
 pub(crate) macro pat($( $tree:tt )+) {
-    crate::item::item!(crate::syntax::lowered_ast, PatternKind, Rc; $( $tree )+)
+    crate::item::item!(crate::syntax::lowered_ast, PatternKind, Box; $( $tree )+)
 }

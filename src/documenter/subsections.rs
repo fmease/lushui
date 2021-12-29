@@ -2,7 +2,7 @@ use super::{
     declaration_id, documentation,
     node::{Attributable, Element, Node},
     render_declaration_attributes,
-    text_processor::{self, TextProcessor},
+    text_processor::TextProcessor,
     Options, LOREM_IPSUM,
 };
 use crate::syntax::lowered_ast::{self, attributes::Query as _, AttributeName};
@@ -34,7 +34,7 @@ impl<'a> Subsections<'a> {
         self,
         url_prefix: &str,
         parent: &mut Element<'a>,
-        text_processor: &mut TextProcessor,
+        text_processor: &mut TextProcessor<'_>,
         options: &Options,
     ) {
         self.modules.render(parent, options);
@@ -144,8 +144,8 @@ impl<'a> Modules<'a> {
                     table_definition
                         .add_child(LOREM_IPSUM.unicode_sentences().next().unwrap_or_default());
                 }
-            } else {
-                let first_sentence = documentation(module.attributes)
+            } else if let Some(documentation) = documentation(module.attributes) {
+                let first_sentence = documentation
                     .unicode_sentences()
                     .map(ToOwned::to_owned)
                     .next()
@@ -208,7 +208,7 @@ impl<'a> Types<'a> {
         self,
         url_prefix: &str,
         parent: &mut Element<'a>,
-        text_processor: &mut text_processor::TextProcessor,
+        text_processor: &mut TextProcessor<'_>,
         options: &Options,
     ) {
         if self.0.is_empty() {
@@ -352,7 +352,7 @@ impl<'a> Functions<'a> {
         self,
         url_prefix: &str,
         parent: &mut Element<'a>,
-        text_processor: &mut text_processor::TextProcessor,
+        text_processor: &mut TextProcessor<'_>,
         options: &Options,
     ) {
         if self.0.is_empty() {
@@ -434,7 +434,7 @@ impl<'a> Keywords<'a> {
         self,
         url_prefix: &str,
         parent: &mut Element<'a>,
-        text_processor: &mut text_processor::TextProcessor,
+        text_processor: &mut TextProcessor<'_>,
         options: &Options,
     ) {
         if self.0.is_empty() {
@@ -505,7 +505,7 @@ impl<'a> ReservedPunctuation<'a> {
         self,
         url_prefix: &str,
         parent: &mut Element<'a>,
-        text_processor: &mut text_processor::TextProcessor,
+        text_processor: &mut TextProcessor<'_>,
         options: &Options,
     ) {
         if self.0.is_empty() {
@@ -576,7 +576,7 @@ impl<'a> Attributes<'a> {
         self,
         url_prefix: &str,
         parent: &mut Element<'a>,
-        text_processor: &mut text_processor::TextProcessor,
+        text_processor: &mut TextProcessor<'_>,
         options: &Options,
     ) {
         if self.0.is_empty() {

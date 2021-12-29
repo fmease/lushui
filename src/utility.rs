@@ -49,12 +49,6 @@ pub(crate) macro try_all {
     },
 }
 
-pub(crate) macro unrc($compound:ident.$projection:ident) {
-    ::std::rc::Rc::try_unwrap($compound)
-        .map(|compound| compound.$projection)
-        .unwrap_or_else(|compound| compound.$projection.clone())
-}
-
 pub(crate) macro condition($( $condition:expr => $consequence:expr ),+ $(, else => $alternative:expr )? $(,)?) {
     match () {
         $( _ if $condition => $consequence, )+

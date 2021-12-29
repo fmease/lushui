@@ -27,6 +27,7 @@ mod test;
 
 #[allow(clippy::wildcard_imports)]
 use super::{
+    // @Task remove the `ast`-wildcard import
     ast::{self, *},
     token::{
         Token,
@@ -51,8 +52,8 @@ const STANDARD_DECLARATION_DELIMITERS: [Delimiter; 3] = {
 const BRACKET_POTENTIAL_PI_TYPE_LITERAL: &str =
     "add round brackets around the potential pi type literal to disambiguate the expression";
 
-/// Parse a file module.
-pub fn parse(
+/// Parse a file (the crate root or an out-of-line module).
+pub fn parse_file(
     tokens: &[Token],
     file: SourceFileIndex,
     module: Identifier,
@@ -62,7 +63,20 @@ pub fn parse(
     Parser::new(tokens, file, map, reporter).parse_top_level(module)
 }
 
+// @Task get rid of the parameters file and map!
+pub(super) fn parse_path(
+    tokens: &[Token],
+    file: SourceFileIndex,
+    map: SharedSourceMap,
+    reporter: &Reporter,
+) -> Result<Path> {
+    Parser::new(tokens, file, map, reporter).parse_path()
+}
+
 /// The state of the parser.
+// @Beacon @Beacon @Beacon @Task create stripped down version of the Parser
+// that does not have `map` and `file` (naming?) and move all parsing methods that don't
+// need those files to it
 struct Parser<'a> {
     tokens: &'a [Token],
     file: SourceFileIndex,

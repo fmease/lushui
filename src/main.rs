@@ -285,7 +285,8 @@ fn build_package(
 
         // @Beacon @Task fix this ugly mess, create clean helpers
         let module_name = Spanned::new(default(), crate_.name.clone()).into();
-        let declaration = parser::parse(&tokens, source_file, module_name, map.clone(), reporter)?;
+        let declaration =
+            parser::parse_file(&tokens, source_file, module_name, map.clone(), reporter)?;
 
         let duration = time.elapsed();
 
@@ -307,10 +308,10 @@ fn build_package(
             lowerer::lower(declaration, lowering_options, map.clone(), reporter);
         let duration = time.elapsed();
 
-        let declaration = declarations.pop().unwrap();
+        let crate_root = declarations.pop().unwrap();
 
         if crate_.index == session.goal_crate() && options.emit_lowered_ast {
-            eprintln!("{}", declaration);
+            eprintln!("{}", crate_root);
         }
 
         print_pass_duration("Lowering", duration, &options);
@@ -319,11 +320,12 @@ fn build_package(
         }
         check_pass_restriction!(PassRestriction::Lowerer);
         let time = Instant::now();
-        let declaration = resolver::resolve(declaration, &mut crate_, &session, reporter)?;
+        let crate_root =
+            resolver::resolve_declarations(crate_root, &mut crate_, &session, reporter)?;
         let duration = time.elapsed();
 
         if options.emit_hir {
-            eprintln!("{}", declaration.with((&crate_, &session)));
+            eprintln!("{}", crate_root.with((&crate_, &session)));
         }
         if crate_.index == session.goal_crate() && options.emit_untyped_scope {
             eprintln!("{}", crate_.with(&session));
@@ -332,7 +334,7 @@ fn build_package(
         print_pass_duration("Name resolution", duration, &options);
         check_pass_restriction!(PassRestriction::Resolver);
         let time = Instant::now();
-        typer::check(&declaration, &mut crate_, &mut session, reporter)?;
+        typer::check(&crate_root, &mut crate_, &mut session, reporter)?;
         let duration = time.elapsed();
 
         if crate_.index == session.goal_crate() && options.emit_scope {
@@ -377,7 +379,7 @@ fn build_package(
                 BuildMode::Build => {
                     // @Temporary not just builds, also runs ^^
 
-                    lushui::compiler::compile_and_interpret_declaration(&declaration, &crate_)
+                    lushui::compiler::compile_and_interpret_declaration(&crate_root, &crate_)
                         .unwrap_or_else(|_| panic!());
                 }
                 BuildMode::Document {
@@ -397,7 +399,7 @@ fn build_package(
                         lorem_ipsum: options.lorem_ipsum,
                     };
                     documenter::document(
-                        &declaration,
+                        &crate_root,
                         documenter_options,
                         &crates,
                         &crate_,

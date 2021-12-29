@@ -32,7 +32,12 @@ use index_map::IndexMap;
 use joinery::JoinableIterator;
 use smallvec::smallvec;
 use std::{
-    cell::RefCell, cmp::Ordering, collections::VecDeque, default::default, fmt, path::PathBuf,
+    cmp::Ordering,
+    collections::VecDeque,
+    default::default,
+    fmt,
+    path::PathBuf,
+    sync::{Arc, Mutex},
 };
 use unicode_width::UnicodeWidthStr;
 
@@ -111,10 +116,6 @@ impl Crate {
         }
     }
 
-    pub(crate) fn global_index(&self, index: LocalDeclarationIndex) -> DeclarationIndex {
-        DeclarationIndex::new(self.index, index)
-    }
-
     // @Beacon @Question shouldn't `index` be a LocalDeclarationIndex?
     pub(super) fn some_ancestor_equals(
         &self,
@@ -127,8 +128,8 @@ impl Crate {
             }
 
             // @Beacon @Question can this ever panic?
-            index = match self[index.local_index(self).unwrap()].parent {
-                Some(parent) => self.global_index(parent),
+            index = match self[index.local(self).unwrap()].parent {
+                Some(parent) => parent.global(self),
                 None => break false,
             }
         }
@@ -156,10 +157,10 @@ impl Crate {
         root: String,
         session: &BuildSession,
     ) -> String {
-        match index.local_index(self) {
+        match index.local(self) {
             Some(index) => self.local_path_with_root_to_string(index, root),
             None => {
-                let crate_ = &session[index.crate_index()];
+                let crate_ = &session[index.crate_()];
                 let root = format!("{}.{}", HangerKind::Extern.name(), crate_.name);
 
                 crate_.absolute_path_with_root_to_string(index, root, session)
@@ -235,7 +236,7 @@ impl Crate {
                 .unwrap()
                 .binders
                 .iter()
-                .map(|&index| index.local_index(self).unwrap())
+                .map(|&index| index.local(self).unwrap())
                 .find(|&index| self[index].source == binder);
 
             if let Some(index) = index {
@@ -262,8 +263,7 @@ impl Crate {
         });
 
         if let Some(namespace) = namespace {
-            let index = self.global_index(index);
-
+            let index = index.global(self);
             self[namespace].namespace_mut().unwrap().binders.push(index);
         }
 
@@ -323,10 +323,11 @@ impl DisplayWith for Crate {
     }
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone)]
 pub(crate) enum Exposure {
     Unrestricted,
-    Restricted(RefCell<RestrictedExposure>),
+    // @Task find a way to get rid of interior mutability here
+    Restricted(Arc<Mutex<RestrictedExposure>>),
 }
 
 impl Exposure {
@@ -337,7 +338,9 @@ impl Exposure {
             (Unrestricted, Unrestricted) => Some(Ordering::Equal),
             (Unrestricted, Restricted(_)) => Some(Ordering::Greater),
             (Restricted(_), Unrestricted) => Some(Ordering::Less),
-            (Restricted(this), Restricted(other)) => this.borrow().compare(&other.borrow(), crate_),
+            (Restricted(this), Restricted(other)) => {
+                this.lock().unwrap().compare(&other.lock().unwrap(), crate_)
+            }
         }
     }
 }
@@ -348,7 +351,7 @@ impl fmt::Debug for Exposure {
             Self::Unrestricted => write!(f, "unrestricted"),
             Self::Restricted(reach) => {
                 write!(f, "restricted(")?;
-                match &*reach.borrow() {
+                match &*reach.lock().unwrap() {
                     RestrictedExposure::Unresolved { reach } => write!(f, "{reach}"),
                     RestrictedExposure::Resolved { reach } => write!(f, "{reach:?}"),
                 }?;
@@ -364,10 +367,23 @@ impl DisplayWith for Exposure {
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Unrestricted => write!(f, "unrestricted"),
-            Self::Restricted(reach) => write!(f, "`{}`", reach.borrow().with(context)),
+            Self::Restricted(reach) => write!(f, "`{}`", reach.lock().unwrap().with(context)),
         }
     }
 }
+
+impl PartialEq for Exposure {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Restricted(l0), Self::Restricted(r0)) => {
+                *l0.lock().unwrap() == *r0.lock().unwrap()
+            }
+            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+        }
+    }
+}
+
+impl Eq for Exposure {}
 
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) enum RestrictedExposure {
@@ -386,8 +402,8 @@ impl RestrictedExposure {
 
         Some(match (self, other) {
             (&Resolved { reach: this }, &Resolved { reach: other }) => {
-                let this = crate_.global_index(this);
-                let other = crate_.global_index(other);
+                let this = this.global(crate_);
+                let other = other.global(crate_);
 
                 if this == other {
                     Ordering::Equal
@@ -417,7 +433,7 @@ impl DisplayWith for RestrictedExposure {
             &Self::Resolved { reach } => write!(
                 f,
                 "{}",
-                scope.absolute_path_to_string(scope.global_index(reach), session)
+                scope.absolute_path_to_string(reach.global(scope), session)
             ),
         }
     }
@@ -425,7 +441,7 @@ impl DisplayWith for RestrictedExposure {
 
 impl From<RestrictedExposure> for Exposure {
     fn from(exposure: RestrictedExposure) -> Self {
-        Self::Restricted(RefCell::new(exposure))
+        Self::Restricted(Arc::new(Mutex::new(exposure)))
     }
 }
 

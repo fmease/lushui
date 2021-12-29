@@ -14,7 +14,6 @@ use crate::{
 pub(crate) use identifier::{
     DeBruijnIndex, DeclarationIndex, Identifier, Index, LocalDeclarationIndex,
 };
-use std::rc::Rc;
 
 mod format;
 pub(crate) mod identifier;
@@ -73,20 +72,21 @@ pub struct Use {
 pub type Expression = Item<ExpressionKind>;
 
 #[derive(Clone)]
+#[allow(clippy::box_collection)]
 pub enum ExpressionKind {
-    PiType(Rc<PiType>),
-    Application(Rc<Application>),
+    PiType(Box<PiType>),
+    Application(Box<Application>),
     Type,
-    Number(Rc<Number>),
-    Text(Rc<String>),
-    Binding(Rc<Binding>),
-    Lambda(Rc<Lambda>),
+    Number(Box<Number>),
+    Text(Box<String>),
+    Binding(Box<Binding>),
+    Lambda(Box<Lambda>),
     UseIn,
-    CaseAnalysis(Rc<CaseAnalysis>),
-    Substitution(Rc<Substitution>),
-    IntrinsicApplication(Rc<IntrinsicApplication>),
-    Projection(Rc<Projection>),
-    IO(Rc<IO>),
+    CaseAnalysis(Box<CaseAnalysis>),
+    Substitution(Box<Substitution>),
+    IntrinsicApplication(Box<IntrinsicApplication>),
+    Projection(Box<Projection>),
+    IO(Box<IO>),
     Error,
 }
 
@@ -166,12 +166,13 @@ pub struct Case {
 pub type Pattern = Item<PatternKind>;
 
 #[derive(Clone)]
+#[allow(clippy::box_collection)]
 pub enum PatternKind {
-    Number(Rc<Number>),
-    Text(Rc<String>),
-    Binding(Rc<Binding>),
-    Binder(Rc<Binder>),
-    Deapplication(Rc<Deapplication>),
+    Number(Box<Number>),
+    Text(Box<String>),
+    Binding(Box<Binding>),
+    Binder(Box<Binder>),
+    Deapplication(Box<Deapplication>),
     Error,
 }
 
@@ -198,9 +199,9 @@ pub(crate) macro decl($( $tree:tt )+) {
 }
 
 pub(crate) macro expr($( $tree:tt )+) {
-    crate::item::item!(crate::hir, ExpressionKind, Rc; $( $tree )+)
+    crate::item::item!(crate::hir, ExpressionKind, Box; $( $tree )+)
 }
 
 pub(crate) macro pat($( $tree:tt )+) {
-    crate::item::item!(crate::hir, PatternKind, Rc; $( $tree )+)
+    crate::item::item!(crate::hir, PatternKind, Box; $( $tree )+)
 }

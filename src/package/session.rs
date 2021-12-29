@@ -266,7 +266,7 @@ impl Index<DeclarationIndex> for BuildSession {
     type Output = Entity;
 
     fn index(&self, index: DeclarationIndex) -> &Self::Output {
-        &self[index.crate_index()][index.local_index_unchecked()]
+        &self[index.crate_()][index.local_unchecked()]
     }
 }
 
