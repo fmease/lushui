@@ -27,8 +27,13 @@ mod test;
 
 #[allow(clippy::wildcard_imports)]
 use super::{
-    // @Task remove the `ast`-wildcard import
-    ast::{self, *},
+    ast::{
+        self, attrarg, decl, expr, pat, Attribute, AttributeArgument, AttributeKind, Attributes,
+        BindStatement, Declaration, Domain,
+        Explicitness::{self, *},
+        Expression, Identifier, LetStatement, NamedAttributeArgument, Parameter, ParameterKind,
+        Parameters, Path, Pattern, SpannedExplicitness, Statement, UsePathTree, UsePathTreeKind,
+    },
     token::{
         Token,
         TokenName::{self, *},

@@ -500,6 +500,8 @@ pub(crate) enum AttributeKind {
     Rune,
     /// Force an expression to be evaluated at compile-time.
     Static,
+    /// Output statistics about a declaration.
+    Statistics,
     /// Mark a function as a unit test.
     Test,
     /// Specify the concrete type of a text literal to be `Text`.
@@ -536,7 +538,7 @@ impl AttributeKind {
         // when updating, update `AttributeTargets::description` accordingly
         match self {
             Allow { .. } | Deny { .. } | Forbid { .. } | Warn { .. } => Targets::all(),
-            Deprecated { .. } | Doc { .. } | If { .. } | Ignore | Unstable { .. } => {
+            Deprecated { .. } | Doc { .. } | If { .. } | Ignore | Statistics | Unstable { .. } => {
                 Targets::DECLARATION
             }
             Intrinsic => Targets::FUNCTION_DECLARATION | Targets::DATA_DECLARATION,
@@ -576,12 +578,6 @@ impl AttributeKind {
         matches!(
             self,
             Self::Doc { .. }
-                | Self::DocAttribute { .. }
-                | Self::DocAttributes
-                | Self::DocReservedIdentifier { .. }
-                | Self::DocReservedIdentifiers
-                | Self::Intrinsic
-                | Self::Known
                 | Self::Int
                 | Self::Int32
                 | Self::Int64
@@ -591,7 +587,7 @@ impl AttributeKind {
                 | Self::Nat64
                 | Self::Abstract
                 | Self::Public { .. }
-        )
+        ) || self.is_internal()
     }
 
     pub(crate) const fn is_internal(&self) -> bool {
@@ -603,6 +599,7 @@ impl AttributeKind {
                 | Self::DocAttributes
                 | Self::DocReservedIdentifier { .. }
                 | Self::DocReservedIdentifiers
+                | Self::Statistics
         )
     }
 
@@ -642,6 +639,7 @@ impl fmt::Display for AttributeKind {
             | Self::Nat64
             | Self::Rune
             | Self::Static
+            | Self::Statistics
             | Self::Test
             | Self::Text
             | Self::Unsafe
@@ -708,6 +706,7 @@ impl AttributeName {
             Self::RecursionLimit => "recursion-limit",
             Self::Rune => "Rune",
             Self::Static => "static",
+            Self::Statistics => "statistics",
             Self::Test => "test",
             Self::Text => "Text",
             Self::Unsafe => "unsafe",
@@ -752,6 +751,7 @@ impl FromStr for AttributeName {
             "recursion-limit" => Self::RecursionLimit,
             "Rune" => Self::Rune,
             "static" => Self::Static,
+            "statistics" => Self::Statistics,
             "test" => Self::Test,
             "Text" => Self::Text,
             "unsafe" => Self::Unsafe,

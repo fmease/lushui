@@ -1340,6 +1340,7 @@ impl lowered_ast::attributes::AttributeKind {
                 }
                 Rune => Self::Rune,
                 Static => Self::Static,
+                Statistics => Self::Statistics,
                 Test => Self::Test,
                 Text => Self::Text,
                 Unsafe => Self::Unsafe,

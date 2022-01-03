@@ -712,6 +712,7 @@ fn render_declaration_attribute(attribute: &Attribute, parent: &mut Element<'_>,
         | Known
         | Location { .. }
         | RecursionLimit { .. }
+        | Statistics
         | Warn { .. } => {}
 
         // not declaration attributes
