@@ -366,6 +366,7 @@ mod test {
                 parent: None,
                 exposure: Exposure::Unrestricted,
                 kind: EntityKind::module(),
+                attributes: default(),
             });
             crate_
         }
@@ -385,6 +386,7 @@ mod test {
                 source: identifier.clone(),
                 parent: Some(parent),
                 exposure: Exposure::Unrestricted,
+                attributes: default(),
                 kind,
             };
             let index = self.bindings.insert(entity);

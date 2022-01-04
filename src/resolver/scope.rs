@@ -23,6 +23,7 @@ use crate::{
     syntax::{
         ast::{self, HangerKind, Path},
         lexer::is_punctuation,
+        lowered_ast::Attributes,
         CrateName,
     },
     utility::{HashMap, SmallVec},
@@ -226,6 +227,7 @@ impl Crate {
         &mut self,
         binder: ast::Identifier,
         exposure: Exposure,
+        attributes: Attributes,
         binding: EntityKind,
         namespace: Option<LocalDeclarationIndex>,
     ) -> Result<LocalDeclarationIndex, RegistrationError> {
@@ -259,6 +261,7 @@ impl Crate {
             source: binder,
             kind: binding,
             exposure,
+            attributes,
             parent: namespace,
         });
 

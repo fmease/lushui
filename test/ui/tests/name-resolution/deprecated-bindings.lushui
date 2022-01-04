@@ -1,0 +1,12 @@
+;;; TEST pass check
+
+@deprecated
+data Foo: Type of
+
+@deprecated
+Bar: Type = Foo
+
+@(deprecated (reason "it was not the right thing"))
+Baz: Type -> Type = \(A: Type) => Type
+
+X: Type = Baz Bar

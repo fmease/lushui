@@ -1263,12 +1263,18 @@ impl lowered_ast::attributes::AttributeKind {
                         _ => unreachable!(),
                     }
                 }
-                Deprecated => {
-                    Diagnostic::unimplemented("attribute `deprecated`")
-                        .primary_span(attribute)
-                        .report(reporter);
-                    return Err(AttributeParsingError::Unrecoverable);
-                }
+                Deprecated => Self::Deprecated(lowered_ast::attributes::Deprecated {
+                    reason: optional_argument(arguments)
+                        .map(|argument| argument.text_literal(Some("reason"), reporter))
+                        .transpose()?,
+                    // @Task parse version
+                    since: None,
+                    // @Task parse version
+                    removal: None,
+                    replacement: optional_argument(arguments)
+                        .map(|argument| argument.text_literal(Some("replacement"), reporter))
+                        .transpose()?,
+                }),
                 Doc => Self::Doc {
                     content: if options.keep_documentation_comments {
                         argument(arguments, attribute.span, reporter)?

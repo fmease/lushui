@@ -157,6 +157,7 @@ impl<'a> Resolver<'a> {
                 self.crate_.register_binding(
                     function.binder.clone(),
                     exposure,
+                    declaration.attributes.clone(),
                     EntityKind::UntypedFunction,
                     Some(module),
                 )?;
@@ -169,6 +170,7 @@ impl<'a> Resolver<'a> {
                 let namespace = self.crate_.register_binding(
                     type_.binder.clone(),
                     exposure,
+                    declaration.attributes.clone(),
                     EntityKind::untyped_data_type(),
                     Some(module),
                 )?;
@@ -217,6 +219,7 @@ impl<'a> Resolver<'a> {
                 self.crate_.register_binding(
                     constructor.binder.clone(),
                     exposure,
+                    declaration.attributes.clone(),
                     EntityKind::UntypedConstructor,
                     Some(namespace),
                 )?;
@@ -228,6 +231,8 @@ impl<'a> Resolver<'a> {
                 let index = self.crate_.register_binding(
                     submodule.binder.clone(),
                     exposure,
+                    // @Beacon @Bug this does not account for attributes found on the attribute header!
+                    declaration.attributes.clone(),
                     EntityKind::module(),
                     module,
                 )?;
@@ -257,6 +262,7 @@ impl<'a> Resolver<'a> {
                 let index = self.crate_.register_binding(
                     use_.binder.clone(),
                     exposure,
+                    declaration.attributes.clone(),
                     EntityKind::UnresolvedUse,
                     Some(module),
                 )?;
@@ -1034,6 +1040,27 @@ impl<'a> ResolverRef<'a> {
         // @Temporary hack until we can manage cyclic exposure reaches!
         if matches!(context.check_exposure, CheckExposure::Yes) {
             self.handle_exposure(index, identifier, context.origin_namespace)?;
+        }
+
+        if let Some(deprecated) = self
+            .look_up(index)
+            .attributes
+            .get::<{ AttributeName::Deprecated }>()
+        {
+            let mut message = format!(
+                "use of deprecated binding `{}`",
+                self.crate_.absolute_path_to_string(index, self.session),
+            );
+
+            if let Some(reason) = &deprecated.reason {
+                message += ": ";
+                message += reason;
+            }
+
+            Diagnostic::warning()
+                .message(message)
+                .primary_span(identifier)
+                .report(self.reporter);
         }
 
         self.collapse_use_chain(index)

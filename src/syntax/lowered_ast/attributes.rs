@@ -577,7 +577,8 @@ impl AttributeKind {
     pub(crate) const fn is_fully_implemented(&self) -> bool {
         matches!(
             self,
-            Self::Doc { .. }
+            Self::Deprecated { .. }
+                | Self::Doc { .. }
                 | Self::Int
                 | Self::Int32
                 | Self::Int64
@@ -650,11 +651,30 @@ impl fmt::Display for AttributeKind {
             | Self::Forbid { lint }
             | Self::Warn { lint } => write!(f, "({name} {})", lint),
 
-            Self::Deprecated(deprecated) => write!(
-                f,
-                "({name} (reason {:?}) (since {:?}) (removal {:?}) (replacement {:?}))",
-                deprecated.reason, deprecated.since, deprecated.removal, deprecated.replacement
-            ),
+            Self::Deprecated(deprecated) => {
+                if deprecated.reason.is_none()
+                    && deprecated.since.is_none()
+                    && deprecated.removal.is_none()
+                    && deprecated.replacement.is_none()
+                {
+                    write!(f, "{name}")
+                } else {
+                    write!(f, "({name}")?;
+                    if let Some(reason) = &deprecated.reason {
+                        write!(f, " (reason {reason:?})")?;
+                    }
+                    if let Some(since) = &deprecated.since {
+                        write!(f, " (since {since:?})")?;
+                    }
+                    if let Some(removal) = &deprecated.removal {
+                        write!(f, " (removal {removal:?})")?;
+                    }
+                    if let Some(replacement) = &deprecated.replacement {
+                        write!(f, " (replacement {replacement:?})")?;
+                    }
+                    write!(f, ")")
+                }
+            }
             Self::Doc { content } => write!(f, "({name} {content:?})"),
             Self::DocAttribute { name: identifier } => write!(f, "({name} {identifier:?})"),
             Self::DocReservedIdentifier { name: identifier } => {
@@ -843,7 +863,7 @@ data_queries! {
 #[derive(Clone, PartialEq, Eq, Hash)]
 
 pub(crate) struct Deprecated {
-    pub(crate) reason: String,
+    pub(crate) reason: Option<String>,
     pub(crate) since: Option<Version>,
     pub(crate) removal: Option<Version>,
     pub(crate) replacement: Option<String>,

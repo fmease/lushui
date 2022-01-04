@@ -8,6 +8,7 @@ use crate::{
     hir::{DeclarationIndex, Expression, Identifier, LocalDeclarationIndex},
     package::{session::BareIntrinsicFunctionValue, BuildSession},
     resolver::{Crate, Exposure, Namespace},
+    syntax::lowered_ast::Attributes,
     typer::interpreter::scope::ValueView,
     utility::obtain,
 };
@@ -35,6 +36,7 @@ pub(crate) struct Entity {
     // @Question should we make this a DeclarationIndex?
     pub(crate) parent: Option<LocalDeclarationIndex>,
     pub(crate) exposure: Exposure,
+    pub(crate) attributes: Attributes,
     pub(crate) kind: EntityKind,
 }
 
