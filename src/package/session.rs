@@ -81,7 +81,7 @@ impl BuildSession {
     }
 
     pub fn add(&mut self, crate_: Crate) {
-        self.crates.insert(crate_.index, crate_);
+        self.crates.insert(crate_.meta.index, crate_);
     }
 
     pub(crate) fn known_binding(&self, known: KnownBinding) -> Option<&Identifier> {

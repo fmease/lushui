@@ -321,7 +321,7 @@ mod test {
         entity::{Entity, EntityKind},
         format::DisplayWith,
         hir::{expr, Expression, Identifier, LocalDeclarationIndex},
-        package::{BuildSession, CrateIndex, CrateType, PackageIndex},
+        package::{BuildSession, CrateIndex, CrateMeta, CrateType, PackageIndex},
         resolver::{Crate, Exposure},
         span::Span,
         syntax::{
@@ -354,13 +354,13 @@ mod test {
 
     impl Crate {
         fn test() -> Self {
-            let mut crate_ = Self::new(
+            let mut crate_ = Self::new(CrateMeta::new(
                 CrateName::parse("test").ok().unwrap(),
                 CRATE_INDEX,
                 PACKAGE_INDEX,
                 PathBuf::new(),
                 CrateType::Library,
-            );
+            ));
             crate_.bindings.insert(Entity {
                 source: ast::Identifier::new_unchecked("test".into(), default()),
                 parent: None,

@@ -7,8 +7,6 @@
 //! contain a [declaration index](DeclarationIndex) or a [de Bruijn index](DeBruijnIndex)
 //! respectively.
 
-mod scope;
-
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     entity::{Entity, EntityKind},
@@ -31,6 +29,8 @@ pub(crate) use scope::{Crate, Exposure, FunctionScope, Namespace};
 use scope::{RegistrationError, RestrictedExposure};
 use std::{cmp::Ordering, collections::hash_map::Entry, fmt, sync::Mutex};
 
+mod scope;
+
 pub const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
 
 /// Resolve the names of a declaration.
@@ -50,7 +50,7 @@ pub fn resolve_declarations(
     session: &BuildSession,
     reporter: &Reporter,
 ) -> Result<hir::Declaration> {
-    let mut resolver = Resolver::new(crate_, session, reporter);
+    let mut resolver = ResolverMut::new(crate_, session, reporter);
 
     resolver
         .start_resolve_declaration(&crate_root, None, Context::default())
@@ -78,15 +78,14 @@ pub(crate) fn resolve_path(
     session: &BuildSession,
     reporter: &Reporter,
 ) -> Result<DeclarationIndex> {
-    let resolver = ResolverRef::new(crate_, session, reporter);
+    let resolver = Resolver::new(crate_, session, reporter);
 
     resolver
         .resolve_path::<target::Any>(path, namespace)
         .map_err(|error| resolver.report_resolution_error(error))
 }
 
-/// The state of the resolver.
-struct Resolver<'a> {
+struct ResolverMut<'a> {
     crate_: &'a mut Crate,
     session: &'a BuildSession,
     reporter: &'a Reporter,
@@ -95,7 +94,7 @@ struct Resolver<'a> {
     health: Health,
 }
 
-impl<'a> Resolver<'a> {
+impl<'a> ResolverMut<'a> {
     fn new(crate_: &'a mut Crate, session: &'a BuildSession, reporter: &'a Reporter) -> Self {
         Self {
             crate_,
@@ -106,8 +105,8 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    fn as_ref(&self) -> ResolverRef<'_> {
-        ResolverRef {
+    fn as_ref(&self) -> Resolver<'_> {
+        Resolver {
             crate_: self.crate_,
             session: self.session,
             reporter: self.reporter,
@@ -658,13 +657,13 @@ expected the exposure of `{}`
     }
 }
 
-struct ResolverRef<'a> {
+struct Resolver<'a> {
     crate_: &'a Crate,
     session: &'a BuildSession,
     reporter: &'a Reporter,
 }
 
-impl<'a> ResolverRef<'a> {
+impl<'a> Resolver<'a> {
     fn new(crate_: &'a Crate, session: &'a BuildSession, reporter: &'a Reporter) -> Self {
         Self {
             crate_,

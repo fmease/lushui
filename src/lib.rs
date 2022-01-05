@@ -79,7 +79,6 @@ pub mod documenter;
 mod entity;
 pub mod error;
 pub mod format;
-mod grow_array;
 mod hir;
 mod item;
 mod metadata;
@@ -92,17 +91,3 @@ mod utility;
 
 /// The file extension of a Lushui source code file.
 pub const FILE_EXTENSION: &str = "lushui";
-
-use once_cell::sync::OnceCell;
-
-// @Task remove this options stuff!
-
-static OPTIONS: OnceCell<GlobalOptions> = OnceCell::new();
-
-pub struct GlobalOptions {
-    pub show_indices: bool,
-}
-
-pub fn set_global_options(options: GlobalOptions) {
-    OPTIONS.set(options).unwrap_or_else(|_| unreachable!());
-}

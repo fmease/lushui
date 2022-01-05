@@ -18,7 +18,7 @@ use crate::{
     error::Result,
     format::{AsAutoColoredChangeset, DisplayWith},
     hir::{DeclarationIndex, Identifier, Index, LocalDeclarationIndex},
-    package::{BuildSession, CrateIndex, CrateType, PackageIndex},
+    package::{BuildSession, CrateIndex, CrateMeta, CrateType, Package},
     span::{Span, Spanned, Spanning},
     syntax::{
         ast::{self, HangerKind, Path},
@@ -37,49 +37,24 @@ use std::{
     collections::VecDeque,
     default::default,
     fmt,
-    path::PathBuf,
     sync::{Arc, Mutex},
 };
 use unicode_width::UnicodeWidthStr;
 
-// @Task better docs
-/// The crate scope for module-level bindings.
-// @Task move out of this module
 pub struct Crate {
-    pub name: CrateName,
-    pub index: CrateIndex,
-    pub package: PackageIndex,
-    pub path: PathBuf,
-    pub type_: CrateType,
-    /// Indicates if the name of the library or binary crate coincides with the name of the binary¹ or library crate, respectively.
-    ///
-    /// ¹: We haven't implemented multiple binary crates per package yet.
-    pub is_ambiguously_named_within_package: bool,
+    pub meta: CrateMeta,
     pub program_entry: Option<Identifier>,
     /// All bindings inside of the crate.
     // The first element has to be the root module.
     pub(crate) bindings: IndexMap<LocalDeclarationIndex, Entity>,
     /// For error reporting.
-    // @Task try to move this into `Resolver`
-    // #[deprecated]
     pub(super) duplicate_definitions: HashMap<LocalDeclarationIndex, DuplicateDefinition>,
 }
 
 impl Crate {
-    pub(crate) fn new(
-        name: CrateName,
-        index: CrateIndex,
-        package: PackageIndex,
-        path: PathBuf,
-        type_: CrateType,
-    ) -> Self {
+    pub(crate) fn new(meta: CrateMeta) -> Self {
         Self {
-            name,
-            index,
-            package,
-            path,
-            type_,
-            is_ambiguously_named_within_package: false,
+            meta,
             program_entry: default(),
             bindings: default(),
             duplicate_definitions: default(),
@@ -87,16 +62,28 @@ impl Crate {
     }
 
     pub fn is_library(&self) -> bool {
-        self.type_ == CrateType::Library
+        self.meta.type_ == CrateType::Library
     }
 
     pub fn is_binary(&self) -> bool {
-        self.type_ == CrateType::Binary
+        self.meta.type_ == CrateType::Binary
+    }
+
+    pub fn package<'s>(&self, session: &'s BuildSession) -> &'s Package {
+        &session[self.meta.package]
     }
 
     /// Test if this crate is the standard library `core`.
     pub fn is_core_library(&self, session: &BuildSession) -> bool {
-        session[self.package].is_core() && self.is_library()
+        self.package(session).is_core() && self.is_library()
+    }
+
+    pub fn is_goal(&self, session: &BuildSession) -> bool {
+        self.meta.index == session.goal_crate()
+    }
+
+    pub fn in_goal_package(&self, session: &BuildSession) -> bool {
+        self.meta.package == session.goal_package()
     }
 
     pub(super) fn dependency(
@@ -104,12 +91,12 @@ impl Crate {
         name: &CrateName,
         session: &BuildSession,
     ) -> Option<CrateIndex> {
-        let package = &session[self.package];
+        let package = self.package(session);
         let dependency = package.dependencies.get(name).copied();
 
         // @Question should we forbid direct dependencies with the same name as the current package
         // (in a prior step)?
-        match self.type_ {
+        match self.meta.type_ {
             CrateType::Library => dependency,
             CrateType::Binary => {
                 dependency.or_else(|| (name == &package.name).then(|| package.library).flatten())
@@ -162,7 +149,7 @@ impl Crate {
             Some(index) => self.local_path_with_root_to_string(index, root),
             None => {
                 let crate_ = &session[index.crate_()];
-                let root = format!("{}.{}", HangerKind::Extern.name(), crate_.name);
+                let root = format!("{}.{}", HangerKind::Extern.name(), crate_.meta.name);
 
                 crate_.absolute_path_with_root_to_string(index, root, session)
             }
@@ -172,7 +159,7 @@ impl Crate {
     // @Note bad name
     // @Task add docs
     pub(crate) fn local_path_to_string(&self, index: LocalDeclarationIndex) -> String {
-        self.local_path_with_root_to_string(index, self.name.to_string())
+        self.local_path_with_root_to_string(index, self.meta.name.to_string())
     }
 
     // @Note bad name
@@ -313,7 +300,7 @@ impl DisplayWith for Crate {
         writeln!(
             f,
             "{} {} ({:?}) {:?}",
-            self.type_, session[self.package].name, self.index, self.package
+            self.meta.type_, self.meta.name, self.meta.index, self.meta.package
         )?;
 
         writeln!(f, "  bindings:")?;

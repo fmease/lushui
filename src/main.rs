@@ -29,11 +29,6 @@
     clippy::missing_panics_doc, // @Temporary
 )]
 
-use std::{
-    default::default,
-    time::{Duration, Instant},
-};
-
 use cli::{BuildMode, Command, PassRestriction};
 use colored::Colorize;
 use lushui::{
@@ -49,6 +44,10 @@ use lushui::{
     span::{SharedSourceMap, SourceMap, Spanned},
     syntax::{lexer, lowerer, parser, CrateName},
     typer, FILE_EXTENSION,
+};
+use std::{
+    default::default,
+    time::{Duration, Instant},
 };
 
 mod cli;
@@ -73,11 +72,6 @@ fn main_() -> Result {
     set_panic_hook();
 
     let (command, options) = cli::arguments();
-
-    // @Task get rid of this!
-    lushui::set_global_options(lushui::GlobalOptions {
-        show_indices: options.show_indices,
-    });
 
     let map = SourceMap::shared();
     let reporter = BufferedStderrReporter::new(map.clone()).into();
@@ -209,7 +203,7 @@ fn build_package(
     // since the end user might not have control over those dependencies to patch them
     let crates: Vec<_> = unbuilt_crates
         .values()
-        .map(documenter::CrateSketch::new)
+        .map(|crate_| crate_.meta.clone())
         .collect();
 
     for mut crate_ in unbuilt_crates.into_values() {
@@ -223,25 +217,23 @@ fn build_package(
                 BuildMode::Document { .. } => "Documenting",
             };
             let label = label.green().bold();
-            let path = &session[crate_.package].path.to_string_lossy();
+            // @Beacon @Task don't use package path but crate path
+            let path = &crate_.package(&session).path.to_string_lossy();
             // @Task print version
             println!(
                 "   {label} {} ({path})",
-                if crate_.package == session.goal_package()
-                    && crate_.is_ambiguously_named_within_package
+                if crate_.in_goal_package(&session)
+                    && crate_.meta.is_ambiguously_named_within_package
                 {
-                    format!("{} ({})", crate_.name, crate_.type_)
+                    format!("{} ({})", crate_.meta.name, crate_.meta.type_)
                 } else {
-                    crate_.name.to_string()
+                    crate_.meta.name.to_string()
                 }
             );
         }
 
-        // @Task make this a fn if possible
         macro check_pass_restriction($restriction:expr) {
-            if crate_.index == session.goal_crate()
-                && options.pass_restriction == Some($restriction)
-            {
+            if crate_.is_goal(&session) && options.pass_restriction == Some($restriction) {
                 return Ok(());
             }
         }
@@ -252,7 +244,7 @@ fn build_package(
 
         let source_file = map
             .borrow_mut()
-            .load(crate_.path.clone())
+            .load(crate_.meta.path.clone())
             .map_err(|error| {
                 // this error case can be reached with crates specified in library or binary manifests
                 // @Question any other cases?
@@ -261,9 +253,9 @@ fn build_package(
                 Diagnostic::error()
                     .message(format!(
                         "could not load {} crate `{}`",
-                        crate_.type_, crate_.name,
+                        crate_.meta.type_, crate_.meta.name,
                     ))
-                    .note(IOError(error, &crate_.path).to_string())
+                    .note(IOError(error, &crate_.meta.path).to_string())
                     .report(reporter);
             })?;
 
@@ -273,7 +265,7 @@ fn build_package(
 
         let duration = time.elapsed();
 
-        if crate_.index == session.goal_crate() && options.emit_tokens {
+        if crate_.is_goal(&session) && options.emit_tokens {
             for token in &tokens {
                 eprintln!("{:?}", token);
             }
@@ -284,7 +276,7 @@ fn build_package(
         let time = Instant::now();
 
         // @Beacon @Task fix this ugly mess, create clean helpers
-        let module_name = Spanned::new(default(), crate_.name.clone()).into();
+        let module_name = Spanned::new(default(), crate_.meta.name.clone()).into();
         let declaration =
             parser::parse_file(&tokens, source_file, module_name, map.clone(), reporter)?;
 
@@ -292,7 +284,7 @@ fn build_package(
 
         assert!(token_health.is_untainted()); // parsing succeeded
 
-        if crate_.index == session.goal_crate() && options.emit_ast {
+        if crate_.is_goal(&session) && options.emit_ast {
             eprintln!("{declaration:#?}");
         }
 
@@ -310,7 +302,7 @@ fn build_package(
 
         let crate_root = declarations.pop().unwrap();
 
-        if crate_.index == session.goal_crate() && options.emit_lowered_ast {
+        if crate_.is_goal(&session) && options.emit_lowered_ast {
             eprintln!("{}", crate_root);
         }
 
@@ -327,7 +319,7 @@ fn build_package(
         if options.emit_hir {
             eprintln!("{}", crate_root.with((&crate_, &session)));
         }
-        if crate_.index == session.goal_crate() && options.emit_untyped_scope {
+        if crate_.is_goal(&session) && options.emit_untyped_scope {
             eprintln!("{}", crate_.with(&session));
         }
 
@@ -337,18 +329,19 @@ fn build_package(
         typer::check(&crate_root, &mut crate_, &mut session, reporter)?;
         let duration = time.elapsed();
 
-        if crate_.index == session.goal_crate() && options.emit_scope {
+        if crate_.is_goal(&session) && options.emit_scope {
             eprintln!("{}", crate_.with(&session));
         }
 
         print_pass_duration("Type checking & inference", duration, &options);
 
+        // @Task move out of main.rs
         if crate_.is_binary() && crate_.program_entry.is_none() {
             Diagnostic::error()
                 .code(Code::E050)
                 .message(format!(
                     "the crate `{}` is missing a program entry named `{}`",
-                    crate_.name, PROGRAM_ENTRY_IDENTIFIER,
+                    crate_.meta.name, PROGRAM_ENTRY_IDENTIFIER,
                 ))
                 .report(reporter);
             return Err(());
@@ -357,13 +350,13 @@ fn build_package(
         'ending: {
             match &mode {
                 BuildMode::Run => {
-                    if crate_.index == session.goal_crate() {
+                    if crate_.is_goal(&session) {
                         if !crate_.is_binary() {
                             // @Question code?
                             Diagnostic::error()
                                 .message(format!(
                                     "the package `{}` does not contain any binary to run",
-                                    session[crate_.package].name,
+                                    crate_.package(&session).name,
                                 ))
                                 .report(reporter);
                             return Err(());
@@ -388,8 +381,7 @@ fn build_package(
                     // @Task implement `--open`ing
 
                     // @Bug leads to broken links, the documenter has to handle this itself
-                    if documentation_options.no_dependencies && crate_.index != session.goal_crate()
-                    {
+                    if documentation_options.no_dependencies && !crate_.is_goal(&session) {
                         break 'ending;
                     }
 

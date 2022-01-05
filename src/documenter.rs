@@ -4,14 +4,13 @@ use crate::{
     diagnostics::Reporter,
     error::Result,
     hir::{self, LocalDeclarationIndex},
-    package::{BuildSession, CrateType, PackageIndex},
+    package::{BuildSession, CrateMeta, CrateType},
     resolver::Crate,
     syntax::{
         ast,
         lowered_ast::{
             attributes::Query as _, Attribute, AttributeKind, AttributeName, Attributes,
         },
-        CrateName,
     },
     utility::condition,
 };
@@ -38,7 +37,7 @@ const DEVELOPING: bool = true;
 pub fn document(
     declaration: &hir::Declaration,
     options: Options,
-    crates: &[CrateSketch],
+    crates: &[CrateMeta],
     crate_: &Crate,
     session: &BuildSession,
     reporter: &Reporter,
@@ -59,7 +58,7 @@ pub fn document(
 
 struct Documenter<'a, 'scope> {
     options: Options,
-    crates: &'a [CrateSketch],
+    crates: &'a [CrateMeta],
     crate_: &'a Crate,
     session: &'a BuildSession,
     #[allow(dead_code)]
@@ -73,7 +72,7 @@ struct Documenter<'a, 'scope> {
 impl<'a, 'scope> Documenter<'a, 'scope> {
     fn new(
         options: Options,
-        crate_names: &'a [CrateSketch],
+        crate_names: &'a [CrateMeta],
         crate_: &'a Crate,
         session: &'a BuildSession,
         reporter: &'a Reporter,
@@ -148,7 +147,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         // @Task put it in self.destination instead once the search index contains all crates
         fs::write(
             self.path
-                .join(self.crate_.name.as_str())
+                .join(self.crate_.meta.name.as_str())
                 .join(SEARCH_INDEX_FILE_NAME),
             {
                 let mut search_index = String::from("window.searchIndex=[");
@@ -543,10 +542,10 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                 let mut path = self.path.clone();
                 let mut path_segments = path_segments.into_iter();
 
-                if self.crate_.is_binary() && self.crate_.is_ambiguously_named_within_package {
+                if self.crate_.is_binary() && self.crate_.meta.is_ambiguously_named_within_package {
                     path_segments.next();
                     // @Note does not scale to multiple binaries per package
-                    path.push(format!("{}.binary", self.crate_.name));
+                    path.push(format!("{}.binary", self.crate_.meta.name));
                 }
 
                 for segment in path_segments {
@@ -604,11 +603,14 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                     .attribute(
                         "src",
                         // @Temporary
-                        format!("{url_prefix}/{}/{SEARCH_INDEX_FILE_NAME}", self.crate_.name),
+                        format!(
+                            "{url_prefix}/{}/{SEARCH_INDEX_FILE_NAME}",
+                            self.crate_.meta.name
+                        ),
                     )
                     .boolean_attribute("defer"),
             );
-        let description = &self.session[self.crate_.package].description;
+        let description = &self.crate_.package(self.session).description;
         if !description.is_empty() {
             head.add_child(
                 VoidElement::new("meta")
@@ -737,26 +739,6 @@ fn documentation(attributes: &Attributes) -> Option<String> {
 pub struct Options {
     pub asciidoc: bool,
     pub lorem_ipsum: Option<usize>,
-}
-
-// @Note ideally, we wouldn't need this extra boiled-down version of Crate
-// but unfortunately, BuildSession currently cannot store unbuilt crates
-pub struct CrateSketch {
-    name: CrateName,
-    type_: CrateType,
-    package: PackageIndex,
-    is_ambiguously_named_within_package: bool,
-}
-
-impl CrateSketch {
-    pub fn new(crate_: &Crate) -> Self {
-        Self {
-            name: crate_.name.clone(),
-            type_: crate_.type_,
-            package: crate_.package,
-            is_ambiguously_named_within_package: crate_.is_ambiguously_named_within_package,
-        }
-    }
 }
 
 #[derive(Clone, Copy)]

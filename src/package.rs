@@ -215,6 +215,10 @@ impl BuildQueue<'_> {
         health.of(resolved_dependencies).into()
     }
 
+    fn add_crate(&mut self, meta: impl FnOnce(CrateIndex) -> CrateMeta) -> CrateIndex {
+        self.crates.insert_with(|index| Crate::new(meta(index)))
+    }
+
     fn resolve_library_manifest(
         &mut self,
         package: PackageIndex,
@@ -240,8 +244,7 @@ impl BuildQueue<'_> {
 
         if let Some(path) = path {
             let index = self
-                .crates
-                .insert_with(|index| Crate::new(name, index, package, path, CrateType::Library));
+                .add_crate(|index| CrateMeta::new(name, index, package, path, CrateType::Library));
             self[package].library = Some(index);
         }
 
@@ -274,10 +277,10 @@ impl BuildQueue<'_> {
         let package_contains_binaries = !paths.is_empty();
 
         for path in paths {
-            let index = self.crates.insert_with(|index| {
-                Crate::new(
+            let index = self.add_crate(|index| {
+                CrateMeta::new(
                     name.take()
-                        .expect("multiple binaries in a single not yet implemented"),
+                        .expect("multiple binaries in a single package not yet implemented"),
                     index,
                     package,
                     path,
@@ -404,9 +407,7 @@ impl BuildQueue<'_> {
             );
         }
 
-        let crate_ = self
-            .crates
-            .insert_with(|index| Crate::new(name, index, package, path, crate_type));
+        let crate_ = self.add_crate(|index| CrateMeta::new(name, index, package, path, crate_type));
         let package = &mut self[package];
         package.binaries.push(crate_);
         package.dependencies = resolved_dependencies;
@@ -418,10 +419,11 @@ impl BuildQueue<'_> {
     pub fn finalize(mut self) -> (BuildSession, IndexMap<CrateIndex, Crate>) {
         // @Note this is not extensible to multiple binary crates
         let goal_crate = self.crates.last().unwrap();
-        let goal_crate_index = goal_crate.index;
-        let goal_package = &self.packages[goal_crate.package];
-        let goal_package_index = goal_crate.package;
-        let is_homonymous = |&crate_: &CrateIndex| goal_crate.name == self.crates[crate_].name;
+        let goal_crate_index = goal_crate.meta.index;
+        let goal_package = &self.packages[goal_crate.meta.package];
+        let goal_package_index = goal_crate.meta.package;
+        let is_homonymous =
+            |&crate_: &CrateIndex| goal_crate.meta.name == self.crates[crate_].meta.name;
 
         let library_lookalike = goal_package
             .library
@@ -436,8 +438,12 @@ impl BuildQueue<'_> {
             .filter(is_homonymous);
 
         if let Some(lookalike) = library_lookalike.or(binary_lookalike) {
-            self.crates[goal_crate_index].is_ambiguously_named_within_package = true;
-            self.crates[lookalike].is_ambiguously_named_within_package = true;
+            self.crates[goal_crate_index]
+                .meta
+                .is_ambiguously_named_within_package = true;
+            self.crates[lookalike]
+                .meta
+                .is_ambiguously_named_within_package = true;
         }
 
         (
@@ -484,6 +490,40 @@ impl Index<PackageIndex> for BuildQueue<'_> {
 impl IndexMut<PackageIndex> for BuildQueue<'_> {
     fn index_mut(&mut self, index: PackageIndex) -> &mut Self::Output {
         &mut self.packages[index]
+    }
+}
+
+// @Task better location,
+/// Metadata about a crate.
+#[derive(Clone)]
+pub struct CrateMeta {
+    pub name: CrateName,
+    pub index: CrateIndex,
+    pub package: PackageIndex,
+    pub path: PathBuf,
+    pub type_: CrateType,
+    /// Indicates if the name of the library or binary crate coincides with the name of the binary¹ or library crate, respectively.
+    ///
+    /// ¹: We haven't implemented multiple binary crates per package yet.
+    pub is_ambiguously_named_within_package: bool,
+}
+
+impl CrateMeta {
+    pub fn new(
+        name: CrateName,
+        index: CrateIndex,
+        package: PackageIndex,
+        path: PathBuf,
+        type_: CrateType,
+    ) -> Self {
+        Self {
+            name,
+            index,
+            package,
+            path,
+            type_,
+            is_ambiguously_named_within_package: false,
+        }
     }
 }
 

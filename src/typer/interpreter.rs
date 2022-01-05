@@ -739,10 +739,12 @@ impl<'a> Interpreter<'a> {
     }
 
     pub(crate) fn look_up_value(&self, binder: &Identifier) -> ValueView {
+        use hir::Index::*;
+
         match binder.index {
-            hir::Index::Declaration(index) => self.look_up(index).value(),
-            hir::Index::DeBruijn(_) => ValueView::Neutral,
-            hir::Index::DeBruijnParameter => unreachable!(),
+            Declaration(index) => self.look_up(index).value(),
+            DeBruijn(_) => ValueView::Neutral,
+            DeBruijnParameter => unreachable!(),
         }
     }
 
@@ -751,18 +753,22 @@ impl<'a> Interpreter<'a> {
         binder: &Identifier,
         scope: &FunctionScope<'_>,
     ) -> Option<Expression> {
+        use hir::Index::*;
+
         match binder.index {
-            hir::Index::Declaration(index) => self.look_up(index).type_(),
-            hir::Index::DeBruijn(index) => Some(scope.look_up_type(index)),
-            hir::Index::DeBruijnParameter => unreachable!(),
+            Declaration(index) => self.look_up(index).type_(),
+            DeBruijn(index) => Some(scope.look_up_type(index)),
+            DeBruijnParameter => unreachable!(),
         }
     }
 
     pub(crate) fn is_intrinsic(&self, binder: &Identifier) -> bool {
+        use hir::Index::*;
+
         match binder.index {
-            hir::Index::Declaration(index) => self.look_up(index).is_intrinsic(),
-            hir::Index::DeBruijn(_) => false,
-            hir::Index::DeBruijnParameter => unreachable!(),
+            Declaration(index) => self.look_up(index).is_intrinsic(),
+            DeBruijn(_) => false,
+            DeBruijnParameter => unreachable!(),
         }
     }
 }

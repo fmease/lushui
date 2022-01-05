@@ -1,6 +1,6 @@
 use std::{cmp::max, default::default, path::PathBuf, str::FromStr};
 
-use clap::{AppSettings, Arg, SubCommand};
+use clap::{App, AppSettings, Arg};
 use discriminant::Elements;
 use lushui::{
     diagnostics::{reporter::StderrReporter, Diagnostic},
@@ -8,117 +8,110 @@ use lushui::{
 };
 
 pub fn arguments() -> (Command, Options) {
-    let source_file_argument = Arg::with_name("PATH")
+    let source_file_argument = Arg::new("PATH")
         .index(1)
+        .allow_invalid_utf8(true)
         .help("The path to a source file or a package folder");
 
     let package_creation_options = [
-        Arg::with_name("binary")
+        Arg::new("binary")
             .long("binary")
-            .short("b")
+            .short('b')
             .help("Creates a binary (executable) crate in the package"),
-        Arg::with_name("library")
+        Arg::new("library")
             .long("library")
-            .short("l")
+            .short('l')
             .help("Creates a library crate in the package"),
     ];
 
     let build_options = [
-        Arg::with_name("no-core").long("no-core").help(
+        Arg::new("no-core").long("no-core").help(
             "Removes the dependency to the library `core` from the given single-file package",
         ),
-        Arg::with_name("crate-type")
+        Arg::new("crate-type")
             .long("crate-type")
             .takes_value(true)
             .possible_values(&["binary", "library"])
             .help("Sets the crate type of the given single-file package"),
-        Arg::with_name("interpreter")
+        Arg::new("interpreter")
             .long("interpreter")
             .takes_value(true)
             .possible_values(&["byte-code", "tree-walk"])
             .help("Sets the interpreter"),
     ];
 
-    let matches = clap::App::new(env!("CARGO_PKG_NAME"))
+    let matches = App::new(env!("CARGO_PKG_NAME"))
         .version(super::VERSION)
         .about(env!("CARGO_PKG_DESCRIPTION"))
         .setting(AppSettings::SubcommandRequiredElseHelp)
         .arg(
-            Arg::with_name("quiet")
+            Arg::new("quiet")
                 .long("quiet")
-                .short("q")
+                .short('q')
                 .global(true)
                 .help("No status output printed to stdout"),
         )
         .arg(
-            Arg::with_name("unstable-options")
-                .short("Z")
+            Arg::new("unstable-options")
+                .short('Z')
                 .takes_value(true)
-                .multiple(true)
+                .multiple_occurrences(true)
                 .number_of_values(1)
                 .global(true)
-                .hidden(true) // mentioned in AFTER_HELP
+                .hide(true) // mentioned in AFTER_HELP
                 .help("Sets unstable options (options not subject to any stability guarantees)"),
         )
         .subcommand(
-            SubCommand::with_name("build")
+            App::new("build")
                 .visible_alias("b")
-                .setting(AppSettings::DisableVersion)
                 .about("Compiles the given source file or package or the current package")
                 .arg(&source_file_argument)
                 .args(&build_options),
         )
         .subcommand(
-            SubCommand::with_name("check")
+            App::new("check")
                 .visible_alias("c")
-                .setting(AppSettings::DisableVersion)
                 .about("Type-checks the given source file or package or the current package")
                 .arg(&source_file_argument)
                 .args(&build_options),
         )
         .subcommand(
-            SubCommand::with_name("document")
+            App::new("document")
                 .visible_aliases(&["doc", "d"])
-                .setting(AppSettings::DisableVersion)
                 .about("Document the given source file or package or the current package")
                 .arg(&source_file_argument)
                 .args(&build_options)
                 .arg(
-                    Arg::with_name("open")
+                    Arg::new("open")
                         .long("open")
                         .help("Opens the documentation in a browser after building it"),
                 )
                 .arg(
-                    Arg::with_name("no-dependencies")
+                    Arg::new("no-dependencies")
                         .long("no-deps")
                         .help("The dependencies are not documented"),
                 ),
         )
         .subcommand(
-            SubCommand::with_name("explain")
-                .setting(AppSettings::DisableVersion)
-                .about("Explains given error codes")
-                .arg(
-                    Arg::with_name("CODES")
-                        .index(1)
-                        .multiple(true)
-                        .required(true)
-                        .help("The error codes that need explanation"),
-                ),
+            App::new("explain").about("Explains given error codes").arg(
+                Arg::new("CODES")
+                    .index(1)
+                    .multiple_occurrences(true)
+                    .required(true)
+                    .help("The error codes that need explanation"),
+            ),
         )
         .subcommand(
-            SubCommand::with_name("initialize")
+            App::new("initialize")
                 .visible_alias("init")
-                .setting(AppSettings::DisableVersion)
                 .about("Creates a new package in the current folder")
                 .args(&package_creation_options),
         )
         .subcommand(
-            SubCommand::with_name("new")
-                .setting(AppSettings::DisableVersion)
+            App::new("new")
                 .about("Creates a new package")
                 .arg(
-                    Arg::with_name("NAME")
+                    Arg::new("NAME")
                         .index(1)
                         .required(true)
                         .help("The name of the package"),
@@ -126,9 +119,8 @@ pub fn arguments() -> (Command, Options) {
                 .args(&package_creation_options),
         )
         .subcommand(
-            SubCommand::with_name("run")
+            App::new("run")
                 .visible_alias("r")
-                .setting(AppSettings::DisableVersion)
                 .about("Compiles and runs the given source file or package or the current package")
                 .arg(&source_file_argument)
                 .args(&build_options),
@@ -136,52 +128,50 @@ pub fn arguments() -> (Command, Options) {
         .after_help(AFTER_HELP)
         .get_matches();
 
-    let command = matches.subcommand.as_ref().unwrap();
+    let command = matches.subcommand().unwrap();
 
-    let command = match &*command.name {
-        name @ ("build" | "check" | "run" | "document") => Command::Build {
+    let command = match command {
+        (name @ ("build" | "check" | "run" | "document"), matches) => Command::Build {
             mode: match name {
                 "build" => BuildMode::Build,
                 "check" => BuildMode::Check,
                 "run" => BuildMode::Run,
                 "document" => BuildMode::Document {
                     options: DocumentationOptions {
-                        open: command.matches.is_present("open"),
-                        no_dependencies: command.matches.is_present("no-dependencies"),
+                        open: matches.is_present("open"),
+                        no_dependencies: matches.is_present("no-dependencies"),
                     },
                 },
                 _ => unreachable!(),
             },
             options: BuildOptions {
-                path: command.matches.value_of_os("PATH").map(Into::into),
-                no_core: command.matches.is_present("no-core"),
-                crate_type: command
-                    .matches
+                path: matches.value_of_os("PATH").map(Into::into),
+                no_core: matches.is_present("no-core"),
+                crate_type: matches
                     .value_of("crate-type")
                     .map(|input| input.parse().unwrap()),
-                interpreter: command
-                    .matches
+                interpreter: matches
                     .value_of("interpreter")
                     .map(|input| input.parse().unwrap())
                     .unwrap_or_default(),
             },
         },
-        "explain" => Command::Explain,
-        name @ ("initialize" | "new") => Command::Generate {
+        ("explain", _matches) => Command::Explain,
+        (name @ ("initialize" | "new"), matches) => Command::Generate {
             mode: match name {
                 "initialize" => GenerationMode::Initialize,
                 "new" => GenerationMode::New {
-                    package_name: command.matches.value_of("NAME").unwrap().into(),
+                    package_name: matches.value_of("NAME").unwrap().into(),
                 },
                 _ => unreachable!(),
             },
             options: {
-                let library = command.matches.is_present("library");
+                let library = matches.is_present("library");
 
                 GenerationOptions {
                     library,
                     // implicitly set when no explicit crate type specified
-                    binary: command.matches.is_present("binary") || !library,
+                    binary: matches.is_present("binary") || !library,
                 }
             },
         },

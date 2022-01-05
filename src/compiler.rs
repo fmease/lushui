@@ -14,7 +14,6 @@ pub(crate) mod interpreter;
 use std::default::default;
 
 use crate::{
-    grow_array::GrowArray,
     hir::{self, Declaration, DeclarationIndex, Expression},
     resolver::Crate,
     syntax::lowered_ast::{attributes::AttributeName, Number},
@@ -22,21 +21,7 @@ use crate::{
 };
 use index_map::{Index as _, IndexMap};
 use instruction::{Chunk, ChunkIndex, Instruction};
-
-// pub(crate) fn compile_declaration(
-//     declaration: &Declaration,
-//     crate_: &Crate,
-// ) -> Result<Vec<Chunk>, CompilationError> {
-//     let mut compiler = Compiler::new();
-//     compiler.compile_declaration(&declaration, crate_)?;
-//     // dbg!(&compiler.chunks);
-//     eprintln!("{}", compiler.print_chunks());
-
-//     Ok(compiler.chunks)
-// }
-
-// future bytecode format:
-// [content hash] [version] [constant table] [entry-address] [chunks/instructions]
+use staticvec::StaticVec;
 
 #[derive(PartialEq, Eq)]
 enum LambdaParent {
@@ -119,10 +104,7 @@ impl<'a> Compiler<'a> {
         index
     }
 
-    pub(crate) fn compile_declaration(
-        &mut self,
-        declaration: &Declaration,
-    ) -> Result<(), CompilationError> {
+    fn compile_declaration(&mut self, declaration: &Declaration) -> Result<(), CompilationError> {
         use hir::DeclarationKind::*;
 
         match &declaration.value {
@@ -308,16 +290,16 @@ struct CallFrame {
 // @Task read bytecode not Compiler
 struct ByteCodeInterpreter<'a> {
     c: &'a Compiler<'a>,
-    stack: GrowArray<Value, STACK_SIZE>,
-    frames: GrowArray<CallFrame, FRAME_SIZE>,
+    stack: StaticVec<Value, STACK_SIZE>,
+    frames: StaticVec<CallFrame, FRAME_SIZE>,
 }
 
 impl<'a> ByteCodeInterpreter<'a> {
     fn new(c: &'a Compiler<'a>) -> Self {
         Self {
             c,
-            stack: GrowArray::new(),
-            frames: GrowArray::new(),
+            stack: default(),
+            frames: default(),
         }
     }
 

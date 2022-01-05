@@ -90,13 +90,14 @@ impl Spanning for Identifier {
 impl fmt::Display for Identifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.source)?;
-        if crate::OPTIONS
-            .get()
-            .map_or(false, |options| options.show_indices)
-        {
-            // @Note does not work well with punctuation..
-            write!(f, "#{:?}", self.index)?;
-        }
+        // @Task somehow thead this through w/o too much verbosity!
+        // if crate::OPTIONS
+        //     .get()
+        //     .map_or(false, |options| options.show_indices)
+        // {
+        //     // @Note does not work well with punctuation..
+        //     write!(f, "#{:?}", self.index)?;
+        // }
         Ok(())
     }
 }
@@ -176,7 +177,7 @@ impl DeclarationIndex {
     }
 
     pub(crate) fn is_local(self, crate_: &Crate) -> bool {
-        self.crate_() == crate_.index
+        self.crate_() == crate_.meta.index
     }
 
     pub(crate) fn local(self, crate_: &Crate) -> Option<LocalDeclarationIndex> {
@@ -211,7 +212,7 @@ impl LocalDeclarationIndex {
     }
 
     pub(crate) fn global(self, crate_: &Crate) -> DeclarationIndex {
-        DeclarationIndex::new(crate_.index, self)
+        DeclarationIndex::new(crate_.meta.index, self)
     }
 }
 
