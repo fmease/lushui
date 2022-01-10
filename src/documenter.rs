@@ -435,11 +435,11 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                         format!(
                             "{url_prefix}{}{}/index.html",
                             crate_.name,
-                            // @Note this does not scale to multiple binaries per package
-                            if crate_.type_ == CrateType::Binary
+                            // @Note this does not scale to multiple executables per package
+                            if crate_.type_ == CrateType::Executable
                                 && crate_.is_ambiguously_named_within_package
                             {
-                                ".binary"
+                                ".exec"
                             } else {
                                 ""
                             }
@@ -542,10 +542,12 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                 let mut path = self.path.clone();
                 let mut path_segments = path_segments.into_iter();
 
-                if self.crate_.is_binary() && self.crate_.meta.is_ambiguously_named_within_package {
+                if self.crate_.is_executable()
+                    && self.crate_.meta.is_ambiguously_named_within_package
+                {
                     path_segments.next();
                     // @Note does not scale to multiple binaries per package
-                    path.push(format!("{}.binary", self.crate_.meta.name));
+                    path.push(format!("{}.exec", self.crate_.meta.name));
                 }
 
                 for segment in path_segments {

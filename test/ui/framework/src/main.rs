@@ -367,7 +367,7 @@ fn main_() -> Result<(), ()> {
                                     .first()
                                     .map_or(false, |&command| command == "run")
                                 {
-                                    "--crate-type=binary"
+                                    "--crate-type=executable"
                                 } else {
                                     "--crate-type=library"
                                 },

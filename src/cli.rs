@@ -14,10 +14,10 @@ pub fn arguments() -> (Command, Options) {
         .help("The path to a source file or a package folder");
 
     let package_creation_options = [
-        Arg::new("binary")
-            .long("binary")
-            .short('b')
-            .help("Creates a binary (executable) crate in the package"),
+        Arg::new("executable")
+            .long("executable")
+            .short('e')
+            .help("Creates an executable crate in the package"),
         Arg::new("library")
             .long("library")
             .short('l')
@@ -31,7 +31,7 @@ pub fn arguments() -> (Command, Options) {
         Arg::new("crate-type")
             .long("crate-type")
             .takes_value(true)
-            .possible_values(&["binary", "library"])
+            .possible_values(&["executable", "library"])
             .help("Sets the crate type of the given single-file package"),
         Arg::new("interpreter")
             .long("interpreter")
@@ -171,7 +171,7 @@ pub fn arguments() -> (Command, Options) {
                 GenerationOptions {
                     library,
                     // implicitly set when no explicit crate type specified
-                    binary: matches.is_present("binary") || !library,
+                    executable: matches.is_present("executable") || !library,
                 }
             },
         },
@@ -319,7 +319,7 @@ pub enum GenerationMode {
 
 pub struct GenerationOptions {
     pub library: bool,
-    pub binary: bool,
+    pub executable: bool,
 }
 
 pub struct DocumentationOptions {

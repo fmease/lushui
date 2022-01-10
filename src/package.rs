@@ -14,7 +14,7 @@ use crate::{
 use index_map::IndexMap;
 pub use manifest::PackageManifest;
 use manifest::PackageProfile;
-pub(crate) use manifest::{BinaryManifest, DependencyManifest, LibraryManifest, Version};
+pub(crate) use manifest::{DependencyManifest, ExecutableManifest, LibraryManifest, Version};
 pub(crate) use session::BuildSession;
 use std::{
     default::default,
@@ -251,63 +251,63 @@ impl BuildQueue<'_> {
         package_contains_library
     }
 
-    fn resolve_binary_manifest(
+    fn resolve_executable_manifest(
         &mut self,
         package: PackageIndex,
-        binary: Option<Spanned<BinaryManifest>>,
+        executable: Option<Spanned<ExecutableManifest>>,
     ) -> bool {
         let path = &self[package].path;
-        let default_binary_path = path.join(CrateType::Binary.default_root_file_path());
+        let default_executable_path = path.join(CrateType::Executable.default_root_file_path());
 
         // @Beacon @Task also find other binaries in source/binaries/
-        let paths = match binary {
-            Some(binary) => vec![binary
+        let paths = match executable {
+            Some(executable) => vec![executable
                 .value
                 .path
-                .map_or(default_binary_path, |path| path.value)],
-            None => match default_binary_path.exists() {
-                true => vec![default_binary_path],
+                .map_or(default_executable_path, |path| path.value)],
+            None => match default_executable_path.exists() {
+                true => vec![default_executable_path],
                 false => Vec::new(),
             },
         };
 
-        // @Task use `binary.name` if available once implemented
+        // @Task use `executable.name` if available once implemented
         let mut name = Some(self[package].name.clone());
 
-        let package_contains_binaries = !paths.is_empty();
+        let package_contains_executables = !paths.is_empty();
 
         for path in paths {
             let index = self.add_crate(|index| {
                 CrateMeta::new(
                     name.take()
-                        .expect("multiple binaries in a single package not yet implemented"),
+                        .expect("multiple executables in a single package not yet implemented"),
                     index,
                     package,
                     path,
-                    CrateType::Binary,
+                    CrateType::Executable,
                 )
             });
-            self[package].binaries.push(index);
+            self[package].executables.push(index);
         }
 
-        package_contains_binaries
+        package_contains_executables
     }
 
-    fn resolve_library_and_binary_manifests(
+    fn resolve_library_and_executable_manifests(
         &mut self,
         package: PackageIndex,
         library: Option<Spanned<LibraryManifest>>,
-        binary: Option<Spanned<BinaryManifest>>,
+        executable: Option<Spanned<ExecutableManifest>>,
     ) -> Result {
         let package_contains_library = self.resolve_library_manifest(package, library);
-        let package_contains_binaries = self.resolve_binary_manifest(package, binary);
+        let package_contains_executables = self.resolve_executable_manifest(package, executable);
 
-        if !(package_contains_library || package_contains_binaries) {
+        if !(package_contains_library || package_contains_executables) {
             // @Task provide more context for transitive dependencies of the goal crate
             // @Task code
             Diagnostic::error()
                 .message(format!(
-                    "the package `{}` does not contain a library or any binaries",
+                    "the package `{}` does not contain a library or any executables",
                     self[package].name,
                 ))
                 .report(self.reporter);
@@ -343,10 +343,10 @@ impl BuildQueue<'_> {
         // names from the same package to be able to generate a correct lock-file
         let resolved_dependencies = self.enqueue_dependencies(package)?;
 
-        self.resolve_library_and_binary_manifests(
+        self.resolve_library_and_executable_manifests(
             package,
             manifest.crates.library,
-            manifest.crates.binary,
+            manifest.crates.executable,
         )?;
         self[package].dependencies = resolved_dependencies;
         self[package].is_fully_resolved = true;
@@ -409,7 +409,7 @@ impl BuildQueue<'_> {
 
         let crate_ = self.add_crate(|index| CrateMeta::new(name, index, package, path, crate_type));
         let package = &mut self[package];
-        package.binaries.push(crate_);
+        package.executables.push(crate_);
         package.dependencies = resolved_dependencies;
         package.is_fully_resolved = true;
 
@@ -417,7 +417,7 @@ impl BuildQueue<'_> {
     }
 
     pub fn finalize(mut self) -> (BuildSession, IndexMap<CrateIndex, Crate>) {
-        // @Note this is not extensible to multiple binary crates
+        // @Note this is not extensible to multiple executable crates
         let goal_crate = self.crates.last().unwrap();
         let goal_crate_index = goal_crate.meta.index;
         let goal_package = &self.packages[goal_crate.meta.package];
@@ -427,17 +427,17 @@ impl BuildQueue<'_> {
 
         let library_lookalike = goal_package
             .library
-            .filter(|_| goal_crate.is_binary())
+            .filter(|_| goal_crate.is_executable())
             .filter(is_homonymous);
-        // @Note this is not extensible to multiple binary crates
-        let binary_lookalike = goal_package
-            .binaries
+        // @Note this is not extensible to multiple executable crates
+        let executable_lookalike = goal_package
+            .executables
             .get(0)
             .copied()
             .filter(|_| goal_crate.is_library())
             .filter(is_homonymous);
 
-        if let Some(lookalike) = library_lookalike.or(binary_lookalike) {
+        if let Some(lookalike) = library_lookalike.or(executable_lookalike) {
             self.crates[goal_crate_index]
                 .meta
                 .is_ambiguously_named_within_package = true;
@@ -502,9 +502,9 @@ pub struct CrateMeta {
     pub package: PackageIndex,
     pub path: PathBuf,
     pub type_: CrateType,
-    /// Indicates if the name of the library or binary crate coincides with the name of the binary¹ or library crate, respectively.
+    /// Indicates if the name of the library or executable crate coincides with the name of the executable¹ or library crate, respectively.
     ///
-    /// ¹: We haven't implemented multiple binary crates per package yet.
+    /// ¹: We haven't implemented multiple executable crates per package yet.
     pub is_ambiguously_named_within_package: bool,
 }
 
@@ -564,14 +564,14 @@ pub const DEFAULT_SOURCE_FOLDER_NAME: &str = "source";
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CrateType {
     Library,
-    Binary,
+    Executable,
 }
 
 impl CrateType {
     pub const fn default_root_file_stem(self) -> &'static str {
         match self {
             Self::Library => "library",
-            Self::Binary => "main",
+            Self::Executable => "main",
         }
     }
 
@@ -586,7 +586,7 @@ impl fmt::Display for CrateType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Library => write!(f, "library"),
-            Self::Binary => write!(f, "binary"),
+            Self::Executable => write!(f, "executable"),
         }
     }
 }
@@ -596,7 +596,7 @@ impl FromStr for CrateType {
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         Ok(match input {
-            "binary" => Self::Binary,
+            "executable" => Self::Executable,
             "library" => Self::Library,
             _ => return Err(()),
         })
@@ -605,14 +605,14 @@ impl FromStr for CrateType {
 
 /// A collection of crates and some metadata.
 ///
-/// More concretely, it consists of zero or more binary (executable) crates
+/// More concretely, it consists of zero or more executable crates
 /// and of zero or one library crate but of always at least one crate.
 /// The most important metadatum is the list of dependencies (external crates).
 #[derive(Debug)]
 pub struct Package {
     /// The name of the package.
     ///
-    /// The library and the default binary crate share this name
+    /// The library and the default executable crate share this name
     /// unless overwritten in their manifests.
     pub name: CrateName,
     /// The file or folder path of the package.
@@ -630,11 +630,11 @@ pub struct Package {
     #[allow(dead_code)]
     pub(crate) is_private: bool,
     pub(crate) library: Option<CrateIndex>,
-    pub(crate) binaries: Vec<CrateIndex>,
+    pub(crate) executables: Vec<CrateIndex>,
     pub(crate) dependencies: HashMap<CrateName, CrateIndex>,
-    /// Indicates if the library, binary and dependency crates are fully resolved.
+    /// Indicates if the library, executable and dependency crates are fully resolved.
     ///
-    /// Packages are resolved in two steps to allow the library crate and the binary
+    /// Packages are resolved in two steps to allow the library crate and the executable
     /// crates to keep an [index to the owning package](PackageIndex) and the package to
     /// keep [indices to its crates](CrateIndex).
     pub(crate) is_fully_resolved: bool,
@@ -663,7 +663,7 @@ impl Package {
                 .map(|is_private| is_private.value)
                 .unwrap_or_default(),
             library: None,
-            binaries: Vec::new(),
+            executables: Vec::new(),
             dependencies: default(),
             is_fully_resolved: false,
             dependency_manifest,
@@ -678,7 +678,7 @@ impl Package {
             description: String::new(),
             is_private: true,
             library: None,
-            binaries: Vec::new(),
+            executables: Vec::new(),
             dependencies: default(),
             is_fully_resolved: false,
             dependency_manifest: None,
@@ -804,24 +804,27 @@ pub(crate) mod manifest {
                 Err(()) => Err(()),
             };
 
-            let binary = match metadata::remove_optional_map_entry::<HashMap<_, _>>(
+            let executable = match metadata::remove_optional_map_entry::<HashMap<_, _>>(
                 &mut manifest,
-                "binary",
+                "executable",
                 reporter,
             ) {
-                Ok(Some(mut binary)) => {
+                Ok(Some(mut executable)) => {
                     let path = metadata::remove_optional_map_entry::<String>(
-                        &mut binary.value,
+                        &mut executable.value,
                         "path",
                         reporter,
                     );
-                    let exhaustion =
-                        metadata::check_map_is_empty(binary.value, Some("binary".into()), reporter);
+                    let exhaustion = metadata::check_map_is_empty(
+                        executable.value,
+                        Some("executable".into()),
+                        reporter,
+                    );
 
                     try_all! { path, exhaustion; return Err(()) };
                     Ok(Some(Spanned::new(
-                        binary.span,
-                        BinaryManifest {
+                        executable.span,
+                        ExecutableManifest {
                             path: path.map(|path| path.map(PathBuf::from)),
                         },
                     )))
@@ -928,7 +931,7 @@ pub(crate) mod manifest {
 
             try_all! {
                 name, version, description, is_private,
-                library, binary, dependencies;
+                library, executable, dependencies;
                 return Err(())
             };
 
@@ -941,7 +944,7 @@ pub(crate) mod manifest {
                 },
                 crates: PackageCrates {
                     library,
-                    binary,
+                    executable,
                     dependencies,
                 },
             })
@@ -960,7 +963,7 @@ pub(crate) mod manifest {
     pub(crate) struct PackageCrates {
         pub(crate) library: Option<Spanned<LibraryManifest>>,
         // @Task Vec<_>
-        pub(crate) binary: Option<Spanned<BinaryManifest>>,
+        pub(crate) executable: Option<Spanned<ExecutableManifest>>,
         pub(crate) dependencies:
             Option<Spanned<HashMap<WeaklySpanned<CrateName>, Spanned<DependencyManifest>>>>,
     }
@@ -972,7 +975,7 @@ pub(crate) mod manifest {
     }
 
     #[derive(Default)]
-    pub(crate) struct BinaryManifest {
+    pub(crate) struct ExecutableManifest {
         // @Task pub(crate) name: Option<Spanned<CrateName>>,
         pub(crate) path: Option<Spanned<PathBuf>>,
     }

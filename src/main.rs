@@ -146,7 +146,7 @@ fn build_package(
         Some(path) if path.is_file() => {
             build_queue.process_single_file_package(
                 path,
-                build_options.crate_type.unwrap_or(CrateType::Binary),
+                build_options.crate_type.unwrap_or(CrateType::Executable),
                 build_options.no_core,
             )?;
         }
@@ -246,7 +246,7 @@ fn build_package(
             .borrow_mut()
             .load(crate_.meta.path.clone())
             .map_err(|error| {
-                // this error case can be reached with crates specified in library or binary manifests
+                // this error case can be reached with crates specified in library or executable manifests
                 // @Question any other cases?
 
                 // @Task provide more context for transitive dependencies of the goal package
@@ -336,7 +336,7 @@ fn build_package(
         print_pass_duration("Type checking & inference", duration, &options);
 
         // @Task move out of main.rs
-        if crate_.is_binary() && crate_.program_entry.is_none() {
+        if crate_.is_executable() && crate_.program_entry.is_none() {
             Diagnostic::error()
                 .code(Code::E050)
                 .message(format!(
@@ -351,11 +351,11 @@ fn build_package(
             match &mode {
                 BuildMode::Run => {
                     if crate_.is_goal(&session) {
-                        if !crate_.is_binary() {
+                        if !crate_.is_executable() {
                             // @Question code?
                             Diagnostic::error()
                                 .message(format!(
-                                    "the package `{}` does not contain any binary to run",
+                                    "the package `{}` does not contain any executable to run",
                                     crate_.package(&session).name,
                                 ))
                                 .report(reporter);
@@ -464,9 +464,9 @@ build/
         fs::File::create(path).unwrap();
     }
 
-    if generation_options.binary {
+    if generation_options.executable {
         let path = source_folder_path
-            .join(CrateType::Binary.default_root_file_stem())
+            .join(CrateType::Executable.default_root_file_stem())
             .with_extension(FILE_EXTENSION);
 
         let content = "main: extern.core.text.Text =\n    \"Hello there!\"";

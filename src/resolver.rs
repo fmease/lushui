@@ -321,7 +321,7 @@ impl<'a> ResolverMut<'a> {
                     .reobtain_resolved_identifier::<target::Value>(&function.binder, module);
 
                 if module == self.crate_.root()
-                    && self.crate_.is_binary()
+                    && self.crate_.is_executable()
                     && function.binder.as_str() == PROGRAM_ENTRY_IDENTIFIER
                 {
                     self.crate_.program_entry = Some(binder.clone());

@@ -5,16 +5,8 @@ use extern.core.(
     duple.(Duple duple)
     nat.(self Nat))
 
-;;; main: Duple Bool Bool =
-;;;     duple Bool Bool (bool.not false) (bool.not (bool.not false))
-
-;;; main: core.ordering.Ordering =
-;;;     core.nat.compare 234222222222 1233333
-
-;;; main: Nat = factorial 6
-;;; main: Nat = factorial 10
-;;; main: Nat = factorial 15
-main: Nat = factorial 50
+main: Nat = factorial 20
+;;; main: Nat = factorial 50 ;;; @Note takes several minutes after a rustc update (compared to a second)
 ;;; main: Nat = factorial 100 ;;; @Note overflows stack :/ we need to optimize
 
 factorial (n: Nat): Nat =

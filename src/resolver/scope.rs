@@ -65,8 +65,8 @@ impl Crate {
         self.meta.type_ == CrateType::Library
     }
 
-    pub fn is_binary(&self) -> bool {
-        self.meta.type_ == CrateType::Binary
+    pub fn is_executable(&self) -> bool {
+        self.meta.type_ == CrateType::Executable
     }
 
     pub fn package<'s>(&self, session: &'s BuildSession) -> &'s Package {
@@ -98,7 +98,7 @@ impl Crate {
         // (in a prior step)?
         match self.meta.type_ {
             CrateType::Library => dependency,
-            CrateType::Binary => {
+            CrateType::Executable => {
                 dependency.or_else(|| (name == &package.name).then(|| package.library).flatten())
             }
         }
