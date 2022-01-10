@@ -6,13 +6,13 @@ use crate::{
     format::{AsDebug, DisplayWith},
     hir::{expr, DeBruijnIndex, Identifier},
     package::BuildSession,
-    resolver::Crate,
+    resolver::Capsule,
     span::Span,
     syntax::lowered_ast::{AttributeName, Attributes},
 };
 use std::fmt;
 
-impl Crate {
+impl Capsule {
     // @Bug does not understand non-local binders
     // @Beacon @Beacon @Beacon @Task make this a method of Typer instead
     pub(crate) fn carry_out(
@@ -134,7 +134,7 @@ pub(crate) enum BindingRegistrationKind {
 }
 
 impl DisplayWith for BindingRegistration {
-    type Context<'a> = (&'a Crate, &'a BuildSession);
+    type Context<'a> = (&'a Capsule, &'a BuildSession);
 
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use BindingRegistrationKind::*;
@@ -198,7 +198,7 @@ impl ValueView {
 
 /// The scope of bindings inside of a function.
 pub(crate) enum FunctionScope<'a> {
-    Crate,
+    Capsule,
     FunctionParameter {
         parent: &'a Self,
         type_: Expression,
@@ -262,7 +262,7 @@ impl<'a> FunctionScope<'a> {
                     None => parent.look_up_type_with_depth(index, depth + types.len()),
                 }
             }
-            Self::Crate => unreachable!(),
+            Self::Capsule => unreachable!(),
         }
     }
 }

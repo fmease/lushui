@@ -17,8 +17,8 @@ invert (o: Ordering): Ordering =
         equal => equal
         greater => less
 
-use crate.unit.(unit Unit Thunk (force as !))
-use crate.int.Int
+use capsule.unit.(unit Unit Thunk (force as !))
+use capsule.int.Int
 
 @public
 then (o: Ordering) (lazy p: Thunk Ordering): Ordering =

@@ -9,7 +9,7 @@ Alpha: Type = Type
 
 beta: Nat = 1000
 
-module capsule of
+module pod of
     use super.Nat
 
     data Nat: Type of
@@ -18,11 +18,11 @@ module capsule of
 
 beta (x: Nat) (y: Nat): Nat = y
 
-capsule: Nat = beta
+pod: Nat = beta
 
 data ALIKE: Type of
     ALIKE: ALIKE
 
 zero: Nat = 0
 
-use capsule.zero
+use pod.zero

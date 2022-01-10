@@ -25,5 +25,5 @@ Struct: Type = outer.south
 ;;; the binding is defined in. No matter if it is accessed by `use` or inside of an expression.
 ;;; Furthermore, processing use-declarations that break exposure rules should not lead to a
 ;;; fatal error but allow the name resolver to keep resolving and checking on a
-;;; partially erroneous crate scope. Lastly, this test case exercises the exposure checker
+;;; partially erroneous capsule scope. Lastly, this test case exercises the exposure checker
 ;;; with out of order bindings.

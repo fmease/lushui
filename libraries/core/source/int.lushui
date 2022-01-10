@@ -5,8 +5,8 @@ module
 data Int: Type
 
 ;;; @public @intrinsic
-;;; to-nat: Int -> Option crate.nat.Nat
+;;; to-nat: Int -> Option capsule.nat.Nat
 
 ;;; @public @intrinsic
-;;; absolute: Int -> crate.nat.Nat
+;;; absolute: Int -> capsule.nat.Nat
 

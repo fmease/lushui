@@ -1,32 +1,32 @@
-error[E021]: binding `Nothing` is not defined in module `crate.alpha`
+error[E021]: binding `Nothing` is not defined in module `capsule.alpha`
  --> ${DIRECTORY}/name-resolution/multiple-undefined1.lushui:4:11
   |
 4 | use alpha.Nothing
   |           ^^^^^^^ 
   |
 
-error[E021]: binding `Air` is not defined in module `crate`
+error[E021]: binding `Air` is not defined in the capsule root
  --> ${DIRECTORY}/name-resolution/multiple-undefined1.lushui:7:24
   |
 7 |     Thin: Type = super.Air
   |                        ^^^ 
   |
 
-error[E021]: binding `Air` is not defined in module `crate`
+error[E021]: binding `Air` is not defined in the capsule root
  --> ${DIRECTORY}/name-resolution/multiple-undefined1.lushui:8:15
   |
 8 |     use super.Air
   |               ^^^ 
   |
 
-error[E021]: binding `empty` is not defined in module `crate`
- --> ${DIRECTORY}/name-resolution/multiple-undefined1.lushui:9:15
+error[E021]: binding `empty` is not defined in the capsule root
+ --> ${DIRECTORY}/name-resolution/multiple-undefined1.lushui:9:17
   |
-9 |     use crate.empty as full
-  |               ^^^^^ 
+9 |     use capsule.empty as full
+  |                 ^^^^^ 
   |
 
-error[E021]: binding `air` is not defined in module `crate.alpha`
+error[E021]: binding `air` is not defined in module `capsule.alpha`
   --> ${DIRECTORY}/name-resolution/multiple-undefined1.lushui:12:19
    |
 12 |         use super.air
@@ -34,14 +34,14 @@ error[E021]: binding `air` is not defined in module `crate.alpha`
    |
   help: a binding with a similar name exists in scope: `Air` (aAir)
 
-error[E021]: binding `Nothingness` is not defined in module `crate.alpha`
+error[E021]: binding `Nothingness` is not defined in module `capsule.alpha`
   --> ${DIRECTORY}/name-resolution/multiple-undefined1.lushui:14:12
    |
 14 | use alpha.(Nothingness beta.space)
    |            ^^^^^^^^^^^ 
    |
 
-error[E029]: binding `crate.alpha.beta` is private
+error[E029]: binding `capsule.alpha.beta` is private
   --> ${DIRECTORY}/name-resolution/multiple-undefined1.lushui:14:24
    |
 14 | use alpha.(Nothingness beta.space)

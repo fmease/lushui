@@ -13,7 +13,7 @@ error[E021]: binding `Pathway` is not defined in this scope
    |           ^^^^^^^ 
    |
 
-error[E021]: binding `kore` is not defined in module `crate`
+error[E021]: binding `kore` is not defined in the capsule root
   --> ${DIRECTORY}/name-resolution/undefined-but-having-lookalikes.lushui:14:14
    |
 14 |     a: super.kore.nat.Nat = tree-sinner ;;; @Bug "core" should be suggested for "kore"

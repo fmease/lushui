@@ -3,14 +3,14 @@
 Alpha: Type = Alpha
 
 module realm of
-    Alpha: super.Beta = crate.Alpha
+    Alpha: super.Beta = capsule.Alpha
 
     module local of
         use super.Alpha as A0
-        use crate.realm.Alpha as A1
-        use crate.Alpha as A2
+        use capsule.realm.Alpha as A1
+        use capsule.Alpha as A2
         use self as lokal
-        use crate.parallel-realm
+        use capsule.parallel-realm
 
 module parallel-realm of
     use super.Unit.unit

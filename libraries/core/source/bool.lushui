@@ -15,7 +15,7 @@ not (b: Bool): Bool =
         false => true
         true => false
 
-use crate.unit.(Unit Thunk (force as !))
+use capsule.unit.(Unit Thunk (force as !))
 
 @public
 if (A: Type) (condition: Bool) (lazy consequent: Thunk A) (lazy alternate: Thunk A): A =

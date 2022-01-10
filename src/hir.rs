@@ -2,7 +2,7 @@
 
 use crate::{
     error::PossiblyErroneous,
-    resolver::{Crate, FunctionScope},
+    resolver::{Capsule, FunctionScope},
     span::{SourceFileIndex, Span},
     syntax::{
         ast::Explicitness,

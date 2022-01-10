@@ -15,7 +15,7 @@ use std::default::default;
 
 use crate::{
     hir::{self, Declaration, DeclarationIndex, Expression},
-    resolver::Crate,
+    resolver::Capsule,
     syntax::lowered_ast::{attributes::AttributeName, Number},
     utility::HashMap,
 };
@@ -37,18 +37,18 @@ struct Compiler<'a> {
     // @Temporary
     entry: Option<ChunkIndex>,
     declaration_mapping: HashMap<DeclarationIndex, ChunkIndex>,
-    crate_: &'a Crate,
+    capsule: &'a Capsule,
 }
 
 impl<'a> Compiler<'a> {
-    fn new(crate_: &'a Crate) -> Self {
+    fn new(capsule: &'a Capsule) -> Self {
         Self {
             chunks: IndexMap::new(),
             constants: Vec::new(),
             lambda_amount: 0,
             entry: None,
             declaration_mapping: default(),
-            crate_,
+            capsule,
         }
     }
 
@@ -96,11 +96,11 @@ impl<'a> Compiler<'a> {
 
     fn add_chunk_unseen_declaration(
         &mut self,
-        crate_index: DeclarationIndex,
+        declaration_index: DeclarationIndex,
         chunk: Chunk,
     ) -> ChunkIndex {
         let index = self.chunks.insert(chunk);
-        self.declaration_mapping.insert(crate_index, index);
+        self.declaration_mapping.insert(declaration_index, index);
         index
     }
 
@@ -135,8 +135,8 @@ impl<'a> Compiler<'a> {
                     )?;
                     self.chunks[index].instructions.push(Instruction::Return);
 
-                    // @Task obsolete once we map any CrateIndex to a chunk identifier
-                    if self.crate_.program_entry.as_ref() == Some(&function.binder) {
+                    // @Task obsolete once we map any CapsuleIndex to a chunk identifier
+                    if self.capsule.program_entry.as_ref() == Some(&function.binder) {
                         self.entry = Some(index);
                     }
                 }
@@ -263,9 +263,9 @@ pub enum CompilationError {}
 // @Temporary
 pub fn compile_and_interpret_declaration(
     declaration: &Declaration,
-    crate_: &Crate,
+    capsule: &Capsule,
 ) -> Result<(), Error> {
-    let mut compiler = Compiler::new(crate_);
+    let mut compiler = Compiler::new(capsule);
     compiler.compile_declaration(declaration)?;
     // dbg!(&compiler.chunks);
     eprintln!("{}", compiler.print_chunks());

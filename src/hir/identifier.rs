@@ -1,8 +1,8 @@
 // @Task docs
 
-use super::Crate;
+use super::Capsule;
 use crate::{
-    package::CrateIndex,
+    package::CapsuleIndex,
     span::{Span, Spanning},
     syntax::ast,
 };
@@ -71,8 +71,11 @@ impl Identifier {
         self.index.declaration_index()
     }
 
-    pub(crate) fn local_declaration_index(&self, crate_: &Crate) -> Option<LocalDeclarationIndex> {
-        self.declaration_index()?.local(crate_)
+    pub(crate) fn local_declaration_index(
+        &self,
+        capsule: &Capsule,
+    ) -> Option<LocalDeclarationIndex> {
+        self.declaration_index()?.local(capsule)
     }
 
     #[allow(dead_code)]
@@ -156,38 +159,38 @@ impl fmt::Debug for Index {
     }
 }
 
-/// Crate-global index identifying bindings defined by declarations.
+/// Capsule-global index identifying bindings defined by declarations.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct DeclarationIndex(u64);
 
 impl DeclarationIndex {
-    pub(crate) fn new(crate_index: CrateIndex, local_index: LocalDeclarationIndex) -> Self {
-        let shifted_crate_index = u64::from(crate_index.0) << LocalDeclarationIndex::BIT_WIDTH;
+    pub(crate) fn new(capsule_index: CapsuleIndex, local_index: LocalDeclarationIndex) -> Self {
+        let shifted_capsule_index = u64::from(capsule_index.0) << LocalDeclarationIndex::BIT_WIDTH;
 
-        Self(shifted_crate_index | local_index.0)
+        Self(shifted_capsule_index | local_index.0)
     }
 
-    pub(crate) fn crate_(self) -> CrateIndex {
+    pub(crate) fn capsule(self) -> CapsuleIndex {
         #[allow(clippy::cast_possible_truncation)]
-        CrateIndex((self.0 >> LocalDeclarationIndex::BIT_WIDTH) as _)
+        CapsuleIndex((self.0 >> LocalDeclarationIndex::BIT_WIDTH) as _)
     }
 
     pub(crate) fn local_unchecked(self) -> LocalDeclarationIndex {
         LocalDeclarationIndex(self.0 & LocalDeclarationIndex::MAX)
     }
 
-    pub(crate) fn is_local(self, crate_: &Crate) -> bool {
-        self.crate_() == crate_.meta.index
+    pub(crate) fn is_local(self, capsule: &Capsule) -> bool {
+        self.capsule() == capsule.index()
     }
 
-    pub(crate) fn local(self, crate_: &Crate) -> Option<LocalDeclarationIndex> {
-        self.is_local(crate_).then(|| self.local_unchecked())
+    pub(crate) fn local(self, capsule: &Capsule) -> Option<LocalDeclarationIndex> {
+        self.is_local(capsule).then(|| self.local_unchecked())
     }
 }
 
 impl fmt::Debug for DeclarationIndex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}{:?}", self.crate_(), self.local_unchecked(),)
+        write!(f, "{:?}{:?}", self.capsule(), self.local_unchecked(),)
     }
 }
 
@@ -197,7 +200,7 @@ impl From<DeclarationIndex> for Index {
     }
 }
 
-/// Crate-local index identifying bindings defined by declarations.
+/// Capsule-local index identifying bindings defined by declarations.
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub(crate) struct LocalDeclarationIndex(u64);
 
@@ -211,8 +214,8 @@ impl LocalDeclarationIndex {
         Self(index)
     }
 
-    pub(crate) fn global(self, crate_: &Crate) -> DeclarationIndex {
-        DeclarationIndex::new(crate_.meta.index, self)
+    pub(crate) fn global(self, capsule: &Capsule) -> DeclarationIndex {
+        DeclarationIndex::new(capsule.index(), self)
     }
 }
 

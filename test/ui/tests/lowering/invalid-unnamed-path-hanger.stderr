@@ -7,11 +7,11 @@ error[E025]: path `super` is not bound to an identifier
  note: a use-declaration has to introduce at least one new binder
  help: bind the path to a name with `as`
 
-error[E025]: path `crate` is not bound to an identifier
+error[E025]: path `capsule` is not bound to an identifier
  --> ${DIRECTORY}/lowering/invalid-unnamed-path-hanger.lushui:4:5
   |
-4 | use crate
-  |     ^^^^^ 
+4 | use capsule
+  |     ^^^^^^^ 
   |
  note: a use-declaration has to introduce at least one new binder
  help: bind the path to a name with `as`
@@ -26,19 +26,19 @@ error[E025]: path `self` is not bound to an identifier
  help: bind the path to a name with `as`
 
 error[E025]: path `self` is not bound to an identifier
- --> ${DIRECTORY}/lowering/invalid-unnamed-path-hanger.lushui:8:18
+ --> ${DIRECTORY}/lowering/invalid-unnamed-path-hanger.lushui:8:20
   |
-8 | use crate.(space self space)
-  |                  ^^^^ 
+8 | use capsule.(space self space)
+  |                    ^^^^ 
   |
  note: a use-declaration has to introduce at least one new binder
  help: bind the path to a name with `as`
 
 error[E026]: path `super` not allowed in this position
-  --> ${DIRECTORY}/lowering/invalid-unnamed-path-hanger.lushui:10:29
+  --> ${DIRECTORY}/lowering/invalid-unnamed-path-hanger.lushui:10:31
    |
-10 | use crate.(self.(self.thing super))
-   |                             ^^^^^ 
+10 | use capsule.(self.(self.thing super))
+   |                               ^^^^^ 
    |
   help: consider moving this path to a separate use-declaration
 

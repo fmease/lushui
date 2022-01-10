@@ -1,7 +1,6 @@
 //! Parser tests.
 //!
-//! Intended for testing edge cases. The majority of parsing tests should be
-//! golden UI tests ([crate::golden], `tests/`).
+//! Intended for testing edge cases. The majority of parsing tests should be golden UI tests.
 
 // @Question maybe create builders for the elements instead of using macros?
 

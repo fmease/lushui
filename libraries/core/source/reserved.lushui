@@ -6,11 +6,11 @@ data Underscore: Type of
 @(doc-reserved-identifier "as")
 data As: Type of
 
+@(doc-reserved-identifier "capsule")
+data Capsule: Type of
+
 @(doc-reserved-identifier "case")
 data Case: Type of
-
-@(doc-reserved-identifier "crate")
-data Crate: Type of
 
 @(doc-reserved-identifier "extern")
 data Extern: Type of

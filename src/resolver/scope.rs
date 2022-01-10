@@ -1,12 +1,5 @@
 //! Scope data structures used for name resolution.
 //!
-//! There are two types of scopes:
-//!
-//! * [`Crate`] for module-level bindings (may be out of order and recursive)
-//!   i.e. bindings defined by declarations in modules, data types and constructors
-//! * [`FunctionScope`] for bindings defined inside of expressions or functions (order matters)
-//!   like parameters, let/in-binders and case-analysis binders
-//!
 //! The equivalent in the type checker is [`crate::typer::interpreter::scope`].
 
 // @Beacon @Beacon @Task don't report similarily named *private* bindings!
@@ -18,13 +11,13 @@ use crate::{
     error::Result,
     format::{AsAutoColoredChangeset, DisplayWith},
     hir::{DeclarationIndex, Identifier, Index, LocalDeclarationIndex},
-    package::{BuildSession, CrateIndex, CrateMeta, CrateType, Package},
+    package::{BuildSession, CapsuleIndex, CapsuleMetadata, CapsuleType, Package},
     span::{Span, Spanned, Spanning},
     syntax::{
         ast::{self, HangerKind, Path},
         lexer::is_punctuation,
         lowered_ast::Attributes,
-        CrateName,
+        CapsuleName,
     },
     utility::{HashMap, SmallVec},
 };
@@ -41,64 +34,89 @@ use std::{
 };
 use unicode_width::UnicodeWidthStr;
 
-pub struct Crate {
-    pub meta: CrateMeta,
+/// A sealed container of modules regarded as one unit embodying libraries and executables¹.
+///
+/// # Naming
+///
+/// A _capsule_ means (among other things) _a compact often sealed and detachable container
+/// or compartment_
+/// [according to Merriam-Webster (meaning 6a, 2022-01-10)](https://www.merriam-webster.com/dictionary/capsule).
+///
+/// ¹: And (integration and system) tests in the future.
+pub struct Capsule {
+    pub metadata: CapsuleMetadata,
     pub program_entry: Option<Identifier>,
-    /// All bindings inside of the crate.
+    /// All bindings inside of the capsule.
     // The first element has to be the root module.
     pub(crate) bindings: IndexMap<LocalDeclarationIndex, Entity>,
     /// For error reporting.
     pub(super) duplicate_definitions: HashMap<LocalDeclarationIndex, DuplicateDefinition>,
 }
 
-impl Crate {
-    pub(crate) fn new(meta: CrateMeta) -> Self {
+impl Capsule {
+    pub(crate) fn new(meta: CapsuleMetadata) -> Self {
         Self {
-            meta,
+            metadata: meta,
             program_entry: default(),
             bindings: default(),
             duplicate_definitions: default(),
         }
     }
 
+    pub fn name(&self) -> &CapsuleName {
+        &self.metadata.name
+    }
+
+    pub(crate) fn index(&self) -> CapsuleIndex {
+        self.metadata.index
+    }
+
+    pub fn path(&self) -> &std::path::Path {
+        &self.metadata.path
+    }
+
+    pub fn type_(&self) -> CapsuleType {
+        self.metadata.type_
+    }
+
     pub fn is_library(&self) -> bool {
-        self.meta.type_ == CrateType::Library
+        self.type_() == CapsuleType::Library
     }
 
     pub fn is_executable(&self) -> bool {
-        self.meta.type_ == CrateType::Executable
+        self.type_() == CapsuleType::Executable
     }
 
     pub fn package<'s>(&self, session: &'s BuildSession) -> &'s Package {
-        &session[self.meta.package]
+        &session[self.metadata.package]
     }
 
-    /// Test if this crate is the standard library `core`.
+    /// Test if this capsule is the standard library `core`.
     pub fn is_core_library(&self, session: &BuildSession) -> bool {
         self.package(session).is_core() && self.is_library()
     }
 
     pub fn is_goal(&self, session: &BuildSession) -> bool {
-        self.meta.index == session.goal_crate()
+        self.index() == session.goal_capsule()
     }
 
     pub fn in_goal_package(&self, session: &BuildSession) -> bool {
-        self.meta.package == session.goal_package()
+        self.metadata.package == session.goal_package()
     }
 
     pub(super) fn dependency(
         &self,
-        name: &CrateName,
+        name: &CapsuleName,
         session: &BuildSession,
-    ) -> Option<CrateIndex> {
+    ) -> Option<CapsuleIndex> {
         let package = self.package(session);
         let dependency = package.dependencies.get(name).copied();
 
         // @Question should we forbid direct dependencies with the same name as the current package
         // (in a prior step)?
-        match self.meta.type_ {
-            CrateType::Library => dependency,
-            CrateType::Executable => {
+        match self.type_() {
+            CapsuleType::Library => dependency,
+            CapsuleType::Executable => {
                 dependency.or_else(|| (name == &package.name).then(|| package.library).flatten())
             }
         }
@@ -123,10 +141,15 @@ impl Crate {
         }
     }
 
-    /// The crate root aka `crate`.
+    /// Get the capsule root as a local index.
     #[allow(clippy::unused_self)] // nicer API
-    pub(crate) fn root(&self) -> LocalDeclarationIndex {
+    pub(crate) fn local_root(&self) -> LocalDeclarationIndex {
         LocalDeclarationIndex::new(0)
+    }
+
+    /// Get the capsule root.
+    pub(crate) fn root(&self) -> DeclarationIndex {
+        self.local_root().global(self)
     }
 
     /// Build a textual representation of the absolute path of a binding.
@@ -136,7 +159,11 @@ impl Crate {
         index: DeclarationIndex,
         session: &BuildSession,
     ) -> String {
-        self.absolute_path_with_root_to_string(index, HangerKind::Crate.name().to_owned(), session)
+        self.absolute_path_with_root_to_string(
+            index,
+            HangerKind::Capsule.name().to_owned(),
+            session,
+        )
     }
 
     fn absolute_path_with_root_to_string(
@@ -148,10 +175,10 @@ impl Crate {
         match index.local(self) {
             Some(index) => self.local_path_with_root_to_string(index, root),
             None => {
-                let crate_ = &session[index.crate_()];
-                let root = format!("{}.{}", HangerKind::Extern.name(), crate_.meta.name);
+                let capsule = &session[index.capsule()];
+                let root = format!("{}.{}", HangerKind::Extern.name(), capsule.name());
 
-                crate_.absolute_path_with_root_to_string(index, root, session)
+                capsule.absolute_path_with_root_to_string(index, root, session)
             }
         }
     }
@@ -159,7 +186,7 @@ impl Crate {
     // @Note bad name
     // @Task add docs
     pub(crate) fn local_path_to_string(&self, index: LocalDeclarationIndex) -> String {
-        self.local_path_with_root_to_string(index, self.meta.name.to_string())
+        self.local_path_with_root_to_string(index, self.name().to_string())
     }
 
     // @Note bad name
@@ -276,7 +303,7 @@ impl Crate {
     }
 }
 
-impl std::ops::Index<LocalDeclarationIndex> for Crate {
+impl std::ops::Index<LocalDeclarationIndex> for Capsule {
     type Output = Entity;
 
     #[track_caller]
@@ -285,7 +312,7 @@ impl std::ops::Index<LocalDeclarationIndex> for Crate {
     }
 }
 
-impl std::ops::IndexMut<LocalDeclarationIndex> for Crate {
+impl std::ops::IndexMut<LocalDeclarationIndex> for Capsule {
     #[track_caller]
     fn index_mut(&mut self, index: LocalDeclarationIndex) -> &mut Self::Output {
         &mut self.bindings[index]
@@ -293,14 +320,17 @@ impl std::ops::IndexMut<LocalDeclarationIndex> for Crate {
 }
 
 // @Note it would be better if we had `DebugWith`
-impl DisplayWith for Crate {
+impl DisplayWith for Capsule {
     type Context<'a> = &'a BuildSession;
 
     fn format(&self, session: &BuildSession, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
             "{} {} ({:?}) {:?}",
-            self.meta.type_, self.meta.name, self.meta.index, self.meta.package
+            self.type_(),
+            self.name(),
+            self.index(),
+            self.metadata.package
         )?;
 
         writeln!(f, "  bindings:")?;
@@ -321,16 +351,17 @@ pub(crate) enum Exposure {
 }
 
 impl Exposure {
-    pub(super) fn compare(&self, other: &Self, crate_: &Crate) -> Option<Ordering> {
+    pub(super) fn compare(&self, other: &Self, capsule: &Capsule) -> Option<Ordering> {
         use Exposure::*;
 
         match (self, other) {
             (Unrestricted, Unrestricted) => Some(Ordering::Equal),
             (Unrestricted, Restricted(_)) => Some(Ordering::Greater),
             (Restricted(_), Unrestricted) => Some(Ordering::Less),
-            (Restricted(this), Restricted(other)) => {
-                this.lock().unwrap().compare(&other.lock().unwrap(), crate_)
-            }
+            (Restricted(this), Restricted(other)) => this
+                .lock()
+                .unwrap()
+                .compare(&other.lock().unwrap(), capsule),
         }
     }
 }
@@ -352,7 +383,7 @@ impl fmt::Debug for Exposure {
 }
 
 impl DisplayWith for Exposure {
-    type Context<'a> = (&'a Crate, &'a BuildSession);
+    type Context<'a> = (&'a Capsule, &'a BuildSession);
 
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -387,19 +418,19 @@ pub(crate) enum RestrictedExposure {
 }
 
 impl RestrictedExposure {
-    fn compare(&self, other: &Self, crate_: &Crate) -> Option<Ordering> {
+    fn compare(&self, other: &Self, capsule: &Capsule) -> Option<Ordering> {
         use RestrictedExposure::*;
 
         Some(match (self, other) {
             (&Resolved { reach: this }, &Resolved { reach: other }) => {
-                let this = this.global(crate_);
-                let other = other.global(crate_);
+                let this = this.global(capsule);
+                let other = other.global(capsule);
 
                 if this == other {
                     Ordering::Equal
-                } else if crate_.some_ancestor_equals(other, this) {
+                } else if capsule.some_ancestor_equals(other, this) {
                     Ordering::Greater
-                } else if crate_.some_ancestor_equals(this, other) {
+                } else if capsule.some_ancestor_equals(this, other) {
                     Ordering::Less
                 } else {
                     return None;
@@ -411,7 +442,7 @@ impl RestrictedExposure {
 }
 
 impl DisplayWith for RestrictedExposure {
-    type Context<'a> = (&'a Crate, &'a BuildSession);
+    type Context<'a> = (&'a Capsule, &'a BuildSession);
 
     fn format(
         &self,
@@ -509,11 +540,11 @@ impl<'a> FunctionScope<'a> {
 
     pub(crate) fn absolute_path_to_string(
         binder: &Identifier,
-        crate_: &Crate,
+        capsule: &Capsule,
         session: &BuildSession,
     ) -> String {
         match binder.index {
-            Index::Declaration(index) => crate_.absolute_path_to_string(index, session),
+            Index::Declaration(index) => capsule.absolute_path_to_string(index, session),
             Index::DeBruijn(_) | Index::DeBruijnParameter => binder.to_string(),
         }
     }

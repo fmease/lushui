@@ -8,8 +8,8 @@
 ;;; not sure how we can tackle this problem.
 
 module inner =
-    use crate.offside as remote
+    use capsule.offside as remote
 
 module offside =
-    @(public crate.inner.remote) module m = ;;; @Bug we should not be able to access `remote` here!!!
+    @(public capsule.inner.remote) module m = ;;; @Bug we should not be able to access `remote` here!!!
 

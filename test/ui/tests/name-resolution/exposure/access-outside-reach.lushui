@@ -6,9 +6,9 @@ module grotto of
     module deeper-end of
         @(public super) data Icicle: Type of
 
-        @(public crate)
+        @(public capsule)
         module rock-face of
-            @(public crate.grotto)
+            @(public capsule.grotto)
             data Ingrown-Stalactite: Type of
 
 use grotto.deeper-end.((self as cave) (Icicle as I))

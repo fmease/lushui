@@ -645,7 +645,7 @@ pub enum Code {
     E024,
     /// Invalid unnamed path hanger.
     E025,
-    /// Crate or super inside nested path.
+    /// `capsule` or `super` inside nested path.
     E026,
     /// Attribute argument type mismatch.
     E027,
@@ -665,7 +665,7 @@ pub enum Code {
     E034,
     /// Type analysis.
     E035,
-    /// Invalid crate name.
+    /// Invalid capsule name.
     E036,
     /// Exposure reach not an ancestor of definition-site namespace.
     E037,

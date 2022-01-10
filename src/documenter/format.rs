@@ -8,40 +8,40 @@ use crate::{
     format::DisplayWith,
     hir::{self, DeclarationIndex},
     package::BuildSession,
-    resolver::Crate,
+    resolver::Capsule,
 };
 
 pub(super) fn format_expression(
     expression: &hir::Expression,
     url_prefix: &str,
-    crate_: &Crate,
+    capsule: &Capsule,
     session: &BuildSession,
 ) -> String {
-    let mut formatter = Formatter::new(url_prefix, crate_, session);
+    let mut formatter = Formatter::new(url_prefix, capsule, session);
     formatter.format_expression(expression);
     formatter.finish()
 }
 
 pub(super) fn declaration_url_fragment(
     index: DeclarationIndex,
-    crate_: &Crate,
+    capsule: &Capsule,
     session: &BuildSession,
 ) -> String {
-    Formatter::new("./", crate_, session).declaration_url_fragment(index)
+    Formatter::new("./", capsule, session).declaration_url_fragment(index)
 }
 
 struct Formatter<'a> {
     url_prefix: &'a str,
-    crate_: &'a Crate,
+    capsule: &'a Capsule,
     session: &'a BuildSession,
     output: String,
 }
 
 impl<'a> Formatter<'a> {
-    fn new(url_prefix: &'a str, crate_: &'a Crate, session: &'a BuildSession) -> Self {
+    fn new(url_prefix: &'a str, capsule: &'a Capsule, session: &'a BuildSession) -> Self {
         Self {
             url_prefix,
-            crate_,
+            capsule,
             session,
             output: String::new(),
         }
@@ -201,7 +201,7 @@ impl<'a> Formatter<'a> {
                 self.write(
                     &substitution
                         .substitution
-                        .with((self.crate_, self.session))
+                        .with((self.capsule, self.session))
                         .to_string(),
                 );
                 self.format_expression(&substitution.expression);
@@ -244,7 +244,7 @@ impl<'a> Formatter<'a> {
         format!(
             "{}{}/index.html",
             self.url_prefix,
-            self.crate_(index)
+            self.capsule(index)
                 .local_path_segments(index.local_unchecked())
                 .into_iter()
                 .map(urlencoding::encode)
@@ -283,7 +283,7 @@ impl<'a> Formatter<'a> {
 
             // @Task don't use absolute_path for this but don't use local_path either
             // (just something without the `extern`/`core` prefix)
-            let path = self.crate_.absolute_path_to_string(index, self.session);
+            let path = self.capsule.absolute_path_to_string(index, self.session);
 
             Element::new("a")
                 .attribute("href", declaration_url)
@@ -295,32 +295,32 @@ impl<'a> Formatter<'a> {
         }
     }
 
-    // @Task move look_up{_parent} to some utility module (one which offers functions relying on &Crate together with &BuildSession)
+    // @Task move look_up{_parent} to some utility module (one which offers functions relying on &Capsule together with &BuildSession)
     // @Note look_up is copy-pasted from Resolver::_
 
-    fn crate_(&self, index: DeclarationIndex) -> &Crate {
-        if index.is_local(self.crate_) {
-            self.crate_
+    fn capsule(&self, index: DeclarationIndex) -> &Capsule {
+        if index.is_local(self.capsule) {
+            self.capsule
         } else {
-            &self.session[index.crate_()]
+            &self.session[index.capsule()]
         }
     }
 
     fn look_up(&self, index: DeclarationIndex) -> &crate::entity::Entity {
-        match index.local(self.crate_) {
-            Some(index) => &self.crate_[index],
+        match index.local(self.capsule) {
+            Some(index) => &self.capsule[index],
             None => &self.session[index],
         }
     }
 
     fn parent(&self, index: DeclarationIndex) -> Option<DeclarationIndex> {
-        match index.local(self.crate_) {
-            Some(index) => self.crate_[index]
+        match index.local(self.capsule) {
+            Some(index) => self.capsule[index]
                 .parent
-                .map(|parent| parent.global(self.crate_)),
+                .map(|parent| parent.global(self.capsule)),
             None => self.session[index]
                 .parent
-                .map(|parent| DeclarationIndex::new(index.crate_(), parent)),
+                .map(|parent| DeclarationIndex::new(index.capsule(), parent)),
         }
     }
 }

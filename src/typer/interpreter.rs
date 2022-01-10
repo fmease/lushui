@@ -25,30 +25,30 @@ use crate::{
         session::{KnownBinding, Value},
         BuildSession,
     },
-    resolver::Crate,
+    resolver::Capsule,
     span::{Span, Spanning},
     syntax::{ast::Explicit, lowered_ast::Attributes},
 };
 use scope::{FunctionScope, ValueView};
 use std::fmt;
 
-/// Run the entry point of the crate.
+/// Run the entry point of the given executable capsule.
 pub fn evaluate_main_function(
-    crate_: &Crate,
+    capsule: &Capsule,
     session: &BuildSession,
     reporter: &Reporter,
 ) -> Result<Expression> {
-    let mut interpreter = Interpreter::new(crate_, session, reporter);
+    let mut interpreter = Interpreter::new(capsule, session, reporter);
 
     interpreter.evaluate_expression(
         interpreter
-            .crate_
+            .capsule
             .program_entry
             .clone()
             .unwrap()
             .into_expression(),
         Context {
-            scope: &FunctionScope::Crate,
+            scope: &FunctionScope::Capsule,
             // form: Form::Normal,
             form: Form::WeakHeadNormal,
         },
@@ -57,19 +57,19 @@ pub fn evaluate_main_function(
 
 pub(crate) struct Interpreter<'a> {
     // @Task add recursion depth
-    crate_: &'a Crate,
+    capsule: &'a Capsule,
     session: &'a BuildSession,
     reporter: &'a Reporter,
 }
 
 impl<'a> Interpreter<'a> {
     pub(super) fn new(
-        crate_: &'a Crate,
+        capsule: &'a Capsule,
         session: &'a BuildSession,
         reporter: &'a Reporter,
     ) -> Self {
         Self {
-            crate_,
+            capsule,
             session,
             reporter,
         }
@@ -615,7 +615,7 @@ impl<'a> Interpreter<'a> {
                 }
 
                 Some(function(value_arguments).into_expression(
-                    self.crate_,
+                    self.capsule,
                     self.session,
                     self.reporter,
                 )?)
@@ -732,8 +732,8 @@ impl<'a> Interpreter<'a> {
     }
 
     fn look_up(&self, index: DeclarationIndex) -> &Entity {
-        match index.local(self.crate_) {
-            Some(index) => &self.crate_[index],
+        match index.local(self.capsule) {
+            Some(index) => &self.capsule[index],
             None => &self.session[index],
         }
     }
@@ -801,7 +801,7 @@ impl Substitution {
 }
 
 impl DisplayWith for Substitution {
-    type Context<'a> = (&'a Crate, &'a BuildSession);
+    type Context<'a> = (&'a Capsule, &'a BuildSession);
 
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use self::Substitution::*;

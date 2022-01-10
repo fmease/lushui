@@ -1,4 +1,4 @@
-error[E024]: the declaration `crate.instantly-circular` is circular
+error[E024]: the declaration `capsule.instantly-circular` is circular
  --> ${DIRECTORY}/name-resolution/single-use-binding-cycle.lushui:3:5
   |
 3 | use instantly-circular

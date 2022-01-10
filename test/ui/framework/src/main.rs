@@ -1,4 +1,4 @@
-#![feature(default_free_fn, available_parallelism, const_option)]
+#![feature(default_free_fn, const_option)]
 #![forbid(rust_2018_idioms, unused_must_use)]
 
 // @Task
@@ -367,9 +367,9 @@ fn main_() -> Result<(), ()> {
                                     .first()
                                     .map_or(false, |&command| command == "run")
                                 {
-                                    "--crate-type=executable"
+                                    "--capsule-type=executable"
                                 } else {
-                                    "--crate-type=library"
+                                    "--capsule-type=library"
                                 },
                             )
                             .arg("--quiet")

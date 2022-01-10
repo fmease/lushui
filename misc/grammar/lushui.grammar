@@ -113,7 +113,7 @@ Sequence-Literal ::= "[" Lower-Expression* "]"
 
 Path ::= Path-Head ("." Identifier)*
 Path-Head ::= Path-Hanger | Identifier
-Path-Hanger ::= "extern" | "crate" | "super" | "self"
+Path-Hanger ::= "extern" | "capsule" | "super" | "self"
 
 Lambda-Literal ::= "\" Parameters Type-Annotation? "=>" Expression
 

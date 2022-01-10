@@ -12,13 +12,13 @@ module separation of
     data Public-Abstract: Type of
         private: Public-Abstract
     
-    @(public crate)
+    @(public capsule)
     module further-separation of
         @(public super)
         data Hidden: Type of
             hidden: Hidden
         
-        @(public crate) @abstract
+        @(public capsule) @abstract
         data Abstract: Type of
             hidden: Abstract
 

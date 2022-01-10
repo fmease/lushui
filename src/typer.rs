@@ -12,7 +12,7 @@ use crate::{
         session::{IntrinsicType, KnownBinding},
         BuildSession,
     },
-    resolver::Crate,
+    resolver::Capsule,
     span::Span,
     syntax::{
         ast::Explicitness,
@@ -30,11 +30,11 @@ pub mod interpreter;
 
 pub fn check(
     declaration: &Declaration,
-    crate_: &mut Crate,
+    capsule: &mut Capsule,
     session: &mut BuildSession,
     reporter: &Reporter,
 ) -> Result {
-    let mut typer = Typer::new(crate_, session, reporter);
+    let mut typer = Typer::new(capsule, session, reporter);
     let first_pass = typer.start_infer_types_in_declaration(declaration, Context::default());
     typer.health &= first_pass;
     first_pass.and(typer.infer_types_of_out_of_order_bindings())
@@ -43,21 +43,25 @@ pub fn check(
 /// The state of the typer.
 struct Typer<'a> {
     // @Task add recursion depth field
-    crate_: &'a mut Crate,
+    capsule: &'a mut Capsule,
     session: &'a mut BuildSession,
     reporter: &'a Reporter,
     // @Note this is very coarse-grained: as soon as we cannot resolve EITHER type annotation (for example)
     // OR actual value(s), we bail out and add this here. This might be too conversative (leading to more
     // "circular type" errors or whatever), we can just discriminate by creating sth like
-    // UnresolvedThingy/WorlistItem { index: CrateIndex, expression: TypeAnnotation|Value|Both|... }
+    // UnresolvedThingy/WorlistItem { index: CapsuleIndex, expression: TypeAnnotation|Value|Both|... }
     out_of_order_bindings: Vec<BindingRegistration>,
     health: Health,
 }
 
 impl<'a> Typer<'a> {
-    fn new(crate_: &'a mut Crate, session: &'a mut BuildSession, reporter: &'a Reporter) -> Self {
+    fn new(
+        capsule: &'a mut Capsule,
+        session: &'a mut BuildSession,
+        reporter: &'a Reporter,
+    ) -> Self {
         Self {
-            crate_,
+            capsule,
             session,
             reporter,
             out_of_order_bindings: Vec::new(),
@@ -66,7 +70,7 @@ impl<'a> Typer<'a> {
     }
 
     fn interpreter(&mut self) -> Interpreter<'_> {
-        Interpreter::new(self.crate_, self.session, self.reporter)
+        Interpreter::new(self.capsule, self.session, self.reporter)
     }
 
     // @Task documentation
@@ -191,26 +195,26 @@ impl<'a> Typer<'a> {
 
                 recover_error!(
                     self, registration;
-                    self.it_is_a_type(type_.clone(), &FunctionScope::Crate),
+                    self.it_is_a_type(type_.clone(), &FunctionScope::Capsule),
                     actual = type_
                 );
                 let type_ = self.interpreter().evaluate_expression(
                     type_,
                     interpreter::Context {
-                        scope: &FunctionScope::Crate,
+                        scope: &FunctionScope::Capsule,
                         form: Form::Normal, /* Form::WeakHeadNormal */
                     },
                 )?;
 
                 let infered_type =
-                    match self.infer_type_of_expression(value.clone(), &FunctionScope::Crate) {
+                    match self.infer_type_of_expression(value.clone(), &FunctionScope::Capsule) {
                         Ok(expression) => expression,
                         Err(error) => {
                             return match error {
                                 Unrecoverable => Err(()),
                                 OutOfOrderBinding => {
                                     self.out_of_order_bindings.push(registration.clone());
-                                    self.crate_.carry_out(
+                                    self.capsule.carry_out(
                                         BindingRegistration {
                                             attributes: registration.attributes,
                                             kind: Function {
@@ -229,8 +233,8 @@ impl<'a> Typer<'a> {
                                         .code(Code::E032)
                                         .message(format!(
                                             "expected type `{}`, got type `{}`",
-                                            expected.with((self.crate_, self.session)),
-                                            actual.with((self.crate_, self.session))
+                                            expected.with((self.capsule, self.session)),
+                                            actual.with((self.capsule, self.session))
                                         ))
                                         .labeled_primary_span(&actual, "has the wrong type")
                                         .labeled_secondary_span(&expected, "expected due to this")
@@ -243,11 +247,11 @@ impl<'a> Typer<'a> {
 
                 recover_error!(
                     self, registration;
-                    self.it_is_actual(type_.clone(), infered_type.clone(), &FunctionScope::Crate),
+                    self.it_is_actual(type_.clone(), infered_type.clone(), &FunctionScope::Capsule),
                     actual = value,
                     expected = type_
                 );
-                self.crate_.carry_out(
+                self.capsule.carry_out(
                     BindingRegistration {
                         attributes: registration.attributes,
                         kind: Function {
@@ -263,13 +267,13 @@ impl<'a> Typer<'a> {
             Data { binder, type_ } => {
                 recover_error!(
                     self, registration;
-                    self.it_is_a_type(type_.clone(), &FunctionScope::Crate),
+                    self.it_is_a_type(type_.clone(), &FunctionScope::Capsule),
                     actual = type_
                 );
                 let type_ = self.interpreter().evaluate_expression(
                     type_,
                     interpreter::Context {
-                        scope: &FunctionScope::Crate,
+                        scope: &FunctionScope::Capsule,
                         form: Form::Normal, /* Form::WeakHeadNormal */
                     },
                 )?;
@@ -279,7 +283,7 @@ impl<'a> Typer<'a> {
                     expr! { Type { Attributes::default(), Span::default() } },
                 )?;
 
-                self.crate_.carry_out(
+                self.capsule.carry_out(
                     BindingRegistration {
                         attributes: registration.attributes,
                         kind: Data { binder, type_ },
@@ -295,13 +299,13 @@ impl<'a> Typer<'a> {
             } => {
                 recover_error!(
                     self, registration;
-                    self.it_is_a_type(type_.clone(), &FunctionScope::Crate),
+                    self.it_is_a_type(type_.clone(), &FunctionScope::Capsule),
                     actual = type_
                 );
                 let type_ = self.interpreter().evaluate_expression(
                     type_,
                     interpreter::Context {
-                        scope: &FunctionScope::Crate,
+                        scope: &FunctionScope::Capsule,
                         form: Form::Normal, /* Form::WeakHeadNormal */
                     },
                 )?;
@@ -311,7 +315,7 @@ impl<'a> Typer<'a> {
                     data.clone().into_expression(),
                 )?;
 
-                self.crate_.carry_out(
+                self.capsule.carry_out(
                     BindingRegistration {
                         attributes: registration.attributes,
                         kind: Constructor {
@@ -327,18 +331,18 @@ impl<'a> Typer<'a> {
             IntrinsicFunction { binder, type_ } => {
                 recover_error!(
                     self, registration;
-                    self.it_is_a_type(type_.clone(), &FunctionScope::Crate),
+                    self.it_is_a_type(type_.clone(), &FunctionScope::Capsule),
                     actual = type_
                 );
                 let type_ = self.interpreter().evaluate_expression(
                     type_,
                     interpreter::Context {
-                        scope: &FunctionScope::Crate,
+                        scope: &FunctionScope::Capsule,
                         form: Form::Normal, /* Form::WeakHeadNormal */
                     },
                 )?;
 
-                self.crate_.carry_out(
+                self.capsule.carry_out(
                     BindingRegistration {
                         attributes: registration.attributes,
                         kind: IntrinsicFunction { binder, type_ },
@@ -348,7 +352,7 @@ impl<'a> Typer<'a> {
                 )?;
             }
             IntrinsicType { binder } => {
-                self.crate_.carry_out(
+                self.capsule.carry_out(
                     BindingRegistration {
                         attributes: registration.attributes,
                         kind: IntrinsicType { binder },
@@ -381,8 +385,8 @@ impl<'a> Typer<'a> {
                                 .code(Code::E032)
                                 .message(format!(
                                     "expected type `{}`, got type `{}`",
-                                    expected.with(($typer.crate_, $typer.session)),
-                                    actual.with(($typer.crate_, $typer.session))
+                                    expected.with(($typer.capsule, $typer.session)),
+                                    actual.with(($typer.capsule, $typer.session))
                                 ))
                                 .labeled_primary_span(
                                     &$actual_value,
@@ -422,7 +426,7 @@ impl<'a> Typer<'a> {
                         "namely {}",
                         self.out_of_order_bindings
                             .iter()
-                            .map(|binding| binding.with((self.crate_, self.session)).quote())
+                            .map(|binding| binding.with((self.capsule, self.session)).quote())
                             .join_with(", ")
                     ))
                     .report(self.reporter);
@@ -440,9 +444,9 @@ impl<'a> Typer<'a> {
     // type error in possible cases
     fn infer_type_of_expression(
         // @Task change to &mut self (for warnings), this also means
-        // changing the definition of FunctionScope... it's FunctionScope::Crate now, no payload
+        // changing the definition of FunctionScope... it's FunctionScope::Capsule now, no payload
         // this means more boilerplate methods (either duplication or as in resolver: every FunctionScope method takes
-        // a crate_: &Crate parameter)
+        // a capsule: &Capsule parameter)
         &mut self,
         expression: Expression,
         scope: &FunctionScope<'_>,
@@ -553,8 +557,8 @@ impl<'a> Typer<'a> {
                                 .code(Code::E032)
                                 .message(format!(
                                     "expected type `{}`, got type `{}`",
-                                    expected.with((self.crate_, self.session)),
-                                    actual.with((self.crate_, self.session))
+                                    expected.with((self.capsule, self.session)),
+                                    actual.with((self.capsule, self.session))
                                 ))
                                 .labeled_primary_span(&application.argument, "has the wrong type")
                                 .labeled_secondary_span(&expected, "expected due to this")
@@ -577,7 +581,7 @@ impl<'a> Typer<'a> {
                         .code(Code::E031)
                         .message(format!(
                             "expected type `_ -> _`, got type `{}`",
-                            type_of_callee.with((self.crate_, self.session))
+                            type_of_callee.with((self.capsule, self.session))
                         ))
                         .labeled_primary_span(&application.callee, "has wrong type")
                         .labeled_secondary_span(&application.argument, "applied to this")
@@ -620,7 +624,7 @@ impl<'a> Typer<'a> {
                     }
                     _ => todo!(
                         "encountered unsupported type to be case-analysed type={}",
-                        subject_type.with((self.crate_, self.session))
+                        subject_type.with((self.capsule, self.session))
                     ),
                 };
 
@@ -663,7 +667,7 @@ impl<'a> Typer<'a> {
                                 .map_err(|error| {
                                     handle_type_mismatch(
                                         error,
-                                        (self.crate_, self.session),
+                                        (self.capsule, self.session),
                                         self.reporter,
                                     )
                                 })?;
@@ -678,7 +682,7 @@ impl<'a> Typer<'a> {
                                 .map_err(|error| {
                                     handle_type_mismatch(
                                         error,
-                                        (self.crate_, self.session),
+                                        (self.capsule, self.session),
                                         self.reporter,
                                     )
                                 })?;
@@ -697,7 +701,7 @@ impl<'a> Typer<'a> {
                             .map_err(|error| {
                                 handle_type_mismatch(
                                     error,
-                                    (self.crate_, self.session),
+                                    (self.capsule, self.session),
                                     self.reporter,
                                 )
                             })?;
@@ -722,9 +726,9 @@ impl<'a> Typer<'a> {
                                         .unwrap();
 
                                     dbg!(
-                                        &subject_type.with((self.crate_, self.session)),
-                                        deapplication.callee.with((self.crate_, self.session)),
-                                        &constructor_type.with((self.crate_, self.session))
+                                        &subject_type.with((self.capsule, self.session)),
+                                        deapplication.callee.with((self.capsule, self.session)),
+                                        &constructor_type.with((self.capsule, self.session))
                                     );
 
                                     todo!();
@@ -897,12 +901,12 @@ impl<'a> Typer<'a> {
         constructor: Expression,
         type_: Expression,
     ) -> Result {
-        let result_type = self.result_type(constructor, &FunctionScope::Crate);
+        let result_type = self.result_type(constructor, &FunctionScope::Capsule);
         let callee = result_type.clone().callee();
 
         if self
             .interpreter()
-            .equals(&type_, &callee, &FunctionScope::Crate)?
+            .equals(&type_, &callee, &FunctionScope::Capsule)?
         {
             Ok(())
         } else {
@@ -910,8 +914,8 @@ impl<'a> Typer<'a> {
                 .code(Code::E033)
                 .message(format!(
                     "`{}` is not an instance of `{}`",
-                    result_type.with((self.crate_, self.session)),
-                    type_.with((self.crate_, self.session))
+                    result_type.with((self.capsule, self.session)),
+                    type_.with((self.capsule, self.session))
                 ))
                 .primary_span(result_type.span)
                 .report(self.reporter);

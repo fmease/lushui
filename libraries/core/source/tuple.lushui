@@ -3,7 +3,7 @@ module
 
 ;;; @Question tuple backed by List or by Vector in core (or both implementations)?
 
-use crate.list.(List self)
+use capsule.list.(List self)
 
 ;;; @Note backed by List
 @public
@@ -15,8 +15,8 @@ data Tuple (L: List Type): Type of
 @public
 use Tuple.(empty cons)
 
-use crate.vector.(Vector self)
-use crate.nat.(Nat +)
+use capsule.vector.(Vector self)
+use capsule.nat.(Nat +)
 
 ;;; @Note backed by Vector
 @public

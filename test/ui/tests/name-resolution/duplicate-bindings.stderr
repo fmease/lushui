@@ -22,16 +22,16 @@ error[E020]: `beta` is defined multiple times in this scope
    | ^^^^ conflicting definition
    |
 
-error[E020]: `capsule` is defined multiple times in this scope
+error[E020]: `pod` is defined multiple times in this scope
   --> ${DIRECTORY}/name-resolution/duplicate-bindings.lushui:12:8
    |
-12 | module capsule of
-   |        ^^^^^^^ conflicting definition
+12 | module pod of
+   |        ^^^ conflicting definition
    |
   --> ${DIRECTORY}/name-resolution/duplicate-bindings.lushui:21:1
    |
-21 | capsule: Nat = beta
-   | ^^^^^^^ conflicting definition
+21 | pod: Nat = beta
+   | ^^^ conflicting definition
    |
 
 error[E020]: `Nat` is defined multiple times in this scope
@@ -52,10 +52,10 @@ error[E020]: `zero` is defined multiple times in this scope
 26 | zero: Nat = 0
    | ^^^^ conflicting definition
    |
-  --> ${DIRECTORY}/name-resolution/duplicate-bindings.lushui:28:13
+  --> ${DIRECTORY}/name-resolution/duplicate-bindings.lushui:28:9
    |
-28 | use capsule.zero
-   |             ^^^^ conflicting definition
+28 | use pod.zero
+   |         ^^^^ conflicting definition
    |
 
 error: aborting due to 5 previous errors

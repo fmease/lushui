@@ -1,12 +1,12 @@
 ;;; TEST fail check
 
 use super
-use crate
+use capsule
 use other
 use self
 
-use crate.(space self space)
+use capsule.(space self space)
 
-use crate.(self.(self.thing super))
+use capsule.(self.(self.thing super))
 
 use exists.(self)

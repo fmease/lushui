@@ -104,9 +104,9 @@ pub enum TokenKind {
     As,
     /// For case analyses / case/of-expressions.
     Case,
-    /// For paths relative to the current crate.
-    Crate,
-    /// For paths relative to the collection of linked crates.
+    /// For paths relative to the current capsule.
+    Capsule,
+    /// For paths relative to the collection of linked capsules.
     Extern,
     /// For data declarations.
     Data,
@@ -160,7 +160,7 @@ impl TokenName {
     }
 
     pub(crate) const fn is_path_hanger(self) -> bool {
-        matches!(self, Extern | Crate | Super | Self_)
+        matches!(self, Extern | Capsule | Super | Self_)
     }
 
     /// Test if the token may terminate declarations.
@@ -207,7 +207,7 @@ impl fmt::Display for TokenName {
             WideArrowRight => quoted!("=>"),
             As => keyword!(as),
             Case => keyword!(case),
-            Crate => keyword!(crate),
+            Capsule => keyword!(capsule),
             Extern => keyword!(extern),
             Data => keyword!(data),
             Do => keyword!(do),

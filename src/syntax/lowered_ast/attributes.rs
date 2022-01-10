@@ -477,7 +477,7 @@ pub(crate) enum AttributeKind {
     Nat64,
     /// Make the binding part of the public API or at least visible in modules higher up.
     ///
-    /// If no `reach` is given, the binding is exposed to other crates.
+    /// If no `reach` is given, the binding is exposed to other capsules.
     ///
     /// # Form
     ///

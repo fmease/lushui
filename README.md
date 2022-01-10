@@ -48,7 +48,7 @@ No IDE is available yet. However basic syntax highlighting is available for Visu
 ## Generated API Documentation
 
 As hinted in the help text (`./lushui -h`), you use `lushui doc` (and variations) to generate (HTML) documentation.
-To view it, you currently need to manually do `<browser> build/doc/<crate>/index.html`. In the future, you will be able
+To view it, you currently need to manually do `<browser> build/doc/<capsule>/index.html`. In the future, you will be able
 to just pass `--open` to `./lushui doc`.
 
 By default, documentation comments are treated as plain text. However, the goal is to make AsciiDoc the standard markup language. Today, this is only opt-in via the _unstable_ option `-Z asciidoc` which requires [Asciidoctor](https://asciidoctor.org/) to be installed and available as `asciidoctor` (a custom installation path is not supported at the moment).

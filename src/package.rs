@@ -1,13 +1,13 @@
-//! The package and crate resolver and future package manager.
+//! The package and capsule resolver and future package manager.
 
 use crate::{
     diagnostics::{Diagnostic, Reporter},
     error::{Health, ReportedExt, Result},
     format::IOError,
     metadata::content_span_of_key,
-    resolver::Crate,
+    resolver::Capsule,
     span::{SharedSourceMap, Spanned, WeaklySpanned},
-    syntax::CrateName,
+    syntax::CapsuleName,
     utility::HashMap,
     FILE_EXTENSION,
 };
@@ -36,8 +36,8 @@ impl fmt::Debug for PackageIndex {
 }
 
 pub struct BuildQueue<'r> {
-    /// The crates which have not been built yet.
-    crates: IndexMap<CrateIndex, Crate>,
+    /// The capsules which have not been built yet.
+    capsules: IndexMap<CapsuleIndex, Capsule>,
     packages: IndexMap<PackageIndex, Package>,
     map: SharedSourceMap,
     reporter: &'r Reporter,
@@ -46,7 +46,7 @@ pub struct BuildQueue<'r> {
 impl<'r> BuildQueue<'r> {
     pub fn new(map: SharedSourceMap, reporter: &'r Reporter) -> Self {
         Self {
-            crates: default(),
+            capsules: default(),
             packages: default(),
             map,
             reporter,
@@ -59,7 +59,7 @@ impl BuildQueue<'_> {
     fn enqueue_dependencies(
         &mut self,
         package_index: PackageIndex,
-    ) -> Result<HashMap<CrateName, CrateIndex>> {
+    ) -> Result<HashMap<CapsuleName, CapsuleIndex>> {
         let package_path = &self[package_index].path.clone();
         let mut resolved_dependencies = HashMap::default();
         let mut health = Health::Untainted;
@@ -92,7 +92,7 @@ impl BuildQueue<'_> {
                         let map = self.map.borrow();
 
                         // @Note the message does not scale to more complex cycles (e.g. a cycle of three packages)
-                        // @Task provide more context for transitive dependencies of the goal crate
+                        // @Task provide more context for transitive dependencies of the goal capsule
                         // @Task code
                         Diagnostic::error()
                             .message(format!(
@@ -141,7 +141,7 @@ impl BuildQueue<'_> {
             let dependency_manifest_file = match file {
                 Ok(file) => file,
                 Err(error) => {
-                    // @Task provide more context for transitive dependencies of the goal crate
+                    // @Task provide more context for transitive dependencies of the goal capsule
                     // @Question code?
                     let diagnostic = Diagnostic::error()
                         .message(format!(
@@ -187,7 +187,7 @@ impl BuildQueue<'_> {
 
             let dependency_package = Package::from_manifest(
                 dependency_manifest.profile,
-                dependency_manifest.crates.dependencies,
+                dependency_manifest.capsules.dependencies,
                 dependency_path,
             );
             let dependency_package = self.packages.insert(dependency_package);
@@ -196,7 +196,7 @@ impl BuildQueue<'_> {
             // names from the same package to be able to generate a correct lock-file
             let resolved_transitive_dependencies = self.enqueue_dependencies(dependency_package)?;
 
-            self.resolve_library_manifest(dependency_package, dependency_manifest.crates.library);
+            self.resolve_library_manifest(dependency_package, dependency_manifest.capsules.library);
             self[dependency_package].dependencies = resolved_transitive_dependencies;
             self[dependency_package].is_fully_resolved = true;
 
@@ -215,8 +215,8 @@ impl BuildQueue<'_> {
         health.of(resolved_dependencies).into()
     }
 
-    fn add_crate(&mut self, meta: impl FnOnce(CrateIndex) -> CrateMeta) -> CrateIndex {
-        self.crates.insert_with(|index| Crate::new(meta(index)))
+    fn add_capsule(&mut self, meta: impl FnOnce(CapsuleIndex) -> CapsuleMetadata) -> CapsuleIndex {
+        self.capsules.insert_with(|index| Capsule::new(meta(index)))
     }
 
     fn resolve_library_manifest(
@@ -225,7 +225,7 @@ impl BuildQueue<'_> {
         library: Option<Spanned<LibraryManifest>>,
     ) -> bool {
         let path = &self[package].path;
-        let default_library_path = path.join(CrateType::Library.default_root_file_path());
+        let default_library_path = path.join(CapsuleType::Library.default_root_file_path());
 
         let path = match library {
             Some(library) => Some(
@@ -243,8 +243,9 @@ impl BuildQueue<'_> {
         let package_contains_library = path.is_some();
 
         if let Some(path) = path {
-            let index = self
-                .add_crate(|index| CrateMeta::new(name, index, package, path, CrateType::Library));
+            let index = self.add_capsule(|index| {
+                CapsuleMetadata::new(name, index, package, path, CapsuleType::Library)
+            });
             self[package].library = Some(index);
         }
 
@@ -257,7 +258,7 @@ impl BuildQueue<'_> {
         executable: Option<Spanned<ExecutableManifest>>,
     ) -> bool {
         let path = &self[package].path;
-        let default_executable_path = path.join(CrateType::Executable.default_root_file_path());
+        let default_executable_path = path.join(CapsuleType::Executable.default_root_file_path());
 
         // @Beacon @Task also find other binaries in source/binaries/
         let paths = match executable {
@@ -277,14 +278,14 @@ impl BuildQueue<'_> {
         let package_contains_executables = !paths.is_empty();
 
         for path in paths {
-            let index = self.add_crate(|index| {
-                CrateMeta::new(
+            let index = self.add_capsule(|index| {
+                CapsuleMetadata::new(
                     name.take()
                         .expect("multiple executables in a single package not yet implemented"),
                     index,
                     package,
                     path,
-                    CrateType::Executable,
+                    CapsuleType::Executable,
                 )
             });
             self[package].executables.push(index);
@@ -303,7 +304,7 @@ impl BuildQueue<'_> {
         let package_contains_executables = self.resolve_executable_manifest(package, executable);
 
         if !(package_contains_library || package_contains_executables) {
-            // @Task provide more context for transitive dependencies of the goal crate
+            // @Task provide more context for transitive dependencies of the goal capsule
             // @Task code
             Diagnostic::error()
                 .message(format!(
@@ -334,7 +335,7 @@ impl BuildQueue<'_> {
         let manifest = PackageManifest::parse(manifest_file, self.map.clone(), self.reporter)?;
         let package = Package::from_manifest(
             manifest.profile,
-            manifest.crates.dependencies,
+            manifest.capsules.dependencies,
             path.to_owned(),
         );
         let package = self.packages.insert(package);
@@ -345,8 +346,8 @@ impl BuildQueue<'_> {
 
         self.resolve_library_and_executable_manifests(
             package,
-            manifest.crates.library,
-            manifest.crates.executable,
+            manifest.capsules.library,
+            manifest.capsules.executable,
         )?;
         self[package].dependencies = resolved_dependencies;
         self[package].is_fully_resolved = true;
@@ -357,11 +358,11 @@ impl BuildQueue<'_> {
     pub fn process_single_file_package(
         &mut self,
         path: PathBuf,
-        crate_type: CrateType,
+        capsule_type: CapsuleType,
         no_core: bool,
     ) -> Result {
-        // package and crate name
-        let name = parse_crate_name_from_file_path(&path, self.reporter)?;
+        // package *and* capsule name
+        let name = parse_capsule_name_from_file_path(&path, self.reporter)?;
 
         let package = Package::single_file_package(name.clone(), path.clone());
         let package = self.packages.insert(package);
@@ -388,7 +389,7 @@ impl BuildQueue<'_> {
                 PackageManifest::parse(core_manifest_file, self.map.clone(), self.reporter)?;
             let core_package = Package::from_manifest(
                 core_manifest.profile,
-                core_manifest.crates.dependencies,
+                core_manifest.capsules.dependencies,
                 core_path,
             );
             let core_package = self.packages.insert(core_package);
@@ -397,65 +398,66 @@ impl BuildQueue<'_> {
             // names from the same package to be able to generate a correct lock-fil
             let resolved_transitive_core_dependencies = self.enqueue_dependencies(core_package)?;
 
-            self.resolve_library_manifest(core_package, core_manifest.crates.library);
+            self.resolve_library_manifest(core_package, core_manifest.capsules.library);
             self[core_package].dependencies = resolved_transitive_core_dependencies;
             self[core_package].is_fully_resolved = true;
 
             resolved_dependencies.insert(
-                CrateName::core_package_name(),
+                CapsuleName::core_package_name(),
                 self[core_package].library.unwrap(),
             );
         }
 
-        let crate_ = self.add_crate(|index| CrateMeta::new(name, index, package, path, crate_type));
+        let capsule = self
+            .add_capsule(|index| CapsuleMetadata::new(name, index, package, path, capsule_type));
         let package = &mut self[package];
-        package.executables.push(crate_);
+        package.executables.push(capsule);
         package.dependencies = resolved_dependencies;
         package.is_fully_resolved = true;
 
         Ok(())
     }
 
-    pub fn finalize(mut self) -> (BuildSession, IndexMap<CrateIndex, Crate>) {
-        // @Note this is not extensible to multiple executable crates
-        let goal_crate = self.crates.last().unwrap();
-        let goal_crate_index = goal_crate.meta.index;
-        let goal_package = &self.packages[goal_crate.meta.package];
-        let goal_package_index = goal_crate.meta.package;
+    pub fn finalize(mut self) -> (BuildSession, IndexMap<CapsuleIndex, Capsule>) {
+        // @Note this is not extensible to multiple executable capsules
+        let goal_capsule = self.capsules.last().unwrap();
+        let goal_capsule_index = goal_capsule.index();
+        let goal_package = &self.packages[goal_capsule.metadata.package];
+        let goal_package_index = goal_capsule.metadata.package;
         let is_homonymous =
-            |&crate_: &CrateIndex| goal_crate.meta.name == self.crates[crate_].meta.name;
+            |&capsule: &CapsuleIndex| goal_capsule.name() == self.capsules[capsule].name();
 
         let library_lookalike = goal_package
             .library
-            .filter(|_| goal_crate.is_executable())
+            .filter(|_| goal_capsule.is_executable())
             .filter(is_homonymous);
-        // @Note this is not extensible to multiple executable crates
+        // @Note this is not extensible to multiple executable capsules
         let executable_lookalike = goal_package
             .executables
             .get(0)
             .copied()
-            .filter(|_| goal_crate.is_library())
+            .filter(|_| goal_capsule.is_library())
             .filter(is_homonymous);
 
         if let Some(lookalike) = library_lookalike.or(executable_lookalike) {
-            self.crates[goal_crate_index]
-                .meta
+            self.capsules[goal_capsule_index]
+                .metadata
                 .is_ambiguously_named_within_package = true;
-            self.crates[lookalike]
-                .meta
+            self.capsules[lookalike]
+                .metadata
                 .is_ambiguously_named_within_package = true;
         }
 
         (
-            BuildSession::new(self.packages, goal_crate_index, goal_package_index),
-            self.crates,
+            BuildSession::new(self.packages, goal_capsule_index, goal_package_index),
+            self.capsules,
         )
     }
 }
 
 impl Diagnostic {
     fn dependent_package_does_not_contain_a_library(dependency: &str, dependent: &str) -> Self {
-        // @Task provide more context for transitive dependencies of the goal crate
+        // @Task provide more context for transitive dependencies of the goal capsule
         // @Task code
         // @Beacon @Task span
         // @Update better message: dependent (?) package does not contain a library
@@ -465,17 +467,17 @@ impl Diagnostic {
     }
 }
 
-impl Index<CrateIndex> for BuildQueue<'_> {
-    type Output = Crate;
+impl Index<CapsuleIndex> for BuildQueue<'_> {
+    type Output = Capsule;
 
-    fn index(&self, index: CrateIndex) -> &Self::Output {
-        &self.crates[index]
+    fn index(&self, index: CapsuleIndex) -> &Self::Output {
+        &self.capsules[index]
     }
 }
 
-impl IndexMut<CrateIndex> for BuildQueue<'_> {
-    fn index_mut(&mut self, index: CrateIndex) -> &mut Self::Output {
-        &mut self.crates[index]
+impl IndexMut<CapsuleIndex> for BuildQueue<'_> {
+    fn index_mut(&mut self, index: CapsuleIndex) -> &mut Self::Output {
+        &mut self.capsules[index]
     }
 }
 
@@ -493,28 +495,28 @@ impl IndexMut<PackageIndex> for BuildQueue<'_> {
     }
 }
 
-// @Task better location,
-/// Metadata about a crate.
+/// Metadata of a [capsule][Capsule].
 #[derive(Clone)]
-pub struct CrateMeta {
-    pub name: CrateName,
-    pub index: CrateIndex,
+pub struct CapsuleMetadata {
+    pub name: CapsuleName,
+    pub index: CapsuleIndex,
     pub package: PackageIndex,
     pub path: PathBuf,
-    pub type_: CrateType,
-    /// Indicates if the name of the library or executable crate coincides with the name of the executable¹ or library crate, respectively.
+    pub type_: CapsuleType,
+    /// Indicates if the name of the library or executable capsule coincides with
+    /// the name of the executable¹ or library capsule, respectively.
     ///
-    /// ¹: We haven't implemented multiple executable crates per package yet.
+    /// ¹: We haven't implemented multiple executable capsules per package yet.
     pub is_ambiguously_named_within_package: bool,
 }
 
-impl CrateMeta {
+impl CapsuleMetadata {
     pub fn new(
-        name: CrateName,
-        index: CrateIndex,
+        name: CapsuleName,
+        index: CapsuleIndex,
         package: PackageIndex,
         path: PathBuf,
-        type_: CrateType,
+        type_: CapsuleType,
     ) -> Self {
         Self {
             name,
@@ -528,15 +530,15 @@ impl CrateMeta {
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Hash)]
-pub struct CrateIndex(pub(crate) u16);
+pub struct CapsuleIndex(pub(crate) u16);
 
-impl fmt::Debug for CrateIndex {
+impl fmt::Debug for CapsuleIndex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}c", self.0)
     }
 }
 
-impl index_map::Index for CrateIndex {
+impl index_map::Index for CapsuleIndex {
     fn new(index: usize) -> Self {
         Self(index.try_into().unwrap())
     }
@@ -556,18 +558,18 @@ pub(crate) fn distributed_packages_path() -> PathBuf {
 }
 
 pub(crate) fn core_package_path() -> PathBuf {
-    distributed_packages_path().join(CrateName::core_package_name().as_str())
+    distributed_packages_path().join(CapsuleName::core_package_name().as_str())
 }
 
 pub const DEFAULT_SOURCE_FOLDER_NAME: &str = "source";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CrateType {
+pub enum CapsuleType {
     Library,
     Executable,
 }
 
-impl CrateType {
+impl CapsuleType {
     pub const fn default_root_file_stem(self) -> &'static str {
         match self {
             Self::Library => "library",
@@ -582,7 +584,7 @@ impl CrateType {
     }
 }
 
-impl fmt::Display for CrateType {
+impl fmt::Display for CapsuleType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Library => write!(f, "library"),
@@ -591,7 +593,7 @@ impl fmt::Display for CrateType {
     }
 }
 
-impl FromStr for CrateType {
+impl FromStr for CapsuleType {
     type Err = ();
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
@@ -603,18 +605,18 @@ impl FromStr for CrateType {
     }
 }
 
-/// A collection of crates and some metadata.
+/// A collection of capsules and some metadata.
 ///
-/// More concretely, it consists of zero or more executable crates
-/// and of zero or one library crate but of always at least one crate.
-/// The most important metadatum is the list of dependencies (external crates).
+/// More concretely, it consists of zero or more executable capsules
+/// and of zero or one library capsule but of always at least one capsule.
+/// The most important metadatum is the list of dependencies (external capsules).
 #[derive(Debug)]
 pub struct Package {
     /// The name of the package.
     ///
-    /// The library and the default executable crate share this name
+    /// The library and the default executable capsule share this name
     /// unless overwritten in their manifests.
-    pub name: CrateName,
+    pub name: CapsuleName,
     /// The file or folder path of the package.
     ///
     /// For single-file packages, this points to a file.
@@ -629,24 +631,24 @@ pub struct Package {
     /// States if the package is allowed to be published to a package repository.
     #[allow(dead_code)]
     pub(crate) is_private: bool,
-    pub(crate) library: Option<CrateIndex>,
-    pub(crate) executables: Vec<CrateIndex>,
-    pub(crate) dependencies: HashMap<CrateName, CrateIndex>,
-    /// Indicates if the library, executable and dependency crates are fully resolved.
+    pub(crate) library: Option<CapsuleIndex>,
+    pub(crate) executables: Vec<CapsuleIndex>,
+    pub(crate) dependencies: HashMap<CapsuleName, CapsuleIndex>,
+    /// Indicates if the library, executable and dependency capsules are fully resolved.
     ///
-    /// Packages are resolved in two steps to allow the library crate and the executable
-    /// crates to keep an [index to the owning package](PackageIndex) and the package to
-    /// keep [indices to its crates](CrateIndex).
+    /// Packages are resolved in two steps to allow the library capsule and the executable
+    /// capsules to keep an [index to the owning package](PackageIndex) and the package to
+    /// keep [indices to its capsules](CapsuleIndex).
     pub(crate) is_fully_resolved: bool,
     pub(crate) dependency_manifest:
-        Option<Spanned<HashMap<WeaklySpanned<CrateName>, Spanned<DependencyManifest>>>>,
+        Option<Spanned<HashMap<WeaklySpanned<CapsuleName>, Spanned<DependencyManifest>>>>,
 }
 
 impl Package {
     pub(crate) fn from_manifest(
         profile: PackageProfile,
         dependency_manifest: Option<
-            Spanned<HashMap<WeaklySpanned<CrateName>, Spanned<DependencyManifest>>>,
+            Spanned<HashMap<WeaklySpanned<CapsuleName>, Spanned<DependencyManifest>>>,
         >,
         path: PathBuf,
     ) -> Self {
@@ -670,7 +672,7 @@ impl Package {
         }
     }
 
-    pub(crate) fn single_file_package(name: CrateName, path: PathBuf) -> Self {
+    pub(crate) fn single_file_package(name: CapsuleName, path: PathBuf) -> Self {
         Self {
             name,
             path,
@@ -701,10 +703,10 @@ pub fn find_package(path: &Path) -> Option<&Path> {
     }
 }
 
-pub(crate) fn parse_crate_name_from_file_path(
+pub(crate) fn parse_capsule_name_from_file_path(
     path: &Path,
     reporter: &Reporter,
-) -> Result<CrateName> {
+) -> Result<CapsuleName> {
     if !crate::utility::has_file_extension(path, crate::FILE_EXTENSION) {
         Diagnostic::warning()
             .message("missing or non-standard file extension")
@@ -715,7 +717,7 @@ pub(crate) fn parse_crate_name_from_file_path(
     let name = path.file_stem().unwrap();
 
     // @Beacon @Beacon @Beacon @Task do not unwrap! provide custom error
-    CrateName::parse(name.to_str().unwrap()).reported(reporter)
+    CapsuleName::parse(name.to_str().unwrap()).reported(reporter)
 }
 
 pub(crate) mod manifest {
@@ -724,7 +726,7 @@ pub(crate) mod manifest {
         error::{Health, ReportedExt, Result},
         metadata::{self, content_span_of_key, convert, TypeError},
         span::{SharedSourceMap, SourceFileIndex, Spanned, WeaklySpanned},
-        syntax::CrateName,
+        syntax::CapsuleName,
         utility::{try_all, HashMap},
     };
     use std::path::PathBuf;
@@ -732,7 +734,7 @@ pub(crate) mod manifest {
     // @Note missing span of PackageManifest itself
     pub struct PackageManifest {
         pub(crate) profile: PackageProfile,
-        pub(crate) crates: PackageCrates,
+        pub(crate) capsules: PackageCapsules,
     }
 
     impl PackageManifest {
@@ -766,7 +768,7 @@ pub(crate) mod manifest {
             )
             .and_then(|name| {
                 // trimming quotes
-                CrateName::parse_spanned(name.map_span(|span| span.trim(1)).as_deref())
+                CapsuleName::parse_spanned(name.map_span(|span| span.trim(1)).as_deref())
                     .reported(reporter)
             });
             let version = metadata::remove_optional_map_entry(&mut manifest, "version", reporter);
@@ -844,7 +846,7 @@ pub(crate) mod manifest {
 
                     for (dependency_name, dependency_manifest) in dependencies.value {
                         // @Task generalize parse_spanned over I: Influence on future param on Spanned
-                        let dependency_name = match CrateName::parse_spanned(
+                        let dependency_name = match CapsuleName::parse_spanned(
                             dependency_name
                                 .map_span(|span| content_span_of_key(span, &map.borrow()))
                                 .as_deref()
@@ -882,7 +884,7 @@ pub(crate) mod manifest {
                             .and_then(|name| {
                                 // trimming quotes
                                 name.map(|name| {
-                                    CrateName::parse_spanned(
+                                    CapsuleName::parse_spanned(
                                         name.map_span(|span| span.trim(1)).as_deref(),
                                     )
                                     .reported(reporter)
@@ -942,7 +944,7 @@ pub(crate) mod manifest {
                     description,
                     is_private,
                 },
-                crates: PackageCrates {
+                capsules: PackageCapsules {
                     library,
                     executable,
                     dependencies,
@@ -951,32 +953,32 @@ pub(crate) mod manifest {
         }
     }
 
-    /// Crate-indepedent package information.
+    /// Capsule-indepedent package information.
     pub(crate) struct PackageProfile {
-        pub(crate) name: Spanned<CrateName>,
+        pub(crate) name: Spanned<CapsuleName>,
         pub(crate) version: Option<Spanned<Version>>,
         pub(crate) description: Option<Spanned<String>>,
         pub(crate) is_private: Option<Spanned<bool>>,
     }
 
-    /// Information about the crates of a package.
-    pub(crate) struct PackageCrates {
+    /// Information about the capsules of a package.
+    pub(crate) struct PackageCapsules {
         pub(crate) library: Option<Spanned<LibraryManifest>>,
         // @Task Vec<_>
         pub(crate) executable: Option<Spanned<ExecutableManifest>>,
         pub(crate) dependencies:
-            Option<Spanned<HashMap<WeaklySpanned<CrateName>, Spanned<DependencyManifest>>>>,
+            Option<Spanned<HashMap<WeaklySpanned<CapsuleName>, Spanned<DependencyManifest>>>>,
     }
 
     #[derive(Default)]
     pub(crate) struct LibraryManifest {
-        // @Task pub(crate) name: Option<Spanned<CrateName>>,
+        // @Task pub(crate) name: Option<Spanned<CapsuleName>>,
         pub(crate) path: Option<Spanned<PathBuf>>,
     }
 
     #[derive(Default)]
     pub(crate) struct ExecutableManifest {
-        // @Task pub(crate) name: Option<Spanned<CrateName>>,
+        // @Task pub(crate) name: Option<Spanned<CapsuleName>>,
         pub(crate) path: Option<Spanned<PathBuf>>,
     }
 
@@ -984,7 +986,7 @@ pub(crate) mod manifest {
     pub(crate) struct DependencyManifest {
         #[allow(dead_code)]
         pub(crate) version: Option<Spanned<VersionRequirement>>,
-        pub(crate) name: Option<Spanned<CrateName>>,
+        pub(crate) name: Option<Spanned<CapsuleName>>,
         pub(crate) path: Option<Spanned<PathBuf>>,
     }
 

@@ -1,4 +1,4 @@
-error[E032]: expected type `crate.X`, got type `Type`
+error[E032]: expected type `capsule.X`, got type `Type`
   --> ${DIRECTORY}/type-mismatch.lushui:15:4
    |
 15 | a: X = Type
@@ -10,7 +10,7 @@ error[E032]: expected type `crate.X`, got type `Type`
    |        ^^^^ has the wrong type
    |
 
-error[E032]: expected type `Type`, got type `crate.X`
+error[E032]: expected type `Type`, got type `capsule.X`
   --> ${DIRECTORY}/type-mismatch.lushui:16:4
    |
 16 | b: Type = X.x

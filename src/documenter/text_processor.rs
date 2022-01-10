@@ -2,7 +2,7 @@ use super::{format::declaration_url_fragment, node::Node};
 use crate::{
     diagnostics::reporter::{SilentReporter, StderrReporter},
     package::BuildSession,
-    resolver::{resolve_path, Crate},
+    resolver::{resolve_path, Capsule},
     span::SourceMap,
     syntax::parse_path,
     utility::HashSet,
@@ -30,12 +30,12 @@ impl<'scope> TextProcessor<'scope> {
     pub(super) fn new<'a>(
         folder: &Path,
         options: &super::Options,
-        crate_: &'a Crate,
+        capsule: &'a Capsule,
         session: &'a BuildSession,
         scope: &'scope Scope<'a>,
     ) -> Result<Self, Error> {
         Ok(if options.asciidoc {
-            Self::AsciiDoctor(Box::new(Asciidoctor::new(folder, crate_, session, scope)?))
+            Self::AsciiDoctor(Box::new(Asciidoctor::new(folder, capsule, session, scope)?))
         } else {
             Self::None
         })
@@ -80,7 +80,7 @@ impl<'scope> Asciidoctor<'scope> {
     /// Create an Asciidoctor text processor with the path to the documentation folder.
     pub(super) fn new<'a>(
         path: &Path,
-        crate_: &'a Crate,
+        capsule: &'a Capsule,
         session: &'a BuildSession,
         scope: &'scope Scope<'a>,
     ) -> Result<Self, Error> {
@@ -129,7 +129,7 @@ impl<'scope> Asciidoctor<'scope> {
                     &response_log_path,
                     &response_context,
                     &should_watch,
-                    crate_,
+                    capsule,
                     session,
                 )
             }
@@ -158,7 +158,7 @@ impl<'scope> Asciidoctor<'scope> {
         response_log_path: &Path,
         response_context: &Mutex<ResponseContext>,
         should_watch: &AtomicBool,
-        crate_: &Crate,
+        capsule: &Capsule,
         session: &BuildSession,
     ) {
         let mut handled_requests: HashSet<String> = default();
@@ -197,7 +197,7 @@ impl<'scope> Asciidoctor<'scope> {
                         // but send `ok\x1F{result}` or `err\x1F{message}` "over the wire"
                         let response = match Request::parse(message).unwrap().response(
                             &response_context.url_prefix,
-                            crate_,
+                            capsule,
                             session,
                         ) {
                             Ok(response) => response,
@@ -272,7 +272,7 @@ impl<'a> Request<'a> {
     pub fn response(
         self,
         url_prefix: &str,
-        crate_: &Crate,
+        capsule: &Capsule,
         session: &BuildSession,
     ) -> Result<String, ()> {
         Ok(match self {
@@ -289,13 +289,13 @@ impl<'a> Request<'a> {
                 let path = parse_path(file, map.clone(), &SilentReporter.into())?;
                 let index = resolve_path(
                     &path,
-                    crate_.root().global(crate_),
-                    crate_,
+                    capsule.root(),
+                    capsule,
                     session,
                     // &SilentReporter.into(),
                     &StderrReporter::new(Some(map)).into(),
                 )?;
-                let url_suffix = declaration_url_fragment(index, crate_, session);
+                let url_suffix = declaration_url_fragment(index, capsule, session);
                 format!("{url_prefix}{url_suffix}")
             }
         })
