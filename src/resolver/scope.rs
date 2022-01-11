@@ -3,7 +3,6 @@
 //! The equivalent in the type checker is [`crate::typer::interpreter::scope`].
 
 // @Beacon @Beacon @Task don't report similarily named *private* bindings!
-// @Task recognize leaks of private types!
 
 use crate::{
     diagnostics::{Code, Diagnostic},

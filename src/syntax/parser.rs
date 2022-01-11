@@ -1,13 +1,14 @@
 //! The syntactic analyzer (parser).
 //!
-//! I *think* it can be classified as a top-down recursive-descent parser with arbitrary look-ahead.
+//! It is a handwritten top-down recursive-descent parser with arbitrary look-ahead
+//! and backtracking. Backtracking is only used to parse expressions and patterns.
 //!
 //! # Grammar Notation
 //!
 //! Most parsing functions in this module are accompanied by a grammar snippet.
 //! These snippets are written in an EBNF explained below:
 //!
-//! | Notation  | Name                                | Definition or Remarks                                         |
+//! | Notation  | Name                                | Definition or Remark                                          |
 //! |-----------|-------------------------------------|---------------------------------------------------------------|
 //! | `; C`     | Comment                             | Stretches until the end of the line                           |
 //! | `N ::= R` | Definition                          | Defines non-terminal `A` by rule `R`                          |
@@ -85,7 +86,7 @@ pub(super) fn parse_path(
 struct Parser<'a> {
     tokens: &'a [Token],
     file: SourceFileIndex,
-    reflection_depth: u16,
+    look_ahead: u16,
     index: usize,
     map: SharedSourceMap,
     reporter: &'a Reporter,
@@ -101,19 +102,17 @@ impl<'a> Parser<'a> {
         Self {
             tokens,
             file,
-            reflection_depth: 0,
+            look_ahead: 0,
             index: 0,
             map,
             reporter,
         }
     }
 
-    /// Parse in a sandboxed way.
-    ///
-    /// Used for arbitrary look-ahead. Restores the old cursor on failure.
-    fn reflect<T>(&mut self, parser: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
+    /// Execute the given parser and backtrack to the original position on error without emitting a diagnostic.
+    fn parse_or_backtrack<T>(&mut self, parser: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
         let index = self.index;
-        let result = self.manually_reflect(parser);
+        let result = self.look_ahead(parser);
 
         if result.is_err() {
             self.index = index;
@@ -122,20 +121,20 @@ impl<'a> Parser<'a> {
         result
     }
 
-    fn manually_reflect<T>(&mut self, reporter: impl FnOnce(&mut Self) -> T) -> T {
-        self.reflection_depth += 1;
-        let result = reporter(self);
-        self.reflection_depth -= 1;
+    fn look_ahead<T>(&mut self, parser: impl FnOnce(&mut Self) -> T) -> T {
+        self.look_ahead += 1;
+        let result = parser(self);
+        self.look_ahead -= 1;
         result
     }
 
-    fn reflecting(&self) -> bool {
-        self.reflection_depth != 0
+    fn is_looking_ahead(&self) -> bool {
+        self.look_ahead != 0
     }
 
     fn error<T, D: FnOnce() -> Diagnostic>(&self, diagnostic: D) -> Result<T> {
         fn error<D: FnOnce() -> Diagnostic>(parser: &Parser<'_>, diagnostic: D) -> Result<!> {
-            if !parser.reflecting() {
+            if !parser.is_looking_ahead() {
                 diagnostic().report(parser.reporter);
             }
 
@@ -193,7 +192,6 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Identifier ::= #Word | #Punctuation
     /// ```
-    // @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Task rename to consume_identifier
     fn consume_identifier(&mut self) -> Result<Identifier> {
         match self.current_token().name() {
             Word | Punctuation => {
@@ -209,7 +207,7 @@ impl<'a> Parser<'a> {
 
     /// Indicate whether the given token was consumed.
     ///
-    /// Conceptually equivalent to `self.manually_reflect(|this| this.consume(..)).is_ok()`
+    /// Conceptually equivalent to `self.look_ahead(|this| this.consume(..)).is_ok()`
     /// but more memory-efficient as it does not clone the consumed token.
     #[must_use]
     fn has_consumed(&mut self, token: TokenName) -> bool {
@@ -345,9 +343,7 @@ impl<'a> Parser<'a> {
         Ok(attributes)
     }
 
-    /// Finish parsing a regular attribute.
-    ///
-    /// Regular attributes do not include documentation comments.
+    /// Finish parsing a regular attribute given the span of the already parsed leading `@`.
     ///
     /// # Grammar
     ///
@@ -357,9 +353,7 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Regular-Attribute ::= "@" (#Word | "(" #Word Attribute-Argument* ")")
     /// ```
-    fn finish_parse_regular_attribute(&mut self, keyword_span: Span) -> Result<Attribute> {
-        let mut span = keyword_span;
-
+    fn finish_parse_regular_attribute(&mut self, mut span: Span) -> Result<Attribute> {
         let binder;
         let mut arguments = SmallVec::new();
 
@@ -441,10 +435,9 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// Finish parsing a function declaration.
+    /// Finish parsing a function declaration given the already parsed leading word.
     ///
-    /// The leading identifier should have already parsed beforehand.
-    /// The span does not include the trailing line break.
+    /// The span does not include the terminator.
     ///
     /// # Grammar
     ///
@@ -485,10 +478,9 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// Finish parsing a data declaration.
+    /// Finish parsing a data declaration given the span of the already parsed leading `data` keyword.
     ///
-    /// The keyword `data` should have already been parsed beforehand.
-    /// The span does not include the trailing line break.
+    /// The span does not include the terminator.
     ///
     /// # Grammar
     ///
@@ -501,11 +493,9 @@ impl<'a> Parser<'a> {
     /// ```
     fn finish_parse_data_declaration(
         &mut self,
-        keyword_span: Span,
+        mut span: Span,
         attributes: Attributes,
     ) -> Result<Declaration> {
-        let mut span = keyword_span;
-
         let binder = span.merging(self.consume_word()?);
         let parameters = span.merging(self.parse_parameters(&[
             Delimiter::Terminator,
@@ -552,7 +542,7 @@ impl<'a> Parser<'a> {
         Ok(decl! {
             Data {
                 attributes,
-                keyword_span.merge(span);
+                span.merge(span);
                 binder,
                 parameters,
                 type_annotation,
@@ -561,7 +551,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// Finish parsing module declaration.
+    /// Finish parsing module declaration given the span of the already parsed leading `module` keyword.
     ///
     /// This is either an inline or an out-of-line module declaration.
     ///
@@ -575,11 +565,9 @@ impl<'a> Parser<'a> {
     /// ```
     fn finish_parse_module_declaration(
         &mut self,
-        keyword_span: Span,
+        mut span: Span,
         attributes: Attributes,
     ) -> Result<Declaration> {
-        let mut span = keyword_span;
-
         match self.current_token().name() {
             name if name.is_terminator() => {
                 if name == Semicolon {
@@ -668,7 +656,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_optional_block(&mut self, mut subparser: impl FnMut(&mut Self) -> Result) -> Result {
+    fn parse_optional_block(&mut self, mut parser: impl FnMut(&mut Self) -> Result) -> Result {
         if self.has_consumed(OpeningCurlyBracket) {
             loop {
                 while self.has_consumed(Semicolon) {}
@@ -677,7 +665,7 @@ impl<'a> Parser<'a> {
                     break;
                 }
 
-                subparser(self)?;
+                parser(self)?;
             }
         }
 
@@ -741,7 +729,7 @@ impl<'a> Parser<'a> {
 
                     while self.current_token().name() != ClosingRoundBracket {
                         if let Ok(bracket) =
-                            self.manually_reflect(|this| this.consume(OpeningRoundBracket))
+                            self.look_ahead(|this| this.consume(OpeningRoundBracket))
                         {
                             let mut span = bracket.span;
 
@@ -887,7 +875,7 @@ impl<'a> Parser<'a> {
     /// ```
     fn parse_pi_type_literal_or_lower(&mut self) -> Result<Expression> {
         let domain = self
-            .reflect(|this| {
+            .parse_or_backtrack(|this| {
                 let explicitness = this.parse_optional_implicitness();
                 let mut span = this
                     .consume(OpeningRoundBracket)?
@@ -896,7 +884,7 @@ impl<'a> Parser<'a> {
 
                 let laziness = this.consume_span(Lazy);
                 let binder = this.consume_word()?;
-                // @Question should this be fatal in respect to reflecting?
+                // @Question should a failure be fatal here or should we keep backtracking?
                 let domain = this.parse_type_annotation(ClosingRoundBracket.into())?;
 
                 span.merging(&this.consume(ClosingRoundBracket)?);
@@ -982,7 +970,6 @@ impl<'a> Parser<'a> {
     ///
     /// ```ebnf
     /// Lower-Expression ::= Attribute* Bare-Lower-Expression
-    /// ; @Task rename into Field-Or-Lower
     /// Bare-Lower-Expression ::= Lowest-Expression ("::" Identifier)*
     /// Lowest-Expression ::=
     ///     | Path
@@ -1014,7 +1001,7 @@ impl<'a> Parser<'a> {
                 expr! { TypeLiteral { default(), span } }
             }
             NumberLiteral => {
-                // @Beacon @Task avoid clone!
+                // @Beacon @Task avoid clone! (by interning?)
                 let token = self.current_token().clone();
                 self.advance();
                 expr! {
@@ -1022,7 +1009,7 @@ impl<'a> Parser<'a> {
                 }
             }
             TextLiteral => {
-                // @Beacon @Task avoid clone!
+                // @Beacon @Task avoid clone! (by interning?)
                 let token = self.current_token().clone();
                 self.advance();
 
@@ -1150,17 +1137,14 @@ impl<'a> Parser<'a> {
         Ok(path)
     }
 
-    /// Finish parsing a lambda literal expression.
-    ///
-    /// The initial `\` should have already been parsed beforehand.
+    /// Finish parsing a lambda literal given the span of the already parsed leading `\`.
     ///
     /// # Grammar
     ///
     /// ```ebnf
     /// Lambda-Literal ::= "\" Parameters Type-Annotation? "=>" Expression
     /// ```
-    fn finish_parse_lambda_literal(&mut self, keyword_span: Span) -> Result<Expression> {
-        let mut span = keyword_span;
+    fn finish_parse_lambda_literal(&mut self, mut span: Span) -> Result<Expression> {
         let parameters = self.parse_parameters(&[
             Delimiter::TypeAnnotationPrefix,
             TokenName::WideArrowRight.into(),
@@ -1180,9 +1164,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// Finish parsing an let/in-expression.
-    ///
-    /// The initial `let` should have already been parsed beforehand.
+    /// Finish parsing an let/in-expression given the span of the already parsed leading `let` keyword.
     ///
     /// # Grammar
     ///
@@ -1193,14 +1175,9 @@ impl<'a> Parser<'a> {
     ///     #Virtual-Semicolon?
     ///     "in" Expression
     /// ```
-    fn finish_parse_let_in(&mut self, span_of_let: Span) -> Result<Expression> {
-        // @Task recover from two consecutive `in`s
-
-        let mut span = span_of_let;
-
+    fn finish_parse_let_in(&mut self, mut span: Span) -> Result<Expression> {
         let binder = self.consume_word()?;
 
-        // @Task smh add line break aka virtual semicolon
         let parameters = self.parse_parameters(&[
             Delimiter::TypeAnnotationPrefix,
             Delimiter::DefinitionPrefix,
@@ -1235,7 +1212,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// Finish parsing a use/in-expression.
+    /// Finish parsing a use/in-expression given the span of the already parsed leading `use` keyword.
     ///
     /// # Grammar
     ///
@@ -1245,10 +1222,7 @@ impl<'a> Parser<'a> {
     ///     #Virtual-Semicolon?
     ///     "in" Expression
     /// ```
-    fn finish_parse_use_in(&mut self, span_of_use: Span) -> Result<Expression> {
-        // @Task recover from two consecutive `in`s
-
-        // @Task smh add line break aka virtual semicolon
+    fn finish_parse_use_in(&mut self, span: Span) -> Result<Expression> {
         let bindings = self.parse_use_path_tree(&[In.into()])?;
 
         if self.current_token().is_line_break() {
@@ -1262,16 +1236,14 @@ impl<'a> Parser<'a> {
         Ok(expr! {
             UseIn {
                 Attributes::new(),
-                span_of_use.merge(&scope);
+                span.merge(&scope);
                 bindings,
                 scope,
             }
         })
     }
 
-    /// Finish parsing a case analysis expression.
-    ///
-    /// The initial `case` should have already been parsed beforehand.
+    /// Finish parsing a case analysis given the span of the already parsed leading `case` keyword.
     ///
     /// # Grammar
     ///
@@ -1280,9 +1252,7 @@ impl<'a> Parser<'a> {
     /// Case-Analysis ::= "case" Expression "of" ("{" Case* "}")?
     /// Case ::= Pattern "=>" Expression Terminator
     /// ```
-    fn finish_parse_case_analysis(&mut self, span_of_case: Span) -> Result<Expression> {
-        let mut span = span_of_case;
-
+    fn finish_parse_case_analysis(&mut self, mut span: Span) -> Result<Expression> {
         let scrutinee = self.parse_expression()?;
         span.merging(self.consume(Of)?);
 
@@ -1315,9 +1285,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// Finish parsing a do block.
-    ///
-    /// The keyword `do` should have already been consumed.
+    /// Finish parsing a do block given the span of the already parsed leading `do` keyword.
     ///
     /// # Grammar
     ///
@@ -1334,14 +1302,13 @@ impl<'a> Parser<'a> {
     /// we could switch to like `!x = …` or `set x = …`. The latter look-ahead is not much of an
     /// issue, `:` is a bad *but only in case* of adding type annotation expressions (not that likely
     /// as they clash with other syntactic elements like pi literals).
-    fn finish_parse_do_block(&mut self, span_of_do: Span) -> Result<Expression> {
-        let mut span = span_of_do;
+    fn finish_parse_do_block(&mut self, mut span: Span) -> Result<Expression> {
         let mut statements = Vec::new();
 
         self.consume(OpeningCurlyBracket)?;
 
         while self.current_token().name() != ClosingCurlyBracket {
-            // @Note necessary I guess in cases where we have #Line-Break ((Comment)) #Line-Break
+            // @Note necessary I guess in cases where we have #Line-Break ##Comment+ #Line-Break
             if self.has_consumed(Semicolon) {
                 continue;
             }
@@ -1529,7 +1496,7 @@ impl<'a> Parser<'a> {
         let mut illegal_pi = None;
 
         while let Ok(argument) = self
-            .reflect(|this| {
+            .parse_or_backtrack(|this| {
                 // @Beacon @Question can pi_type_literal_was_used_as_lower_expression also happen here???
                 let explicitness = this.parse_optional_implicitness();
                 let expat = Expat::parse_lower(this)?;
@@ -1544,7 +1511,7 @@ impl<'a> Parser<'a> {
                 ))
             })
             .or_else(|_| -> Result<_> {
-                self.reflect(|this| {
+                self.parse_or_backtrack(|this| {
                     let explicitness = this.parse_optional_implicitness();
                     let mut span = this.consume(OpeningRoundBracket)?.span;
                     span.merging_from(explicitness);
@@ -1685,10 +1652,9 @@ impl<'a> Parser<'a> {
     fn parse_type_annotation(&mut self, other_expected: Expected) -> Result<Expression> {
         // @Note that the error message that can be thrown by this method will actually
         // very likely to certainly not show up in the final report since it gets swallowed
-        // by reflect (the branch do-not-reflect experiments with this stuff and makes the
-        // below actually show up)
+        // by the backtracking logic (see the branch do-not-reflect)
         self.consume_after_expecting(TokenName::Colon, other_expected)?;
-        self.reflect(Self::parse_expression)
+        self.parse_or_backtrack(Self::parse_expression)
     }
 
     /// Parse an optional type annotation.
@@ -1705,7 +1671,7 @@ impl<'a> Parser<'a> {
     /// # Grammar
     ///
     /// ```ebnf
-    /// ; #Start-Of-Input is not actually emitted by the lexer, the parsers needs to bound-check instead.
+    /// ; #Start-Of-Input is not actually emitted by the lexer, the parser needs to bound-check instead.
     /// Terminator ::= ";" | (> "}" | #End-Of-Input) | (< #Start-Of-Input | ";" | "}")
     /// ```
     fn expect_terminator(&mut self) -> Result<Option<Token>> {
