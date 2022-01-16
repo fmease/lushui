@@ -30,8 +30,8 @@ use super::ast::AttributeArgumentKind;
 #[allow(clippy::wildcard_imports)]
 use super::{
     ast::{
-        self, decl, expr, pat, Attribute, AttributeArgument, AttributeKind, Attributes,
-        BindStatement, Declaration, Domain,
+        self, Attribute, AttributeArgument, AttributeKind, Attributes, BindStatement, Declaration,
+        Domain,
         Explicitness::{self, *},
         Expression, Identifier, LetStatement, Parameter, ParameterKind, Parameters, Path, Pattern,
         SpannedExplicitness, Statement, UsePathTree, UsePathTreeKind,
@@ -482,16 +482,17 @@ impl<'a> Parser<'a> {
 
         self.expect_terminator()?;
 
-        Ok(decl! {
-            Function {
-                attributes,
-                span;
+        Ok(Declaration::new(
+            attributes,
+            span,
+            ast::Function {
                 binder,
                 parameters,
                 type_annotation,
                 body,
             }
-        })
+            .into(),
+        ))
     }
 
     /// Finish parsing a data declaration given the span of the already parsed leading `data` keyword.
@@ -555,16 +556,17 @@ impl<'a> Parser<'a> {
             }
         };
 
-        Ok(decl! {
-            Data {
-                attributes,
-                span.merge(span);
+        Ok(Declaration::new(
+            attributes,
+            span.merge(span),
+            ast::Data {
                 binder,
                 parameters,
                 type_annotation,
                 constructors,
             }
-        })
+            .into(),
+        ))
     }
 
     /// Finish parsing module declaration given the span of the already parsed leading `module` keyword.
@@ -590,7 +592,11 @@ impl<'a> Parser<'a> {
                     self.advance();
                 }
 
-                return Ok(decl! { ModuleHeader { attributes, span } });
+                return Ok(Declaration::new(
+                    attributes,
+                    span,
+                    ast::DeclarationKind::ModuleHeader,
+                ));
             }
             _ => {}
         }
@@ -604,15 +610,16 @@ impl<'a> Parser<'a> {
                     self.advance();
                 }
 
-                Ok(decl! {
-                    Module {
-                        attributes,
-                        span;
+                Ok(Declaration::new(
+                    attributes,
+                    span,
+                    ast::Module {
                         binder,
                         file: self.file,
                         declarations: None,
                     }
-                })
+                    .into(),
+                ))
             }
             Of => {
                 self.advance();
@@ -625,15 +632,16 @@ impl<'a> Parser<'a> {
 
                 span.merging(self.expect_terminator()?);
 
-                Ok(decl! {
-                    Module {
-                        attributes,
-                        span;
+                Ok(Declaration::new(
+                    attributes,
+                    span,
+                    ast::Module {
                         binder,
                         file: self.file,
                         declarations: Some(declarations),
                     }
-                })
+                    .into(),
+                ))
             }
             _ => self.error(|| {
                 expected_one_of![Delimiter::Terminator, Of].but_actual_is(self.current_token())
@@ -657,15 +665,16 @@ impl<'a> Parser<'a> {
             }
 
             if self.has_consumed(EndOfInput) {
-                break Ok(decl! {
-                    Module {
-                        Attributes::new(),
-                        self.map.borrow()[self.file].span();
+                break Ok(Declaration::new(
+                    Attributes::new(),
+                    self.map.borrow()[self.file].span(),
+                    ast::Module {
                         binder: module_binder,
                         file: self.file,
-                        declarations: Some(declarations)
+                        declarations: Some(declarations),
                     }
-                });
+                    .into(),
+                ));
             }
 
             declarations.push(self.parse_declaration()?);
@@ -706,13 +715,11 @@ impl<'a> Parser<'a> {
         let bindings = self.parse_use_path_tree(&[Delimiter::Terminator])?;
         self.expect_terminator()?;
 
-        Ok(decl! {
-            Use {
-                attributes,
-                keyword_span.merge(&bindings);
-                bindings,
-            }
-        })
+        Ok(Declaration::new(
+            attributes,
+            keyword_span.merge(&bindings),
+            ast::Use { bindings }.into(),
+        ))
     }
 
     /// Parse a use-path tree.
@@ -850,16 +857,17 @@ impl<'a> Parser<'a> {
 
         self.expect_terminator()?;
 
-        Ok(decl! {
-            Constructor {
-                attributes,
-                span;
+        Ok(Declaration::new(
+            attributes,
+            span,
+            ast::Constructor {
                 binder,
                 parameters,
                 type_annotation,
                 body,
             }
-        })
+            .into(),
+        ))
     }
 
     /// Parse an expression.
@@ -936,14 +944,15 @@ impl<'a> Parser<'a> {
             let mut span = domain.span;
             let codomain = span.merging(self.parse_pi_type_literal_or_lower()?);
 
-            Ok(expr! {
-                PiTypeLiteral {
-                    Attributes::new(),
-                    span;
+            Ok(Expression::new(
+                Attributes::new(),
+                span,
+                ast::PiTypeLiteral {
                     domain: domain.value,
                     codomain,
                 }
-            })
+                .into(),
+            ))
         }
         // the case where we don't actually have a pi type literal but merely
         // an application or lower
@@ -1011,44 +1020,49 @@ impl<'a> Parser<'a> {
             name if name.is_path_head() => {
                 let path = self.parse_path()?;
 
-                expr! { Path(default(), path.span(); path) }
+                Expression::new(default(), path.span(), path.into())
             }
             Type => {
                 self.advance();
-                expr! { TypeLiteral { default(), span } }
+
+                Expression::new(default(), span, ast::ExpressionKind::TypeLiteral)
             }
             NumberLiteral => {
                 let token = self.current_token().clone();
                 self.advance();
 
-                expr! {
-                    NumberLiteral {
-                        default(), token.span;
+                Expression::new(
+                    default(),
+                    token.span,
+                    ast::NumberLiteral {
                         path: None,
                         literal: token.into_number_literal().unwrap(),
                     }
-                }
+                    .into(),
+                )
             }
             TextLiteral => {
                 let token = self.current_token().clone();
                 self.advance();
 
-                expr! {
-                    TextLiteral {
-                        default(), token.span;
+                Expression::new(
+                    default(),
+                    token.span,
+                    ast::TextLiteral {
                         path: None,
                         literal: token
                             .into_text_literal()
                             .unwrap()
                             .or_else(|error| self.error(|| error))?,
                     }
-                }
+                    .into(),
+                )
             }
             QuestionMark => {
                 self.advance();
                 let tag = self.consume_word()?;
 
-                expr! { TypedHole { default(), span.merge(&tag); tag } }
+                Expression::new(default(), span.merge(&tag), ast::TypedHole { tag }.into())
             }
             Let => {
                 self.advance();
@@ -1070,7 +1084,7 @@ impl<'a> Parser<'a> {
                 self.advance();
                 self.finish_parse_do_block(span)?
             }
-            // @Task move to a finish_parse_sequence_literal
+            // @Task move to a finish_parse_sequence_literal & generalize over SequenceLiteral<_>!
             OpeningSquareBracket => {
                 self.advance();
 
@@ -1083,7 +1097,7 @@ impl<'a> Parser<'a> {
                 span.merging(self.current_token());
                 self.advance();
 
-                expr! { SequenceLiteral { default(), span; elements } }
+                Expression::new(default(), span, ast::SequenceLiteral { elements }.into())
             }
             OpeningRoundBracket => {
                 self.advance();
@@ -1115,13 +1129,15 @@ impl<'a> Parser<'a> {
         while self.has_consumed(DoubleColon) {
             let member = self.consume_word()?;
 
-            expression = expr! {
-                Field {
-                    attributes.take().unwrap_or_default(), expression.span.merge(&member);
+            expression = Expression::new(
+                attributes.take().unwrap_or_default(),
+                expression.span.merge(&member),
+                ast::Field {
                     base: expression,
                     member,
                 }
-            }
+                .into(),
+            )
         }
 
         if let Some(attributes) = attributes {
@@ -1177,15 +1193,16 @@ impl<'a> Parser<'a> {
         self.consume(TokenName::WideArrowRight)?;
         let body = span.merging(self.parse_expression()?);
 
-        Ok(expr! {
-            LambdaLiteral {
-                Attributes::new(),
-                span;
+        Ok(Expression::new(
+            Attributes::new(),
+            span,
+            ast::LambdaLiteral {
                 parameters,
                 body_type_annotation,
                 body,
             }
-        })
+            .into(),
+        ))
     }
 
     /// Finish parsing an let/in-expression given the span of the already parsed leading `let` keyword.
@@ -1223,17 +1240,18 @@ impl<'a> Parser<'a> {
 
         let scope = span.merging(self.parse_expression()?);
 
-        Ok(expr! {
-            LetIn {
-                Attributes::new(),
-                span;
+        Ok(Expression::new(
+            Attributes::new(),
+            span,
+            ast::LetIn {
                 binder,
                 parameters,
                 type_annotation,
                 expression,
                 scope,
             }
-        })
+            .into(),
+        ))
     }
 
     /// Finish parsing a use/in-expression given the span of the already parsed leading `use` keyword.
@@ -1257,14 +1275,11 @@ impl<'a> Parser<'a> {
 
         let scope = self.parse_expression()?;
 
-        Ok(expr! {
-            UseIn {
-                Attributes::new(),
-                span.merge(&scope);
-                bindings,
-                scope,
-            }
-        })
+        Ok(Expression::new(
+            Attributes::new(),
+            span.merge(&scope),
+            ast::UseIn { bindings, scope }.into(),
+        ))
     }
 
     /// Finish parsing a case analysis given the span of the already parsed leading `case` keyword.
@@ -1299,14 +1314,11 @@ impl<'a> Parser<'a> {
             self.advance();
         }
 
-        Ok(expr! {
-            CaseAnalysis {
-                Attributes::new(),
-                span;
-                scrutinee,
-                cases,
-            }
-        })
+        Ok(Expression::new(
+            Attributes::new(),
+            span,
+            ast::CaseAnalysis { scrutinee, cases }.into(),
+        ))
     }
 
     /// Finish parsing a do block given the span of the already parsed leading `do` keyword.
@@ -1398,13 +1410,11 @@ impl<'a> Parser<'a> {
         span.merging(self.current_token());
         self.advance();
 
-        Ok(expr! {
-            DoBlock {
-                Attributes::new(),
-                span;
-                statements,
-            }
-        })
+        Ok(Expression::new(
+            Attributes::new(),
+            span,
+            ast::DoBlock { statements }.into(),
+        ))
     }
 
     /// Parse parameters until one of the given delimiters is encountered.
@@ -1509,6 +1519,7 @@ impl<'a> Parser<'a> {
 
     /// Parse a (de)application or something lower.
     // @Task rewrite this with a `delimiter: Delimiter`-parameter for better error messages!
+    // @Beacon @Beacon @Beacon @Task make use of generality of Application<_>
     fn parse_application_like_or_lower<Expat: ExpressionOrPattern>(&mut self) -> Result<Expat> {
         let mut callee = Expat::parse_lower(self)?;
         struct Argument<Expat> {
@@ -1616,40 +1627,48 @@ impl<'a> Parser<'a> {
         match self.current_token().name() {
             name if name.is_path_head() => {
                 let path = self.parse_path()?;
-
-                Ok(pat! { Path(attributes, path.span(); path) })
+                Ok(Pattern::new(attributes, path.span(), path.into()))
             }
             NumberLiteral => {
                 let token = self.current_token().clone();
                 self.advance();
 
-                Ok(pat! {
-                    NumberLiteral {
-                        attributes, token.span;
+                Ok(Pattern::new(
+                    attributes,
+                    token.span,
+                    ast::NumberLiteral {
                         path: None,
                         literal: token.into_number_literal().unwrap(),
                     }
-                })
+                    .into(),
+                ))
             }
             TextLiteral => {
                 let token = self.current_token().clone();
                 self.advance();
 
-                Ok(pat! {
-                    TextLiteral {
-                        attributes, token.span;
+                Ok(Pattern::new(
+                    attributes,
+                    token.span,
+                    ast::TextLiteral {
                         path: None,
                         literal: token
                             .into_text_literal()
                             .unwrap()
                             .or_else(|error| self.error(|| error))?,
                     }
-                })
+                    .into(),
+                ))
             }
             Backslash => {
                 self.advance();
-                self.consume_word()
-                    .map(|binder| pat! { Binder { attributes, span.merge(&binder); binder } })
+                self.consume_word().map(|binder| {
+                    Pattern::new(
+                        attributes,
+                        span.merge(&binder),
+                        ast::Binder { binder }.into(),
+                    )
+                })
             }
             OpeningSquareBracket => {
                 self.advance();
@@ -1663,7 +1682,11 @@ impl<'a> Parser<'a> {
                 span.merging(self.current_token());
                 self.advance();
 
-                Ok(pat! { SequenceLiteralPattern { attributes, span; elements } })
+                Ok(Pattern::new(
+                    attributes,
+                    span,
+                    ast::SequenceLiteral { elements }.into(),
+                ))
             }
             OpeningRoundBracket => {
                 self.advance();
@@ -1753,6 +1776,7 @@ impl<'a> Parser<'a> {
 
 /// Abstraction over expressions and patterns.
 // @Task consider replacing this with an enum
+// @Beacon @Beacon @Beacon @Task replace with ast::Application<_>
 trait ExpressionOrPattern: Sized + Spanning + std::fmt::Debug {
     fn application_like(
         callee: Self,
@@ -1775,7 +1799,17 @@ impl ExpressionOrPattern for Expression {
         binder: Option<Identifier>,
         span: Span,
     ) -> Self {
-        expr! { Application { Attributes::new(), span; callee, argument, explicitness, binder } }
+        Expression::new(
+            Attributes::new(),
+            span,
+            ast::Application {
+                callee,
+                explicitness,
+                binder,
+                argument,
+            }
+            .into(),
+        )
     }
     fn parse(parser: &mut Parser<'_>) -> Result<Self> {
         parser.parse_expression()
@@ -1795,7 +1829,17 @@ impl ExpressionOrPattern for Pattern {
         binder: Option<Identifier>,
         span: Span,
     ) -> Self {
-        pat! { Deapplication { Attributes::new(), span; callee, argument, explicitness, binder } }
+        Pattern::new(
+            Attributes::new(),
+            span,
+            ast::Application {
+                callee,
+                explicitness,
+                binder,
+                argument,
+            }
+            .into(),
+        )
     }
     fn parse(parser: &mut Parser<'_>) -> Result<Self> {
         parser.parse_pattern()

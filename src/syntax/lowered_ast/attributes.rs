@@ -178,10 +178,10 @@ impl Target for ast::Pattern {
         match self.value {
             NumberLiteral(_) => "a number literal pattern",
             TextLiteral(_) => "a text literal pattern",
-            SequenceLiteralPattern(_) => "a sequence literal pattern",
+            SequenceLiteral(_) => "a sequence literal pattern",
             Path(_) => "a path pattern",
             Binder(_) => "a binder pattern",
-            Deapplication(_) => "a deapplication",
+            Application(_) => "a deapplication",
         }
     }
 
@@ -191,10 +191,10 @@ impl Target for ast::Pattern {
         match self.value {
             NumberLiteral(_) => Targets::NUMBER_LITERAL_PATTERN,
             TextLiteral(_) => Targets::TEXT_LITERAL_PATTERN,
-            SequenceLiteralPattern(_) => Targets::SEQUENCE_LITERAL_PATTERN,
+            SequenceLiteral(_) => Targets::SEQUENCE_LITERAL_PATTERN,
             Path(_) => Targets::PATH_PATTERN,
             Binder(_) => Targets::BINDER_PATTERN,
-            Deapplication(_) => Targets::DEAPPLICATION_PATTERN,
+            Application(_) => Targets::DEAPPLICATION_PATTERN,
         }
     }
 }

@@ -397,7 +397,7 @@ impl Format for super::Domain {
     }
 }
 
-impl Format for super::Application {
+impl<T: Format> Format for super::Application<T> {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         FormatStruct::new(f, indentation)
             .name("Application")
@@ -551,7 +551,7 @@ impl Format for super::DoBlock {
     }
 }
 
-impl Format for super::SequenceLiteral {
+impl<T: Format> Format for super::SequenceLiteral<T> {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         FormatStruct::new(f, indentation)
             .name("Sequence-Literal")
@@ -631,20 +631,11 @@ impl Format for super::PatternKind {
         match self {
             Self::NumberLiteral(number) => number.format(f, indentation),
             Self::TextLiteral(text) => text.format(f, indentation),
-            Self::SequenceLiteralPattern(sequence) => sequence.format(f, indentation),
+            Self::SequenceLiteral(sequence) => sequence.format(f, indentation),
             Self::Path(path) => path.format(f, indentation),
             Self::Binder(binder) => binder.format(f, indentation),
-            Self::Deapplication(deapplication) => deapplication.format(f, indentation),
+            Self::Application(application) => application.format(f, indentation),
         }
-    }
-}
-
-impl Format for super::SequenceLiteralPattern {
-    fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
-        FormatStruct::new(f, indentation)
-            .name("Sequence-Literal")
-            .field("elements", &self.elements)
-            .finish()
     }
 }
 
@@ -654,18 +645,6 @@ impl Format for super::Binder {
             .name("Pattern-Binder")
             .inline()
             .field("binder", &self.binder)
-            .finish()
-    }
-}
-
-impl Format for super::Deapplication {
-    fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
-        FormatStruct::new(f, indentation)
-            .name("Deapplication")
-            .field("explicitness", &self.explicitness)
-            .field("binder", &self.binder)
-            .field("callee", &self.callee)
-            .field("argument", &self.argument)
             .finish()
     }
 }

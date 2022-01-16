@@ -848,7 +848,7 @@ impl<'a> Lowerer<'a> {
                     binder: binding.binder,
                 }
             },
-            Deapplication(application) => {
+            Application(application) => {
                 if let Some(binder) = &application.binder {
                     Diagnostic::unimplemented("named arguments")
                         .primary_span(binder)
@@ -868,7 +868,7 @@ impl<'a> Lowerer<'a> {
                     }
                 }
             }
-            SequenceLiteralPattern(_sequence) => {
+            SequenceLiteral(_sequence) => {
                 Diagnostic::unimplemented("sequence literal patterns")
                     .primary_span(pattern.span)
                     .report(self.reporter);

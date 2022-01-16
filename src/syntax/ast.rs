@@ -54,6 +54,12 @@ pub struct Function {
     pub body: Option<Expression>,
 }
 
+impl From<Function> for DeclarationKind {
+    fn from(function: Function) -> Self {
+        Self::Function(Box::new(function))
+    }
+}
+
 /// The syntax node of a data declaration.
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Data {
@@ -61,6 +67,12 @@ pub struct Data {
     pub parameters: Parameters,
     pub type_annotation: Option<Expression>,
     pub constructors: Option<Vec<Declaration>>,
+}
+
+impl From<Data> for DeclarationKind {
+    fn from(type_: Data) -> Self {
+        Self::Data(Box::new(type_))
+    }
 }
 
 /// The syntax node of a constructor.
@@ -74,12 +86,24 @@ pub struct Constructor {
     pub body: Option<Expression>,
 }
 
+impl From<Constructor> for DeclarationKind {
+    fn from(constructor: Constructor) -> Self {
+        Self::Constructor(Box::new(constructor))
+    }
+}
+
 /// The syntax node of a module declaration.
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Module {
     pub binder: Identifier,
     pub file: SourceFileIndex,
     pub declarations: Option<Vec<Declaration>>,
+}
+
+impl From<Module> for DeclarationKind {
+    fn from(module: Module) -> Self {
+        Self::Module(Box::new(module))
+    }
 }
 
 /// The syntax node of attribute groups.
@@ -95,6 +119,12 @@ pub struct Group {
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Use {
     pub bindings: UsePathTree,
+}
+
+impl From<Use> for DeclarationKind {
+    fn from(use_: Use) -> Self {
+        Self::Use(Box::new(use_))
+    }
 }
 
 pub type UsePathTree = Spanned<UsePathTreeKind>;
@@ -161,22 +191,21 @@ pub type Expression = Item<ExpressionKind>;
 /// The syntax node of an expression.
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
-#[allow(clippy::box_collection)] // we want to make each variant equally sized
 pub enum ExpressionKind {
     PiTypeLiteral(Box<PiTypeLiteral>),
-    Application(Box<Application>),
+    Application(Box<Application<Expression>>),
+    Field(Box<Field>),
+    Path(Box<Path>),
     TypeLiteral,
     NumberLiteral(Box<NumberLiteral>),
     TextLiteral(Box<TextLiteral>),
     TypedHole(Box<TypedHole>),
-    Path(Box<Path>),
-    Field(Box<Field>),
-    LambdaLiteral(Box<LambdaLiteral>),
     LetIn(Box<LetIn>),
     UseIn(Box<UseIn>),
+    LambdaLiteral(Box<LambdaLiteral>),
     CaseAnalysis(Box<CaseAnalysis>),
     DoBlock(Box<DoBlock>),
-    SequenceLiteral(Box<SequenceLiteral>),
+    SequenceLiteral(Box<SequenceLiteral<Expression>>),
     Error,
 }
 
@@ -194,6 +223,12 @@ pub struct PiTypeLiteral {
     pub codomain: Expression,
 }
 
+impl From<PiTypeLiteral> for ExpressionKind {
+    fn from(pi: PiTypeLiteral) -> Self {
+        Self::PiTypeLiteral(Box::new(pi))
+    }
+}
+
 /// The domain of a [pi type literal](PiTypeLiteral).
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
@@ -204,14 +239,238 @@ pub struct Domain {
     pub expression: Expression,
 }
 
-/// The syntax node of function application.
+impl From<Application<Expression>> for ExpressionKind {
+    fn from(application: Application<Expression>) -> Self {
+        Self::Application(Box::new(application))
+    }
+}
+
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct Application {
-    pub callee: Expression,
+pub struct Field {
+    pub base: Expression,
+    pub member: Identifier,
+}
+
+impl From<Field> for ExpressionKind {
+    fn from(field: Field) -> Self {
+        Self::Field(Box::new(field))
+    }
+}
+
+impl From<Path> for ExpressionKind {
+    fn from(path: Path) -> Self {
+        Self::Path(Box::new(path))
+    }
+}
+
+impl From<NumberLiteral> for ExpressionKind {
+    fn from(number: NumberLiteral) -> Self {
+        Self::NumberLiteral(Box::new(number))
+    }
+}
+
+impl From<TextLiteral> for ExpressionKind {
+    fn from(text: TextLiteral) -> Self {
+        Self::TextLiteral(Box::new(text))
+    }
+}
+
+/// The syntax node of typed holes.
+#[derive(Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
+pub struct TypedHole {
+    pub tag: Identifier,
+}
+
+impl From<TypedHole> for ExpressionKind {
+    fn from(hole: TypedHole) -> Self {
+        Self::TypedHole(Box::new(hole))
+    }
+}
+
+/// The syntax-node of a let/in expression.
+#[derive(Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
+pub struct LetIn {
+    pub binder: Identifier,
+    pub parameters: Parameters,
+    pub type_annotation: Option<Expression>,
+    pub expression: Option<Expression>,
+    pub scope: Expression,
+}
+
+impl From<LetIn> for ExpressionKind {
+    fn from(let_in: LetIn) -> Self {
+        Self::LetIn(Box::new(let_in))
+    }
+}
+
+/// The syntax node of a use/in expression.
+#[derive(Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
+pub struct UseIn {
+    pub bindings: UsePathTree,
+    pub scope: Expression,
+}
+
+impl From<UseIn> for ExpressionKind {
+    fn from(use_in: UseIn) -> Self {
+        Self::UseIn(Box::new(use_in))
+    }
+}
+
+/// The syntax node of a lambda literal expression.
+#[derive(Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
+pub struct LambdaLiteral {
+    pub parameters: Parameters,
+    pub body_type_annotation: Option<Expression>,
+    pub body: Expression,
+}
+
+impl From<LambdaLiteral> for ExpressionKind {
+    fn from(lambda: LambdaLiteral) -> Self {
+        Self::LambdaLiteral(Box::new(lambda))
+    }
+}
+
+#[derive(Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
+pub struct CaseAnalysis {
+    pub scrutinee: Expression,
+    pub cases: Vec<Case>,
+}
+
+impl From<CaseAnalysis> for ExpressionKind {
+    fn from(analysis: CaseAnalysis) -> Self {
+        Self::CaseAnalysis(Box::new(analysis))
+    }
+}
+
+#[derive(Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
+pub struct Case {
+    pub pattern: Pattern,
+    pub body: Expression,
+}
+
+#[derive(Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
+pub struct DoBlock {
+    pub statements: Vec<Statement>,
+}
+
+impl From<DoBlock> for ExpressionKind {
+    fn from(do_: DoBlock) -> Self {
+        Self::DoBlock(Box::new(do_))
+    }
+}
+
+// @Note we probably gonna need to make this an item at some time for diagnostics
+#[derive(Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
+pub enum Statement {
+    // @Note we could make the definition syntactically optional and provide a good error message
+    // (missing definition) when lowering
+    Let(LetStatement),
+    Use(Use),
+    // @Question should we rename this to Assign since we plan on not only lowering
+    // to monads but also applicatives?
+    Bind(BindStatement),
+    Expression(Expression),
+}
+
+// @Note has a lot of overlap with [StatementKind::Let] (and a bit with [ExpressionKind::LetIn])
+#[derive(Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
+pub struct LetStatement {
+    pub binder: Identifier,
+    pub parameters: Parameters,
+    pub type_annotation: Option<Expression>,
+    pub expression: Expression,
+}
+
+#[derive(Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
+pub struct BindStatement {
+    pub binder: Identifier,
+    pub type_annotation: Option<Expression>,
+    pub expression: Expression,
+}
+
+impl From<SequenceLiteral<Expression>> for ExpressionKind {
+    fn from(sequence: SequenceLiteral<Expression>) -> Self {
+        Self::SequenceLiteral(Box::new(sequence))
+    }
+}
+
+pub type Parameters = Vec<Parameter>;
+pub type Parameter = Spanned<ParameterKind>;
+
+#[derive(Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
+pub struct ParameterKind {
     pub explicitness: Explicitness,
-    pub binder: Option<Identifier>,
-    pub argument: Expression,
+    pub laziness: Option<Span>,
+    pub binder: Identifier,
+    pub type_annotation: Option<Expression>,
+}
+
+pub type Pattern = Item<PatternKind>;
+
+#[derive(Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
+pub enum PatternKind {
+    NumberLiteral(Box<NumberLiteral>),
+    TextLiteral(Box<TextLiteral>),
+    SequenceLiteral(Box<SequenceLiteral<Pattern>>),
+    Path(Box<Path>),
+    Binder(Box<Binder>),
+    Application(Box<Application<Pattern>>),
+}
+
+impl From<NumberLiteral> for PatternKind {
+    fn from(number: NumberLiteral) -> Self {
+        Self::NumberLiteral(Box::new(number))
+    }
+}
+
+impl From<TextLiteral> for PatternKind {
+    fn from(text: TextLiteral) -> Self {
+        Self::TextLiteral(Box::new(text))
+    }
+}
+
+impl From<SequenceLiteral<Pattern>> for PatternKind {
+    fn from(sequence: SequenceLiteral<Pattern>) -> Self {
+        Self::SequenceLiteral(Box::new(sequence))
+    }
+}
+
+impl From<Path> for PatternKind {
+    fn from(path: Path) -> Self {
+        Self::Path(Box::new(path))
+    }
+}
+
+/// A binder inside of a pattern.
+#[derive(Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
+pub struct Binder {
+    pub binder: Identifier,
+}
+
+impl From<Binder> for PatternKind {
+    fn from(binder: Binder) -> Self {
+        Self::Binder(Box::new(binder))
+    }
+}
+
+impl From<Application<Pattern>> for PatternKind {
+    fn from(application: Application<Pattern>) -> Self {
+        Self::Application(Box::new(application))
+    }
 }
 
 #[derive(Clone)]
@@ -223,16 +482,25 @@ pub struct NumberLiteral {
 
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
+pub struct Application<T> {
+    pub callee: T,
+    pub explicitness: Explicitness,
+    pub binder: Option<Identifier>,
+    pub argument: T,
+}
+
+#[derive(Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
+pub struct SequenceLiteral<T> {
+    // @Task pub path: Option<Path>,
+    pub elements: Vec<T>,
+}
+
+#[derive(Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct TextLiteral {
     pub path: Option<Path>,
     pub literal: Atom,
-}
-
-/// The syntax node of a typed hole.
-#[derive(Clone)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct TypedHole {
-    pub tag: Identifier,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -334,148 +602,6 @@ impl Spanning for Path {
     }
 }
 
-/// The syntax node of a path expression.
-#[derive(Clone)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct Field {
-    pub base: Expression,
-    pub member: Identifier,
-}
-
-/// The syntax node of a lambda literal expression.
-#[derive(Clone)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct LambdaLiteral {
-    pub parameters: Parameters,
-    pub body_type_annotation: Option<Expression>,
-    pub body: Expression,
-}
-
-/// The syntax-node of a let/in expression.
-#[derive(Clone)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct LetIn {
-    pub binder: Identifier,
-    pub parameters: Parameters,
-    pub type_annotation: Option<Expression>,
-    pub expression: Option<Expression>,
-    pub scope: Expression,
-}
-
-/// The syntax node of a use/in expression.
-#[derive(Clone)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct UseIn {
-    pub bindings: UsePathTree,
-    pub scope: Expression,
-}
-
-#[derive(Clone)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct CaseAnalysis {
-    pub scrutinee: Expression,
-    pub cases: Vec<Case>,
-}
-
-#[derive(Clone)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct DoBlock {
-    pub statements: Vec<Statement>,
-}
-
-// @Note we probably gonna need to make this an item at some time for diagnostics
-#[derive(Clone)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
-pub enum Statement {
-    // @Note we could make the definition syntactically optional and provide a good error message
-    // (missing definition) when lowering
-    Let(LetStatement),
-    Use(Use),
-    // @Question should we rename this to Assign since we plan on not only lowering
-    // to monads but also applicatives?
-    Bind(BindStatement),
-    Expression(Expression),
-}
-
-// @Note has a lot of overlap with [StatementKind::Let] (and a bit with [ExpressionKind::LetIn])
-#[derive(Clone)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct LetStatement {
-    pub binder: Identifier,
-    pub parameters: Parameters,
-    pub type_annotation: Option<Expression>,
-    pub expression: Expression,
-}
-
-#[derive(Clone)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct BindStatement {
-    pub binder: Identifier,
-    pub type_annotation: Option<Expression>,
-    pub expression: Expression,
-}
-
-#[derive(Clone)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct SequenceLiteral {
-    pub elements: Vec<Expression>,
-}
-
-#[derive(Clone)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct Case {
-    pub pattern: Pattern,
-    pub body: Expression,
-}
-
-pub type Parameters = Vec<Parameter>;
-pub type Parameter = Spanned<ParameterKind>;
-
-#[derive(Clone)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct ParameterKind {
-    pub explicitness: Explicitness,
-    pub laziness: Option<Span>,
-    pub binder: Identifier,
-    pub type_annotation: Option<Expression>,
-}
-
-pub type Pattern = Item<PatternKind>;
-
-#[derive(Clone)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
-pub enum PatternKind {
-    NumberLiteral(Box<NumberLiteral>),
-    TextLiteral(Box<TextLiteral>),
-    // @Note unfortunate naming @Update @Question can't we at least rename the variant?
-    SequenceLiteralPattern(Box<SequenceLiteralPattern>),
-    Path(Box<Path>),
-    Binder(Box<Binder>),
-    Deapplication(Box<Deapplication>),
-}
-
-/// A binder inside of a pattern.
-#[derive(Clone)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct Binder {
-    pub binder: Identifier,
-}
-
-#[derive(Clone)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct Deapplication {
-    pub callee: Pattern,
-    pub explicitness: Explicitness,
-    pub binder: Option<Identifier>,
-    pub argument: Pattern,
-}
-
-#[derive(Clone)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct SequenceLiteralPattern {
-    pub elements: Vec<Pattern>,
-}
-
 pub(crate) type Hanger = Spanned<HangerKind>;
 
 /// The non-identifier head of a path.
@@ -562,9 +688,11 @@ impl TryFrom<Token> for Identifier {
 
 impl From<Identifier> for Expression {
     fn from(identifier: Identifier) -> Self {
-        expr! {
-            Path(Attributes::new(), identifier.span(); Path::from(identifier))
-        }
+        Expression::new(
+            Attributes::new(),
+            identifier.span(),
+            Path::from(identifier).into(),
+        )
     }
 }
 
@@ -626,16 +754,4 @@ impl PossiblySpanning for SpannedExplicitness {
             Self::Explicit => None,
         }
     }
-}
-
-pub(crate) macro decl($( $tree:tt )+) {
-    crate::item::item!(crate::syntax::ast, DeclarationKind, Box; $( $tree )+)
-}
-
-pub(crate) macro expr($( $tree:tt )+) {
-    crate::item::item!(crate::syntax::ast, ExpressionKind, Box; $( $tree )+)
-}
-
-pub(crate) macro pat($( $tree:tt )+) {
-    crate::item::item!(crate::syntax::ast, PatternKind, Box; $( $tree )+)
 }
