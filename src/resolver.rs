@@ -12,10 +12,7 @@ use crate::{
     entity::{Entity, EntityKind},
     error::{Health, PossiblyErroneous, ReportedExt, Result},
     format::{pluralize, unordered_listing, Conjunction, DisplayWith, QuoteExt},
-    hir::{
-        self, decl, expr, pat, DeBruijnIndex, DeclarationIndex, Identifier, Index,
-        LocalDeclarationIndex,
-    },
+    hir::{self, expr, DeBruijnIndex, DeclarationIndex, Identifier, Index, LocalDeclarationIndex},
     package::BuildSession,
     span::Spanning,
     syntax::{
@@ -330,15 +327,16 @@ impl<'a> ResolverMut<'a> {
                     self.capsule.program_entry = Some(binder.clone());
                 }
 
-                decl! {
-                    Function {
-                        declaration.attributes,
-                        declaration.span;
+                hir::Declaration::new(
+                    declaration.attributes,
+                    declaration.span,
+                    hir::Function {
                         type_annotation: type_annotation?,
                         expression: expression?,
                         binder,
                     }
-                }
+                    .into(),
+                )
             }
             Data(type_) => {
                 let module = module.unwrap();
@@ -372,15 +370,16 @@ impl<'a> ResolverMut<'a> {
                         .collect()
                 });
 
-                decl! {
-                    Data {
-                        declaration.attributes,
-                        declaration.span;
+                hir::Declaration::new(
+                    declaration.attributes,
+                    declaration.span,
+                    hir::Data {
                         constructors: constructors.transpose()?,
                         type_annotation: type_annotation?,
                         binder,
                     }
-                }
+                    .into(),
+                )
             }
             Constructor(constructor) => {
                 let module = module.unwrap();
@@ -395,14 +394,15 @@ impl<'a> ResolverMut<'a> {
                     context.parent_data_binding.unwrap().0,
                 );
 
-                decl! {
-                    Constructor {
-                        declaration.attributes,
-                        declaration.span;
+                hir::Declaration::new(
+                    declaration.attributes,
+                    declaration.span,
+                    hir::Constructor {
                         binder,
                         type_annotation,
                     }
-                }
+                    .into(),
+                )
             }
             Module(submodule) => {
                 let index = match module {
@@ -437,15 +437,16 @@ impl<'a> ResolverMut<'a> {
 
                 Result::from(health)?;
 
-                decl! {
-                    Module {
-                        declaration.attributes,
-                        declaration.span;
+                hir::Declaration::new(
+                    declaration.attributes,
+                    declaration.span,
+                    hir::Module {
                         binder: Identifier::new(index.global(self.capsule), submodule.binder),
                         file: submodule.file,
                         declarations,
                     }
-                }
+                    .into(),
+                )
             }
             Use(use_) => {
                 let module = module.unwrap();
@@ -456,14 +457,15 @@ impl<'a> ResolverMut<'a> {
                     use_.binder,
                 );
 
-                decl! {
-                    Use {
-                        declaration.attributes,
-                        declaration.span;
+                hir::Declaration::new(
+                    declaration.attributes,
+                    declaration.span,
+                    hir::Use {
                         binder: Some(binder.clone()),
                         target: binder,
                     }
-                }
+                    .into(),
+                )
             }
             Error => PossiblyErroneous::error(),
         })
@@ -823,26 +825,28 @@ impl<'a> Resolver<'a> {
 
                 //  pat! { Text(pattern.attributes, pattern.span; text) }
             }
-            Binding(binding) => pat! {
-                Binding {
-                    pattern.attributes,
-                    pattern.span;
+            Binding(binding) => hir::Pattern::new(
+                pattern.attributes,
+                pattern.span,
+                hir::Binding {
                     binder: self.resolve_binding(&binding.binder, scope)?,
                 }
-            },
+                .into(),
+            ),
             Binder(binder) => {
                 binders.push(binder.binder.clone());
-                pat! {
-                    Binder {
-                        pattern.attributes,
-                        pattern.span;
+                hir::Pattern::new(
+                    pattern.attributes,
+                    pattern.span,
+                    hir::Binder {
                         binder: Identifier::new(Index::DeBruijnParameter, binder.binder),
                     }
-                }
+                    .into(),
+                )
             }
-            Deapplication(deapplication) => {
-                let callee = self.resolve_pattern(deapplication.callee.clone(), scope);
-                let argument = self.resolve_pattern(deapplication.argument.clone(), scope);
+            Application(application) => {
+                let callee = self.resolve_pattern(application.callee.clone(), scope);
+                let argument = self.resolve_pattern(application.argument.clone(), scope);
 
                 let (callee, mut callee_binders) = callee?;
                 let (argument, mut argument_binders) = argument?;
@@ -850,14 +854,16 @@ impl<'a> Resolver<'a> {
                 binders.append(&mut callee_binders);
                 binders.append(&mut argument_binders);
 
-                pat! {
-                    Deapplication {
-                        pattern.attributes,
-                        pattern.span;
+                hir::Pattern::new(
+                    pattern.attributes,
+                    pattern.span,
+                    hir::Application {
                         callee,
+                        explicitness: application.explicitness,
                         argument,
                     }
-                }
+                    .into(),
+                )
             }
             Error => PossiblyErroneous::error(),
         };

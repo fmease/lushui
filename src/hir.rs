@@ -47,15 +47,33 @@ pub struct Function {
     pub expression: Option<Expression>,
 }
 
+impl From<Function> for DeclarationKind {
+    fn from(function: Function) -> Self {
+        Self::Function(Box::new(function))
+    }
+}
+
 pub struct Data {
     pub binder: Identifier,
     pub type_annotation: Expression,
     pub constructors: Option<Vec<Declaration>>,
 }
 
+impl From<Data> for DeclarationKind {
+    fn from(type_: Data) -> Self {
+        Self::Data(Box::new(type_))
+    }
+}
+
 pub struct Constructor {
     pub binder: Identifier,
     pub type_annotation: Expression,
+}
+
+impl From<Constructor> for DeclarationKind {
+    fn from(constructor: Constructor) -> Self {
+        Self::Constructor(Box::new(constructor))
+    }
 }
 
 pub struct Module {
@@ -64,9 +82,21 @@ pub struct Module {
     pub declarations: Vec<Declaration>,
 }
 
+impl From<Module> for DeclarationKind {
+    fn from(module: Module) -> Self {
+        Self::Module(Box::new(module))
+    }
+}
+
 pub struct Use {
     pub binder: Option<Identifier>,
     pub target: Identifier,
+}
+
+impl From<Use> for DeclarationKind {
+    fn from(use_: Use) -> Self {
+        Self::Use(Box::new(use_))
+    }
 }
 
 pub type Expression = Item<ExpressionKind>;
@@ -75,7 +105,7 @@ pub type Expression = Item<ExpressionKind>;
 #[allow(clippy::box_collection)]
 pub enum ExpressionKind {
     PiType(Box<PiType>),
-    Application(Box<Application>),
+    Application(Box<Application<Expression>>),
     Type,
     Number(Box<Number>),
     Text(Box<String>),
@@ -103,18 +133,6 @@ pub struct PiType {
     pub parameter: Option<Identifier>,
     pub domain: Expression,
     pub codomain: Expression,
-}
-
-#[derive(Clone)]
-pub struct Application {
-    pub callee: Expression,
-    pub argument: Expression,
-    pub explicitness: Explicitness,
-}
-
-#[derive(Clone)]
-pub struct Binding {
-    pub binder: Identifier,
 }
 
 #[derive(Clone)]
@@ -172,7 +190,7 @@ pub enum PatternKind {
     Text(Box<String>),
     Binding(Box<Binding>),
     Binder(Box<Binder>),
-    Deapplication(Box<Deapplication>),
+    Application(Box<Application<Pattern>>),
     Error,
 }
 
@@ -182,26 +200,42 @@ impl PossiblyErroneous for PatternKind {
     }
 }
 
+impl From<Binding> for PatternKind {
+    fn from(binding: Binding) -> Self {
+        Self::Binding(Box::new(binding))
+    }
+}
+
 /// A binder inside of a pattern.
 #[derive(Clone)]
 pub struct Binder {
     pub binder: Identifier,
 }
 
-#[derive(Clone)]
-pub struct Deapplication {
-    pub callee: Pattern,
-    pub argument: Pattern,
+impl From<Binder> for PatternKind {
+    fn from(binder: Binder) -> Self {
+        Self::Binder(Box::new(binder))
+    }
 }
 
-pub(crate) macro decl($( $tree:tt )+) {
-    crate::item::item!(crate::hir, DeclarationKind, Box; $( $tree )+)
+impl From<Application<Pattern>> for PatternKind {
+    fn from(application: Application<Pattern>) -> Self {
+        Self::Application(Box::new(application))
+    }
+}
+
+#[derive(Clone)]
+pub struct Binding {
+    pub binder: Identifier,
+}
+
+#[derive(Clone)]
+pub struct Application<T> {
+    pub callee: T,
+    pub explicitness: Explicitness,
+    pub argument: T,
 }
 
 pub(crate) macro expr($( $tree:tt )+) {
     crate::item::item!(crate::hir, ExpressionKind, Box; $( $tree )+)
-}
-
-pub(crate) macro pat($( $tree:tt )+) {
-    crate::item::item!(crate::hir, PatternKind, Box; $( $tree )+)
 }

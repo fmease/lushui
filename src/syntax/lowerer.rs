@@ -27,7 +27,7 @@
 use super::{
     ast::{self, Explicit, HangerKind, Parameter, Path},
     lowered_ast::{
-        self, attributes::Target, decl, expr, pat, AttributeKind, AttributeName, Attributes, Number,
+        self, attributes::Target, expr, AttributeKind, AttributeName, Attributes, Number,
     },
 };
 use crate::{
@@ -165,15 +165,16 @@ impl<'a> Lowerer<'a> {
                     )
                     .unwrap(&mut health);
 
-                smallvec![decl! {
-                    Function {
-                        attributes,
-                        declaration.span;
+                smallvec![lowered_ast::Declaration::new(
+                    attributes,
+                    declaration.span,
+                    lowered_ast::Function {
                         binder: function.binder,
                         type_annotation,
                         expression: body,
                     }
-                }]
+                    .into()
+                )]
             }
             Data(type_) => {
                 let data_type_annotation = match type_.type_annotation {
@@ -208,15 +209,16 @@ impl<'a> Lowerer<'a> {
                         .collect()
                 });
 
-                smallvec![decl! {
-                    Data{
-                        attributes,
-                        declaration.span;
+                smallvec![lowered_ast::Declaration::new(
+                    attributes,
+                    declaration.span,
+                    lowered_ast::Data {
                         binder: type_.binder,
                         type_annotation,
                         constructors,
                     }
-                }]
+                    .into()
+                )]
             }
             Constructor(constructor) => {
                 let constructor_type_annotation = match constructor.type_annotation {
@@ -262,14 +264,15 @@ impl<'a> Lowerer<'a> {
                     health.taint();
                 }
 
-                smallvec![decl! {
-                    Constructor {
-                        attributes,
-                        declaration.span;
+                smallvec![lowered_ast::Declaration::new(
+                    attributes,
+                    declaration.span,
+                    lowered_ast::Constructor {
                         binder: constructor.binder,
                         type_annotation,
                     }
-                }]
+                    .into()
+                )]
             }
             Module(module) => {
                 let is_inline_module = module.declarations.is_some();
@@ -382,15 +385,16 @@ impl<'a> Lowerer<'a> {
                     );
                 }
 
-                smallvec![decl! {
-                    Module {
-                        attributes,
-                        declaration.span;
+                smallvec![lowered_ast::Declaration::new(
+                    attributes,
+                    declaration.span,
+                    lowered_ast::Module {
                         binder: module.binder,
                         file: module.file,
                         declarations: lowered_declarations,
                     }
-                }]
+                    .into(),
+                )]
             }
             // handled in the module case
             ModuleHeader => unreachable!(),
@@ -466,14 +470,15 @@ impl<'a> Lowerer<'a> {
                                     });
                                 let binder = try_!(binder);
 
-                                declarations.push(decl! {
-                                    Use {
-                                        attributes.clone(),
-                                        span;
+                                declarations.push(lowered_ast::Declaration::new(
+                                    attributes.clone(),
+                                    span,
+                                    lowered_ast::Use {
                                         binder,
                                         target: combined_target,
                                     }
-                                });
+                                    .into(),
+                                ));
                             }
                             Multiple {
                                 path: inner_path,
@@ -510,14 +515,11 @@ impl<'a> Lowerer<'a> {
                                 break 'discriminate;
                             };
 
-                            declarations.push(decl! {
-                                Use {
-                                    attributes,
-                                    declaration.span;
-                                    binder,
-                                    target,
-                                }
-                            });
+                            declarations.push(lowered_ast::Declaration::new(
+                                attributes,
+                                declaration.span,
+                                lowered_ast::Use { binder, target }.into(),
+                            ));
                         }
                         Multiple { path, bindings } => Outcome::from(lower_use_path_tree(
                             path,
@@ -817,37 +819,33 @@ impl<'a> Lowerer<'a> {
         let pattern = match pattern.value {
             // @Note awkward API!
             NumberLiteral(literal) => {
-                todo!()
-                //     {
-                //     let span = pattern.span;
+                // {
                 //     map_outcome_from_result(
-                //         self.lower_number_literal(*literal, span, &attributes),
-                //         |literal| {
-                //             pat! {
-                //                 NumberLiteral(attributes, span; literal)
-                //             }
-                //         },
+                //         self.lower_number_literal(*literal, pattern.span, &attributes),
+                //         // @Task avoid re-boxing!
+                //         |literal| lowered_ast::Pattern::new(attributes, pattern.span, (*literal).into()),
                 //     )
                 // }
                 // .unwrap(&mut health)
+                todo!()
             }
-            TextLiteral(literal) => pat! {
-                TextLiteral(attributes, pattern.span; literal)
-            },
-            Path(path) => pat! {
-                Binding {
-                    attributes,
-                    pattern.span;
-                    binder: *path,
-                }
-            },
-            Binder(binding) => pat! {
-                Binder {
-                    attributes,
-                    pattern.span;
+            TextLiteral(literal) => {
+                // @Task avoid re-boxing!
+                lowered_ast::Pattern::new(attributes, pattern.span, (*literal).into())
+            }
+            Path(path) => lowered_ast::Pattern::new(
+                attributes,
+                pattern.span,
+                lowered_ast::Binding { binder: *path }.into(),
+            ),
+            Binder(binding) => lowered_ast::Pattern::new(
+                attributes,
+                pattern.span,
+                lowered_ast::Binder {
                     binder: binding.binder,
                 }
-            },
+                .into(),
+            ),
             Application(application) => {
                 if let Some(binder) = &application.binder {
                     Diagnostic::unimplemented("named arguments")
@@ -859,14 +857,16 @@ impl<'a> Lowerer<'a> {
                 let callee = self.lower_pattern(application.callee).unwrap(&mut health);
                 let argument = self.lower_pattern(application.argument).unwrap(&mut health);
 
-                pat! {
-                    Deapplication {
-                        attributes,
-                        pattern.span;
+                lowered_ast::Pattern::new(
+                    attributes,
+                    pattern.span,
+                    lowered_ast::Application {
                         callee,
+                        explicitness: application.explicitness,
                         argument,
                     }
-                }
+                    .into(),
+                )
             }
             SequenceLiteral(_sequence) => {
                 Diagnostic::unimplemented("sequence literal patterns")

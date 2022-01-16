@@ -712,10 +712,10 @@ impl<'a> Typer<'a> {
                             binder_types.push(subject_type.clone());
                         }
                         // @Task
-                        Deapplication(deapplication) => {
+                        Application(application) => {
                             // @Beacon @Task check that subject type is a pi type
 
-                            match (&deapplication.callee.value, &deapplication.argument.value) {
+                            match (&application.callee.value, &application.argument.value) {
                                 // @Note should be an error obviously but does this need to be special-cased
                                 // or can we defer this to an it_is_actual call??
                                 (Number(_) | Text(_), _argument) => todo!(),
@@ -727,7 +727,7 @@ impl<'a> Typer<'a> {
 
                                     dbg!(
                                         &subject_type.with((self.capsule, self.session)),
-                                        deapplication.callee.with((self.capsule, self.session)),
+                                        application.callee.with((self.capsule, self.session)),
                                         &constructor_type.with((self.capsule, self.session))
                                     );
 
@@ -746,7 +746,7 @@ impl<'a> Typer<'a> {
                                         .report(self.reporter);
                                     return Err(Unrecoverable);
                                 }
-                                (Deapplication(_), _argument) => todo!(),
+                                (Application(_), _argument) => todo!(),
                                 (Error, _) => unreachable!(),
                             };
                         }

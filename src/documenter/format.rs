@@ -228,7 +228,7 @@ impl<'a> Formatter<'a> {
                 self.write(r"\");
                 self.write(&binder.binder.to_string());
             }
-            Deapplication(application) => {
+            Application(application) => {
                 self.write("("); // @Temporary
                 self.format_pattern(&application.callee);
                 self.write(")"); // @Temporary

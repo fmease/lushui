@@ -891,7 +891,7 @@ impl<'a> Parser<'a> {
     /// ; contain further expressions) `Lower-Expression`s namely let/in, use/in, lambda literals,
     /// ; case analyses and do blocks (not sure about sequence literals)
     /// Pi-Type-Literal-Or-Lower ::=
-    ///     (Designated-Pi-Type-Domain | Expression-Application-Or-Lower)
+    ///     (Designated-Pi-Type-Domain | Application-Expression-Or-Lower)
     ///     "->" Pi-Type-Literal-Or-Lower
     /// Designated-Pi-Type-Domain ::= Explicitness "(" "lazy"? #Word Type-Annotation ")"
     /// ```
@@ -924,7 +924,7 @@ impl<'a> Parser<'a> {
             .or_else(|_| -> Result<_> {
                 // @Question should we parse `lazy` here too to allow for unnamed laziness
                 // which is reasonable?
-                let domain = self.parse_expression_application_or_lower()?;
+                let domain = self.parse_application_expression_or_lower()?;
                 Ok(Spanned::new(
                     domain.span,
                     Domain {
@@ -965,11 +965,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Parse an expression application or lower.
+    /// Parse an application expression or lower.
     /// # Grammar
     ///
     /// ```ebnf
-    /// Expression-Application-Or-Lower ::= Lower-Expression Expression-Argument*
+    /// Application-Expression-Or-Lower ::= Lower-Expression Expression-Argument*
     /// Expression-Argument ::=
     ///     | Explicitness Lower-Expression
     ///     | Explicitness "(" (#Word "=")? Expression ")"
@@ -977,12 +977,12 @@ impl<'a> Parser<'a> {
     /// ; ; left-recursive version unsuitable for the recursive descent parser
     /// ; ; but indeed usable for pretty-printers:
     /// ;
-    /// ; Expression-Application-Or-Lower ::= Expression-Application-Or-Lower? Expression-Argument*
+    /// ; Application-Expression-Or-Lower ::= Application-Expression-Or-Lower? Expression-Argument*
     /// ; Expression-Argument ::=
     /// ;     | Lower-Expression
     /// ;     | Explicitness "(" (#Word "=")? Expression ")"
     /// ```
-    fn parse_expression_application_or_lower(&mut self) -> Result<Expression> {
+    fn parse_application_expression_or_lower(&mut self) -> Result<Expression> {
         self.parse_application_or_lower()
     }
 

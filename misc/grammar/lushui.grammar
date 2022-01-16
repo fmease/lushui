@@ -75,11 +75,11 @@ Expression ::= Pi-Type-Literal-Or-Lower
 ; contain further expressions) `Lower-Expression`s namely let/in, use/in, lambda literals,
 ; case analyses and do blocks (not sure about sequence literals)
 Pi-Type-Literal-Or-Lower ::=
-    (Designated-Pi-Type-Domain | Expression-Application-Or-Lower)
+    (Designated-Pi-Type-Domain | Application-Expression-Or-Lower)
     "->" Pi-Type-Literal-Or-Lower
 Designated-Pi-Type-Domain ::= Explicitness "(" "lazy"? #Word Type-Annotation ")"
 
-Expression-Application-Or-Lower ::= Lower-Expression Expression-Argument*
+Application-Expression-Or-Lower ::= Lower-Expression Expression-Argument*
 Expression-Argument ::=
     | Explicitness Lower-Expression
     | Explicitness "(" (#Word "=")? Expression ")"
@@ -87,7 +87,7 @@ Expression-Argument ::=
 ; ; left-recursive version unsuitable for the recursive descent parser
 ; ; but indeed usable for pretty-printers:
 ;
-; Expression-Application-Or-Lower ::= Expression-Application-Or-Lower? Expression-Argument*
+; Application-Expression-Or-Lower ::= Application-Expression-Or-Lower? Expression-Argument*
 ; Expression-Argument ::=
 ;     | Lower-Expression
 ;     | Explicitness "(" (#Word "=")? Expression ")"

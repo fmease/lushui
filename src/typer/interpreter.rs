@@ -514,7 +514,7 @@ impl<'a> Interpreter<'a> {
                                             .evaluate_expression(case.body.clone(), context);
                                     }
                                 }
-                                Number(_) | Text(_) | Binder(_) | Deapplication(_) => todo!(),
+                                Number(_) | Text(_) | Binder(_) | Application(_) => todo!(),
                                 Error => unreachable!(),
                             }
                         }
@@ -547,7 +547,7 @@ impl<'a> Interpreter<'a> {
                                         context.with_scope(&scope),
                                     );
                                 }
-                                Text(_) | Binding(_) | Deapplication(_) => todo!(),
+                                Text(_) | Binding(_) | Application(_) => todo!(),
                                 Error => unreachable!(),
                             }
                         }

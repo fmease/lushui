@@ -296,7 +296,7 @@ impl fmt::Display for super::Pattern {
                 backslash = "\\".color(PUNCTUATION_COLOR),
                 binder = binder.binder
             ),
-            Deapplication(application) => {
+            Application(application) => {
                 write!(f, "({}) ({})", application.callee, application.argument)
             }
             Error => write!(f, "{}", "?(error)".red()),

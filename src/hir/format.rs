@@ -304,7 +304,7 @@ impl DisplayWith for Pattern {
             ),
 
             Binder(binder) => write!(f, "\\{}", binder.binder),
-            Deapplication(application) => write!(
+            Application(application) => write!(
                 f,
                 "({}) ({})",
                 application.callee.with(context),

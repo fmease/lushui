@@ -181,7 +181,7 @@ impl Target for ast::Pattern {
             SequenceLiteral(_) => "a sequence literal pattern",
             Path(_) => "a path pattern",
             Binder(_) => "a binder pattern",
-            Application(_) => "a deapplication",
+            Application(_) => "an application pattern",
         }
     }
 
@@ -194,7 +194,7 @@ impl Target for ast::Pattern {
             SequenceLiteral(_) => Targets::SEQUENCE_LITERAL_PATTERN,
             Path(_) => Targets::PATH_PATTERN,
             Binder(_) => Targets::BINDER_PATTERN,
-            Application(_) => Targets::DEAPPLICATION_PATTERN,
+            Application(_) => Targets::APPLICATION_PATTERN,
         }
     }
 }
@@ -254,14 +254,14 @@ bitflags::bitflags! {
         const SEQUENCE_LITERAL_PATTERN = 1 << 22;
         const PATH_PATTERN = 1 << 23;
         const BINDER_PATTERN = 1 << 24;
-        const DEAPPLICATION_PATTERN = 1 << 25;
+        const APPLICATION_PATTERN = 1 << 25;
 
         const PATTERN = Self::NUMBER_LITERAL_PATTERN.bits
             | Self::TEXT_LITERAL_PATTERN.bits
             | Self::SEQUENCE_LITERAL_PATTERN.bits
             | Self::PATH_PATTERN.bits
             | Self::BINDER_PATTERN.bits
-            | Self::DEAPPLICATION_PATTERN.bits;
+            | Self::APPLICATION_PATTERN.bits;
 
         const NUMBER_LITERAL = Self::NUMBER_LITERAL_EXPRESSION.bits
             | Self::NUMBER_LITERAL_PATTERN.bits;
