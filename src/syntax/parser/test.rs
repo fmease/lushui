@@ -34,12 +34,8 @@ fn parse_expression(source: &str) -> Result<Expression> {
 
 fn parse_declaration(source: &str) -> Result<Declaration> {
     let map = SourceMap::shared();
-    parse_file(
-        map.borrow_mut().add(None, source.to_owned()),
-        test_module_name(),
-        map,
-        &SilentReporter.into(),
-    )
+    let file = map.borrow_mut().add(None, source.to_owned());
+    parse_file(file, test_module_name(), map, &SilentReporter.into())
 }
 
 /// The name of the module returned by [parse_declaration].

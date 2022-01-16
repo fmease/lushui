@@ -492,7 +492,7 @@ pub struct Application<T> {
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct SequenceLiteral<T> {
-    // @Task pub path: Option<Path>,
+    pub path: Option<Path>,
     pub elements: Vec<T>,
 }
 
