@@ -7,7 +7,7 @@ use crate::{
     error::{PossiblyErroneous, Result},
     span::{PossiblySpanning, Span, Spanned, Spanning},
     syntax::ast,
-    utility::{condition, obtain},
+    utility::{condition, obtain, Atom},
 };
 
 /// Something attributes can be ascribed to.
@@ -403,14 +403,14 @@ pub(crate) enum AttributeKind {
     /// doc <0:content:Text-Literal>
     /// ```
     Doc {
-        content: String,
+        content: Atom,
     },
     DocAttribute {
-        name: String, // @Task make this an ast::Identifier/ast::Path
+        name: Atom, // @Task make this an ast::Identifier/ast::Path
     },
     DocAttributes,
     DocReservedIdentifier {
-        name: String, // @Task make this an ast::Identifier
+        name: Atom, // @Task make this an ast::Identifier
     },
     DocReservedIdentifiers,
     /// Forbid a [lint](Lint).
@@ -465,7 +465,7 @@ pub(crate) enum AttributeKind {
     /// location <0:path:Text-Literal>
     /// ```
     Location {
-        path: String,
+        path: Atom,
     },
     /// Mark a data type binding to be likely expanded in the number of constructors.
     Moving,
@@ -863,10 +863,10 @@ data_queries! {
 #[derive(Clone, PartialEq, Eq, Hash)]
 
 pub(crate) struct Deprecated {
-    pub(crate) reason: Option<String>,
+    pub(crate) reason: Option<Atom>,
     pub(crate) since: Option<Version>,
     pub(crate) removal: Option<Version>,
-    pub(crate) replacement: Option<String>,
+    pub(crate) replacement: Option<Atom>,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]

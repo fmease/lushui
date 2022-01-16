@@ -722,8 +722,16 @@ impl<'a> Resolver<'a> {
                 });
             }
             Type => expr! { Type { expression.attributes, expression.span } },
-            Number(number) => expr! { Number(expression.attributes, expression.span; number) },
-            Text(text) => expr! { Text(expression.attributes, expression.span; text) },
+            NumberLiteral(number) => {
+                todo!()
+
+                // expr! { Number(expression.attributes, expression.span; number) }
+            }
+            TextLiteral(text) => {
+                todo!()
+
+                // expr! { Text(expression.attributes, expression.span; text) }
+            }
             Binding(binding) => expr! {
                 Binding {
                     expression.attributes,
@@ -805,8 +813,16 @@ impl<'a> Resolver<'a> {
         let mut binders = Vec::new();
 
         let pattern = match pattern.value.clone() {
-            Number(number) => pat! { Number(pattern.attributes, pattern.span; number) },
-            Text(text) => pat! { Text(pattern.attributes, pattern.span; text) },
+            NumberLiteral(number) => {
+                todo!()
+
+                // pat! { Number(pattern.attributes, pattern.span; number) }
+            }
+            TextLiteral(text) => {
+                todo!()
+
+                //  pat! { Text(pattern.attributes, pattern.span; text) }
+            }
             Binding(binding) => pat! {
                 Binding {
                     pattern.attributes,

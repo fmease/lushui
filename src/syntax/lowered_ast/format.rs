@@ -273,8 +273,8 @@ fn format_lower_expression(
 
     match &expression.value {
         Type => write!(f, "{Type}", Type = "Type".blue()),
-        Number(literal) => write!(f, "{literal}"),
-        Text(literal) => write!(f, "{literal:?}"),
+        NumberLiteral(literal) => write!(f, "{literal}"),
+        TextLiteral(literal) => write!(f, "{literal}"),
         Binding(binding) => write!(f, "{}", binding.binder),
         Error => write!(f, "{}", "?(error)".red()),
         _ => write!(f, "({})", expression),
@@ -287,8 +287,8 @@ impl fmt::Display for super::Pattern {
         use super::PatternKind::*;
 
         match &self.value {
-            Number(number) => write!(f, "{}", number),
-            Text(text) => write!(f, "{:?}", text),
+            NumberLiteral(number) => write!(f, "{}", number),
+            TextLiteral(text) => write!(f, "{}", text),
             Binding(binding) => write!(f, "{}", binding.binder),
             Binder(binder) => write!(
                 f,

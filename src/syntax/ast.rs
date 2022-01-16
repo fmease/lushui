@@ -16,8 +16,7 @@ use crate::{
 };
 pub use format::Format;
 use smallvec::smallvec;
-use std::fmt;
-use std::hash::Hash;
+use std::{fmt, hash::Hash};
 
 pub(crate) type Item<Kind> = crate::item::Item<Kind, Attributes>;
 
@@ -132,10 +131,9 @@ pub type AttributeArgument = Spanned<AttributeArgumentKind>;
 
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
-#[allow(clippy::box_collection)] // we want to make each variant equally sized
 pub enum AttributeArgumentKind {
-    NumberLiteral(Box<String>),
-    TextLiteral(Box<String>),
+    NumberLiteral(Atom),
+    TextLiteral(Atom),
     Path(Box<Path>),
     Named(Box<NamedAttributeArgument>),
 }
@@ -168,8 +166,8 @@ pub enum ExpressionKind {
     PiTypeLiteral(Box<PiTypeLiteral>),
     Application(Box<Application>),
     TypeLiteral,
-    NumberLiteral(Box<String>),
-    TextLiteral(Box<String>),
+    NumberLiteral(Box<NumberLiteral>),
+    TextLiteral(Box<TextLiteral>),
     TypedHole(Box<TypedHole>),
     Path(Box<Path>),
     Field(Box<Field>),
@@ -214,6 +212,20 @@ pub struct Application {
     pub explicitness: Explicitness,
     pub binder: Option<Identifier>,
     pub argument: Expression,
+}
+
+#[derive(Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
+pub struct NumberLiteral {
+    pub path: Option<Path>,
+    pub literal: Atom,
+}
+
+#[derive(Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
+pub struct TextLiteral {
+    pub path: Option<Path>,
+    pub literal: Atom,
 }
 
 /// The syntax node of a typed hole.
@@ -432,10 +444,9 @@ pub type Pattern = Item<PatternKind>;
 
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
-#[allow(clippy::box_collection)] // we want to make each variant equally sized
 pub enum PatternKind {
-    NumberLiteral(Box<String>),
-    TextLiteral(Box<String>),
+    NumberLiteral(Box<NumberLiteral>),
+    TextLiteral(Box<TextLiteral>),
     // @Note unfortunate naming @Update @Question can't we at least rename the variant?
     SequenceLiteralPattern(Box<SequenceLiteralPattern>),
     Path(Box<Path>),
@@ -627,11 +638,4 @@ pub(crate) macro expr($( $tree:tt )+) {
 
 pub(crate) macro pat($( $tree:tt )+) {
     crate::item::item!(crate::syntax::ast, PatternKind, Box; $( $tree )+)
-}
-
-pub(crate) macro attrarg($kind:ident($span:expr; $value:expr $(,)?)) {
-    crate::syntax::ast::AttributeArgument::new(
-        $span,
-        crate::syntax::ast::AttributeArgumentKind::$kind(Box::new($value)),
-    )
 }

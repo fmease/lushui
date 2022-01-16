@@ -1,17 +1,14 @@
 //! The lowered abstract syntax tree (lowered AST).
 
-// @Task rename a bunch of syntax node to make them more like the ones of the AST
-// i.e. not Number but NumberLiteral etc
-
-pub(crate) mod attributes;
-mod format;
-
-use super::ast::{Explicitness, Identifier, Path};
+use super::ast::{Explicitness, Identifier, NumberLiteral, Path, TextLiteral};
 use crate::{
     error::PossiblyErroneous,
     span::{SourceFileIndex, Span},
 };
 pub(crate) use attributes::{Attribute, AttributeKind, AttributeName, Attributes};
+
+pub(crate) mod attributes;
+mod format;
 
 pub(crate) type Item<Kind> = crate::item::Item<Kind, attributes::Attributes>;
 
@@ -63,13 +60,12 @@ pub struct Use {
 pub type Expression = Item<ExpressionKind>;
 
 #[derive(Clone)]
-#[allow(clippy::box_collection)]
 pub enum ExpressionKind {
     PiType(Box<PiType>),
     Application(Box<Application>),
     Type,
-    Number(Box<Number>),
-    Text(Box<String>),
+    NumberLiteral(Box<NumberLiteral>),
+    TextLiteral(Box<TextLiteral>),
     Binding(Box<Binding>),
     Lambda(Box<Lambda>),
     UseIn,
@@ -129,10 +125,9 @@ pub struct Case {
 pub type Pattern = Item<PatternKind>;
 
 #[derive(Clone)]
-#[allow(clippy::box_collection)]
 pub enum PatternKind {
-    Number(Box<Number>),
-    Text(Box<String>),
+    NumberLiteral(Box<NumberLiteral>),
+    TextLiteral(Box<TextLiteral>),
     Binding(Box<Binding>),
     Binder(Box<Binder>),
     Deapplication(Box<Deapplication>),

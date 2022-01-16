@@ -97,15 +97,15 @@ Bare-Lower-Expression ::= Lowest-Expression ("::" Identifier)*
 Lowest-Expression ::=
     | Path
     | "Type"
-    | #Number-Literal
-    | #Text-Literal
+    | Path "." #Number-Literal
+    | Path "." #Text-Literal
     | Typed-Hole
     | Let-In
     | Use-In
     | Lambda-Literal
     | Case-Analysis
     | Do-Block
-    | Sequence-Literal
+    | Path "." Sequence-Literal
     | "(" Expression ")"
 Typed-Hole ::= "?" #Word
 Sequence-Literal ::= "[" Lower-Expression* "]"

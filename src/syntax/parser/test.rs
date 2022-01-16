@@ -485,11 +485,11 @@ fn bracketed_empty_case_analysis() {
             CaseAnalysis {
                 Attributes::new(), span(1, 12);
                 scrutinee: expr! {
-                    NumberLiteral(
-                        Attributes::new(),
-                        span(7, 8);
-                        String::from("1"),
-                    )
+                    NumberLiteral {
+                        Attributes::new(), span(7, 8);
+                        path: None,
+                        literal: "1".into(),
+                    }
                 },
                 cases: Vec::new(),
             }
@@ -519,11 +519,11 @@ lengthy-space-filler (case 0 of
                     CaseAnalysis {
                         Attributes::new(), span(22, 45);
                         scrutinee: expr! {
-                            NumberLiteral(
-                                Attributes::new(),
-                                span(28, 29);
-                                String::from("0"),
-                            )
+                            NumberLiteral {
+                                Attributes::new(), span(28, 29);
+                                path: None,
+                                literal: "0".into(),
+                            }
                         },
                         cases: vec![
                             Case {
@@ -672,10 +672,11 @@ main =
                                                 )
                                             },
                                             body: expr! {
-                                                NumberLiteral(
+                                                NumberLiteral {
                                                     Attributes::new(), span(39, 40);
-                                                    String::from("0"),
-                                                )
+                                                    path: None,
+                                                    literal: "0".into(),
+                                                }
                                             },
                                         },
                                         Case {
@@ -686,10 +687,11 @@ main =
                                                 }
                                             },
                                             body: expr! {
-                                                TextLiteral(
+                                                TextLiteral {
                                                     Attributes::new(), span(69, 74);
-                                                    String::from("bar"),
-                                                )
+                                                    path: None,
+                                                    literal: "bar".into(),
+                                                }
                                             },
                                         },
                                     ],
@@ -740,10 +742,11 @@ main = case x of
                                                 )
                                             },
                                             body: expr! {
-                                                NumberLiteral(
+                                                NumberLiteral {
                                                     Attributes::new(), span(31, 32);
-                                                    String::from("0"),
-                                                )
+                                                    path: None,
+                                                    literal: "0".into(),
+                                                }
                                             },
                                         },
                                         Case {
@@ -754,10 +757,11 @@ main = case x of
                                                 }
                                             },
                                             body: expr! {
-                                                TextLiteral(
+                                                TextLiteral {
                                                     Attributes::new(), span(53, 58);
-                                                    String::from("bar"),
-                                                )
+                                                    path: None,
+                                                    literal: "bar".into(),
+                                                }
                                             },
                                         },
                                     ],

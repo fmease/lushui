@@ -1,5 +1,7 @@
 // Some negative behavior tests are UI tests in `parsing/`.
 
+use std::default::default;
+
 use super::{Provenance, Token, TokenKind::*, UnterminatedTextLiteral};
 use crate::{
     error::{outcome, Health, Outcome, Result},
@@ -354,10 +356,10 @@ fn lex_number_literals_with_separators() {
             Token::new(span(5, 10), NumberLiteral("1000".into())),
             Token::new(span(10, 14), Word("what".into())),
             Token::new(span(15, 22), NumberLiteral("3221".into())),
-            Token::new(span(22, 24), TextLiteral(Ok(String::new()))),
+            Token::new(span(22, 24), TextLiteral(Ok(default()))),
             Token::new(span(25, 28), NumberLiteral("500".into())),
             Token::new(span(29, 31), NumberLiteral("10".into())),
-            Token::new(span(31, 33), TextLiteral(Ok(String::new()))),
+            Token::new(span(31, 33), TextLiteral(Ok(default()))),
             Token::new(span(34, 37), NumberLiteral("-23".into())),
             Token::new(span(37, 37), EndOfInput),
         ],
@@ -581,7 +583,7 @@ fn line_breaks_are_not_terminators_in_continued_sections() {
             Token::new(span(1, 3), NumberLiteral("-0".into())),
             Token::new(span(8, 11), Word("off".into())),
             Token::new(span(16, 20), Word("side".into())),
-            Token::new(span(25, 27), TextLiteral(Ok(String::new()))),
+            Token::new(span(25, 27), TextLiteral(Ok(default()))),
             Token::new(span(27, 28), Semicolon(Provenance::Lexer)),
             Token::new(span(28, 31), Punctuation("@@@".into())),
             Token::new(span(32, 33), At),

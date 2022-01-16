@@ -26,14 +26,15 @@
 #[cfg(test)]
 mod test;
 
+use super::ast::AttributeArgumentKind;
 #[allow(clippy::wildcard_imports)]
 use super::{
     ast::{
-        self, attrarg, decl, expr, pat, Attribute, AttributeArgument, AttributeKind, Attributes,
+        self, decl, expr, pat, Attribute, AttributeArgument, AttributeKind, Attributes,
         BindStatement, Declaration, Domain,
         Explicitness::{self, *},
-        Expression, Identifier, LetStatement, NamedAttributeArgument, Parameter, ParameterKind,
-        Parameters, Path, Pattern, SpannedExplicitness, Statement, UsePathTree, UsePathTreeKind,
+        Expression, Identifier, LetStatement, Parameter, ParameterKind, Parameters, Path, Pattern,
+        SpannedExplicitness, Statement, UsePathTree, UsePathTreeKind,
     },
     token::{
         Token,
@@ -402,31 +403,46 @@ impl<'a> Parser<'a> {
         Ok(match self.current_token().name() {
             name if name.is_path_head() => {
                 let path = self.parse_path()?;
-                attrarg! { Path(path.span(); path) }
+
+                AttributeArgument::new(path.span(), AttributeArgumentKind::Path(Box::new(path)))
             }
             NumberLiteral => {
                 let token = self.current_token().clone();
                 self.advance();
-                attrarg! { NumberLiteral(token.span; token.into_number_literal().unwrap()) }
+
+                AttributeArgument::new(
+                    token.span,
+                    AttributeArgumentKind::NumberLiteral(token.into_number_literal().unwrap()),
+                )
             }
             TextLiteral => {
                 let token = self.current_token().clone();
-                let span = token.span;
-                let text_literal = token
-                    .into_text_literal()
-                    .unwrap()
-                    .or_else(|error| self.error(|| error))?;
-
                 self.advance();
-                attrarg! { TextLiteral(span; text_literal) }
+
+                AttributeArgument::new(
+                    token.span,
+                    AttributeArgumentKind::TextLiteral(
+                        token
+                            .into_text_literal()
+                            .unwrap()
+                            .or_else(|error| self.error(|| error))?,
+                    ),
+                )
             }
             OpeningRoundBracket => {
                 let mut span = self.current_token().span;
                 self.advance();
                 let binder = self.consume_word()?;
-                let argument = self.parse_attribute_argument()?;
+                let value = self.parse_attribute_argument()?;
                 span.merging(&self.consume(ClosingRoundBracket)?);
-                attrarg! { Named(span; NamedAttributeArgument { binder, value: argument }) }
+
+                AttributeArgument::new(
+                    span,
+                    AttributeArgumentKind::Named(Box::new(ast::NamedAttributeArgument {
+                        binder,
+                        value,
+                    })),
+                )
             }
             _ => {
                 return self
@@ -974,15 +990,15 @@ impl<'a> Parser<'a> {
     /// Lowest-Expression ::=
     ///     | Path
     ///     | "Type"
-    ///     | #Number-Literal
-    ///     | #Text-Literal
+    ///     | Path "." #Number-Literal
+    ///     | Path "." #Text-Literal
     ///     | Typed-Hole
     ///     | Let-In
     ///     | Use-In
     ///     | Lambda-Literal
     ///     | Case-Analysis
     ///     | Do-Block
-    ///     | Sequence-Literal
+    ///     | Path "." Sequence-Literal
     ///     | "(" Expression ")"
     /// Typed-Hole ::= "?" #Word
     /// Sequence-Literal ::= "[" Lower-Expression* "]"
@@ -994,6 +1010,7 @@ impl<'a> Parser<'a> {
         let mut expression = match self.current_token().name() {
             name if name.is_path_head() => {
                 let path = self.parse_path()?;
+
                 expr! { Path(default(), path.span(); path) }
             }
             Type => {
@@ -1001,29 +1018,36 @@ impl<'a> Parser<'a> {
                 expr! { TypeLiteral { default(), span } }
             }
             NumberLiteral => {
-                // @Beacon @Task avoid clone! (by interning?)
                 let token = self.current_token().clone();
                 self.advance();
+
                 expr! {
-                    NumberLiteral(default(), token.span; token.into_number_literal().unwrap())
+                    NumberLiteral {
+                        default(), token.span;
+                        path: None,
+                        literal: token.into_number_literal().unwrap(),
+                    }
                 }
             }
             TextLiteral => {
-                // @Beacon @Task avoid clone! (by interning?)
                 let token = self.current_token().clone();
                 self.advance();
 
-                let span = token.span;
-                let text_literal = token
-                    .into_text_literal()
-                    .unwrap()
-                    .or_else(|error| self.error(|| error))?;
-
-                expr! { TextLiteral(default(), span; text_literal) }
+                expr! {
+                    TextLiteral {
+                        default(), token.span;
+                        path: None,
+                        literal: token
+                            .into_text_literal()
+                            .unwrap()
+                            .or_else(|error| self.error(|| error))?,
+                    }
+                }
             }
             QuestionMark => {
                 self.advance();
                 let tag = self.consume_word()?;
+
                 expr! { TypedHole { default(), span.merge(&tag); tag } }
             }
             Let => {
@@ -1590,26 +1614,37 @@ impl<'a> Parser<'a> {
 
         let mut span = self.current_token().span;
         match self.current_token().name() {
-            name if name.is_path_head() => self.parse_path().map(|path| {
-                pat! { Path(attributes, path.span(); path) }
-            }),
+            name if name.is_path_head() => {
+                let path = self.parse_path()?;
+
+                Ok(pat! { Path(attributes, path.span(); path) })
+            }
             NumberLiteral => {
                 let token = self.current_token().clone();
                 self.advance();
+
                 Ok(pat! {
-                    NumberLiteral(attributes, token.span; token.into_number_literal().unwrap())
+                    NumberLiteral {
+                        attributes, token.span;
+                        path: None,
+                        literal: token.into_number_literal().unwrap(),
+                    }
                 })
             }
             TextLiteral => {
                 let token = self.current_token().clone();
                 self.advance();
-                let span = token.span;
-                let text_literal = token
-                    .into_text_literal()
-                    .unwrap()
-                    .or_else(|error| self.error(|| error))?;
 
-                Ok(pat! { TextLiteral(attributes, span; text_literal) })
+                Ok(pat! {
+                    TextLiteral {
+                        attributes, token.span;
+                        path: None,
+                        literal: token
+                            .into_text_literal()
+                            .unwrap()
+                            .or_else(|error| self.error(|| error))?,
+                    }
+                })
             }
             Backslash => {
                 self.advance();

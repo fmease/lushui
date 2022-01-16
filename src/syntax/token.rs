@@ -39,11 +39,11 @@ impl Token {
         obtain!(self.value, Word(atom) | Punctuation(atom) => atom)
     }
 
-    pub(crate) fn into_number_literal(self) -> Option<String> {
+    pub(crate) fn into_number_literal(self) -> Option<Atom> {
         obtain!(self.value, TokenKind::NumberLiteral(number) => number)
     }
 
-    pub(crate) fn into_text_literal(self) -> Option<Result<String, Diagnostic>> {
+    pub(crate) fn into_text_literal(self) -> Option<Result<Atom, Diagnostic>> {
         use TokenKind::*;
 
         match self.value {
@@ -64,10 +64,8 @@ pub enum TokenKind {
     DocumentationComment,
     Word(Atom),        // @Beacon @Beacon @Beacon @Task create newtype Word
     Punctuation(Atom), // @Beacon @Beacon @Beacon @Task create newtype Punctuation
-    // @Question box it?
-    NumberLiteral(String),
-    // @Question box it?
-    TextLiteral(Result<String, UnterminatedTextLiteral>),
+    NumberLiteral(Atom),
+    TextLiteral(Result<Atom, UnterminatedTextLiteral>),
     /// For attributes.
     At,
     /// For lambda literals and pattern binders.

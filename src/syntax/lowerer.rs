@@ -36,10 +36,10 @@ use crate::{
     format::{ordered_listing, Conjunction, IOError, QuoteExt},
     span::{SharedSourceMap, SourceMap, Span, Spanning},
     syntax::lowered_ast::attributes::{Predicate, Public, Query},
-    utility::{SmallVec, Str},
+    utility::{Atom, SmallVec, Str},
 };
 use smallvec::smallvec;
-use std::iter::once;
+use std::{default::default, iter::once};
 
 /// Lower a declaration.
 pub fn lower(
@@ -598,17 +598,18 @@ impl<'a> Lowerer<'a> {
             TypeLiteral => expr! { Type { attributes, expression.span } },
             // @Note awkward API!
             NumberLiteral(literal) => {
-                let span = expression.span;
-                map_outcome_from_result(
-                    self.lower_number_literal(*literal, span, &attributes),
-                    |literal| {
-                        expr! { Number(attributes, span; literal) }
-                    },
-                )
-                .unwrap(&mut health)
+                todo!()
+                // let span = expression.span;
+                // map_outcome_from_result(
+                //     self.lower_number_literal(*literal, span, &attributes),
+                //     |literal| {
+                //         expr! { NumberLiteral(attributes, span; literal) }
+                //     },
+                // )
+                // .unwrap(&mut health)
             }
             TextLiteral(text) => expr! {
-                Text(attributes, expression.span; text)
+                TextLiteral(attributes, expression.span; text)
             },
             TypedHole(_hole) => {
                 Diagnostic::unimplemented("typed holes")
@@ -816,19 +817,22 @@ impl<'a> Lowerer<'a> {
         let pattern = match pattern.value {
             // @Note awkward API!
             NumberLiteral(literal) => {
-                let span = pattern.span;
-                map_outcome_from_result(
-                    self.lower_number_literal(*literal, span, &attributes),
-                    |literal| {
-                        pat! {
-                            Number(attributes, span; literal)
-                        }
-                    },
-                )
+                todo!()
+                //     {
+                //     let span = pattern.span;
+                //     map_outcome_from_result(
+                //         self.lower_number_literal(*literal, span, &attributes),
+                //         |literal| {
+                //             pat! {
+                //                 NumberLiteral(attributes, span; literal)
+                //             }
+                //         },
+                //     )
+                // }
+                // .unwrap(&mut health)
             }
-            .unwrap(&mut health),
             TextLiteral(literal) => pat! {
-                Text(attributes, pattern.span; literal)
+                TextLiteral(attributes, pattern.span; literal)
             },
             Path(path) => pat! {
                 Binding {
@@ -1201,9 +1205,9 @@ impl lowered_ast::attributes::AttributeKind {
                 content: if options.keep_documentation_comments {
                     map.snippet(attribute.span)
                         .trim_start_matches(";;")
-                        .to_owned()
+                        .into()
                 } else {
-                    String::new()
+                    default()
                 },
             })
         };
@@ -1251,7 +1255,8 @@ impl lowered_ast::attributes::AttributeKind {
                 Allow | Deny | Forbid | Warn => {
                     let lint = lowered_ast::attributes::Lint::parse(
                         argument(arguments, attribute.span, reporter)?
-                            .path(Some("lint"), reporter)?,
+                            .path(Some("lint"), reporter)?
+                            .clone(),
                         reporter,
                     )?;
 
@@ -1266,32 +1271,37 @@ impl lowered_ast::attributes::AttributeKind {
                 Deprecated => Self::Deprecated(lowered_ast::attributes::Deprecated {
                     reason: optional_argument(arguments)
                         .map(|argument| argument.text_literal(Some("reason"), reporter))
-                        .transpose()?,
+                        .transpose()?
+                        .cloned(),
                     // @Task parse version
                     since: None,
                     // @Task parse version
                     removal: None,
                     replacement: optional_argument(arguments)
                         .map(|argument| argument.text_literal(Some("replacement"), reporter))
-                        .transpose()?,
+                        .transpose()?
+                        .cloned(),
                 }),
                 Doc => Self::Doc {
                     content: if options.keep_documentation_comments {
                         argument(arguments, attribute.span, reporter)?
                             .text_literal(None, reporter)?
+                            .clone()
                     } else {
                         *arguments = &arguments[1..];
-                        String::new()
+                        default()
                     },
                 },
                 DocAttribute => Self::DocAttribute {
                     name: argument(arguments, attribute.span, reporter)?
-                        .text_literal(None, reporter)?,
+                        .text_literal(None, reporter)?
+                        .clone(),
                 },
                 DocAttributes => Self::DocAttributes,
                 DocReservedIdentifier => Self::DocReservedIdentifier {
                     name: argument(arguments, attribute.span, reporter)?
-                        .text_literal(None, reporter)?,
+                        .text_literal(None, reporter)?
+                        .clone(),
                 },
                 DocReservedIdentifiers => Self::DocReservedIdentifiers,
                 Intrinsic => Self::Intrinsic,
@@ -1310,7 +1320,8 @@ impl lowered_ast::attributes::AttributeKind {
                 List => Self::List,
                 Location => {
                     let path = argument(arguments, attribute.span, reporter)?
-                        .text_literal(Some("path"), reporter)?;
+                        .text_literal(Some("path"), reporter)?
+                        .clone();
 
                     Self::Location { path }
                 }
@@ -1321,7 +1332,8 @@ impl lowered_ast::attributes::AttributeKind {
                 Public => {
                     let reach = optional_argument(arguments)
                         .map(|argument| argument.path(Some("reach"), reporter))
-                        .transpose()?;
+                        .transpose()?
+                        .cloned();
 
                     Self::Public(self::Public { reach })
                 }
@@ -1396,31 +1408,26 @@ enum AttributeParsingError {
     UndefinedAttribute(ast::Identifier),
 }
 
-// @Beacon @Note the following attribute argument parsing logic is soo hideous!
+// @Beacon hideous accessors! @Task deduplicate!
 
 impl ast::AttributeArgument {
-    extractor!(number_literal "number literal": NumberLiteral => String);
-    extractor!(text_literal "text literal": TextLiteral => String);
-    extractor!(path "path": Path => Path);
-}
-
-// @Note not that extensible and well worked out API
-macro extractor($name:ident $repr:literal: $variant:ident => $ty:ty) {
-    fn $name(
+    fn number_literal(
         &self,
         name: Option<&'static str>,
         reporter: &Reporter,
-    ) -> Result<$ty, AttributeParsingError> {
+    ) -> Result<&Atom, AttributeParsingError> {
+        use ast::AttributeArgumentKind::*;
+
         match &self.value {
-            ast::AttributeArgumentKind::$variant(literal) => Ok(literal.as_ref().clone()),
-            ast::AttributeArgumentKind::Named(named) => named.handle(
+            NumberLiteral(literal) => Ok(literal),
+            Named(named) => named.handle(
                 name,
                 |argument| match &argument.value {
-                    ast::AttributeArgumentKind::$variant(literal) => Ok(literal.as_ref().clone()),
+                    NumberLiteral(literal) => Ok(literal),
                     kind => {
                         Diagnostic::invalid_attribute_argument_type(
                             (argument.span, kind.name()),
-                            $repr,
+                            "number literal",
                         )
                         .report(reporter);
                         Err(AttributeParsingError::Unrecoverable)
@@ -1431,7 +1438,79 @@ macro extractor($name:ident $repr:literal: $variant:ident => $ty:ty) {
             kind => {
                 Diagnostic::invalid_attribute_argument_type(
                     (self.span, kind.name()),
-                    concat!("positional or named ", $repr),
+                    "positional or named number literal",
+                )
+                .report(reporter);
+                Err(AttributeParsingError::Unrecoverable)
+            }
+        }
+    }
+
+    fn text_literal(
+        &self,
+        name: Option<&'static str>,
+        reporter: &Reporter,
+    ) -> Result<&Atom, AttributeParsingError> {
+        use ast::AttributeArgumentKind::*;
+
+        match &self.value {
+            TextLiteral(literal) => Ok(literal),
+            Named(named) => named.handle(
+                name,
+                |argument| match &argument.value {
+                    TextLiteral(literal) => Ok(literal),
+                    kind => {
+                        Diagnostic::invalid_attribute_argument_type(
+                            (argument.span, kind.name()),
+                            "text literal",
+                        )
+                        .report(reporter);
+                        Err(AttributeParsingError::Unrecoverable)
+                    }
+                },
+                reporter,
+            ),
+            kind => {
+                Diagnostic::invalid_attribute_argument_type(
+                    (self.span, kind.name()),
+                    "positional or named text literal",
+                )
+                .report(reporter);
+                Err(AttributeParsingError::Unrecoverable)
+            }
+        }
+    }
+
+    fn path(
+        &self,
+        name: Option<&'static str>,
+        reporter: &Reporter,
+    ) -> Result<&Path, AttributeParsingError> {
+        use ast::AttributeArgumentKind::*;
+
+        match &self.value {
+            Path(literal) => Ok(literal),
+            Named(named) => named
+                .handle(
+                    name,
+                    |argument| match &argument.value {
+                        Path(literal) => Ok(literal),
+                        kind => {
+                            Diagnostic::invalid_attribute_argument_type(
+                                (argument.span, kind.name()),
+                                "path",
+                            )
+                            .report(reporter);
+                            Err(AttributeParsingError::Unrecoverable)
+                        }
+                    },
+                    reporter,
+                )
+                .map(|path| &**path),
+            kind => {
+                Diagnostic::invalid_attribute_argument_type(
+                    (self.span, kind.name()),
+                    "positional or named path",
                 )
                 .report(reporter);
                 Err(AttributeParsingError::Unrecoverable)
@@ -1444,9 +1523,9 @@ impl ast::NamedAttributeArgument {
     fn handle<T>(
         &self,
         name: Option<&'static str>,
-        handle: impl FnOnce(&ast::AttributeArgument) -> Result<T, AttributeParsingError>,
+        handle: impl FnOnce(&ast::AttributeArgument) -> Result<&T, AttributeParsingError>,
         reporter: &Reporter,
-    ) -> Result<T, AttributeParsingError> {
+    ) -> Result<&T, AttributeParsingError> {
         match name {
             Some(name) => {
                 if self.binder.as_str() == name {
