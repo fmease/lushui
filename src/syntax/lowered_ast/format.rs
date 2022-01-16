@@ -219,7 +219,7 @@ fn format_pi_type_literal_or_lower(
                 f,
                 "{case} {subject} {of} {{ ",
                 case = "case".color(KEYWORD_COLOR),
-                subject = analysis.subject,
+                subject = analysis.scrutinee,
                 of = "of".color(KEYWORD_COLOR)
             )?;
             let mut first = true;
@@ -272,10 +272,10 @@ fn format_lower_expression(
     }
 
     match &expression.value {
-        Type => write!(f, "{Type}", Type = "Type".blue()),
-        NumberLiteral(literal) => write!(f, "{literal}"),
-        TextLiteral(literal) => write!(f, "{literal}"),
-        Binding(binding) => write!(f, "{}", binding.binder),
+        TypeLiteral => write!(f, "{Type}", Type = "Type".blue()),
+        NumberLiteral(number) => write!(f, "{number}"),
+        TextLiteral(text) => write!(f, "{text}"),
+        Path(path) => write!(f, "{path}"),
         Error => write!(f, "{}", "?(error)".red()),
         _ => write!(f, "({})", expression),
     }
@@ -287,14 +287,13 @@ impl fmt::Display for super::Pattern {
         use super::PatternKind::*;
 
         match &self.value {
-            NumberLiteral(number) => write!(f, "{}", number),
-            TextLiteral(text) => write!(f, "{}", text),
-            Binding(binding) => write!(f, "{}", binding.binder),
-            Binder(binder) => write!(
+            NumberLiteral(number) => write!(f, "{number}"),
+            TextLiteral(text) => write!(f, "{text}"),
+            Path(path) => write!(f, "{path}"),
+            Binder(path) => write!(
                 f,
-                "{backslash}{binder}",
+                "{backslash}{path}",
                 backslash = "\\".color(PUNCTUATION_COLOR),
-                binder = binder.binder
             ),
             Application(application) => {
                 write!(f, "({}) ({})", application.callee, application.argument)

@@ -35,13 +35,8 @@ impl Identifier {
         self.source.as_str()
     }
 
-    pub(crate) fn into_expression(self) -> crate::hir::Expression {
-        crate::hir::expr! {
-            Binding {
-                default(), self.span();
-                binder: self
-            }
-        }
+    pub(crate) fn into_expression(self) -> super::Expression {
+        super::Expression::new(default(), self.span(), super::Binding(self).into())
     }
 
     // @Note bad name

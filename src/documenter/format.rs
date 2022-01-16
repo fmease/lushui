@@ -122,7 +122,7 @@ impl<'a> Formatter<'a> {
             // @Task fix indentation
             CaseAnalysis(analysis) => {
                 self.write("case ");
-                self.format_expression(&analysis.subject);
+                self.format_expression(&analysis.scrutinee);
                 self.write(" of {");
 
                 // @Task spacing
@@ -183,7 +183,7 @@ impl<'a> Formatter<'a> {
             Number(literal) => self.write(&literal.to_string()),
             // @Task use custom escaping logic
             Text(literal) => self.write(&format!("{literal:?}")),
-            Binding(binding) => self.format_binder(&binding.binder),
+            Binding(binding) => self.format_binder(&binding.0),
             // @Beacon @Temporary @Task just write out the path
             Projection(_projection) => self.write("?(projection)"),
             IO(io) => {
@@ -223,10 +223,10 @@ impl<'a> Formatter<'a> {
             Number(number) => self.write(&number.to_string()),
             // @Task write custom escaper
             Text(text) => self.write(&format!("{:?}", text)),
-            Binding(binding) => self.format_binder(&binding.binder),
+            Binding(binding) => self.format_binder(&binding.0),
             Binder(binder) => {
                 self.write(r"\");
-                self.write(&binder.binder.to_string());
+                self.write(&binder.0.to_string());
             }
             Application(application) => {
                 self.write("("); // @Temporary

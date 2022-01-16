@@ -135,6 +135,12 @@ pub struct PiType {
     pub codomain: Expression,
 }
 
+impl From<Binding> for ExpressionKind {
+    fn from(binding: Binding) -> Self {
+        Self::Binding(Box::new(binding))
+    }
+}
+
 #[derive(Clone)]
 pub struct Lambda {
     pub parameter: Identifier,
@@ -147,7 +153,7 @@ pub struct Lambda {
 
 #[derive(Clone)]
 pub struct CaseAnalysis {
-    pub subject: Expression,
+    pub scrutinee: Expression,
     pub cases: Vec<Case>,
 }
 
@@ -206,11 +212,8 @@ impl From<Binding> for PatternKind {
     }
 }
 
-/// A binder inside of a pattern.
 #[derive(Clone)]
-pub struct Binder {
-    pub binder: Identifier,
-}
+pub struct Binder(pub Identifier);
 
 impl From<Binder> for PatternKind {
     fn from(binder: Binder) -> Self {
@@ -225,9 +228,7 @@ impl From<Application<Pattern>> for PatternKind {
 }
 
 #[derive(Clone)]
-pub struct Binding {
-    pub binder: Identifier,
-}
+pub struct Binding(pub Identifier);
 
 #[derive(Clone)]
 pub struct Application<T> {

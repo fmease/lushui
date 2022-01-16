@@ -10,25 +10,23 @@
 //! * lower parameters to simple lambda literals
 //! * open out-of-line modules (this will probably move to the parser in the future
 //!   for parallel reading and independent error reporting)
-//! * simplify use-declarations by unfolding use-path trees
-//! * apply attribute groups (unimplemented right now)
-//! * parse number literals according to their type indicated by attributes (unsure
-//!   if this is the right place or whether it should be moved to a later stage)
+//! * simplify use-declarations by unfolding use-path trees (note: this should be removed)
 //! * parses general attributes into concrete ones and
 //! * validates their location (item target), uniqueness if applicable,
 //!   exclusivity rules
 //! * checks if the mandatory type annotations on top-level declarations and their
 //!   parameters are present
-//! * validates parameters marked as record fields
 //! * gates a lot of unsupported features
+//!
+//! To be implemented:
+//!
+//! * apply attribute groups
 
 // @Task ungate named arguments but validate them in the resolver (and/or typer)
 
 use super::{
     ast::{self, Explicit, HangerKind, Parameter, Path},
-    lowered_ast::{
-        self, attributes::Target, expr, AttributeKind, AttributeName, Attributes, Number,
-    },
+    lowered_ast::{self, attributes::Target, AttributeKind, AttributeName, Attributes, Number},
 };
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
@@ -139,18 +137,21 @@ impl<'a> Lowerer<'a> {
                                     .lower_expression(parameter_type_annotation)
                                     .unwrap(&mut health);
 
-                                body = expr! {
-                                    Lambda {
-                                        Attributes::default(),
-                                        Span::default();
+                                body = lowered_ast::Expression::new(
+                                    default(),
+                                    default(),
+                                    lowered_ast::Lambda {
                                         parameter: parameter.value.binder.clone(),
-                                        parameter_type_annotation: Some(parameter_type_annotation.clone()),
+                                        parameter_type_annotation: Some(
+                                            parameter_type_annotation.clone(),
+                                        ),
                                         explicitness: parameter.value.explicitness,
                                         laziness: parameter.value.laziness,
                                         body_type_annotation: type_annotation.next(),
                                         body,
                                     }
-                                }
+                                    .into(),
+                                );
                             }
                         }
                         Some(body)
@@ -560,17 +561,18 @@ impl<'a> Lowerer<'a> {
                     .unwrap(&mut health);
                 let codomain = self.lower_expression(pi.codomain).unwrap(&mut health);
 
-                expr! {
-                    PiType {
-                        attributes,
-                        expression.span;
+                lowered_ast::Expression::new(
+                    attributes,
+                    expression.span,
+                    lowered_ast::PiType {
                         explicitness: pi.domain.explicitness,
                         laziness: pi.domain.laziness,
                         parameter: pi.domain.binder.clone(),
                         domain,
                         codomain,
                     }
-                }
+                    .into(),
+                )
             }
             Application(application) => {
                 if let Some(binder) = &application.binder {
@@ -587,32 +589,30 @@ impl<'a> Lowerer<'a> {
                     .lower_expression(application.argument)
                     .unwrap(&mut health);
 
-                expr! {
-                    Application {
-                        attributes,
-                        expression.span;
+                lowered_ast::Expression::new(
+                    attributes,
+                    expression.span,
+                    lowered_ast::Application {
                         callee,
                         argument,
                         explicitness: application.explicitness,
                     }
-                }
+                    .into(),
+                )
             }
-            TypeLiteral => expr! { Type { attributes, expression.span } },
-            // @Note awkward API!
-            NumberLiteral(literal) => {
-                todo!()
-                // let span = expression.span;
-                // map_outcome_from_result(
-                //     self.lower_number_literal(*literal, span, &attributes),
-                //     |literal| {
-                //         expr! { NumberLiteral(attributes, span; literal) }
-                //     },
-                // )
-                // .unwrap(&mut health)
+            TypeLiteral => lowered_ast::Expression::new(
+                attributes,
+                expression.span,
+                lowered_ast::ExpressionKind::TypeLiteral,
+            ),
+            // @Task avoid re-boxing!
+            NumberLiteral(number) => {
+                lowered_ast::Expression::new(attributes, expression.span, (*number).into())
             }
-            TextLiteral(text) => expr! {
-                TextLiteral(attributes, expression.span; text)
-            },
+            // @Task avoid re-boxing!
+            TextLiteral(text) => {
+                lowered_ast::Expression::new(attributes, expression.span, (*text).into())
+            }
             TypedHole(_hole) => {
                 Diagnostic::unimplemented("typed holes")
                     .primary_span(expression.span)
@@ -621,13 +621,8 @@ impl<'a> Lowerer<'a> {
                 health.taint();
                 PossiblyErroneous::error()
             }
-            Path(path) => expr! {
-                Binding {
-                    attributes,
-                    expression.span;
-                    binder: *path,
-                }
-            },
+            // @Task avoid re-boxing!
+            Path(path) => lowered_ast::Expression::new(attributes, expression.span, (*path).into()),
             Field(_field) => {
                 Diagnostic::unimplemented("record fields")
                     .primary_span(expression.span)
@@ -656,10 +651,10 @@ impl<'a> Lowerer<'a> {
                                 self.lower_expression(type_annotation).unwrap(&mut health)
                             });
 
-                    expression = expr! {
-                        Lambda {
-                            Attributes::default(),
-                            Span::default();
+                    expression = lowered_ast::Expression::new(
+                        default(),
+                        default(),
+                        lowered_ast::Lambda {
                             parameter: parameter.value.binder.clone(),
                             parameter_type_annotation,
                             explicitness: parameter.value.explicitness,
@@ -667,7 +662,8 @@ impl<'a> Lowerer<'a> {
                             body_type_annotation: type_annotation.next(),
                             body: expression,
                         }
-                    };
+                        .into(),
+                    );
                 }
 
                 expression
@@ -714,9 +710,10 @@ impl<'a> Lowerer<'a> {
                             self.lower_expression(expression).unwrap(&mut health)
                         });
 
-                    expression = expr! {
-                        Lambda {
-                            Attributes::default(), Span::default();
+                    expression = lowered_ast::Expression::new(
+                        default(),
+                        default(),
+                        lowered_ast::Lambda {
                             parameter: parameter.value.binder.clone(),
                             parameter_type_annotation,
                             explicitness: parameter.value.explicitness,
@@ -724,17 +721,20 @@ impl<'a> Lowerer<'a> {
                             body_type_annotation: type_annotation.next(),
                             body: expression,
                         }
-                    };
+                        .into(),
+                    );
                 }
 
                 let body = self.lower_expression(let_in.scope).unwrap(&mut health);
 
-                expr! {
-                    Application {
-                        Attributes::default(), Span::default();
-                        callee: expr! {
-                            Lambda {
-                                Attributes::default(), Span::default();
+                lowered_ast::Expression::new(
+                    default(),
+                    default(),
+                    lowered_ast::Application {
+                        callee: lowered_ast::Expression::new(
+                            default(),
+                            default(),
+                            lowered_ast::Lambda {
                                 parameter: let_in.binder,
                                 // @Note we cannot simply lower parameters and a type annotation because
                                 // in the chain (`->`) of parameters, there might always be one missing and
@@ -747,11 +747,13 @@ impl<'a> Lowerer<'a> {
                                 body_type_annotation: None,
                                 body,
                             }
-                        },
+                            .into(),
+                        ),
                         argument: expression,
                         explicitness: Explicit,
                     }
-                }
+                    .into(),
+                )
             }
             UseIn(_use_in) => {
                 // @Note awkward API
@@ -775,14 +777,15 @@ impl<'a> Lowerer<'a> {
                     .lower_expression(analysis.scrutinee)
                     .unwrap(&mut health);
 
-                expr! {
-                    CaseAnalysis {
-                        attributes,
-                        expression.span;
-                        subject,
+                lowered_ast::Expression::new(
+                    attributes,
+                    expression.span,
+                    lowered_ast::CaseAnalysis {
+                        scrutinee: subject,
                         cases,
                     }
-                }
+                    .into(),
+                )
             }
             DoBlock(_block) => {
                 // @Note awkward API!
@@ -817,35 +820,18 @@ impl<'a> Lowerer<'a> {
             .unwrap(&mut health);
 
         let pattern = match pattern.value {
-            // @Note awkward API!
+            // @Task avoid re-boxing!
             NumberLiteral(literal) => {
-                // {
-                //     map_outcome_from_result(
-                //         self.lower_number_literal(*literal, pattern.span, &attributes),
-                //         // @Task avoid re-boxing!
-                //         |literal| lowered_ast::Pattern::new(attributes, pattern.span, (*literal).into()),
-                //     )
-                // }
-                // .unwrap(&mut health)
-                todo!()
-            }
-            TextLiteral(literal) => {
-                // @Task avoid re-boxing!
                 lowered_ast::Pattern::new(attributes, pattern.span, (*literal).into())
             }
-            Path(path) => lowered_ast::Pattern::new(
-                attributes,
-                pattern.span,
-                lowered_ast::Binding { binder: *path }.into(),
-            ),
-            Binder(binding) => lowered_ast::Pattern::new(
-                attributes,
-                pattern.span,
-                lowered_ast::Binder {
-                    binder: binding.binder,
-                }
-                .into(),
-            ),
+            // @Task avoid re-boxing!
+            TextLiteral(literal) => {
+                lowered_ast::Pattern::new(attributes, pattern.span, (*literal).into())
+            }
+            // @Task avoid re-boxing!
+            Path(path) => lowered_ast::Pattern::new(attributes, pattern.span, (*path).into()),
+            // @Task avoid re-boxing!
+            Binder(binder) => lowered_ast::Pattern::new(attributes, pattern.span, (*binder).into()),
             Application(application) => {
                 if let Some(binder) = &application.binder {
                     Diagnostic::unimplemented("named arguments")
@@ -1052,56 +1038,58 @@ impl<'a> Lowerer<'a> {
         health.of(attributes)
     }
 
-    fn lower_number_literal(
-        &mut self,
-        number: String,
-        span: Span,
-        attributes: &Attributes,
-    ) -> Result<Number> {
-        (if attributes.contains(AttributeName::Nat32) {
-            number
-                .parse()
-                .map_err(|_| ("Nat32", NAT32_INTERVAL_REPRESENTATION))
-                .map(Number::Nat32)
-        } else if attributes.contains(AttributeName::Nat64) {
-            number
-                .parse()
-                .map_err(|_| ("Nat64", NAT64_INTERVAL_REPRESENTATION))
-                .map(Number::Nat64)
-        } else if attributes.contains(AttributeName::Int) {
-            Ok(Number::Int(number.parse().unwrap()))
-        } else if attributes.contains(AttributeName::Int32) {
-            number
-                .parse()
-                .map_err(|_| ("Int32", INT32_INTERVAL_REPRESENTATION))
-                .map(Number::Int32)
-        } else if attributes.contains(AttributeName::Int64) {
-            number
-                .parse()
-                .map_err(|_| ("Int64", INT64_INTERVAL_REPRESENTATION))
-                .map(Number::Int64)
-        } else {
-            // and optionally attributes.has(AttributeKind::nat)
-            number
-                .parse()
-                .map_err(|_| ("Nat", NAT_INTERVAL_REPRESENTATION))
-                .map(Number::Nat)
-        })
-        .map_err(|(type_name, interval)| {
-            Diagnostic::error()
-                .code(Code::E007)
-                .message(format!(
-                    "number literal `{}` does not fit type `{}`",
-                    number, type_name
-                ))
-                .primary_span(span)
-                .note(format!(
-                    "values of this type must fit integer interval {}",
-                    interval
-                ))
-                .report(self.reporter);
-        })
-    }
+    // @Beacon @Beacon @Beacon @Task abstract over literal parsing and move to
+    // a module in the resolver/typer
+    // fn lower_number_literal(
+    //     &mut self,
+    //     number: String,
+    //     span: Span,
+    //     attributes: &Attributes,
+    // ) -> Result<Number> {
+    //     (if attributes.contains(AttributeName::Nat32) {
+    //         number
+    //             .parse()
+    //             .map_err(|_| ("Nat32", NAT32_INTERVAL_REPRESENTATION))
+    //             .map(Number::Nat32)
+    //     } else if attributes.contains(AttributeName::Nat64) {
+    //         number
+    //             .parse()
+    //             .map_err(|_| ("Nat64", NAT64_INTERVAL_REPRESENTATION))
+    //             .map(Number::Nat64)
+    //     } else if attributes.contains(AttributeName::Int) {
+    //         Ok(Number::Int(number.parse().unwrap()))
+    //     } else if attributes.contains(AttributeName::Int32) {
+    //         number
+    //             .parse()
+    //             .map_err(|_| ("Int32", INT32_INTERVAL_REPRESENTATION))
+    //             .map(Number::Int32)
+    //     } else if attributes.contains(AttributeName::Int64) {
+    //         number
+    //             .parse()
+    //             .map_err(|_| ("Int64", INT64_INTERVAL_REPRESENTATION))
+    //             .map(Number::Int64)
+    //     } else {
+    //         // and optionally attributes.has(AttributeKind::nat)
+    //         number
+    //             .parse()
+    //             .map_err(|_| ("Nat", NAT_INTERVAL_REPRESENTATION))
+    //             .map(Number::Nat)
+    //     })
+    //     .map_err(|(type_name, interval)| {
+    //         Diagnostic::error()
+    //             .code(Code::E007)
+    //             .message(format!(
+    //                 "number literal `{}` does not fit type `{}`",
+    //                 number, type_name
+    //             ))
+    //             .primary_span(span)
+    //             .note(format!(
+    //                 "values of this type must fit integer interval {}",
+    //                 interval
+    //             ))
+    //             .report(self.reporter);
+    //     })
+    // }
 
     /// Lower annotated parameters.
     fn lower_parameters_to_annotated_ones(
@@ -1130,17 +1118,18 @@ impl<'a> Lowerer<'a> {
                 .lower_expression(parameter_type_annotation)
                 .unwrap(&mut health);
 
-            expression = expr! {
-                PiType {
-                    Attributes::default(),
-                    Span::default();
+            expression = lowered_ast::Expression::new(
+                default(),
+                default(),
+                lowered_ast::PiType {
                     explicitness: parameter.value.explicitness,
                     laziness: parameter.value.laziness,
                     parameter: Some(parameter.value.binder),
                     domain: parameter_type_annotation.clone(),
                     codomain: expression,
                 }
-            };
+                .into(),
+            );
         }
 
         health.of(expression)

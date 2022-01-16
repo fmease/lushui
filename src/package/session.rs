@@ -602,12 +602,12 @@ impl Type {
         let known = |binding: &crate::hir::Binding, known: KnownBinding| {
             session
                 .known_binding(known)
-                .map_or(false, |known| &binding.binder == known)
+                .map_or(false, |known| &binding.0 == known)
         };
         let intrinsic = |binding: &crate::hir::Binding, intrinsic: IntrinsicType| {
             session
                 .intrinsic_type(intrinsic)
-                .map_or(false, |intrinsic| &binding.binder == intrinsic)
+                .map_or(false, |intrinsic| &binding.0 == intrinsic)
         };
 
         Some(match &expression.value {
@@ -695,7 +695,7 @@ impl Value {
         let known = |binding: &crate::hir::Binding, known: KnownBinding| {
             session
                 .known_binding(known)
-                .map_or(false, |known| &binding.binder == known)
+                .map_or(false, |known| &binding.0 == known)
         };
 
         Some(match &expression.value {

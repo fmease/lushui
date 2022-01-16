@@ -723,7 +723,7 @@ impl<'a> Resolver<'a> {
                     }
                 });
             }
-            Type => expr! { Type { expression.attributes, expression.span } },
+            TypeLiteral => expr! { Type { expression.attributes, expression.span } },
             NumberLiteral(number) => {
                 todo!()
 
@@ -734,13 +734,11 @@ impl<'a> Resolver<'a> {
 
                 // expr! { Text(expression.attributes, expression.span; text) }
             }
-            Binding(binding) => expr! {
-                Binding {
-                    expression.attributes,
-                    expression.span;
-                    binder: self.resolve_binding(&binding.binder, scope)?,
-                }
-            },
+            Path(path) => hir::Expression::new(
+                expression.attributes,
+                expression.span,
+                hir::Binding(self.resolve_binding(&path, scope)?).into(),
+            ),
             Lambda(lambda) => {
                 let parameter_type_annotation = lambda
                     .parameter_type_annotation
@@ -777,7 +775,7 @@ impl<'a> Resolver<'a> {
                 return Err(());
             }
             CaseAnalysis(analysis) => {
-                let subject = self.resolve_expression(analysis.subject.clone(), scope)?;
+                let scrutinee = self.resolve_expression(analysis.scrutinee.clone(), scope)?;
                 let mut cases = Vec::new();
 
                 for case in &analysis.cases {
@@ -794,7 +792,7 @@ impl<'a> Resolver<'a> {
                     CaseAnalysis {
                         expression.attributes,
                         expression.span;
-                        subject,
+                        scrutinee,
                         cases,
                     }
                 }
@@ -812,7 +810,7 @@ impl<'a> Resolver<'a> {
     ) -> Result<(hir::Pattern, Vec<ast::Identifier>)> {
         use lowered_ast::PatternKind::*;
 
-        let mut binders = Vec::new();
+        let mut binders: Vec<ast::Identifier> = Vec::new();
 
         let pattern = match pattern.value.clone() {
             NumberLiteral(number) => {
@@ -825,23 +823,18 @@ impl<'a> Resolver<'a> {
 
                 //  pat! { Text(pattern.attributes, pattern.span; text) }
             }
-            Binding(binding) => hir::Pattern::new(
+            Path(path) => hir::Pattern::new(
                 pattern.attributes,
                 pattern.span,
-                hir::Binding {
-                    binder: self.resolve_binding(&binding.binder, scope)?,
-                }
-                .into(),
+                hir::Binding(self.resolve_binding(&path, scope)?).into(),
             ),
             Binder(binder) => {
-                binders.push(binder.binder.clone());
+                binders.push((*binder).clone());
+
                 hir::Pattern::new(
                     pattern.attributes,
                     pattern.span,
-                    hir::Binder {
-                        binder: Identifier::new(Index::DeBruijnParameter, binder.binder),
-                    }
-                    .into(),
+                    hir::Binder(Identifier::new(Index::DeBruijnParameter, *binder)).into(),
                 )
             }
             Application(application) => {

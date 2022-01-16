@@ -457,7 +457,7 @@ impl<'a> Typer<'a> {
         Ok(match expression.value {
             Binding(binding) => self
                 .interpreter()
-                .look_up_type(&binding.binder, scope)
+                .look_up_type(&binding.0, scope)
                 .ok_or(OutOfOrderBinding)?,
             Type => expr! { Type { Attributes::default(), Span::default() } },
             Number(number) => self.session.look_up_intrinsic_type(
@@ -599,7 +599,7 @@ impl<'a> Typer<'a> {
             UseIn => todo!("1stP infer type of use/in"),
             CaseAnalysis(analysis) => {
                 let subject_type =
-                    self.infer_type_of_expression(analysis.subject.clone(), scope)?;
+                    self.infer_type_of_expression(analysis.scrutinee.clone(), scope)?;
                 // to get rid of Substitutions
                 let subject_type = self
                     .interpreter()
@@ -646,7 +646,7 @@ impl<'a> Typer<'a> {
                                     actual.with(context)
                                 ))
                                 .labeled_primary_span(&case.pattern, "has the wrong type")
-                                .labeled_secondary_span(&analysis.subject, "expected due to this")
+                                .labeled_secondary_span(&analysis.scrutinee, "expected due to this")
                                 .report(reporter);
                             Unrecoverable
                         }
@@ -688,10 +688,8 @@ impl<'a> Typer<'a> {
                                 })?;
                         }
                         Binding(binding) => {
-                            let constructor_type = self
-                                .interpreter()
-                                .look_up_type(&binding.binder, scope)
-                                .unwrap();
+                            let constructor_type =
+                                self.interpreter().look_up_type(&binding.0, scope).unwrap();
 
                             self.it_is_actual(
                                 subject_type.clone(),
@@ -720,10 +718,8 @@ impl<'a> Typer<'a> {
                                 // or can we defer this to an it_is_actual call??
                                 (Number(_) | Text(_), _argument) => todo!(),
                                 (Binding(binding), _argument) => {
-                                    let constructor_type = self
-                                        .interpreter()
-                                        .look_up_type(&binding.binder, scope)
-                                        .unwrap();
+                                    let constructor_type =
+                                        self.interpreter().look_up_type(&binding.0, scope).unwrap();
 
                                     dbg!(
                                         &subject_type.with((self.capsule, self.session)),
@@ -739,9 +735,9 @@ impl<'a> Typer<'a> {
                                         .code(Code::E034)
                                         .message(format!(
                                             "binder `{}` used in callee position inside pattern",
-                                            binder.binder
+                                            binder.0
                                         ))
-                                        .primary_span(&binder.binder)
+                                        .primary_span(&binder.0)
                                         .help("consider refering to a concrete binding")
                                         .report(self.reporter);
                                     return Err(Unrecoverable);

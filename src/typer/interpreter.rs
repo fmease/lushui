@@ -30,7 +30,7 @@ use crate::{
     syntax::{ast::Explicit, lowered_ast::Attributes},
 };
 use scope::{FunctionScope, ValueView};
-use std::fmt;
+use std::{default::default, fmt};
 
 /// Run the entry point of the given executable capsule.
 pub fn evaluate_main_function(
@@ -85,29 +85,23 @@ impl<'a> Interpreter<'a> {
 
         #[allow(clippy::match_same_arms)] // @Temporary
         match (&expression.value, substitution) {
-            (Binding(binding), Shift(amount)) => {
-                expr! {
-                    Binding {
-                        expression.attributes,
-                        expression.span;
-                        binder: binding.binder.clone().shift(amount)
-                    }
-                }
-            }
+            (Binding(binding), Shift(amount)) => hir::Expression::new(
+                expression.attributes,
+                expression.span,
+                hir::Binding(binding.0.clone().shift(amount)).into(),
+            ),
             // @Beacon @Beacon @Question @Bug
             (Binding(binding), Use(substitution, expression)) => {
-                if binding.binder.is_innermost() {
+                if binding.0.is_innermost() {
                     self.substitute_expression(expression, Shift(0))
                 } else {
                     {
                         self.substitute_expression(
-                            expr! {
-                                Binding {
-                                    expression.attributes,
-                                    expression.span;
-                                    binder: binding.binder.clone().unshift()
-                                }
-                            },
+                            hir::Expression::new(
+                                expression.attributes,
+                                expression.span,
+                                hir::Binding(binding.0.clone().unshift()).into(),
+                            ),
                             *substitution,
                         )
                     }
@@ -133,14 +127,14 @@ impl<'a> Interpreter<'a> {
                         expression.span;
                         callee: expr! {
                             Substitution {
-                                Attributes::default(), Span::default();
+                                default(), default();
                                 expression: application.callee.clone(),
                                 substitution: substitution.clone(),
                             }
                         },
                         argument: expr! {
                             Substitution {
-                                Attributes::default(), Span::default();
+                                default(), default();
                                 expression: application.argument.clone(),
                                 substitution,
                             }
@@ -152,7 +146,7 @@ impl<'a> Interpreter<'a> {
             (PiType(pi), substitution) => {
                 let domain = expr! {
                     Substitution {
-                        Attributes::default(), Span::default();
+                        default(), Span::default();
                         expression: pi.domain.clone(),
                         substitution: substitution.clone(),
                     }
@@ -169,7 +163,7 @@ impl<'a> Interpreter<'a> {
                                 // @Question what about the attributes of the binder?
                                 Use(
                                     Box::new(Shift(1).compose(substitution)),
-                                    expr! { Binding { Attributes::default(), binder.span(); binder } }
+                                    binder.into_expression(),
                                 )
                             }
                             None => substitution,
@@ -211,7 +205,7 @@ impl<'a> Interpreter<'a> {
                                 // @Question what about the attributes of the binder?
                                 Use(
                                     Box::new(Shift(1).compose(substitution.clone())),
-                                    expr! { Binding { Attributes::default(), binder.span(); binder } }
+                                    binder.into_expression()
                                 )
                             }
                         }
@@ -228,7 +222,7 @@ impl<'a> Interpreter<'a> {
                                 // @Question what about the attributes of the binder?
                                 Use(
                                     Box::new(Shift(1).compose(substitution)),
-                                    expr! { Binding { Attributes::default(), binder.span(); binder } }
+                                    binder.into_expression()
                                 )
                         },
                     }
@@ -262,10 +256,10 @@ impl<'a> Interpreter<'a> {
                                 }
                             },
                         }).collect(),
-                        subject: expr! {
+                        scrutinee: expr! {
                             Substitution {
                                 Attributes::default(), Span::default();
-                                expression: analysis.subject.clone(),
+                                expression: analysis.scrutinee.clone(),
                                 substitution,
                             }
                         },
@@ -305,7 +299,7 @@ impl<'a> Interpreter<'a> {
         // @Bug we currently don't support zero-arity intrinsic functions
         Ok(match expression.clone().value {
             Binding(binding) => {
-                match self.look_up_value(&binding.binder) {
+                match self.look_up_value(&binding.0) {
                     // @Question is this normalization necessary? I mean, yes, we got a new scope,
                     // but the thing in the previous was already normalized (well, it should have been
                     // at least). I guess it is necessary because it can contain parameters which could not
@@ -362,17 +356,16 @@ impl<'a> Interpreter<'a> {
                             context,
                         )?
                     }
-                    Binding(binding) if self.is_intrinsic(&binding.binder) => self
-                        .evaluate_expression(
-                            expr! {
-                                IntrinsicApplication {
-                                    expression.attributes, expression.span;
-                                    callee: binding.binder.clone(),
-                                    arguments: vec![argument],
+                    Binding(binding) if self.is_intrinsic(&binding.0) => self.evaluate_expression(
+                        expr! {
+                            IntrinsicApplication {
+                                expression.attributes, expression.span;
+                                callee: binding.0.clone(),
+                                arguments: vec![argument],
 
-                            }},
-                            context,
-                        )?,
+                        }},
+                        context,
+                    )?,
                     Binding(_) | Application(_) => expr! {
                         Application {
                             expression.attributes, expression.span;
@@ -481,21 +474,21 @@ impl<'a> Interpreter<'a> {
             // @Bug panics if the subject reduces to a neutral identifier (i.e. lambda parameter)
             // contains one
             CaseAnalysis(analysis) => {
-                let subject = self.evaluate_expression(analysis.subject.clone(), context)?;
+                let scrutinee = self.evaluate_expression(analysis.scrutinee.clone(), context)?;
 
                 // @Note we assume, subject is composed of only applications, bindings etc corresponding to the pattern types
                 // everything else should be impossible because of type checking but I might be wrong.
                 // possible counter examples: unevaluated case analysis expression
                 // @Note @Beacon think about having a variable `matches: bool` (whatever) to avoid repetition
-                match subject.value {
-                    Binding(subject) => {
+                match scrutinee.value {
+                    Binding(scrutinee) => {
                         // @Temporary hack (bc we do not follow any principled implementation right now):
                         // a case analysis is indirectly neutral if the subject is a neutral binding
-                        if self.look_up_value(&subject.binder).is_neutral() {
+                        if self.look_up_value(&scrutinee.0).is_neutral() {
                             return Ok(expr! {
                                 CaseAnalysis {
                                     expression.attributes, expression.span;
-                                    subject: subject.binder.clone().into_expression(),
+                                    scrutinee: scrutinee.0.clone().into_expression(),
                                     cases: analysis.cases.clone(),
                                 }
                             });
@@ -506,9 +499,7 @@ impl<'a> Interpreter<'a> {
 
                             match &case.pattern.value {
                                 Binding(binding) => {
-                                    dbg!(&binding.binder);
-
-                                    if binding.binder == subject.binder {
+                                    if binding.0 == scrutinee.0 {
                                         // @Task @Beacon extend with parameters when evaluating
                                         return self
                                             .evaluate_expression(case.body.clone(), context);
@@ -644,7 +635,7 @@ impl<'a> Interpreter<'a> {
         use hir::ExpressionKind::*;
 
         Ok(match (&expression0.value, &expression1.value) {
-            (Binding(binding0), Binding(binding1)) => binding0.binder == binding1.binder,
+            (Binding(binding0), Binding(binding1)) => binding0.0 == binding1.0,
             (Application(application0), Application(application1)) => {
                 self.equals(&application0.callee, &application1.callee, scope)?
                     && self.equals(&application0.argument, &application1.argument, scope)?
@@ -707,7 +698,7 @@ impl<'a> Interpreter<'a> {
             }
             // @Temporary implementation
             (CaseAnalysis(analysis0), CaseAnalysis(analysis1)) => {
-                self.equals(&analysis0.subject, &analysis1.subject, scope)?
+                self.equals(&analysis0.scrutinee, &analysis1.scrutinee, scope)?
             }
             (IntrinsicApplication(intrinsic0), IntrinsicApplication(intrinsic1)) => {
                 intrinsic0.callee == intrinsic1.callee

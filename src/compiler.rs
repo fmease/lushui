@@ -190,14 +190,14 @@ impl<'a> Compiler<'a> {
                 instructions.push(Instruction::Constant(constant));
             }
             Binding(binding) => {
-                if let Some(index) = binding.binder.declaration_index() {
+                if let Some(index) = binding.0.declaration_index() {
                     // declarations will not always compile to chunks
                     // so we gonna need to push constant in some places
                     instructions.push(Instruction::Closure {
                         chunk: self.next_chunk_index_for_declaration(index),
                         captures: Vec::new(),
                     });
-                } else if binding.binder.is_innermost() {
+                } else if binding.0.is_innermost() {
                     instructions.push(Instruction::Argument);
                 } else {
                     todo!()

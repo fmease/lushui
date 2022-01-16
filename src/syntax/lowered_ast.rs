@@ -91,21 +91,45 @@ pub type Expression = Item<ExpressionKind>;
 
 #[derive(Clone)]
 pub enum ExpressionKind {
-    PiType(Box<PiType>),
-    Application(Box<Application<Expression>>),
-    Type,
+    TypeLiteral,
+    Path(Box<Path>),
     NumberLiteral(Box<NumberLiteral>),
     TextLiteral(Box<TextLiteral>),
-    Binding(Box<Binding>),
+    Application(Box<Application<Expression>>),
+    PiType(Box<PiType>),
     Lambda(Box<Lambda>),
-    UseIn,
     CaseAnalysis(Box<CaseAnalysis>),
+    UseIn,
     Error,
 }
 
 impl PossiblyErroneous for ExpressionKind {
     fn error() -> Self {
         Self::Error
+    }
+}
+
+impl From<Path> for ExpressionKind {
+    fn from(path: Path) -> Self {
+        Self::Path(Box::new(path))
+    }
+}
+
+impl From<NumberLiteral> for ExpressionKind {
+    fn from(number: NumberLiteral) -> Self {
+        Self::NumberLiteral(Box::new(number))
+    }
+}
+
+impl From<TextLiteral> for ExpressionKind {
+    fn from(text: TextLiteral) -> Self {
+        Self::TextLiteral(Box::new(text))
+    }
+}
+
+impl From<Application<Expression>> for ExpressionKind {
+    fn from(application: Application<Expression>) -> Self {
+        Self::Application(Box::new(application))
     }
 }
 
@@ -118,6 +142,12 @@ pub struct PiType {
     pub codomain: Expression,
 }
 
+impl From<PiType> for ExpressionKind {
+    fn from(pi: PiType) -> Self {
+        Self::PiType(Box::new(pi))
+    }
+}
+
 #[derive(Clone)]
 pub struct Lambda {
     pub parameter: Identifier,
@@ -128,10 +158,22 @@ pub struct Lambda {
     pub body: Expression,
 }
 
+impl From<Lambda> for ExpressionKind {
+    fn from(lambda: Lambda) -> Self {
+        Self::Lambda(Box::new(lambda))
+    }
+}
+
 #[derive(Clone)]
 pub struct CaseAnalysis {
-    pub subject: Expression,
+    pub scrutinee: Expression,
     pub cases: Vec<Case>,
+}
+
+impl From<CaseAnalysis> for ExpressionKind {
+    fn from(analysis: CaseAnalysis) -> Self {
+        Self::CaseAnalysis(Box::new(analysis))
+    }
 }
 
 #[derive(Clone)]
@@ -146,8 +188,8 @@ pub type Pattern = Item<PatternKind>;
 pub enum PatternKind {
     NumberLiteral(Box<NumberLiteral>),
     TextLiteral(Box<TextLiteral>),
-    Binding(Box<Binding>),
-    Binder(Box<Binder>),
+    Path(Box<Path>),
+    Binder(Box<Identifier>),
     Application(Box<Application<Pattern>>),
     Error,
 }
@@ -170,21 +212,15 @@ impl From<TextLiteral> for PatternKind {
     }
 }
 
-impl From<Binding> for PatternKind {
-    fn from(binding: Binding) -> Self {
-        Self::Binding(Box::new(binding))
+impl From<Path> for PatternKind {
+    fn from(path: Path) -> Self {
+        Self::Path(Box::new(path))
     }
 }
 
-/// A binder inside of a pattern.
-#[derive(Clone)]
-pub struct Binder {
-    pub binder: Identifier,
-}
-
-impl From<Binder> for PatternKind {
-    fn from(binder: Binder) -> Self {
-        Self::Binder(Box::new(binder))
+impl From<Identifier> for PatternKind {
+    fn from(identifier: Identifier) -> Self {
+        Self::Binder(Box::new(identifier))
     }
 }
 
@@ -192,11 +228,6 @@ impl From<Application<Pattern>> for PatternKind {
     fn from(application: Application<Pattern>) -> Self {
         Self::Application(Box::new(application))
     }
-}
-
-#[derive(Clone)]
-pub struct Binding {
-    pub binder: Path,
 }
 
 #[derive(Clone)]
@@ -215,8 +246,4 @@ pub enum Number {
     Int(crate::utility::Int),
     Int32(i32),
     Int64(i64),
-}
-
-pub(crate) macro expr($( $tree:tt )+) {
-    crate::item::item!(crate::syntax::lowered_ast, ExpressionKind, Box; $( $tree )+)
 }

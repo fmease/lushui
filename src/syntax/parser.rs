@@ -1548,13 +1548,8 @@ impl<'a> Parser<'a> {
             }
             Backslash => {
                 self.advance();
-                self.consume_word().map(|binder| {
-                    Pattern::new(
-                        attributes,
-                        span.merge(&binder),
-                        ast::Binder { binder }.into(),
-                    )
-                })
+                self.consume_word()
+                    .map(|binder| Pattern::new(attributes, span.merge(&binder), binder.into()))
             }
             OpeningSquareBracket => {
                 self.advance();

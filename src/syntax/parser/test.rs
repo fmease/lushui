@@ -601,10 +601,7 @@ lengthy-space-filler (case 0 of
                             pattern: Pattern::new(
                                 Attributes::new(),
                                 span(37, 39),
-                                ast::Binder {
-                                    binder: identifier("n".into(), span(38, 39)),
-                                }
-                                .into(),
+                                identifier("n".into(), span(38, 39)).into(),
                             ),
                             body: identifier("n".into(), span(43, 44)).into(),
                         }],
@@ -762,10 +759,7 @@ main =
                                         pattern: Pattern::new(
                                             Attributes::new(),
                                             span(49, 53),
-                                            ast::Binder {
-                                                binder: identifier("bar".into(), span(50, 53)),
-                                            }
-                                            .into(),
+                                            identifier("bar".into(), span(50, 53)).into(),
                                         ),
                                         body: Expression::new(
                                             Attributes::new(),
@@ -842,10 +836,7 @@ main = case x of
                                         pattern: Pattern::new(
                                             Attributes::new(),
                                             span(37, 41),
-                                            ast::Binder {
-                                                binder: identifier("bar".into(), span(38, 41)),
-                                            }
-                                            .into(),
+                                            identifier("bar".into(), span(38, 41)).into(),
                                         ),
                                         body: Expression::new(
                                             Attributes::new(),

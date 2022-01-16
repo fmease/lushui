@@ -639,16 +639,6 @@ impl Format for super::PatternKind {
     }
 }
 
-impl Format for super::Binder {
-    fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
-        FormatStruct::new(f, indentation)
-            .name("Pattern-Binder")
-            .inline()
-            .field("binder", &self.binder)
-            .finish()
-    }
-}
-
 impl Format for Identifier {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         self.span().format(f, indentation)?;

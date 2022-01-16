@@ -426,7 +426,7 @@ pub enum PatternKind {
     TextLiteral(Box<TextLiteral>),
     SequenceLiteral(Box<SequenceLiteral<Pattern>>),
     Path(Box<Path>),
-    Binder(Box<Binder>),
+    Binder(Box<Identifier>),
     Application(Box<Application<Pattern>>),
 }
 
@@ -454,15 +454,8 @@ impl From<Path> for PatternKind {
     }
 }
 
-/// A binder inside of a pattern.
-#[derive(Clone)]
-#[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct Binder {
-    pub binder: Identifier,
-}
-
-impl From<Binder> for PatternKind {
-    fn from(binder: Binder) -> Self {
+impl From<Identifier> for PatternKind {
+    fn from(binder: Identifier) -> Self {
         Self::Binder(Box::new(binder))
     }
 }

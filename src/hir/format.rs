@@ -192,7 +192,7 @@ fn format_pi_type_literal_or_lower(
         UseIn => todo!(),
         // @Task fix indentation
         CaseAnalysis(analysis) => {
-            writeln!(f, "case {} of", analysis.subject.with(context))?;
+            writeln!(f, "case {} of", analysis.scrutinee.with(context))?;
             for case in &analysis.cases {
                 writeln!(
                     f,
@@ -259,7 +259,7 @@ fn format_lower_expression(
         Binding(binding) => write!(
             f,
             "{}",
-            super::FunctionScope::absolute_path_to_string(&binding.binder, capsule, session)
+            super::FunctionScope::absolute_path_to_string(&binding.0, capsule, session)
         ),
         // @Beacon @Temporary @Task just write out the path
         Projection(_projection) => write!(f, "?(projection)"),
@@ -300,10 +300,10 @@ impl DisplayWith for Pattern {
             Binding(binding) => write!(
                 f,
                 "{}",
-                super::FunctionScope::absolute_path_to_string(&binding.binder, capsule, session)
+                super::FunctionScope::absolute_path_to_string(&binding.0, capsule, session)
             ),
 
-            Binder(binder) => write!(f, "\\{}", binder.binder),
+            Binder(binder) => write!(f, "\\{}", binder.0),
             Application(application) => write!(
                 f,
                 "({}) ({})",
