@@ -26,11 +26,11 @@
 
 use super::{
     ast::{self, Explicit, HangerKind, Parameter, Path},
-    lowered_ast::{self, attributes::Target, AttributeKind, AttributeName, Attributes, Number},
+    lowered_ast::{self, attributes::Target, AttributeKind, AttributeName, Attributes},
 };
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
-    error::{map_outcome_from_result, Health, Outcome, PossiblyErroneous, Result},
+    error::{Health, PossiblyErroneous, Result, Stain, Stained},
     format::{ordered_listing, Conjunction, IOError, QuoteExt},
     span::{SharedSourceMap, SourceMap, Span, Spanning},
     syntax::lowered_ast::attributes::{Predicate, Public, Query},
@@ -39,14 +39,17 @@ use crate::{
 use smallvec::smallvec;
 use std::{default::default, iter::once};
 
-/// Lower a declaration.
-pub fn lower(
+/// Lower a file.
+pub fn lower_file(
     declaration: ast::Declaration,
     options: Options,
     map: SharedSourceMap,
     reporter: &Reporter,
-) -> Outcome<SmallVec<lowered_ast::Declaration, 1>> {
-    Lowerer::new(options, map, reporter).lower_declaration(declaration)
+) -> Result<lowered_ast::Declaration> {
+    let mut lowerer = Lowerer::new(options, map, reporter);
+    let mut declaration = lowerer.lower_declaration(declaration);
+    let root = declaration.pop().unwrap();
+    Result::stained(root, lowerer.health)
 }
 
 /// The state of the lowering pass.
@@ -54,6 +57,7 @@ struct Lowerer<'a> {
     options: Options,
     map: SharedSourceMap,
     reporter: &'a Reporter,
+    health: Health,
 }
 
 impl<'a> Lowerer<'a> {
@@ -62,13 +66,14 @@ impl<'a> Lowerer<'a> {
             options,
             map,
             reporter,
+            health: Health::Untainted,
         }
     }
 
     fn lower_declaration(
         &mut self,
         declaration: ast::Declaration,
-    ) -> Outcome<SmallVec<lowered_ast::Declaration, 1>> {
+    ) -> SmallVec<lowered_ast::Declaration, 1> {
         self.lower_declaration_with_context(
             declaration,
             &DeclarationContext {
@@ -82,60 +87,54 @@ impl<'a> Lowerer<'a> {
         &mut self,
         declaration: ast::Declaration,
         context: &DeclarationContext,
-    ) -> Outcome<SmallVec<lowered_ast::Declaration, 1>> {
+    ) -> SmallVec<lowered_ast::Declaration, 1> {
         use ast::DeclarationKind::*;
 
-        let mut health = Health::Untainted;
+        let mut attributes = self.lower_attributes(&declaration.attributes, &declaration);
 
-        let mut attributes = self
-            .lower_attributes(&declaration.attributes, &declaration)
-            .unwrap(&mut health);
-
-        let declarations = match declaration.value {
+        match declaration.value {
             Function(function) => {
-                if function.type_annotation.is_none() {
-                    Diagnostic::missing_mandatory_type_annotation(
-                        function.binder.span().fit_end(&function.parameters).end(),
-                        AnnotationTarget::Declaration(&function.binder),
-                    )
-                    .report(self.reporter);
-                    health.taint();
-                }
-
-                // @Note awkward API! + check above ^
-                let declaration_type_annotation =
-                    Outcome::from(function.type_annotation).unwrap(&mut health);
+                let declaration_type_annotation = match function.type_annotation {
+                    Some(type_annotation) => type_annotation,
+                    None => {
+                        Diagnostic::missing_mandatory_type_annotation(
+                            function.binder.span().fit_end(&function.parameters).end(),
+                            AnnotationTarget::Declaration(&function.binder),
+                        )
+                        .report(self.reporter);
+                        self.health.taint();
+                        PossiblyErroneous::error()
+                    }
+                };
 
                 // @Note type_annotation is currently lowered twice @Task remove duplicate work
                 // @Task find a way to use `Option::map` (currently does not work because of
                 // partial moves, I hate those), use local bindings
                 let body = match function.body {
                     Some(body) => {
-                        let mut body = self.lower_expression(body).unwrap(&mut health);
+                        let mut body = self.lower_expression(body);
 
                         {
-                            let mut type_annotation = once(
-                                self.lower_expression(declaration_type_annotation.clone())
-                                    .unwrap(&mut health),
-                            );
+                            let mut type_annotation =
+                                once(self.lower_expression(declaration_type_annotation.clone()));
 
                             for parameter in function.parameters.iter().rev() {
-                                if parameter.value.type_annotation.is_none() {
-                                    Diagnostic::missing_mandatory_type_annotation(
-                                        parameter,
-                                        AnnotationTarget::Parameter(parameter),
-                                    )
-                                    .report(self.reporter);
-                                    health.taint();
-                                }
-                                // @Note awkward API! + check above ^
                                 let parameter_type_annotation =
-                                    Outcome::from(parameter.value.type_annotation.clone())
-                                        .unwrap(&mut health);
+                                    match &parameter.value.type_annotation {
+                                        Some(type_annotation) => type_annotation.clone(),
+                                        None => {
+                                            Diagnostic::missing_mandatory_type_annotation(
+                                                parameter,
+                                                AnnotationTarget::Parameter(parameter),
+                                            )
+                                            .report(self.reporter);
+                                            self.health.taint();
+                                            PossiblyErroneous::error()
+                                        }
+                                    };
 
-                                let parameter_type_annotation = self
-                                    .lower_expression(parameter_type_annotation)
-                                    .unwrap(&mut health);
+                                let parameter_type_annotation =
+                                    self.lower_expression(parameter_type_annotation);
 
                                 body = lowered_ast::Expression::new(
                                     default(),
@@ -159,12 +158,10 @@ impl<'a> Lowerer<'a> {
                     None => None,
                 };
 
-                let type_annotation = self
-                    .lower_parameters_to_annotated_ones(
-                        function.parameters,
-                        declaration_type_annotation,
-                    )
-                    .unwrap(&mut health);
+                let type_annotation = self.lower_parameters_to_annotated_ones(
+                    function.parameters,
+                    declaration_type_annotation,
+                );
 
                 smallvec![lowered_ast::Declaration::new(
                     attributes,
@@ -186,14 +183,13 @@ impl<'a> Lowerer<'a> {
                             AnnotationTarget::Declaration(&type_.binder),
                         )
                         .report(self.reporter);
-                        health.taint();
+                        self.health.taint();
                         PossiblyErroneous::error()
                     }
                 };
 
-                let type_annotation = self
-                    .lower_parameters_to_annotated_ones(type_.parameters, data_type_annotation)
-                    .unwrap(&mut health);
+                let type_annotation =
+                    self.lower_parameters_to_annotated_ones(type_.parameters, data_type_annotation);
 
                 let context = DeclarationContext {
                     is_root: false,
@@ -205,7 +201,6 @@ impl<'a> Lowerer<'a> {
                         .into_iter()
                         .flat_map(|constructor| {
                             self.lower_declaration_with_context(constructor, &context)
-                                .unwrap(&mut health)
                         })
                         .collect()
                 });
@@ -235,20 +230,18 @@ impl<'a> Lowerer<'a> {
                             AnnotationTarget::Declaration(&constructor.binder),
                         )
                         .report(self.reporter);
-                        health.taint();
+                        self.health.taint();
                         PossiblyErroneous::error()
                     }
                 };
 
-                let type_annotation = self
-                    .lower_parameters_to_annotated_ones(
-                        constructor.parameters,
-                        constructor_type_annotation,
-                    )
-                    .unwrap(&mut health);
+                let type_annotation = self.lower_parameters_to_annotated_ones(
+                    constructor.parameters,
+                    constructor_type_annotation,
+                );
 
                 if let Some(body) = constructor.body {
-                    let body = self.lower_expression(body).unwrap(&mut health);
+                    let body = self.lower_expression(body);
 
                     // @Task improve the labels etc, don't say "conflicting definition"
                     // it's technically true, but we can do so much better!
@@ -262,7 +255,7 @@ impl<'a> Lowerer<'a> {
                         .note(
                             "the body of the constructor is implied but it also has a body introduced by `=`",
                         ).report(self.reporter);
-                    health.taint();
+                    self.health.taint();
                 }
 
                 smallvec![lowered_ast::Declaration::new(
@@ -355,12 +348,10 @@ impl<'a> Lowerer<'a> {
                             // @Bug this sequence may lead to some unnecessary diagnostics being emitted
                             // since the "synergy check" (which filters duplicate attribute) is run too late
 
-                            let module_header_attributes = self
-                                .lower_attributes(&declaration.attributes, &declaration)
-                                .unwrap(&mut health);
+                            let module_header_attributes =
+                                self.lower_attributes(&declaration.attributes, &declaration);
                             attributes.0.extend(module_header_attributes.0);
-                            attributes =
-                                self.check_attribute_synergy(attributes).unwrap(&mut health);
+                            attributes = self.check_attribute_synergy(attributes);
                         } else {
                             Diagnostic::error()
                                 .code(Code::E041)
@@ -373,17 +364,15 @@ impl<'a> Lowerer<'a> {
                                     this.note("however, the current module already has a module header")
                                 })
                                 .report(self.reporter);
-                            health.taint();
+                            self.health.taint();
                         }
 
                         possesses_header = true;
                         continue;
                     }
 
-                    lowered_declarations.extend(
-                        self.lower_declaration_with_context(declaration, &context)
-                            .unwrap(&mut health),
-                    );
+                    lowered_declarations
+                        .extend(self.lower_declaration_with_context(declaration, &context));
                 }
 
                 smallvec![lowered_ast::Declaration::new(
@@ -412,10 +401,11 @@ impl<'a> Lowerer<'a> {
                         declaration.attributes = group_attributes;
                         declaration
                     })
-                    .flat_map(|declaration| self.lower_declaration(declaration).unwrap(&mut health))
+                    .flat_map(|declaration| self.lower_declaration(declaration))
                     .collect()
             }
             // @Task verify that the resulting spans are correct
+            // @Task make this a method of Lowerer!
             Use(use_) => {
                 use ast::{UsePathTree, UsePathTreeKind::*};
 
@@ -512,7 +502,7 @@ impl<'a> Lowerer<'a> {
                                 // for `extern` that is illegal, too
                                 Diagnostic::invalid_unnamed_path_hanger(target.hanger.unwrap())
                                     .report(self.reporter);
-                                health.taint();
+                                self.health.taint();
                                 break 'discriminate;
                             };
 
@@ -522,44 +512,33 @@ impl<'a> Lowerer<'a> {
                                 lowered_ast::Use { binder, target }.into(),
                             ));
                         }
-                        Multiple { path, bindings } => Outcome::from(lower_use_path_tree(
+                        Multiple { path, bindings } => lower_use_path_tree(
                             path,
                             bindings,
                             declaration.span,
                             attributes,
                             &mut declarations,
                             self.reporter,
-                        ))
-                        .unwrap(&mut health),
+                        )
+                        .stain(&mut self.health),
                     }
                 }
 
                 declarations
             }
-        };
-
-        health.of(declarations)
+        }
     }
 
     /// Lower an expression.
-    fn lower_expression(
-        &mut self,
-        expression: ast::Expression,
-    ) -> Outcome<lowered_ast::Expression> {
+    fn lower_expression(&mut self, expression: ast::Expression) -> lowered_ast::Expression {
         use ast::ExpressionKind::*;
 
-        let mut health = Health::Untainted;
-
-        let attributes = self
-            .lower_attributes(&expression.attributes, &expression)
-            .unwrap(&mut health);
+        let attributes = self.lower_attributes(&expression.attributes, &expression);
 
         let expression = match expression.value {
             PiTypeLiteral(pi) => {
-                let domain = self
-                    .lower_expression(pi.domain.expression)
-                    .unwrap(&mut health);
-                let codomain = self.lower_expression(pi.codomain).unwrap(&mut health);
+                let domain = self.lower_expression(pi.domain.expression);
+                let codomain = self.lower_expression(pi.codomain);
 
                 lowered_ast::Expression::new(
                     attributes,
@@ -579,15 +558,11 @@ impl<'a> Lowerer<'a> {
                     Diagnostic::unimplemented("named arguments")
                         .primary_span(binder)
                         .report(self.reporter);
-                    health.taint();
+                    self.health.taint();
                 }
 
-                let callee = self
-                    .lower_expression(application.callee)
-                    .unwrap(&mut health);
-                let argument = self
-                    .lower_expression(application.argument)
-                    .unwrap(&mut health);
+                let callee = self.lower_expression(application.callee);
+                let argument = self.lower_expression(application.argument);
 
                 lowered_ast::Expression::new(
                     attributes,
@@ -617,8 +592,7 @@ impl<'a> Lowerer<'a> {
                 Diagnostic::unimplemented("typed holes")
                     .primary_span(expression.span)
                     .report(self.reporter);
-                // @Note awkward API!
-                health.taint();
+                self.health.taint();
                 PossiblyErroneous::error()
             }
             // @Task avoid re-boxing!
@@ -627,29 +601,23 @@ impl<'a> Lowerer<'a> {
                 Diagnostic::unimplemented("record fields")
                     .primary_span(expression.span)
                     .report(self.reporter);
-                // @Note awkward API
-                health.taint();
+                self.health.taint();
                 PossiblyErroneous::error()
             }
             LambdaLiteral(lambda) => {
-                let mut expression = self.lower_expression(lambda.body).unwrap(&mut health);
+                let mut expression = self.lower_expression(lambda.body);
 
                 let mut type_annotation = lambda
                     .body_type_annotation
-                    .map(|type_annotation| {
-                        self.lower_expression(type_annotation).unwrap(&mut health)
-                    })
+                    .map(|type_annotation| self.lower_expression(type_annotation))
                     .into_iter();
 
                 for parameter in lambda.parameters.iter().rev() {
-                    let parameter_type_annotation =
-                        parameter
-                            .value
-                            .type_annotation
-                            .clone()
-                            .map(|type_annotation| {
-                                self.lower_expression(type_annotation).unwrap(&mut health)
-                            });
+                    let parameter_type_annotation = parameter
+                        .value
+                        .type_annotation
+                        .clone()
+                        .map(|type_annotation| self.lower_expression(type_annotation));
 
                     expression = lowered_ast::Expression::new(
                         default(),
@@ -675,7 +643,6 @@ impl<'a> Lowerer<'a> {
                     match let_in.expression {
                         Some(expression) => expression,
                         None => {
-                            // @Note awkward API!
                             Diagnostic::error()
                                 .code(Code::E012)
                                 .message(format!("let-binding `{}` has no definition", binder))
@@ -689,26 +656,25 @@ impl<'a> Lowerer<'a> {
                                 )
                                 .help("provide a definition with `=`")
                                 .report(self.reporter);
-                            health.taint();
+                            self.health.taint();
                             PossiblyErroneous::error()
                         }
                     }
                 };
 
-                let mut expression = self.lower_expression(expression).unwrap(&mut health);
+                let mut expression = self.lower_expression(expression);
 
                 let mut type_annotation = let_in
                     .type_annotation
-                    .map(|type_annotation| {
-                        self.lower_expression(type_annotation).unwrap(&mut health)
-                    })
+                    .map(|type_annotation| self.lower_expression(type_annotation))
                     .into_iter();
 
                 for parameter in let_in.parameters.iter().rev() {
-                    let parameter_type_annotation =
-                        parameter.value.type_annotation.clone().map(|expression| {
-                            self.lower_expression(expression).unwrap(&mut health)
-                        });
+                    let parameter_type_annotation = parameter
+                        .value
+                        .type_annotation
+                        .clone()
+                        .map(|expression| self.lower_expression(expression));
 
                     expression = lowered_ast::Expression::new(
                         default(),
@@ -725,7 +691,7 @@ impl<'a> Lowerer<'a> {
                     );
                 }
 
-                let body = self.lower_expression(let_in.scope).unwrap(&mut health);
+                let body = self.lower_expression(let_in.scope);
 
                 lowered_ast::Expression::new(
                     default(),
@@ -756,11 +722,10 @@ impl<'a> Lowerer<'a> {
                 )
             }
             UseIn(_use_in) => {
-                // @Note awkward API
                 Diagnostic::unimplemented("use/in expressions")
                     .primary_span(expression.span)
                     .report(self.reporter);
-                health.taint();
+                self.health.taint();
                 PossiblyErroneous::error()
             }
             CaseAnalysis(analysis) => {
@@ -768,56 +733,44 @@ impl<'a> Lowerer<'a> {
 
                 for case in analysis.cases {
                     cases.push(lowered_ast::Case {
-                        pattern: self.lower_pattern(case.pattern).unwrap(&mut health),
-                        body: self.lower_expression(case.body.clone()).unwrap(&mut health),
+                        pattern: self.lower_pattern(case.pattern),
+                        body: self.lower_expression(case.body.clone()),
                     });
                 }
 
-                let subject = self
-                    .lower_expression(analysis.scrutinee)
-                    .unwrap(&mut health);
+                let scrutinee = self.lower_expression(analysis.scrutinee);
 
                 lowered_ast::Expression::new(
                     attributes,
                     expression.span,
-                    lowered_ast::CaseAnalysis {
-                        scrutinee: subject,
-                        cases,
-                    }
-                    .into(),
+                    lowered_ast::CaseAnalysis { scrutinee, cases }.into(),
                 )
             }
             DoBlock(_block) => {
-                // @Note awkward API!
                 Diagnostic::unimplemented("do blocks")
                     .primary_span(expression.span)
                     .report(self.reporter);
-                health.taint();
+                self.health.taint();
                 PossiblyErroneous::error()
             }
             SequenceLiteral(_sequence) => {
-                // @Note awkward API!
                 Diagnostic::unimplemented("sequence literals")
                     .primary_span(expression.span)
                     .report(self.reporter);
-                health.taint();
+                self.health.taint();
                 PossiblyErroneous::error()
             }
             Error => PossiblyErroneous::error(),
         };
 
-        health.of(expression)
+        expression
     }
 
     /// Lower a pattern.
-    fn lower_pattern(&mut self, pattern: ast::Pattern) -> Outcome<lowered_ast::Pattern> {
+    fn lower_pattern(&mut self, pattern: ast::Pattern) -> lowered_ast::Pattern {
         use ast::PatternKind::*;
 
-        let mut health = Health::Untainted;
-
-        let attributes = self
-            .lower_attributes(&pattern.attributes, &pattern)
-            .unwrap(&mut health);
+        let attributes = self.lower_attributes(&pattern.attributes, &pattern);
 
         let pattern = match pattern.value {
             // @Task avoid re-boxing!
@@ -837,11 +790,11 @@ impl<'a> Lowerer<'a> {
                     Diagnostic::unimplemented("named arguments")
                         .primary_span(binder)
                         .report(self.reporter);
-                    health.taint();
+                    self.health.taint();
                 }
 
-                let callee = self.lower_pattern(application.callee).unwrap(&mut health);
-                let argument = self.lower_pattern(application.argument).unwrap(&mut health);
+                let callee = self.lower_pattern(application.callee);
+                let argument = self.lower_pattern(application.argument);
 
                 lowered_ast::Pattern::new(
                     attributes,
@@ -858,31 +811,29 @@ impl<'a> Lowerer<'a> {
                 Diagnostic::unimplemented("sequence literal patterns")
                     .primary_span(pattern.span)
                     .report(self.reporter);
-                // @Note awkward API!
-                health.taint();
+                self.health.taint();
                 PossiblyErroneous::error()
             }
         };
 
-        health.of(pattern)
+        pattern
     }
 
     /// Lower attributes.
     // @Task filter out documentation attributes if !options.keep_documentation_comments
     fn lower_attributes(
-        &self,
+        &mut self,
         unchecked_attributes: &[ast::Attribute],
         target: &impl Target,
-    ) -> Outcome<Attributes> {
+    ) -> Attributes {
         use lowered_ast::Attribute;
 
         let actual_targets = target.as_targets();
-        let mut health = Health::Untainted;
         let mut conforming_attributes = Attributes::default();
 
         for attribute in unchecked_attributes {
             let Ok(attribute) = Attribute::parse(attribute, &self.options, &self.map.borrow(), self.reporter) else {
-                health.taint();
+                self.health.taint();
                 continue;
             };
 
@@ -906,7 +857,7 @@ impl<'a> Lowerer<'a> {
                             expected_targets.description(),
                         ))
                         .report(self.reporter);
-                    health.taint();
+                    self.health.taint();
                     continue;
                 }
             }
@@ -914,18 +865,17 @@ impl<'a> Lowerer<'a> {
             conforming_attributes.0.push(attribute);
         }
 
-        let attributes = self
-            .check_attribute_synergy(conforming_attributes)
-            .unwrap(&mut health);
+        let attributes = self.check_attribute_synergy(conforming_attributes);
 
-        health &= target.check_attributes(&attributes, self.reporter);
+        target
+            .check_attributes(&attributes, self.reporter)
+            .stain(&mut self.health);
 
-        health.of(attributes)
+        attributes
     }
 
-    fn check_attribute_synergy(&self, conforming_attributes: Attributes) -> Outcome<Attributes> {
+    fn check_attribute_synergy(&mut self, conforming_attributes: Attributes) -> Attributes {
         let mut attributes = Attributes::default();
-        let mut health = Health::Untainted;
 
         // search for conflicting or duplicate attributes
         for attribute in &conforming_attributes.0 {
@@ -953,13 +903,13 @@ impl<'a> Lowerer<'a> {
                         "duplicate or conflicting attribute",
                     )
                     .report(self.reporter);
-                health.taint();
+                self.health.taint();
             }
         }
 
         // no further checks necessary if empty
         if attributes.0.is_empty() {
-            return health.of(attributes);
+            return attributes;
         }
 
         fn check_mutual_exclusivity<Q: Query>(
@@ -991,25 +941,33 @@ impl<'a> Lowerer<'a> {
         {
             use AttributeName::*;
 
-            health &= check_mutual_exclusivity(Intrinsic.or(Known), &attributes, self.reporter);
-            health &= check_mutual_exclusivity(
+            check_mutual_exclusivity(Intrinsic.or(Known), &attributes, self.reporter)
+                .stain(&mut self.health);
+            check_mutual_exclusivity(
                 DocAttributes.or(DocReservedIdentifiers),
                 &attributes,
                 self.reporter,
-            );
-            health &= check_mutual_exclusivity(
+            )
+            .stain(&mut self.health);
+            check_mutual_exclusivity(
                 DocAttribute.or(DocReservedIdentifier),
                 &attributes,
                 self.reporter,
-            );
-            health &= check_mutual_exclusivity(Moving.or(Abstract), &attributes, self.reporter);
-            health &= check_mutual_exclusivity(
+            )
+            .stain(&mut self.health);
+
+            check_mutual_exclusivity(Moving.or(Abstract), &attributes, self.reporter)
+                .stain(&mut self.health);
+            check_mutual_exclusivity(
                 Int.or(Int32).or(Int64).or(Nat).or(Nat32).or(Nat64),
                 &attributes,
                 self.reporter,
-            );
-            health &= check_mutual_exclusivity(Rune.or(Text), &attributes, self.reporter);
-            health &= check_mutual_exclusivity(List.or(Vector), &attributes, self.reporter);
+            )
+            .stain(&mut self.health);
+            check_mutual_exclusivity(Rune.or(Text), &attributes, self.reporter)
+                .stain(&mut self.health);
+            check_mutual_exclusivity(List.or(Vector), &attributes, self.reporter)
+                .stain(&mut self.health);
         }
 
         for attribute in attributes.filter(Predicate(|attribute| !attribute.is_fully_implemented()))
@@ -1017,7 +975,7 @@ impl<'a> Lowerer<'a> {
             Diagnostic::unimplemented(format!("attribute `{}`", attribute.value.name()))
                 .primary_span(attribute)
                 .report(self.reporter);
-            health.taint();
+            self.health.taint();
         }
 
         // @Task replace this concept with a feature system
@@ -1031,11 +989,11 @@ impl<'a> Lowerer<'a> {
                     ))
                     .primary_span(attribute)
                     .report(self.reporter);
-                health.taint();
+                self.health.taint();
             }
         }
 
-        health.of(attributes)
+        attributes
     }
 
     // @Beacon @Beacon @Beacon @Task abstract over literal parsing and move to
@@ -1096,27 +1054,24 @@ impl<'a> Lowerer<'a> {
         &mut self,
         parameters: ast::Parameters,
         type_annotation: ast::Expression,
-    ) -> Outcome<lowered_ast::Expression> {
-        let mut health = Health::Untainted;
-
-        let mut expression = self.lower_expression(type_annotation).unwrap(&mut health);
+    ) -> lowered_ast::Expression {
+        let mut expression = self.lower_expression(type_annotation);
 
         for parameter in parameters.into_iter().rev() {
-            if parameter.value.type_annotation.is_none() {
-                Diagnostic::missing_mandatory_type_annotation(
-                    &parameter,
-                    AnnotationTarget::Parameter(&parameter),
-                )
-                .report(self.reporter);
-                health.taint();
-            }
-            // @Note awkward API! + the code above ^
-            let parameter_type_annotation =
-                Outcome::from(parameter.value.type_annotation).unwrap(&mut health);
+            let parameter_type_annotation = match parameter.value.type_annotation {
+                Some(type_annotation) => type_annotation,
+                None => {
+                    Diagnostic::missing_mandatory_type_annotation(
+                        &parameter,
+                        AnnotationTarget::Parameter(&parameter),
+                    )
+                    .report(self.reporter);
+                    self.health.taint();
+                    PossiblyErroneous::error()
+                }
+            };
 
-            let parameter_type_annotation = self
-                .lower_expression(parameter_type_annotation)
-                .unwrap(&mut health);
+            let parameter_type_annotation = self.lower_expression(parameter_type_annotation);
 
             expression = lowered_ast::Expression::new(
                 default(),
@@ -1132,7 +1087,7 @@ impl<'a> Lowerer<'a> {
             );
         }
 
-        health.of(expression)
+        expression
     }
 }
 
@@ -1157,10 +1112,10 @@ struct DeclarationContext {
 }
 
 const NAT32_INTERVAL_REPRESENTATION: &str = "[0, 2^32-1]";
-const NAT64_INTERVAL_REPRESENTATION: &str = "[0, 2^64-1]";
-const NAT_INTERVAL_REPRESENTATION: &str = "[0, infinity)";
-const INT32_INTERVAL_REPRESENTATION: &str = "[-2^31, 2^31-1]";
-const INT64_INTERVAL_REPRESENTATION: &str = "[-2^63, 2^63-1]";
+// const NAT64_INTERVAL_REPRESENTATION: &str = "[0, 2^64-1]";
+// const NAT_INTERVAL_REPRESENTATION: &str = "[0, infinity)";
+// const INT32_INTERVAL_REPRESENTATION: &str = "[-2^31, 2^31-1]";
+// const INT64_INTERVAL_REPRESENTATION: &str = "[-2^63, 2^63-1]";
 
 // @Beacon @Beacon @Task don't use reporter+Result<_> here but
 // a custom error type (w/o ::Unrecoverable)
@@ -1388,7 +1343,7 @@ impl lowered_ast::attributes::AttributeKind {
                         .report(reporter);
                 }
             })
-            .and_then(|attributes| health.of(attributes).into())
+            .and_then(|attributes| Result::stained(attributes, health))
     }
 }
 

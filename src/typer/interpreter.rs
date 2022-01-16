@@ -26,7 +26,7 @@ use crate::{
         BuildSession,
     },
     resolver::Capsule,
-    span::{Span, Spanning},
+    span::Span,
     syntax::{ast::Explicit, lowered_ast::Attributes},
 };
 use scope::{FunctionScope, ValueView};

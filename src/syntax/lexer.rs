@@ -312,7 +312,7 @@ impl<'a> Lexer<'a> {
         }
         self.add(EndOfInput);
 
-        Ok(self.health.of(self.tokens))
+        Ok(Outcome::new(self.tokens, self.health))
     }
 
     fn add_opening_bracket(&mut self, bracket: Bracket) {

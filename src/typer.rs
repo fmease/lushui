@@ -5,7 +5,7 @@
 
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
-    error::{Health, Result},
+    error::{Health, Result, Stain},
     format::{pluralize, DisplayWith, QuoteExt},
     hir::{self, expr, Declaration, Expression, Identifier},
     package::{
@@ -35,9 +35,15 @@ pub fn check(
     reporter: &Reporter,
 ) -> Result {
     let mut typer = Typer::new(capsule, session, reporter);
-    let first_pass = typer.start_infer_types_in_declaration(declaration, Context::default());
-    typer.health &= first_pass;
-    first_pass.and(typer.infer_types_of_out_of_order_bindings())
+
+    typer
+        .start_infer_types_in_declaration(declaration, Context::default())
+        .stain(&mut typer.health);
+    typer
+        .infer_types_of_out_of_order_bindings()
+        .stain(&mut typer.health);
+
+    typer.health.into()
 }
 
 /// The state of the typer.
@@ -119,29 +125,19 @@ impl<'a> Typer<'a> {
                 } else {
                     let constructors = type_.constructors.as_ref().unwrap();
 
-                    // @Task @Beacon move to resolver
-                    if let Some(known) = declaration.attributes.span(AttributeName::Known) {
-                        self.session.register_known_type(
-                            &type_.binder,
-                            constructors
-                                .iter()
-                                .map(|declaration| declaration.constructor().unwrap())
-                                .collect(),
-                            known,
-                            self.reporter,
-                        )?;
-                    }
-
+                    // @Beacon @Task rewrite this Health logic into something more readable!
                     return constructors
                         .iter()
                         .fold(Health::Untainted, |health, constructor| {
-                            health
-                                & self.start_infer_types_in_declaration(
+                            health.and(
+                                self.start_infer_types_in_declaration(
                                     constructor,
                                     Context {
                                         owning_data_type: Some(type_.binder.clone()),
                                     },
                                 )
+                                .into(),
+                            )
                         })
                         .into();
                 }
@@ -157,16 +153,17 @@ impl<'a> Typer<'a> {
                         owner_data_type,
                     },
                 })?;
-
-                // @Beacon @Task register field projections
             }
             Module(module) => {
+                // @Task rewrite this Health logic into something more readable!
                 return module
                     .declarations
                     .iter()
                     .fold(Health::Untainted, |health, declaration| {
-                        health
-                            & self.start_infer_types_in_declaration(declaration, Context::default())
+                        health.and(
+                            self.start_infer_types_in_declaration(declaration, Context::default())
+                                .into(),
+                        )
                     })
                     .into();
             }

@@ -10,7 +10,7 @@
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     entity::{Entity, EntityKind},
-    error::{Health, PossiblyErroneous, ReportedExt, Result},
+    error::{Health, PossiblyErroneous, ReportedExt, Result, Stain, Stained},
     format::{pluralize, unordered_listing, Conjunction, DisplayWith, QuoteExt},
     hir::{self, expr, DeBruijnIndex, DeclarationIndex, Identifier, Index, LocalDeclarationIndex},
     package::BuildSession,
@@ -44,7 +44,7 @@ pub const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
 pub fn resolve_declarations(
     capsule_root: lowered_ast::Declaration,
     capsule: &mut Capsule,
-    session: &BuildSession,
+    session: &mut BuildSession,
     reporter: &Reporter,
 ) -> Result<hir::Declaration> {
     let mut resolver = ResolverMut::new(capsule, session, reporter);
@@ -64,7 +64,7 @@ pub fn resolve_declarations(
 
     let declaration = resolver.finish_resolve_declaration(capsule_root, None, Context::default());
 
-    Result::from(resolver.health).and(declaration)
+    Result::stained(declaration, resolver.health)
 }
 
 // @Task docs: mention that the current capsule should be pre-populated before calling this
@@ -87,7 +87,7 @@ pub(crate) fn resolve_path(
 // lifetime for Resolver.capsule?
 struct ResolverMut<'a> {
     capsule: &'a mut Capsule,
-    session: &'a BuildSession,
+    session: &'a mut BuildSession,
     reporter: &'a Reporter,
     /// For resolving out of order use-declarations.
     partially_resolved_use_bindings: HashMap<LocalDeclarationIndex, PartiallyResolvedUseBinding>,
@@ -95,7 +95,11 @@ struct ResolverMut<'a> {
 }
 
 impl<'a> ResolverMut<'a> {
-    fn new(capsule: &'a mut Capsule, session: &'a BuildSession, reporter: &'a Reporter) -> Self {
+    fn new(
+        capsule: &'a mut Capsule,
+        session: &'a mut BuildSession,
+        reporter: &'a Reporter,
+    ) -> Self {
         Self {
             capsule,
             session,
@@ -187,19 +191,21 @@ impl<'a> ResolverMut<'a> {
                                         Transparency::Transparent
                                     };
 
-                                health
-                                    & self
-                                        .start_resolve_declaration(
-                                            constructor,
-                                            Some(module),
-                                            Context {
-                                                parent_data_binding: Some((
-                                                    namespace,
-                                                    Some(transparency),
-                                                )),
-                                            },
-                                        )
-                                        .map_err(|_| ())
+                                // @Beacon @Task rewrite this to something more readable!
+                                health.and(
+                                    self.start_resolve_declaration(
+                                        constructor,
+                                        Some(module),
+                                        Context {
+                                            parent_data_binding: Some((
+                                                namespace,
+                                                Some(transparency),
+                                            )),
+                                        },
+                                    )
+                                    .map_err(|_| ())
+                                    .into(),
+                                )
                             });
                     return Result::from(health).map_err(|_| RegistrationError::Unrecoverable);
                 }
@@ -242,14 +248,16 @@ impl<'a> ResolverMut<'a> {
                         .declarations
                         .iter()
                         .fold(Health::Untainted, |health, declaration| {
-                            health
-                                & self
-                                    .start_resolve_declaration(
-                                        declaration,
-                                        Some(index),
-                                        Context::default(),
-                                    )
-                                    .map_err(|_| ())
+                            // @Beacon @Task rewrite this into something more readable
+                            health.and(
+                                self.start_resolve_declaration(
+                                    declaration,
+                                    Some(index),
+                                    Context::default(),
+                                )
+                                .map_err(|_| ())
+                                .into(),
+                            )
                         });
 
                 return Result::from(health).map_err(|_| RegistrationError::Unrecoverable);
@@ -297,28 +305,27 @@ impl<'a> ResolverMut<'a> {
         declaration: lowered_ast::Declaration,
         module: Option<LocalDeclarationIndex>,
         context: Context,
-    ) -> Result<hir::Declaration> {
+    ) -> hir::Declaration {
         use lowered_ast::DeclarationKind::*;
 
-        Ok(match declaration.value {
+        match declaration.value {
             Function(function) => {
                 let module = module.unwrap();
-
-                let type_annotation = self
-                    .as_ref()
-                    .resolve_expression(function.type_annotation, &FunctionScope::Module(module));
-
-                let expression = function
-                    .expression
-                    .map(|expression| {
-                        self.as_ref()
-                            .resolve_expression(expression, &FunctionScope::Module(module))
-                    })
-                    .transpose();
 
                 let binder = self
                     .as_ref()
                     .reobtain_resolved_identifier::<target::Value>(&function.binder, module);
+
+                let type_annotation = self
+                    .as_ref()
+                    .resolve_expression(function.type_annotation, &FunctionScope::Module(module))
+                    .stain(&mut self.health);
+
+                let expression = function.expression.map(|expression| {
+                    self.as_ref()
+                        .resolve_expression(expression, &FunctionScope::Module(module))
+                        .stain(&mut self.health)
+                });
 
                 if module == self.capsule.local_root()
                     && self.capsule.is_executable()
@@ -331,8 +338,8 @@ impl<'a> ResolverMut<'a> {
                     declaration.attributes,
                     declaration.span,
                     hir::Function {
-                        type_annotation: type_annotation?,
-                        expression: expression?,
+                        type_annotation,
+                        expression,
                         binder,
                     }
                     .into(),
@@ -341,16 +348,17 @@ impl<'a> ResolverMut<'a> {
             Data(type_) => {
                 let module = module.unwrap();
 
-                let type_annotation = self
-                    .as_ref()
-                    .resolve_expression(type_.type_annotation, &FunctionScope::Module(module));
-
                 // @Beacon @Question wouldn't it be great if that method returned a
                 // LocalDeclarationIndex instead of an Identifier?
                 // or maybe even a *LocalIdentifier?
                 let binder = self
                     .as_ref()
                     .reobtain_resolved_identifier::<target::Value>(&type_.binder, module);
+
+                let type_annotation = self
+                    .as_ref()
+                    .resolve_expression(type_.type_annotation, &FunctionScope::Module(module))
+                    .stain(&mut self.health);
 
                 let constructors = type_.constructors.map(|constructors| {
                     constructors
@@ -367,15 +375,30 @@ impl<'a> ResolverMut<'a> {
                                 },
                             )
                         })
-                        .collect()
+                        .collect::<Vec<_>>()
                 });
+
+                if let Some(known) = declaration.attributes.span(AttributeName::Known) {
+                    self.session
+                        .register_known_type(
+                            &binder,
+                            &constructors
+                                .iter()
+                                .flatten()
+                                .map(|declaration| &declaration.constructor().unwrap().binder)
+                                .collect::<Vec<_>>(),
+                            known,
+                            self.reporter,
+                        )
+                        .stain(&mut self.health);
+                }
 
                 hir::Declaration::new(
                     declaration.attributes,
                     declaration.span,
                     hir::Data {
-                        constructors: constructors.transpose()?,
-                        type_annotation: type_annotation?,
+                        constructors,
+                        type_annotation,
                         binder,
                     }
                     .into(),
@@ -384,15 +407,15 @@ impl<'a> ResolverMut<'a> {
             Constructor(constructor) => {
                 let module = module.unwrap();
 
-                let type_annotation = self.as_ref().resolve_expression(
-                    constructor.type_annotation,
-                    &FunctionScope::Module(module),
-                )?;
-
                 let binder = self.as_ref().reobtain_resolved_identifier::<target::Value>(
                     &constructor.binder,
                     context.parent_data_binding.unwrap().0,
                 );
+
+                let type_annotation = self
+                    .as_ref()
+                    .resolve_expression(constructor.type_annotation, &FunctionScope::Module(module))
+                    .stain(&mut self.health);
 
                 hir::Declaration::new(
                     declaration.attributes,
@@ -416,26 +439,17 @@ impl<'a> ResolverMut<'a> {
                     None => self.capsule.local_root(),
                 };
 
-                let mut health = Health::Untainted;
-
-                // @Note awkward API
                 let declarations = submodule
                     .declarations
                     .into_iter()
-                    .flat_map(|declaration| {
-                        let declaration = self.finish_resolve_declaration(
+                    .map(|declaration| {
+                        self.finish_resolve_declaration(
                             declaration,
                             Some(index),
                             Context::default(),
-                        );
-                        if declaration.is_err() {
-                            health.taint();
-                        }
-                        declaration
+                        )
                     })
                     .collect();
-
-                Result::from(health)?;
 
                 hir::Declaration::new(
                     declaration.attributes,
@@ -468,7 +482,7 @@ impl<'a> ResolverMut<'a> {
                 )
             }
             Error => PossiblyErroneous::error(),
-        })
+        }
     }
 
     /// Resolve use-bindings.
@@ -724,12 +738,12 @@ impl<'a> Resolver<'a> {
                 });
             }
             TypeLiteral => expr! { Type { expression.attributes, expression.span } },
-            NumberLiteral(number) => {
+            NumberLiteral(_number) => {
                 todo!()
 
                 // expr! { Number(expression.attributes, expression.span; number) }
             }
-            TextLiteral(text) => {
+            TextLiteral(_text) => {
                 todo!()
 
                 // expr! { Text(expression.attributes, expression.span; text) }
@@ -813,12 +827,12 @@ impl<'a> Resolver<'a> {
         let mut binders: Vec<ast::Identifier> = Vec::new();
 
         let pattern = match pattern.value.clone() {
-            NumberLiteral(number) => {
+            NumberLiteral(_number) => {
                 todo!()
 
                 // pat! { Number(pattern.attributes, pattern.span; number) }
             }
-            TextLiteral(text) => {
+            TextLiteral(_text) => {
                 todo!()
 
                 //  pat! { Text(pattern.attributes, pattern.span; text) }

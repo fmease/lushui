@@ -282,7 +282,7 @@ fn build_package(
 
         // @Beacon @Task fix this ugly mess, create clean helpers
         let module_name = Spanned::new(default(), capsule.name().clone()).into();
-        let declaration =
+        let capsule_root =
             parser::parse_file(&tokens, source_file, module_name, map.clone(), reporter)?;
 
         let duration = time.elapsed();
@@ -290,7 +290,7 @@ fn build_package(
         assert!(token_health.is_untainted()); // parsing succeeded
 
         if capsule.is_goal(&session) && options.emit_ast {
-            eprintln!("{declaration:#?}");
+            eprintln!("{capsule_root:#?}");
         }
 
         print_pass_duration("Parsing", duration, &options);
@@ -301,24 +301,19 @@ fn build_package(
             internal_features_enabled: options.internals || capsule.is_core_library(&session),
             keep_documentation_comments: matches!(mode, BuildMode::Document { .. }),
         };
-        let outcome!(mut declarations, health_of_lowerer) =
-            lowerer::lower(declaration, lowering_options, map.clone(), reporter);
+        let capsule_root =
+            lowerer::lower_file(capsule_root, lowering_options, map.clone(), reporter)?;
         let duration = time.elapsed();
-
-        let capsule_root = declarations.pop().unwrap();
 
         if capsule.is_goal(&session) && options.emit_lowered_ast {
             eprintln!("{}", capsule_root);
         }
 
         print_pass_duration("Lowering", duration, &options);
-        if health_of_lowerer.is_tainted() {
-            return Err(());
-        }
         check_pass_restriction!(PassRestriction::Lowerer);
         let time = Instant::now();
         let capsule_root =
-            resolver::resolve_declarations(capsule_root, &mut capsule, &session, reporter)?;
+            resolver::resolve_declarations(capsule_root, &mut capsule, &mut session, reporter)?;
         let duration = time.elapsed();
 
         if options.emit_hir {

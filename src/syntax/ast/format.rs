@@ -74,12 +74,6 @@ mod format_struct {
             }
         }
 
-        // @Note only used once, ... remove?
-        pub(super) fn inline(mut self) -> Self {
-            self.inline = true;
-            self
-        }
-
         pub(super) fn name(mut self, name: &str) -> Self {
             self.result = self
                 .result

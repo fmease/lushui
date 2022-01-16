@@ -3,7 +3,7 @@ use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     entity::{Entity, EntityKind},
     error::Result,
-    hir::{expr, Constructor, DeclarationIndex, Expression, ExpressionKind, Identifier},
+    hir::{expr, DeclarationIndex, Expression, ExpressionKind, Identifier},
     resolver::Capsule,
     span::Span,
     syntax::{
@@ -115,10 +115,10 @@ impl BuildSession {
             .into_expression())
     }
 
-    pub(crate) fn register_known_type<'a>(
+    pub(crate) fn register_known_type(
         &mut self,
         binder: &Identifier,
-        constructors: Vec<&'a Constructor>,
+        constructors: &[&Identifier],
         attribute: Span,
         reporter: &Reporter,
     ) -> Result {
@@ -153,12 +153,11 @@ impl BuildSession {
         self.known_bindings.insert(binding, binder.clone());
 
         let mut constructor = |known: KnownBinding| {
-            if let Some(constructor) = constructors
-                .iter()
-                .find(|constructor| constructor.binder.as_str() == known.name())
+            if let Some(&constructor) = constructors
+                .into_iter()
+                .find(|constructor| constructor.as_str() == known.name())
             {
-                self.known_bindings
-                    .insert(known, constructor.binder.clone());
+                self.known_bindings.insert(known, constructor.clone());
             }
         };
 
