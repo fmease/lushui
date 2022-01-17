@@ -677,6 +677,8 @@ pub enum Code {
     E040,
     /// Module header is not the first declaration.
     E041,
+    /// Intrinsic declaration with a body.
+    E042,
     /// Missing program entry.
     E050,
     /// Missing intrinsic binding.

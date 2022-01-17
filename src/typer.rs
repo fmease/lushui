@@ -123,23 +123,19 @@ impl<'a> Typer<'a> {
                         },
                     })?;
                 } else {
-                    let constructors = type_.constructors.as_ref().unwrap();
+                    let health = &mut Health::Untainted;
 
-                    // @Beacon @Task rewrite this Health logic into something more readable!
-                    return constructors
-                        .iter()
-                        .fold(Health::Untainted, |health, constructor| {
-                            health.and(
-                                self.start_infer_types_in_declaration(
-                                    constructor,
-                                    Context {
-                                        owning_data_type: Some(type_.binder.clone()),
-                                    },
-                                )
-                                .into(),
-                            )
-                        })
-                        .into();
+                    for constructor in type_.constructors.as_ref().unwrap() {
+                        self.start_infer_types_in_declaration(
+                            constructor,
+                            Context {
+                                owning_data_type: Some(type_.binder.clone()),
+                            },
+                        )
+                        .stain(health);
+                    }
+
+                    return Result::from(*health);
                 }
             }
             Constructor(constructor) => {
@@ -155,17 +151,14 @@ impl<'a> Typer<'a> {
                 })?;
             }
             Module(module) => {
-                // @Task rewrite this Health logic into something more readable!
-                return module
-                    .declarations
-                    .iter()
-                    .fold(Health::Untainted, |health, declaration| {
-                        health.and(
-                            self.start_infer_types_in_declaration(declaration, Context::default())
-                                .into(),
-                        )
-                    })
-                    .into();
+                let health = &mut Health::Untainted;
+
+                for declaration in &module.declarations {
+                    self.start_infer_types_in_declaration(declaration, Context::default())
+                        .stain(health);
+                }
+
+                return Result::from(*health);
             }
             Use(_) | Error => {}
         }

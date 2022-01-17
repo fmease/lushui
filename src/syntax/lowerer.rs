@@ -868,7 +868,7 @@ impl<'a> Lowerer<'a> {
         let attributes = self.check_attribute_synergy(conforming_attributes);
 
         target
-            .check_attributes(&attributes, self.reporter)
+            .check_attributes(&attributes, &self.map.borrow(), self.reporter)
             .stain(&mut self.health);
 
         attributes

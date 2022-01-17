@@ -5,7 +5,7 @@ use discriminant::Discriminant;
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     error::{PossiblyErroneous, Result},
-    span::{PossiblySpanning, Span, Spanned, Spanning},
+    span::{SourceMap, Span, Spanned, Spanning},
     syntax::ast,
     utility::{condition, obtain, Atom},
 };
@@ -21,7 +21,12 @@ pub(crate) trait Target: Spanning {
 
     /// Target-specific attribute checks
     // @Note weird API
-    fn check_attributes(&self, _attributes: &Attributes, _reporter: &Reporter) -> Result {
+    fn check_attributes(
+        &self,
+        _attributes: &Attributes,
+        _source_map: &SourceMap,
+        _reporter: &Reporter,
+    ) -> Result {
         Ok(())
     }
 }
@@ -55,59 +60,89 @@ impl Target for ast::Declaration {
         }
     }
 
-    fn check_attributes(&self, attributes: &Attributes, reporter: &Reporter) -> Result {
+    fn check_attributes(
+        &self,
+        attributes: &Attributes,
+        map: &SourceMap,
+        reporter: &Reporter,
+    ) -> Result {
         use ast::DeclarationKind::*;
 
-        let (binder, definition_marker, body) = match &self.value {
-            Function(function) => (
-                &function.binder,
-                Spanned::new(
-                    function
-                        .binder
-                        .span()
-                        .fit_end(&function.parameters)
-                        .fit_end(&function.type_annotation)
-                        .end(),
+        let (binder, missing_definition_location, definition_marker, body) = match &self.value {
+            Function(function) => {
+                let missing_definition_location = function
+                    .binder
+                    .span()
+                    .fit_end(&function.parameters)
+                    .fit_end(&function.type_annotation)
+                    .end();
+
+                (
+                    &function.binder,
+                    missing_definition_location,
                     "=",
-                ),
-                function.body.as_ref().map(|expression| expression.span),
-            ),
-            Data(type_) => (
-                &type_.binder,
-                Spanned::new(
-                    type_
-                        .binder
-                        .span()
-                        .fit_end(&type_.parameters)
-                        .fit_end(&type_.type_annotation)
-                        .end(),
+                    function.body.as_ref().map(|expression| {
+                        let eq = missing_definition_location
+                            .between(self.span.end())
+                            .trim_start_matches(|character| character.is_ascii_whitespace(), map);
+
+                        (
+                            eq.merge(expression),
+                            "the body conflicting with the attribute",
+                        )
+                    }),
+                )
+            }
+            Data(type_) => {
+                let missing_definition_location = type_
+                    .binder
+                    .span()
+                    .fit_end(&type_.parameters)
+                    .fit_end(&type_.type_annotation)
+                    .end();
+
+                (
+                    &type_.binder,
+                    missing_definition_location,
                     "of",
-                ),
-                type_
-                    .constructors
-                    .as_ref()
-                    .map(|constructors| constructors.possible_span().unwrap_or(self.span)),
-            ),
+                    type_.constructors.as_ref().map(|constructors| {
+                        let of = missing_definition_location
+                            .between(self.span.end())
+                            .trim_start_matches(|character| character.is_ascii_whitespace(), map);
+
+                        (
+                            // @Bug span does not include trailing closing curly bracket
+                            // @Task define & use Span::expand_end_matches to recover it
+                            of.merge(constructors),
+                            if constructors.is_empty() {
+                                "\
+the body specifying that the data type has no constructors and is therefore uninhabited
+         conflicting with the attribute"
+                            } else {
+                                "\
+the body containing a set of constructors
+         conflicting with the attribute"
+                            },
+                        )
+                    }),
+                )
+            }
             _ => return Ok(()),
         };
 
         match (body, attributes.span(AttributeName::Intrinsic)) {
-            (Some(body), Some(intrinsic)) => {
-                // @Task better labels ("conflicting definition" is non-descriptive and confusing)
+            (Some((body_span, body_label)), Some(intrinsic)) => {
                 Diagnostic::error()
-                    .code(Code::E020)
+                    .code(Code::E042)
                     .message(format!(
-                        "`{}` is defined multiple times in this scope",
-                        binder
+                        "the declaration `{binder}` marked as `intrinsic` has a body",
                     ))
-                    .labeled_primary_span(&body, "conflicting definition")
+                    .labeled_primary_span(body_span, body_label)
                     .labeled_secondary_span(
                         intrinsic,
-                        "conflicting definition",
+                        "marks the declaration as being defined outside of the language",
                     )
-                    .note(format!(
-                        "declaration is marked as `intrinsic` but it also has a body introduced by `{definition_marker}`"
-                    ))
+                    .help("remove either the body or the attribute")
                     .report(reporter);
                 Err(())
             }
@@ -115,7 +150,7 @@ impl Target for ast::Declaration {
                 Diagnostic::error()
                     .code(Code::E012)
                     .message(format!("declaration `{}` has no definition", binder))
-                    .primary_span(definition_marker)
+                    .primary_span(missing_definition_location)
                     .help(format!("provide a definition with `{definition_marker}`"))
                     .report(reporter);
                 Err(())

@@ -133,6 +133,10 @@ mod generic {
         pub(crate) fn trim_end(self, amount: u32) -> Self {
             Self::new(self.start, self.end - amount)
         }
+
+        pub(crate) fn between(self, other: Span<L>) -> Span<L> {
+            Self::new(self.end, other.start)
+        }
     }
 
     impl<const L: Locality> fmt::Debug for Span<L> {
@@ -261,6 +265,37 @@ impl Span {
             None => self,
         }
     }
+
+    pub(crate) fn trim_start_matches(
+        self,
+        predicate: impl Fn(char) -> bool,
+        map: &SourceMap,
+    ) -> Self {
+        let source = map.snippet(self);
+        let trimmed = source.trim_start_matches(predicate);
+        let difference = source.len() - trimmed.len();
+
+        Span::new(self.start + difference.try_into().unwrap(), self.end)
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn trim_end_matches(
+        self,
+        predicate: impl Fn(char) -> bool,
+        map: &SourceMap,
+    ) -> Self {
+        let source = map.snippet(self);
+        let trimmed = source.trim_end_matches(predicate);
+        let difference = source.len() - trimmed.len();
+
+        Span::new(
+            self.start,
+            self.end - ByteIndex::try_from(difference).unwrap(),
+        )
+    }
+
+    // @Task implement expand_{start,end}_matches to expand outwards
+    // we want to use it to expand to leading `{  `s and trailing `  }`s.
 }
 
 impl Spanning for Span {
@@ -349,10 +384,10 @@ mod spanning {
 
     impl<S> PossiblySpanning for Option<S>
     where
-        S: Spanning,
+        S: PossiblySpanning,
     {
         fn possible_span(&self) -> Option<Span> {
-            self.as_ref().map(<_>::span)
+            self.as_ref().and_then(<_>::possible_span)
         }
     }
 
@@ -366,7 +401,7 @@ mod spanning {
     //     }
     // }
 
-    impl<S: Spanning> PossiblySpanning for &'_ Option<S> {
+    impl<S: PossiblySpanning> PossiblySpanning for &'_ Option<S> {
         fn possible_span(&self) -> Option<Span> {
             (**self).possible_span()
         }

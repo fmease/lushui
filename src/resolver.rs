@@ -179,35 +179,27 @@ impl<'a> ResolverMut<'a> {
                 )?;
 
                 if let Some(constructors) = &type_.constructors {
-                    // @Task awkward API: Result <-> Result<(), RegistrationError>
-                    let health =
-                        constructors
-                            .iter()
-                            .fold(Health::Untainted, |health, constructor| {
-                                let transparency =
-                                    if declaration.attributes.contains(AttributeName::Abstract) {
-                                        Transparency::Abstract
-                                    } else {
-                                        Transparency::Transparent
-                                    };
+                    let health = &mut Health::Untainted;
 
-                                // @Beacon @Task rewrite this to something more readable!
-                                health.and(
-                                    self.start_resolve_declaration(
-                                        constructor,
-                                        Some(module),
-                                        Context {
-                                            parent_data_binding: Some((
-                                                namespace,
-                                                Some(transparency),
-                                            )),
-                                        },
-                                    )
-                                    .map_err(|_| ())
-                                    .into(),
-                                )
-                            });
-                    return Result::from(health).map_err(|_| RegistrationError::Unrecoverable);
+                    for constructor in constructors {
+                        let transparency =
+                            match declaration.attributes.contains(AttributeName::Abstract) {
+                                true => Transparency::Abstract,
+                                false => Transparency::Transparent,
+                            };
+
+                        self.start_resolve_declaration(
+                            constructor,
+                            Some(module),
+                            Context {
+                                parent_data_binding: Some((namespace, Some(transparency))),
+                            },
+                        )
+                        .map_err(|_| ())
+                        .stain(health);
+                    }
+
+                    return Result::from(*health).map_err(|_| RegistrationError::Unrecoverable);
                 }
             }
             Constructor(constructor) => {
@@ -242,25 +234,15 @@ impl<'a> ResolverMut<'a> {
                     module,
                 )?;
 
-                // @Note awkward API
-                let health =
-                    submodule
-                        .declarations
-                        .iter()
-                        .fold(Health::Untainted, |health, declaration| {
-                            // @Beacon @Task rewrite this into something more readable
-                            health.and(
-                                self.start_resolve_declaration(
-                                    declaration,
-                                    Some(index),
-                                    Context::default(),
-                                )
-                                .map_err(|_| ())
-                                .into(),
-                            )
-                        });
+                let health = &mut Health::Untainted;
 
-                return Result::from(health).map_err(|_| RegistrationError::Unrecoverable);
+                for declaration in &submodule.declarations {
+                    self.start_resolve_declaration(declaration, Some(index), Context::default())
+                        .map_err(|_| ())
+                        .stain(health);
+                }
+
+                return Result::from(*health).map_err(|_| RegistrationError::Unrecoverable);
             }
             Use(use_) => {
                 // there is always a root module
