@@ -470,7 +470,7 @@ impl From<Application<Pattern>> for PatternKind {
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct NumberLiteral {
     pub path: Option<Path>,
-    pub literal: Atom,
+    pub literal: Spanned<Atom>,
 }
 
 #[derive(Clone)]
@@ -493,7 +493,7 @@ pub struct SequenceLiteral<T> {
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct TextLiteral {
     pub path: Option<Path>,
-    pub literal: Atom,
+    pub literal: Spanned<Atom>,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]

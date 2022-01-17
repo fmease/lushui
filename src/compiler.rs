@@ -20,7 +20,7 @@ use crate::{
 use index_map::{Index as _, IndexMap};
 use instruction::{Chunk, ChunkIndex, Instruction};
 use staticvec::StaticVec;
-use std::default::default;
+use std::{default::default, fmt};
 
 #[derive(PartialEq, Eq)]
 enum LambdaParent {
@@ -229,7 +229,7 @@ impl<'a> Compiler<'a> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 // very @Temporary data structure (too much wasted memory)
 enum Value {
     Number(Number),
@@ -238,6 +238,16 @@ enum Value {
         chunk: ChunkIndex,
         captures: Vec<()>,
     },
+}
+
+impl fmt::Debug for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Number(number) => write!(f, "{number}"),
+            Self::Text(text) => write!(f, "{text}"),
+            Self::Closure { chunk, captures } => write!(f, "?(closure {chunk:?} {captures:?})"),
+        }
+    }
 }
 
 // @Temporary

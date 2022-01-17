@@ -251,11 +251,8 @@ fn format_lower_expression(
 
     match &expression.value {
         Type => write!(f, "Type"),
-        Number(literal) => write!(f, "{}", literal),
-        // @Bug this uses Rust's way of printing strings, not Lushui's:
-        // The escape sequences differ
-        // @Task use custom escaping logic
-        Text(literal) => write!(f, "{:?}", literal),
+        Number(literal) => write!(f, "{literal}"),
+        Text(literal) => write!(f, "{literal}"),
         Binding(binding) => write!(
             f,
             "{}",
@@ -295,8 +292,8 @@ impl DisplayWith for Pattern {
         use super::PatternKind::*;
 
         match &self.value {
-            Number(number) => write!(f, "{}", number),
-            Text(text) => write!(f, "{:?}", text),
+            Number(number) => write!(f, "{number}"),
+            Text(text) => write!(f, "{text}"),
             Binding(binding) => write!(
                 f,
                 "{}",
@@ -327,6 +324,16 @@ impl fmt::Display for super::Number {
         }
     }
 }
+
+impl fmt::Display for super::Text {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            // @Task don't use Rust's Debug impl for str!
+            super::Text::Text(text) => write!(f, "{text:?}"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use crate::{

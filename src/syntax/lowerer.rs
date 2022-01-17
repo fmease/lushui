@@ -986,59 +986,6 @@ impl<'a> Lowerer<'a> {
         attributes
     }
 
-    // @Beacon @Beacon @Beacon @Task abstract over literal parsing and move to
-    // a module in the resolver/typer
-    // fn lower_number_literal(
-    //     &mut self,
-    //     number: String,
-    //     span: Span,
-    //     attributes: &Attributes,
-    // ) -> Result<Number> {
-    //     (if attributes.contains(AttributeName::Nat32) {
-    //         number
-    //             .parse()
-    //             .map_err(|_| ("Nat32", NAT32_INTERVAL_REPRESENTATION))
-    //             .map(Number::Nat32)
-    //     } else if attributes.contains(AttributeName::Nat64) {
-    //         number
-    //             .parse()
-    //             .map_err(|_| ("Nat64", NAT64_INTERVAL_REPRESENTATION))
-    //             .map(Number::Nat64)
-    //     } else if attributes.contains(AttributeName::Int) {
-    //         Ok(Number::Int(number.parse().unwrap()))
-    //     } else if attributes.contains(AttributeName::Int32) {
-    //         number
-    //             .parse()
-    //             .map_err(|_| ("Int32", INT32_INTERVAL_REPRESENTATION))
-    //             .map(Number::Int32)
-    //     } else if attributes.contains(AttributeName::Int64) {
-    //         number
-    //             .parse()
-    //             .map_err(|_| ("Int64", INT64_INTERVAL_REPRESENTATION))
-    //             .map(Number::Int64)
-    //     } else {
-    //         // and optionally attributes.has(AttributeKind::nat)
-    //         number
-    //             .parse()
-    //             .map_err(|_| ("Nat", NAT_INTERVAL_REPRESENTATION))
-    //             .map(Number::Nat)
-    //     })
-    //     .map_err(|(type_name, interval)| {
-    //         Diagnostic::error()
-    //             .code(Code::E007)
-    //             .message(format!(
-    //                 "number literal `{}` does not fit type `{}`",
-    //                 number, type_name
-    //             ))
-    //             .primary_span(span)
-    //             .note(format!(
-    //                 "values of this type must fit integer interval {}",
-    //                 interval
-    //             ))
-    //             .report(self.reporter);
-    //     })
-    // }
-
     /// Lower annotated parameters.
     fn lower_parameters_to_annotated_ones(
         &mut self,
@@ -1101,11 +1048,8 @@ struct DeclarationContext {
     inline_modules: Vec<String>,
 }
 
+// @Task dedup! (also found in the resolver/literal)
 const NAT32_INTERVAL_REPRESENTATION: &str = "[0, 2^32-1]";
-// const NAT64_INTERVAL_REPRESENTATION: &str = "[0, 2^64-1]";
-// const NAT_INTERVAL_REPRESENTATION: &str = "[0, infinity)";
-// const INT32_INTERVAL_REPRESENTATION: &str = "[-2^31, 2^31-1]";
-// const INT64_INTERVAL_REPRESENTATION: &str = "[-2^63, 2^63-1]";
 
 // @Beacon @Beacon @Task don't use reporter+Result<_> here but
 // a custom error type (w/o ::Unrecoverable)

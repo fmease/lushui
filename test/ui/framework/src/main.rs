@@ -104,7 +104,7 @@ impl Application {
                     .takes_value(true)
                     .validator(|input| {
                         NonZeroUsize::from_str(&input)
-                            .map(|_| ())
+                            .map(drop)
                             .map_err(|error| error.to_string())
                     })
                     .default_value(&available_parallelism)

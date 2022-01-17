@@ -27,6 +27,7 @@ pub struct BuildSession {
     packages: IndexMap<PackageIndex, Package>,
     goal_capsule: CapsuleIndex,
     goal_package: PackageIndex,
+    // @Task Identifier -> DeclarationIndex
     known_bindings: HashMap<KnownBinding, Identifier>,
     intrinsic_types: HashMap<IntrinsicType, Identifier>,
     intrinsic_functions: HashMap<IntrinsicFunction, IntrinsicFunctionValue>,
@@ -125,8 +126,7 @@ impl BuildSession {
             Diagnostic::error()
                 .code(Code::E039)
                 .message(format!(
-                    "the known binding `{}` is defined multiple times",
-                    binder
+                    "the known binding `{binder}` is defined multiple times",
                 ))
                 .labeled_primary_span(binder, "conflicting definition")
                 .labeled_secondary_span(previous, "previous definition")
@@ -135,7 +135,7 @@ impl BuildSession {
         let Ok(binding) = binder.as_str().parse() else {
             Diagnostic::error()
                 .code(Code::E063)
-                .message(format!("`{}` is not a known binding", binder))
+                .message(format!("`{binder}` is not a known binding"))
                 .primary_span(binder)
                 .secondary_span(attribute)
                 .report(reporter);
@@ -174,6 +174,12 @@ impl BuildSession {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn intrinsic_types(&self) -> impl Iterator<Item = (IntrinsicType, &Identifier)> {
+        self.intrinsic_types
+            .iter()
+            .map(|(&intrinsic, identifier)| (intrinsic, identifier))
     }
 
     pub(crate) fn intrinsic_type(&self, intrinsic: IntrinsicType) -> Option<&Identifier> {

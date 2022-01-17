@@ -1,10 +1,11 @@
 //! The high-level intermediate representation.
 
+pub(crate) use crate::syntax::lowered_ast::Item;
 use crate::{
     error::PossiblyErroneous,
     resolver::{Capsule, FunctionScope},
     span::{SourceFileIndex, Span},
-    syntax::{ast::Explicitness, lowered_ast::Item},
+    syntax::ast::Explicitness,
     typer::interpreter,
     utility::obtain,
 };
@@ -243,7 +244,7 @@ pub type Pattern = Item<PatternKind>;
 #[allow(clippy::box_collection)]
 pub enum PatternKind {
     Number(Box<Number>),
-    Text(Box<String>),
+    Text(Box<Text>),
     Binding(Box<Binding>),
     Binder(Box<Binder>),
     Application(Box<Application<Pattern>>),
@@ -253,6 +254,18 @@ pub enum PatternKind {
 impl PossiblyErroneous for PatternKind {
     fn error() -> Self {
         Self::Error
+    }
+}
+
+impl From<Number> for PatternKind {
+    fn from(number: Number) -> Self {
+        Self::Number(Box::new(number))
+    }
+}
+
+impl From<Text> for PatternKind {
+    fn from(text: Text) -> Self {
+        Self::Text(Box::new(text))
     }
 }
 
@@ -287,7 +300,7 @@ pub struct Application<T> {
     pub argument: T,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Number {
     Nat(crate::utility::Nat),
     Nat32(u32),
@@ -297,7 +310,7 @@ pub enum Number {
     Int64(i64),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Text {
     Text(String),
 }

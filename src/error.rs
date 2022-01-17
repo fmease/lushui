@@ -47,7 +47,7 @@ impl<T> Stain<T> for Outcome<T> {
 
 // @Beacon @Beacon @Task implement this for all Result<T, E> where E: AlreadyReported (…)
 // which is implemented for () and for e.g. RegistrationError (this would allow use to get rid of
-// some .map_err(|_| ()))
+// some .map_err(drop)
 impl<T: PossiblyErroneous> Stain<T> for Result<T> {
     fn stain(self, health: &mut Health) -> T {
         match self {

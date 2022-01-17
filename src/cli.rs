@@ -416,7 +416,7 @@ impl FromStr for UnstableOption {
             "asciidoc" => Self::AsciiDoc,
             "lorem-ipsum" => Self::LoremIpsum(Some(1)),
             _ => match input.split_once('=').ok_or(())? {
-                ("lorem-ipsum", amount) => Self::LoremIpsum(Some(amount.parse().map_err(|_| ())?)),
+                ("lorem-ipsum", amount) => Self::LoremIpsum(Some(amount.parse().map_err(drop)?)),
                 _ => return Err(()),
             },
         })

@@ -181,8 +181,7 @@ impl<'a> Formatter<'a> {
                     .render(&mut self.output);
             }
             Number(literal) => self.write(&literal.to_string()),
-            // @Task use custom escaping logic
-            Text(literal) => self.write(&format!("{literal:?}")),
+            Text(literal) => self.write(&literal.to_string()),
             Binding(binding) => self.format_binder(&binding.0),
             // @Beacon @Temporary @Task just write out the path
             Projection(_projection) => self.write("?(projection)"),
@@ -221,8 +220,7 @@ impl<'a> Formatter<'a> {
 
         match &pattern.value {
             Number(number) => self.write(&number.to_string()),
-            // @Task write custom escaper
-            Text(text) => self.write(&format!("{:?}", text)),
+            Text(text) => self.write(&text.to_string()),
             Binding(binding) => self.format_binder(&binding.0),
             Binder(binder) => {
                 self.write(r"\");

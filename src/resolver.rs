@@ -12,9 +12,9 @@ use crate::{
     entity::{Entity, EntityKind},
     error::{Health, PossiblyErroneous, ReportedExt, Result, Stain, Stained},
     format::{pluralize, unordered_listing, Conjunction, DisplayWith, QuoteExt},
-    hir::{self, DeBruijnIndex, DeclarationIndex, Identifier, Index, LocalDeclarationIndex, Text},
+    hir::{self, DeBruijnIndex, DeclarationIndex, Identifier, Index, LocalDeclarationIndex},
     package::BuildSession,
-    span::Spanning,
+    span::{Span, Spanning},
     syntax::{
         ast::{self, Path},
         lowered_ast::{self, AttributeName},
@@ -26,6 +26,7 @@ pub(crate) use scope::{Capsule, Exposure, FunctionScope, Namespace};
 use scope::{RegistrationError, RestrictedExposure};
 use std::{cmp::Ordering, collections::hash_map::Entry, fmt, sync::Mutex};
 
+mod literal;
 mod scope;
 
 pub const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
@@ -195,7 +196,7 @@ impl<'a> ResolverMut<'a> {
                                 parent_data_binding: Some((namespace, Some(transparency))),
                             },
                         )
-                        .map_err(|_| ())
+                        .map_err(drop)
                         .stain(health);
                     }
 
@@ -238,7 +239,7 @@ impl<'a> ResolverMut<'a> {
 
                 for declaration in &submodule.declarations {
                     self.start_resolve_declaration(declaration, Some(index), Context::default())
-                        .map_err(|_| ())
+                        .map_err(drop)
                         .stain(health);
                 }
 
@@ -372,6 +373,12 @@ impl<'a> ResolverMut<'a> {
                             known,
                             self.reporter,
                         )
+                        .stain(&mut self.health);
+                }
+
+                if let Some(intrinsic) = declaration.attributes.span(AttributeName::Intrinsic) {
+                    self.session
+                        .register_intrinsic_type(binder.clone(), intrinsic, self.reporter)
                         .stain(&mut self.health);
                 }
 
@@ -729,40 +736,10 @@ impl<'a> Resolver<'a> {
                 hir::ExpressionKind::Type,
             ),
             NumberLiteral(number) => {
-                let _namespace = number
-                    .path
-                    .as_ref()
-                    .map(|path| {
-                        // @Task suggest lookalike data types if the path does not refer to one!
-                        self.resolve_path::<target::Any>(path, scope.module().global(self.capsule))
-                            .map_err(|error| self.report_resolution_error(error))
-                    })
-                    .transpose()?;
-
-                // @Task check if namespace is a data type
-
-                // expr! { Number(expression.attributes, expression.span; number) }
-
-                todo!()
+                self.resolve_number_literal(&number, expression.attributes, expression.span, scope)?
             }
             TextLiteral(text) => {
-                let _namespace = text
-                    .path
-                    .as_ref()
-                    .map(|path| {
-                        // @Task suggest lookalike data types if the path does not refer to one!
-                        self.resolve_path::<target::Any>(path, scope.module().global(self.capsule))
-                            .map_err(|error| self.report_resolution_error(error))
-                    })
-                    .transpose()?;
-
-                // @Beacon @Beacon @Beacon @Temporary we actually need to first look at the namespace
-                hir::Expression::new(
-                    expression.attributes,
-                    expression.span,
-                    // @Note to_string: not great
-                    Text::Text(text.literal.to_string()).into(),
-                )
+                self.resolve_text_literal(&text, expression.attributes, expression.span, scope)?
             }
             Path(path) => hir::Expression::new(
                 expression.attributes,
@@ -844,15 +821,11 @@ impl<'a> Resolver<'a> {
         let mut binders: Vec<ast::Identifier> = Vec::new();
 
         let pattern = match pattern.value.clone() {
-            NumberLiteral(_number) => {
-                todo!()
-
-                // pat! { Number(pattern.attributes, pattern.span; number) }
+            NumberLiteral(number) => {
+                self.resolve_number_literal(&number, pattern.attributes, pattern.span, scope)?
             }
-            TextLiteral(_text) => {
-                todo!()
-
-                //  pat! { Text(pattern.attributes, pattern.span; text) }
+            TextLiteral(text) => {
+                self.resolve_text_literal(&text, pattern.attributes, pattern.span, scope)?
             }
             Path(path) => hir::Pattern::new(
                 pattern.attributes,
@@ -893,6 +866,66 @@ impl<'a> Resolver<'a> {
         };
 
         Ok((pattern, binders))
+    }
+
+    fn resolve_number_literal<T>(
+        &self,
+        number: &ast::NumberLiteral,
+        attributes: lowered_ast::Attributes,
+        span: Span,
+        scope: &FunctionScope<'_>,
+    ) -> Result<hir::Item<T>>
+    where
+        T: From<hir::Number>,
+    {
+        let namespace = number
+            .path
+            .as_ref()
+            .map(|path| self.resolve_path_of_literal(path, scope))
+            .transpose()?;
+        let number = literal::resolve_number_literal(
+            number.literal.as_deref(),
+            namespace,
+            self.session,
+            self.reporter,
+        )?;
+        Ok(hir::Item::new(attributes, span, number.into()))
+    }
+
+    fn resolve_text_literal<T>(
+        &self,
+        text: &ast::TextLiteral,
+        attributes: lowered_ast::Attributes,
+        span: Span,
+        scope: &FunctionScope<'_>,
+    ) -> Result<hir::Item<T>>
+    where
+        T: From<hir::Text>,
+    {
+        let namespace = text
+            .path
+            .as_ref()
+            .map(|path| self.resolve_path_of_literal(path, scope))
+            .transpose()?;
+        let text = literal::resolve_text_literal(
+            text.literal.as_deref(),
+            namespace,
+            self.session,
+            self.reporter,
+        )?;
+        Ok(hir::Item::new(attributes, span, text.into()))
+    }
+
+    fn resolve_path_of_literal(
+        &self,
+        path: &ast::Path,
+        scope: &FunctionScope<'_>,
+    ) -> Result<DeclarationIndex> {
+        // @Task suggest lookalike data types if the path does not refer to one!
+        self.resolve_path::<target::Any>(path, scope.module().global(self.capsule))
+            .map_err(|error| self.report_resolution_error(error))
+
+        // @Task check if namespace is a data type
     }
 
     fn look_up(&self, index: DeclarationIndex) -> &'a Entity {

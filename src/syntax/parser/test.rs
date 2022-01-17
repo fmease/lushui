@@ -13,7 +13,7 @@ use super::{
 use crate::{
     diagnostics::reporter::SilentReporter,
     error::outcome,
-    span::{span, SourceFileIndex, SourceMap, Span},
+    span::{span, SourceFileIndex, SourceMap, Span, Spanned},
     syntax::{lexer::lex, parse_file},
 };
 use index_map::Index as _;
@@ -554,7 +554,7 @@ fn bracketed_empty_case_analysis() {
                     span(7, 8),
                     ast::NumberLiteral {
                         path: None,
-                        literal: "1".into(),
+                        literal: Spanned::new(span(7, 8), "1".into()),
                     }
                     .into(),
                 ),
@@ -593,7 +593,7 @@ lengthy-space-filler (case 0 of
                             span(28, 29),
                             ast::NumberLiteral {
                                 path: None,
-                                literal: "0".into(),
+                                literal: Spanned::new(span(28, 29), "0".into()),
                             }
                             .into(),
                         ),
@@ -750,7 +750,7 @@ main =
                                             span(39, 40),
                                             ast::NumberLiteral {
                                                 path: None,
-                                                literal: "0".into(),
+                                                literal: Spanned::new(span(39, 40), "0".into()),
                                             }
                                             .into(),
                                         ),
@@ -766,7 +766,7 @@ main =
                                             span(69, 74),
                                             ast::TextLiteral {
                                                 path: None,
-                                                literal: "bar".into(),
+                                                literal: Spanned::new(span(69, 74), "bar".into()),
                                             }
                                             .into(),
                                         ),
@@ -827,7 +827,7 @@ main = case x of
                                             span(31, 32),
                                             ast::NumberLiteral {
                                                 path: None,
-                                                literal: "0".into(),
+                                                literal: Spanned::new(span(31, 32), "0".into()),
                                             }
                                             .into(),
                                         ),
@@ -843,7 +843,7 @@ main = case x of
                                             span(53, 58),
                                             ast::TextLiteral {
                                                 path: None,
-                                                literal: "bar".into(),
+                                                literal: Spanned::new(span(53, 58), "bar".into()),
                                             }
                                             .into(),
                                         ),

@@ -1027,7 +1027,7 @@ impl<'a> Parser<'a> {
                     token.span,
                     ast::NumberLiteral {
                         path: None,
-                        literal: token.into_number_literal().unwrap(),
+                        literal: Spanned::new(token.span, token.into_number_literal().unwrap()),
                     }
                     .into(),
                 )
@@ -1041,10 +1041,13 @@ impl<'a> Parser<'a> {
                     token.span,
                     ast::TextLiteral {
                         path: None,
-                        literal: token
-                            .into_text_literal()
-                            .unwrap()
-                            .or_else(|error| self.error(|| error))?,
+                        literal: Spanned::new(
+                            token.span,
+                            token
+                                .into_text_literal()
+                                .unwrap()
+                                .or_else(|error| self.error(|| error))?,
+                        ),
                     }
                     .into(),
                 )
@@ -1524,7 +1527,7 @@ impl<'a> Parser<'a> {
                     token.span,
                     ast::NumberLiteral {
                         path: None,
-                        literal: token.into_number_literal().unwrap(),
+                        literal: Spanned::new(token.span, token.into_number_literal().unwrap()),
                     }
                     .into(),
                 ))
@@ -1538,10 +1541,13 @@ impl<'a> Parser<'a> {
                     token.span,
                     ast::TextLiteral {
                         path: None,
-                        literal: token
-                            .into_text_literal()
-                            .unwrap()
-                            .or_else(|error| self.error(|| error))?,
+                        literal: Spanned::new(
+                            token.span,
+                            token
+                                .into_text_literal()
+                                .unwrap()
+                                .or_else(|error| self.error(|| error))?,
+                        ),
                     }
                     .into(),
                 ))
@@ -1755,7 +1761,7 @@ impl<'a> Parser<'a> {
                         path.span().merge(&token),
                         ast::NumberLiteral {
                             path: Some(path),
-                            literal: token.into_number_literal().unwrap(),
+                            literal: Spanned::new(token.span, token.into_number_literal().unwrap()),
                         }
                         .into(),
                     ));
@@ -1769,10 +1775,13 @@ impl<'a> Parser<'a> {
                         path.span().merge(&token),
                         ast::TextLiteral {
                             path: Some(path),
-                            literal: token
-                                .into_text_literal()
-                                .unwrap()
-                                .or_else(|error| self.error(|| error))?,
+                            literal: Spanned::new(
+                                token.span,
+                                token
+                                    .into_text_literal()
+                                    .unwrap()
+                                    .or_else(|error| self.error(|| error))?,
+                            ),
                         }
                         .into(),
                     ));

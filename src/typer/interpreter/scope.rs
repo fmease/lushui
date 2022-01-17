@@ -88,14 +88,6 @@ impl Capsule {
                     reporter,
                 )?;
             }
-            IntrinsicType { binder } => session.register_intrinsic_type(
-                binder,
-                registration
-                    .attributes
-                    .span(AttributeName::Intrinsic)
-                    .unwrap(),
-                reporter,
-            )?,
         }
         Ok(())
     }
@@ -126,9 +118,6 @@ pub(crate) enum BindingRegistrationKind {
     IntrinsicFunction {
         binder: Identifier,
         type_: Expression,
-    },
-    IntrinsicType {
-        binder: Identifier,
     },
 }
 
@@ -173,10 +162,6 @@ impl DisplayWith for BindingRegistration {
                 .debug_struct("IntrinsicFunction")
                 .field("binder", binder)
                 .field("type", &type_.with(context).as_debug())
-                .finish(),
-            IntrinsicType { binder } => f
-                .debug_struct("IntrinsicType")
-                .field("binder", binder)
                 .finish(),
         }
     }

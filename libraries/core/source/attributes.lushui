@@ -38,20 +38,8 @@ data Ignore: Type of
 @(doc-attribute "include")
 data Include: Type of
 
-@(doc-attribute "Int")
-data Int: Type of
-
-@(doc-attribute "Int32")
-data Int32: Type of
-
-@(doc-attribute "Int64")
-data Int64: Type of
-
 @(doc-attribute "known")
 data Known: Type of
-
-@(doc-attribute "List")
-data List: Type of
 
 @(doc-attribute "location")
 data Location: Type of
@@ -59,23 +47,11 @@ data Location: Type of
 @(doc-attribute "moving")
 data Moving: Type of
 
-@(doc-attribute "Nat")
-data Nat: Type of
-
-@(doc-attribute "Nat32")
-data Nat32: Type of
-
-@(doc-attribute "Nat64")
-data Nat64: Type of
-
 @(doc-attribute "public")
 data Public: Type of
 
 @(doc-attribute "recursion-limit")
 data Recursion-Limit: Type of
-
-@(doc-attribute "Rune")
-data Rune: Type of
 
 @(doc-attribute "static")
 data Static: Type of
@@ -83,17 +59,11 @@ data Static: Type of
 @(doc-attribute "test")
 data Test: Type of
 
-@(doc-attribute "Text")
-data Text: Type of
-
 @(doc-attribute "unsafe")
 data Unsafe: Type of
 
 @(doc-attribute "unstable")
 data Unstable: Type of
-
-@(doc-attribute "Vector")
-data Vector: Type of
 
 @(doc-attribute "warn")
 data Warn: Type of

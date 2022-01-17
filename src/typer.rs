@@ -113,17 +113,10 @@ impl<'a> Typer<'a> {
                     },
                 })?;
 
-                if declaration.attributes.contains(AttributeName::Intrinsic) {
-                    self.evaluate_registration(BindingRegistration {
-                        attributes: declaration.attributes.clone(),
-                        kind: BindingRegistrationKind::IntrinsicType {
-                            binder: type_.binder.clone(),
-                        },
-                    })?;
-                } else {
+                if let Some(constructors) = &type_.constructors {
                     let health = &mut Health::Untainted;
 
-                    for constructor in type_.constructors.as_ref().unwrap() {
+                    for constructor in constructors {
                         self.start_infer_types_in_declaration(
                             constructor,
                             Context {
@@ -334,16 +327,6 @@ impl<'a> Typer<'a> {
                     BindingRegistration {
                         attributes: registration.attributes,
                         kind: IntrinsicFunction { binder, type_ },
-                    },
-                    self.session,
-                    self.reporter,
-                )?;
-            }
-            IntrinsicType { binder } => {
-                self.capsule.carry_out(
-                    BindingRegistration {
-                        attributes: registration.attributes,
-                        kind: IntrinsicType { binder },
                     },
                     self.session,
                     self.reporter,

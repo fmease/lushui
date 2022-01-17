@@ -410,7 +410,8 @@ impl Format for super::NumberLiteral {
             .field("path", &self.path)
             .field(
                 "literal",
-                &AdHoc(|f, _| write!(f, "{}", self.literal.color(color::INVALID))),
+                // @Task also print span of literal
+                &AdHoc(|f, _| write!(f, "{}", self.literal.value.color(color::INVALID))),
             )
             .finish()
     }
@@ -432,7 +433,8 @@ impl Format for super::TextLiteral {
             .field("path", &self.path)
             .field(
                 "literal",
-                &AdHoc(|f, _| format_text_literal(&self.literal, f)),
+                // @Task also print span of literal
+                &AdHoc(|f, _| format_text_literal(&self.literal.value, f)),
             )
             .finish()
     }

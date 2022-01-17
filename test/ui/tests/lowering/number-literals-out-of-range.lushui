@@ -1,11 +1,13 @@
 ;;; TEST fail check
 
-use extern.core.nat.Nat
+use extern.core.(nat.Nat nat64.Nat64 int32.Int32)
 
 unleet: Nat = -1337
 
 weird: Careless =
-    accumulate @Nat64 1'000'000'000'000'000'000'000 @Int32 -9'999'999'999
+    accumulate
+        Nat64.1'000'000'000'000'000'000'000
+        Int32.-9'999'999'999
 
 @(recursion-limit 130'454'112'009'021)
 module dummy of

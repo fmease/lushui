@@ -35,7 +35,7 @@ then_ (o: Ordering) (p: Ordering): Ordering =
 @public
 to-int (o: Ordering): Int =
     case o of
-        less => @Int -1
-        equal => @Int 0
-        greater => @Int 1
+        less => Int.-1
+        equal => Int.0
+        greater => Int.1
 
