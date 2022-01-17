@@ -236,14 +236,3 @@ pub struct Application<T> {
     pub explicitness: Explicitness,
     pub argument: T,
 }
-
-// @Task move!
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Number {
-    Nat(crate::utility::Nat),
-    Nat32(u32),
-    Nat64(u64),
-    Int(crate::utility::Int),
-    Int32(i32),
-    Int64(i64),
-}

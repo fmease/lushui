@@ -3,21 +3,19 @@
 // @Beacon @Task introduce an Error variant to hir::{Expression, Declaration}
 // to be able to continue type checking on errors
 
+use std::default::default;
+
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     error::{Health, Result, Stain},
     format::{pluralize, DisplayWith, QuoteExt},
-    hir::{self, expr, Declaration, Expression, Identifier},
+    hir::{self, Declaration, Expression, Identifier},
     package::{
         session::{IntrinsicType, KnownBinding},
         BuildSession,
     },
     resolver::Capsule,
-    span::Span,
-    syntax::{
-        ast::Explicitness,
-        lowered_ast::{AttributeName, Attributes},
-    },
+    syntax::{ast::Explicitness, lowered_ast::AttributeName},
     typer::interpreter::scope::BindingRegistrationKind,
 };
 use interpreter::{
@@ -270,7 +268,7 @@ impl<'a> Typer<'a> {
 
                 self.assert_constructor_is_instance_of_type(
                     type_.clone(),
-                    expr! { Type { Attributes::default(), Span::default() } },
+                    Expression::new(default(), default(), hir::ExpressionKind::Type),
                 )?;
 
                 self.capsule.carry_out(
@@ -449,7 +447,7 @@ impl<'a> Typer<'a> {
                 .interpreter()
                 .look_up_type(&binding.0, scope)
                 .ok_or(OutOfOrderBinding)?,
-            Type => expr! { Type { Attributes::default(), Span::default() } },
+            Type => Expression::new(default(), default(), hir::ExpressionKind::Type),
             Number(number) => self.session.look_up_intrinsic_type(
                 IntrinsicType::numeric(&number),
                 Some(expression.span),
@@ -475,7 +473,7 @@ impl<'a> Typer<'a> {
                     self.it_is_a_type(literal.codomain.clone(), scope)?;
                 }
 
-                expr! { Type { Attributes::default(), Span::default() } }
+                Expression::new(default(), default(), hir::ExpressionKind::Type)
             }
             Lambda(lambda) => {
                 let parameter_type: Expression = lambda
@@ -494,17 +492,18 @@ impl<'a> Typer<'a> {
                     self.it_is_actual(body_type_annotation, infered_body_type.clone(), &scope)?;
                 }
 
-                expr! {
-                    PiType {
-                        expression.attributes,
-                        expression.span;
+                Expression::new(
+                    expression.attributes,
+                    expression.span,
+                    hir::PiType {
                         explicitness: Explicitness::Explicit,
                         laziness: lambda.laziness,
                         parameter: Some(lambda.parameter.clone()),
                         domain: parameter_type,
                         codomain: infered_body_type,
                     }
-                }
+                    .into(),
+                )
             }
             Application(application) => {
                 // @Note this is an example where we normalize after an infer_type_of_expression which means infer_type_of_expression
@@ -524,16 +523,22 @@ impl<'a> Typer<'a> {
                         self.infer_type_of_expression(application.argument.clone(), scope)?;
 
                     let argument_type = if pi.laziness.is_some() {
-                        expr! {
-                            PiType {
-                                Attributes::default(), argument_type.span;
+                        Expression::new(
+                            default(),
+                            argument_type.span,
+                            hir::PiType {
                                 explicitness: Explicitness::Explicit,
                                 laziness: None,
                                 parameter: None,
-                                domain: self.session.look_up_known_type(KnownBinding::Unit, application.callee.span, self.reporter)?,
+                                domain: self.session.look_up_known_type(
+                                    KnownBinding::Unit,
+                                    application.callee.span,
+                                    self.reporter,
+                                )?,
                                 codomain: argument_type,
                             }
-                        }
+                            .into(),
+                        )
                     } else {
                         argument_type
                     };
@@ -557,13 +562,15 @@ impl<'a> Typer<'a> {
                         })?;
 
                     match pi.parameter.clone() {
-                        Some(_) => expr! {
-                            Substitution {
-                                Attributes::default(), Span::default();
+                        Some(_) => Expression::new(
+                            default(),
+                            default(),
+                            hir::Substitution {
                                 substitution: Use(Box::new(Shift(0)), application.argument.clone()),
                                 expression: pi.codomain.clone(),
                             }
-                        },
+                            .into(),
+                        ),
                         None => pi.codomain.clone(),
                     }
                 } else {
@@ -776,7 +783,7 @@ impl<'a> Typer<'a> {
     ) -> Result<(), Error> {
         let type_ = self.infer_type_of_expression(expression, scope)?;
         self.it_is_actual(
-            expr! { Type { Attributes::default(), Span::default() } },
+            Expression::new(default(), default(), hir::ExpressionKind::Type),
             type_,
             scope,
         )
@@ -789,7 +796,7 @@ impl<'a> Typer<'a> {
     ) -> Result<bool, Error> {
         let type_ = self.infer_type_of_expression(expression, scope)?;
         self.is_actual(
-            expr! { Type { Attributes::default(), Span::default() } },
+            Expression::new(default(), default(), hir::ExpressionKind::Type),
             type_,
             scope,
         )

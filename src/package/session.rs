@@ -3,13 +3,10 @@ use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     entity::{Entity, EntityKind},
     error::Result,
-    hir::{expr, DeclarationIndex, Expression, ExpressionKind, Identifier},
+    hir::{self, DeclarationIndex, Expression, ExpressionKind, Identifier, Number},
     resolver::Capsule,
     span::Span,
-    syntax::{
-        ast::Explicitness,
-        lowered_ast::{attributes::Attributes, Number},
-    },
+    syntax::ast::Explicitness,
     utility::{condition, HashMap, Int, Nat},
 };
 use index_map::IndexMap;
@@ -598,12 +595,12 @@ impl Type {
         use IntrinsicType::*;
         use KnownBinding::*;
 
-        let known = |binding: &crate::hir::Binding, known: KnownBinding| {
+        let known = |binding: &hir::Binding, known: KnownBinding| {
             session
                 .known_binding(known)
                 .map_or(false, |known| &binding.0 == known)
         };
-        let intrinsic = |binding: &crate::hir::Binding, intrinsic: IntrinsicType| {
+        let intrinsic = |binding: &hir::Binding, intrinsic: IntrinsicType| {
             session
                 .intrinsic_type(intrinsic)
                 .map_or(false, |intrinsic| &binding.0 == intrinsic)
@@ -691,16 +688,22 @@ impl Value {
         use ExpressionKind::*;
         use KnownBinding::*;
 
-        let known = |binding: &crate::hir::Binding, known: KnownBinding| {
+        let known = |binding: &hir::Binding, known: KnownBinding| {
             session
                 .known_binding(known)
                 .map_or(false, |known| &binding.0 == known)
         };
 
         Some(match &expression.value {
-            Text(text) => Self::Text(text.as_ref().clone()),
+            Text(text) => {
+                use hir::Text::*;
+
+                match &**text {
+                    Text(text) => Self::Text(text.clone()),
+                }
+            }
             Number(number) => {
-                use crate::syntax::lowered_ast::Number::*;
+                use hir::Number::*;
 
                 match &**number {
                     Nat(nat) => Self::Nat(nat.clone()),
@@ -745,7 +748,7 @@ impl Value {
         session: &BuildSession,
         reporter: &Reporter,
     ) -> Result<Expression> {
-        use crate::syntax::lowered_ast::Number::*;
+        use hir::{Number::*, Text::*};
 
         Ok(match self {
             Self::Unit => session.look_up_known_binding(KnownBinding::Unit, reporter)?,
@@ -757,31 +760,13 @@ impl Value {
                 },
                 reporter,
             )?,
-            Self::Text(value) => expr! { Text(Attributes::default(), Span::default(); value) },
-            Self::Nat(value) => expr! {
-                Number(Attributes::default(), Span::default();
-                Nat(value))
-            },
-            Self::Nat32(value) => expr! {
-                Number(Attributes::default(), Span::default();
-                Nat32(value))
-            },
-            Self::Nat64(value) => expr! {
-                Number(Attributes::default(), Span::default();
-                Nat64(value))
-            },
-            Self::Int(value) => expr! {
-                Number(Attributes::default(), Span::default();
-                Int(value))
-            },
-            Self::Int32(value) => expr! {
-                Number(Attributes::default(), Span::default();
-                Int32(value))
-            },
-            Self::Int64(value) => expr! {
-                Number(Attributes::default(), Span::default();
-                Int64(value))
-            },
+            Self::Text(value) => Expression::new(default(), default(), Text(value).into()),
+            Self::Nat(value) => Expression::new(default(), default(), Nat(value).into()),
+            Self::Nat32(value) => Expression::new(default(), default(), Nat32(value).into()),
+            Self::Nat64(value) => Expression::new(default(), default(), Nat64(value).into()),
+            Self::Int(value) => Expression::new(default(), default(), Int(value).into()),
+            Self::Int32(value) => Expression::new(default(), default(), Int32(value).into()),
+            Self::Int64(value) => Expression::new(default(), default(), Int64(value).into()),
             Self::Option { type_, value } => match value {
                 Some(value) => application(
                     application(
@@ -795,15 +780,18 @@ impl Value {
                     type_.into_expression(capsule, session, reporter)?,
                 ),
             },
-            Self::IO { index, arguments } => expr! {
-                IO {
-                    Attributes::default(), Span::default();
+            Self::IO { index, arguments } => Expression::new(
+                default(),
+                default(),
+                hir::IO {
                     index,
-                    arguments: arguments.into_iter()
+                    arguments: arguments
+                        .into_iter()
                         .map(|argument| argument.into_expression(capsule, session, reporter))
                         .collect::<Result<Vec<_>>>()?,
                 }
-            },
+                .into(),
+            ),
         })
     }
 }
@@ -872,14 +860,16 @@ impl<V: IntoValue> IntoValue for Option<V> {
 }
 
 fn application(callee: Expression, argument: Expression) -> Expression {
-    expr! {
-        Application {
-            Attributes::default(), Span::default();
+    Expression::new(
+        default(),
+        default(),
+        hir::Application {
             callee,
             argument,
-            explicitness: Explicitness::Explicit
+            explicitness: Explicitness::Explicit,
         }
-    }
+        .into(),
+    )
 }
 
 macro pure(|$( $var:ident: $variant:ident ),*| $body:expr ) {

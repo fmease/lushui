@@ -10,19 +10,6 @@ const KEYWORD_COLOR: Color = Color::Cyan;
 const PUNCTUATION_COLOR: Color = Color::BrightMagenta;
 const ATTRIBUTE_COLOR: Color = Color::BrightWhite;
 
-impl fmt::Display for super::Number {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Nat(value) => write!(f, "{value}"),
-            Self::Nat32(value) => write!(f, "{value}"),
-            Self::Nat64(value) => write!(f, "{value}"),
-            Self::Int(value) => write!(f, "{value}"),
-            Self::Int32(value) => write!(f, "{value}"),
-            Self::Int64(value) => write!(f, "{value}"),
-        }
-    }
-}
-
 // @Task reduce amount of (String) allocations
 impl super::Declaration {
     fn format_with_depth(&self, depth: usize, f: &mut fmt::Formatter<'_>) -> fmt::Result {

@@ -20,14 +20,13 @@ use crate::{
     entity::Entity,
     error::{PossiblyErroneous, Result},
     format::DisplayWith,
-    hir::{self, expr, DeclarationIndex, Identifier},
+    hir::{self, DeclarationIndex, Identifier},
     package::{
         session::{KnownBinding, Value},
         BuildSession,
     },
     resolver::Capsule,
-    span::Span,
-    syntax::{ast::Explicit, lowered_ast::Attributes},
+    syntax::ast::Explicit,
 };
 use scope::{FunctionScope, ValueView};
 use std::{default::default, fmt};
@@ -120,41 +119,47 @@ impl<'a> Interpreter<'a> {
             (Projection(_), _) => expression,
             // @Temporary
             (IO(_), _) => expression,
-            (Application(application), substitution) => {
-                expr! {
-                    Application {
-                        expression.attributes,
-                        expression.span;
-                        callee: expr! {
-                            Substitution {
-                                default(), default();
-                                expression: application.callee.clone(),
-                                substitution: substitution.clone(),
-                            }
-                        },
-                        argument: expr! {
-                            Substitution {
-                                default(), default();
-                                expression: application.argument.clone(),
-                                substitution,
-                            }
-                        },
-                        explicitness: application.explicitness,
-                    }
+            (Application(application), substitution) => Expression::new(
+                expression.attributes,
+                expression.span,
+                hir::Application {
+                    callee: Expression::new(
+                        default(),
+                        default(),
+                        hir::Substitution {
+                            expression: application.callee.clone(),
+                            substitution: substitution.clone(),
+                        }
+                        .into(),
+                    ),
+                    argument: Expression::new(
+                        default(),
+                        default(),
+                        hir::Substitution {
+                            expression: application.argument.clone(),
+                            substitution,
+                        }
+                        .into(),
+                    ),
+                    explicitness: application.explicitness,
                 }
-            }
+                .into(),
+            ),
             (PiType(pi), substitution) => {
-                let domain = expr! {
-                    Substitution {
-                        default(), Span::default();
+                let domain = Expression::new(
+                    default(),
+                    default(),
+                    hir::Substitution {
                         expression: pi.domain.clone(),
                         substitution: substitution.clone(),
                     }
-                };
+                    .into(),
+                );
 
-                let codomain = expr! {
-                    Substitution {
-                        Attributes::default(), Span::default();
+                let codomain = Expression::new(
+                    default(),
+                    default(),
+                    hir::Substitution {
                         expression: pi.codomain.clone(),
                         substitution: match &pi.parameter {
                             Some(parameter) => {
@@ -169,69 +174,77 @@ impl<'a> Interpreter<'a> {
                             None => substitution,
                         },
                     }
-                };
+                    .into(),
+                );
 
-                expr! {
-                    PiType {
-                        expression.attributes,
-                        expression.span;
+                Expression::new(
+                    expression.attributes,
+                    expression.span,
+                    hir::PiType {
                         explicitness: pi.explicitness,
                         laziness: pi.laziness,
                         parameter: pi.parameter.clone(),
                         domain,
                         codomain,
                     }
-                }
+                    .into(),
+                )
             }
             (Lambda(lambda), substitution) => {
                 let parameter_type_annotation =
                     lambda.parameter_type_annotation.clone().map(|type_| {
-                        expr! {
-                            Substitution {
-                                Attributes::default(), Span::default();
+                        Expression::new(
+                            default(),
+                            default(),
+                            hir::Substitution {
                                 expression: type_,
                                 substitution: substitution.clone(),
                             }
-                        }
+                            .into(),
+                        )
                     });
 
                 let body_type_annotation = lambda.body_type_annotation.clone().map(|type_| {
-                    expr! {
-                        Substitution {
-                            Attributes::default(), Span::default();
+                    Expression::new(
+                        default(),
+                        default(),
+                        hir::Substitution {
                             expression: type_,
                             substitution: {
                                 let binder = lambda.parameter.as_innermost();
                                 // @Question what about the attributes of the binder?
                                 Use(
                                     Box::new(Shift(1).compose(substitution.clone())),
-                                    binder.into_expression()
+                                    binder.into_expression(),
                                 )
-                            }
+                            },
                         }
-                    }
+                        .into(),
+                    )
                 });
 
-                let body = expr! {
-                    Substitution {
-                        Attributes::default(), Span::default();
+                let body = Expression::new(
+                    default(),
+                    default(),
+                    hir::Substitution {
                         expression: lambda.body.clone(),
                         substitution: {
-                                let binder = lambda.parameter.as_innermost();
+                            let binder = lambda.parameter.as_innermost();
 
-                                // @Question what about the attributes of the binder?
-                                Use(
-                                    Box::new(Shift(1).compose(substitution)),
-                                    binder.into_expression()
-                                )
+                            // @Question what about the attributes of the binder?
+                            Use(
+                                Box::new(Shift(1).compose(substitution)),
+                                binder.into_expression(),
+                            )
                         },
                     }
-                };
+                    .into(),
+                );
 
-                expr! {
-                    Lambda {
-                        expression.attributes,
-                        expression.span;
+                Expression::new(
+                    expression.attributes,
+                    expression.span,
+                    hir::Lambda {
                         parameter: lambda.parameter.clone(),
                         parameter_type_annotation,
                         body_type_annotation,
@@ -239,48 +252,65 @@ impl<'a> Interpreter<'a> {
                         explicitness: lambda.explicitness,
                         laziness: lambda.laziness,
                     }
-                }
+                    .into(),
+                )
             }
-            (CaseAnalysis(analysis), substitution) => {
-                expr! {
-                    CaseAnalysis {
-                        expression.attributes,
-                        expression.span;
-                        cases: analysis.cases.iter().map(|case| hir::Case {
+            (CaseAnalysis(analysis), substitution) => Expression::new(
+                expression.attributes,
+                expression.span,
+                hir::CaseAnalysis {
+                    cases: analysis
+                        .cases
+                        .iter()
+                        .map(|case| hir::Case {
                             pattern: case.pattern.clone(),
-                            body: expr! {
-                                Substitution {
-                                    Attributes::default(), Span::default();
+                            body: Expression::new(
+                                default(),
+                                default(),
+                                hir::Substitution {
                                     expression: case.body.clone(),
                                     substitution: substitution.clone(),
                                 }
-                            },
-                        }).collect(),
-                        scrutinee: expr! {
-                            Substitution {
-                                Attributes::default(), Span::default();
-                                expression: analysis.scrutinee.clone(),
-                                substitution,
-                            }
-                        },
-                    }
-                }
-            }
-            (UseIn, _) => todo!("substitute use/in"),
-            (IntrinsicApplication(application), substitution) => expr! {
-                IntrinsicApplication {
-                    expression.attributes,
-                    expression.span;
-                    callee: application.callee.clone(),
-                    arguments: application.arguments.iter().map(|argument| expr! {
-                        Substitution {
-                            argument.attributes.clone(), argument.span;
-                            expression: argument.clone(),
-                            substitution: substitution.clone(),
+                                .into(),
+                            ),
+                        })
+                        .collect(),
+                    scrutinee: Expression::new(
+                        default(),
+                        default(),
+                        hir::Substitution {
+                            expression: analysis.scrutinee.clone(),
+                            substitution,
                         }
-                    }).collect()
+                        .into(),
+                    ),
                 }
-            },
+                .into(),
+            ),
+            (UseIn, _) => todo!("substitute use/in"),
+            (IntrinsicApplication(application), substitution) => Expression::new(
+                expression.attributes,
+                expression.span,
+                hir::IntrinsicApplication {
+                    callee: application.callee.clone(),
+                    arguments: application
+                        .arguments
+                        .iter()
+                        .map(|argument| {
+                            Expression::new(
+                                argument.attributes.clone(),
+                                argument.span,
+                                hir::Substitution {
+                                    expression: argument.clone(),
+                                    substitution: substitution.clone(),
+                                }
+                                .into(),
+                            )
+                        })
+                        .collect(),
+                }
+                .into(),
+            ),
             (Error, _) => PossiblyErroneous::error(),
         }
     }
@@ -320,55 +350,69 @@ impl<'a> Interpreter<'a> {
                         // auto-closured to thunks since the body always gets evaluated to
                         // normal form
                         let argument = if lambda.laziness.is_some() {
-                            expr! {
-                                Lambda {
-                                    Attributes::default(), argument.span;
+                            Expression::new(
+                                default(),
+                                argument.span,
+                                hir::Lambda {
                                     // @Bug we should not create a fake identifier at all!!
                                     // @Note this problem is solved once we allow identifier to be
                                     // an Option<_> (that's gonna happen when we finally implement
                                     // the discarding identifier `_`)
                                     parameter: Identifier::parameter("__"),
-                                    parameter_type_annotation: Some(self.session.look_up_known_binding(KnownBinding::Unit, self.reporter)?),
+                                    parameter_type_annotation: Some(
+                                        self.session.look_up_known_binding(
+                                            KnownBinding::Unit,
+                                            self.reporter,
+                                        )?,
+                                    ),
                                     body_type_annotation: None,
-                                    body: expr! {
-                                        Substitution {
-                                            Attributes::default(), Span::default();
+                                    body: Expression::new(
+                                        default(),
+                                        default(),
+                                        hir::Substitution {
                                             substitution: Shift(1),
                                             expression: argument,
                                         }
-                                    },
+                                        .into(),
+                                    ),
                                     explicitness: Explicit,
                                     laziness: None,
                                 }
-                            }
+                                .into(),
+                            )
                         } else {
                             argument
                         };
 
                         self.evaluate_expression(
-                            expr! {
-                                Substitution {
-                                    Attributes::default(), Span::default();
+                            Expression::new(
+                                default(),
+                                default(),
+                                hir::Substitution {
                                     substitution: Use(Box::new(Shift(0)), argument),
                                     expression: lambda.body.clone(),
                                 }
-                            },
+                                .into(),
+                            ),
                             context,
                         )?
                     }
                     Binding(binding) if self.is_intrinsic(&binding.0) => self.evaluate_expression(
-                        expr! {
-                            IntrinsicApplication {
-                                expression.attributes, expression.span;
+                        Expression::new(
+                            expression.attributes,
+                            expression.span,
+                            hir::IntrinsicApplication {
                                 callee: binding.0.clone(),
                                 arguments: vec![argument],
-
-                        }},
+                            }
+                            .into(),
+                        ),
                         context,
                     )?,
-                    Binding(_) | Application(_) => expr! {
-                        Application {
-                            expression.attributes, expression.span;
+                    Binding(_) | Application(_) => Expression::new(
+                        expression.attributes,
+                        expression.span,
+                        hir::Application {
                             callee,
                             argument: match context.form {
                                 // Form::Normal => argument.evaluate(context)?,
@@ -377,19 +421,22 @@ impl<'a> Interpreter<'a> {
                             },
                             explicitness: Explicit,
                         }
-                    },
+                        .into(),
+                    ),
                     IntrinsicApplication(application) => self.evaluate_expression(
-                        expr! {
-                            IntrinsicApplication {
-                                expression.attributes, expression.span;
+                        Expression::new(
+                            expression.attributes,
+                            expression.span,
+                            hir::IntrinsicApplication {
                                 callee: application.callee.clone(),
                                 arguments: {
                                     let mut arguments = application.arguments.clone();
                                     arguments.push(argument);
                                     arguments
-                                }
+                                },
                             }
-                        },
+                            .into(),
+                        ),
                         context,
                     )?,
                     _ => unreachable!(),
@@ -409,16 +456,18 @@ impl<'a> Interpreter<'a> {
                         self.evaluate_expression(pi.codomain.clone(), context)?
                     };
 
-                    expr! {
-                        PiType {
-                            expression.attributes, expression.span;
+                    Expression::new(
+                        expression.attributes,
+                        expression.span,
+                        hir::PiType {
                             explicitness: pi.explicitness,
                             laziness: pi.laziness,
                             parameter: pi.parameter.clone(),
                             domain,
                             codomain,
                         }
-                    }
+                        .into(),
+                    )
                 }
                 Form::WeakHeadNormal => expression,
             },
@@ -444,9 +493,10 @@ impl<'a> Interpreter<'a> {
                     let body =
                         self.evaluate_expression(lambda.body.clone(), context.with_scope(&scope))?;
 
-                    expr! {
-                        Lambda {
-                            expression.attributes, expression.span;
+                    Expression::new(
+                        expression.attributes,
+                        expression.span,
+                        hir::Lambda {
                             parameter: lambda.parameter.clone(),
                             parameter_type_annotation: Some(parameter_type),
                             body,
@@ -454,7 +504,8 @@ impl<'a> Interpreter<'a> {
                             explicitness: Explicit,
                             laziness: lambda.laziness,
                         }
-                    }
+                        .into(),
+                    )
                 }
                 Form::WeakHeadNormal => expression,
             },
@@ -485,13 +536,15 @@ impl<'a> Interpreter<'a> {
                         // @Temporary hack (bc we do not follow any principled implementation right now):
                         // a case analysis is indirectly neutral if the subject is a neutral binding
                         if self.look_up_value(&scrutinee.0).is_neutral() {
-                            return Ok(expr! {
-                                CaseAnalysis {
-                                    expression.attributes, expression.span;
+                            return Ok(Expression::new(
+                                expression.attributes,
+                                expression.span,
+                                hir::CaseAnalysis {
                                     scrutinee: scrutinee.0.clone().into_expression(),
                                     cases: analysis.cases.clone(),
                                 }
-                            });
+                                .into(),
+                            ));
                         }
 
                         for case in &analysis.cases {
@@ -560,14 +613,15 @@ impl<'a> Interpreter<'a> {
                     .collect::<Result<Vec<_>, _>>()?;
                 self.apply_intrinsic_function(application.callee.clone(), arguments.clone())?
                     .unwrap_or_else(|| {
-                        expr! {
-                            IntrinsicApplication {
-                                expression.attributes,
-                                expression.span;
+                        Expression::new(
+                            expression.attributes,
+                            expression.span,
+                            hir::IntrinsicApplication {
                                 callee: application.callee.clone(),
                                 arguments,
                             }
-                        }
+                            .into(),
+                        )
                     })
             }
             Error => PossiblyErroneous::error(),
@@ -779,13 +833,15 @@ impl Substitution {
             (Shift(amount0), Shift(amount1)) => Shift(amount0 + amount1),
             (substitution0, Use(substitution1, expression)) => Use(
                 Box::new(substitution0.clone().compose(*substitution1)),
-                expr! {
-                    Substitution {
-                        Attributes::default(), Span::default();
+                Expression::new(
+                    default(),
+                    default(),
+                    hir::Substitution {
                         substitution: substitution0,
                         expression,
                     }
-                },
+                    .into(),
+                ),
             ),
         }
     }

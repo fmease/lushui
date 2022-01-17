@@ -14,9 +14,9 @@ pub(crate) mod interpreter;
 use std::default::default;
 
 use crate::{
-    hir::{self, Declaration, DeclarationIndex, Expression},
+    hir::{self, Declaration, DeclarationIndex, Expression, Number},
     resolver::Capsule,
-    syntax::lowered_ast::{attributes::AttributeName, Number},
+    syntax::lowered_ast::attributes::AttributeName,
     utility::HashMap,
 };
 use index_map::{Index as _, IndexMap};
@@ -186,7 +186,8 @@ impl<'a> Compiler<'a> {
             }
             Text(text) => {
                 let constant = self.constants.len();
-                self.constants.push(Value::Text(text.as_ref().clone()));
+                let hir::Text::Text(text) = &**text;
+                self.constants.push(Value::Text(text.clone()));
                 instructions.push(Instruction::Constant(constant));
             }
             Binding(binding) => {

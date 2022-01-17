@@ -4,10 +4,7 @@ use crate::{
     error::PossiblyErroneous,
     resolver::{Capsule, FunctionScope},
     span::{SourceFileIndex, Span},
-    syntax::{
-        ast::Explicitness,
-        lowered_ast::{Item, Number},
-    },
+    syntax::{ast::Explicitness, lowered_ast::Item},
     typer::interpreter,
     utility::obtain,
 };
@@ -102,13 +99,12 @@ impl From<Use> for DeclarationKind {
 pub type Expression = Item<ExpressionKind>;
 
 #[derive(Clone)]
-#[allow(clippy::box_collection)]
 pub enum ExpressionKind {
     PiType(Box<PiType>),
     Application(Box<Application<Expression>>),
     Type,
     Number(Box<Number>),
-    Text(Box<String>),
+    Text(Box<Text>),
     Binding(Box<Binding>),
     Lambda(Box<Lambda>),
     UseIn,
@@ -135,6 +131,30 @@ pub struct PiType {
     pub codomain: Expression,
 }
 
+impl From<PiType> for ExpressionKind {
+    fn from(pi: PiType) -> Self {
+        Self::PiType(Box::new(pi))
+    }
+}
+
+impl From<Application<Expression>> for ExpressionKind {
+    fn from(application: Application<Expression>) -> Self {
+        Self::Application(Box::new(application))
+    }
+}
+
+impl From<Number> for ExpressionKind {
+    fn from(number: Number) -> Self {
+        Self::Number(Box::new(number))
+    }
+}
+
+impl From<Text> for ExpressionKind {
+    fn from(text: Text) -> Self {
+        Self::Text(Box::new(text))
+    }
+}
+
 impl From<Binding> for ExpressionKind {
     fn from(binding: Binding) -> Self {
         Self::Binding(Box::new(binding))
@@ -151,10 +171,22 @@ pub struct Lambda {
     pub body: Expression,
 }
 
+impl From<Lambda> for ExpressionKind {
+    fn from(lambda: Lambda) -> Self {
+        Self::Lambda(Box::new(lambda))
+    }
+}
+
 #[derive(Clone)]
 pub struct CaseAnalysis {
     pub scrutinee: Expression,
     pub cases: Vec<Case>,
+}
+
+impl From<CaseAnalysis> for ExpressionKind {
+    fn from(analysis: CaseAnalysis) -> Self {
+        Self::CaseAnalysis(Box::new(analysis))
+    }
 }
 
 #[derive(Clone)]
@@ -163,10 +195,22 @@ pub struct Substitution {
     pub expression: Expression,
 }
 
+impl From<Substitution> for ExpressionKind {
+    fn from(substitution: Substitution) -> Self {
+        Self::Substitution(Box::new(substitution))
+    }
+}
+
 #[derive(Clone)]
 pub struct IntrinsicApplication {
     pub callee: Identifier,
     pub arguments: Vec<Expression>,
+}
+
+impl From<IntrinsicApplication> for ExpressionKind {
+    fn from(application: IntrinsicApplication) -> Self {
+        Self::IntrinsicApplication(Box::new(application))
+    }
 }
 
 #[derive(Clone)]
@@ -179,6 +223,12 @@ pub struct IO {
     pub(crate) index: usize, // @Task IOIndex
     pub(crate) arguments: Vec<Expression>,
     // @Task continuation: Option<Expression>
+}
+
+impl From<IO> for ExpressionKind {
+    fn from(io: IO) -> Self {
+        Self::IO(Box::new(io))
+    }
 }
 
 #[derive(Clone)]
@@ -237,6 +287,17 @@ pub struct Application<T> {
     pub argument: T,
 }
 
-pub(crate) macro expr($( $tree:tt )+) {
-    crate::item::item!(crate::hir, ExpressionKind, Box; $( $tree )+)
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Number {
+    Nat(crate::utility::Nat),
+    Nat32(u32),
+    Nat64(u64),
+    Int(crate::utility::Int),
+    Int32(i32),
+    Int64(i64),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Text {
+    Text(String),
 }

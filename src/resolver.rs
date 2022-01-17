@@ -12,7 +12,7 @@ use crate::{
     entity::{Entity, EntityKind},
     error::{Health, PossiblyErroneous, ReportedExt, Result, Stain, Stained},
     format::{pluralize, unordered_listing, Conjunction, DisplayWith, QuoteExt},
-    hir::{self, expr, DeBruijnIndex, DeclarationIndex, Identifier, Index, LocalDeclarationIndex},
+    hir::{self, DeBruijnIndex, DeclarationIndex, Identifier, Index, LocalDeclarationIndex},
     package::BuildSession,
     span::Spanning,
     syntax::{
@@ -692,40 +692,70 @@ impl<'a> Resolver<'a> {
                     None => self.resolve_expression(pi.codomain.clone(), scope),
                 };
 
-                return Ok(expr! {
-                    PiType {
-                        expression.attributes,
-                        expression.span;
+                return Ok(hir::Expression::new(
+                    expression.attributes,
+                    expression.span,
+                    hir::PiType {
                         domain: domain?,
                         codomain: codomain?,
                         explicitness: pi.explicitness,
                         laziness: pi.laziness,
-                        parameter: pi.parameter.clone()
+                        parameter: pi
+                            .parameter
+                            .clone()
                             .map(|parameter| Identifier::new(Index::DeBruijnParameter, parameter)),
                     }
-                });
+                    .into(),
+                ));
             }
             Application(application) => {
                 let callee = self.resolve_expression(application.callee.clone(), scope);
                 let argument = self.resolve_expression(application.argument.clone(), scope);
 
-                return Ok(expr! {
-                    Application {
-                        expression.attributes,
-                        expression.span;
+                return Ok(hir::Expression::new(
+                    expression.attributes,
+                    expression.span,
+                    hir::Application {
                         callee: callee?,
                         argument: argument?,
                         explicitness: application.explicitness,
                     }
-                });
+                    .into(),
+                ));
             }
-            TypeLiteral => expr! { Type { expression.attributes, expression.span } },
-            NumberLiteral(_number) => {
-                todo!()
+            TypeLiteral => hir::Expression::new(
+                expression.attributes,
+                expression.span,
+                hir::ExpressionKind::Type,
+            ),
+            NumberLiteral(number) => {
+                let _namespace = number
+                    .path
+                    .as_ref()
+                    .map(|path| {
+                        // @Task suggest lookalike data types if the path does not refer to one!
+                        self.resolve_path::<target::Any>(path, scope.module().global(self.capsule))
+                            .map_err(|error| self.report_resolution_error(error))
+                    })
+                    .transpose()?;
+
+                // @Task check if namespace is a data type
 
                 // expr! { Number(expression.attributes, expression.span; number) }
+
+                todo!()
             }
-            TextLiteral(_text) => {
+            TextLiteral(text) => {
+                let _namespace = text
+                    .path
+                    .as_ref()
+                    .map(|path| {
+                        // @Task suggest lookalike data types if the path does not refer to one!
+                        self.resolve_path::<target::Any>(path, scope.module().global(self.capsule))
+                            .map_err(|error| self.report_resolution_error(error))
+                    })
+                    .transpose()?;
+
                 todo!()
 
                 // expr! { Text(expression.attributes, expression.span; text) }
@@ -733,7 +763,7 @@ impl<'a> Resolver<'a> {
             Path(path) => hir::Expression::new(
                 expression.attributes,
                 expression.span,
-                hir::Binding(self.resolve_binding(&path, scope)?).into(),
+                hir::Binding(self.resolve_path_inside_function(&path, scope)?).into(),
             ),
             Lambda(lambda) => {
                 let parameter_type_annotation = lambda
@@ -751,18 +781,22 @@ impl<'a> Resolver<'a> {
                     &scope.extend_with_parameter(lambda.parameter.clone()),
                 );
 
-                expr! {
-                    Lambda {
-                        expression.attributes,
-                        expression.span;
-                        parameter: Identifier::new(Index::DeBruijnParameter, lambda.parameter.clone()),
+                hir::Expression::new(
+                    expression.attributes,
+                    expression.span,
+                    hir::Lambda {
+                        parameter: Identifier::new(
+                            Index::DeBruijnParameter,
+                            lambda.parameter.clone(),
+                        ),
                         parameter_type_annotation: parameter_type_annotation.transpose()?,
                         body_type_annotation: body_type_annotation.transpose()?,
                         body: body?,
                         explicitness: lambda.explicitness,
                         laziness: lambda.laziness,
                     }
-                }
+                    .into(),
+                )
             }
             UseIn => {
                 Diagnostic::unimplemented("use/in expression")
@@ -784,14 +818,11 @@ impl<'a> Resolver<'a> {
                     cases.push(hir::Case { pattern, body });
                 }
 
-                expr! {
-                    CaseAnalysis {
-                        expression.attributes,
-                        expression.span;
-                        scrutinee,
-                        cases,
-                    }
-                }
+                hir::Expression::new(
+                    expression.attributes,
+                    expression.span,
+                    hir::CaseAnalysis { scrutinee, cases }.into(),
+                )
             }
             Error => PossiblyErroneous::error(),
         };
@@ -822,7 +853,7 @@ impl<'a> Resolver<'a> {
             Path(path) => hir::Pattern::new(
                 pattern.attributes,
                 pattern.span,
-                hir::Binding(self.resolve_binding(&path, scope)?).into(),
+                hir::Binding(self.resolve_path_inside_function(&path, scope)?).into(),
             ),
             Binder(binder) => {
                 binders.push((*binder).clone());
@@ -989,12 +1020,13 @@ impl<'a> Resolver<'a> {
 
         match &*path.segments {
             [identifier] => {
-                Target::handle_simple_path(identifier, entity).reported(self.reporter)?;
+                Target::handle_final_identifier(identifier, entity).reported(self.reporter)?;
                 Ok(Target::output(index, identifier))
             }
             [identifier, identifiers @ ..] => {
                 if entity.is_namespace() {
                     self.resolve_path_with_origin::<Target>(
+                        // @Task define & use a PathView instead!
                         &ast::Path::with_segments(identifiers.to_owned().into()),
                         index,
                         context.qualified_identifier(),
@@ -1224,19 +1256,23 @@ impl<'a> Resolver<'a> {
         Target::output(index, identifier)
     }
 
-    /// Resolve a binding in a function scope.
-    fn resolve_binding(&self, query: &ast::Path, scope: &FunctionScope<'_>) -> Result<Identifier> {
-        self.resolve_binding_with_depth(query, scope, 0, scope)
+    /// Resolve a path inside of a function.
+    fn resolve_path_inside_function(
+        &self,
+        query: &ast::Path,
+        scope: &FunctionScope<'_>,
+    ) -> Result<Identifier> {
+        self.resolve_path_inside_function_with_depth(query, scope, 0, scope)
     }
 
-    /// Resolve a binding in a function scope given a depth.
+    /// Resolve a path inside of a function given a depth.
     ///
     /// The `depth` is necessary for the recursion to successfully create de Bruijn indices.
     ///
     /// The `origin` signifies the innermost function scope from where the resolution was first requested.
     /// This information is used for diagnostics, namely typo flagging where we once again start at the origin
     /// and walk back out.
-    fn resolve_binding_with_depth(
+    fn resolve_path_inside_function_with_depth(
         &self,
         query: &ast::Path,
         scope: &FunctionScope<'_>,
@@ -1251,7 +1287,12 @@ impl<'a> Resolver<'a> {
                     if binder == identifier {
                         Ok(Identifier::new(DeBruijnIndex(depth), identifier.clone()))
                     } else {
-                        self.resolve_binding_with_depth(query, parent, depth + 1, origin)
+                        self.resolve_path_inside_function_with_depth(
+                            query,
+                            parent,
+                            depth + 1,
+                            origin,
+                        )
                     }
                 }
                 PatternBinders { parent, binders } => {
@@ -1264,7 +1305,7 @@ impl<'a> Resolver<'a> {
                         Some((_, depth)) => {
                             Ok(Identifier::new(DeBruijnIndex(depth), identifier.clone()))
                         }
-                        None => self.resolve_binding_with_depth(
+                        None => self.resolve_path_inside_function_with_depth(
                             query,
                             parent,
                             depth + binders.len(),
@@ -1532,14 +1573,13 @@ enum CheckExposure {
     No,
 }
 
-// @Task put all that stuff into a module `resolution_target`
 /// Specifies behavior for resolving different sorts of entities.
 ///
 /// Right now, it's only about the difference between values and modules
 /// since modules are not values (non-first-class). As such, this trait
 /// allows to implementors to define what should happen with the resolved entity
 /// if it appears in a specific location
-// @Task get rid of this thing! smh!
+// @Task get rid of this thing! smh! **esp. the assoc ty `Output`!**
 trait ResolutionTarget {
     type Output;
 
@@ -1550,7 +1590,10 @@ trait ResolutionTarget {
         index: DeclarationIndex,
     ) -> Result<Self::Output, Diagnostic>;
 
-    fn handle_simple_path(identifier: &ast::Identifier, entity: &Entity) -> Result<(), Diagnostic>;
+    fn handle_final_identifier(
+        identifier: &ast::Identifier,
+        entity: &Entity,
+    ) -> Result<(), Diagnostic>;
 }
 
 mod target {
@@ -1573,7 +1616,7 @@ mod target {
             Ok(index)
         }
 
-        fn handle_simple_path(_: &ast::Identifier, _: &Entity) -> Result<(), Diagnostic> {
+        fn handle_final_identifier(_: &ast::Identifier, _: &Entity) -> Result<(), Diagnostic> {
             Ok(())
         }
     }
@@ -1595,7 +1638,7 @@ mod target {
             Err(Diagnostic::module_used_as_a_value(hanger.as_ref()))
         }
 
-        fn handle_simple_path(
+        fn handle_final_identifier(
             identifier: &ast::Identifier,
             entity: &Entity,
         ) -> Result<(), Diagnostic> {
@@ -1625,7 +1668,7 @@ mod target {
             Ok(index)
         }
 
-        fn handle_simple_path(
+        fn handle_final_identifier(
             identifier: &ast::Identifier,
             entity: &Entity,
         ) -> Result<(), Diagnostic> {

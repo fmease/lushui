@@ -4,13 +4,12 @@ use crate::{
     entity::EntityKind,
     error::Result,
     format::{AsDebug, DisplayWith},
-    hir::{expr, DeBruijnIndex, Identifier},
+    hir::{self, DeBruijnIndex, Identifier},
     package::BuildSession,
     resolver::Capsule,
-    span::Span,
     syntax::lowered_ast::{AttributeName, Attributes},
 };
-use std::fmt;
+use std::{default::default, fmt};
 
 impl Capsule {
     // @Bug does not understand non-local binders
@@ -233,13 +232,15 @@ impl<'a> FunctionScope<'a> {
         match self {
             Self::FunctionParameter { parent, type_ } => {
                 if depth == index.0 {
-                    expr! {
-                        Substitution {
-                            Attributes::default(), Span::default();
+                    Expression::new(
+                        default(),
+                        default(),
+                        hir::Substitution {
                             substitution: Shift(depth + 1),
                             expression: type_.clone(),
                         }
-                    }
+                        .into(),
+                    )
                 } else {
                     parent.look_up_type_with_depth(index, depth + 1)
                 }
@@ -251,14 +252,16 @@ impl<'a> FunctionScope<'a> {
                     .zip(depth..)
                     .find(|(_, depth)| *depth == index.0)
                 {
-                    Some((type_, depth)) => expr! {
-                        Substitution {
-                            Attributes::default(), Span::default();
+                    Some((type_, depth)) => Expression::new(
+                        default(),
+                        default(),
+                        hir::Substitution {
                             // @Task verify this shift
                             substitution: Shift(depth + 1),
                             expression: type_.clone(),
                         }
-                    },
+                        .into(),
+                    ),
                     None => parent.look_up_type_with_depth(index, depth + types.len()),
                 }
             }
