@@ -12,7 +12,7 @@ use crate::{
     entity::{Entity, EntityKind},
     error::{Health, PossiblyErroneous, ReportedExt, Result, Stain, Stained},
     format::{pluralize, unordered_listing, Conjunction, DisplayWith, QuoteExt},
-    hir::{self, DeBruijnIndex, DeclarationIndex, Identifier, Index, LocalDeclarationIndex},
+    hir::{self, DeBruijnIndex, DeclarationIndex, Identifier, Index, LocalDeclarationIndex, Text},
     package::BuildSession,
     span::Spanning,
     syntax::{
@@ -756,9 +756,13 @@ impl<'a> Resolver<'a> {
                     })
                     .transpose()?;
 
-                todo!()
-
-                // expr! { Text(expression.attributes, expression.span; text) }
+                // @Beacon @Beacon @Beacon @Temporary we actually need to first look at the namespace
+                hir::Expression::new(
+                    expression.attributes,
+                    expression.span,
+                    // @Note to_string: not great
+                    Text::Text(text.literal.to_string()).into(),
+                )
             }
             Path(path) => hir::Expression::new(
                 expression.attributes,

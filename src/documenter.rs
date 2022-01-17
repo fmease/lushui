@@ -719,9 +719,6 @@ fn render_declaration_attribute(attribute: &Attribute, parent: &mut Element<'_>,
         | Statistics
         | Warn { .. } => {}
 
-        // not declaration attributes
-        Int | Int32 | Int64 | List | Nat | Nat32 | Nat64 | Rune | Text | Vector => unreachable!(),
-
         // should not exist at this point in time
         Ignore | Include | Test => unreachable!(),
     }

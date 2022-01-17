@@ -699,6 +699,7 @@ impl Value {
                 use hir::Text::*;
 
                 match &**text {
+                    // @Note not great
                     Text(text) => Self::Text(text.clone()),
                 }
             }

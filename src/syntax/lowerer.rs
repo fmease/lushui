@@ -958,16 +958,6 @@ impl<'a> Lowerer<'a> {
 
             check_mutual_exclusivity(Moving.or(Abstract), &attributes, self.reporter)
                 .stain(&mut self.health);
-            check_mutual_exclusivity(
-                Int.or(Int32).or(Int64).or(Nat).or(Nat32).or(Nat64),
-                &attributes,
-                self.reporter,
-            )
-            .stain(&mut self.health);
-            check_mutual_exclusivity(Rune.or(Text), &attributes, self.reporter)
-                .stain(&mut self.health);
-            check_mutual_exclusivity(List.or(Vector), &attributes, self.reporter)
-                .stain(&mut self.health);
         }
 
         for attribute in attributes.filter(Predicate(|attribute| !attribute.is_fully_implemented()))
@@ -1258,10 +1248,6 @@ impl lowered_ast::attributes::AttributeKind {
                 Ignore => Self::Ignore,
                 Include => Self::Include,
                 Known => Self::Known,
-                Int => Self::Int,
-                Int32 => Self::Int32,
-                Int64 => Self::Int64,
-                List => Self::List,
                 Location => {
                     let path = argument(arguments, attribute.span, reporter)?
                         .text_literal(Some("path"), reporter)?
@@ -1270,9 +1256,6 @@ impl lowered_ast::attributes::AttributeKind {
                     Self::Location { path }
                 }
                 Moving => Self::Moving,
-                Nat => Self::Nat,
-                Nat32 => Self::Nat32,
-                Nat64 => Self::Nat64,
                 Public => {
                     let reach = optional_argument(arguments)
                         .map(|argument| argument.path(Some("reach"), reporter))
@@ -1300,11 +1283,9 @@ impl lowered_ast::attributes::AttributeKind {
 
                     Self::RecursionLimit { depth }
                 }
-                Rune => Self::Rune,
                 Static => Self::Static,
                 Statistics => Self::Statistics,
                 Test => Self::Test,
-                Text => Self::Text,
                 Unsafe => Self::Unsafe,
                 Unstable => {
                     Diagnostic::unimplemented("attribute `unstable`")
@@ -1313,7 +1294,6 @@ impl lowered_ast::attributes::AttributeKind {
 
                     return Err(AttributeParsingError::Unrecoverable);
                 }
-                Vector => Self::Vector,
             })
         })();
 

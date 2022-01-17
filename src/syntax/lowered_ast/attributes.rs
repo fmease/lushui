@@ -479,19 +479,11 @@ pub(crate) enum AttributeKind {
     Ignore,
     /// Statically include the contents of file given by path.
     Include,
-    /// Specify the concrete type of a number literal to be `Int`.
-    Int,
-    /// Specify the concrete type of a number literal to be `Int32`.
-    Int32,
-    /// Specify the concrete type of a number literal to be `Int64`.
-    Int64,
     /// Identify a binding intrinsic to the language.
     ///
     /// Currently only used for bindings that are required for some
     /// intrinsic bindings in the core library.
     Known,
-    /// Specify the concrete type of a sequence literal to be `List`.
-    List,
     /// Change the path where the out-of-line module resides.
     ///
     /// # Form
@@ -504,12 +496,6 @@ pub(crate) enum AttributeKind {
     },
     /// Mark a data type binding to be likely expanded in the number of constructors.
     Moving,
-    /// Specify the concrete type of a number literal to be `Nat`.
-    Nat,
-    /// Specify the concrete type of a number literal to be `Nat32`.
-    Nat32,
-    /// Specify the concrete type of a number literal to be `Nat64`.
-    Nat64,
     /// Make the binding part of the public API or at least visible in modules higher up.
     ///
     /// If no `reach` is given, the binding is exposed to other capsules.
@@ -531,16 +517,12 @@ pub(crate) enum AttributeKind {
     RecursionLimit {
         depth: u32,
     },
-    /// Specify the concrete type of a text literal to be `Rune`.
-    Rune,
     /// Force an expression to be evaluated at compile-time.
     Static,
     /// Output statistics about a declaration.
     Statistics,
     /// Mark a function as a unit test.
     Test,
-    /// Specify the concrete type of a text literal to be `Text`.
-    Text,
     /// Mark a binding or expression as "unsafe".
     Unsafe,
     /// Mark a binding as an unstable part of the public API.
@@ -552,8 +534,6 @@ pub(crate) enum AttributeKind {
     /// ```
     #[allow(dead_code)]
     Unstable(Unstable),
-    /// Specify the concrete type of a sequence literal to be `Vector`.
-    Vector,
     /// Warn on a [lint](Lint).
     ///
     /// # Form
@@ -577,12 +557,10 @@ impl AttributeKind {
                 Targets::DECLARATION
             }
             Intrinsic => Targets::FUNCTION_DECLARATION | Targets::DATA_DECLARATION,
-            Include | Rune | Text => Targets::TEXT_LITERAL,
+            Include => Targets::TEXT_LITERAL,
             Known | Moving | Abstract | DocAttribute { .. } | DocReservedIdentifier { .. } => {
                 Targets::DATA_DECLARATION
             }
-            Int | Int32 | Int64 | Nat | Nat32 | Nat64 => Targets::NUMBER_LITERAL,
-            List | Vector => Targets::SEQUENCE_LITERAL,
             // @Task for constructors, smh add extra diagnostic note saying they are public automatically
             // @Update with `@transparent` implemented, suggest `@transparent` on the data decl
             Public { .. } => {
@@ -614,13 +592,7 @@ impl AttributeKind {
             self,
             Self::Deprecated { .. }
                 | Self::Doc { .. }
-                | Self::Int
-                | Self::Int32
-                | Self::Int64
                 | Self::Location { .. }
-                | Self::Nat
-                | Self::Nat32
-                | Self::Nat64
                 | Self::Abstract
                 | Self::Public { .. }
         ) || self.is_internal()
@@ -665,21 +637,11 @@ impl fmt::Display for AttributeKind {
             | Self::Ignore
             | Self::Include
             | Self::Known
-            | Self::Int
-            | Self::Int32
-            | Self::Int64
-            | Self::List
             | Self::Moving
-            | Self::Nat
-            | Self::Nat32
-            | Self::Nat64
-            | Self::Rune
             | Self::Static
             | Self::Statistics
             | Self::Test
-            | Self::Text
-            | Self::Unsafe
-            | Self::Vector => write!(f, "{name}"),
+            | Self::Unsafe => write!(f, "{name}"),
 
             Self::Allow { lint }
             | Self::Deny { lint }
@@ -747,26 +709,16 @@ impl AttributeName {
             Self::Intrinsic => "intrinsic",
             Self::Ignore => "ignore",
             Self::Include => "include",
-            Self::Int => "Int",
-            Self::Int32 => "Int32",
-            Self::Int64 => "Int64",
             Self::Known => "known",
-            Self::List => "List",
             Self::Location => "location",
             Self::Moving => "moving",
-            Self::Nat => "Nat",
-            Self::Nat32 => "Nat32",
-            Self::Nat64 => "Nat64",
             Self::Public => "public",
             Self::RecursionLimit => "recursion-limit",
-            Self::Rune => "Rune",
             Self::Static => "static",
             Self::Statistics => "statistics",
             Self::Test => "test",
-            Self::Text => "Text",
             Self::Unsafe => "unsafe",
             Self::Unstable => "unstable",
-            Self::Vector => "Vector",
             Self::Warn => "warn",
         }
     }
@@ -793,25 +745,15 @@ impl FromStr for AttributeName {
             "ignore" => Self::Ignore,
             "include" => Self::Include,
             "known" => Self::Known,
-            "Int" => Self::Int,
-            "Int32" => Self::Int32,
-            "Int64" => Self::Int64,
-            "List" => Self::List,
             "location" => Self::Location,
             "moving" => Self::Moving,
-            "Nat" => Self::Nat,
-            "Nat32" => Self::Nat32,
-            "Nat64" => Self::Nat64,
             "public" => Self::Public,
             "recursion-limit" => Self::RecursionLimit,
-            "Rune" => Self::Rune,
             "static" => Self::Static,
             "statistics" => Self::Statistics,
             "test" => Self::Test,
-            "Text" => Self::Text,
             "unsafe" => Self::Unsafe,
             "unstable" => Self::Unstable,
-            "Vector" => Self::Vector,
             "warn" => Self::Warn,
             _ => return Err(()),
         })

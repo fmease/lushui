@@ -11,8 +11,6 @@ mod instruction;
 // @Task move stuff from here to there
 pub(crate) mod interpreter;
 
-use std::default::default;
-
 use crate::{
     hir::{self, Declaration, DeclarationIndex, Expression, Number},
     resolver::Capsule,
@@ -22,6 +20,7 @@ use crate::{
 use index_map::{Index as _, IndexMap};
 use instruction::{Chunk, ChunkIndex, Instruction};
 use staticvec::StaticVec;
+use std::default::default;
 
 #[derive(PartialEq, Eq)]
 enum LambdaParent {
