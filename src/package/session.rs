@@ -82,6 +82,12 @@ impl BuildSession {
         self.capsules.insert(capsule.index(), capsule);
     }
 
+    pub(crate) fn known_bindings(&self) -> impl Iterator<Item = (KnownBinding, &Identifier)> {
+        self.known_bindings
+            .iter()
+            .map(|(&known, identifier)| (known, identifier))
+    }
+
     pub(crate) fn known_binding(&self, known: KnownBinding) -> Option<&Identifier> {
         self.known_bindings.get(&known)
     }

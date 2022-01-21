@@ -48,9 +48,7 @@ use crate::{
     span::{SharedSourceMap, SourceFileIndex, Span, Spanned, Spanning},
     utility::SmallVec,
 };
-use either::Either;
 use std::{any::TypeId, default::default};
-use Either::{Left, Right};
 
 const STANDARD_DECLARATION_DELIMITERS: [Delimiter; 3] = {
     use Delimiter::*;
@@ -1080,7 +1078,7 @@ impl<'a> Parser<'a> {
             }
             OpeningSquareBracket => {
                 self.advance();
-                self.finish_parse_sequence_literal(Right(span))?
+                self.finish_parse_sequence_literal(None, span)?
             }
             OpeningRoundBracket => {
                 self.advance();
@@ -1574,7 +1572,7 @@ impl<'a> Parser<'a> {
                     span,
                     ast::SequenceLiteral {
                         path: None,
-                        elements,
+                        elements: Spanned::new(span, elements),
                     }
                     .into(),
                 ))
@@ -1592,7 +1590,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Finish parsing a sequence literal given the already parsed leading path or the span of the already parsed leading `[`.
+    /// Finish parsing a sequence literal given the already parsed leading path and the span of the already parsed leading `[`.
     ///
     /// # Grammar
     ///
@@ -1602,13 +1600,13 @@ impl<'a> Parser<'a> {
     /// ```
     fn finish_parse_sequence_literal<T>(
         &mut self,
-        prefix: Either<Path, Span>,
+        path: Option<Path>,
+        mut span: Span,
     ) -> Result<ast::Item<T>>
     where
         T: Parse + From<ast::SequenceLiteral<ast::Item<T>>>,
     {
         let mut elements = Vec::new();
-        let mut span = prefix.as_ref().either(Spanning::span, |&span| span);
 
         while self.current_token().name() != ClosingSquareBracket {
             elements.push(T::parse_lower(self)?);
@@ -1619,10 +1617,10 @@ impl<'a> Parser<'a> {
 
         Ok(ast::Item::new(
             default(),
-            span,
+            span.merge_into(&path),
             ast::SequenceLiteral {
-                path: prefix.left(),
-                elements,
+                path,
+                elements: Spanned::new(span, elements),
             }
             .into(),
         ))
@@ -1787,8 +1785,9 @@ impl<'a> Parser<'a> {
                     ));
                 }
                 OpeningSquareBracket => {
+                    let span = self.current_token().span();
                     self.advance();
-                    return self.finish_parse_sequence_literal(Left(path));
+                    return self.finish_parse_sequence_literal(Some(path), span);
                 }
                 _ => {
                     return self.error(|| {

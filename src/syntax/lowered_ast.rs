@@ -1,6 +1,6 @@
 //! The lowered abstract syntax tree (lowered AST).
 
-use super::ast::{Explicitness, Identifier, NumberLiteral, Path, TextLiteral};
+use super::ast::{Explicitness, Identifier, NumberLiteral, Path, SequenceLiteral, TextLiteral};
 use crate::{
     error::PossiblyErroneous,
     span::{SourceFileIndex, Span},
@@ -96,6 +96,7 @@ pub enum ExpressionKind {
     NumberLiteral(Box<NumberLiteral>),
     TextLiteral(Box<TextLiteral>),
     Application(Box<Application<Expression>>),
+    SequenceLiteral(Box<SequenceLiteral<Expression>>),
     PiType(Box<PiType>),
     Lambda(Box<Lambda>),
     CaseAnalysis(Box<CaseAnalysis>),
@@ -130,6 +131,12 @@ impl From<TextLiteral> for ExpressionKind {
 impl From<Application<Expression>> for ExpressionKind {
     fn from(application: Application<Expression>) -> Self {
         Self::Application(Box::new(application))
+    }
+}
+
+impl From<SequenceLiteral<Expression>> for ExpressionKind {
+    fn from(sequence: SequenceLiteral<Expression>) -> Self {
+        Self::SequenceLiteral(Box::new(sequence))
     }
 }
 
@@ -191,6 +198,7 @@ pub enum PatternKind {
     Path(Box<Path>),
     Binder(Box<Identifier>),
     Application(Box<Application<Pattern>>),
+    SequenceLiteral(Box<SequenceLiteral<Pattern>>),
     Error,
 }
 
@@ -227,6 +235,12 @@ impl From<Identifier> for PatternKind {
 impl From<Application<Pattern>> for PatternKind {
     fn from(application: Application<Pattern>) -> Self {
         Self::Application(Box::new(application))
+    }
+}
+
+impl From<SequenceLiteral<Pattern>> for PatternKind {
+    fn from(sequence: SequenceLiteral<Pattern>) -> Self {
+        Self::SequenceLiteral(Box::new(sequence))
     }
 }
 

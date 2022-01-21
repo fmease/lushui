@@ -486,7 +486,7 @@ pub struct Application<T> {
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct SequenceLiteral<T> {
     pub path: Option<Path>,
-    pub elements: Vec<T>,
+    pub elements: Spanned<Vec<T>>,
 }
 
 #[derive(Clone)]
@@ -714,7 +714,7 @@ pub(crate) use Explicitness::*;
 /// The explicitness of a parameter or argument.
 ///
 /// In the context of parameters, this specifies whether in an application, the corresponding argument has
-/// to be passed explicitly or should be infered, i.e. the parameter is [Implicit].
+/// to be passed explicitly or should be inferred, i.e. the parameter is [Implicit].
 ///
 /// In the context of applications, [Implicit] means that the argument is passed explicitly
 /// even though the parameter is marked implicit.

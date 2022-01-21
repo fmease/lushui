@@ -753,13 +753,20 @@ impl<'a> Lowerer<'a> {
                 self.health.taint();
                 PossiblyErroneous::error()
             }
-            SequenceLiteral(_sequence) => {
-                Diagnostic::unimplemented("sequence literals")
-                    .primary_span(expression.span)
-                    .report(self.reporter);
-                self.health.taint();
-                PossiblyErroneous::error()
-            }
+            SequenceLiteral(sequence) => lowered_ast::Expression::new(
+                attributes,
+                expression.span,
+                ast::SequenceLiteral {
+                    path: sequence.path,
+                    elements: sequence.elements.map(|elements| {
+                        elements
+                            .into_iter()
+                            .map(|element| self.lower_expression(element))
+                            .collect()
+                    }),
+                }
+                .into(),
+            ),
             Error => PossiblyErroneous::error(),
         };
 
@@ -807,13 +814,20 @@ impl<'a> Lowerer<'a> {
                     .into(),
                 )
             }
-            SequenceLiteral(_sequence) => {
-                Diagnostic::unimplemented("sequence literal patterns")
-                    .primary_span(pattern.span)
-                    .report(self.reporter);
-                self.health.taint();
-                PossiblyErroneous::error()
-            }
+            SequenceLiteral(sequence) => lowered_ast::Pattern::new(
+                attributes,
+                pattern.span,
+                ast::SequenceLiteral {
+                    path: sequence.path,
+                    elements: sequence.elements.map(|elements| {
+                        elements
+                            .into_iter()
+                            .map(|element| self.lower_pattern(element))
+                            .collect()
+                    }),
+                }
+                .into(),
+            ),
         }
     }
 

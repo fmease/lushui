@@ -147,12 +147,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "either"
-version = "1.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e78d4f1cc4ae33bbfc157ed5d5a5ef3bc29227303d595861deb238fcec4e9457"
-
-[[package]]
 name = "hashbrown"
 version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -229,7 +223,6 @@ dependencies = [
  "crossbeam",
  "difference",
  "discriminant",
- "either",
  "html-escape",
  "index_map",
  "joinery",

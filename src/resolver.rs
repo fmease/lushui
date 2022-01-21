@@ -14,7 +14,7 @@ use crate::{
     format::{pluralize, unordered_listing, Conjunction, DisplayWith, QuoteExt},
     hir::{self, DeBruijnIndex, DeclarationIndex, Identifier, Index, LocalDeclarationIndex},
     package::BuildSession,
-    span::{Span, Spanning},
+    span::{Span, Spanned, Spanning},
     syntax::{
         ast::{self, Path},
         lowered_ast::{self, AttributeName},
@@ -681,6 +681,7 @@ impl<'a> Resolver<'a> {
     }
 
     // @Task @Beacon use Rc::try_unwrap more instead of clone
+    // @Task use the Stain::stain instead of moving the try operator below resolve calls
     fn resolve_expression(
         &self,
         expression: lowered_ast::Expression,
@@ -805,12 +806,31 @@ impl<'a> Resolver<'a> {
                     hir::CaseAnalysis { scrutinee, cases }.into(),
                 )
             }
+            SequenceLiteral(sequence) => {
+                let mut elements = Vec::new();
+
+                for element in sequence.elements.value {
+                    // @Task use Stain::stain to not return early!
+                    elements.push(self.resolve_expression(element, scope)?);
+                }
+
+                self.resolve_sequence_literal(
+                    ast::SequenceLiteral {
+                        path: sequence.path,
+                        elements: Spanned::new(sequence.elements.span, elements),
+                    },
+                    expression.attributes,
+                    expression.span,
+                    scope,
+                )?
+            }
             Error => PossiblyErroneous::error(),
         };
 
         Ok(expression)
     }
 
+    // @Task use the Stain::stain instead of moving the try operator below resolve calls
     fn resolve_pattern(
         &self,
         pattern: lowered_ast::Pattern,
@@ -818,6 +838,7 @@ impl<'a> Resolver<'a> {
     ) -> Result<(hir::Pattern, Vec<ast::Identifier>)> {
         use lowered_ast::PatternKind::*;
 
+        // @Task replace this hideous binders.append logic
         let mut binders: Vec<ast::Identifier> = Vec::new();
 
         let pattern = match pattern.value.clone() {
@@ -862,6 +883,26 @@ impl<'a> Resolver<'a> {
                     .into(),
                 )
             }
+            SequenceLiteral(sequence) => {
+                let mut elements = Vec::new();
+
+                for element in sequence.elements.value {
+                    // @Task use Stain::stain to not return early!
+                    let (element, mut element_binders) = self.resolve_pattern(element, scope)?;
+                    binders.append(&mut element_binders);
+                    elements.push(element);
+                }
+
+                self.resolve_sequence_literal(
+                    ast::SequenceLiteral {
+                        path: sequence.path,
+                        elements: Spanned::new(sequence.elements.span, elements),
+                    },
+                    pattern.attributes,
+                    pattern.span,
+                    scope,
+                )?
+            }
             Error => PossiblyErroneous::error(),
         };
 
@@ -881,7 +922,7 @@ impl<'a> Resolver<'a> {
         let namespace = number
             .path
             .as_ref()
-            .map(|path| self.resolve_path_of_literal(path, scope))
+            .map(|path| Ok((self.resolve_path_of_literal(path, scope)?, path.span())))
             .transpose()?;
         let number = literal::resolve_number_literal(
             number.literal.as_deref(),
@@ -914,6 +955,22 @@ impl<'a> Resolver<'a> {
             self.reporter,
         )?;
         Ok(hir::Item::new(attributes, span, text.into()))
+    }
+
+    fn resolve_sequence_literal<T>(
+        &self,
+        // @Question should we take this type?
+        sequence: ast::SequenceLiteral<hir::Item<T>>,
+        _attributes: lowered_ast::Attributes,
+        _span: Span,
+        scope: &FunctionScope<'_>,
+    ) -> Result<!> /*Result<hir::Item<T>>*/ {
+        let namespace = sequence
+            .path
+            .as_ref()
+            .map(|path| Ok((self.resolve_path_of_literal(path, scope)?, path.span())))
+            .transpose()?;
+        literal::resolve_sequence_literal(sequence.elements, namespace, self.session, self.reporter)
     }
 
     fn resolve_path_of_literal(

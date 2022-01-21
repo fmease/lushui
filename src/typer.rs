@@ -175,7 +175,7 @@ impl<'a> Typer<'a> {
             } => {
                 let value = value.unwrap();
 
-                if let Err(error) = self.it_is_a_type(type_.clone(), &FunctionScope::Capsule) {
+                if let Err(error) = self.it_is_a_type(type_.clone(), &FunctionScope::Module) {
                     return self.handle_registration_error(
                         error,
                         &type_,
@@ -187,12 +187,12 @@ impl<'a> Typer<'a> {
 
                 let type_ = self.interpreter().evaluate_expression(
                     type_,
-                    interpreter::Context::new(&FunctionScope::Capsule),
+                    interpreter::Context::new(&FunctionScope::Module),
                 )?;
 
-                let infered_type =
-                    match self.infer_type_of_expression(value.clone(), &FunctionScope::Capsule) {
-                        Ok(expression) => expression,
+                let inferred_type =
+                    match self.infer_type_of_expression(value.clone(), &FunctionScope::Module) {
+                        Ok(type_) => type_,
                         Err(error) => {
                             let attributes = registration.attributes.clone();
 
@@ -217,7 +217,7 @@ impl<'a> Typer<'a> {
                     };
 
                 if let Err(error) =
-                    self.it_is_actual(type_.clone(), infered_type.clone(), &FunctionScope::Capsule)
+                    self.it_is_actual(type_.clone(), inferred_type.clone(), &FunctionScope::Module)
                 {
                     return self.handle_registration_error(
                         error,
@@ -233,13 +233,13 @@ impl<'a> Typer<'a> {
                     attributes: registration.attributes,
                     kind: Function {
                         binder,
-                        type_: infered_type,
+                        type_: inferred_type,
                         value: Some(value),
                     },
                 })?;
             }
             Data { binder, type_ } => {
-                if let Err(error) = self.it_is_a_type(type_.clone(), &FunctionScope::Capsule) {
+                if let Err(error) = self.it_is_a_type(type_.clone(), &FunctionScope::Module) {
                     return self.handle_registration_error(
                         error,
                         &type_,
@@ -251,7 +251,7 @@ impl<'a> Typer<'a> {
 
                 let type_ = self.interpreter().evaluate_expression(
                     type_,
-                    interpreter::Context::new(&FunctionScope::Capsule),
+                    interpreter::Context::new(&FunctionScope::Module),
                 )?;
 
                 self.assert_constructor_is_instance_of_type(
@@ -269,7 +269,7 @@ impl<'a> Typer<'a> {
                 type_,
                 owner_data_type: data,
             } => {
-                if let Err(error) = self.it_is_a_type(type_.clone(), &FunctionScope::Capsule) {
+                if let Err(error) = self.it_is_a_type(type_.clone(), &FunctionScope::Module) {
                     return self.handle_registration_error(
                         error,
                         &type_,
@@ -281,7 +281,7 @@ impl<'a> Typer<'a> {
 
                 let type_ = self.interpreter().evaluate_expression(
                     type_,
-                    interpreter::Context::new(&FunctionScope::Capsule),
+                    interpreter::Context::new(&FunctionScope::Module),
                 )?;
 
                 self.assert_constructor_is_instance_of_type(
@@ -299,7 +299,7 @@ impl<'a> Typer<'a> {
                 })?;
             }
             IntrinsicFunction { binder, type_ } => {
-                if let Err(error) = self.it_is_a_type(type_.clone(), &FunctionScope::Capsule) {
+                if let Err(error) = self.it_is_a_type(type_.clone(), &FunctionScope::Module) {
                     return self.handle_registration_error(
                         error,
                         &type_,
@@ -311,7 +311,7 @@ impl<'a> Typer<'a> {
 
                 let type_ = self.interpreter().evaluate_expression(
                     type_,
-                    interpreter::Context::new(&FunctionScope::Capsule),
+                    interpreter::Context::new(&FunctionScope::Module),
                 )?;
 
                 self.carry_out_registration(BindingRegistration {
@@ -374,11 +374,8 @@ impl<'a> Typer<'a> {
                 // @Bug may be non-local thus panic
                 let data_index = data.local_declaration_index(self.capsule).unwrap();
 
-                match self.capsule[data_index].kind {
-                    EntityKind::DataType {
-                        ref mut constructors,
-                        ..
-                    } => constructors.push(binder),
+                match &mut self.capsule[data_index].kind {
+                    EntityKind::DataType { constructors, .. } => constructors.push(binder),
                     _ => unreachable!(),
                 }
             }
@@ -527,12 +524,12 @@ impl<'a> Typer<'a> {
                 self.it_is_a_type(parameter_type.clone(), scope)?;
 
                 let scope = scope.extend_with_parameter(parameter_type.clone());
-                let infered_body_type =
+                let inferred_body_type =
                     self.infer_type_of_expression(lambda.body.clone(), &scope)?;
 
                 if let Some(body_type_annotation) = lambda.body_type_annotation.clone() {
                     self.it_is_a_type(body_type_annotation.clone(), &scope)?;
-                    self.it_is_actual(body_type_annotation, infered_body_type.clone(), &scope)?;
+                    self.it_is_actual(body_type_annotation, inferred_body_type.clone(), &scope)?;
                 }
 
                 Expression::new(
@@ -543,7 +540,7 @@ impl<'a> Typer<'a> {
                         laziness: lambda.laziness,
                         parameter: Some(lambda.parameter.clone()),
                         domain: parameter_type,
-                        codomain: infered_body_type,
+                        codomain: inferred_body_type,
                     }
                     .into(),
                 )
@@ -903,12 +900,12 @@ impl<'a> Typer<'a> {
         constructor: Expression,
         type_: Expression,
     ) -> Result {
-        let result_type = self.result_type(constructor, &FunctionScope::Capsule);
+        let result_type = self.result_type(constructor, &FunctionScope::Module);
         let callee = result_type.clone().callee();
 
         if self
             .interpreter()
-            .equals(&type_, &callee, &FunctionScope::Capsule)?
+            .equals(&type_, &callee, &FunctionScope::Module)?
         {
             Ok(())
         } else {

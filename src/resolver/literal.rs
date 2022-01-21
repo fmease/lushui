@@ -4,22 +4,24 @@
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     error::Result,
-    hir::{DeclarationIndex, Number, Text},
+    hir::{DeclarationIndex, Item, Number, Text},
     package::{session::IntrinsicType, BuildSession},
-    span::Spanned,
+    span::{Span, Spanned},
 };
 
 const DEFAULT_NUMBER_LITERAL_TYPE: IntrinsicType = IntrinsicType::Nat;
 const _DEFAULT_TEXT_LITERAL_TYPE: IntrinsicType = IntrinsicType::Text;
 
+// @Task improve API!
 pub(super) fn resolve_number_literal(
     number: Spanned<&str>,
-    type_: Option<DeclarationIndex>,
+    // @Note atrocious!
+    type_: Option<(DeclarationIndex, Span)>,
     session: &BuildSession,
     reporter: &Reporter,
 ) -> Result<Number> {
     let type_ = match type_ {
-        Some(type_) => session
+        Some((type_, path)) => session
             .intrinsic_types()
             .find(|(_, identifier)| identifier.declaration_index().unwrap() == type_)
             .map(|(known, _)| known)
@@ -27,6 +29,8 @@ pub(super) fn resolve_number_literal(
                 //@Temporary message
                 Diagnostic::error()
                     .message("type does not have number literals")
+                    .primary_span(path)
+                    .secondary_span(number)
                     .report(reporter)
             })?,
         None => DEFAULT_NUMBER_LITERAL_TYPE,
@@ -79,7 +83,7 @@ const fn interval(type_: IntrinsicType) -> &'static str {
 #[allow(clippy::unnecessary_wraps)] // @Temporary
 pub(super) fn resolve_text_literal(
     text: Spanned<&str>,
-    _namespace: Option<DeclarationIndex>,
+    _type: Option<DeclarationIndex>,
     _session: &BuildSession,
     _reporter: &Reporter,
 ) -> Result<Text> {
@@ -87,4 +91,45 @@ pub(super) fn resolve_text_literal(
     Ok(Text::Text(text.value.to_owned()))
 }
 
-// @Task fn resolve_sequence_literal @Note also uses known bindings not intrinsic bindings (List, Vector, …)
+// @Task improve API
+pub(super) fn resolve_sequence_literal<T>(
+    sequence: Spanned<Vec<Item<T>>>,
+    // @Note heinous!
+    type_: Option<(DeclarationIndex, Span)>,
+    session: &BuildSession,
+    reporter: &Reporter,
+) -> Result<!> {
+    let type_ = match type_ {
+        Some((type_, path)) => session
+            .known_bindings()
+            .find(|(_, identifier)| identifier.declaration_index().unwrap() == type_)
+            .map(|(known, _)| known)
+            .ok_or_else(|| {
+                //@Temporary message
+                Diagnostic::error()
+                    .message("type does not have sequence literals")
+                    .primary_span(path)
+                    .secondary_span(sequence)
+                    .report(reporter)
+            })?,
+        None => {
+            // @Task proper message
+            Diagnostic::error()
+                .message("sequence literal has to be annotated with a path")
+                .report(reporter);
+            return Err(());
+        }
+    };
+
+    // @Task add List and Vector, @Note we might want to weaken @known to
+    // @sequence (new internal attribute)
+    match type_ {
+        _ => {
+            //@Temporary message
+            Diagnostic::error()
+                .message("type does not have number literals")
+                .report(reporter);
+            return Err(());
+        }
+    }
+}

@@ -44,7 +44,7 @@ pub fn evaluate_main_function(
             .clone()
             .unwrap()
             .into_expression(),
-        Context::new(&FunctionScope::Capsule),
+        Context::new(&FunctionScope::Module),
     )
 }
 

@@ -120,6 +120,7 @@ impl fmt::Display for super::Expression {
     }
 }
 
+// @Task add sequences!
 fn format_pi_type_literal_or_lower(
     expression: &super::Expression,
     f: &mut fmt::Formatter<'_>,
@@ -227,6 +228,23 @@ fn format_pi_type_literal_or_lower(
             }
             write!(f, " }}")
         }
+        // @Task abstract over fmting sequence literals (via a function over Item<_>)
+        // once we have format_lower_pattern
+        SequenceLiteral(sequence) => {
+            if let Some(path) = &sequence.path {
+                write!(f, "{path}.")?;
+            }
+
+            write!(f, "[")?;
+            for (index, element) in sequence.elements.value.iter().enumerate() {
+                if index != 0 {
+                    write!(f, " ")?;
+                }
+
+                format_lower_expression(element, f)?;
+            }
+            write!(f, "]")
+        }
         _ => format_application_or_lower(expression, f),
     }
 }
@@ -284,6 +302,23 @@ impl fmt::Display for super::Pattern {
             ),
             Application(application) => {
                 write!(f, "({}) ({})", application.callee, application.argument)
+            }
+            // @Task abstract over fmting sequence literals (via a function over Item<_>)
+            // once we have format_lower_pattern
+            SequenceLiteral(sequence) => {
+                if let Some(path) = &sequence.path {
+                    write!(f, "{path}.")?;
+                }
+
+                write!(f, "[")?;
+                for (index, element) in sequence.elements.value.iter().enumerate() {
+                    if index != 0 {
+                        write!(f, " ")?;
+                    }
+
+                    write!(f, "({element})")?;
+                }
+                write!(f, "]")
             }
             Error => write!(f, "{}", "?(error)".red()),
         }

@@ -217,12 +217,11 @@ impl Span {
 
     #[must_use]
     pub(crate) fn merge(self, other: impl PossiblySpanning) -> Self {
-        match other.possible_span() {
-            Some(other) => {
-                // self.assert_disjoint_and_consecutive(other);
-                Self::new(self.start, other.end)
-            }
-            None => self,
+        if let Some(other) = other.possible_span() {
+            // self.assert_disjoint_and_consecutive(other);
+            Self::new(self.start, other.end)
+        } else {
+            self
         }
     }
 

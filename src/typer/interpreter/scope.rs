@@ -98,7 +98,7 @@ impl ValueView {
 
 /// The scope of bindings inside of a function.
 pub(crate) enum FunctionScope<'a> {
-    Capsule,
+    Module,
     FunctionParameter {
         parent: &'a Self,
         type_: Expression,
@@ -166,7 +166,7 @@ impl<'a> FunctionScope<'a> {
                     None => parent.look_up_type_with_depth(index, depth + types.len()),
                 }
             }
-            Self::Capsule => unreachable!(),
+            Self::Module => unreachable!(),
         }
     }
 }
