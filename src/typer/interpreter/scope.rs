@@ -1,97 +1,12 @@
 use super::{Expression, Substitution::Shift};
 use crate::{
-    diagnostics::Reporter,
-    entity::EntityKind,
-    error::Result,
     format::{AsDebug, DisplayWith},
     hir::{self, DeBruijnIndex, Identifier},
     package::BuildSession,
     resolver::Capsule,
-    syntax::lowered_ast::{AttributeName, Attributes},
+    syntax::lowered_ast::Attributes,
 };
 use std::{default::default, fmt};
-
-impl Capsule {
-    // @Bug does not understand non-local binders
-    // @Beacon @Beacon @Beacon @Task make this a method of Typer instead
-    pub(crate) fn carry_out(
-        &mut self,
-        registration: BindingRegistration,
-        session: &mut BuildSession,
-        reporter: &Reporter,
-    ) -> Result {
-        use BindingRegistrationKind::*;
-
-        match registration.kind {
-            Function {
-                binder,
-                type_,
-                value,
-            } => {
-                // @Bug may be non-local thus panic
-                let index = binder.local_declaration_index(self).unwrap();
-                let entity = &mut self[index];
-                debug_assert!(entity.is_untyped_value() || entity.is_value_without_value());
-
-                entity.kind = EntityKind::Function {
-                    type_,
-                    expression: value,
-                };
-            }
-            Data { binder, type_ } => {
-                // @Bug may be non-local thus panic
-                let index = binder.local_declaration_index(self).unwrap();
-                let entity = &mut self[index];
-                debug_assert!(entity.is_untyped_value());
-
-                entity.kind = EntityKind::DataType {
-                    namespace: std::mem::take(entity.namespace_mut().unwrap()),
-                    type_,
-                    constructors: Vec::new(),
-                };
-            }
-            Constructor {
-                binder,
-                type_,
-                owner_data_type: data,
-            } => {
-                // @Bug may be non-local thus panic
-                let index = binder.local_declaration_index(self).unwrap();
-                let entity = &mut self[index];
-                debug_assert!(entity.is_untyped_value());
-
-                entity.kind = EntityKind::Constructor { type_ };
-
-                // @Bug may be non-local thus panic
-                let data_index = data.local_declaration_index(self).unwrap();
-
-                match self[data_index].kind {
-                    EntityKind::DataType {
-                        ref mut constructors,
-                        ..
-                    } => constructors.push(binder),
-                    _ => unreachable!(),
-                }
-            }
-            IntrinsicFunction { binder, type_ } => {
-                // @Bug may be non-local thus panic
-                let index = binder.local_declaration_index(self).unwrap();
-                debug_assert!(self[index].is_untyped_value());
-
-                self[index].kind = session.register_intrinsic_function(
-                    binder,
-                    type_,
-                    registration
-                        .attributes
-                        .span(AttributeName::Intrinsic)
-                        .unwrap(),
-                    reporter,
-                )?;
-            }
-        }
-        Ok(())
-    }
-}
 
 #[derive(Clone)] // @Question expensive attributes clone?
 pub(crate) struct BindingRegistration {
@@ -121,6 +36,7 @@ pub(crate) enum BindingRegistrationKind {
     },
 }
 
+// only used to report "cyclic" types (currently treated as a bug)
 impl DisplayWith for BindingRegistration {
     type Context<'a> = (&'a Capsule, &'a BuildSession);
 

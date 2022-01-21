@@ -570,7 +570,7 @@ mod parser {
     };
     use crate::{
         diagnostics::{Code, Diagnostic, Reporter},
-        error::{Health, ReportedExt, Result, Stained},
+        error::{Health, OkIfUntaintedExt, ReportedExt, Result},
         span::{SharedSourceMap, SourceFileIndex, Span, Spanning, WeaklySpanned},
         utility::HashMap,
     };
@@ -646,7 +646,7 @@ mod parser {
             }?;
             self.consume(EndOfInput)?;
 
-            Result::stained(value, self.health)
+            Result::ok_if_untainted(value, self.health)
         }
 
         fn has_top_level_map_entries(&self) -> bool {

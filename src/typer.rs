@@ -7,6 +7,7 @@ use std::default::default;
 
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
+    entity::EntityKind,
     error::{Health, Result, Stain},
     format::{pluralize, DisplayWith, QuoteExt},
     hir::{self, Declaration, Expression, Identifier},
@@ -20,7 +21,7 @@ use crate::{
 };
 use interpreter::{
     scope::{BindingRegistration, FunctionScope},
-    Form, Interpreter,
+    Interpreter,
 };
 use joinery::JoinableIterator;
 
@@ -73,7 +74,7 @@ impl<'a> Typer<'a> {
         }
     }
 
-    fn interpreter(&mut self) -> Interpreter<'_> {
+    fn interpreter(&self) -> Interpreter<'_> {
         Interpreter::new(self.capsule, self.session, self.reporter)
     }
 
@@ -174,89 +175,83 @@ impl<'a> Typer<'a> {
             } => {
                 let value = value.unwrap();
 
-                recover_error!(
-                    self, registration;
-                    self.it_is_a_type(type_.clone(), &FunctionScope::Capsule),
-                    actual = type_
-                );
+                if let Err(error) = self.it_is_a_type(type_.clone(), &FunctionScope::Capsule) {
+                    return self.handle_registration_error(
+                        error,
+                        &type_,
+                        None,
+                        registration,
+                        |_| Ok(()),
+                    );
+                };
+
                 let type_ = self.interpreter().evaluate_expression(
                     type_,
-                    interpreter::Context {
-                        scope: &FunctionScope::Capsule,
-                        form: Form::Normal, /* Form::WeakHeadNormal */
-                    },
+                    interpreter::Context::new(&FunctionScope::Capsule),
                 )?;
 
                 let infered_type =
                     match self.infer_type_of_expression(value.clone(), &FunctionScope::Capsule) {
                         Ok(expression) => expression,
                         Err(error) => {
-                            return match error {
-                                Unrecoverable => Err(()),
-                                OutOfOrderBinding => {
-                                    self.out_of_order_bindings.push(registration.clone());
-                                    self.capsule.carry_out(
-                                        BindingRegistration {
-                                            attributes: registration.attributes,
-                                            kind: Function {
-                                                binder,
-                                                type_,
-                                                value: None,
-                                            },
+                            let attributes = registration.attributes.clone();
+
+                            return self.handle_registration_error(
+                                error,
+                                &value,
+                                // @Question is this correct?
+                                None,
+                                registration,
+                                |typer| {
+                                    typer.carry_out_registration(BindingRegistration {
+                                        attributes,
+                                        kind: Function {
+                                            binder,
+                                            type_,
+                                            value: None,
                                         },
-                                        self.session,
-                                        self.reporter,
-                                    )
-                                }
-                                // @Task abstract over explicit diagnostic building
-                                TypeMismatch { expected, actual } => {
-                                    Diagnostic::error()
-                                        .code(Code::E032)
-                                        .message(format!(
-                                            "expected type `{}`, got type `{}`",
-                                            expected.with((self.capsule, self.session)),
-                                            actual.with((self.capsule, self.session))
-                                        ))
-                                        .labeled_primary_span(&actual, "has the wrong type")
-                                        .labeled_secondary_span(&expected, "expected due to this")
-                                        .report(self.reporter);
-                                    Err(())
-                                }
-                            };
+                                    })
+                                },
+                            );
                         }
                     };
 
-                recover_error!(
-                    self, registration;
-                    self.it_is_actual(type_.clone(), infered_type.clone(), &FunctionScope::Capsule),
-                    actual = value,
-                    expected = type_
-                );
-                self.capsule.carry_out(
-                    BindingRegistration {
-                        attributes: registration.attributes,
-                        kind: Function {
-                            binder,
-                            type_: infered_type,
-                            value: Some(value),
-                        },
+                if let Err(error) =
+                    self.it_is_actual(type_.clone(), infered_type.clone(), &FunctionScope::Capsule)
+                {
+                    return self.handle_registration_error(
+                        error,
+                        &value,
+                        // @Question is this correct?
+                        Some(&type_),
+                        registration,
+                        |_| Ok(()),
+                    );
+                };
+
+                self.carry_out_registration(BindingRegistration {
+                    attributes: registration.attributes,
+                    kind: Function {
+                        binder,
+                        type_: infered_type,
+                        value: Some(value),
                     },
-                    self.session,
-                    self.reporter,
-                )?;
+                })?;
             }
             Data { binder, type_ } => {
-                recover_error!(
-                    self, registration;
-                    self.it_is_a_type(type_.clone(), &FunctionScope::Capsule),
-                    actual = type_
-                );
+                if let Err(error) = self.it_is_a_type(type_.clone(), &FunctionScope::Capsule) {
+                    return self.handle_registration_error(
+                        error,
+                        &type_,
+                        None,
+                        registration,
+                        |_| Ok(()),
+                    );
+                };
+
                 let type_ = self.interpreter().evaluate_expression(
                     type_,
-                    interpreter::Context {
-                        scope: &FunctionScope::Capsule,
-                        form: Form::Normal, /* Form::WeakHeadNormal */
-                    },
+                    interpreter::Context::new(&FunctionScope::Capsule),
                 )?;
 
                 self.assert_constructor_is_instance_of_type(
@@ -264,31 +259,29 @@ impl<'a> Typer<'a> {
                     Expression::new(default(), default(), hir::ExpressionKind::Type),
                 )?;
 
-                self.capsule.carry_out(
-                    BindingRegistration {
-                        attributes: registration.attributes,
-                        kind: Data { binder, type_ },
-                    },
-                    self.session,
-                    self.reporter,
-                )?;
+                self.carry_out_registration(BindingRegistration {
+                    attributes: registration.attributes,
+                    kind: Data { binder, type_ },
+                })?;
             }
             Constructor {
                 binder,
                 type_,
                 owner_data_type: data,
             } => {
-                recover_error!(
-                    self, registration;
-                    self.it_is_a_type(type_.clone(), &FunctionScope::Capsule),
-                    actual = type_
-                );
+                if let Err(error) = self.it_is_a_type(type_.clone(), &FunctionScope::Capsule) {
+                    return self.handle_registration_error(
+                        error,
+                        &type_,
+                        None,
+                        registration,
+                        |_| Ok(()),
+                    );
+                };
+
                 let type_ = self.interpreter().evaluate_expression(
                     type_,
-                    interpreter::Context {
-                        scope: &FunctionScope::Capsule,
-                        form: Form::Normal, /* Form::WeakHeadNormal */
-                    },
+                    interpreter::Context::new(&FunctionScope::Capsule),
                 )?;
 
                 self.assert_constructor_is_instance_of_type(
@@ -296,82 +289,149 @@ impl<'a> Typer<'a> {
                     data.clone().into_expression(),
                 )?;
 
-                self.capsule.carry_out(
-                    BindingRegistration {
-                        attributes: registration.attributes,
-                        kind: Constructor {
-                            binder,
-                            type_,
-                            owner_data_type: data,
-                        },
+                self.carry_out_registration(BindingRegistration {
+                    attributes: registration.attributes,
+                    kind: Constructor {
+                        binder,
+                        type_,
+                        owner_data_type: data,
                     },
-                    self.session,
-                    self.reporter,
-                )?;
+                })?;
             }
             IntrinsicFunction { binder, type_ } => {
-                recover_error!(
-                    self, registration;
-                    self.it_is_a_type(type_.clone(), &FunctionScope::Capsule),
-                    actual = type_
-                );
+                if let Err(error) = self.it_is_a_type(type_.clone(), &FunctionScope::Capsule) {
+                    return self.handle_registration_error(
+                        error,
+                        &type_,
+                        None,
+                        registration,
+                        |_| Ok(()),
+                    );
+                };
+
                 let type_ = self.interpreter().evaluate_expression(
                     type_,
-                    interpreter::Context {
-                        scope: &FunctionScope::Capsule,
-                        form: Form::Normal, /* Form::WeakHeadNormal */
-                    },
+                    interpreter::Context::new(&FunctionScope::Capsule),
                 )?;
 
-                self.capsule.carry_out(
-                    BindingRegistration {
-                        attributes: registration.attributes,
-                        kind: IntrinsicFunction { binder, type_ },
-                    },
-                    self.session,
-                    self.reporter,
-                )?;
-            }
-        }
-
-        // @Task replace if possible
-        macro recover_error(
-            $typer:expr,
-            $registration:expr;
-            $check:expr,
-            actual = $actual_value:expr
-            $(, expected = $expected_reason:expr )?
-        ) {
-            match $check {
-                Ok(expression) => expression,
-                Err(error) => {
-                    return match error {
-                        Unrecoverable => Err(()),
-                        OutOfOrderBinding => {
-                            $typer.out_of_order_bindings.push($registration);
-                            Ok(())
-                        }
-                        TypeMismatch { expected, actual } => {
-                            Err(Diagnostic::error()
-                                .code(Code::E032)
-                                .message(format!(
-                                    "expected type `{}`, got type `{}`",
-                                    expected.with(($typer.capsule, $typer.session)),
-                                    actual.with(($typer.capsule, $typer.session))
-                                ))
-                                .labeled_primary_span(
-                                    &$actual_value,
-                                    "has the wrong type",
-                                )
-                                $( .labeled_secondary_span(&$expected_reason, "expected due to this") )?
-                                .report(&$typer.reporter))
-                        }
-                    }
-                }
+                self.carry_out_registration(BindingRegistration {
+                    attributes: registration.attributes,
+                    kind: IntrinsicFunction { binder, type_ },
+                })?;
             }
         }
 
         Ok(())
+    }
+
+    // @Bug does not understand non-local binders
+    pub(crate) fn carry_out_registration(&mut self, registration: BindingRegistration) -> Result {
+        use BindingRegistrationKind::*;
+
+        match registration.kind {
+            Function {
+                binder,
+                type_,
+                value,
+            } => {
+                // @Bug may be non-local thus panic
+                let index = binder.local_declaration_index(self.capsule).unwrap();
+                let entity = &mut self.capsule[index];
+                // @Question can't we just remove the bodiless check as intrinsic functions
+                // (the only legal bodiless functions) are already handled separately via
+                // IntrinsicFunction?
+                debug_assert!(entity.is_untyped() || entity.is_bodiless_function());
+
+                entity.kind = EntityKind::Function {
+                    type_,
+                    expression: value,
+                };
+            }
+            Data { binder, type_ } => {
+                // @Bug may be non-local thus panic
+                let index = binder.local_declaration_index(self.capsule).unwrap();
+                let entity = &mut self.capsule[index];
+                debug_assert!(entity.is_untyped());
+
+                entity.kind = EntityKind::DataType {
+                    namespace: std::mem::take(entity.namespace_mut().unwrap()),
+                    type_,
+                    constructors: Vec::new(),
+                };
+            }
+            Constructor {
+                binder,
+                type_,
+                owner_data_type: data,
+            } => {
+                // @Bug may be non-local thus panic
+                let index = binder.local_declaration_index(self.capsule).unwrap();
+                let entity = &mut self.capsule[index];
+                debug_assert!(entity.is_untyped());
+
+                entity.kind = EntityKind::Constructor { type_ };
+
+                // @Bug may be non-local thus panic
+                let data_index = data.local_declaration_index(self.capsule).unwrap();
+
+                match self.capsule[data_index].kind {
+                    EntityKind::DataType {
+                        ref mut constructors,
+                        ..
+                    } => constructors.push(binder),
+                    _ => unreachable!(),
+                }
+            }
+            IntrinsicFunction { binder, type_ } => {
+                // @Bug may be non-local thus panic
+                let index = binder.local_declaration_index(self.capsule).unwrap();
+                debug_assert!(self.capsule[index].is_untyped());
+
+                self.capsule[index].kind = self.session.register_intrinsic_function(
+                    binder,
+                    type_,
+                    registration
+                        .attributes
+                        .span(AttributeName::Intrinsic)
+                        .unwrap(),
+                    self.reporter,
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    // @Task heavily improve API / architecture
+    fn handle_registration_error(
+        &mut self,
+        error: Error,
+        actual_value: &Expression,
+        expectation_cause: Option<&Expression>,
+        registration: BindingRegistration,
+        out_of_order_handler: impl FnOnce(&mut Self) -> Result,
+    ) -> Result {
+        match error {
+            Unrecoverable => Err(()),
+            OutOfOrderBinding => {
+                self.out_of_order_bindings.push(registration);
+                out_of_order_handler(self)
+            }
+            TypeMismatch { expected, actual } => {
+                Diagnostic::error()
+                    .code(Code::E032)
+                    .message(format!(
+                        "expected type `{}`, got type `{}`",
+                        expected.with((self.capsule, self.session)),
+                        actual.with((self.capsule, self.session))
+                    ))
+                    .labeled_primary_span(&actual_value, "has the wrong type")
+                    .if_present(expectation_cause, |this, cause| {
+                        this.labeled_secondary_span(cause, "expected due to this")
+                    })
+                    .report(self.reporter);
+                Err(())
+            }
+        }
     }
 
     fn infer_types_of_out_of_order_bindings(&mut self) -> Result {
@@ -418,7 +478,7 @@ impl<'a> Typer<'a> {
         // changing the definition of FunctionScope... it's FunctionScope::Capsule now, no payload
         // this means more boilerplate methods (either duplication or as in resolver: every FunctionScope method takes
         // a capsule: &Capsule parameter)
-        &mut self,
+        &self,
         expression: Expression,
         scope: &FunctionScope<'_>,
     ) -> Result<Expression, Error> {
@@ -493,13 +553,9 @@ impl<'a> Typer<'a> {
                 // returns possibly non-normalized expressions, can we do better?
                 let type_of_callee =
                     self.infer_type_of_expression(application.callee.clone(), scope)?;
-                let type_of_callee = self.interpreter().evaluate_expression(
-                    type_of_callee,
-                    interpreter::Context {
-                        scope,
-                        form: Form::Normal, /* Form::WeakHeadNormal */
-                    },
-                )?;
+                let type_of_callee = self
+                    .interpreter()
+                    .evaluate_expression(type_of_callee, interpreter::Context::new(scope))?;
 
                 if let PiType(pi) = &type_of_callee.value {
                     let argument_type =
@@ -759,11 +815,7 @@ impl<'a> Typer<'a> {
     }
 
     /// Assert that an expression is of type `Type`.
-    fn it_is_a_type(
-        &mut self,
-        expression: Expression,
-        scope: &FunctionScope<'_>,
-    ) -> Result<(), Error> {
+    fn it_is_a_type(&self, expression: Expression, scope: &FunctionScope<'_>) -> Result<(), Error> {
         let type_ = self.infer_type_of_expression(expression, scope)?;
         self.it_is_actual(
             Expression::new(default(), default(), hir::ExpressionKind::Type),
@@ -772,11 +824,7 @@ impl<'a> Typer<'a> {
         )
     }
 
-    fn is_a_type(
-        &mut self,
-        expression: Expression,
-        scope: &FunctionScope<'_>,
-    ) -> Result<bool, Error> {
+    fn is_a_type(&self, expression: Expression, scope: &FunctionScope<'_>) -> Result<bool, Error> {
         let type_ = self.infer_type_of_expression(expression, scope)?;
         self.is_actual(
             Expression::new(default(), default(), hir::ExpressionKind::Type),
@@ -792,25 +840,14 @@ impl<'a> Typer<'a> {
     // equal. I think they should be "killed" earlier. probably a bug
     // @Update this happens with Form::Normal, too. what a bummer
     fn it_is_actual(
-        &mut self,
+        &self,
         expected: Expression,
         actual: Expression,
         scope: &FunctionScope<'_>,
     ) -> Result<(), Error> {
-        let expected = self.interpreter().evaluate_expression(
-            expected,
-            interpreter::Context {
-                scope,
-                form: Form::Normal, /* Form::WeakHeadNormal */
-            },
-        )?;
-        let actual = self.interpreter().evaluate_expression(
-            actual,
-            interpreter::Context {
-                scope,
-                form: Form::Normal, /* Form::WeakHeadNormal */
-            },
-        )?;
+        let context = interpreter::Context::new(scope);
+        let expected = self.interpreter().evaluate_expression(expected, context)?;
+        let actual = self.interpreter().evaluate_expression(actual, context)?;
 
         if !self.interpreter().equals(&expected, &actual, scope)? {
             return Err(TypeMismatch { expected, actual });
@@ -820,25 +857,14 @@ impl<'a> Typer<'a> {
     }
 
     fn is_actual(
-        &mut self,
+        &self,
         expected: Expression,
         actual: Expression,
         scope: &FunctionScope<'_>,
     ) -> Result<bool> {
-        let expected = self.interpreter().evaluate_expression(
-            expected,
-            interpreter::Context {
-                scope,
-                form: Form::Normal, /* Form::WeakHeadNormal */
-            },
-        )?;
-        let actual = self.interpreter().evaluate_expression(
-            actual,
-            interpreter::Context {
-                scope,
-                form: Form::Normal, /* Form::WeakHeadNormal */
-            },
-        )?;
+        let context = interpreter::Context::new(scope);
+        let expected = self.interpreter().evaluate_expression(expected, context)?;
+        let actual = self.interpreter().evaluate_expression(actual, context)?;
 
         self.interpreter().equals(&expected, &actual, scope)
     }
@@ -846,7 +872,7 @@ impl<'a> Typer<'a> {
     // @Question @Bug returns are type that might depend on parameters which we don't supply!!
     // gets R in A -> B -> C -> R plus an environment b.c. R could depend on outer stuff
     // @Note this function assumes that the expression has already been normalized!
-    fn result_type(&mut self, expression: Expression, scope: &FunctionScope<'_>) -> Expression {
+    fn result_type(&self, expression: Expression, scope: &FunctionScope<'_>) -> Expression {
         use hir::ExpressionKind::*;
 
         match expression.value {
@@ -873,7 +899,7 @@ impl<'a> Typer<'a> {
     /// existentials and specialized instances but we first might want to
     /// feature-gate them.
     fn assert_constructor_is_instance_of_type(
-        &mut self,
+        &self,
         constructor: Expression,
         type_: Expression,
     ) -> Result {
@@ -922,7 +948,7 @@ struct Context {
 impl Diagnostic {
     fn missing_annotation() -> Self {
         // @Task add span
-        Self::bug()
+        Self::error()
             .code(Code::E030)
             .message("currently lambda literal parameters and patterns must be type-annotated")
     }

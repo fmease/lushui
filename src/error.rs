@@ -60,13 +60,12 @@ impl<T: PossiblyErroneous> Stain<T> for Result<T> {
     }
 }
 
-// @Task better name!
-pub(crate) trait Stained<T> {
-    fn stained(value: T, health: Health) -> Self;
+pub(crate) trait OkIfUntaintedExt<T> {
+    fn ok_if_untainted(value: T, health: Health) -> Self;
 }
 
-impl<T> Stained<T> for Result<T> {
-    fn stained(value: T, health: Health) -> Self {
+impl<T> OkIfUntaintedExt<T> for Result<T> {
+    fn ok_if_untainted(value: T, health: Health) -> Self {
         match health {
             Health::Untainted => Ok(value),
             Health::Tainted => Err(()),

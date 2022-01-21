@@ -30,7 +30,7 @@ use super::{
 };
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
-    error::{Health, PossiblyErroneous, Result, Stain, Stained},
+    error::{Health, OkIfUntaintedExt, PossiblyErroneous, Result, Stain},
     format::{ordered_listing, Conjunction, IOError, QuoteExt},
     span::{SharedSourceMap, SourceMap, Span, Spanning},
     syntax::lowered_ast::attributes::{Predicate, Public, Query},
@@ -49,7 +49,7 @@ pub fn lower_file(
     let mut lowerer = Lowerer::new(options, map, reporter);
     let mut declaration = lowerer.lower_declaration(declaration);
     let root = declaration.pop().unwrap();
-    Result::stained(root, lowerer.health)
+    Result::ok_if_untainted(root, lowerer.health)
 }
 
 /// The state of the lowering pass.
@@ -772,7 +772,7 @@ impl<'a> Lowerer<'a> {
 
         let attributes = self.lower_attributes(&pattern.attributes, &pattern);
 
-        let pattern = match pattern.value {
+        match pattern.value {
             // @Task avoid re-boxing!
             NumberLiteral(literal) => {
                 lowered_ast::Pattern::new(attributes, pattern.span, (*literal).into())
@@ -814,9 +814,7 @@ impl<'a> Lowerer<'a> {
                 self.health.taint();
                 PossiblyErroneous::error()
             }
-        };
-
-        pattern
+        }
     }
 
     /// Lower attributes.
@@ -1267,7 +1265,7 @@ impl lowered_ast::attributes::AttributeKind {
                         .report(reporter);
                 }
             })
-            .and_then(|attributes| Result::stained(attributes, health))
+            .and_then(|attributes| Result::ok_if_untainted(attributes, health))
     }
 }
 

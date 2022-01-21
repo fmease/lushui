@@ -12,6 +12,8 @@ use crate::{
     typer::interpreter::scope::ValueView,
     utility::obtain,
 };
+use colored::Colorize;
+use joinery::JoinableIterator;
 use std::{default::default, fmt};
 use EntityKind::*;
 
@@ -41,25 +43,25 @@ pub(crate) struct Entity {
 }
 
 impl Entity {
-    pub(crate) const fn is_untyped_value(&self) -> bool {
+    pub(crate) const fn is_untyped(&self) -> bool {
         matches!(
             self.kind,
             UntypedFunction | UntypedDataType { .. } | UntypedConstructor { .. }
         )
     }
 
-    /// Returns `true` if the entity is a typed or untyped function.
+    /// Test if the entity is a (typed or untyped) function.
     #[allow(dead_code)]
     pub(crate) const fn is_function(&self) -> bool {
         matches!(self.kind, UntypedFunction | Function { .. })
     }
 
-    /// Returns `true` if the entity is a typed or untyped data type.
+    /// Test if the entity is a (typed or untyped) data type.
     pub(crate) const fn is_data_type(&self) -> bool {
         matches!(self.kind, UntypedDataType { .. } | DataType { .. })
     }
 
-    /// Returns `true` if the entity is a typed or untyped constructor.
+    /// Test if the entity is a (typed or untyped) constructor.
     #[allow(dead_code)]
     pub(crate) const fn is_constructor(&self) -> bool {
         matches!(self.kind, UntypedConstructor { .. } | Constructor { .. })
@@ -69,8 +71,8 @@ impl Entity {
         matches!(self.kind, Module { .. })
     }
 
-    pub(crate) const fn is_intrinsic(&self) -> bool {
-        matches!(self.kind, Intrinsic { .. })
+    pub(crate) const fn is_intrinsic_function(&self) -> bool {
+        matches!(self.kind, IntrinsicFunction { .. })
     }
 
     pub(crate) const fn is_error(&self) -> bool {
@@ -99,7 +101,7 @@ impl Entity {
         )
     }
 
-    pub(crate) const fn is_value_without_value(&self) -> bool {
+    pub(crate) const fn is_bodiless_function(&self) -> bool {
         matches!(
             self.kind,
             Function {
@@ -115,7 +117,7 @@ impl Entity {
             Function { type_, .. } |
             DataType { type_, .. } |
             Constructor { type_, .. } |
-            Intrinsic { type_, .. } => type_.clone(),
+            IntrinsicFunction { type_, .. } => type_.clone(),
         )
     }
 
@@ -138,7 +140,7 @@ impl Entity {
             | Error
             | DataType { .. }
             | Constructor { .. }
-            | Intrinsic { .. } => ValueView::Neutral,
+            | IntrinsicFunction { .. } => ValueView::Neutral,
             UntypedFunction
             | UntypedDataType { .. }
             | UntypedConstructor { .. }
@@ -157,15 +159,20 @@ impl DisplayWith for Entity {
     type Context<'a> = <EntityKind as DisplayWith>::Context<'a>;
 
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // @Task improve output for overly long lines (when the identifier is too long or more
+        // importantly when the entity kind (esp. expressions within it) are big)
+
         let parent = self
             .parent
             .map(|parent| format!("{parent:?}."))
-            .unwrap_or_default();
-        let source = &self.source;
-        let exposure = &self.exposure;
+            .unwrap_or_default()
+            .bright_black();
+        let source = self.source.to_string().bright_red().bold();
+        let path = format!("{parent}{source}");
+        let exposure = format!("{:?}<", self.exposure).bright_black();
         let kind = self.kind.with(context);
 
-        write!(f, "{parent:>5}{source:20} {exposure:?} |-> {kind}")
+        write!(f, "{exposure:>5}   {path:<40} ↦ {kind}")
     }
 }
 
@@ -191,16 +198,16 @@ pub(crate) enum EntityKind {
         type_: Expression,
         expression: Option<Expression>,
     },
-    // @Question should we store the constructors?
     DataType {
         namespace: Namespace,
         type_: Expression,
+        // @Question should we store them at all?
         constructors: Vec<Identifier>,
     },
     Constructor {
         type_: Expression,
     },
-    Intrinsic {
+    IntrinsicFunction {
         type_: Expression,
         // @Beacon @Beacon @Beacon @Task wrap this in an IntrinsicFnVal
         arity: usize,
@@ -208,12 +215,6 @@ pub(crate) enum EntityKind {
     },
     // @Task explain why we want entities to be possibly erroneous
     Error,
-}
-
-impl PossiblyErroneous for EntityKind {
-    fn error() -> Self {
-        Self::Error
-    }
 }
 
 impl EntityKind {
@@ -228,41 +229,64 @@ impl EntityKind {
             namespace: default(),
         }
     }
+
+    const fn name(&self) -> &'static str {
+        match self {
+            UntypedFunction => "untyped function",
+            Module { .. } => "module",
+            UntypedDataType { .. } => "untyped data type",
+            UntypedConstructor => "untyped constructor",
+            Use { .. } => "use",
+            UnresolvedUse => "unresolved use",
+            Function { .. } => "function",
+            DataType { .. } => "data type",
+            Constructor { .. } => "constructor",
+            IntrinsicFunction { .. } => "intrinsic function",
+            Error => "error",
+        }
+    }
+}
+
+impl PossiblyErroneous for EntityKind {
+    fn error() -> Self {
+        Self::Error
+    }
 }
 
 impl DisplayWith for EntityKind {
     type Context<'a> = (&'a Capsule, &'a BuildSession);
 
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:>19}   ", self.name().bright_blue())?;
+
         match self {
-            UntypedFunction => write!(f, "untyped value"),
-            Module { namespace } => write!(f, "module of {:?}", namespace),
-            UntypedDataType { namespace } => write!(f, "untyped data type of {:?}", namespace),
-            UntypedConstructor => write!(f, "untyped constructor"),
-            Use { reference } => write!(f, "use {:?}", reference),
-            UnresolvedUse => write!(f, "unresolved use"),
-            Function { type_, expression } => match expression {
-                Some(expression) => {
-                    write!(f, "{}: {}", expression.with(context), type_.with(context))
-                }
-                None => write!(f, ": {}", type_.with(context)),
-            },
+            Module { namespace } | UntypedDataType { namespace } => write!(f, "{namespace:?}"),
+            Use { reference } => write!(f, "{reference:?}"),
+            Function { type_, expression } => {
+                match expression {
+                    Some(expression) => write!(f, "{}", expression.with(context)),
+                    None => write!(f, "?(none)"),
+                }?;
+
+                write!(f, " : {}", type_.with(context))
+            }
             DataType {
                 type_,
                 constructors,
                 ..
-            } => write!(
-                f,
-                "data: {} = {}",
-                type_.with(context),
-                constructors
-                    .iter()
-                    .map(|constructor| format!("{} ", constructor))
-                    .collect::<String>()
-            ),
-            Constructor { type_, .. } => write!(f, "constructor: {}", type_.with(context)),
-            Intrinsic { type_, .. } => write!(f, "intrinsic: {}", type_.with(context)),
-            Error => write!(f, "error"),
+            } => {
+                write!(f, "{}", type_.with(context))?;
+
+                if !constructors.is_empty() {
+                    write!(f, "; {}", constructors.iter().join_with(' '))?;
+                }
+
+                Ok(())
+            }
+            Constructor { type_ } | IntrinsicFunction { type_, .. } => {
+                write!(f, "{}", type_.with(context))
+            }
+            _ => Ok(()),
         }
     }
 }

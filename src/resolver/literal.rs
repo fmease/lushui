@@ -9,9 +9,6 @@ use crate::{
     span::Spanned,
 };
 
-// @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Note
-// we only moved known-binding registration to the resolver but not intrinsic registration!!!
-
 const DEFAULT_NUMBER_LITERAL_TYPE: IntrinsicType = IntrinsicType::Nat;
 const _DEFAULT_TEXT_LITERAL_TYPE: IntrinsicType = IntrinsicType::Text;
 
@@ -79,6 +76,7 @@ const fn interval(type_: IntrinsicType) -> &'static str {
     }
 }
 
+#[allow(clippy::unnecessary_wraps)] // @Temporary
 pub(super) fn resolve_text_literal(
     text: Spanned<&str>,
     _namespace: Option<DeclarationIndex>,

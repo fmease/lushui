@@ -151,7 +151,7 @@ impl BuildSession {
 
         let mut constructor = |known: KnownBinding| {
             if let Some(&constructor) = constructors
-                .into_iter()
+                .iter()
                 .find(|constructor| constructor.as_str() == known.name())
             {
                 self.known_bindings.insert(known, constructor.clone());
@@ -237,7 +237,7 @@ impl BuildSession {
         // @Task explain why unwrap
         let function = self.intrinsic_functions.remove(&intrinsic).unwrap();
 
-        Ok(EntityKind::Intrinsic {
+        Ok(EntityKind::IntrinsicFunction {
             type_,
             arity: function.arity,
             function: function.function,

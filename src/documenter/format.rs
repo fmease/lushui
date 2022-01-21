@@ -258,7 +258,7 @@ impl<'a> Formatter<'a> {
         match self.look_up(index).kind {
             Use { .. } => "#".to_string(), // @Task
             Module { .. } => self.module_url_fragment(index),
-            Function { .. } | Intrinsic { .. } | DataType { .. } => {
+            Function { .. } | IntrinsicFunction { .. } | DataType { .. } => {
                 let module_link = self.module_url_fragment(self.parent(index).unwrap());
                 format!("{module_link}#{}", declaration_id(binder))
             }

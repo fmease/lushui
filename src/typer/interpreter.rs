@@ -37,20 +37,14 @@ pub fn evaluate_main_function(
     session: &BuildSession,
     reporter: &Reporter,
 ) -> Result<Expression> {
-    let mut interpreter = Interpreter::new(capsule, session, reporter);
-
-    interpreter.evaluate_expression(
-        interpreter
+    Interpreter::new(capsule, session, reporter).evaluate_expression(
+        Interpreter::new(capsule, session, reporter)
             .capsule
             .program_entry
             .clone()
             .unwrap()
             .into_expression(),
-        Context {
-            scope: &FunctionScope::Capsule,
-            // form: Form::Normal,
-            form: Form::WeakHeadNormal,
-        },
+        Context::new(&FunctionScope::Capsule),
     )
 }
 
@@ -75,7 +69,7 @@ impl<'a> Interpreter<'a> {
     }
 
     pub(crate) fn substitute_expression(
-        &mut self,
+        &self,
         expression: Expression,
         substitution: Substitution,
     ) -> Expression {
@@ -319,7 +313,7 @@ impl<'a> Interpreter<'a> {
     ///
     /// This is beta-reduction I think.
     pub(crate) fn evaluate_expression(
-        &mut self,
+        &self,
         expression: Expression,
         context: Context<'_>,
     ) -> Result<Expression> {
@@ -397,18 +391,19 @@ impl<'a> Interpreter<'a> {
                             context,
                         )?
                     }
-                    Binding(binding) if self.is_intrinsic(&binding.0) => self.evaluate_expression(
-                        Expression::new(
-                            expression.attributes,
-                            expression.span,
-                            hir::IntrinsicApplication {
-                                callee: binding.0.clone(),
-                                arguments: vec![argument],
-                            }
-                            .into(),
-                        ),
-                        context,
-                    )?,
+                    Binding(binding) if self.is_intrinsic_function(&binding.0) => self
+                        .evaluate_expression(
+                            Expression::new(
+                                expression.attributes,
+                                expression.span,
+                                hir::IntrinsicApplication {
+                                    callee: binding.0.clone(),
+                                    arguments: vec![argument],
+                                }
+                                .into(),
+                            ),
+                            context,
+                        )?,
                     Binding(_) | Application(_) => Expression::new(
                         expression.attributes,
                         expression.span,
@@ -645,7 +640,7 @@ impl<'a> Interpreter<'a> {
         arguments: Vec<Expression>,
     ) -> Result<Option<Expression>> {
         match self.look_up(binder.declaration_index().unwrap()).kind {
-            crate::entity::EntityKind::Intrinsic {
+            crate::entity::EntityKind::IntrinsicFunction {
                 arity, function, ..
             } => Ok(if arguments.len() == arity {
                 let mut value_arguments = Vec::new();
@@ -673,7 +668,7 @@ impl<'a> Interpreter<'a> {
 
     // @Question move into its own module?
     #[allow(clippy::unused_self)]
-    fn _is_ffi_compatible(&mut self, _expression: Expression) -> bool {
+    fn _is_ffi_compatible(&self, _expression: Expression) -> bool {
         todo!() // @Task
     }
 
@@ -681,7 +676,7 @@ impl<'a> Interpreter<'a> {
     // @Task write a unifier
     // @Task rename to expressions_equal
     pub(crate) fn equals(
-        &mut self,
+        &self,
         expression0: &Expression,
         expression1: &Expression,
         scope: &FunctionScope<'_>,
@@ -807,11 +802,11 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    pub(crate) fn is_intrinsic(&self, binder: &Identifier) -> bool {
+    pub(crate) fn is_intrinsic_function(&self, binder: &Identifier) -> bool {
         use hir::Index::*;
 
         match binder.index {
-            Declaration(index) => self.look_up(index).is_intrinsic(),
+            Declaration(index) => self.look_up(index).is_intrinsic_function(),
             DeBruijn(_) => false,
             DeBruijnParameter => unreachable!(),
         }
@@ -867,6 +862,7 @@ impl DisplayWith for Substitution {
 #[derive(Clone, Copy)]
 pub(crate) enum Form {
     Normal,
+    #[allow(dead_code)]
     WeakHeadNormal,
 }
 
@@ -883,9 +879,9 @@ impl<'a> Context<'a> {
     /// Temporarily, for convenience and until we fix some bugs, the form
     /// is [`Form::Normal`] by default.
     pub(crate) fn new(scope: &'a FunctionScope<'_>) -> Self {
-        // @Temporary: Normal
         Self {
             scope,
+            // @Temporary
             form: Form::Normal,
             // form: Form::WeakHeadNormal,
         }

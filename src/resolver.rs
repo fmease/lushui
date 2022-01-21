@@ -10,7 +10,7 @@
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     entity::{Entity, EntityKind},
-    error::{Health, PossiblyErroneous, ReportedExt, Result, Stain, Stained},
+    error::{Health, OkIfUntaintedExt, PossiblyErroneous, ReportedExt, Result, Stain},
     format::{pluralize, unordered_listing, Conjunction, DisplayWith, QuoteExt},
     hir::{self, DeBruijnIndex, DeclarationIndex, Identifier, Index, LocalDeclarationIndex},
     package::BuildSession,
@@ -65,7 +65,7 @@ pub fn resolve_declarations(
 
     let declaration = resolver.finish_resolve_declaration(capsule_root, None, Context::default());
 
-    Result::stained(declaration, resolver.health)
+    Result::ok_if_untainted(declaration, resolver.health)
 }
 
 // @Task docs: mention that the current capsule should be pre-populated before calling this
@@ -321,9 +321,9 @@ impl<'a> ResolverMut<'a> {
                     declaration.attributes,
                     declaration.span,
                     hir::Function {
+                        binder,
                         type_annotation,
                         expression,
-                        binder,
                     }
                     .into(),
                 )
@@ -386,9 +386,9 @@ impl<'a> ResolverMut<'a> {
                     declaration.attributes,
                     declaration.span,
                     hir::Data {
-                        constructors,
-                        type_annotation,
                         binder,
+                        type_annotation,
+                        constructors,
                     }
                     .into(),
                 )

@@ -2,7 +2,7 @@
 
 use crate::{
     diagnostics::{Diagnostic, Reporter},
-    error::{Health, ReportedExt, Result, Stained},
+    error::{Health, OkIfUntaintedExt, ReportedExt, Result},
     format::IOError,
     metadata::content_span_of_key,
     resolver::Capsule,
@@ -212,7 +212,7 @@ impl BuildQueue<'_> {
             );
         }
 
-        Result::stained(resolved_dependencies, health)
+        Result::ok_if_untainted(resolved_dependencies, health)
     }
 
     fn add_capsule(&mut self, meta: impl FnOnce(CapsuleIndex) -> CapsuleMetadata) -> CapsuleIndex {
@@ -723,7 +723,7 @@ pub(crate) fn parse_capsule_name_from_file_path(
 pub(crate) mod manifest {
     use crate::{
         diagnostics::{Code, Diagnostic, Reporter},
-        error::{Health, ReportedExt, Result, Stained},
+        error::{Health, OkIfUntaintedExt, ReportedExt, Result},
         metadata::{self, content_span_of_key, convert, TypeError},
         span::{SharedSourceMap, SourceFileIndex, Spanned, WeaklySpanned},
         syntax::CapsuleName,
@@ -921,7 +921,7 @@ pub(crate) mod manifest {
                         parsed_dependencies.insert(dependency_name, dependency_manifest);
                     }
 
-                    Result::stained(
+                    Result::ok_if_untainted(
                         Some(Spanned::new(dependencies.span, parsed_dependencies)),
                         health,
                     )

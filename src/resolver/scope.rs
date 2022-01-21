@@ -335,7 +335,12 @@ impl DisplayWith for Capsule {
         writeln!(f, "  bindings:")?;
 
         for (index, entity) in self.bindings.iter() {
-            writeln!(f, "    {index:?}: {}", entity.with((self, session)))?;
+            writeln!(
+                f,
+                "    {}: {}",
+                format!("{index:?}").red(),
+                entity.with((self, session))
+            )?;
         }
 
         Ok(())
@@ -368,15 +373,11 @@ impl Exposure {
 impl fmt::Debug for Exposure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Unrestricted => write!(f, "unrestricted"),
-            Self::Restricted(reach) => {
-                write!(f, "restricted(")?;
-                match &*reach.lock().unwrap() {
-                    RestrictedExposure::Unresolved { reach } => write!(f, "{reach}"),
-                    RestrictedExposure::Resolved { reach } => write!(f, "{reach:?}"),
-                }?;
-                write!(f, ")")
-            }
+            Self::Unrestricted => write!(f, "*"),
+            Self::Restricted(reach) => match &*reach.lock().unwrap() {
+                RestrictedExposure::Unresolved { reach } => write!(f, "{reach}"),
+                RestrictedExposure::Resolved { reach } => write!(f, "{reach:?}"),
+            },
         }
     }
 }
@@ -492,7 +493,7 @@ impl fmt::Debug for Namespace {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{{{}}}",
+            "{}",
             self.binders
                 .iter()
                 .map(|binding| format!("{binding:?}"))
