@@ -33,7 +33,7 @@ use std::{
 };
 use unicode_width::UnicodeWidthStr;
 
-/// A sealed container of modules regarded as one unit embodying libraries and executables¹.
+/// A sealed container of modules regarded as one unit embodying libraries and executables[^1].
 ///
 /// # Naming
 ///
@@ -41,7 +41,7 @@ use unicode_width::UnicodeWidthStr;
 /// or compartment_
 /// [according to Merriam-Webster (meaning 6a, 2022-01-10)](https://www.merriam-webster.com/dictionary/capsule).
 ///
-/// ¹: And (integration and system) tests in the future.
+/// [^1]: And integration and system tests, benchmarks and other things in the future.
 pub struct Capsule {
     pub metadata: CapsuleMetadata,
     pub program_entry: Option<Identifier>,

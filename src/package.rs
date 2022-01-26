@@ -504,9 +504,9 @@ pub struct CapsuleMetadata {
     pub path: PathBuf,
     pub type_: CapsuleType,
     /// Indicates if the name of the library or executable capsule coincides with
-    /// the name of the executable¹ or library capsule, respectively.
+    /// the name of the executable[^1] or library capsule, respectively.
     ///
-    /// ¹: We haven't implemented multiple executable capsules per package yet.
+    /// [^1]: We haven't implemented multiple executable capsules per package yet.
     pub is_ambiguously_named_within_package: bool,
 }
 
