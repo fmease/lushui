@@ -14,7 +14,9 @@ env:
   RUSTDOCFLAGS: -D warnings
 
 jobs:
-  build-linux:
+  build-on-linux:
+    name: Build on Linux (Ubuntu)
+
     runs-on: ubuntu-latest
 
     steps:
@@ -26,24 +28,29 @@ jobs:
     - uses: Swatinem/rust-cache@v1
     - name: Build in release mode
       run: cargo build --release
-  
-  # not necessary right now
-  # build-windows:
-  #   runs-on: windows-latest
-  #
-  #   steps:
-  #   - uses: actions/checkout@v2
-  #   - uses: actions-rs/toolchain@v1
-  #     with:
-  #       toolchain: nightly
-  #       override: true
-  #   - uses: Swatinem/rust-cache@v1
-  #   - name: Build in release mode
-  #     run: cargo build --release
 
-  test-linux:
-    needs: build-linux
-  
+  build-on-windows:
+    name: Build on Windows
+
+    # disabled to reduce resource usage and since it's not as important right now
+    if: false
+
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        override: true
+    - uses: Swatinem/rust-cache@v1
+    - name: Build in release mode
+      run: cargo build --release
+
+  test-on-linux:
+    name: Run tests on Linux (Ubuntu)
+
+    needs: build-on-linux
     runs-on: ubuntu-latest
 
     steps:
@@ -57,28 +64,32 @@ jobs:
       run: cargo test
     - name: Run UI tests (via the golden UI testing framework)
       run: ./test/ui/run
-  
-  # # not necessary right now
-  # test-windows:
-  #   needs: build-windows
-  #
-  #   runs-on: windows-latest
-  #
-  #   steps:
-  #   - uses: actions/checkout@v2
-  #   - uses: actions-rs/toolchain@v1
-  #     with:
-  #       toolchain: nightly
-  #       override: true
-  #   - uses: Swatinem/rust-cache@v1
-  #   - name: Run unit tests (via the rust testing framework)
-  #     run: cargo test
-  #   - name: Run UI tests (via the golden UI testing framework)
-  #     run: ./tests/ui/run
+
+  test-on-windows:
+    name: Run tests on Windows
+
+    # disabled to reduce resource usage and since it's not as important right now
+    if: false
+
+    needs: build-on-windows
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        override: true
+    - uses: Swatinem/rust-cache@v1
+    - name: Run unit tests (via the rust testing framework)
+      run: cargo test
+    - name: Run UI tests (via the golden UI testing framework)
+      run: ./tests/ui/run
 
   build-documentation:
-    needs: build-linux
+    name: Build Documentation (on Linux)
 
+    needs: build-on-linux
     runs-on: ubuntu-latest
 
     steps:
@@ -88,12 +99,13 @@ jobs:
           toolchain: nightly
           override: true
       - uses: Swatinem/rust-cache@v1
-      - name: Build and check documentation
+      - name: Build documentation with rustdoc excluding dependencies
         run: cargo doc --no-deps
-  
-  clippy:
-    needs: build-linux
 
+  clippy:
+    name: Run Clippy (on Linux)
+
+    needs: build-on-linux
     runs-on: ubuntu-latest
 
     steps:
@@ -104,7 +116,21 @@ jobs:
         override: true
         components: clippy
     - uses: Swatinem/rust-cache@v1
-    - name: Run clippy
+    - name: Run Clippy
       run: cargo clippy --all-features
 
-  # @Task check cargo fmt
+  formatting:
+    name: Check Code Formatting
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        override: true
+        components: rustfmt
+    - uses: Swatinem/rust-cache@v1
+    - name: Run rustfmt in check mode
+      run: cargo fmt --check
