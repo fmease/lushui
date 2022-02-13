@@ -489,7 +489,7 @@ impl<'a> Typer<'a> {
                 .ok_or(OutOfOrderBinding)?,
             Type => Expression::new(default(), default(), hir::ExpressionKind::Type),
             Number(number) => self.session.look_up_intrinsic_type(
-                IntrinsicType::numeric(&number),
+                number.type_().into(),
                 Some(expression.span),
                 self.reporter,
             )?,
@@ -692,7 +692,7 @@ impl<'a> Typer<'a> {
                     match &case.pattern.value {
                         Number(number) => {
                             let number_type = self.session.look_up_intrinsic_type(
-                                IntrinsicType::numeric(number),
+                                number.type_().into(),
                                 Some(case.pattern.span),
                                 self.reporter,
                             )?;

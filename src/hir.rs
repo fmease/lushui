@@ -2,7 +2,8 @@
 
 pub(crate) use crate::syntax::lowered_ast::Item;
 use crate::{
-    error::PossiblyErroneous,
+    error::{PossiblyErroneous, Result},
+    package::session::IntrinsicNumericType,
     resolver::{Capsule, FunctionScope},
     span::{SourceFileIndex, Span},
     syntax::ast::Explicitness,
@@ -156,6 +157,12 @@ impl From<Text> for ExpressionKind {
     }
 }
 
+impl From<SomeSequence> for ExpressionKind {
+    fn from(sequence: SomeSequence) -> Self {
+        match sequence {}
+    }
+}
+
 impl From<Binding> for ExpressionKind {
     fn from(binding: Binding) -> Self {
         Self::Binding(Box::new(binding))
@@ -269,6 +276,12 @@ impl From<Text> for PatternKind {
     }
 }
 
+impl From<SomeSequence> for PatternKind {
+    fn from(sequence: SomeSequence) -> Self {
+        match sequence {}
+    }
+}
+
 impl From<Binding> for PatternKind {
     fn from(binding: Binding) -> Self {
         Self::Binding(Box::new(binding))
@@ -310,7 +323,41 @@ pub enum Number {
     Int64(i64),
 }
 
+impl Number {
+    pub(crate) fn parse(source: &str, type_: IntrinsicNumericType) -> Result<Self> {
+        use IntrinsicNumericType::*;
+
+        match type_ {
+            Nat => source.parse().map(Self::Nat).map_err(drop),
+            Nat32 => source.parse().map(Self::Nat32).map_err(drop),
+            Nat64 => source.parse().map(Self::Nat64).map_err(drop),
+            Int => source.parse().map(Self::Int).map_err(drop),
+            Int32 => source.parse().map(Self::Int32).map_err(drop),
+            Int64 => source.parse().map(Self::Int64).map_err(drop),
+        }
+    }
+}
+
+impl Number {
+    pub(crate) fn type_(&self) -> IntrinsicNumericType {
+        use IntrinsicNumericType::*;
+
+        match self {
+            Self::Nat(_) => Nat,
+            Self::Nat32(_) => Nat32,
+            Self::Nat64(_) => Nat64,
+            Self::Int(_) => Int,
+            Self::Int32(_) => Int32,
+            Self::Int64(_) => Int64,
+        }
+    }
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub enum Text {
     Text(String),
 }
+
+// @Temporary placeholder until we can desugar sequence literals to
+// concrete constructors of sequence-like data types
+pub enum SomeSequence {}

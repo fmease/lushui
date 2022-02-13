@@ -303,6 +303,7 @@ impl<'a> Lowerer<'a> {
                                     .primary_span(declaration.span)
                                     .note(IOError(error, &path).to_string())
                                     .report(self.reporter);
+                                self.health.taint();
                                 return PossiblyErroneous::error();
                             }
                         };
@@ -313,6 +314,7 @@ impl<'a> Lowerer<'a> {
                             self.map.clone(),
                             self.reporter,
                         ) else {
+                            self.health.taint();
                             return PossiblyErroneous::error();
                         };
 

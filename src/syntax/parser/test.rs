@@ -15,6 +15,7 @@ use crate::{
     error::outcome,
     span::{span, SourceFileIndex, SourceMap, Span, Spanned},
     syntax::{lexer::lex, parse_file},
+    utility::SmallVec,
 };
 use index_map::Index as _;
 use smallvec::smallvec;
@@ -30,6 +31,18 @@ fn parse_expression(source: &str) -> Result<Expression> {
         return Err(());
     }
     expression
+}
+
+fn parse_pattern(source: &str) -> Result<Pattern> {
+    let map = SourceMap::shared();
+    let file = map.borrow_mut().add(None, source.to_owned());
+    let reporter = SilentReporter.into();
+    let outcome!(tokens, health) = lex(&map.borrow()[file], &reporter)?;
+    let pattern = Parser::new(&tokens, file, map, &reporter).parse_pattern();
+    if health.is_tainted() {
+        return Err(());
+    }
+    pattern
 }
 
 fn parse_declaration(source: &str) -> Result<Declaration> {
@@ -859,4 +872,42 @@ main = case x of
             .into(),
         )),
     );
+}
+
+#[test]
+fn pattern_with_attributes() {
+    assert_eq(
+        parse_pattern("@it (has @IT HAS)"),
+        Ok(Pattern::new(
+            vec![Attribute::new(
+                span(1, 4),
+                AttributeKind::Regular {
+                    binder: identifier("it".into(), span(2, 4)),
+                    arguments: SmallVec::new(),
+                },
+            )],
+            span(5, 18),
+            ast::Application {
+                callee: Pattern::new(
+                    Attributes::new(),
+                    span(6, 9),
+                    Path::from(identifier("has".into(), span(6, 9))).into(),
+                ),
+                explicitness: Explicit,
+                binder: None,
+                argument: Pattern::new(
+                    vec![Attribute::new(
+                        span(10, 13),
+                        AttributeKind::Regular {
+                            binder: identifier("IT".into(), span(11, 13)),
+                            arguments: SmallVec::new(),
+                        },
+                    )],
+                    span(14, 17),
+                    Path::from(identifier("HAS".into(), span(14, 17))).into(),
+                ),
+            }
+            .into(),
+        )),
+    )
 }

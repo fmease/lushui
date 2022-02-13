@@ -1515,27 +1515,27 @@ impl<'a> Parser<'a> {
         let attributes = self.parse_attributes(SkipLineBreaks::No)?;
 
         let mut span = self.current_token().span;
-        match self.current_token().name() {
+        let mut pattern = match self.current_token().name() {
             NumberLiteral => {
                 let token = self.current_token().clone();
                 self.advance();
 
-                Ok(Pattern::new(
-                    attributes,
+                Pattern::new(
+                    default(),
                     token.span,
                     ast::NumberLiteral {
                         path: None,
                         literal: Spanned::new(token.span, token.into_number_literal().unwrap()),
                     }
                     .into(),
-                ))
+                )
             }
             TextLiteral => {
                 let token = self.current_token().clone();
                 self.advance();
 
-                Ok(Pattern::new(
-                    attributes,
+                Pattern::new(
+                    default(),
                     token.span,
                     ast::TextLiteral {
                         path: None,
@@ -1548,12 +1548,12 @@ impl<'a> Parser<'a> {
                         ),
                     }
                     .into(),
-                ))
+                )
             }
             Backslash => {
                 self.advance();
                 self.consume_word()
-                    .map(|binder| Pattern::new(attributes, span.merge(&binder), binder.into()))
+                    .map(|binder| Pattern::new(default(), span.merge(&binder), binder.into()))?
             }
             OpeningSquareBracket => {
                 self.advance();
@@ -1567,27 +1567,31 @@ impl<'a> Parser<'a> {
                 span.merging(self.current_token());
                 self.advance();
 
-                Ok(Pattern::new(
-                    attributes,
+                Pattern::new(
+                    default(),
                     span,
                     ast::SequenceLiteral {
                         path: None,
                         elements: Spanned::new(span, elements),
                     }
                     .into(),
-                ))
+                )
             }
             OpeningRoundBracket => {
                 self.advance();
                 let mut pattern = self.parse_pattern()?;
                 span.merging(self.consume(ClosingRoundBracket)?);
                 pattern.span = span;
-                pattern.attributes.extend(attributes);
-                Ok(pattern)
+
+                pattern
             }
-            name if name.is_path_head() => self.parse_path_or_namespaced_literal(),
-            _ => self.error(|| Expected::Pattern.but_actual_is(self.current_token())),
-        }
+            name if name.is_path_head() => self.parse_path_or_namespaced_literal()?,
+            _ => self.error(|| Expected::Pattern.but_actual_is(self.current_token()))?,
+        };
+
+        pattern.attributes.extend(attributes);
+
+        Ok(pattern)
     }
 
     /// Finish parsing a sequence literal given the already parsed leading path and the span of the already parsed leading `[`.

@@ -1,7 +1,0 @@
-;;; TEST fail check -Z internals
-
-@intrinsic
-data I-Definitely-Do-Not-Exist: Type
-
-@intrinsic
-i-definitely-do-not-exist: I-Definitely-Do-Not-Exist

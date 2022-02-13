@@ -594,6 +594,7 @@ impl Role {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[forbid(missing_docs)]
 pub enum Code {
+    // @Task reserve some more codes
     /// _Permanently unassigned_.
     #[cfg(test)]
     E000,
@@ -629,6 +630,8 @@ pub enum Code {
     E015,
     /// Unable to load out-of-line module.
     E016,
+    /// Attempt to access subbinding of non-namespace.
+    E017,
     /// Undefined lint.
     E018,
     /// Attribute arguments arity mismatch.
@@ -679,6 +682,8 @@ pub enum Code {
     E041,
     /// Intrinsic declaration with a body.
     E042,
+    /// Attempt to construct a type with a literal that does not supported it.
+    E043,
     /// Missing program entry.
     E050,
     /// Missing intrinsic binding.

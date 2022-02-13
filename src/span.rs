@@ -295,6 +295,26 @@ impl Span {
 
     // @Task implement expand_{start,end}_matches to expand outwards
     // we want to use it to expand to leading `{  `s and trailing `  }`s.
+
+    #[allow(dead_code, unused_variables, clippy::unused_self)]
+    pub(crate) fn expand_start_matches(
+        self,
+        predicate: impl Fn(char) -> bool,
+        map: &SourceMap,
+    ) -> Self {
+        // @Beacon @Task
+        todo!()
+    }
+
+    #[allow(dead_code, unused_variables, clippy::unused_self)]
+    pub(crate) fn expand_end_matches(
+        self,
+        predicate: impl Fn(char) -> bool,
+        map: &SourceMap,
+    ) -> Self {
+        // @Beacon @Task
+        todo!()
+    }
 }
 
 impl Spanning for Span {
@@ -434,6 +454,7 @@ mod spanned {
             Spanned::new(self.span, mapper(self.value))
         }
 
+        #[must_use]
         pub fn map_span(mut self, mapper: impl FnOnce(Span) -> Span) -> Self {
             self.span = mapper(self.span);
             self

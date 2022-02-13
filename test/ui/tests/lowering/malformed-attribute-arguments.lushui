@@ -1,4 +1,5 @@
 ;;; TEST fail check
+;;; @Task create several internal testing attributes with various characteristics and extend this test with them
 
 @(allow never-gonna-be-implied)
 module m of
@@ -9,4 +10,4 @@ module m of
 data Void: Type of
 
 @(public (reech path) "hello")
-base: Base = @(Rune 0) "X"
+base: Base = @(static 0) "X"

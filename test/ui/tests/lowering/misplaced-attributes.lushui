@@ -1,7 +1,9 @@
 ;;; TEST fail check
+;;; @Task create several internal testing attributes with various differences
+;;; and extend this test file here
 
 @intrinsic
-@intrinsic @Int32
+@intrinsic
 use self.()
 
 @intrinsic @abstract @(location "/")
@@ -9,7 +11,7 @@ use something.substantial.(root0 root1)
 
 @include
 binding: Binding =
-    @intrinsic @Text make-binding @(public super) resource
+    @intrinsic make-binding @(public super) resource
 
 data Manifest: Type of
     @public manifest

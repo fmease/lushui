@@ -1,32 +1,32 @@
-error[E022]: value `true-treasures-of-life` is not a namespace
+error[E017]: binding `true-treasures-of-life` is not a namespace
  --> ${DIRECTORY}/name-resolution/mistyped-namespace.lushui:7:5
   |
 7 | use true-treasures-of-life.Friendship
-  |     ^^^^^^^^^^^^^^^^^^^^^^ not a namespace, just a value
+  |     ^^^^^^^^^^^^^^^^^^^^^^ not a namespace but a function
   |
- --> ${DIRECTORY}/name-resolution/mistyped-namespace.lushui:7:28
+ --> ${DIRECTORY}/name-resolution/mistyped-namespace.lushui:7:27
   |
 7 | use true-treasures-of-life.Friendship
-  |                            ---------- requires the preceeding path segment to refer to a namespace
+  |                           ----------- denotes a reference to a binding inside of a namespace
   |
- help: a namespace with a similar name containing the binding exists in scope:
+ help: a namespace with a similar name exists in scope containing the binding:
            `the-true-treasures-of-life`
 
-error[E022]: value `shared-spades` is not a namespace
+error[E017]: binding `shared-spades` is not a namespace
   --> ${DIRECTORY}/name-resolution/mistyped-namespace.lushui:23:5
    |
 23 | use shared-spades.One
-   |     ^^^^^^^^^^^^^ not a namespace, just a value
+   |     ^^^^^^^^^^^^^ not a namespace but a function
    |
-  --> ${DIRECTORY}/name-resolution/mistyped-namespace.lushui:23:19
+  --> ${DIRECTORY}/name-resolution/mistyped-namespace.lushui:23:18
    |
 23 | use shared-spades.One
-   |                   --- requires the preceeding path segment to refer to a namespace
+   |                  ---- denotes a reference to a binding inside of a namespace
    |
-  help: a namespace with a similar name containing the binding exists in scope:
+  help: a namespace with a similar name exists in scope containing the binding:
             `shared-spaces` (shared-spadces)
 
 error: aborting due to 2 previous errors
- note: the error E022 has a detailed explanation
- help: run `lushui explain E022` to view it
+ note: the error E017 has a detailed explanation
+ help: run `lushui explain E017` to view it
 

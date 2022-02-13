@@ -12,14 +12,7 @@ error[E060]: the intrinsic type `Nat` is missing
   |                ^^^ the type of this expression
   |
 
-error[E060]: the intrinsic type `Int32` is missing
- --> ${DIRECTORY}/missing-intrinsic-type.lushui:9:23
-  |
-9 | it2: It = make @Int32 0 
-  |                       ^ the type of this expression
-  |
-
-error: aborting due to 3 previous errors
+error: aborting due to 2 previous errors
  note: the error E060 has a detailed explanation
  help: run `lushui explain E060` to view it
 

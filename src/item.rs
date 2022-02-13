@@ -24,6 +24,13 @@ impl<T, Attributes> Item<T, Attributes> {
             attributes,
         }
     }
+
+    pub(crate) fn map<U>(self, mapper: impl FnOnce(T) -> U) -> Item<U, Attributes> {
+        Item {
+            value: mapper(self.value),
+            ..self
+        }
+    }
 }
 
 impl<T, Attribute> Spanning for Item<T, Attribute> {

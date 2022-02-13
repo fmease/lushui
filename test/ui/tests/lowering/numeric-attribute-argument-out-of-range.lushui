@@ -1,0 +1,4 @@
+;;; TEST fail check
+
+@(recursion-limit 130'454'112'009'021)
+module dummy of

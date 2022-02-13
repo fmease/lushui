@@ -230,7 +230,21 @@ impl EntityKind {
         }
     }
 
-    const fn name(&self) -> &'static str {
+    /// The user-facing name of the entity kind.
+    pub(crate) const fn name(&self) -> &'static str {
+        match self {
+            UntypedFunction | Function { .. } | IntrinsicFunction { .. } => "function",
+            Module { .. } => "module",
+            UntypedDataType { .. } | DataType { .. } => "data type",
+            UntypedConstructor | Constructor { .. } => "constructor",
+            Use { .. } | UnresolvedUse => "use-binding",
+            // ideally, should not be reachable
+            Error => "error",
+        }
+    }
+
+    /// The developer-facing name of the entity kind.
+    const fn precise_name(&self) -> &'static str {
         match self {
             UntypedFunction => "untyped function",
             Module { .. } => "module",
@@ -257,7 +271,7 @@ impl DisplayWith for EntityKind {
     type Context<'a> = (&'a Capsule, &'a BuildSession);
 
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:>19}   ", self.name().bright_blue())?;
+        write!(f, "{:>19}   ", self.precise_name().bright_blue())?;
 
         match self {
             Module { namespace } | UntypedDataType { namespace } => write!(f, "{namespace:?}"),

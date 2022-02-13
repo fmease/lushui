@@ -3,7 +3,7 @@ use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     entity::{Entity, EntityKind},
     error::Result,
-    hir::{self, DeclarationIndex, Expression, ExpressionKind, Identifier, Number},
+    hir::{self, DeclarationIndex, Expression, ExpressionKind, Identifier},
     resolver::Capsule,
     span::Span,
     syntax::ast::Explicitness,
@@ -82,6 +82,7 @@ impl BuildSession {
         self.capsules.insert(capsule.index(), capsule);
     }
 
+    #[allow(dead_code)]
     pub(crate) fn known_bindings(&self) -> impl Iterator<Item = (KnownBinding, &Identifier)> {
         self.known_bindings
             .iter()
@@ -119,29 +120,21 @@ impl BuildSession {
             .into_expression())
     }
 
-    pub(crate) fn register_known_type(
+    pub(crate) fn register_known_binding(
         &mut self,
         binder: &Identifier,
-        constructors: &[&Identifier],
+        namespace: Option<&str>,
         attribute: Span,
         reporter: &Reporter,
     ) -> Result {
-        use KnownBinding::*;
-
-        let duplicate = |previous: &Identifier| {
-            Diagnostic::error()
-                .code(Code::E039)
-                .message(format!(
-                    "the known binding `{binder}` is defined multiple times",
-                ))
-                .labeled_primary_span(binder, "conflicting definition")
-                .labeled_secondary_span(previous, "previous definition")
-        };
-
-        let Ok(binding) = binder.as_str().parse() else {
+        let Ok(binding) = KnownBinding::parse(namespace, binder.as_str()) else {
             Diagnostic::error()
                 .code(Code::E063)
-                .message(format!("`{binder}` is not a known binding"))
+                .message(format!(
+                    "`{}{binder}` is not a known binding",
+                    namespace.map(|namespace| format!(".{namespace}"))
+                        .unwrap_or_default()
+                ))
                 .primary_span(binder)
                 .secondary_span(attribute)
                 .report(reporter);
@@ -149,35 +142,19 @@ impl BuildSession {
         };
 
         if let Some(previous) = self.known_bindings.get(&binding) {
-            duplicate(previous).report(reporter);
+            Diagnostic::error()
+                .code(Code::E039)
+                .message(format!(
+                    "the known binding `{}` is defined multiple times",
+                    binding.path()
+                ))
+                .labeled_primary_span(binder, "conflicting definition")
+                .labeled_secondary_span(previous, "previous definition")
+                .report(reporter);
             return Err(());
         }
 
         self.known_bindings.insert(binding, binder.clone());
-
-        let mut constructor = |known: KnownBinding| {
-            if let Some(&constructor) = constructors
-                .iter()
-                .find(|constructor| constructor.as_str() == known.name())
-            {
-                self.known_bindings.insert(known, constructor.clone());
-            }
-        };
-
-        match binding {
-            Unit => {
-                constructor(UnitUnit);
-            }
-            Bool => {
-                constructor(BoolFalse);
-                constructor(BoolTrue);
-            }
-            Option => {
-                constructor(OptionNone);
-                constructor(OptionSome);
-            }
-            _ => {}
-        }
 
         Ok(())
     }
@@ -348,18 +325,18 @@ pub(crate) enum KnownBinding {
 }
 
 impl KnownBinding {
-    // @Task derive this
-    pub(crate) const fn name(self) -> &'static str {
-        match self {
-            Self::Unit => "Unit",
-            Self::UnitUnit => "unit",
-            Self::Bool => "Bool",
-            Self::BoolFalse => "false",
-            Self::BoolTrue => "true",
-            Self::Option => "Option",
-            Self::OptionNone => "none",
-            Self::OptionSome => "some",
-        }
+    pub(crate) fn parse(namespace: Option<&str>, binder: &str) -> Result<Self> {
+        Ok(match (namespace, binder) {
+            (None, "Unit") => Self::Unit,
+            (Some("Unit"), "unit") => Self::UnitUnit,
+            (None, "Bool") => Self::Bool,
+            (Some("Bool"), "false") => Self::BoolFalse,
+            (Some("Bool"), "true") => Self::BoolTrue,
+            (None, "Option") => Self::Option,
+            (Some("Option"), "none") => Self::OptionNone,
+            (Some("Option"), "some") => Self::OptionSome,
+            _ => return Err(()),
+        })
     }
 
     pub(crate) const fn path(self) -> &'static str {
@@ -376,46 +353,16 @@ impl KnownBinding {
     }
 }
 
-impl FromStr for KnownBinding {
-    type Err = ();
-
-    fn from_str(input: &str) -> Result<Self, Self::Err> {
-        Ok(match input {
-            "Unit" => Self::Unit,
-            "unit" => Self::UnitUnit,
-            "Bool" => Self::Bool,
-            "false" => Self::BoolFalse,
-            "true" => Self::BoolTrue,
-            "Option" => Self::Option,
-            "none" => Self::OptionNone,
-            "some" => Self::OptionSome,
-            _ => return Err(()),
-        })
-    }
-}
-
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub(crate) enum IntrinsicType {
-    Nat,
-    Nat32,
-    Nat64,
-    Int,
-    Int32,
-    Int64,
+    Numeric(IntrinsicNumericType),
     Text,
     IO,
 }
 
-impl IntrinsicType {
-    pub(crate) fn numeric(number: &Number) -> Self {
-        match number {
-            Number::Nat(_) => Self::Nat,
-            Number::Nat32(_) => Self::Nat32,
-            Number::Nat64(_) => Self::Nat64,
-            Number::Int(_) => Self::Int,
-            Number::Int32(_) => Self::Int32,
-            Number::Int64(_) => Self::Int64,
-        }
+impl From<IntrinsicNumericType> for IntrinsicType {
+    fn from(type_: IntrinsicNumericType) -> Self {
+        Self::Numeric(type_)
     }
 }
 
@@ -424,12 +371,12 @@ impl FromStr for IntrinsicType {
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         Ok(match input {
-            "Nat" => Self::Nat,
-            "Nat32" => Self::Nat32,
-            "Nat64" => Self::Nat64,
-            "Int" => Self::Int,
-            "Int32" => Self::Int32,
-            "Int64" => Self::Int64,
+            "Nat" => IntrinsicNumericType::Nat.into(),
+            "Nat32" => IntrinsicNumericType::Nat32.into(),
+            "Nat64" => IntrinsicNumericType::Nat64.into(),
+            "Int" => IntrinsicNumericType::Int.into(),
+            "Int32" => IntrinsicNumericType::Int32.into(),
+            "Int64" => IntrinsicNumericType::Int64.into(),
             "Text" => Self::Text,
             "IO" => Self::IO,
             _ => return Err(()),
@@ -437,8 +384,41 @@ impl FromStr for IntrinsicType {
     }
 }
 
-// @Task derive this
 impl fmt::Display for IntrinsicType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Numeric(type_) => write!(f, "{type_}"),
+            Self::Text => write!(f, "Text"),
+            Self::IO => write!(f, "IO"),
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Hash, Clone, Copy)]
+pub(crate) enum IntrinsicNumericType {
+    Nat,
+    Nat32,
+    Nat64,
+    Int,
+    Int32,
+    Int64,
+}
+
+impl IntrinsicNumericType {
+    pub(crate) const fn interval(self) -> &'static str {
+        // @Question use `∞`?
+        match self {
+            Self::Nat => "[0, infinity)",
+            Self::Nat32 => "[0, 2^32-1]",
+            Self::Nat64 => "[0, 2^64-1]",
+            Self::Int => "(-infinity, infinity)",
+            Self::Int32 => "[-2^31, 2^31-1]",
+            Self::Int64 => "[-2^63, 2^63-1]",
+        }
+    }
+}
+
+impl fmt::Display for IntrinsicNumericType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -450,8 +430,6 @@ impl fmt::Display for IntrinsicType {
                 Self::Int => "Int",
                 Self::Int32 => "Int32",
                 Self::Int64 => "Int64",
-                Self::Text => "Text",
-                Self::IO => "IO",
             }
         )
     }
@@ -604,6 +582,7 @@ pub(crate) enum Type {
 impl Type {
     // @Task improve this code with the new enum logic
     fn from_expression(expression: &Expression, session: &BuildSession) -> Option<Self> {
+        use IntrinsicNumericType::*;
         use IntrinsicType::*;
         use KnownBinding::*;
 
@@ -623,12 +602,12 @@ impl Type {
             ExpressionKind::Binding(binding) => condition! {
                 known(binding, Unit) => Self::Unit,
                 known(binding, Bool) => Self::Bool,
-                intrinsic(binding, Nat) => Self::Nat,
-                intrinsic(binding, Nat32) => Self::Nat32,
-                intrinsic(binding, Nat64) => Self::Nat64,
-                intrinsic(binding, Int) => Self::Int,
-                intrinsic(binding, Int32) => Self::Int32,
-                intrinsic(binding, Int64) => Self::Int64,
+                intrinsic(binding, Nat.into()) => Self::Nat,
+                intrinsic(binding, Nat32.into()) => Self::Nat32,
+                intrinsic(binding, Nat64.into()) => Self::Nat64,
+                intrinsic(binding, Int.into()) => Self::Int,
+                intrinsic(binding, Int32.into()) => Self::Int32,
+                intrinsic(binding, Int64.into()) => Self::Int64,
                 intrinsic(binding, Text) => Self::Text,
                 else => return None,
             },
@@ -648,6 +627,7 @@ impl Type {
         session: &BuildSession,
         reporter: &Reporter,
     ) -> Result<Expression> {
+        use IntrinsicNumericType::*;
         use IntrinsicType::*;
         use KnownBinding::*;
 
@@ -657,12 +637,12 @@ impl Type {
         match self {
             Self::Unit => known(Unit),
             Self::Bool => known(Bool),
-            Self::Nat => intrinsic(Nat),
-            Self::Nat32 => intrinsic(Nat32),
-            Self::Nat64 => intrinsic(Nat64),
-            Self::Int => intrinsic(Int),
-            Self::Int32 => intrinsic(Int32),
-            Self::Int64 => intrinsic(Int64),
+            Self::Nat => intrinsic(Nat.into()),
+            Self::Nat32 => intrinsic(Nat32.into()),
+            Self::Nat64 => intrinsic(Nat64.into()),
+            Self::Int => intrinsic(Int.into()),
+            Self::Int32 => intrinsic(Int32.into()),
+            Self::Int64 => intrinsic(Int64.into()),
             Self::Text => intrinsic(Text),
             Self::Option(type_) => Ok(application(
                 known(Option)?,
