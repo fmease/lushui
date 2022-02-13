@@ -75,27 +75,26 @@ Expression ::= Pi-Type-Literal-Or-Lower
 ; contain further expressions) `Lower-Expression`s namely let/in, use/in, lambda literals,
 ; case analyses and do blocks (not sure about sequence literals)
 Pi-Type-Literal-Or-Lower ::=
-    (Designated-Pi-Type-Domain | Application-Or-Lower)
+    (Designated-Pi-Type-Domain | Application-Expression-Or-Lower)
     "->" Pi-Type-Literal-Or-Lower
 Designated-Pi-Type-Domain ::= Explicitness "(" "lazy"? #Word Type-Annotation ")"
 
-Application-Or-Lower ::= Lower-Expression Argument*
-Argument ::=
+Application-Expression-Or-Lower ::= Lower-Expression Expression-Argument*
+Expression-Argument ::=
     | Explicitness Lower-Expression
     | Explicitness "(" (#Word "=")? Expression ")"
 
 ; ; left-recursive version unsuitable for the recursive descent parser
 ; ; but indeed usable for pretty-printers:
 ;
-; Application-Or-Lower ::= Application-Or-Lower? Argument*
-; Argument ::=
+; Application-Expression-Or-Lower ::= Application-Expression-Or-Lower? Expression-Argument*
+; Expression-Argument ::=
 ;     | Lower-Expression
 ;     | Explicitness "(" (#Word "=")? Expression ")"
 
 Lower-Expression ::= Attribute* Bare-Lower-Expression
 Bare-Lower-Expression ::= Lowest-Expression ("::" Identifier)*
 Lowest-Expression ::=
-    | Path
     | "Type"
     | #Number-Literal
     | #Text-Literal
@@ -105,10 +104,10 @@ Lowest-Expression ::=
     | Lambda-Literal
     | Case-Analysis
     | Do-Block
-    | Sequence-Literal
+    | Sequence-Literal-Expression
+    | Path-Or-Namespaced-Literal-Expression
     | "(" Expression ")"
 Typed-Hole ::= "?" #Word
-Sequence-Literal ::= "[" Lower-Expression* "]"
 
 Path ::= Path-Head ("." Identifier)*
 Path-Head ::= Path-Hanger | Identifier
@@ -148,14 +147,23 @@ Pattern-Argument ::=
 
 Lower-Pattern ::= Attribute* Bare-Lower-Pattern
 Bare-Lower-Pattern ::=
-    | Path
     | #Number-Literal
     | #Text-Literal
     | Binder
     | Sequence-Literal-Pattern
+    | Path-Or-Namespaced-Literal-Pattern
     | "(" Pattern ")"
 Binder ::= "\" #Word
-Sequence-Literal-Pattern ::= "[" Lower-Pattern* "]"
+
+Sequence-Literal-Expression ::= (Path ".")? "[" Lower-Expression* "]"
+Sequence-Literal-Pattern ::= (Path ".")? "[" Lower-Pattern* "]"
+
+Path-Or-Namespaced-Literal-Expression ::=
+    Path
+    ("." (#Number-Literal | #Text-Literal | Sequence-Literal-Expression))?
+Path-Or-Namespaced-Literal-Pattern ::=
+    Path
+    ("." (#Number-Literal | #Text-Literal | Sequence-Literal-Pattern))?
 
 Type-Annotation ::= ":" Expression
 

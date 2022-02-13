@@ -2,8 +2,6 @@
 //!
 //! The equivalent in the type checker is [`crate::typer::interpreter::scope`].
 
-// @Beacon @Beacon @Task don't report similarily named *private* bindings!
-
 use crate::{
     diagnostics::{Code, Diagnostic},
     entity::{Entity, EntityKind},
@@ -172,7 +170,7 @@ impl Capsule {
         session: &BuildSession,
     ) -> String {
         match index.local(self) {
-            Some(index) => self.local_path_with_root_to_string(index, root),
+            Some(index) => self.extern_path_with_root_to_string(index, root),
             None => {
                 let capsule = &session[index.capsule()];
                 let root = format!("{}.{}", HangerKind::Extern.name(), capsule.name());
@@ -182,19 +180,21 @@ impl Capsule {
         }
     }
 
-    // @Note bad name
     // @Task add docs
-    pub(crate) fn local_path_to_string(&self, index: LocalDeclarationIndex) -> String {
-        self.local_path_with_root_to_string(index, self.name().to_string())
+    pub(crate) fn extern_path_to_string(&self, index: LocalDeclarationIndex) -> String {
+        self.extern_path_with_root_to_string(index, self.name().to_string())
     }
 
-    // @Note bad name
-    fn local_path_with_root_to_string(&self, index: LocalDeclarationIndex, root: String) -> String {
+    fn extern_path_with_root_to_string(
+        &self,
+        index: LocalDeclarationIndex,
+        root: String,
+    ) -> String {
         let entity = &self[index];
 
         // @Task rewrite this recursive approach to an iterative one!
         if let Some(parent) = entity.parent {
-            let mut parent_path = self.local_path_with_root_to_string(parent, root);
+            let mut parent_path = self.extern_path_with_root_to_string(parent, root);
 
             let parent_is_punctuation = is_punctuation(parent_path.chars().next_back().unwrap());
 
@@ -335,7 +335,12 @@ impl DisplayWith for Capsule {
         writeln!(f, "  bindings:")?;
 
         for (index, entity) in self.bindings.iter() {
-            writeln!(f, "    {index:?}: {}", entity.with((self, session)))?;
+            writeln!(
+                f,
+                "    {}: {}",
+                format!("{index:?}").red(),
+                entity.with((self, session))
+            )?;
         }
 
         Ok(())
@@ -368,15 +373,11 @@ impl Exposure {
 impl fmt::Debug for Exposure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Unrestricted => write!(f, "unrestricted"),
-            Self::Restricted(reach) => {
-                write!(f, "restricted(")?;
-                match &*reach.lock().unwrap() {
-                    RestrictedExposure::Unresolved { reach } => write!(f, "{reach}"),
-                    RestrictedExposure::Resolved { reach } => write!(f, "{reach:?}"),
-                }?;
-                write!(f, ")")
-            }
+            Self::Unrestricted => write!(f, "*"),
+            Self::Restricted(reach) => match &*reach.lock().unwrap() {
+                RestrictedExposure::Unresolved { reach } => write!(f, "{reach}"),
+                RestrictedExposure::Resolved { reach } => write!(f, "{reach:?}"),
+            },
         }
     }
 }
@@ -492,7 +493,7 @@ impl fmt::Debug for Namespace {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{{{}}}",
+            "{}",
             self.binders
                 .iter()
                 .map(|binding| format!("{binding:?}"))
@@ -592,6 +593,7 @@ impl Diagnostic {
         // @Task levenshtein-search for similar named bindings which are in fact values and suggest the first one
         // @Task print absolute path of the module in question and use highlight the entire path, not just the last
         // segment
+        // @Task improve this diagnostic!
         Self::error()
             .code(Code::E023)
             .message(format!("module `{module}` is used as a value"))

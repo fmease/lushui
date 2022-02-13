@@ -7,9 +7,10 @@ use extern.core.(
     int64.Int64
     duple.(Duple duple))
 
-alpha: Int = @Int -1000
+alpha: Int = Int.-1000
 
-beta: Nat = nat. + 69696 44
+beta: Nat = nat.+ 69696 44
 
 gamma: Duple Int64 Nat32 =
-    duple Int64 Nat32 @Int64 334333223322 @Nat32 233323
+    duple Int64 Nat32
+        Int64.334333223322 Nat32.233323

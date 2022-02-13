@@ -1,0 +1,11 @@
+error[E008]: attribute argument does not fit integer interval [0, 2^32-1]
+ --> ${DIRECTORY}/lowering/numeric-attribute-argument-out-of-range.lushui:3:19
+  |
+3 | @(recursion-limit 130'454'112'009'021)
+  |                   ^^^^^^^^^^^^^^^^^^^ 
+  |
+
+error: aborting due to previous error
+ note: the error E008 has a detailed explanation
+ help: run `lushui explain E008` to view it
+

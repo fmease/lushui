@@ -10,19 +10,6 @@ const KEYWORD_COLOR: Color = Color::Cyan;
 const PUNCTUATION_COLOR: Color = Color::BrightMagenta;
 const ATTRIBUTE_COLOR: Color = Color::BrightWhite;
 
-impl fmt::Display for super::Number {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Nat(value) => write!(f, "{value}"),
-            Self::Nat32(value) => write!(f, "{value}"),
-            Self::Nat64(value) => write!(f, "{value}"),
-            Self::Int(value) => write!(f, "{value}"),
-            Self::Int32(value) => write!(f, "{value}"),
-            Self::Int64(value) => write!(f, "{value}"),
-        }
-    }
-}
-
 // @Task reduce amount of (String) allocations
 impl super::Declaration {
     fn format_with_depth(&self, depth: usize, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -133,6 +120,7 @@ impl fmt::Display for super::Expression {
     }
 }
 
+// @Task add sequences!
 fn format_pi_type_literal_or_lower(
     expression: &super::Expression,
     f: &mut fmt::Formatter<'_>,
@@ -219,7 +207,7 @@ fn format_pi_type_literal_or_lower(
                 f,
                 "{case} {subject} {of} {{ ",
                 case = "case".color(KEYWORD_COLOR),
-                subject = analysis.subject,
+                subject = analysis.scrutinee,
                 of = "of".color(KEYWORD_COLOR)
             )?;
             let mut first = true;
@@ -239,6 +227,23 @@ fn format_pi_type_literal_or_lower(
                 )?;
             }
             write!(f, " }}")
+        }
+        // @Task abstract over fmting sequence literals (via a function over Item<_>)
+        // once we have format_lower_pattern
+        SequenceLiteral(sequence) => {
+            if let Some(path) = &sequence.path {
+                write!(f, "{path}.")?;
+            }
+
+            write!(f, "[")?;
+            for (index, element) in sequence.elements.value.iter().enumerate() {
+                if index != 0 {
+                    write!(f, " ")?;
+                }
+
+                format_lower_expression(element, f)?;
+            }
+            write!(f, "]")
         }
         _ => format_application_or_lower(expression, f),
     }
@@ -272,10 +277,10 @@ fn format_lower_expression(
     }
 
     match &expression.value {
-        Type => write!(f, "{Type}", Type = "Type".blue()),
-        Number(literal) => write!(f, "{literal}"),
-        Text(literal) => write!(f, "{literal:?}"),
-        Binding(binding) => write!(f, "{}", binding.binder),
+        TypeLiteral => write!(f, "{Type}", Type = "Type".blue()),
+        NumberLiteral(number) => write!(f, "{number}"),
+        TextLiteral(text) => write!(f, "{text}"),
+        Path(path) => write!(f, "{path}"),
         Error => write!(f, "{}", "?(error)".red()),
         _ => write!(f, "({})", expression),
     }
@@ -287,17 +292,33 @@ impl fmt::Display for super::Pattern {
         use super::PatternKind::*;
 
         match &self.value {
-            Number(number) => write!(f, "{}", number),
-            Text(text) => write!(f, "{:?}", text),
-            Binding(binding) => write!(f, "{}", binding.binder),
-            Binder(binder) => write!(
+            NumberLiteral(number) => write!(f, "{number}"),
+            TextLiteral(text) => write!(f, "{text}"),
+            Path(path) => write!(f, "{path}"),
+            Binder(path) => write!(
                 f,
-                "{backslash}{binder}",
+                "{backslash}{path}",
                 backslash = "\\".color(PUNCTUATION_COLOR),
-                binder = binder.binder
             ),
-            Deapplication(application) => {
+            Application(application) => {
                 write!(f, "({}) ({})", application.callee, application.argument)
+            }
+            // @Task abstract over fmting sequence literals (via a function over Item<_>)
+            // once we have format_lower_pattern
+            SequenceLiteral(sequence) => {
+                if let Some(path) = &sequence.path {
+                    write!(f, "{path}.")?;
+                }
+
+                write!(f, "[")?;
+                for (index, element) in sequence.elements.value.iter().enumerate() {
+                    if index != 0 {
+                        write!(f, " ")?;
+                    }
+
+                    write!(f, "({element})")?;
+                }
+                write!(f, "]")
             }
             Error => write!(f, "{}", "?(error)".red()),
         }

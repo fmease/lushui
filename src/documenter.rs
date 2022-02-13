@@ -159,7 +159,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                             // incorrect on top of that!)
                             let path = self
                                 .capsule
-                                .local_path_to_string(index.local(self.capsule).unwrap());
+                                .extern_path_to_string(index.local(self.capsule).unwrap());
 
                             search_index += &format!(
                                 "[{path:?},{:?}],",
@@ -578,7 +578,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             )
             .child(Element::new("title").child(match content_type {
                 // @Task respect self.capsule.is_ambiguously_named_within_package
-                PageContentType::Module => self.capsule.local_path_to_string(index),
+                PageContentType::Module => self.capsule.extern_path_to_string(index),
                 PageContentType::Attributes => "Attributes".into(),
                 PageContentType::ReservedIdentifiers => "Reserved Identifiers".into(),
             }))
@@ -718,9 +718,6 @@ fn render_declaration_attribute(attribute: &Attribute, parent: &mut Element<'_>,
         | RecursionLimit { .. }
         | Statistics
         | Warn { .. } => {}
-
-        // not declaration attributes
-        Int | Int32 | Int64 | List | Nat | Nat32 | Nat64 | Rune | Text | Vector => unreachable!(),
 
         // should not exist at this point in time
         Ignore | Include | Test => unreachable!(),

@@ -6,6 +6,4 @@ make (it: It): It = It.it
 
 it0: It = make "test"
 it1: It = make 344
-it2: It = make @Int32 0 
-
 

@@ -10,24 +10,7 @@ error[E014]: attributes `intrinsic` and `known` are mutually exclusive
   |            ^^^^^^ conflicting attribute
   |
 
-error[E014]: attributes `Nat`, `Int` and `Int32` are mutually exclusive
- --> ${DIRECTORY}/lowering/mutually-exclusive-attributes.lushui:4:22
-  |
-4 | data Typ: const Type @Int @Int32 (@Nat 12)
-  |                      ^^^^ conflicting attribute
-  |
- --> ${DIRECTORY}/lowering/mutually-exclusive-attributes.lushui:4:27
-  |
-4 | data Typ: const Type @Int @Int32 (@Nat 12)
-  |                           ^^^^^^ conflicting attribute
-  |
- --> ${DIRECTORY}/lowering/mutually-exclusive-attributes.lushui:4:35
-  |
-4 | data Typ: const Type @Int @Int32 (@Nat 12)
-  |                                   ^^^^ conflicting attribute
-  |
-
-error: aborting due to 2 previous errors
+error: aborting due to previous error
  note: the error E014 has a detailed explanation
  help: run `lushui explain E014` to view it
 

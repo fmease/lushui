@@ -122,7 +122,7 @@ impl<'a> Formatter<'a> {
             // @Task fix indentation
             CaseAnalysis(analysis) => {
                 self.write("case ");
-                self.format_expression(&analysis.subject);
+                self.format_expression(&analysis.scrutinee);
                 self.write(" of {");
 
                 // @Task spacing
@@ -181,9 +181,8 @@ impl<'a> Formatter<'a> {
                     .render(&mut self.output);
             }
             Number(literal) => self.write(&literal.to_string()),
-            // @Task use custom escaping logic
-            Text(literal) => self.write(&format!("{literal:?}")),
-            Binding(binding) => self.format_binder(&binding.binder),
+            Text(literal) => self.write(&literal.to_string()),
+            Binding(binding) => self.format_binder(&binding.0),
             // @Beacon @Temporary @Task just write out the path
             Projection(_projection) => self.write("?(projection)"),
             IO(io) => {
@@ -221,14 +220,13 @@ impl<'a> Formatter<'a> {
 
         match &pattern.value {
             Number(number) => self.write(&number.to_string()),
-            // @Task write custom escaper
-            Text(text) => self.write(&format!("{:?}", text)),
-            Binding(binding) => self.format_binder(&binding.binder),
+            Text(text) => self.write(&text.to_string()),
+            Binding(binding) => self.format_binder(&binding.0),
             Binder(binder) => {
                 self.write(r"\");
-                self.write(&binder.binder.to_string());
+                self.write(&binder.0.to_string());
             }
-            Deapplication(application) => {
+            Application(application) => {
                 self.write("("); // @Temporary
                 self.format_pattern(&application.callee);
                 self.write(")"); // @Temporary
@@ -260,7 +258,7 @@ impl<'a> Formatter<'a> {
         match self.look_up(index).kind {
             Use { .. } => "#".to_string(), // @Task
             Module { .. } => self.module_url_fragment(index),
-            Function { .. } | Intrinsic { .. } | DataType { .. } => {
+            Function { .. } | IntrinsicFunction { .. } | DataType { .. } => {
                 let module_link = self.module_url_fragment(self.parent(index).unwrap());
                 format!("{module_link}#{}", declaration_id(binder))
             }

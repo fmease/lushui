@@ -1,106 +1,12 @@
 use super::{Expression, Substitution::Shift};
 use crate::{
-    diagnostics::Reporter,
-    entity::EntityKind,
-    error::Result,
     format::{AsDebug, DisplayWith},
-    hir::{expr, DeBruijnIndex, Identifier},
+    hir::{self, DeBruijnIndex, Identifier},
     package::BuildSession,
     resolver::Capsule,
-    span::Span,
-    syntax::lowered_ast::{AttributeName, Attributes},
+    syntax::lowered_ast::Attributes,
 };
-use std::fmt;
-
-impl Capsule {
-    // @Bug does not understand non-local binders
-    // @Beacon @Beacon @Beacon @Task make this a method of Typer instead
-    pub(crate) fn carry_out(
-        &mut self,
-        registration: BindingRegistration,
-        session: &mut BuildSession,
-        reporter: &Reporter,
-    ) -> Result {
-        use BindingRegistrationKind::*;
-
-        match registration.kind {
-            Function {
-                binder,
-                type_,
-                value,
-            } => {
-                // @Bug may be non-local thus panic
-                let index = binder.local_declaration_index(self).unwrap();
-                let entity = &mut self[index];
-                debug_assert!(entity.is_untyped_value() || entity.is_value_without_value());
-
-                entity.kind = EntityKind::Function {
-                    type_,
-                    expression: value,
-                };
-            }
-            Data { binder, type_ } => {
-                // @Bug may be non-local thus panic
-                let index = binder.local_declaration_index(self).unwrap();
-                let entity = &mut self[index];
-                debug_assert!(entity.is_untyped_value());
-
-                entity.kind = EntityKind::DataType {
-                    namespace: std::mem::take(entity.namespace_mut().unwrap()),
-                    type_,
-                    constructors: Vec::new(),
-                };
-            }
-            Constructor {
-                binder,
-                type_,
-                owner_data_type: data,
-            } => {
-                // @Bug may be non-local thus panic
-                let index = binder.local_declaration_index(self).unwrap();
-                let entity = &mut self[index];
-                debug_assert!(entity.is_untyped_value());
-
-                entity.kind = EntityKind::Constructor { type_ };
-
-                // @Bug may be non-local thus panic
-                let data_index = data.local_declaration_index(self).unwrap();
-
-                match self[data_index].kind {
-                    EntityKind::DataType {
-                        ref mut constructors,
-                        ..
-                    } => constructors.push(binder),
-                    _ => unreachable!(),
-                }
-            }
-            IntrinsicFunction { binder, type_ } => {
-                // @Bug may be non-local thus panic
-                let index = binder.local_declaration_index(self).unwrap();
-                debug_assert!(self[index].is_untyped_value());
-
-                self[index].kind = session.register_intrinsic_function(
-                    binder,
-                    type_,
-                    registration
-                        .attributes
-                        .span(AttributeName::Intrinsic)
-                        .unwrap(),
-                    reporter,
-                )?;
-            }
-            IntrinsicType { binder } => session.register_intrinsic_type(
-                binder,
-                registration
-                    .attributes
-                    .span(AttributeName::Intrinsic)
-                    .unwrap(),
-                reporter,
-            )?,
-        }
-        Ok(())
-    }
-}
+use std::{default::default, fmt};
 
 #[derive(Clone)] // @Question expensive attributes clone?
 pub(crate) struct BindingRegistration {
@@ -128,11 +34,9 @@ pub(crate) enum BindingRegistrationKind {
         binder: Identifier,
         type_: Expression,
     },
-    IntrinsicType {
-        binder: Identifier,
-    },
 }
 
+// only used to report "cyclic" types (currently treated as a bug)
 impl DisplayWith for BindingRegistration {
     type Context<'a> = (&'a Capsule, &'a BuildSession);
 
@@ -175,10 +79,6 @@ impl DisplayWith for BindingRegistration {
                 .field("binder", binder)
                 .field("type", &type_.with(context).as_debug())
                 .finish(),
-            IntrinsicType { binder } => f
-                .debug_struct("IntrinsicType")
-                .field("binder", binder)
-                .finish(),
         }
     }
 }
@@ -198,7 +98,7 @@ impl ValueView {
 
 /// The scope of bindings inside of a function.
 pub(crate) enum FunctionScope<'a> {
-    Capsule,
+    Module,
     FunctionParameter {
         parent: &'a Self,
         type_: Expression,
@@ -233,13 +133,15 @@ impl<'a> FunctionScope<'a> {
         match self {
             Self::FunctionParameter { parent, type_ } => {
                 if depth == index.0 {
-                    expr! {
-                        Substitution {
-                            Attributes::default(), Span::default();
+                    Expression::new(
+                        default(),
+                        default(),
+                        hir::Substitution {
                             substitution: Shift(depth + 1),
                             expression: type_.clone(),
                         }
-                    }
+                        .into(),
+                    )
                 } else {
                     parent.look_up_type_with_depth(index, depth + 1)
                 }
@@ -251,18 +153,20 @@ impl<'a> FunctionScope<'a> {
                     .zip(depth..)
                     .find(|(_, depth)| *depth == index.0)
                 {
-                    Some((type_, depth)) => expr! {
-                        Substitution {
-                            Attributes::default(), Span::default();
+                    Some((type_, depth)) => Expression::new(
+                        default(),
+                        default(),
+                        hir::Substitution {
                             // @Task verify this shift
                             substitution: Shift(depth + 1),
                             expression: type_.clone(),
                         }
-                    },
+                        .into(),
+                    ),
                     None => parent.look_up_type_with_depth(index, depth + types.len()),
                 }
             }
-            Self::Capsule => unreachable!(),
+            Self::Module => unreachable!(),
         }
     }
 }

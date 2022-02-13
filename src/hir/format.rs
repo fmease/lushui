@@ -192,7 +192,7 @@ fn format_pi_type_literal_or_lower(
         UseIn => todo!(),
         // @Task fix indentation
         CaseAnalysis(analysis) => {
-            writeln!(f, "case {} of", analysis.subject.with(context))?;
+            writeln!(f, "case {} of", analysis.scrutinee.with(context))?;
             for case in &analysis.cases {
                 writeln!(
                     f,
@@ -251,15 +251,12 @@ fn format_lower_expression(
 
     match &expression.value {
         Type => write!(f, "Type"),
-        Number(literal) => write!(f, "{}", literal),
-        // @Bug this uses Rust's way of printing strings, not Lushui's:
-        // The escape sequences differ
-        // @Task use custom escaping logic
-        Text(literal) => write!(f, "{:?}", literal),
+        Number(literal) => write!(f, "{literal}"),
+        Text(literal) => write!(f, "{literal}"),
         Binding(binding) => write!(
             f,
             "{}",
-            super::FunctionScope::absolute_path_to_string(&binding.binder, capsule, session)
+            super::FunctionScope::absolute_path_to_string(&binding.0, capsule, session)
         ),
         // @Beacon @Temporary @Task just write out the path
         Projection(_projection) => write!(f, "?(projection)"),
@@ -295,16 +292,16 @@ impl DisplayWith for Pattern {
         use super::PatternKind::*;
 
         match &self.value {
-            Number(number) => write!(f, "{}", number),
-            Text(text) => write!(f, "{:?}", text),
+            Number(number) => write!(f, "{number}"),
+            Text(text) => write!(f, "{text}"),
             Binding(binding) => write!(
                 f,
                 "{}",
-                super::FunctionScope::absolute_path_to_string(&binding.binder, capsule, session)
+                super::FunctionScope::absolute_path_to_string(&binding.0, capsule, session)
             ),
 
-            Binder(binder) => write!(f, "\\{}", binder.binder),
-            Deapplication(application) => write!(
+            Binder(binder) => write!(f, "\\{}", binder.0),
+            Application(application) => write!(
                 f,
                 "({}) ({})",
                 application.callee.with(context),
@@ -315,21 +312,40 @@ impl DisplayWith for Pattern {
     }
 }
 
+impl fmt::Display for super::Number {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Nat(value) => write!(f, "{value}"),
+            Self::Nat32(value) => write!(f, "{value}"),
+            Self::Nat64(value) => write!(f, "{value}"),
+            Self::Int(value) => write!(f, "{value}"),
+            Self::Int32(value) => write!(f, "{value}"),
+            Self::Int64(value) => write!(f, "{value}"),
+        }
+    }
+}
+
+impl fmt::Display for super::Text {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            // @Task don't use Rust's Debug impl for str!
+            super::Text::Text(text) => write!(f, "{text:?}"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use crate::{
         entity::{Entity, EntityKind},
         format::DisplayWith,
-        hir::{expr, Expression, Identifier, LocalDeclarationIndex},
+        hir::{self, Expression, Identifier, LocalDeclarationIndex, Number, Text},
         package::{BuildSession, CapsuleIndex, CapsuleMetadata, CapsuleType, PackageIndex},
         resolver::{Capsule, Exposure},
         span::Span,
         syntax::{
             ast::{self, Explicitness::*},
-            lowered_ast::{
-                attributes::{Attribute, AttributeKind, Attributes},
-                Number,
-            },
+            lowered_ast::attributes::{Attribute, AttributeKind, Attributes},
             CapsuleName,
         },
     };
@@ -395,11 +411,7 @@ mod test {
     }
 
     fn type_() -> Expression {
-        expr! {
-            Type {
-                Attributes::default(), Span::default()
-            }
-        }
+        Expression::new(default(), default(), hir::ExpressionKind::Type)
     }
 
     impl Attribute {
@@ -422,23 +434,27 @@ mod test {
 
         assert_eq(
             "capsule.Array capsule.Int -> Type",
-            (expr! {
-                PiType {
-                    Attributes::default(), Span::default();
+            (Expression::new(
+                default(),
+                default(),
+                hir::PiType {
                     explicitness: Explicit,
                     laziness: None,
                     parameter: None,
-                    domain: expr! {
-                        Application {
-                            Attributes::default(), Span::default();
+                    domain: Expression::new(
+                        default(),
+                        default(),
+                        hir::Application {
                             callee: array,
                             argument: int,
                             explicitness: Explicit,
                         }
-                    },
+                        .into(),
+                    ),
                     codomain: type_(),
                 }
-            })
+                .into(),
+            ))
             .with((&capsule, &session))
             .to_string(),
         );
@@ -456,30 +472,36 @@ mod test {
 
         assert_eq(
             "(alpha: capsule.Array capsule.Int) -> capsule.Container alpha",
-            (expr! {
-                PiType {
-                    Attributes::default(), Span::default();
+            Expression::new(
+                default(),
+                default(),
+                hir::PiType {
                     explicitness: Explicit,
                     laziness: None,
                     parameter: Some(alpha.clone()),
-                    domain: expr! {
-                        Application {
-                            Attributes::default(), Span::default();
+                    domain: Expression::new(
+                        default(),
+                        default(),
+                        hir::Application {
                             callee: array.into_expression(),
                             argument: int.into_expression(),
                             explicitness: Explicit,
                         }
-                    },
-                    codomain: expr! {
-                        Application {
-                            Attributes::default(), Span::default();
+                        .into(),
+                    ),
+                    codomain: Expression::new(
+                        default(),
+                        default(),
+                        hir::Application {
                             callee: container.into_expression(),
                             argument: alpha.into_expression(),
                             explicitness: Explicit,
                         }
-                    },
+                        .into(),
+                    ),
                 }
-            })
+                .into(),
+            )
             .with((&capsule, &session))
             .to_string(),
         );
@@ -492,16 +514,18 @@ mod test {
 
         assert_eq(
             "'(whatever: Type) -> Type",
-            (expr! {
-                PiType {
-                    Attributes::default(), Span::default();
+            Expression::new(
+                default(),
+                default(),
+                hir::PiType {
                     explicitness: Implicit,
                     laziness: None,
                     parameter: Some(Identifier::parameter("whatever")),
                     domain: type_(),
                     codomain: type_(),
                 }
-            })
+                .into(),
+            )
             .with((&capsule, &session))
             .to_string(),
         );
@@ -518,25 +542,29 @@ mod test {
 
         assert_eq(
             "(capsule.Int -> capsule.Int) -> capsule.Int",
-            (expr! {
-                PiType {
-                    Attributes::default(), Span::default();
+            Expression::new(
+                default(),
+                default(),
+                hir::PiType {
                     explicitness: Explicit,
                     laziness: None,
                     parameter: None,
-                    domain: expr! {
-                        PiType {
-                            Attributes::default(), Span::default();
+                    domain: Expression::new(
+                        default(),
+                        default(),
+                        hir::PiType {
                             explicitness: Explicit,
                             laziness: None,
                             parameter: None,
                             domain: int.clone(),
                             codomain: int.clone(),
                         }
-                    },
+                        .into(),
+                    ),
                     codomain: int,
                 }
-            })
+                .into(),
+            )
             .with((&capsule, &session))
             .to_string(),
         );
@@ -556,29 +584,29 @@ mod test {
 
         assert_eq(
             "capsule.Int -> capsule.Text -> Type",
-            (expr! {
-                PiType {
-                    Attributes::default(), Span::default();
+            Expression::new(
+                default(),
+                default(),
+                hir::PiType {
                     explicitness: Explicit,
                     laziness: None,
                     parameter: None,
                     domain: int,
-                    codomain: expr! {
-                        PiType {
-                            Attributes::default(), Span::default();
+                    codomain: Expression::new(
+                        default(),
+                        default(),
+                        hir::PiType {
                             explicitness: Explicit,
                             laziness: None,
                             parameter: None,
                             domain: text,
-                            codomain: expr! {
-                                Type {
-                                    Attributes::default(), Span::default()
-                                }
-                            },
+                            codomain: type_(),
                         }
-                    },
+                        .into(),
+                    ),
                 }
-            })
+                .into(),
+            )
             .with((&capsule, &session))
             .to_string(),
         );
@@ -594,15 +622,17 @@ mod test {
 
         assert_eq(
             r"(\x => x) -> Type",
-            (expr! {
-                PiType {
-                    Attributes::default(), Span::default();
+            Expression::new(
+                default(),
+                default(),
+                hir::PiType {
                     explicitness: Explicit,
                     laziness: None,
                     parameter: None,
-                    domain: expr! {
-                        Lambda {
-                            Attributes::default(), Span::default();
+                    domain: Expression::new(
+                        default(),
+                        default(),
+                        hir::Lambda {
                             parameter: x.clone(),
                             parameter_type_annotation: None,
                             body_type_annotation: None,
@@ -610,10 +640,12 @@ mod test {
                             explicitness: Explicit,
                             laziness: None,
                         }
-                    },
+                        .into(),
+                    ),
                     codomain: type_(),
                 }
-            })
+                .into(),
+            )
             .with((&capsule, &session))
             .to_string(),
         );
@@ -628,37 +660,43 @@ mod test {
 
         assert_eq(
             "alpha capsule.beta (gamma Type) 0",
-            (expr! {
-                Application {
-                    Attributes::default(), Span::default();
-                    callee: expr! {
-                        Application {
-                            Attributes::default(), Span::default();
-                            callee: expr! {
-                                Application {
-                                    Attributes::default(), Span::default();
+            Expression::new(
+                default(),
+                default(),
+                hir::Application {
+                    callee: Expression::new(
+                        default(),
+                        default(),
+                        hir::Application {
+                            callee: Expression::new(
+                                default(),
+                                default(),
+                                hir::Application {
                                     callee: Identifier::parameter("alpha").into_expression(),
                                     argument: beta.into_expression(),
                                     explicitness: Explicit,
                                 }
-                            },
-                            argument: expr! {
-                                Application {
-                                    Attributes::default(), Span::default();
+                                .into(),
+                            ),
+                            argument: Expression::new(
+                                default(),
+                                default(),
+                                hir::Application {
                                     callee: Identifier::parameter("gamma").into_expression(),
                                     argument: type_(),
                                     explicitness: Explicit,
                                 }
-                            },
+                                .into(),
+                            ),
                             explicitness: Explicit,
                         }
-                    },
-                    argument: expr! {
-                        Number(Attributes::default(), Span::default(); Number::Nat(0u8.into()))
-                    },
+                        .into(),
+                    ),
+                    argument: Expression::new(default(), default(), Number::Nat(0u8.into()).into()),
                     explicitness: Explicit,
                 }
-            })
+                .into(),
+            )
             .with((&capsule, &session))
             .to_string(),
         );
@@ -676,13 +714,15 @@ mod test {
         // we might want to format this special case as `capsule.take \it => it` in the future
         assert_eq(
             r"capsule.take (\it => it)",
-            (expr! {
-                Application {
-                    Attributes::default(), Span::default();
+            Expression::new(
+                default(),
+                default(),
+                hir::Application {
                     callee: take.into_expression(),
-                    argument: expr! {
-                        Lambda {
-                            Attributes::default(), Span::default();
+                    argument: Expression::new(
+                        default(),
+                        default(),
+                        hir::Lambda {
                             parameter: it.clone(),
                             parameter_type_annotation: None,
                             body_type_annotation: None,
@@ -691,10 +731,12 @@ mod test {
                             explicitness: Explicit,
                             laziness: None,
                         }
-                    },
+                        .into(),
+                    ),
                     explicitness: Explicit,
                 }
-            })
+                .into(),
+            )
             .with((&capsule, &session))
             .to_string(),
         );
@@ -711,16 +753,19 @@ mod test {
 
         assert_eq(
             r#"capsule.take (\it => it) "who""#,
-            (expr! {
-                Application {
-                    Attributes::default(), Span::default();
-                    callee: expr! {
-                        Application {
-                            Attributes::default(), Span::default();
+            Expression::new(
+                default(),
+                default(),
+                hir::Application {
+                    callee: Expression::new(
+                        default(),
+                        default(),
+                        hir::Application {
                             callee: take.into_expression(),
-                            argument: expr! {
-                                Lambda {
-                                    Attributes::default(), Span::default();
+                            argument: Expression::new(
+                                default(),
+                                default(),
+                                hir::Lambda {
                                     parameter: it.clone(),
                                     parameter_type_annotation: None,
                                     body_type_annotation: None,
@@ -729,19 +774,21 @@ mod test {
                                     explicitness: Explicit,
                                     laziness: None,
                                 }
-                            },
+                                .into(),
+                            ),
                             explicitness: Explicit,
                         }
-                    },
-                    argument: expr! {
-                        Text(
-                            Attributes::default(), Span::default();
-                            String::from("who"),
-                        )
-                    },
+                        .into(),
+                    ),
+                    argument: Expression::new(
+                        default(),
+                        default(),
+                        Text::Text("who".into()).into(),
+                    ),
                     explicitness: Explicit,
                 }
-            })
+                .into(),
+            )
             .with((&capsule, &session))
             .to_string(),
         );
@@ -756,14 +803,16 @@ mod test {
 
         assert_eq(
             r"capsule.identity 'Type",
-            (expr! {
-                Application {
-                    Attributes::default(), Span::default();
+            Expression::new(
+                default(),
+                default(),
+                hir::Application {
                     callee: identity.into_expression(),
                     argument: type_(),
                     explicitness: Implicit,
                 }
-            })
+                .into(),
+            )
             .with((&capsule, &session))
             .to_string(),
         );
@@ -779,21 +828,25 @@ mod test {
 
         assert_eq(
             r"capsule.identity '(prepare capsule.Text)",
-            (expr! {
-                Application {
-                    Attributes::default(), Span::default();
+            Expression::new(
+                default(),
+                default(),
+                hir::Application {
                     callee: identity.into_expression(),
-                    argument: expr! {
-                        Application {
-                            Attributes::default(), Span::default();
+                    argument: Expression::new(
+                        default(),
+                        default(),
+                        hir::Application {
                             callee: Identifier::parameter("prepare").into_expression(),
                             argument: text.into_expression(),
                             explicitness: Explicit,
                         }
-                    },
+                        .into(),
+                    ),
                     explicitness: Implicit,
                 }
-            })
+                .into(),
+            )
             .with((&capsule, &session))
             .to_string(),
         );
@@ -806,24 +859,30 @@ mod test {
 
         assert_eq(
             "eta 10 omicron",
-            (expr! {
-                Application {
-                    Attributes::default(), Span::default();
-                    callee: expr! {
-                        IntrinsicApplication {
-                            Attributes::default(), Span::default();
+            Expression::new(
+                default(),
+                default(),
+                hir::Application {
+                    callee: Expression::new(
+                        default(),
+                        default(),
+                        hir::IntrinsicApplication {
                             callee: Identifier::parameter("eta"),
-                            arguments: vec![
-                                expr! {
-                                    Number(Attributes::default(), Span::default(); Number::Nat(10u8.into()))
-                                }
-                            ],
+                            arguments: vec![Expression::new(
+                                default(),
+                                default(),
+                                Number::Nat(10u8.into()).into(),
+                            )],
                         }
-                    },
+                        .into(),
+                    ),
                     argument: Identifier::parameter("omicron").into_expression(),
                     explicitness: Explicit,
                 }
-            }).with((&capsule, &session)).to_string(),
+                .into(),
+            )
+            .with((&capsule, &session))
+            .to_string(),
         );
     }
 
@@ -836,19 +895,19 @@ mod test {
 
         assert_eq(
             r"\input: capsule.Output => 0",
-            (expr! {
-                Lambda {
-                    Attributes::default(), Span::default();
+            Expression::new(
+                default(),
+                default(),
+                hir::Lambda {
                     parameter: Identifier::parameter("input"),
                     parameter_type_annotation: None,
                     body_type_annotation: Some(output.into_expression()),
-                    body: expr! {
-                        Number(Attributes::default(), Span::default(); Number::Nat(0u8.into()))
-                    },
+                    body: Expression::new(default(), default(), Number::Nat(0u8.into()).into()),
                     explicitness: Explicit,
                     laziness: None,
                 }
-            })
+                .into(),
+            )
             .with((&capsule, &session))
             .to_string(),
         );
@@ -864,9 +923,10 @@ mod test {
 
         assert_eq(
             r"\(input: capsule.Input): capsule.Output => Type",
-            (expr! {
-                Lambda {
-                    Attributes::default(), Span::default();
+            Expression::new(
+                default(),
+                default(),
+                hir::Lambda {
                     parameter: Identifier::parameter("input"),
                     parameter_type_annotation: Some(input.into_expression()),
                     body_type_annotation: Some(output.into_expression()),
@@ -874,7 +934,8 @@ mod test {
                     explicitness: Explicit,
                     laziness: None,
                 }
-            })
+                .into(),
+            )
             .with((&capsule, &session))
             .to_string(),
         );
@@ -887,9 +948,10 @@ mod test {
 
         assert_eq(
             r"\'(Input: Type) => Type",
-            (expr! {
-                Lambda {
-                    Attributes::default(), Span::default();
+            Expression::new(
+                default(),
+                default(),
+                hir::Lambda {
                     parameter: Identifier::parameter("Input"),
                     parameter_type_annotation: Some(type_()),
                     body_type_annotation: None,
@@ -897,7 +959,8 @@ mod test {
                     explicitness: Implicit,
                     laziness: None,
                 }
-            })
+                .into(),
+            )
             .with((&capsule, &session))
             .to_string(),
         );
@@ -911,15 +974,17 @@ mod test {
 
         assert_eq(
             r"\'A => \a => a",
-            (expr! {
-                Lambda {
-                    Attributes::default(), Span::default();
+            Expression::new(
+                default(),
+                default(),
+                hir::Lambda {
                     parameter: Identifier::parameter("A"),
                     parameter_type_annotation: None,
                     body_type_annotation: None,
-                    body: expr! {
-                        Lambda {
-                            Attributes::default(), Span::default();
+                    body: Expression::new(
+                        default(),
+                        default(),
+                        hir::Lambda {
                             parameter: a.clone(),
                             parameter_type_annotation: None,
                             body_type_annotation: None,
@@ -927,11 +992,13 @@ mod test {
                             explicitness: Explicit,
                             laziness: None,
                         }
-                    },
+                        .into(),
+                    ),
                     explicitness: Implicit,
                     laziness: None,
                 }
-            })
+                .into(),
+            )
             .with((&capsule, &session))
             .to_string(),
         );
@@ -947,26 +1014,30 @@ mod test {
 
         assert_eq(
             r"\x => x -> Type",
-            (expr! {
-                Lambda {
-                    Attributes::default(), Span::default();
+            Expression::new(
+                default(),
+                default(),
+                hir::Lambda {
                     parameter: x.clone(),
                     parameter_type_annotation: None,
                     body_type_annotation: None,
-                    body: expr! {
-                        PiType {
-                            Attributes::default(), Span::default();
+                    body: Expression::new(
+                        default(),
+                        default(),
+                        hir::PiType {
                             explicitness: Explicit,
                             laziness: None,
                             parameter: None,
                             domain: x.into_expression(),
                             codomain: type_(),
                         }
-                    },
+                        .into(),
+                    ),
                     explicitness: Explicit,
                     laziness: None,
                 }
-            })
+                .into(),
+            )
             .with((&capsule, &session))
             .to_string(),
         );
@@ -981,13 +1052,15 @@ mod test {
 
         assert_eq(
             "add",
-            (expr! {
-                IntrinsicApplication {
-                    Attributes::default(), Span::default();
+            Expression::new(
+                default(),
+                default(),
+                hir::IntrinsicApplication {
                     callee: add,
                     arguments: Vec::new(),
                 }
-            })
+                .into(),
+            )
             .with((&capsule, &session))
             .to_string(),
         );
@@ -1002,40 +1075,37 @@ mod test {
 
         assert_eq(
             "add (add 1 3000) 0",
-            (expr! {
-                IntrinsicApplication {
-                    Attributes::default(), Span::default();
+            Expression::new(
+                default(),
+                default(),
+                hir::IntrinsicApplication {
                     callee: add.clone(),
                     arguments: vec![
-                        expr! {
-                            IntrinsicApplication {
-                                Attributes::default(), Span::default();
+                        Expression::new(
+                            default(),
+                            default(),
+                            hir::IntrinsicApplication {
                                 callee: add,
                                 arguments: vec![
-                                    expr! {
-                                        Number(
-                                            Attributes::default(), Span::default();
-                                            Number::Nat(1u8.into()),
-                                        )
-                                    },
-                                    expr! {
-                                        Number(
-                                            Attributes::default(), Span::default();
-                                            Number::Nat(3000u16.into()),
-                                        )
-                                    },
+                                    Expression::new(
+                                        default(),
+                                        default(),
+                                        Number::Nat(1u8.into()).into(),
+                                    ),
+                                    Expression::new(
+                                        default(),
+                                        default(),
+                                        Number::Nat(3000u16.into()).into(),
+                                    ),
                                 ],
                             }
-                        },
-                        expr! {
-                            Number(
-                                Attributes::default(), Span::default();
-                                Number::Nat(0u8.into()),
-                            )
-                        },
+                            .into(),
+                        ),
+                        Expression::new(default(), default(), Number::Nat(0u8.into()).into()),
                     ],
                 }
-            })
+                .into(),
+            )
             .with((&capsule, &session))
             .to_string(),
         );
@@ -1048,39 +1118,45 @@ mod test {
 
         assert_eq(
             "== @static @unsafe 3 @static (increment 1)",
-            (expr! {
-                Application {
-                    Attributes::default(), Span::default();
-                    callee: expr! {
-                        Application {
-                            Attributes::default(), Span::default();
+            Expression::new(
+                default(),
+                default(),
+                hir::Application {
+                    callee: Expression::new(
+                        default(),
+                        default(),
+                        hir::Application {
                             callee: Identifier::parameter("==").into_expression(),
-                            argument: expr! {
-                                Number(
-                                    Attributes(vec![
-                                        Attribute::stripped(AttributeKind::Static),
-                                        Attribute::stripped(AttributeKind::Unsafe)
-                                    ]),
-                                    Span::default();
-                                    Number::Nat(3u8.into()),
-                                )
-                            },
+                            argument: Expression::new(
+                                Attributes(vec![
+                                    Attribute::stripped(AttributeKind::Static),
+                                    Attribute::stripped(AttributeKind::Unsafe),
+                                ]),
+                                Span::default(),
+                                Number::Nat(3u8.into()).into(),
+                            ),
                             explicitness: Explicit,
                         }
-                    },
-                    argument: expr! {
-                        Application {
-                            Attributes(vec![Attribute::stripped(AttributeKind::Static)]), Span::default();
+                        .into(),
+                    ),
+                    argument: Expression::new(
+                        Attributes(vec![Attribute::stripped(AttributeKind::Static)]),
+                        default(),
+                        hir::Application {
                             callee: Identifier::parameter("increment").into_expression(),
-                            argument: expr! {
-                                Number(Attributes::default(), Span::default(); Number::Nat(1u8.into()))
-                            },
+                            argument: Expression::new(
+                                default(),
+                                default(),
+                                Number::Nat(1u8.into()).into(),
+                            ),
                             explicitness: Explicit,
                         }
-                    },
+                        .into(),
+                    ),
                     explicitness: Explicit,
                 }
-            })
+                .into(),
+            )
             .with((&capsule, &session))
             .to_string(),
         )

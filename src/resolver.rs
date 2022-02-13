@@ -10,20 +10,20 @@
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     entity::{Entity, EntityKind},
-    error::{Health, PossiblyErroneous, ReportedExt, Result},
+    error::{Health, OkIfUntaintedExt, PossiblyErroneous, ReportedExt, Result, Stain},
     format::{pluralize, unordered_listing, Conjunction, DisplayWith, QuoteExt},
-    hir::{
-        self, decl, expr, pat, DeBruijnIndex, DeclarationIndex, Identifier, Index,
-        LocalDeclarationIndex,
+    hir::{self, DeBruijnIndex, DeclarationIndex, Identifier, Index, LocalDeclarationIndex},
+    package::{
+        session::{IntrinsicNumericType, IntrinsicType},
+        BuildSession,
     },
-    package::BuildSession,
-    span::Spanning,
+    span::{Span, Spanned, Spanning},
     syntax::{
         ast::{self, Path},
         lowered_ast::{self, AttributeName},
         CapsuleName,
     },
-    utility::{HashMap, HashSet},
+    utility::{obtain, HashMap, HashSet},
 };
 pub(crate) use scope::{Capsule, Exposure, FunctionScope, Namespace};
 use scope::{RegistrationError, RestrictedExposure};
@@ -47,7 +47,7 @@ pub const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
 pub fn resolve_declarations(
     capsule_root: lowered_ast::Declaration,
     capsule: &mut Capsule,
-    session: &BuildSession,
+    session: &mut BuildSession,
     reporter: &Reporter,
 ) -> Result<hir::Declaration> {
     let mut resolver = ResolverMut::new(capsule, session, reporter);
@@ -67,7 +67,7 @@ pub fn resolve_declarations(
 
     let declaration = resolver.finish_resolve_declaration(capsule_root, None, Context::default());
 
-    Result::from(resolver.health).and(declaration)
+    Result::ok_if_untainted(declaration, resolver.health)
 }
 
 // @Task docs: mention that the current capsule should be pre-populated before calling this
@@ -90,7 +90,7 @@ pub(crate) fn resolve_path(
 // lifetime for Resolver.capsule?
 struct ResolverMut<'a> {
     capsule: &'a mut Capsule,
-    session: &'a BuildSession,
+    session: &'a mut BuildSession,
     reporter: &'a Reporter,
     /// For resolving out of order use-declarations.
     partially_resolved_use_bindings: HashMap<LocalDeclarationIndex, PartiallyResolvedUseBinding>,
@@ -98,7 +98,11 @@ struct ResolverMut<'a> {
 }
 
 impl<'a> ResolverMut<'a> {
-    fn new(capsule: &'a mut Capsule, session: &'a BuildSession, reporter: &'a Reporter) -> Self {
+    fn new(
+        capsule: &'a mut Capsule,
+        session: &'a mut BuildSession,
+        reporter: &'a Reporter,
+    ) -> Self {
         Self {
             capsule,
             session,
@@ -169,7 +173,7 @@ impl<'a> ResolverMut<'a> {
                 let module = module.unwrap();
 
                 // @Task don't return early, see analoguous code for modules
-                let namespace = self.capsule.register_binding(
+                let index = self.capsule.register_binding(
                     type_.binder.clone(),
                     exposure,
                     declaration.attributes.clone(),
@@ -177,54 +181,79 @@ impl<'a> ResolverMut<'a> {
                     Some(module),
                 )?;
 
-                if let Some(constructors) = &type_.constructors {
-                    // @Task awkward API: Result <-> Result<(), RegistrationError>
-                    let health =
-                        constructors
-                            .iter()
-                            .fold(Health::Untainted, |health, constructor| {
-                                let transparency =
-                                    if declaration.attributes.contains(AttributeName::Abstract) {
-                                        Transparency::Abstract
-                                    } else {
-                                        Transparency::Transparent
-                                    };
+                let binder = Identifier::new(index.global(self.capsule), type_.binder.clone());
 
-                                health
-                                    & self
-                                        .start_resolve_declaration(
-                                            constructor,
-                                            Some(module),
-                                            Context {
-                                                parent_data_binding: Some((
-                                                    namespace,
-                                                    Some(transparency),
-                                                )),
-                                            },
-                                        )
-                                        .map_err(|_| ())
-                            });
-                    return Result::from(health).map_err(|_| RegistrationError::Unrecoverable);
+                let known = declaration.attributes.span(AttributeName::Known);
+                if let Some(known) = known {
+                    self.session
+                        .register_known_binding(&binder, None, known, self.reporter)
+                        .stain(&mut self.health);
                 }
+
+                if let Some(intrinsic) = declaration.attributes.span(AttributeName::Intrinsic) {
+                    self.session
+                        .register_intrinsic_type(binder.clone(), intrinsic, self.reporter)
+                        .stain(&mut self.health);
+                }
+
+                let health = &mut Health::Untainted;
+
+                if let Some(constructors) = &type_.constructors {
+                    for constructor in constructors {
+                        let transparency =
+                            match declaration.attributes.contains(AttributeName::Abstract) {
+                                true => Transparency::Abstract,
+                                false => Transparency::Transparent,
+                            };
+
+                        self.start_resolve_declaration(
+                            constructor,
+                            Some(module),
+                            Context::DataDeclaration {
+                                index,
+                                transparency: Some(transparency),
+                                known,
+                            },
+                        )
+                        .map_err(drop)
+                        .stain(health);
+                    }
+                }
+
+                return Result::from(*health).map_err(|_| RegistrationError::Unrecoverable);
             }
             Constructor(constructor) => {
                 // there is always a root module
                 let module = module.unwrap();
-                let (namespace, module_transparency) = context.parent_data_binding.unwrap();
+                let Context::DataDeclaration { index: namespace, transparency, known } = context else { unreachable!() };
 
-                let exposure = match module_transparency.unwrap() {
+                let exposure = match transparency.unwrap() {
                     Transparency::Transparent => self.capsule[namespace].exposure.clone(),
                     // as if a @(public super) was attached to the constructor
                     Transparency::Abstract => RestrictedExposure::Resolved { reach: module }.into(),
                 };
 
-                self.capsule.register_binding(
+                let index = self.capsule.register_binding(
                     constructor.binder.clone(),
                     exposure,
                     declaration.attributes.clone(),
                     EntityKind::UntypedConstructor,
                     Some(namespace),
                 )?;
+
+                let binder =
+                    Identifier::new(index.global(self.capsule), constructor.binder.clone());
+
+                if let Some(known) = known {
+                    self.session
+                        .register_known_binding(
+                            &binder,
+                            Some(self.capsule[namespace].source.as_str()),
+                            known,
+                            self.reporter,
+                        )
+                        .stain(&mut self.health);
+                }
             }
             Module(submodule) => {
                 // @Task @Beacon don't return early on error
@@ -239,23 +268,15 @@ impl<'a> ResolverMut<'a> {
                     module,
                 )?;
 
-                // @Note awkward API
-                let health =
-                    submodule
-                        .declarations
-                        .iter()
-                        .fold(Health::Untainted, |health, declaration| {
-                            health
-                                & self
-                                    .start_resolve_declaration(
-                                        declaration,
-                                        Some(index),
-                                        Context::default(),
-                                    )
-                                    .map_err(|_| ())
-                        });
+                let health = &mut Health::Untainted;
 
-                return Result::from(health).map_err(|_| RegistrationError::Unrecoverable);
+                for declaration in &submodule.declarations {
+                    self.start_resolve_declaration(declaration, Some(index), Context::default())
+                        .map_err(drop)
+                        .stain(health);
+                }
+
+                return Result::from(*health).map_err(|_| RegistrationError::Unrecoverable);
             }
             Use(use_) => {
                 // there is always a root module
@@ -300,28 +321,27 @@ impl<'a> ResolverMut<'a> {
         declaration: lowered_ast::Declaration,
         module: Option<LocalDeclarationIndex>,
         context: Context,
-    ) -> Result<hir::Declaration> {
+    ) -> hir::Declaration {
         use lowered_ast::DeclarationKind::*;
 
-        Ok(match declaration.value {
+        match declaration.value {
             Function(function) => {
                 let module = module.unwrap();
-
-                let type_annotation = self
-                    .as_ref()
-                    .resolve_expression(function.type_annotation, &FunctionScope::Module(module));
-
-                let expression = function
-                    .expression
-                    .map(|expression| {
-                        self.as_ref()
-                            .resolve_expression(expression, &FunctionScope::Module(module))
-                    })
-                    .transpose();
 
                 let binder = self
                     .as_ref()
                     .reobtain_resolved_identifier::<target::Value>(&function.binder, module);
+
+                let type_annotation = self
+                    .as_ref()
+                    .resolve_expression(function.type_annotation, &FunctionScope::Module(module))
+                    .stain(&mut self.health);
+
+                let expression = function.expression.map(|expression| {
+                    self.as_ref()
+                        .resolve_expression(expression, &FunctionScope::Module(module))
+                        .stain(&mut self.health)
+                });
 
                 if module == self.capsule.local_root()
                     && self.capsule.is_executable()
@@ -330,22 +350,19 @@ impl<'a> ResolverMut<'a> {
                     self.capsule.program_entry = Some(binder.clone());
                 }
 
-                decl! {
-                    Function {
-                        declaration.attributes,
-                        declaration.span;
-                        type_annotation: type_annotation?,
-                        expression: expression?,
+                hir::Declaration::new(
+                    declaration.attributes,
+                    declaration.span,
+                    hir::Function {
                         binder,
+                        type_annotation,
+                        expression,
                     }
-                }
+                    .into(),
+                )
             }
             Data(type_) => {
                 let module = module.unwrap();
-
-                let type_annotation = self
-                    .as_ref()
-                    .resolve_expression(type_.type_annotation, &FunctionScope::Module(module));
 
                 // @Beacon @Question wouldn't it be great if that method returned a
                 // LocalDeclarationIndex instead of an Identifier?
@@ -354,6 +371,11 @@ impl<'a> ResolverMut<'a> {
                     .as_ref()
                     .reobtain_resolved_identifier::<target::Value>(&type_.binder, module);
 
+                let type_annotation = self
+                    .as_ref()
+                    .resolve_expression(type_.type_annotation, &FunctionScope::Module(module))
+                    .stain(&mut self.health);
+
                 let constructors = type_.constructors.map(|constructors| {
                     constructors
                         .into_iter()
@@ -361,48 +383,49 @@ impl<'a> ResolverMut<'a> {
                             self.finish_resolve_declaration(
                                 constructor,
                                 Some(module),
-                                Context {
-                                    parent_data_binding: Some((
-                                        binder.local_declaration_index(self.capsule).unwrap(),
-                                        None,
-                                    )),
+                                Context::DataDeclaration {
+                                    index: binder.local_declaration_index(self.capsule).unwrap(),
+                                    transparency: None,
+                                    known: None,
                                 },
                             )
                         })
-                        .collect()
+                        .collect::<Vec<_>>()
                 });
 
-                decl! {
-                    Data {
-                        declaration.attributes,
-                        declaration.span;
-                        constructors: constructors.transpose()?,
-                        type_annotation: type_annotation?,
+                hir::Declaration::new(
+                    declaration.attributes,
+                    declaration.span,
+                    hir::Data {
                         binder,
+                        type_annotation,
+                        constructors,
                     }
-                }
+                    .into(),
+                )
             }
             Constructor(constructor) => {
                 let module = module.unwrap();
+                let Context::DataDeclaration { index: namespace, .. } = context else { unreachable!() };
 
-                let type_annotation = self.as_ref().resolve_expression(
-                    constructor.type_annotation,
-                    &FunctionScope::Module(module),
-                )?;
+                let binder = self
+                    .as_ref()
+                    .reobtain_resolved_identifier::<target::Value>(&constructor.binder, namespace);
 
-                let binder = self.as_ref().reobtain_resolved_identifier::<target::Value>(
-                    &constructor.binder,
-                    context.parent_data_binding.unwrap().0,
-                );
+                let type_annotation = self
+                    .as_ref()
+                    .resolve_expression(constructor.type_annotation, &FunctionScope::Module(module))
+                    .stain(&mut self.health);
 
-                decl! {
-                    Constructor {
-                        declaration.attributes,
-                        declaration.span;
+                hir::Declaration::new(
+                    declaration.attributes,
+                    declaration.span,
+                    hir::Constructor {
                         binder,
                         type_annotation,
                     }
-                }
+                    .into(),
+                )
             }
             Module(submodule) => {
                 let index = match module {
@@ -416,36 +439,28 @@ impl<'a> ResolverMut<'a> {
                     None => self.capsule.local_root(),
                 };
 
-                let mut health = Health::Untainted;
-
-                // @Note awkward API
                 let declarations = submodule
                     .declarations
                     .into_iter()
-                    .flat_map(|declaration| {
-                        let declaration = self.finish_resolve_declaration(
+                    .map(|declaration| {
+                        self.finish_resolve_declaration(
                             declaration,
                             Some(index),
                             Context::default(),
-                        );
-                        if declaration.is_err() {
-                            health.taint();
-                        }
-                        declaration
+                        )
                     })
                     .collect();
 
-                Result::from(health)?;
-
-                decl! {
-                    Module {
-                        declaration.attributes,
-                        declaration.span;
+                hir::Declaration::new(
+                    declaration.attributes,
+                    declaration.span,
+                    hir::Module {
                         binder: Identifier::new(index.global(self.capsule), submodule.binder),
                         file: submodule.file,
                         declarations,
                     }
-                }
+                    .into(),
+                )
             }
             Use(use_) => {
                 let module = module.unwrap();
@@ -456,17 +471,18 @@ impl<'a> ResolverMut<'a> {
                     use_.binder,
                 );
 
-                decl! {
-                    Use {
-                        declaration.attributes,
-                        declaration.span;
+                hir::Declaration::new(
+                    declaration.attributes,
+                    declaration.span,
+                    hir::Use {
                         binder: Some(binder.clone()),
                         target: binder,
                     }
-                }
+                    .into(),
+                )
             }
             Error => PossiblyErroneous::error(),
-        })
+        }
     }
 
     /// Resolve use-bindings.
@@ -676,6 +692,7 @@ impl<'a> Resolver<'a> {
     }
 
     // @Task @Beacon use Rc::try_unwrap more instead of clone
+    // @Task use the Stain::stain instead of moving the try operator below resolve calls
     fn resolve_expression(
         &self,
         expression: lowered_ast::Expression,
@@ -694,43 +711,55 @@ impl<'a> Resolver<'a> {
                     None => self.resolve_expression(pi.codomain.clone(), scope),
                 };
 
-                return Ok(expr! {
-                    PiType {
-                        expression.attributes,
-                        expression.span;
+                return Ok(hir::Expression::new(
+                    expression.attributes,
+                    expression.span,
+                    hir::PiType {
                         domain: domain?,
                         codomain: codomain?,
                         explicitness: pi.explicitness,
                         laziness: pi.laziness,
-                        parameter: pi.parameter.clone()
+                        parameter: pi
+                            .parameter
+                            .clone()
                             .map(|parameter| Identifier::new(Index::DeBruijnParameter, parameter)),
                     }
-                });
+                    .into(),
+                ));
             }
             Application(application) => {
                 let callee = self.resolve_expression(application.callee.clone(), scope);
                 let argument = self.resolve_expression(application.argument.clone(), scope);
 
-                return Ok(expr! {
-                    Application {
-                        expression.attributes,
-                        expression.span;
+                return Ok(hir::Expression::new(
+                    expression.attributes,
+                    expression.span,
+                    hir::Application {
                         callee: callee?,
                         argument: argument?,
                         explicitness: application.explicitness,
                     }
-                });
+                    .into(),
+                ));
             }
-            Type => expr! { Type { expression.attributes, expression.span } },
-            Number(number) => expr! { Number(expression.attributes, expression.span; number) },
-            Text(text) => expr! { Text(expression.attributes, expression.span; text) },
-            Binding(binding) => expr! {
-                Binding {
-                    expression.attributes,
-                    expression.span;
-                    binder: self.resolve_binding(&binding.binder, scope)?,
-                }
-            },
+            TypeLiteral => hir::Expression::new(
+                expression.attributes,
+                expression.span,
+                hir::ExpressionKind::Type,
+            ),
+            NumberLiteral(number) => self.resolve_number_literal(
+                hir::Item::new(expression.attributes, expression.span, *number),
+                scope,
+            )?,
+            TextLiteral(text) => self.resolve_text_literal(
+                hir::Item::new(expression.attributes, expression.span, *text),
+                scope,
+            )?,
+            Path(path) => hir::Expression::new(
+                expression.attributes,
+                expression.span,
+                hir::Binding(self.resolve_path_inside_function(&path, scope)?).into(),
+            ),
             Lambda(lambda) => {
                 let parameter_type_annotation = lambda
                     .parameter_type_annotation
@@ -747,18 +776,22 @@ impl<'a> Resolver<'a> {
                     &scope.extend_with_parameter(lambda.parameter.clone()),
                 );
 
-                expr! {
-                    Lambda {
-                        expression.attributes,
-                        expression.span;
-                        parameter: Identifier::new(Index::DeBruijnParameter, lambda.parameter.clone()),
+                hir::Expression::new(
+                    expression.attributes,
+                    expression.span,
+                    hir::Lambda {
+                        parameter: Identifier::new(
+                            Index::DeBruijnParameter,
+                            lambda.parameter.clone(),
+                        ),
                         parameter_type_annotation: parameter_type_annotation.transpose()?,
                         body_type_annotation: body_type_annotation.transpose()?,
                         body: body?,
                         explicitness: lambda.explicitness,
                         laziness: lambda.laziness,
                     }
-                }
+                    .into(),
+                )
             }
             UseIn => {
                 Diagnostic::unimplemented("use/in expression")
@@ -767,7 +800,7 @@ impl<'a> Resolver<'a> {
                 return Err(());
             }
             CaseAnalysis(analysis) => {
-                let subject = self.resolve_expression(analysis.subject.clone(), scope)?;
+                let scrutinee = self.resolve_expression(analysis.scrutinee.clone(), scope)?;
                 let mut cases = Vec::new();
 
                 for case in &analysis.cases {
@@ -780,14 +813,31 @@ impl<'a> Resolver<'a> {
                     cases.push(hir::Case { pattern, body });
                 }
 
-                expr! {
-                    CaseAnalysis {
-                        expression.attributes,
-                        expression.span;
-                        subject,
-                        cases,
-                    }
+                hir::Expression::new(
+                    expression.attributes,
+                    expression.span,
+                    hir::CaseAnalysis { scrutinee, cases }.into(),
+                )
+            }
+            SequenceLiteral(sequence) => {
+                let mut elements = Vec::new();
+
+                for element in sequence.elements.value {
+                    // @Task use Stain::stain to not return early!
+                    elements.push(self.resolve_expression(element, scope)?);
                 }
+
+                self.resolve_sequence_literal(
+                    hir::Item::new(
+                        expression.attributes,
+                        expression.span,
+                        ast::SequenceLiteral {
+                            path: sequence.path,
+                            elements: Spanned::new(sequence.elements.span, elements),
+                        },
+                    ),
+                    scope,
+                )?
             }
             Error => PossiblyErroneous::error(),
         };
@@ -795,6 +845,7 @@ impl<'a> Resolver<'a> {
         Ok(expression)
     }
 
+    // @Task use the Stain::stain instead of moving the try operator below resolve calls
     fn resolve_pattern(
         &self,
         pattern: lowered_ast::Pattern,
@@ -802,31 +853,35 @@ impl<'a> Resolver<'a> {
     ) -> Result<(hir::Pattern, Vec<ast::Identifier>)> {
         use lowered_ast::PatternKind::*;
 
-        let mut binders = Vec::new();
+        // @Task replace this hideous binders.append logic
+        let mut binders: Vec<ast::Identifier> = Vec::new();
 
         let pattern = match pattern.value.clone() {
-            Number(number) => pat! { Number(pattern.attributes, pattern.span; number) },
-            Text(text) => pat! { Text(pattern.attributes, pattern.span; text) },
-            Binding(binding) => pat! {
-                Binding {
-                    pattern.attributes,
-                    pattern.span;
-                    binder: self.resolve_binding(&binding.binder, scope)?,
-                }
-            },
+            NumberLiteral(number) => self.resolve_number_literal(
+                hir::Item::new(pattern.attributes, pattern.span, *number),
+                scope,
+            )?,
+            TextLiteral(text) => self.resolve_text_literal(
+                hir::Item::new(pattern.attributes, pattern.span, *text),
+                scope,
+            )?,
+            Path(path) => hir::Pattern::new(
+                pattern.attributes,
+                pattern.span,
+                hir::Binding(self.resolve_path_inside_function(&path, scope)?).into(),
+            ),
             Binder(binder) => {
-                binders.push(binder.binder.clone());
-                pat! {
-                    Binder {
-                        pattern.attributes,
-                        pattern.span;
-                        binder: Identifier::new(Index::DeBruijnParameter, binder.binder),
-                    }
-                }
+                binders.push((*binder).clone());
+
+                hir::Pattern::new(
+                    pattern.attributes,
+                    pattern.span,
+                    hir::Binder(Identifier::new(Index::DeBruijnParameter, *binder)).into(),
+                )
             }
-            Deapplication(deapplication) => {
-                let callee = self.resolve_pattern(deapplication.callee.clone(), scope);
-                let argument = self.resolve_pattern(deapplication.argument.clone(), scope);
+            Application(application) => {
+                let callee = self.resolve_pattern(application.callee.clone(), scope);
+                let argument = self.resolve_pattern(application.argument.clone(), scope);
 
                 let (callee, mut callee_binders) = callee?;
                 let (argument, mut argument_binders) = argument?;
@@ -834,19 +889,219 @@ impl<'a> Resolver<'a> {
                 binders.append(&mut callee_binders);
                 binders.append(&mut argument_binders);
 
-                pat! {
-                    Deapplication {
-                        pattern.attributes,
-                        pattern.span;
+                hir::Pattern::new(
+                    pattern.attributes,
+                    pattern.span,
+                    hir::Application {
                         callee,
+                        explicitness: application.explicitness,
                         argument,
                     }
+                    .into(),
+                )
+            }
+            SequenceLiteral(sequence) => {
+                let mut elements = Vec::new();
+
+                for element in sequence.elements.value {
+                    // @Task use Stain::stain to not return early!
+                    let (element, mut element_binders) = self.resolve_pattern(element, scope)?;
+                    binders.append(&mut element_binders);
+                    elements.push(element);
                 }
+
+                self.resolve_sequence_literal(
+                    hir::Item::new(
+                        pattern.attributes,
+                        pattern.span,
+                        ast::SequenceLiteral {
+                            path: sequence.path,
+                            elements: Spanned::new(sequence.elements.span, elements),
+                        },
+                    ),
+                    scope,
+                )?
             }
             Error => PossiblyErroneous::error(),
         };
 
         Ok((pattern, binders))
+    }
+
+    fn resolve_number_literal<T>(
+        &self,
+        number: hir::Item<ast::NumberLiteral>,
+        scope: &FunctionScope<'_>,
+    ) -> Result<hir::Item<T>>
+    where
+        T: From<hir::Number>,
+    {
+        let type_ = number
+            .value
+            .path
+            .as_ref()
+            .map(|path| {
+                Ok(Spanned::new(
+                    path.span(),
+                    self.resolve_path_of_literal(path, number.value.literal.span, scope)?,
+                ))
+            })
+            .transpose()?;
+
+        let literal = &number.value.literal;
+
+        let type_ = match type_ {
+            Some(type_) => self
+                .session
+                .intrinsic_types()
+                .find(|(_, identifier)| identifier.declaration_index().unwrap() == type_.value)
+                .and_then(
+                    |(intrinsic, _)| obtain!(intrinsic, IntrinsicType::Numeric(type_) => type_),
+                )
+                .ok_or_else(|| {
+                    Diagnostic::error()
+                        .code(Code::E043)
+                        .message(format!(
+                            "the number literal is not a valid constructor for type `{}`",
+                            self.look_up(type_.value).source
+                        ))
+                        .labeled_primary_span(literal, "number literal may not construct that type")
+                        .labeled_secondary_span(type_, "the data type")
+                        .report(self.reporter);
+                })?,
+            // for now, we default to `Nat` until we implement polymorphic number literals and their inference
+            None => IntrinsicNumericType::Nat,
+        };
+
+        let Ok(resolved_number) = hir::Number::parse(&literal.value, type_) else {
+            Diagnostic::error()
+                .code(Code::E007)
+                .message(format!(
+                    "number literal `{literal}` does not fit type `{type_}`",
+                ))
+                .primary_span(literal)
+                .note(format!(
+                    "values of this type must fit integer interval {}",
+                    type_.interval(),
+                ))
+                .report(self.reporter);
+            return Err(());
+        };
+
+        Ok(number.map(|_| resolved_number.into()))
+    }
+
+    fn resolve_text_literal<T>(
+        &self,
+        text: hir::Item<ast::TextLiteral>,
+        scope: &FunctionScope<'_>,
+    ) -> Result<hir::Item<T>>
+    where
+        T: From<hir::Text>,
+    {
+        let type_ = text
+            .value
+            .path
+            .as_ref()
+            .map(|path| {
+                Ok(Spanned::new(
+                    path.span(),
+                    self.resolve_path_of_literal(path, text.value.literal.span, scope)?,
+                ))
+            })
+            .transpose()?;
+
+        let _type = match type_ {
+            Some(type_) => self
+                .session
+                .intrinsic_types()
+                .find(|(_, identifier)| identifier.declaration_index().unwrap() == type_.value)
+                .map(|(intrinsic, _)| intrinsic)
+                // @Task add other textual types
+                .filter(|&intrinsic| intrinsic == IntrinsicType::Text)
+                .ok_or_else(|| {
+                    Diagnostic::error()
+                        .code(Code::E043)
+                        .message(format!(
+                            "the text literal is not a valid constructor for type `{}`",
+                            self.look_up(type_.value).source
+                        ))
+                        .labeled_primary_span(
+                            &text.value.literal,
+                            "text literal may not construct that type",
+                        )
+                        .labeled_secondary_span(type_, "the data type")
+                        .report(self.reporter);
+                })?,
+            // for now, we default to `Text` until we implement polymorphic text literals and their inference
+            None => IntrinsicType::Text,
+        };
+
+        Ok(hir::Item::new(
+            text.attributes,
+            text.span,
+            // @Beacon @Task avoid Atom::to_string
+            hir::Text::Text(text.value.literal.value.to_string()).into(),
+        ))
+    }
+
+    fn resolve_sequence_literal<T>(
+        &self,
+        sequence: hir::Item<ast::SequenceLiteral<hir::Item<T>>>,
+        scope: &FunctionScope<'_>,
+    ) -> Result<hir::Item<T>>
+    where
+        T: From<hir::SomeSequence>,
+    {
+        let _type = sequence
+            .value
+            .path
+            .as_ref()
+            .map(|path| {
+                Ok(Spanned::new(
+                    path.span(),
+                    self.resolve_path_of_literal(path, sequence.value.elements.span, scope)?,
+                ))
+            })
+            .transpose()?;
+
+        // @Task make core's Vector, Tuple, etc. known and check the namespacing type
+
+        // @Task
+        Diagnostic::unimplemented("sequence literals")
+            .primary_span(&sequence.value.elements)
+            .report(self.reporter);
+        Err(())
+    }
+
+    fn resolve_path_of_literal(
+        &self,
+        path: &ast::Path,
+        literal: Span,
+        scope: &FunctionScope<'_>,
+    ) -> Result<DeclarationIndex> {
+        let binding = self
+            .resolve_path::<target::Any>(path, scope.module().global(self.capsule))
+            .map_err(|error| self.report_resolution_error(error))?;
+
+        {
+            let entity = self.look_up(binding);
+            if !entity.is_data_type() {
+                // @Task code
+                Diagnostic::error()
+                    .message(format!("binding `{path}` is not a data type"))
+                    // @Task future-proof a/an
+                    .labeled_primary_span(path, format!("a {}", entity.kind.name()))
+                    .labeled_secondary_span(
+                        literal,
+                        "literal requires a data type as its namespace",
+                    )
+                    .report(self.reporter);
+                return Err(());
+            }
+        }
+
+        Ok(binding)
     }
 
     fn look_up(&self, index: DeclarationIndex) -> &'a Entity {
@@ -978,24 +1233,26 @@ impl<'a> Resolver<'a> {
 
         match &*path.segments {
             [identifier] => {
-                Target::handle_simple_path(identifier, entity).reported(self.reporter)?;
+                Target::handle_final_identifier(identifier, entity).reported(self.reporter)?;
                 Ok(Target::output(index, identifier))
             }
             [identifier, identifiers @ ..] => {
                 if entity.is_namespace() {
                     self.resolve_path_with_origin::<Target>(
+                        // @Task define & use a PathView instead!
                         &ast::Path::with_segments(identifiers.to_owned().into()),
                         index,
                         context.qualified_identifier(),
                     )
                 } else if entity.is_error() {
-                    // @Task add rationale
+                    // @Task add rationale why `last`
                     Ok(Target::output(index, identifiers.last().unwrap()))
                 } else {
-                    self.value_used_as_a_namespace(
+                    self.attempt_to_access_subbinder_of_non_namespace(
                         identifier,
-                        identifiers.first().unwrap(),
+                        &entity.kind,
                         namespace,
+                        identifiers.first().unwrap(),
                     )
                     .report(self.reporter);
                     Err(ResolutionError::Unrecoverable)
@@ -1213,19 +1470,23 @@ impl<'a> Resolver<'a> {
         Target::output(index, identifier)
     }
 
-    /// Resolve a binding in a function scope.
-    fn resolve_binding(&self, query: &ast::Path, scope: &FunctionScope<'_>) -> Result<Identifier> {
-        self.resolve_binding_with_depth(query, scope, 0, scope)
+    /// Resolve a path inside of a function.
+    fn resolve_path_inside_function(
+        &self,
+        query: &ast::Path,
+        scope: &FunctionScope<'_>,
+    ) -> Result<Identifier> {
+        self.resolve_path_inside_function_with_depth(query, scope, 0, scope)
     }
 
-    /// Resolve a binding in a function scope given a depth.
+    /// Resolve a path inside of a function given a depth.
     ///
     /// The `depth` is necessary for the recursion to successfully create de Bruijn indices.
     ///
     /// The `origin` signifies the innermost function scope from where the resolution was first requested.
     /// This information is used for diagnostics, namely typo flagging where we once again start at the origin
     /// and walk back out.
-    fn resolve_binding_with_depth(
+    fn resolve_path_inside_function_with_depth(
         &self,
         query: &ast::Path,
         scope: &FunctionScope<'_>,
@@ -1240,7 +1501,12 @@ impl<'a> Resolver<'a> {
                     if binder == identifier {
                         Ok(Identifier::new(DeBruijnIndex(depth), identifier.clone()))
                     } else {
-                        self.resolve_binding_with_depth(query, parent, depth + 1, origin)
+                        self.resolve_path_inside_function_with_depth(
+                            query,
+                            parent,
+                            depth + 1,
+                            origin,
+                        )
                     }
                 }
                 PatternBinders { parent, binders } => {
@@ -1253,7 +1519,7 @@ impl<'a> Resolver<'a> {
                         Some((_, depth)) => {
                             Ok(Identifier::new(DeBruijnIndex(depth), identifier.clone()))
                         }
-                        None => self.resolve_binding_with_depth(
+                        None => self.resolve_path_inside_function_with_depth(
                             query,
                             parent,
                             depth + binders.len(),
@@ -1278,6 +1544,7 @@ impl<'a> Resolver<'a> {
     /// Used for error reporting when an undefined binding was encountered.
     /// In the future, we might decide to find not one but several similar names
     /// but that would be computationally heavier.
+    // @Beacon @Task don't suggest private bindings!
     fn find_similarly_named_declaration<'s>(
         &'s self,
         identifier: &str,
@@ -1399,19 +1666,17 @@ impl<'a> Resolver<'a> {
     }
 
     // @Question parent: *Local*DeclarationIndex?
-    fn value_used_as_a_namespace(
+    fn attempt_to_access_subbinder_of_non_namespace(
         &self,
-        non_namespace: &ast::Identifier,
-        subbinder: &ast::Identifier,
+        binder: &ast::Identifier,
+        kind: &EntityKind,
         parent: DeclarationIndex,
+        subbinder: &ast::Identifier,
     ) -> Diagnostic {
         // @Question should we also include lookalike namespaces that don't contain the
         // subbinding (displaying them in a separate help message?)?
-        // @Beacon @Bug this ignores shadowing @Task define this method for FunctionScope
-        // @Update @Note actually in the future (lang spec) this kind of shadowing does not
-        // occur, the subbinder access pierces through parameters
         let similarly_named_namespace = self.find_similarly_named_declaration(
-            non_namespace.as_str(),
+            binder.as_str(),
             |entity| {
                 entity.namespace().map_or(false, |namespace| {
                     namespace
@@ -1426,40 +1691,39 @@ impl<'a> Resolver<'a> {
         let show_very_general_help = similarly_named_namespace.is_none();
 
         Diagnostic::error()
-            .code(Code::E022)
-            .message(format!("value `{non_namespace}` is not a namespace"))
-            .labeled_primary_span(non_namespace, "not a namespace, just a value")
+            .code(Code::E017)
+            .message(format!("binding `{binder}` is not a namespace"))
+            .labeled_primary_span(binder, format!("not a namespace but a {}", kind.name()))
             .labeled_secondary_span(
-                subbinder,
-                "requires the preceeding path segment to refer to a namespace",
+                // the subbinder together with the leading dot
+                // @Task trim_start_matches ascii_whitespace
+                binder.span().end().merge(subbinder),
+                "denotes a reference to a binding inside of a namespace",
             )
             .if_present(
                 similarly_named_namespace,
                 |this, lookalike| {
                     this
                         .help(format!(
-                            "a namespace with a similar name containing the binding exists in scope:\n    {}",
-                            scope::Lookalike { actual: non_namespace.as_str(), lookalike },
+                            "a namespace with a similar name exists in scope containing the binding:\n    {}",
+                            scope::Lookalike { actual: binder.as_str(), lookalike },
                         ))
                 }
             )
-            .if_(show_very_general_help, |this| {
-                this
-                    .note("identifiers following a `.` refer to bindings defined in a namespace (i.e. a module or a data type)")
-                    // no type information here yet to check if the non-namespace is indeed a record
-                    .help("use `::` to reference a field of a record")
-            })
+            // no type information here yet to check if the non-namespace is indeed a record
+            .if_(show_very_general_help, |this| this.help("use `::` to reference a field of a record"))
     }
 }
 
-/// Additional context for name resolution.
-// @Task split context for start|finish resolve second does not store info about opacity
 #[derive(Default, Debug)]
-struct Context {
-    // @Note if we were to rewrite/refactor the lowered AST to use indices for nested
-    // declarations, then we could simply loop up the AST node and wouldn't need
-    // `Opacity`
-    parent_data_binding: Option<(LocalDeclarationIndex, Option<Transparency>)>,
+enum Context {
+    #[default]
+    Boring,
+    DataDeclaration {
+        index: LocalDeclarationIndex,
+        transparency: Option<Transparency>,
+        known: Option<Span>,
+    },
 }
 
 #[derive(Debug)]
@@ -1521,14 +1785,13 @@ enum CheckExposure {
     No,
 }
 
-// @Task put all that stuff into a module `resolution_target`
 /// Specifies behavior for resolving different sorts of entities.
 ///
 /// Right now, it's only about the difference between values and modules
 /// since modules are not values (non-first-class). As such, this trait
 /// allows to implementors to define what should happen with the resolved entity
 /// if it appears in a specific location
-// @Task get rid of this thing! smh!
+// @Task get rid of this thing! smh! **esp. the assoc ty `Output`!**
 trait ResolutionTarget {
     type Output;
 
@@ -1539,7 +1802,10 @@ trait ResolutionTarget {
         index: DeclarationIndex,
     ) -> Result<Self::Output, Diagnostic>;
 
-    fn handle_simple_path(identifier: &ast::Identifier, entity: &Entity) -> Result<(), Diagnostic>;
+    fn handle_final_identifier(
+        identifier: &ast::Identifier,
+        entity: &Entity,
+    ) -> Result<(), Diagnostic>;
 }
 
 mod target {
@@ -1562,7 +1828,7 @@ mod target {
             Ok(index)
         }
 
-        fn handle_simple_path(_: &ast::Identifier, _: &Entity) -> Result<(), Diagnostic> {
+        fn handle_final_identifier(_: &ast::Identifier, _: &Entity) -> Result<(), Diagnostic> {
             Ok(())
         }
     }
@@ -1584,7 +1850,7 @@ mod target {
             Err(Diagnostic::module_used_as_a_value(hanger.as_ref()))
         }
 
-        fn handle_simple_path(
+        fn handle_final_identifier(
             identifier: &ast::Identifier,
             entity: &Entity,
         ) -> Result<(), Diagnostic> {
@@ -1614,16 +1880,15 @@ mod target {
             Ok(index)
         }
 
-        fn handle_simple_path(
+        fn handle_final_identifier(
             identifier: &ast::Identifier,
             entity: &Entity,
         ) -> Result<(), Diagnostic> {
             // @Task print absolute path!
             if !entity.is_module() {
                 return Err(Diagnostic::error()
-                    // @Task custom code
                     .code(Code::E022)
-                    .message(format!("value `{}` is not a module", identifier))
+                    .message(format!("binding `{identifier}` is not a module"))
                     .primary_span(identifier));
             }
 

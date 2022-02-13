@@ -1,50 +1,50 @@
 error[E018]: lint `never-gonna-be-implied` does not exist
- --> ${DIRECTORY}/lowering/malformed-attribute-arguments.lushui:3:9
+ --> ${DIRECTORY}/lowering/malformed-attribute-arguments.lushui:4:9
   |
-3 | @(allow never-gonna-be-implied)
+4 | @(allow never-gonna-be-implied)
   |         ^^^^^^^^^^^^^^^^^^^^^^ 
   |
 
 error[E027]: found text literal, but expected positional or named path
- --> ${DIRECTORY}/lowering/malformed-attribute-arguments.lushui:6:9
+ --> ${DIRECTORY}/lowering/malformed-attribute-arguments.lushui:7:9
   |
-6 | @(allow "my lint")
+7 | @(allow "my lint")
   |         ^^^^^^^^^ 
   |
 
 error[E027]: found text literal, but expected path
- --> ${DIRECTORY}/lowering/malformed-attribute-arguments.lushui:7:16
+ --> ${DIRECTORY}/lowering/malformed-attribute-arguments.lushui:8:16
   |
-7 | @(forbid (lint "my other one"))
+8 | @(forbid (lint "my other one"))
   |                ^^^^^^^^^^^^^^ 
   |
 
 error[E019]: too few attribute arguments provided
- --> ${DIRECTORY}/lowering/malformed-attribute-arguments.lushui:8:1
+ --> ${DIRECTORY}/lowering/malformed-attribute-arguments.lushui:9:1
   |
-8 | @deny
+9 | @deny
   | ^^^^^ 
   |
 
 error[E028]: found named argument `reech`, but expected `reach`
-  --> ${DIRECTORY}/lowering/malformed-attribute-arguments.lushui:11:11
+  --> ${DIRECTORY}/lowering/malformed-attribute-arguments.lushui:12:11
    |
-11 | @(public (reech path) "hello")
+12 | @(public (reech path) "hello")
    |           ^^^^^ 
    |
 
 error[E019]: too many attribute arguments provided
-  --> ${DIRECTORY}/lowering/malformed-attribute-arguments.lushui:11:23
+  --> ${DIRECTORY}/lowering/malformed-attribute-arguments.lushui:12:23
    |
-11 | @(public (reech path) "hello")
+12 | @(public (reech path) "hello")
    |                       ^^^^^^^ 
    |
 
 error[E019]: too many attribute arguments provided
-  --> ${DIRECTORY}/lowering/malformed-attribute-arguments.lushui:12:21
+  --> ${DIRECTORY}/lowering/malformed-attribute-arguments.lushui:13:23
    |
-12 | base: Base = @(Rune 0) "X"
-   |                     ^ 
+13 | base: Base = @(static 0) "X"
+   |                       ^ 
    |
 
 error: aborting due to 7 previous errors

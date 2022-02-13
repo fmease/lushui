@@ -1,0 +1,16 @@
+error[E061]: `I-Definitely-Do-Not-Exist` is not an intrinsic type
+ --> ${DIRECTORY}/unrecognized-intrinsic-type.lushui:5:1
+  |
+5 | @intrinsic
+  | ---------- 
+  |
+ --> ${DIRECTORY}/unrecognized-intrinsic-type.lushui:6:6
+  |
+6 | data I-Definitely-Do-Not-Exist: Type
+  |      ^^^^^^^^^^^^^^^^^^^^^^^^^ 
+  |
+
+error: aborting due to previous error
+ note: the error E061 has a detailed explanation
+ help: run `lushui explain E061` to view it
+

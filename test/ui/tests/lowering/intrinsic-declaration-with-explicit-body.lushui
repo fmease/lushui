@@ -1,6 +1,16 @@
-;;; TEST fail check
+;;; TEST fail check -Z internals --no-core
 
 @intrinsic
 data Void: Type of
+
+@intrinsic
+data Unit: Type of { unit: Unit }
+;;;                            ^^ @Bug the span does not inclide the trailing curly bracket
+;;;                               @Task define & use Span::expand_end_matches to recover it
+
+@intrinsic
+data Bool: Type of
+    false: Bool
+    true: Bool
 
 @intrinsic thing = 0

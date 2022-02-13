@@ -1,0 +1,40 @@
+;;; TEST fail check -Z internals --no-core
+
+numv: Nat = Void.234
+
+numt: Text = Text.2001
+
+local: Nat = 23
+local-lit: Nat = local.23
+
+negative-default-nat: Nat = -1
+negative-nat: Nat = Nat.-1'702
+
+out-of-bounds: Int32 = Int32.1'000'000'000'000
+
+tnat: Nat = Nat."0"
+
+tvoid: Void = Void."  "
+
+mod-lit: Int32 = thing.0
+
+param-pass-lit (param: Int32): Int32 = param.""
+
+undef: Void = undefined."SCARY"
+
+module thing of
+
+@intrinsic
+data Text: Type
+
+@intrinsic
+data Nat: Type
+
+@intrinsic
+data Int32: Type
+
+data Void: Type of
+
+;;; [Note]
+;;; Putting the data type declarations below their usage site is intentional: We want to ensure that known and intrinsic bindings
+;;; work out of order.

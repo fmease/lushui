@@ -5,9 +5,9 @@ use discriminant::Discriminant;
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     error::{PossiblyErroneous, Result},
-    span::{PossiblySpanning, Span, Spanned, Spanning},
+    span::{SourceMap, Span, Spanned, Spanning},
     syntax::ast,
-    utility::{condition, obtain},
+    utility::{condition, obtain, Atom},
 };
 
 /// Something attributes can be ascribed to.
@@ -21,7 +21,12 @@ pub(crate) trait Target: Spanning {
 
     /// Target-specific attribute checks
     // @Note weird API
-    fn check_attributes(&self, _attributes: &Attributes, _reporter: &Reporter) -> Result {
+    fn check_attributes(
+        &self,
+        _attributes: &Attributes,
+        _source_map: &SourceMap,
+        _reporter: &Reporter,
+    ) -> Result {
         Ok(())
     }
 }
@@ -55,59 +60,89 @@ impl Target for ast::Declaration {
         }
     }
 
-    fn check_attributes(&self, attributes: &Attributes, reporter: &Reporter) -> Result {
+    fn check_attributes(
+        &self,
+        attributes: &Attributes,
+        map: &SourceMap,
+        reporter: &Reporter,
+    ) -> Result {
         use ast::DeclarationKind::*;
 
-        let (binder, definition_marker, body) = match &self.value {
-            Function(function) => (
-                &function.binder,
-                Spanned::new(
-                    function
-                        .binder
-                        .span()
-                        .fit_end(&function.parameters)
-                        .fit_end(&function.type_annotation)
-                        .end(),
+        let (binder, missing_definition_location, definition_marker, body) = match &self.value {
+            Function(function) => {
+                let missing_definition_location = function
+                    .binder
+                    .span()
+                    .fit_end(&function.parameters)
+                    .fit_end(&function.type_annotation)
+                    .end();
+
+                (
+                    &function.binder,
+                    missing_definition_location,
                     "=",
-                ),
-                function.body.as_ref().map(|expression| expression.span),
-            ),
-            Data(type_) => (
-                &type_.binder,
-                Spanned::new(
-                    type_
-                        .binder
-                        .span()
-                        .fit_end(&type_.parameters)
-                        .fit_end(&type_.type_annotation)
-                        .end(),
+                    function.body.as_ref().map(|expression| {
+                        let eq = missing_definition_location
+                            .between(self.span.end())
+                            .trim_start_matches(|character| character.is_ascii_whitespace(), map);
+
+                        (
+                            eq.merge(expression),
+                            "the body conflicting with the attribute",
+                        )
+                    }),
+                )
+            }
+            Data(type_) => {
+                let missing_definition_location = type_
+                    .binder
+                    .span()
+                    .fit_end(&type_.parameters)
+                    .fit_end(&type_.type_annotation)
+                    .end();
+
+                (
+                    &type_.binder,
+                    missing_definition_location,
                     "of",
-                ),
-                type_
-                    .constructors
-                    .as_ref()
-                    .map(|constructors| constructors.possible_span().unwrap_or(self.span)),
-            ),
+                    type_.constructors.as_ref().map(|constructors| {
+                        let of = missing_definition_location
+                            .between(self.span.end())
+                            .trim_start_matches(|character| character.is_ascii_whitespace(), map);
+
+                        (
+                            // @Bug span does not include trailing closing curly bracket
+                            // @Task define & use Span::expand_end_matches to recover it
+                            of.merge(constructors),
+                            if constructors.is_empty() {
+                                "\
+the body specifying that the data type has no constructors and is therefore uninhabited
+         conflicting with the attribute"
+                            } else {
+                                "\
+the body containing a set of constructors
+         conflicting with the attribute"
+                            },
+                        )
+                    }),
+                )
+            }
             _ => return Ok(()),
         };
 
         match (body, attributes.span(AttributeName::Intrinsic)) {
-            (Some(body), Some(intrinsic)) => {
-                // @Task better labels ("conflicting definition" is non-descriptive and confusing)
+            (Some((body_span, body_label)), Some(intrinsic)) => {
                 Diagnostic::error()
-                    .code(Code::E020)
+                    .code(Code::E042)
                     .message(format!(
-                        "`{}` is defined multiple times in this scope",
-                        binder
+                        "the declaration `{binder}` marked as `intrinsic` has a body",
                     ))
-                    .labeled_primary_span(&body, "conflicting definition")
+                    .labeled_primary_span(body_span, body_label)
                     .labeled_secondary_span(
                         intrinsic,
-                        "conflicting definition",
+                        "marks the declaration as being defined outside of the language",
                     )
-                    .note(format!(
-                        "declaration is marked as `intrinsic` but it also has a body introduced by `{definition_marker}`"
-                    ))
+                    .help("remove either the body or the attribute")
                     .report(reporter);
                 Err(())
             }
@@ -115,7 +150,7 @@ impl Target for ast::Declaration {
                 Diagnostic::error()
                     .code(Code::E012)
                     .message(format!("declaration `{}` has no definition", binder))
-                    .primary_span(definition_marker)
+                    .primary_span(missing_definition_location)
                     .help(format!("provide a definition with `{definition_marker}`"))
                     .report(reporter);
                 Err(())
@@ -178,10 +213,10 @@ impl Target for ast::Pattern {
         match self.value {
             NumberLiteral(_) => "a number literal pattern",
             TextLiteral(_) => "a text literal pattern",
-            SequenceLiteralPattern(_) => "a sequence literal pattern",
+            SequenceLiteral(_) => "a sequence literal pattern",
             Path(_) => "a path pattern",
             Binder(_) => "a binder pattern",
-            Deapplication(_) => "a deapplication",
+            Application(_) => "an application pattern",
         }
     }
 
@@ -191,10 +226,10 @@ impl Target for ast::Pattern {
         match self.value {
             NumberLiteral(_) => Targets::NUMBER_LITERAL_PATTERN,
             TextLiteral(_) => Targets::TEXT_LITERAL_PATTERN,
-            SequenceLiteralPattern(_) => Targets::SEQUENCE_LITERAL_PATTERN,
+            SequenceLiteral(_) => Targets::SEQUENCE_LITERAL_PATTERN,
             Path(_) => Targets::PATH_PATTERN,
             Binder(_) => Targets::BINDER_PATTERN,
-            Deapplication(_) => Targets::DEAPPLICATION_PATTERN,
+            Application(_) => Targets::APPLICATION_PATTERN,
         }
     }
 }
@@ -254,14 +289,14 @@ bitflags::bitflags! {
         const SEQUENCE_LITERAL_PATTERN = 1 << 22;
         const PATH_PATTERN = 1 << 23;
         const BINDER_PATTERN = 1 << 24;
-        const DEAPPLICATION_PATTERN = 1 << 25;
+        const APPLICATION_PATTERN = 1 << 25;
 
         const PATTERN = Self::NUMBER_LITERAL_PATTERN.bits
             | Self::TEXT_LITERAL_PATTERN.bits
             | Self::SEQUENCE_LITERAL_PATTERN.bits
             | Self::PATH_PATTERN.bits
             | Self::BINDER_PATTERN.bits
-            | Self::DEAPPLICATION_PATTERN.bits;
+            | Self::APPLICATION_PATTERN.bits;
 
         const NUMBER_LITERAL = Self::NUMBER_LITERAL_EXPRESSION.bits
             | Self::NUMBER_LITERAL_PATTERN.bits;
@@ -403,14 +438,14 @@ pub(crate) enum AttributeKind {
     /// doc <0:content:Text-Literal>
     /// ```
     Doc {
-        content: String,
+        content: Atom,
     },
     DocAttribute {
-        name: String, // @Task make this an ast::Identifier/ast::Path
+        name: Atom, // @Task make this an ast::Identifier/ast::Path
     },
     DocAttributes,
     DocReservedIdentifier {
-        name: String, // @Task make this an ast::Identifier
+        name: Atom, // @Task make this an ast::Identifier
     },
     DocReservedIdentifiers,
     /// Forbid a [lint](Lint).
@@ -444,19 +479,11 @@ pub(crate) enum AttributeKind {
     Ignore,
     /// Statically include the contents of file given by path.
     Include,
-    /// Specify the concrete type of a number literal to be `Int`.
-    Int,
-    /// Specify the concrete type of a number literal to be `Int32`.
-    Int32,
-    /// Specify the concrete type of a number literal to be `Int64`.
-    Int64,
     /// Identify a binding intrinsic to the language.
     ///
     /// Currently only used for bindings that are required for some
     /// intrinsic bindings in the core library.
     Known,
-    /// Specify the concrete type of a sequence literal to be `List`.
-    List,
     /// Change the path where the out-of-line module resides.
     ///
     /// # Form
@@ -465,16 +492,10 @@ pub(crate) enum AttributeKind {
     /// location <0:path:Text-Literal>
     /// ```
     Location {
-        path: String,
+        path: Atom,
     },
     /// Mark a data type binding to be likely expanded in the number of constructors.
     Moving,
-    /// Specify the concrete type of a number literal to be `Nat`.
-    Nat,
-    /// Specify the concrete type of a number literal to be `Nat32`.
-    Nat32,
-    /// Specify the concrete type of a number literal to be `Nat64`.
-    Nat64,
     /// Make the binding part of the public API or at least visible in modules higher up.
     ///
     /// If no `reach` is given, the binding is exposed to other capsules.
@@ -496,16 +517,12 @@ pub(crate) enum AttributeKind {
     RecursionLimit {
         depth: u32,
     },
-    /// Specify the concrete type of a text literal to be `Rune`.
-    Rune,
     /// Force an expression to be evaluated at compile-time.
     Static,
     /// Output statistics about a declaration.
     Statistics,
     /// Mark a function as a unit test.
     Test,
-    /// Specify the concrete type of a text literal to be `Text`.
-    Text,
     /// Mark a binding or expression as "unsafe".
     Unsafe,
     /// Mark a binding as an unstable part of the public API.
@@ -517,8 +534,6 @@ pub(crate) enum AttributeKind {
     /// ```
     #[allow(dead_code)]
     Unstable(Unstable),
-    /// Specify the concrete type of a sequence literal to be `Vector`.
-    Vector,
     /// Warn on a [lint](Lint).
     ///
     /// # Form
@@ -542,12 +557,10 @@ impl AttributeKind {
                 Targets::DECLARATION
             }
             Intrinsic => Targets::FUNCTION_DECLARATION | Targets::DATA_DECLARATION,
-            Include | Rune | Text => Targets::TEXT_LITERAL,
+            Include => Targets::TEXT_LITERAL,
             Known | Moving | Abstract | DocAttribute { .. } | DocReservedIdentifier { .. } => {
                 Targets::DATA_DECLARATION
             }
-            Int | Int32 | Int64 | Nat | Nat32 | Nat64 => Targets::NUMBER_LITERAL,
-            List | Vector => Targets::SEQUENCE_LITERAL,
             // @Task for constructors, smh add extra diagnostic note saying they are public automatically
             // @Update with `@transparent` implemented, suggest `@transparent` on the data decl
             Public { .. } => {
@@ -579,13 +592,7 @@ impl AttributeKind {
             self,
             Self::Deprecated { .. }
                 | Self::Doc { .. }
-                | Self::Int
-                | Self::Int32
-                | Self::Int64
                 | Self::Location { .. }
-                | Self::Nat
-                | Self::Nat32
-                | Self::Nat64
                 | Self::Abstract
                 | Self::Public { .. }
         ) || self.is_internal()
@@ -630,21 +637,11 @@ impl fmt::Display for AttributeKind {
             | Self::Ignore
             | Self::Include
             | Self::Known
-            | Self::Int
-            | Self::Int32
-            | Self::Int64
-            | Self::List
             | Self::Moving
-            | Self::Nat
-            | Self::Nat32
-            | Self::Nat64
-            | Self::Rune
             | Self::Static
             | Self::Statistics
             | Self::Test
-            | Self::Text
-            | Self::Unsafe
-            | Self::Vector => write!(f, "{name}"),
+            | Self::Unsafe => write!(f, "{name}"),
 
             Self::Allow { lint }
             | Self::Deny { lint }
@@ -712,26 +709,16 @@ impl AttributeName {
             Self::Intrinsic => "intrinsic",
             Self::Ignore => "ignore",
             Self::Include => "include",
-            Self::Int => "Int",
-            Self::Int32 => "Int32",
-            Self::Int64 => "Int64",
             Self::Known => "known",
-            Self::List => "List",
             Self::Location => "location",
             Self::Moving => "moving",
-            Self::Nat => "Nat",
-            Self::Nat32 => "Nat32",
-            Self::Nat64 => "Nat64",
             Self::Public => "public",
             Self::RecursionLimit => "recursion-limit",
-            Self::Rune => "Rune",
             Self::Static => "static",
             Self::Statistics => "statistics",
             Self::Test => "test",
-            Self::Text => "Text",
             Self::Unsafe => "unsafe",
             Self::Unstable => "unstable",
-            Self::Vector => "Vector",
             Self::Warn => "warn",
         }
     }
@@ -758,25 +745,15 @@ impl FromStr for AttributeName {
             "ignore" => Self::Ignore,
             "include" => Self::Include,
             "known" => Self::Known,
-            "Int" => Self::Int,
-            "Int32" => Self::Int32,
-            "Int64" => Self::Int64,
-            "List" => Self::List,
             "location" => Self::Location,
             "moving" => Self::Moving,
-            "Nat" => Self::Nat,
-            "Nat32" => Self::Nat32,
-            "Nat64" => Self::Nat64,
             "public" => Self::Public,
             "recursion-limit" => Self::RecursionLimit,
-            "Rune" => Self::Rune,
             "static" => Self::Static,
             "statistics" => Self::Statistics,
             "test" => Self::Test,
-            "Text" => Self::Text,
             "unsafe" => Self::Unsafe,
             "unstable" => Self::Unstable,
-            "Vector" => Self::Vector,
             "warn" => Self::Warn,
             _ => return Err(()),
         })
@@ -863,10 +840,10 @@ data_queries! {
 #[derive(Clone, PartialEq, Eq, Hash)]
 
 pub(crate) struct Deprecated {
-    pub(crate) reason: Option<String>,
+    pub(crate) reason: Option<Atom>,
     pub(crate) since: Option<Version>,
     pub(crate) removal: Option<Version>,
-    pub(crate) replacement: Option<String>,
+    pub(crate) replacement: Option<Atom>,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]

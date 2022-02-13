@@ -389,7 +389,7 @@ mod lexer {
 
             self.local_span = self.source_file.local_span().end();
             self.add(EndOfInput);
-            self.health.of(self.tokens)
+            Outcome::new(self.tokens, self.health)
         }
 
         fn lex_comment(&mut self) {
@@ -570,7 +570,7 @@ mod parser {
     };
     use crate::{
         diagnostics::{Code, Diagnostic, Reporter},
-        error::{Health, ReportedExt, Result},
+        error::{Health, OkIfUntaintedExt, ReportedExt, Result},
         span::{SharedSourceMap, SourceFileIndex, Span, Spanning, WeaklySpanned},
         utility::HashMap,
     };
@@ -645,7 +645,8 @@ mod parser {
                 false => self.parse_value(),
             }?;
             self.consume(EndOfInput)?;
-            self.health.of(value).into()
+
+            Result::ok_if_untainted(value, self.health)
         }
 
         fn has_top_level_map_entries(&self) -> bool {

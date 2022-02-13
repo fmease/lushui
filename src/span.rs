@@ -133,6 +133,10 @@ mod generic {
         pub(crate) fn trim_end(self, amount: u32) -> Self {
             Self::new(self.start, self.end - amount)
         }
+
+        pub(crate) fn between(self, other: Span<L>) -> Span<L> {
+            Self::new(self.end, other.start)
+        }
     }
 
     impl<const L: Locality> fmt::Debug for Span<L> {
@@ -213,12 +217,11 @@ impl Span {
 
     #[must_use]
     pub(crate) fn merge(self, other: impl PossiblySpanning) -> Self {
-        match other.possible_span() {
-            Some(other) => {
-                // self.assert_disjoint_and_consecutive(other);
-                Self::new(self.start, other.end)
-            }
-            None => self,
+        if let Some(other) = other.possible_span() {
+            // self.assert_disjoint_and_consecutive(other);
+            Self::new(self.start, other.end)
+        } else {
+            self
         }
     }
 
@@ -260,6 +263,57 @@ impl Span {
             }
             None => self,
         }
+    }
+
+    pub(crate) fn trim_start_matches(
+        self,
+        predicate: impl Fn(char) -> bool,
+        map: &SourceMap,
+    ) -> Self {
+        let source = map.snippet(self);
+        let trimmed = source.trim_start_matches(predicate);
+        let difference = source.len() - trimmed.len();
+
+        Span::new(self.start + difference.try_into().unwrap(), self.end)
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn trim_end_matches(
+        self,
+        predicate: impl Fn(char) -> bool,
+        map: &SourceMap,
+    ) -> Self {
+        let source = map.snippet(self);
+        let trimmed = source.trim_end_matches(predicate);
+        let difference = source.len() - trimmed.len();
+
+        Span::new(
+            self.start,
+            self.end - ByteIndex::try_from(difference).unwrap(),
+        )
+    }
+
+    // @Task implement expand_{start,end}_matches to expand outwards
+    // we want to use it to expand to leading `{  `s and trailing `  }`s.
+
+    #[allow(dead_code, unused_variables, clippy::unused_self)]
+    pub(crate) fn expand_start_matches(
+        self,
+        predicate: impl Fn(char) -> bool,
+        map: &SourceMap,
+    ) -> Self {
+        // @Beacon @Task
+        todo!()
+    }
+
+    #[allow(dead_code, unused_variables, clippy::unused_self)]
+    pub(crate) fn expand_end_matches(
+        self,
+        predicate: impl Fn(char) -> bool,
+        map: &SourceMap,
+    ) -> Self {
+        // @Beacon @Task
+        todo!()
     }
 }
 
@@ -349,10 +403,10 @@ mod spanning {
 
     impl<S> PossiblySpanning for Option<S>
     where
-        S: Spanning,
+        S: PossiblySpanning,
     {
         fn possible_span(&self) -> Option<Span> {
-            self.as_ref().map(<_>::span)
+            self.as_ref().and_then(<_>::possible_span)
         }
     }
 
@@ -366,7 +420,7 @@ mod spanning {
     //     }
     // }
 
-    impl<S: Spanning> PossiblySpanning for &'_ Option<S> {
+    impl<S: PossiblySpanning> PossiblySpanning for &'_ Option<S> {
         fn possible_span(&self) -> Option<Span> {
             (**self).possible_span()
         }
@@ -400,6 +454,7 @@ mod spanned {
             Spanned::new(self.span, mapper(self.value))
         }
 
+        #[must_use]
         pub fn map_span(mut self, mapper: impl FnOnce(Span) -> Span) -> Self {
             self.span = mapper(self.span);
             self

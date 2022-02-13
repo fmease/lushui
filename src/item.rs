@@ -24,6 +24,13 @@ impl<T, Attributes> Item<T, Attributes> {
             attributes,
         }
     }
+
+    pub(crate) fn map<U>(self, mapper: impl FnOnce(T) -> U) -> Item<U, Attributes> {
+        Item {
+            value: mapper(self.value),
+            ..self
+        }
+    }
 }
 
 impl<T, Attribute> Spanning for Item<T, Attribute> {
@@ -39,28 +46,5 @@ impl<T: PossiblyErroneous, Attributes: Default> PossiblyErroneous for Item<T, At
             span: default(),
             attributes: default(),
         }
-    }
-}
-
-/// Construct an [Item].
-// @Note several hacks going on because apparently, one cannot use a $loc:path directly and concatenate it
-// to the rest of another path. $($seg)::+ does not work either
-// @Task rename $data (outdated name)
-pub(crate) macro item {
-    ($loc:path, $item:ident, $indirection:ident; $data:ident { $attrs:expr, $span:expr $(; $( $body:tt )+ )? }) => {{
-        #[allow(unused_imports)]
-        use $loc as loc;
-        Item::new(
-            $attrs,
-            $span,
-            $item::$data $( ($indirection::new(loc::$data { $( $body )+ })) )?,
-        )
-    }},
-    ($loc:path, $item:ident, $indirection:ident; $data:ident($attrs:expr, $span:expr; $value:expr $(,)?)) => {
-        Item::new(
-            $attrs,
-            $span,
-            $item::$data($indirection::from($value)),
-        )
     }
 }

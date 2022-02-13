@@ -312,7 +312,7 @@ impl<'a> Lexer<'a> {
         }
         self.add(EndOfInput);
 
-        Ok(self.health.of(self.tokens))
+        Ok(Outcome::new(self.tokens, self.health))
     }
 
     fn add_opening_bracket(&mut self, bracket: Bracket) {
@@ -655,7 +655,7 @@ impl<'a> Lexer<'a> {
             return Err(());
         }
 
-        self.add(NumberLiteral(number));
+        self.add(NumberLiteral(number.into()));
 
         Ok(())
     }
@@ -680,9 +680,8 @@ impl<'a> Lexer<'a> {
 
         // @Note once we implement escaping, this won't cut it and we need to build our own string
         let content_span = self.local_span.trim(1);
-        let content = self.source_file[content_span].to_owned();
         self.add(TextLiteral(match is_terminated {
-            true => Ok(content),
+            true => Ok(self.source_file[content_span].into()),
             false => Err(UnterminatedTextLiteral),
         }));
     }

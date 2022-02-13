@@ -11,17 +11,16 @@ mod instruction;
 // @Task move stuff from here to there
 pub(crate) mod interpreter;
 
-use std::default::default;
-
 use crate::{
-    hir::{self, Declaration, DeclarationIndex, Expression},
+    hir::{self, Declaration, DeclarationIndex, Expression, Number},
     resolver::Capsule,
-    syntax::lowered_ast::{attributes::AttributeName, Number},
+    syntax::lowered_ast::attributes::AttributeName,
     utility::HashMap,
 };
 use index_map::{Index as _, IndexMap};
 use instruction::{Chunk, ChunkIndex, Instruction};
 use staticvec::StaticVec;
+use std::{default::default, fmt};
 
 #[derive(PartialEq, Eq)]
 enum LambdaParent {
@@ -186,18 +185,19 @@ impl<'a> Compiler<'a> {
             }
             Text(text) => {
                 let constant = self.constants.len();
-                self.constants.push(Value::Text(text.as_ref().clone()));
+                let hir::Text::Text(text) = &**text;
+                self.constants.push(Value::Text(text.clone()));
                 instructions.push(Instruction::Constant(constant));
             }
             Binding(binding) => {
-                if let Some(index) = binding.binder.declaration_index() {
+                if let Some(index) = binding.0.declaration_index() {
                     // declarations will not always compile to chunks
                     // so we gonna need to push constant in some places
                     instructions.push(Instruction::Closure {
                         chunk: self.next_chunk_index_for_declaration(index),
                         captures: Vec::new(),
                     });
-                } else if binding.binder.is_innermost() {
+                } else if binding.0.is_innermost() {
                     instructions.push(Instruction::Argument);
                 } else {
                     todo!()
@@ -229,7 +229,7 @@ impl<'a> Compiler<'a> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 // very @Temporary data structure (too much wasted memory)
 enum Value {
     Number(Number),
@@ -238,6 +238,16 @@ enum Value {
         chunk: ChunkIndex,
         captures: Vec<()>,
     },
+}
+
+impl fmt::Debug for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Number(number) => write!(f, "{number}"),
+            Self::Text(text) => write!(f, "{text}"),
+            Self::Closure { chunk, captures } => write!(f, "?(closure {chunk:?} {captures:?})"),
+        }
+    }
 }
 
 // @Temporary

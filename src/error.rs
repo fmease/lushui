@@ -29,15 +29,47 @@ impl<T> Outcome<T> {
         Self::new(value, Health::Tainted)
     }
 
-    // @Question good API?
-    #[must_use = "use `&=` if you want to ignore the result"]
-    pub fn unwrap(self, health: &mut Health) -> T {
-        *health &= self.health;
-        self.value
-    }
-
     pub fn map<U>(self, mapper: impl FnOnce(T) -> U) -> Outcome<U> {
         Outcome::new(mapper(self.value), self.health)
+    }
+}
+
+pub(crate) trait Stain<T> {
+    fn stain(self, health: &mut Health) -> T;
+}
+
+impl<T> Stain<T> for Outcome<T> {
+    fn stain(self, health: &mut Health) -> T {
+        *health = health.and(self.health);
+        self.value
+    }
+}
+
+// @Beacon @Beacon @Task implement this for all Result<T, E> where E: AlreadyReported (…)
+// which is implemented for () and for e.g. RegistrationError (this would allow use to get rid of
+// some .map_err(drop)
+impl<T: PossiblyErroneous> Stain<T> for Result<T> {
+    fn stain(self, health: &mut Health) -> T {
+        match self {
+            Ok(value) => value,
+            Err(_) => {
+                health.taint();
+                T::error()
+            }
+        }
+    }
+}
+
+pub(crate) trait OkIfUntaintedExt<T> {
+    fn ok_if_untainted(value: T, health: Health) -> Self;
+}
+
+impl<T> OkIfUntaintedExt<T> for Result<T> {
+    fn ok_if_untainted(value: T, health: Health) -> Self {
+        match health {
+            Health::Untainted => Ok(value),
+            Health::Tainted => Err(()),
+        }
     }
 }
 
@@ -45,17 +77,6 @@ pub macro outcome($value:pat, $health:pat) {
     $crate::error::Outcome {
         value: $value,
         health: $health,
-    }
-}
-
-// @Temporary API
-pub(crate) fn map_outcome_from_result<T, U: PossiblyErroneous>(
-    result: Result<T>,
-    mapper: impl FnOnce(T) -> U,
-) -> Outcome<U> {
-    match result {
-        Ok(value) => Outcome::untainted(mapper(value)),
-        Err(()) => Outcome::tainted(U::error()),
     }
 }
 
@@ -102,10 +123,6 @@ pub enum Health {
 }
 
 impl Health {
-    pub const fn of<T>(self, value: T) -> Outcome<T> {
-        Outcome::new(value, self)
-    }
-
     pub const fn is_tainted(self) -> bool {
         matches!(self, Self::Tainted)
     }
@@ -114,27 +131,17 @@ impl Health {
         !self.is_tainted()
     }
 
-    pub fn taint(&mut self) {
-        if *self == Self::Untainted {
-            *self = Self::Tainted;
-        }
-    }
-}
-
-impl<H: Into<Health>> std::ops::BitAnd<H> for Health {
-    type Output = Self;
-
-    fn bitand(self, other: H) -> Self::Output {
-        match (self, other.into()) {
+    fn and(self, other: Self) -> Self {
+        match (self, other) {
             (Self::Untainted, Self::Untainted) => Self::Untainted,
             (_, _) => Self::Tainted,
         }
     }
-}
 
-impl<H: Into<Health>> std::ops::BitAndAssign<H> for Health {
-    fn bitand_assign(&mut self, other: H) {
-        *self = *self & other;
+    pub(crate) fn taint(&mut self) {
+        if *self == Self::Untainted {
+            *self = Self::Tainted;
+        }
     }
 }
 

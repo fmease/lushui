@@ -54,6 +54,13 @@ error[E021]: binding `Slipped-Away` is not defined in this scope
   |          ^^^^^^^^^^^^ 
   |
 
+error[E021]: binding `Lost-All-Along` is not defined in this scope
+ --> ${DIRECTORY}/name-resolution/multiple-undefined.lushui:7:10
+  |
+7 |     x11: Lost-All-Along
+  |          ^^^^^^^^^^^^^^ 
+  |
+
 error[E021]: binding `Void` is not defined in this scope
   --> ${DIRECTORY}/name-resolution/multiple-undefined.lushui:10:21
    |
@@ -77,7 +84,7 @@ error[E021]: binding `z` is not defined in this scope
    |
   help: a binding with a similar name exists in scope: `y`
 
-error: aborting due to 11 previous errors
+error: aborting due to 12 previous errors
  note: the error E021 has a detailed explanation
  help: run `lushui explain E021` to view it
 

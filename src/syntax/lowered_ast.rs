@@ -1,17 +1,14 @@
 //! The lowered abstract syntax tree (lowered AST).
 
-// @Task rename a bunch of syntax node to make them more like the ones of the AST
-// i.e. not Number but NumberLiteral etc
-
-pub(crate) mod attributes;
-mod format;
-
-use super::ast::{Explicitness, Identifier, Path};
+use super::ast::{Explicitness, Identifier, NumberLiteral, Path, SequenceLiteral, TextLiteral};
 use crate::{
     error::PossiblyErroneous,
     span::{SourceFileIndex, Span},
 };
 pub(crate) use attributes::{Attribute, AttributeKind, AttributeName, Attributes};
+
+pub(crate) mod attributes;
+mod format;
 
 pub(crate) type Item<Kind> = crate::item::Item<Kind, attributes::Attributes>;
 
@@ -38,15 +35,33 @@ pub struct Function {
     pub expression: Option<Expression>,
 }
 
+impl From<Function> for DeclarationKind {
+    fn from(function: Function) -> Self {
+        Self::Function(Box::new(function))
+    }
+}
+
 pub struct Data {
     pub binder: Identifier,
     pub type_annotation: Expression,
     pub constructors: Option<Vec<Declaration>>,
 }
 
+impl From<Data> for DeclarationKind {
+    fn from(type_: Data) -> Self {
+        Self::Data(Box::new(type_))
+    }
+}
+
 pub struct Constructor {
     pub binder: Identifier,
     pub type_annotation: Expression,
+}
+
+impl From<Constructor> for DeclarationKind {
+    fn from(constructor: Constructor) -> Self {
+        Self::Constructor(Box::new(constructor))
+    }
 }
 
 pub struct Module {
@@ -55,31 +70,73 @@ pub struct Module {
     pub declarations: Vec<Declaration>,
 }
 
+impl From<Module> for DeclarationKind {
+    fn from(module: Module) -> Self {
+        Self::Module(Box::new(module))
+    }
+}
+
 pub struct Use {
     pub binder: Identifier,
     pub target: Path,
 }
 
+impl From<Use> for DeclarationKind {
+    fn from(use_: Use) -> Self {
+        Self::Use(Box::new(use_))
+    }
+}
+
 pub type Expression = Item<ExpressionKind>;
 
 #[derive(Clone)]
-#[allow(clippy::box_collection)]
 pub enum ExpressionKind {
+    TypeLiteral,
+    Path(Box<Path>),
+    NumberLiteral(Box<NumberLiteral>),
+    TextLiteral(Box<TextLiteral>),
+    Application(Box<Application<Expression>>),
+    SequenceLiteral(Box<SequenceLiteral<Expression>>),
     PiType(Box<PiType>),
-    Application(Box<Application>),
-    Type,
-    Number(Box<Number>),
-    Text(Box<String>),
-    Binding(Box<Binding>),
     Lambda(Box<Lambda>),
-    UseIn,
     CaseAnalysis(Box<CaseAnalysis>),
+    UseIn,
     Error,
 }
 
 impl PossiblyErroneous for ExpressionKind {
     fn error() -> Self {
         Self::Error
+    }
+}
+
+impl From<Path> for ExpressionKind {
+    fn from(path: Path) -> Self {
+        Self::Path(Box::new(path))
+    }
+}
+
+impl From<NumberLiteral> for ExpressionKind {
+    fn from(number: NumberLiteral) -> Self {
+        Self::NumberLiteral(Box::new(number))
+    }
+}
+
+impl From<TextLiteral> for ExpressionKind {
+    fn from(text: TextLiteral) -> Self {
+        Self::TextLiteral(Box::new(text))
+    }
+}
+
+impl From<Application<Expression>> for ExpressionKind {
+    fn from(application: Application<Expression>) -> Self {
+        Self::Application(Box::new(application))
+    }
+}
+
+impl From<SequenceLiteral<Expression>> for ExpressionKind {
+    fn from(sequence: SequenceLiteral<Expression>) -> Self {
+        Self::SequenceLiteral(Box::new(sequence))
     }
 }
 
@@ -92,16 +149,10 @@ pub struct PiType {
     pub codomain: Expression,
 }
 
-#[derive(Clone)]
-pub struct Application {
-    pub callee: Expression,
-    pub argument: Expression,
-    pub explicitness: Explicitness,
-}
-
-#[derive(Clone)]
-pub struct Binding {
-    pub binder: Path,
+impl From<PiType> for ExpressionKind {
+    fn from(pi: PiType) -> Self {
+        Self::PiType(Box::new(pi))
+    }
 }
 
 #[derive(Clone)]
@@ -114,10 +165,22 @@ pub struct Lambda {
     pub body: Expression,
 }
 
+impl From<Lambda> for ExpressionKind {
+    fn from(lambda: Lambda) -> Self {
+        Self::Lambda(Box::new(lambda))
+    }
+}
+
 #[derive(Clone)]
 pub struct CaseAnalysis {
-    pub subject: Expression,
+    pub scrutinee: Expression,
     pub cases: Vec<Case>,
+}
+
+impl From<CaseAnalysis> for ExpressionKind {
+    fn from(analysis: CaseAnalysis) -> Self {
+        Self::CaseAnalysis(Box::new(analysis))
+    }
 }
 
 #[derive(Clone)]
@@ -129,13 +192,13 @@ pub struct Case {
 pub type Pattern = Item<PatternKind>;
 
 #[derive(Clone)]
-#[allow(clippy::box_collection)]
 pub enum PatternKind {
-    Number(Box<Number>),
-    Text(Box<String>),
-    Binding(Box<Binding>),
-    Binder(Box<Binder>),
-    Deapplication(Box<Deapplication>),
+    NumberLiteral(Box<NumberLiteral>),
+    TextLiteral(Box<TextLiteral>),
+    Path(Box<Path>),
+    Binder(Box<Identifier>),
+    Application(Box<Application<Pattern>>),
+    SequenceLiteral(Box<SequenceLiteral<Pattern>>),
     Error,
 }
 
@@ -145,36 +208,45 @@ impl PossiblyErroneous for PatternKind {
     }
 }
 
-/// A binder inside of a pattern.
-#[derive(Clone)]
-pub struct Binder {
-    pub binder: Identifier,
+impl From<NumberLiteral> for PatternKind {
+    fn from(number: NumberLiteral) -> Self {
+        Self::NumberLiteral(Box::new(number))
+    }
+}
+
+impl From<TextLiteral> for PatternKind {
+    fn from(text: TextLiteral) -> Self {
+        Self::TextLiteral(Box::new(text))
+    }
+}
+
+impl From<Path> for PatternKind {
+    fn from(path: Path) -> Self {
+        Self::Path(Box::new(path))
+    }
+}
+
+impl From<Identifier> for PatternKind {
+    fn from(identifier: Identifier) -> Self {
+        Self::Binder(Box::new(identifier))
+    }
+}
+
+impl From<Application<Pattern>> for PatternKind {
+    fn from(application: Application<Pattern>) -> Self {
+        Self::Application(Box::new(application))
+    }
+}
+
+impl From<SequenceLiteral<Pattern>> for PatternKind {
+    fn from(sequence: SequenceLiteral<Pattern>) -> Self {
+        Self::SequenceLiteral(Box::new(sequence))
+    }
 }
 
 #[derive(Clone)]
-pub struct Deapplication {
-    pub callee: Pattern,
-    pub argument: Pattern,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Number {
-    Nat(crate::utility::Nat),
-    Nat32(u32),
-    Nat64(u64),
-    Int(crate::utility::Int),
-    Int32(i32),
-    Int64(i64),
-}
-
-pub(crate) macro decl($( $tree:tt )+) {
-    crate::item::item!(crate::syntax::lowered_ast, DeclarationKind, Box; $( $tree )+)
-}
-
-pub(crate) macro expr($( $tree:tt )+) {
-    crate::item::item!(crate::syntax::lowered_ast, ExpressionKind, Box; $( $tree )+)
-}
-
-pub(crate) macro pat($( $tree:tt )+) {
-    crate::item::item!(crate::syntax::lowered_ast, PatternKind, Box; $( $tree )+)
+pub struct Application<T> {
+    pub callee: T,
+    pub explicitness: Explicitness,
+    pub argument: T,
 }
