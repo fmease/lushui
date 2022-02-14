@@ -10,7 +10,7 @@
 #![allow(clippy::implicit_hasher)] // false positive
 
 use crate::{
-    diagnostics::{Code, Diagnostic, Reporter},
+    diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
     error::Result,
     span::{SharedSourceMap, SourceFileIndex, SourceMap, Span, Spanned, Spanning, WeaklySpanned},
     utility::{obtain, HashMap},
@@ -148,17 +148,14 @@ pub(crate) fn remove_map_entry<T: TryFrom<ValueKind, Error = TypeError>>(
 ) -> Result<Spanned<T>> {
     match map.value.remove(key) {
         Some(value) => convert(key, value, reporter),
-        None => {
-            Diagnostic::error()
-                .code(Code::E802)
-                .message(format!(
-                    "the {} is missing the key `{key}`",
-                    path.map_or_else(|| "root map".into(), |path| format!("map `{path}`"))
-                ))
-                .primary_span(map)
-                .report(reporter);
-            Err(())
-        }
+        None => Err(Diagnostic::error()
+            .code(Code::E802)
+            .message(format!(
+                "the {} is missing the key `{key}`",
+                path.map_or_else(|| "root map".into(), |path| format!("map `{path}`"))
+            ))
+            .primary_span(map)
+            .report(reporter)),
     }
 }
 
@@ -191,7 +188,7 @@ pub(crate) fn check_map_is_empty(
                 .report(reporter);
         }
 
-        return Err(());
+        return Err(ErrorReported::error_will_be_reported_unchecked());
     }
 
     Ok(())
@@ -212,7 +209,7 @@ pub(crate) fn convert<T: TryFrom<ValueKind, Error = TypeError>>(
                 key, error.expected, error.actual
             ))
             .labeled_primary_span(span, "has the wrong type")
-            .report(reporter);
+            .report(reporter)
     })?;
 
     Ok(Spanned::new(span, value))
@@ -618,11 +615,10 @@ mod parser {
             if token.name() == expected {
                 Ok(token.clone())
             } else {
-                Diagnostic::error()
+                Err(Diagnostic::error()
                     .message(format!("found {token}, but expected {expected}"))
                     .primary_span(token)
-                    .report(self.reporter);
-                Err(())
+                    .report(self.reporter))
             }
         }
 
@@ -732,8 +728,7 @@ mod parser {
                                 TrailingSeparators => Diagnostic::error().message("@Task"),
                                 SizeExceedance => Diagnostic::error().message("@Task"),
                             };
-                            diagnostic.report(self.reporter);
-                            return Err(());
+                            return Err(diagnostic.report(self.reporter));
                         }
                     };
                     Ok(Value::new(span, ValueKind::Integer(value)))
@@ -746,15 +741,13 @@ mod parser {
                     self.advance();
                     self.finish_parse_map(span)
                 }
-                _ => {
-                    let actual = self.current_token();
-
-                    Diagnostic::error()
-                        .message(format!("found {actual}, but expected value"))
-                        .primary_span(span)
-                        .report(self.reporter);
-                    Err(())
-                }
+                _ => Err(Diagnostic::error()
+                    .message(format!(
+                        "found {}, but expected value",
+                        self.current_token()
+                    ))
+                    .primary_span(span)
+                    .report(self.reporter)),
             }
         }
 
@@ -879,14 +872,13 @@ mod parser {
                 }
                 _ => {
                     // @Task
-                    Diagnostic::error()
+                    return Err(Diagnostic::error()
                         .message(format!(
                             "expected map key, but got {:?}",
                             self.current_token().name()
                         ))
                         .primary_span(span)
-                        .report(self.reporter);
-                    return Err(());
+                        .report(self.reporter));
                 }
             };
 

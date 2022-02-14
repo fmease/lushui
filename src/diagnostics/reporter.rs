@@ -22,12 +22,14 @@ pub enum Reporter {
 }
 
 impl Reporter {
-    pub(super) fn report(&self, diagnostic: Diagnostic) {
+    pub(super) fn report(&self, diagnostic: Diagnostic) -> ErrorReported {
         match self {
             Self::Silent => {}
             Self::Stderr(reporter) => reporter.report(diagnostic),
             Self::BufferedStderr(reporter) => reporter.report_or_buffer(diagnostic),
         }
+
+        ErrorReported(())
     }
 }
 
@@ -180,4 +182,14 @@ impl TryFrom<Reporter> for BufferedStderrReporter {
 fn print_to_stderr(message: &impl std::fmt::Display) {
     eprintln!("{message}");
     eprintln!();
+}
+
+// @Beacon @Task docs
+#[derive(Clone, Copy, Debug)]
+pub struct ErrorReported(());
+
+impl ErrorReported {
+    pub(crate) fn error_will_be_reported_unchecked() -> Self {
+        Self(())
+    }
 }

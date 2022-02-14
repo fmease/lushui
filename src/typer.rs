@@ -6,7 +6,7 @@
 use std::default::default;
 
 use crate::{
-    diagnostics::{Code, Diagnostic, Reporter},
+    diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
     entity::EntityKind,
     error::{Health, Result, Stain},
     format::{pluralize, DisplayWith, QuoteExt},
@@ -408,26 +408,23 @@ impl<'a> Typer<'a> {
         out_of_order_handler: impl FnOnce(&mut Self) -> Result,
     ) -> Result {
         match error {
-            Unrecoverable => Err(()),
+            Unrecoverable(token) => Err(token),
             OutOfOrderBinding => {
                 self.out_of_order_bindings.push(registration);
                 out_of_order_handler(self)
             }
-            TypeMismatch { expected, actual } => {
-                Diagnostic::error()
-                    .code(Code::E032)
-                    .message(format!(
-                        "expected type `{}`, got type `{}`",
-                        expected.with((self.component, self.session)),
-                        actual.with((self.component, self.session))
-                    ))
-                    .labeled_primary_span(&actual_value, "has the wrong type")
-                    .if_present(expectation_cause, |this, cause| {
-                        this.labeled_secondary_span(cause, "expected due to this")
-                    })
-                    .report(self.reporter);
-                Err(())
-            }
+            TypeMismatch { expected, actual } => Err(Diagnostic::error()
+                .code(Code::E032)
+                .message(format!(
+                    "expected type `{}`, got type `{}`",
+                    expected.with((self.component, self.session)),
+                    actual.with((self.component, self.session))
+                ))
+                .labeled_primary_span(&actual_value, "has the wrong type")
+                .if_present(expectation_cause, |this, cause| {
+                    this.labeled_secondary_span(cause, "expected due to this")
+                })
+                .report(self.reporter)),
         }
     }
 
@@ -445,7 +442,7 @@ impl<'a> Typer<'a> {
                     return Ok(());
                 }
 
-                Diagnostic::bug()
+                return Err(Diagnostic::bug()
                     .message(format!(
                         "found unresolvable {} during type checking",
                         pluralize!(previous_amount, "binding")
@@ -457,8 +454,7 @@ impl<'a> Typer<'a> {
                             .map(|binding| binding.with((self.component, self.session)).quote())
                             .join_with(", ")
                     ))
-                    .report(self.reporter);
-                return Err(());
+                    .report(self.reporter));
             }
         }
 
@@ -583,7 +579,7 @@ impl<'a> Typer<'a> {
                         // @Bug this error handling might *steal* the error from other handlers further
                         // down the call chain
                         .map_err(|error| match error {
-                            Unrecoverable => {}
+                            Unrecoverable(token) => token,
                             TypeMismatch { expected, actual } => Diagnostic::error()
                                 .code(Code::E032)
                                 .message(format!(
@@ -610,7 +606,7 @@ impl<'a> Typer<'a> {
                         None => pi.codomain.clone(),
                     }
                 } else {
-                    Diagnostic::error()
+                    return Err(Diagnostic::error()
                         .code(Code::E031)
                         .message(format!(
                             "expected type `_ -> _`, got type `{}`",
@@ -618,8 +614,8 @@ impl<'a> Typer<'a> {
                         ))
                         .labeled_primary_span(&application.callee, "has wrong type")
                         .labeled_secondary_span(&application.argument, "applied to this")
-                        .report(self.reporter);
-                    return Err(Unrecoverable);
+                        .report(self.reporter)
+                        .into());
                 }
             }
             Substitution(substitution) => {
@@ -647,13 +643,13 @@ impl<'a> Typer<'a> {
                     Binding(_) => {}
                     Application(_application) => todo!("polymorphic types in patterns"),
                     _ if self.is_a_type(subject_type.clone(), scope)? => {
-                        Diagnostic::error()
+                        return Err(Diagnostic::error()
                             .code(Code::E035)
                             .message("attempt to analyze a type")
                             .primary_span(expression.span)
                             .note("forbidden to uphold parametricity and type erasure")
-                            .report(self.reporter);
-                        return Err(Unrecoverable);
+                            .report(self.reporter)
+                            .into());
                     }
                     _ => todo!(
                         "encountered unsupported type to be case-analysed type={}",
@@ -670,19 +666,17 @@ impl<'a> Typer<'a> {
 
                     // @Question make more elegant w/ the new error handling system?
                     let handle_type_mismatch = |error, context, reporter| match error {
-                        TypeMismatch { expected, actual } => {
-                            Diagnostic::error()
-                                .code(Code::E032)
-                                .message(format!(
-                                    "expected type `{}`, got type `{}`",
-                                    expected.with(context),
-                                    actual.with(context)
-                                ))
-                                .labeled_primary_span(&case.pattern, "has the wrong type")
-                                .labeled_secondary_span(&analysis.scrutinee, "expected due to this")
-                                .report(reporter);
-                            Unrecoverable
-                        }
+                        TypeMismatch { expected, actual } => Diagnostic::error()
+                            .code(Code::E032)
+                            .message(format!(
+                                "expected type `{}`, got type `{}`",
+                                expected.with(context),
+                                actual.with(context)
+                            ))
+                            .labeled_primary_span(&case.pattern, "has the wrong type")
+                            .labeled_secondary_span(&analysis.scrutinee, "expected due to this")
+                            .report(reporter)
+                            .into(),
                         error => error,
                     };
 
@@ -764,7 +758,7 @@ impl<'a> Typer<'a> {
                                 }
                                 // @Task make error less fatal (keep processing next cases (match arms))
                                 (Binder(binder), _) => {
-                                    Diagnostic::error()
+                                    return Err(Diagnostic::error()
                                         .code(Code::E034)
                                         .message(format!(
                                             "binder `{}` used in callee position inside pattern",
@@ -772,8 +766,8 @@ impl<'a> Typer<'a> {
                                         ))
                                         .primary_span(&binder.0)
                                         .help("consider refering to a concrete binding")
-                                        .report(self.reporter);
-                                    return Err(Unrecoverable);
+                                        .report(self.reporter)
+                                        .into());
                                 }
                                 (Application(_), _argument) => todo!(),
                                 (Error, _) => unreachable!(),
@@ -909,7 +903,7 @@ impl<'a> Typer<'a> {
         {
             Ok(())
         } else {
-            Diagnostic::error()
+            Err(Diagnostic::error()
                 .code(Code::E033)
                 .message(format!(
                     "`{}` is not an instance of `{}`",
@@ -917,8 +911,7 @@ impl<'a> Typer<'a> {
                     type_.with((self.component, self.session))
                 ))
                 .primary_span(result_type.span)
-                .report(self.reporter);
-            Err(())
+                .report(self.reporter))
         }
     }
 }
@@ -954,7 +947,7 @@ impl Diagnostic {
 // @Note maybe we should redesign this as a trait (object) looking at those
 // methods mirroring the variants
 pub(crate) enum Error {
-    Unrecoverable,
+    Unrecoverable(ErrorReported),
     OutOfOrderBinding,
     TypeMismatch {
         expected: Expression,
@@ -964,8 +957,8 @@ pub(crate) enum Error {
 
 use Error::*;
 
-impl From<()> for Error {
-    fn from((): ()) -> Self {
-        Self::Unrecoverable
+impl From<ErrorReported> for Error {
+    fn from(token: ErrorReported) -> Self {
+        Self::Unrecoverable(token)
     }
 }

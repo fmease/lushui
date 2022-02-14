@@ -42,7 +42,7 @@ use super::{
     },
 };
 use crate::{
-    diagnostics::{Code, Diagnostic, Reporter},
+    diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
     error::Result,
     format::{ordered_listing, Conjunction},
     span::{SharedSourceMap, SourceFileIndex, Span, Spanned, Spanning},
@@ -139,7 +139,9 @@ impl<'a> Parser<'a> {
                 diagnostic().report(parser.reporter);
             }
 
-            Err(())
+            // @Note I am not really happy with this: if we are not "looking ahead", we won't actually
+            // emit an error @Task smh change the error type to reflect the semantics
+            Err(ErrorReported::error_will_be_reported_unchecked())
         }
 
         error(self, diagnostic).map(|okay| okay)
@@ -1858,10 +1860,9 @@ impl<'a> Parser<'a> {
                 None
             })
         } else {
-            Expected::Delimiter(Delimiter::Terminator)
+            Err(Expected::Delimiter(Delimiter::Terminator)
                 .but_actual_is(self.current_token())
-                .report(self.reporter);
-            Err(())
+                .report(self.reporter))
         }
     }
 

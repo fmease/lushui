@@ -8,7 +8,7 @@
 //! respectively.
 
 use crate::{
-    diagnostics::{Code, Diagnostic, Reporter},
+    diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
     entity::{Entity, EntityKind},
     error::{Health, OkIfUntaintedExt, PossiblyErroneous, ReportedExt, Result, Stain},
     format::{pluralize, unordered_listing, Conjunction, DisplayWith, QuoteExt},
@@ -27,7 +27,7 @@ use crate::{
 };
 pub(crate) use scope::{Component, Exposure, FunctionScope, Namespace};
 use scope::{RegistrationError, RestrictedExposure};
-use std::{cmp::Ordering, collections::hash_map::Entry, fmt, sync::Mutex};
+use std::{cmp::Ordering, collections::hash_map::Entry, fmt, mem, sync::Mutex};
 
 mod scope;
 
@@ -54,10 +54,11 @@ pub fn resolve_declarations(
 
     resolver
         .start_resolve_declaration(&component_root, None, Context::default())
-        .map_err(|_| {
-            std::mem::take(&mut resolver.component.duplicate_definitions)
-                .into_values()
-                .for_each(|error| Diagnostic::from(error).report(resolver.reporter));
+        .map_err(|error| {
+            for error in mem::take(&mut resolver.component.duplicate_definitions).into_values() {
+                Diagnostic::from(error).report(resolver.reporter);
+            }
+            error.token()
         })?;
 
     resolver.resolve_use_bindings();
@@ -215,12 +216,17 @@ impl<'a> ResolverMut<'a> {
                                 known,
                             },
                         )
-                        .map_err(drop)
+                        .map_err(RegistrationError::token)
                         .stain(health);
                     }
                 }
 
-                return Result::from(*health).map_err(|_| RegistrationError::Unrecoverable);
+                // @Beacon @Beacon @Beacon @Task get rid of unchecked call
+                return Result::from(*health).map_err(|_| {
+                    RegistrationError::Unrecoverable(
+                        ErrorReported::error_will_be_reported_unchecked(),
+                    )
+                });
             }
             Constructor(constructor) => {
                 // there is always a root module
@@ -272,11 +278,16 @@ impl<'a> ResolverMut<'a> {
 
                 for declaration in &submodule.declarations {
                     self.start_resolve_declaration(declaration, Some(index), Context::default())
-                        .map_err(drop)
+                        .map_err(RegistrationError::token)
                         .stain(health);
                 }
 
-                return Result::from(*health).map_err(|_| RegistrationError::Unrecoverable);
+                // @Beacon @Beacon @Beacon @Task get rid of unchecked call
+                return Result::from(*health).map_err(|_| {
+                    RegistrationError::Unrecoverable(
+                        ErrorReported::error_will_be_reported_unchecked(),
+                    )
+                });
             }
             Use(use_) => {
                 // there is always a root module
@@ -509,7 +520,7 @@ impl<'a> ResolverMut<'a> {
                     Ok(reference) => {
                         self.component.bindings[index].kind = EntityKind::Use { reference };
                     }
-                    Err(error @ (UnresolvedBinding { .. } | Unrecoverable)) => {
+                    Err(error @ (UnresolvedBinding { .. } | Unrecoverable(_))) => {
                         self.component.bindings[index].mark_as_error();
                         self.as_ref().report_resolution_error(error);
                         self.health.taint();
@@ -798,10 +809,9 @@ impl<'a> Resolver<'a> {
                 )
             }
             UseIn => {
-                Diagnostic::unimplemented("use/in expression")
+                return Err(Diagnostic::unimplemented("use/in expression")
                     .primary_span(&expression)
-                    .report(self.reporter);
-                return Err(());
+                    .report(self.reporter));
             }
             CaseAnalysis(analysis) => {
                 let scrutinee = self.resolve_expression(analysis.scrutinee.clone(), scope)?;
@@ -971,14 +981,14 @@ impl<'a> Resolver<'a> {
                         ))
                         .labeled_primary_span(literal, "number literal may not construct that type")
                         .labeled_secondary_span(type_, "the data type")
-                        .report(self.reporter);
+                        .report(self.reporter)
                 })?,
             // for now, we default to `Nat` until we implement polymorphic number literals and their inference
             None => IntrinsicNumericType::Nat,
         };
 
-        let Ok(resolved_number) = hir::Number::parse(&literal.value, type_) else {
-            Diagnostic::error()
+        let Some(resolved_number) = hir::Number::parse(&literal.value, type_) else {
+            return Err(Diagnostic::error()
                 .code(Code::E007)
                 .message(format!(
                     "number literal `{literal}` does not fit type `{type_}`",
@@ -988,8 +998,7 @@ impl<'a> Resolver<'a> {
                     "values of this type must fit integer interval {}",
                     type_.interval(),
                 ))
-                .report(self.reporter);
-            return Err(());
+                .report(self.reporter));
         };
 
         Ok(number.map(|_| resolved_number.into()))
@@ -1035,7 +1044,7 @@ impl<'a> Resolver<'a> {
                             "text literal may not construct that type",
                         )
                         .labeled_secondary_span(type_, "the data type")
-                        .report(self.reporter);
+                        .report(self.reporter)
                 })?,
             // for now, we default to `Text` until we implement polymorphic text literals and their inference
             None => IntrinsicType::Text,
@@ -1072,10 +1081,9 @@ impl<'a> Resolver<'a> {
         // @Task make core's Vector, Tuple, etc. known and check the namespacing type
 
         // @Task
-        Diagnostic::unimplemented("sequence literals")
+        Err(Diagnostic::unimplemented("sequence literals")
             .primary_span(&sequence.value.elements)
-            .report(self.reporter);
-        Err(())
+            .report(self.reporter))
     }
 
     fn resolve_path_of_literal(
@@ -1092,7 +1100,7 @@ impl<'a> Resolver<'a> {
             let entity = self.look_up(binding);
             if !entity.is_data_type() {
                 // @Task code
-                Diagnostic::error()
+                return Err(Diagnostic::error()
                     .message(format!("binding `{path}` is not a data type"))
                     // @Task future-proof a/an
                     .labeled_primary_span(path, format!("a {}", entity.kind.name()))
@@ -1100,8 +1108,7 @@ impl<'a> Resolver<'a> {
                         literal,
                         "literal requires a data type as its namespace",
                     )
-                    .report(self.reporter);
-                return Err(());
+                    .report(self.reporter));
             }
         }
 
@@ -1164,12 +1171,11 @@ impl<'a> Resolver<'a> {
                 Extern => {
                     let Some(component) = path.segments.first() else {
                         // @Task improve the error message, code
-                        Diagnostic::error()
+                        return Err(Diagnostic::error()
                             .message("path `extern` is used in isolation")
                             .primary_span(hanger)
                             .note("the path segment `extern` is only to be used indirectly to refer to specific component")
-                            .report(self.reporter);
-                        return Err(ResolutionError::Unrecoverable);
+                            .report(self.reporter).into());
                     };
 
                     // @Beacon @Task add test for error case
@@ -1187,11 +1193,10 @@ impl<'a> Resolver<'a> {
                         // @Task check if a dependency has a (transitive) dependency
                         // with the *same* name and add the note that they (trans deps) have to be
                         // explicitly added to the deps list to be referenceable in this component
-                        Diagnostic::error()
+                        return Err(Diagnostic::error()
                             .message(format!("component `{component}` does not exist"))
                             .primary_span(component)
-                            .report(self.reporter);
-                        return Err(ResolutionError::Unrecoverable);
+                            .report(self.reporter).into());
                     };
 
                     let component = &self.session[component];
@@ -1219,10 +1224,9 @@ impl<'a> Resolver<'a> {
             };
 
             return if path.segments.is_empty() {
-                Target::output_bare_path_hanger(hanger, namespace).map_err(|error| {
-                    error.report(self.reporter);
-                    ResolutionError::Unrecoverable
-                })
+                Target::output_bare_path_hanger(hanger, namespace)
+                    .reported(self.reporter)
+                    .map_err(Into::into)
             } else {
                 self.resolve_path_with_origin::<Target>(
                     &ast::Path::with_segments(path.segments.clone()),
@@ -1252,14 +1256,13 @@ impl<'a> Resolver<'a> {
                     // @Task add rationale why `last`
                     Ok(Target::output(index, identifiers.last().unwrap()))
                 } else {
-                    self.attempt_to_access_subbinder_of_non_namespace(
+                    let diagnostic = self.attempt_to_access_subbinder_of_non_namespace(
                         identifier,
                         &entity.kind,
                         namespace,
                         identifiers.first().unwrap(),
-                    )
-                    .report(self.reporter);
-                    Err(ResolutionError::Unrecoverable)
+                    );
+                    Err(diagnostic.report(self.reporter).into())
                 }
             }
             [] => unreachable!(),
@@ -1276,7 +1279,7 @@ impl<'a> Resolver<'a> {
                 .code(Code::E021) // @Question use a dedicated code?
                 .message("the component root does not have a parent")
                 .primary_span(hanger)
-                .report(self.reporter);
+                .report(self.reporter)
         })
     }
 
@@ -1352,15 +1355,15 @@ impl<'a> Resolver<'a> {
                 definition_site_namespace.global(self.component),
                 reach,
             ) {
-                Diagnostic::error()
+                return Err(Diagnostic::error()
                     .code(Code::E029)
                     .message(format!(
                         "binding `{}` is private",
                         self.component.absolute_path_to_string(index, self.session)
                     ))
                     .primary_span(identifier)
-                    .report(self.reporter);
-                return Err(ResolutionError::Unrecoverable);
+                    .report(self.reporter)
+                    .into());
             }
         }
 
@@ -1413,12 +1416,11 @@ impl<'a> Resolver<'a> {
                     .some_ancestor_equals(definition_site_namespace, reach);
 
                 if !reach_is_ancestor {
-                    Diagnostic::error()
+                    return Err(Diagnostic::error()
                         .code(Code::E037)
                         .message("exposure can only be restricted to ancestor modules")
                         .primary_span(unresolved_reach)
-                        .report(self.reporter);
-                    return Err(());
+                        .report(self.reporter));
                 }
 
                 drop(exposure_);
@@ -1538,7 +1540,7 @@ impl<'a> Resolver<'a> {
                 .map_err(|error| {
                     self.report_resolution_error_searching_lookalikes(error, |identifier, _| {
                         self.find_similarly_named(origin, identifier)
-                    });
+                    })
                 })
         }
     }
@@ -1608,19 +1610,19 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    fn report_resolution_error(&self, error: ResolutionError) {
+    fn report_resolution_error(&self, error: ResolutionError) -> ErrorReported {
         self.report_resolution_error_searching_lookalikes(error, |identifier, namespace| {
             self.find_similarly_named_declaration(identifier, |_| true, namespace)
-        });
+        })
     }
 
     fn report_resolution_error_searching_lookalikes<'s>(
         &self,
         error: ResolutionError,
         lookalike_finder: impl FnOnce(&str, DeclarationIndex) -> Option<&'s str>,
-    ) {
+    ) -> ErrorReported {
         match error {
-            ResolutionError::Unrecoverable => {}
+            ResolutionError::Unrecoverable(token) => token,
             ResolutionError::UnresolvedBinding {
                 identifier,
                 namespace,
@@ -1663,7 +1665,7 @@ impl<'a> Resolver<'a> {
                             ))
                         },
                     )
-                    .report(self.reporter);
+                    .report(self.reporter)
             }
             ResolutionError::UnresolvedUseBinding { .. } => unreachable!(),
         }
@@ -1903,7 +1905,7 @@ mod target {
 
 /// A possibly recoverable error that cab emerge during resolution.
 enum ResolutionError {
-    Unrecoverable,
+    Unrecoverable(ErrorReported),
     UnresolvedBinding {
         identifier: ast::Identifier,
         namespace: DeclarationIndex,
@@ -1916,8 +1918,8 @@ enum ResolutionError {
 
 impl ResolutionError {}
 
-impl From<()> for ResolutionError {
-    fn from((): ()) -> Self {
-        Self::Unrecoverable
+impl From<ErrorReported> for ResolutionError {
+    fn from(token: ErrorReported) -> Self {
+        Self::Unrecoverable(token)
     }
 }

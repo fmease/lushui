@@ -9,7 +9,6 @@
 #![forbid(rust_2018_idioms, unused_must_use)]
 #![warn(clippy::pedantic)]
 #![allow(
-    clippy::result_unit_err, // using a reporter to forward information
     clippy::items_after_statements,
     clippy::enum_glob_use,
     clippy::must_use_candidate,
@@ -70,7 +69,7 @@ fn main() {
     }
 }
 
-fn main_() -> Result {
+fn main_() -> Result<(), ()> {
     set_panic_hook();
 
     let (command, options) = cli::arguments();
@@ -139,7 +138,7 @@ fn build_package(
                     // @Question code?
                     .message("the path to the source file or the package folder is invalid")
                     .note(IOError(error, &path).to_string())
-                    .report(reporter);
+                    .report(reporter)
             })
         })
         .transpose()?;
@@ -179,7 +178,7 @@ fn build_package(
                     // @Beacon @Task dont unwrap, handle the error cases
                     let path = std::env::current_dir().unwrap();
                     let Some(path) = find_package(&path) else {
-                        Diagnostic::error()
+                        return Err(Diagnostic::error()
                             .message(
                                 "neither the current folder nor any of its parents is a package",
                             )
@@ -187,8 +186,7 @@ fn build_package(
                                 "none of the folders contain a package manifest file named `{}`",
                                 PackageManifest::FILE_NAME
                             ))
-                            .report(reporter);
-                        return Err(());
+                            .report(reporter));
                     };
 
                     build_queue.process_package(path)?;
@@ -263,7 +261,7 @@ fn build_package(
                         component.name(),
                     ))
                     .note(IOError(error, component.path()).to_string())
-                    .report(reporter);
+                    .report(reporter)
             })?;
 
         let time = Instant::now();
@@ -339,15 +337,14 @@ fn build_package(
 
         // @Task move out of main.rs
         if component.is_executable() && component.program_entry.is_none() {
-            Diagnostic::error()
+            return Err(Diagnostic::error()
                 .code(Code::E050)
                 .message(format!(
                     "the component `{}` is missing a program entry named `{}`",
                     component.name(),
                     PROGRAM_ENTRY_IDENTIFIER,
                 ))
-                .report(reporter);
-            return Err(());
+                .report(reporter));
         }
 
         'ending: {
@@ -356,13 +353,12 @@ fn build_package(
                     if component.is_goal(&session) {
                         if !component.is_executable() {
                             // @Question code?
-                            Diagnostic::error()
+                            return Err(Diagnostic::error()
                                 .message(format!(
                                     "the package `{}` does not contain any executable to run",
                                     component.package(&session).name,
                                 ))
-                                .report(reporter);
-                            return Err(());
+                                .report(reporter));
                         }
 
                         let result = typer::interpreter::evaluate_main_function(

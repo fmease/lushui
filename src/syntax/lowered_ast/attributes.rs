@@ -131,30 +131,24 @@ the body containing a set of constructors
         };
 
         match (body, attributes.span(AttributeName::Intrinsic)) {
-            (Some((body_span, body_label)), Some(intrinsic)) => {
-                Diagnostic::error()
-                    .code(Code::E042)
-                    .message(format!(
-                        "the declaration `{binder}` marked as `intrinsic` has a body",
-                    ))
-                    .labeled_primary_span(body_span, body_label)
-                    .labeled_secondary_span(
-                        intrinsic,
-                        "marks the declaration as being defined outside of the language",
-                    )
-                    .help("remove either the body or the attribute")
-                    .report(reporter);
-                Err(())
-            }
-            (None, None) => {
-                Diagnostic::error()
-                    .code(Code::E012)
-                    .message(format!("declaration `{}` has no definition", binder))
-                    .primary_span(missing_definition_location)
-                    .help(format!("provide a definition with `{definition_marker}`"))
-                    .report(reporter);
-                Err(())
-            }
+            (Some((body_span, body_label)), Some(intrinsic)) => Err(Diagnostic::error()
+                .code(Code::E042)
+                .message(format!(
+                    "the declaration `{binder}` marked as `intrinsic` has a body",
+                ))
+                .labeled_primary_span(body_span, body_label)
+                .labeled_secondary_span(
+                    intrinsic,
+                    "marks the declaration as being defined outside of the language",
+                )
+                .help("remove either the body or the attribute")
+                .report(reporter)),
+            (None, None) => Err(Diagnostic::error()
+                .code(Code::E012)
+                .message(format!("declaration `{}` has no definition", binder))
+                .primary_span(missing_definition_location)
+                .help(format!("provide a definition with `{definition_marker}`"))
+                .report(reporter)),
             _ => Ok(()),
         }
     }

@@ -34,6 +34,8 @@ use std::{
 };
 use unicode_width::UnicodeWidthStr;
 
+use self::reporter::ErrorReported;
+
 pub mod reporter;
 #[cfg(test)]
 mod test;
@@ -231,8 +233,8 @@ impl Diagnostic {
     }
 
     /// Report the diagnostic.
-    pub fn report(self, reporter: &Reporter) {
-        reporter.report(self);
+    pub fn report(self, reporter: &Reporter) -> ErrorReported {
+        reporter.report(self)
     }
 
     /// Format the diagnostic for the use in a terminal.

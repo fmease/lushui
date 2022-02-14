@@ -3,11 +3,11 @@
 use std::fmt;
 
 use crate::{
-    diagnostics::{Diagnostic, Reporter},
+    diagnostics::{reporter::ErrorReported, Diagnostic, Reporter},
     utility::SmallVec,
 };
 
-pub type Result<T = (), E = ()> = std::result::Result<T, E>;
+pub type Result<T = (), E = ErrorReported> = std::result::Result<T, E>;
 
 #[derive(Debug)]
 #[must_use]
@@ -45,9 +45,6 @@ impl<T> Stain<T> for Outcome<T> {
     }
 }
 
-// @Beacon @Beacon @Task implement this for all Result<T, E> where E: AlreadyReported (…)
-// which is implemented for () and for e.g. RegistrationError (this would allow use to get rid of
-// some .map_err(drop)
 impl<T: PossiblyErroneous> Stain<T> for Result<T> {
     fn stain(self, health: &mut Health) -> T {
         match self {
@@ -68,7 +65,8 @@ impl<T> OkIfUntaintedExt<T> for Result<T> {
     fn ok_if_untainted(value: T, health: Health) -> Self {
         match health {
             Health::Untainted => Ok(value),
-            Health::Tainted => Err(()),
+            // @Beacon @Beacon @Beacon @Task don't use this unchecked call, use the ErrorReported inside of Tainted (once available)
+            Health::Tainted => Err(ErrorReported::error_will_be_reported_unchecked()),
         }
     }
 }
@@ -93,7 +91,7 @@ impl<T: PossiblyErroneous> From<Result<T>> for Outcome<T> {
     fn from(option: Result<T>) -> Self {
         match option {
             Ok(value) => Outcome::untainted(value),
-            Err(()) => Outcome::tainted(T::error()),
+            Err(_token) => Outcome::tainted(T::error()),
         }
     }
 }
@@ -102,7 +100,8 @@ impl<T> From<Outcome<T>> for Result<T> {
     fn from(outcome: Outcome<T>) -> Self {
         match outcome.health {
             Health::Untainted => Ok(outcome.value),
-            Health::Tainted => Err(()),
+            // @Beacon @Beacon @Beacon @Task don't use this unchecked call, use the ErrorReported inside of Tainted (once available)
+            Health::Tainted => Err(ErrorReported::error_will_be_reported_unchecked()),
         }
     }
 }
@@ -119,6 +118,8 @@ pub enum Health {
     #[default]
     Untainted,
     /// Marks non-fatal failures.
+    // @Beacon @Beacon @Beacon @Task make this take an ErrorReported enabling us to
+    // remove the unchecked creation calls in the combinators below
     Tainted,
 }
 
@@ -149,7 +150,7 @@ impl From<Result> for Health {
     fn from(result: Result) -> Self {
         match result {
             Ok(()) => Self::Untainted,
-            Err(()) => Self::Tainted,
+            Err(_) => Self::Tainted,
         }
     }
 }
@@ -158,7 +159,8 @@ impl From<Health> for Result {
     fn from(health: Health) -> Self {
         match health {
             Health::Untainted => Ok(()),
-            Health::Tainted => Err(()),
+            // @Beacon @Beacon @Beacon @Task don't use this unchecked call, use the ErrorReported inside of Tainted (once available)
+            Health::Tainted => Err(ErrorReported::error_will_be_reported_unchecked()),
         }
     }
 }
@@ -192,6 +194,7 @@ impl<T> PossiblyErroneous for Vec<T> {
 // @Note very weird impl...it does not really corresp. to our
 // notion of possibly errorneous but still this impl is very useful
 // as it allows us to call try_in on functions that merely check (Result<(), Error>)
+// @Beacon @Beacon @Beacon @Question can we replace () here with ErrorReported?
 impl PossiblyErroneous for () {
     fn error() -> Self {}
 }

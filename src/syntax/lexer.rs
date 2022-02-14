@@ -5,7 +5,10 @@ mod test;
 
 use super::token::{Provenance, Token, TokenKind, UnterminatedTextLiteral};
 use crate::{
-    diagnostics::{reporter::SilentReporter, Code, Diagnostic, Reporter},
+    diagnostics::{
+        reporter::{ErrorReported, SilentReporter},
+        Code, Diagnostic, Reporter,
+    },
     error::{Health, Outcome, Result},
     span::{LocalSpan, SourceFile, SourceMap, Spanned},
     utility::{self, lexer::Lexer as _, GetFromEndExt},
@@ -422,12 +425,11 @@ impl<'a> Lexer<'a> {
             self.lex_identifier_segment();
             if self.local_span == previous {
                 self.local_span = LocalSpan::with_length(dash, 1);
-                Diagnostic::error()
+                return Err(Diagnostic::error()
                     .code(Code::E002)
                     .message("trailing dash on identifier")
                     .primary_span(self.span())
-                    .report(self.reporter);
-                return Err(());
+                    .report(self.reporter));
             }
         }
 
@@ -489,7 +491,7 @@ impl<'a> Lexer<'a> {
             Err(error) => {
                 // @Task push that to the error buffer instead (making this non-fatal)
                 // and treat Spaces(1) as Spaces(4), Spaces(6) as Spaces(8) etc.
-                Diagnostic::error()
+                return Err(Diagnostic::error()
                     .code(Code::E003)
                     .message(format!(
                         "invalid indentation consisting of {} spaces",
@@ -505,8 +507,7 @@ impl<'a> Lexer<'a> {
                             INDENTATION.0
                         ),
                     })
-                    .report(self.reporter);
-                return Err(());
+                    .report(self.reporter));
             }
         };
 
@@ -652,7 +653,8 @@ impl<'a> Lexer<'a> {
 
             // @Task don't return early here, just taint the health and
             // return an InvalidNumberLiteral token
-            return Err(());
+            // @Task don't use unchecked here, smh get the token from above
+            return Err(ErrorReported::error_will_be_reported_unchecked());
         }
 
         self.add(NumberLiteral(number.into()));

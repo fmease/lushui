@@ -470,7 +470,7 @@ impl<'a> Interpreter<'a> {
                 Form::Normal => {
                     let parameter_type = self.evaluate_expression(
                         lambda.parameter_type_annotation.clone().ok_or_else(|| {
-                            Diagnostic::missing_annotation().report(self.reporter);
+                            Diagnostic::missing_annotation().report(self.reporter)
                         })?,
                         context,
                     )?;
@@ -760,10 +760,9 @@ impl<'a> Interpreter<'a> {
             }
             // @Question is that what we want or should we just evaluate again?
             (Substitution(_), Substitution(_)) => {
-                Diagnostic::bug()
+                return Err(Diagnostic::bug()
                     .message("attempt to check two substitutions for equivalence")
-                    .note("they should not exist in this part of the code but should have already been evaluated").report(self.reporter);
-                return Err(());
+                    .note("they should not exist in this part of the code but should have already been evaluated").report(self.reporter));
             }
             // @Task probably should just be `true` once we support errors in subexpressions
             (Error, _) | (_, Error) => panic!("trying to check equality on erroneous expressions"),

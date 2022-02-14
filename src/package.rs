@@ -94,7 +94,7 @@ impl BuildQueue<'_> {
                         // @Note the message does not scale to more complex cycles (e.g. a cycle of three packages)
                         // @Task provide more context for transitive dependencies of the goal component
                         // @Task code
-                        Diagnostic::error()
+                        return Err(Diagnostic::error()
                             .message(format!(
                                 "the packages `{}` and `{}` are circular",
                                 self[package_index].name, dependency.name
@@ -114,8 +114,7 @@ impl BuildQueue<'_> {
                                     &map,
                                 ),
                             )
-                            .report(self.reporter);
-                        return Err(());
+                            .report(self.reporter));
                     }
 
                     // deduplicating packages by absolute path
@@ -129,7 +128,7 @@ impl BuildQueue<'_> {
                                 dependency.name.as_str(),
                                 self[package_index].name.as_str(),
                             )
-                            .report(self.reporter);
+                            .report(self.reporter)
                         })?,
                     );
                     continue;
@@ -176,11 +175,10 @@ impl BuildQueue<'_> {
                 // @Task use primary span (endonym here (key `name` or map key)) &
                 // secondary span (endonym in the dependency's package manifest file)
                 // @Task branch on existence of the key `name`
-                Diagnostic::error()
+                // @Task maybe instead of returning early, we could just go forwards with the the exonym
+                return Err(Diagnostic::error()
                     .message("library name does not match")
-                    .report(self.reporter);
-                // @Note we could just go forwards with the the exonym, theoretically
-                return Err(());
+                    .report(self.reporter));
             }
 
             // @Task assert version requirement (if any) is fulfilled
@@ -210,7 +208,7 @@ impl BuildQueue<'_> {
                         self[dependency_package].name.as_str(),
                         self[package_index].name.as_str(),
                     )
-                    .report(self.reporter);
+                    .report(self.reporter)
                 })?,
             );
         }
@@ -313,13 +311,12 @@ impl BuildQueue<'_> {
         if !(package_contains_library || package_contains_executables) {
             // @Task provide more context for transitive dependencies of the goal component
             // @Task code
-            Diagnostic::error()
+            return Err(Diagnostic::error()
                 .message(format!(
                     "the package `{}` does not contain a library or any executables",
                     self[package].name,
                 ))
-                .report(self.reporter);
-            return Err(());
+                .report(self.reporter));
         }
 
         Ok(())
@@ -330,12 +327,11 @@ impl BuildQueue<'_> {
         let manifest_file = match self.map.borrow_mut().load(manifest_path.clone()) {
             Ok(file) => file,
             Err(error) => {
-                Diagnostic::error()
+                return Err(Diagnostic::error()
                     // @Question code?
                     .message("could not load the package")
                     .note(IOError(error, &manifest_path).to_string())
-                    .report(self.reporter);
-                return Err(());
+                    .report(self.reporter));
             }
         };
 
@@ -383,12 +379,11 @@ impl BuildQueue<'_> {
             let core_manifest_file = match self.map.borrow_mut().load(core_manifest_path.clone()) {
                 Ok(file) => file,
                 Err(error) => {
-                    Diagnostic::error()
+                    return Err(Diagnostic::error()
                         // @Question code?
                         .message("could not load the package `core`")
                         .note(IOError(error, &core_manifest_path).to_string())
-                        .report(self.reporter);
-                    return Err(());
+                        .report(self.reporter));
                 }
             };
 
@@ -731,7 +726,7 @@ pub(crate) fn parse_component_name_from_file_path(
 
 pub(crate) mod manifest {
     use crate::{
-        diagnostics::{Code, Diagnostic, Reporter},
+        diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
         error::{Health, OkIfUntaintedExt, ReportedExt, Result},
         metadata::{self, content_span_of_key, convert, TypeError},
         span::{SharedSourceMap, SourceFileIndex, Spanned, WeaklySpanned},
@@ -766,7 +761,7 @@ pub(crate) mod manifest {
                             error.expected, error.actual
                         ))
                         .labeled_primary_span(manifest_span, "has the wrong type")
-                        .report(reporter);
+                        .report(reporter)
                 })?;
 
             let name = metadata::remove_map_entry::<String>(
@@ -803,7 +798,8 @@ pub(crate) mod manifest {
                         reporter,
                     );
 
-                    try_all! { path, exhaustion; return Err(()) };
+                    // @Task try to remove the unchecked ErrorReported creation
+                    try_all! { path, exhaustion; return Err(ErrorReported::error_will_be_reported_unchecked()) };
                     Ok(Some(Spanned::new(
                         library.span,
                         LibraryManifest {
@@ -812,7 +808,7 @@ pub(crate) mod manifest {
                     )))
                 }
                 Ok(None) => Ok(None),
-                Err(()) => Err(()),
+                Err(_) => Err(()),
             };
 
             let executable = match metadata::remove_optional_map_entry::<HashMap<_, _>>(
@@ -832,7 +828,8 @@ pub(crate) mod manifest {
                         reporter,
                     );
 
-                    try_all! { path, exhaustion; return Err(()) };
+                    // @Task try to replace the unchecked call
+                    try_all! { path, exhaustion; return Err(ErrorReported::error_will_be_reported_unchecked()) };
                     Ok(Some(Spanned::new(
                         executable.span,
                         ExecutableManifest {
@@ -841,7 +838,7 @@ pub(crate) mod manifest {
                     )))
                 }
                 Ok(None) => Ok(None),
-                Err(()) => Err(()),
+                Err(_) => Err(()),
             };
 
             let dependencies = match metadata::remove_optional_map_entry::<HashMap<_, _>>(
@@ -936,15 +933,16 @@ pub(crate) mod manifest {
                     )
                 }
                 Ok(None) => Ok(None),
-                Err(()) => Err(()),
+                Err(token) => Err(token),
             };
 
             metadata::check_map_is_empty(manifest, None, reporter)?;
 
+            // @Task try to get rid of the unchecked call
             try_all! {
                 name, version, description, is_private,
                 library, executable, dependencies;
-                return Err(())
+                return Err(ErrorReported::error_will_be_reported_unchecked())
             };
 
             Ok(PackageManifest {

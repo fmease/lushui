@@ -1,6 +1,7 @@
 use super::{format::declaration_url_fragment, node::Node};
 use crate::{
     diagnostics::reporter::{SilentReporter, StderrReporter},
+    error::Result,
     package::BuildSession,
     resolver::{resolve_path, Component},
     span::SourceMap,
@@ -276,7 +277,7 @@ impl<'a> Request<'a> {
         url_prefix: &str,
         component: &Component,
         session: &BuildSession,
-    ) -> Result<String, ()> {
+    ) -> Result<String> {
         Ok(match self {
             Request::DeclarationUrl(path) => {
                 // @Temporary

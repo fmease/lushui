@@ -54,7 +54,6 @@
 #![allow(rustdoc::private_intra_doc_links)] // we always use `--document-private-items`
 #![warn(clippy::pedantic)]
 #![allow(
-    clippy::result_unit_err, // using a reporter to forward information
     clippy::items_after_statements,
     clippy::enum_glob_use,
     clippy::must_use_candidate,

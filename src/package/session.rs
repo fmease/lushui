@@ -114,9 +114,7 @@ impl BuildSession {
         Ok(self
             .known_binding(known)
             .cloned()
-            .ok_or_else(|| {
-                Diagnostic::missing_known_type(known, expression).report(reporter);
-            })?
+            .ok_or_else(|| Diagnostic::missing_known_type(known, expression).report(reporter))?
             .into_expression())
     }
 
@@ -127,8 +125,8 @@ impl BuildSession {
         attribute: Span,
         reporter: &Reporter,
     ) -> Result {
-        let Ok(binding) = KnownBinding::parse(namespace, binder.as_str()) else {
-            Diagnostic::error()
+        let Some(binding) = KnownBinding::parse(namespace, binder.as_str()) else {
+            return Err(Diagnostic::error()
                 .code(Code::E063)
                 .message(format!(
                     "`{}{binder}` is not a known binding",
@@ -137,12 +135,11 @@ impl BuildSession {
                 ))
                 .primary_span(binder)
                 .secondary_span(attribute)
-                .report(reporter);
-            return Err(());
+                .report(reporter));
         };
 
         if let Some(previous) = self.known_bindings.get(&binding) {
-            Diagnostic::error()
+            return Err(Diagnostic::error()
                 .code(Code::E039)
                 .message(format!(
                     "the known binding `{}` is defined multiple times",
@@ -150,8 +147,7 @@ impl BuildSession {
                 ))
                 .labeled_primary_span(binder, "conflicting definition")
                 .labeled_secondary_span(previous, "previous definition")
-                .report(reporter);
-            return Err(());
+                .report(reporter));
         }
 
         self.known_bindings.insert(binding, binder.clone());
@@ -177,23 +173,21 @@ impl BuildSession {
         reporter: &Reporter,
     ) -> Result {
         let Ok(intrinsic) = binder.as_str().parse::<IntrinsicType>() else {
-            Diagnostic::unrecognized_intrinsic_binding(binder.as_str(), IntrinsicKind::Type)
+            return Err(Diagnostic::unrecognized_intrinsic_binding(binder.as_str(), IntrinsicKind::Type)
                 .primary_span(&binder)
                 .secondary_span(attribute)
-                .report(reporter);
-            return Err(());
+                .report(reporter));
         };
 
         if let Some(previous) = self.intrinsic_type(intrinsic) {
-            Diagnostic::error()
+            return Err(Diagnostic::error()
                 .code(Code::E040)
                 .message(format!(
                     "the intrinsic type `{intrinsic}` is defined multiple times",
                 ))
                 .labeled_primary_span(&binder, "conflicting definition")
                 .labeled_secondary_span(previous as &_, "previous definition")
-                .report(reporter);
-            return Err(());
+                .report(reporter));
         }
 
         self.intrinsic_types.insert(intrinsic, binder);
@@ -207,13 +201,12 @@ impl BuildSession {
         type_: Expression,
         attribute: Span,
         reporter: &Reporter,
-    ) -> Result<EntityKind, ()> {
+    ) -> Result<EntityKind> {
         let Ok(intrinsic) = binder.as_str().parse() else {
-            Diagnostic::unrecognized_intrinsic_binding(binder.as_str(), IntrinsicKind::Function)
+            return Err(Diagnostic::unrecognized_intrinsic_binding(binder.as_str(), IntrinsicKind::Function)
                 .primary_span(&binder)
                 .secondary_span(attribute)
-                .report(reporter);
-            return Err(());
+                .report(reporter));
         };
 
         // @Task explain why we remove here
@@ -237,13 +230,13 @@ impl BuildSession {
             return Ok(intrinsic.clone().into_expression());
         }
 
-        Diagnostic::missing_intrinsic_binding(intrinsic, IntrinsicKind::Type)
-            .if_present(expression, |diagnostic, span| {
-                diagnostic.labeled_primary_span(span, "the type of this expression")
-            })
-            .report(reporter);
-
-        Err(())
+        Err(
+            Diagnostic::missing_intrinsic_binding(intrinsic, IntrinsicKind::Type)
+                .if_present(expression, |diagnostic, span| {
+                    diagnostic.labeled_primary_span(span, "the type of this expression")
+                })
+                .report(reporter),
+        )
     }
 }
 
@@ -327,8 +320,9 @@ pub(crate) enum KnownBinding {
 }
 
 impl KnownBinding {
-    pub(crate) fn parse(namespace: Option<&str>, binder: &str) -> Result<Self> {
-        Ok(match (namespace, binder) {
+    #[must_use]
+    pub(crate) fn parse(namespace: Option<&str>, binder: &str) -> Option<Self> {
+        Some(match (namespace, binder) {
             (None, "Unit") => Self::Unit,
             (Some("Unit"), "unit") => Self::UnitUnit,
             (None, "Bool") => Self::Bool,
@@ -337,7 +331,7 @@ impl KnownBinding {
             (None, "Option") => Self::Option,
             (Some("Option"), "none") => Self::OptionNone,
             (Some("Option"), "some") => Self::OptionSome,
-            _ => return Err(()),
+            _ => return None,
         })
     }
 

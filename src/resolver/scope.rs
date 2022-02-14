@@ -3,7 +3,7 @@
 //! The equivalent in the type checker is [`crate::typer::interpreter::scope`].
 
 use crate::{
-    diagnostics::{Code, Diagnostic},
+    diagnostics::{reporter::ErrorReported, Code, Diagnostic},
     entity::{Entity, EntityKind},
     error::Result,
     format::{AsAutoColoredChangeset, DisplayWith},
@@ -260,7 +260,10 @@ impl Component {
                     .occurrences
                     .push(binder.span());
 
-                return Err(RegistrationError::DuplicateDefinition);
+                // @Task add docs that the unchecked call is "unavoidable"
+                return Err(RegistrationError::DuplicateDefinition(
+                    ErrorReported::error_will_be_reported_unchecked(),
+                ));
             }
         }
 
@@ -597,17 +600,25 @@ impl Diagnostic {
 }
 
 pub(super) enum RegistrationError {
-    Unrecoverable,
+    Unrecoverable(ErrorReported),
     /// Duplicate definitions found.
     ///
     /// Details about this error are **not stored here** but as
     /// [DuplicateDefinition]s in the [super::Resolver] so they can
     /// be easily grouped.
-    DuplicateDefinition,
+    DuplicateDefinition(ErrorReported),
 }
 
-impl From<()> for RegistrationError {
-    fn from((): ()) -> Self {
-        RegistrationError::Unrecoverable
+impl RegistrationError {
+    pub(super) fn token(self) -> ErrorReported {
+        match self {
+            Self::Unrecoverable(token) | Self::DuplicateDefinition(token) => token,
+        }
+    }
+}
+
+impl From<ErrorReported> for RegistrationError {
+    fn from(token: ErrorReported) -> Self {
+        Self::Unrecoverable(token)
     }
 }

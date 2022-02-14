@@ -29,7 +29,7 @@ use super::{
     lowered_ast::{self, attributes::Target, AttributeKind, AttributeName, Attributes},
 };
 use crate::{
-    diagnostics::{Code, Diagnostic, Reporter},
+    diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
     error::{Health, OkIfUntaintedExt, PossiblyErroneous, Result, Stain},
     format::{ordered_listing, Conjunction, IOError, QuoteExt},
     span::{SharedSourceMap, SourceMap, Span, Spanning},
@@ -941,12 +941,11 @@ impl<'a> Lowerer<'a> {
                     Conjunction::And,
                 );
 
-                Diagnostic::error()
+                return Err(Diagnostic::error()
                     .code(Code::E014)
-                    .message(format!("attributes {} are mutually exclusive", listing))
+                    .message(format!("attributes {listing} are mutually exclusive"))
                     .labeled_primary_spans(attributes.into_iter(), "conflicting attribute")
-                    .report(reporter);
-                return Err(());
+                    .report(reporter));
             }
 
             Ok(())
@@ -1276,9 +1275,13 @@ impl lowered_ast::attributes::AttributeKind {
                 if let AttributeParsingError::UndefinedAttribute(binder) = error {
                     Diagnostic::error()
                         .code(Code::E011)
-                        .message(format!("attribute `{}` does not exist", binder))
+                        .message(format!("attribute `{binder}` does not exist"))
                         .primary_span(&binder)
-                        .report(reporter);
+                        .report(reporter)
+                } else {
+                    // @Task avoid this unchecked call by smh getting the token from above
+                    // E019 was reported above
+                    ErrorReported::error_will_be_reported_unchecked()
                 }
             })
             .and_then(|attributes| Result::ok_if_untainted(attributes, health))

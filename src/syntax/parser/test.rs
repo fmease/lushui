@@ -12,7 +12,6 @@ use super::{
 };
 use crate::{
     diagnostics::reporter::SilentReporter,
-    error::outcome,
     span::{span, SourceFileIndex, SourceMap, Span, Spanned},
     syntax::{lexer::lex, parse_file},
     utility::SmallVec,
@@ -21,28 +20,22 @@ use index_map::Index as _;
 use smallvec::smallvec;
 use std::default::default;
 
+// @Task don't use the SilentReporter!
+
 fn parse_expression(source: &str) -> Result<Expression> {
     let map = SourceMap::shared();
     let file = map.borrow_mut().add(None, source.to_owned());
     let reporter = SilentReporter.into();
-    let outcome!(tokens, health) = lex(&map.borrow()[file], &reporter)?;
-    let expression = Parser::new(&tokens, file, map, &reporter).parse_expression();
-    if health.is_tainted() {
-        return Err(());
-    }
-    expression
+    let tokens = lex(&map.borrow()[file], &reporter)?.value;
+    Parser::new(&tokens, file, map, &reporter).parse_expression()
 }
 
 fn parse_pattern(source: &str) -> Result<Pattern> {
     let map = SourceMap::shared();
     let file = map.borrow_mut().add(None, source.to_owned());
     let reporter = SilentReporter.into();
-    let outcome!(tokens, health) = lex(&map.borrow()[file], &reporter)?;
-    let pattern = Parser::new(&tokens, file, map, &reporter).parse_pattern();
-    if health.is_tainted() {
-        return Err(());
-    }
-    pattern
+    let tokens = lex(&map.borrow()[file], &reporter)?.value;
+    Parser::new(&tokens, file, map, &reporter).parse_pattern()
 }
 
 fn parse_declaration(source: &str) -> Result<Declaration> {
@@ -85,13 +78,11 @@ where
                 );
             }
         }
-        (Ok(expected), Err(error)) => {
+        (Ok(expected), Err(_)) => {
             panic!(
                 "expected the parser to successfully parse the input to the following AST:\n\
-                {:?}\n\
-                but it failed with the following diagnostics:\n\
-                {:?}",
-                expected, error
+                {expected:?}\n\
+                but it reported an error (silently)"
             )
         }
         (Err(_), _) => unreachable!(),
