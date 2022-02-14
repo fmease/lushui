@@ -6,9 +6,6 @@ data Underscore: Type of
 @(doc-reserved-identifier "as")
 data As: Type of
 
-@(doc-reserved-identifier "capsule")
-data Capsule: Type of
-
 @(doc-reserved-identifier "case")
 data Case: Type of
 
@@ -41,6 +38,9 @@ data Self: Type of
 
 @(doc-reserved-identifier "super")
 data Super: Type of
+
+@(doc-reserved-identifier "topmost")
+data Topmost: Type of
 
 @(doc-reserved-identifier "Type")
 data Type_: Type of

@@ -1,13 +1,13 @@
 //! The entity system: Information about bindings for the name resolver _and_ the type checker.
 //!
-//! Just like [`Capsule`], [`Entity`] is a resource shared by those two passes.
+//! Just like [`Component`], [`Entity`] is a resource shared by those two passes.
 
 use crate::{
     error::PossiblyErroneous,
     format::DisplayWith,
     hir::{DeclarationIndex, Expression, Identifier, LocalDeclarationIndex},
     package::{session::BareIntrinsicFunctionValue, BuildSession},
-    resolver::{Capsule, Exposure, Namespace},
+    resolver::{Component, Exposure, Namespace},
     syntax::lowered_ast::Attributes,
     typer::interpreter::scope::ValueView,
     utility::obtain,
@@ -268,7 +268,7 @@ impl PossiblyErroneous for EntityKind {
 }
 
 impl DisplayWith for EntityKind {
-    type Context<'a> = (&'a Capsule, &'a BuildSession);
+    type Context<'a> = (&'a Component, &'a BuildSession);
 
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:>19}   ", self.precise_name().bright_blue())?;

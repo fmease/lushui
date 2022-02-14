@@ -455,8 +455,8 @@ impl<'a> Lowerer<'a> {
                                         .cloned()
                                     })
                                     .ok_or_else(|| {
-                                        // @Task improve the message for `use capsule.(self)`: hint that `self`
-                                        // is effectively unnamed because `capsule` is unnamed
+                                        // @Task improve the message for `use topmost.(self)`: hint that `self`
+                                        // is effectively unnamed because `topmost` is unnamed
                                         Diagnostic::invalid_unnamed_path_hanger(
                                             target.hanger.unwrap(),
                                         )
@@ -497,8 +497,8 @@ impl<'a> Lowerer<'a> {
                         Single { target, binder } => {
                             let binder = binder.or_else(|| target.last_identifier().cloned());
                             let Some(binder) = binder else {
-                                // @Task improve the message for `use capsule.(self)`: hint that `self`
-                                // is effectively unnamed because `capsule` is unnamed
+                                // @Task improve the message for `use topmost.(self)`: hint that `self`
+                                // is effectively unnamed because `topmost` is unnamed
                                 // @Task the message is even worse (it is misleading!) with `use extern.(self)`
                                 // currently leads to the suggestion to bind `self` to an identifier but
                                 // for `extern` that is illegal, too

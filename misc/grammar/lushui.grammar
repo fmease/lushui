@@ -111,7 +111,7 @@ Typed-Hole ::= "?" #Word
 
 Path ::= Path-Head ("." Identifier)*
 Path-Head ::= Path-Hanger | Identifier
-Path-Hanger ::= "extern" | "capsule" | "super" | "self"
+Path-Hanger ::= "extern" | "topmost" | "super" | "self"
 
 Lambda-Literal ::= "\" Parameters Type-Annotation? "=>" Expression
 

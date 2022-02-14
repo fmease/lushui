@@ -3,7 +3,7 @@ use crate::{
     format::{AsDebug, DisplayWith},
     hir::{self, DeBruijnIndex, Identifier},
     package::BuildSession,
-    resolver::Capsule,
+    resolver::Component,
     syntax::lowered_ast::Attributes,
 };
 use std::{default::default, fmt};
@@ -38,7 +38,7 @@ pub(crate) enum BindingRegistrationKind {
 
 // only used to report "cyclic" types (currently treated as a bug)
 impl DisplayWith for BindingRegistration {
-    type Context<'a> = (&'a Capsule, &'a BuildSession);
+    type Context<'a> = (&'a Component, &'a BuildSession);
 
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use BindingRegistrationKind::*;

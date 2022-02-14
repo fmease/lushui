@@ -4,8 +4,8 @@ use crate::{
     diagnostics::Reporter,
     error::Result,
     hir::{self, LocalDeclarationIndex},
-    package::{BuildSession, CapsuleMetadata, CapsuleType},
-    resolver::Capsule,
+    package::{BuildSession, ComponentMetadata, ComponentType},
+    resolver::Component,
     syntax::{
         ast,
         lowered_ast::{
@@ -37,14 +37,14 @@ const DEVELOPING: bool = true;
 pub fn document(
     declaration: &hir::Declaration,
     options: Options,
-    capsules: &[CapsuleMetadata],
-    capsule: &Capsule,
+    components: &[ComponentMetadata],
+    component: &Component,
     session: &BuildSession,
     reporter: &Reporter,
 ) -> Result<()> {
     crossbeam::scope(|scope| {
         let mut documenter =
-            Documenter::new(options, capsules, capsule, session, reporter, scope).unwrap();
+            Documenter::new(options, components, component, session, reporter, scope).unwrap();
 
         documenter.document_declaration(declaration)?;
         documenter.collect_search_items(declaration);
@@ -58,8 +58,8 @@ pub fn document(
 
 struct Documenter<'a, 'scope> {
     options: Options,
-    capsules: &'a [CapsuleMetadata],
-    capsule: &'a Capsule,
+    components: &'a [ComponentMetadata],
+    component: &'a Component,
     session: &'a BuildSession,
     #[allow(dead_code)]
     reporter: &'a Reporter,
@@ -72,8 +72,8 @@ struct Documenter<'a, 'scope> {
 impl<'a, 'scope> Documenter<'a, 'scope> {
     fn new(
         options: Options,
-        capsule_names: &'a [CapsuleMetadata],
-        capsule: &'a Capsule,
+        components: &'a [ComponentMetadata],
+        component: &'a Component,
         session: &'a BuildSession,
         reporter: &'a Reporter,
         scope: &'scope Scope<'a>,
@@ -84,12 +84,12 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             fs::create_dir_all(&path)?;
         }
 
-        let text_processor = TextProcessor::new(&path, &options, capsule, session, scope)?;
+        let text_processor = TextProcessor::new(&path, &options, component, session, scope)?;
 
         Ok(Self {
             options,
-            capsules: capsule_names,
-            capsule,
+            components,
+            component,
             session,
             reporter,
             text_processor,
@@ -99,7 +99,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         })
     }
 
-    // @Task handle the case where two+ capsules (goal and/or (transitive) deps)
+    // @Task handle the case where two+ components (goal and/or (transitive) deps)
     // have the same name and are being documented
     #[allow(clippy::unnecessary_wraps)] // @Temporary
     fn write(&self) -> Result<()> {
@@ -144,10 +144,10 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         }
 
         // @Task use BufWriter
-        // @Task put it in self.destination instead once the search index contains all capsules
+        // @Task put it in self.destination instead once the search index contains all components
         fs::write(
             self.path
-                .join(self.capsule.name().as_str())
+                .join(self.component.name().as_str())
                 .join(SEARCH_INDEX_FILE_NAME),
             {
                 let mut search_index = String::from("window.searchIndex=[");
@@ -158,12 +158,16 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                             // @Beacon @Task don't use the to_string variant, so we don't need to split() JS (which would be
                             // incorrect on top of that!)
                             let path = self
-                                .capsule
-                                .extern_path_to_string(index.local(self.capsule).unwrap());
+                                .component
+                                .extern_path_to_string(index.local(self.component).unwrap());
 
                             search_index += &format!(
                                 "[{path:?},{:?}],",
-                                format::declaration_url_fragment(index, self.capsule, self.session)
+                                format::declaration_url_fragment(
+                                    index,
+                                    self.component,
+                                    self.session
+                                )
                             );
                         }
                         SearchItem::ReservedIdentifier(name) => {
@@ -203,7 +207,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
     }
 
     // @Task merge this with `document_declaration` (once we move out `generate_module_page` out of it!)
-    // to avoid traversing the capsule graph too often
+    // to avoid traversing the component graph too often
     fn collect_search_items(&mut self, declaration: &hir::Declaration) {
         match &declaration.value {
             hir::DeclarationKind::Function(function) => {
@@ -290,7 +294,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                         type_: format::format_expression(
                             &function.type_annotation,
                             url_prefix,
-                            self.capsule,
+                            self.component,
                             self.session,
                         ),
                     });
@@ -329,7 +333,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                                     type_: format::format_expression(
                                         &constructor.type_annotation,
                                         url_prefix,
-                                        self.capsule,
+                                        self.component,
                                         self.session,
                                     ),
                                 });
@@ -344,7 +348,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                             type_: format::format_expression(
                                 &type_.type_annotation,
                                 url_prefix,
-                                self.capsule,
+                                self.component,
                                 self.session,
                             ),
                             constructors: formatted_constructors,
@@ -363,7 +367,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                         binder: module.binder.as_str(),
                     });
                 }
-                // @Task re-exports, only public//(public capsule) for --doc-priv-decls??) ones!
+                // @Task re-exports, only public//(public topmost) for --doc-priv-decls??) ones!
                 // hir::DeclarationKind::Use(_) => todo!(),
                 _ => {}
             }
@@ -379,8 +383,11 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             else => PageContentType::Module,
         };
 
-        let index = module.binder.local_declaration_index(self.capsule).unwrap();
-        let path_segments = self.capsule.local_path_segments(index);
+        let index = module
+            .binder
+            .local_declaration_index(self.component)
+            .unwrap();
+        let path_segments = self.component.local_path_segments(index);
         let page_depth = match content_type {
             PageContentType::Module => path_segments.len(),
             PageContentType::Attributes | PageContentType::ReservedIdentifiers => 0,
@@ -421,23 +428,23 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
 
             subsections.render_table_of_contents(&mut sidebar);
 
-            sidebar.add_child(Element::new("div").class("title").child("Capsules"));
+            sidebar.add_child(Element::new("div").class("title").child("Components"));
 
             let mut list = Element::new("ul");
 
-            let mut capsules: Vec<_> = self.capsules.iter().collect();
-            capsules.sort_unstable_by_key(|capsule| &capsule.name);
+            let mut components: Vec<_> = self.components.iter().collect();
+            components.sort_unstable_by_key(|component| &component.name);
 
-            for capsule in capsules {
+            for component in components {
                 let anchor = Element::new("a")
                     .attribute(
                         "href",
                         format!(
                             "{url_prefix}{}{}/index.html",
-                            capsule.name,
+                            component.name,
                             // @Note this does not scale to multiple executables per package
-                            if capsule.type_ == CapsuleType::Executable
-                                && capsule.is_ambiguously_named_within_package
+                            if component.type_ == ComponentType::Executable
+                                && component.is_ambiguously_named_within_package
                             {
                                 ".exec"
                             } else {
@@ -446,12 +453,12 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                         ),
                     )
                     .child(
-                        if capsule.package == self.session.goal_package()
-                            && capsule.is_ambiguously_named_within_package
+                        if component.package == self.session.goal_package()
+                            && component.is_ambiguously_named_within_package
                         {
-                            Node::from(format!("{} ({})", capsule.name, capsule.type_))
+                            Node::from(format!("{} ({})", component.name, component.type_))
                         } else {
-                            Node::from(capsule.name.as_str())
+                            Node::from(component.name.as_str())
                         },
                     );
 
@@ -472,8 +479,8 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
 
                 match content_type {
                     PageContentType::Module => {
-                        heading.add_child(match index == self.capsule.local_root() {
-                            true => "Capsule",
+                        heading.add_child(match index == self.component.local_root() {
+                            true => "Component",
                             false => "Module",
                         });
 
@@ -542,12 +549,12 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                 let mut path = self.path.clone();
                 let mut path_segments = path_segments.into_iter();
 
-                if self.capsule.is_executable()
-                    && self.capsule.metadata.is_ambiguously_named_within_package
+                if self.component.is_executable()
+                    && self.component.metadata.is_ambiguously_named_within_package
                 {
                     path_segments.next();
                     // @Note does not scale to multiple binaries per package
-                    path.push(format!("{}.exec", self.capsule.name()));
+                    path.push(format!("{}.exec", self.component.name()));
                 }
 
                 for segment in path_segments {
@@ -577,8 +584,8 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                     .attribute("content", "width=device-width, initial-scale=1.0"),
             )
             .child(Element::new("title").child(match content_type {
-                // @Task respect self.capsule.is_ambiguously_named_within_package
-                PageContentType::Module => self.capsule.extern_path_to_string(index),
+                // @Task respect self.component.is_ambiguously_named_within_package
+                PageContentType::Module => self.component.extern_path_to_string(index),
                 PageContentType::Attributes => "Attributes".into(),
                 PageContentType::ReservedIdentifiers => "Reserved Identifiers".into(),
             }))
@@ -607,12 +614,12 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                         // @Temporary
                         format!(
                             "{url_prefix}/{}/{SEARCH_INDEX_FILE_NAME}",
-                            self.capsule.name()
+                            self.component.name()
                         ),
                     )
                     .boolean_attribute("defer"),
             );
-        let description = &self.capsule.package(self.session).description;
+        let description = &self.component.package(self.session).description;
         if !description.is_empty() {
             head.add_child(
                 VoidElement::new("meta")

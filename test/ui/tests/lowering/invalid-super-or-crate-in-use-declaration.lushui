@@ -1,3 +1,3 @@
 ;;; TEST fail check
 
-use foo.bar.(super.ban capsule self)
+use foo.bar.(super.ban topmost self)

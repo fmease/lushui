@@ -8,8 +8,8 @@
 ;;; not sure how we can tackle this problem.
 
 module inner =
-    use capsule.offside as remote
+    use topmost.offside as remote
 
 module offside =
-    @(public capsule.inner.remote) module m = ;;; @Bug we should not be able to access `remote` here!!!
+    @(public topmost.inner.remote) module m = ;;; @Bug we should not be able to access `remote` here!!!
 

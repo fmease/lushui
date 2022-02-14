@@ -12,7 +12,7 @@ data Nat: Type
 ;;; and @Task (not important) instead of throwing
 ;;; E061 undeclared foreign type, we could
 ;;; create a the binding ourselves with
-;;; an unreachable path (namely `capsule.super.Text`
+;;; an unreachable path (namely `topmost.super.Text`
 ;;; for example but that's just a minor thingy)
 ;;; xxx: "foo" = "bar"
 

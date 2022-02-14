@@ -4,16 +4,16 @@ module inner of
     use innermore.innermost as m
 
     @(public super.krate)
-    use capsule.offside as remote
+    use topmost.offside as remote
 
-    @(public capsule)
+    @(public topmost)
     module innermore of
         @(public super)
         module innermost of
-            @(public capsule.inner)
+            @(public topmost.inner)
             X: Type = X
 
-            @(public capsule.n)
+            @(public topmost.n)
             Th: Type = Type
 
         TH: Type = innermost.Th ;;; @Beacon @Bug lexing/parsing: this is placed in the same line as `innermore`, `Z`!
@@ -24,4 +24,4 @@ use inner.innermore as n
 use self as krate
 
 module offside of
-    @(public capsule.inner.remote) data Ping: Type of
+    @(public topmost.inner.remote) data Ping: Type of

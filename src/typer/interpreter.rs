@@ -25,21 +25,21 @@ use crate::{
         session::{KnownBinding, Value},
         BuildSession,
     },
-    resolver::Capsule,
+    resolver::Component,
     syntax::ast::Explicit,
 };
 use scope::{FunctionScope, ValueView};
 use std::{default::default, fmt};
 
-/// Run the entry point of the given executable capsule.
+/// Run the entry point of the given executable component.
 pub fn evaluate_main_function(
-    capsule: &Capsule,
+    component: &Component,
     session: &BuildSession,
     reporter: &Reporter,
 ) -> Result<Expression> {
-    Interpreter::new(capsule, session, reporter).evaluate_expression(
-        Interpreter::new(capsule, session, reporter)
-            .capsule
+    Interpreter::new(component, session, reporter).evaluate_expression(
+        Interpreter::new(component, session, reporter)
+            .component
             .program_entry
             .clone()
             .unwrap()
@@ -50,19 +50,19 @@ pub fn evaluate_main_function(
 
 pub(crate) struct Interpreter<'a> {
     // @Task add recursion depth
-    capsule: &'a Capsule,
+    component: &'a Component,
     session: &'a BuildSession,
     reporter: &'a Reporter,
 }
 
 impl<'a> Interpreter<'a> {
     pub(super) fn new(
-        capsule: &'a Capsule,
+        component: &'a Component,
         session: &'a BuildSession,
         reporter: &'a Reporter,
     ) -> Self {
         Self {
-            capsule,
+            component,
             session,
             reporter,
         }
@@ -655,7 +655,7 @@ impl<'a> Interpreter<'a> {
                 }
 
                 Some(function(value_arguments).into_expression(
-                    self.capsule,
+                    self.component,
                     self.session,
                     self.reporter,
                 )?)
@@ -772,8 +772,8 @@ impl<'a> Interpreter<'a> {
     }
 
     fn look_up(&self, index: DeclarationIndex) -> &Entity {
-        match index.local(self.capsule) {
-            Some(index) => &self.capsule[index],
+        match index.local(self.component) {
+            Some(index) => &self.component[index],
             None => &self.session[index],
         }
     }
@@ -843,7 +843,7 @@ impl Substitution {
 }
 
 impl DisplayWith for Substitution {
-    type Context<'a> = (&'a Capsule, &'a BuildSession);
+    type Context<'a> = (&'a Component, &'a BuildSession);
 
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use self::Substitution::*;

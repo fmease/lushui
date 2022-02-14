@@ -1,10 +1,10 @@
-use super::{CapsuleIndex, Package, PackageIndex};
+use super::{ComponentIndex, Package, PackageIndex};
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     entity::{Entity, EntityKind},
     error::Result,
     hir::{self, DeclarationIndex, Expression, ExpressionKind, Identifier},
-    resolver::Capsule,
+    resolver::Component,
     span::Span,
     syntax::ast::Explicitness,
     utility::{condition, HashMap, Int, Nat},
@@ -22,10 +22,10 @@ use std::{
 const BUILD_FOLDER_NAME: &str = "build";
 
 pub struct BuildSession {
-    /// The capsules which have already been built.
-    capsules: HashMap<CapsuleIndex, Capsule>,
+    /// The components which have already been built.
+    components: HashMap<ComponentIndex, Component>,
     packages: IndexMap<PackageIndex, Package>,
-    goal_capsule: CapsuleIndex,
+    goal_component: ComponentIndex,
     goal_package: PackageIndex,
     // @Task Identifier -> DeclarationIndex
     known_bindings: HashMap<KnownBinding, Identifier>,
@@ -37,13 +37,13 @@ impl BuildSession {
     /// Create a new build session with intrinsic functions registered.
     pub(crate) fn new(
         packages: IndexMap<PackageIndex, Package>,
-        goal_capsule: CapsuleIndex,
+        goal_component: ComponentIndex,
         goal_package: PackageIndex,
     ) -> Self {
         Self {
-            capsules: default(),
+            components: default(),
             packages,
-            goal_capsule,
+            goal_component,
             goal_package,
             known_bindings: default(),
             intrinsic_types: default(),
@@ -52,11 +52,11 @@ impl BuildSession {
     }
 
     #[cfg(test)]
-    pub(crate) fn empty(goal_capsule: CapsuleIndex, goal_package: PackageIndex) -> Self {
+    pub(crate) fn empty(goal_component: ComponentIndex, goal_package: PackageIndex) -> Self {
         Self {
-            capsules: default(),
+            components: default(),
             packages: default(),
-            goal_capsule,
+            goal_component,
             goal_package,
             known_bindings: default(),
             intrinsic_types: default(),
@@ -68,8 +68,8 @@ impl BuildSession {
         self.goal_package
     }
 
-    pub fn goal_capsule(&self) -> CapsuleIndex {
-        self.goal_capsule
+    pub fn goal_component(&self) -> ComponentIndex {
+        self.goal_component
     }
 
     /// The path to the folder containing the build artifacts and the documentation.
@@ -78,8 +78,8 @@ impl BuildSession {
         self[self.goal_package].path.join(BUILD_FOLDER_NAME)
     }
 
-    pub fn add(&mut self, capsule: Capsule) {
-        self.capsules.insert(capsule.index(), capsule);
+    pub fn add(&mut self, component: Component) {
+        self.components.insert(component.index(), component);
     }
 
     #[allow(dead_code)]
@@ -251,16 +251,18 @@ impl Index<DeclarationIndex> for BuildSession {
     type Output = Entity;
 
     fn index(&self, index: DeclarationIndex) -> &Self::Output {
-        &self[index.capsule()][index.local_unchecked()]
+        &self[index.component()][index.local_unchecked()]
     }
 }
 
-impl Index<CapsuleIndex> for BuildSession {
-    type Output = Capsule;
+impl Index<ComponentIndex> for BuildSession {
+    type Output = Component;
 
-    fn index(&self, index: CapsuleIndex) -> &Self::Output {
-        self.capsules.get(&index).unwrap_or_else(|| {
-            panic!("attempt to look up unbuilt or unknown capsule `{index:?}` in the build session")
+    fn index(&self, index: ComponentIndex) -> &Self::Output {
+        self.components.get(&index).unwrap_or_else(|| {
+            panic!(
+                "attempt to look up unbuilt or unknown component `{index:?}` in the build session"
+            )
         })
     }
 }
@@ -623,7 +625,7 @@ impl Type {
 
     fn into_expression(
         self,
-        capsule: &Capsule,
+        component: &Component,
         session: &BuildSession,
         reporter: &Reporter,
     ) -> Result<Expression> {
@@ -646,7 +648,7 @@ impl Type {
             Self::Text => intrinsic(Text),
             Self::Option(type_) => Ok(application(
                 known(Option)?,
-                type_.into_expression(capsule, session, reporter)?,
+                type_.into_expression(component, session, reporter)?,
             )),
         }
     }
@@ -737,7 +739,7 @@ impl Value {
 
     pub(crate) fn into_expression(
         self,
-        capsule: &Capsule,
+        component: &Component,
         session: &BuildSession,
         reporter: &Reporter,
     ) -> Result<Expression> {
@@ -764,13 +766,13 @@ impl Value {
                 Some(value) => application(
                     application(
                         session.look_up_known_binding(KnownBinding::OptionSome, reporter)?,
-                        type_.into_expression(capsule, session, reporter)?,
+                        type_.into_expression(component, session, reporter)?,
                     ),
-                    value.into_expression(capsule, session, reporter)?,
+                    value.into_expression(component, session, reporter)?,
                 ),
                 None => application(
                     session.look_up_known_binding(KnownBinding::OptionNone, reporter)?,
-                    type_.into_expression(capsule, session, reporter)?,
+                    type_.into_expression(component, session, reporter)?,
                 ),
             },
             Self::IO { index, arguments } => Expression::new(
@@ -780,7 +782,7 @@ impl Value {
                     index,
                     arguments: arguments
                         .into_iter()
-                        .map(|argument| argument.into_expression(capsule, session, reporter))
+                        .map(|argument| argument.into_expression(component, session, reporter))
                         .collect::<Result<Vec<_>>>()?,
                 }
                 .into(),

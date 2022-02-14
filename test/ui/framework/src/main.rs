@@ -367,9 +367,9 @@ fn main_() -> Result<(), ()> {
                                     .first()
                                     .map_or(false, |&command| command == "run")
                                 {
-                                    "--capsule-type=executable"
+                                    "--component-type=executable"
                                 } else {
-                                    "--capsule-type=library"
+                                    "--component-type=library"
                                 },
                             )
                             .arg("--quiet")

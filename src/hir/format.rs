@@ -1,19 +1,19 @@
 //! The definition of the textual representation of the [HIR](crate::hir).
 
-use super::{Capsule, Declaration, Expression, Pattern};
+use super::{Component, Declaration, Expression, Pattern};
 use crate::{format::DisplayWith, package::BuildSession};
 use joinery::JoinableIterator;
 use std::fmt;
 
 impl DisplayWith for Declaration {
-    type Context<'a> = (&'a Capsule, &'a BuildSession);
+    type Context<'a> = (&'a Component, &'a BuildSession);
 
     fn format(
         &self,
-        (capsule, session): Self::Context<'_>,
+        (component, session): Self::Context<'_>,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
-        self.format_with_depth(capsule, session, 0, f)
+        self.format_with_depth(component, session, 0, f)
     }
 }
 
@@ -23,14 +23,14 @@ impl DisplayWith for Declaration {
 impl Declaration {
     fn format_with_depth(
         &self,
-        capsule: &Capsule,
+        component: &Component,
         session: &BuildSession,
         depth: usize,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
         use super::DeclarationKind::*;
         use crate::syntax::lexer::INDENTATION;
-        let context = (capsule, session);
+        let context = (component, session);
 
         match &self.value {
             Function(function) => {
@@ -82,7 +82,7 @@ impl Declaration {
                 for declaration in &module.declarations {
                     let depth = depth + 1;
                     write!(f, "{}", " ".repeat(depth * INDENTATION.0))?;
-                    declaration.format_with_depth(capsule, session, depth, f)?;
+                    declaration.format_with_depth(component, session, depth, f)?;
                 }
                 Ok(())
             }
@@ -97,25 +97,25 @@ impl Declaration {
 
 // @Note many wasted allocations (intermediate Strings)
 impl DisplayWith for Expression {
-    type Context<'a> = (&'a Capsule, &'a BuildSession);
+    type Context<'a> = (&'a Component, &'a BuildSession);
 
     fn format(
         &self,
-        (capsule, session): Self::Context<'_>,
+        (component, session): Self::Context<'_>,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
-        format_pi_type_literal_or_lower(self, capsule, session, f)
+        format_pi_type_literal_or_lower(self, component, session, f)
     }
 }
 
 fn format_pi_type_literal_or_lower(
     expression: &Expression,
-    capsule: &Capsule,
+    component: &Component,
     session: &BuildSession,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
     use super::ExpressionKind::*;
-    let context = (capsule, session);
+    let context = (component, session);
 
     // In here, we format `Lambda`, `UseIn` and `CaseAnalysis` as a pi-type-literal-or-lower instead of
     // a lowered expression — which you might have expected from reading through the grammar and the parser.
@@ -132,8 +132,8 @@ fn format_pi_type_literal_or_lower(
     // parse to the identical AST modulo spans.
     // However for pretty-printing, we only use the last form — `read (\this => this) alpha` — to avoid
     // extra checks. For the case above, this decision is neither liberal nor conservate resulting in
-    // an equal amount of brackets (that being one). This is not the case for `capsule.take (\it => it)` which
-    // we *might* want to print as `capsule.take \it => it`. This would probably require passing some flags to
+    // an equal amount of brackets (that being one). This is not the case for `topmost.take (\it => it)` which
+    // we *might* want to print as `topmost.take \it => it`. This would probably require passing some flags to
     // the formatting functions and adding more checks.
     //
     // See also `crate::syntax::parser::test::application_lambda_literal_argument_{lax,strict}_grouping` and the
@@ -159,10 +159,10 @@ fn format_pi_type_literal_or_lower(
                 write!(f, "{}", pi.domain.with(context))?;
                 write!(f, ")")?;
             } else {
-                format_application_or_lower(&pi.domain, capsule, session, f)?;
+                format_application_or_lower(&pi.domain, component, session, f)?;
             }
             write!(f, " -> ")?;
-            format_pi_type_literal_or_lower(&pi.codomain, capsule, session, f)
+            format_pi_type_literal_or_lower(&pi.codomain, component, session, f)
         }
         Lambda(lambda) => {
             write!(f, r"\{}", lambda.explicitness)?;
@@ -203,14 +203,14 @@ fn format_pi_type_literal_or_lower(
             }
             Ok(())
         }
-        _ => format_application_or_lower(expression, capsule, session, f),
+        _ => format_application_or_lower(expression, component, session, f),
     }
 }
 
 // @Task write named arguments
 fn format_application_or_lower(
     expression: &Expression,
-    capsule: &Capsule,
+    component: &Component,
     session: &BuildSession,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
@@ -218,32 +218,32 @@ fn format_application_or_lower(
 
     match &expression.value {
         Application(application) => {
-            format_application_or_lower(&application.callee, capsule, session, f)?;
+            format_application_or_lower(&application.callee, component, session, f)?;
             write!(f, " {}", application.explicitness)?;
-            format_lower_expression(&application.argument, capsule, session, f)
+            format_lower_expression(&application.argument, component, session, f)
         }
         IntrinsicApplication(application) => {
             write!(f, "{}", application.callee)?;
 
             for argument in &application.arguments {
                 write!(f, " ")?;
-                format_lower_expression(argument, capsule, session, f)?;
+                format_lower_expression(argument, component, session, f)?;
             }
 
             Ok(())
         }
-        _ => format_lower_expression(expression, capsule, session, f),
+        _ => format_lower_expression(expression, component, session, f),
     }
 }
 
 fn format_lower_expression(
     expression: &Expression,
-    capsule: &Capsule,
+    component: &Component,
     session: &BuildSession,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
     use super::ExpressionKind::*;
-    let context = (capsule, session);
+    let context = (component, session);
 
     for attribute in &expression.attributes.0 {
         write!(f, "{} ", attribute)?;
@@ -256,7 +256,7 @@ fn format_lower_expression(
         Binding(binding) => write!(
             f,
             "{}",
-            super::FunctionScope::absolute_path_to_string(&binding.0, capsule, session)
+            super::FunctionScope::absolute_path_to_string(&binding.0, component, session)
         ),
         // @Beacon @Temporary @Task just write out the path
         Projection(_projection) => write!(f, "?(projection)"),
@@ -282,11 +282,11 @@ fn format_lower_expression(
 
 // @Task @Beacon update bracket business
 impl DisplayWith for Pattern {
-    type Context<'a> = (&'a Capsule, &'a BuildSession);
+    type Context<'a> = (&'a Component, &'a BuildSession);
 
     fn format(
         &self,
-        context @ (capsule, session): Self::Context<'_>,
+        context @ (component, session): Self::Context<'_>,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
         use super::PatternKind::*;
@@ -297,7 +297,7 @@ impl DisplayWith for Pattern {
             Binding(binding) => write!(
                 f,
                 "{}",
-                super::FunctionScope::absolute_path_to_string(&binding.0, capsule, session)
+                super::FunctionScope::absolute_path_to_string(&binding.0, component, session)
             ),
 
             Binder(binder) => write!(f, "\\{}", binder.0),
@@ -340,13 +340,13 @@ mod test {
         entity::{Entity, EntityKind},
         format::DisplayWith,
         hir::{self, Expression, Identifier, LocalDeclarationIndex, Number, Text},
-        package::{BuildSession, CapsuleIndex, CapsuleMetadata, CapsuleType, PackageIndex},
-        resolver::{Capsule, Exposure},
+        package::{BuildSession, ComponentIndex, ComponentMetadata, ComponentType, PackageIndex},
+        resolver::{Component, Exposure},
         span::Span,
         syntax::{
             ast::{self, Explicitness::*},
             lowered_ast::attributes::{Attribute, AttributeKind, Attributes},
-            CapsuleName,
+            ComponentName,
         },
     };
     use std::{default::default, path::PathBuf};
@@ -365,26 +365,26 @@ mod test {
         }
     }
 
-    const CAPSULE_INDEX: CapsuleIndex = CapsuleIndex(0);
+    const COMPONENT_INDEX: ComponentIndex = ComponentIndex(0);
     const PACKAGE_INDEX: PackageIndex = PackageIndex(0);
 
-    impl Capsule {
+    impl Component {
         fn test() -> Self {
-            let mut capsule = Self::new(CapsuleMetadata::new(
-                CapsuleName::parse("test").ok().unwrap(),
-                CAPSULE_INDEX,
+            let mut component = Self::new(ComponentMetadata::new(
+                ComponentName::parse("test").ok().unwrap(),
+                COMPONENT_INDEX,
                 PACKAGE_INDEX,
                 PathBuf::new(),
-                CapsuleType::Library,
+                ComponentType::Library,
             ));
-            capsule.bindings.insert(Entity {
+            component.bindings.insert(Entity {
                 source: ast::Identifier::new_unchecked("test".into(), default()),
                 parent: None,
                 exposure: Exposure::Unrestricted,
                 kind: EntityKind::module(),
                 attributes: default(),
             });
-            capsule
+            component
         }
 
         fn add(&mut self, name: &str, kind: EntityKind) -> Identifier {
@@ -422,18 +422,18 @@ mod test {
 
     #[test]
     fn pi_type_application_argument() {
-        let session = BuildSession::empty(CAPSULE_INDEX, PACKAGE_INDEX);
-        let mut capsule = Capsule::test();
+        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let mut component = Component::test();
 
-        let array = capsule
+        let array = component
             .add("Array", EntityKind::untyped_data_type())
             .into_expression();
-        let int = capsule
+        let int = component
             .add("Int", EntityKind::untyped_data_type())
             .into_expression();
 
         assert_eq(
-            "capsule.Array capsule.Int -> Type",
+            "topmost.Array topmost.Int -> Type",
             (Expression::new(
                 default(),
                 default(),
@@ -455,23 +455,23 @@ mod test {
                 }
                 .into(),
             ))
-            .with((&capsule, &session))
+            .with((&component, &session))
             .to_string(),
         );
     }
 
     #[test]
     fn pi_type_named_parameter() {
-        let session = BuildSession::empty(CAPSULE_INDEX, PACKAGE_INDEX);
-        let mut capsule = Capsule::test();
+        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let mut component = Component::test();
 
-        let array = capsule.add("Array", EntityKind::untyped_data_type());
-        let int = capsule.add("Int", EntityKind::untyped_data_type());
-        let container = capsule.add("Container", EntityKind::untyped_data_type());
+        let array = component.add("Array", EntityKind::untyped_data_type());
+        let int = component.add("Int", EntityKind::untyped_data_type());
+        let container = component.add("Container", EntityKind::untyped_data_type());
         let alpha = Identifier::parameter("alpha");
 
         assert_eq(
-            "(alpha: capsule.Array capsule.Int) -> capsule.Container alpha",
+            "(alpha: topmost.Array topmost.Int) -> topmost.Container alpha",
             Expression::new(
                 default(),
                 default(),
@@ -502,15 +502,15 @@ mod test {
                 }
                 .into(),
             )
-            .with((&capsule, &session))
+            .with((&component, &session))
             .to_string(),
         );
     }
 
     #[test]
     fn pi_type_implicit_parameter() {
-        let session = BuildSession::empty(CAPSULE_INDEX, PACKAGE_INDEX);
-        let capsule = Capsule::test();
+        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let component = Component::test();
 
         assert_eq(
             "'(whatever: Type) -> Type",
@@ -526,7 +526,7 @@ mod test {
                 }
                 .into(),
             )
-            .with((&capsule, &session))
+            .with((&component, &session))
             .to_string(),
         );
     }
@@ -534,14 +534,14 @@ mod test {
     /// Compare with [pi_type_two_curried_arguments].
     #[test]
     fn pi_type_higher_order_argument() {
-        let session = BuildSession::empty(CAPSULE_INDEX, PACKAGE_INDEX);
-        let mut capsule = Capsule::test();
-        let int = capsule
+        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let mut component = Component::test();
+        let int = component
             .add("Int", EntityKind::untyped_data_type())
             .into_expression();
 
         assert_eq(
-            "(capsule.Int -> capsule.Int) -> capsule.Int",
+            "(topmost.Int -> topmost.Int) -> topmost.Int",
             Expression::new(
                 default(),
                 default(),
@@ -565,7 +565,7 @@ mod test {
                 }
                 .into(),
             )
-            .with((&capsule, &session))
+            .with((&component, &session))
             .to_string(),
         );
     }
@@ -573,17 +573,17 @@ mod test {
     /// Compare with [pi_type_higher_order_argument].
     #[test]
     fn pi_type_two_curried_arguments() {
-        let session = BuildSession::empty(CAPSULE_INDEX, PACKAGE_INDEX);
-        let mut capsule = Capsule::test();
-        let int = capsule
+        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let mut component = Component::test();
+        let int = component
             .add("Int", EntityKind::untyped_data_type())
             .into_expression();
-        let text = capsule
+        let text = component
             .add("Text", EntityKind::untyped_data_type())
             .into_expression();
 
         assert_eq(
-            "capsule.Int -> capsule.Text -> Type",
+            "topmost.Int -> topmost.Text -> Type",
             Expression::new(
                 default(),
                 default(),
@@ -607,7 +607,7 @@ mod test {
                 }
                 .into(),
             )
-            .with((&capsule, &session))
+            .with((&component, &session))
             .to_string(),
         );
     }
@@ -615,8 +615,8 @@ mod test {
     /// Compare with [lambda_pi_type_body].
     #[test]
     fn pi_type_lambda_domain() {
-        let session = BuildSession::empty(CAPSULE_INDEX, PACKAGE_INDEX);
-        let capsule = Capsule::test();
+        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let component = Component::test();
 
         let x = Identifier::parameter("x");
 
@@ -646,20 +646,20 @@ mod test {
                 }
                 .into(),
             )
-            .with((&capsule, &session))
+            .with((&component, &session))
             .to_string(),
         );
     }
 
     #[test]
     fn application_three_curried_arguments() {
-        let session = BuildSession::empty(CAPSULE_INDEX, PACKAGE_INDEX);
-        let mut capsule = Capsule::test();
+        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let mut component = Component::test();
 
-        let beta = capsule.add("beta", EntityKind::UntypedFunction);
+        let beta = component.add("beta", EntityKind::UntypedFunction);
 
         assert_eq(
-            "alpha capsule.beta (gamma Type) 0",
+            "alpha topmost.beta (gamma Type) 0",
             Expression::new(
                 default(),
                 default(),
@@ -697,7 +697,7 @@ mod test {
                 }
                 .into(),
             )
-            .with((&capsule, &session))
+            .with((&component, &session))
             .to_string(),
         );
     }
@@ -705,15 +705,15 @@ mod test {
     /// Compare with [application_lambda_argument].
     #[test]
     fn application_lambda_last_argument() {
-        let session = BuildSession::empty(CAPSULE_INDEX, PACKAGE_INDEX);
-        let mut capsule = Capsule::test();
+        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let mut component = Component::test();
 
-        let take = capsule.add("take", EntityKind::UntypedFunction);
+        let take = component.add("take", EntityKind::UntypedFunction);
         let it = Identifier::parameter("it");
 
-        // we might want to format this special case as `capsule.take \it => it` in the future
+        // we might want to format this special case as `topmost.take \it => it` in the future
         assert_eq(
-            r"capsule.take (\it => it)",
+            r"topmost.take (\it => it)",
             Expression::new(
                 default(),
                 default(),
@@ -737,7 +737,7 @@ mod test {
                 }
                 .into(),
             )
-            .with((&capsule, &session))
+            .with((&component, &session))
             .to_string(),
         );
     }
@@ -745,14 +745,14 @@ mod test {
     /// Compare with [application_lambda_last_argument].
     #[test]
     fn application_lambda_argument() {
-        let session = BuildSession::empty(CAPSULE_INDEX, PACKAGE_INDEX);
-        let mut capsule = Capsule::test();
+        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let mut component = Component::test();
 
-        let take = capsule.add("take", EntityKind::UntypedFunction);
+        let take = component.add("take", EntityKind::UntypedFunction);
         let it = Identifier::parameter("it");
 
         assert_eq(
-            r#"capsule.take (\it => it) "who""#,
+            r#"topmost.take (\it => it) "who""#,
             Expression::new(
                 default(),
                 default(),
@@ -789,20 +789,20 @@ mod test {
                 }
                 .into(),
             )
-            .with((&capsule, &session))
+            .with((&component, &session))
             .to_string(),
         );
     }
 
     #[test]
     fn application_implicit_argument() {
-        let session = BuildSession::empty(CAPSULE_INDEX, PACKAGE_INDEX);
-        let mut capsule = Capsule::test();
+        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let mut component = Component::test();
 
-        let identity = capsule.add("identity", EntityKind::UntypedFunction);
+        let identity = component.add("identity", EntityKind::UntypedFunction);
 
         assert_eq(
-            r"capsule.identity 'Type",
+            r"topmost.identity 'Type",
             Expression::new(
                 default(),
                 default(),
@@ -813,21 +813,21 @@ mod test {
                 }
                 .into(),
             )
-            .with((&capsule, &session))
+            .with((&component, &session))
             .to_string(),
         );
     }
 
     #[test]
     fn application_complex_implicit_argument() {
-        let session = BuildSession::empty(CAPSULE_INDEX, PACKAGE_INDEX);
-        let mut capsule = Capsule::test();
+        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let mut component = Component::test();
 
-        let identity = capsule.add("identity", EntityKind::UntypedFunction);
-        let text = capsule.add("Text", EntityKind::untyped_data_type());
+        let identity = component.add("identity", EntityKind::UntypedFunction);
+        let text = component.add("Text", EntityKind::untyped_data_type());
 
         assert_eq(
-            r"capsule.identity '(prepare capsule.Text)",
+            r"topmost.identity '(prepare topmost.Text)",
             Expression::new(
                 default(),
                 default(),
@@ -847,15 +847,15 @@ mod test {
                 }
                 .into(),
             )
-            .with((&capsule, &session))
+            .with((&component, &session))
             .to_string(),
         );
     }
 
     #[test]
     fn application_intrinsic_application_callee() {
-        let session = BuildSession::empty(CAPSULE_INDEX, PACKAGE_INDEX);
-        let capsule = Capsule::test();
+        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let component = Component::test();
 
         assert_eq(
             "eta 10 omicron",
@@ -881,20 +881,20 @@ mod test {
                 }
                 .into(),
             )
-            .with((&capsule, &session))
+            .with((&component, &session))
             .to_string(),
         );
     }
 
     #[test]
     fn lambda_body_type_annotation() {
-        let session = BuildSession::empty(CAPSULE_INDEX, PACKAGE_INDEX);
-        let mut capsule = Capsule::test();
+        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let mut component = Component::test();
 
-        let output = capsule.add("Output", EntityKind::untyped_data_type());
+        let output = component.add("Output", EntityKind::untyped_data_type());
 
         assert_eq(
-            r"\input: capsule.Output => 0",
+            r"\input: topmost.Output => 0",
             Expression::new(
                 default(),
                 default(),
@@ -908,21 +908,21 @@ mod test {
                 }
                 .into(),
             )
-            .with((&capsule, &session))
+            .with((&component, &session))
             .to_string(),
         );
     }
 
     #[test]
     fn lambda_parameter_type_annotation_body_type_annotation() {
-        let session = BuildSession::empty(CAPSULE_INDEX, PACKAGE_INDEX);
-        let mut capsule = Capsule::test();
+        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let mut component = Component::test();
 
-        let input = capsule.add("Input", EntityKind::untyped_data_type());
-        let output = capsule.add("Output", EntityKind::untyped_data_type());
+        let input = component.add("Input", EntityKind::untyped_data_type());
+        let output = component.add("Output", EntityKind::untyped_data_type());
 
         assert_eq(
-            r"\(input: capsule.Input): capsule.Output => Type",
+            r"\(input: topmost.Input): topmost.Output => Type",
             Expression::new(
                 default(),
                 default(),
@@ -936,15 +936,15 @@ mod test {
                 }
                 .into(),
             )
-            .with((&capsule, &session))
+            .with((&component, &session))
             .to_string(),
         );
     }
 
     #[test]
     fn lambda_implicit_parameter() {
-        let session = BuildSession::empty(CAPSULE_INDEX, PACKAGE_INDEX);
-        let capsule = Capsule::test();
+        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let component = Component::test();
 
         assert_eq(
             r"\'(Input: Type) => Type",
@@ -961,15 +961,15 @@ mod test {
                 }
                 .into(),
             )
-            .with((&capsule, &session))
+            .with((&component, &session))
             .to_string(),
         );
     }
 
     #[test]
     fn lambda_implicit_unannotated_parameter() {
-        let session = BuildSession::empty(CAPSULE_INDEX, PACKAGE_INDEX);
-        let capsule = Capsule::test();
+        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let component = Component::test();
         let a = Identifier::parameter("a");
 
         assert_eq(
@@ -999,7 +999,7 @@ mod test {
                 }
                 .into(),
             )
-            .with((&capsule, &session))
+            .with((&component, &session))
             .to_string(),
         );
     }
@@ -1007,8 +1007,8 @@ mod test {
     /// Compare with [pi_type_lambda_domain].
     #[test]
     fn lambda_pi_type_body() {
-        let session = BuildSession::empty(CAPSULE_INDEX, PACKAGE_INDEX);
-        let capsule = Capsule::test();
+        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let component = Component::test();
 
         let x = Identifier::parameter("x");
 
@@ -1038,17 +1038,17 @@ mod test {
                 }
                 .into(),
             )
-            .with((&capsule, &session))
+            .with((&component, &session))
             .to_string(),
         );
     }
 
     #[test]
     fn intrinsic_application_no_arguments() {
-        let session = BuildSession::empty(CAPSULE_INDEX, PACKAGE_INDEX);
-        let mut capsule = Capsule::test();
+        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let mut component = Component::test();
 
-        let add = capsule.add("add", EntityKind::UntypedFunction);
+        let add = component.add("add", EntityKind::UntypedFunction);
 
         assert_eq(
             "add",
@@ -1061,17 +1061,17 @@ mod test {
                 }
                 .into(),
             )
-            .with((&capsule, &session))
+            .with((&component, &session))
             .to_string(),
         );
     }
 
     #[test]
     fn intrinsic_application_two_arguments() {
-        let session = BuildSession::empty(CAPSULE_INDEX, PACKAGE_INDEX);
-        let mut capsule = Capsule::test();
+        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let mut component = Component::test();
 
-        let add = capsule.add("add", EntityKind::UntypedFunction);
+        let add = component.add("add", EntityKind::UntypedFunction);
 
         assert_eq(
             "add (add 1 3000) 0",
@@ -1106,15 +1106,15 @@ mod test {
                 }
                 .into(),
             )
-            .with((&capsule, &session))
+            .with((&component, &session))
             .to_string(),
         );
     }
 
     #[test]
     fn attributes() {
-        let session = BuildSession::empty(CAPSULE_INDEX, PACKAGE_INDEX);
-        let capsule = Capsule::test();
+        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let component = Component::test();
 
         assert_eq(
             "== @static @unsafe 3 @static (increment 1)",
@@ -1157,62 +1157,62 @@ mod test {
                 }
                 .into(),
             )
-            .with((&capsule, &session))
+            .with((&component, &session))
             .to_string(),
         )
     }
 
     #[test]
     fn path() {
-        let session = BuildSession::empty(CAPSULE_INDEX, PACKAGE_INDEX);
-        let mut capsule = Capsule::test();
+        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let mut component = Component::test();
 
-        let overarching = capsule.add("overarching", EntityKind::module());
-        let middle = capsule.add_below(
+        let overarching = component.add("overarching", EntityKind::module());
+        let middle = component.add_below(
             "middle",
             EntityKind::module(),
-            overarching.local_declaration_index(&capsule).unwrap(),
+            overarching.local_declaration_index(&component).unwrap(),
         );
-        let sink = capsule.add_below(
+        let sink = component.add_below(
             "sink",
             EntityKind::UntypedFunction,
-            middle.local_declaration_index(&capsule).unwrap(),
+            middle.local_declaration_index(&component).unwrap(),
         );
 
         assert_eq(
-            "capsule.overarching.middle.sink",
+            "topmost.overarching.middle.sink",
             sink.into_expression()
-                .with((&capsule, &session))
+                .with((&component, &session))
                 .to_string(),
         );
     }
 
     #[test]
     fn path_identifier_punctuation_punctuation_identifier_segments() {
-        let session = BuildSession::empty(CAPSULE_INDEX, PACKAGE_INDEX);
-        let mut capsule = Capsule::test();
+        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let mut component = Component::test();
 
-        let overarching = capsule.add("overarching", EntityKind::module());
-        let noisy = capsule.add_below(
+        let overarching = component.add("overarching", EntityKind::module());
+        let noisy = component.add_below(
             "&/.~##",
             EntityKind::module(),
-            overarching.local_declaration_index(&capsule).unwrap(),
+            overarching.local_declaration_index(&component).unwrap(),
         );
-        let zickzack = capsule.add_below(
+        let zickzack = component.add_below(
             "^^^",
             EntityKind::module(),
-            noisy.local_declaration_index(&capsule).unwrap(),
+            noisy.local_declaration_index(&component).unwrap(),
         );
-        let sink = capsule.add_below(
+        let sink = component.add_below(
             "sink",
             EntityKind::UntypedFunction,
-            zickzack.local_declaration_index(&capsule).unwrap(),
+            zickzack.local_declaration_index(&component).unwrap(),
         );
 
         assert_eq(
-            "capsule.overarching.&/.~## . ^^^ .sink",
+            "topmost.overarching.&/.~## . ^^^ .sink",
             sink.into_expression()
-                .with((&capsule, &session))
+                .with((&component, &session))
                 .to_string(),
         );
     }

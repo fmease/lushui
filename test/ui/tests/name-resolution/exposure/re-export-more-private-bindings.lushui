@@ -3,7 +3,7 @@
 @public
 use Thing as Piece
 
-@(public capsule)
+@(public topmost)
 data Thing: Type of
     thing: Thing
 
@@ -12,11 +12,11 @@ module alpha of
         data Linchpin: Type of
 
         module gamma of
-            @(public capsule)
+            @(public topmost)
             use super.Linchpin as L
 
             @(public super)
             data Mock: Type of
 
-            @(public capsule.alpha)
+            @(public topmost.alpha)
             use Mock as //>

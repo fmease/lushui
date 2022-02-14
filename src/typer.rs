@@ -15,7 +15,7 @@ use crate::{
         session::{IntrinsicType, KnownBinding},
         BuildSession,
     },
-    resolver::Capsule,
+    resolver::Component,
     syntax::{ast::Explicitness, lowered_ast::AttributeName},
     typer::interpreter::scope::BindingRegistrationKind,
 };
@@ -29,11 +29,11 @@ pub mod interpreter;
 
 pub fn check(
     declaration: &Declaration,
-    capsule: &mut Capsule,
+    component: &mut Component,
     session: &mut BuildSession,
     reporter: &Reporter,
 ) -> Result {
-    let mut typer = Typer::new(capsule, session, reporter);
+    let mut typer = Typer::new(component, session, reporter);
 
     typer
         .start_infer_types_in_declaration(declaration, Context::default())
@@ -48,25 +48,25 @@ pub fn check(
 /// The state of the typer.
 struct Typer<'a> {
     // @Task add recursion depth field
-    capsule: &'a mut Capsule,
+    component: &'a mut Component,
     session: &'a mut BuildSession,
     reporter: &'a Reporter,
     // @Note this is very coarse-grained: as soon as we cannot resolve EITHER type annotation (for example)
     // OR actual value(s), we bail out and add this here. This might be too conversative (leading to more
     // "circular type" errors or whatever), we can just discriminate by creating sth like
-    // UnresolvedThingy/WorlistItem { index: CapsuleIndex, expression: TypeAnnotation|Value|Both|... }
+    // UnresolvedThingy/WorlistItem { index: ComponentIndex, expression: TypeAnnotation|Value|Both|... }
     out_of_order_bindings: Vec<BindingRegistration>,
     health: Health,
 }
 
 impl<'a> Typer<'a> {
     fn new(
-        capsule: &'a mut Capsule,
+        component: &'a mut Component,
         session: &'a mut BuildSession,
         reporter: &'a Reporter,
     ) -> Self {
         Self {
-            capsule,
+            component,
             session,
             reporter,
             out_of_order_bindings: Vec::new(),
@@ -75,7 +75,7 @@ impl<'a> Typer<'a> {
     }
 
     fn interpreter(&self) -> Interpreter<'_> {
-        Interpreter::new(self.capsule, self.session, self.reporter)
+        Interpreter::new(self.component, self.session, self.reporter)
     }
 
     // @Task documentation
@@ -335,8 +335,8 @@ impl<'a> Typer<'a> {
                 value,
             } => {
                 // @Bug may be non-local thus panic
-                let index = binder.local_declaration_index(self.capsule).unwrap();
-                let entity = &mut self.capsule[index];
+                let index = binder.local_declaration_index(self.component).unwrap();
+                let entity = &mut self.component[index];
                 // @Question can't we just remove the bodiless check as intrinsic functions
                 // (the only legal bodiless functions) are already handled separately via
                 // IntrinsicFunction?
@@ -349,8 +349,8 @@ impl<'a> Typer<'a> {
             }
             Data { binder, type_ } => {
                 // @Bug may be non-local thus panic
-                let index = binder.local_declaration_index(self.capsule).unwrap();
-                let entity = &mut self.capsule[index];
+                let index = binder.local_declaration_index(self.component).unwrap();
+                let entity = &mut self.component[index];
                 debug_assert!(entity.is_untyped());
 
                 entity.kind = EntityKind::DataType {
@@ -365,26 +365,26 @@ impl<'a> Typer<'a> {
                 owner_data_type: data,
             } => {
                 // @Bug may be non-local thus panic
-                let index = binder.local_declaration_index(self.capsule).unwrap();
-                let entity = &mut self.capsule[index];
+                let index = binder.local_declaration_index(self.component).unwrap();
+                let entity = &mut self.component[index];
                 debug_assert!(entity.is_untyped());
 
                 entity.kind = EntityKind::Constructor { type_ };
 
                 // @Bug may be non-local thus panic
-                let data_index = data.local_declaration_index(self.capsule).unwrap();
+                let data_index = data.local_declaration_index(self.component).unwrap();
 
-                match &mut self.capsule[data_index].kind {
+                match &mut self.component[data_index].kind {
                     EntityKind::DataType { constructors, .. } => constructors.push(binder),
                     _ => unreachable!(),
                 }
             }
             IntrinsicFunction { binder, type_ } => {
                 // @Bug may be non-local thus panic
-                let index = binder.local_declaration_index(self.capsule).unwrap();
-                debug_assert!(self.capsule[index].is_untyped());
+                let index = binder.local_declaration_index(self.component).unwrap();
+                debug_assert!(self.component[index].is_untyped());
 
-                self.capsule[index].kind = self.session.register_intrinsic_function(
+                self.component[index].kind = self.session.register_intrinsic_function(
                     binder,
                     type_,
                     registration
@@ -418,8 +418,8 @@ impl<'a> Typer<'a> {
                     .code(Code::E032)
                     .message(format!(
                         "expected type `{}`, got type `{}`",
-                        expected.with((self.capsule, self.session)),
-                        actual.with((self.capsule, self.session))
+                        expected.with((self.component, self.session)),
+                        actual.with((self.component, self.session))
                     ))
                     .labeled_primary_span(&actual_value, "has the wrong type")
                     .if_present(expectation_cause, |this, cause| {
@@ -454,7 +454,7 @@ impl<'a> Typer<'a> {
                         "namely {}",
                         self.out_of_order_bindings
                             .iter()
-                            .map(|binding| binding.with((self.capsule, self.session)).quote())
+                            .map(|binding| binding.with((self.component, self.session)).quote())
                             .join_with(", ")
                     ))
                     .report(self.reporter);
@@ -472,9 +472,9 @@ impl<'a> Typer<'a> {
     // type error in possible cases
     fn infer_type_of_expression(
         // @Task change to &mut self (for warnings), this also means
-        // changing the definition of FunctionScope... it's FunctionScope::Capsule now, no payload
+        // changing the definition of FunctionScope... it's FunctionScope::Component now, no payload
         // this means more boilerplate methods (either duplication or as in resolver: every FunctionScope method takes
-        // a capsule: &Capsule parameter)
+        // a component: &Component parameter)
         &self,
         expression: Expression,
         scope: &FunctionScope<'_>,
@@ -588,8 +588,8 @@ impl<'a> Typer<'a> {
                                 .code(Code::E032)
                                 .message(format!(
                                     "expected type `{}`, got type `{}`",
-                                    expected.with((self.capsule, self.session)),
-                                    actual.with((self.capsule, self.session))
+                                    expected.with((self.component, self.session)),
+                                    actual.with((self.component, self.session))
                                 ))
                                 .labeled_primary_span(&application.argument, "has the wrong type")
                                 .labeled_secondary_span(&expected, "expected due to this")
@@ -614,7 +614,7 @@ impl<'a> Typer<'a> {
                         .code(Code::E031)
                         .message(format!(
                             "expected type `_ -> _`, got type `{}`",
-                            type_of_callee.with((self.capsule, self.session))
+                            type_of_callee.with((self.component, self.session))
                         ))
                         .labeled_primary_span(&application.callee, "has wrong type")
                         .labeled_secondary_span(&application.argument, "applied to this")
@@ -657,7 +657,7 @@ impl<'a> Typer<'a> {
                     }
                     _ => todo!(
                         "encountered unsupported type to be case-analysed type={}",
-                        subject_type.with((self.capsule, self.session))
+                        subject_type.with((self.component, self.session))
                     ),
                 };
 
@@ -700,7 +700,7 @@ impl<'a> Typer<'a> {
                                 .map_err(|error| {
                                     handle_type_mismatch(
                                         error,
-                                        (self.capsule, self.session),
+                                        (self.component, self.session),
                                         self.reporter,
                                     )
                                 })?;
@@ -715,7 +715,7 @@ impl<'a> Typer<'a> {
                                 .map_err(|error| {
                                     handle_type_mismatch(
                                         error,
-                                        (self.capsule, self.session),
+                                        (self.component, self.session),
                                         self.reporter,
                                     )
                                 })?;
@@ -732,7 +732,7 @@ impl<'a> Typer<'a> {
                             .map_err(|error| {
                                 handle_type_mismatch(
                                     error,
-                                    (self.capsule, self.session),
+                                    (self.component, self.session),
                                     self.reporter,
                                 )
                             })?;
@@ -755,9 +755,9 @@ impl<'a> Typer<'a> {
                                         self.interpreter().look_up_type(&binding.0, scope).unwrap();
 
                                     dbg!(
-                                        &subject_type.with((self.capsule, self.session)),
-                                        application.callee.with((self.capsule, self.session)),
-                                        &constructor_type.with((self.capsule, self.session))
+                                        &subject_type.with((self.component, self.session)),
+                                        application.callee.with((self.component, self.session)),
+                                        &constructor_type.with((self.component, self.session))
                                     );
 
                                     todo!();
@@ -913,8 +913,8 @@ impl<'a> Typer<'a> {
                 .code(Code::E033)
                 .message(format!(
                     "`{}` is not an instance of `{}`",
-                    result_type.with((self.capsule, self.session)),
-                    type_.with((self.capsule, self.session))
+                    result_type.with((self.component, self.session)),
+                    type_.with((self.component, self.session))
                 ))
                 .primary_span(result_type.span)
                 .report(self.reporter);

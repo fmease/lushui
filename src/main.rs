@@ -26,7 +26,7 @@
     clippy::same_functions_in_if_condition, // @Temporary false positives with const generics (#8139)
     clippy::needless_pass_by_value, // @Temporary
     clippy::missing_panics_doc, // @Temporary
-    clippy::needless_borrow // @Temporary false positives
+    clippy::needless_borrow // @Temporary false positives (#8408 I believe)
 )]
 
 use cli::{BuildMode, Command, PassRestriction};
@@ -39,10 +39,12 @@ use lushui::{
     documenter,
     error::{outcome, Result},
     format::{DisplayWith, IOError},
-    package::{find_package, BuildQueue, CapsuleType, PackageManifest, DEFAULT_SOURCE_FOLDER_NAME},
+    package::{
+        find_package, BuildQueue, ComponentType, PackageManifest, DEFAULT_SOURCE_FOLDER_NAME,
+    },
     resolver::{self, PROGRAM_ENTRY_IDENTIFIER},
     span::{SharedSourceMap, SourceMap, Spanned},
-    syntax::{lexer, lowerer, parser, CapsuleName},
+    syntax::{lexer, lowerer, parser, ComponentName},
     typer, FILE_EXTENSION,
 };
 use std::{
@@ -147,8 +149,8 @@ fn build_package(
             build_queue.process_single_file_package(
                 path,
                 build_options
-                    .capsule_type
-                    .unwrap_or(CapsuleType::Executable),
+                    .component_type
+                    .unwrap_or(ComponentType::Executable),
                 build_options.no_core,
             )?;
         }
@@ -162,11 +164,11 @@ fn build_package(
                     )
                     .report(reporter);
             }
-            if build_options.capsule_type.is_some() {
+            if build_options.component_type.is_some() {
                 // @Task add help explaining the equivalent for normal packages
                 Diagnostic::error()
                     .message(
-                        "the option `--capsule-type` is only available for single-file packages",
+                        "the option `--component-type` is only available for single-file packages",
                     )
                     .report(reporter);
             }
@@ -195,49 +197,49 @@ fn build_package(
         }
     };
 
-    let (mut session, unbuilt_capsules) = build_queue.finalize();
+    let (mut session, unbuilt_components) = build_queue.finalize();
 
     // @Note we don't try to handle duplicate names yet
     // cargo disallows them since its lock-file format is flat
     // npm allows them since it stores transitive dependencies in the folder
-    // of the respective dependent capsule (in the build folder)
+    // of the respective dependent component (in the build folder)
     // it's a tiny edge case but I feel like we should allow a transitive dependency to
-    // be named exactly like the goal capsule
+    // be named exactly like the goal component
     // (analogous cases for direct and transitive dependencies follow the same way)
     // since the end user might not have control over those dependencies to patch them
-    let capsules: Vec<_> = unbuilt_capsules
+    let components: Vec<_> = unbuilt_components
         .values()
-        .map(|capsule| capsule.metadata.clone())
+        .map(|component| component.metadata.clone())
         .collect();
 
-    for mut capsule in unbuilt_capsules.into_values() {
+    for mut component in unbuilt_components.into_values() {
         // @Task abstract over this as print_status_report and report w/ label="Running" for
-        // goal capsule if mode==Run (in addition to initial "Building")
+        // goal component if mode==Run (in addition to initial "Building")
         if !options.quiet {
             let label = match mode {
                 BuildMode::Check => "Checking",
                 BuildMode::Build | BuildMode::Run => "Building",
-                // @Bug this should not be printed for non-goal capsules and --no-deps
+                // @Bug this should not be printed for non-goal components and --no-deps
                 BuildMode::Document { .. } => "Documenting",
             };
             let label = label.green().bold();
-            // @Beacon @Task don't use package path but capsule path
-            let path = &capsule.package(&session).path.to_string_lossy();
+            // @Beacon @Task don't use package path but component path
+            let path = &component.package(&session).path.to_string_lossy();
             // @Task print version
             println!(
                 "   {label} {} ({path})",
-                if capsule.in_goal_package(&session)
-                    && capsule.metadata.is_ambiguously_named_within_package
+                if component.in_goal_package(&session)
+                    && component.metadata.is_ambiguously_named_within_package
                 {
-                    format!("{} ({})", capsule.name(), capsule.type_())
+                    format!("{} ({})", component.name(), component.type_())
                 } else {
-                    capsule.name().to_string()
+                    component.name().to_string()
                 }
             );
         }
 
         macro check_pass_restriction($restriction:expr) {
-            if capsule.is_goal(&session) && options.pass_restriction == Some($restriction) {
+            if component.is_goal(&session) && options.pass_restriction == Some($restriction) {
                 return Ok(());
             }
         }
@@ -248,19 +250,19 @@ fn build_package(
 
         let source_file = map
             .borrow_mut()
-            .load(capsule.path().to_owned())
+            .load(component.path().to_owned())
             .map_err(|error| {
-                // this error case can be reached with capsules specified in library or executable manifests
+                // this error case can be reached with components specified in library or executable manifests
                 // @Question any other cases?
 
                 // @Task provide more context for transitive dependencies of the goal package
                 Diagnostic::error()
                     .message(format!(
-                        "could not load {} capsule `{}`",
-                        capsule.type_(),
-                        capsule.name(),
+                        "could not load {} component `{}`",
+                        component.type_(),
+                        component.name(),
                     ))
-                    .note(IOError(error, capsule.path()).to_string())
+                    .note(IOError(error, component.path()).to_string())
                     .report(reporter);
             })?;
 
@@ -270,7 +272,7 @@ fn build_package(
 
         let duration = time.elapsed();
 
-        if capsule.is_goal(&session) && options.emit_tokens {
+        if component.is_goal(&session) && options.emit_tokens {
             for token in &tokens {
                 eprintln!("{:?}", token);
             }
@@ -281,16 +283,16 @@ fn build_package(
         let time = Instant::now();
 
         // @Beacon @Task fix this ugly mess, create clean helpers
-        let module_name = Spanned::new(default(), capsule.name().clone()).into();
-        let capsule_root =
+        let module_name = Spanned::new(default(), component.name().clone()).into();
+        let component_root =
             parser::parse_file(&tokens, source_file, module_name, map.clone(), reporter)?;
 
         let duration = time.elapsed();
 
         assert!(token_health.is_untainted()); // parsing succeeded
 
-        if capsule.is_goal(&session) && options.emit_ast {
-            eprintln!("{capsule_root:#?}");
+        if component.is_goal(&session) && options.emit_ast {
+            eprintln!("{component_root:#?}");
         }
 
         print_pass_duration("Parsing", duration, &options);
@@ -298,50 +300,50 @@ fn build_package(
         let time = Instant::now();
 
         let lowering_options = lowerer::Options {
-            internal_features_enabled: options.internals || capsule.is_core_library(&session),
+            internal_features_enabled: options.internals || component.is_core_library(&session),
             keep_documentation_comments: matches!(mode, BuildMode::Document { .. }),
         };
-        let capsule_root =
-            lowerer::lower_file(capsule_root, lowering_options, map.clone(), reporter)?;
+        let component_root =
+            lowerer::lower_file(component_root, lowering_options, map.clone(), reporter)?;
         let duration = time.elapsed();
 
-        if capsule.is_goal(&session) && options.emit_lowered_ast {
-            eprintln!("{}", capsule_root);
+        if component.is_goal(&session) && options.emit_lowered_ast {
+            eprintln!("{component_root}");
         }
 
         print_pass_duration("Lowering", duration, &options);
         check_pass_restriction!(PassRestriction::Lowerer);
         let time = Instant::now();
-        let capsule_root =
-            resolver::resolve_declarations(capsule_root, &mut capsule, &mut session, reporter)?;
+        let component_root =
+            resolver::resolve_declarations(component_root, &mut component, &mut session, reporter)?;
         let duration = time.elapsed();
 
         if options.emit_hir {
-            eprintln!("{}", capsule_root.with((&capsule, &session)));
+            eprintln!("{}", component_root.with((&component, &session)));
         }
-        if capsule.is_goal(&session) && options.emit_untyped_scope {
-            eprintln!("{}", capsule.with(&session));
+        if component.is_goal(&session) && options.emit_untyped_scope {
+            eprintln!("{}", component.with(&session));
         }
 
         print_pass_duration("Name resolution", duration, &options);
         check_pass_restriction!(PassRestriction::Resolver);
         let time = Instant::now();
-        typer::check(&capsule_root, &mut capsule, &mut session, reporter)?;
+        typer::check(&component_root, &mut component, &mut session, reporter)?;
         let duration = time.elapsed();
 
-        if capsule.is_goal(&session) && options.emit_scope {
-            eprintln!("{}", capsule.with(&session));
+        if component.is_goal(&session) && options.emit_scope {
+            eprintln!("{}", component.with(&session));
         }
 
         print_pass_duration("Type checking & inference", duration, &options);
 
         // @Task move out of main.rs
-        if capsule.is_executable() && capsule.program_entry.is_none() {
+        if component.is_executable() && component.program_entry.is_none() {
             Diagnostic::error()
                 .code(Code::E050)
                 .message(format!(
-                    "the capsule `{}` is missing a program entry named `{}`",
-                    capsule.name(),
+                    "the component `{}` is missing a program entry named `{}`",
+                    component.name(),
                     PROGRAM_ENTRY_IDENTIFIER,
                 ))
                 .report(reporter);
@@ -351,30 +353,33 @@ fn build_package(
         'ending: {
             match &mode {
                 BuildMode::Run => {
-                    if capsule.is_goal(&session) {
-                        if !capsule.is_executable() {
+                    if component.is_goal(&session) {
+                        if !component.is_executable() {
                             // @Question code?
                             Diagnostic::error()
                                 .message(format!(
                                     "the package `{}` does not contain any executable to run",
-                                    capsule.package(&session).name,
+                                    component.package(&session).name,
                                 ))
                                 .report(reporter);
                             return Err(());
                         }
 
                         let result = typer::interpreter::evaluate_main_function(
-                            &capsule, &session, reporter,
+                            &component, &session, reporter,
                         )?;
 
-                        println!("{}", result.with((&capsule, &session)));
+                        println!("{}", result.with((&component, &session)));
                     }
                 }
                 BuildMode::Build => {
                     // @Temporary not just builds, also runs ^^
 
-                    lushui::compiler::compile_and_interpret_declaration(&capsule_root, &capsule)
-                        .unwrap_or_else(|_| panic!());
+                    lushui::compiler::compile_and_interpret_declaration(
+                        &component_root,
+                        &component,
+                    )
+                    .unwrap_or_else(|_| panic!());
                 }
                 BuildMode::Document {
                     options: documentation_options,
@@ -382,7 +387,7 @@ fn build_package(
                     // @Task implement `--open`ing
 
                     // @Bug leads to broken links, the documenter has to handle this itself
-                    if documentation_options.no_dependencies && !capsule.is_goal(&session) {
+                    if documentation_options.no_dependencies && !component.is_goal(&session) {
                         break 'ending;
                     }
 
@@ -392,10 +397,10 @@ fn build_package(
                         lorem_ipsum: options.lorem_ipsum,
                     };
                     documenter::document(
-                        &capsule_root,
+                        &component_root,
                         documenter_options,
-                        &capsules,
-                        &capsule,
+                        &components,
+                        &component,
                         &session,
                         reporter,
                     )?;
@@ -407,7 +412,7 @@ fn build_package(
             }
         }
 
-        session.add(capsule);
+        session.add(component);
     }
 
     Ok(())
@@ -428,7 +433,7 @@ fn generate_package(
 ) -> Result {
     use std::fs;
 
-    let name = CapsuleName::parse(&name).map_err(|error| error.report(reporter))?;
+    let name = ComponentName::parse(&name).map_err(|error| error.report(reporter))?;
 
     // @Task handle errors properly
     let current_path = std::env::current_dir().unwrap();
@@ -459,7 +464,7 @@ build/
 
     if generation_options.library {
         let path = source_folder_path
-            .join(CapsuleType::Library.default_root_file_stem())
+            .join(ComponentType::Library.default_root_file_stem())
             .with_extension(FILE_EXTENSION);
 
         fs::File::create(path).unwrap();
@@ -467,7 +472,7 @@ build/
 
     if generation_options.executable {
         let path = source_folder_path
-            .join(CapsuleType::Executable.default_root_file_stem())
+            .join(ComponentType::Executable.default_root_file_stem())
             .with_extension(FILE_EXTENSION);
 
         let content = "main: extern.core.text.Text =\n    \"Hello there!\"";

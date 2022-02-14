@@ -5,8 +5,8 @@ module
 data Int: Type
 
 ;;; @public @intrinsic
-;;; to-nat: Int -> Option capsule.nat.Nat
+;;; to-nat: Int -> Option topmost.nat.Nat
 
 ;;; @public @intrinsic
-;;; absolute: Int -> capsule.nat.Nat
+;;; absolute: Int -> topmost.nat.Nat
 

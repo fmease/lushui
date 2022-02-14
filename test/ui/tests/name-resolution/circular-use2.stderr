@@ -1,4 +1,4 @@
-error[E024]: the declarations `capsule.indirect.thing` and `capsule.thing` are circular
+error[E024]: the declarations `topmost.indirect.thing` and `topmost.thing` are circular
  --> ${DIRECTORY}/name-resolution/circular-use2.lushui:3:14
   |
 3 | use indirect.thing
@@ -10,14 +10,14 @@ error[E024]: the declarations `capsule.indirect.thing` and `capsule.thing` are c
   |                                        ^^^^^ 
   |
 
-error[E024]: the declaration `capsule.alpha` is circular
+error[E024]: the declaration `topmost.alpha` is circular
  --> ${DIRECTORY}/name-resolution/circular-use2.lushui:6:11
   |
 6 | use alpha.alpha
   |           ^^^^^ 
   |
 
-error[E024]: the declarations `capsule.omega` and `capsule.bridge` are circular
+error[E024]: the declarations `topmost.omega` and `topmost.bridge` are circular
  --> ${DIRECTORY}/name-resolution/circular-use2.lushui:8:20
   |
 8 | use omega.omega as bridge
@@ -29,7 +29,7 @@ error[E024]: the declarations `capsule.omega` and `capsule.bridge` are circular
   |               ^^^^^ 
   |
 
-error[E024]: the declaration `capsule.cycle` is circular
+error[E024]: the declaration `topmost.cycle` is circular
   --> ${DIRECTORY}/name-resolution/circular-use2.lushui:11:5
    |
 11 | use cycle

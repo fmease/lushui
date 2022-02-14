@@ -71,7 +71,7 @@
     clippy::same_functions_in_if_condition, // @Temporary false positives with const generics (#8139)
     clippy::needless_pass_by_value, // @Temporary
     clippy::missing_panics_doc, // @Temporary
-    clippy::needless_borrow // @Temporary false positives
+    clippy::needless_borrow // @Temporary false positives (#8408 I believe)
 )]
 
 pub mod compiler;

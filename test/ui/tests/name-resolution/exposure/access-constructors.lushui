@@ -9,7 +9,7 @@ data Bool: Type of
 @abstract
 data Switch: Type of
     on: Switch
-    off: capsule.Switch
+    off: topmost.Switch
 
 module grotto of
     @public data Color: Type of

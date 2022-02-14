@@ -7,10 +7,10 @@ error[E025]: path `super` is not bound to an identifier
  note: a use-declaration has to introduce at least one new binder
  help: bind the path to a name with `as`
 
-error[E025]: path `capsule` is not bound to an identifier
+error[E025]: path `topmost` is not bound to an identifier
  --> ${DIRECTORY}/lowering/invalid-unnamed-path-hanger.lushui:4:5
   |
-4 | use capsule
+4 | use topmost
   |     ^^^^^^^ 
   |
  note: a use-declaration has to introduce at least one new binder
@@ -28,7 +28,7 @@ error[E025]: path `self` is not bound to an identifier
 error[E025]: path `self` is not bound to an identifier
  --> ${DIRECTORY}/lowering/invalid-unnamed-path-hanger.lushui:8:20
   |
-8 | use capsule.(space self space)
+8 | use topmost.(space self space)
   |                    ^^^^ 
   |
  note: a use-declaration has to introduce at least one new binder
@@ -37,7 +37,7 @@ error[E025]: path `self` is not bound to an identifier
 error[E026]: path `super` not allowed in this position
   --> ${DIRECTORY}/lowering/invalid-unnamed-path-hanger.lushui:10:31
    |
-10 | use capsule.(self.(self.thing super))
+10 | use topmost.(self.(self.thing super))
    |                               ^^^^^ 
    |
   help: consider moving this path to a separate use-declaration

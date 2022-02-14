@@ -601,7 +601,7 @@ pub(crate) type Hanger = Spanned<HangerKind>;
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum HangerKind {
     Extern,
-    Capsule,
+    Topmost,
     Super,
     Self_,
 }
@@ -610,7 +610,7 @@ impl HangerKind {
     pub(crate) const fn name(self) -> &'static str {
         match self {
             Self::Extern => "extern",
-            Self::Capsule => "capsule",
+            Self::Topmost => "topmost",
             Self::Super => "super",
             Self::Self_ => "self",
         }
@@ -623,7 +623,7 @@ impl TryFrom<TokenKind> for HangerKind {
     fn try_from(kind: TokenKind) -> Result<Self, Self::Error> {
         Ok(match kind {
             TokenKind::Extern => Self::Extern,
-            TokenKind::Capsule => Self::Capsule,
+            TokenKind::Topmost => Self::Topmost,
             TokenKind::Super => Self::Super,
             TokenKind::Self_ => Self::Self_,
             _ => return Err(()),

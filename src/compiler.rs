@@ -13,7 +13,7 @@ pub(crate) mod interpreter;
 
 use crate::{
     hir::{self, Declaration, DeclarationIndex, Expression, Number},
-    resolver::Capsule,
+    resolver::Component,
     syntax::lowered_ast::attributes::AttributeName,
     utility::HashMap,
 };
@@ -36,18 +36,18 @@ struct Compiler<'a> {
     // @Temporary
     entry: Option<ChunkIndex>,
     declaration_mapping: HashMap<DeclarationIndex, ChunkIndex>,
-    capsule: &'a Capsule,
+    component: &'a Component,
 }
 
 impl<'a> Compiler<'a> {
-    fn new(capsule: &'a Capsule) -> Self {
+    fn new(component: &'a Component) -> Self {
         Self {
             chunks: IndexMap::new(),
             constants: Vec::new(),
             lambda_amount: 0,
             entry: None,
             declaration_mapping: default(),
-            capsule,
+            component,
         }
     }
 
@@ -134,8 +134,8 @@ impl<'a> Compiler<'a> {
                     )?;
                     self.chunks[index].instructions.push(Instruction::Return);
 
-                    // @Task obsolete once we map any CapsuleIndex to a chunk identifier
-                    if self.capsule.program_entry.as_ref() == Some(&function.binder) {
+                    // @Task obsolete once we map any ComponentIndex to a chunk identifier
+                    if self.component.program_entry.as_ref() == Some(&function.binder) {
                         self.entry = Some(index);
                     }
                 }
@@ -273,9 +273,9 @@ pub enum CompilationError {}
 // @Temporary
 pub fn compile_and_interpret_declaration(
     declaration: &Declaration,
-    capsule: &Capsule,
+    component: &Component,
 ) -> Result<(), Error> {
-    let mut compiler = Compiler::new(capsule);
+    let mut compiler = Compiler::new(component);
     compiler.compile_declaration(declaration)?;
     // dbg!(&compiler.chunks);
     eprintln!("{}", compiler.print_chunks());

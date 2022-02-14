@@ -3,14 +3,14 @@
 Alpha: Type = Alpha
 
 module realm of
-    Alpha: super.Beta = capsule.Alpha
+    Alpha: super.Beta = topmost.Alpha
 
     module local of
         use super.Alpha as A0
-        use capsule.realm.Alpha as A1
-        use capsule.Alpha as A2
+        use topmost.realm.Alpha as A1
+        use topmost.Alpha as A2
         use self as lokal
-        use capsule.parallel-realm
+        use topmost.parallel-realm
 
 module parallel-realm of
     use super.Unit.unit

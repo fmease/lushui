@@ -21,11 +21,11 @@ use crate::{
     syntax::{
         ast::{self, Path},
         lowered_ast::{self, AttributeName},
-        CapsuleName,
+        ComponentName,
     },
     utility::{obtain, HashMap, HashSet},
 };
-pub(crate) use scope::{Capsule, Exposure, FunctionScope, Namespace};
+pub(crate) use scope::{Component, Exposure, FunctionScope, Namespace};
 use scope::{RegistrationError, RestrictedExposure};
 use std::{cmp::Ordering, collections::hash_map::Entry, fmt, sync::Mutex};
 
@@ -40,22 +40,22 @@ pub const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
 /// # Panics
 ///
 /// If the declaration passed is not a module, this function will panic as it
-/// requires a capsule root which is defined through the root module.
+/// requires a component root which is defined through the root module.
 // @Task improve docs: mention that it not only looks things up but also defines bindings
-// and that `resolve` should only be called once per Capsule (bc it would fail anyways the 2nd
+// and that `resolve` should only be called once per Component (bc it would fail anyways the 2nd
 // time (to re-define root (I think)))
 pub fn resolve_declarations(
-    capsule_root: lowered_ast::Declaration,
-    capsule: &mut Capsule,
+    component_root: lowered_ast::Declaration,
+    component: &mut Component,
     session: &mut BuildSession,
     reporter: &Reporter,
 ) -> Result<hir::Declaration> {
-    let mut resolver = ResolverMut::new(capsule, session, reporter);
+    let mut resolver = ResolverMut::new(component, session, reporter);
 
     resolver
-        .start_resolve_declaration(&capsule_root, None, Context::default())
+        .start_resolve_declaration(&component_root, None, Context::default())
         .map_err(|_| {
-            std::mem::take(&mut resolver.capsule.duplicate_definitions)
+            std::mem::take(&mut resolver.component.duplicate_definitions)
                 .into_values()
                 .for_each(|error| Diagnostic::from(error).report(resolver.reporter));
         })?;
@@ -65,21 +65,21 @@ pub fn resolve_declarations(
     // @Task @Beacon don't return early here
     resolver.resolve_exposure_reaches()?;
 
-    let declaration = resolver.finish_resolve_declaration(capsule_root, None, Context::default());
+    let declaration = resolver.finish_resolve_declaration(component_root, None, Context::default());
 
     Result::ok_if_untainted(declaration, resolver.health)
 }
 
-// @Task docs: mention that the current capsule should be pre-populated before calling this
+// @Task docs: mention that the current component should be pre-populated before calling this
 // (using resolver::resolve)
 pub(crate) fn resolve_path(
     path: &ast::Path,
     namespace: DeclarationIndex,
-    capsule: &Capsule,
+    component: &Component,
     session: &BuildSession,
     reporter: &Reporter,
 ) -> Result<DeclarationIndex> {
-    let resolver = Resolver::new(capsule, session, reporter);
+    let resolver = Resolver::new(component, session, reporter);
 
     resolver
         .resolve_path::<target::Any>(path, namespace)
@@ -87,9 +87,9 @@ pub(crate) fn resolve_path(
 }
 
 // @Question can we merge Resolver and ResolverMut if we introduce a separate
-// lifetime for Resolver.capsule?
+// lifetime for Resolver.component?
 struct ResolverMut<'a> {
-    capsule: &'a mut Capsule,
+    component: &'a mut Component,
     session: &'a mut BuildSession,
     reporter: &'a Reporter,
     /// For resolving out of order use-declarations.
@@ -99,12 +99,12 @@ struct ResolverMut<'a> {
 
 impl<'a> ResolverMut<'a> {
     fn new(
-        capsule: &'a mut Capsule,
+        component: &'a mut Component,
         session: &'a mut BuildSession,
         reporter: &'a Reporter,
     ) -> Self {
         Self {
-            capsule,
+            component,
             session,
             reporter,
             partially_resolved_use_bindings: HashMap::default(),
@@ -114,7 +114,7 @@ impl<'a> ResolverMut<'a> {
 
     fn as_ref(&self) -> Resolver<'_> {
         Resolver {
-            capsule: self.capsule,
+            component: self.component,
             session: self.session,
             reporter: self.reporter,
         }
@@ -160,7 +160,7 @@ impl<'a> ResolverMut<'a> {
             Function(function) => {
                 let module = module.unwrap();
 
-                self.capsule.register_binding(
+                self.component.register_binding(
                     function.binder.clone(),
                     exposure,
                     declaration.attributes.clone(),
@@ -173,7 +173,7 @@ impl<'a> ResolverMut<'a> {
                 let module = module.unwrap();
 
                 // @Task don't return early, see analoguous code for modules
-                let index = self.capsule.register_binding(
+                let index = self.component.register_binding(
                     type_.binder.clone(),
                     exposure,
                     declaration.attributes.clone(),
@@ -181,7 +181,7 @@ impl<'a> ResolverMut<'a> {
                     Some(module),
                 )?;
 
-                let binder = Identifier::new(index.global(self.capsule), type_.binder.clone());
+                let binder = Identifier::new(index.global(self.component), type_.binder.clone());
 
                 let known = declaration.attributes.span(AttributeName::Known);
                 if let Some(known) = known {
@@ -228,12 +228,12 @@ impl<'a> ResolverMut<'a> {
                 let Context::DataDeclaration { index: namespace, transparency, known } = context else { unreachable!() };
 
                 let exposure = match transparency.unwrap() {
-                    Transparency::Transparent => self.capsule[namespace].exposure.clone(),
+                    Transparency::Transparent => self.component[namespace].exposure.clone(),
                     // as if a @(public super) was attached to the constructor
                     Transparency::Abstract => RestrictedExposure::Resolved { reach: module }.into(),
                 };
 
-                let index = self.capsule.register_binding(
+                let index = self.component.register_binding(
                     constructor.binder.clone(),
                     exposure,
                     declaration.attributes.clone(),
@@ -242,13 +242,13 @@ impl<'a> ResolverMut<'a> {
                 )?;
 
                 let binder =
-                    Identifier::new(index.global(self.capsule), constructor.binder.clone());
+                    Identifier::new(index.global(self.component), constructor.binder.clone());
 
                 if let Some(known) = known {
                     self.session
                         .register_known_binding(
                             &binder,
-                            Some(self.capsule[namespace].source.as_str()),
+                            Some(self.component[namespace].source.as_str()),
                             known,
                             self.reporter,
                         )
@@ -259,7 +259,7 @@ impl<'a> ResolverMut<'a> {
                 // @Task @Beacon don't return early on error
                 // @Note you need to create a fake index for this (an index which points to
                 // a fake, nameless binding)
-                let index = self.capsule.register_binding(
+                let index = self.component.register_binding(
                     submodule.binder.clone(),
                     exposure,
                     // @Beacon @Bug this does not account for attributes found on the attribute header!
@@ -282,7 +282,7 @@ impl<'a> ResolverMut<'a> {
                 // there is always a root module
                 let module = module.unwrap();
 
-                let index = self.capsule.register_binding(
+                let index = self.component.register_binding(
                     use_.binder.clone(),
                     exposure,
                     declaration.attributes.clone(),
@@ -343,11 +343,11 @@ impl<'a> ResolverMut<'a> {
                         .stain(&mut self.health)
                 });
 
-                if module == self.capsule.local_root()
-                    && self.capsule.is_executable()
+                if module == self.component.local_root()
+                    && self.component.is_executable()
                     && function.binder.as_str() == PROGRAM_ENTRY_IDENTIFIER
                 {
-                    self.capsule.program_entry = Some(binder.clone());
+                    self.component.program_entry = Some(binder.clone());
                 }
 
                 hir::Declaration::new(
@@ -384,7 +384,7 @@ impl<'a> ResolverMut<'a> {
                                 constructor,
                                 Some(module),
                                 Context::DataDeclaration {
-                                    index: binder.local_declaration_index(self.capsule).unwrap(),
+                                    index: binder.local_declaration_index(self.component).unwrap(),
                                     transparency: None,
                                     known: None,
                                 },
@@ -434,9 +434,9 @@ impl<'a> ResolverMut<'a> {
                     Some(module) => self
                         .as_ref()
                         .reobtain_resolved_identifier::<target::Module>(&submodule.binder, module)
-                        .local(self.capsule)
+                        .local(self.component)
                         .unwrap(),
-                    None => self.capsule.local_root(),
+                    None => self.component.local_root(),
                 };
 
                 let declarations = submodule
@@ -455,7 +455,7 @@ impl<'a> ResolverMut<'a> {
                     declaration.attributes,
                     declaration.span,
                     hir::Module {
-                        binder: Identifier::new(index.global(self.capsule), submodule.binder),
+                        binder: Identifier::new(index.global(self.component), submodule.binder),
                         file: submodule.file,
                         declarations,
                     }
@@ -502,15 +502,15 @@ impl<'a> ResolverMut<'a> {
             let mut partially_resolved_use_bindings = HashMap::default();
 
             for (&index, item) in &self.partially_resolved_use_bindings {
-                match self
-                    .as_ref()
-                    .resolve_path::<target::Any>(&item.reference, item.module.global(self.capsule))
-                {
+                match self.as_ref().resolve_path::<target::Any>(
+                    &item.reference,
+                    item.module.global(self.component),
+                ) {
                     Ok(reference) => {
-                        self.capsule.bindings[index].kind = EntityKind::Use { reference };
+                        self.component.bindings[index].kind = EntityKind::Use { reference };
                     }
                     Err(error @ (UnresolvedBinding { .. } | Unrecoverable)) => {
-                        self.capsule.bindings[index].mark_as_error();
+                        self.component.bindings[index].mark_as_error();
                         self.as_ref().report_resolution_error(error);
                         self.health.taint();
                     }
@@ -521,7 +521,7 @@ impl<'a> ResolverMut<'a> {
                                 reference: item.reference.clone(),
                                 module: item.module,
                                 // @Beacon @Bug unwrap not verified
-                                inquirer: Some(inquirer.local(self.capsule).unwrap()),
+                                inquirer: Some(inquirer.local(self.component).unwrap()),
                             },
                         );
                     }
@@ -531,17 +531,19 @@ impl<'a> ResolverMut<'a> {
             // resolution stalled; therefore there are circular bindings
             if partially_resolved_use_bindings.len() == self.partially_resolved_use_bindings.len() {
                 for &index in partially_resolved_use_bindings.keys() {
-                    self.capsule[index].mark_as_error();
+                    self.component[index].mark_as_error();
                 }
 
                 for cycle in find_cycles(partially_resolved_use_bindings) {
                     let paths = cycle.iter().map(|&index| {
-                        self.capsule
-                            .absolute_path_to_string(index.global(self.capsule), self.session)
+                        self.component
+                            .absolute_path_to_string(index.global(self.component), self.session)
                             .quote()
                     });
                     let paths = unordered_listing(paths, Conjunction::And);
-                    let spans = cycle.iter().map(|&index| self.capsule[index].source.span());
+                    let spans = cycle
+                        .iter()
+                        .map(|&index| self.component[index].source.span());
 
                     Diagnostic::error()
                         .code(Code::E024)
@@ -617,10 +619,10 @@ impl<'a> ResolverMut<'a> {
     fn resolve_exposure_reaches(&mut self) -> Result {
         let mut health = Health::Untainted;
 
-        for (index, entity) in self.capsule.bindings.iter() {
+        for (index, entity) in self.component.bindings.iter() {
             if let Exposure::Restricted(exposure) = &entity.exposure {
                 // unwrap: root always has Exposure::Unrestricted, it won't reach this branch
-                let definition_site_namespace = entity.parent.unwrap().global(self.capsule);
+                let definition_site_namespace = entity.parent.unwrap().global(self.component);
 
                 if self
                     .as_ref()
@@ -638,14 +640,14 @@ impl<'a> ResolverMut<'a> {
             {
                 let reference = self.as_ref().look_up(reference_index);
 
-                if entity.exposure.compare(&reference.exposure, self.capsule)
+                if entity.exposure.compare(&reference.exposure, self.component)
                     == Some(Ordering::Greater)
                 {
                     Diagnostic::error()
                         .code(Code::E009)
                         .message(format!(
                             "re-export of the more private binding `{}`",
-                            self.capsule
+                            self.component
                                 .absolute_path_to_string(reference_index, self.session)
                         ))
                         .labeled_primary_span(
@@ -661,10 +663,12 @@ impl<'a> ResolverMut<'a> {
 expected the exposure of `{}`
            to be at most {}
       but it actually is {}",
-                            self.capsule
-                                .absolute_path_to_string(index.global(self.capsule), self.session),
-                            reference.exposure.with((self.capsule, self.session)),
-                            entity.exposure.with((self.capsule, self.session)),
+                            self.component.absolute_path_to_string(
+                                index.global(self.component),
+                                self.session
+                            ),
+                            reference.exposure.with((self.component, self.session)),
+                            entity.exposure.with((self.component, self.session)),
                         ))
                         .report(self.reporter);
                     health.taint();
@@ -677,15 +681,15 @@ expected the exposure of `{}`
 }
 
 struct Resolver<'a> {
-    capsule: &'a Capsule,
+    component: &'a Component,
     session: &'a BuildSession,
     reporter: &'a Reporter,
 }
 
 impl<'a> Resolver<'a> {
-    fn new(capsule: &'a Capsule, session: &'a BuildSession, reporter: &'a Reporter) -> Self {
+    fn new(component: &'a Component, session: &'a BuildSession, reporter: &'a Reporter) -> Self {
         Self {
-            capsule,
+            component,
             session,
             reporter,
         }
@@ -1081,7 +1085,7 @@ impl<'a> Resolver<'a> {
         scope: &FunctionScope<'_>,
     ) -> Result<DeclarationIndex> {
         let binding = self
-            .resolve_path::<target::Any>(path, scope.module().global(self.capsule))
+            .resolve_path::<target::Any>(path, scope.module().global(self.component))
             .map_err(|error| self.report_resolution_error(error))?;
 
         {
@@ -1105,8 +1109,8 @@ impl<'a> Resolver<'a> {
     }
 
     fn look_up(&self, index: DeclarationIndex) -> &'a Entity {
-        match index.local(self.capsule) {
-            Some(index) => &self.capsule[index],
+        match index.local(self.component) {
+            Some(index) => &self.component[index],
             None => &self.session[index],
         }
     }
@@ -1158,21 +1162,21 @@ impl<'a> Resolver<'a> {
 
             let namespace = match hanger.value {
                 Extern => {
-                    let Some(capsule) = path.segments.first() else {
+                    let Some(component) = path.segments.first() else {
                         // @Task improve the error message, code
                         Diagnostic::error()
                             .message("path `extern` is used in isolation")
                             .primary_span(hanger)
-                            .note("the path segment `extern` is only to be used indirectly to refer to specific capsule")
+                            .note("the path segment `extern` is only to be used indirectly to refer to specific component")
                             .report(self.reporter);
                         return Err(ResolutionError::Unrecoverable);
                     };
 
                     // @Beacon @Task add test for error case
-                    let capsule = CapsuleName::from_identifier(capsule.clone())
-                        .map_err(|error| error.primary_span(capsule).report(self.reporter))?;
+                    let component = ComponentName::from_identifier(component.clone())
+                        .map_err(|error| error.primary_span(component).report(self.reporter))?;
 
-                    let Some(capsule) = self.capsule.dependency(&capsule.value, self.session) else {
+                    let Some(component) = self.component.dependency(&component.value, self.session) else {
                         // @Temporary message
                         // @Task add help:
                         // * if it's a single-file package (@Task smh propagate??)
@@ -1182,16 +1186,16 @@ impl<'a> Resolver<'a> {
                         // @Task suggest similarly named dep(s)!
                         // @Task check if a dependency has a (transitive) dependency
                         // with the *same* name and add the note that they (trans deps) have to be
-                        // explicitly added to the deps list to be referenceable in this capsule
+                        // explicitly added to the deps list to be referenceable in this component
                         Diagnostic::error()
-                            .message(format!("capsule `{capsule}` does not exist"))
-                            .primary_span(capsule)
+                            .message(format!("component `{component}` does not exist"))
+                            .primary_span(component)
                             .report(self.reporter);
                         return Err(ResolutionError::Unrecoverable);
                     };
 
-                    let capsule = &self.session[capsule];
-                    let root = capsule.root();
+                    let component = &self.session[component];
+                    let root = component.root();
 
                     return match &*path.segments {
                         [identifier] => Ok(Target::output(root, identifier)),
@@ -1207,10 +1211,10 @@ impl<'a> Resolver<'a> {
                         [] => unreachable!(),
                     };
                 }
-                Capsule => self.capsule.root(),
+                Topmost => self.component.root(),
                 Super => self
-                    .resolve_super(hanger, namespace.local(self.capsule).unwrap())?
-                    .global(self.capsule),
+                    .resolve_super(hanger, namespace.local(self.component).unwrap())?
+                    .global(self.component),
                 Self_ => namespace,
             };
 
@@ -1267,10 +1271,10 @@ impl<'a> Resolver<'a> {
         hanger: &ast::Hanger,
         module: LocalDeclarationIndex,
     ) -> Result<LocalDeclarationIndex> {
-        self.capsule[module].parent.ok_or_else(|| {
+        self.component[module].parent.ok_or_else(|| {
             Diagnostic::error()
                 .code(Code::E021) // @Question use a dedicated code?
-                .message("the capsule root does not have a parent")
+                .message("the component root does not have a parent")
                 .primary_span(hanger)
                 .report(self.reporter);
         })
@@ -1308,7 +1312,7 @@ impl<'a> Resolver<'a> {
         {
             let mut message = format!(
                 "use of deprecated binding `{}`",
-                self.capsule.absolute_path_to_string(index, self.session),
+                self.component.absolute_path_to_string(index, self.session),
             );
 
             if let Some(reason) = &deprecated.reason {
@@ -1340,19 +1344,19 @@ impl<'a> Resolver<'a> {
             let definition_site_namespace = entity.parent.unwrap();
             let reach = self.resolve_restricted_exposure(
                 exposure,
-                definition_site_namespace.global(self.capsule),
+                definition_site_namespace.global(self.component),
             )?;
 
-            if !self.capsule.is_allowed_to_access(
+            if !self.component.is_allowed_to_access(
                 origin_namespace,
-                definition_site_namespace.global(self.capsule),
+                definition_site_namespace.global(self.component),
                 reach,
             ) {
                 Diagnostic::error()
                     .code(Code::E029)
                     .message(format!(
                         "binding `{}` is private",
-                        self.capsule.absolute_path_to_string(index, self.session)
+                        self.component.absolute_path_to_string(index, self.session)
                     ))
                     .primary_span(identifier)
                     .report(self.reporter);
@@ -1405,7 +1409,7 @@ impl<'a> Resolver<'a> {
                     .map_err(|error| self.report_resolution_error(error))?;
 
                 let reach_is_ancestor = self
-                    .capsule
+                    .component
                     .some_ancestor_equals(definition_site_namespace, reach);
 
                 if !reach_is_ancestor {
@@ -1420,12 +1424,12 @@ impl<'a> Resolver<'a> {
                 drop(exposure_);
                 *exposure.lock().unwrap() = RestrictedExposure::Resolved {
                     // @Beacon @Bug unwrap not verified
-                    reach: reach.local(self.capsule).unwrap(),
+                    reach: reach.local(self.component).unwrap(),
                 };
 
                 reach
             }
-            &RestrictedExposure::Resolved { reach } => reach.global(self.capsule),
+            &RestrictedExposure::Resolved { reach } => reach.global(self.component),
         })
     }
 
@@ -1455,16 +1459,16 @@ impl<'a> Resolver<'a> {
         identifier: &ast::Identifier,
         namespace: LocalDeclarationIndex,
     ) -> Target::Output {
-        let index = self.capsule[namespace]
+        let index = self.component[namespace]
             .namespace()
             .unwrap()
             .binders
             .iter()
-            .map(|index| index.local(self.capsule).unwrap())
-            .find(|&index| &self.capsule[index].source == identifier)
+            .map(|index| index.local(self.component).unwrap())
+            .find(|&index| &self.component[index].source == identifier)
             .unwrap();
         let index = self
-            .collapse_use_chain(index.global(self.capsule))
+            .collapse_use_chain(index.global(self.component))
             .unwrap_or_else(|_| unreachable!());
 
         Target::output(index, identifier)
@@ -1530,7 +1534,7 @@ impl<'a> Resolver<'a> {
                 Module(_) => unreachable!(),
             }
         } else {
-            self.resolve_path::<target::Value>(query, scope.module().global(self.capsule))
+            self.resolve_path::<target::Value>(query, scope.module().global(self.component))
                 .map_err(|error| {
                     self.report_resolution_error_searching_lookalikes(error, |identifier, _| {
                         self.find_similarly_named(origin, identifier)
@@ -1581,7 +1585,7 @@ impl<'a> Resolver<'a> {
             &Module(module) => self.find_similarly_named_declaration(
                 identifier,
                 |_| true,
-                module.global(self.capsule),
+                module.global(self.component),
             ),
             FunctionParameter { parent, binder } => {
                 if scope::is_similar(identifier, binder.as_str()) {
@@ -1627,8 +1631,8 @@ impl<'a> Resolver<'a> {
                 match usage {
                     IdentifierUsage::Unqualified => message += "this scope",
                     IdentifierUsage::Qualified => {
-                        if namespace == self.capsule.root() {
-                            message += "the capsule root";
+                        if namespace == self.component.root() {
+                            message += "the component root";
                         } else {
                             message += match self.look_up(namespace).is_module() {
                                 true => "module",
@@ -1636,7 +1640,7 @@ impl<'a> Resolver<'a> {
                             };
                             message += " `";
                             message += &self
-                                .capsule
+                                .component
                                 .absolute_path_to_string(namespace, self.session);
                             message += "`";
                         }

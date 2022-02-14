@@ -1,7 +1,7 @@
 ;; Homogeneous lists with a fixed length and related functions.
 module
 
-use capsule.nat.(Nat +)
+use topmost.nat.(Nat +)
 
 @public
 data Vector (n: Nat) (A: Type): Type of

@@ -6,7 +6,7 @@ use alpha.Nothing
 module alpha of
     Thin: Type = super.Air
     use super.Air
-    use capsule.empty as full
+    use topmost.empty as full
 
     module beta of
         use super.air

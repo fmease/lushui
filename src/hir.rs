@@ -4,7 +4,7 @@ pub(crate) use crate::syntax::lowered_ast::Item;
 use crate::{
     error::{PossiblyErroneous, Result},
     package::session::IntrinsicNumericType,
-    resolver::{Capsule, FunctionScope},
+    resolver::{Component, FunctionScope},
     span::{SourceFileIndex, Span},
     syntax::ast::Explicitness,
     typer::interpreter,

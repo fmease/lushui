@@ -59,7 +59,7 @@ const STANDARD_DECLARATION_DELIMITERS: [Delimiter; 3] = {
 const BRACKET_POTENTIAL_PI_TYPE_LITERAL: &str =
     "add round brackets around the potential pi type literal to disambiguate the expression";
 
-/// Parse a file (the capsule root or an out-of-line module).
+/// Parse a file (the component root or an out-of-line module).
 pub fn parse_file(
     tokens: &[Token],
     file: SourceFileIndex,
@@ -775,7 +775,7 @@ impl<'a> Parser<'a> {
                                 Punctuation.into(),
                                 Self_.into(),
                                 Super.into(),
-                                Capsule.into(),
+                                Topmost.into(),
                             ])?);
                         }
                     }
@@ -1136,7 +1136,7 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Path ::= Path-Head ("." Identifier)*
     /// Path-Head ::= Path-Hanger | Identifier
-    /// Path-Hanger ::= "extern" | "capsule" | "super" | "self"
+    /// Path-Hanger ::= "extern" | "topmost" | "super" | "self"
     /// ```
     fn parse_path(&mut self) -> Result<Path> {
         let mut path = self.parse_first_path_segment()?;

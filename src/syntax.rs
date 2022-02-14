@@ -7,7 +7,7 @@ pub mod lowerer;
 pub mod parser;
 pub(crate) mod token;
 
-pub use capsule_name::CapsuleName;
+pub use component_name::ComponentName;
 
 use crate::{
     diagnostics::Reporter,
@@ -15,7 +15,7 @@ use crate::{
     span::{SharedSourceMap, SourceFileIndex},
 };
 
-/// Lex and parse a given file (the capsule root or an out-of-line module).
+/// Lex and parse a given file (the component root or an out-of-line module).
 ///
 /// This is a convenience function combining [`lexer::lex`] and [`parser::parse_file`].
 pub(crate) fn parse_file(
@@ -38,7 +38,7 @@ pub(crate) fn parse_path(
     parser::parse_path(&tokens, file, map, reporter)
 }
 
-pub(crate) mod capsule_name {
+pub(crate) mod component_name {
     use super::{ast::Identifier, lexer, token::TokenKind};
     use crate::{
         diagnostics::{Code, Diagnostic},
@@ -51,13 +51,13 @@ pub(crate) mod capsule_name {
     const CORE_PACKAGE_NAME: &str = "core";
 
     #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-    pub struct CapsuleName(Atom);
+    pub struct ComponentName(Atom);
 
-    impl CapsuleName {
+    impl ComponentName {
         pub fn parse(name: &str) -> Result<Self, Diagnostic> {
             match parse_word(name.into()) {
                 Some(identifier) => Ok(Self(identifier)),
-                None => Err(Diagnostic::invalid_capsule_name(name)),
+                None => Err(Diagnostic::invalid_component_name(name)),
             }
         }
 
@@ -76,7 +76,7 @@ pub(crate) mod capsule_name {
                     Self(identifier.into_atom()),
                 ))
             } else {
-                Err(Diagnostic::invalid_capsule_name(identifier.as_str()))
+                Err(Diagnostic::invalid_component_name(identifier.as_str()))
             }
         }
 
@@ -89,24 +89,24 @@ pub(crate) mod capsule_name {
         }
     }
 
-    impl fmt::Display for CapsuleName {
+    impl fmt::Display for ComponentName {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "{}", self.as_str())
         }
     }
 
-    impl From<Spanned<CapsuleName>> for Identifier {
-        fn from(name: Spanned<CapsuleName>) -> Self {
+    impl From<Spanned<ComponentName>> for Identifier {
+        fn from(name: Spanned<ComponentName>) -> Self {
             Self::new_unchecked(name.value.0, name.span)
         }
     }
 
     impl Diagnostic {
-        fn invalid_capsule_name(name: &str) -> Self {
-            // @Question "capsule or package name"?
+        fn invalid_component_name(name: &str) -> Self {
+            // @Question "component or package name"?
             Self::error()
                 .code(Code::E036)
-                .message(format!("`{name}` is not a valid capsule name"))
+                .message(format!("`{name}` is not a valid component name"))
         }
     }
 

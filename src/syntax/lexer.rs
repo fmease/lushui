@@ -736,7 +736,7 @@ fn parse_keyword(source: &str) -> Option<TokenKind> {
     Some(match source {
         "_" => Underscore,
         "as" => As,
-        "capsule" => Capsule,
+        "topmost" => Topmost,
         "case" => Case,
         "extern" => Extern,
         "data" => Data,

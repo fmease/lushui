@@ -15,4 +15,4 @@ use foo.((A as F0))
 
 use foo.((A as F1) (B as F2))
 
-use capsule.foo.alpha.(gamma.delta.zeta.(foo bar) (xoo.moo.doo as XXX))
+use topmost.foo.alpha.(gamma.delta.zeta.(foo bar) (xoo.moo.doo as XXX))

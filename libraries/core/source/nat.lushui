@@ -1,7 +1,7 @@
 ;; Natural numbers and related functions.
 module
 
-use capsule.(option.Option bool.Bool text.Text)
+use topmost.(option.Option bool.Bool text.Text)
 
 @public @intrinsic
 data Nat: Type
@@ -75,7 +75,7 @@ greater-equal: Nat -> Nat -> Bool
 @public @intrinsic
 display: Nat -> Text
 
-use capsule.(bool ordering)
+use topmost.(bool ordering)
 
 @public
 compare (n: Nat) (m: Nat): ordering.Ordering =
@@ -86,4 +86,4 @@ compare (n: Nat) (m: Nat): ordering.Ordering =
             bool.false => ordering.greater
 
 ;;; @public @intrinsic
-;;; to-int: Nat -> capsule.int.Int
+;;; to-int: Nat -> topmost.int.Int

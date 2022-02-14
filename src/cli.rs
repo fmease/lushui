@@ -4,7 +4,7 @@ use clap::{App, AppSettings, Arg};
 use discriminant::Elements;
 use lushui::{
     diagnostics::{reporter::StderrReporter, Diagnostic},
-    package::CapsuleType,
+    package::ComponentType,
 };
 
 pub fn arguments() -> (Command, Options) {
@@ -17,22 +17,22 @@ pub fn arguments() -> (Command, Options) {
         Arg::new("executable")
             .long("executable")
             .short('e')
-            .help("Creates an executable capsule in the package"),
+            .help("Creates an executable component in the package"),
         Arg::new("library")
             .long("library")
             .short('l')
-            .help("Creates a library capsule in the package"),
+            .help("Creates a library component in the package"),
     ];
 
     let build_options = [
         Arg::new("no-core").long("no-core").help(
             "Removes the dependency to the library `core` from the given single-file package",
         ),
-        Arg::new("capsule-type")
-            .long("capsule-type")
+        Arg::new("component-type")
+            .long("component-type")
             .takes_value(true)
             .possible_values(&["executable", "library"])
-            .help("Sets the capsule type of the given single-file package"),
+            .help("Sets the component type of the given single-file package"),
         Arg::new("interpreter")
             .long("interpreter")
             .takes_value(true)
@@ -147,8 +147,8 @@ pub fn arguments() -> (Command, Options) {
             options: BuildOptions {
                 path: matches.value_of_os("PATH").map(Into::into),
                 no_core: matches.is_present("no-core"),
-                capsule_type: matches
-                    .value_of("capsule-type")
+                component_type: matches
+                    .value_of("component-type")
                     .map(|input| input.parse().unwrap()),
                 interpreter: matches
                     .value_of("interpreter")
@@ -170,7 +170,7 @@ pub fn arguments() -> (Command, Options) {
 
                 GenerationOptions {
                     library,
-                    // implicitly set when no explicit capsule type specified
+                    // implicitly set when no explicit component type specified
                     executable: matches.is_present("executable") || !library,
                 }
             },
@@ -308,7 +308,7 @@ pub enum BuildMode {
 pub struct BuildOptions {
     pub path: Option<PathBuf>,
     pub no_core: bool,
-    pub capsule_type: Option<CapsuleType>,
+    pub component_type: Option<ComponentType>,
     pub interpreter: Interpreter,
 }
 
@@ -373,20 +373,20 @@ impl UnstableOption {
         match self {
             Self::Help => "Prints help information and halts",
             Self::Internals => "Enables internal language and library features",
-            Self::EmitTokens => "Emits the tokens of the current capsule output by the lexer",
-            Self::EmitAst => "Emits the abstract syntax tree (AST) of the current capsule output by the parser",
-            Self::EmitLoweredAst => "Emits the lowered AST of the current capsule",
+            Self::EmitTokens => "Emits the tokens of the current component output by the lexer",
+            Self::EmitAst => "Emits the abstract syntax tree (AST) of the current component output by the parser",
+            Self::EmitLoweredAst => "Emits the lowered AST of the current component",
             Self::EmitHir => {
-                "Emits the high-level intermediate representation (HIR) of the current capsule output by the resolver"
+                "Emits the high-level intermediate representation (HIR) of the current component output by the resolver"
             }
-            Self::EmitUntypedScope => "Emits the untyped scope of the current capsule output by the resolver",
-            Self::EmitScope => "Emits the typed scope of the current capsule output by the typer",
+            Self::EmitUntypedScope => "Emits the untyped scope of the current component output by the resolver",
+            Self::EmitScope => "Emits the typed scope of the current component output by the typer",
             Self::ShowIndices => "Shows the internal indices of bindings in other output or error messages",
-            Self::Durations => "Prints the duration of each pass through the current capsule",
-            Self::LexOnly => "Halts the execution after lexing the current capsule",
-            Self::ParseOnly => "Halts the execution after parsing the current capsule",
-            Self::LowerOnly => "Halts the execution after lowering the current capsule",
-            Self::ResolveOnly => "Halts the execution after resolving the names of the current capsule",
+            Self::Durations => "Prints the duration of each pass through the current component",
+            Self::LexOnly => "Halts the execution after lexing the current component",
+            Self::ParseOnly => "Halts the execution after parsing the current component",
+            Self::LowerOnly => "Halts the execution after lowering the current component",
+            Self::ResolveOnly => "Halts the execution after resolving the names of the current component",
             Self::AsciiDoc => "Interprets documentation comments as AsciiDoc when generating documentation",
             Self::LoremIpsum(_) => "Replaces the documentation of every declaration with `amount` paragraphs of Lorem Ipsum",
         }

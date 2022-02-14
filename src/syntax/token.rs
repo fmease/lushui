@@ -102,9 +102,7 @@ pub enum TokenKind {
     As,
     /// For case analyses / case/of-expressions.
     Case,
-    /// For paths relative to the current capsule.
-    Capsule,
-    /// For paths relative to the collection of linked capsules.
+    /// For paths relative to the collection of linked components.
     Extern,
     /// For data declarations.
     Data,
@@ -123,10 +121,12 @@ pub enum TokenKind {
     Module,
     /// For case analyses / case/of-expressions.
     Of,
-    /// For paths relative to the current module/namespace.
+    /// For paths relative to the current namespace.
     Self_,
-    /// For paths relative to the parent module/namespace.
+    /// For paths relative to the parent namespace.
     Super,
+    /// For paths relative to the root module / component root.
+    Topmost,
     /// For type literals.
     Type,
     /// For use-declarations and use-bindings.
@@ -158,7 +158,7 @@ impl TokenName {
     }
 
     pub(crate) const fn is_path_hanger(self) -> bool {
-        matches!(self, Extern | Capsule | Super | Self_)
+        matches!(self, Extern | Topmost | Super | Self_)
     }
 
     /// Test if the token may terminate declarations.
@@ -205,7 +205,6 @@ impl fmt::Display for TokenName {
             WideArrowRight => quoted!("=>"),
             As => keyword!(as),
             Case => keyword!(case),
-            Capsule => keyword!(capsule),
             Extern => keyword!(extern),
             Data => keyword!(data),
             Do => keyword!(do),
@@ -216,6 +215,7 @@ impl fmt::Display for TokenName {
             Of => keyword!(of),
             Self_ => keyword!(self),
             Super => keyword!(super),
+            Topmost => keyword!(topmost),
             Type => keyword!(Type),
             Use => keyword!(use),
             EndOfInput => "end of input",

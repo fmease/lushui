@@ -6,9 +6,9 @@ data Identity: Type of
 @public use Point as *
 @public data Point: Type of
 
-use capsule as krate ;;; @Bug needs to be above `Center`
+use topmost as krate ;;; @Bug needs to be above `Center`
 
-@(public capsule) use Center as C
+@(public topmost) use Center as C
 @(public krate) data Center: Type of
 
 module namespace of
@@ -18,5 +18,5 @@ module namespace of
         @(public super)
         use super.T as T0
 
-        @(public capsule.namespace.subnamespace)
+        @(public topmost.namespace.subnamespace)
         use super.T as T1

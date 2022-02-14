@@ -8,13 +8,13 @@ use crate::{
     error::Result,
     format::{AsAutoColoredChangeset, DisplayWith},
     hir::{DeclarationIndex, Identifier, Index, LocalDeclarationIndex},
-    package::{BuildSession, CapsuleIndex, CapsuleMetadata, CapsuleType, Package},
+    package::{BuildSession, ComponentIndex, ComponentMetadata, ComponentType, Package},
     span::{Span, Spanned, Spanning},
     syntax::{
         ast::{self, HangerKind, Path},
         lexer::is_punctuation,
         lowered_ast::Attributes,
-        CapsuleName,
+        ComponentName,
     },
     utility::{HashMap, SmallVec},
 };
@@ -33,25 +33,19 @@ use unicode_width::UnicodeWidthStr;
 
 /// A sealed container of modules regarded as one unit embodying libraries and executables[^1].
 ///
-/// # Naming
-///
-/// A _capsule_ means (among other things) _a compact often sealed and detachable container
-/// or compartment_
-/// [according to Merriam-Webster (meaning 6a, 2022-01-10)](https://www.merriam-webster.com/dictionary/capsule).
-///
 /// [^1]: And integration and system tests, benchmarks and other things in the future.
-pub struct Capsule {
-    pub metadata: CapsuleMetadata,
+pub struct Component {
+    pub metadata: ComponentMetadata,
     pub program_entry: Option<Identifier>,
-    /// All bindings inside of the capsule.
+    /// All bindings inside of the component.
     // The first element has to be the root module.
     pub(crate) bindings: IndexMap<LocalDeclarationIndex, Entity>,
     /// For error reporting.
     pub(super) duplicate_definitions: HashMap<LocalDeclarationIndex, DuplicateDefinition>,
 }
 
-impl Capsule {
-    pub(crate) fn new(meta: CapsuleMetadata) -> Self {
+impl Component {
+    pub(crate) fn new(meta: ComponentMetadata) -> Self {
         Self {
             metadata: meta,
             program_entry: default(),
@@ -60,11 +54,11 @@ impl Capsule {
         }
     }
 
-    pub fn name(&self) -> &CapsuleName {
+    pub fn name(&self) -> &ComponentName {
         &self.metadata.name
     }
 
-    pub(crate) fn index(&self) -> CapsuleIndex {
+    pub(crate) fn index(&self) -> ComponentIndex {
         self.metadata.index
     }
 
@@ -72,29 +66,29 @@ impl Capsule {
         &self.metadata.path
     }
 
-    pub fn type_(&self) -> CapsuleType {
+    pub fn type_(&self) -> ComponentType {
         self.metadata.type_
     }
 
     pub fn is_library(&self) -> bool {
-        self.type_() == CapsuleType::Library
+        self.type_() == ComponentType::Library
     }
 
     pub fn is_executable(&self) -> bool {
-        self.type_() == CapsuleType::Executable
+        self.type_() == ComponentType::Executable
     }
 
     pub fn package<'s>(&self, session: &'s BuildSession) -> &'s Package {
         &session[self.metadata.package]
     }
 
-    /// Test if this capsule is the standard library `core`.
+    /// Test if this component is the standard library `core`.
     pub fn is_core_library(&self, session: &BuildSession) -> bool {
         self.package(session).is_core() && self.is_library()
     }
 
     pub fn is_goal(&self, session: &BuildSession) -> bool {
-        self.index() == session.goal_capsule()
+        self.index() == session.goal_component()
     }
 
     pub fn in_goal_package(&self, session: &BuildSession) -> bool {
@@ -103,17 +97,17 @@ impl Capsule {
 
     pub(super) fn dependency(
         &self,
-        name: &CapsuleName,
+        name: &ComponentName,
         session: &BuildSession,
-    ) -> Option<CapsuleIndex> {
+    ) -> Option<ComponentIndex> {
         let package = self.package(session);
         let dependency = package.dependencies.get(name).copied();
 
         // @Question should we forbid direct dependencies with the same name as the current package
         // (in a prior step)?
         match self.type_() {
-            CapsuleType::Library => dependency,
-            CapsuleType::Executable => {
+            ComponentType::Library => dependency,
+            ComponentType::Executable => {
                 dependency.or_else(|| (name == &package.name).then(|| package.library).flatten())
             }
         }
@@ -138,13 +132,13 @@ impl Capsule {
         }
     }
 
-    /// Get the capsule root as a local index.
+    /// Get the component root as a local index.
     #[allow(clippy::unused_self)] // nicer API
     pub(crate) fn local_root(&self) -> LocalDeclarationIndex {
         LocalDeclarationIndex::new(0)
     }
 
-    /// Get the capsule root.
+    /// Get the component root.
     pub(crate) fn root(&self) -> DeclarationIndex {
         self.local_root().global(self)
     }
@@ -158,7 +152,7 @@ impl Capsule {
     ) -> String {
         self.absolute_path_with_root_to_string(
             index,
-            HangerKind::Capsule.name().to_owned(),
+            HangerKind::Topmost.name().to_owned(),
             session,
         )
     }
@@ -172,10 +166,10 @@ impl Capsule {
         match index.local(self) {
             Some(index) => self.extern_path_with_root_to_string(index, root),
             None => {
-                let capsule = &session[index.capsule()];
-                let root = format!("{}.{}", HangerKind::Extern.name(), capsule.name());
+                let component = &session[index.component()];
+                let root = format!("{}.{}", HangerKind::Extern.name(), component.name());
 
-                capsule.absolute_path_with_root_to_string(index, root, session)
+                component.absolute_path_with_root_to_string(index, root, session)
             }
         }
     }
@@ -302,7 +296,7 @@ impl Capsule {
     }
 }
 
-impl std::ops::Index<LocalDeclarationIndex> for Capsule {
+impl std::ops::Index<LocalDeclarationIndex> for Component {
     type Output = Entity;
 
     #[track_caller]
@@ -311,7 +305,7 @@ impl std::ops::Index<LocalDeclarationIndex> for Capsule {
     }
 }
 
-impl std::ops::IndexMut<LocalDeclarationIndex> for Capsule {
+impl std::ops::IndexMut<LocalDeclarationIndex> for Component {
     #[track_caller]
     fn index_mut(&mut self, index: LocalDeclarationIndex) -> &mut Self::Output {
         &mut self.bindings[index]
@@ -319,7 +313,7 @@ impl std::ops::IndexMut<LocalDeclarationIndex> for Capsule {
 }
 
 // @Note it would be better if we had `DebugWith`
-impl DisplayWith for Capsule {
+impl DisplayWith for Component {
     type Context<'a> = &'a BuildSession;
 
     fn format(&self, session: &BuildSession, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -355,7 +349,7 @@ pub(crate) enum Exposure {
 }
 
 impl Exposure {
-    pub(super) fn compare(&self, other: &Self, capsule: &Capsule) -> Option<Ordering> {
+    pub(super) fn compare(&self, other: &Self, component: &Component) -> Option<Ordering> {
         use Exposure::*;
 
         match (self, other) {
@@ -365,7 +359,7 @@ impl Exposure {
             (Restricted(this), Restricted(other)) => this
                 .lock()
                 .unwrap()
-                .compare(&other.lock().unwrap(), capsule),
+                .compare(&other.lock().unwrap(), component),
         }
     }
 }
@@ -383,7 +377,7 @@ impl fmt::Debug for Exposure {
 }
 
 impl DisplayWith for Exposure {
-    type Context<'a> = (&'a Capsule, &'a BuildSession);
+    type Context<'a> = (&'a Component, &'a BuildSession);
 
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -418,19 +412,19 @@ pub(crate) enum RestrictedExposure {
 }
 
 impl RestrictedExposure {
-    fn compare(&self, other: &Self, capsule: &Capsule) -> Option<Ordering> {
+    fn compare(&self, other: &Self, component: &Component) -> Option<Ordering> {
         use RestrictedExposure::*;
 
         Some(match (self, other) {
             (&Resolved { reach: this }, &Resolved { reach: other }) => {
-                let this = this.global(capsule);
-                let other = other.global(capsule);
+                let this = this.global(component);
+                let other = other.global(component);
 
                 if this == other {
                     Ordering::Equal
-                } else if capsule.some_ancestor_equals(other, this) {
+                } else if component.some_ancestor_equals(other, this) {
                     Ordering::Greater
-                } else if capsule.some_ancestor_equals(this, other) {
+                } else if component.some_ancestor_equals(this, other) {
                     Ordering::Less
                 } else {
                     return None;
@@ -442,7 +436,7 @@ impl RestrictedExposure {
 }
 
 impl DisplayWith for RestrictedExposure {
-    type Context<'a> = (&'a Capsule, &'a BuildSession);
+    type Context<'a> = (&'a Component, &'a BuildSession);
 
     fn format(
         &self,
@@ -540,11 +534,11 @@ impl<'a> FunctionScope<'a> {
 
     pub(crate) fn absolute_path_to_string(
         binder: &Identifier,
-        capsule: &Capsule,
+        component: &Component,
         session: &BuildSession,
     ) -> String {
         match binder.index {
-            Index::Declaration(index) => capsule.absolute_path_to_string(index, session),
+            Index::Declaration(index) => component.absolute_path_to_string(index, session),
             Index::DeBruijn(_) | Index::DeBruijnParameter => binder.to_string(),
         }
     }

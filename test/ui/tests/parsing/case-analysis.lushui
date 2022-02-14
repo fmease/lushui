@@ -12,7 +12,7 @@ main: Untyped =
     case 100 of
         some.path.to.Bool.false => "foo"
         super.Xoo => "bar"
-        capsule.Xan => 22222
+        topmost.Xan => 22222
         \a => 233
         "ban" => 111
         (foo) => 0
