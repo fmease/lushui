@@ -1,8 +1,5 @@
 //! The lexical analyzer (lexer).
 
-#[cfg(test)]
-mod test;
-
 use super::token::{Provenance, Token, TokenKind, UnterminatedTextLiteral};
 use crate::{
     diagnostics::{
@@ -22,6 +19,9 @@ use std::{
     str::CharIndices,
 };
 use TokenKind::*;
+
+#[cfg(test)]
+mod test;
 
 pub(crate) fn lex_string(source: String) -> Result<Outcome<Vec<Token>>> {
     let mut map = SourceMap::default();

@@ -186,6 +186,7 @@ fn print_to_stderr(message: &impl std::fmt::Display) {
 
 // @Beacon @Task docs
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct ErrorReported(());
 
 impl ErrorReported {

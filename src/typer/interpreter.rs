@@ -12,8 +12,6 @@
 
 // @Beacon @Task use weak-normal form extensively again!!!
 
-pub(crate) mod scope;
-
 use super::Expression;
 use crate::{
     diagnostics::{Diagnostic, Reporter},
@@ -30,6 +28,8 @@ use crate::{
 };
 use scope::{FunctionScope, ValueView};
 use std::{default::default, fmt};
+
+pub(crate) mod scope;
 
 /// Run the entry point of the given executable component.
 pub fn evaluate_main_function(

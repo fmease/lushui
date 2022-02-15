@@ -1,11 +1,11 @@
 //! Utility functionality and definitions.
 
-pub(crate) mod lexer;
-
 pub(crate) use num_bigint::{BigInt as Int, BigUint as Nat};
 pub(crate) use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::{ffi::OsStr, path::Path};
 pub(crate) use string_cache::DefaultAtom as Atom;
+
+pub(crate) mod lexer;
 
 pub(crate) type Str = std::borrow::Cow<'static, str>;
 
@@ -54,4 +54,9 @@ pub(crate) macro condition($( $condition:expr => $consequence:expr ),+ $(, else 
         $( _ if $condition => $consequence, )+
         $( _ => $alternative )?
     }
+}
+
+#[allow(unused_macros)]
+pub(crate) macro no_std_assert($( $anything:tt )*) {
+    compile_error!("use *function* `assert_eq` instead of macro `assert_eq` and similar")
 }

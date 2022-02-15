@@ -2,8 +2,6 @@
 //!
 //! The most important definitions are [`Declaration`], [`Expression`] and [`Pattern`].
 
-mod format;
-
 use super::{
     lexer::is_punctuation,
     token::{Token, TokenKind},
@@ -17,6 +15,8 @@ use crate::{
 pub use format::Format;
 use smallvec::smallvec;
 use std::{fmt, hash::Hash};
+
+mod format;
 
 pub(crate) type Item<Kind> = crate::item::Item<Kind, Attributes>;
 

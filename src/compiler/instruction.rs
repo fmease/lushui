@@ -32,6 +32,7 @@ pub(crate) enum Instruction {
     Argument,
     Apply,
     Return,
+    #[allow(dead_code)]
     AddNat32,
 }
 

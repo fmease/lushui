@@ -73,8 +73,7 @@ where
                 // colored::control::unset_override(); // conflicts with parallel test execution
 
                 panic!(
-                    "the actual output of the parser does not match the expected one:\n{}",
-                    difference,
+                    "the actual output of the parser does not match the expected one:\n{difference}",
                 );
             }
         }
@@ -82,7 +81,7 @@ where
             panic!(
                 "expected the parser to successfully parse the input to the following AST:\n\
                 {expected:?}\n\
-                but it reported an error (silently)"
+                but it (silently) reported an error"
             )
         }
         (Err(_), _) => unreachable!(),

@@ -1,12 +1,13 @@
-// Some negative behavior tests are UI tests in `parsing/`.
-
-use std::default::default;
+//! (Mostly) positive behavior tests of the lexer.
+//!
+//! Negative behavior tests are UI tests to be found in `parsing/`.
 
 use super::{Provenance, Token, TokenKind::*, UnterminatedTextLiteral};
 use crate::{
     error::{outcome, Health, Outcome, Result},
     span::span,
 };
+use std::default::default;
 
 fn lex(source: &'static str) -> Result<Outcome<Vec<Token>>> {
     super::lex_string(source.to_owned())
@@ -29,39 +30,31 @@ fn assert_eq_with_health(
         Ok(outcome!(actual, health)) => {
             if health != expected_health {
                 panic!(
-                    "expected the tokens `{:?}` to be {} but they are {}",
-                    actual, expected_health, health
+                    "expected the tokens `{actual:?}` to be \
+                     {expected_health} but they are {health}",
                 );
             }
 
             if actual != expected {
                 let difference = difference::Changeset::new(
-                    &format!("{:#?}", expected),
-                    &format!("{:#?}", actual),
+                    &format!("{expected:#?}"),
+                    &format!("{actual:#?}"),
                     "\n",
                 );
 
                 panic!(
-                    "the actual tokens outputted by the lexer do not match the expected ones:\n{}",
-                    difference
+                    "the actual tokens outputted by the lexer do not match the expected ones:\n{difference}",
                 );
             }
         }
-        _ => panic!("expected the tokens `{:?}` but got `Err(())`", expected),
+        _ => panic!("expected the tokens `{expected:?}` but an error was (silently) reported"),
     }
 }
 
-#[allow(unused_macros)]
-macro no_std_assert($( $anything:tt )*) {
-    compile_error!(
-        "use function `assert_ok_token` or `assert_err` instead of macro `assert_eq` and similar"
-    )
-}
-
 #[allow(unused_imports)]
-use no_std_assert as assert_eq;
+use crate::utility::no_std_assert as assert_eq;
 #[allow(unused_imports)]
-use no_std_assert as assert_ne;
+use crate::utility::no_std_assert as assert_ne;
 
 #[test]
 fn comments() {

@@ -1,13 +1,13 @@
 //! The front-end concerned with lexing, parsing and lowering.
 
+pub use component_name::ComponentName;
+
 pub(crate) mod ast;
 pub mod lexer;
 pub(crate) mod lowered_ast;
 pub mod lowerer;
 pub mod parser;
 pub(crate) mod token;
-
-pub use component_name::ComponentName;
 
 use crate::{
     diagnostics::Reporter,

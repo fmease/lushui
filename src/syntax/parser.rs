@@ -23,16 +23,12 @@
 //! | `(> A)`   | Positive Look-Ahead                 |                                                               |
 //! | `(< A)`   | Positive Look-Behind                |                                                               |
 
-#[cfg(test)]
-mod test;
-
-use super::ast::AttributeArgumentKind;
 #[allow(clippy::wildcard_imports)]
 use super::{
     ast::{
-        self, Attribute, AttributeArgument, AttributeKind, Attributes, BindStatement, Declaration,
-        Domain,
-        Explicitness::{self, *},
+        self, Attribute, AttributeArgument, AttributeArgumentKind, AttributeKind, Attributes,
+        BindStatement, Declaration, Domain,
+        Explicitness::{self, Explicit, Implicit},
         Expression, Identifier, LetStatement, Parameter, ParameterKind, Parameters, Path, Pattern,
         SpannedExplicitness, Statement, UsePathTree, UsePathTreeKind,
     },
@@ -49,6 +45,9 @@ use crate::{
     utility::SmallVec,
 };
 use std::{any::TypeId, default::default};
+
+#[cfg(test)]
+mod test;
 
 const STANDARD_DECLARATION_DELIMITERS: [Delimiter; 3] = {
     use Delimiter::*;

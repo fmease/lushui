@@ -1,15 +1,6 @@
 //! The compiler emitting bytecode.
 
-#![allow(dead_code)]
-
 // @Task rename to codegen
-
-// @Note API not so clear yet
-
-// @Note naming swap out with name&concept bytecode
-mod instruction;
-// @Task move stuff from here to there
-pub(crate) mod interpreter;
 
 use crate::{
     hir::{self, Declaration, DeclarationIndex, Expression, Number},
@@ -21,6 +12,9 @@ use index_map::{Index as _, IndexMap};
 use instruction::{Chunk, ChunkIndex, Instruction};
 use staticvec::StaticVec;
 use std::{default::default, fmt};
+
+mod instruction; // @Note naming swap out with name&concept bytecode
+pub(crate) mod interpreter; // @Task move stuff from here to there
 
 #[derive(PartialEq, Eq)]
 enum LambdaParent {

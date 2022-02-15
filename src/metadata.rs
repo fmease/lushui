@@ -23,15 +23,31 @@ mod test;
 
 pub(crate) type Value = Spanned<ValueKind>;
 
+pub(crate) fn parse(
+    source_file_index: SourceFileIndex,
+    map: SharedSourceMap,
+    reporter: &Reporter,
+) -> Result<Value> {
+    let source_file = &map.borrow()[source_file_index];
+    let tokens = lexer::Lexer::new(source_file).lex().value;
+    parser::Parser::new(source_file_index, &tokens, map.clone(), reporter).parse()
+}
+
 #[derive(Debug, Discriminant)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 #[discriminant(Type::type_)]
 pub(crate) enum ValueKind {
     Bool(bool),
     Integer(i64),
-    Float(f64),
     Text(String),
     Array(Vec<Value>),
     Map(HashMap<WeaklySpanned<String>, Value>),
+}
+
+impl From<bool> for ValueKind {
+    fn from(bool: bool) -> Self {
+        Self::Bool(bool)
+    }
 }
 
 impl TryFrom<ValueKind> for bool {
@@ -44,6 +60,12 @@ impl TryFrom<ValueKind> for bool {
             expected: Type::Bool,
             actual: type_,
         })
+    }
+}
+
+impl From<i64> for ValueKind {
+    fn from(integer: i64) -> Self {
+        Self::Integer(integer)
     }
 }
 
@@ -60,16 +82,15 @@ impl TryFrom<ValueKind> for i64 {
     }
 }
 
-impl TryFrom<ValueKind> for f64 {
-    type Error = TypeError;
+impl From<String> for ValueKind {
+    fn from(text: String) -> Self {
+        Self::Text(text)
+    }
+}
 
-    fn try_from(value: ValueKind) -> Result<Self, Self::Error> {
-        let type_ = value.type_();
-
-        obtain!(value, ValueKind::Float(value) => value).ok_or(TypeError {
-            expected: Type::Float,
-            actual: type_,
-        })
+impl From<&str> for ValueKind {
+    fn from(text: &str) -> Self {
+        Self::Text(text.into())
     }
 }
 
@@ -86,6 +107,18 @@ impl TryFrom<ValueKind> for String {
     }
 }
 
+impl From<Vec<Value>> for ValueKind {
+    fn from(array: Vec<Value>) -> Self {
+        Self::Array(array)
+    }
+}
+
+impl<const N: usize> From<[Value; N]> for ValueKind {
+    fn from(array: [Value; N]) -> Self {
+        Self::Array(array.into())
+    }
+}
+
 impl TryFrom<ValueKind> for Vec<Value> {
     type Error = TypeError;
 
@@ -96,6 +129,12 @@ impl TryFrom<ValueKind> for Vec<Value> {
             expected: Type::Array,
             actual: type_,
         })
+    }
+}
+
+impl From<HashMap<WeaklySpanned<String>, Value>> for ValueKind {
+    fn from(map: HashMap<WeaklySpanned<String>, Value>) -> Self {
+        Self::Map(map)
     }
 }
 
@@ -117,7 +156,6 @@ impl fmt::Display for Type {
         match self {
             Self::Bool => write!(f, "boolean"),
             Self::Integer => write!(f, "integer"),
-            Self::Float => write!(f, "float"),
             Self::Text => write!(f, "text"),
             Self::Array => write!(f, "array"),
             Self::Map => write!(f, "map"),
@@ -220,19 +258,6 @@ pub(crate) struct TypeError {
     pub(crate) actual: Type,
 }
 
-pub(crate) fn parse(
-    source_file_index: SourceFileIndex,
-    map: SharedSourceMap,
-    reporter: &Reporter,
-) -> Result<Value> {
-    let source_file = &map.borrow()[source_file_index];
-    let lexer = lexer::Lexer::new(source_file);
-    let tokens = lexer.lex().value;
-    let mut parser = parser::Parser::new(source_file_index, &tokens, map.clone(), reporter);
-    let value = parser.parse()?;
-    Ok(value)
-}
-
 mod lexer {
     use crate::{
         diagnostics::Diagnostic,
@@ -290,8 +315,6 @@ mod lexer {
         ClosingCurlyBracket,
         False,
         True,
-        Nan,
-        Infinity,
         Identifier(String),
         Text(Result<String, TextLexingError>),
         Integer(Result<i64, IntLexingError>),
@@ -325,8 +348,6 @@ mod lexer {
                 ClosingCurlyBracket => quoted!("}"),
                 False => "keyword `false`",
                 True => "keyword `true`",
-                Nan => "keyword `nan`",
-                Infinity => "keyword `infinity`",
                 Identifier => "identifier",
                 Text => "text",
                 Integer => "integer",
@@ -458,8 +479,6 @@ mod lexer {
             self.add(match self.source() {
                 "false" => False,
                 "true" => True,
-                "nan" => Nan,
-                "infinity" => Infinity,
                 identifier => Identifier(identifier.to_owned()),
             });
         }
@@ -474,7 +493,6 @@ mod lexer {
             }
         }
 
-        // @Task support floats
         fn lex_number(&mut self) {
             let mut number = self.source().to_owned();
 
@@ -691,14 +709,6 @@ mod parser {
                 True => {
                     self.advance();
                     Ok(Value::new(span, ValueKind::Bool(true)))
-                }
-                Nan => {
-                    self.advance();
-                    Ok(Value::new(span, ValueKind::Float(f64::NAN)))
-                }
-                Infinity => {
-                    self.advance();
-                    Ok(Value::new(span, ValueKind::Float(f64::INFINITY)))
                 }
                 Text => {
                     // @Task avoid cloning!
