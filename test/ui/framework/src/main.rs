@@ -1,27 +1,23 @@
-#![feature(default_free_fn, const_option)]
+#![feature(default_free_fn, const_option, once_cell)]
 #![forbid(rust_2018_idioms, unused_must_use)]
-
-// @Task
-// * replace some panics with Testsubfailures
-// * strip rustc warnings from stderr
-
-use std::{
-    borrow::Cow,
-    default::default,
-    fmt,
-    fs::{read_to_string, File},
-    io::Write,
-    num::NonZeroUsize,
-    path::{Path, PathBuf},
-    process::{Command, Stdio},
-    str::FromStr,
-    sync::{Arc, Mutex},
-    time::{Duration, Instant},
-};
 
 use colored::Colorize;
 use difference::{Changeset, Difference};
+use std::{
+    borrow::Cow,
+    default::default,
+    fmt, fs,
+    io::Write,
+    lazy::SyncLazy,
+    num::NonZeroUsize,
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 use unicode_width::UnicodeWidthStr;
+
+mod cli;
 
 const DEFAULT_NUMBER_TEST_THREADS_UNKNOWN_AVAILABLE_PARALLELISM: NonZeroUsize =
     NonZeroUsize::new(4).unwrap();
@@ -43,102 +39,6 @@ fn default_test_directory_path() -> String {
         .to_owned()
 }
 
-const AUTHOR: &str = "León Orell Valerian Liehr <liehr.exchange@gmx.net>";
-
-struct Application {
-    release_mode: bool,
-    gilding: bool,
-    loose_filters: Vec<String>,
-    exact_filters: Vec<String>,
-    number_test_threads: NonZeroUsize,
-    test_folder_path: String,
-}
-
-impl Application {
-    fn new() -> Self {
-        let default_test_directory_path = default_test_directory_path();
-        let available_parallelism = std::thread::available_parallelism()
-            .ok()
-            .unwrap_or(DEFAULT_NUMBER_TEST_THREADS_UNKNOWN_AVAILABLE_PARALLELISM);
-        let available_parallelism = available_parallelism.to_string();
-
-        let matches = clap::App::new(env!("CARGO_PKG_NAME"))
-            .version(env!("CARGO_PKG_VERSION"))
-            .author(AUTHOR)
-            .about(env!("CARGO_PKG_DESCRIPTION"))
-            .arg(
-                clap::Arg::with_name("release")
-                    .long("release")
-                    .help("Builds the Lushui compiler in release mode (i.e. with optimizations)"),
-            )
-            .arg(
-                clap::Arg::with_name("gild")
-                    .long("gild")
-                    .help("Updates golden files of all included failing tests to the current compiler output"),
-            )
-            .arg(
-                clap::Arg::with_name("loose-filter")
-                    .long("filter")
-                    .short("f")
-                    .takes_value(true)
-                    .multiple(true)
-                    .help(
-                        "Excludes tests whose file path (relative to the test folder path, without extension) \
-                         does not contain the given filter (and which do not match any other filter)"
-                    ),
-            )
-            .arg(
-                clap::Arg::with_name("exact-filter")
-                    .long("filter-exact")
-                    .short("F")
-                    .takes_value(true)
-                    .multiple(true)
-                    .help(
-                        "Excludes tests whose file path (relative to the test folder path, without extension) \
-                        does not equal the given filter (and which do not match any other filter)"
-                    ),
-            )
-            .arg(
-                clap::Arg::with_name("number-test-threads")
-                    .long("test-threads")
-                    .takes_value(true)
-                    .validator(|input| {
-                        NonZeroUsize::from_str(&input)
-                            .map(drop)
-                            .map_err(|error| error.to_string())
-                    })
-                    .default_value(&available_parallelism)
-                    .help("The number of threads to use during test execution"),
-            )
-            .arg(
-                clap::Arg::with_name("test-folder-path")
-                    .long("test-folder")
-                    .takes_value(true)
-                    .default_value(&default_test_directory_path)
-                    .help("The path to the folder containing the test files"),
-            )
-            .get_matches();
-
-        Application {
-            release_mode: matches.is_present("release"),
-            gilding: matches.is_present("gild"),
-            loose_filters: matches
-                .values_of("loose-filter")
-                .map_or(Vec::new(), |value| value.map(ToString::to_string).collect()),
-            exact_filters: matches
-                .values_of("exact-filter")
-                .map_or(Vec::new(), |value| value.map(ToString::to_string).collect()),
-            number_test_threads: matches
-                .value_of("number-test-threads")
-                .map(|input| input.parse().unwrap())
-                .unwrap(),
-            test_folder_path: matches.value_of("test-folder-path").unwrap().to_owned(),
-        }
-    }
-}
-
-const SEPARATOR_WIDTH: usize = 100;
-
 fn main() {
     if main_().is_err() {
         // all destructors have been run
@@ -147,7 +47,7 @@ fn main() {
 }
 
 fn main_() -> Result<(), ()> {
-    let application = Application::new();
+    let application = cli::Application::new();
 
     if application.gilding {
         print!("Do you really want to gild all valid failing tests? [y/N] ");
@@ -185,7 +85,7 @@ fn main_() -> Result<(), ()> {
     assert!(status.success()); // @Temporary
 
     println!();
-    println!("{}", "=".repeat(SEPARATOR_WIDTH));
+    println!("{}", "=".repeat(terminal_width()));
     println!();
 
     let test_folder_path: &'static _ = Box::leak(application.test_folder_path.into_boxed_str());
@@ -198,11 +98,12 @@ fn main_() -> Result<(), ()> {
     let failures: Arc<Mutex<Vec<_>>> = default();
     let loose_filters: &'static _ = application.loose_filters.leak();
     let exact_filters: &'static _ = application.exact_filters.leak();
-    let gilding = application.gilding;
     let number_test_threads = application.number_test_threads.into();
 
     let suite_time = Instant::now();
+    let path_padding = terminal_width() * 4 / 5;
 
+    #[allow(clippy::needless_collect)] // false positive
     let handles: Vec<_> = (0..number_test_threads)
         .map(|_| {
             let shared_entries = test_folder_entries.clone();
@@ -242,10 +143,21 @@ fn main_() -> Result<(), ()> {
                             continue;
                         }
 
+                        let shortened_path = path.strip_prefix(test_folder_path).unwrap();
+
                         // @Beacon @Beacon @Beacon @Beacon @Beacon @Beacon @Task
                         // skip metadatafiles
                         if !entry.file_type().is_file() {
-                            panic!("invalid file type");
+                            statistics.invalid_files += 1;
+                            let path = shortened_path.to_string_lossy().to_string();
+                            println!("file {path:<path_padding$} {}", "INVALID".red());
+                            failures.push(Failure {
+                                path,
+                                subfailures: vec![Subfailure::Invalid {
+                                    reason: "invalid file type".into(),
+                                }],
+                            });
+                            continue;
                         }
 
                         if has_file_extension(path, "stdout") || has_file_extension(path, "stderr")
@@ -256,16 +168,20 @@ fn main_() -> Result<(), ()> {
                         }
 
                         if !has_file_extension(path, "lushui") {
-                            panic!("illegal extension");
+                            statistics.invalid_files += 1;
+                            let path = shortened_path.to_string_lossy().to_string();
+                            println!("file {path:<path_padding$} {}", "INVALID".red());
+                            failures.push(Failure {
+                                path,
+                                subfailures: vec![Subfailure::Invalid {
+                                    reason: "invalid or missing extension (must be one of `lushui`, `stdout`, `stderr`)".into(),
+                                }],
+                            });
+                            continue;
                         }
 
-                        let legible_path = path
-                            .to_str()
-                            .unwrap()
-                            .strip_prefix(test_folder_path)
-                            .unwrap()
-                            .strip_prefix('/')
-                            .unwrap()
+                        // @Task handle NonUtf8Error by printing INVALID and skipping
+                        let legible_path = shortened_path.to_str().unwrap()
                             .strip_suffix("lushui")
                             .unwrap()
                             .strip_suffix('.')
@@ -286,26 +202,23 @@ fn main_() -> Result<(), ()> {
                             subfailures: Vec::new(),
                         };
 
-                        const PATH_PADDING: usize = 80;
-
-                        let file = read_to_string(entry.path()).unwrap();
+                        let file = fs::read_to_string(entry.path()).unwrap();
 
                         let configuration = match Configuration::parse(&file) {
                             Ok(configuration) => configuration,
                             Err(error) => {
-                                let message = format!("file {legible_path:<PATH_PADDING$} {}", "INVALID".red());
                                 statistics.invalid_files += 1;
                                 failure.subfailures.push(Subfailure::Invalid {
                                     reason: error.to_string().into(),
                                 });
-                                println!("{}", message);
+                                println!("file {legible_path:<path_padding$} {}", "INVALID".red());
                                 failures.push(failure);
                                 continue;
                             }
                         };
 
                         if let TestTag::Auxiliary = configuration.tag {
-                            let mut message = format!("aux  {legible_path:<PATH_PADDING$}");
+                            let mut message = format!("aux  {legible_path:<path_padding$}");
                             let mut invalid = false;
 
                             if configuration.arguments.is_empty() {
@@ -329,7 +242,9 @@ fn main_() -> Result<(), ()> {
                                         }
                                         failure
                                             .subfailures
-                                            .push(Subfailure::Invalid { reason: format!("the user `{user}` of the auxiliary file does not exist").into() });
+                                            .push(Subfailure::Invalid {
+                                                reason: format!("the user `{user}` of the auxiliary file does not exist").into()
+                                            });
                                     }
                                 }
                             }
@@ -337,19 +252,19 @@ fn main_() -> Result<(), ()> {
                             if invalid {
                                 message += &format!(" {}", "INVALID".red());
                                 statistics.invalid_files += 1;
-                                println!("{}", message);
+                                println!("{message}");
                                 failures.push(failure);
                             }
 
                             continue;
                         }
 
-                        let mut message = format!("test {legible_path:<PATH_PADDING$}");
+                        let mut message = format!("test {legible_path:<path_padding$}");
 
                         if let TestTag::Ignore = configuration.tag {
                             message += &format!(" {}", "ignored".yellow());
                             statistics.ignored_tests += 1;
-                            println!("{}", message);
+                            println!("{message}");
                             continue;
                         }
 
@@ -398,7 +313,7 @@ fn main_() -> Result<(), ()> {
                             &entry.path().with_extension("stdout"),
                             output.stdout,
                             Stream::Stdout,
-                            gilding,
+                            application.gilding,
                         ) {
                             Ok(gilded) => gilded,
                             Err(error) => {
@@ -412,7 +327,7 @@ fn main_() -> Result<(), ()> {
                             &entry.path().with_extension("stderr"),
                             output.stderr,
                             Stream::Stderr,
-                            gilding,
+                            application.gilding,
                         ) {
                             Ok(gilded) => gilded,
                             Err(error) => {
@@ -440,7 +355,7 @@ fn main_() -> Result<(), ()> {
                             failures.push(failure);
                         }
 
-                        println!("{}", message);
+                        println!("{message}");
                     }
 
                     *shared_statistics.lock().unwrap() += &std::mem::take(&mut statistics);
@@ -472,7 +387,7 @@ fn main_() -> Result<(), ()> {
             "=== {} {}",
             failure.path,
             "=".repeat(
-                SEPARATOR_WIDTH
+                terminal_width()
                     .saturating_sub(failure.path.width())
                     .saturating_sub(5)
             )
@@ -486,13 +401,14 @@ fn main_() -> Result<(), ()> {
 
     let summary = Summary {
         statistics,
-        gilding,
+        gilding: application.gilding,
         duration,
-        filter: loose_filters,
+        loose_filters,
+        exact_filters,
     };
 
     println!();
-    println!("{}", summary);
+    println!("{summary}");
 
     if !summary.statistics.tests_passed() {
         return Err(());
@@ -512,7 +428,7 @@ fn check_against_golden_file(
 
     let golden = if golden_file_path.exists() {
         stream.preprocess_before_comparison(
-            read_to_string(golden_file_path).unwrap(),
+            fs::read_to_string(golden_file_path).unwrap(),
             test_directory_path,
         )
     } else {
@@ -528,17 +444,19 @@ fn check_against_golden_file(
             })
         } else {
             let actual = stream.preprocess_before_generating(actual, test_directory_path);
-
-            File::create(golden_file_path)
-                .unwrap()
-                .write_all(actual.as_bytes())
-                .unwrap();
-
+            fs::write(golden_file_path, actual).unwrap();
             Ok(true)
         }
     } else {
         Ok(false)
     }
+}
+
+fn terminal_width() -> usize {
+    static TERMINAL_WIDTH: SyncLazy<usize> =
+        SyncLazy::new(|| terminal_size::terminal_size().map_or(100, |size| size.0 .0 as _));
+
+    *TERMINAL_WIDTH
 }
 
 // `failed_tests` does not necessarily equal `gilded_tests` since the former includes
@@ -613,12 +531,13 @@ struct Summary {
     statistics: Statistics,
     gilding: bool,
     duration: Duration,
-    filter: &'static [String],
+    loose_filters: &'static [String],
+    exact_filters: &'static [String],
 }
 
 impl fmt::Display for Summary {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{}", "=".repeat(SEPARATOR_WIDTH))?;
+        writeln!(f, "{}", "=".repeat(terminal_width()))?;
         writeln!(f)?;
 
         let status = if self.statistics.tests_passed() {
@@ -692,12 +611,20 @@ impl fmt::Display for Summary {
             duration = format!("{:.2?}", self.duration).bright_black(),
         )?;
 
-        if !self.filter.is_empty() {
-            writeln!(f, "    filtered by\n        {}", self.filter.join(" "))?;
+        if !self.loose_filters.is_empty() || !self.exact_filters.is_empty() {
+            writeln!(f, "    filtered by:")?;
+
+            for filter in self.loose_filters {
+                writeln!(f, "       {filter} (loosely)")?;
+            }
+
+            for filter in self.exact_filters {
+                writeln!(f, "       {filter} (exactly)")?;
+            }
         }
 
         writeln!(f)?;
-        writeln!(f, "{}", "=".repeat(SEPARATOR_WIDTH))
+        writeln!(f, "{}", "=".repeat(terminal_width()))
     }
 }
 
@@ -847,7 +774,7 @@ impl fmt::Display for Subfailure {
                     format!(
                         "expected the test to pass but the Lushui compiler failed{}",
                         match code {
-                            Some(code) => format!(" with exit code {}", code),
+                            Some(code) => format!(" with exit code {code}"),
                             None => String::new(),
                         }
                     )
@@ -861,15 +788,15 @@ impl fmt::Display for Subfailure {
             } => {
                 writeln!(f, "{}", format!("the actual {stream} of the Lushui compiler does not match the expected golden {stream}:").red())?;
                 writeln!(f)?;
-                writeln!(f, "{}", "-".repeat(SEPARATOR_WIDTH).bright_black())?;
+                writeln!(f, "{}", "-".repeat(terminal_width()).bright_black())?;
 
                 let changes = Changeset::new(golden, actual, "\n");
                 write_differences_with_ledge(&changes.diffs, f)?;
 
-                write!(f, "{}", "-".repeat(SEPARATOR_WIDTH).bright_black())?;
+                write!(f, "{}", "-".repeat(terminal_width()).bright_black())?;
             }
             Self::Invalid { reason } => {
-                write!(f, "{}: {}", "the file is invalid".red(), reason)?;
+                write!(f, "{}: {reason}", "the file is invalid".red())?;
             }
         }
 
@@ -886,7 +813,7 @@ fn write_differences_with_ledge(
         match difference {
             Difference::Same(lines) => {
                 for line in lines.lines() {
-                    writeln!(f, "{} {}", " ".on_bright_white(), line)?;
+                    writeln!(f, "{} {line}", " ".on_bright_white())?;
                 }
             }
             Difference::Add(lines) => {

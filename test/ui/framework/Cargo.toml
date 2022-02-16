@@ -9,5 +9,6 @@ publish = false
 colored = "2.0.0"
 difference = "2.0.0"
 walkdir = "2.3.2"
-clap = "2.33.3"
+clap = "3.0.14"
 unicode-width = "0.1.7"
+terminal_size = "0.1.17"
