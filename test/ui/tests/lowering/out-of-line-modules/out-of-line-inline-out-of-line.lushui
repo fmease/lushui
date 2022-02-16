@@ -1,0 +1,4 @@
+;;; TEST pass check --no-core
+
+module indirection
+

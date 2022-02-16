@@ -1,7 +1,0 @@
-;;; TEST pass check
-
-use external-module.Definition
-
-module external-module
-
-use external-module.internal

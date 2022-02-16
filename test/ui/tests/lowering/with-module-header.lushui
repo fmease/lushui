@@ -1,7 +1,0 @@
-;;; TEST auxiliary lowering/module-header-for-out-of-line-module
-
-;; Top-level documentation
-module
-
-data Content: Type of
-

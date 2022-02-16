@@ -1,0 +1,5 @@
+;;; TEST fail check --no-core
+
+;; famous recording
+module nowhere-to-be-found
+

@@ -243,7 +243,7 @@ impl<'a> Formatter<'a> {
             "{}{}/index.html",
             self.url_prefix,
             self.component(index)
-                .local_path_segments(index.local_unchecked())
+                .extern_path_segments(index.local_unchecked())
                 .into_iter()
                 .map(urlencoding::encode)
                 .join_with("/")

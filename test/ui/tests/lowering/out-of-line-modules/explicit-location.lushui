@@ -1,0 +1,7 @@
+;;; TEST pass check --no-core
+
+@(location "explicit-location-submodule")
+module binder
+
+use binder.token
+

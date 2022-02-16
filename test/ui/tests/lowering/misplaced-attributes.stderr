@@ -61,7 +61,7 @@ error[E013]: attribute `location` is ascribed to a use-declaration
 10 | use something.substantial.(root0 root1)
    | --------------------------------------- incompatible item
    |
-  note: attribute `location` can only be ascribed to module declarations
+  note: attribute `location` can only be ascribed to out-of-line module declarations
 
 error[E013]: attribute `include` is ascribed to a function declaration
   --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:12:1

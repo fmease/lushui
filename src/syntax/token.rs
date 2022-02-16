@@ -125,7 +125,7 @@ pub enum TokenKind {
     Self_,
     /// For paths relative to the parent namespace.
     Super,
-    /// For paths relative to the root module / component root.
+    /// For paths relative to the root module / the component root.
     Topmost,
     /// For type literals.
     Type,

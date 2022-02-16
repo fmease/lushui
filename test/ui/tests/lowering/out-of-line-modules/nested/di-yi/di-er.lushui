@@ -1,0 +1,4 @@
+;;; TEST auxiliary lowering/out-of-line-modules/nested
+
+module di-san
+

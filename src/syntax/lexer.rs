@@ -776,7 +776,7 @@ fn parse_reserved_punctuation(source: &str) -> Option<TokenKind> {
 pub(crate) struct Spaces(pub(crate) usize);
 
 impl Spaces {
-    /// Return the ordering / direction / sign and the absolute difference.
+    /// The ordering / direction / sign together with the absolute difference.
     pub(crate) fn difference(self, other: Self) -> (Ordering, Self) {
         let change = self.0.cmp(&other.0);
         let difference = match change {

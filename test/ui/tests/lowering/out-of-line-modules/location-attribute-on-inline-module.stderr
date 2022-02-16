@@ -1,0 +1,17 @@
+error[E013]: attribute `location` is ascribed to an inline module declaration
+ --> ${DIRECTORY}/lowering/out-of-line-modules/location-attribute-on-inline-module.lushui:3:1
+  |
+3 | @(location "somewhere-not-inline")
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ misplaced attribute
+  |
+ --> ${DIRECTORY}/lowering/out-of-line-modules/location-attribute-on-inline-module.lushui:4:1
+  |
+4 | module inline of
+  | ---------------- incompatible item
+  |
+ note: attribute `location` can only be ascribed to out-of-line module declarations
+
+error: aborting due to previous error
+ note: the error E013 has a detailed explanation
+ help: run `lushui explain E013` to view it
+

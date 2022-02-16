@@ -36,20 +36,17 @@ use lushui::{
         Code, Diagnostic, Reporter,
     },
     documenter,
-    error::{outcome, Result},
+    error::Result,
     format::{DisplayWith, IOError},
     package::{
         find_package, BuildQueue, ComponentType, PackageManifest, DEFAULT_SOURCE_FOLDER_NAME,
     },
     resolver::{self, PROGRAM_ENTRY_IDENTIFIER},
-    span::{SharedSourceMap, SourceMap, Spanned},
+    span::{SharedSourceMap, SourceMap},
     syntax::{lexer, lowerer, parser, ComponentName},
     typer, FILE_EXTENSION,
 };
-use std::{
-    default::default,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 mod cli;
 
@@ -246,7 +243,7 @@ fn build_package(
             eprintln!("Execution times by pass:");
         }
 
-        let source_file = map
+        let file = map
             .borrow_mut()
             .load(component.path().to_owned())
             .map_err(|error| {
@@ -266,13 +263,13 @@ fn build_package(
 
         let time = Instant::now();
 
-        let outcome!(tokens, token_health) = lexer::lex(&map.borrow()[source_file], reporter)?;
+        let tokens = lexer::lex(&map.borrow()[file], reporter)?.value;
 
         let duration = time.elapsed();
 
         if component.is_goal(&session) && options.emit_tokens {
             for token in &tokens {
-                eprintln!("{:?}", token);
+                eprintln!("{token:?}");
             }
         }
 
@@ -280,14 +277,9 @@ fn build_package(
         check_pass_restriction!(PassRestriction::Lexer);
         let time = Instant::now();
 
-        // @Beacon @Task fix this ugly mess, create clean helpers
-        let module_name = Spanned::new(default(), component.name().clone()).into();
-        let component_root =
-            parser::parse_file(&tokens, source_file, module_name, map.clone(), reporter)?;
+        let component_root = parser::parse_root_module_file(&tokens, file, map.clone(), reporter)?;
 
         let duration = time.elapsed();
-
-        assert!(token_health.is_untainted()); // parsing succeeded
 
         if component.is_goal(&session) && options.emit_ast {
             eprintln!("{component_root:#?}");

@@ -1,0 +1,6 @@
+error[E036]: `invalid--name` is not a valid component name
+
+error: aborting due to previous error
+ note: the error E036 has a detailed explanation
+ help: run `lushui explain E036` to view it
+

@@ -47,7 +47,8 @@
     let_else,
     min_specialization,
     iter_intersperse,
-    type_changing_struct_update
+    type_changing_struct_update,
+    slice_take
 )]
 #![deny(rust_2018_idioms, unused_must_use)]
 #![allow(incomplete_features)] // adt_const_params (we are only doing the basics)

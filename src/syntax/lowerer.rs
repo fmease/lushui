@@ -26,14 +26,17 @@
 
 use super::{
     ast::{self, Explicit, HangerKind, Parameter, Path},
-    lowered_ast::{self, attributes::Target, AttributeKind, AttributeName, Attributes},
+    lowered_ast::{
+        self,
+        attributes::{Predicate, Public, Query, Target},
+        AttributeKind, AttributeName, Attributes,
+    },
 };
 use crate::{
     diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
     error::{Health, OkIfUntaintedExt, PossiblyErroneous, Result, Stain},
     format::{ordered_listing, Conjunction, IOError, QuoteExt},
     span::{SharedSourceMap, SourceMap, Span, Spanning},
-    syntax::lowered_ast::attributes::{Predicate, Public, Query},
     utility::{Atom, SmallVec, Str},
 };
 use smallvec::smallvec;
@@ -74,13 +77,7 @@ impl<'a> Lowerer<'a> {
         &mut self,
         declaration: ast::Declaration,
     ) -> SmallVec<lowered_ast::Declaration, 1> {
-        self.lower_declaration_with_context(
-            declaration,
-            &DeclarationContext {
-                is_root: true,
-                inline_modules: Vec::new(),
-            },
-        )
+        self.lower_declaration_with_context(declaration, &DeclarationContext::default())
     }
 
     fn lower_declaration_with_context(
@@ -191,17 +188,10 @@ impl<'a> Lowerer<'a> {
                 let type_annotation =
                     self.lower_parameters_to_annotated_ones(type_.parameters, data_type_annotation);
 
-                let context = DeclarationContext {
-                    is_root: false,
-                    inline_modules: Vec::new(),
-                };
-
                 let constructors = type_.constructors.map(|constructors| {
                     constructors
                         .into_iter()
-                        .flat_map(|constructor| {
-                            self.lower_declaration_with_context(constructor, &context)
-                        })
+                        .flat_map(|constructor| self.lower_declaration(constructor))
                         .collect()
                 });
 
@@ -274,26 +264,35 @@ impl<'a> Lowerer<'a> {
                 let declarations = match module.declarations {
                     Some(declarations) => declarations,
                     None => {
-                        let path_suffix = attributes
-                            .get::<{ AttributeName::Location }>()
-                            .unwrap_or_else(|| module.binder.as_str());
-
                         let mut path = self.map.borrow()[module.file]
                             .path()
                             .unwrap()
                             .parent()
                             .unwrap()
                             .to_owned();
-                        path.extend(&context.inline_modules);
-                        let path = path.join(path_suffix).with_extension(crate::FILE_EXTENSION);
 
-                        // @Task instead of a note saying the error, print a help message
-                        // saying to create the missing file or change the access rights etc.
-                        // @Note awkward API!
+                        match attributes.get::<{ AttributeName::Location }>() {
+                            Some(location) => {
+                                let mut inline_modules = &context.inline_modules[..];
+                                let _ = inline_modules.take_last();
+
+                                path.extend(inline_modules);
+                                path.push(location);
+                            }
+                            None => {
+                                path.extend(&context.inline_modules);
+                                path.push(module.binder.as_str());
+                            }
+                        };
+
+                        path.set_extension(crate::FILE_EXTENSION);
 
                         let file = match self.map.borrow_mut().load(path.clone()) {
                             Ok(file) => file,
                             Err(error) => {
+                                // @Task instead of a note saying the error, print a help message
+                                // saying to create the missing file or change the access rights etc.
+                                // @Note awkward API!
                                 Diagnostic::error()
                                     .code(Code::E016)
                                     .message(format!(
@@ -308,7 +307,7 @@ impl<'a> Lowerer<'a> {
                             }
                         };
 
-                        let Ok(declaration) = crate::syntax::parse_file(
+                        let Ok(declaration) = crate::syntax::parse_module_file(
                             file,
                             module.binder.clone(),
                             self.map.clone(),
@@ -326,20 +325,13 @@ impl<'a> Lowerer<'a> {
                     }
                 };
 
-                let mut inline_modules = if is_inline_module {
-                    context.inline_modules.clone()
-                } else {
-                    Vec::new()
+                let mut child_context = DeclarationContext::default();
+                if is_inline_module {
+                    child_context
+                        .inline_modules
+                        .extend(context.inline_modules.clone());
                 };
-                if !context.is_root {
-                    // @Bug does not respect @location
-                    inline_modules.push(module.binder.to_string());
-                }
-
-                let context = DeclarationContext {
-                    is_root: false,
-                    inline_modules,
-                };
+                child_context.inline_modules.push(module.binder.to_string());
 
                 let mut lowered_declarations = Vec::new();
                 let mut possesses_header = false;
@@ -374,7 +366,7 @@ impl<'a> Lowerer<'a> {
                     }
 
                     lowered_declarations
-                        .extend(self.lower_declaration_with_context(declaration, &context));
+                        .extend(self.lower_declaration_with_context(declaration, &child_context));
                 }
 
                 smallvec![lowered_ast::Declaration::new(
@@ -856,6 +848,7 @@ impl<'a> Lowerer<'a> {
                 let expected_targets = attribute.value.targets();
 
                 if !expected_targets.contains(actual_targets) {
+                    // @Question wording: "cannot be ascribed to"?
                     Diagnostic::error()
                         .code(Code::E013)
                         .message(format!(
@@ -1049,15 +1042,12 @@ pub struct Options {
     pub keep_documentation_comments: bool,
 }
 
+#[derive(Default)]
 struct DeclarationContext {
-    is_root: bool,
     /// The path of inline module declarations leading to a declaration.
     ///
     /// The path starts either at the root module declaration (excluding it) or
     /// at the closest out-of-line module (including it).
-    ///
-    /// Exclusively used to compute the path of out-of-line modules inside of inline
-    /// modules!
     inline_modules: Vec<String>,
 }
 

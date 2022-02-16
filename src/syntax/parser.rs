@@ -36,10 +36,11 @@ use super::{
         Token,
         TokenName::{self, *},
     },
+    ComponentName,
 };
 use crate::{
     diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
-    error::Result,
+    error::{ReportedExt, Result},
     format::{ordered_listing, Conjunction},
     span::{SharedSourceMap, SourceFileIndex, Span, Spanned, Spanning},
     utility::SmallVec,
@@ -58,15 +59,42 @@ const STANDARD_DECLARATION_DELIMITERS: [Delimiter; 3] = {
 const BRACKET_POTENTIAL_PI_TYPE_LITERAL: &str =
     "add round brackets around the potential pi type literal to disambiguate the expression";
 
-/// Parse a file (the component root or an out-of-line module).
-pub fn parse_file(
+/// Parse the file of a root module.
+pub fn parse_root_module_file(
     tokens: &[Token],
     file: SourceFileIndex,
-    module: Identifier,
     map: SharedSourceMap,
     reporter: &Reporter,
 ) -> Result<Declaration> {
-    Parser::new(tokens, file, map, reporter).parse_top_level(module)
+    // @Beacon @Task don't unwrap to_str here but handle the error correctly
+    // (create another parsing function on C)
+    let binder = Spanned::new(
+        default(),
+        ComponentName::parse(
+            map.borrow()[file]
+                .path()
+                .unwrap()
+                .file_stem()
+                .unwrap()
+                .to_str()
+                .unwrap(),
+        )
+        .reported(reporter)?,
+    )
+    .into();
+
+    Parser::new(tokens, file, map, reporter).parse_top_level(binder)
+}
+
+/// Parse the file of a root module or an out-of-line module.
+pub(crate) fn parse_module_file(
+    tokens: &[Token],
+    file: SourceFileIndex,
+    binder: Identifier,
+    map: SharedSourceMap,
+    reporter: &Reporter,
+) -> Result<Declaration> {
+    Parser::new(tokens, file, map, reporter).parse_top_level(binder)
 }
 
 // @Task get rid of the parameters file and map!

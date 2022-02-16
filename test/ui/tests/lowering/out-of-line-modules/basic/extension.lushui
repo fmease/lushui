@@ -1,4 +1,4 @@
-;;; TEST auxiliary external-module-declaration
+;;; TEST auxiliary lowering/out-of-line-modules/basic
 
 @public
 data Definition: Type of

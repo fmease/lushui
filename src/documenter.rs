@@ -387,7 +387,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             .binder
             .local_declaration_index(self.component)
             .unwrap();
-        let path_segments = self.component.local_path_segments(index);
+        let path_segments = self.component.extern_path_segments(index);
         let page_depth = match content_type {
             PageContentType::Module => path_segments.len(),
             PageContentType::Attributes | PageContentType::ReservedIdentifiers => 0,

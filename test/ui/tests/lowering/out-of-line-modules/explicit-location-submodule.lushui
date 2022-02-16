@@ -1,0 +1,4 @@
+;;; TEST auxiliary lowering/out-of-line-modules/explicit-location
+
+@public module token of
+

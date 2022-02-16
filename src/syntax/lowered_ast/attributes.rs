@@ -35,11 +35,19 @@ impl Target for ast::Declaration {
     fn name(&self) -> &'static str {
         use ast::DeclarationKind::*;
 
-        match self.value {
+        match &self.value {
             Function(_) => "a function declaration",
             Data(_) => "a data declaration",
             Constructor(_) => "a constructor declaration",
-            Module(_) => "a module declaration",
+            // @Task it would be better (= less confusing) if we didn't mention "inline" and "out-of-line"
+            // unconditionally, only for relevant target mismatches
+            Module(module) => {
+                if module.declarations.is_some() {
+                    "an inline module declaration"
+                } else {
+                    "an out-of-line module declaration"
+                }
+            }
             ModuleHeader => "a module header declaration",
             Group(_) => "an attribute group declaration",
             Use(_) => "a use-declaration",
@@ -49,11 +57,17 @@ impl Target for ast::Declaration {
     fn as_targets(&self) -> Targets {
         use ast::DeclarationKind::*;
 
-        match self.value {
+        match &self.value {
             Function(_) => Targets::FUNCTION_DECLARATION,
             Data(_) => Targets::DATA_DECLARATION,
             Constructor(_) => Targets::CONSTRUCTOR_DECLARATION,
-            Module(_) => Targets::MODULE_DECLARATION,
+            Module(module) => {
+                if module.declarations.is_some() {
+                    Targets::INLINE_MODULE_DECLARATION
+                } else {
+                    Targets::OUT_OF_LINE_MODULE_DECLARATION
+                }
+            }
             ModuleHeader => Targets::MODULE_HEADER_DECLARATION,
             Group(_) => Targets::all(),
             Use(_) => Targets::USE_DECLARATION,
@@ -145,7 +159,7 @@ the body containing a set of constructors
                 .report(reporter)),
             (None, None) => Err(Diagnostic::error()
                 .code(Code::E012)
-                .message(format!("declaration `{}` has no definition", binder))
+                .message(format!("declaration `{binder}` has no definition"))
                 .primary_span(missing_definition_location)
                 .help(format!("provide a definition with `{definition_marker}`"))
                 .report(reporter)),
@@ -237,9 +251,13 @@ bitflags::bitflags! {
         const FUNCTION_DECLARATION = 1 << 0;
         const DATA_DECLARATION = 1 << 1;
         const CONSTRUCTOR_DECLARATION = 1 << 2;
-        const MODULE_DECLARATION = 1 << 3;
+        const INLINE_MODULE_DECLARATION = 1 << 3;
+        const OUT_OF_LINE_MODULE_DECLARATION = 1 << 26;
         const MODULE_HEADER_DECLARATION = 1 << 4;
         const USE_DECLARATION = 1 << 5;
+
+        const MODULE_DECLARATION = Self::INLINE_MODULE_DECLARATION.bits
+            | Self::OUT_OF_LINE_MODULE_DECLARATION.bits;
 
         const DECLARATION = Self::FUNCTION_DECLARATION.bits
             | Self::DATA_DECLARATION.bits
@@ -317,6 +335,7 @@ impl Targets {
             self == Self::DECLARATION - Self::CONSTRUCTOR_DECLARATION - Self::MODULE_HEADER_DECLARATION => "declarations except constructors and module headers",
             self == Self::MODULE_DECLARATION => "module declarations",
             self == Self::MODULE_DECLARATION | Self::MODULE_HEADER_DECLARATION => "module (header) declarations",
+            self == Self::OUT_OF_LINE_MODULE_DECLARATION => "out-of-line module declarations",
             self == Self::FUNCTION_DECLARATION | Self::MODULE_DECLARATION | Self::MODULE_HEADER_DECLARATION => "function or module (header) declarations",
             self == Self::EXPRESSION => "expressions",
             self == Self::FUNCTION_DECLARATION
@@ -565,7 +584,7 @@ impl AttributeKind {
             RecursionLimit { .. } | DocAttributes | DocReservedIdentifiers => {
                 Targets::MODULE_DECLARATION | Targets::MODULE_HEADER_DECLARATION
             }
-            Location { .. } => Targets::MODULE_DECLARATION,
+            Location { .. } => Targets::OUT_OF_LINE_MODULE_DECLARATION,
             Test => {
                 Targets::FUNCTION_DECLARATION
                     | Targets::MODULE_DECLARATION

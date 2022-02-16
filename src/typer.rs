@@ -917,9 +917,11 @@ impl<'a> Typer<'a> {
 }
 
 impl Expression {
-    /// Returns the callee of an expression.
+    /// The callee of an expression.
     ///
-    /// Example: Returns the `f` in `f a b c`.
+    /// # Example
+    ///
+    /// The `f` in `f a b c`.
     fn callee(mut self) -> Expression {
         loop {
             self = match self.value {

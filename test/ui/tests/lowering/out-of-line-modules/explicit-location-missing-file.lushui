@@ -1,0 +1,6 @@
+;;; TEST fail check --no-core
+
+@(location "expansion-of-the-void-until-eternity")
+module meaningless
+
+use meaningless.contained

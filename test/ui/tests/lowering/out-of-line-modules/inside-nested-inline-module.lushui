@@ -1,0 +1,4 @@
+;;; TEST pass check
+
+module outer of { module inner of { module out-of-line } }
+

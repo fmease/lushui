@@ -1,4 +1,4 @@
-;;; TEST fail check
+;;; TEST fail check --no-core
 
 module alpha0 of { module alpha1 }
 

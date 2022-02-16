@@ -1,0 +1,3 @@
+;;; TEST auxiliary lowering/out-of-line-modules/out-of-line-inline-out-of-line
+
+module padding of { module out-of-line }

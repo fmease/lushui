@@ -1,0 +1,3 @@
+;;; TEST pass check
+
+module container of { module content }

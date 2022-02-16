@@ -13,7 +13,7 @@ use super::{
 use crate::{
     diagnostics::reporter::SilentReporter,
     span::{span, SourceFileIndex, SourceMap, Span, Spanned},
-    syntax::{lexer::lex, parse_file},
+    syntax::{lexer::lex, parse_module_file},
     utility::SmallVec,
 };
 use index_map::Index as _;
@@ -41,7 +41,7 @@ fn parse_pattern(source: &str) -> Result<Pattern> {
 fn parse_declaration(source: &str) -> Result<Declaration> {
     let map = SourceMap::shared();
     let file = map.borrow_mut().add(None, source.to_owned());
-    parse_file(file, test_module_name(), map, &SilentReporter.into())
+    parse_module_file(file, test_module_name(), map, &SilentReporter.into())
 }
 
 /// The name of the module returned by [parse_declaration].

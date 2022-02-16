@@ -1,0 +1,12 @@
+;;; TEST pass check
+
+@(location "nonword-location/how%delightful!")
+module binder
+
+;;; [Description]
+;;; In contrast to the root module, the file name does not need to be a valid word.
+;;; This is possible since an out-of-line module declaration always binds the module
+;;; to a word binder. That's not a choice we have for the root module.
+;;;
+;;; Additionally, not permitting nonword filenames / locations would be pretty restrictive.
+

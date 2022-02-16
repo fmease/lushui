@@ -121,7 +121,7 @@ impl Entity {
         )
     }
 
-    /// Retrieve the value of an entity
+    /// The value of an entity.
     ///
     /// # Panics
     ///

@@ -132,18 +132,18 @@ impl Component {
         }
     }
 
-    /// Get the component root as a local index.
-    #[allow(clippy::unused_self)] // nicer API
+    /// The root module / the component root as a local index.
+    #[allow(clippy::unused_self)] // yields a nicer API
     pub(crate) fn local_root(&self) -> LocalDeclarationIndex {
         LocalDeclarationIndex::new(0)
     }
 
-    /// Get the component root.
+    /// The root module / the component root.
     pub(crate) fn root(&self) -> DeclarationIndex {
         self.local_root().global(self)
     }
 
-    /// Build a textual representation of the absolute path of a binding.
+    /// Build a textual representation of the absolute path of the given binding.
     // @Task extend docs
     pub(crate) fn absolute_path_to_string(
         &self,
@@ -174,7 +174,8 @@ impl Component {
         }
     }
 
-    // @Task add docs
+    /// The textual representation of the extern path to the given binding.
+    // @Task explain what an extern path is
     pub(crate) fn extern_path_to_string(&self, index: LocalDeclarationIndex) -> String {
         self.extern_path_with_root_to_string(index, self.name().to_string())
     }
@@ -209,8 +210,8 @@ impl Component {
         }
     }
 
-    // @Note bad name
-    pub(crate) fn local_path_segments(&self, mut index: LocalDeclarationIndex) -> VecDeque<&str> {
+    /// The segments of the [extern path](Self::extern_path_to_string) to the given binding.
+    pub(crate) fn extern_path_segments(&self, mut index: LocalDeclarationIndex) -> VecDeque<&str> {
         let mut segments = VecDeque::new();
 
         loop {

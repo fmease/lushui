@@ -1,0 +1,8 @@
+;;; TEST pass check --no-core
+
+use extension.Definition
+
+module extension
+
+use extension.internal
+

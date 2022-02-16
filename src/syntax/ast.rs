@@ -549,7 +549,7 @@ impl Path {
             .filter(|some_hanger| some_hanger.value == hanger && self.segments.is_empty())
     }
 
-    /// Return the path head if it is an identifier.
+    /// The path head if it is an identifier.
     pub(crate) fn identifier_head(&self) -> Option<&Identifier> {
         if self.hanger.is_some() {
             return None;

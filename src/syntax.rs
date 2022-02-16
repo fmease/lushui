@@ -1,7 +1,13 @@
 //! The front-end concerned with lexing, parsing and lowering.
 
+use crate::{
+    diagnostics::Reporter,
+    error::Result,
+    span::{SharedSourceMap, SourceFileIndex},
+};
 pub use component_name::ComponentName;
 
+// @Beacon @Task if ast, lowered ast etc are pub(crate) anyway, make the individual AST nodes private as well!
 pub(crate) mod ast;
 pub mod lexer;
 pub(crate) mod lowered_ast;
@@ -9,23 +15,17 @@ pub mod lowerer;
 pub mod parser;
 pub(crate) mod token;
 
-use crate::{
-    diagnostics::Reporter,
-    error::Result,
-    span::{SharedSourceMap, SourceFileIndex},
-};
-
-/// Lex and parse a given file (the component root or an out-of-line module).
+/// Lex and parse the file of a root module or an out-of-line module.
 ///
-/// This is a convenience function combining [`lexer::lex`] and [`parser::parse_file`].
-pub(crate) fn parse_file(
+/// This is a convenience function combining [`lexer::lex`] and [`parser::parse_module_file`].
+pub(crate) fn parse_module_file(
     file: SourceFileIndex,
-    module: ast::Identifier,
+    binder: ast::Identifier,
     map: SharedSourceMap,
     reporter: &Reporter,
 ) -> Result<ast::Declaration> {
     let tokens = lexer::lex(&map.borrow()[file], reporter)?.value;
-    parser::parse_file(&tokens, file, module, map, reporter)
+    parser::parse_module_file(&tokens, file, binder, map, reporter)
 }
 
 // @Task try to get rid of file+map params (just take a &str (maybe, but what about span info?))!
