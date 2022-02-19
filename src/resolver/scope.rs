@@ -143,21 +143,23 @@ impl Component {
         self.local_root().global(self)
     }
 
-    /// Build a textual representation of the absolute path of the given binding.
-    // @Task extend docs
-    pub(crate) fn absolute_path_to_string(
-        &self,
-        index: DeclarationIndex,
-        session: &BuildSession,
-    ) -> String {
-        self.absolute_path_with_root_to_string(
-            index,
-            HangerKind::Topmost.name().to_owned(),
-            session,
-        )
+    /// The textual representation of the [path][1] of the given binding relative to the root of the current component.
+    ///
+    /// Rephrased it returns a path that could be used in any expression in any module of the current component
+    /// to unambiguously (including shadowing) refer to the given binding ignoring exposure.
+    /// If the binding is defined in this component, it will always start with the path hanger `topmost`,
+    /// otherwise it will start with `extern` followed by the respective name of the external component.
+    ///
+    /// # Examples
+    ///
+    /// `topmost`, `topmost.alpha`, `topmost.gamma.<?//`, `extern.core`, `extern.core.nat.Nat`.
+    ///
+    /// [1]: crate::syntax::ast::Path
+    pub(crate) fn path_to_string(&self, index: DeclarationIndex, session: &BuildSession) -> String {
+        self.path_with_root_to_string(index, HangerKind::Topmost.name().to_owned(), session)
     }
 
-    fn absolute_path_with_root_to_string(
+    fn path_with_root_to_string(
         &self,
         index: DeclarationIndex,
         root: String,
@@ -169,13 +171,22 @@ impl Component {
                 let component = &session[index.component()];
                 let root = format!("{}.{}", HangerKind::Extern.name(), component.name());
 
-                component.absolute_path_with_root_to_string(index, root, session)
+                component.path_with_root_to_string(index, root, session)
             }
         }
     }
 
-    /// The textual representation of the extern path to the given binding.
-    // @Task explain what an extern path is
+    /// The textual representation of the [path][1] to the given binding relative to a component root
+    /// prefixed with name of the corresponding component.
+    ///
+    /// Rephrased, it returns a path that could be used in any dependent components (reverse dependencies)
+    /// to refer to the binding ignoring exposure as long as one would prepend the path hanger `extern`.
+    ///
+    /// # Examples
+    ///
+    /// `core.nat.Nat`, `json.parse`.
+    ///
+    /// [1]: crate::syntax::ast::Path
     pub(crate) fn extern_path_to_string(&self, index: LocalDeclarationIndex) -> String {
         self.extern_path_with_root_to_string(index, self.name().to_string())
     }
@@ -449,11 +460,9 @@ impl DisplayWith for RestrictedExposure {
     ) -> fmt::Result {
         match self {
             Self::Unresolved { reach } => write!(f, "{}", reach),
-            &Self::Resolved { reach } => write!(
-                f,
-                "{}",
-                scope.absolute_path_to_string(reach.global(scope), session)
-            ),
+            &Self::Resolved { reach } => {
+                write!(f, "{}", scope.path_to_string(reach.global(scope), session))
+            }
         }
     }
 }
@@ -536,13 +545,30 @@ impl<'a> FunctionScope<'a> {
         }
     }
 
-    pub(crate) fn absolute_path_to_string(
+    /// The textual representation of the [path][1] of the given binding.
+    ///
+    /// If the binding is local meaning it represents a function parameter or a binder in a pattern,
+    /// this method will return a single identifier that could be used in the corresponding function or
+    /// case analysis case to refer to it until the point it gets shadowed (if any) but not outside of
+    /// that environment.
+    ///
+    /// If it's not local, this method will return
+    /// [the path relative to the root of the current component][2].
+    ///
+    /// # Examples
+    ///
+    /// `x`, `alpha`, `topmost`, `topmost.alpha`, `topmost.gamma.<?//`, `extern.core`,
+    /// `extern.core.nat.Nat`.
+    ///
+    /// [1]: crate::syntax::ast::Path
+    /// [2]: Component::path_to_string
+    pub(crate) fn path_to_string(
         binder: &Identifier,
         component: &Component,
         session: &BuildSession,
     ) -> String {
         match binder.index {
-            Index::Declaration(index) => component.absolute_path_to_string(index, session),
+            Index::Declaration(index) => component.path_to_string(index, session),
             Index::DeBruijn(_) | Index::DeBruijnParameter => binder.to_string(),
         }
     }

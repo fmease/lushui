@@ -279,9 +279,9 @@ impl<'a> Formatter<'a> {
         if let Some(index) = binder.declaration_index() {
             let declaration_url = self.declaration_url_fragment(index);
 
-            // @Task don't use absolute_path for this but don't use local_path either
+            // @Task don't use path_to_string for this but don't use extern_path_to_string either
             // (just something without the `extern`/`core` prefix)
-            let path = self.component.absolute_path_to_string(index, self.session);
+            let path = self.component.path_to_string(index, self.session);
 
             Element::new("a")
                 .attribute("href", declaration_url)

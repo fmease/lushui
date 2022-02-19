@@ -87,297 +87,32 @@ impl<'a> Lowerer<'a> {
     ) -> SmallVec<lowered_ast::Declaration, 1> {
         use ast::DeclarationKind::*;
 
-        let mut attributes = self.lower_attributes(&declaration.attributes, &declaration);
+        let attributes = self.lower_attributes(&declaration.attributes, &declaration);
 
         match declaration.value {
-            Function(function) => {
-                let declaration_type_annotation = match function.type_annotation {
-                    Some(type_annotation) => type_annotation,
-                    None => {
-                        Diagnostic::missing_mandatory_type_annotation(
-                            function.binder.span().fit_end(&function.parameters).end(),
-                            AnnotationTarget::Declaration(&function.binder),
-                        )
-                        .report(self.reporter);
-                        self.health.taint();
-                        PossiblyErroneous::error()
-                    }
-                };
-
-                // @Note type_annotation is currently lowered twice @Task remove duplicate work
-                // @Task find a way to use `Option::map` (currently does not work because of
-                // partial moves, I hate those), use local bindings
-                let body = match function.body {
-                    Some(body) => {
-                        let mut body = self.lower_expression(body);
-
-                        {
-                            let mut type_annotation =
-                                once(self.lower_expression(declaration_type_annotation.clone()));
-
-                            for parameter in function.parameters.iter().rev() {
-                                let parameter_type_annotation =
-                                    match &parameter.value.type_annotation {
-                                        Some(type_annotation) => type_annotation.clone(),
-                                        None => {
-                                            Diagnostic::missing_mandatory_type_annotation(
-                                                parameter,
-                                                AnnotationTarget::Parameter(parameter),
-                                            )
-                                            .report(self.reporter);
-                                            self.health.taint();
-                                            PossiblyErroneous::error()
-                                        }
-                                    };
-
-                                let parameter_type_annotation =
-                                    self.lower_expression(parameter_type_annotation);
-
-                                body = lowered_ast::Expression::new(
-                                    default(),
-                                    default(),
-                                    lowered_ast::Lambda {
-                                        parameter: parameter.value.binder.clone(),
-                                        parameter_type_annotation: Some(
-                                            parameter_type_annotation.clone(),
-                                        ),
-                                        explicitness: parameter.value.explicitness,
-                                        laziness: parameter.value.laziness,
-                                        body_type_annotation: type_annotation.next(),
-                                        body,
-                                    }
-                                    .into(),
-                                );
-                            }
-                        }
-                        Some(body)
-                    }
-                    None => None,
-                };
-
-                let type_annotation = self.lower_parameters_to_annotated_ones(
-                    function.parameters,
-                    declaration_type_annotation,
-                );
-
-                smallvec![lowered_ast::Declaration::new(
-                    attributes,
-                    declaration.span,
-                    lowered_ast::Function {
-                        binder: function.binder,
-                        type_annotation,
-                        expression: body,
-                    }
-                    .into()
-                )]
-            }
-            Data(type_) => {
-                let data_type_annotation = match type_.type_annotation {
-                    Some(type_annotation) => type_annotation,
-                    None => {
-                        Diagnostic::missing_mandatory_type_annotation(
-                            type_.binder.span().fit_end(&type_.parameters).end(),
-                            AnnotationTarget::Declaration(&type_.binder),
-                        )
-                        .report(self.reporter);
-                        self.health.taint();
-                        PossiblyErroneous::error()
-                    }
-                };
-
-                let type_annotation =
-                    self.lower_parameters_to_annotated_ones(type_.parameters, data_type_annotation);
-
-                let constructors = type_.constructors.map(|constructors| {
-                    constructors
-                        .into_iter()
-                        .flat_map(|constructor| self.lower_declaration(constructor))
-                        .collect()
-                });
-
-                smallvec![lowered_ast::Declaration::new(
-                    attributes,
-                    declaration.span,
-                    lowered_ast::Data {
-                        binder: type_.binder,
-                        type_annotation,
-                        constructors,
-                    }
-                    .into()
-                )]
-            }
+            Function(function) => smallvec![lowered_ast::Declaration::new(
+                attributes,
+                declaration.span,
+                self.lower_function_declaration(*function).into(),
+            )],
+            Data(type_) => smallvec![lowered_ast::Declaration::new(
+                attributes,
+                declaration.span,
+                self.lower_data_declaration(*type_).into()
+            )],
             Constructor(constructor) => {
-                let constructor_type_annotation = match constructor.type_annotation {
-                    Some(type_annotation) => type_annotation,
-                    None => {
-                        // @Note awkward API!
-                        Diagnostic::missing_mandatory_type_annotation(
-                            constructor
-                                .binder
-                                .span()
-                                .fit_end(&constructor.parameters)
-                                .end(),
-                            AnnotationTarget::Declaration(&constructor.binder),
-                        )
-                        .report(self.reporter);
-                        self.health.taint();
-                        PossiblyErroneous::error()
-                    }
-                };
-
-                let type_annotation = self.lower_parameters_to_annotated_ones(
-                    constructor.parameters,
-                    constructor_type_annotation,
-                );
-
-                if let Some(body) = constructor.body {
-                    let body = self.lower_expression(body);
-
-                    // @Task improve the labels etc, don't say "conflicting definition"
-                    // it's technically true, but we can do so much better!
-                    Diagnostic::error()
-                        .code(Code::E020)
-                        .message(format!(
-                            "`{}` is defined multiple times in this scope",
-                            constructor.binder
-                        ))
-                        .labeled_primary_span(&body, "conflicting definition")
-                        .note(
-                            "the body of the constructor is implied but it also has a body introduced by `=`",
-                        ).report(self.reporter);
-                    self.health.taint();
-                }
-
                 smallvec![lowered_ast::Declaration::new(
                     attributes,
                     declaration.span,
-                    lowered_ast::Constructor {
-                        binder: constructor.binder,
-                        type_annotation,
-                    }
-                    .into()
+                    self.lower_constructor_declaration(*constructor).into(),
                 )]
             }
             Module(module) => {
-                let is_inline_module = module.declarations.is_some();
-
-                let declarations = match module.declarations {
-                    Some(declarations) => declarations,
-                    None => {
-                        let mut path = self.map.borrow()[module.file]
-                            .path()
-                            .unwrap()
-                            .parent()
-                            .unwrap()
-                            .to_owned();
-
-                        match attributes.get::<{ AttributeName::Location }>() {
-                            Some(location) => {
-                                let mut inline_modules = &context.inline_modules[..];
-                                let _ = inline_modules.take_last();
-
-                                path.extend(inline_modules);
-                                path.push(location);
-                            }
-                            None => {
-                                path.extend(&context.inline_modules);
-                                path.push(module.binder.as_str());
-                            }
-                        };
-
-                        path.set_extension(crate::FILE_EXTENSION);
-
-                        let file = match self.map.borrow_mut().load(path.clone()) {
-                            Ok(file) => file,
-                            Err(error) => {
-                                // @Task instead of a note saying the error, print a help message
-                                // saying to create the missing file or change the access rights etc.
-                                // @Note awkward API!
-                                Diagnostic::error()
-                                    .code(Code::E016)
-                                    .message(format!(
-                                        "could not load the module `{}`",
-                                        module.binder
-                                    ))
-                                    .primary_span(declaration.span)
-                                    .note(IOError(error, &path).to_string())
-                                    .report(self.reporter);
-                                self.health.taint();
-                                return PossiblyErroneous::error();
-                            }
-                        };
-
-                        let Ok(declaration) = crate::syntax::parse_module_file(
-                            file,
-                            module.binder.clone(),
-                            self.map.clone(),
-                            self.reporter,
-                        ) else {
-                            self.health.taint();
-                            return PossiblyErroneous::error();
-                        };
-
-                        // at this point in time, they are still on the module header if at all
-                        assert!(declaration.attributes.is_empty());
-
-                        let module: ast::Module = declaration.value.try_into().unwrap();
-                        module.declarations.unwrap()
-                    }
-                };
-
-                let mut child_context = DeclarationContext::default();
-                if is_inline_module {
-                    child_context
-                        .inline_modules
-                        .extend(context.inline_modules.clone());
-                };
-                child_context.inline_modules.push(module.binder.to_string());
-
-                let mut lowered_declarations = Vec::new();
-                let mut possesses_header = false;
-
-                for (index, declaration) in declarations.into_iter().enumerate() {
-                    if matches!(declaration.value, ModuleHeader) {
-                        if index == 0 {
-                            // @Bug this sequence may lead to some unnecessary diagnostics being emitted
-                            // since the "synergy check" (which filters duplicate attribute) is run too late
-
-                            let module_header_attributes =
-                                self.lower_attributes(&declaration.attributes, &declaration);
-                            attributes.0.extend(module_header_attributes.0);
-                            attributes = self.check_attribute_synergy(attributes);
-                        } else {
-                            Diagnostic::error()
-                                .code(Code::E041)
-                                .message(
-                                    "the module header has to be the first declaration of the module",
-                                )
-                                .primary_span(&declaration)
-                                .if_(possesses_header, |this| {
-                                    // @Task make this a note with a span/highlight!
-                                    this.note("however, the current module already has a module header")
-                                })
-                                .report(self.reporter);
-                            self.health.taint();
-                        }
-
-                        possesses_header = true;
-                        continue;
-                    }
-
-                    lowered_declarations
-                        .extend(self.lower_declaration_with_context(declaration, &child_context));
-                }
-
-                smallvec![lowered_ast::Declaration::new(
+                smallvec![self.lower_module_declaration(
+                    *module,
                     attributes,
                     declaration.span,
-                    lowered_ast::Module {
-                        binder: module.binder,
-                        file: module.file,
-                        declarations: lowered_declarations,
-                    }
-                    .into(),
+                    context
                 )]
             }
             // handled in the module case
@@ -398,26 +133,313 @@ impl<'a> Lowerer<'a> {
                     .flat_map(|declaration| self.lower_declaration(declaration))
                     .collect()
             }
-            // @Task verify that the resulting spans are correct
-            // @Task make this a method of Lowerer!
-            Use(use_) => {
-                use ast::{UsePathTree, UsePathTreeKind::*};
+            Use(use_) => self.lower_use_declaration(*use_, attributes, declaration.span),
+        }
+    }
 
-                let mut declarations = SmallVec::new();
+    fn lower_function_declaration(&mut self, function: ast::Function) -> lowered_ast::Function {
+        let declaration_type_annotation = match function.type_annotation {
+            Some(type_annotation) => type_annotation,
+            None => {
+                Diagnostic::missing_mandatory_type_annotation(
+                    function.binder.span().fit_end(&function.parameters).end(),
+                    AnnotationTarget::Declaration(&function.binder),
+                )
+                .report(self.reporter);
+                self.health.taint();
+                PossiblyErroneous::error()
+            }
+        };
 
-                // @Beacon @Task we should improve this error handling here!!!!
-                fn lower_use_path_tree(
-                    path: Path,
-                    bindings: Vec<UsePathTree>,
-                    span: Span,
-                    attributes: lowered_ast::attributes::Attributes,
-                    declarations: &mut SmallVec<lowered_ast::Declaration, 1>,
-                    reporter: &Reporter,
-                ) -> Result {
-                    let mut health = Health::Untainted;
+        // @Note type_annotation is currently lowered twice @Task remove duplicate work
+        // @Task find a way to use `Option::map` (currently does not work because of
+        // partial moves, I hate those), use local bindings
+        let body = match function.body {
+            Some(body) => {
+                let mut body = self.lower_expression(body);
 
-                    // @Note awkward API!
-                    pub(crate) macro try_($subject:expr) {
+                {
+                    let mut type_annotation =
+                        once(self.lower_expression(declaration_type_annotation.clone()));
+
+                    for parameter in function.parameters.iter().rev() {
+                        let parameter_type_annotation = match &parameter.value.type_annotation {
+                            Some(type_annotation) => type_annotation.clone(),
+                            None => {
+                                Diagnostic::missing_mandatory_type_annotation(
+                                    parameter,
+                                    AnnotationTarget::Parameter(parameter),
+                                )
+                                .report(self.reporter);
+                                self.health.taint();
+                                PossiblyErroneous::error()
+                            }
+                        };
+
+                        let parameter_type_annotation =
+                            self.lower_expression(parameter_type_annotation);
+
+                        body = lowered_ast::Expression::new(
+                            default(),
+                            default(),
+                            lowered_ast::Lambda {
+                                parameter: parameter.value.binder.clone(),
+                                parameter_type_annotation: Some(parameter_type_annotation.clone()),
+                                explicitness: parameter.value.explicitness,
+                                laziness: parameter.value.laziness,
+                                body_type_annotation: type_annotation.next(),
+                                body,
+                            }
+                            .into(),
+                        );
+                    }
+                }
+                Some(body)
+            }
+            None => None,
+        };
+
+        let type_annotation = self
+            .lower_parameters_to_annotated_ones(function.parameters, declaration_type_annotation);
+
+        lowered_ast::Function {
+            binder: function.binder,
+            type_annotation,
+            expression: body,
+        }
+    }
+
+    fn lower_data_declaration(&mut self, type_: ast::Data) -> lowered_ast::Data {
+        let data_type_annotation = match type_.type_annotation {
+            Some(type_annotation) => type_annotation,
+            None => {
+                Diagnostic::missing_mandatory_type_annotation(
+                    type_.binder.span().fit_end(&type_.parameters).end(),
+                    AnnotationTarget::Declaration(&type_.binder),
+                )
+                .report(self.reporter);
+                self.health.taint();
+                PossiblyErroneous::error()
+            }
+        };
+
+        let type_annotation =
+            self.lower_parameters_to_annotated_ones(type_.parameters, data_type_annotation);
+
+        let constructors = type_.constructors.map(|constructors| {
+            constructors
+                .into_iter()
+                .flat_map(|constructor| self.lower_declaration(constructor))
+                .collect()
+        });
+
+        lowered_ast::Data {
+            binder: type_.binder,
+            type_annotation,
+            constructors,
+        }
+    }
+
+    fn lower_constructor_declaration(
+        &mut self,
+        constructor: ast::Constructor,
+    ) -> lowered_ast::Constructor {
+        let constructor_type_annotation = match constructor.type_annotation {
+            Some(type_annotation) => type_annotation,
+            None => {
+                // @Note awkward API!
+                Diagnostic::missing_mandatory_type_annotation(
+                    constructor
+                        .binder
+                        .span()
+                        .fit_end(&constructor.parameters)
+                        .end(),
+                    AnnotationTarget::Declaration(&constructor.binder),
+                )
+                .report(self.reporter);
+                self.health.taint();
+                PossiblyErroneous::error()
+            }
+        };
+
+        let type_annotation = self.lower_parameters_to_annotated_ones(
+            constructor.parameters,
+            constructor_type_annotation,
+        );
+
+        if let Some(body) = constructor.body {
+            let body = self.lower_expression(body);
+
+            // @Task improve the labels etc, don't say "conflicting definition"
+            // it's technically true, but we can do so much better!
+            Diagnostic::error()
+                .code(Code::E020)
+                .message(format!(
+                    "`{}` is defined multiple times in this scope",
+                    constructor.binder
+                ))
+                .labeled_primary_span(&body, "conflicting definition")
+                .note(
+                    "the body of the constructor is implied but it also has a body introduced by `=`",
+                ).report(self.reporter);
+            self.health.taint();
+        }
+
+        lowered_ast::Constructor {
+            binder: constructor.binder,
+            type_annotation,
+        }
+    }
+
+    fn lower_module_declaration(
+        &mut self,
+        module: ast::Module,
+        mut attributes: Attributes,
+        span: Span,
+        context: &DeclarationContext,
+    ) -> lowered_ast::Declaration {
+        let is_inline_module = module.declarations.is_some();
+
+        let declarations = match module.declarations {
+            Some(declarations) => declarations,
+            None => {
+                let mut path = self.map.borrow()[module.file]
+                    .path()
+                    .unwrap()
+                    .parent()
+                    .unwrap()
+                    .to_owned();
+
+                match attributes.get::<{ AttributeName::Location }>() {
+                    Some(location) => {
+                        let mut inline_modules = &context.inline_modules[..];
+                        let _ = inline_modules.take_last();
+
+                        path.extend(inline_modules);
+                        path.push(location);
+                    }
+                    None => {
+                        path.extend(&context.inline_modules);
+                        path.push(module.binder.as_str());
+                    }
+                };
+
+                path.set_extension(crate::FILE_EXTENSION);
+
+                let file = match self.map.borrow_mut().load(path.clone()) {
+                    Ok(file) => file,
+                    Err(error) => {
+                        // @Task instead of a note saying the error, print a help message
+                        // saying to create the missing file or change the access rights etc.
+                        // @Note awkward API!
+                        Diagnostic::error()
+                            .code(Code::E016)
+                            .message(format!("could not load the module `{}`", module.binder))
+                            .primary_span(span)
+                            .note(IOError(error, &path).to_string())
+                            .report(self.reporter);
+                        self.health.taint();
+                        return PossiblyErroneous::error();
+                    }
+                };
+
+                let Ok(declaration) = crate::syntax::parse_module_file(
+                            file,
+                            module.binder.clone(),
+                            self.map.clone(),
+                            self.reporter,
+                        ) else {
+                            self.health.taint();
+                            return PossiblyErroneous::error();
+                        };
+
+                // at this point in time, they are still on the module header if at all
+                assert!(declaration.attributes.is_empty());
+
+                let module: ast::Module = declaration.value.try_into().unwrap();
+                module.declarations.unwrap()
+            }
+        };
+
+        let mut child_context = DeclarationContext::default();
+        if is_inline_module {
+            child_context
+                .inline_modules
+                .extend(context.inline_modules.clone());
+        };
+        child_context.inline_modules.push(module.binder.to_string());
+
+        let mut lowered_declarations = Vec::new();
+        let mut has_header = false;
+
+        for (index, declaration) in declarations.into_iter().enumerate() {
+            if matches!(declaration.value, ast::DeclarationKind::ModuleHeader) {
+                if index == 0 {
+                    // @Bug this sequence may lead to some unnecessary diagnostics being emitted
+                    // since the "synergy check" (which filters duplicate attribute) is run too late
+
+                    let module_header_attributes =
+                        self.lower_attributes(&declaration.attributes, &declaration);
+                    attributes.0.extend(module_header_attributes.0);
+                    attributes = self.check_attribute_synergy(attributes);
+                } else {
+                    Diagnostic::error()
+                        .code(Code::E041)
+                        .message("the module header has to be the first declaration of the module")
+                        .primary_span(&declaration)
+                        .if_(has_header, |this| {
+                            // @Task make this a note with a span/highlight!
+                            this.note("however, the current module already has a module header")
+                        })
+                        .report(self.reporter);
+                    self.health.taint();
+                }
+
+                has_header = true;
+                continue;
+            }
+
+            lowered_declarations
+                .extend(self.lower_declaration_with_context(declaration, &child_context));
+        }
+
+        lowered_ast::Declaration::new(
+            attributes,
+            span,
+            lowered_ast::Module {
+                binder: module.binder,
+                file: module.file,
+                declarations: lowered_declarations,
+            }
+            .into(),
+        )
+    }
+
+    fn lower_use_declaration(
+        &mut self,
+        use_: ast::Use,
+        attributes: Attributes,
+        span: Span,
+    ) -> SmallVec<lowered_ast::Declaration, 1> {
+        // @Task verify that the resulting spans are correct
+
+        use ast::{UsePathTree, UsePathTreeKind::*};
+
+        let mut declarations = SmallVec::new();
+
+        // @Beacon @Task we should improve this error handling here!!!!
+        fn lower_use_path_tree(
+            path: Path,
+            bindings: Vec<UsePathTree>,
+            span: Span,
+            attributes: Attributes,
+            declarations: &mut SmallVec<lowered_ast::Declaration, 1>,
+            reporter: &Reporter,
+        ) -> Result {
+            let mut health = Health::Untainted;
+
+            // @Note awkward API!
+            pub(crate) macro try_($subject:expr) {
                         match $subject {
                             Ok(subject) => subject,
                             Err(error) => {
@@ -428,67 +450,65 @@ impl<'a> Lowerer<'a> {
                         }
                     }
 
-                    for binding in bindings {
-                        match binding.value {
-                            Single { target, binder } => {
-                                let combined_target = try_!(path.clone().join(target.clone()));
+            for binding in bindings {
+                match binding.value {
+                    Single { target, binder } => {
+                        let combined_target = try_!(path.clone().join(target.clone()));
 
-                                // if the binder is not explicitly set, look for the most-specific/last/right-most
-                                // identifier of the target but if that one is `self`, look up the last identifier of
-                                // the parent path
-                                let binder = binder
-                                    .or_else(|| {
-                                        if target.bare_hanger(HangerKind::Self_).is_some() {
-                                            &path
-                                        } else {
-                                            &target
-                                        }
-                                        .last_identifier()
-                                        .cloned()
-                                    })
-                                    .ok_or_else(|| {
-                                        // @Task improve the message for `use topmost.(self)`: hint that `self`
-                                        // is effectively unnamed because `topmost` is unnamed
-                                        Diagnostic::invalid_unnamed_path_hanger(
-                                            target.hanger.unwrap(),
-                                        )
-                                    });
-                                let binder = try_!(binder);
+                        // if the binder is not explicitly set, look for the most-specific/last/right-most
+                        // identifier of the target but if that one is `self`, look up the last identifier of
+                        // the parent path
+                        let binder = binder
+                            .or_else(|| {
+                                if target.bare_hanger(HangerKind::Self_).is_some() {
+                                    &path
+                                } else {
+                                    &target
+                                }
+                                .last_identifier()
+                                .cloned()
+                            })
+                            .ok_or_else(|| {
+                                // @Task improve the message for `use topmost.(self)`: hint that `self`
+                                // is effectively unnamed because `topmost` is unnamed
+                                Diagnostic::invalid_unnamed_path_hanger(target.hanger.unwrap())
+                            });
+                        let binder = try_!(binder);
 
-                                declarations.push(lowered_ast::Declaration::new(
-                                    attributes.clone(),
-                                    span,
-                                    lowered_ast::Use {
-                                        binder,
-                                        target: combined_target,
-                                    }
-                                    .into(),
-                                ));
+                        declarations.push(lowered_ast::Declaration::new(
+                            attributes.clone(),
+                            span,
+                            lowered_ast::Use {
+                                binder,
+                                target: combined_target,
                             }
-                            Multiple {
-                                path: inner_path,
-                                bindings,
-                            } => {
-                                lower_use_path_tree(
-                                    try_!(path.clone().join(inner_path)),
-                                    bindings,
-                                    span,
-                                    attributes.clone(),
-                                    declarations,
-                                    reporter,
-                                )?;
-                            }
-                        }
+                            .into(),
+                        ));
                     }
-
-                    health.into()
+                    Multiple {
+                        path: inner_path,
+                        bindings,
+                    } => {
+                        lower_use_path_tree(
+                            try_!(path.clone().join(inner_path)),
+                            bindings,
+                            span,
+                            attributes.clone(),
+                            declarations,
+                            reporter,
+                        )?;
+                    }
                 }
+            }
 
-                'discriminate: {
-                    match use_.bindings.value {
-                        Single { target, binder } => {
-                            let binder = binder.or_else(|| target.last_identifier().cloned());
-                            let Some(binder) = binder else {
+            health.into()
+        }
+
+        'discriminate: {
+            match use_.bindings.value {
+                Single { target, binder } => {
+                    let binder = binder.or_else(|| target.last_identifier().cloned());
+                    let Some(binder) = binder else {
                                 // @Task improve the message for `use topmost.(self)`: hint that `self`
                                 // is effectively unnamed because `topmost` is unnamed
                                 // @Task the message is even worse (it is misleading!) with `use extern.(self)`
@@ -500,27 +520,25 @@ impl<'a> Lowerer<'a> {
                                 break 'discriminate;
                             };
 
-                            declarations.push(lowered_ast::Declaration::new(
-                                attributes,
-                                declaration.span,
-                                lowered_ast::Use { binder, target }.into(),
-                            ));
-                        }
-                        Multiple { path, bindings } => lower_use_path_tree(
-                            path,
-                            bindings,
-                            declaration.span,
-                            attributes,
-                            &mut declarations,
-                            self.reporter,
-                        )
-                        .stain(&mut self.health),
-                    }
+                    declarations.push(lowered_ast::Declaration::new(
+                        attributes,
+                        span,
+                        lowered_ast::Use { binder, target }.into(),
+                    ));
                 }
-
-                declarations
+                Multiple { path, bindings } => lower_use_path_tree(
+                    path,
+                    bindings,
+                    span,
+                    attributes,
+                    &mut declarations,
+                    self.reporter,
+                )
+                .stain(&mut self.health),
             }
         }
+
+        declarations
     }
 
     /// Lower an expression.
@@ -1058,7 +1076,7 @@ const NAT32_INTERVAL_REPRESENTATION: &str = "[0, 2^32-1]";
 // a custom error type (w/o ::Unrecoverable)
 // and turn that stuff into stuff later
 
-impl lowered_ast::attributes::Attribute {
+impl lowered_ast::Attribute {
     pub(crate) fn parse(
         attribute: &ast::Attribute,
         options: &Options,
@@ -1072,7 +1090,7 @@ impl lowered_ast::attributes::Attribute {
     }
 }
 
-impl lowered_ast::attributes::AttributeKind {
+impl lowered_ast::AttributeKind {
     // @Task allow unordered named attributes e.g. `@(unstable (reason "x") (feature thing))`
     pub(crate) fn parse(
         // @Task take by value and create parsing helpers on ast::Attribute and ast::Attributes

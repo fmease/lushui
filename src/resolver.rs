@@ -548,7 +548,7 @@ impl<'a> ResolverMut<'a> {
                 for cycle in find_cycles(partially_resolved_use_bindings) {
                     let paths = cycle.iter().map(|&index| {
                         self.component
-                            .absolute_path_to_string(index.global(self.component), self.session)
+                            .path_to_string(index.global(self.component), self.session)
                             .quote()
                     });
                     let paths = unordered_listing(paths, Conjunction::And);
@@ -658,8 +658,7 @@ impl<'a> ResolverMut<'a> {
                         .code(Code::E009)
                         .message(format!(
                             "re-export of the more private binding `{}`",
-                            self.component
-                                .absolute_path_to_string(reference_index, self.session)
+                            self.component.path_to_string(reference_index, self.session)
                         ))
                         .labeled_primary_span(
                             &entity.source,
@@ -674,10 +673,8 @@ impl<'a> ResolverMut<'a> {
 expected the exposure of `{}`
            to be at most {}
       but it actually is {}",
-                            self.component.absolute_path_to_string(
-                                index.global(self.component),
-                                self.session
-                            ),
+                            self.component
+                                .path_to_string(index.global(self.component), self.session),
                             reference.exposure.with((self.component, self.session)),
                             entity.exposure.with((self.component, self.session)),
                         ))
@@ -1315,7 +1312,7 @@ impl<'a> Resolver<'a> {
         {
             let mut message = format!(
                 "use of deprecated binding `{}`",
-                self.component.absolute_path_to_string(index, self.session),
+                self.component.path_to_string(index, self.session),
             );
 
             if let Some(reason) = &deprecated.reason {
@@ -1359,7 +1356,7 @@ impl<'a> Resolver<'a> {
                     .code(Code::E029)
                     .message(format!(
                         "binding `{}` is private",
-                        self.component.absolute_path_to_string(index, self.session)
+                        self.component.path_to_string(index, self.session)
                     ))
                     .primary_span(identifier)
                     .report(self.reporter)
@@ -1641,9 +1638,7 @@ impl<'a> Resolver<'a> {
                                 false => "namespace",
                             };
                             message += " `";
-                            message += &self
-                                .component
-                                .absolute_path_to_string(namespace, self.session);
+                            message += &self.component.path_to_string(namespace, self.session);
                             message += "`";
                         }
                     }

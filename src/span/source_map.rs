@@ -317,7 +317,7 @@ impl SourceFile {
         }
     }
 
-    pub fn path(&self) -> Option<&Path> {
+    pub(crate) fn path(&self) -> Option<&Path> {
         self.path.as_deref()
     }
 

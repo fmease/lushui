@@ -256,7 +256,7 @@ fn format_lower_expression(
         Binding(binding) => write!(
             f,
             "{}",
-            super::FunctionScope::absolute_path_to_string(&binding.0, component, session)
+            super::FunctionScope::path_to_string(&binding.0, component, session)
         ),
         // @Beacon @Temporary @Task just write out the path
         Projection(_projection) => write!(f, "?(projection)"),
@@ -297,7 +297,7 @@ impl DisplayWith for Pattern {
             Binding(binding) => write!(
                 f,
                 "{}",
-                super::FunctionScope::absolute_path_to_string(&binding.0, component, session)
+                super::FunctionScope::path_to_string(&binding.0, component, session)
             ),
 
             Binder(binder) => write!(f, "\\{}", binder.0),
@@ -345,7 +345,7 @@ mod test {
         span::Span,
         syntax::{
             ast::{self, Explicitness::*},
-            lowered_ast::attributes::{Attribute, AttributeKind, Attributes},
+            lowered_ast::{Attribute, AttributeKind, Attributes},
             ComponentName,
         },
     };

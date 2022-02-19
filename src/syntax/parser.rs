@@ -67,7 +67,7 @@ pub fn parse_root_module_file(
     reporter: &Reporter,
 ) -> Result<Declaration> {
     // @Beacon @Task don't unwrap to_str here but handle the error correctly
-    // (create another parsing function on C)
+    // (create another parsing function on ComponentName)
     let binder = Spanned::new(
         default(),
         ComponentName::parse(
@@ -83,7 +83,7 @@ pub fn parse_root_module_file(
     )
     .into();
 
-    Parser::new(tokens, file, map, reporter).parse_top_level(binder)
+    parse_module_file(tokens, file, binder, map, reporter)
 }
 
 /// Parse the file of a root module or an out-of-line module.
