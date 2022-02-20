@@ -58,5 +58,37 @@ pub(crate) macro condition($( $condition:expr => $consequence:expr ),+ $(, else 
 
 #[allow(unused_macros)]
 pub(crate) macro no_std_assert($( $anything:tt )*) {
-    compile_error!("use *function* `assert_eq` instead of macro `assert_eq` and similar")
+    compile_error!("use the function `assert_eq` instead of macro `assert_eq` and similar")
+}
+
+#[cfg(test)]
+pub(crate) fn difference(original: &str, edit: &str, split: &str) -> String {
+    use colored::Colorize;
+    use difference::{Changeset, Difference};
+    use std::io::Write;
+
+    let mut buffer = Vec::new();
+
+    // the provided Display implementation for Changesets is unreadable when whitespace differs
+    for difference in Changeset::new(original, edit, split).diffs {
+        match difference {
+            Difference::Same(lines) => {
+                for line in lines.lines() {
+                    writeln!(buffer, "{} {line}", " ".on_bright_white()).unwrap();
+                }
+            }
+            Difference::Add(lines) => {
+                for line in lines.lines().chain(lines.is_empty().then(|| "")) {
+                    writeln!(buffer, "{} {}", "+".black().on_green(), line.green()).unwrap();
+                }
+            }
+            Difference::Rem(lines) => {
+                for line in lines.lines().chain(lines.is_empty().then(|| "")) {
+                    writeln!(buffer, "{} {}", "-".black().on_red(), line.red()).unwrap();
+                }
+            }
+        }
+    }
+
+    String::from_utf8(buffer).unwrap()
 }

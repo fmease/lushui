@@ -471,6 +471,7 @@ mod spanned {
             Spanned::new(self.span, &self.value)
         }
 
+        #[allow(dead_code)]
         pub(crate) fn weak(self) -> WeaklySpanned<T> {
             WeaklySpanned {
                 value: self.value,
@@ -507,7 +508,7 @@ mod weakly_spanned {
         ops::Deref,
     };
 
-    #[derive(Clone, Debug)]
+    #[derive(Clone, Copy, Debug)]
     pub(crate) struct WeaklySpanned<T> {
         pub(crate) value: T,
         pub(crate) span: Span,
@@ -518,6 +519,7 @@ mod weakly_spanned {
             Self { value, span }
         }
 
+        #[allow(dead_code)]
         pub(crate) fn map_span(self, mapper: impl FnOnce(Span) -> Span) -> Self {
             Self {
                 value: self.value,
@@ -525,6 +527,7 @@ mod weakly_spanned {
             }
         }
 
+        #[allow(dead_code)]
         pub(crate) fn as_deref(&self) -> WeaklySpanned<&T::Target>
         where
             T: Deref,
@@ -532,6 +535,7 @@ mod weakly_spanned {
             WeaklySpanned::new(self.span, &self.value)
         }
 
+        #[allow(dead_code)]
         pub(crate) fn strong(self) -> Spanned<T> {
             Spanned {
                 value: self.value,
@@ -553,6 +557,18 @@ mod weakly_spanned {
     }
 
     impl<T: Eq> Eq for WeaklySpanned<T> {}
+
+    impl<T: PartialOrd> PartialOrd for WeaklySpanned<T> {
+        fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+            self.value.partial_cmp(&other.value)
+        }
+    }
+
+    impl<T: Ord> Ord for WeaklySpanned<T> {
+        fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+            self.value.cmp(&other.value)
+        }
+    }
 
     impl<T: Hash> Hash for WeaklySpanned<T> {
         fn hash<H: Hasher>(&self, state: &mut H) {

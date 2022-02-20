@@ -346,8 +346,9 @@ mod test {
         syntax::{
             ast::{self, Explicitness::*},
             lowered_ast::{Attribute, AttributeKind, Attributes},
-            ComponentName,
+            Word,
         },
+        utility::difference,
     };
     use std::{default::default, path::PathBuf};
 
@@ -360,7 +361,7 @@ mod test {
         if actual != expected {
             panic!(
                 "the actual textual representation of the HIR node does not match the expected one:\n{}",
-                difference::Changeset::new(expected, actual, "")
+                difference(expected, actual, ""),
             );
         }
     }
@@ -371,7 +372,7 @@ mod test {
     impl Component {
         fn test() -> Self {
             let mut component = Self::new(ComponentMetadata::new(
-                ComponentName::parse("test").ok().unwrap(),
+                Word::parse("test".into()).ok().unwrap(),
                 COMPONENT_INDEX,
                 PACKAGE_INDEX,
                 PathBuf::new(),

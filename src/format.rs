@@ -183,36 +183,6 @@ impl AsAutoColoredChangeset for Changeset {
     }
 }
 
-// the provided Display implementation for Changesets is problematic when whitespace differs
-#[cfg(test)]
-pub(crate) fn differences_with_ledge(differences: &[Difference]) -> String {
-    use std::io::Write as _;
-
-    let mut buffer = Vec::new();
-
-    for difference in differences {
-        match difference {
-            Difference::Same(lines) => {
-                for line in lines.lines() {
-                    writeln!(buffer, "{} {}", " ".on_bright_white(), line).unwrap();
-                }
-            }
-            Difference::Add(lines) => {
-                for line in lines.lines().chain(lines.is_empty().then(|| "")) {
-                    writeln!(buffer, "{} {}", "+".black().on_green(), line.green()).unwrap();
-                }
-            }
-            Difference::Rem(lines) => {
-                for line in lines.lines().chain(lines.is_empty().then(|| "")) {
-                    writeln!(buffer, "{} {}", "-".black().on_red(), line.red()).unwrap();
-                }
-            }
-        }
-    }
-
-    String::from_utf8(buffer).unwrap()
-}
-
 pub struct IOError<'a>(pub std::io::Error, pub &'a Path);
 
 impl fmt::Display for IOError<'_> {

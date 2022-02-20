@@ -23,10 +23,12 @@ use TokenKind::*;
 #[cfg(test)]
 mod test;
 
-pub(crate) fn lex_string(source: String) -> Result<Outcome<Vec<Token>>> {
+pub(crate) fn lex_string(source: String) -> Result<Outcome<Vec<Token>>, ()> {
     let mut map = SourceMap::default();
     let file = map.add(None, source);
-    Lexer::new(&map[file], &SilentReporter.into()).lex()
+    Lexer::new(&map[file], &SilentReporter.into())
+        .lex()
+        .map_err(drop)
 }
 
 /// The unit indentation in spaces.

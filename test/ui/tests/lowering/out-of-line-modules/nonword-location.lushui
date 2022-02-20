@@ -8,5 +8,5 @@ module binder
 ;;; This is possible since an out-of-line module declaration always binds the module
 ;;; to a word binder. That's not a choice we have for the root module.
 ;;;
-;;; Additionally, not permitting nonword filenames / locations would be pretty restrictive.
+;;; Additionally, not permitting nonword file names / locations would be pretty restrictive.
 

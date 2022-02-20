@@ -236,11 +236,12 @@ fn format_pi_type_literal_or_lower(
             }
 
             write!(f, "[")?;
-            for (index, element) in sequence.elements.value.iter().enumerate() {
-                if index != 0 {
-                    write!(f, " ")?;
-                }
-
+            let mut elements = sequence.elements.value.iter();
+            if let Some(element) = elements.next() {
+                format_lower_expression(element, f)?;
+            }
+            for element in elements {
+                write!(f, " ")?;
                 format_lower_expression(element, f)?;
             }
             write!(f, "]")
@@ -311,12 +312,12 @@ impl fmt::Display for super::Pattern {
                 }
 
                 write!(f, "[")?;
-                for (index, element) in sequence.elements.value.iter().enumerate() {
-                    if index != 0 {
-                        write!(f, " ")?;
-                    }
-
+                let mut elements = sequence.elements.value.iter();
+                if let Some(element) = elements.next() {
                     write!(f, "({element})")?;
+                }
+                for element in elements {
+                    write!(f, " ({element})")?;
                 }
                 write!(f, "]")
             }

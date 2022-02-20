@@ -13,13 +13,14 @@ use crate::{
     diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
     error::Result,
     span::{SharedSourceMap, SourceFileIndex, SourceMap, Span, Spanned, Spanning, WeaklySpanned},
-    utility::{obtain, HashMap},
+    utility::obtain,
 };
 use discriminant::Discriminant;
-use std::fmt;
+use std::{collections::BTreeMap, fmt};
 
-#[cfg(test)]
-mod test;
+mod format;
+mod lexer;
+mod parser;
 
 pub(crate) type Value = Spanned<ValueKind>;
 
@@ -41,7 +42,7 @@ pub(crate) enum ValueKind {
     Integer(i64),
     Text(String),
     Array(Vec<Value>),
-    Map(HashMap<WeaklySpanned<String>, Value>),
+    Map(BTreeMap<WeaklySpanned<String>, Value>),
 }
 
 impl From<bool> for ValueKind {
@@ -132,13 +133,13 @@ impl TryFrom<ValueKind> for Vec<Value> {
     }
 }
 
-impl From<HashMap<WeaklySpanned<String>, Value>> for ValueKind {
-    fn from(map: HashMap<WeaklySpanned<String>, Value>) -> Self {
+impl From<BTreeMap<WeaklySpanned<String>, Value>> for ValueKind {
+    fn from(map: BTreeMap<WeaklySpanned<String>, Value>) -> Self {
         Self::Map(map)
     }
 }
 
-impl TryFrom<ValueKind> for HashMap<WeaklySpanned<String>, Value> {
+impl TryFrom<ValueKind> for BTreeMap<WeaklySpanned<String>, Value> {
     type Error = TypeError;
 
     fn try_from(value: ValueKind) -> Result<Self, Self::Error> {
@@ -179,7 +180,7 @@ pub(crate) fn content_span_of_key(key: impl Spanning, map: &SourceMap) -> Span {
 
 // @Beacon @Temporary signature
 pub(crate) fn remove_map_entry<T: TryFrom<ValueKind, Error = TypeError>>(
-    map: Spanned<&mut HashMap<WeaklySpanned<String>, Value>>,
+    map: Spanned<&mut BTreeMap<WeaklySpanned<String>, Value>>,
     key: &str,
     path: Option<String>,
     reporter: &Reporter,
@@ -198,7 +199,7 @@ pub(crate) fn remove_map_entry<T: TryFrom<ValueKind, Error = TypeError>>(
 }
 
 pub(crate) fn remove_optional_map_entry<T: TryFrom<ValueKind, Error = TypeError>>(
-    map: &mut HashMap<WeaklySpanned<String>, Value>,
+    map: &mut BTreeMap<WeaklySpanned<String>, Value>,
     key: &str,
     reporter: &Reporter,
 ) -> Result<Option<Spanned<T>>> {
@@ -210,7 +211,7 @@ pub(crate) fn remove_optional_map_entry<T: TryFrom<ValueKind, Error = TypeError>
 
 // @Temporary signature
 pub(crate) fn check_map_is_empty(
-    map: HashMap<WeaklySpanned<String>, Value>,
+    map: BTreeMap<WeaklySpanned<String>, Value>,
     path: Option<String>,
     reporter: &Reporter,
 ) -> Result {
@@ -243,8 +244,8 @@ pub(crate) fn convert<T: TryFrom<ValueKind, Error = TypeError>>(
         Diagnostic::error()
             .code(Code::E800)
             .message(format!(
-                "the type of key `{}` should be {} but it is {}",
-                key, error.expected, error.actual
+                "the type of key `{key}` should be {} but it is {}",
+                error.expected, error.actual
             ))
             .labeled_primary_span(span, "has the wrong type")
             .report(reporter)
@@ -256,643 +257,4 @@ pub(crate) fn convert<T: TryFrom<ValueKind, Error = TypeError>>(
 pub(crate) struct TypeError {
     pub(crate) expected: Type,
     pub(crate) actual: Type,
-}
-
-mod lexer {
-    use crate::{
-        diagnostics::Diagnostic,
-        error::{Health, Outcome},
-        format::quoted,
-        span::{LocalSpan, SourceFile, Spanned},
-        syntax::lexer::{
-            is_identifier_segment_middle, is_identifier_segment_start, is_number_literal_middle,
-            NUMERIC_SEPARATOR,
-        },
-        utility::{lexer::Lexer as _, obtain},
-    };
-    use discriminant::Discriminant;
-    use std::{fmt, iter::Peekable, str::CharIndices};
-    use TokenKind::*;
-
-    pub(super) type Token = Spanned<TokenKind>;
-
-    impl Token {
-        pub(crate) const fn name(&self) -> TokenName {
-            self.value.name()
-        }
-
-        pub(super) fn into_identifier(self) -> Option<String> {
-            obtain!(self.value, Identifier(identifier) => identifier)
-        }
-
-        pub(super) fn into_text(self) -> Option<Result<String, Diagnostic>> {
-            match self.value {
-                Text(text) => Some(match text {
-                    Ok(content) => Ok(content),
-                    // @Task code
-                    Err(TextLexingError::Unterminated) => Err(Diagnostic::error()
-                        .message("unterminated text literal")
-                        .primary_span(self.span)),
-                }),
-                _ => None,
-            }
-        }
-
-        // @Task turn this into a diagnostic here
-        pub(super) fn into_integer(self) -> Option<Result<i64, IntLexingError>> {
-            obtain!(self.value, Integer(integer) => integer)
-        }
-    }
-
-    #[derive(Clone, Debug, Discriminant)]
-    #[discriminant(TokenName::name)]
-    pub(super) enum TokenKind {
-        Comma,
-        Colon,
-        OpeningSquareBracket,
-        ClosingSquareBracket,
-        OpeningCurlyBracket,
-        ClosingCurlyBracket,
-        False,
-        True,
-        Identifier(String),
-        Text(Result<String, TextLexingError>),
-        Integer(Result<i64, IntLexingError>),
-        EndOfInput,
-        Illegal(char),
-    }
-
-    impl fmt::Display for TokenKind {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            let name = self.name();
-
-            match *self {
-                Self::Illegal(character) => {
-                    write!(f, "{} U+{:04X} `{}`", name, character as u32, character)
-                }
-                _ => write!(f, "{name}"),
-            }
-        }
-    }
-
-    impl fmt::Display for TokenName {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            use TokenName::*;
-
-            f.write_str(match self {
-                Comma => quoted!(","),
-                Colon => quoted!(":"),
-                OpeningSquareBracket => quoted!("["),
-                ClosingSquareBracket => quoted!("]"),
-                OpeningCurlyBracket => quoted!("{"),
-                ClosingCurlyBracket => quoted!("}"),
-                False => "keyword `false`",
-                True => "keyword `true`",
-                Identifier => "identifier",
-                Text => "text",
-                Integer => "integer",
-                EndOfInput => "end of input",
-                Illegal => "illegal character",
-            })
-        }
-    }
-
-    pub(super) struct Lexer<'a> {
-        source_file: &'a SourceFile,
-        characters: Peekable<CharIndices<'a>>,
-        tokens: Vec<Token>,
-        local_span: LocalSpan,
-        health: Health,
-    }
-
-    impl<'a> Lexer<'a> {
-        pub(super) fn new(source_file: &'a SourceFile) -> Self {
-            Self {
-                characters: source_file.content().char_indices().peekable(),
-                source_file,
-                tokens: Vec::new(),
-                local_span: LocalSpan::default(),
-                health: Health::Untainted,
-            }
-        }
-
-        /// Lex source code into an array of tokens.
-        ///
-        /// The health of the tokens can be ignored if the tokens are fed into the parser
-        /// immediately after lexing since the parser will handle invalid tokens.
-        // @Task lex -infinity, +infinity, +nan, -nan as well
-        pub(super) fn lex(mut self) -> Outcome<Vec<Token>> {
-            while let Some((index, character)) = self.peek_with_index() {
-                self.local_span = LocalSpan::empty(index);
-
-                match character {
-                    '#' => self.lex_comment(),
-                    character if character.is_ascii_whitespace() => self.lex_whitespace(),
-                    '"' => self.lex_text(),
-                    character if is_identifier_segment_start(character) => self.lex_identifier(),
-                    character if character.is_ascii_digit() => self.lex_number(),
-                    '-' => todo!(),
-                    '[' => self.consume(OpeningSquareBracket),
-                    ']' => self.consume(ClosingSquareBracket),
-                    '{' => self.consume(OpeningCurlyBracket),
-                    '}' => self.consume(ClosingCurlyBracket),
-                    ',' => self.consume(Comma),
-                    ':' => self.consume(Colon),
-                    character => {
-                        self.consume(Illegal(character));
-                        self.health.taint();
-                    }
-                }
-            }
-
-            self.local_span = self.source_file.local_span().end();
-            self.add(EndOfInput);
-            Outcome::new(self.tokens, self.health)
-        }
-
-        fn lex_comment(&mut self) {
-            self.advance();
-
-            while let Some(character) = self.peek() {
-                self.advance();
-
-                if character == '\n' {
-                    break;
-                }
-            }
-        }
-
-        fn lex_whitespace(&mut self) {
-            self.advance();
-            while let Some(character) = self.peek() {
-                if !character.is_ascii_whitespace() {
-                    break;
-                }
-                self.advance();
-            }
-        }
-
-        fn lex_text(&mut self) {
-            let mut is_terminated = false;
-            self.advance();
-
-            while let Some(character) = self.peek() {
-                self.take();
-                self.advance();
-
-                if character == '"' {
-                    is_terminated = true;
-                    break;
-                }
-            }
-
-            match is_terminated {
-                true => {
-                    // @Note once we implement escaping, this won't cut it and we need to build our own string
-                    let content = self.source_file[self.local_span.trim(1)].to_owned();
-
-                    self.add(Text(Ok(content)));
-                }
-                false => {
-                    self.health.taint();
-                    self.add(Text(Err(TextLexingError::Unterminated)));
-                }
-            };
-        }
-
-        fn lex_identifier(&mut self) {
-            self.lex_identifier_segment();
-
-            while self.peek() == Some('-') {
-                let dash = self.index().unwrap();
-                self.take();
-                self.advance();
-                let previous = self.local_span;
-                self.lex_identifier_segment();
-                if self.local_span == previous {
-                    self.local_span = LocalSpan::with_length(dash, 1);
-                    // @Task add illegal
-                    todo!();
-                }
-            }
-
-            self.add(match self.source() {
-                "false" => False,
-                "true" => True,
-                identifier => Identifier(identifier.to_owned()),
-            });
-        }
-
-        fn lex_identifier_segment(&mut self) {
-            if let Some(character) = self.peek() {
-                if is_identifier_segment_start(character) {
-                    self.take();
-                    self.advance();
-                    self.take_while(is_identifier_segment_middle);
-                }
-            }
-        }
-
-        fn lex_number(&mut self) {
-            let mut number = self.source().to_owned();
-
-            let mut trailing_separator = false;
-            let mut consecutive_separators = false;
-
-            while let Some(character) = self.peek() {
-                if !is_number_literal_middle(character) {
-                    break;
-                }
-                self.take();
-                self.advance();
-
-                if character != NUMERIC_SEPARATOR {
-                    number.push(character);
-                } else {
-                    if let Some(NUMERIC_SEPARATOR) = self.peek() {
-                        consecutive_separators = true;
-                    }
-                    if self.peek().map_or(true, |character| {
-                        !character.is_ascii_digit() || character == NUMERIC_SEPARATOR
-                    }) {
-                        trailing_separator = true;
-                    }
-                }
-            }
-
-            if consecutive_separators {
-                self.health.taint();
-                self.add(Integer(Err(IntLexingError::ConsecutiveSeparators)));
-            } else if trailing_separator {
-                self.health.taint();
-                self.add(Integer(Err(IntLexingError::TrailingSeparators)));
-            } else {
-                match number.parse::<i64>() {
-                    Ok(number) => {
-                        self.add(Integer(Ok(number)));
-                    }
-                    Err(_) => {
-                        self.health.taint();
-                        self.add(Integer(Err(IntLexingError::SizeExceedance)));
-                    }
-                };
-            }
-        }
-    }
-
-    impl<'a> crate::utility::lexer::Lexer<'a, TokenKind> for Lexer<'a> {
-        fn source_file(&self) -> &'a SourceFile {
-            self.source_file
-        }
-
-        fn characters(&mut self) -> &mut Peekable<CharIndices<'a>> {
-            &mut self.characters
-        }
-
-        fn tokens(&mut self) -> &mut Vec<Token> {
-            &mut self.tokens
-        }
-
-        fn local_span(&self) -> LocalSpan {
-            self.local_span
-        }
-
-        fn local_span_mut(&mut self) -> &mut LocalSpan {
-            &mut self.local_span
-        }
-    }
-
-    #[derive(Clone, Copy, Debug)]
-    pub(crate) enum TextLexingError {
-        Unterminated,
-    }
-
-    #[derive(Clone, Copy, Debug)]
-    pub(crate) enum IntLexingError {
-        ConsecutiveSeparators,
-        TrailingSeparators,
-        SizeExceedance,
-    }
-}
-
-mod parser {
-    use super::{
-        lexer::{
-            Token,
-            TokenName::{self, *},
-        },
-        Value, ValueKind,
-    };
-    use crate::{
-        diagnostics::{Code, Diagnostic, Reporter},
-        error::{Health, OkIfUntaintedExt, ReportedExt, Result},
-        span::{SharedSourceMap, SourceFileIndex, Span, Spanning, WeaklySpanned},
-        utility::HashMap,
-    };
-
-    pub(super) struct Parser<'a> {
-        file: SourceFileIndex,
-        tokens: &'a [Token],
-        index: usize,
-        health: Health,
-        map: SharedSourceMap,
-        reporter: &'a Reporter,
-    }
-
-    impl<'a> Parser<'a> {
-        pub(super) fn new(
-            file: SourceFileIndex,
-            tokens: &'a [Token],
-            map: SharedSourceMap,
-            reporter: &'a Reporter,
-        ) -> Self {
-            Self {
-                file,
-                tokens,
-                index: 0,
-                health: Health::Untainted,
-                map,
-                reporter,
-            }
-        }
-
-        fn current_token(&self) -> &Token {
-            &self.tokens[self.index]
-        }
-
-        fn succeeding_token(&self) -> &Token {
-            &self.tokens[self.index + 1]
-        }
-
-        fn advance(&mut self) {
-            self.index += 1;
-        }
-
-        fn expect(&self, expected: TokenName) -> Result<Token> {
-            let token = self.current_token();
-            if token.name() == expected {
-                Ok(token.clone())
-            } else {
-                Err(Diagnostic::error()
-                    .message(format!("found {token}, but expected {expected}"))
-                    .primary_span(token)
-                    .report(self.reporter))
-            }
-        }
-
-        fn consume(&mut self, token: TokenName) -> Result<Token> {
-            let token = self.expect(token)?;
-            self.advance();
-            Ok(token)
-        }
-
-        /// Parse a metadata document.
-        ///
-        /// # Grammar
-        ///
-        /// ```ebnf
-        /// Document ::= (Top-Level-Map-Entries | Value) #End-Of-Input
-        /// ```
-        pub(super) fn parse(&mut self) -> Result<Value> {
-            let value = match self.has_top_level_map_entries() {
-                true => self.parse_top_level_map_entries(),
-                false => self.parse_value(),
-            }?;
-            self.consume(EndOfInput)?;
-
-            Result::ok_if_untainted(value, self.health)
-        }
-
-        fn has_top_level_map_entries(&self) -> bool {
-            matches!(self.current_token().name(), Identifier | Text)
-                && self.succeeding_token().name() == Colon
-                || self.current_token().name() == EndOfInput
-        }
-
-        /// Parse top-level map entries.
-        ///
-        /// # Grammar
-        ///
-        /// ```ebnf
-        /// Top-Level-Map-Entries ::= (Map-Entry ",")* Map-Entry? (> #End-Of-Input)
-        /// ```
-        fn parse_top_level_map_entries(&mut self) -> Result<Value> {
-            let map = self.parse_map_entries(EndOfInput)?;
-
-            Ok(Value::new(
-                self.map.borrow()[self.file].span(),
-                ValueKind::Map(map),
-            ))
-        }
-
-        /// Parse a value.
-        ///
-        /// # Grammar
-        ///
-        /// ```ebnf
-        /// Value ::=
-        ///     | "null"
-        ///     | "false"
-        ///     | "true"
-        ///     | #Text
-        ///     | #Number
-        ///     | Array
-        ///     | Map
-        /// ```
-        fn parse_value(&mut self) -> Result<Value> {
-            let span = self.current_token().span;
-            match self.current_token().name() {
-                False => {
-                    self.advance();
-                    Ok(Value::new(span, ValueKind::Bool(false)))
-                }
-                True => {
-                    self.advance();
-                    Ok(Value::new(span, ValueKind::Bool(true)))
-                }
-                Text => {
-                    // @Task avoid cloning!
-                    let content = self
-                        .current_token()
-                        .clone()
-                        .into_text()
-                        .unwrap()
-                        .reported(self.reporter)?;
-                    self.advance();
-
-                    Ok(Value::new(span, ValueKind::Text(content)))
-                }
-                Integer => {
-                    let value = self.current_token().clone().into_integer().unwrap();
-                    self.advance();
-
-                    let value = match value {
-                        Ok(content) => content,
-                        Err(error) => {
-                            use super::lexer::IntLexingError::*;
-
-                            // @Beacon @Task
-                            #[allow(clippy::match_same_arms)]
-                            let diagnostic = match error {
-                                ConsecutiveSeparators => Diagnostic::error().message("@Task"),
-                                TrailingSeparators => Diagnostic::error().message("@Task"),
-                                SizeExceedance => Diagnostic::error().message("@Task"),
-                            };
-                            return Err(diagnostic.report(self.reporter));
-                        }
-                    };
-                    Ok(Value::new(span, ValueKind::Integer(value)))
-                }
-                OpeningSquareBracket => {
-                    self.advance();
-                    self.finish_parse_array(span)
-                }
-                OpeningCurlyBracket => {
-                    self.advance();
-                    self.finish_parse_map(span)
-                }
-                _ => Err(Diagnostic::error()
-                    .message(format!(
-                        "found {}, but expected value",
-                        self.current_token()
-                    ))
-                    .primary_span(span)
-                    .report(self.reporter)),
-            }
-        }
-
-        /// Finish parsing an array.
-        ///
-        /// The opening square bracket should have already parsed beforehand.
-        ///
-        /// # Grammar
-        ///
-        /// ```ebnf
-        /// Array ::= "[" (Value ",")* Value? "]"
-        /// ```
-        fn finish_parse_array(&mut self, opening_bracket_span: Span) -> Result<Value> {
-            let mut span = opening_bracket_span;
-            let mut elements = Vec::new();
-
-            while self.current_token().name() != ClosingSquareBracket {
-                elements.push(self.parse_value()?);
-
-                if self.current_token().name() != ClosingSquareBracket {
-                    self.consume(Comma)?;
-                }
-            }
-
-            span.merging(self.current_token());
-            self.advance();
-
-            Ok(Value::new(span, ValueKind::Array(elements)))
-        }
-
-        /// Finish parsing a map.
-        ///
-        /// The opening curly bracket should have already parsed beforehand.
-        ///
-        /// # Grammar
-        ///
-        /// ```ebnf
-        /// Map ::= "{" (Map-Entry ",")* Map-Entry? "}"
-        /// ```
-        fn finish_parse_map(&mut self, opening_bracket_span: Span) -> Result<Value> {
-            let mut span = opening_bracket_span;
-
-            let map = self.parse_map_entries(ClosingCurlyBracket)?;
-
-            span.merging(self.current_token());
-            self.advance();
-
-            Ok(Value::new(span, ValueKind::Map(map)))
-        }
-
-        fn parse_map_entries(
-            &mut self,
-            delimiter: TokenName,
-        ) -> Result<HashMap<WeaklySpanned<String>, Value>> {
-            let mut map = HashMap::<WeaklySpanned<String>, Value>::default();
-
-            while self.current_token().name() != delimiter {
-                let (key, value) = self.parse_map_entry()?;
-
-                if let Some(previous_key) = map.keys().find(|&some_key| some_key == &key) {
-                    // @Task "is defined multiple times in map `PATH`"
-                    Diagnostic::error()
-                        .code(Code::E803)
-                        .message(format!("the key `{}` is defined multiple times", key))
-                        .labeled_primary_span(key.span, "redefinition")
-                        .labeled_secondary_span(previous_key.span, "previous definition")
-                        .report(self.reporter);
-                    self.health.taint();
-                } else {
-                    map.insert(key, value);
-                }
-
-                if self.current_token().name() != delimiter {
-                    self.consume(Comma)?;
-                }
-            }
-
-            Ok(map)
-        }
-
-        /// Parse a map entry.
-        ///
-        /// # Grammar
-        ///
-        /// ```ebnf
-        /// Map-Entry ::= Map-Key ":" Value
-        /// ```
-        fn parse_map_entry(&mut self) -> Result<(WeaklySpanned<String>, Value)> {
-            let key = self.parse_map_key()?;
-            self.consume(Colon)?;
-            let value = self.parse_value()?;
-
-            Ok((key, value))
-        }
-
-        /// Parse a map key.
-        ///
-        /// # Grammar
-        ///
-        /// ```ebnf
-        /// Map-Key ::= #Identifier | #Text
-        /// ```
-        fn parse_map_key(&mut self) -> Result<WeaklySpanned<String>> {
-            let span = self.current_token().span;
-            let key = match self.current_token().name() {
-                Identifier => {
-                    // @Task avoid cloning
-                    let key = self.current_token().clone().into_identifier().unwrap();
-                    self.advance();
-                    key
-                }
-                Text => {
-                    // @Task avoid cloning
-                    let key = self
-                        .current_token()
-                        .clone()
-                        .into_text()
-                        .unwrap()
-                        .reported(self.reporter)?;
-                    self.advance();
-                    key
-                }
-                _ => {
-                    // @Task
-                    return Err(Diagnostic::error()
-                        .message(format!(
-                            "expected map key, but got {:?}",
-                            self.current_token().name()
-                        ))
-                        .primary_span(span)
-                        .report(self.reporter));
-                }
-            };
-
-            Ok(WeaklySpanned::new(span, key))
-        }
-    }
 }

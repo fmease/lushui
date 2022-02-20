@@ -1,13 +1,13 @@
 //! The package and component resolver.
 
 use crate::{
-    diagnostics::{Diagnostic, Reporter},
-    error::{Health, OkIfUntaintedExt, ReportedExt, Result},
+    diagnostics::{Code, Diagnostic, Reporter},
+    error::{Health, OkIfUntaintedExt, Result},
     format::IOError,
     metadata::content_span_of_key,
     resolver::Component,
     span::{SharedSourceMap, Spanned, WeaklySpanned},
-    syntax::ComponentName,
+    syntax::Word,
     utility::HashMap,
     FILE_EXTENSION,
 };
@@ -59,7 +59,7 @@ impl BuildQueue<'_> {
     fn enqueue_dependencies(
         &mut self,
         package_index: PackageIndex,
-    ) -> Result<HashMap<ComponentName, ComponentIndex>> {
+    ) -> Result<HashMap<Word, ComponentIndex>> {
         let package_path = &self[package_index].path.clone();
         let mut resolved_dependencies = HashMap::default();
         let mut health = Health::Untainted;
@@ -404,10 +404,7 @@ impl BuildQueue<'_> {
             self[core_package].dependencies = resolved_transitive_core_dependencies;
             self[core_package].is_fully_resolved = true;
 
-            resolved_dependencies.insert(
-                ComponentName::core_package_name(),
-                self[core_package].library.unwrap(),
-            );
+            resolved_dependencies.insert(core_package_name(), self[core_package].library.unwrap());
         }
 
         let component = self.add_component(|index| {
@@ -502,7 +499,7 @@ impl IndexMut<PackageIndex> for BuildQueue<'_> {
 /// Metadata of a [component][Component].
 #[derive(Clone)]
 pub struct ComponentMetadata {
-    pub name: ComponentName,
+    pub name: Word,
     pub index: ComponentIndex,
     pub package: PackageIndex,
     pub path: PathBuf,
@@ -516,7 +513,7 @@ pub struct ComponentMetadata {
 
 impl ComponentMetadata {
     pub fn new(
-        name: ComponentName,
+        name: Word,
         index: ComponentIndex,
         package: PackageIndex,
         path: PathBuf,
@@ -562,7 +559,13 @@ pub(crate) fn distributed_packages_path() -> PathBuf {
 }
 
 pub(crate) fn core_package_path() -> PathBuf {
-    distributed_packages_path().join(ComponentName::core_package_name().as_str())
+    distributed_packages_path().join(CORE_PACKAGE_NAME)
+}
+
+pub(crate) const CORE_PACKAGE_NAME: &str = "core";
+
+pub(crate) fn core_package_name() -> Word {
+    Word::new_unchecked("core".into())
 }
 
 pub const DEFAULT_SOURCE_FOLDER_NAME: &str = "source";
@@ -620,7 +623,7 @@ pub struct Package {
     ///
     /// The library and the default executable component share this name
     /// unless overwritten in their manifests.
-    pub name: ComponentName,
+    pub name: Word,
     /// The file or folder path of the package.
     ///
     /// For single-file packages, this points to a file.
@@ -637,7 +640,7 @@ pub struct Package {
     pub(crate) is_private: bool,
     pub(crate) library: Option<ComponentIndex>,
     pub(crate) executables: Vec<ComponentIndex>,
-    pub(crate) dependencies: HashMap<ComponentName, ComponentIndex>,
+    pub(crate) dependencies: HashMap<Word, ComponentIndex>,
     /// Indicates if the library, executable and dependency components are fully resolved.
     ///
     /// Packages are resolved in two steps to allow the library component and the executable
@@ -645,14 +648,14 @@ pub struct Package {
     /// keep [indices to its components](ComponentIndex).
     pub(crate) is_fully_resolved: bool,
     pub(crate) dependency_manifest:
-        Option<Spanned<HashMap<WeaklySpanned<ComponentName>, Spanned<DependencyManifest>>>>,
+        Option<Spanned<HashMap<WeaklySpanned<Word>, Spanned<DependencyManifest>>>>,
 }
 
 impl Package {
     pub(crate) fn from_manifest(
         profile: PackageProfile,
         dependency_manifest: Option<
-            Spanned<HashMap<WeaklySpanned<ComponentName>, Spanned<DependencyManifest>>>,
+            Spanned<HashMap<WeaklySpanned<Word>, Spanned<DependencyManifest>>>,
         >,
         path: PathBuf,
     ) -> Self {
@@ -676,7 +679,7 @@ impl Package {
         }
     }
 
-    pub(crate) fn single_file_package(name: ComponentName, path: PathBuf) -> Self {
+    pub(crate) fn single_file_package(name: Word, path: PathBuf) -> Self {
         Self {
             name,
             path,
@@ -710,7 +713,7 @@ pub fn find_package(path: &Path) -> Option<&Path> {
 pub(crate) fn parse_component_name_from_file_path(
     path: &Path,
     reporter: &Reporter,
-) -> Result<ComponentName> {
+) -> Result<Word> {
     if !crate::utility::has_file_extension(path, crate::FILE_EXTENSION) {
         Diagnostic::warning()
             .message("missing or non-standard file extension")
@@ -719,21 +722,28 @@ pub(crate) fn parse_component_name_from_file_path(
 
     // @Question can the file stem ever be empty in our case?
     let name = path.file_stem().unwrap();
-
     // @Beacon @Beacon @Beacon @Task do not unwrap! provide custom error
-    ComponentName::parse(name.to_str().unwrap()).reported(reporter)
+    let name = name.to_str().unwrap();
+
+    Word::parse(name.into()).map_err(|_| {
+        // @Task DRY @Question is the common code justified?
+        Diagnostic::error()
+            .code(Code::E036)
+            .message(format!("the component name `{name}` is not a valid word"))
+            .report(reporter)
+    })
 }
 
 pub(crate) mod manifest {
     use crate::{
         diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
-        error::{Health, OkIfUntaintedExt, ReportedExt, Result},
-        metadata::{self, content_span_of_key, convert, TypeError},
+        error::{Health, OkIfUntaintedExt, Result},
+        metadata::{self, content_span_of_key, convert, TypeError, Value, ValueKind},
         span::{SharedSourceMap, SourceFileIndex, Spanned, WeaklySpanned},
-        syntax::ComponentName,
+        syntax::Word,
         utility::{try_all, HashMap},
     };
-    use std::path::PathBuf;
+    use std::{collections::BTreeMap, default::default, path::PathBuf};
 
     // @Note missing span of PackageManifest itself
     pub struct PackageManifest {
@@ -752,7 +762,7 @@ pub(crate) mod manifest {
             let manifest = metadata::parse(file, map.clone(), reporter)?;
 
             let manifest_span = manifest.span;
-            let mut manifest: HashMap<_, _> =
+            let mut manifest: BTreeMap<_, _> =
                 manifest.value.try_into().map_err(|error: TypeError| {
                     Diagnostic::error()
                         .code(Code::E800)
@@ -771,9 +781,21 @@ pub(crate) mod manifest {
                 reporter,
             )
             .and_then(|name| {
-                // trimming quotes
-                ComponentName::parse_spanned(name.map_span(|span| span.trim(1)).as_deref())
-                    .reported(reporter)
+                // trimming the quotes
+                let span = name.span.trim(1);
+                Word::parse(name.value.clone())
+                    .map(|word| Spanned::new(span, word))
+                    .map_err(|_| {
+                        // @Task DRY, @Question is the common code justified?
+                        Diagnostic::error()
+                            .code(Code::E036)
+                            .message(format!(
+                                "the package name `{}` is not a valid word",
+                                name.value
+                            ))
+                            .primary_span(span)
+                            .report(reporter)
+                    })
             });
             let version = metadata::remove_optional_map_entry(&mut manifest, "version", reporter);
             let description =
@@ -781,7 +803,7 @@ pub(crate) mod manifest {
             let is_private =
                 metadata::remove_optional_map_entry(&mut manifest, "private", reporter);
 
-            let library = match metadata::remove_optional_map_entry::<HashMap<_, _>>(
+            let library = match metadata::remove_optional_map_entry::<BTreeMap<_, _>>(
                 &mut manifest,
                 "library",
                 reporter,
@@ -811,7 +833,7 @@ pub(crate) mod manifest {
                 Err(_) => Err(()),
             };
 
-            let executable = match metadata::remove_optional_map_entry::<HashMap<_, _>>(
+            let executable = match metadata::remove_optional_map_entry::<BTreeMap<_, _>>(
                 &mut manifest,
                 "executable",
                 reporter,
@@ -841,7 +863,7 @@ pub(crate) mod manifest {
                 Err(_) => Err(()),
             };
 
-            let dependencies = match metadata::remove_optional_map_entry::<HashMap<_, _>>(
+            let dependencies = match metadata::remove_optional_map_entry::<BTreeMap<_, _>>(
                 &mut manifest,
                 "dependencies",
                 reporter,
@@ -851,23 +873,28 @@ pub(crate) mod manifest {
                     let mut parsed_dependencies = HashMap::default();
 
                     for (dependency_name, dependency_manifest) in dependencies.value {
-                        // @Task generalize parse_spanned over I: Influence on future param on Spanned
-                        let dependency_name = match ComponentName::parse_spanned(
-                            dependency_name
-                                .map_span(|span| content_span_of_key(span, &map.borrow()))
-                                .as_deref()
-                                .strong(),
-                        ) {
-                            Ok(name) => name.weak(),
-                            Err(error) => {
-                                error.report(reporter);
-                                health.taint();
-                                continue;
+                        let dependency_name = {
+                            let span = content_span_of_key(dependency_name.span, &map.borrow());
+                            match Word::parse(dependency_name.value.clone()) {
+                                Ok(word) => WeaklySpanned::new(span, word),
+                                Err(_) => {
+                                    // @Task DRY @Question is the common code justified?
+                                    Diagnostic::error()
+                                        .code(Code::E036)
+                                        .message(format!(
+                                            "the component name `{}` is not a valid word",
+                                            dependency_name.value
+                                        ))
+                                        .primary_span(span)
+                                        .report(reporter);
+                                    health.taint();
+                                    continue;
+                                }
                             }
                         };
 
                         // @Task custom error message (maybe)
-                        let Ok(mut dependency_manifest) = convert::<HashMap<_, _>>(
+                        let Ok(mut dependency_manifest) = convert::<BTreeMap<_, _>>(
                             dependency_name.value.as_str(),
                             dependency_manifest,
                             reporter,
@@ -888,12 +915,22 @@ pub(crate) mod manifest {
                                 reporter,
                             )
                             .and_then(|name| {
-                                // trimming quotes
                                 name.map(|name| {
-                                    ComponentName::parse_spanned(
-                                        name.map_span(|span| span.trim(1)).as_deref(),
-                                    )
-                                    .reported(reporter)
+                                    // trimming the quotes
+                                    let span = name.span.trim(1);
+                                    Word::parse(name.value.clone())
+                                        .map(|word| Spanned::new(span, word))
+                                        .map_err(|_| {
+                                            // @Task DRY, @Question common code justified?
+                                            Diagnostic::error()
+                                                .code(Code::E036)
+                                                .message(format!(
+                                                    "the component name `{}` is not a valid word",
+                                                    name.value
+                                                ))
+                                                .primary_span(span)
+                                                .report(reporter)
+                                        })
                                 })
                                 .transpose()
                             });
@@ -959,11 +996,34 @@ pub(crate) mod manifest {
                 },
             })
         }
+
+        pub fn default_to_string(name: &Word) -> String {
+            fn value(value: impl Into<ValueKind>) -> Value {
+                Value::new(default(), value.into())
+            }
+
+            fn key(key: impl Into<String>) -> WeaklySpanned<String> {
+                WeaklySpanned::new(default(), key.into())
+            }
+
+            value(BTreeMap::from_iter([
+                (key("name"), value(name.as_str())),
+                (key("version"), value("0.0.0")),
+                (
+                    key("dependencies"),
+                    value(BTreeMap::from_iter([(
+                        key("core"),
+                        value(BTreeMap::default()),
+                    )])),
+                ),
+            ]))
+            .to_string()
+        }
     }
 
     /// Component-indepedent package information.
     pub(crate) struct PackageProfile {
-        pub(crate) name: Spanned<ComponentName>,
+        pub(crate) name: Spanned<Word>,
         pub(crate) version: Option<Spanned<Version>>,
         pub(crate) description: Option<Spanned<String>>,
         pub(crate) is_private: Option<Spanned<bool>>,
@@ -975,7 +1035,7 @@ pub(crate) mod manifest {
         // @Task Vec<_>
         pub(crate) executable: Option<Spanned<ExecutableManifest>>,
         pub(crate) dependencies:
-            Option<Spanned<HashMap<WeaklySpanned<ComponentName>, Spanned<DependencyManifest>>>>,
+            Option<Spanned<HashMap<WeaklySpanned<Word>, Spanned<DependencyManifest>>>>,
     }
 
     #[derive(Default)]
@@ -994,7 +1054,7 @@ pub(crate) mod manifest {
     pub(crate) struct DependencyManifest {
         #[allow(dead_code)]
         pub(crate) version: Option<Spanned<VersionRequirement>>,
-        pub(crate) name: Option<Spanned<ComponentName>>,
+        pub(crate) name: Option<Spanned<Word>>,
         pub(crate) path: Option<Spanned<PathBuf>>,
     }
 

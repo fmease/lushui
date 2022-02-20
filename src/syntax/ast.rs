@@ -512,23 +512,6 @@ impl Path {
         }
     }
 
-    /// Construct a single identifier segment path.
-    ///
-    /// May panic.
-    // @Note bad naming try_from_token (only for ids) <-> hanger only for hangers
-    // unify?
-    pub(crate) fn try_from_token(token: Token) -> Option<Self> {
-        Some(Identifier::try_from(token).ok()?.into())
-    }
-
-    /// Construct a non-identifier-head-only path.
-    pub(crate) fn hanger(token: Token) -> Self {
-        Self {
-            hanger: Some(Hanger::new(token.span, token.value.try_into().unwrap())),
-            segments: SmallVec::new(),
-        }
-    }
-
     // @Task make this Option<Self> and move diagnostic construction into lowerer
     pub(crate) fn join(mut self, other: Self) -> Result<Self, Diagnostic> {
         if let Some(hanger) = other.hanger {
@@ -579,6 +562,15 @@ impl From<Identifier> for Path {
     }
 }
 
+impl From<Hanger> for Path {
+    fn from(hanger: Hanger) -> Self {
+        Self {
+            hanger: Some(hanger),
+            segments: SmallVec::new(),
+        }
+    }
+}
+
 impl Spanning for Path {
     fn span(&self) -> Span {
         if let Some(head) = &self.hanger {
@@ -596,6 +588,14 @@ impl Spanning for Path {
 }
 
 pub(crate) type Hanger = Spanned<HangerKind>;
+
+impl TryFrom<Token> for Hanger {
+    type Error = ();
+
+    fn try_from(token: Token) -> Result<Self, Self::Error> {
+        Ok(Hanger::new(token.span, token.value.try_into()?))
+    }
+}
 
 /// The non-identifier head of a path.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]

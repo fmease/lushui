@@ -4,7 +4,8 @@
 
 use super::{
     ast::{
-        self, Attribute, AttributeKind, Attributes, Case, Declaration, Domain, Explicitness::*,
+        self, Attribute, AttributeKind, Attributes, Case, Declaration, Domain,
+        Explicitness::{Explicit, Implicit},
         Expression, Format, Identifier, Item, Parameter, ParameterKind, Parameters, Path, Pattern,
         UsePathTree, UsePathTreeKind,
     },
@@ -65,8 +66,8 @@ where
                 colored::control::set_override(false);
 
                 let difference = difference::Changeset::new(
-                    &format!("{:?}", expected),
-                    &format!("{:?}", actual),
+                    &format!("{expected:?}"),
+                    &format!("{actual:?}"),
                     "\n",
                 );
 

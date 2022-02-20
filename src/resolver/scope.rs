@@ -14,7 +14,7 @@ use crate::{
         ast::{self, HangerKind, Path},
         lexer::is_punctuation,
         lowered_ast::Attributes,
-        ComponentName,
+        Word,
     },
     utility::{HashMap, SmallVec},
 };
@@ -54,7 +54,7 @@ impl Component {
         }
     }
 
-    pub fn name(&self) -> &ComponentName {
+    pub fn name(&self) -> &Word {
         &self.metadata.name
     }
 
@@ -95,11 +95,7 @@ impl Component {
         self.metadata.package == session.goal_package()
     }
 
-    pub(super) fn dependency(
-        &self,
-        name: &ComponentName,
-        session: &BuildSession,
-    ) -> Option<ComponentIndex> {
+    pub(super) fn dependency(&self, name: &Word, session: &BuildSession) -> Option<ComponentIndex> {
         let package = self.package(session);
         let dependency = package.dependencies.get(name).copied();
 

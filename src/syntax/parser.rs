@@ -36,11 +36,11 @@ use super::{
         Token,
         TokenName::{self, *},
     },
-    ComponentName,
+    Word,
 };
 use crate::{
     diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
-    error::{ReportedExt, Result},
+    error::Result,
     format::{ordered_listing, Conjunction},
     span::{SharedSourceMap, SourceFileIndex, Span, Spanned, Spanning},
     utility::SmallVec,
@@ -68,18 +68,27 @@ pub fn parse_root_module_file(
 ) -> Result<Declaration> {
     // @Beacon @Task don't unwrap to_str here but handle the error correctly
     // (create another parsing function on ComponentName)
+    let name = map.borrow()[file]
+        .path()
+        .unwrap()
+        .file_stem()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_owned();
+
     let binder = Spanned::new(
         default(),
-        ComponentName::parse(
-            map.borrow()[file]
-                .path()
-                .unwrap()
-                .file_stem()
-                .unwrap()
-                .to_str()
-                .unwrap(),
-        )
-        .reported(reporter)?,
+        Word::parse(name.clone()).map_err(|_| {
+            // @Beacon @Task add component+packagename(+path?) and other details/explanations
+            // @Question is the common code justified?
+            Diagnostic::error()
+                .code(Code::E036)
+                .message(format!(
+                    "the name of the root module `{name}` is not a valid word"
+                ))
+                .report(reporter)
+        })?,
     )
     .into();
 
@@ -1180,8 +1189,12 @@ impl<'a> Parser<'a> {
     /// Parse the first segment of a path.
     fn parse_first_path_segment(&mut self) -> Result<Path> {
         let path = match self.current_token().name() {
-            Word | Punctuation => Path::try_from_token(self.current_token().clone()).unwrap(),
-            name if name.is_path_hanger() => Path::hanger(self.current_token().clone()),
+            Word | Punctuation => Identifier::try_from(self.current_token().clone())
+                .unwrap()
+                .into(),
+            name if name.is_path_hanger() => ast::Hanger::try_from(self.current_token().clone())
+                .unwrap()
+                .into(),
             _ => return self.error(|| Expected::Path.but_actual_is(self.current_token())),
         };
         self.advance();

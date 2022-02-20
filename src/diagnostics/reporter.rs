@@ -184,6 +184,9 @@ fn print_to_stderr(message: &impl std::fmt::Display) {
     eprintln!();
 }
 
+// @Beacon @Beacon @Note happens quite often (look at the impl of Word::parse!): ErrorReported obtained via a
+// SilentReporter. Technically correct but undesirable.
+
 // @Beacon @Task docs
 #[derive(Clone, Copy, Debug)]
 #[cfg_attr(test, derive(PartialEq, Eq))]

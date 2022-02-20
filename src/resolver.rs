@@ -21,7 +21,7 @@ use crate::{
     syntax::{
         ast::{self, Path},
         lowered_ast::{self, AttributeName},
-        ComponentName,
+        Word,
     },
     utility::{obtain, HashMap, HashSet},
 };
@@ -984,7 +984,7 @@ impl<'a> Resolver<'a> {
             None => IntrinsicNumericType::Nat,
         };
 
-        let Some(resolved_number) = hir::Number::parse(&literal.value, type_) else {
+        let Ok(resolved_number) = hir::Number::parse(&literal.value, type_) else {
             return Err(Diagnostic::error()
                 .code(Code::E007)
                 .message(format!(
@@ -1176,8 +1176,16 @@ impl<'a> Resolver<'a> {
                     };
 
                     // @Beacon @Task add test for error case
-                    let component = ComponentName::from_identifier(component.clone())
-                        .map_err(|error| error.primary_span(component).report(self.reporter))?;
+                    let component: Spanned<Word> = component.clone().try_into().map_err(|_| {
+                        // @Task DRY @Question is the common code justified?
+                        Diagnostic::error()
+                            .code(Code::E036)
+                            .message(format!(
+                                "the component name `{component}` is not a valid word"
+                            ))
+                            .primary_span(component)
+                            .report(self.reporter)
+                    })?;
 
                     let Some(component) = self.component.dependency(&component.value, self.session) else {
                         // @Temporary message

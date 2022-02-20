@@ -43,7 +43,7 @@ use lushui::{
     },
     resolver::{self, PROGRAM_ENTRY_IDENTIFIER},
     span::{SharedSourceMap, SourceMap},
-    syntax::{lexer, lowerer, parser, ComponentName},
+    syntax::{lexer, lowerer, parser, Word},
     typer, FILE_EXTENSION,
 };
 use std::time::{Duration, Instant};
@@ -421,7 +421,13 @@ fn generate_package(
 ) -> Result {
     use std::fs;
 
-    let name = ComponentName::parse(&name).map_err(|error| error.report(reporter))?;
+    let name = Word::parse(name.clone()).map_err(|_| {
+        // @Task DRY @Question is the common code justified?
+        Diagnostic::error()
+            .code(Code::E036)
+            .message(format!("the component name `{name}` is not a valid word"))
+            .report(reporter)
+    })?;
 
     // @Task handle errors properly
     let current_path = std::env::current_dir().unwrap();
@@ -431,15 +437,7 @@ fn generate_package(
     fs::create_dir(&source_folder_path).unwrap();
     fs::write(
         package_path.join(PackageManifest::FILE_NAME),
-        format!(
-            "\
-name: \"{name}\",
-version: \"0.0.0\",
-dependencies: {{
-    core: {{}},
-}},
-"
-        ),
+        PackageManifest::default_to_string(&name),
     )
     .unwrap();
     fs::write(

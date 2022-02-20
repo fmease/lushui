@@ -670,7 +670,7 @@ pub enum Code {
     E034,
     /// Type analysis.
     E035,
-    /// Invalid component name.
+    /// Invalid word (package name, component name, metadata key, …).
     E036,
     /// Exposure reach not an ancestor of definition-site namespace.
     E037,

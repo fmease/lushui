@@ -6,23 +6,24 @@ use super::{Provenance, Token, TokenKind::*, UnterminatedTextLiteral};
 use crate::{
     error::{outcome, Health, Outcome, Result},
     span::span,
+    utility::difference,
 };
 use std::default::default;
 
-fn lex(source: &'static str) -> Result<Outcome<Vec<Token>>> {
+fn lex(source: &'static str) -> Result<Outcome<Vec<Token>>, ()> {
     super::lex_string(source.to_owned())
 }
 
-fn assert_eq(actual: Result<Outcome<Vec<Token>>>, expected: Vec<Token>) {
+fn assert_eq(actual: Result<Outcome<Vec<Token>>, ()>, expected: Vec<Token>) {
     assert_eq_with_health(actual, expected, Health::Untainted)
 }
 
-fn assert_eq_tainted(actual: Result<Outcome<Vec<Token>>>, expected: Vec<Token>) {
+fn assert_eq_tainted(actual: Result<Outcome<Vec<Token>>, ()>, expected: Vec<Token>) {
     assert_eq_with_health(actual, expected, Health::Tainted)
 }
 
 fn assert_eq_with_health(
-    actual: Result<Outcome<Vec<Token>>>,
+    actual: Result<Outcome<Vec<Token>>, ()>,
     expected: Vec<Token>,
     expected_health: Health,
 ) {
@@ -36,14 +37,9 @@ fn assert_eq_with_health(
             }
 
             if actual != expected {
-                let difference = difference::Changeset::new(
-                    &format!("{expected:#?}"),
-                    &format!("{actual:#?}"),
-                    "\n",
-                );
-
                 panic!(
-                    "the actual tokens outputted by the lexer do not match the expected ones:\n{difference}",
+                    "the actual tokens outputted by the lexer do not match the expected ones:\n{}",
+                    difference(&format!("{expected:#?}"), &format!("{actual:#?}"), "\n"),
                 );
             }
         }
@@ -722,7 +718,7 @@ of"it"
 // #[test]
 // fn _() {
 //     let _ = lex("\n    \n");
-//     todo!(); // @Tasl
+//     todo!(); // @Task
 // }
 
 #[test]

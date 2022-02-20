@@ -324,17 +324,16 @@ pub enum Number {
 }
 
 impl Number {
-    #[must_use]
-    pub(crate) fn parse(source: &str, type_: IntrinsicNumericType) -> Option<Self> {
+    pub(crate) fn parse(source: &str, type_: IntrinsicNumericType) -> Result<Self, ()> {
         use IntrinsicNumericType::*;
 
         match type_ {
-            Nat => source.parse().map(Self::Nat).ok(),
-            Nat32 => source.parse().map(Self::Nat32).ok(),
-            Nat64 => source.parse().map(Self::Nat64).ok(),
-            Int => source.parse().map(Self::Int).ok(),
-            Int32 => source.parse().map(Self::Int32).ok(),
-            Int64 => source.parse().map(Self::Int64).ok(),
+            Nat => source.parse().map(Self::Nat).map_err(drop),
+            Nat32 => source.parse().map(Self::Nat32).map_err(drop),
+            Nat64 => source.parse().map(Self::Nat64).map_err(drop),
+            Int => source.parse().map(Self::Int).map_err(drop),
+            Int32 => source.parse().map(Self::Int32).map_err(drop),
+            Int64 => source.parse().map(Self::Int64).map_err(drop),
         }
     }
 }

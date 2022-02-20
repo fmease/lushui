@@ -1,9 +1,7 @@
-use difference::Changeset;
-
 use super::{Code, Diagnostic};
 use crate::{
-    format::differences_with_ledge,
     span::{span, SourceMap},
+    utility::difference,
 };
 
 #[track_caller]
@@ -16,11 +14,9 @@ fn assert_format(diagnostic: &Diagnostic, map: Option<&SourceMap>, expected: &st
         // @Beacon @Bug this diff now isn't colored because of the global setting
         // @Task replace colored with something more flexible
 
-        let changeset = Changeset::new(expected, &actual, "\n");
-
         panic!(
             "the terminal format differs:\n{}",
-            differences_with_ledge(&changeset.diffs)
+            difference(expected, &actual, "\n"),
         );
     }
 }
