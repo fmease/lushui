@@ -1,97 +1,153 @@
-use super::{
-    default_test_directory_path, DEFAULT_NUMBER_TEST_THREADS_UNKNOWN_AVAILABLE_PARALLELISM,
-};
-use clap::{App, Arg};
-use std::{num::NonZeroUsize, str::FromStr};
+use clap::{Arg, Command};
+use std::{num::NonZeroUsize, path::Path, str::FromStr};
+
+const DEFAULT_NUMBER_TEST_THREADS_UNKNOWN_AVAILABLE_PARALLELISM: NonZeroUsize =
+    NonZeroUsize::new(4).unwrap();
 
 pub(crate) struct Application {
-    pub(crate) release_mode: bool,
-    pub(crate) gilding: bool,
+    pub(crate) compiler_build_mode: CompilerBuildMode,
+    pub(crate) gilding: Gilding,
+    pub(crate) strict_filters: Vec<String>,
     pub(crate) loose_filters: Vec<String>,
-    pub(crate) exact_filters: Vec<String>,
     pub(crate) number_test_threads: NonZeroUsize,
     pub(crate) test_folder_path: String,
+    pub(crate) inspecting: Inspecting,
 }
 
 impl Application {
     pub(crate) fn new() -> Self {
-        let default_test_directory_path = default_test_directory_path();
+        let default_test_directory_path = default_test_folder_path();
         let available_parallelism = std::thread::available_parallelism()
             .ok()
             .unwrap_or(DEFAULT_NUMBER_TEST_THREADS_UNKNOWN_AVAILABLE_PARALLELISM);
         let available_parallelism = available_parallelism.to_string();
 
-        let matches = App::new(env!("CARGO_PKG_NAME"))
+        const STRICT_FILTERS: &str = "strict-filters";
+        const LOOSE_FILTERS: &str = "loose-filters";
+        const NUMBER_TEST_THREADS: &str = "number-test-threads";
+
+        let matches = Command::new(env!("CARGO_PKG_NAME"))
             .version(env!("CARGO_PKG_VERSION"))
             .about(env!("CARGO_PKG_DESCRIPTION"))
             .arg(
                 Arg::new("release")
                     .long("release")
                     .short('r')
-                    .help("Builds the Lushui compiler in release mode (i.e. with optimizations)"),
+                    .help("Build the Lushui compiler in release mode, with optimizations"),
             )
+            .arg(Arg::new("gild").long("gild").short('g').help(
+                "Update golden files of all included failing tests to the current compiler output",
+            ))
             .arg(
-                Arg::new("gild")
-                    .long("gild")
-                    .help("Updates golden files of all included failing tests to the current compiler output"),
-            )
-            .arg(
-                Arg::new("loose-filter")
-                    .long("filter")
-                    .short('f')
-                    .takes_value(true)
-                    .multiple_occurrences(true)
-                    .help(
-                        "Excludes tests whose file path (relative to the test folder path, without extension) \
-                         does not contain the given filter (and which do not match any other filter)"
-                    ),
-            )
-            .arg(
-                Arg::new("exact-filter")
-                    .long("filter-exact")
+                Arg::new(STRICT_FILTERS)
+                    .long("filter-strictly")
                     .short('F')
                     .takes_value(true)
+                    .value_name("PATH")
                     .multiple_occurrences(true)
                     .help(
-                        "Excludes tests whose file path (relative to the test folder path, without extension) \
-                        does not equal the given filter (and which do not match any other filter)"
+                        "Exclude tests whose file path does not equal the given filter \
+                         (and which do not match any other filter); \
+                         those paths are relative to the test folder path and lack an extension",
                     ),
             )
             .arg(
-                Arg::new("number-test-threads")
+                Arg::new(LOOSE_FILTERS)
+                    .long("filter-loosely")
+                    .short('f')
+                    .takes_value(true)
+                    .value_name("PATH")
+                    .multiple_occurrences(true)
+                    .help(
+                        "Exclude tests whose file path does not contain the given filter \
+                         (and which do not match any other filter); \
+                         those paths are relative to the test folder path and lack an extension",
+                    ),
+            )
+            .arg(
+                Arg::new(NUMBER_TEST_THREADS)
+                    .short('T')
                     .long("test-threads")
                     .takes_value(true)
+                    .value_name("NUMBER")
                     .validator(|input| {
                         NonZeroUsize::from_str(input)
                             .map(drop)
                             .map_err(|error| error.to_string())
                     })
                     .default_value(&available_parallelism)
-                    .help("The number of threads to use during test execution"),
+                    .help("Set the number of OS threads to use during test execution"),
             )
             .arg(
                 Arg::new("test-folder-path")
                     .long("test-folder")
                     .takes_value(true)
+                    .value_name("PATH")
                     .default_value(&default_test_directory_path)
-                    .help("The path to the folder containing the test files"),
+                    .help("Set the path to the folder containing the test files"),
+            )
+            .arg(
+                Arg::new("inspect")
+                    .long("inspect")
+                    .short('I')
+                    .help("Inspect the test suite for issues"),
             )
             .get_matches();
 
         Application {
-            release_mode: matches.is_present("release"),
-            gilding: matches.is_present("gild"),
-            loose_filters: matches
-                .values_of("loose-filter")
+            compiler_build_mode: if matches.is_present("release") {
+                CompilerBuildMode::Release
+            } else {
+                CompilerBuildMode::Debug
+            },
+            gilding: if matches.is_present("gild") {
+                Gilding::Yes
+            } else {
+                Gilding::No
+            },
+            strict_filters: matches
+                .values_of(STRICT_FILTERS)
                 .map_or(Vec::new(), |value| value.map(ToString::to_string).collect()),
-            exact_filters: matches
-                .values_of("exact-filter")
+            loose_filters: matches
+                .values_of(LOOSE_FILTERS)
                 .map_or(Vec::new(), |value| value.map(ToString::to_string).collect()),
             number_test_threads: matches
-                .value_of("number-test-threads")
+                .value_of(NUMBER_TEST_THREADS)
                 .map(|input| input.parse().unwrap())
                 .unwrap(),
             test_folder_path: matches.value_of("test-folder-path").unwrap().to_owned(),
+            inspecting: if matches.is_present("inspect") {
+                Inspecting::Yes
+            } else {
+                Inspecting::No
+            },
         }
     }
+}
+
+fn default_test_folder_path() -> String {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../tests")
+        .canonicalize()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_owned()
+}
+
+pub(crate) enum CompilerBuildMode {
+    Debug,
+    Release,
+}
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub(crate) enum Gilding {
+    Yes,
+    No,
+}
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub(crate) enum Inspecting {
+    Yes,
+    No,
 }

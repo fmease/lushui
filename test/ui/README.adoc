@@ -1,0 +1,11 @@
+= The Golden UI Test Suite
+
+NOTE: Add general information about golden testing and this test suite.
+
+The test suite contains both single-file packages and normal packages.
+
+NOTE: Add section on how to write a new test, how test configurations look etc.
+
+NOTE: Write about gilding.
+
+NOTE: Write about `--test-threads` and other flags.
