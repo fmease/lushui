@@ -659,18 +659,6 @@ impl BuildQueue<'_> {
     }
 }
 
-// impl Diagnostic {
-//     fn dependent_package_does_not_contain_a_library(dependency: &str, dependent: &str) -> Self {
-//         // @Task provide more context for transitive dependencies of the goal component
-//         // @Task code
-//         // @Beacon @Task span
-//         // @Update better message: dependent (?) package does not contain a library
-//         Self::error().message(format!(
-//             "dependency `{dependency}` of `{dependent}` is not a library"
-//         ))
-//     }
-// }
-
 impl Index<ComponentIndex> for BuildQueue<'_> {
     type Output = Component;
 

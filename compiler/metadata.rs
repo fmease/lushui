@@ -239,19 +239,6 @@ impl<'r> MapWalker<'r> {
         }
     }
 
-    // pub(crate) fn parse_optional<T, U, F>(
-    //     &mut self,
-    //     key: &str,
-    //     parser: F,
-    // ) -> Result<Option<Spanned<U>>>
-    // where
-    //     T: TryFrom<ValueKind, Error = TypeError>,
-    //     F: FnOnce(Spanned<T>) -> Result<Spanned<U>>,
-    // {
-    //     self.take_optional(key)
-    //         .and_then(|value| value.map(parser).transpose())
-    // }
-
     pub(crate) fn exhaust(self) -> Result<Span> {
         if !self.map.value.is_empty() {
             for key in self.map.value.into_keys() {

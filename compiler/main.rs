@@ -448,7 +448,7 @@ fn create_package(
             fs::File::create(package_path.join(PackageManifest::FILE_NAME)).unwrap(),
         );
 
-        generate_package_manifest(&name, options, package_manifest).unwrap();
+        create_package_manifest(&name, options, package_manifest).unwrap();
     }
     fs::write(package_path.join(".gitignore"), "build/\n").unwrap();
 
@@ -473,7 +473,7 @@ fn create_package(
     Ok(())
 }
 
-fn generate_package_manifest(
+fn create_package_manifest(
     name: &Word,
     options: cli::PackageCreationOptions,
     mut sink: impl io::Write,
