@@ -7,9 +7,8 @@
 
 use super::{Diagnostic, Severity};
 use crate::{
-    format::{ordered_listing, pluralize, Conjunction},
-    span::SharedSourceMap,
-    utility::obtain,
+    span::SourceMapCell,
+    utility::{obtain, pluralize, Conjunction, OrderedListingExt},
 };
 use std::{cell::RefCell, collections::BTreeSet, default::default};
 
@@ -42,11 +41,11 @@ impl From<SilentReporter> for Reporter {
 }
 
 pub struct StderrReporter {
-    map: Option<SharedSourceMap>,
+    map: Option<SourceMapCell>,
 }
 
 impl StderrReporter {
-    pub fn new(map: Option<SharedSourceMap>) -> Self {
+    pub fn new(map: Option<SourceMapCell>) -> Self {
         Self { map }
     }
 
@@ -65,11 +64,11 @@ impl From<StderrReporter> for Reporter {
 pub struct BufferedStderrReporter {
     errors: RefCell<BTreeSet<Diagnostic>>,
     warnings: RefCell<BTreeSet<Diagnostic>>,
-    map: SharedSourceMap,
+    map: SourceMapCell,
 }
 
 impl BufferedStderrReporter {
-    pub fn new(map: SharedSourceMap) -> Self {
+    pub fn new(map: SourceMapCell) -> Self {
         Self {
             errors: default(),
             warnings: default(),
@@ -134,7 +133,7 @@ impl BufferedStderrReporter {
                     this.note(format!(
                         "the {errors} {codes} {have} a detailed explanation",
                         errors = pluralize!(codes.len(), "error"),
-                        codes = ordered_listing(codes.iter(), Conjunction::And),
+                        codes = codes.iter().list_in_order(Conjunction::And),
                         have = pluralize!(codes.len(), "has", "have"),
                     ))
                     .help(pluralize!(
@@ -193,7 +192,7 @@ fn print_to_stderr(message: &impl std::fmt::Display) {
 pub struct ErrorReported(());
 
 impl ErrorReported {
-    pub(crate) fn error_will_be_reported_unchecked() -> Self {
+    pub fn new_unchecked() -> Self {
         Self(())
     }
 }

@@ -4,7 +4,7 @@
 
 use super::{Provenance, Token, TokenKind::*, UnterminatedTextLiteral};
 use crate::{
-    error::{outcome, Health, Outcome, Result},
+    error::{Health, Outcome, Result},
     span::span,
     utility::difference,
 };
@@ -28,7 +28,7 @@ fn assert_eq_with_health(
     expected_health: Health,
 ) {
     match actual {
-        Ok(outcome!(actual, health)) => {
+        Ok(Outcome!(actual, health)) => {
             if health != expected_health {
                 panic!(
                     "expected the tokens `{actual:?}` to be \

@@ -5,10 +5,10 @@ use super::{
     node::{Attributable, Element},
 };
 use crate::{
-    format::DisplayWith,
+    component::Component,
     hir::{self, DeclarationIndex},
-    package::BuildSession,
-    resolver::Component,
+    session::BuildSession,
+    utility::DisplayWith,
 };
 
 pub(super) fn format_expression(

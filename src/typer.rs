@@ -3,27 +3,19 @@
 // @Beacon @Task introduce an Error variant to hir::{Expression, Declaration}
 // to be able to continue type checking on errors
 
-use std::default::default;
-
 use crate::{
+    component::Component,
     diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
     entity::EntityKind,
     error::{Health, Result, Stain},
-    format::{pluralize, DisplayWith, QuoteExt},
     hir::{self, Declaration, Expression, Identifier},
-    package::{
-        session::{IntrinsicType, KnownBinding},
-        BuildSession,
-    },
-    resolver::Component,
+    session::{BuildSession, IntrinsicType, KnownBinding},
     syntax::{ast::Explicitness, lowered_ast::AttributeName},
-    typer::interpreter::scope::BindingRegistrationKind,
+    utility::{pluralize, DisplayWith, QuoteExt},
 };
-use interpreter::{
-    scope::{BindingRegistration, FunctionScope},
-    Interpreter,
-};
+use interpreter::{BindingRegistration, BindingRegistrationKind, FunctionScope, Interpreter};
 use joinery::JoinableIterator;
+use std::default::default;
 
 pub mod interpreter;
 
@@ -416,7 +408,7 @@ impl<'a> Typer<'a> {
             TypeMismatch { expected, actual } => Err(Diagnostic::error()
                 .code(Code::E032)
                 .message(format!(
-                    "expected type `{}`, got type `{}`",
+                    "expected type `{}` but got type `{}`",
                     expected.with((self.component, self.session)),
                     actual.with((self.component, self.session))
                 ))
@@ -583,7 +575,7 @@ impl<'a> Typer<'a> {
                             TypeMismatch { expected, actual } => Diagnostic::error()
                                 .code(Code::E032)
                                 .message(format!(
-                                    "expected type `{}`, got type `{}`",
+                                    "expected type `{}` but got type `{}`",
                                     expected.with((self.component, self.session)),
                                     actual.with((self.component, self.session))
                                 ))
@@ -609,7 +601,7 @@ impl<'a> Typer<'a> {
                     return Err(Diagnostic::error()
                         .code(Code::E031)
                         .message(format!(
-                            "expected type `_ -> _`, got type `{}`",
+                            "expected type `_ -> _` but got type `{}`",
                             type_of_callee.with((self.component, self.session))
                         ))
                         .labeled_primary_span(&application.callee, "has wrong type")
@@ -669,7 +661,7 @@ impl<'a> Typer<'a> {
                         TypeMismatch { expected, actual } => Diagnostic::error()
                             .code(Code::E032)
                             .message(format!(
-                                "expected type `{}`, got type `{}`",
+                                "expected type `{}` but got type `{}`",
                                 expected.with(context),
                                 actual.with(context)
                             ))

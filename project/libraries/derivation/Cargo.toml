@@ -1,0 +1,12 @@
+[package]
+name = "derivation"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "derivation"
+path = "lib.rs"
+
+[dependencies]
+macros = { path = "macros", package = "derivation-macros" }

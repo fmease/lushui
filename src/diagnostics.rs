@@ -7,9 +7,8 @@
 //! * display style: rich (current system) <-> short
 //! * a rust script (in /misc) that finds the lowest [Code] that can be used
 //!   as well as any unused error codes (searching src/)
-//! * unit tests for the formatter
 //! * unindenting long lines of highlighted source code (i.e. mapping initial whitespace to
-//!   a single one)
+//!   a single one) rustc replaces large amount of spaces with colored ellipses `...`
 //! * warning API/manager which can understand lushui's allows/denies/… directives
 //!
 //! # Issues
@@ -124,7 +123,7 @@ impl Diagnostic {
     }
 
     /// Reference a code snippet as one of the focal points of the diagnostic.
-    pub(crate) fn primary_span(self, spanning: impl Spanning) -> Self {
+    pub fn primary_span(self, spanning: impl Spanning) -> Self {
         self.span(spanning, None, Role::Primary)
     }
 
@@ -245,8 +244,10 @@ impl Diagnostic {
     /// map is provided.
     // @Task if the span equals the span of the entire file, don't output its content
     // @Task add back the alorithm which reduces the amount of paths printed
-    // @Beacon @Beacon @Beacon @Task special case trailing line break in subdiagnostics,
-    // etc
+    // @Beacon @Task special case trailing line break in subdiagnostics
+    // @Beacon @Bug tabs \t mess up the alignment! (in text literals, in metadata files)
+    // since `"\t".width() == 0`! solution: replace tabs with N spaces in the place where
+    // we measure the width() and in the rendered string!
     fn format_for_terminal(&self, map: Option<&SourceMap>) -> String {
         let mut message = String::new();
 
@@ -537,6 +538,7 @@ enum Subseverity {
 }
 
 impl Subseverity {
+    // @Task derive this
     const fn name(self) -> &'static str {
         match self {
             Self::Note => "note",

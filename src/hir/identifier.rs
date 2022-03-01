@@ -2,7 +2,7 @@
 
 use super::Component;
 use crate::{
-    package::ComponentIndex,
+    component::ComponentIndex,
     span::{Span, Spanning},
     syntax::ast,
 };

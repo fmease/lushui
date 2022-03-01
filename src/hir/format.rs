@@ -1,7 +1,7 @@
 //! The definition of the textual representation of the [HIR](crate::hir).
 
 use super::{Component, Declaration, Expression, Pattern};
-use crate::{format::DisplayWith, package::BuildSession};
+use crate::{session::BuildSession, utility::DisplayWith};
 use joinery::JoinableIterator;
 use std::fmt;
 
@@ -337,18 +337,19 @@ impl fmt::Display for super::Text {
 #[cfg(test)]
 mod test {
     use crate::{
+        component::{Component, ComponentIndex, ComponentMetadata, ComponentType},
         entity::{Entity, EntityKind},
-        format::DisplayWith,
         hir::{self, Expression, Identifier, LocalDeclarationIndex, Number, Text},
-        package::{BuildSession, ComponentIndex, ComponentMetadata, ComponentType, PackageIndex},
-        resolver::{Component, Exposure},
-        span::Span,
+        package::PackageIndex,
+        resolver::Exposure,
+        session::BuildSession,
+        span::{Span, Spanned},
         syntax::{
             ast::{self, Explicitness::*},
             lowered_ast::{Attribute, AttributeKind, Attributes},
             Word,
         },
-        utility::difference,
+        utility::{difference, DisplayWith, HashMap},
     };
     use std::{default::default, path::PathBuf};
 
@@ -367,17 +368,20 @@ mod test {
     }
 
     const COMPONENT_INDEX: ComponentIndex = ComponentIndex(0);
-    const PACKAGE_INDEX: PackageIndex = PackageIndex(0);
+    const PACKAGE_INDEX: PackageIndex = PackageIndex::new_unchecked(0);
 
     impl Component {
         fn test() -> Self {
-            let mut component = Self::new(ComponentMetadata::new(
-                Word::parse("test".into()).ok().unwrap(),
-                COMPONENT_INDEX,
-                PACKAGE_INDEX,
-                PathBuf::new(),
-                ComponentType::Library,
-            ));
+            let mut component = Self::new(
+                ComponentMetadata::new(
+                    Word::parse("test".into()).ok().unwrap(),
+                    COMPONENT_INDEX,
+                    PACKAGE_INDEX,
+                    Spanned::new(default(), PathBuf::new()),
+                    ComponentType::Library,
+                ),
+                HashMap::default(),
+            );
             component.bindings.insert(Entity {
                 source: ast::Identifier::new_unchecked("test".into(), default()),
                 parent: None,

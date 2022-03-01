@@ -1,14 +1,15 @@
-use super::{ComponentIndex, Package, PackageIndex};
 use crate::{
+    component::{Component, ComponentIndex},
     diagnostics::{Code, Diagnostic, Reporter},
     entity::{Entity, EntityKind},
     error::Result,
     hir::{self, DeclarationIndex, Expression, ExpressionKind, Identifier},
-    resolver::Component,
+    package::{Package, PackageIndex},
     span::Span,
     syntax::ast::Explicitness,
     utility::{condition, HashMap, Int, Nat},
 };
+use derivation::{FromStr, Str};
 use index_map::IndexMap;
 use num_traits::{CheckedDiv, CheckedSub};
 use std::{
@@ -414,28 +415,26 @@ impl IntrinsicNumericType {
     }
 }
 
+// @Task derive this with `#[format(upper_dash_case)]`
 impl fmt::Display for IntrinsicNumericType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Self::Nat => "Nat",
-                Self::Nat32 => "Nat32",
-                Self::Nat64 => "Nat64",
-                Self::Int => "Int",
-                Self::Int32 => "Int32",
-                Self::Int64 => "Int64",
-            }
-        )
+        f.write_str(match self {
+            Self::Nat => "Nat",
+            Self::Nat32 => "Nat32",
+            Self::Nat64 => "Nat64",
+            Self::Int => "Int",
+            Self::Int32 => "Int32",
+            Self::Int64 => "Int64",
+        })
     }
 }
 
-#[derive(PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy, FromStr, Str)]
+#[format(dash_case)]
 pub(crate) enum IntrinsicFunction {
     Add,
     Subtract,
-    // @Temporary existence
+    // @Temporary
     PanickingSubtract,
     Multiply,
     Divide,
@@ -450,55 +449,9 @@ pub(crate) enum IntrinsicFunction {
     Print,
 }
 
-// @Beacon @Beacon @Beacon @Temporary
-// @Task derive this
-impl FromStr for IntrinsicFunction {
-    type Err = ();
-
-    fn from_str(input: &str) -> Result<Self, Self::Err> {
-        Ok(match input {
-            "add" => Self::Add,
-            "subtract" => Self::Subtract,
-            "panicking-subtract" => Self::PanickingSubtract,
-            "multiply" => Self::Multiply,
-            "divide" => Self::Divide,
-            "equal" => Self::Equal,
-            "less" => Self::Less,
-            "less-equal" => Self::LessEqual,
-            "greater" => Self::Greater,
-            "greater-equal" => Self::GreaterEqual,
-            "display" => Self::Display,
-            "concat" => Self::Concat,
-            "add-nat32" => Self::AddNat32,
-            "print" => Self::Print,
-            _ => return Err(()),
-        })
-    }
-}
-
-// @Task derive this
 impl fmt::Display for IntrinsicFunction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Self::Add => "add",
-                Self::Subtract => "subtract",
-                Self::PanickingSubtract => "panicking-subtract",
-                Self::Multiply => "multiply",
-                Self::Divide => "divide",
-                Self::Equal => "equal",
-                Self::Less => "less",
-                Self::LessEqual => "less-equal",
-                Self::Greater => "greater",
-                Self::GreaterEqual => "greater-equal",
-                Self::Display => "display",
-                Self::Concat => "concat",
-                Self::AddNat32 => "add-nat32",
-                Self::Print => "print",
-            }
-        )
+        f.write_str(self.name())
     }
 }
 
@@ -509,7 +462,7 @@ pub(crate) struct IntrinsicFunctionValue {
     pub(crate) function: BareIntrinsicFunctionValue,
 }
 
-// @Question naming etc
+// @Task improve name
 pub(crate) enum IntrinsicKind {
     Type,
     Function,
@@ -517,14 +470,10 @@ pub(crate) enum IntrinsicKind {
 
 impl fmt::Display for IntrinsicKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Self::Type => "type",
-                Self::Function => "function",
-            }
-        )
+        f.write_str(match self {
+            Self::Type => "type",
+            Self::Function => "function",
+        })
     }
 }
 

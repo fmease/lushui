@@ -1,15 +1,14 @@
 use crate::{
     diagnostics::Diagnostic,
     error::{Health, Outcome},
-    format::quoted,
     span::{LocalSpan, SourceFile, Spanned},
     syntax::lexer::{
         is_identifier_segment_middle, is_identifier_segment_start, is_number_literal_middle,
         NUMERIC_SEPARATOR,
     },
-    utility::{lexer::Lexer as _, obtain},
+    utility::{lexer::Lexer as _, obtain, quoted},
 };
-use discriminant::Discriminant;
+use derivation::Discriminant;
 use std::{fmt, iter::Peekable, str::CharIndices};
 use TokenKind::*;
 
@@ -44,7 +43,7 @@ impl Token {
 }
 
 #[derive(Clone, Debug, Discriminant)]
-#[discriminant(TokenName::name)]
+#[discriminant(name: TokenName)]
 pub(super) enum TokenKind {
     Comma,
     Colon,

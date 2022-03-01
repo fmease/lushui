@@ -3,8 +3,8 @@
 // @Task rename to codegen
 
 use crate::{
+    component::Component,
     hir::{self, Declaration, DeclarationIndex, Expression, Number},
-    resolver::Component,
     syntax::lowered_ast::attributes::AttributeName,
     utility::HashMap,
 };
@@ -129,7 +129,7 @@ impl<'a> Compiler<'a> {
                     self.chunks[index].instructions.push(Instruction::Return);
 
                     // @Task obsolete once we map any ComponentIndex to a chunk identifier
-                    if self.component.program_entry.as_ref() == Some(&function.binder) {
+                    if self.component.entry.as_ref() == Some(&function.binder) {
                         self.entry = Some(index);
                     }
                 }

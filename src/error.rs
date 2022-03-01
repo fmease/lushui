@@ -66,13 +66,13 @@ impl<T> OkIfUntaintedExt<T> for Result<T> {
         match health {
             Health::Untainted => Ok(value),
             // @Beacon @Beacon @Beacon @Task don't use this unchecked call, use the ErrorReported inside of Tainted (once available)
-            Health::Tainted => Err(ErrorReported::error_will_be_reported_unchecked()),
+            Health::Tainted => Err(ErrorReported::new_unchecked()),
         }
     }
 }
 
-pub macro outcome($value:pat, $health:pat) {
-    $crate::error::Outcome {
+pub macro Outcome($value:pat, $health:pat) {
+    Outcome {
         value: $value,
         health: $health,
     }
@@ -101,7 +101,7 @@ impl<T> From<Outcome<T>> for Result<T> {
         match outcome.health {
             Health::Untainted => Ok(outcome.value),
             // @Beacon @Beacon @Beacon @Task don't use this unchecked call, use the ErrorReported inside of Tainted (once available)
-            Health::Tainted => Err(ErrorReported::error_will_be_reported_unchecked()),
+            Health::Tainted => Err(ErrorReported::new_unchecked()),
         }
     }
 }
@@ -160,7 +160,7 @@ impl From<Health> for Result {
         match health {
             Health::Untainted => Ok(()),
             // @Beacon @Beacon @Beacon @Task don't use this unchecked call, use the ErrorReported inside of Tainted (once available)
-            Health::Tainted => Err(ErrorReported::error_will_be_reported_unchecked()),
+            Health::Tainted => Err(ErrorReported::new_unchecked()),
         }
     }
 }
@@ -213,5 +213,18 @@ where
 
     fn reported(self, reporter: &Reporter) -> Self::Output {
         self.map_err(|error| Diagnostic::from(error).report(reporter))
+    }
+}
+
+// This can theoretically be generalized using GATs to support R<O<T>, E> and O<R<T, E>>
+// implementors. However, rustc's type inference engine sucks cannot handle it in the
+// simplest of cases 😭.
+pub(crate) trait AndThenMapExt<T> {
+    fn and_then_map<U, F: FnOnce(T) -> Result<U>>(self, mapper: F) -> Result<Option<U>>;
+}
+
+impl<T> AndThenMapExt<T> for Result<Option<T>> {
+    fn and_then_map<U, F: FnOnce(T) -> Result<U>>(self, mapper: F) -> Result<Option<U>> {
+        self.and_then(|value| value.map(mapper).transpose())
     }
 }

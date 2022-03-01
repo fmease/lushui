@@ -2,9 +2,7 @@
 //!
 //! Negative tests are yet to be written. In any case, they have to be UI tests.
 
-use std::collections::BTreeMap;
-
-use super::Value;
+use super::{Map, Value};
 use crate::{
     diagnostics::reporter::SilentReporter,
     error::Result,
@@ -16,7 +14,7 @@ use crate::{
 // @Task don't use the assert_eq macro but a diff'ing assert function!
 
 fn parse(source: &str) -> Result<Value> {
-    let map = SourceMap::shared();
+    let map = SourceMap::cell();
     let file = map.borrow_mut().add(None, source.to_owned());
     super::super::parse(file, map, &SilentReporter.into())
 }
@@ -25,7 +23,7 @@ fn assert_eq(actual: Result<Value>, expected: Value) {
     match actual {
         Ok(actual) => {
             if actual != expected {
-                // @Note for some reason, despite the `#`, large BTreeMaps are not formatted with multiple line breaks
+                // @Note for some reason, despite the `#`, large Maps are not formatted with multiple line breaks
                 panic!(
                     "the actual value outputted by the parser does not match the expected one:\n{}",
                     difference(&format!("{expected:#?}"), &format!("{actual:#?}"), ""),
@@ -43,25 +41,19 @@ use crate::utility::no_std_assert as assert_ne;
 
 #[test]
 fn empty() {
-    assert_eq(
-        parse(""),
-        Value::new(span(1, 1), BTreeMap::default().into()),
-    );
+    assert_eq(parse(""), Value::new(span(1, 1), Map::default().into()));
 }
 
 #[test]
 fn sole_line_break() {
-    assert_eq(
-        parse("\n"),
-        Value::new(span(1, 2), BTreeMap::default().into()),
-    );
+    assert_eq(parse("\n"), Value::new(span(1, 2), Map::default().into()));
 }
 
 #[test]
 fn comment() {
     assert_eq(
         parse("# there it is"),
-        Value::new(span(1, 14), BTreeMap::default().into()),
+        Value::new(span(1, 14), Map::default().into()),
     );
 }
 
@@ -74,7 +66,7 @@ fn comments() {
 ##two  
 # \"three",
         ),
-        Value::new(span(1, 23), BTreeMap::default().into()),
+        Value::new(span(1, 23), Map::default().into()),
     );
 }
 
@@ -145,7 +137,7 @@ fn array() {
                 Value::new(span(2, 4), [].into()),
                 Value::new(span(6, 10), "it".into()),
                 Value::new(span(11, 17), 23_000.into()),
-                Value::new(span(20, 24), BTreeMap::default().into()),
+                Value::new(span(20, 24), Map::default().into()),
             ]
             .into(),
         ),
@@ -169,7 +161,7 @@ fn map() {
         ),
         Value::new(
             span(1, 34),
-            BTreeMap::from_iter([
+            Map::from_iter([
                 (
                     WeaklySpanned::new(span(2, 5), "uno".into()),
                     Value::new(span(7, 10), ".".into()),
@@ -180,7 +172,7 @@ fn map() {
                 ),
                 (
                     WeaklySpanned::new(span(26, 30), "tres".into()),
-                    Value::new(span(31, 33), BTreeMap::default().into()),
+                    Value::new(span(31, 33), Map::default().into()),
                 ),
             ])
             .into(),
@@ -194,7 +186,7 @@ fn map_trailing_comma() {
         parse("{x:1,}"),
         Value::new(
             span(1, 7),
-            BTreeMap::from_iter([(
+            Map::from_iter([(
                 WeaklySpanned::new(span(2, 3), "x".into()),
                 Value::new(span(4, 5), 1.into()),
             )])
@@ -216,7 +208,7 @@ fn top_level_bracketless_map() {
         ),
         Value::new(
             span(1, 61),
-            BTreeMap::from_iter([
+            Map::from_iter([
                 (
                     WeaklySpanned::new(span(1, 6), "alpha".into()),
                     Value::new(span(8, 11), 234.into()),
@@ -229,7 +221,7 @@ fn top_level_bracketless_map() {
                     WeaklySpanned::new(span(42, 50), "gam ma".into()),
                     Value::new(
                         span(53, 60),
-                        BTreeMap::from_iter([(
+                        Map::from_iter([(
                             WeaklySpanned::new(span(54, 56), "".into()),
                             Value::new(span(57, 59), [].into()),
                         )])
@@ -253,7 +245,7 @@ k-eys: \"\",
         ),
         Value::new(
             span(1, 24),
-            BTreeMap::from_iter([
+            Map::from_iter([
                 (
                     WeaklySpanned::new(span(1, 7), "fun_ky".into()),
                     Value::new(span(9, 11), "".into()),

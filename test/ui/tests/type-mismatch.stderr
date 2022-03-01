@@ -1,4 +1,4 @@
-error[E032]: expected type `topmost.X`, got type `Type`
+error[E032]: expected type `topmost.X` but got type `Type`
   --> ${DIRECTORY}/type-mismatch.lushui:15:4
    |
 15 | a: X = Type
@@ -10,7 +10,7 @@ error[E032]: expected type `topmost.X`, got type `Type`
    |        ^^^^ has the wrong type
    |
 
-error[E032]: expected type `Type`, got type `topmost.X`
+error[E032]: expected type `Type` but got type `topmost.X`
   --> ${DIRECTORY}/type-mismatch.lushui:16:4
    |
 16 | b: Type = X.x
@@ -22,14 +22,14 @@ error[E032]: expected type `Type`, got type `topmost.X`
    |           ^^^ has the wrong type
    |
 
-error[E032]: expected type `Type`, got type `extern.core.bool.Bool`
+error[E032]: expected type `Type` but got type `extern.core.bool.Bool`
   --> ${DIRECTORY}/type-mismatch.lushui:20:4
    |
 20 | x: false = false
    |    ^^^^^ has the wrong type
    |
 
-error[E032]: expected type `extern.core.bool.Bool`, got type `extern.core.nat.Nat`
+error[E032]: expected type `extern.core.bool.Bool` but got type `extern.core.nat.Nat`
   --> ${DIRECTORY}/type-mismatch.lushui:22:10
    |
 22 | take (b: Bool): Bool = true

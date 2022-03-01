@@ -169,10 +169,10 @@ impl Brackets {
                     // or even incorrect!
                     Err(Diagnostic::error()
                         .code(Code::E001)
-                        .message(format!("unbalanced {} bracket", closing_bracket.value))
+                        .message(format!("unbalanced {closing_bracket} bracket"))
                         .labeled_primary_span(
                             closing_bracket,
-                            format!("has no matching opening {} bracket", closing_bracket.value),
+                            format!("has no matching opening {closing_bracket} bracket"),
                         ))
                 }
             }
@@ -180,10 +180,10 @@ impl Brackets {
             // or even incorrect!
             None => Err(Diagnostic::error()
                 .code(Code::E001)
-                .message(format!("unbalanced {} bracket", closing_bracket.value))
+                .message(format!("unbalanced {closing_bracket} bracket"))
                 .labeled_primary_span(
                     closing_bracket,
-                    format!("has no matching opening {} bracket", closing_bracket.value),
+                    format!("has no matching opening {closing_bracket} bracket"),
                 )),
         }
     }
@@ -656,7 +656,7 @@ impl<'a> Lexer<'a> {
             // @Task don't return early here, just taint the health and
             // return an InvalidNumberLiteral token
             // @Task don't use unchecked here, smh get the token from above
-            return Err(ErrorReported::error_will_be_reported_unchecked());
+            return Err(ErrorReported::new_unchecked());
         }
 
         self.add(NumberLiteral(number.into()));

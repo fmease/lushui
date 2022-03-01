@@ -12,21 +12,21 @@
 use crate::{
     diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
     error::Result,
-    span::{SharedSourceMap, SourceFileIndex, SourceMap, Span, Spanned, Spanning, WeaklySpanned},
-    utility::obtain,
+    span::{SourceFileIndex, SourceMap, SourceMapCell, Span, Spanned, Spanning, WeaklySpanned},
+    utility::{obtain, HashMap},
 };
-use discriminant::Discriminant;
-use std::{collections::BTreeMap, fmt};
+use derivation::Discriminant;
+use std::fmt;
 
-mod format;
 mod lexer;
 mod parser;
 
 pub(crate) type Value = Spanned<ValueKind>;
+pub(crate) type Map<K = String, V = Value> = HashMap<WeaklySpanned<K>, V>;
 
 pub(crate) fn parse(
     source_file_index: SourceFileIndex,
-    map: SharedSourceMap,
+    map: SourceMapCell,
     reporter: &Reporter,
 ) -> Result<Value> {
     let source_file = &map.borrow()[source_file_index];
@@ -36,18 +36,18 @@ pub(crate) fn parse(
 
 #[derive(Debug, Discriminant)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
-#[discriminant(Type::type_)]
+#[discriminant(type_: Type)]
 pub(crate) enum ValueKind {
-    Bool(bool),
+    Boolean(bool),
     Integer(i64),
     Text(String),
-    Array(Vec<Value>),
-    Map(BTreeMap<WeaklySpanned<String>, Value>),
+    List(Vec<Value>),
+    Map(Map),
 }
 
 impl From<bool> for ValueKind {
     fn from(bool: bool) -> Self {
-        Self::Bool(bool)
+        Self::Boolean(bool)
     }
 }
 
@@ -57,8 +57,8 @@ impl TryFrom<ValueKind> for bool {
     fn try_from(value: ValueKind) -> Result<Self, Self::Error> {
         let type_ = value.type_();
 
-        obtain!(value, ValueKind::Bool(value) => value).ok_or(TypeError {
-            expected: Type::Bool,
+        obtain!(value, ValueKind::Boolean(value) => value).ok_or(TypeError {
+            expected: Type::Boolean,
             actual: type_,
         })
     }
@@ -110,13 +110,13 @@ impl TryFrom<ValueKind> for String {
 
 impl From<Vec<Value>> for ValueKind {
     fn from(array: Vec<Value>) -> Self {
-        Self::Array(array)
+        Self::List(array)
     }
 }
 
 impl<const N: usize> From<[Value; N]> for ValueKind {
     fn from(array: [Value; N]) -> Self {
-        Self::Array(array.into())
+        Self::List(array.into())
     }
 }
 
@@ -126,20 +126,20 @@ impl TryFrom<ValueKind> for Vec<Value> {
     fn try_from(value: ValueKind) -> Result<Self, Self::Error> {
         let type_ = value.type_();
 
-        obtain!(value, ValueKind::Array(value) => value).ok_or(TypeError {
-            expected: Type::Array,
+        obtain!(value, ValueKind::List(value) => value).ok_or(TypeError {
+            expected: Type::List,
             actual: type_,
         })
     }
 }
 
-impl From<BTreeMap<WeaklySpanned<String>, Value>> for ValueKind {
-    fn from(map: BTreeMap<WeaklySpanned<String>, Value>) -> Self {
+impl From<Map> for ValueKind {
+    fn from(map: Map) -> Self {
         Self::Map(map)
     }
 }
 
-impl TryFrom<ValueKind> for BTreeMap<WeaklySpanned<String>, Value> {
+impl TryFrom<ValueKind> for Map {
     type Error = TypeError;
 
     fn try_from(value: ValueKind) -> Result<Self, Self::Error> {
@@ -155,17 +155,23 @@ impl TryFrom<ValueKind> for BTreeMap<WeaklySpanned<String>, Value> {
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Bool => write!(f, "boolean"),
+            Self::Boolean => write!(f, "boolean"),
             Self::Integer => write!(f, "integer"),
             Self::Text => write!(f, "text"),
-            Self::Array => write!(f, "array"),
+            Self::List => write!(f, "list"),
             Self::Map => write!(f, "map"),
         }
     }
 }
 
-pub(crate) fn content_span_of_key(key: impl Spanning, map: &SourceMap) -> Span {
-    fn content_span_of_key(span: Span, map: &SourceMap) -> Span {
+pub(crate) struct TypeError {
+    pub(crate) expected: Type,
+    pub(crate) actual: Type,
+}
+
+/// The span of the key excluding quotes if there are any.
+pub(crate) fn key_content_span(key: impl Spanning, map: &SourceMap) -> Span {
+    fn key_content_span(span: Span, map: &SourceMap) -> Span {
         let is_quoted = map.snippet(span).starts_with('"');
 
         if is_quoted {
@@ -175,86 +181,91 @@ pub(crate) fn content_span_of_key(key: impl Spanning, map: &SourceMap) -> Span {
         }
     }
 
-    content_span_of_key(key.span(), map)
+    key_content_span(key.span(), map)
 }
 
-// @Beacon @Temporary signature
-pub(crate) fn remove_map_entry<T: TryFrom<ValueKind, Error = TypeError>>(
-    map: Spanned<&mut BTreeMap<WeaklySpanned<String>, Value>>,
-    key: &str,
-    path: Option<String>,
-    reporter: &Reporter,
-) -> Result<Spanned<T>> {
-    match map.value.remove(key) {
-        Some(value) => convert(key, value, reporter),
-        None => Err(Diagnostic::error()
-            .code(Code::E802)
-            .message(format!(
-                "the {} is missing the key `{key}`",
-                path.map_or_else(|| "root map".into(), |path| format!("map `{path}`"))
-            ))
-            .primary_span(map)
-            .report(reporter)),
-    }
-}
-
-pub(crate) fn remove_optional_map_entry<T: TryFrom<ValueKind, Error = TypeError>>(
-    map: &mut BTreeMap<WeaklySpanned<String>, Value>,
-    key: &str,
-    reporter: &Reporter,
-) -> Result<Option<Spanned<T>>> {
-    match map.remove(key) {
-        Some(value) => convert(key, value, reporter).map(Some),
-        None => Ok(None),
-    }
-}
-
-// @Temporary signature
-pub(crate) fn check_map_is_empty(
-    map: BTreeMap<WeaklySpanned<String>, Value>,
-    path: Option<String>,
-    reporter: &Reporter,
-) -> Result {
-    if !map.is_empty() {
-        let location = path.map_or_else(|| "root map".into(), |path| format!("map `{path}`"));
-
-        for key in map.into_keys() {
-            // @Task improve message
-            Diagnostic::error()
-                .code(Code::E801)
-                .message(format!("unknown key `{key}` in {location}"))
-                .primary_span(key.span)
-                .report(reporter);
-        }
-
-        return Err(ErrorReported::error_will_be_reported_unchecked());
-    }
-
-    Ok(())
-}
-
-// @Temporary name
 pub(crate) fn convert<T: TryFrom<ValueKind, Error = TypeError>>(
-    key: &str,
     value: Value,
     reporter: &Reporter,
 ) -> Result<Spanned<T>> {
-    let span = value.span;
-    let value = value.value.try_into().map_err(|error: TypeError| {
-        Diagnostic::error()
-            .code(Code::E800)
-            .message(format!(
-                "the type of key `{key}` should be {} but it is {}",
-                error.expected, error.actual
-            ))
-            .labeled_primary_span(span, "has the wrong type")
-            .report(reporter)
-    })?;
-
-    Ok(Spanned::new(span, value))
+    Ok(Spanned::new(
+        value.span,
+        value
+            .value
+            .try_into()
+            .map_err(|TypeError { expected, actual }| {
+                Diagnostic::error()
+                    .code(Code::E800)
+                    .message(format!(
+                        "expected type `{expected}` but got type `{actual}`",
+                    ))
+                    .labeled_primary_span(value.span, "has the wrong type")
+                    .report(reporter)
+            })?,
+    ))
 }
 
-pub(crate) struct TypeError {
-    pub(crate) expected: Type,
-    pub(crate) actual: Type,
+pub(crate) struct MapWalker<'r> {
+    map: Spanned<Map>,
+    reporter: &'r Reporter,
+}
+
+impl<'r> MapWalker<'r> {
+    pub(crate) fn new(map: Spanned<Map>, reporter: &'r Reporter) -> Self {
+        Self { map, reporter }
+    }
+
+    pub(crate) fn take<T>(&mut self, key: &str) -> Result<Spanned<T>>
+    where
+        T: TryFrom<ValueKind, Error = TypeError>,
+    {
+        match self.map.value.remove(key) {
+            Some(value) => convert(value, self.reporter),
+            None => Err(Diagnostic::error()
+                .code(Code::E802)
+                .message(format!("the map is missing the key `{key}`"))
+                .primary_span(&self.map)
+                .report(self.reporter)),
+        }
+    }
+
+    pub(crate) fn take_optional<T>(&mut self, key: &str) -> Result<Option<Spanned<T>>>
+    where
+        T: TryFrom<ValueKind, Error = TypeError>,
+    {
+        match self.map.value.remove(key) {
+            Some(value) => convert(value, self.reporter).map(Some),
+            None => Ok(None),
+        }
+    }
+
+    // pub(crate) fn parse_optional<T, U, F>(
+    //     &mut self,
+    //     key: &str,
+    //     parser: F,
+    // ) -> Result<Option<Spanned<U>>>
+    // where
+    //     T: TryFrom<ValueKind, Error = TypeError>,
+    //     F: FnOnce(Spanned<T>) -> Result<Spanned<U>>,
+    // {
+    //     self.take_optional(key)
+    //         .and_then(|value| value.map(parser).transpose())
+    // }
+
+    pub(crate) fn exhaust(self) -> Result<Span> {
+        if !self.map.value.is_empty() {
+            for key in self.map.value.into_keys() {
+                // @Task improve message
+                Diagnostic::error()
+                    .code(Code::E801)
+                    .message(format!("the map contains the unknown key `{key}`"))
+                    .primary_span(key)
+                    .report(self.reporter);
+            }
+
+            return Err(ErrorReported::new_unchecked());
+        }
+
+        Ok(self.map.span)
+    }
 }

@@ -41,9 +41,8 @@ use super::{
 use crate::{
     diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
     error::Result,
-    format::{ordered_listing, Conjunction},
-    span::{SharedSourceMap, SourceFileIndex, Span, Spanned, Spanning},
-    utility::SmallVec,
+    span::{SourceFileIndex, SourceMapCell, Span, Spanned, Spanning},
+    utility::{Conjunction, OrderedListingExt, SmallVec},
 };
 use std::{any::TypeId, default::default};
 
@@ -59,11 +58,11 @@ const STANDARD_DECLARATION_DELIMITERS: [Delimiter; 3] = {
 const BRACKET_POTENTIAL_PI_TYPE_LITERAL: &str =
     "add round brackets around the potential pi type literal to disambiguate the expression";
 
-/// Parse the file of a root module.
+/// Parse the file of a root module / component root.
 pub fn parse_root_module_file(
     tokens: &[Token],
     file: SourceFileIndex,
-    map: SharedSourceMap,
+    map: SourceMapCell,
     reporter: &Reporter,
 ) -> Result<Declaration> {
     // @Beacon @Task don't unwrap to_str here but handle the error correctly
@@ -100,7 +99,7 @@ pub(crate) fn parse_module_file(
     tokens: &[Token],
     file: SourceFileIndex,
     binder: Identifier,
-    map: SharedSourceMap,
+    map: SourceMapCell,
     reporter: &Reporter,
 ) -> Result<Declaration> {
     Parser::new(tokens, file, map, reporter).parse_top_level(binder)
@@ -110,7 +109,7 @@ pub(crate) fn parse_module_file(
 pub(super) fn parse_path(
     tokens: &[Token],
     file: SourceFileIndex,
-    map: SharedSourceMap,
+    map: SourceMapCell,
     reporter: &Reporter,
 ) -> Result<Path> {
     Parser::new(tokens, file, map, reporter).parse_path()
@@ -125,7 +124,7 @@ struct Parser<'a> {
     file: SourceFileIndex,
     look_ahead: u16,
     index: usize,
-    map: SharedSourceMap,
+    map: SourceMapCell,
     reporter: &'a Reporter,
 }
 
@@ -133,7 +132,7 @@ impl<'a> Parser<'a> {
     fn new(
         tokens: &'a [Token],
         file: SourceFileIndex,
-        map: SharedSourceMap,
+        map: SourceMapCell,
         reporter: &'a Reporter,
     ) -> Self {
         Self {
@@ -177,7 +176,7 @@ impl<'a> Parser<'a> {
 
             // @Note I am not really happy with this: if we are not "looking ahead", we won't actually
             // emit an error @Task smh change the error type to reflect the semantics
-            Err(ErrorReported::error_will_be_reported_unchecked())
+            Err(ErrorReported::new_unchecked())
         }
 
         error(self, diagnostic).map(|okay| okay)
@@ -2027,7 +2026,7 @@ impl fmt::Display for Expected {
             Parameter => write!(f, "parameter"),
             AttributeArgument => write!(f, "attribute argument"),
             Delimiter(delimiter) => write!(f, "{}", delimiter),
-            OneOf(expected) => write!(f, "{}", ordered_listing(expected.iter(), Conjunction::Or)),
+            OneOf(expected) => write!(f, "{}", expected.iter().list_in_order(Conjunction::Or)),
         }
     }
 }

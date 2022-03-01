@@ -1,16 +1,14 @@
-use std::collections::BTreeMap;
-
 use super::{
     lexer::{
         Token,
         TokenName::{self, *},
     },
-    Value, ValueKind,
+    Map, Value, ValueKind,
 };
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     error::{Health, OkIfUntaintedExt, ReportedExt, Result},
-    span::{SharedSourceMap, SourceFileIndex, Span, Spanning, WeaklySpanned},
+    span::{SourceFileIndex, SourceMapCell, Span, Spanning, WeaklySpanned},
 };
 
 #[cfg(test)]
@@ -21,7 +19,7 @@ pub(super) struct Parser<'a> {
     tokens: &'a [Token],
     index: usize,
     health: Health,
-    map: SharedSourceMap,
+    map: SourceMapCell,
     reporter: &'a Reporter,
 }
 
@@ -29,7 +27,7 @@ impl<'a> Parser<'a> {
     pub(super) fn new(
         file: SourceFileIndex,
         tokens: &'a [Token],
-        map: SharedSourceMap,
+        map: SourceMapCell,
         reporter: &'a Reporter,
     ) -> Self {
         Self {
@@ -130,11 +128,11 @@ impl<'a> Parser<'a> {
         match self.current_token().name() {
             False => {
                 self.advance();
-                Ok(Value::new(span, ValueKind::Bool(false)))
+                Ok(Value::new(span, ValueKind::Boolean(false)))
             }
             True => {
                 self.advance();
-                Ok(Value::new(span, ValueKind::Bool(true)))
+                Ok(Value::new(span, ValueKind::Boolean(true)))
             }
             Text => {
                 // @Task avoid cloning!
@@ -211,7 +209,7 @@ impl<'a> Parser<'a> {
         span.merging(self.current_token());
         self.advance();
 
-        Ok(Value::new(span, ValueKind::Array(elements)))
+        Ok(Value::new(span, ValueKind::List(elements)))
     }
 
     /// Finish parsing a map.
@@ -234,11 +232,8 @@ impl<'a> Parser<'a> {
         Ok(Value::new(span, ValueKind::Map(map)))
     }
 
-    fn parse_map_entries(
-        &mut self,
-        delimiter: TokenName,
-    ) -> Result<BTreeMap<WeaklySpanned<String>, Value>> {
-        let mut map = BTreeMap::<WeaklySpanned<String>, Value>::default();
+    fn parse_map_entries(&mut self, delimiter: TokenName) -> Result<Map> {
+        let mut map = Map::default();
 
         while self.current_token().name() != delimiter {
             let (key, value) = self.parse_map_entry()?;

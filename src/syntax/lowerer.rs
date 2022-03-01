@@ -35,9 +35,8 @@ use super::{
 use crate::{
     diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
     error::{Health, OkIfUntaintedExt, PossiblyErroneous, Result, Stain},
-    format::{ordered_listing, Conjunction, IOError, QuoteExt},
-    span::{SharedSourceMap, SourceMap, Span, Spanning},
-    utility::{Atom, SmallVec, Str},
+    span::{SourceMap, SourceMapCell, Span, Spanning},
+    utility::{Atom, Conjunction, IOError, OrderedListingExt, QuoteExt, SmallVec, Str},
 };
 use smallvec::smallvec;
 use std::{default::default, iter::once};
@@ -46,7 +45,7 @@ use std::{default::default, iter::once};
 pub fn lower_file(
     declaration: ast::Declaration,
     options: Options,
-    map: SharedSourceMap,
+    map: SourceMapCell,
     reporter: &Reporter,
 ) -> Result<lowered_ast::Declaration> {
     let mut lowerer = Lowerer::new(options, map, reporter);
@@ -58,13 +57,13 @@ pub fn lower_file(
 /// The state of the lowering pass.
 struct Lowerer<'a> {
     options: Options,
-    map: SharedSourceMap,
+    map: SourceMapCell,
     reporter: &'a Reporter,
     health: Health,
 }
 
 impl<'a> Lowerer<'a> {
-    fn new(options: Options, map: SharedSourceMap, reporter: &'a Reporter) -> Self {
+    fn new(options: Options, map: SourceMapCell, reporter: &'a Reporter) -> Self {
         Self {
             options,
             map,
@@ -945,12 +944,10 @@ impl<'a> Lowerer<'a> {
             let attributes = attributes.filter(query).collect::<Vec<_>>();
 
             if attributes.len() > 1 {
-                let listing = ordered_listing(
-                    attributes
-                        .iter()
-                        .map(|attribute| attribute.value.name().to_str().quote()),
-                    Conjunction::And,
-                );
+                let listing = attributes
+                    .iter()
+                    .map(|attribute| attribute.value.name().to_str().quote())
+                    .list_in_order(Conjunction::And);
 
                 return Err(Diagnostic::error()
                     .code(Code::E014)
@@ -1283,13 +1280,13 @@ impl lowered_ast::AttributeKind {
                 if let AttributeParsingError::UndefinedAttribute(binder) = error {
                     Diagnostic::error()
                         .code(Code::E011)
-                        .message(format!("attribute `{binder}` does not exist"))
+                        .message(format!("the attribute `{binder}` is not defined"))
                         .primary_span(&binder)
                         .report(reporter)
                 } else {
                     // @Task avoid this unchecked call by smh getting the token from above
                     // E019 was reported above
-                    ErrorReported::error_will_be_reported_unchecked()
+                    ErrorReported::new_unchecked()
                 }
             })
             .and_then(|attributes| Result::ok_if_untainted(attributes, health))
@@ -1444,7 +1441,7 @@ impl lowered_ast::attributes::Lint {
     fn parse(binder: Path, reporter: &Reporter) -> Result<Self, AttributeParsingError> {
         Diagnostic::error()
             .code(Code::E018)
-            .message(format!("lint `{}` does not exist", binder))
+            .message(format!("the lint `{}` is not defined", binder))
             .primary_span(binder.span())
             .report(reporter);
         Err(AttributeParsingError::Unrecoverable)
@@ -1531,7 +1528,7 @@ enum AnnotationTarget<'a> {
 }
 
 impl AnnotationTarget<'_> {
-    fn name(&self) -> &'static str {
+    const fn name(&self) -> &'static str {
         match self {
             Self::Parameter(_) => "parameter",
             Self::Declaration(_) => "declaration",

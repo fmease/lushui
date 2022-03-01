@@ -1,11 +1,17 @@
 //! The documentation generator.
 
+// @Task instead of showing all components in the session in the left pane, have two sections:
+//     (1) the dependencies of the target(s) (formerly known as "goals")
+//     (2) the dependencies of the component currently viewed
+// If one currently views the docs of a target (that is most of the time), they are identical (duh)
+// and obviously, only show the list once. Don't show empty sections (obviously)
+
 use crate::{
+    component::{Component, ComponentMetadata, ComponentType},
     diagnostics::Reporter,
     error::Result,
     hir::{self, LocalDeclarationIndex},
-    package::{BuildSession, ComponentMetadata, ComponentType},
-    resolver::Component,
+    session::BuildSession,
     syntax::{
         ast,
         lowered_ast::{

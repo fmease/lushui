@@ -1,12 +1,12 @@
 use super::{ast::Identifier, lexer, token::TokenKind};
 use crate::{
-    error::outcome,
+    error::Outcome,
     span::{Spanned, Spanning},
     utility::{obtain, Atom},
 };
 use std::fmt;
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Word(Atom);
 
 impl Word {
@@ -16,7 +16,7 @@ impl Word {
 
     #[allow(clippy::result_unit_err)]
     pub fn parse(name: String) -> Result<Self, ()> {
-        let outcome!(mut tokens, health) = lexer::lex_string(name)?;
+        let Outcome!(mut tokens, health) = lexer::lex_string(name)?;
 
         if health.is_tainted() {
             return Err(());
@@ -34,6 +34,12 @@ impl Word {
 
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+impl fmt::Debug for Word {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}w", self.as_str())
     }
 }
 

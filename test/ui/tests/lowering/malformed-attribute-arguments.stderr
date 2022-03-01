@@ -1,4 +1,4 @@
-error[E018]: lint `never-gonna-be-implied` does not exist
+error[E018]: the lint `never-gonna-be-implied` is not defined
  --> ${DIRECTORY}/lowering/malformed-attribute-arguments.lushui:4:9
   |
 4 | @(allow never-gonna-be-implied)

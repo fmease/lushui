@@ -1,33 +1,145 @@
 //! The package and component resolver.
 
 use crate::{
-    diagnostics::{Code, Diagnostic, Reporter},
+    component::{Component, ComponentIndex, ComponentMetadata, ComponentType, Components},
+    diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
     error::{Health, OkIfUntaintedExt, Result},
-    format::IOError,
-    metadata::content_span_of_key,
-    resolver::Component,
-    span::{SharedSourceMap, Spanned, WeaklySpanned},
+    metadata::{key_content_span, Map},
+    session::BuildSession,
+    span::{SourceMapCell, Spanned},
     syntax::Word,
-    utility::HashMap,
-    FILE_EXTENSION,
+    utility::{HashMap, IOError},
 };
 use index_map::IndexMap;
 pub use manifest::PackageManifest;
-use manifest::PackageProfile;
-pub(crate) use manifest::{DependencyManifest, ExecutableManifest, LibraryManifest, Version};
-pub(crate) use session::BuildSession;
+use manifest::{ComponentManifest, PackageProfile, Provider};
+pub(crate) use manifest::{DependencyDeclaration, Version};
 use std::{
     default::default,
     fmt,
     ops::{Index, IndexMut},
     path::{Path, PathBuf},
-    str::FromStr,
 };
 
-pub(crate) mod session;
+mod manifest;
+
+/// Resolve all components and package dependencies of a package given the path to its folder without building anything.
+pub fn resolve_package(
+    package_path: &Path,
+    map: SourceMapCell,
+    reporter: &Reporter,
+) -> Result<(Components, BuildSession)> {
+    let package_path = match package_path.canonicalize() {
+        Ok(path) => path,
+        Err(error) => {
+            // @Task better message e.g. mention manifest
+            return Err(Diagnostic::error()
+                .message("could not load the package")
+                .note(IOError(error, package_path).to_string())
+                .report(reporter));
+        }
+    };
+
+    let mut queue = BuildQueue::new(map, reporter);
+    queue.resolve_package(&package_path)?;
+    Ok(queue.finalize())
+}
+
+/// Resolve the components and dependencies of a file given its path without building anything.
+pub fn resolve_file(
+    file_path: &Path,
+    component_type: ComponentType,
+    no_core: bool,
+    map: SourceMapCell,
+    reporter: &Reporter,
+) -> Result<(Components, BuildSession)> {
+    let file_path = match file_path.canonicalize() {
+        Ok(path) => path,
+        Err(error) => {
+            // @Task better message
+            return Err(Diagnostic::error()
+                .message("could not load the file")
+                .note(IOError(error, file_path).to_string())
+                .report(reporter));
+        }
+    };
+
+    let mut queue = BuildQueue::new(map, reporter);
+    queue.resolve_file(file_path, component_type, no_core)?;
+    Ok(queue.finalize())
+}
+
+/// A collection of components and some metadata.
+///
+/// More concretely, it consists of zero or more executable components
+/// and of zero or one library component but of always at least one component.
+/// The most important metadatum is the list of dependencies (external components).
+#[derive(Debug)]
+pub struct Package {
+    /// The name of the package.
+    ///
+    /// The library and the default executable component share this name
+    /// unless overwritten in their manifests.
+    pub name: Word,
+    /// The file or folder path of the package.
+    ///
+    /// For single-file packages, this points to a file.
+    /// For normal packages, it points to the package folder
+    /// which contains the package manifest.
+    // @Beacon @Task make this of type PackagePath,
+    // enum PackageLocation { NormalPackage(PathBuf), SingleFilePackage(PathBuf) }
+    pub path: PathBuf,
+    #[allow(dead_code)]
+    pub(crate) version: Version,
+    pub(crate) description: String,
+    components: HashMap<Word, PossiblyUnresolved<ComponentIndex>>,
+}
+
+impl Package {
+    fn from_manifest(profile: PackageProfile, path: PathBuf) -> Self {
+        Package {
+            name: profile.name.value,
+            path,
+            version: profile.version.value,
+            description: profile
+                .description
+                .map(|description| description.value)
+                .unwrap_or_default(),
+            components: HashMap::default(),
+        }
+    }
+
+    fn file(name: Word, path: PathBuf) -> Self {
+        Self {
+            name,
+            path,
+            version: Version("0.0.0".to_owned()),
+            description: String::new(),
+            components: HashMap::default(),
+        }
+    }
+
+    /// Test if this package is the standard library `core`.
+    pub(crate) fn is_core(&self) -> bool {
+        self.path == core_package_path()
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum PossiblyUnresolved<T> {
+    Unresolved,
+    Resolved(T),
+}
 
 #[derive(PartialEq, Eq, Clone, Copy, index_map::Index)]
-pub struct PackageIndex(pub(crate) usize);
+pub struct PackageIndex(usize);
+
+impl PackageIndex {
+    #[cfg(test)]
+    pub(crate) const fn new_unchecked(index: usize) -> Self {
+        Self(index)
+    }
+}
 
 impl fmt::Debug for PackageIndex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -35,16 +147,16 @@ impl fmt::Debug for PackageIndex {
     }
 }
 
-pub struct BuildQueue<'r> {
+struct BuildQueue<'r> {
     /// The components which have not been built yet.
-    components: IndexMap<ComponentIndex, Component>,
+    components: Components,
     packages: IndexMap<PackageIndex, Package>,
-    map: SharedSourceMap,
+    map: SourceMapCell,
     reporter: &'r Reporter,
 }
 
 impl<'r> BuildQueue<'r> {
-    pub fn new(map: SharedSourceMap, reporter: &'r Reporter) -> Self {
+    fn new(map: SourceMapCell, reporter: &'r Reporter) -> Self {
         Self {
             components: default(),
             packages: default(),
@@ -55,275 +167,8 @@ impl<'r> BuildQueue<'r> {
 }
 
 impl BuildQueue<'_> {
-    // @Note this does not scale to single-file packages with --extern dependencies
-    fn enqueue_dependencies(
-        &mut self,
-        package_index: PackageIndex,
-    ) -> Result<HashMap<Word, ComponentIndex>> {
-        let package_path = &self[package_index].path.clone();
-        let mut resolved_dependencies = HashMap::default();
-        let mut health = Health::Untainted;
-
-        let dependencies = match self[package_index].dependency_manifest.clone() {
-            Some(dependencies) => dependencies.value,
-            None => return Ok(resolved_dependencies),
-        };
-
-        for (dependency_exonym, unresolved_dependency) in &dependencies {
-            let mut dependency_path = match &unresolved_dependency.value.path {
-                // @Note this won't scale to `--extern=NAME:REL_PATH` (for single-file packages)
-                // since the package_path points to a file, not a folder and the REL_PATH
-                // should be relative to CWD
-                Some(path) => package_path.join(&path.value),
-                None => distributed_packages_path().join(dependency_exonym.value.as_str()),
-            };
-
-            if let Ok(path) = dependency_path.canonicalize() {
-                // error case handled later via `SourceMap::load` for uniform error messages and to achieve DRY
-                // @Update ^^^ we no longer have that formatting code in place, can we improve this?
-                dependency_path = path;
-
-                if let Some(dependency) = self
-                    .packages
-                    .values()
-                    .find(|package| package.path == dependency_path)
-                {
-                    if !dependency.is_fully_resolved {
-                        let map = self.map.borrow();
-
-                        // @Note the message does not scale to more complex cycles (e.g. a cycle of three packages)
-                        // @Task provide more context for transitive dependencies of the goal component
-                        // @Task code
-                        return Err(Diagnostic::error()
-                            .message(format!(
-                                "the packages `{}` and `{}` are circular",
-                                self[package_index].name, dependency.name
-                            ))
-                            .primary_span(content_span_of_key(dependency_exonym, &map))
-                            .primary_span(
-                                // @Beacon @Bug probably does not work if exonym != endonym (but that can be fixed easily!)
-                                content_span_of_key(
-                                    dependency
-                                        .dependency_manifest
-                                        .as_ref()
-                                        .unwrap()
-                                        .value
-                                        .keys()
-                                        .find(|key| key.value == self[package_index].name)
-                                        .unwrap(),
-                                    &map,
-                                ),
-                            )
-                            .report(self.reporter));
-                    }
-
-                    // deduplicating packages by absolute path
-                    resolved_dependencies.insert(
-                        dependency_exonym.value.clone(),
-                        dependency.library.ok_or_else(|| {
-                            // @Question is this reachable?
-                            // my past self wrote yes if some specific (?) could not be loaded
-                            // since we just continue in this case
-                            Diagnostic::dependent_package_does_not_contain_a_library(
-                                dependency.name.as_str(),
-                                self[package_index].name.as_str(),
-                            )
-                            .report(self.reporter)
-                        })?,
-                    );
-                    continue;
-                }
-            }
-
-            let dependency_manifest_path = dependency_path.join(PackageManifest::FILE_NAME);
-            let file = self.map.borrow_mut().load(dependency_manifest_path.clone());
-            let dependency_manifest_file = match file {
-                Ok(file) => file,
-                Err(error) => {
-                    // @Task provide more context for transitive dependencies of the goal component
-                    // @Question code?
-                    let diagnostic = Diagnostic::error()
-                        .message(format!(
-                            "could not load the dependency `{dependency_exonym}`",
-                        ))
-                        .note(IOError(error, &dependency_manifest_path).to_string());
-                    let diagnostic = match &unresolved_dependency.value.path {
-                        Some(path) => diagnostic.primary_span(path.span.trim(1)), // trimming quotes
-                        None => diagnostic.primary_span(content_span_of_key(
-                            dependency_exonym,
-                            &self.map.borrow(),
-                        )),
-                    };
-                    diagnostic.report(self.reporter);
-                    health.taint();
-                    continue;
-                }
-            };
-
-            let dependency_manifest =
-                PackageManifest::parse(dependency_manifest_file, self.map.clone(), self.reporter)?;
-
-            let alleged_dependency_endonym = unresolved_dependency
-                .value
-                .name
-                .as_ref()
-                .map_or(&dependency_exonym.value, |name| &name.value);
-
-            if alleged_dependency_endonym != &dependency_manifest.profile.name.value {
-                // @Task @Beacon @Beacon @Beacon improve error message
-                // @Beacon @Beacon @Task span information
-                // @Task use primary span (endonym here (key `name` or map key)) &
-                // secondary span (endonym in the dependency's package manifest file)
-                // @Task branch on existence of the key `name`
-                // @Task maybe instead of returning early, we could just go forwards with the the exonym
-                return Err(Diagnostic::error()
-                    .message("library name does not match")
-                    .report(self.reporter));
-            }
-
-            // @Task assert version requirement (if any) is fulfilled
-
-            let dependency_package = Package::from_manifest(
-                dependency_manifest.profile,
-                dependency_manifest.components.dependencies,
-                dependency_path,
-            );
-            let dependency_package = self.packages.insert(dependency_package);
-
-            // @Note we probably need to disallow referencing the same package through different
-            // names from the same package to be able to generate a correct lock-file
-            let resolved_transitive_dependencies = self.enqueue_dependencies(dependency_package)?;
-
-            self.resolve_library_manifest(
-                dependency_package,
-                dependency_manifest.components.library,
-            );
-            self[dependency_package].dependencies = resolved_transitive_dependencies;
-            self[dependency_package].is_fully_resolved = true;
-
-            resolved_dependencies.insert(
-                dependency_exonym.value.clone(),
-                self[dependency_package].library.ok_or_else(|| {
-                    Diagnostic::dependent_package_does_not_contain_a_library(
-                        self[dependency_package].name.as_str(),
-                        self[package_index].name.as_str(),
-                    )
-                    .report(self.reporter)
-                })?,
-            );
-        }
-
-        Result::ok_if_untainted(resolved_dependencies, health)
-    }
-
-    fn add_component(
-        &mut self,
-        meta: impl FnOnce(ComponentIndex) -> ComponentMetadata,
-    ) -> ComponentIndex {
-        self.components
-            .insert_with(|index| Component::new(meta(index)))
-    }
-
-    fn resolve_library_manifest(
-        &mut self,
-        package: PackageIndex,
-        library: Option<Spanned<LibraryManifest>>,
-    ) -> bool {
-        let path = &self[package].path;
-        let default_library_path = path.join(ComponentType::Library.default_root_file_path());
-
-        let path = match library {
-            Some(library) => Some(
-                library
-                    .value
-                    .path
-                    .map_or(default_library_path, |path| path.value),
-            ),
-            None => default_library_path.exists().then(|| default_library_path),
-        };
-
-        // @Task use `library.name` if available once implemented
-        let name = self[package].name.clone();
-
-        let package_contains_library = path.is_some();
-
-        if let Some(path) = path {
-            let index = self.add_component(|index| {
-                ComponentMetadata::new(name, index, package, path, ComponentType::Library)
-            });
-            self[package].library = Some(index);
-        }
-
-        package_contains_library
-    }
-
-    fn resolve_executable_manifest(
-        &mut self,
-        package: PackageIndex,
-        executable: Option<Spanned<ExecutableManifest>>,
-    ) -> bool {
-        let path = &self[package].path;
-        let default_executable_path = path.join(ComponentType::Executable.default_root_file_path());
-
-        // @Beacon @Task also find other binaries in source/binaries/
-        let paths = match executable {
-            Some(executable) => vec![executable
-                .value
-                .path
-                .map_or(default_executable_path, |path| path.value)],
-            None => match default_executable_path.exists() {
-                true => vec![default_executable_path],
-                false => Vec::new(),
-            },
-        };
-
-        // @Task use `executable.name` if available once implemented
-        let mut name = Some(self[package].name.clone());
-
-        let package_contains_executables = !paths.is_empty();
-
-        for path in paths {
-            let index = self.add_component(|index| {
-                ComponentMetadata::new(
-                    name.take()
-                        .expect("multiple executables in a single package not yet implemented"),
-                    index,
-                    package,
-                    path,
-                    ComponentType::Executable,
-                )
-            });
-            self[package].executables.push(index);
-        }
-
-        package_contains_executables
-    }
-
-    fn resolve_library_and_executable_manifests(
-        &mut self,
-        package: PackageIndex,
-        library: Option<Spanned<LibraryManifest>>,
-        executable: Option<Spanned<ExecutableManifest>>,
-    ) -> Result {
-        let package_contains_library = self.resolve_library_manifest(package, library);
-        let package_contains_executables = self.resolve_executable_manifest(package, executable);
-
-        if !(package_contains_library || package_contains_executables) {
-            // @Task provide more context for transitive dependencies of the goal component
-            // @Task code
-            return Err(Diagnostic::error()
-                .message(format!(
-                    "the package `{}` does not contain a library or any executables",
-                    self[package].name,
-                ))
-                .report(self.reporter));
-        }
-
-        Ok(())
-    }
-
-    pub fn process_package(&mut self, path: &Path) -> Result {
-        let manifest_path = path.join(PackageManifest::FILE_NAME);
+    fn resolve_package(&mut self, package_path: &Path) -> Result {
+        let manifest_path = package_path.join(PackageManifest::FILE_NAME);
         let manifest_file = match self.map.borrow_mut().load(manifest_path.clone()) {
             Ok(file) => file,
             Err(error) => {
@@ -336,46 +181,86 @@ impl BuildQueue<'_> {
         };
 
         let manifest = PackageManifest::parse(manifest_file, self.map.clone(), self.reporter)?;
-        let package = Package::from_manifest(
-            manifest.profile,
-            manifest.components.dependencies,
-            path.to_owned(),
-        );
+        let package = Package::from_manifest(manifest.profile, package_path.to_owned());
         let package = self.packages.insert(package);
 
-        // @Note we probably need to disallow referencing the same package through different
-        // names from the same package to be able to generate a correct lock-file
-        let resolved_dependencies = self.enqueue_dependencies(package)?;
+        let mut health = Health::Untainted;
 
-        self.resolve_library_and_executable_manifests(
-            package,
-            manifest.components.library,
-            manifest.components.executable,
-        )?;
-        self[package].dependencies = resolved_dependencies;
-        self[package].is_fully_resolved = true;
+        // @Beacon @Beacon @Beacon @Task we don't to unconditionally loop through all those components,
+        // I *think*, only those that are relevant: this is driven by the CLI: Esp. if the users passes
+        // certain flag (cf. --exe, --lib etc. flags passed to cargo build)
+        // @Note but maybe we should still check for correctness of irrelevant components, check what cargo does!
+        if let Some(components) = manifest.components {
+            for component in components.value {
+                let name = component
+                    .name
+                    .map_or_else(|| self[package].name.clone(), |name| name.value);
 
-        Ok(())
+                self[package]
+                    .components
+                    .insert(name.clone(), PossiblyUnresolved::Unresolved);
+
+                let dependencies = match self.resolve_dependencies(
+                    &name,
+                    package_path,
+                    component.dependencies.as_ref(),
+                ) {
+                    Ok(dependencies) => dependencies,
+                    Err(_) => {
+                        health.taint();
+                        continue;
+                    }
+                };
+
+                let component = self.components.insert_with(|index| {
+                    Component::new(
+                        ComponentMetadata::new(
+                            name.clone(),
+                            index,
+                            package,
+                            component
+                                .path
+                                .map(|relative_path| package_path.join(relative_path)),
+                            component.type_.value,
+                        ),
+                        dependencies,
+                    )
+                });
+
+                self[package]
+                    .components
+                    .insert(name, PossiblyUnresolved::Resolved(component));
+            }
+        }
+
+        Result::ok_if_untainted((), health)
     }
 
-    pub fn process_single_file_package(
+    fn resolve_file(
         &mut self,
-        path: PathBuf,
+        file_path: PathBuf,
         component_type: ComponentType,
         no_core: bool,
     ) -> Result {
         // package *and* component name
-        let name = parse_component_name_from_file_path(&path, self.reporter)?;
+        let name = parse_component_name_from_file_path(&file_path, self.reporter)?;
 
-        let package = Package::single_file_package(name.clone(), path.clone());
+        let package = Package::file(name.clone(), file_path.clone());
         let package = self.packages.insert(package);
 
-        let mut resolved_dependencies = HashMap::default();
+        self[package]
+            .components
+            .insert(name.clone(), PossiblyUnresolved::Unresolved);
+
+        let mut dependencies = HashMap::default();
 
         if !no_core {
-            let core_path = core_package_path();
+            // @Note this currently duplicates a lot of stuff from Self::resolve_dependencies
+            // in fact, all the logic was copied over from there and manually adjusted
+            // @Task abstract over this
 
-            let core_manifest_path = core_path.join(PackageManifest::FILE_NAME);
+            let core_package_path = core_package_path();
+            let core_manifest_path = core_package_path.join(PackageManifest::FILE_NAME);
             let core_manifest_file = match self.map.borrow_mut().load(core_manifest_path.clone()) {
                 Ok(file) => file,
                 Err(error) => {
@@ -389,84 +274,402 @@ impl BuildQueue<'_> {
 
             let core_manifest =
                 PackageManifest::parse(core_manifest_file, self.map.clone(), self.reporter)?;
-            let core_package = Package::from_manifest(
-                core_manifest.profile,
-                core_manifest.components.dependencies,
-                core_path,
-            );
+            let core_package =
+                Package::from_manifest(core_manifest.profile, core_package_path.clone());
             let core_package = self.packages.insert(core_package);
 
-            // @Note we probably need to disallow referencing the same package through different
-            // names from the same package to be able to generate a correct lock-fil
-            let resolved_transitive_core_dependencies = self.enqueue_dependencies(core_package)?;
+            let core_package_name = core_package_name();
+            let library = self.resolve_primary_library(core_manifest.components.as_ref())?;
 
-            self.resolve_library_manifest(core_package, core_manifest.components.library);
-            self[core_package].dependencies = resolved_transitive_core_dependencies;
-            self[core_package].is_fully_resolved = true;
+            self[core_package]
+                .components
+                .insert(core_package_name.clone(), PossiblyUnresolved::Unresolved);
 
-            resolved_dependencies.insert(core_package_name(), self[core_package].library.unwrap());
+            let transitive_dependencies = match self.resolve_dependencies(
+                &core_package_name,
+                &core_package_path,
+                library.dependencies.as_ref(),
+            ) {
+                Ok(dependencies) => dependencies,
+                Err(_) => {
+                    return Err(ErrorReported::new_unchecked());
+                }
+            };
+
+            let library = self.components.insert_with(|index| {
+                Component::new(
+                    ComponentMetadata::new(
+                        core_package_name.clone(),
+                        index,
+                        core_package,
+                        library
+                            .path
+                            .as_ref()
+                            .map(|relative_path| core_package_path.join(relative_path)),
+                        library.type_.value,
+                    ),
+                    transitive_dependencies,
+                )
+            });
+
+            self[core_package].components.insert(
+                core_package_name.clone(),
+                PossiblyUnresolved::Resolved(library),
+            );
+
+            dependencies.insert(core_package_name, library);
         }
 
-        let component = self.add_component(|index| {
-            ComponentMetadata::new(name, index, package, path, component_type)
+        let component = self.components.insert_with(|index| {
+            Component::new(
+                ComponentMetadata::new(
+                    name.clone(),
+                    index,
+                    package,
+                    Spanned::new(default(), file_path),
+                    component_type,
+                ),
+                dependencies,
+            )
         });
-        let package = &mut self[package];
-        package.executables.push(component);
-        package.dependencies = resolved_dependencies;
-        package.is_fully_resolved = true;
+
+        self[package]
+            .components
+            .insert(name, PossiblyUnresolved::Resolved(component));
 
         Ok(())
     }
 
-    pub fn finalize(mut self) -> (BuildSession, IndexMap<ComponentIndex, Component>) {
-        // @Note this is not extensible to multiple executable components
-        let goal_component = self.components.last().unwrap();
-        let goal_component_index = goal_component.index();
-        let goal_package = &self.packages[goal_component.metadata.package];
-        let goal_package_index = goal_component.metadata.package;
-        let is_homonymous = |&component: &ComponentIndex| {
-            goal_component.name() == self.components[component].name()
+    // @Beacon @Task implement sublibraries!
+    fn resolve_dependencies(
+        &mut self,
+        component_name: &Word,
+        package_path: &Path,
+        dependencies: Option<&Spanned<Map<Word, Spanned<DependencyDeclaration>>>>,
+    ) -> Result<HashMap<Word, ComponentIndex>> {
+        let Some(dependencies) = dependencies else {
+            return Ok(HashMap::default());
         };
 
-        let library_lookalike = goal_package
-            .library
-            .filter(|_| goal_component.is_executable())
-            .filter(is_homonymous);
-        // @Note this is not extensible to multiple executable components
-        let executable_lookalike = goal_package
-            .executables
-            .get(0)
-            .copied()
-            .filter(|_| goal_component.is_library())
-            .filter(is_homonymous);
+        let mut resolved_dependencies = HashMap::default();
+        let mut health = Health::Untainted;
 
-        if let Some(lookalike) = library_lookalike.or(executable_lookalike) {
-            self.components[goal_component_index]
-                .metadata
-                .is_ambiguously_named_within_package = true;
-            self.components[lookalike]
-                .metadata
-                .is_ambiguously_named_within_package = true;
+        for (dependency_exonym, dependency_declaration) in &dependencies.value {
+            let Ok(mut dependency_path) = self.resolve_dependency_declaration(
+                &dependency_declaration,
+                &dependency_exonym.value,
+                &package_path,
+            ) else {
+                health.taint();
+                continue;
+            };
+
+            // deduplicate packages by absolute path and check for circular components
+            if let Ok(path) = dependency_path.canonicalize() {
+                // error case handled later via `SourceMap::load` for uniform error messages and to achieve DRY
+                // @Update ^^^ we no longer have that formatting code in place, can we improve this?
+                dependency_path = path;
+
+                if let Some(dependency) = self
+                    .packages
+                    .values()
+                    .find(|package| package.path == dependency_path)
+                {
+                    // @Note we cannot handle sublibraries yet (secondary libraries)
+                    // only find the primary library for now
+                    // @Beacon @Beacon @Beacon @Bug very much not correct! @Task properly find the (primary)
+                    // library in the already-resolved package `dependency`
+                    // @Beacon @Temporary panic
+                    let (_, &primary_library) = dbg!(&dependency)
+                        .components
+                        .iter()
+                        .find(|&(name, _)| name == &dependency.name)
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "already resolved package `{}` has no library",
+                                dependency.name
+                            )
+                        });
+
+                    match primary_library {
+                        PossiblyUnresolved::Resolved(primary_library) => {
+                            resolved_dependencies
+                                .insert(dependency_exonym.value.clone(), primary_library);
+                            continue;
+                        }
+                        PossiblyUnresolved::Unresolved => {
+                            let map = self.map.borrow();
+
+                            // @Note the message does not scale to more complex cycles (e.g. a cycle of three components)
+                            // @Task provide more context for transitive dependencies of the goal component
+                            // @Task code
+                            return Err(Diagnostic::error()
+                                .message(format!(
+                                    "the components `{component_name}` and `{}` are circular",
+                                    // @Task don't use the package's name but the (library) component's one!
+                                    dependency.name
+                                ))
+                                .primary_span(key_content_span(dependency_exonym, &map))
+                                // @Beacon @Beacon @Beacon @Task
+                                // .primary_span(
+                                //     // @Beacon @Bug probably does not work if exonym != endonym (but that can be fixed easily!)
+                                //     key_content_span(
+                                //         dependency
+                                //             .dependency_manifest
+                                //             .as_ref()
+                                //             .unwrap()
+                                //             .value
+                                //             .keys()
+                                //             .find(|key| key.value == self[package_index].name)
+                                //             .unwrap(),
+                                //         &map,
+                                //     ),
+                                // )
+                                .report(self.reporter));
+                        }
+                    }
+                }
+            }
+
+            let dependency_manifest_path = dependency_path.join(PackageManifest::FILE_NAME);
+            let dependency_manifest_file =
+                match self.map.borrow_mut().load(dependency_manifest_path.clone()) {
+                    Ok(file) => file,
+                    Err(error) => {
+                        // @Task provide more context for transitive dependencies of the goal component
+                        // @Question code?
+                        let diagnostic = Diagnostic::error()
+                            .message(format!(
+                                "could not load the dependency `{dependency_exonym}`",
+                            ))
+                            .note(IOError(error, &dependency_manifest_path).to_string());
+                        let diagnostic = match &dependency_declaration.value.path {
+                            Some(path) => diagnostic.primary_span(path.span.trim(1)), // trimming quotes
+                            None => diagnostic.primary_span(key_content_span(
+                                dependency_exonym,
+                                &self.map.borrow(),
+                            )),
+                        };
+                        diagnostic.report(self.reporter);
+                        health.taint();
+                        continue;
+                    }
+                };
+
+            let dependency_manifest =
+                PackageManifest::parse(dependency_manifest_file, self.map.clone(), self.reporter)?;
+
+            let alleged_dependency_endonym = dependency_declaration
+                .value
+                .name
+                .as_ref()
+                .map_or(&dependency_exonym.value, |name| &name.value);
+
+            if alleged_dependency_endonym != &dependency_manifest.profile.name.value {
+                // @Task improve error message, add highlight
+                // @Task use primary span (endonym here (key `name` or map key)) &
+                // secondary span (endonym in the dependency's package manifest file)
+                // @Task branch on existence of the key `name`
+                // @Task maybe instead of returning early, we could just go forwards with the the exonym
+                return Err(Diagnostic::error()
+                    .message("library name does not match")
+                    .report(self.reporter));
+            }
+
+            // @Task assert version requirement (if any) is fulfilled
+            // @Update just report an "unimplemented" error for now
+
+            let dependency_package =
+                Package::from_manifest(dependency_manifest.profile, dependency_path.clone());
+            let dependency_package_name = dependency_package.name.clone();
+            let dependency_package = self.packages.insert(dependency_package);
+
+            // @Note we cannot handle sublibraries yet (secondary libraries)
+            // only find the primary library for now
+            let Ok(library) =
+                self.resolve_primary_library(dependency_manifest.components.as_ref()) else {
+                    health.taint();
+                    continue;
+                };
+
+            // @Temporary procedure here (DRY! see resolve_package):
+            // @Beacon @Beacon @Beacon @Question the name of the primary library is ALWAYS
+            // the same as the package name, what are we doing here???
+            let library_name = library
+                .name
+                .as_ref()
+                .map_or(dependency_package_name, |name| name.value.clone());
+
+            self[dependency_package]
+                .components
+                .insert(library_name.clone(), PossiblyUnresolved::Unresolved);
+
+            let transitive_dependencies = match self.resolve_dependencies(
+                &library_name,
+                &dependency_path,
+                library.dependencies.as_ref(),
+            ) {
+                Ok(dependencies) => dependencies,
+                Err(_) => {
+                    health.taint();
+                    continue;
+                }
+            };
+
+            let library = self.components.insert_with(|index| {
+                Component::new(
+                    ComponentMetadata::new(
+                        library_name.clone(),
+                        index,
+                        dependency_package,
+                        library
+                            .path
+                            .as_ref()
+                            .map(|relative_path| dependency_path.join(relative_path)),
+                        library.type_.value,
+                    ),
+                    transitive_dependencies,
+                )
+            });
+
+            self[dependency_package]
+                .components
+                .insert(library_name, PossiblyUnresolved::Resolved(library));
+
+            resolved_dependencies.insert(dependency_exonym.value.clone(), library);
         }
 
-        (
-            BuildSession::new(self.packages, goal_component_index, goal_package_index),
-            self.components,
-        )
+        Result::ok_if_untainted(resolved_dependencies, health)
+    }
+
+    fn resolve_dependency_declaration(
+        &self,
+        Spanned!(declaration, span): &Spanned<DependencyDeclaration>,
+        exonym: &Word,
+        package_path: &Path,
+    ) -> Result<PathBuf> {
+        let provider = match &declaration.provider {
+            Some(provider) => provider.value,
+            // infer the provider from the other fields
+            None => {
+                if declaration.path.is_some() {
+                    Provider::Filesystem
+                } else if declaration.version.is_some() {
+                    Provider::Registry
+                } else {
+                    // @Question should we infer Package if no other fields + the current package
+                    // contains a sublibrary with the name?
+
+                    // @Task flesh out the message
+                    return Err(Diagnostic::error()
+                        .message("invalid dependency declaration")
+                        .primary_span(span)
+                        .report(self.reporter));
+                }
+            }
+        };
+
+        match provider {
+            Provider::Filesystem => match &declaration.path {
+                Some(path) => Ok(package_path.join(&path.value)),
+                // @Task improve message
+                None => Err(Diagnostic::error()
+                    .message("dependency declaration is missing field `path`")
+                    .primary_span(span)
+                    // currently always present in this branch
+                    .if_present(declaration.provider.as_ref(), |this, provider| {
+                        this.labeled_secondary_span(provider, "required by this")
+                    })
+                    .report(self.reporter)),
+            },
+            Provider::Distribution => {
+                let name = declaration.name.as_ref().map_or(exonym, |name| &name.value);
+                Ok(distributed_packages_path().join(name.as_str()))
+            }
+            Provider::Package | Provider::Git | Provider::Registry => Err(Diagnostic::error()
+                .message(format!(
+                    "dependency provider `{provider}` is not supported yet"
+                ))
+                // @Task better label! say how it was inferred!!
+                .if_(declaration.provider.is_none(), |this| {
+                    this.labeled_primary_span(span, format!("implies provider `{provider}`"))
+                })
+                .if_present(declaration.provider.as_ref(), |this, provider| {
+                    this.primary_span(provider)
+                })
+                .report(self.reporter)),
+        }
+    }
+
+    // @Task generalize to primary+secondary libraries
+    fn resolve_primary_library<'c>(
+        &self,
+        components: Option<&'c Spanned<Vec<ComponentManifest>>>,
+    ) -> Result<&'c ComponentManifest> {
+        components
+            .and_then(|components| {
+                components
+                    .value
+                    .iter()
+                    .find(|component| component.name.is_none())
+            })
+            .ok_or_else(|| {
+                // @Temporary diagnostic
+                Diagnostic::error()
+                    .message("no (primary) library found in package XXX")
+                    .report(self.reporter)
+            })
+    }
+
+    fn finalize(/*mut*/ self) -> (Components, BuildSession) {
+        // @Beacon @Beacon @Beacon @Bug no longer correct!
+        let goal_component = self.components.last().unwrap();
+        let goal_component_index = goal_component.index();
+        // let _goal_package = &self.packages[goal_component.metadata.package];
+        let goal_package_index = goal_component.metadata.package;
+        // let _is_homonymous = |&component: &ComponentIndex| {
+        //     goal_component.name() == self.components[component].name()
+        // };
+
+        // @Beacon @Beacon @Beacon @Task
+        // let library_lookalike = goal_package
+        //     .library
+        //     .filter(|_| goal_component.is_executable())
+        //     .filter(is_homonymous);
+        // // @Note this is not extensible to multiple executable components
+        // let executable_lookalike = goal_package
+        //     .executables
+        //     .get(0)
+        //     .copied()
+        //     .filter(|_| goal_component.is_library())
+        //     .filter(is_homonymous);
+
+        // if let Some(lookalike) = library_lookalike.or(executable_lookalike) {
+        //     self.components[goal_component_index]
+        //         .metadata
+        //         .is_ambiguously_named_within_package = true;
+        //     self.components[lookalike]
+        //         .metadata
+        //         .is_ambiguously_named_within_package = true;
+        // }
+
+        let session = BuildSession::new(self.packages, goal_component_index, goal_package_index);
+
+        (self.components, session)
     }
 }
 
-impl Diagnostic {
-    fn dependent_package_does_not_contain_a_library(dependency: &str, dependent: &str) -> Self {
-        // @Task provide more context for transitive dependencies of the goal component
-        // @Task code
-        // @Beacon @Task span
-        // @Update better message: dependent (?) package does not contain a library
-        Self::error().message(format!(
-            "dependency `{dependency}` of `{dependent}` is not a library"
-        ))
-    }
-}
+// impl Diagnostic {
+//     fn dependent_package_does_not_contain_a_library(dependency: &str, dependent: &str) -> Self {
+//         // @Task provide more context for transitive dependencies of the goal component
+//         // @Task code
+//         // @Beacon @Task span
+//         // @Update better message: dependent (?) package does not contain a library
+//         Self::error().message(format!(
+//             "dependency `{dependency}` of `{dependent}` is not a library"
+//         ))
+//     }
+// }
 
 impl Index<ComponentIndex> for BuildQueue<'_> {
     type Output = Component;
@@ -496,59 +699,6 @@ impl IndexMut<PackageIndex> for BuildQueue<'_> {
     }
 }
 
-/// Metadata of a [component][Component].
-#[derive(Clone)]
-pub struct ComponentMetadata {
-    pub name: Word,
-    pub index: ComponentIndex,
-    pub package: PackageIndex,
-    pub path: PathBuf,
-    pub type_: ComponentType,
-    /// Indicates if the name of the library or executable component coincides with
-    /// the name of the executable[^1] or library component, respectively.
-    ///
-    /// [^1]: We haven't implemented multiple executable components per package yet.
-    pub is_ambiguously_named_within_package: bool,
-}
-
-impl ComponentMetadata {
-    pub fn new(
-        name: Word,
-        index: ComponentIndex,
-        package: PackageIndex,
-        path: PathBuf,
-        type_: ComponentType,
-    ) -> Self {
-        Self {
-            name,
-            index,
-            package,
-            path,
-            type_,
-            is_ambiguously_named_within_package: false,
-        }
-    }
-}
-
-#[derive(PartialEq, Eq, Clone, Copy, Hash)]
-pub struct ComponentIndex(pub(crate) u16);
-
-impl fmt::Debug for ComponentIndex {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}c", self.0)
-    }
-}
-
-impl index_map::Index for ComponentIndex {
-    fn new(index: usize) -> Self {
-        Self(index.try_into().unwrap())
-    }
-
-    fn value(self) -> usize {
-        self.0 as _
-    }
-}
-
 /// The path to the folder of packages shipped with the compiler.
 pub(crate) fn distributed_packages_path() -> PathBuf {
     // @Task make this configurable via CLI option & env var & config file
@@ -566,138 +716,6 @@ pub(crate) const CORE_PACKAGE_NAME: &str = "core";
 
 pub(crate) fn core_package_name() -> Word {
     Word::new_unchecked("core".into())
-}
-
-pub const DEFAULT_SOURCE_FOLDER_NAME: &str = "source";
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ComponentType {
-    Library,
-    Executable,
-}
-
-impl ComponentType {
-    pub const fn default_root_file_stem(self) -> &'static str {
-        match self {
-            Self::Library => "library",
-            Self::Executable => "main",
-        }
-    }
-
-    pub(crate) fn default_root_file_path(self) -> PathBuf {
-        Path::new(DEFAULT_SOURCE_FOLDER_NAME)
-            .join(self.default_root_file_stem())
-            .with_extension(FILE_EXTENSION)
-    }
-}
-
-impl fmt::Display for ComponentType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Library => write!(f, "library"),
-            Self::Executable => write!(f, "executable"),
-        }
-    }
-}
-
-impl FromStr for ComponentType {
-    type Err = ();
-
-    fn from_str(input: &str) -> Result<Self, Self::Err> {
-        Ok(match input {
-            "executable" => Self::Executable,
-            "library" => Self::Library,
-            _ => return Err(()),
-        })
-    }
-}
-
-/// A collection of components and some metadata.
-///
-/// More concretely, it consists of zero or more executable components
-/// and of zero or one library component but of always at least one component.
-/// The most important metadatum is the list of dependencies (external components).
-#[derive(Debug)]
-pub struct Package {
-    /// The name of the package.
-    ///
-    /// The library and the default executable component share this name
-    /// unless overwritten in their manifests.
-    pub name: Word,
-    /// The file or folder path of the package.
-    ///
-    /// For single-file packages, this points to a file.
-    /// For normal packages, it points to the package folder
-    /// which contains the package manifest.
-    // @Beacon @Task make this of type PackagePath,
-    // enum PackageLocation { NormalPackage(PathBuf), SingleFilePackage(PathBuf) }
-    pub path: PathBuf,
-    #[allow(dead_code)]
-    pub(crate) version: Option<Version>,
-    pub(crate) description: String,
-    /// States if the package is allowed to be published to a package repository.
-    #[allow(dead_code)]
-    pub(crate) is_private: bool,
-    pub(crate) library: Option<ComponentIndex>,
-    pub(crate) executables: Vec<ComponentIndex>,
-    pub(crate) dependencies: HashMap<Word, ComponentIndex>,
-    /// Indicates if the library, executable and dependency components are fully resolved.
-    ///
-    /// Packages are resolved in two steps to allow the library component and the executable
-    /// components to keep an [index to the owning package](PackageIndex) and the package to
-    /// keep [indices to its components](ComponentIndex).
-    pub(crate) is_fully_resolved: bool,
-    pub(crate) dependency_manifest:
-        Option<Spanned<HashMap<WeaklySpanned<Word>, Spanned<DependencyManifest>>>>,
-}
-
-impl Package {
-    pub(crate) fn from_manifest(
-        profile: PackageProfile,
-        dependency_manifest: Option<
-            Spanned<HashMap<WeaklySpanned<Word>, Spanned<DependencyManifest>>>,
-        >,
-        path: PathBuf,
-    ) -> Self {
-        Package {
-            name: profile.name.value,
-            path,
-            version: profile.version.map(|version| version.value),
-            description: profile
-                .description
-                .map(|description| description.value)
-                .unwrap_or_default(),
-            is_private: profile
-                .is_private
-                .map(|is_private| is_private.value)
-                .unwrap_or_default(),
-            library: None,
-            executables: Vec::new(),
-            dependencies: default(),
-            is_fully_resolved: false,
-            dependency_manifest,
-        }
-    }
-
-    pub(crate) fn single_file_package(name: Word, path: PathBuf) -> Self {
-        Self {
-            name,
-            path,
-            version: Some(Version("0.0.0".to_owned())),
-            description: String::new(),
-            is_private: true,
-            library: None,
-            executables: Vec::new(),
-            dependencies: default(),
-            is_fully_resolved: false,
-            dependency_manifest: None,
-        }
-    }
-
-    /// Test if this package is the standard library `core`.
-    pub(crate) fn is_core(&self) -> bool {
-        self.path == core_package_path()
-    }
 }
 
 pub fn find_package(path: &Path) -> Option<&Path> {
@@ -727,340 +745,11 @@ pub(crate) fn parse_component_name_from_file_path(
 
     Word::parse(name.into()).map_err(|_| {
         // @Task DRY @Question is the common code justified?
+        // @Question isn't this function used in such a way that it's
+        //     "component and package name"?
         Diagnostic::error()
             .code(Code::E036)
             .message(format!("the component name `{name}` is not a valid word"))
             .report(reporter)
     })
-}
-
-pub(crate) mod manifest {
-    use crate::{
-        diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
-        error::{Health, OkIfUntaintedExt, Result},
-        metadata::{self, content_span_of_key, convert, TypeError, Value, ValueKind},
-        span::{SharedSourceMap, SourceFileIndex, Spanned, WeaklySpanned},
-        syntax::Word,
-        utility::{try_all, HashMap},
-    };
-    use std::{collections::BTreeMap, default::default, path::PathBuf};
-
-    // @Note missing span of PackageManifest itself
-    pub struct PackageManifest {
-        pub(crate) profile: PackageProfile,
-        pub(crate) components: PackageComponents,
-    }
-
-    impl PackageManifest {
-        pub const FILE_NAME: &'static str = "package.metadata";
-
-        pub(crate) fn parse(
-            file: SourceFileIndex,
-            map: SharedSourceMap,
-            reporter: &Reporter,
-        ) -> Result<Self> {
-            let manifest = metadata::parse(file, map.clone(), reporter)?;
-
-            let manifest_span = manifest.span;
-            let mut manifest: BTreeMap<_, _> =
-                manifest.value.try_into().map_err(|error: TypeError| {
-                    Diagnostic::error()
-                        .code(Code::E800)
-                        .message(format!(
-                            "the type of the root should be {} but it is {}",
-                            error.expected, error.actual
-                        ))
-                        .labeled_primary_span(manifest_span, "has the wrong type")
-                        .report(reporter)
-                })?;
-
-            let name = metadata::remove_map_entry::<String>(
-                Spanned::new(manifest_span, &mut manifest),
-                "name",
-                None,
-                reporter,
-            )
-            .and_then(|name| {
-                // trimming the quotes
-                let span = name.span.trim(1);
-                Word::parse(name.value.clone())
-                    .map(|word| Spanned::new(span, word))
-                    .map_err(|_| {
-                        // @Task DRY, @Question is the common code justified?
-                        Diagnostic::error()
-                            .code(Code::E036)
-                            .message(format!(
-                                "the package name `{}` is not a valid word",
-                                name.value
-                            ))
-                            .primary_span(span)
-                            .report(reporter)
-                    })
-            });
-            let version = metadata::remove_optional_map_entry(&mut manifest, "version", reporter);
-            let description =
-                metadata::remove_optional_map_entry(&mut manifest, "description", reporter);
-            let is_private =
-                metadata::remove_optional_map_entry(&mut manifest, "private", reporter);
-
-            let library = match metadata::remove_optional_map_entry::<BTreeMap<_, _>>(
-                &mut manifest,
-                "library",
-                reporter,
-            ) {
-                Ok(Some(mut library)) => {
-                    let path = metadata::remove_optional_map_entry::<String>(
-                        &mut library.value,
-                        "path",
-                        reporter,
-                    );
-                    let exhaustion = metadata::check_map_is_empty(
-                        library.value,
-                        Some("library".into()),
-                        reporter,
-                    );
-
-                    // @Task try to remove the unchecked ErrorReported creation
-                    try_all! { path, exhaustion; return Err(ErrorReported::error_will_be_reported_unchecked()) };
-                    Ok(Some(Spanned::new(
-                        library.span,
-                        LibraryManifest {
-                            path: path.map(|path| path.map(PathBuf::from)),
-                        },
-                    )))
-                }
-                Ok(None) => Ok(None),
-                Err(_) => Err(()),
-            };
-
-            let executable = match metadata::remove_optional_map_entry::<BTreeMap<_, _>>(
-                &mut manifest,
-                "executable",
-                reporter,
-            ) {
-                Ok(Some(mut executable)) => {
-                    let path = metadata::remove_optional_map_entry::<String>(
-                        &mut executable.value,
-                        "path",
-                        reporter,
-                    );
-                    let exhaustion = metadata::check_map_is_empty(
-                        executable.value,
-                        Some("executable".into()),
-                        reporter,
-                    );
-
-                    // @Task try to replace the unchecked call
-                    try_all! { path, exhaustion; return Err(ErrorReported::error_will_be_reported_unchecked()) };
-                    Ok(Some(Spanned::new(
-                        executable.span,
-                        ExecutableManifest {
-                            path: path.map(|path| path.map(PathBuf::from)),
-                        },
-                    )))
-                }
-                Ok(None) => Ok(None),
-                Err(_) => Err(()),
-            };
-
-            let dependencies = match metadata::remove_optional_map_entry::<BTreeMap<_, _>>(
-                &mut manifest,
-                "dependencies",
-                reporter,
-            ) {
-                Ok(Some(dependencies)) => {
-                    let mut health = Health::Untainted;
-                    let mut parsed_dependencies = HashMap::default();
-
-                    for (dependency_name, dependency_manifest) in dependencies.value {
-                        let dependency_name = {
-                            let span = content_span_of_key(dependency_name.span, &map.borrow());
-                            match Word::parse(dependency_name.value.clone()) {
-                                Ok(word) => WeaklySpanned::new(span, word),
-                                Err(_) => {
-                                    // @Task DRY @Question is the common code justified?
-                                    Diagnostic::error()
-                                        .code(Code::E036)
-                                        .message(format!(
-                                            "the component name `{}` is not a valid word",
-                                            dependency_name.value
-                                        ))
-                                        .primary_span(span)
-                                        .report(reporter);
-                                    health.taint();
-                                    continue;
-                                }
-                            }
-                        };
-
-                        // @Task custom error message (maybe)
-                        let Ok(mut dependency_manifest) = convert::<BTreeMap<_, _>>(
-                            dependency_name.value.as_str(),
-                            dependency_manifest,
-                            reporter,
-                        ) else {
-                            health.taint();
-                            continue;
-                        };
-
-                        let version = metadata::remove_optional_map_entry::<String>(
-                            &mut dependency_manifest.value,
-                            "version",
-                            reporter,
-                        );
-                        let name: Result<Option<_>> =
-                            metadata::remove_optional_map_entry::<String>(
-                                &mut dependency_manifest.value,
-                                "name",
-                                reporter,
-                            )
-                            .and_then(|name| {
-                                name.map(|name| {
-                                    // trimming the quotes
-                                    let span = name.span.trim(1);
-                                    Word::parse(name.value.clone())
-                                        .map(|word| Spanned::new(span, word))
-                                        .map_err(|_| {
-                                            // @Task DRY, @Question common code justified?
-                                            Diagnostic::error()
-                                                .code(Code::E036)
-                                                .message(format!(
-                                                    "the component name `{}` is not a valid word",
-                                                    name.value
-                                                ))
-                                                .primary_span(span)
-                                                .report(reporter)
-                                        })
-                                })
-                                .transpose()
-                            });
-                        let path = metadata::remove_optional_map_entry::<String>(
-                            &mut dependency_manifest.value,
-                            "path",
-                            reporter,
-                        );
-
-                        // @Temporary path
-                        let exhaustion = metadata::check_map_is_empty(
-                            dependency_manifest.value,
-                            Some("dependency".into()),
-                            reporter,
-                        );
-
-                        try_all! {
-                            version, name, path, exhaustion;
-                            health.taint(); continue
-                        };
-
-                        let dependency_manifest = Spanned::new(
-                            dependency_manifest.span,
-                            DependencyManifest {
-                                version: version.map(|version| version.map(VersionRequirement)),
-                                name,
-                                path: path.map(|path| path.map(PathBuf::from)),
-                            },
-                        );
-
-                        parsed_dependencies.insert(dependency_name, dependency_manifest);
-                    }
-
-                    Result::ok_if_untainted(
-                        Some(Spanned::new(dependencies.span, parsed_dependencies)),
-                        health,
-                    )
-                }
-                Ok(None) => Ok(None),
-                Err(token) => Err(token),
-            };
-
-            metadata::check_map_is_empty(manifest, None, reporter)?;
-
-            // @Task try to get rid of the unchecked call
-            try_all! {
-                name, version, description, is_private,
-                library, executable, dependencies;
-                return Err(ErrorReported::error_will_be_reported_unchecked())
-            };
-
-            Ok(PackageManifest {
-                profile: PackageProfile {
-                    name,
-                    version: version.map(|version| version.map(Version)),
-                    description,
-                    is_private,
-                },
-                components: PackageComponents {
-                    library,
-                    executable,
-                    dependencies,
-                },
-            })
-        }
-
-        pub fn default_to_string(name: &Word) -> String {
-            fn value(value: impl Into<ValueKind>) -> Value {
-                Value::new(default(), value.into())
-            }
-
-            fn key(key: impl Into<String>) -> WeaklySpanned<String> {
-                WeaklySpanned::new(default(), key.into())
-            }
-
-            value(BTreeMap::from_iter([
-                (key("name"), value(name.as_str())),
-                (key("version"), value("0.0.0")),
-                (
-                    key("dependencies"),
-                    value(BTreeMap::from_iter([(
-                        key("core"),
-                        value(BTreeMap::default()),
-                    )])),
-                ),
-            ]))
-            .to_string()
-        }
-    }
-
-    /// Component-indepedent package information.
-    pub(crate) struct PackageProfile {
-        pub(crate) name: Spanned<Word>,
-        pub(crate) version: Option<Spanned<Version>>,
-        pub(crate) description: Option<Spanned<String>>,
-        pub(crate) is_private: Option<Spanned<bool>>,
-    }
-
-    /// Information about the components of a package.
-    pub(crate) struct PackageComponents {
-        pub(crate) library: Option<Spanned<LibraryManifest>>,
-        // @Task Vec<_>
-        pub(crate) executable: Option<Spanned<ExecutableManifest>>,
-        pub(crate) dependencies:
-            Option<Spanned<HashMap<WeaklySpanned<Word>, Spanned<DependencyManifest>>>>,
-    }
-
-    #[derive(Default)]
-    pub(crate) struct LibraryManifest {
-        // @Task pub(crate) name: Option<Spanned<ComponentName>>,
-        pub(crate) path: Option<Spanned<PathBuf>>,
-    }
-
-    #[derive(Default)]
-    pub(crate) struct ExecutableManifest {
-        // @Task pub(crate) name: Option<Spanned<ComponentName>>,
-        pub(crate) path: Option<Spanned<PathBuf>>,
-    }
-
-    #[derive(Clone, Debug)]
-    pub(crate) struct DependencyManifest {
-        #[allow(dead_code)]
-        pub(crate) version: Option<Spanned<VersionRequirement>>,
-        pub(crate) name: Option<Spanned<Word>>,
-        pub(crate) path: Option<Spanned<PathBuf>>,
-    }
-
-    #[derive(Debug)]
-    pub(crate) struct Version(pub(crate) String);
-
-    #[derive(Clone, Debug)]
-    pub(crate) struct VersionRequirement(pub(crate) String);
 }

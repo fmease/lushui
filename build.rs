@@ -3,24 +3,14 @@ use std::process::Command;
 fn main() {
     println!("cargo:rerun-if-changed=.git/index");
 
-    let git_commit_hash = String::from_utf8(
+    let git_data = String::from_utf8(
         Command::new("git")
-            .args(&["rev-parse", "HEAD"])
+            .args(&["log", "-1", "--date=short", "--pretty=format:%h %cd"])
             .output()
             .unwrap()
             .stdout,
     )
     .unwrap();
 
-    let git_commit_date = String::from_utf8(
-        Command::new("git")
-            .args(&["log", "-1", "--date=short", "--pretty=format:%cd"])
-            .output()
-            .unwrap()
-            .stdout,
-    )
-    .unwrap();
-
-    println!("cargo:rustc-env=GIT_COMMIT_HASH={}", git_commit_hash);
-    println!("cargo:rustc-env=GIT_COMMIT_DATE={}", git_commit_date);
+    println!("cargo:rustc-env=GIT_DATA={git_data}");
 }

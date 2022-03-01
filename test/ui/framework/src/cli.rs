@@ -1,6 +1,7 @@
 use clap::{Arg, Command};
 use std::{num::NonZeroUsize, path::Path, str::FromStr};
 
+// @Task get rid of this by using clap required_if or sth. similar
 const DEFAULT_NUMBER_TEST_THREADS_UNKNOWN_AVAILABLE_PARALLELISM: NonZeroUsize =
     NonZeroUsize::new(4).unwrap();
 

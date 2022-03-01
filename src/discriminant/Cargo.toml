@@ -1,8 +1,0 @@
-[package]
-name = "discriminant"
-version = "0.0.0"
-edition = "2021"
-publish = false
-
-[dependencies]
-derive = { path = "src/derive", package = "discriminant_derive" }

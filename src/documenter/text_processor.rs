@@ -1,9 +1,10 @@
 use super::{format::declaration_url_fragment, node::Node};
 use crate::{
+    component::Component,
     diagnostics::reporter::{SilentReporter, StderrReporter},
     error::Result,
-    package::BuildSession,
-    resolver::{resolve_path, Component},
+    resolver::resolve_path,
+    session::BuildSession,
     span::SourceMap,
     syntax::parse_path,
     utility::HashSet,
@@ -281,7 +282,7 @@ impl<'a> Request<'a> {
         Ok(match self {
             Request::DeclarationUrl(path) => {
                 // @Temporary
-                let map = SourceMap::shared();
+                let map = SourceMap::cell();
                 let file = map.borrow_mut().add(None, path.to_owned());
 
                 // @Task return a proper errro!!

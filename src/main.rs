@@ -4,7 +4,7 @@
     decl_macro,
     default_free_fn,
     let_else,
-    label_break_value
+    associated_type_bounds
 )]
 #![forbid(rust_2018_idioms, unused_must_use)]
 #![warn(clippy::pedantic)]
@@ -31,33 +31,27 @@
 use cli::{BuildMode, Command, PassRestriction};
 use colored::Colorize;
 use lushui::{
+    component::{Component, ComponentMetadata, ComponentType, Components},
     diagnostics::{
-        reporter::{BufferedStderrReporter, StderrReporter},
+        reporter::{BufferedStderrReporter, ErrorReported, StderrReporter},
         Code, Diagnostic, Reporter,
     },
     documenter,
     error::Result,
-    format::{DisplayWith, IOError},
-    package::{
-        find_package, BuildQueue, ComponentType, PackageManifest, DEFAULT_SOURCE_FOLDER_NAME,
-    },
+    package::{find_package, resolve_file, resolve_package, PackageManifest},
     resolver::{self, PROGRAM_ENTRY_IDENTIFIER},
-    span::{SharedSourceMap, SourceMap},
+    session::BuildSession,
+    span::{SourceMap, SourceMapCell},
     syntax::{lexer, lowerer, parser, Word},
-    typer, FILE_EXTENSION,
+    typer,
+    utility::{DisplayWith, IOError},
+    FILE_EXTENSION,
 };
-use std::time::{Duration, Instant};
+use std::io;
 
 mod cli;
 
-const VERSION: &str = concat!(
-    env!("CARGO_PKG_VERSION"),
-    " (",
-    env!("GIT_COMMIT_HASH"),
-    " ",
-    env!("GIT_COMMIT_DATE"),
-    ")"
-);
+const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " (", env!("GIT_DATA"), ")");
 
 fn main() {
     if main_().is_err() {
@@ -66,12 +60,12 @@ fn main() {
     }
 }
 
-fn main_() -> Result<(), ()> {
+fn main_() -> Result {
     set_panic_hook();
 
-    let (command, options) = cli::arguments();
+    let (command, options) = cli::arguments()?;
 
-    let map = SourceMap::shared();
+    let map = SourceMap::cell();
     let reporter = BufferedStderrReporter::new(map.clone()).into();
 
     let result = execute_command(command, options, &map, &reporter);
@@ -85,7 +79,7 @@ fn main_() -> Result<(), ()> {
             "some errors occurred but none were reported",
         );
 
-        return Err(());
+        return Err(ErrorReported::new_unchecked());
     }
 
     Ok(())
@@ -93,88 +87,30 @@ fn main_() -> Result<(), ()> {
 
 fn execute_command(
     command: Command,
-    options: cli::Options,
-    map: &SharedSourceMap,
+    global_options: cli::GlobalOptions,
+    map: &SourceMapCell,
     reporter: &Reporter,
 ) -> Result {
     use Command::*;
 
     match command {
-        Build {
-            mode,
-            options: build_options,
-        } => build_package(mode, build_options, options, map, reporter),
-        Explain => todo!(),
-        Generate {
-            mode,
-            options: generation_options,
-        } => match mode {
-            cli::GenerationMode::Initialize => todo!(),
-            cli::GenerationMode::New { package_name } => {
-                generate_package(package_name, generation_options, reporter)
-            }
-        },
-    }
-}
-
-/// Check, build or run a given package.
-fn build_package(
-    mode: cli::BuildMode,
-    build_options: cli::BuildOptions,
-    options: cli::Options,
-    map: &SharedSourceMap,
-    reporter: &Reporter,
-) -> Result {
-    let mut build_queue = BuildQueue::new(map.clone(), reporter);
-
-    let path = build_options
-        .path
-        .map(|path| {
-            path.canonicalize().map_err(|error| {
-                Diagnostic::error()
-                    // @Question code?
-                    .message("the path to the source file or the package folder is invalid")
-                    .note(IOError(error, &path).to_string())
-                    .report(reporter)
-            })
-        })
-        .transpose()?;
-
-    match path {
-        Some(path) if path.is_file() => {
-            build_queue.process_single_file_package(
-                path,
-                build_options
-                    .component_type
-                    .unwrap_or(ComponentType::Executable),
-                build_options.no_core,
-            )?;
-        }
-        path => {
-            if build_options.no_core {
-                Diagnostic::error()
-                    .message("the flag `--no-core` is only available for single-file packages")
-                    .help(
-                        "to achieve the equivalent for normal packages, make sure `core` is\n\
-                         absent from the list of dependencies in the package manifest",
-                    )
-                    .report(reporter);
-            }
-            if build_options.component_type.is_some() {
-                // @Task add help explaining the equivalent for normal packages
-                Diagnostic::error()
-                    .message(
-                        "the option `--component-type` is only available for single-file packages",
-                    )
-                    .report(reporter);
-            }
-
-            match path {
-                Some(path) => build_queue.process_package(&path)?,
+        BuildPackage { mode, options } => {
+            let (components, session) = match &options.path {
+                Some(path) => resolve_package(path, map.clone(), reporter)?,
                 None => {
-                    // @Beacon @Task dont unwrap, handle the error cases
-                    let path = std::env::current_dir().unwrap();
-                    let Some(path) = find_package(&path) else {
+                    let current_folder_path = match std::env::current_dir() {
+                        Ok(path) => path,
+                        Err(error) => {
+                            // @Task improve message
+                            // @Task more principled io::Error handling please
+                            return Err(Diagnostic::error()
+                                .message("could not read the current folder")
+                                .note(error.to_string())
+                                .report(reporter));
+                        }
+                    };
+
+                    let Some(path) = find_package(&current_folder_path) else {
                         return Err(Diagnostic::error()
                             .message(
                                 "neither the current folder nor any of its parents is a package",
@@ -185,15 +121,58 @@ fn build_package(
                             ))
                             .report(reporter));
                     };
-
-                    build_queue.process_package(path)?;
+                    resolve_package(path, map.clone(), reporter)?
                 }
             };
+
+            build_components(
+                components,
+                mode,
+                options.general,
+                global_options,
+                session,
+                map,
+                reporter,
+            )
         }
-    };
+        BuildFile { mode, options } => {
+            let (components, session) = resolve_file(
+                &options.path,
+                options.component_type.unwrap_or(ComponentType::Executable),
+                options.no_core,
+                map.clone(),
+                reporter,
+            )?;
 
-    let (mut session, unbuilt_components) = build_queue.finalize();
+            build_components(
+                components,
+                mode,
+                options.general,
+                global_options,
+                session,
+                map,
+                reporter,
+            )
+        }
+        Explain => todo!(),
+        CreatePackage { mode, options } => match mode {
+            cli::PackageCreationMode::Initialize => todo!(),
+            cli::PackageCreationMode::New { package_name } => {
+                create_package(package_name, options, reporter)
+            }
+        },
+    }
+}
 
+fn build_components(
+    components: Components,
+    mode: cli::BuildMode,
+    options: cli::BuildOptions,
+    global_options: cli::GlobalOptions,
+    mut session: BuildSession,
+    map: &SourceMapCell,
+    reporter: &Reporter,
+) -> Result {
     // @Note we don't try to handle duplicate names yet
     // cargo disallows them since its lock-file format is flat
     // npm allows them since it stores transitive dependencies in the folder
@@ -202,221 +181,250 @@ fn build_package(
     // be named exactly like the goal component
     // (analogous cases for direct and transitive dependencies follow the same way)
     // since the end user might not have control over those dependencies to patch them
-    let components: Vec<_> = unbuilt_components
+    //
+    // only used in the documenter
+    // @Task smh get rid of this (move this into session?)
+    let component_metadata: Vec<_> = components
         .values()
         .map(|component| component.metadata.clone())
         .collect();
 
-    for mut component in unbuilt_components.into_values() {
-        // @Task abstract over this as print_status_report and report w/ label="Running" for
-        // goal component if mode==Run (in addition to initial "Building")
-        if !options.quiet {
-            let label = match mode {
-                BuildMode::Check => "Checking",
-                BuildMode::Build | BuildMode::Run => "Building",
-                // @Bug this should not be printed for non-goal components and --no-deps
-                BuildMode::Document { .. } => "Documenting",
-            };
-            let label = label.green().bold();
-            // @Beacon @Task don't use package path but component path
-            let path = &component.package(&session).path.to_string_lossy();
-            // @Task print version
-            println!(
-                "   {label} {} ({path})",
-                if component.in_goal_package(&session)
-                    && component.metadata.is_ambiguously_named_within_package
-                {
-                    format!("{} ({})", component.name(), component.type_())
-                } else {
-                    component.name().to_string()
-                }
-            );
-        }
-
-        macro check_pass_restriction($restriction:expr) {
-            if component.is_goal(&session) && options.pass_restriction == Some($restriction) {
-                return Ok(());
-            }
-        }
-
-        if options.durations {
-            eprintln!("Execution times by pass:");
-        }
-
-        let file = map
-            .borrow_mut()
-            .load(component.path().to_owned())
-            .map_err(|error| {
-                // this error case can be reached with components specified in library or executable manifests
-                // @Question any other cases?
-
-                // @Task provide more context for transitive dependencies of the goal package
-                Diagnostic::error()
-                    .message(format!(
-                        "could not load {} component `{}`",
-                        component.type_(),
-                        component.name(),
-                    ))
-                    .note(IOError(error, component.path()).to_string())
-                    .report(reporter)
-            })?;
-
-        let time = Instant::now();
-
-        let tokens = lexer::lex(&map.borrow()[file], reporter)?.value;
-
-        let duration = time.elapsed();
-
-        if component.is_goal(&session) && options.emit_tokens {
-            for token in &tokens {
-                eprintln!("{token:?}");
-            }
-        }
-
-        print_pass_duration("Lexing", duration, &options);
-        check_pass_restriction!(PassRestriction::Lexer);
-        let time = Instant::now();
-
-        let component_root = parser::parse_root_module_file(&tokens, file, map.clone(), reporter)?;
-
-        let duration = time.elapsed();
-
-        if component.is_goal(&session) && options.emit_ast {
-            eprintln!("{component_root:#?}");
-        }
-
-        print_pass_duration("Parsing", duration, &options);
-        check_pass_restriction!(PassRestriction::Parser);
-        let time = Instant::now();
-
-        let lowering_options = lowerer::Options {
-            internal_features_enabled: options.internals || component.is_core_library(&session),
-            keep_documentation_comments: matches!(mode, BuildMode::Document { .. }),
-        };
-        let component_root =
-            lowerer::lower_file(component_root, lowering_options, map.clone(), reporter)?;
-        let duration = time.elapsed();
-
-        if component.is_goal(&session) && options.emit_lowered_ast {
-            eprintln!("{component_root}");
-        }
-
-        print_pass_duration("Lowering", duration, &options);
-        check_pass_restriction!(PassRestriction::Lowerer);
-        let time = Instant::now();
-        let component_root =
-            resolver::resolve_declarations(component_root, &mut component, &mut session, reporter)?;
-        let duration = time.elapsed();
-
-        if options.emit_hir {
-            eprintln!("{}", component_root.with((&component, &session)));
-        }
-        if component.is_goal(&session) && options.emit_untyped_scope {
-            eprintln!("{}", component.with(&session));
-        }
-
-        print_pass_duration("Name resolution", duration, &options);
-        check_pass_restriction!(PassRestriction::Resolver);
-        let time = Instant::now();
-        typer::check(&component_root, &mut component, &mut session, reporter)?;
-        let duration = time.elapsed();
-
-        if component.is_goal(&session) && options.emit_scope {
-            eprintln!("{}", component.with(&session));
-        }
-
-        print_pass_duration("Type checking & inference", duration, &options);
-
-        // @Task move out of main.rs
-        if component.is_executable() && component.program_entry.is_none() {
-            return Err(Diagnostic::error()
-                .code(Code::E050)
-                .message(format!(
-                    "the component `{}` is missing a program entry named `{}`",
-                    component.name(),
-                    PROGRAM_ENTRY_IDENTIFIER,
-                ))
-                .report(reporter));
-        }
-
-        'ending: {
-            match &mode {
-                BuildMode::Run => {
-                    if component.is_goal(&session) {
-                        if !component.is_executable() {
-                            // @Question code?
-                            return Err(Diagnostic::error()
-                                .message(format!(
-                                    "the package `{}` does not contain any executable to run",
-                                    component.package(&session).name,
-                                ))
-                                .report(reporter));
-                        }
-
-                        let result = typer::interpreter::evaluate_main_function(
-                            &component, &session, reporter,
-                        )?;
-
-                        println!("{}", result.with((&component, &session)));
-                    }
-                }
-                BuildMode::Build => {
-                    // @Temporary not just builds, also runs ^^
-
-                    lushui::compiler::compile_and_interpret_declaration(
-                        &component_root,
-                        &component,
-                    )
-                    .unwrap_or_else(|_| panic!());
-                }
-                BuildMode::Document {
-                    options: documentation_options,
-                } => {
-                    // @Task implement `--open`ing
-
-                    // @Bug leads to broken links, the documenter has to handle this itself
-                    if documentation_options.no_dependencies && !component.is_goal(&session) {
-                        break 'ending;
-                    }
-
-                    let time = Instant::now();
-                    let documenter_options = documenter::Options {
-                        asciidoc: options.asciidoc,
-                        lorem_ipsum: options.lorem_ipsum,
-                    };
-                    documenter::document(
-                        &component_root,
-                        documenter_options,
-                        &components,
-                        &component,
-                        &session,
-                        reporter,
-                    )?;
-                    let duration = time.elapsed();
-
-                    print_pass_duration("Documentation", duration, &options);
-                }
-                BuildMode::Check => {}
-            }
-        }
-
+    for mut component in components.into_values() {
+        build_component(
+            &mut component,
+            &component_metadata,
+            &mode,
+            &options,
+            &global_options,
+            &mut session,
+            map,
+            reporter,
+        )?;
         session.add(component);
     }
 
     Ok(())
 }
 
-fn print_pass_duration(pass: &str, duration: Duration, options: &cli::Options) {
-    const PADDING: usize = 30;
-
-    if options.durations {
-        println!("  {pass:<PADDING$}{duration:?}");
+#[allow(clippy::too_many_arguments)] // find a way too reduce them
+fn build_component(
+    component: &mut Component,
+    component_metadata: &[ComponentMetadata],
+    mode: &cli::BuildMode,
+    options: &cli::BuildOptions,
+    global_options: &cli::GlobalOptions,
+    mut session: &mut BuildSession,
+    map: &SourceMapCell,
+    reporter: &Reporter,
+) -> Result {
+    // @Task abstract over this as print_status_report and report w/ label="Running" for
+    // goal component if mode==Run (in addition to initial "Building")
+    if !global_options.quiet {
+        let label = match mode {
+            BuildMode::Check => "Checking",
+            BuildMode::Build | BuildMode::Run => "Building",
+            // @Bug this should not be printed for non-goal components and --no-deps
+            BuildMode::Document { .. } => "Documenting",
+        };
+        let label = label.green().bold();
+        // @Beacon @Task don't use package path but component path
+        let path = &component.package(&session).path.to_string_lossy();
+        // @Task print version
+        println!(
+            "   {label} {} ({path})",
+            if component.in_goal_package(&session)
+                && component.metadata.is_ambiguously_named_within_package
+            {
+                format!("{} ({})", component.name(), component.type_())
+            } else {
+                component.name().to_string()
+            }
+        );
     }
+
+    macro restriction_point($restriction:ident) {
+        if component.is_goal(&session)
+            && options.pass_restriction == Some(PassRestriction::$restriction)
+        {
+            return Ok(());
+        }
+    }
+
+    macro time(#![name = $name:literal] $( $block:tt )+) {
+        let time = std::time::Instant::now();
+        $( $block )+
+        let duration = time.elapsed();
+
+        if options.timing {
+            println!("  {:<30}{duration:?}", $name);
+        }
+    }
+
+    if options.timing {
+        eprintln!("Execution times by pass:");
+    }
+
+    let path = component.path();
+
+    let file = map
+        .borrow_mut()
+        .load(path.value.to_owned())
+        .map_err(|error| {
+            // @Task improve message, add label
+            Diagnostic::error()
+                .message(format!(
+                    "could not load the {} component `{}` in package `{}`",
+                    component.type_(),
+                    component.name(),
+                    component.package(&session).name,
+                ))
+                .primary_span(path)
+                .note(IOError(error, path.value).to_string())
+                .report(reporter)
+        })?;
+
+    time! {
+        #![name = "Lexing"]
+        let tokens = lexer::lex(&map.borrow()[file], reporter)?.value;
+    };
+
+    if component.is_goal(&session) && options.emit_tokens {
+        for token in &tokens {
+            eprintln!("{token:?}");
+        }
+    }
+
+    restriction_point! { Lexer }
+
+    time! {
+        #![name = "Parsing"]
+        let component_root = parser::parse_root_module_file(&tokens, file, map.clone(), reporter)?;
+    }
+
+    if component.is_goal(&session) && options.emit_ast {
+        eprintln!("{component_root:#?}");
+    }
+
+    restriction_point! { Parser }
+
+    let lowering_options = lowerer::Options {
+        internal_features_enabled: options.internals || component.is_core_library(&session),
+        keep_documentation_comments: matches!(mode, BuildMode::Document { .. }),
+    };
+
+    time! {
+        #![name = "Lowering"]
+        let component_root =
+        lowerer::lower_file(component_root, lowering_options, map.clone(), reporter)?;
+    }
+
+    if component.is_goal(&session) && options.emit_lowered_ast {
+        eprintln!("{component_root}");
+    }
+
+    restriction_point! { Lowerer }
+
+    time! {
+        #![name = "Name Resolution"]
+        let component_root =
+            resolver::resolve_declarations(component_root, component, &mut session, reporter)?;
+    }
+
+    if options.emit_hir {
+        eprintln!("{}", component_root.with((&component, &session)));
+    }
+    if component.is_goal(&session) && options.emit_untyped_scope {
+        eprintln!("{}", component.with(&session));
+    }
+
+    restriction_point! { Resolver }
+
+    time! {
+        #![name = "Type Checking and Inference"]
+        typer::check(&component_root, component, &mut session, reporter)?;
+    }
+
+    if component.is_goal(&session) && options.emit_scope {
+        eprintln!("{}", component.with(&session));
+    }
+
+    // @Task move out of main.rs
+    if component.is_executable() && component.entry.is_none() {
+        return Err(Diagnostic::error()
+            .code(Code::E050)
+            .message(format!(
+                "the component `{}` is missing a program entry named `{PROGRAM_ENTRY_IDENTIFIER}`",
+                component.name(),
+            ))
+            .report(reporter));
+    }
+
+    match &mode {
+        BuildMode::Run => {
+            if component.is_goal(&session) {
+                if !component.is_executable() {
+                    // @Question code?
+                    return Err(Diagnostic::error()
+                        .message(format!(
+                            "the package `{}` does not contain any executable to run",
+                            component.package(&session).name,
+                        ))
+                        .report(reporter));
+                }
+
+                let result =
+                    typer::interpreter::evaluate_main_function(&component, &session, reporter)?;
+
+                println!("{}", result.with((&component, &session)));
+            }
+        }
+        BuildMode::Build => {
+            // @Temporary not just builds, also runs ^^
+
+            lushui::compiler::compile_and_interpret_declaration(&component_root, &component)
+                .unwrap_or_else(|_| panic!());
+        }
+        BuildMode::Document {
+            options: documentation_options,
+        } => {
+            // @Task implement `--open`ing
+
+            // @Bug leads to broken links, the documenter has to handle this itself
+            if documentation_options.no_dependencies && !component.is_goal(&session) {
+                return Ok(());
+            }
+
+            let documenter_options = documenter::Options {
+                asciidoc: documentation_options.asciidoc,
+                lorem_ipsum: documentation_options.lorem_ipsum,
+            };
+
+            time! {
+                #![name = "Documentation Generation"]
+                documenter::document(
+                    &component_root,
+                    documenter_options,
+                    component_metadata,
+                    &component,
+                    &session,
+                    reporter,
+                )?;
+            }
+        }
+        BuildMode::Check => {}
+    }
+
+    Ok(())
 }
 
-fn generate_package(
+const SOURCE_FOLDER_NAME: &str = "source";
+const LIBRARY_FILE_STEM: &str = "library";
+const EXECUTABLE_FILE_STEM: &str = "main";
+
+// @Task generalize the name to a path!
+fn create_package(
     name: String,
-    generation_options: cli::GenerationOptions,
+    options: cli::PackageCreationOptions,
     reporter: &Reporter,
 ) -> Result {
     use std::fs;
@@ -425,7 +433,7 @@ fn generate_package(
         // @Task DRY @Question is the common code justified?
         Diagnostic::error()
             .code(Code::E036)
-            .message(format!("the component name `{name}` is not a valid word"))
+            .message(format!("the package name `{name}` is not a valid word"))
             .report(reporter)
     })?;
 
@@ -433,32 +441,28 @@ fn generate_package(
     let current_path = std::env::current_dir().unwrap();
     let package_path = current_path.join(name.as_str());
     fs::create_dir(&package_path).unwrap();
-    let source_folder_path = package_path.join(DEFAULT_SOURCE_FOLDER_NAME);
+    let source_folder_path = package_path.join(SOURCE_FOLDER_NAME);
     fs::create_dir(&source_folder_path).unwrap();
-    fs::write(
-        package_path.join(PackageManifest::FILE_NAME),
-        PackageManifest::default_to_string(&name),
-    )
-    .unwrap();
-    fs::write(
-        package_path.join(".gitignore"),
-        "\
-build/
-",
-    )
-    .unwrap();
+    {
+        let package_manifest = io::BufWriter::new(
+            fs::File::create(package_path.join(PackageManifest::FILE_NAME)).unwrap(),
+        );
 
-    if generation_options.library {
+        generate_package_manifest(&name, options, package_manifest).unwrap();
+    }
+    fs::write(package_path.join(".gitignore"), "build/\n").unwrap();
+
+    if options.library {
         let path = source_folder_path
-            .join(ComponentType::Library.default_root_file_stem())
+            .join(LIBRARY_FILE_STEM)
             .with_extension(FILE_EXTENSION);
 
         fs::File::create(path).unwrap();
     }
 
-    if generation_options.executable {
+    if options.executable {
         let path = source_folder_path
-            .join(ComponentType::Executable.default_root_file_stem())
+            .join(EXECUTABLE_FILE_STEM)
             .with_extension(FILE_EXTENSION);
 
         let content = "main: extern.core.text.Text =\n    \"Hello there!\"";
@@ -467,6 +471,53 @@ build/
     }
 
     Ok(())
+}
+
+fn generate_package_manifest(
+    name: &Word,
+    options: cli::PackageCreationOptions,
+    mut sink: impl io::Write,
+) -> io::Result<()> {
+    writeln!(sink, r#"name: "{name}","#)?;
+    writeln!(sink, r#"version: "0.0.0","#)?;
+    writeln!(sink)?;
+
+    writeln!(sink, "components: [")?;
+
+    if options.library {
+        writeln!(sink, "    {{")?;
+        writeln!(sink, r#"        type: "library","#)?;
+        writeln!(
+            sink,
+            r#"        path: "{SOURCE_FOLDER_NAME}/{LIBRARY_FILE_STEM}.lushui","#
+        )?;
+        writeln!(sink)?;
+        writeln!(sink, "        dependencies: {{")?;
+        writeln!(sink, r#"            core: {{ provider: "distribution" }},"#)?;
+        writeln!(sink, "        }},")?;
+        writeln!(sink, "    }},")?;
+    }
+
+    if options.executable {
+        writeln!(sink, "    {{")?;
+        writeln!(sink, r#"        type: "executable","#)?;
+        writeln!(
+            sink,
+            r#"        path: "{SOURCE_FOLDER_NAME}/{EXECUTABLE_FILE_STEM}.lushui","#
+        )?;
+        writeln!(sink)?;
+        writeln!(sink, "        dependencies: {{")?;
+
+        if options.library {
+            writeln!(sink, "            {name}: {{}},")?;
+        }
+
+        writeln!(sink, r#"            core: {{ provider: "distribution" }},"#)?;
+        writeln!(sink, "        }},")?;
+        writeln!(sink, "    }},")?;
+    }
+
+    writeln!(sink, "],")
 }
 
 fn set_panic_hook() {

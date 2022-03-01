@@ -263,11 +263,11 @@ fn handle_test_folder_entry(
     let type_ = if shortened_path.ends_with("package.metadata") {
         TestType::Package
     } else {
-        TestType::SingleFilePackage
+        TestType::SourceFile
     };
 
     // disallow unsupported files by going after their extension
-    if type_ == TestType::SingleFilePackage && extension != "lushui" {
+    if type_ == TestType::SourceFile && extension != "lushui" {
         let path = shortened_path.to_string_lossy().to_string();
         print_file_status(&path, Status::Invalid, None);
         failures.push(Failure::new(
@@ -286,7 +286,7 @@ fn handle_test_folder_entry(
     // obtain a "legible path" (valid UTF-8) to be shown to the user
     let legible_path = {
         let legible_path: Cow<'_, _> = match type_ {
-            TestType::SingleFilePackage => shortened_path.with_extension("").into(),
+            TestType::SourceFile => shortened_path.with_extension("").into(),
             TestType::Package => shortened_path.parent().unwrap().into(),
         };
 
@@ -299,7 +299,7 @@ fn handle_test_folder_entry(
                     File::new(
                         path,
                         match type_ {
-                            TestType::SingleFilePackage => FileType::SingleFilePackage,
+                            TestType::SourceFile => FileType::SourceFile,
                             TestType::Package => FileType::PackageManifest,
                         },
                     ),
@@ -327,7 +327,7 @@ fn handle_test_folder_entry(
 
     let language = match type_ {
         TestType::Package => Language::Metadata,
-        TestType::SingleFilePackage => Language::Lushui,
+        TestType::SourceFile => Language::Lushui,
     };
 
     // parse the test configuration
@@ -339,7 +339,7 @@ fn handle_test_folder_entry(
                 File::new(
                     legible_path.clone(),
                     match type_ {
-                        TestType::SingleFilePackage => FileType::SingleFilePackage,
+                        TestType::SourceFile => FileType::SourceFile,
                         TestType::Package => FileType::PackageManifest,
                     },
                 ),
@@ -514,6 +514,7 @@ fn validate_auxiliary_file(
         let user_path = Path::new(test_folder_path).join(user);
 
         // @Task check if !*.lushui are folders
+        // @Task use try_exists
         if !(user_path.exists() || user_path.with_extension("lushui").exists()) {
             invalid_users.push(user);
         }
@@ -547,17 +548,21 @@ fn compile(path: &Path, arguments: &[&str], type_: TestType) -> std::process::Ou
         .arg("--manifest-path")
         .arg(compiler_manifest_path())
         .arg("--")
-        .args(arguments)
         .arg("--quiet");
 
-    if type_ == TestType::SingleFilePackage
-        && arguments.first().map_or(false, |&command| command != "run")
+    if type_ == TestType::SourceFile {
+        command.arg("file");
+    }
+
+    command.args(arguments);
+
+    if type_ == TestType::SourceFile && arguments.first().map_or(false, |&command| command != "run")
     {
         command.arg("--component-type=library");
     }
 
     match type_ {
-        TestType::SingleFilePackage => {
+        TestType::SourceFile => {
             command.arg(path);
         }
         TestType::Package => {
@@ -571,14 +576,14 @@ fn compile(path: &Path, arguments: &[&str], type_: TestType) -> std::process::Ou
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 enum TestType {
-    SingleFilePackage,
+    SourceFile,
     Package,
 }
 
 impl From<TestType> for FileType {
     fn from(type_: TestType) -> Self {
         match type_ {
-            TestType::SingleFilePackage => FileType::SingleFilePackage,
+            TestType::SourceFile => FileType::SourceFile,
             TestType::Package => FileType::Package,
         }
     }

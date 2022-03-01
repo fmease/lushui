@@ -1,7 +1,3 @@
-use std::{fmt, str::FromStr};
-
-use discriminant::Discriminant;
-
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     error::{PossiblyErroneous, Result},
@@ -9,6 +5,8 @@ use crate::{
     syntax::ast,
     utility::{condition, obtain, Atom},
 };
+use derivation::Discriminant;
+use std::{fmt, str::FromStr};
 
 /// Something attributes can be ascribed to.
 ///
@@ -401,7 +399,7 @@ impl PossiblyErroneous for Attributes {
 pub(crate) type Attribute = Spanned<AttributeKind>;
 
 #[derive(Clone, PartialEq, Eq, Hash, Discriminant)]
-#[discriminant(AttributeName::name)]
+#[discriminant(name: AttributeName)]
 pub(crate) enum AttributeKind {
     /// Hide the constructors of a (public) data type.
     Abstract,
@@ -705,7 +703,14 @@ impl fmt::Display for AttributeKind {
 }
 
 impl AttributeName {
-    // @Task smh derive this!
+    // @Task derive this with
+    // #[discriminant(
+    //     name:
+    //         #[derive(Display, FromStr)]
+    //         #[format(dash_case)]
+    //         AttributeName
+    // )]
+    // on `AttributeKind`
     pub(crate) const fn to_str(self) -> &'static str {
         match self {
             Self::Abstract => "abstract",
@@ -737,7 +742,14 @@ impl AttributeName {
     }
 }
 
-// @Task smh derive this!
+// @Task derive this with
+// #[discriminant(
+//     name:
+//         #[derive(Display, FromStr)]
+//         #[format(dash_case)]
+//         AttributeName
+// )]
+// on `AttributeKind`
 impl FromStr for AttributeName {
     type Err = ();
 

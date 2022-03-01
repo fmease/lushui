@@ -2,9 +2,10 @@
 
 pub(crate) use crate::syntax::lowered_ast::Item;
 use crate::{
+    component::Component,
     error::PossiblyErroneous,
-    package::session::IntrinsicNumericType,
-    resolver::{Component, FunctionScope},
+    resolver::FunctionScope,
+    session::IntrinsicNumericType,
     span::{SourceFileIndex, Span},
     syntax::ast::Explicitness,
     typer::interpreter,

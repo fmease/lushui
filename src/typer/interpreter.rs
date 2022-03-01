@@ -14,22 +14,17 @@
 
 use super::Expression;
 use crate::{
+    component::Component,
     diagnostics::{Diagnostic, Reporter},
     entity::Entity,
     error::{PossiblyErroneous, Result},
-    format::DisplayWith,
-    hir::{self, DeclarationIndex, Identifier},
-    package::{
-        session::{KnownBinding, Value},
-        BuildSession,
-    },
-    resolver::Component,
-    syntax::ast::Explicit,
+    hir::{self, DeBruijnIndex, DeclarationIndex, Identifier},
+    session::{BuildSession, KnownBinding, Value},
+    syntax::{ast::Explicit, lowered_ast::Attributes},
+    utility::{AsDebug, DisplayWith},
 };
-use scope::{FunctionScope, ValueView};
 use std::{default::default, fmt};
-
-pub(crate) mod scope;
+use Substitution::Shift;
 
 /// Run the entry point of the given executable component.
 pub fn evaluate_main_function(
@@ -40,7 +35,7 @@ pub fn evaluate_main_function(
     Interpreter::new(component, session, reporter).evaluate_expression(
         Interpreter::new(component, session, reporter)
             .component
-            .program_entry
+            .entry
             .clone()
             .unwrap()
             .into_expression(),
@@ -409,11 +404,11 @@ impl<'a> Interpreter<'a> {
                         expression.span,
                         hir::Application {
                             callee,
-                            argument: match context.form {
-                                // Form::Normal => argument.evaluate(context)?,
-                                // Form::WeakHeadNormal => argument,
-                                _ => self.evaluate_expression(argument, context)?,
-                            },
+                            // argument: match context.form {
+                            //     Form::Normal => argument.evaluate_expression(context)?,
+                            //     Form::WeakHeadNormal => argument,
+                            // },
+                            argument: self.evaluate_expression(argument, context)?,
                             explicitness: Explicit,
                         }
                         .into(),
@@ -694,8 +689,6 @@ impl<'a> Interpreter<'a> {
             (Text(text0), Text(text1)) => text0 == text1,
             // @Question what about explicitness?
             (PiType(pi0), PiType(pi1)) => {
-                use self::Substitution::Shift;
-
                 self.equals(&pi0.domain, &pi1.domain, scope)?
                     && match (pi0.parameter.clone(), pi1.parameter.clone()) {
                         (Some(_), Some(_)) => self.equals(
@@ -890,5 +883,168 @@ impl<'a> Context<'a> {
 impl<'a> Context<'a> {
     pub(crate) fn with_scope(&self, scope: &'a FunctionScope<'_>) -> Self {
         Self { scope, ..*self }
+    }
+}
+
+#[derive(Clone)] // @Question expensive attributes clone?
+pub(crate) struct BindingRegistration {
+    pub(crate) attributes: Attributes,
+    pub(crate) kind: BindingRegistrationKind,
+}
+
+#[derive(Clone)]
+pub(crate) enum BindingRegistrationKind {
+    Function {
+        binder: Identifier,
+        type_: Expression,
+        value: Option<Expression>,
+    },
+    Data {
+        binder: Identifier,
+        type_: Expression,
+    },
+    Constructor {
+        binder: Identifier,
+        type_: Expression,
+        owner_data_type: Identifier,
+    },
+    IntrinsicFunction {
+        binder: Identifier,
+        type_: Expression,
+    },
+}
+
+// only used to report "cyclic" types (currently treated as a bug)
+impl DisplayWith for BindingRegistration {
+    type Context<'a> = (&'a Component, &'a BuildSession);
+
+    fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use BindingRegistrationKind::*;
+
+        match &self.kind {
+            Function {
+                binder,
+                type_,
+                value,
+            } => {
+                let mut compound = f.debug_struct("Value");
+                compound
+                    .field("binder", binder)
+                    .field("type", &type_.with(context).as_debug());
+                match value {
+                    Some(value) => compound.field("value", &value.with(context).as_debug()),
+                    None => compound.field("value", &"?(none)"),
+                }
+                .finish()
+            }
+            Data { binder, type_ } => f
+                .debug_struct("Data")
+                .field("binder", binder)
+                .field("type", &type_.with(context).as_debug())
+                .finish(),
+            Constructor {
+                binder,
+                type_,
+                owner_data_type: data,
+            } => f
+                .debug_struct("Constructor")
+                .field("binder", binder)
+                .field("type", &type_.with(context).as_debug())
+                .field("data", data)
+                .finish(),
+            IntrinsicFunction { binder, type_ } => f
+                .debug_struct("IntrinsicFunction")
+                .field("binder", binder)
+                .field("type", &type_.with(context).as_debug())
+                .finish(),
+        }
+    }
+}
+
+// @Task find out if we can get rid of this type by letting `ModuleScope::lookup_value` resolve to the Binder
+// if it's neutral
+pub(crate) enum ValueView {
+    Reducible(Expression),
+    Neutral,
+}
+
+impl ValueView {
+    pub(crate) fn is_neutral(&self) -> bool {
+        matches!(self, Self::Neutral)
+    }
+}
+
+/// The scope of bindings inside of a function.
+pub(crate) enum FunctionScope<'a> {
+    Module,
+    FunctionParameter {
+        parent: &'a Self,
+        type_: Expression,
+    },
+    PatternBinders {
+        parent: &'a Self,
+        // @Note idk
+        types: Vec<Expression>,
+    },
+}
+
+impl<'a> FunctionScope<'a> {
+    pub(crate) fn extend_with_parameter(&'a self, type_: Expression) -> Self {
+        Self::FunctionParameter {
+            parent: self,
+            type_,
+        }
+    }
+
+    pub(crate) fn extend_with_pattern_binders(&'a self, types: Vec<Expression>) -> Self {
+        Self::PatternBinders {
+            parent: self,
+            types,
+        }
+    }
+
+    pub(super) fn look_up_type(&self, index: DeBruijnIndex) -> Expression {
+        self.look_up_type_with_depth(index, 0)
+    }
+
+    fn look_up_type_with_depth(&self, index: DeBruijnIndex, depth: usize) -> Expression {
+        match self {
+            Self::FunctionParameter { parent, type_ } => {
+                if depth == index.0 {
+                    Expression::new(
+                        default(),
+                        default(),
+                        hir::Substitution {
+                            substitution: Shift(depth + 1),
+                            expression: type_.clone(),
+                        }
+                        .into(),
+                    )
+                } else {
+                    parent.look_up_type_with_depth(index, depth + 1)
+                }
+            }
+            Self::PatternBinders { parent, types } => {
+                match types
+                    .iter()
+                    .rev()
+                    .zip(depth..)
+                    .find(|(_, depth)| *depth == index.0)
+                {
+                    Some((type_, depth)) => Expression::new(
+                        default(),
+                        default(),
+                        hir::Substitution {
+                            // @Task verify this shift
+                            substitution: Shift(depth + 1),
+                            expression: type_.clone(),
+                        }
+                        .into(),
+                    ),
+                    None => parent.look_up_type_with_depth(index, depth + types.len()),
+                }
+            }
+            Self::Module => unreachable!(),
+        }
     }
 }

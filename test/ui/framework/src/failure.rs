@@ -47,7 +47,7 @@ impl fmt::Display for File {
 }
 
 pub(crate) enum FileType {
-    SingleFilePackage,
+    SourceFile,
     Package,
     PackageManifest,
     Auxiliary,
@@ -58,7 +58,7 @@ pub(crate) enum FileType {
 impl fmt::Display for FileType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Self::SingleFilePackage => "single-file package",
+            Self::SourceFile => "source file",
             Self::Package => "package",
             Self::PackageManifest => "package manifest",
             Self::Auxiliary => "auxiliary file",

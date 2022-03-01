@@ -3,7 +3,7 @@
 use crate::{
     diagnostics::Reporter,
     error::Result,
-    span::{SharedSourceMap, SourceFileIndex},
+    span::{SourceFileIndex, SourceMapCell},
 };
 pub use word::Word;
 
@@ -22,7 +22,7 @@ pub(crate) mod word;
 pub(crate) fn parse_module_file(
     file: SourceFileIndex,
     binder: ast::Identifier,
-    map: SharedSourceMap,
+    map: SourceMapCell,
     reporter: &Reporter,
 ) -> Result<ast::Declaration> {
     let tokens = lexer::lex(&map.borrow()[file], reporter)?.value;
@@ -32,7 +32,7 @@ pub(crate) fn parse_module_file(
 // @Task try to get rid of file+map params (just take a &str (maybe, but what about span info?))!
 pub(crate) fn parse_path(
     file: SourceFileIndex,
-    map: SharedSourceMap,
+    map: SourceMapCell,
     reporter: &Reporter,
 ) -> Result<ast::Path> {
     let tokens = lexer::lex(&map.borrow()[file], reporter)?.value;

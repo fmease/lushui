@@ -3,14 +3,14 @@
 //! Just like [`Component`], [`Entity`] is a resource shared by those two passes.
 
 use crate::{
+    component::Component,
     error::PossiblyErroneous,
-    format::DisplayWith,
     hir::{DeclarationIndex, Expression, Identifier, LocalDeclarationIndex},
-    package::{session::BareIntrinsicFunctionValue, BuildSession},
-    resolver::{Component, Exposure, Namespace},
+    resolver::{Exposure, Namespace},
+    session::{BareIntrinsicFunctionValue, BuildSession},
     syntax::lowered_ast::Attributes,
-    typer::interpreter::scope::ValueView,
-    utility::obtain,
+    typer::interpreter::ValueView,
+    utility::{obtain, DisplayWith},
 };
 use colored::Colorize;
 use joinery::JoinableIterator;
@@ -244,6 +244,7 @@ impl EntityKind {
     }
 
     /// The developer-facing name of the entity kind.
+    // @Task derive this with `#[derive(DiscriminantStr)] #[format(space_case)]` (sth like that)
     const fn precise_name(&self) -> &'static str {
         match self {
             UntypedFunction => "untyped function",

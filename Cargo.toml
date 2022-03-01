@@ -12,16 +12,16 @@ num-bigint = "0.4.0"
 num-traits = "0.2.11"
 smallvec = { version = "1.4.2", features = ["const_generics"] } 
 bitflags = "1.2.1"
-clap = "3.0.4"
-index_map = { path = "src/index_map" }
+clap = "3.1.0"
+index_map = { path = "project/libraries/index_map" }
 unicode-width = "0.1.7"
 joinery = "2.0.0"
 strsim = "0.10.0"
 rustc-hash = "1.1.0"
 difference = "2.0.0"
-discriminant = { path = "src/discriminant" }
+derivation = { path = "project/libraries/derivation" }
 html-escape = "0.2.9"
-minifier = "0.0.41"
+minifier = "0.0.42"
 urlencoding = "2.1.0"
 unicode-segmentation = "1.8.0"
 crossbeam = "0.8.1"

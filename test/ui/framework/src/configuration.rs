@@ -1,3 +1,5 @@
+use derivation::{Elements, FromStr, Str};
+use joinery::JoinableIterator;
 use std::fmt;
 
 const MAGIC_TEXT: &str = " TEST ";
@@ -26,13 +28,7 @@ impl<'a> Configuration<'a> {
         let tag = arguments.next().ok_or(MissingTag)?;
 
         Ok(Configuration {
-            tag: match tag {
-                "ignore" => TestTag::Ignore,
-                "pass" => TestTag::Pass,
-                "fail" => TestTag::Fail,
-                "auxiliary" => TestTag::Auxiliary,
-                tag => return Err(InvalidTag(tag.to_owned())),
-            },
+            tag: tag.parse().map_err(|_| InvalidTag(tag.to_owned()))?,
             arguments: arguments.collect(),
         })
     }
@@ -54,6 +50,8 @@ impl Language {
     }
 }
 
+#[derive(Clone, Copy, Elements, FromStr, Str)]
+#[format(dash_case)]
 pub(crate) enum TestTag {
     Auxiliary,
     Fail,
@@ -61,9 +59,10 @@ pub(crate) enum TestTag {
     Pass,
 }
 
-impl TestTag {
-    // @Task derive this
-    const VALUES: &'static str = "`auxiliary`, `fail`, `ignore` and `pass`";
+impl fmt::Display for TestTag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.name())
+    }
 }
 
 #[derive(Debug)]
@@ -82,17 +81,24 @@ impl fmt::Display for ParseError {
                 "the test file is missing a test configuration \
                  which is prefixed with `{MAGIC_TEXT}`"
             ),
-            Self::MissingTag => write!(
-                f,
-                "the test file is missing a tag; valid tags are {}",
-                TestTag::VALUES
-            ),
-            Self::InvalidTag(argument) => {
-                write!(
-                    f,
-                    "the test file contains the invalid tag `{argument}`; valid tags are {}",
-                    TestTag::VALUES
-                )
+            Self::MissingTag | Self::InvalidTag(_) => {
+                let tags = TestTag::elements()
+                    .map(|tag| format!("`{tag}`"))
+                    .join_with(", ");
+
+                #[allow(clippy::match_wildcard_for_single_variants)]
+                match self {
+                    Self::MissingTag => {
+                        write!(f, "the test file is missing a tag; valid tags are {tags}")
+                    }
+                    Self::InvalidTag(argument) => {
+                        write!(
+                        f,
+                        "the test file contains the invalid tag `{argument}`; valid tags are {tags}",
+                    )
+                    }
+                    _ => unreachable!(),
+                }
             }
         }
     }

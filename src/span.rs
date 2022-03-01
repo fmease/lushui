@@ -3,8 +3,8 @@
 // @Task handle overflows showing errors like "file too big" to the user
 
 use generic::Locality::*;
-pub use source_map::{SharedSourceMap, SourceMap};
 pub(crate) use source_map::{SourceFile, SourceFileIndex};
+pub use source_map::{SourceMap, SourceMapCell};
 pub use spanned::Spanned;
 pub(crate) use spanning::{PossiblySpanning, Spanning};
 use std::ops::{Add, Range, Sub};
@@ -353,7 +353,7 @@ mod spanning {
     use super::Span;
     use crate::utility::SmallVec;
 
-    pub(crate) trait Spanning: PossiblySpanning {
+    pub trait Spanning: PossiblySpanning {
         fn span(&self) -> Span;
     }
 
@@ -369,7 +369,7 @@ mod spanning {
         }
     }
 
-    pub(crate) trait PossiblySpanning {
+    pub trait PossiblySpanning {
         fn possible_span(&self) -> Option<Span>;
     }
 
@@ -464,6 +464,10 @@ mod spanned {
             Spanned::new(self.span, &self.value)
         }
 
+        pub fn as_mut(&mut self) -> Spanned<&mut T> {
+            Spanned::new(self.span, &mut self.value)
+        }
+
         pub fn as_deref(&self) -> Spanned<&T::Target>
         where
             T: Deref,
@@ -497,6 +501,13 @@ mod spanned {
             self.value.fmt(f)
         }
     }
+
+    pub(crate) macro Spanned($value:pat, $span:pat) {
+        Spanned {
+            value: $value,
+            span: $span,
+        }
+    }
 }
 
 mod weakly_spanned {
@@ -508,7 +519,7 @@ mod weakly_spanned {
         ops::Deref,
     };
 
-    #[derive(Clone, Copy, Debug)]
+    #[derive(Clone, Copy)]
     pub(crate) struct WeaklySpanned<T> {
         pub(crate) value: T,
         pub(crate) span: Span,
@@ -588,7 +599,13 @@ mod weakly_spanned {
         }
     }
 
-    impl<K: fmt::Display> fmt::Display for WeaklySpanned<K> {
+    impl<T: fmt::Debug> fmt::Debug for WeaklySpanned<T> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{:?} {:?}", self.value, self.span)
+        }
+    }
+
+    impl<T: fmt::Display> fmt::Display for WeaklySpanned<T> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             self.value.fmt(f)
         }

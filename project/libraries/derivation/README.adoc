@@ -1,0 +1,7 @@
+= Derivation
+
+Note that the library of this Cargo package named `derivation` is not actually marked with `proc-macro`.
+Instead, it re-exports the procedural macros from an internal Cargo package called `derivation-macros`
+whose library is the _actual_ proc-macro crate. This split will allow our future self to not only expose procedural
+macros but any other type of item, in particular our own traits which we could then derive in `derivation-macros`.
+Crates marked with `proc-macro` cannot currently expose non-proc-macros, a limitation imposed by `rustc`.

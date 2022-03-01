@@ -39,7 +39,6 @@
     stmt_expr_attributes,
     associated_type_bounds,
     label_break_value,
-    type_ascription,
     derive_default_enum,
     generic_associated_types,
     try_trait_v2,
@@ -48,10 +47,11 @@
     min_specialization,
     iter_intersperse,
     type_changing_struct_update,
-    slice_take
+    slice_take,
+    const_trait_impl
 )]
 #![deny(rust_2018_idioms, unused_must_use)]
-#![allow(incomplete_features)] // adt_const_params (we are only doing the basics)
+#![allow(incomplete_features)] // adt_const_params
 #![allow(rustdoc::private_intra_doc_links)] // we always use `--document-private-items`
 #![warn(clippy::pedantic)]
 #![allow(
@@ -75,20 +75,21 @@
 )]
 
 pub mod compiler;
+pub mod component;
 pub mod diagnostics;
 pub mod documenter;
 mod entity;
 pub mod error;
-pub mod format;
 mod hir;
 mod item;
 mod metadata;
 pub mod package;
 pub mod resolver;
+pub mod session;
 pub mod span;
 pub mod syntax;
 pub mod typer;
-mod utility;
+pub mod utility;
 
 /// The file extension of a Lushui source code file.
 pub const FILE_EXTENSION: &str = "lushui";

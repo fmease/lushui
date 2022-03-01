@@ -2,11 +2,10 @@
 
 use crate::{
     diagnostics::{Code, Diagnostic},
-    format::quoted,
     span::Spanned,
-    utility::{obtain, Atom},
+    utility::{obtain, quoted, Atom},
 };
-use discriminant::Discriminant;
+use derivation::Discriminant;
 use std::fmt;
 use TokenName::*;
 
@@ -58,7 +57,7 @@ impl Token {
 }
 
 #[derive(Clone, PartialEq, Eq, Discriminant, Debug)]
-#[discriminant(TokenName::name)]
+#[discriminant(name: TokenName)]
 pub enum TokenKind {
     Comment,
     DocumentationComment,

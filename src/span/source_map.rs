@@ -14,7 +14,7 @@ use unicode_width::UnicodeWidthStr;
 #[cfg(test)]
 mod test;
 
-pub type SharedSourceMap = Rc<RefCell<SourceMap>>;
+pub type SourceMapCell = Rc<RefCell<SourceMap>>;
 
 /// A mapping from an index (offset) to [`SourceFile`]s.
 ///
@@ -46,7 +46,7 @@ pub struct SourceMap {
 }
 
 impl SourceMap {
-    pub fn shared() -> SharedSourceMap {
+    pub fn cell() -> SourceMapCell {
         Rc::new(RefCell::new(Self::default()))
     }
 
