@@ -1,6 +1,0 @@
-;;; @Bug this should pass type checking but it does not
-;;; @Question do we fail to eval before instance checking?
-Alias: Type = Original
-
-data Original: Type =
-    original: Alias

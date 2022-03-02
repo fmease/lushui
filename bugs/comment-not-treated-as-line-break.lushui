@@ -1,5 +1,0 @@
-;;; currently, we do not keep line breaks after comments but that leads to
-;;; the following inconvenient parsing error:
-
-module x ;;; culprit
-@hello module y
