@@ -3,12 +3,12 @@ use super::{
         Token,
         TokenName::{self, *},
     },
-    Map, Value, ValueKind,
+    Record, Value, ValueKind,
 };
 use crate::{
     diagnostics::{Code, Diagnostic, Reporter},
     error::{Health, OkIfUntaintedExt, ReportedExt, Result},
-    span::{SourceFileIndex, SourceMapCell, Span, Spanning, WeaklySpanned},
+    span::{SourceFileIndex, SourceMap, Span, Spanning, WeaklySpanned},
 };
 
 #[cfg(test)]
@@ -19,7 +19,7 @@ pub(super) struct Parser<'a> {
     tokens: &'a [Token],
     index: usize,
     health: Health,
-    map: SourceMapCell,
+    map: &'a mut SourceMap,
     reporter: &'a Reporter,
 }
 
@@ -27,7 +27,7 @@ impl<'a> Parser<'a> {
     pub(super) fn new(
         file: SourceFileIndex,
         tokens: &'a [Token],
-        map: SourceMapCell,
+        map: &'a mut SourceMap,
         reporter: &'a Reporter,
     ) -> Self {
         Self {
@@ -58,7 +58,7 @@ impl<'a> Parser<'a> {
             Ok(token.clone())
         } else {
             Err(Diagnostic::error()
-                .message(format!("found {token}, but expected {expected}"))
+                .message(format!("found {token} but expected {expected}"))
                 .primary_span(token)
                 .report(self.reporter))
         }
@@ -75,11 +75,11 @@ impl<'a> Parser<'a> {
     /// # Grammar
     ///
     /// ```ebnf
-    /// Document ::= (Top-Level-Map-Entries | Value) #End-Of-Input
+    /// Document ::= (Top-Level-Record-Entries | Value) #End-Of-Input
     /// ```
     pub(super) fn parse(&mut self) -> Result<Value> {
-        let value = match self.has_top_level_map_entries() {
-            true => self.parse_top_level_map_entries(),
+        let value = match self.has_top_level_record_entries() {
+            true => self.parse_top_level_record_entries(),
             false => self.parse_value(),
         }?;
         self.consume(EndOfInput)?;
@@ -87,25 +87,25 @@ impl<'a> Parser<'a> {
         Result::ok_if_untainted(value, self.health)
     }
 
-    fn has_top_level_map_entries(&self) -> bool {
+    fn has_top_level_record_entries(&self) -> bool {
         matches!(self.current_token().name(), Identifier | Text)
             && self.succeeding_token().name() == Colon
             || self.current_token().name() == EndOfInput
     }
 
-    /// Parse top-level map entries.
+    /// Parse top-level record entries.
     ///
     /// # Grammar
     ///
     /// ```ebnf
-    /// Top-Level-Map-Entries ::= (Map-Entry ",")* Map-Entry? (> #End-Of-Input)
+    /// Top-Level-Record-Entries ::= (Record-Entry ",")* Record-Entry? (> #End-Of-Input)
     /// ```
-    fn parse_top_level_map_entries(&mut self) -> Result<Value> {
-        let map = self.parse_map_entries(EndOfInput)?;
+    fn parse_top_level_record_entries(&mut self) -> Result<Value> {
+        let record = self.parse_record_entries(EndOfInput)?;
 
         Ok(Value::new(
-            self.map.borrow()[self.file].span(),
-            ValueKind::Map(map),
+            self.map[self.file].span(),
+            ValueKind::Record(record),
         ))
     }
 
@@ -121,7 +121,7 @@ impl<'a> Parser<'a> {
     ///     | #Text
     ///     | #Number
     ///     | Array
-    ///     | Map
+    ///     | Record
     /// ```
     fn parse_value(&mut self) -> Result<Value> {
         let span = self.current_token().span;
@@ -173,13 +173,10 @@ impl<'a> Parser<'a> {
             }
             OpeningCurlyBracket => {
                 self.advance();
-                self.finish_parse_map(span)
+                self.finish_parse_record(span)
             }
             _ => Err(Diagnostic::error()
-                .message(format!(
-                    "found {}, but expected value",
-                    self.current_token()
-                ))
+                .message(format!("found {} but expected value", self.current_token()))
                 .primary_span(span)
                 .report(self.reporter)),
         }
@@ -212,43 +209,42 @@ impl<'a> Parser<'a> {
         Ok(Value::new(span, ValueKind::List(elements)))
     }
 
-    /// Finish parsing a map.
+    /// Finish parsing a record.
     ///
     /// The opening curly bracket should have already parsed beforehand.
     ///
     /// # Grammar
     ///
     /// ```ebnf
-    /// Map ::= "{" (Map-Entry ",")* Map-Entry? "}"
+    /// Record ::= "{" (Record-Entry ",")* Record-Entry? "}"
     /// ```
-    fn finish_parse_map(&mut self, opening_bracket_span: Span) -> Result<Value> {
+    fn finish_parse_record(&mut self, opening_bracket_span: Span) -> Result<Value> {
         let mut span = opening_bracket_span;
 
-        let map = self.parse_map_entries(ClosingCurlyBracket)?;
+        let record = self.parse_record_entries(ClosingCurlyBracket)?;
 
         span.merging(self.current_token());
         self.advance();
 
-        Ok(Value::new(span, ValueKind::Map(map)))
+        Ok(Value::new(span, ValueKind::Record(record)))
     }
 
-    fn parse_map_entries(&mut self, delimiter: TokenName) -> Result<Map> {
-        let mut map = Map::default();
+    fn parse_record_entries(&mut self, delimiter: TokenName) -> Result<Record> {
+        let mut record = Record::default();
 
         while self.current_token().name() != delimiter {
-            let (key, value) = self.parse_map_entry()?;
+            let (key, value) = self.parse_record_entry()?;
 
-            if let Some(previous_key) = map.keys().find(|&some_key| some_key == &key) {
-                // @Task "is defined multiple times in map `PATH`"
+            if let Some(previous_key) = record.keys().find(|&some_key| some_key == &key) {
                 Diagnostic::error()
                     .code(Code::E803)
-                    .message(format!("the key `{}` is defined multiple times", key))
+                    .message(format!("the entry `{}` is defined multiple times", key))
                     .labeled_primary_span(key.span, "redefinition")
                     .labeled_secondary_span(previous_key.span, "previous definition")
                     .report(self.reporter);
                 self.health.taint();
             } else {
-                map.insert(key, value);
+                record.insert(key, value);
             }
 
             if self.current_token().name() != delimiter {
@@ -256,32 +252,32 @@ impl<'a> Parser<'a> {
             }
         }
 
-        Ok(map)
+        Ok(record)
     }
 
-    /// Parse a map entry.
+    /// Parse a record entry.
     ///
     /// # Grammar
     ///
     /// ```ebnf
-    /// Map-Entry ::= Map-Key ":" Value
+    /// Record-Entry ::= Record-Key ":" Value
     /// ```
-    fn parse_map_entry(&mut self) -> Result<(WeaklySpanned<String>, Value)> {
-        let key = self.parse_map_key()?;
+    fn parse_record_entry(&mut self) -> Result<(WeaklySpanned<String>, Value)> {
+        let key = self.parse_record_key()?;
         self.consume(Colon)?;
         let value = self.parse_value()?;
 
         Ok((key, value))
     }
 
-    /// Parse a map key.
+    /// Parse a record key.
     ///
     /// # Grammar
     ///
     /// ```ebnf
-    /// Map-Key ::= #Identifier | #Text
+    /// Record-Key ::= #Identifier | #Text
     /// ```
-    fn parse_map_key(&mut self) -> Result<WeaklySpanned<String>> {
+    fn parse_record_key(&mut self) -> Result<WeaklySpanned<String>> {
         let span = self.current_token().span;
         let key = match self.current_token().name() {
             Identifier => {
@@ -305,7 +301,7 @@ impl<'a> Parser<'a> {
                 // @Task
                 return Err(Diagnostic::error()
                     .message(format!(
-                        "expected map key, but got {:?}",
+                        "expected record key but got {:?}",
                         self.current_token().name()
                     ))
                     .primary_span(span)

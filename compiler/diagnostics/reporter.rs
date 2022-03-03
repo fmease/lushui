@@ -7,98 +7,108 @@
 
 use super::{Diagnostic, Severity};
 use crate::{
-    span::SourceMapCell,
-    utility::{obtain, pluralize, Conjunction, OrderedListingExt},
+    span::SourceMap,
+    utility::{pluralize, Conjunction, OrderedListingExt},
 };
-use std::{cell::RefCell, collections::BTreeSet, default::default};
+use std::{
+    collections::BTreeSet,
+    default::default,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex, MutexGuard,
+    },
+};
 
 /// The diagnostic reporter.
-#[non_exhaustive]
-pub enum Reporter {
-    Silent,
-    Stderr(StderrReporter),
-    BufferedStderr(BufferedStderrReporter),
-}
+pub struct Reporter(ReporterKind);
 
 impl Reporter {
     pub(super) fn report(&self, diagnostic: Diagnostic) -> ErrorReported {
-        match self {
-            Self::Silent => {}
-            Self::Stderr(reporter) => reporter.report(diagnostic),
-            Self::BufferedStderr(reporter) => reporter.report_or_buffer(diagnostic),
+        match &self.0 {
+            ReporterKind::Silent => {}
+            ReporterKind::Stderr(reporter) => reporter.report(diagnostic),
+            ReporterKind::BufferedStderr(reporter) => reporter.report_or_buffer(diagnostic),
         }
 
         ErrorReported(())
     }
 }
 
+enum ReporterKind {
+    Silent,
+    Stderr(StderrReporter),
+    BufferedStderr(BufferedStderrReporter),
+}
+
 pub struct SilentReporter;
 
 impl From<SilentReporter> for Reporter {
     fn from(_: SilentReporter) -> Self {
-        Self::Silent
+        Self(ReporterKind::Silent)
     }
 }
 
 pub struct StderrReporter {
-    map: Option<SourceMapCell>,
+    map: Option<Arc<Mutex<SourceMap>>>,
 }
 
 impl StderrReporter {
-    pub fn new(map: Option<SourceMapCell>) -> Self {
+    pub fn new(map: Option<Arc<Mutex<SourceMap>>>) -> Self {
         Self { map }
     }
 
     fn report(&self, diagnostic: Diagnostic) {
-        let map = self.map.as_ref().map(|map| map.borrow());
+        let map = self.map.as_ref().map(|map| map.lock().unwrap());
         print_to_stderr(&diagnostic.format_for_terminal(map.as_deref()));
     }
 }
 
 impl From<StderrReporter> for Reporter {
     fn from(reporter: StderrReporter) -> Self {
-        Self::Stderr(reporter)
+        Self(ReporterKind::Stderr(reporter))
     }
 }
 
 pub struct BufferedStderrReporter {
-    errors: RefCell<BTreeSet<Diagnostic>>,
-    warnings: RefCell<BTreeSet<Diagnostic>>,
-    map: SourceMapCell,
+    errors: Mutex<BTreeSet<Diagnostic>>,
+    reported_any_errors: Arc<AtomicBool>,
+    warnings: Mutex<BTreeSet<Diagnostic>>,
+    map: Arc<Mutex<SourceMap>>,
 }
 
 impl BufferedStderrReporter {
-    pub fn new(map: SourceMapCell) -> Self {
+    pub fn new(map: Arc<Mutex<SourceMap>>, reported_any_errors: Arc<AtomicBool>) -> Self {
         Self {
             errors: default(),
+            reported_any_errors,
             warnings: default(),
             map,
         }
     }
 
+    fn map(&self) -> MutexGuard<'_, SourceMap> {
+        self.map.lock().unwrap()
+    }
+
     fn report_or_buffer(&self, diagnostic: Diagnostic) {
         match diagnostic.0.severity {
             Severity::Bug | Severity::Error => {
-                self.errors.borrow_mut().insert(diagnostic);
+                self.errors.lock().unwrap().insert(diagnostic);
             }
             Severity::Warning => {
-                self.warnings.borrow_mut().insert(diagnostic);
+                self.warnings.lock().unwrap().insert(diagnostic);
             }
             Severity::Debug => {
-                print_to_stderr(&diagnostic.format_for_terminal(Some(&self.map.borrow())));
+                print_to_stderr(&diagnostic.format_for_terminal(Some(&self.map())));
             }
         };
     }
 
-    /// Release the buffer of diagnostics.
-    ///
-    /// Writes all buffered bugs, errors and warnings to stderr and clears the buffer.
-    /// Returns the number of reported errors and bugs.
-    pub fn release_buffer(&self) -> usize {
-        let warnings = std::mem::take(&mut *self.warnings.borrow_mut());
+    fn report_buffered_diagnostics(&self) {
+        let warnings = std::mem::take(&mut *self.warnings.lock().unwrap());
 
         for warning in &warnings {
-            print_to_stderr(&warning.format_for_terminal(Some(&self.map.borrow())));
+            print_to_stderr(&warning.format_for_terminal(Some(&self.map())));
         }
 
         if !warnings.is_empty() {
@@ -108,18 +118,20 @@ impl BufferedStderrReporter {
                     warnings.len(),
                     pluralize!(warnings.len(), "warning")
                 ))
-                .format_for_terminal(Some(&self.map.borrow()));
+                .format_for_terminal(Some(&self.map()));
 
             print_to_stderr(&summary);
         }
 
-        let errors = std::mem::take(&mut *self.errors.borrow_mut());
+        let errors = std::mem::take(&mut *self.errors.lock().unwrap());
 
         for error in &errors {
-            print_to_stderr(&error.format_for_terminal(Some(&self.map.borrow())));
+            print_to_stderr(&error.format_for_terminal(Some(&self.map())));
         }
 
         if !errors.is_empty() {
+            self.reported_any_errors.store(true, Ordering::SeqCst);
+
             let codes: BTreeSet<_> = errors.iter().filter_map(|error| error.0.code).collect();
 
             let summary = Diagnostic::error()
@@ -129,6 +141,7 @@ impl BufferedStderrReporter {
                     format!("aborting due to {} previous errors", errors.len()),
                 ))
                 // @Note this not actually implemented yet
+                // @Tasl only do this for any `code` where `code.explain().is_some()`
                 .if_(!codes.is_empty(), |this| {
                     this.note(format!(
                         "the {errors} {codes} {have} a detailed explanation",
@@ -145,36 +158,22 @@ impl BufferedStderrReporter {
                         "run `lushui explain <codes...>` to view a selection of them"
                     ))
                 })
-                .format_for_terminal(Some(&self.map.borrow()));
+                .format_for_terminal(Some(&self.map()));
 
             print_to_stderr(&summary);
         }
-
-        errors.len()
     }
 }
 
 impl Drop for BufferedStderrReporter {
     fn drop(&mut self) {
-        if !(std::thread::panicking()
-            || self.errors.borrow().is_empty() && self.warnings.borrow().is_empty())
-        {
-            panic!("the buffer of the stderr reporter was not released before destruction");
-        }
+        self.report_buffered_diagnostics();
     }
 }
 
 impl From<BufferedStderrReporter> for Reporter {
     fn from(reporter: BufferedStderrReporter) -> Self {
-        Self::BufferedStderr(reporter)
-    }
-}
-
-impl TryFrom<Reporter> for BufferedStderrReporter {
-    type Error = ();
-
-    fn try_from(reporter: Reporter) -> Result<Self, Self::Error> {
-        obtain!(reporter, Reporter::BufferedStderr(reporter) => reporter).ok_or(())
+        Self(ReporterKind::BufferedStderr(reporter))
     }
 }
 

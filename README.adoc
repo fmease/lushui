@@ -57,8 +57,8 @@ If you want to restrict yourself to UI tests, execute `./test/ui/run`.
 == Tooling
 
 No IDE is available yet. However basic syntax highlighting is available for Visual Studio Code as an extension.
-To install it, copy or symlink the folder `./misc/vscode/fmease.lushui-syntax-0.0.1/` to `~/.vscode/extensions/` (Linux).
-For package metadata files, we provide a VS Code extension, too, separately at `./misc/vscode/fmease.lushui-metadata-syntax-0.0.1`.
+To install it, copy or symlink the folder `./project/vscode/fmease.lushui-syntax-0.0.1/` to `~/.vscode/extensions/` (Linux).
+For package metadata files, we provide a VS Code extension, too, separately at `./project/vscode/fmease.lushui-metadata-syntax-0.0.1`.
 
 == Generated API Documentation
 

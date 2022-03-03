@@ -1,0 +1,16 @@
+# TEST fail check
+# @Task don't bail out early after the first error!
+
+name: "test",
+version: "0.0.0",
+
+components: [
+    {
+        type: "library",
+        path: "nonexistent.lushui",
+    },
+    {
+        type: "executable",
+        path: "leading/astray",
+    },
+],

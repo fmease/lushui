@@ -4,30 +4,32 @@ use crate::{
     component::{Component, ComponentIndex, ComponentMetadata, ComponentType, Components},
     diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
     error::{Health, OkIfUntaintedExt, Result},
-    metadata::{key_content_span, Map},
+    metadata::{key_content_span, Record},
     session::BuildSession,
-    span::{SourceMapCell, Spanned},
+    span::{SourceMap, Spanned},
     syntax::Word,
     utility::{HashMap, IOError},
 };
 use index_map::IndexMap;
-pub use manifest::PackageManifest;
-use manifest::{ComponentManifest, PackageProfile, Provider};
+use manifest::{ComponentManifest, PackageManifest, PackageProfile, Provider};
 pub(crate) use manifest::{DependencyDeclaration, Version};
 use std::{
     default::default,
     fmt,
     ops::{Index, IndexMut},
     path::{Path, PathBuf},
+    sync::{Arc, Mutex, MutexGuard},
 };
 
 mod manifest;
 
+pub use manifest::FILE_NAME as MANIFEST_FILE_NAME;
+
 /// Resolve all components and package dependencies of a package given the path to its folder without building anything.
 pub fn resolve_package(
     package_path: &Path,
-    map: SourceMapCell,
-    reporter: &Reporter,
+    map: &Arc<Mutex<SourceMap>>,
+    reporter: Reporter,
 ) -> Result<(Components, BuildSession)> {
     let package_path = match package_path.canonicalize() {
         Ok(path) => path,
@@ -36,7 +38,7 @@ pub fn resolve_package(
             return Err(Diagnostic::error()
                 .message("could not load the package")
                 .note(IOError(error, package_path).to_string())
-                .report(reporter));
+                .report(&reporter));
         }
     };
 
@@ -50,8 +52,8 @@ pub fn resolve_file(
     file_path: &Path,
     component_type: ComponentType,
     no_core: bool,
-    map: SourceMapCell,
-    reporter: &Reporter,
+    map: &Arc<Mutex<SourceMap>>,
+    reporter: Reporter,
 ) -> Result<(Components, BuildSession)> {
     let file_path = match file_path.canonicalize() {
         Ok(path) => path,
@@ -60,7 +62,7 @@ pub fn resolve_file(
             return Err(Diagnostic::error()
                 .message("could not load the file")
                 .note(IOError(error, file_path).to_string())
-                .report(reporter));
+                .report(&reporter));
         }
     };
 
@@ -147,40 +149,40 @@ impl fmt::Debug for PackageIndex {
     }
 }
 
-struct BuildQueue<'r> {
+struct BuildQueue {
     /// The components which have not been built yet.
     components: Components,
     packages: IndexMap<PackageIndex, Package>,
-    map: SourceMapCell,
-    reporter: &'r Reporter,
+    map: Arc<Mutex<SourceMap>>,
+    reporter: Reporter,
 }
 
-impl<'r> BuildQueue<'r> {
-    fn new(map: SourceMapCell, reporter: &'r Reporter) -> Self {
+impl BuildQueue {
+    fn new(map: &Arc<Mutex<SourceMap>>, reporter: Reporter) -> Self {
         Self {
             components: default(),
             packages: default(),
-            map,
+            map: map.clone(),
             reporter,
         }
     }
 }
 
-impl BuildQueue<'_> {
+impl BuildQueue {
     fn resolve_package(&mut self, package_path: &Path) -> Result {
-        let manifest_path = package_path.join(PackageManifest::FILE_NAME);
-        let manifest_file = match self.map.borrow_mut().load(manifest_path.clone()) {
+        let manifest_path = package_path.join(manifest::FILE_NAME);
+        let manifest_file = match self.map().load(manifest_path.clone()) {
             Ok(file) => file,
             Err(error) => {
                 return Err(Diagnostic::error()
                     // @Question code?
                     .message("could not load the package")
                     .note(IOError(error, &manifest_path).to_string())
-                    .report(self.reporter));
+                    .report(&self.reporter));
             }
         };
 
-        let manifest = PackageManifest::parse(manifest_file, self.map.clone(), self.reporter)?;
+        let manifest = PackageManifest::parse(manifest_file, self)?;
         let package = Package::from_manifest(manifest.profile, package_path.to_owned());
         let package = self.packages.insert(package);
 
@@ -243,7 +245,7 @@ impl BuildQueue<'_> {
         no_core: bool,
     ) -> Result {
         // package *and* component name
-        let name = parse_component_name_from_file_path(&file_path, self.reporter)?;
+        let name = parse_component_name_from_file_path(&file_path, &self.reporter)?;
 
         let package = Package::file(name.clone(), file_path.clone());
         let package = self.packages.insert(package);
@@ -260,20 +262,20 @@ impl BuildQueue<'_> {
             // @Task abstract over this
 
             let core_package_path = core_package_path();
-            let core_manifest_path = core_package_path.join(PackageManifest::FILE_NAME);
-            let core_manifest_file = match self.map.borrow_mut().load(core_manifest_path.clone()) {
+            let core_manifest_path = core_package_path.join(manifest::FILE_NAME);
+            let core_manifest_file = match self.map.lock().unwrap().load(core_manifest_path.clone())
+            {
                 Ok(file) => file,
                 Err(error) => {
                     return Err(Diagnostic::error()
                         // @Question code?
                         .message("could not load the package `core`")
                         .note(IOError(error, &core_manifest_path).to_string())
-                        .report(self.reporter));
+                        .report(&self.reporter));
                 }
             };
 
-            let core_manifest =
-                PackageManifest::parse(core_manifest_file, self.map.clone(), self.reporter)?;
+            let core_manifest = PackageManifest::parse(core_manifest_file, self)?;
             let core_package =
                 Package::from_manifest(core_manifest.profile, core_package_path.clone());
             let core_package = self.packages.insert(core_package);
@@ -345,7 +347,7 @@ impl BuildQueue<'_> {
         &mut self,
         component_name: &Word,
         package_path: &Path,
-        dependencies: Option<&Spanned<Map<Word, Spanned<DependencyDeclaration>>>>,
+        dependencies: Option<&Spanned<Record<Word, Spanned<DependencyDeclaration>>>>,
     ) -> Result<HashMap<Word, ComponentIndex>> {
         let Some(dependencies) = dependencies else {
             return Ok(HashMap::default());
@@ -398,7 +400,7 @@ impl BuildQueue<'_> {
                             continue;
                         }
                         PossiblyUnresolved::Unresolved => {
-                            let map = self.map.borrow();
+                            let map = self.map.lock().unwrap();
 
                             // @Note the message does not scale to more complex cycles (e.g. a cycle of three components)
                             // @Task provide more context for transitive dependencies of the goal component
@@ -425,39 +427,40 @@ impl BuildQueue<'_> {
                                 //         &map,
                                 //     ),
                                 // )
-                                .report(self.reporter));
+                                .report(&self.reporter));
                         }
                     }
                 }
             }
 
-            let dependency_manifest_path = dependency_path.join(PackageManifest::FILE_NAME);
-            let dependency_manifest_file =
-                match self.map.borrow_mut().load(dependency_manifest_path.clone()) {
-                    Ok(file) => file,
-                    Err(error) => {
-                        // @Task provide more context for transitive dependencies of the goal component
-                        // @Question code?
-                        let diagnostic = Diagnostic::error()
-                            .message(format!(
-                                "could not load the dependency `{dependency_exonym}`",
-                            ))
-                            .note(IOError(error, &dependency_manifest_path).to_string());
-                        let diagnostic = match &dependency_declaration.value.path {
-                            Some(path) => diagnostic.primary_span(path.span.trim(1)), // trimming quotes
-                            None => diagnostic.primary_span(key_content_span(
-                                dependency_exonym,
-                                &self.map.borrow(),
-                            )),
-                        };
-                        diagnostic.report(self.reporter);
-                        health.taint();
-                        continue;
-                    }
-                };
+            let dependency_manifest_path = dependency_path.join(manifest::FILE_NAME);
+            let dependency_manifest_file = match self
+                .map
+                .lock()
+                .unwrap()
+                .load(dependency_manifest_path.clone())
+            {
+                Ok(file) => file,
+                Err(error) => {
+                    // @Task provide more context for transitive dependencies of the goal component
+                    // @Question code?
+                    let diagnostic = Diagnostic::error()
+                        .message(format!(
+                            "could not load the dependency `{dependency_exonym}`",
+                        ))
+                        .note(IOError(error, &dependency_manifest_path).to_string());
+                    let diagnostic = match &dependency_declaration.value.path {
+                        Some(path) => diagnostic.primary_span(path.span.trim(1)), // trimming quotes
+                        None => diagnostic
+                            .primary_span(key_content_span(dependency_exonym, &self.map())),
+                    };
+                    diagnostic.report(&self.reporter);
+                    health.taint();
+                    continue;
+                }
+            };
 
-            let dependency_manifest =
-                PackageManifest::parse(dependency_manifest_file, self.map.clone(), self.reporter)?;
+            let dependency_manifest = PackageManifest::parse(dependency_manifest_file, self)?;
 
             let alleged_dependency_endonym = dependency_declaration
                 .value
@@ -473,7 +476,7 @@ impl BuildQueue<'_> {
                 // @Task maybe instead of returning early, we could just go forwards with the the exonym
                 return Err(Diagnostic::error()
                     .message("library name does not match")
-                    .report(self.reporter));
+                    .report(&self.reporter));
             }
 
             // @Task assert version requirement (if any) is fulfilled
@@ -564,7 +567,7 @@ impl BuildQueue<'_> {
                     return Err(Diagnostic::error()
                         .message("invalid dependency declaration")
                         .primary_span(span)
-                        .report(self.reporter));
+                        .report(&self.reporter));
                 }
             }
         };
@@ -574,13 +577,13 @@ impl BuildQueue<'_> {
                 Some(path) => Ok(package_path.join(&path.value)),
                 // @Task improve message
                 None => Err(Diagnostic::error()
-                    .message("dependency declaration is missing field `path`")
+                    .message("dependency declaration does not have entry `path`")
                     .primary_span(span)
                     // currently always present in this branch
                     .if_present(declaration.provider.as_ref(), |this, provider| {
                         this.labeled_secondary_span(provider, "required by this")
                     })
-                    .report(self.reporter)),
+                    .report(&self.reporter)),
             },
             Provider::Distribution => {
                 let name = declaration.name.as_ref().map_or(exonym, |name| &name.value);
@@ -597,7 +600,7 @@ impl BuildQueue<'_> {
                 .if_present(declaration.provider.as_ref(), |this, provider| {
                     this.primary_span(provider)
                 })
-                .report(self.reporter)),
+                .report(&self.reporter)),
         }
     }
 
@@ -617,7 +620,7 @@ impl BuildQueue<'_> {
                 // @Temporary diagnostic
                 Diagnostic::error()
                     .message("no (primary) library found in package XXX")
-                    .report(self.reporter)
+                    .report(&self.reporter)
             })
     }
 
@@ -653,13 +656,23 @@ impl BuildQueue<'_> {
         //         .is_ambiguously_named_within_package = true;
         // }
 
-        let session = BuildSession::new(self.packages, goal_component_index, goal_package_index);
+        let session = BuildSession::new(
+            self.packages,
+            goal_component_index,
+            goal_package_index,
+            &self.map,
+            self.reporter,
+        );
 
         (self.components, session)
     }
+
+    fn map(&self) -> MutexGuard<'_, SourceMap> {
+        self.map.lock().unwrap()
+    }
 }
 
-impl Index<ComponentIndex> for BuildQueue<'_> {
+impl Index<ComponentIndex> for BuildQueue {
     type Output = Component;
 
     fn index(&self, index: ComponentIndex) -> &Self::Output {
@@ -667,13 +680,13 @@ impl Index<ComponentIndex> for BuildQueue<'_> {
     }
 }
 
-impl IndexMut<ComponentIndex> for BuildQueue<'_> {
+impl IndexMut<ComponentIndex> for BuildQueue {
     fn index_mut(&mut self, index: ComponentIndex) -> &mut Self::Output {
         &mut self.components[index]
     }
 }
 
-impl Index<PackageIndex> for BuildQueue<'_> {
+impl Index<PackageIndex> for BuildQueue {
     type Output = Package;
 
     fn index(&self, index: PackageIndex) -> &Self::Output {
@@ -681,7 +694,7 @@ impl Index<PackageIndex> for BuildQueue<'_> {
     }
 }
 
-impl IndexMut<PackageIndex> for BuildQueue<'_> {
+impl IndexMut<PackageIndex> for BuildQueue {
     fn index_mut(&mut self, index: PackageIndex) -> &mut Self::Output {
         &mut self.packages[index]
     }
@@ -707,7 +720,7 @@ pub(crate) fn core_package_name() -> Word {
 }
 
 pub fn find_package(path: &Path) -> Option<&Path> {
-    let manifest_path = path.join(PackageManifest::FILE_NAME);
+    let manifest_path = path.join(manifest::FILE_NAME);
 
     if manifest_path.exists() {
         Some(path)
@@ -722,7 +735,7 @@ pub(crate) fn parse_component_name_from_file_path(
 ) -> Result<Word> {
     if !crate::utility::has_file_extension(path, crate::FILE_EXTENSION) {
         Diagnostic::warning()
-            .message("missing or non-standard file extension")
+            .message("the source file does not have the file extension `lushui`")
             .report(reporter);
     }
 

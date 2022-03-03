@@ -2,28 +2,32 @@
 //!
 //! Negative tests are yet to be written. In any case, they have to be UI tests.
 
-use super::{Map, Value};
+use std::{
+    default::default,
+    sync::{Arc, Mutex},
+};
+
+use super::{Record, Value};
 use crate::{
-    diagnostics::reporter::SilentReporter,
+    diagnostics::reporter::StderrReporter,
     error::Result,
     span::{span, SourceMap, WeaklySpanned},
     utility::difference,
 };
 
-// @Task don't use a silent reporter!
-// @Task don't use the assert_eq macro but a diff'ing assert function!
-
 fn parse(source: &str) -> Result<Value> {
-    let map = SourceMap::cell();
-    let file = map.borrow_mut().add(None, source.to_owned());
-    super::super::parse(file, map, &SilentReporter.into())
+    let map: Arc<Mutex<SourceMap>> = default();
+    let file = map.lock().unwrap().add(None, source.to_owned());
+    let reporter = StderrReporter::new(Some(map.clone())).into();
+    let mut map = map.lock().unwrap();
+    super::super::parse(file, &mut map, &reporter)
 }
 
 fn assert_eq(actual: Result<Value>, expected: Value) {
     match actual {
         Ok(actual) => {
             if actual != expected {
-                // @Note for some reason, despite the `#`, large Maps are not formatted with multiple line breaks
+                // @Note for some reason, despite the `#`, large Records are not formatted with multiple line breaks
                 panic!(
                     "the actual value outputted by the parser does not match the expected one:\n{}",
                     difference(&format!("{expected:#?}"), &format!("{actual:#?}"), ""),
@@ -41,19 +45,22 @@ use crate::utility::no_std_assert as assert_ne;
 
 #[test]
 fn empty() {
-    assert_eq(parse(""), Value::new(span(1, 1), Map::default().into()));
+    assert_eq(parse(""), Value::new(span(1, 1), Record::default().into()));
 }
 
 #[test]
 fn sole_line_break() {
-    assert_eq(parse("\n"), Value::new(span(1, 2), Map::default().into()));
+    assert_eq(
+        parse("\n"),
+        Value::new(span(1, 2), Record::default().into()),
+    );
 }
 
 #[test]
 fn comment() {
     assert_eq(
         parse("# there it is"),
-        Value::new(span(1, 14), Map::default().into()),
+        Value::new(span(1, 14), Record::default().into()),
     );
 }
 
@@ -66,7 +73,7 @@ fn comments() {
 ##two  
 # \"three",
         ),
-        Value::new(span(1, 23), Map::default().into()),
+        Value::new(span(1, 23), Record::default().into()),
     );
 }
 
@@ -137,7 +144,7 @@ fn array() {
                 Value::new(span(2, 4), [].into()),
                 Value::new(span(6, 10), "it".into()),
                 Value::new(span(11, 17), 23_000.into()),
-                Value::new(span(20, 24), Map::default().into()),
+                Value::new(span(20, 24), Record::default().into()),
             ]
             .into(),
         ),
@@ -153,7 +160,7 @@ fn array_trailing_comma() {
 }
 
 #[test]
-fn map() {
+fn record() {
     assert_eq(
         parse(
             r#"{uno: ".","dos:" :19
@@ -161,7 +168,7 @@ fn map() {
         ),
         Value::new(
             span(1, 34),
-            Map::from_iter([
+            Record::from_iter([
                 (
                     WeaklySpanned::new(span(2, 5), "uno".into()),
                     Value::new(span(7, 10), ".".into()),
@@ -172,7 +179,7 @@ fn map() {
                 ),
                 (
                     WeaklySpanned::new(span(26, 30), "tres".into()),
-                    Value::new(span(31, 33), Map::default().into()),
+                    Value::new(span(31, 33), Record::default().into()),
                 ),
             ])
             .into(),
@@ -181,12 +188,12 @@ fn map() {
 }
 
 #[test]
-fn map_trailing_comma() {
+fn record_trailing_comma() {
     assert_eq(
         parse("{x:1,}"),
         Value::new(
             span(1, 7),
-            Map::from_iter([(
+            Record::from_iter([(
                 WeaklySpanned::new(span(2, 3), "x".into()),
                 Value::new(span(4, 5), 1.into()),
             )])
@@ -196,7 +203,7 @@ fn map_trailing_comma() {
 }
 
 #[test]
-fn top_level_bracketless_map() {
+fn top_level_bracketless_record() {
     assert_eq(
         parse(
             r#"alpha: 234,
@@ -208,7 +215,7 @@ fn top_level_bracketless_map() {
         ),
         Value::new(
             span(1, 61),
-            Map::from_iter([
+            Record::from_iter([
                 (
                     WeaklySpanned::new(span(1, 6), "alpha".into()),
                     Value::new(span(8, 11), 234.into()),
@@ -221,7 +228,7 @@ fn top_level_bracketless_map() {
                     WeaklySpanned::new(span(42, 50), "gam ma".into()),
                     Value::new(
                         span(53, 60),
-                        Map::from_iter([(
+                        Record::from_iter([(
                             WeaklySpanned::new(span(54, 56), "".into()),
                             Value::new(span(57, 59), [].into()),
                         )])
@@ -235,7 +242,7 @@ fn top_level_bracketless_map() {
 }
 
 #[test]
-fn dash_case_map_key() {
+fn record_key_in_dash_case() {
     assert_eq(
         parse(
             "\
@@ -245,7 +252,7 @@ k-eys: \"\",
         ),
         Value::new(
             span(1, 24),
-            Map::from_iter([
+            Record::from_iter([
                 (
                     WeaklySpanned::new(span(1, 7), "fun_ky".into()),
                     Value::new(span(9, 11), "".into()),

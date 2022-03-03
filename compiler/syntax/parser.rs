@@ -39,9 +39,10 @@ use super::{
     Word,
 };
 use crate::{
-    diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
+    diagnostics::{reporter::ErrorReported, Code, Diagnostic},
     error::Result,
-    span::{SourceFileIndex, SourceMapCell, Span, Spanned, Spanning},
+    session::BuildSession,
+    span::{SourceFileIndex, Span, Spanned, Spanning},
     utility::{Conjunction, OrderedListingExt, SmallVec},
 };
 use std::{any::TypeId, default::default};
@@ -62,12 +63,11 @@ const BRACKET_POTENTIAL_PI_TYPE_LITERAL: &str =
 pub fn parse_root_module_file(
     tokens: &[Token],
     file: SourceFileIndex,
-    map: SourceMapCell,
-    reporter: &Reporter,
+    session: &BuildSession,
 ) -> Result<Declaration> {
     // @Beacon @Task don't unwrap to_str here but handle the error correctly
     // (create another parsing function on ComponentName)
-    let name = map.borrow()[file]
+    let name = session.map()[file]
         .path()
         .unwrap()
         .file_stem()
@@ -86,12 +86,12 @@ pub fn parse_root_module_file(
                 .message(format!(
                     "the name of the root module `{name}` is not a valid word"
                 ))
-                .report(reporter)
+                .report(session.reporter())
         })?,
     )
     .into();
 
-    parse_module_file(tokens, file, binder, map, reporter)
+    parse_module_file(tokens, file, binder, session)
 }
 
 /// Parse the file of a root module or an out-of-line module.
@@ -99,20 +99,17 @@ pub(crate) fn parse_module_file(
     tokens: &[Token],
     file: SourceFileIndex,
     binder: Identifier,
-    map: SourceMapCell,
-    reporter: &Reporter,
+    session: &BuildSession,
 ) -> Result<Declaration> {
-    Parser::new(tokens, file, map, reporter).parse_top_level(binder)
+    Parser::new(tokens, file, session).parse_top_level(binder)
 }
 
-// @Task get rid of the parameters file and map!
 pub(super) fn parse_path(
     tokens: &[Token],
     file: SourceFileIndex,
-    map: SourceMapCell,
-    reporter: &Reporter,
+    session: &BuildSession,
 ) -> Result<Path> {
-    Parser::new(tokens, file, map, reporter).parse_path()
+    Parser::new(tokens, file, session).parse_path()
 }
 
 /// The state of the parser.
@@ -124,24 +121,17 @@ struct Parser<'a> {
     file: SourceFileIndex,
     look_ahead: u16,
     index: usize,
-    map: SourceMapCell,
-    reporter: &'a Reporter,
+    session: &'a BuildSession,
 }
 
 impl<'a> Parser<'a> {
-    fn new(
-        tokens: &'a [Token],
-        file: SourceFileIndex,
-        map: SourceMapCell,
-        reporter: &'a Reporter,
-    ) -> Self {
+    fn new(tokens: &'a [Token], file: SourceFileIndex, session: &'a BuildSession) -> Self {
         Self {
             tokens,
             file,
             look_ahead: 0,
             index: 0,
-            map,
-            reporter,
+            session,
         }
     }
 
@@ -171,7 +161,7 @@ impl<'a> Parser<'a> {
     fn error<T, D: FnOnce() -> Diagnostic>(&self, diagnostic: D) -> Result<T> {
         fn error<D: FnOnce() -> Diagnostic>(parser: &Parser<'_>, diagnostic: D) -> Result<!> {
             if !parser.is_looking_ahead() {
-                diagnostic().report(parser.reporter);
+                diagnostic().report(parser.session.reporter());
             }
 
             // @Note I am not really happy with this: if we are not "looking ahead", we won't actually
@@ -702,7 +692,7 @@ impl<'a> Parser<'a> {
             if self.has_consumed(EndOfInput) {
                 break Ok(Declaration::new(
                     Attributes::new(),
-                    self.map.borrow()[self.file].span(),
+                    self.session.map()[self.file].span(),
                     ast::Module {
                         binder: module_binder,
                         file: self.file,
@@ -1901,7 +1891,7 @@ impl<'a> Parser<'a> {
         } else {
             Err(Expected::Delimiter(Delimiter::Terminator)
                 .but_actual_is(self.current_token())
-                .report(self.reporter))
+                .report(self.session.reporter()))
         }
     }
 
@@ -1993,7 +1983,7 @@ impl Expected {
     fn but_actual_is(self, actual: &Token) -> Diagnostic {
         Diagnostic::error()
             .code(Code::E010)
-            .message(format!("found {actual}, but expected {self}"))
+            .message(format!("found {actual} but expected {self}"))
             .labeled_primary_span(actual, "unexpected token")
     }
 }

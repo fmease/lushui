@@ -1,47 +1,41 @@
+use super::BuildQueue;
 use crate::{
     component::ComponentType,
     diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
     error::{AndThenMapExt, Health, OkIfUntaintedExt, Result},
-    metadata::{self, convert, key_content_span, Map, MapWalker, Value},
-    span::{SourceFileIndex, SourceMap, SourceMapCell, Spanned, WeaklySpanned},
+    metadata::{self, convert, key_content_span, Record, RecordWalker, Value},
+    span::{SourceFileIndex, SourceMap, Spanned, WeaklySpanned},
     syntax::Word,
     utility::{try_all, Conjunction, HashMap, QuoteExt, UnorderedListingExt},
 };
 use derivation::{Elements, FromStr, Str};
 use std::{fmt, path::PathBuf, str::FromStr};
 
-// @Task implement notion of "templates" ("common stanzas" in Cabal speak)
+pub const FILE_NAME: &str = "package.metadata";
 
-// @Note missing span of PackageManifest itself
-pub struct PackageManifest {
-    pub(crate) profile: PackageProfile,
-    pub(crate) components: Option<Spanned<Vec<ComponentManifest>>>,
+pub(super) struct PackageManifest {
+    pub(super) profile: PackageProfile,
+    pub(super) components: Option<Spanned<Vec<ComponentManifest>>>,
 }
 
 impl PackageManifest {
-    pub const FILE_NAME: &'static str = "package.metadata";
+    pub(super) fn parse(file: SourceFileIndex, queue: &BuildQueue) -> Result<Self> {
+        let manifest = metadata::parse(file, &mut queue.map(), &queue.reporter)?;
 
-    pub(crate) fn parse(
-        file: SourceFileIndex,
-        map: SourceMapCell,
-        reporter: &Reporter,
-    ) -> Result<Self> {
-        let manifest = metadata::parse(file, map.clone(), reporter)?;
-
-        let manifest = metadata::convert(manifest, reporter)?;
-        let mut manifest = MapWalker::new(manifest, reporter);
+        let manifest = metadata::convert(manifest, &queue.reporter)?;
+        let mut manifest = RecordWalker::new(manifest, &queue.reporter);
 
         let name = manifest
             .take("name")
             .map(trim_quotes)
-            .and_then(|name| parse_name(name, NameKind::Package, reporter));
+            .and_then(|name| parse_name(name, NameKind::Package, &queue.reporter));
 
         let version = manifest.take("version");
         let description = manifest.take_optional("description");
 
         let components = manifest
             .take_optional("components")
-            .and_then_map(|components| parse_components(components, &map.borrow(), reporter));
+            .and_then_map(|components| parse_components(components, &queue.map(), &queue.reporter));
 
         manifest.exhaust()?;
 
@@ -107,7 +101,7 @@ fn parse_components(
             health.taint();
             continue;
         };
-        let mut component = MapWalker::new(component, reporter);
+        let mut component = RecordWalker::new(component, reporter);
 
         let type_ =
             component
@@ -160,7 +154,7 @@ fn parse_components(
 }
 
 fn parse_dependencies(
-    untyped_dependencies: Spanned<Map>,
+    untyped_dependencies: Spanned<Record>,
     map: &SourceMap,
     reporter: &Reporter,
 ) -> Result<Spanned<HashMap<WeaklySpanned<Word>, Spanned<DependencyDeclaration>>>> {
@@ -175,7 +169,7 @@ fn parse_dependencies(
             health.taint();
             continue;
         };
-        let mut declaration = MapWalker::new(declaration, reporter);
+        let mut declaration = RecordWalker::new(declaration, reporter);
 
         let endonym = declaration
             .take_optional("name")

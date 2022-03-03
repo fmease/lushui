@@ -1,10 +1,6 @@
 //! The front-end concerned with lexing, parsing and lowering.
 
-use crate::{
-    diagnostics::Reporter,
-    error::Result,
-    span::{SourceFileIndex, SourceMapCell},
-};
+use crate::{error::Result, session::BuildSession, span::SourceFileIndex};
 pub use word::Word;
 
 // @Beacon @Task if ast, lowered ast etc are pub(crate) anyway, make the individual AST nodes private as well!
@@ -22,19 +18,11 @@ pub(crate) mod word;
 pub(crate) fn parse_module_file(
     file: SourceFileIndex,
     binder: ast::Identifier,
-    map: SourceMapCell,
-    reporter: &Reporter,
+    session: &BuildSession,
 ) -> Result<ast::Declaration> {
-    let tokens = lexer::lex(&map.borrow()[file], reporter)?.value;
-    parser::parse_module_file(&tokens, file, binder, map, reporter)
+    parser::parse_module_file(&lexer::lex(file, session)?.value, file, binder, session)
 }
 
-// @Task try to get rid of file+map params (just take a &str (maybe, but what about span info?))!
-pub(crate) fn parse_path(
-    file: SourceFileIndex,
-    map: SourceMapCell,
-    reporter: &Reporter,
-) -> Result<ast::Path> {
-    let tokens = lexer::lex(&map.borrow()[file], reporter)?.value;
-    parser::parse_path(&tokens, file, map, reporter)
+pub(crate) fn parse_path(file: SourceFileIndex, session: &BuildSession) -> Result<ast::Path> {
+    parser::parse_path(&lexer::lex(file, session)?.value, file, session)
 }

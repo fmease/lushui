@@ -1,7 +1,7 @@
 use crate::{terminal_width, Stream};
 use colored::Colorize;
 use difference::{Changeset, Difference};
-use std::fmt;
+use std::{borrow::Cow, fmt};
 use unicode_width::UnicodeWidthStr;
 
 type Str = std::borrow::Cow<'static, str>;
@@ -99,7 +99,8 @@ impl fmt::Display for FailureKind {
                 write!(
                     f,
                     "{}",
-                    "expected the test to fail but the Lushui compiler exited successfully".red()
+                    "Expected the compiler to fail but it actually exited successfully i.e. with exit code `0`."
+                        .red()
                 )?;
             }
             Self::UnexpectedFail { code } => {
@@ -107,11 +108,11 @@ impl fmt::Display for FailureKind {
                     f,
                     "{}",
                     format!(
-                        "expected the test to pass but the Lushui compiler failed{}",
+                        "Expected the compiler to exit successfully but it actually failed with {}.",
                         match code {
-                            Some(code) => format!(" with exit code {code}"),
-                            None => String::new(),
-                        }
+                            Some(code) => format!("the non-zero exit code `{code}`").into(),
+                            None => Cow::from("a non-zero exit code"),
+                        },
                     )
                     .red()
                 )?;
@@ -121,7 +122,14 @@ impl fmt::Display for FailureKind {
                 actual,
                 stream,
             } => {
-                writeln!(f, "{}", format!("the actual {stream} of the Lushui compiler does not match the expected golden {stream}:").red())?;
+                writeln!(
+                    f,
+                    "{}",
+                    format!(
+                        "The actual output of the compiler on {stream} differs from the expected golden one:"
+                    )
+                    .red()
+                )?;
                 writeln!(f)?;
                 writeln!(f, "{}", "-".repeat(terminal_width()).bright_black())?;
 
@@ -131,7 +139,14 @@ impl fmt::Display for FailureKind {
                 write!(f, "{}", "-".repeat(terminal_width()).bright_black())?;
             }
             Self::InvalidFile { reason } => {
-                write!(f, "{}: {reason}", "the file is invalid".red())?;
+                write!(
+                    f,
+                    "{}",
+                    format!(
+                        "For being in the test folder, the file has an incorrect form: {reason}."
+                    )
+                    .red()
+                )?;
             }
         }
 

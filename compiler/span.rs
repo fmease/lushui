@@ -3,8 +3,8 @@
 // @Task handle overflows showing errors like "file too big" to the user
 
 use generic::Locality::*;
+pub use source_map::SourceMap;
 pub(crate) use source_map::{SourceFile, SourceFileIndex};
-pub use source_map::{SourceMap, SourceMapCell};
 pub use spanned::Spanned;
 pub(crate) use spanning::{PossiblySpanning, Spanning};
 use std::ops::{Add, Range, Sub};

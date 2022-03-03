@@ -1,12 +1,13 @@
-error[E015]: a mandatory type annotation is missing on the declaration `foo`
+error[E015]: the declaration `foo` does not have a type annotation
  --> ${DIRECTORY}/lowering/let-in-without-definition.lushui:3:4
   |
 3 | foo = let x f in 0
   |   >< 
   |
+ note: type annotations are mandatory on declarations
  help: provide a type annotation for the declaration with `: ?type`
 
-error[E012]: let-binding `x` has no definition
+error[E012]: the let-binding `x` has no definition
  --> ${DIRECTORY}/lowering/let-in-without-definition.lushui:3:14
   |
 3 | foo = let x f in 0

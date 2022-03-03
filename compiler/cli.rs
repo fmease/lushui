@@ -430,8 +430,8 @@ pub struct BuildOptions {
     pub emit_ast: bool,
     pub emit_lowered_ast: bool,
     pub emit_hir: bool,
-    pub emit_untyped_scope: bool,
-    pub emit_scope: bool,
+    pub emit_untyped_bindings: bool,
+    pub emit_bindings: bool,
     pub timing: bool,
     pub pass_restriction: Option<PassRestriction>,
 }
@@ -449,8 +449,8 @@ impl BuildOptions {
                 EmitAst => options.emit_ast = true,
                 EmitLoweredAst => options.emit_lowered_ast = true,
                 EmitHir => options.emit_hir = true,
-                EmitUntypedScope => options.emit_untyped_scope = true,
-                EmitScope => options.emit_scope = true,
+                EmitUntypedBindings => options.emit_untyped_bindings = true,
+                EmitBindings => options.emit_bindings = true,
                 Timing => options.timing = true,
                 LexOnly | ParseOnly | LowerOnly | ResolveOnly => {
                     options.pass_restriction = max(
@@ -548,9 +548,11 @@ mod unstable {
         utility::{pluralize, Conjunction, QuoteExt, UnorderedListingExt},
     };
     use std::{
-        iter::{Chain, Map},
+        iter::{once, Chain, Map},
         str::FromStr,
     };
+
+    const HELP_OPTION: &str = "help";
 
     pub(super) fn deserialize<O: UnstableOption>(matches: &ArgMatches) -> Result<Vec<O>> {
         let mut options = Vec::new();
@@ -558,7 +560,7 @@ mod unstable {
 
         if let Some(unparsed_options) = matches.values_of(super::UNSTABLE_OPTION) {
             for option in unparsed_options {
-                if option == "help" {
+                if option == HELP_OPTION {
                     help::<O>();
                 }
 
@@ -594,25 +596,25 @@ mod unstable {
     }
 
     fn help<O: UnstableOption>() {
-        // @Task smh insert help information about help itself: "Print help information and halt"
-
         let mut message = "UNSTABLE OPTIONS:\n".yellow().to_string();
-        let mut elements: Vec<_> = O::elements().collect();
+        let mut elements: Vec<_> = O::elements()
+            .map(|element| (element.syntax(), element.help()))
+            .chain(once((HELP_OPTION, "Print help information and halt")))
+            .collect();
 
         let padding = elements
             .iter()
-            .map(|element| element.syntax().len())
+            .map(|(syntax, _)| syntax.len())
             .max()
             .unwrap_or_default();
 
-        elements.sort_by_key(|element| element.syntax());
+        elements.sort_by_key(|&(syntax, _)| syntax);
 
-        for option in elements {
+        for (syntax, help) in elements {
             message += &format!(
-                "    {} {:<padding$}     {}\n",
+                "    {} {:<padding$}     {help}\n",
                 "-Z".green(),
-                option.syntax().green(),
-                option.help()
+                syntax.green(),
             );
         }
 
@@ -636,11 +638,11 @@ mod unstable {
     #[str(syntax)]
     pub(super) enum BuildOption {
         EmitAst,
+        EmitBindings,
         EmitHir,
         EmitLoweredAst,
-        EmitScope,
         EmitTokens,
-        EmitUntypedScope,
+        EmitUntypedBindings,
         Internals,
         LexOnly,
         LowerOnly,
@@ -657,11 +659,11 @@ mod unstable {
         fn help(self) -> &'static str {
             match self {
                 Self::EmitAst => "Emit the abstract syntax tree (AST) of the current component output by the parser",
+                Self::EmitBindings => "Emit the (typed) bindings of the current component after type checking",
                 Self::EmitHir => "Emit the high-level intermediate representation (HIR) of the current component output by the resolver",
                 Self::EmitLoweredAst => "Emit the lowered AST of the current component",
-                Self::EmitScope => "Emit the typed scope of the current component output by the typer",
                 Self::EmitTokens => "Emit the tokens of the current component output by the lexer",
-                Self::EmitUntypedScope => "Emit the untyped scope of the current component output by the resolver",
+                Self::EmitUntypedBindings => "Emit the (untyped) bindings of the current component after name resolution",
                 Self::Internals => "Enable internal language and library features",
                 Self::LexOnly => "Halt the execution after lexing the current component",
                 Self::LowerOnly => "Halt the execution after lowering the current component",

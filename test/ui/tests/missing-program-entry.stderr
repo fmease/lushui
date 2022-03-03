@@ -1,0 +1,13 @@
+error[E050]: the component `missing-program-entry` does not contain a `main` function in the root module
+ --> ${DIRECTORY}/missing-program-entry.lushui:1:1
+  |
+1 |   ;;; TEST fail check --component-type=executable
+  |  _^
+2 | | 
+  | |^ 
+  |
+
+error: aborting due to previous error
+ note: the error E050 has a detailed explanation
+ help: run `lushui explain E050` to view it
+

@@ -15,7 +15,7 @@
 use super::Expression;
 use crate::{
     component::Component,
-    diagnostics::{Diagnostic, Reporter},
+    diagnostics::Diagnostic,
     entity::Entity,
     error::{PossiblyErroneous, Result},
     hir::{self, DeBruijnIndex, DeclarationIndex, Identifier},
@@ -27,13 +27,9 @@ use std::{default::default, fmt};
 use Substitution::Shift;
 
 /// Run the entry point of the given executable component.
-pub fn evaluate_main_function(
-    component: &Component,
-    session: &BuildSession,
-    reporter: &Reporter,
-) -> Result<Expression> {
-    Interpreter::new(component, session, reporter).evaluate_expression(
-        Interpreter::new(component, session, reporter)
+pub fn evaluate_main_function(component: &Component, session: &BuildSession) -> Result<Expression> {
+    Interpreter::new(component, session).evaluate_expression(
+        Interpreter::new(component, session)
             .component
             .entry
             .clone()
@@ -47,20 +43,11 @@ pub(crate) struct Interpreter<'a> {
     // @Task add recursion depth
     component: &'a Component,
     session: &'a BuildSession,
-    reporter: &'a Reporter,
 }
 
 impl<'a> Interpreter<'a> {
-    pub(super) fn new(
-        component: &'a Component,
-        session: &'a BuildSession,
-        reporter: &'a Reporter,
-    ) -> Self {
-        Self {
-            component,
-            session,
-            reporter,
-        }
+    pub(super) fn new(component: &'a Component, session: &'a BuildSession) -> Self {
+        Self { component, session }
     }
 
     pub(crate) fn substitute_expression(
@@ -349,10 +336,7 @@ impl<'a> Interpreter<'a> {
                                     // the discarding identifier `_`)
                                     parameter: Identifier::parameter("__"),
                                     parameter_type_annotation: Some(
-                                        self.session.look_up_known_binding(
-                                            KnownBinding::Unit,
-                                            self.reporter,
-                                        )?,
+                                        self.session.look_up_known_binding(KnownBinding::Unit)?,
                                     ),
                                     body_type_annotation: None,
                                     body: Expression::new(
@@ -465,7 +449,7 @@ impl<'a> Interpreter<'a> {
                 Form::Normal => {
                     let parameter_type = self.evaluate_expression(
                         lambda.parameter_type_annotation.clone().ok_or_else(|| {
-                            Diagnostic::missing_annotation().report(self.reporter)
+                            Diagnostic::missing_annotation().report(self.session.reporter())
                         })?,
                         context,
                     )?;
@@ -649,11 +633,7 @@ impl<'a> Interpreter<'a> {
                     }
                 }
 
-                Some(function(value_arguments).into_expression(
-                    self.component,
-                    self.session,
-                    self.reporter,
-                )?)
+                Some(function(value_arguments).into_expression(self.component, self.session)?)
             } else {
                 None
             }),
@@ -719,14 +699,14 @@ impl<'a> Interpreter<'a> {
             }
             // @Question what about the body_type_annotation? what about explicitness?
             (Lambda(lambda0), Lambda(lambda1)) => {
-                let parameter_type_annotation0 = lambda0
-                    .parameter_type_annotation
-                    .clone()
-                    .ok_or_else(|| Diagnostic::missing_annotation().report(self.reporter))?;
-                let parameter_type_annotation1 = lambda1
-                    .parameter_type_annotation
-                    .clone()
-                    .ok_or_else(|| Diagnostic::missing_annotation().report(self.reporter))?;
+                let parameter_type_annotation0 =
+                    lambda0.parameter_type_annotation.clone().ok_or_else(|| {
+                        Diagnostic::missing_annotation().report(self.session.reporter())
+                    })?;
+                let parameter_type_annotation1 =
+                    lambda1.parameter_type_annotation.clone().ok_or_else(|| {
+                        Diagnostic::missing_annotation().report(self.session.reporter())
+                    })?;
 
                 self.equals(
                     &parameter_type_annotation0,
@@ -755,7 +735,8 @@ impl<'a> Interpreter<'a> {
             (Substitution(_), Substitution(_)) => {
                 return Err(Diagnostic::bug()
                     .message("attempt to check two substitutions for equivalence")
-                    .note("they should not exist in this part of the code but should have already been evaluated").report(self.reporter));
+                    .note("they should not exist in this part of the code but should have already been evaluated")
+                    .report(self.session.reporter()));
             }
             // @Task probably should just be `true` once we support errors in subexpressions
             (Error, _) | (_, Error) => panic!("trying to check equality on erroneous expressions"),

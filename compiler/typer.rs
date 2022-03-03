@@ -5,7 +5,7 @@
 
 use crate::{
     component::Component,
-    diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
+    diagnostics::{reporter::ErrorReported, Code, Diagnostic},
     entity::EntityKind,
     error::{Health, Result, Stain},
     hir::{self, Declaration, Expression, Identifier},
@@ -23,9 +23,8 @@ pub fn check(
     declaration: &Declaration,
     component: &mut Component,
     session: &mut BuildSession,
-    reporter: &Reporter,
 ) -> Result {
-    let mut typer = Typer::new(component, session, reporter);
+    let mut typer = Typer::new(component, session);
 
     typer
         .start_infer_types_in_declaration(declaration, Context::default())
@@ -42,7 +41,6 @@ struct Typer<'a> {
     // @Task add recursion depth field
     component: &'a mut Component,
     session: &'a mut BuildSession,
-    reporter: &'a Reporter,
     // @Note this is very coarse-grained: as soon as we cannot resolve EITHER type annotation (for example)
     // OR actual value(s), we bail out and add this here. This might be too conversative (leading to more
     // "circular type" errors or whatever), we can just discriminate by creating sth like
@@ -52,22 +50,17 @@ struct Typer<'a> {
 }
 
 impl<'a> Typer<'a> {
-    fn new(
-        component: &'a mut Component,
-        session: &'a mut BuildSession,
-        reporter: &'a Reporter,
-    ) -> Self {
+    fn new(component: &'a mut Component, session: &'a mut BuildSession) -> Self {
         Self {
             component,
             session,
-            reporter,
             out_of_order_bindings: Vec::new(),
             health: Health::Untainted,
         }
     }
 
     fn interpreter(&self) -> Interpreter<'_> {
-        Interpreter::new(self.component, self.session, self.reporter)
+        Interpreter::new(self.component, self.session)
     }
 
     // @Task documentation
@@ -383,7 +376,6 @@ impl<'a> Typer<'a> {
                         .attributes
                         .span(AttributeName::Intrinsic)
                         .unwrap(),
-                    self.reporter,
                 )?;
             }
         }
@@ -416,7 +408,7 @@ impl<'a> Typer<'a> {
                 .if_present(expectation_cause, |this, cause| {
                     this.labeled_secondary_span(cause, "expected due to this")
                 })
-                .report(self.reporter)),
+                .report(self.session.reporter())),
         }
     }
 
@@ -446,7 +438,7 @@ impl<'a> Typer<'a> {
                             .map(|binding| binding.with((self.component, self.session)).quote())
                             .join_with(", ")
                     ))
-                    .report(self.reporter));
+                    .report(self.session.reporter()));
             }
         }
 
@@ -476,16 +468,12 @@ impl<'a> Typer<'a> {
                 .look_up_type(&binding.0, scope)
                 .ok_or(OutOfOrderBinding)?,
             Type => Expression::new(default(), default(), hir::ExpressionKind::Type),
-            Number(number) => self.session.look_up_intrinsic_type(
-                number.type_().into(),
-                Some(expression.span),
-                self.reporter,
-            )?,
-            Text(_) => self.session.look_up_intrinsic_type(
-                IntrinsicType::Text,
-                Some(expression.span),
-                self.reporter,
-            )?,
+            Number(number) => self
+                .session
+                .look_up_intrinsic_type(number.type_().into(), Some(expression.span))?,
+            Text(_) => self
+                .session
+                .look_up_intrinsic_type(IntrinsicType::Text, Some(expression.span))?,
             PiType(literal) => {
                 // ensure domain and codomain are are well-typed
                 // @Question why do we need to this? shouldn't this be already handled if
@@ -504,10 +492,10 @@ impl<'a> Typer<'a> {
                 Expression::new(default(), default(), hir::ExpressionKind::Type)
             }
             Lambda(lambda) => {
-                let parameter_type: Expression = lambda
-                    .parameter_type_annotation
-                    .clone()
-                    .ok_or_else(|| Diagnostic::missing_annotation().report(self.reporter))?;
+                let parameter_type: Expression =
+                    lambda.parameter_type_annotation.clone().ok_or_else(|| {
+                        Diagnostic::missing_annotation().report(self.session.reporter())
+                    })?;
 
                 self.it_is_a_type(parameter_type.clone(), scope)?;
 
@@ -557,7 +545,6 @@ impl<'a> Typer<'a> {
                                 domain: self.session.look_up_known_type(
                                     KnownBinding::Unit,
                                     application.callee.span,
-                                    self.reporter,
                                 )?,
                                 codomain: argument_type,
                             }
@@ -581,7 +568,7 @@ impl<'a> Typer<'a> {
                                 ))
                                 .labeled_primary_span(&application.argument, "has the wrong type")
                                 .labeled_secondary_span(&expected, "expected due to this")
-                                .report(self.reporter),
+                                .report(self.session.reporter()),
                             OutOfOrderBinding => unreachable!(),
                         })?;
 
@@ -606,7 +593,7 @@ impl<'a> Typer<'a> {
                         ))
                         .labeled_primary_span(&application.callee, "has wrong type")
                         .labeled_secondary_span(&application.argument, "applied to this")
-                        .report(self.reporter)
+                        .report(self.session.reporter())
                         .into());
                 }
             }
@@ -640,7 +627,7 @@ impl<'a> Typer<'a> {
                             .message("attempt to analyze a type")
                             .primary_span(expression.span)
                             .note("forbidden to uphold parametricity and type erasure")
-                            .report(self.reporter)
+                            .report(self.session.reporter())
                             .into());
                     }
                     _ => todo!(
@@ -680,14 +667,13 @@ impl<'a> Typer<'a> {
                             let number_type = self.session.look_up_intrinsic_type(
                                 number.type_().into(),
                                 Some(case.pattern.span),
-                                self.reporter,
                             )?;
                             self.it_is_actual(subject_type.clone(), number_type, scope)
                                 .map_err(|error| {
                                     handle_type_mismatch(
                                         error,
                                         (self.component, self.session),
-                                        self.reporter,
+                                        self.session.reporter(),
                                     )
                                 })?;
                         }
@@ -695,14 +681,13 @@ impl<'a> Typer<'a> {
                             let text_type = self.session.look_up_intrinsic_type(
                                 IntrinsicType::Text,
                                 Some(case.pattern.span),
-                                self.reporter,
                             )?;
                             self.it_is_actual(subject_type.clone(), text_type, scope)
                                 .map_err(|error| {
                                     handle_type_mismatch(
                                         error,
                                         (self.component, self.session),
-                                        self.reporter,
+                                        self.session.reporter(),
                                     )
                                 })?;
                         }
@@ -719,7 +704,7 @@ impl<'a> Typer<'a> {
                                 handle_type_mismatch(
                                     error,
                                     (self.component, self.session),
-                                    self.reporter,
+                                    self.session.reporter(),
                                 )
                             })?;
                         }
@@ -758,7 +743,7 @@ impl<'a> Typer<'a> {
                                         ))
                                         .primary_span(&binder.0)
                                         .help("consider refering to a concrete binding")
-                                        .report(self.reporter)
+                                        .report(self.session.reporter())
                                         .into());
                                 }
                                 (Application(_), _argument) => todo!(),
@@ -788,11 +773,9 @@ impl<'a> Typer<'a> {
             }
             // @Beacon @Task
             IntrinsicApplication(_) | Projection(_) => todo!(),
-            IO(_) => self.session.look_up_intrinsic_type(
-                IntrinsicType::IO,
-                Some(expression.span),
-                self.reporter,
-            )?,
+            IO(_) => self
+                .session
+                .look_up_intrinsic_type(IntrinsicType::IO, Some(expression.span))?,
             Error => expression,
         })
     }
@@ -903,7 +886,7 @@ impl<'a> Typer<'a> {
                     type_.with((self.component, self.session))
                 ))
                 .primary_span(result_type.span)
-                .report(self.reporter))
+                .report(self.session.reporter()))
         }
     }
 }

@@ -12,7 +12,7 @@
 use crate::{
     diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
     error::Result,
-    span::{SourceFileIndex, SourceMap, SourceMapCell, Span, Spanned, Spanning, WeaklySpanned},
+    span::{SourceFileIndex, SourceMap, Span, Spanned, Spanning, WeaklySpanned},
     utility::{obtain, HashMap},
 };
 use derivation::Discriminant;
@@ -22,16 +22,16 @@ mod lexer;
 mod parser;
 
 pub(crate) type Value = Spanned<ValueKind>;
-pub(crate) type Map<K = String, V = Value> = HashMap<WeaklySpanned<K>, V>;
+pub(crate) type Record<K = String, V = Value> = HashMap<WeaklySpanned<K>, V>;
 
 pub(crate) fn parse(
     source_file_index: SourceFileIndex,
-    map: SourceMapCell,
+    map: &mut SourceMap,
     reporter: &Reporter,
 ) -> Result<Value> {
-    let source_file = &map.borrow()[source_file_index];
+    let source_file = &map[source_file_index];
     let tokens = lexer::Lexer::new(source_file).lex().value;
-    parser::Parser::new(source_file_index, &tokens, map.clone(), reporter).parse()
+    parser::Parser::new(source_file_index, &tokens, map, reporter).parse()
 }
 
 #[derive(Debug, Discriminant)]
@@ -42,7 +42,7 @@ pub(crate) enum ValueKind {
     Integer(i64),
     Text(String),
     List(Vec<Value>),
-    Map(Map),
+    Record(Record),
 }
 
 impl From<bool> for ValueKind {
@@ -133,20 +133,20 @@ impl TryFrom<ValueKind> for Vec<Value> {
     }
 }
 
-impl From<Map> for ValueKind {
-    fn from(map: Map) -> Self {
-        Self::Map(map)
+impl From<Record> for ValueKind {
+    fn from(record: Record) -> Self {
+        Self::Record(record)
     }
 }
 
-impl TryFrom<ValueKind> for Map {
+impl TryFrom<ValueKind> for Record {
     type Error = TypeError;
 
     fn try_from(value: ValueKind) -> Result<Self, Self::Error> {
         let type_ = value.type_();
 
-        obtain!(value, ValueKind::Map(value) => value).ok_or(TypeError {
-            expected: Type::Map,
+        obtain!(value, ValueKind::Record(value) => value).ok_or(TypeError {
+            expected: Type::Record,
             actual: type_,
         })
     }
@@ -159,7 +159,7 @@ impl fmt::Display for Type {
             Self::Integer => write!(f, "integer"),
             Self::Text => write!(f, "text"),
             Self::List => write!(f, "list"),
-            Self::Map => write!(f, "map"),
+            Self::Record => write!(f, "record"),
         }
     }
 }
@@ -205,26 +205,26 @@ pub(crate) fn convert<T: TryFrom<ValueKind, Error = TypeError>>(
     ))
 }
 
-pub(crate) struct MapWalker<'r> {
-    map: Spanned<Map>,
+pub(crate) struct RecordWalker<'r> {
+    record: Spanned<Record>,
     reporter: &'r Reporter,
 }
 
-impl<'r> MapWalker<'r> {
-    pub(crate) fn new(map: Spanned<Map>, reporter: &'r Reporter) -> Self {
-        Self { map, reporter }
+impl<'r> RecordWalker<'r> {
+    pub(crate) fn new(record: Spanned<Record>, reporter: &'r Reporter) -> Self {
+        Self { record, reporter }
     }
 
     pub(crate) fn take<T>(&mut self, key: &str) -> Result<Spanned<T>>
     where
         T: TryFrom<ValueKind, Error = TypeError>,
     {
-        match self.map.value.remove(key) {
+        match self.record.value.remove(key) {
             Some(value) => convert(value, self.reporter),
             None => Err(Diagnostic::error()
                 .code(Code::E802)
-                .message(format!("the map is missing the key `{key}`"))
-                .primary_span(&self.map)
+                .message(format!("the record does not contain the entry `{key}`"))
+                .primary_span(&self.record)
                 .report(self.reporter)),
         }
     }
@@ -233,19 +233,19 @@ impl<'r> MapWalker<'r> {
     where
         T: TryFrom<ValueKind, Error = TypeError>,
     {
-        match self.map.value.remove(key) {
+        match self.record.value.remove(key) {
             Some(value) => convert(value, self.reporter).map(Some),
             None => Ok(None),
         }
     }
 
     pub(crate) fn exhaust(self) -> Result<Span> {
-        if !self.map.value.is_empty() {
-            for key in self.map.value.into_keys() {
-                // @Task improve message
+        if !self.record.value.is_empty() {
+            for key in self.record.value.into_keys() {
+                // @Question should we use the "unknown" terminology?
                 Diagnostic::error()
                     .code(Code::E801)
-                    .message(format!("the map contains the unknown key `{key}`"))
+                    .message(format!("the record contains the unknown entry `{key}`"))
                     .primary_span(key)
                     .report(self.reporter);
             }
@@ -253,6 +253,6 @@ impl<'r> MapWalker<'r> {
             return Err(ErrorReported::new_unchecked());
         }
 
-        Ok(self.map.span)
+        Ok(self.record.span)
     }
 }

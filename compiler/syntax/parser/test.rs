@@ -12,8 +12,8 @@ use super::{
     Parser, Result,
 };
 use crate::{
-    diagnostics::reporter::SilentReporter,
-    span::{span, SourceFileIndex, SourceMap, Span, Spanned},
+    session::BuildSession,
+    span::{span, SourceFileIndex, Span, Spanned},
     syntax::{lexer::lex, parse_module_file},
     utility::SmallVec,
 };
@@ -21,28 +21,22 @@ use index_map::Index as _;
 use smallvec::smallvec;
 use std::default::default;
 
-// @Task don't use the SilentReporter!
-
 fn parse_expression(source: &str) -> Result<Expression> {
-    let map = SourceMap::cell();
-    let file = map.borrow_mut().add(None, source.to_owned());
-    let reporter = SilentReporter.into();
-    let tokens = lex(&map.borrow()[file], &reporter)?.value;
-    Parser::new(&tokens, file, map, &reporter).parse_expression()
+    let session = BuildSession::test();
+    let file = session.map().add(None, source.to_owned());
+    Parser::new(&lex(file, &session)?.value, file, &session).parse_expression()
 }
 
 fn parse_pattern(source: &str) -> Result<Pattern> {
-    let map = SourceMap::cell();
-    let file = map.borrow_mut().add(None, source.to_owned());
-    let reporter = SilentReporter.into();
-    let tokens = lex(&map.borrow()[file], &reporter)?.value;
-    Parser::new(&tokens, file, map, &reporter).parse_pattern()
+    let session = BuildSession::test();
+    let file = session.map().add(None, source.to_owned());
+    Parser::new(&lex(file, &session)?.value, file, &session).parse_pattern()
 }
 
 fn parse_declaration(source: &str) -> Result<Declaration> {
-    let map = SourceMap::cell();
-    let file = map.borrow_mut().add(None, source.to_owned());
-    parse_module_file(file, test_module_name(), map, &SilentReporter.into())
+    let session = BuildSession::test();
+    let file = session.map().add(None, source.to_owned());
+    parse_module_file(file, test_module_name(), &session)
 }
 
 /// The name of the module returned by [parse_declaration].

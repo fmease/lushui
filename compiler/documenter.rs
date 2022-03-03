@@ -8,7 +8,6 @@
 
 use crate::{
     component::{Component, ComponentMetadata, ComponentType},
-    diagnostics::Reporter,
     error::Result,
     hir::{self, LocalDeclarationIndex},
     session::BuildSession,
@@ -46,11 +45,10 @@ pub fn document(
     components: &[ComponentMetadata],
     component: &Component,
     session: &BuildSession,
-    reporter: &Reporter,
 ) -> Result<()> {
     crossbeam::scope(|scope| {
         let mut documenter =
-            Documenter::new(options, components, component, session, reporter, scope).unwrap();
+            Documenter::new(options, components, component, session, scope).unwrap();
 
         documenter.document_declaration(declaration)?;
         documenter.collect_search_items(declaration);
@@ -67,8 +65,6 @@ struct Documenter<'a, 'scope> {
     components: &'a [ComponentMetadata],
     component: &'a Component,
     session: &'a BuildSession,
-    #[allow(dead_code)]
-    reporter: &'a Reporter,
     text_processor: TextProcessor<'scope>,
     pages: Vec<Page>,
     search_items: Vec<SearchItem>,
@@ -81,7 +77,6 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         components: &'a [ComponentMetadata],
         component: &'a Component,
         session: &'a BuildSession,
-        reporter: &'a Reporter,
         scope: &'scope Scope<'a>,
     ) -> Result<Self, std::io::Error> {
         let path = session.build_folder().join(DOCUMENTATION_FOLDER_NAME);
@@ -97,7 +92,6 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             components,
             component,
             session,
-            reporter,
             text_processor,
             pages: default(),
             search_items: default(),

@@ -117,12 +117,13 @@ error[E013]: attribute `public` is ascribed to a constructor declaration
    |
   note: attribute `public` can only be ascribed to declarations except constructors and module headers
 
-error[E015]: a mandatory type annotation is missing on the declaration `manifest`
+error[E015]: the declaration `manifest` does not have a type annotation
   --> ${DIRECTORY}/lowering/misplaced-attributes.lushui:17:21
    |
 17 |     @public manifest
    |                    >< 
    |
+  note: type annotations are mandatory on declarations
   help: provide a type annotation for the declaration with `: ?type`
 
 error[E013]: attribute `static` is ascribed to a path pattern

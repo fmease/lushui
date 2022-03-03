@@ -5,7 +5,7 @@ use crate::{
     error::Result,
     hir::{self, DeclarationIndex, Expression, ExpressionKind, Identifier},
     package::{Package, PackageIndex},
-    span::Span,
+    span::{SourceMap, Span},
     syntax::ast::Explicitness,
     utility::{condition, HashMap, Int, Nat},
 };
@@ -18,6 +18,7 @@ use std::{
     ops::{Index, IndexMut},
     path::PathBuf,
     str::FromStr,
+    sync::{Arc, Mutex, MutexGuard},
 };
 
 const BUILD_FOLDER_NAME: &str = "build";
@@ -32,6 +33,8 @@ pub struct BuildSession {
     known_bindings: HashMap<KnownBinding, Identifier>,
     intrinsic_types: HashMap<IntrinsicType, Identifier>,
     intrinsic_functions: HashMap<IntrinsicFunction, IntrinsicFunctionValue>,
+    map: Arc<Mutex<SourceMap>>,
+    reporter: Reporter,
 }
 
 impl BuildSession {
@@ -40,6 +43,8 @@ impl BuildSession {
         packages: IndexMap<PackageIndex, Package>,
         goal_component: ComponentIndex,
         goal_package: PackageIndex,
+        map: &Arc<Mutex<SourceMap>>,
+        reporter: Reporter,
     ) -> Self {
         Self {
             components: default(),
@@ -49,19 +54,27 @@ impl BuildSession {
             known_bindings: default(),
             intrinsic_types: default(),
             intrinsic_functions: intrinsic_functions(),
+            map: map.clone(),
+            reporter,
         }
     }
 
     #[cfg(test)]
-    pub(crate) fn empty(goal_component: ComponentIndex, goal_package: PackageIndex) -> Self {
+    pub(crate) fn test() -> Self {
+        use crate::diagnostics::reporter::StderrReporter;
+
+        let map: Arc<Mutex<SourceMap>> = default();
+
         Self {
             components: default(),
             packages: default(),
-            goal_component,
-            goal_package,
+            goal_component: ComponentIndex(0),
+            goal_package: PackageIndex::new_unchecked(0),
             known_bindings: default(),
             intrinsic_types: default(),
             intrinsic_functions: default(),
+            map: map.clone(),
+            reporter: StderrReporter::new(Some(map)).into(),
         }
     }
 
@@ -94,15 +107,11 @@ impl BuildSession {
         self.known_bindings.get(&known)
     }
 
-    pub(crate) fn look_up_known_binding(
-        &self,
-        known: KnownBinding,
-        reporter: &Reporter,
-    ) -> Result<Expression> {
+    pub(crate) fn look_up_known_binding(&self, known: KnownBinding) -> Result<Expression> {
         Ok(self
             .known_binding(known)
             .cloned()
-            .ok_or_else(|| Diagnostic::missing_known_binding(known).report(reporter))?
+            .ok_or_else(|| Diagnostic::missing_known_binding(known).report(self.reporter()))?
             .into_expression())
     }
 
@@ -110,12 +119,13 @@ impl BuildSession {
         &self,
         known: KnownBinding,
         expression: Span,
-        reporter: &Reporter,
     ) -> Result<Expression> {
         Ok(self
             .known_binding(known)
             .cloned()
-            .ok_or_else(|| Diagnostic::missing_known_type(known, expression).report(reporter))?
+            .ok_or_else(|| {
+                Diagnostic::missing_known_type(known, expression).report(self.reporter())
+            })?
             .into_expression())
     }
 
@@ -124,7 +134,6 @@ impl BuildSession {
         binder: &Identifier,
         namespace: Option<&str>,
         attribute: Span,
-        reporter: &Reporter,
     ) -> Result {
         let Some(binding) = KnownBinding::parse(namespace, binder.as_str()) else {
             return Err(Diagnostic::error()
@@ -136,7 +145,7 @@ impl BuildSession {
                 ))
                 .primary_span(binder)
                 .secondary_span(attribute)
-                .report(reporter));
+                .report(self.reporter()));
         };
 
         if let Some(previous) = self.known_bindings.get(&binding) {
@@ -148,7 +157,7 @@ impl BuildSession {
                 ))
                 .labeled_primary_span(binder, "conflicting definition")
                 .labeled_secondary_span(previous, "previous definition")
-                .report(reporter));
+                .report(self.reporter()));
         }
 
         self.known_bindings.insert(binding, binder.clone());
@@ -171,13 +180,12 @@ impl BuildSession {
         &mut self,
         binder: Identifier,
         attribute: Span,
-        reporter: &Reporter,
     ) -> Result {
         let Ok(intrinsic) = binder.as_str().parse::<IntrinsicType>() else {
             return Err(Diagnostic::unrecognized_intrinsic_binding(binder.as_str(), IntrinsicKind::Type)
                 .primary_span(&binder)
                 .secondary_span(attribute)
-                .report(reporter));
+                .report(self.reporter()));
         };
 
         if let Some(previous) = self.intrinsic_type(intrinsic) {
@@ -188,7 +196,7 @@ impl BuildSession {
                 ))
                 .labeled_primary_span(&binder, "conflicting definition")
                 .labeled_secondary_span(previous as &_, "previous definition")
-                .report(reporter));
+                .report(self.reporter()));
         }
 
         self.intrinsic_types.insert(intrinsic, binder);
@@ -201,13 +209,12 @@ impl BuildSession {
         binder: Identifier,
         type_: Expression,
         attribute: Span,
-        reporter: &Reporter,
     ) -> Result<EntityKind> {
         let Ok(intrinsic) = binder.as_str().parse() else {
             return Err(Diagnostic::unrecognized_intrinsic_binding(binder.as_str(), IntrinsicKind::Function)
                 .primary_span(&binder)
                 .secondary_span(attribute)
-                .report(reporter));
+                .report(self.reporter()));
         };
 
         // @Task explain why we remove here
@@ -225,7 +232,6 @@ impl BuildSession {
         &self,
         intrinsic: IntrinsicType,
         expression: Option<Span>,
-        reporter: &Reporter,
     ) -> Result<Expression> {
         if let Some(intrinsic) = self.intrinsic_type(intrinsic) {
             return Ok(intrinsic.clone().into_expression());
@@ -236,8 +242,16 @@ impl BuildSession {
                 .if_present(expression, |diagnostic, span| {
                     diagnostic.labeled_primary_span(span, "the type of this expression")
                 })
-                .report(reporter),
+                .report(self.reporter()),
         )
+    }
+
+    pub fn map(&self) -> MutexGuard<'_, SourceMap> {
+        self.map.lock().unwrap()
+    }
+
+    pub fn reporter(&self) -> &Reporter {
+        &self.reporter
     }
 }
 
@@ -277,9 +291,10 @@ impl IndexMut<PackageIndex> for BuildSession {
 
 impl Diagnostic {
     fn missing_known_binding(binding: KnownBinding) -> Self {
-        Self::error()
-            .code(Code::E062)
-            .message(format!("the known binding `{}` is missing", binding.path()))
+        Self::error().code(Code::E062).message(format!(
+            "the known binding `{}` is not defined",
+            binding.path()
+        ))
     }
 
     fn missing_known_type(binding: KnownBinding, expression: Span) -> Self {
@@ -296,7 +311,7 @@ impl Diagnostic {
     fn missing_intrinsic_binding(intrinsic: IntrinsicType, kind: IntrinsicKind) -> Self {
         Self::error()
             .code(Code::E060)
-            .message(format!("the intrinsic {kind} `{intrinsic}` is missing"))
+            .message(format!("the intrinsic {kind} `{intrinsic}` is not defined"))
     }
 }
 
@@ -566,18 +581,13 @@ impl Type {
         })
     }
 
-    fn into_expression(
-        self,
-        component: &Component,
-        session: &BuildSession,
-        reporter: &Reporter,
-    ) -> Result<Expression> {
+    fn into_expression(self, component: &Component, session: &BuildSession) -> Result<Expression> {
         use IntrinsicNumericType::*;
         use IntrinsicType::*;
         use KnownBinding::*;
 
-        let intrinsic = |binding| session.look_up_intrinsic_type(binding, None, reporter);
-        let known = |binding| session.look_up_known_binding(binding, reporter);
+        let intrinsic = |binding| session.look_up_intrinsic_type(binding, None);
+        let known = |binding| session.look_up_known_binding(binding);
 
         match self {
             Self::Unit => known(Unit),
@@ -591,7 +601,7 @@ impl Type {
             Self::Text => intrinsic(Text),
             Self::Option(type_) => Ok(application(
                 known(Option)?,
-                type_.into_expression(component, session, reporter)?,
+                type_.into_expression(component, session)?,
             )),
         }
     }
@@ -684,20 +694,16 @@ impl Value {
         self,
         component: &Component,
         session: &BuildSession,
-        reporter: &Reporter,
     ) -> Result<Expression> {
         use hir::{Number::*, Text::*};
 
         Ok(match self {
-            Self::Unit => session.look_up_known_binding(KnownBinding::Unit, reporter)?,
-            Self::Bool(value) => session.look_up_known_binding(
-                if value {
-                    KnownBinding::BoolTrue
-                } else {
-                    KnownBinding::BoolFalse
-                },
-                reporter,
-            )?,
+            Self::Unit => session.look_up_known_binding(KnownBinding::Unit)?,
+            Self::Bool(value) => session.look_up_known_binding(if value {
+                KnownBinding::BoolTrue
+            } else {
+                KnownBinding::BoolFalse
+            })?,
             Self::Text(value) => Expression::new(default(), default(), Text(value).into()),
             Self::Nat(value) => Expression::new(default(), default(), Nat(value).into()),
             Self::Nat32(value) => Expression::new(default(), default(), Nat32(value).into()),
@@ -708,14 +714,14 @@ impl Value {
             Self::Option { type_, value } => match value {
                 Some(value) => application(
                     application(
-                        session.look_up_known_binding(KnownBinding::OptionSome, reporter)?,
-                        type_.into_expression(component, session, reporter)?,
+                        session.look_up_known_binding(KnownBinding::OptionSome)?,
+                        type_.into_expression(component, session)?,
                     ),
-                    value.into_expression(component, session, reporter)?,
+                    value.into_expression(component, session)?,
                 ),
                 None => application(
-                    session.look_up_known_binding(KnownBinding::OptionNone, reporter)?,
-                    type_.into_expression(component, session, reporter)?,
+                    session.look_up_known_binding(KnownBinding::OptionNone)?,
+                    type_.into_expression(component, session)?,
                 ),
             },
             Self::IO { index, arguments } => Expression::new(
@@ -725,7 +731,7 @@ impl Value {
                     index,
                     arguments: arguments
                         .into_iter()
-                        .map(|argument| argument.into_expression(component, session, reporter))
+                        .map(|argument| argument.into_expression(component, session))
                         .collect::<Result<Vec<_>>>()?,
                 }
                 .into(),

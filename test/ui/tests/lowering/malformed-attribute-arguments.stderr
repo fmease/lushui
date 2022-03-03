@@ -5,14 +5,14 @@ error[E018]: the lint `never-gonna-be-implied` is not defined
   |         ^^^^^^^^^^^^^^^^^^^^^^ 
   |
 
-error[E027]: found text literal, but expected positional or named path
+error[E027]: found text literal but expected positional or named path
  --> ${DIRECTORY}/lowering/malformed-attribute-arguments.lushui:7:9
   |
 7 | @(allow "my lint")
   |         ^^^^^^^^^ 
   |
 
-error[E027]: found text literal, but expected path
+error[E027]: found text literal but expected path
  --> ${DIRECTORY}/lowering/malformed-attribute-arguments.lushui:8:16
   |
 8 | @(forbid (lint "my other one"))
@@ -26,7 +26,7 @@ error[E019]: too few attribute arguments provided
   | ^^^^^ 
   |
 
-error[E028]: found named argument `reech`, but expected `reach`
+error[E028]: found named argument `reech` but expected `reach`
   --> ${DIRECTORY}/lowering/malformed-attribute-arguments.lushui:12:11
    |
 12 | @(public (reech path) "hello")

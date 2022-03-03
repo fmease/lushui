@@ -7,7 +7,8 @@ use crate::{
         Code, Diagnostic, Reporter,
     },
     error::{Health, Outcome, Result},
-    span::{LocalSpan, SourceFile, SourceMap, Spanned},
+    session::BuildSession,
+    span::{LocalSpan, SourceFile, SourceFileIndex, SourceMap, Spanned},
     utility::{self, lexer::Lexer as _, GetFromEndExt},
 };
 use std::{
@@ -23,6 +24,14 @@ use TokenKind::*;
 #[cfg(test)]
 mod test;
 
+/// Lex source code into an array of tokens
+///
+/// The health of the tokens can be ignored if the tokens are fed into the parser
+/// immediately after lexing since the parser will handle invalid tokens.
+pub fn lex(file: SourceFileIndex, session: &BuildSession) -> Result<Outcome<Vec<Token>>> {
+    Lexer::new(&session.map()[file], session.reporter()).lex()
+}
+
 pub(crate) fn lex_string(source: String) -> Result<Outcome<Vec<Token>>, ()> {
     let mut map = SourceMap::default();
     let file = map.add(None, source);
@@ -34,196 +43,31 @@ pub(crate) fn lex_string(source: String) -> Result<Outcome<Vec<Token>>, ()> {
 /// The unit indentation in spaces.
 pub(crate) const INDENTATION: Spaces = Indentation::UNIT.to_spaces();
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-enum Section {
-    /// The top-level section.
-    ///
-    /// Basically the same as [Section::Indented] except that it does not call
-    /// for adding any virtual closing curly brackets since the indentation is
-    /// zero.
-    #[default]
-    Top,
-    /// A section of code within curly brackets.
-    ///
-    /// Line breaks are not terminators and it is not indentation-sensitive.
-    Delimited,
-    /// An indented section of code following the keyword `of` or `do`.
-    ///
-    /// Stores the amount of open brackets coming before it.
-    Indented { brackets: usize },
-    /// An indented section of code that seamlessly continues the previous line.
-    Continued,
-}
-
-impl Section {
-    /// Indicate whether line breaks terminate syntactic constructs in this section.
-    const fn line_breaks_are_terminators(self) -> bool {
-        matches!(self, Self::Top | Self::Indented { .. })
-    }
-
-    const fn is_indented(self) -> bool {
-        matches!(self, Self::Indented { .. })
-    }
-}
-
-#[derive(Default, Debug)]
-struct Sections(Stack<Section>);
-
-impl Sections {
-    fn current(&self) -> Section {
-        self.get(0)
-    }
-
-    /// Current section stripped from any [`Section::Continued`]s.
-    fn current_continued(&self) -> (Section, usize) {
-        // @Task replace implementation with Iterator::position
-
-        let mut index = self.0.len();
-
-        let section = (|| {
-            let mut section;
-
-            loop {
-                index = index.checked_sub(1)?;
-                section = *unsafe { self.0.get_unchecked(index) };
-
-                if section != Section::Continued {
-                    break;
-                }
-            }
-
-            Some(section)
-        })()
-        .unwrap_or_default();
-
-        (section, index)
-    }
-
-    fn get(&self, index: usize) -> Section {
-        self.0.get_from_end(index).copied().unwrap_or_default()
-    }
-
-    fn enter(&mut self, section: Section) {
-        self.0.push(section);
-    }
-
-    fn exit(&mut self) -> Section {
-        self.0.pop().unwrap_or_default()
-    }
-
-    fn exit_all(&mut self) -> impl Iterator<Item = Section> {
-        std::mem::take(&mut self.0).into_iter().rev()
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Bracket {
-    Round,
-    Square,
-    Curly,
-}
-
-impl Bracket {
-    const fn opening(self) -> TokenKind {
-        match self {
-            Self::Round => OpeningRoundBracket,
-            Self::Square => OpeningSquareBracket,
-            Self::Curly => OpeningCurlyBracket(Provenance::Source),
-        }
-    }
-
-    const fn closing(self) -> TokenKind {
-        match self {
-            Self::Round => ClosingRoundBracket,
-            Self::Square => ClosingSquareBracket,
-            Self::Curly => ClosingCurlyBracket(Provenance::Source),
-        }
-    }
-}
-
-impl fmt::Display for Bracket {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Round => "round",
-            Self::Square => "square",
-            Self::Curly => "curly",
-        })
-    }
-}
-
-#[derive(Default)]
-struct Brackets(Stack<Spanned<Bracket>>);
-
-impl Brackets {
-    fn open(&mut self, opening_bracket: Spanned<Bracket>) {
-        self.0.push(opening_bracket);
-    }
-
-    fn close(&mut self, closing_bracket: Spanned<Bracket>) -> Result<(), Diagnostic> {
-        match self.0.pop() {
-            Some(opening_bracket) => {
-                if opening_bracket.value == closing_bracket.value {
-                    Ok(())
-                } else {
-                    // @Beacon @Bug we are not smart enough here yet, the error messages are too confusing
-                    // or even incorrect!
-                    Err(Diagnostic::error()
-                        .code(Code::E001)
-                        .message(format!("unbalanced {closing_bracket} bracket"))
-                        .labeled_primary_span(
-                            closing_bracket,
-                            format!("has no matching opening {closing_bracket} bracket"),
-                        ))
-                }
-            }
-            // @Beacon @Bug we are not smart enough here yet, the error messages are too confusing
-            // or even incorrect!
-            None => Err(Diagnostic::error()
-                .code(Code::E001)
-                .message(format!("unbalanced {closing_bracket} bracket"))
-                .labeled_primary_span(
-                    closing_bracket,
-                    format!("has no matching opening {closing_bracket} bracket"),
-                )),
-        }
-    }
-}
-
-type Stack<T> = Vec<T>;
-
-/// Lex source code into an array of tokens
-///
-/// The health of the tokens can be ignored if the tokens are fed into the parser
-/// immediately after lexing since the parser will handle invalid tokens.
-pub fn lex(source_file: &SourceFile, reporter: &Reporter) -> Result<Outcome<Vec<Token>>> {
-    Lexer::new(source_file, reporter).lex()
-}
-
 /// The state of the lexer.
 struct Lexer<'a> {
-    source_file: &'a SourceFile,
+    file: &'a SourceFile,
     characters: Peekable<CharIndices<'a>>,
     tokens: Vec<Token>,
     local_span: LocalSpan,
     indentation: Spaces,
     sections: Sections,
     brackets: Brackets,
-    health: Health,
     reporter: &'a Reporter,
+    health: Health,
 }
 
 impl<'a> Lexer<'a> {
-    fn new(source_file: &'a SourceFile, reporter: &'a Reporter) -> Self {
+    fn new(file: &'a SourceFile, reporter: &'a Reporter) -> Self {
         Self {
-            characters: source_file.content().char_indices().peekable(),
-            source_file,
+            characters: file.content().char_indices().peekable(),
+            file,
             tokens: Vec::new(),
             local_span: LocalSpan::default(),
             indentation: Spaces(0),
             sections: Sections::default(),
             brackets: Brackets::default(),
-            health: Health::Untainted,
             reporter,
+            health: Health::Untainted,
         }
     }
 
@@ -308,7 +152,7 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        self.local_span = self.source_file.local_span().end();
+        self.local_span = self.file.local_span().end();
         for section in self.sections.exit_all() {
             if section.is_indented() {
                 self.add(ClosingCurlyBracket(Provenance::Lexer));
@@ -476,7 +320,7 @@ impl<'a> Lexer<'a> {
 
         self.local_span = self
             .index()
-            .map_or_else(|| self.source_file.local_span().end(), LocalSpan::empty);
+            .map_or_else(|| self.file.local_span().end(), LocalSpan::empty);
 
         let mut spaces = Spaces(0);
         self.take_while_with(|character| character == ' ', || spaces.0 += 1);
@@ -596,7 +440,7 @@ impl<'a> Lexer<'a> {
     fn lex_punctuation(&mut self) {
         self.take_while(is_punctuation);
 
-        match parse_reserved_punctuation(&self.source_file[self.local_span]) {
+        match parse_reserved_punctuation(&self.file[self.local_span]) {
             Some(punctuation) => self.add(punctuation),
             None => {
                 self.add(Punctuation(self.source().into()));
@@ -685,7 +529,7 @@ impl<'a> Lexer<'a> {
         // @Note once we implement escaping, this won't cut it and we need to build our own string
         let content_span = self.local_span.trim(1);
         self.add(TextLiteral(match is_terminated {
-            true => Ok(self.source_file[content_span].into()),
+            true => Ok(self.file[content_span].into()),
             false => Err(UnterminatedTextLiteral),
         }));
     }
@@ -693,7 +537,7 @@ impl<'a> Lexer<'a> {
 
 impl<'a> utility::lexer::Lexer<'a, TokenKind> for Lexer<'a> {
     fn source_file(&self) -> &'a SourceFile {
-        self.source_file
+        self.file
     }
 
     fn characters(&mut self) -> &mut Peekable<CharIndices<'a>> {
@@ -712,6 +556,163 @@ impl<'a> utility::lexer::Lexer<'a, TokenKind> for Lexer<'a> {
         &mut self.local_span
     }
 }
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+enum Section {
+    /// The top-level section.
+    ///
+    /// Basically the same as [Section::Indented] except that it does not call
+    /// for adding any virtual closing curly brackets since the indentation is
+    /// zero.
+    #[default]
+    Top,
+    /// A section of code within curly brackets.
+    ///
+    /// Line breaks are not terminators and it is not indentation-sensitive.
+    Delimited,
+    /// An indented section of code following the keyword `of` or `do`.
+    ///
+    /// Stores the amount of open brackets coming before it.
+    Indented { brackets: usize },
+    /// An indented section of code that seamlessly continues the previous line.
+    Continued,
+}
+
+impl Section {
+    /// Indicate whether line breaks terminate syntactic constructs in this section.
+    const fn line_breaks_are_terminators(self) -> bool {
+        matches!(self, Self::Top | Self::Indented { .. })
+    }
+
+    const fn is_indented(self) -> bool {
+        matches!(self, Self::Indented { .. })
+    }
+}
+
+#[derive(Default, Debug)]
+struct Sections(Stack<Section>);
+
+impl Sections {
+    fn current(&self) -> Section {
+        self.get(0)
+    }
+
+    /// Current section stripped from any [`Section::Continued`]s.
+    fn current_continued(&self) -> (Section, usize) {
+        // @Task replace implementation with Iterator::position
+
+        let mut index = self.0.len();
+
+        let section = (|| {
+            let mut section;
+
+            loop {
+                index = index.checked_sub(1)?;
+                section = *unsafe { self.0.get_unchecked(index) };
+
+                if section != Section::Continued {
+                    break;
+                }
+            }
+
+            Some(section)
+        })()
+        .unwrap_or_default();
+
+        (section, index)
+    }
+
+    fn get(&self, index: usize) -> Section {
+        self.0.get_from_end(index).copied().unwrap_or_default()
+    }
+
+    fn enter(&mut self, section: Section) {
+        self.0.push(section);
+    }
+
+    fn exit(&mut self) -> Section {
+        self.0.pop().unwrap_or_default()
+    }
+
+    fn exit_all(&mut self) -> impl Iterator<Item = Section> {
+        std::mem::take(&mut self.0).into_iter().rev()
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Bracket {
+    Round,
+    Square,
+    Curly,
+}
+
+impl Bracket {
+    const fn opening(self) -> TokenKind {
+        match self {
+            Self::Round => OpeningRoundBracket,
+            Self::Square => OpeningSquareBracket,
+            Self::Curly => OpeningCurlyBracket(Provenance::Source),
+        }
+    }
+
+    const fn closing(self) -> TokenKind {
+        match self {
+            Self::Round => ClosingRoundBracket,
+            Self::Square => ClosingSquareBracket,
+            Self::Curly => ClosingCurlyBracket(Provenance::Source),
+        }
+    }
+}
+
+impl fmt::Display for Bracket {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Round => "round",
+            Self::Square => "square",
+            Self::Curly => "curly",
+        })
+    }
+}
+
+#[derive(Default)]
+struct Brackets(Stack<Spanned<Bracket>>);
+
+impl Brackets {
+    fn open(&mut self, opening_bracket: Spanned<Bracket>) {
+        self.0.push(opening_bracket);
+    }
+
+    fn close(&mut self, closing_bracket: Spanned<Bracket>) -> Result<(), Diagnostic> {
+        match self.0.pop() {
+            Some(opening_bracket) => {
+                if opening_bracket.value == closing_bracket.value {
+                    Ok(())
+                } else {
+                    // @Beacon @Bug we are not smart enough here yet, the error messages are too confusing
+                    // or even incorrect!
+                    Err(Diagnostic::error()
+                        .code(Code::E001)
+                        .message(format!("unbalanced {closing_bracket} bracket"))
+                        .labeled_primary_span(
+                            closing_bracket,
+                            format!("has no matching opening {closing_bracket} bracket"),
+                        ))
+                }
+            }
+            // @Beacon @Bug we are not smart enough here yet, the error messages are too confusing
+            // or even incorrect!
+            None => Err(Diagnostic::error()
+                .code(Code::E001)
+                .message(format!("unbalanced {closing_bracket} bracket"))
+                .labeled_primary_span(
+                    closing_bracket,
+                    format!("has no matching opening {closing_bracket} bracket"),
+                )),
+        }
+    }
+}
+
+type Stack<T> = Vec<T>;
 
 pub(crate) const fn is_punctuation(character: char) -> bool {
     #[rustfmt::skip]

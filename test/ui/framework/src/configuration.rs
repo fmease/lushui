@@ -21,7 +21,7 @@ impl<'a> Configuration<'a> {
             .next()
             .and_then(|line| line.strip_prefix(language.comment()))
             .and_then(|line| line.strip_prefix(MAGIC_TEXT))
-            .ok_or(MissingPrefix)?;
+            .ok_or(MissingConfiguration)?;
 
         let mut arguments = line.split_ascii_whitespace();
 
@@ -67,7 +67,7 @@ impl fmt::Display for TestTag {
 
 #[derive(Debug)]
 pub(crate) enum ParseError {
-    MissingPrefix,
+    MissingConfiguration,
     MissingTag,
     InvalidTag(String),
 }
@@ -75,11 +75,10 @@ pub(crate) enum ParseError {
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            // @Beacon @Beacon @Beacon @Task update to new system
-            Self::MissingPrefix => write!(
+            Self::MissingConfiguration => write!(
                 f,
-                "the test file is missing a test configuration \
-                 which is prefixed with `{MAGIC_TEXT}`"
+                "The test does not have a configuration i.e. a comment at the start of the file \
+                 starting with the code `{MAGIC_TEXT}`."
             ),
             Self::MissingTag | Self::InvalidTag(_) => {
                 let tags = TestTag::elements()
@@ -89,13 +88,17 @@ impl fmt::Display for ParseError {
                 #[allow(clippy::match_wildcard_for_single_variants)]
                 match self {
                     Self::MissingTag => {
-                        write!(f, "the test file is missing a tag; valid tags are {tags}")
-                    }
-                    Self::InvalidTag(argument) => {
                         write!(
-                        f,
-                        "the test file contains the invalid tag `{argument}`; valid tags are {tags}",
-                    )
+                            f,
+                            "The test does not have a tag. Consider using one of the following tags \
+                             in the configuration: {tags}."
+                        )
+                    }
+                    Self::InvalidTag(tag) => {
+                        write!(
+                            f,
+                            "The test contains the invalid tag `{tag}`. Valid tags are {tags}.",
+                        )
                     }
                     _ => unreachable!(),
                 }

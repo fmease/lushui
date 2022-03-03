@@ -1,0 +1,22 @@
+error[E802]: the record does not contain the entry `name`
+ --> ${DIRECTORY}/packages/empty-manifest/package.metadata:1:1
+  |
+1 |   # TEST fail check
+  |  _^
+2 | | 
+  | |^ 
+  |
+
+error[E802]: the record does not contain the entry `version`
+ --> ${DIRECTORY}/packages/empty-manifest/package.metadata:1:1
+  |
+1 |   # TEST fail check
+  |  _^
+2 | | 
+  | |^ 
+  |
+
+error: aborting due to 2 previous errors
+ note: the error E802 has a detailed explanation
+ help: run `lushui explain E802` to view it
+

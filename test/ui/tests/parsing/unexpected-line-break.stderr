@@ -5,7 +5,7 @@ error[E001]: unbalanced round bracket
   |         ^ has no matching closing round bracket
   |
 
-error[E010]: found line break, but expected expression
+error[E010]: found line break but expected expression
  --> ${DIRECTORY}/parsing/unexpected-line-break.lushui:3:10
   |
 3 | data X: (

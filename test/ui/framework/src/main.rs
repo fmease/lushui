@@ -69,7 +69,7 @@ fn main_() -> Result<(), ()> {
         println!();
     }
 
-    println!("Building the Lushui compiler...");
+    println!("Building the compiler...");
 
     // @Task capture stderr (errors + warnings)
     // save those warnings so we can remove it as the prefix of the following tests
@@ -220,7 +220,7 @@ fn handle_test_folder_entry(
         print_file_status(&path, Status::Invalid, None);
         failures.push(Failure::new(
             File::new(path, FileType::Other),
-            FailureKind::invalid_file("symbolic links are not allowed"),
+            FailureKind::invalid_file("Symbolic links are not allowed"),
         ));
         statistics.invalid += 1;
         return;
@@ -237,7 +237,7 @@ fn handle_test_folder_entry(
             print_file_status(&path, Status::Invalid, None);
             failures.push(Failure::new(
                 File::new(path, FileType::Other),
-                FailureKind::invalid_file("file extension is missing or contains invalid UTF-8"),
+                FailureKind::invalid_file("The file does not have an extension or it is not valid UTF-8"),
             ));
             statistics.invalid += 1;
             return;
@@ -252,7 +252,7 @@ fn handle_test_folder_entry(
             print_file_status(&path, Status::Invalid, None);
             failures.push(Failure::new(
                 File::new(path, FileType::Golden),
-                FailureKind::invalid_file("the golden file is missing a corresponding Lushui file"),
+                FailureKind::invalid_file("The golden file is missing a corresponding Lushui file"),
             ));
             statistics.invalid += 1;
         }
@@ -274,9 +274,9 @@ fn handle_test_folder_entry(
             File::new(path, FileType::Other),
             FailureKind::invalid_file(match extension {
                 "metadata" => {
-                    "only `*.metadata` files permitted are package manifests (`package.metadata`)"
+                    "The only `*.metadata` files permitted are package manifests (`package.metadata`)"
                 }
-                _ => "invalid file extension, not one of `lushui`, `stdout`, `stderr`",
+                _ => "The file extension is not one of `lushui`, `stdout`, `stderr`",
             }),
         ));
         statistics.invalid += 1;
@@ -303,7 +303,7 @@ fn handle_test_folder_entry(
                             TestType::Package => FileType::PackageManifest,
                         },
                     ),
-                    FailureKind::invalid_file("file path contains invalid UTF-8"),
+                    FailureKind::invalid_file("The file path contains invalid UTF-8"),
                 ));
                 statistics.invalid += 1;
                 return;
@@ -500,7 +500,7 @@ fn validate_auxiliary_file(
     if arguments.is_empty() {
         failures.push(Failure::new(
             File::new(legible_path.to_owned(), FileType::Auxiliary),
-            FailureKind::invalid_file("the auxiliary file does not declare its users"),
+            FailureKind::invalid_file("The auxiliary file does not declare its users"),
         ));
         return Err(());
     }
@@ -521,15 +521,18 @@ fn validate_auxiliary_file(
     }
 
     if !invalid_users.is_empty() {
+        let user_count = invalid_users.len();
+
         failures.push(Failure::new(
             File::new(legible_path.to_owned(), FileType::Auxiliary),
             FailureKind::invalid_file(format!(
-                "the alleged user{} {} of the auxiliary file does not exist",
-                if invalid_users.len() == 1 { "" } else { "s" },
+                "The alleged {} {} of the auxiliary file {} not exist",
+                if user_count == 1 { "user" } else { "users" },
                 invalid_users
                     .into_iter()
                     .map(|user| format!("`{user}`"))
                     .join_with(", "),
+                if user_count == 1 { "does" } else { "do" },
             )),
         ));
 
@@ -556,7 +559,15 @@ fn compile(path: &Path, arguments: &[&str], type_: TestType) -> std::process::Ou
 
     command.args(arguments);
 
-    if type_ == TestType::SourceFile && arguments.first().map_or(false, |&command| command != "run")
+    // The default component type for source files is library. This is highly unpractical for the current majority of
+    // our source file tests which check the correctness of the compiler in regards to language features and
+    // which do not want to run anything. So let's overwrite it unless the test configuration wants to `run` the code
+    // or manually supplied a component type. Keep in mind, this is only a simple heuristic.
+    if type_ == TestType::SourceFile
+        && arguments.first().map_or(false, |&command| command != "run")
+        && arguments
+            .iter()
+            .all(|argument| !argument.starts_with("--component-type"))
     {
         command.arg("--component-type=library");
     }

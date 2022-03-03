@@ -1,7 +1,8 @@
 use crate::{
-    diagnostics::{Code, Diagnostic, Reporter},
+    diagnostics::{Code, Diagnostic},
     error::{PossiblyErroneous, Result},
-    span::{SourceMap, Span, Spanned, Spanning},
+    session::BuildSession,
+    span::{Span, Spanned, Spanning},
     syntax::ast,
     utility::{condition, obtain, Atom},
 };
@@ -19,12 +20,7 @@ pub(crate) trait Target: Spanning {
 
     /// Target-specific attribute checks
     // @Note weird API
-    fn check_attributes(
-        &self,
-        _attributes: &Attributes,
-        _source_map: &SourceMap,
-        _reporter: &Reporter,
-    ) -> Result {
+    fn check_attributes(&self, _: &Attributes, _: &BuildSession) -> Result {
         Ok(())
     }
 }
@@ -72,12 +68,7 @@ impl Target for ast::Declaration {
         }
     }
 
-    fn check_attributes(
-        &self,
-        attributes: &Attributes,
-        map: &SourceMap,
-        reporter: &Reporter,
-    ) -> Result {
+    fn check_attributes(&self, attributes: &Attributes, session: &BuildSession) -> Result {
         use ast::DeclarationKind::*;
 
         let (binder, missing_definition_location, definition_marker, body) = match &self.value {
@@ -96,7 +87,10 @@ impl Target for ast::Declaration {
                     function.body.as_ref().map(|expression| {
                         let eq = missing_definition_location
                             .between(self.span.end())
-                            .trim_start_matches(|character| character.is_ascii_whitespace(), map);
+                            .trim_start_matches(
+                                |character| character.is_ascii_whitespace(),
+                                &session.map(),
+                            );
 
                         (
                             eq.merge(expression),
@@ -120,7 +114,10 @@ impl Target for ast::Declaration {
                     type_.constructors.as_ref().map(|constructors| {
                         let of = missing_definition_location
                             .between(self.span.end())
-                            .trim_start_matches(|character| character.is_ascii_whitespace(), map);
+                            .trim_start_matches(
+                                |character| character.is_ascii_whitespace(),
+                                &session.map(),
+                            );
 
                         (
                             // @Bug span does not include trailing closing curly bracket
@@ -154,13 +151,13 @@ the body containing a set of constructors
                     "marks the declaration as being defined outside of the language",
                 )
                 .help("remove either the body or the attribute")
-                .report(reporter)),
+                .report(session.reporter())),
             (None, None) => Err(Diagnostic::error()
                 .code(Code::E012)
-                .message(format!("declaration `{binder}` has no definition"))
+                .message(format!("the declaration `{binder}` has no definition"))
                 .primary_span(missing_definition_location)
                 .help(format!("provide a definition with `{definition_marker}`"))
-                .report(reporter)),
+                .report(session.reporter())),
             _ => Ok(()),
         }
     }

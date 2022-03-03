@@ -46,6 +46,32 @@ impl Component {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn test() -> Self {
+        use crate::{entity::EntityKind, resolver::Exposure};
+
+        let name = Word::parse("test".into()).ok().unwrap();
+
+        let mut component = Self::new(
+            ComponentMetadata::new(
+                name.clone(),
+                ComponentIndex(0),
+                PackageIndex::new_unchecked(0),
+                Spanned::new(default(), PathBuf::new()),
+                ComponentType::Library,
+            ),
+            HashMap::default(),
+        );
+        component.bindings.insert(Entity {
+            source: Spanned::new(default(), name).into(),
+            parent: None,
+            exposure: Exposure::Unrestricted,
+            kind: EntityKind::module(),
+            attributes: default(),
+        });
+        component
+    }
+
     pub fn name(&self) -> &Word {
         &self.metadata.name
     }

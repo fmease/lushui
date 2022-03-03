@@ -1,4 +1,4 @@
-error[E012]: declaration `blank` has no definition
+error[E012]: the declaration `blank` has no definition
  --> ${DIRECTORY}/lowering/abnormally-bodiless.lushui:3:19
   |
 3 | blank: Declaration
@@ -6,21 +6,22 @@ error[E012]: declaration `blank` has no definition
   |
  help: provide a definition with `=`
 
-error[E012]: declaration `Blank` has no definition
+error[E015]: the declaration `Blank` does not have a type annotation
+ --> ${DIRECTORY}/lowering/abnormally-bodiless.lushui:5:11
+  |
+5 | data Blank
+  |          >< 
+  |
+ note: type annotations are mandatory on declarations
+ help: provide a type annotation for the declaration with `: ?type`
+
+error[E012]: the declaration `Blank` has no definition
  --> ${DIRECTORY}/lowering/abnormally-bodiless.lushui:5:11
   |
 5 | data Blank
   |          >< 
   |
  help: provide a definition with `of`
-
-error[E015]: a mandatory type annotation is missing on the declaration `Blank`
- --> ${DIRECTORY}/lowering/abnormally-bodiless.lushui:5:11
-  |
-5 | data Blank
-  |          >< 
-  |
- help: provide a type annotation for the declaration with `: ?type`
 
 error: aborting due to 3 previous errors
  note: the errors E012 and E015 have a detailed explanation

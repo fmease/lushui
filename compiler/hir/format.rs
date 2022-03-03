@@ -337,21 +337,19 @@ impl fmt::Display for super::Text {
 #[cfg(test)]
 mod test {
     use crate::{
-        component::{Component, ComponentIndex, ComponentMetadata, ComponentType},
+        component::Component,
         entity::{Entity, EntityKind},
         hir::{self, Expression, Identifier, LocalDeclarationIndex, Number, Text},
-        package::PackageIndex,
         resolver::Exposure,
         session::BuildSession,
-        span::{Span, Spanned},
+        span::Span,
         syntax::{
             ast::{self, Explicitness::*},
             lowered_ast::{Attribute, AttributeKind, Attributes},
-            Word,
         },
-        utility::{difference, DisplayWith, HashMap},
+        utility::{difference, DisplayWith},
     };
-    use std::{default::default, path::PathBuf};
+    use std::default::default;
 
     // @Beacon @Task do something smart if spaces differ (which cannot have color)
     // like replacing them with a different character like the Unicode space symbol
@@ -367,31 +365,7 @@ mod test {
         }
     }
 
-    const COMPONENT_INDEX: ComponentIndex = ComponentIndex(0);
-    const PACKAGE_INDEX: PackageIndex = PackageIndex::new_unchecked(0);
-
     impl Component {
-        fn test() -> Self {
-            let mut component = Self::new(
-                ComponentMetadata::new(
-                    Word::parse("test".into()).ok().unwrap(),
-                    COMPONENT_INDEX,
-                    PACKAGE_INDEX,
-                    Spanned::new(default(), PathBuf::new()),
-                    ComponentType::Library,
-                ),
-                HashMap::default(),
-            );
-            component.bindings.insert(Entity {
-                source: ast::Identifier::new_unchecked("test".into(), default()),
-                parent: None,
-                exposure: Exposure::Unrestricted,
-                kind: EntityKind::module(),
-                attributes: default(),
-            });
-            component
-        }
-
         fn add(&mut self, name: &str, kind: EntityKind) -> Identifier {
             self.add_below(name, kind, self.local_root())
         }
@@ -427,7 +401,7 @@ mod test {
 
     #[test]
     fn pi_type_application_argument() {
-        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let session = BuildSession::test();
         let mut component = Component::test();
 
         let array = component
@@ -467,7 +441,7 @@ mod test {
 
     #[test]
     fn pi_type_named_parameter() {
-        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let session = BuildSession::test();
         let mut component = Component::test();
 
         let array = component.add("Array", EntityKind::untyped_data_type());
@@ -514,7 +488,7 @@ mod test {
 
     #[test]
     fn pi_type_implicit_parameter() {
-        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let session = BuildSession::test();
         let component = Component::test();
 
         assert_eq(
@@ -539,7 +513,7 @@ mod test {
     /// Compare with [pi_type_two_curried_arguments].
     #[test]
     fn pi_type_higher_order_argument() {
-        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let session = BuildSession::test();
         let mut component = Component::test();
         let int = component
             .add("Int", EntityKind::untyped_data_type())
@@ -578,7 +552,7 @@ mod test {
     /// Compare with [pi_type_higher_order_argument].
     #[test]
     fn pi_type_two_curried_arguments() {
-        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let session = BuildSession::test();
         let mut component = Component::test();
         let int = component
             .add("Int", EntityKind::untyped_data_type())
@@ -620,7 +594,7 @@ mod test {
     /// Compare with [lambda_pi_type_body].
     #[test]
     fn pi_type_lambda_domain() {
-        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let session = BuildSession::test();
         let component = Component::test();
 
         let x = Identifier::parameter("x");
@@ -658,7 +632,7 @@ mod test {
 
     #[test]
     fn application_three_curried_arguments() {
-        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let session = BuildSession::test();
         let mut component = Component::test();
 
         let beta = component.add("beta", EntityKind::UntypedFunction);
@@ -710,7 +684,7 @@ mod test {
     /// Compare with [application_lambda_argument].
     #[test]
     fn application_lambda_last_argument() {
-        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let session = BuildSession::test();
         let mut component = Component::test();
 
         let take = component.add("take", EntityKind::UntypedFunction);
@@ -750,7 +724,7 @@ mod test {
     /// Compare with [application_lambda_last_argument].
     #[test]
     fn application_lambda_argument() {
-        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let session = BuildSession::test();
         let mut component = Component::test();
 
         let take = component.add("take", EntityKind::UntypedFunction);
@@ -801,7 +775,7 @@ mod test {
 
     #[test]
     fn application_implicit_argument() {
-        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let session = BuildSession::test();
         let mut component = Component::test();
 
         let identity = component.add("identity", EntityKind::UntypedFunction);
@@ -825,7 +799,7 @@ mod test {
 
     #[test]
     fn application_complex_implicit_argument() {
-        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let session = BuildSession::test();
         let mut component = Component::test();
 
         let identity = component.add("identity", EntityKind::UntypedFunction);
@@ -859,7 +833,7 @@ mod test {
 
     #[test]
     fn application_intrinsic_application_callee() {
-        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let session = BuildSession::test();
         let component = Component::test();
 
         assert_eq(
@@ -893,7 +867,7 @@ mod test {
 
     #[test]
     fn lambda_body_type_annotation() {
-        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let session = BuildSession::test();
         let mut component = Component::test();
 
         let output = component.add("Output", EntityKind::untyped_data_type());
@@ -920,7 +894,7 @@ mod test {
 
     #[test]
     fn lambda_parameter_type_annotation_body_type_annotation() {
-        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let session = BuildSession::test();
         let mut component = Component::test();
 
         let input = component.add("Input", EntityKind::untyped_data_type());
@@ -948,7 +922,7 @@ mod test {
 
     #[test]
     fn lambda_implicit_parameter() {
-        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let session = BuildSession::test();
         let component = Component::test();
 
         assert_eq(
@@ -973,7 +947,7 @@ mod test {
 
     #[test]
     fn lambda_implicit_unannotated_parameter() {
-        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let session = BuildSession::test();
         let component = Component::test();
         let a = Identifier::parameter("a");
 
@@ -1012,7 +986,7 @@ mod test {
     /// Compare with [pi_type_lambda_domain].
     #[test]
     fn lambda_pi_type_body() {
-        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let session = BuildSession::test();
         let component = Component::test();
 
         let x = Identifier::parameter("x");
@@ -1050,7 +1024,7 @@ mod test {
 
     #[test]
     fn intrinsic_application_no_arguments() {
-        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let session = BuildSession::test();
         let mut component = Component::test();
 
         let add = component.add("add", EntityKind::UntypedFunction);
@@ -1073,7 +1047,7 @@ mod test {
 
     #[test]
     fn intrinsic_application_two_arguments() {
-        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let session = BuildSession::test();
         let mut component = Component::test();
 
         let add = component.add("add", EntityKind::UntypedFunction);
@@ -1118,7 +1092,7 @@ mod test {
 
     #[test]
     fn attributes() {
-        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let session = BuildSession::test();
         let component = Component::test();
 
         assert_eq(
@@ -1169,7 +1143,7 @@ mod test {
 
     #[test]
     fn path() {
-        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let session = BuildSession::test();
         let mut component = Component::test();
 
         let overarching = component.add("overarching", EntityKind::module());
@@ -1194,7 +1168,7 @@ mod test {
 
     #[test]
     fn path_identifier_punctuation_punctuation_identifier_segments() {
-        let session = BuildSession::empty(COMPONENT_INDEX, PACKAGE_INDEX);
+        let session = BuildSession::test();
         let mut component = Component::test();
 
         let overarching = component.add("overarching", EntityKind::module());

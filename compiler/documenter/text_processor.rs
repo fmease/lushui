@@ -1,13 +1,7 @@
 use super::{format::declaration_url_fragment, node::Node};
 use crate::{
-    component::Component,
-    diagnostics::reporter::{SilentReporter, StderrReporter},
-    error::Result,
-    resolver::resolve_path,
-    session::BuildSession,
-    span::SourceMap,
-    syntax::parse_path,
-    utility::HashSet,
+    component::Component, error::Result, resolver::resolve_path, session::BuildSession,
+    syntax::parse_path, utility::HashSet,
 };
 use crossbeam::thread::{Scope, ScopedJoinHandle};
 use std::{
@@ -281,24 +275,9 @@ impl<'a> Request<'a> {
     ) -> Result<String> {
         Ok(match self {
             Request::DeclarationUrl(path) => {
-                // @Temporary
-                let map = SourceMap::cell();
-                let file = map.borrow_mut().add(None, path.to_owned());
-
-                // @Task return a proper errro!!
-                //  @Task resolve paths RELATIVE TO the current module
-                // the description is in!!
-                // @Bug this won't work for dependencies!
-                // @Task hook up the actual reporter!
-                let path = parse_path(file, map.clone(), &SilentReporter.into())?;
-                let index = resolve_path(
-                    &path,
-                    component.root(),
-                    component,
-                    session,
-                    // &SilentReporter.into(),
-                    &StderrReporter::new(Some(map)).into(),
-                )?;
+                let file = session.map().add(None, path.to_owned());
+                let path = parse_path(file, session)?;
+                let index = resolve_path(&path, component.root(), component, session)?;
                 let url_suffix = declaration_url_fragment(index, component, session);
                 format!("{url_prefix}{url_suffix}")
             }

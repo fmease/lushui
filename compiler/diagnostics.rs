@@ -700,11 +700,11 @@ pub enum Code {
     E063,
     /// Metadata: Type mismatch.
     E800,
-    /// Metadata: Unknown key.
+    /// Metadata: Unknown entry.
     E801,
-    /// Metadata: Missing key.
+    /// Metadata: Missing entry.
     E802,
-    /// Metadata: Duplicate keys.
+    /// Metadata: Duplicate entries.
     E803,
 }
 

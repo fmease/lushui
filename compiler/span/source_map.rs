@@ -2,19 +2,15 @@ use super::{ByteIndex, LocalByteIndex, LocalSpan, Span, Spanning};
 use index_map::IndexMap;
 use std::{
     borrow::Borrow,
-    cell::RefCell,
     default::default,
     io,
     ops::Range,
     path::{Path, PathBuf},
-    rc::Rc,
 };
 use unicode_width::UnicodeWidthStr;
 
 #[cfg(test)]
 mod test;
-
-pub type SourceMapCell = Rc<RefCell<SourceMap>>;
 
 /// A mapping from an index (offset) to [`SourceFile`]s.
 ///
@@ -46,10 +42,6 @@ pub struct SourceMap {
 }
 
 impl SourceMap {
-    pub fn cell() -> SourceMapCell {
-        Rc::new(RefCell::new(Self::default()))
-    }
-
     fn next_offset(&self) -> ByteIndex {
         // + 1 for the padding
         self.files

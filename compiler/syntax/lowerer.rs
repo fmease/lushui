@@ -35,20 +35,20 @@ use super::{
 use crate::{
     diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
     error::{Health, OkIfUntaintedExt, PossiblyErroneous, Result, Stain},
-    span::{SourceMap, SourceMapCell, Span, Spanning},
+    session::BuildSession,
+    span::{Span, Spanned, Spanning},
     utility::{Atom, Conjunction, IOError, OrderedListingExt, QuoteExt, SmallVec, Str},
 };
 use smallvec::smallvec;
-use std::{default::default, iter::once};
+use std::{default::default, fmt, iter::once};
 
 /// Lower a file.
 pub fn lower_file(
     declaration: ast::Declaration,
     options: Options,
-    map: SourceMapCell,
-    reporter: &Reporter,
+    session: &BuildSession,
 ) -> Result<lowered_ast::Declaration> {
-    let mut lowerer = Lowerer::new(options, map, reporter);
+    let mut lowerer = Lowerer::new(options, session);
     let mut declaration = lowerer.lower_declaration(declaration);
     let root = declaration.pop().unwrap();
     Result::ok_if_untainted(root, lowerer.health)
@@ -57,17 +57,15 @@ pub fn lower_file(
 /// The state of the lowering pass.
 struct Lowerer<'a> {
     options: Options,
-    map: SourceMapCell,
-    reporter: &'a Reporter,
+    session: &'a BuildSession,
     health: Health,
 }
 
 impl<'a> Lowerer<'a> {
-    fn new(options: Options, map: SourceMapCell, reporter: &'a Reporter) -> Self {
+    fn new(options: Options, session: &'a BuildSession) -> Self {
         Self {
             options,
-            map,
-            reporter,
+            session,
             health: Health::Untainted,
         }
     }
@@ -144,7 +142,7 @@ impl<'a> Lowerer<'a> {
                     function.binder.span().fit_end(&function.parameters).end(),
                     AnnotationTarget::Declaration(&function.binder),
                 )
-                .report(self.reporter);
+                .report(self.session.reporter());
                 self.health.taint();
                 PossiblyErroneous::error()
             }
@@ -169,7 +167,7 @@ impl<'a> Lowerer<'a> {
                                     parameter,
                                     AnnotationTarget::Parameter(parameter),
                                 )
-                                .report(self.reporter);
+                                .report(self.session.reporter());
                                 self.health.taint();
                                 PossiblyErroneous::error()
                             }
@@ -216,7 +214,7 @@ impl<'a> Lowerer<'a> {
                     type_.binder.span().fit_end(&type_.parameters).end(),
                     AnnotationTarget::Declaration(&type_.binder),
                 )
-                .report(self.reporter);
+                .report(self.session.reporter());
                 self.health.taint();
                 PossiblyErroneous::error()
             }
@@ -255,7 +253,7 @@ impl<'a> Lowerer<'a> {
                         .end(),
                     AnnotationTarget::Declaration(&constructor.binder),
                 )
-                .report(self.reporter);
+                .report(self.session.reporter());
                 self.health.taint();
                 PossiblyErroneous::error()
             }
@@ -280,7 +278,7 @@ impl<'a> Lowerer<'a> {
                 .labeled_primary_span(&body, "conflicting definition")
                 .note(
                     "the body of the constructor is implied but it also has a body introduced by `=`",
-                ).report(self.reporter);
+                ).report(self.session.reporter());
             self.health.taint();
         }
 
@@ -302,7 +300,7 @@ impl<'a> Lowerer<'a> {
         let declarations = match module.declarations {
             Some(declarations) => declarations,
             None => {
-                let mut path = self.map.borrow()[module.file]
+                let mut path = self.session.map()[module.file]
                     .path()
                     .unwrap()
                     .parent()
@@ -325,7 +323,7 @@ impl<'a> Lowerer<'a> {
 
                 path.set_extension(crate::FILE_EXTENSION);
 
-                let file = match self.map.borrow_mut().load(path.clone()) {
+                let file = match self.session.map().load(path.clone()) {
                     Ok(file) => file,
                     Err(error) => {
                         // @Task instead of a note saying the error, print a help message
@@ -336,21 +334,16 @@ impl<'a> Lowerer<'a> {
                             .message(format!("could not load the module `{}`", module.binder))
                             .primary_span(span)
                             .note(IOError(error, &path).to_string())
-                            .report(self.reporter);
+                            .report(self.session.reporter());
                         self.health.taint();
                         return PossiblyErroneous::error();
                     }
                 };
 
-                let Ok(declaration) = crate::syntax::parse_module_file(
-                            file,
-                            module.binder.clone(),
-                            self.map.clone(),
-                            self.reporter,
-                        ) else {
-                            self.health.taint();
-                            return PossiblyErroneous::error();
-                        };
+                let Ok(declaration) = crate::syntax::parse_module_file(file, module.binder.clone(), self.session) else {
+                    self.health.taint();
+                    return PossiblyErroneous::error();
+                };
 
                 // at this point in time, they are still on the module header if at all
                 assert!(declaration.attributes.is_empty());
@@ -390,7 +383,7 @@ impl<'a> Lowerer<'a> {
                             // @Task make this a note with a span/highlight!
                             this.note("however, the current module already has a module header")
                         })
-                        .report(self.reporter);
+                        .report(self.session.reporter());
                     self.health.taint();
                 }
 
@@ -514,7 +507,7 @@ impl<'a> Lowerer<'a> {
                                 // currently leads to the suggestion to bind `self` to an identifier but
                                 // for `extern` that is illegal, too
                                 Diagnostic::invalid_unnamed_path_hanger(target.hanger.unwrap())
-                                    .report(self.reporter);
+                                    .report(self.session.reporter());
                                 self.health.taint();
                                 break 'discriminate;
                             };
@@ -531,7 +524,7 @@ impl<'a> Lowerer<'a> {
                     span,
                     attributes,
                     &mut declarations,
-                    self.reporter,
+                    self.session.reporter(),
                 )
                 .stain(&mut self.health),
             }
@@ -568,7 +561,7 @@ impl<'a> Lowerer<'a> {
                 if let Some(binder) = &application.binder {
                     Diagnostic::unimplemented("named arguments")
                         .primary_span(binder)
-                        .report(self.reporter);
+                        .report(self.session.reporter());
                     self.health.taint();
                 }
 
@@ -602,7 +595,7 @@ impl<'a> Lowerer<'a> {
             TypedHole(_hole) => {
                 Diagnostic::unimplemented("typed holes")
                     .primary_span(expression.span)
-                    .report(self.reporter);
+                    .report(self.session.reporter());
                 self.health.taint();
                 PossiblyErroneous::error()
             }
@@ -611,7 +604,7 @@ impl<'a> Lowerer<'a> {
             Field(_field) => {
                 Diagnostic::unimplemented("record fields")
                     .primary_span(expression.span)
-                    .report(self.reporter);
+                    .report(self.session.reporter());
                 self.health.taint();
                 PossiblyErroneous::error()
             }
@@ -656,7 +649,7 @@ impl<'a> Lowerer<'a> {
                         None => {
                             Diagnostic::error()
                                 .code(Code::E012)
-                                .message(format!("let-binding `{}` has no definition", binder))
+                                .message(format!("the let-binding `{}` has no definition", binder))
                                 .primary_span(
                                     let_in
                                         .binder
@@ -666,7 +659,7 @@ impl<'a> Lowerer<'a> {
                                         .end(),
                                 )
                                 .help("provide a definition with `=`")
-                                .report(self.reporter);
+                                .report(self.session.reporter());
                             self.health.taint();
                             PossiblyErroneous::error()
                         }
@@ -735,7 +728,7 @@ impl<'a> Lowerer<'a> {
             UseIn(_use_in) => {
                 Diagnostic::unimplemented("use/in expressions")
                     .primary_span(expression.span)
-                    .report(self.reporter);
+                    .report(self.session.reporter());
                 self.health.taint();
                 PossiblyErroneous::error()
             }
@@ -760,7 +753,7 @@ impl<'a> Lowerer<'a> {
             DoBlock(_block) => {
                 Diagnostic::unimplemented("do blocks")
                     .primary_span(expression.span)
-                    .report(self.reporter);
+                    .report(self.session.reporter());
                 self.health.taint();
                 PossiblyErroneous::error()
             }
@@ -807,7 +800,7 @@ impl<'a> Lowerer<'a> {
                 if let Some(binder) = &application.binder {
                     Diagnostic::unimplemented("named arguments")
                         .primary_span(binder)
-                        .report(self.reporter);
+                        .report(self.session.reporter());
                     self.health.taint();
                 }
 
@@ -855,7 +848,7 @@ impl<'a> Lowerer<'a> {
         let mut conforming_attributes = Attributes::default();
 
         for attribute in unchecked_attributes {
-            let Ok(attribute) = Attribute::parse(attribute, &self.options, &self.map.borrow(), self.reporter) else {
+            let Ok(attribute) = Attribute::parse(attribute, &self.options, self.session) else {
                 self.health.taint();
                 continue;
             };
@@ -880,7 +873,7 @@ impl<'a> Lowerer<'a> {
                             attribute.value.name(),
                             expected_targets.description(),
                         ))
-                        .report(self.reporter);
+                        .report(self.session.reporter());
                     self.health.taint();
                     continue;
                 }
@@ -892,7 +885,7 @@ impl<'a> Lowerer<'a> {
         let attributes = self.check_attribute_synergy(conforming_attributes);
 
         target
-            .check_attributes(&attributes, &self.map.borrow(), self.reporter)
+            .check_attributes(&attributes, self.session)
             .stain(&mut self.health);
 
         attributes
@@ -926,7 +919,7 @@ impl<'a> Lowerer<'a> {
                         homonymous_attributes.into_iter(),
                         "duplicate or conflicting attribute",
                     )
-                    .report(self.reporter);
+                    .report(self.session.reporter());
                 self.health.taint();
             }
         }
@@ -962,22 +955,22 @@ impl<'a> Lowerer<'a> {
         {
             use AttributeName::*;
 
-            check_mutual_exclusivity(Intrinsic.or(Known), &attributes, self.reporter)
+            check_mutual_exclusivity(Intrinsic.or(Known), &attributes, self.session.reporter())
                 .stain(&mut self.health);
             check_mutual_exclusivity(
                 DocAttributes.or(DocReservedIdentifiers),
                 &attributes,
-                self.reporter,
+                self.session.reporter(),
             )
             .stain(&mut self.health);
             check_mutual_exclusivity(
                 DocAttribute.or(DocReservedIdentifier),
                 &attributes,
-                self.reporter,
+                self.session.reporter(),
             )
             .stain(&mut self.health);
 
-            check_mutual_exclusivity(Moving.or(Abstract), &attributes, self.reporter)
+            check_mutual_exclusivity(Moving.or(Abstract), &attributes, self.session.reporter())
                 .stain(&mut self.health);
         }
 
@@ -985,7 +978,7 @@ impl<'a> Lowerer<'a> {
         {
             Diagnostic::unimplemented(format!("attribute `{}`", attribute.value.name()))
                 .primary_span(attribute)
-                .report(self.reporter);
+                .report(self.session.reporter());
             self.health.taint();
         }
 
@@ -999,7 +992,7 @@ impl<'a> Lowerer<'a> {
                         attribute.value.name()
                     ))
                     .primary_span(attribute)
-                    .report(self.reporter);
+                    .report(self.session.reporter());
                 self.health.taint();
             }
         }
@@ -1023,7 +1016,7 @@ impl<'a> Lowerer<'a> {
                         &parameter,
                         AnnotationTarget::Parameter(&parameter),
                     )
-                    .report(self.reporter);
+                    .report(self.session.reporter());
                     self.health.taint();
                     PossiblyErroneous::error()
                 }
@@ -1049,6 +1042,7 @@ impl<'a> Lowerer<'a> {
     }
 }
 
+// @Task get rid of this by smh. moving this information into the session
 #[derive(Default)]
 pub struct Options {
     /// Specifies if internal language and library features are enabled.
@@ -1077,12 +1071,11 @@ impl lowered_ast::Attribute {
     pub(crate) fn parse(
         attribute: &ast::Attribute,
         options: &Options,
-        map: &SourceMap,
-        reporter: &Reporter,
+        session: &BuildSession,
     ) -> Result<Self> {
         Ok(Self::new(
             attribute.span,
-            AttributeKind::parse(attribute, options, map, reporter)?,
+            AttributeKind::parse(attribute, options, session)?,
         ))
     }
 }
@@ -1093,13 +1086,12 @@ impl lowered_ast::AttributeKind {
         // @Task take by value and create parsing helpers on ast::Attribute and ast::Attributes
         attribute: &ast::Attribute,
         options: &Options,
-        map: &SourceMap,
-        reporter: &Reporter,
+        session: &BuildSession,
     ) -> Result<Self> {
         let ast::AttributeKind::Regular { binder, arguments } = &attribute.value else {
             return Ok(Self::Doc {
                 content: if options.keep_documentation_comments {
-                    map.snippet(attribute.span)
+                    session.map().snippet(attribute.span)
                         .trim_start_matches(";;")
                         .into()
                 } else {
@@ -1150,10 +1142,10 @@ impl lowered_ast::AttributeKind {
                 Abstract => Self::Abstract,
                 Allow | Deny | Forbid | Warn => {
                     let lint = lowered_ast::attributes::Lint::parse(
-                        argument(arguments, attribute.span, reporter)?
-                            .path(Some("lint"), reporter)?
+                        argument(arguments, attribute.span, session.reporter())?
+                            .path(Some("lint"), session.reporter())?
                             .clone(),
-                        reporter,
+                        session.reporter(),
                     )?;
 
                     match name {
@@ -1166,7 +1158,7 @@ impl lowered_ast::AttributeKind {
                 }
                 Deprecated => Self::Deprecated(lowered_ast::attributes::Deprecated {
                     reason: optional_argument(arguments)
-                        .map(|argument| argument.text_literal(Some("reason"), reporter))
+                        .map(|argument| argument.text_literal(Some("reason"), session.reporter()))
                         .transpose()?
                         .cloned(),
                     // @Task parse version
@@ -1174,14 +1166,16 @@ impl lowered_ast::AttributeKind {
                     // @Task parse version
                     removal: None,
                     replacement: optional_argument(arguments)
-                        .map(|argument| argument.text_literal(Some("replacement"), reporter))
+                        .map(|argument| {
+                            argument.text_literal(Some("replacement"), session.reporter())
+                        })
                         .transpose()?
                         .cloned(),
                 }),
                 Doc => Self::Doc {
                     content: if options.keep_documentation_comments {
-                        argument(arguments, attribute.span, reporter)?
-                            .text_literal(None, reporter)?
+                        argument(arguments, attribute.span, session.reporter())?
+                            .text_literal(None, session.reporter())?
                             .clone()
                     } else {
                         *arguments = &arguments[1..];
@@ -1189,14 +1183,14 @@ impl lowered_ast::AttributeKind {
                     },
                 },
                 DocAttribute => Self::DocAttribute {
-                    name: argument(arguments, attribute.span, reporter)?
-                        .text_literal(None, reporter)?
+                    name: argument(arguments, attribute.span, session.reporter())?
+                        .text_literal(None, session.reporter())?
                         .clone(),
                 },
                 DocAttributes => Self::DocAttributes,
                 DocReservedIdentifier => Self::DocReservedIdentifier {
-                    name: argument(arguments, attribute.span, reporter)?
-                        .text_literal(None, reporter)?
+                    name: argument(arguments, attribute.span, session.reporter())?
+                        .text_literal(None, session.reporter())?
                         .clone(),
                 },
                 DocReservedIdentifiers => Self::DocReservedIdentifiers,
@@ -1204,15 +1198,15 @@ impl lowered_ast::AttributeKind {
                 If => {
                     Diagnostic::unimplemented("attribute `if`")
                         .primary_span(attribute)
-                        .report(reporter);
+                        .report(session.reporter());
                     return Err(AttributeParsingError::Unrecoverable);
                 }
                 Ignore => Self::Ignore,
                 Include => Self::Include,
                 Known => Self::Known,
                 Location => {
-                    let path = argument(arguments, attribute.span, reporter)?
-                        .text_literal(Some("path"), reporter)?
+                    let path = argument(arguments, attribute.span, session.reporter())?
+                        .text_literal(Some("path"), session.reporter())?
                         .clone();
 
                     Self::Location { path }
@@ -1220,16 +1214,16 @@ impl lowered_ast::AttributeKind {
                 Moving => Self::Moving,
                 Public => {
                     let reach = optional_argument(arguments)
-                        .map(|argument| argument.path(Some("reach"), reporter))
+                        .map(|argument| argument.path(Some("reach"), session.reporter()))
                         .transpose()?
                         .cloned();
 
                     Self::Public(self::Public { reach })
                 }
                 RecursionLimit => {
-                    let depth = argument(arguments, attribute.span, reporter)?;
+                    let depth = argument(arguments, attribute.span, session.reporter())?;
                     let depth = depth
-                        .number_literal(Some("depth"), reporter)?
+                        .number_literal(Some("depth"), session.reporter())?
                         .parse::<u32>()
                         .map_err(|_| {
                             Diagnostic::error()
@@ -1239,7 +1233,7 @@ impl lowered_ast::AttributeKind {
                                     NAT32_INTERVAL_REPRESENTATION
                                 ))
                                 .primary_span(depth)
-                                .report(reporter);
+                                .report(session.reporter());
                             AttributeParsingError::Unrecoverable
                         })?;
 
@@ -1252,7 +1246,7 @@ impl lowered_ast::AttributeKind {
                 Unstable => {
                     Diagnostic::unimplemented("attribute `unstable`")
                         .primary_span(attribute)
-                        .report(reporter);
+                        .report(session.reporter());
 
                     return Err(AttributeParsingError::Unrecoverable);
                 }
@@ -1270,7 +1264,7 @@ impl lowered_ast::AttributeKind {
                     .code(Code::E019)
                     .message("too many attribute arguments provided")
                     .primary_span(argument.span.merge(arguments.last()))
-                    .report(reporter);
+                    .report(session.reporter());
                 health.taint();
             }
         }
@@ -1282,7 +1276,7 @@ impl lowered_ast::AttributeKind {
                         .code(Code::E011)
                         .message(format!("the attribute `{binder}` is not defined"))
                         .primary_span(&binder)
-                        .report(reporter)
+                        .report(session.reporter())
                 } else {
                     // @Task avoid this unchecked call by smh getting the token from above
                     // E019 was reported above
@@ -1316,7 +1310,7 @@ impl ast::AttributeArgument {
                     NumberLiteral(literal) => Ok(literal),
                     kind => {
                         Diagnostic::invalid_attribute_argument_type(
-                            (argument.span, kind.name()),
+                            Spanned::new(argument.span, kind.name()),
                             "number literal",
                         )
                         .report(reporter);
@@ -1327,7 +1321,7 @@ impl ast::AttributeArgument {
             ),
             kind => {
                 Diagnostic::invalid_attribute_argument_type(
-                    (self.span, kind.name()),
+                    Spanned::new(self.span, kind.name()),
                     "positional or named number literal",
                 )
                 .report(reporter);
@@ -1351,7 +1345,7 @@ impl ast::AttributeArgument {
                     TextLiteral(literal) => Ok(literal),
                     kind => {
                         Diagnostic::invalid_attribute_argument_type(
-                            (argument.span, kind.name()),
+                            Spanned::new(argument.span, kind.name()),
                             "text literal",
                         )
                         .report(reporter);
@@ -1362,7 +1356,7 @@ impl ast::AttributeArgument {
             ),
             kind => {
                 Diagnostic::invalid_attribute_argument_type(
-                    (self.span, kind.name()),
+                    Spanned::new(self.span, kind.name()),
                     "positional or named text literal",
                 )
                 .report(reporter);
@@ -1387,7 +1381,7 @@ impl ast::AttributeArgument {
                         Path(literal) => Ok(literal),
                         kind => {
                             Diagnostic::invalid_attribute_argument_type(
-                                (argument.span, kind.name()),
+                                Spanned::new(argument.span, kind.name()),
                                 "path",
                             )
                             .report(reporter);
@@ -1399,7 +1393,7 @@ impl ast::AttributeArgument {
                 .map(|path| &**path),
             kind => {
                 Diagnostic::invalid_attribute_argument_type(
-                    (self.span, kind.name()),
+                    Spanned::new(self.span, kind.name()),
                     "positional or named path",
                 )
                 .report(reporter);
@@ -1466,21 +1460,20 @@ impl Diagnostic {
         Self::error()
             .code(Code::E028)
             .message(format!(
-                "found named argument `{}`, but expected `{}`",
-                actual, expected
+                "found named argument `{actual}` but expected `{expected}`"
             ))
             .primary_span(actual)
     }
 
     // @Temporary signature
     fn invalid_attribute_argument_type(
-        actual: (Span, &'static str),
+        actual: Spanned<&'static str>,
         expected: &'static str,
     ) -> Self {
         Self::error()
             .code(Code::E027)
-            .message(format!("found {}, but expected {}", actual.1, expected))
-            .primary_span(actual.0)
+            .message(format!("found {actual} but expected {expected}"))
+            .primary_span(actual)
     }
 
     fn missing_mandatory_type_annotation(
@@ -1489,7 +1482,7 @@ impl Diagnostic {
     ) -> Self {
         use AnnotationTarget::*;
 
-        let type_annotation_suggestion: Str = match target {
+        let suggestion: Str = match target {
             Parameter(parameter) => format!(
                 "`{}({}: ?type)`",
                 parameter.value.explicitness, parameter.value.binder
@@ -1498,23 +1491,20 @@ impl Diagnostic {
             Declaration(_) => "`: ?type`".into(),
         };
 
-        let binders = match target {
-            Parameter(parameter) => (&parameter.value.binder).quote(),
-            Declaration(binder) => binder.quote(),
-        };
-
         Self::error()
             .code(Code::E015)
-            .message(format!(
-                "a mandatory type annotation is missing on the {} {}",
-                target.name(),
-                binders,
-            ))
+            .message(format!("the {target} does not have a type annotation"))
             .primary_span(spanning)
+            .note(format!(
+                "type annotations are mandatory on {}",
+                match target {
+                    Parameter(_) => "parameters of declarations",
+                    Declaration(_) => "declarations",
+                }
+            ))
             .help(format!(
-                "provide a type annotation for the {} with {}",
-                target.name(),
-                type_annotation_suggestion,
+                "provide a type annotation for the {} with {suggestion}",
+                target.name()
             ))
     }
 }
@@ -1532,6 +1522,17 @@ impl AnnotationTarget<'_> {
         match self {
             Self::Parameter(_) => "parameter",
             Self::Declaration(_) => "declaration",
+        }
+    }
+}
+
+impl fmt::Display for AnnotationTarget<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} ", self.name())?;
+
+        match self {
+            Self::Parameter(parameter) => write!(f, "`{}`", parameter.value.binder),
+            Self::Declaration(binder) => write!(f, "`{binder}`"),
         }
     }
 }

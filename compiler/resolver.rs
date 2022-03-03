@@ -9,7 +9,7 @@
 
 use crate::{
     component::Component,
-    diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
+    diagnostics::{reporter::ErrorReported, Code, Diagnostic},
     entity::{Entity, EntityKind},
     error::{Health, OkIfUntaintedExt, PossiblyErroneous, ReportedExt, Result, Stain},
     hir::{self, DeBruijnIndex, DeclarationIndex, Identifier, Index, LocalDeclarationIndex},
@@ -54,15 +54,14 @@ pub fn resolve_declarations(
     component_root: lowered_ast::Declaration,
     component: &mut Component,
     session: &mut BuildSession,
-    reporter: &Reporter,
 ) -> Result<hir::Declaration> {
-    let mut resolver = ResolverMut::new(component, session, reporter);
+    let mut resolver = ResolverMut::new(component, session);
 
     resolver
         .start_resolve_declaration(&component_root, None, Context::default())
         .map_err(|error| {
             for error in mem::take(&mut resolver.component.duplicate_definitions).into_values() {
-                Diagnostic::from(error).report(resolver.reporter);
+                Diagnostic::from(error).report(resolver.session.reporter());
             }
             error.token()
         })?;
@@ -84,13 +83,10 @@ pub(crate) fn resolve_path(
     namespace: DeclarationIndex,
     component: &Component,
     session: &BuildSession,
-    reporter: &Reporter,
 ) -> Result<DeclarationIndex> {
-    let resolver = Resolver::new(component, session, reporter);
-
-    resolver
+    Resolver::new(component, session)
         .resolve_path::<target::Any>(path, namespace)
-        .map_err(|error| resolver.report_resolution_error(error))
+        .map_err(|error| Resolver::new(component, session).report_resolution_error(error))
 }
 
 // @Question can we merge Resolver and ResolverMut if we introduce a separate
@@ -98,22 +94,16 @@ pub(crate) fn resolve_path(
 struct ResolverMut<'a> {
     component: &'a mut Component,
     session: &'a mut BuildSession,
-    reporter: &'a Reporter,
     /// For resolving out of order use-declarations.
     partially_resolved_use_bindings: HashMap<LocalDeclarationIndex, PartiallyResolvedUseBinding>,
     health: Health,
 }
 
 impl<'a> ResolverMut<'a> {
-    fn new(
-        component: &'a mut Component,
-        session: &'a mut BuildSession,
-        reporter: &'a Reporter,
-    ) -> Self {
+    fn new(component: &'a mut Component, session: &'a mut BuildSession) -> Self {
         Self {
             component,
             session,
-            reporter,
             partially_resolved_use_bindings: HashMap::default(),
             health: Health::Untainted,
         }
@@ -123,7 +113,6 @@ impl<'a> ResolverMut<'a> {
         Resolver {
             component: self.component,
             session: self.session,
-            reporter: self.reporter,
         }
     }
 
@@ -193,13 +182,13 @@ impl<'a> ResolverMut<'a> {
                 let known = declaration.attributes.span(AttributeName::Known);
                 if let Some(known) = known {
                     self.session
-                        .register_known_binding(&binder, None, known, self.reporter)
+                        .register_known_binding(&binder, None, known)
                         .stain(&mut self.health);
                 }
 
                 if let Some(intrinsic) = declaration.attributes.span(AttributeName::Intrinsic) {
                     self.session
-                        .register_intrinsic_type(binder.clone(), intrinsic, self.reporter)
+                        .register_intrinsic_type(binder.clone(), intrinsic)
                         .stain(&mut self.health);
                 }
 
@@ -259,7 +248,6 @@ impl<'a> ResolverMut<'a> {
                             &binder,
                             Some(self.component[namespace].source.as_str()),
                             known,
-                            self.reporter,
                         )
                         .stain(&mut self.health);
                 }
@@ -566,7 +554,7 @@ impl<'a> ResolverMut<'a> {
                             format!("the declarations {paths} are circular"),
                         ))
                         .primary_spans(spans)
-                        .report(self.reporter);
+                        .report(self.session.reporter());
                 }
 
                 self.health.taint();
@@ -680,7 +668,7 @@ expected the exposure of `{}`
                             reference.exposure.with((self.component, self.session)),
                             entity.exposure.with((self.component, self.session)),
                         ))
-                        .report(self.reporter);
+                        .report(self.session.reporter());
                     health.taint();
                 }
             }
@@ -693,16 +681,11 @@ expected the exposure of `{}`
 struct Resolver<'a> {
     component: &'a Component,
     session: &'a BuildSession,
-    reporter: &'a Reporter,
 }
 
 impl<'a> Resolver<'a> {
-    fn new(component: &'a Component, session: &'a BuildSession, reporter: &'a Reporter) -> Self {
-        Self {
-            component,
-            session,
-            reporter,
-        }
+    fn new(component: &'a Component, session: &'a BuildSession) -> Self {
+        Self { component, session }
     }
 
     // @Task @Beacon use Rc::try_unwrap more instead of clone
@@ -810,7 +793,7 @@ impl<'a> Resolver<'a> {
             UseIn => {
                 return Err(Diagnostic::unimplemented("use/in expression")
                     .primary_span(&expression)
-                    .report(self.reporter));
+                    .report(self.session.reporter()));
             }
             CaseAnalysis(analysis) => {
                 let scrutinee = self.resolve_expression(analysis.scrutinee.clone(), scope)?;
@@ -980,7 +963,7 @@ impl<'a> Resolver<'a> {
                         ))
                         .labeled_primary_span(literal, "number literal may not construct that type")
                         .labeled_secondary_span(type_, "the data type")
-                        .report(self.reporter)
+                        .report(self.session.reporter())
                 })?,
             // for now, we default to `Nat` until we implement polymorphic number literals and their inference
             None => IntrinsicNumericType::Nat,
@@ -997,7 +980,7 @@ impl<'a> Resolver<'a> {
                     "values of this type must fit integer interval {}",
                     type_.interval(),
                 ))
-                .report(self.reporter));
+                .report(self.session.reporter()));
         };
 
         Ok(number.map(|_| resolved_number.into()))
@@ -1043,7 +1026,7 @@ impl<'a> Resolver<'a> {
                             "text literal may not construct that type",
                         )
                         .labeled_secondary_span(type_, "the data type")
-                        .report(self.reporter)
+                        .report(self.session.reporter())
                 })?,
             // for now, we default to `Text` until we implement polymorphic text literals and their inference
             None => IntrinsicType::Text,
@@ -1082,7 +1065,7 @@ impl<'a> Resolver<'a> {
         // @Task
         Err(Diagnostic::unimplemented("sequence literals")
             .primary_span(&sequence.value.elements)
-            .report(self.reporter))
+            .report(self.session.reporter()))
     }
 
     fn resolve_path_of_literal(
@@ -1107,7 +1090,7 @@ impl<'a> Resolver<'a> {
                         literal,
                         "literal requires a data type as its namespace",
                     )
-                    .report(self.reporter));
+                    .report(self.session.reporter()));
             }
         }
 
@@ -1174,7 +1157,7 @@ impl<'a> Resolver<'a> {
                             .message("path `extern` is used in isolation")
                             .primary_span(hanger)
                             .note("the path segment `extern` is only to be used indirectly to refer to specific component")
-                            .report(self.reporter).into());
+                            .report(self.session.reporter()).into());
                     };
 
                     // @Beacon @Task add test for error case
@@ -1186,7 +1169,7 @@ impl<'a> Resolver<'a> {
                                 "the component name `{component}` is not a valid word"
                             ))
                             .primary_span(component)
-                            .report(self.reporter)
+                            .report(self.session.reporter())
                     })?;
 
                     let Some(component) = self.component.dependencies.get(&component.value).copied() else {
@@ -1201,7 +1184,7 @@ impl<'a> Resolver<'a> {
                         return Err(Diagnostic::error()
                             .message(format!("the component `{component}` is not defined"))
                             .primary_span(component)
-                            .report(self.reporter).into());
+                            .report(self.session.reporter()).into());
                     };
 
                     let component = &self.session[component];
@@ -1230,7 +1213,7 @@ impl<'a> Resolver<'a> {
 
             return if path.segments.is_empty() {
                 Target::output_bare_path_hanger(hanger, namespace)
-                    .reported(self.reporter)
+                    .reported(self.session.reporter())
                     .map_err(Into::into)
             } else {
                 self.resolve_path_with_origin::<Target>(
@@ -1246,7 +1229,8 @@ impl<'a> Resolver<'a> {
 
         match &*path.segments {
             [identifier] => {
-                Target::handle_final_identifier(identifier, entity).reported(self.reporter)?;
+                Target::handle_final_identifier(identifier, entity)
+                    .reported(self.session.reporter())?;
                 Ok(Target::output(index, identifier))
             }
             [identifier, identifiers @ ..] => {
@@ -1267,7 +1251,7 @@ impl<'a> Resolver<'a> {
                         namespace,
                         identifiers.first().unwrap(),
                     );
-                    Err(diagnostic.report(self.reporter).into())
+                    Err(diagnostic.report(self.session.reporter()).into())
                 }
             }
             [] => unreachable!(),
@@ -1282,9 +1266,9 @@ impl<'a> Resolver<'a> {
         self.component[module].parent.ok_or_else(|| {
             Diagnostic::error()
                 .code(Code::E021) // @Question use a dedicated code?
-                .message("the component root does not have a parent")
+                .message("the root module does not have a parent module")
                 .primary_span(hanger)
-                .report(self.reporter)
+                .report(self.session.reporter())
         })
     }
 
@@ -1331,7 +1315,7 @@ impl<'a> Resolver<'a> {
             Diagnostic::warning()
                 .message(message)
                 .primary_span(identifier)
-                .report(self.reporter);
+                .report(self.session.reporter());
         }
 
         self.collapse_use_chain(index)
@@ -1367,7 +1351,7 @@ impl<'a> Resolver<'a> {
                         self.component.path_to_string(index, self.session)
                     ))
                     .primary_span(identifier)
-                    .report(self.reporter)
+                    .report(self.session.reporter())
                     .into());
             }
         }
@@ -1425,7 +1409,7 @@ impl<'a> Resolver<'a> {
                         .code(Code::E037)
                         .message("exposure can only be restricted to ancestor modules")
                         .primary_span(unresolved_reach)
-                        .report(self.reporter));
+                        .report(self.session.reporter()));
                 }
 
                 drop(exposure_);
@@ -1639,7 +1623,7 @@ impl<'a> Resolver<'a> {
                     IdentifierUsage::Unqualified => message += "this scope",
                     IdentifierUsage::Qualified => {
                         if namespace == self.component.root() {
-                            message += "the component root";
+                            message += "the root module";
                         } else {
                             message += match self.look_up(namespace).is_module() {
                                 true => "module",
@@ -1668,7 +1652,7 @@ impl<'a> Resolver<'a> {
                             ))
                         },
                     )
-                    .report(self.reporter)
+                    .report(self.session.reporter())
             }
             ResolutionError::UnresolvedUseBinding { .. } => unreachable!(),
         }
