@@ -1,0 +1,59 @@
+diff --git a/languages.json b/languages.json
+index 742f361..dd5b7a7 100644
+--- a/languages.json
++++ b/languages.json
+@@ -3782,6 +3782,54 @@
+       }
+     ]
+   },
++  "Lushui": {
++    "complexitychecks": [],
++    "extensions": [
++      "lushui"
++    ],
++    "line_comment": [
++      ";;;"
++    ],
++    "multi_line": [],
++    "quotes": [
++      {
++        "end": "\"",
++        "start": "\""
++      }
++    ]
++  },
++  "Lushui Grammar": {
++    "complexitychecks": [],
++    "extensions": [
++      "grammar"
++    ],
++    "line_comment": [
++      ";"
++    ],
++    "multi_line": [],
++    "quotes": [
++      {
++        "end": "\"",
++        "start": "\""
++      }
++    ]
++  },
++  "Lushui Metadata": {
++    "complexitychecks": [],
++    "extensions": [
++      "metadata"
++    ],
++    "line_comment": [
++      "#"
++    ],
++    "multi_line": [],
++    "quotes": [
++      {
++        "end": "\"",
++        "start": "\""
++      }
++    ]
++  },
+   "MQL Header": {
+     "complexitychecks": [
+       "for ",
