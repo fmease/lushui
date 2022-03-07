@@ -1,0 +1,45 @@
+# TEST fail check
+
+name: "utilities",
+version: "0.0.0",
+
+components: [
+    # secondary library `formatting` #0
+    {
+        name: "formatting",
+        type: "library",
+        public: true,
+        path: "source/formatting.lushui",
+    },
+    # primary library #0
+    {
+        type: "library",
+        path: "source/library.lushui",
+    },
+    # primary executable #0
+    { path: "source/main.lushui", type: "executable" },
+    # secondary library `formatting` #1
+    {
+        name: "formatting",
+        type: "library",
+        path: "formatting.lushui",
+    },
+    # primary executable #1
+    { type: "executable", path: "main.lushui" },
+    # primary library #1
+    {
+        type: "library",
+        path: "library.lushui",
+    },
+    # primary library #2
+    {
+        type: "library",
+        path: "source/lib.lushui",
+    },
+    # primary executable #2 with explicit name
+    {
+        name: "utilities",
+        path: "source/utilities.lushui",
+        type: "executable",
+    },
+],

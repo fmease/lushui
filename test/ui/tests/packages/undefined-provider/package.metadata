@@ -1,0 +1,15 @@
+# TEST fail check
+
+name: "future",
+version: "99.99.999",
+
+components: [
+    {
+        type: "library",
+        path: "library.lushui",
+
+        dependencies: {
+            something: { component: "else", provider: "weird$" },
+        },
+    }
+],

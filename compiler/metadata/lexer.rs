@@ -96,7 +96,7 @@ impl fmt::Display for TokenName {
 }
 
 pub(super) struct Lexer<'a> {
-    source_file: &'a SourceFile,
+    file: &'a SourceFile,
     characters: Peekable<CharIndices<'a>>,
     tokens: Vec<Token>,
     local_span: LocalSpan,
@@ -104,10 +104,10 @@ pub(super) struct Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
-    pub(super) fn new(source_file: &'a SourceFile) -> Self {
+    pub(super) fn new(file: &'a SourceFile) -> Self {
         Self {
-            characters: source_file.content().char_indices().peekable(),
-            source_file,
+            characters: file.content().char_indices().peekable(),
+            file,
             tokens: Vec::new(),
             local_span: LocalSpan::default(),
             health: Health::Untainted,
@@ -143,7 +143,7 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        self.local_span = self.source_file.local_span().end();
+        self.local_span = self.file.local_span().end();
         self.add(EndOfInput);
         Outcome::new(self.tokens, self.health)
     }
@@ -187,7 +187,7 @@ impl<'a> Lexer<'a> {
         match is_terminated {
             true => {
                 // @Note once we implement escaping, this won't cut it and we need to build our own string
-                let content = self.source_file[self.local_span.trim(1)].to_owned();
+                let content = self.file[self.local_span.trim(1)].to_owned();
 
                 self.add(Text(Ok(content)));
             }
@@ -279,8 +279,8 @@ impl<'a> Lexer<'a> {
 }
 
 impl<'a> crate::utility::lexer::Lexer<'a, TokenKind> for Lexer<'a> {
-    fn source_file(&self) -> &'a SourceFile {
-        self.source_file
+    fn file(&self) -> &'a SourceFile {
+        self.file
     }
 
     fn characters(&mut self) -> &mut Peekable<CharIndices<'a>> {

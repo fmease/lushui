@@ -1,0 +1,9 @@
+# TEST ignore fail check
+# @Task implement
+
+# [Description]
+# A component cannot directly access its transitive dependencies via `extern` paths.
+# The transitive dependency needs to be either re-exported by a direct dependency
+# (in which case it would be accessible as `extern.<direct>.<transitive>`) or made
+# into a direct dependency in the package manifest. Deduplication of packages and
+# therefore components is guaranteed.

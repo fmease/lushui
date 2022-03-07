@@ -1,0 +1,14 @@
+# TEST pass run
+
+name: "basic",
+version: "1.0.0",
+
+components: [
+    {
+        type: "executable",
+        path: "main.lushui",
+        dependencies: {
+            core: { provider: "distribution" },
+        },
+    },
+],

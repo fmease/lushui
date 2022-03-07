@@ -499,7 +499,7 @@ fn terminal_format_multiple_primary_highlights() {
     let mut map = SourceMap::default();
     map.add(None, "gamma\n".into());
 
-    let diagnostic = Diagnostic::error().primary_spans([span(1, 2), span(3, 4), span(5, 6)].iter());
+    let diagnostic = Diagnostic::error().primary_spans([span(1, 2), span(3, 4), span(5, 6)]);
 
     assert_format(
         &diagnostic,

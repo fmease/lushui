@@ -12,3 +12,5 @@ use cycle
 use cycle as trans0
 use trans0 as trans1
 
+;;; @Task add description, add more "transitive uses of cycles"
+;;; (as far as I can see only the last group contains some), draw ASCII art

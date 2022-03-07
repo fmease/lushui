@@ -19,6 +19,9 @@ module fake-my-dude of
     Omega: Type = Type
 
 ;;; [Description]
-;;; Circular/cyclic/mutually recursive use-bindings should be forbidden,
-;;; should not crash the compiler and give a good error message. Distinct cycles
-;;; have to be reported separately.
+;;; Circular / cyclic / mutually recursive use-bindings should
+;;; * be forbidden
+;;; * not crash the compiler
+;;; * give a good error message
+;;;   * distinct cycles should be reported separately
+

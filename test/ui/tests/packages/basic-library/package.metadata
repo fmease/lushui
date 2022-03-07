@@ -1,0 +1,15 @@
+# TEST pass check
+
+name: "basic",
+version: "0.0.0",
+
+components: [
+    {
+        type: "library",
+        path: "library.lushui",
+
+        dependencies: {
+            core: { provider: "distribution" },
+        },
+    }
+],

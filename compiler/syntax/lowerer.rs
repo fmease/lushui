@@ -300,7 +300,7 @@ impl<'a> Lowerer<'a> {
         let declarations = match module.declarations {
             Some(declarations) => declarations,
             None => {
-                let mut path = self.session.map()[module.file]
+                let mut path = self.session.shared_map()[module.file]
                     .path()
                     .unwrap()
                     .parent()
@@ -916,7 +916,7 @@ impl<'a> Lowerer<'a> {
                     .code(Code::E006)
                     .message(format!("multiple `{}` attributes", first.value.name()))
                     .labeled_primary_spans(
-                        homonymous_attributes.into_iter(),
+                        homonymous_attributes,
                         "duplicate or conflicting attribute",
                     )
                     .report(self.session.reporter());
@@ -945,7 +945,7 @@ impl<'a> Lowerer<'a> {
                 return Err(Diagnostic::error()
                     .code(Code::E014)
                     .message(format!("attributes {listing} are mutually exclusive"))
-                    .labeled_primary_spans(attributes.into_iter(), "conflicting attribute")
+                    .labeled_primary_spans(attributes, "conflicting attribute")
                     .report(reporter));
             }
 
@@ -976,7 +976,7 @@ impl<'a> Lowerer<'a> {
 
         for attribute in attributes.filter(Predicate(|attribute| !attribute.is_fully_implemented()))
         {
-            Diagnostic::unimplemented(format!("attribute `{}`", attribute.value.name()))
+            Diagnostic::unimplemented(format!("the attribute `{}`", attribute.value.name()))
                 .primary_span(attribute)
                 .report(self.session.reporter());
             self.health.taint();
@@ -988,7 +988,7 @@ impl<'a> Lowerer<'a> {
                 Diagnostic::error()
                     .code(Code::E038)
                     .message(format!(
-                        "attribute `{}` is an internal feature",
+                        "the attribute `{}` is an internal feature",
                         attribute.value.name()
                     ))
                     .primary_span(attribute)
@@ -1091,7 +1091,7 @@ impl lowered_ast::AttributeKind {
         let ast::AttributeKind::Regular { binder, arguments } = &attribute.value else {
             return Ok(Self::Doc {
                 content: if options.keep_documentation_comments {
-                    session.map().snippet(attribute.span)
+                    session.shared_map().snippet(attribute.span)
                         .trim_start_matches(";;")
                         .into()
                 } else {

@@ -1,0 +1,5 @@
+;;; TEST auxiliary packages/components-different-in-type-may-share-names
+
+data Unit: Type of { unit: Unit }
+
+main: Unit = Unit.unit

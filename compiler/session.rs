@@ -18,7 +18,7 @@ use std::{
     ops::{Index, IndexMut},
     path::PathBuf,
     str::FromStr,
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
 const BUILD_FOLDER_NAME: &str = "build";
@@ -33,7 +33,7 @@ pub struct BuildSession {
     known_bindings: HashMap<KnownBinding, Identifier>,
     intrinsic_types: HashMap<IntrinsicType, Identifier>,
     intrinsic_functions: HashMap<IntrinsicFunction, IntrinsicFunctionValue>,
-    map: Arc<Mutex<SourceMap>>,
+    map: Arc<RwLock<SourceMap>>,
     reporter: Reporter,
 }
 
@@ -43,7 +43,7 @@ impl BuildSession {
         packages: IndexMap<PackageIndex, Package>,
         goal_component: ComponentIndex,
         goal_package: PackageIndex,
-        map: &Arc<Mutex<SourceMap>>,
+        map: &Arc<RwLock<SourceMap>>,
         reporter: Reporter,
     ) -> Self {
         Self {
@@ -63,7 +63,7 @@ impl BuildSession {
     pub(crate) fn test() -> Self {
         use crate::diagnostics::reporter::StderrReporter;
 
-        let map: Arc<Mutex<SourceMap>> = default();
+        let map: Arc<RwLock<SourceMap>> = default();
 
         Self {
             components: default(),
@@ -246,8 +246,12 @@ impl BuildSession {
         )
     }
 
-    pub fn map(&self) -> MutexGuard<'_, SourceMap> {
-        self.map.lock().unwrap()
+    pub fn shared_map(&self) -> RwLockReadGuard<'_, SourceMap> {
+        self.map.read().unwrap()
+    }
+
+    pub fn map(&self) -> RwLockWriteGuard<'_, SourceMap> {
+        self.map.write().unwrap()
     }
 
     pub fn reporter(&self) -> &Reporter {

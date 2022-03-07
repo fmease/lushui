@@ -25,7 +25,7 @@ impl fmt::Display for Failure {
         writeln!(f)?;
         writeln!(f, "{title}{bar}")?;
         writeln!(f)?;
-        write!(f, "  {}", self.kind)
+        write!(f, "{}", self.kind)
     }
 }
 
@@ -143,7 +143,7 @@ impl fmt::Display for FailureKind {
                     f,
                     "{}",
                     format!(
-                        "For being in the test folder, the file has an incorrect form: {reason}."
+                        "For being in the test folder, the file has an incorrect form:\n{reason}."
                     )
                     .red()
                 )?;

@@ -167,17 +167,17 @@ impl Diagnostic {
     /// Reference several equally important code snippets.
     pub(crate) fn primary_spans<I>(self, spannings: I) -> Self
     where
-        I: Iterator<Item: Spanning>,
+        I: IntoIterator<Item: Spanning>,
     {
-        self.spans(spannings, None, Role::Primary)
+        self.spans(spannings.into_iter(), None, Role::Primary)
     }
 
     /// Reference and label several very and equally important code snippets.
     pub(crate) fn labeled_primary_spans<I>(self, spannings: I, label: impl Into<Str>) -> Self
     where
-        I: Iterator<Item: Spanning>,
+        I: IntoIterator<Item: Spanning>,
     {
-        self.spans(spannings, Some(label.into()), Role::Primary)
+        self.spans(spannings.into_iter(), Some(label.into()), Role::Primary)
     }
 
     fn subdiagnostic(mut self, severity: Subseverity, message: Str) -> Self {

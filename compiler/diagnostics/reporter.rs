@@ -15,7 +15,7 @@ use std::{
     default::default,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex, MutexGuard,
+        Arc, Mutex, RwLock, RwLockReadGuard,
     },
 };
 
@@ -49,16 +49,16 @@ impl From<SilentReporter> for Reporter {
 }
 
 pub struct StderrReporter {
-    map: Option<Arc<Mutex<SourceMap>>>,
+    map: Option<Arc<RwLock<SourceMap>>>,
 }
 
 impl StderrReporter {
-    pub fn new(map: Option<Arc<Mutex<SourceMap>>>) -> Self {
+    pub fn new(map: Option<Arc<RwLock<SourceMap>>>) -> Self {
         Self { map }
     }
 
     fn report(&self, diagnostic: Diagnostic) {
-        let map = self.map.as_ref().map(|map| map.lock().unwrap());
+        let map = self.map.as_ref().map(|map| map.read().unwrap());
         print_to_stderr(&diagnostic.format_for_terminal(map.as_deref()));
     }
 }
@@ -73,11 +73,11 @@ pub struct BufferedStderrReporter {
     errors: Mutex<BTreeSet<Diagnostic>>,
     reported_any_errors: Arc<AtomicBool>,
     warnings: Mutex<BTreeSet<Diagnostic>>,
-    map: Arc<Mutex<SourceMap>>,
+    map: Arc<RwLock<SourceMap>>,
 }
 
 impl BufferedStderrReporter {
-    pub fn new(map: Arc<Mutex<SourceMap>>, reported_any_errors: Arc<AtomicBool>) -> Self {
+    pub fn new(map: Arc<RwLock<SourceMap>>, reported_any_errors: Arc<AtomicBool>) -> Self {
         Self {
             errors: default(),
             reported_any_errors,
@@ -86,8 +86,8 @@ impl BufferedStderrReporter {
         }
     }
 
-    fn map(&self) -> MutexGuard<'_, SourceMap> {
-        self.map.lock().unwrap()
+    fn map(&self) -> RwLockReadGuard<'_, SourceMap> {
+        self.map.read().unwrap()
     }
 
     fn report_or_buffer(&self, diagnostic: Diagnostic) {

@@ -67,7 +67,7 @@ pub fn parse_root_module_file(
 ) -> Result<Declaration> {
     // @Beacon @Task don't unwrap to_str here but handle the error correctly
     // (create another parsing function on ComponentName)
-    let name = session.map()[file]
+    let name = session.shared_map()[file]
         .path()
         .unwrap()
         .file_stem()
@@ -692,7 +692,7 @@ impl<'a> Parser<'a> {
             if self.has_consumed(EndOfInput) {
                 break Ok(Declaration::new(
                     Attributes::new(),
-                    self.session.map()[self.file].span(),
+                    self.session.shared_map()[self.file].span(),
                     ast::Module {
                         binder: module_binder,
                         file: self.file,

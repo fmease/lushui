@@ -4,7 +4,7 @@
 
 use std::{
     default::default,
-    sync::{Arc, Mutex},
+    sync::{Arc, RwLock},
 };
 
 use super::{Record, Value};
@@ -16,11 +16,10 @@ use crate::{
 };
 
 fn parse(source: &str) -> Result<Value> {
-    let map: Arc<Mutex<SourceMap>> = default();
-    let file = map.lock().unwrap().add(None, source.to_owned());
+    let map: Arc<RwLock<SourceMap>> = default();
+    let file = map.write().unwrap().add(None, source.to_owned());
     let reporter = StderrReporter::new(Some(map.clone())).into();
-    let mut map = map.lock().unwrap();
-    super::super::parse(file, &mut map, &reporter)
+    super::super::parse(file, &map, &reporter)
 }
 
 fn assert_eq(actual: Result<Value>, expected: Value) {

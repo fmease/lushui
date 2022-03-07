@@ -1,0 +1,14 @@
+# TEST auxiliary packages/transitive-dependencies
+
+name: "gamma",
+version: "3.0.0",
+
+components: [
+    {
+        type: "library",
+        path: "library.lushui",
+        dependencies: {
+            core: { provider: "distribution" },
+        }
+    },
+],

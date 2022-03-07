@@ -1,0 +1,17 @@
+# TEST fail check
+
+name: "born-to-fail",
+version: "6666.0.0",
+
+components: [
+    {
+        type: "library",
+        path: "library.lushui",
+    }
+],
+
+# [Description]
+# This test checks if any errors inside of a component i.e. language-related errors like type errors,
+# not package-related ones, actually have a negative effect on the outcome of the package check.
+# It's incredibly fundamental but I want it to be part of the test suite anyway,
+# even if other more specific tests include this check (implicitly).

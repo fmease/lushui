@@ -2,7 +2,7 @@ use crate::span::{LocalByteIndex, LocalSpan, SourceFile, Span, Spanned};
 use std::{iter::Peekable, str::CharIndices};
 
 pub(crate) trait Lexer<'source, TokenKind> {
-    fn source_file(&self) -> &'source SourceFile;
+    fn file(&self) -> &'source SourceFile;
 
     fn characters(&mut self) -> &mut Peekable<CharIndices<'source>>;
 
@@ -13,11 +13,11 @@ pub(crate) trait Lexer<'source, TokenKind> {
     fn local_span_mut(&mut self) -> &mut LocalSpan;
 
     fn span(&self) -> Span {
-        self.local_span().global(self.source_file())
+        self.local_span().global(self.file())
     }
 
     fn source(&self) -> &'source str {
-        &self.source_file()[self.local_span()]
+        &self.file()[self.local_span()]
     }
 
     /// Step to the next token in the input stream.

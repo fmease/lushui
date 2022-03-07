@@ -1,4 +1,11 @@
-#![feature(default_free_fn, const_option, once_cell, let_else, stdio_locked)]
+#![feature(
+    default_free_fn,
+    const_option,
+    once_cell,
+    let_else,
+    stdio_locked,
+    process_exitcode_placeholder
+)]
 #![forbid(rust_2018_idioms, unused_must_use)]
 #![warn(clippy::pedantic)]
 #![allow(
@@ -13,10 +20,7 @@
     clippy::single_match_else,
     clippy::if_not_else,
     clippy::blocks_in_if_conditions, // too many false positives with rustfmt's output
-    clippy::similar_names, // too many false positives (#6479)
     clippy::semicolon_if_nothing_returned, // @Temporary false positives with let/else, still
-    clippy::same_functions_in_if_condition, // @Temporary false positives with const generics (#8139)
-    clippy::needless_borrow // @Temporary false positives (#8408 I believe)
 )]
 
 use cli::{CompilerBuildMode, Gilding, Inspecting};
@@ -33,7 +37,7 @@ use std::{
     lazy::SyncLazy,
     mem,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::{Command, ExitCode, Stdio},
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -44,14 +48,14 @@ mod configuration;
 mod failure;
 mod summary;
 
-fn main() {
-    if main_().is_err() {
-        // all destructors have been run
-        std::process::exit(1);
+fn main() -> ExitCode {
+    match try_main() {
+        Ok(_) => ExitCode::SUCCESS,
+        Err(_) => ExitCode::FAILURE,
     }
 }
 
-fn main_() -> Result<(), ()> {
+fn try_main() -> Result<(), ()> {
     let application = cli::Application::new();
 
     if application.gilding == Gilding::Yes {
@@ -87,7 +91,11 @@ fn main_() -> Result<(), ()> {
         .stderr(Stdio::null())
         .status()
         .unwrap();
-    assert!(status.success()); // @Temporary
+
+    if !status.success() {
+        eprintln!("{}", "The compiler failed to build.".red());
+        return Err(());
+    }
 
     println!();
     println!("{}", "=".repeat(terminal_width()));
@@ -246,15 +254,20 @@ fn handle_test_folder_entry(
     // skip golden files (after optional `--inspect` validation)
     // since they are processed when encountering Lushui files and packages
     if extension == "stdout" || extension == "stderr" {
-        // @Beacon @Beacon @Beacon @Bug this does not handle "package.std{out,err}"
-        if inspecting == Inspecting::Yes && !path.with_extension("lushui").exists() {
-            let path = shortened_path.to_string_lossy().to_string();
-            print_file_status(&path, Status::Invalid, None);
-            failures.push(Failure::new(
-                File::new(path, FileType::Golden),
-                FailureKind::invalid_file("The golden file is missing a corresponding Lushui file"),
-            ));
-            statistics.invalid += 1;
+        #[allow(clippy::collapsible_if)]
+        if inspecting == Inspecting::Yes {
+            if !path.with_extension("lushui").exists() && !path.with_extension("metadata").exists()
+            {
+                let path = shortened_path.to_string_lossy().to_string();
+                print_file_status(&path, Status::Invalid, None);
+                failures.push(Failure::new(
+                    File::new(path, FileType::Golden),
+                    FailureKind::invalid_file(
+                        "The golden file does not have a corresponding test file",
+                    ),
+                ));
+                statistics.invalid += 1;
+            }
         }
 
         return;

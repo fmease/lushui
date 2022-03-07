@@ -1,0 +1,7 @@
+;;; TEST auxiliary packages/basic-library
+
+use extern.core.nat.Nat
+
+@public @abstract
+data T: Nat -> Type of
+    t: (n: Nat) -> T n

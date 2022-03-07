@@ -1,0 +1,4 @@
+;;; TEST auxiliary packages/undefined-extern-components
+
+use extern.core.nat.Nat
+use extern.whatever

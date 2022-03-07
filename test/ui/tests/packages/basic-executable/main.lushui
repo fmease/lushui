@@ -1,0 +1,6 @@
+;;; TEST auxiliary packages/basic-executable
+
+use extern.core.text.Text
+
+main: Text =
+    "Hello, there!"

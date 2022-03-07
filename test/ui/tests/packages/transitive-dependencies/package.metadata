@@ -1,0 +1,29 @@
+# TEST ignore pass run
+# @Beacon @Bug type checker bugs!
+
+name: "root",
+version: "0.0.0",
+
+components: [
+    {
+        type: "executable",
+        path: "main.lushui",
+        dependencies: {
+            core: { provider: "distribution" },
+            alpha: { path: "alpha" },
+            gamma: { path: "gamma" },
+        }
+    },
+],
+
+# [Description]
+# Test whether long dependency chains work and if references to the same package are deduplicated
+# across the build session.
+#
+# Dependency visualization:
+#
+#     /----------------------\
+#     |                      |
+#     root -> alpha -> beta -+-> gamma
+#     |                |         |
+#     \----------------+---------+-> core

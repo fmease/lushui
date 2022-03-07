@@ -1,0 +1,18 @@
+# TEST fail check
+
+name: "???",
+version: "0.0.0",
+
+components: [
+    {
+        name: "of",
+        type: "executable",
+        path: "",
+
+        dependencies: {
+            "0//": { component: "hey there", package: "-e" },
+            "": { provider: "distribution" },
+            data: {},
+        },
+    },
+],

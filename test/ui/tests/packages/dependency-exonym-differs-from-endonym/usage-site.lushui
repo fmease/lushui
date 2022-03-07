@@ -1,0 +1,6 @@
+;;; TEST auxiliary packages/dependency-exonym-differs-from-endonym
+
+use extern.kore.nat.Nat
+
+n0: Nat = 0'000
+n1: Nat = extern.ours.def

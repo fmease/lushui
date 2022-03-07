@@ -1,0 +1,8 @@
+;;; TEST auxiliary packages/erroneous-library
+
+data Set: Type of
+    type: Type -> Set
+
+data U: Type of
+
+Clash: Type = Set.type U

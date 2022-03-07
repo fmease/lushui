@@ -10,6 +10,7 @@ use crate::{
     error::{Health, OkIfUntaintedExt, ReportedExt, Result},
     span::{SourceFileIndex, SourceMap, Span, Spanning, WeaklySpanned},
 };
+use std::sync::RwLock;
 
 #[cfg(test)]
 mod test;
@@ -19,7 +20,7 @@ pub(super) struct Parser<'a> {
     tokens: &'a [Token],
     index: usize,
     health: Health,
-    map: &'a mut SourceMap,
+    map: &'a RwLock<SourceMap>,
     reporter: &'a Reporter,
 }
 
@@ -27,7 +28,7 @@ impl<'a> Parser<'a> {
     pub(super) fn new(
         file: SourceFileIndex,
         tokens: &'a [Token],
-        map: &'a mut SourceMap,
+        map: &'a RwLock<SourceMap>,
         reporter: &'a Reporter,
     ) -> Self {
         Self {
@@ -104,7 +105,7 @@ impl<'a> Parser<'a> {
         let record = self.parse_record_entries(EndOfInput)?;
 
         Ok(Value::new(
-            self.map[self.file].span(),
+            self.map.read().unwrap()[self.file].span(),
             ValueKind::Record(record),
         ))
     }
@@ -236,6 +237,7 @@ impl<'a> Parser<'a> {
             let (key, value) = self.parse_record_entry()?;
 
             if let Some(previous_key) = record.keys().find(|&some_key| some_key == &key) {
+                // @Task make *all* duplicate entries *primary* highlights
                 Diagnostic::error()
                     .code(Code::E803)
                     .message(format!("the entry `{}` is defined multiple times", key))
@@ -301,7 +303,7 @@ impl<'a> Parser<'a> {
                 // @Task
                 return Err(Diagnostic::error()
                     .message(format!(
-                        "expected record key but got {:?}",
+                        "found {} but expected record key",
                         self.current_token().name()
                     ))
                     .primary_span(span)

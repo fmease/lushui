@@ -89,7 +89,7 @@ impl Target for ast::Declaration {
                             .between(self.span.end())
                             .trim_start_matches(
                                 |character| character.is_ascii_whitespace(),
-                                &session.map(),
+                                &session.shared_map(),
                             );
 
                         (
@@ -116,7 +116,7 @@ impl Target for ast::Declaration {
                             .between(self.span.end())
                             .trim_start_matches(
                                 |character| character.is_ascii_whitespace(),
-                                &session.map(),
+                                &session.shared_map(),
                             );
 
                         (

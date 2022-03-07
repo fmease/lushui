@@ -1,0 +1,22 @@
+# TEST pass check
+
+name: "dinghy-thingy",
+version: "1.86.1",
+
+components: [
+    # primary executable, implicitly named `dinghy-thingy`
+    {
+        type: "executable",
+        path: "irrelevant.lushui",
+    },
+    # primary library, explicitly named `dinghy-thingy`
+    {
+        type: "library",
+        name: "dinghy-thingy",
+        path: "irrelevant.lushui",
+    },
+    # secondary executable named `scndry`
+    { type: "executable", name: "scndry", path: "irrelevant.lushui" },
+    # secondary library named `scndry`,
+    { type: "library", name: "scndry", path: "irrelevant.lushui" },
+],

@@ -539,6 +539,11 @@ mod weakly_spanned {
         }
 
         #[allow(dead_code)]
+        pub(crate) fn as_ref(&self) -> WeaklySpanned<&T> {
+            WeaklySpanned::new(self.span, &self.value)
+        }
+
+        #[allow(dead_code)]
         pub(crate) fn as_deref(&self) -> WeaklySpanned<&T::Target>
         where
             T: Deref,

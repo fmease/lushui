@@ -1,0 +1,15 @@
+# TEST auxiliary packages/transitive-dependencies
+
+name: "beta",
+version: "2.0.0",
+
+components: [
+    {
+        type: "library",
+        path: "library.lushui",
+        dependencies: {
+            core: { provider: "distribution" },
+            gamma: { path: "../gamma" },
+        }
+    },
+],

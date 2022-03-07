@@ -1,0 +1,12 @@
+# TEST fail check
+
+name: "thingy",
+version: "0.0.0",
+
+components: [
+    {
+        type: "library",
+        path: "content.lushui",
+        dependencies: { who: { path: "nowhere" } },
+    }
+],

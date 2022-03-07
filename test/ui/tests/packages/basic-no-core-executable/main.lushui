@@ -1,0 +1,15 @@
+;;; TEST auxiliary packages/basic-no-core-executable
+
+main: Text =
+    concat "Running" (concat " without " subject)
+
+subject: Text = "core"
+
+@intrinsic
+data Text: Type
+
+@intrinsic
+concat:
+    Text ->
+    Text ->
+    Text

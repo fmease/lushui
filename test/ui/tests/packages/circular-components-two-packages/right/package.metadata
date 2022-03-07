@@ -1,0 +1,5 @@
+# TEST auxiliary packages/circular-components-two-packages
+
+name: "right",
+version: "0.0.0",
+components: [ { type: "library", path: "content.lushui", dependencies: { left: { path: ".." } } } ],

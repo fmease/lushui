@@ -52,7 +52,7 @@ pub fn document(
 
         documenter.document_declaration(declaration)?;
         documenter.collect_search_items(declaration);
-        documenter.write()?;
+        documenter.write().unwrap();
         documenter.text_processor.destruct().unwrap();
 
         Ok(())
@@ -99,18 +99,16 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         })
     }
 
-    // @Task handle the case where two+ components (goal and/or (transitive) deps)
-    // have the same name and are being documented
-    #[allow(clippy::unnecessary_wraps)] // @Temporary
-    fn write(&self) -> Result<()> {
-        // @Beacon @Task handle I/O errors properly
+    fn write(&self) -> Result<(), std::io::Error> {
+        // @Task handle the case where two+ components (goal and/or (transitive) deps)
+        // have the same name and are being documented
 
         {
             let path = self.path.join(MAIN_STYLE_SHEET_FILE_NAME);
             // @Task instead of `DEVELOPING`, compare hash (maybe)?
             if DEVELOPING || !path.exists() {
                 static STYLE_SHEET: &str = include_str!("documenter/static/css/style.css");
-                fs::write(path, minifier::css::minify(STYLE_SHEET).unwrap()).unwrap();
+                fs::write(path, minifier::css::minify(STYLE_SHEET).unwrap())?;
             }
         }
 
@@ -118,7 +116,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             let path = self.path.join("fonts.min.css");
             if !path.exists() {
                 static STYLE_SHEET: &str = include_str!("documenter/static/css/fonts.css");
-                fs::write(path, minifier::css::minify(STYLE_SHEET).unwrap()).unwrap();
+                fs::write(path, minifier::css::minify(STYLE_SHEET).unwrap())?;
             }
         }
 
@@ -127,81 +125,74 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             // @Task instead of `DEVELOPING`, compare hash (maybe)?
             if DEVELOPING || !path.exists() {
                 static SCRIPT: &str = include_str!("documenter/static/js/script.js");
-                fs::write(path, minifier::js::minify(SCRIPT)).unwrap();
+                fs::write(path, minifier::js::minify(SCRIPT))?;
             }
         }
 
-        fonts::copy_over(&self.path).unwrap();
+        fonts::copy_over(&self.path)?;
 
         for page in &self.pages {
             let parent = page.path.parent().unwrap();
 
             if !parent.exists() {
-                fs::create_dir(parent).unwrap();
+                fs::create_dir(parent)?;
             }
 
-            fs::write(&page.path, &page.content).unwrap();
+            fs::write(&page.path, &page.content)?;
+        }
+
+        let component_path = self.path.join(self.component.name().as_str());
+
+        if !component_path.exists() {
+            fs::create_dir(&component_path)?;
         }
 
         // @Task use BufWriter
         // @Task put it in self.destination instead once the search index contains all components
-        fs::write(
-            self.path
-                .join(self.component.name().as_str())
-                .join(SEARCH_INDEX_FILE_NAME),
-            {
-                let mut search_index = String::from("window.searchIndex=[");
+        fs::write(component_path.join(SEARCH_INDEX_FILE_NAME), {
+            let mut search_index = String::from("window.searchIndex=[");
 
-                for search_item in &self.search_items {
-                    match search_item {
-                        &SearchItem::Declaration(index) => {
-                            // @Beacon @Task don't use the to_string variant, so we don't need to split() JS (which would be
-                            // incorrect on top of that!)
-                            let path = self
-                                .component
-                                .extern_path_to_string(index.local(self.component).unwrap());
+            for search_item in &self.search_items {
+                match search_item {
+                    &SearchItem::Declaration(index) => {
+                        // @Beacon @Task don't use the to_string variant, so we don't need to split() JS (which would be
+                        // incorrect on top of that!)
+                        let path = self
+                            .component
+                            .extern_path_to_string(index.local(self.component).unwrap());
 
-                            search_index += &format!(
-                                "[{path:?},{:?}],",
-                                format::declaration_url_fragment(
-                                    index,
-                                    self.component,
-                                    self.session
-                                )
-                            );
-                        }
-                        SearchItem::ReservedIdentifier(name) => {
-                            let kind =
-                                if ast::Identifier::new_unchecked(name.as_str().into(), default())
-                                    .is_word()
-                                {
-                                    "word"
-                                } else {
-                                    "punctuation"
-                                };
+                        search_index += &format!(
+                            "[{path:?},{:?}],",
+                            format::declaration_url_fragment(index, self.component, self.session)
+                        );
+                    }
+                    SearchItem::ReservedIdentifier(name) => {
+                        let kind =
+                            if ast::Identifier::new_unchecked(name.as_str().into(), default())
+                                .is_word()
+                            {
+                                "word"
+                            } else {
+                                "punctuation"
+                            };
 
-                            search_index += &format!(
-                                "[{name:?},{:?}],",
-                                format!("reserved.html#{kind}.{}", urlencoding::encode(name))
-                            );
-                        }
-                        SearchItem::Attribute(binder) => {
-                            search_index += &format!(
-                                "[{binder:?},{:?}],",
-                                format!(
-                                    "attributes.html#attribute.{}",
-                                    urlencoding::encode(binder)
-                                )
-                            );
-                        }
+                        search_index += &format!(
+                            "[{name:?},{:?}],",
+                            format!("reserved.html#{kind}.{}", urlencoding::encode(name))
+                        );
+                    }
+                    SearchItem::Attribute(binder) => {
+                        search_index += &format!(
+                            "[{binder:?},{:?}],",
+                            format!("attributes.html#attribute.{}", urlencoding::encode(binder))
+                        );
                     }
                 }
+            }
 
-                search_index += "];";
-                search_index
-            },
-        )
-        .unwrap();
+            search_index += "];";
+            search_index
+        })?;
 
         Ok(())
     }

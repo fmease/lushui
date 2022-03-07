@@ -16,7 +16,7 @@ use crate::{
     utility::{obtain, HashMap},
 };
 use derivation::Discriminant;
-use std::fmt;
+use std::{fmt, sync::RwLock};
 
 mod lexer;
 mod parser;
@@ -25,13 +25,14 @@ pub(crate) type Value = Spanned<ValueKind>;
 pub(crate) type Record<K = String, V = Value> = HashMap<WeaklySpanned<K>, V>;
 
 pub(crate) fn parse(
-    source_file_index: SourceFileIndex,
-    map: &mut SourceMap,
+    file_index: SourceFileIndex,
+    map: &RwLock<SourceMap>,
     reporter: &Reporter,
 ) -> Result<Value> {
-    let source_file = &map[source_file_index];
-    let tokens = lexer::Lexer::new(source_file).lex().value;
-    parser::Parser::new(source_file_index, &tokens, map, reporter).parse()
+    let tokens = lexer::Lexer::new(&map.read().unwrap()[file_index])
+        .lex()
+        .value;
+    parser::Parser::new(file_index, &tokens, map, reporter).parse()
 }
 
 #[derive(Debug, Discriminant)]

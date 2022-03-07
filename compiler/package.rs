@@ -2,7 +2,7 @@
 
 use crate::{
     component::{Component, ComponentIndex, ComponentMetadata, ComponentType, Components},
-    diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
+    diagnostics::{Code, Diagnostic, Reporter},
     error::{Health, OkIfUntaintedExt, Result},
     metadata::{key_content_span, Record},
     session::BuildSession,
@@ -11,24 +11,35 @@ use crate::{
     utility::{HashMap, IOError},
 };
 use index_map::IndexMap;
-use manifest::{ComponentManifest, PackageManifest, PackageProfile, Provider};
-pub(crate) use manifest::{DependencyDeclaration, Version};
+pub use manifest::FILE_NAME as MANIFEST_FILE_NAME;
+use manifest::{
+    ComponentKey, ComponentManifest, DependencyDeclaration, PackageManifest, PackageProfile,
+    Provider, Version,
+};
 use std::{
     default::default,
     fmt,
     ops::{Index, IndexMut},
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
 mod manifest;
 
-pub use manifest::FILE_NAME as MANIFEST_FILE_NAME;
+pub fn find_package(path: &Path) -> Option<&Path> {
+    let manifest_path = path.join(manifest::FILE_NAME);
+
+    if manifest_path.exists() {
+        Some(path)
+    } else {
+        find_package(path.parent()?)
+    }
+}
 
 /// Resolve all components and package dependencies of a package given the path to its folder without building anything.
 pub fn resolve_package(
     package_path: &Path,
-    map: &Arc<Mutex<SourceMap>>,
+    map: &Arc<RwLock<SourceMap>>,
     reporter: Reporter,
 ) -> Result<(Components, BuildSession)> {
     let package_path = match package_path.canonicalize() {
@@ -52,7 +63,7 @@ pub fn resolve_file(
     file_path: &Path,
     component_type: ComponentType,
     no_core: bool,
-    map: &Arc<Mutex<SourceMap>>,
+    map: &Arc<RwLock<SourceMap>>,
     reporter: Reporter,
 ) -> Result<(Components, BuildSession)> {
     let file_path = match file_path.canonicalize() {
@@ -92,7 +103,7 @@ pub struct Package {
     // enum PackageLocation { NormalPackage(PathBuf), SingleFilePackage(PathBuf) }
     pub path: PathBuf,
     #[allow(dead_code)]
-    pub(crate) version: Version,
+    version: Version,
     pub(crate) description: String,
     components: HashMap<Word, PossiblyUnresolved<ComponentIndex>>,
 }
@@ -153,12 +164,12 @@ struct BuildQueue {
     /// The components which have not been built yet.
     components: Components,
     packages: IndexMap<PackageIndex, Package>,
-    map: Arc<Mutex<SourceMap>>,
+    map: Arc<RwLock<SourceMap>>,
     reporter: Reporter,
 }
 
 impl BuildQueue {
-    fn new(map: &Arc<Mutex<SourceMap>>, reporter: Reporter) -> Self {
+    fn new(map: &Arc<RwLock<SourceMap>>, reporter: Reporter) -> Self {
         Self {
             components: default(),
             packages: default(),
@@ -171,7 +182,8 @@ impl BuildQueue {
 impl BuildQueue {
     fn resolve_package(&mut self, package_path: &Path) -> Result {
         let manifest_path = package_path.join(manifest::FILE_NAME);
-        let manifest_file = match self.map().load(manifest_path.clone()) {
+        let manifest_file = self.map().load(manifest_path.clone());
+        let manifest_file = match manifest_file {
             Ok(file) => file,
             Err(error) => {
                 return Err(Diagnostic::error()
@@ -192,9 +204,9 @@ impl BuildQueue {
         // I *think*, only those that are relevant: this is driven by the CLI: Esp. if the users passes
         // certain flag (cf. --exe, --lib etc. flags passed to cargo build)
         // @Note but maybe we should still check for correctness of irrelevant components, check what cargo does!
-        if let Some(components) = manifest.components {
-            for component in components.value {
-                let name = component
+        if let Some(Spanned!(components, _)) = manifest.components {
+            for (key, Spanned!(component, _)) in components {
+                let name = key
                     .name
                     .map_or_else(|| self[package].name.clone(), |name| name.value);
 
@@ -202,16 +214,13 @@ impl BuildQueue {
                     .components
                     .insert(name.clone(), PossiblyUnresolved::Unresolved);
 
-                let dependencies = match self.resolve_dependencies(
+                let Ok(dependencies) = self.resolve_dependencies(
                     &name,
                     package_path,
                     component.dependencies.as_ref(),
-                ) {
-                    Ok(dependencies) => dependencies,
-                    Err(_) => {
-                        health.taint();
-                        continue;
-                    }
+                ) else {
+                    health.taint();
+                    continue;
                 };
 
                 let component = self.components.insert_with(|index| {
@@ -223,7 +232,7 @@ impl BuildQueue {
                             component
                                 .path
                                 .map(|relative_path| package_path.join(relative_path)),
-                            component.type_.value,
+                            key.type_.value,
                         ),
                         dependencies,
                     )
@@ -261,10 +270,9 @@ impl BuildQueue {
             // in fact, all the logic was copied over from there and manually adjusted
             // @Task abstract over this
 
-            let core_package_path = core_package_path();
-            let core_manifest_path = core_package_path.join(manifest::FILE_NAME);
-            let core_manifest_file = match self.map.lock().unwrap().load(core_manifest_path.clone())
-            {
+            let core_manifest_path = core_package_path().join(manifest::FILE_NAME);
+            let core_manifest_file = self.map().load(core_manifest_path.clone());
+            let core_manifest_file = match core_manifest_file {
                 Ok(file) => file,
                 Err(error) => {
                     return Err(Diagnostic::error()
@@ -276,27 +284,22 @@ impl BuildQueue {
             };
 
             let core_manifest = PackageManifest::parse(core_manifest_file, self)?;
-            let core_package =
-                Package::from_manifest(core_manifest.profile, core_package_path.clone());
+            let core_package = Package::from_manifest(core_manifest.profile, core_package_path());
             let core_package = self.packages.insert(core_package);
 
             let core_package_name = core_package_name();
-            let library = self.resolve_primary_library(core_manifest.components.as_ref())?;
+            let (library_key, Spanned!(library, _)) =
+                self.resolve_primary_library(core_manifest.components.as_ref())?;
 
             self[core_package]
                 .components
                 .insert(core_package_name.clone(), PossiblyUnresolved::Unresolved);
 
-            let transitive_dependencies = match self.resolve_dependencies(
+            let transitive_dependencies = self.resolve_dependencies(
                 &core_package_name,
-                &core_package_path,
+                &core_package_path(),
                 library.dependencies.as_ref(),
-            ) {
-                Ok(dependencies) => dependencies,
-                Err(_) => {
-                    return Err(ErrorReported::new_unchecked());
-                }
-            };
+            )?;
 
             let library = self.components.insert_with(|index| {
                 Component::new(
@@ -307,8 +310,8 @@ impl BuildQueue {
                         library
                             .path
                             .as_ref()
-                            .map(|relative_path| core_package_path.join(relative_path)),
-                        library.type_.value,
+                            .map(|relative_path| core_package_path().join(relative_path)),
+                        library_key.type_.value,
                     ),
                     transitive_dependencies,
                 )
@@ -382,7 +385,7 @@ impl BuildQueue {
                     // @Beacon @Beacon @Beacon @Bug very much not correct! @Task properly find the (primary)
                     // library in the already-resolved package `dependency`
                     // @Beacon @Temporary panic
-                    let (_, &primary_library) = dbg!(&dependency)
+                    let (_, &library) = dependency
                         .components
                         .iter()
                         .find(|&(name, _)| name == &dependency.name)
@@ -393,15 +396,13 @@ impl BuildQueue {
                             )
                         });
 
-                    match primary_library {
+                    match library {
                         PossiblyUnresolved::Resolved(primary_library) => {
                             resolved_dependencies
                                 .insert(dependency_exonym.value.clone(), primary_library);
                             continue;
                         }
                         PossiblyUnresolved::Unresolved => {
-                            let map = self.map.lock().unwrap();
-
                             // @Note the message does not scale to more complex cycles (e.g. a cycle of three components)
                             // @Task provide more context for transitive dependencies of the goal component
                             // @Task code
@@ -411,7 +412,10 @@ impl BuildQueue {
                                     // @Task don't use the package's name but the (library) component's one!
                                     dependency.name
                                 ))
-                                .primary_span(key_content_span(dependency_exonym, &map))
+                                .primary_span(key_content_span(
+                                    dependency_exonym,
+                                    &self.shared_map(),
+                                ))
                                 // @Beacon @Beacon @Beacon @Task
                                 // .primary_span(
                                 //     // @Beacon @Bug probably does not work if exonym != endonym (but that can be fixed easily!)
@@ -424,7 +428,7 @@ impl BuildQueue {
                                 //             .keys()
                                 //             .find(|key| key.value == self[package_index].name)
                                 //             .unwrap(),
-                                //         &map,
+                                //         &self.map(),
                                 //     ),
                                 // )
                                 .report(&self.reporter));
@@ -434,25 +438,24 @@ impl BuildQueue {
             }
 
             let dependency_manifest_path = dependency_path.join(manifest::FILE_NAME);
-            let dependency_manifest_file = match self
-                .map
-                .lock()
-                .unwrap()
-                .load(dependency_manifest_path.clone())
-            {
+            let dependency_manifest_file = self.map().load(dependency_manifest_path.clone());
+            let dependency_manifest_file = match dependency_manifest_file {
                 Ok(file) => file,
+                // generally this may only happen with filesystem dependencies since "downloaded" dependencies
+                // will be stored in controlled locations
                 Err(error) => {
                     // @Task provide more context for transitive dependencies of the goal component
                     // @Question code?
+                    // @Task provide more information when provider==distribution
                     let diagnostic = Diagnostic::error()
                         .message(format!(
                             "could not load the dependency `{dependency_exonym}`",
                         ))
                         .note(IOError(error, &dependency_manifest_path).to_string());
                     let diagnostic = match &dependency_declaration.value.path {
-                        Some(path) => diagnostic.primary_span(path.span.trim(1)), // trimming quotes
+                        Some(path) => diagnostic.primary_span(path.span),
                         None => diagnostic
-                            .primary_span(key_content_span(dependency_exonym, &self.map())),
+                            .primary_span(key_content_span(dependency_exonym, &self.shared_map())),
                     };
                     diagnostic.report(&self.reporter);
                     health.taint();
@@ -464,18 +467,21 @@ impl BuildQueue {
 
             let alleged_dependency_endonym = dependency_declaration
                 .value
-                .name
+                .component
                 .as_ref()
                 .map_or(&dependency_exonym.value, |name| &name.value);
 
+            // @Note this does not scale to secondary libraries, right?
             if alleged_dependency_endonym != &dependency_manifest.profile.name.value {
                 // @Task improve error message, add highlight
                 // @Task use primary span (endonym here (key `name` or map key)) &
                 // secondary span (endonym in the dependency's package manifest file)
                 // @Task branch on existence of the key `name`
                 // @Task maybe instead of returning early, we could just go forwards with the the exonym
+                // @Beacon @Beacon @Beacon @Bug this message should no longer be "names do not match"
+                //      but "no (secondary) library named `xxx` found in package `yyy`"
                 return Err(Diagnostic::error()
-                    .message("library name does not match")
+                    .message("package <$name> does not contain a <primary|secondary> library named <$name>")
                     .report(&self.reporter));
             }
 
@@ -489,7 +495,7 @@ impl BuildQueue {
 
             // @Note we cannot handle sublibraries yet (secondary libraries)
             // only find the primary library for now
-            let Ok(library) =
+            let Ok((library_key, Spanned!(library, _))) =
                 self.resolve_primary_library(dependency_manifest.components.as_ref()) else {
                     health.taint();
                     continue;
@@ -498,7 +504,7 @@ impl BuildQueue {
             // @Temporary procedure here (DRY! see resolve_package):
             // @Beacon @Beacon @Beacon @Question the name of the primary library is ALWAYS
             // the same as the package name, what are we doing here???
-            let library_name = library
+            let library_name = library_key
                 .name
                 .as_ref()
                 .map_or(dependency_package_name, |name| name.value.clone());
@@ -507,16 +513,13 @@ impl BuildQueue {
                 .components
                 .insert(library_name.clone(), PossiblyUnresolved::Unresolved);
 
-            let transitive_dependencies = match self.resolve_dependencies(
+            let Ok(transitive_dependencies) = self.resolve_dependencies(
                 &library_name,
                 &dependency_path,
                 library.dependencies.as_ref(),
-            ) {
-                Ok(dependencies) => dependencies,
-                Err(_) => {
-                    health.taint();
-                    continue;
-                }
+            ) else {
+                health.taint();
+                continue;
             };
 
             let library = self.components.insert_with(|index| {
@@ -529,7 +532,7 @@ impl BuildQueue {
                             .path
                             .as_ref()
                             .map(|relative_path| dependency_path.join(relative_path)),
-                        library.type_.value,
+                        library_key.type_.value,
                     ),
                     transitive_dependencies,
                 )
@@ -586,8 +589,11 @@ impl BuildQueue {
                     .report(&self.reporter)),
             },
             Provider::Distribution => {
-                let name = declaration.name.as_ref().map_or(exonym, |name| &name.value);
-                Ok(distributed_packages_path().join(name.as_str()))
+                let component = declaration
+                    .component
+                    .as_ref()
+                    .map_or(exonym, |name| &name.value);
+                Ok(distributed_packages_path().join(component.as_str()))
             }
             Provider::Package | Provider::Git | Provider::Registry => Err(Diagnostic::error()
                 .message(format!(
@@ -605,21 +611,16 @@ impl BuildQueue {
     }
 
     // @Task generalize to primary+secondary libraries
-    fn resolve_primary_library<'c>(
+    fn resolve_primary_library<'m>(
         &self,
-        components: Option<&'c Spanned<Vec<ComponentManifest>>>,
-    ) -> Result<&'c ComponentManifest> {
+        components: Option<&'m Spanned<manifest::Components>>,
+    ) -> Result<(&'m ComponentKey, &'m Spanned<ComponentManifest>)> {
         components
-            .and_then(|components| {
-                components
-                    .value
-                    .iter()
-                    .find(|component| component.name.is_none())
-            })
+            .and_then(|components| components.value.iter().find(|(key, _)| key.name.is_none()))
             .ok_or_else(|| {
                 // @Temporary diagnostic
                 Diagnostic::error()
-                    .message("no (primary) library found in package XXX")
+                    .message("no <primary> library found in package <name>")
                     .report(&self.reporter)
             })
     }
@@ -667,9 +668,36 @@ impl BuildQueue {
         (self.components, session)
     }
 
-    fn map(&self) -> MutexGuard<'_, SourceMap> {
-        self.map.lock().unwrap()
+    fn shared_map(&self) -> RwLockReadGuard<'_, SourceMap> {
+        self.map.read().unwrap()
     }
+
+    fn map(&self) -> RwLockWriteGuard<'_, SourceMap> {
+        self.map.write().unwrap()
+    }
+}
+
+fn parse_component_name_from_file_path(path: &Path, reporter: &Reporter) -> Result<Word> {
+    if !crate::utility::has_file_extension(path, crate::FILE_EXTENSION) {
+        Diagnostic::warning()
+            .message("the source file does not have the file extension `lushui`")
+            .report(reporter);
+    }
+
+    // @Question can the file stem ever be empty in our case?
+    let name = path.file_stem().unwrap();
+    // @Beacon @Beacon @Beacon @Task do not unwrap! provide custom error
+    let name = name.to_str().unwrap();
+
+    Word::parse(name.into()).map_err(|_| {
+        // @Task DRY @Question is the common code justified?
+        // @Question isn't this function used in such a way that it's
+        //     "component and package name"?
+        Diagnostic::error()
+            .code(Code::E036)
+            .message(format!("the component name `{name}` is not a valid word"))
+            .report(reporter)
+    })
 }
 
 impl Index<ComponentIndex> for BuildQueue {
@@ -717,40 +745,4 @@ pub(crate) const CORE_PACKAGE_NAME: &str = "core";
 
 pub(crate) fn core_package_name() -> Word {
     Word::new_unchecked("core".into())
-}
-
-pub fn find_package(path: &Path) -> Option<&Path> {
-    let manifest_path = path.join(manifest::FILE_NAME);
-
-    if manifest_path.exists() {
-        Some(path)
-    } else {
-        find_package(path.parent()?)
-    }
-}
-
-pub(crate) fn parse_component_name_from_file_path(
-    path: &Path,
-    reporter: &Reporter,
-) -> Result<Word> {
-    if !crate::utility::has_file_extension(path, crate::FILE_EXTENSION) {
-        Diagnostic::warning()
-            .message("the source file does not have the file extension `lushui`")
-            .report(reporter);
-    }
-
-    // @Question can the file stem ever be empty in our case?
-    let name = path.file_stem().unwrap();
-    // @Beacon @Beacon @Beacon @Task do not unwrap! provide custom error
-    let name = name.to_str().unwrap();
-
-    Word::parse(name.into()).map_err(|_| {
-        // @Task DRY @Question is the common code justified?
-        // @Question isn't this function used in such a way that it's
-        //     "component and package name"?
-        Diagnostic::error()
-            .code(Code::E036)
-            .message(format!("the component name `{name}` is not a valid word"))
-            .report(reporter)
-    })
 }

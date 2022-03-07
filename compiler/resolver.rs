@@ -6,6 +6,8 @@
 //! expressions and patterns to [(resolved) identifiers](Identifier) which
 //! contain a [declaration index](DeclarationIndex) or a [de Bruijn index](DeBruijnIndex)
 //! respectively.
+// @Task improve docs above!
+// @Task get rid of "register" terminology
 
 use crate::{
     component::Component,
@@ -32,6 +34,7 @@ use smallvec::smallvec;
 use std::{
     cmp::Ordering,
     collections::{hash_map::Entry, VecDeque},
+    default::default,
     fmt, mem,
     sync::{Arc, Mutex},
 };
@@ -57,21 +60,27 @@ pub fn resolve_declarations(
 ) -> Result<hir::Declaration> {
     let mut resolver = ResolverMut::new(component, session);
 
-    resolver
-        .start_resolve_declaration(&component_root, None, Context::default())
-        .map_err(|error| {
-            for error in mem::take(&mut resolver.component.duplicate_definitions).into_values() {
-                Diagnostic::from(error).report(resolver.session.reporter());
-            }
-            error.token()
-        })?;
+    if let Err(error) = resolver.start_resolve_declaration(&component_root, None, default()) {
+        for (binder, naming_conflicts) in mem::take(&mut resolver.naming_conflicts) {
+            Diagnostic::error()
+                .code(Code::E020)
+                .message(format!(
+                    "`{}` is defined multiple times in this scope",
+                    resolver.component[binder].source,
+                ))
+                .labeled_primary_spans(naming_conflicts, "conflicting definition")
+                .report(resolver.session.reporter());
+        }
+
+        return Err(error.token());
+    }
 
     resolver.resolve_use_bindings();
 
     // @Task @Beacon don't return early here
     resolver.resolve_exposure_reaches()?;
 
-    let declaration = resolver.finish_resolve_declaration(component_root, None, Context::default());
+    let declaration = resolver.finish_resolve_declaration(component_root, None, default());
 
     Result::ok_if_untainted(declaration, resolver.health)
 }
@@ -96,6 +105,11 @@ struct ResolverMut<'a> {
     session: &'a mut BuildSession,
     /// For resolving out of order use-declarations.
     partially_resolved_use_bindings: HashMap<LocalDeclarationIndex, PartiallyResolvedUseBinding>,
+    /// Naming conflicts used for error reporting.
+    ///
+    /// Allows us to group conflicts by binder and emit a *single* diagnostic *per group* (making
+    /// use of multiple primary highlights).
+    naming_conflicts: HashMap<LocalDeclarationIndex, SmallVec<Span, 2>>,
     health: Health,
 }
 
@@ -105,6 +119,7 @@ impl<'a> ResolverMut<'a> {
             component,
             session,
             partially_resolved_use_bindings: HashMap::default(),
+            naming_conflicts: HashMap::default(),
             health: Health::Untainted,
         }
     }
@@ -134,7 +149,7 @@ impl<'a> ResolverMut<'a> {
         declaration: &lowered_ast::Declaration,
         module: Option<LocalDeclarationIndex>,
         context: Context,
-    ) -> Result<(), RegistrationError> {
+    ) -> Result<(), DefinitionError> {
         use lowered_ast::DeclarationKind::*;
 
         let exposure = match declaration.attributes.get::<{ AttributeName::Public }>() {
@@ -156,7 +171,7 @@ impl<'a> ResolverMut<'a> {
             Function(function) => {
                 let module = module.unwrap();
 
-                self.component.register_binding(
+                self.define(
                     function.binder.clone(),
                     exposure,
                     declaration.attributes.clone(),
@@ -169,7 +184,7 @@ impl<'a> ResolverMut<'a> {
                 let module = module.unwrap();
 
                 // @Task don't return early, see analoguous code for modules
-                let index = self.component.register_binding(
+                let index = self.define(
                     type_.binder.clone(),
                     exposure,
                     declaration.attributes.clone(),
@@ -211,14 +226,14 @@ impl<'a> ResolverMut<'a> {
                                 known,
                             },
                         )
-                        .map_err(RegistrationError::token)
+                        .map_err(DefinitionError::token)
                         .stain(health);
                     }
                 }
 
                 // @Beacon @Beacon @Beacon @Task get rid of unchecked call
                 return Result::from(*health)
-                    .map_err(|_| RegistrationError::Unrecoverable(ErrorReported::new_unchecked()));
+                    .map_err(|_| DefinitionError::Unrecoverable(ErrorReported::new_unchecked()));
             }
             Constructor(constructor) => {
                 // there is always a root module
@@ -231,7 +246,7 @@ impl<'a> ResolverMut<'a> {
                     Transparency::Abstract => RestrictedExposure::Resolved { reach: module }.into(),
                 };
 
-                let index = self.component.register_binding(
+                let index = self.define(
                     constructor.binder.clone(),
                     exposure,
                     declaration.attributes.clone(),
@@ -256,7 +271,7 @@ impl<'a> ResolverMut<'a> {
                 // @Task @Beacon don't return early on error
                 // @Note you need to create a fake index for this (an index which points to
                 // a fake, nameless binding)
-                let index = self.component.register_binding(
+                let index = self.define(
                     submodule.binder.clone(),
                     exposure,
                     // @Beacon @Bug this does not account for attributes found on the attribute header!
@@ -269,19 +284,19 @@ impl<'a> ResolverMut<'a> {
 
                 for declaration in &submodule.declarations {
                     self.start_resolve_declaration(declaration, Some(index), Context::default())
-                        .map_err(RegistrationError::token)
+                        .map_err(DefinitionError::token)
                         .stain(health);
                 }
 
                 // @Beacon @Beacon @Beacon @Task get rid of unchecked call
                 return Result::from(*health)
-                    .map_err(|_| RegistrationError::Unrecoverable(ErrorReported::new_unchecked()));
+                    .map_err(|_| DefinitionError::Unrecoverable(ErrorReported::new_unchecked()));
             }
             Use(use_) => {
                 // there is always a root module
                 let module = module.unwrap();
 
-                let index = self.component.register_binding(
+                let index = self.define(
                     use_.binder.clone(),
                     exposure,
                     declaration.attributes.clone(),
@@ -306,6 +321,57 @@ impl<'a> ResolverMut<'a> {
         }
 
         Ok(())
+    }
+
+    /// Bind the given identifier to the given entity.
+    fn define(
+        &mut self,
+        binder: ast::Identifier,
+        exposure: Exposure,
+        attributes: Attributes,
+        binding: EntityKind,
+        namespace: Option<LocalDeclarationIndex>,
+    ) -> Result<LocalDeclarationIndex, DefinitionError> {
+        if let Some(namespace) = namespace {
+            if let Some(index) = self.component[namespace]
+                .namespace()
+                .unwrap()
+                .binders
+                .iter()
+                .map(|&index| index.local(self.component).unwrap())
+                .find(|&index| self.component[index].source == binder)
+            {
+                let previous = &self.component.bindings[index].source;
+
+                self.naming_conflicts
+                    .entry(index)
+                    .or_insert_with(|| smallvec![previous.span()])
+                    .push(binder.span());
+
+                return Err(DefinitionError::ConflictingDefinition(
+                    ErrorReported::new_unchecked(),
+                ));
+            }
+        }
+
+        let index = self.component.bindings.insert(Entity {
+            source: binder,
+            kind: binding,
+            exposure,
+            attributes,
+            parent: namespace,
+        });
+
+        if let Some(namespace) = namespace {
+            let index = index.global(self.component);
+            self.component[namespace]
+                .namespace_mut()
+                .unwrap()
+                .binders
+                .push(index);
+        }
+
+        Ok(index)
     }
 
     /// Completely resolve a lowered declaration to a declaration of the HIR.
@@ -494,7 +560,7 @@ impl<'a> ResolverMut<'a> {
     /// use-bindings are actually circular and are thus reported.
     // @Task update docs in regards to number of passes
     // @Task update docs regarding errors
-    pub(super) fn resolve_use_bindings(&mut self) {
+    fn resolve_use_bindings(&mut self) {
         use ResolutionError::*;
 
         while !self.partially_resolved_use_bindings.is_empty() {
@@ -542,10 +608,6 @@ impl<'a> ResolverMut<'a> {
                                 .quote()
                         })
                         .list(Conjunction::And);
-                    let spans = cycle
-                        .iter()
-                        .map(|&index| self.component[index].source.span());
-
                     Diagnostic::error()
                         .code(Code::E024)
                         .message(pluralize!(
@@ -553,7 +615,11 @@ impl<'a> ResolverMut<'a> {
                             format!("the declaration {paths} is circular"),
                             format!("the declarations {paths} are circular"),
                         ))
-                        .primary_spans(spans)
+                        .primary_spans(
+                            cycle
+                                .iter()
+                                .map(|&index| self.component[index].source.span()),
+                        )
                         .report(self.session.reporter());
                 }
 
@@ -1565,7 +1631,7 @@ impl<'a> Resolver<'a> {
     /// In the future, we might decide to find not one but several similar names
     /// but that would be computationally heavier and we would need to be careful
     /// and consider the effects of shadowing.
-    pub(super) fn find_similarly_named<'s>(
+    fn find_similarly_named<'s>(
         &'s self,
         scope: &'s FunctionScope<'_>,
         identifier: &str,
@@ -1725,7 +1791,6 @@ enum Transparency {
     Abstract,
 }
 
-// @Temporary location
 #[derive(Clone, Copy)]
 struct PathResolutionContext {
     origin_namespace: DeclarationIndex,
@@ -1905,62 +1970,6 @@ impl Component {
         segments
     }
 
-    /// Register a binding to a given entity.
-    ///
-    /// Apart from actually registering, it mainly checks for name duplication.
-    fn register_binding(
-        &mut self,
-        binder: ast::Identifier,
-        exposure: Exposure,
-        attributes: Attributes,
-        binding: EntityKind,
-        namespace: Option<LocalDeclarationIndex>,
-    ) -> Result<LocalDeclarationIndex, RegistrationError> {
-        if let Some(namespace) = namespace {
-            // @Temporary let-binding (borrowck bug?)
-            let index = self[namespace]
-                .namespace()
-                .unwrap()
-                .binders
-                .iter()
-                .map(|&index| index.local(self).unwrap())
-                .find(|&index| self[index].source == binder);
-
-            if let Some(index) = index {
-                let previous = &self.bindings[index].source;
-
-                self.duplicate_definitions
-                    .entry(index)
-                    .or_insert(DuplicateDefinition {
-                        binder: previous.to_string(),
-                        occurrences: smallvec![previous.span()],
-                    })
-                    .occurrences
-                    .push(binder.span());
-
-                // @Task add docs that the unchecked call is "unavoidable"
-                return Err(RegistrationError::DuplicateDefinition(
-                    ErrorReported::new_unchecked(),
-                ));
-            }
-        }
-
-        let index = self.bindings.insert(Entity {
-            source: binder,
-            kind: binding,
-            exposure,
-            attributes,
-            parent: namespace,
-        });
-
-        if let Some(namespace) = namespace {
-            let index = index.global(self);
-            self[namespace].namespace_mut().unwrap().binders.push(index);
-        }
-
-        Ok(index)
-    }
-
     /// Indicate if the definition-site namespace can be accessed from the given namespace.
     fn is_allowed_to_access(
         &self,
@@ -2094,25 +2103,6 @@ impl From<RestrictedExposure> for Exposure {
     }
 }
 
-/// Duplicate definition diagnostic.
-// @Temporary pub(crate), should be private once we get rid of the map in Component
-pub(crate) struct DuplicateDefinition {
-    binder: String,
-    occurrences: SmallVec<Span, 2>,
-}
-
-impl From<DuplicateDefinition> for Diagnostic {
-    fn from(definition: DuplicateDefinition) -> Self {
-        Diagnostic::error()
-            .code(Code::E020)
-            .message(format!(
-                "`{}` is defined multiple times in this scope",
-                definition.binder
-            ))
-            .labeled_primary_spans(definition.occurrences.into_iter(), "conflicting definition")
-    }
-}
-
 #[derive(Clone, Default)]
 pub(crate) struct Namespace {
     pub(crate) binders: Vec<DeclarationIndex>,
@@ -2144,21 +2134,21 @@ pub(crate) enum FunctionScope<'a> {
 }
 
 impl<'a> FunctionScope<'a> {
-    pub(super) fn extend_with_parameter(&'a self, binder: ast::Identifier) -> Self {
+    fn extend_with_parameter(&'a self, binder: ast::Identifier) -> Self {
         Self::FunctionParameter {
             parent: self,
             binder,
         }
     }
 
-    pub(super) fn extend_with_pattern_binders(&'a self, binders: Vec<ast::Identifier>) -> Self {
+    fn extend_with_pattern_binders(&'a self, binders: Vec<ast::Identifier>) -> Self {
         Self::PatternBinders {
             parent: self,
             binders,
         }
     }
 
-    pub(super) fn module(&self) -> LocalDeclarationIndex {
+    fn module(&self) -> LocalDeclarationIndex {
         match self {
             &Self::Module(module) => module,
             Self::FunctionParameter { parent, .. } | Self::PatternBinders { parent, .. } => {
@@ -2196,13 +2186,13 @@ impl<'a> FunctionScope<'a> {
     }
 }
 
-pub(super) fn is_similar(identifier: &str, other_identifier: &str) -> bool {
+fn is_similar(identifier: &str, other_identifier: &str) -> bool {
     strsim::levenshtein(other_identifier, identifier) <= std::cmp::max(identifier.len(), 3) / 3
 }
 
-pub(super) struct Lookalike<'a> {
-    pub(super) actual: &'a str,
-    pub(super) lookalike: &'a str,
+struct Lookalike<'a> {
+    actual: &'a str,
+    lookalike: &'a str,
 }
 
 impl fmt::Display for Lookalike<'_> {
@@ -2235,7 +2225,7 @@ impl fmt::Display for Lookalike<'_> {
 }
 
 impl Diagnostic {
-    pub(super) fn module_used_as_a_value(module: Spanned<impl fmt::Display>) -> Self {
+    fn module_used_as_a_value(module: Spanned<impl fmt::Display>) -> Self {
         // @Task levenshtein-search for similar named bindings which are in fact values and suggest the first one
         // @Task print absolute path of the module in question and use highlight the entire path, not just the last
         // segment
@@ -2248,24 +2238,24 @@ impl Diagnostic {
     }
 }
 
-pub(super) enum RegistrationError {
+pub enum DefinitionError {
     Unrecoverable(ErrorReported),
-    /// Duplicate definitions found.
+    /// Definitions conflicting in name were found.
     ///
-    /// Details about this error are **not stored here** but as [`DuplicateDefinition`]s in
-    /// the [`Resolver`] so they can be easily grouped.
-    DuplicateDefinition(ErrorReported),
+    /// Details about this error are **not stored here** but in the [`ResolverMut`]
+    /// to allow grouping.
+    ConflictingDefinition(ErrorReported),
 }
 
-impl RegistrationError {
-    pub(super) fn token(self) -> ErrorReported {
+impl DefinitionError {
+    fn token(self) -> ErrorReported {
         match self {
-            Self::Unrecoverable(token) | Self::DuplicateDefinition(token) => token,
+            Self::Unrecoverable(token) | Self::ConflictingDefinition(token) => token,
         }
     }
 }
 
-impl From<ErrorReported> for RegistrationError {
+impl From<ErrorReported> for DefinitionError {
     fn from(token: ErrorReported) -> Self {
         Self::Unrecoverable(token)
     }

@@ -46,7 +46,6 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
         Arg::new("component-type")
             .long("component-type")
             .short('t')
-            .takes_value(true)
             .value_name("TYPE")
             // @Task write the closure as a function binding once StaticStr derives self by value
             .possible_values(ComponentType::elements().map(|type_| type_.name()))
@@ -62,7 +61,6 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
             .help("Prevent the dependencies from being documented"),
     ];
 
-    // @Task add `--templated`
     let package_creation_arguments = [
         Arg::new("no-core")
             .long("no-core")
@@ -77,40 +75,38 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
             .help("Create a library component in the new package"),
     ];
 
-    let library_target_options = [
+    let target_libraries_options = [
         Arg::new(TARGET_ALL_LIBRARIES_OPTION)
-            .long("--libraries")
-            .visible_alias("--libs")
+            .long("libraries")
+            .visible_alias("libs")
             .help("Target all libraries"),
         Arg::new(TARGET_LIBRARIES_OPTION)
-            .long("--library")
-            .visible_alias("--lib")
-            .takes_value(true)
+            .long("library")
+            .visible_alias("lib")
             .value_name("NAME")
             .help("Target only the given or primary library"),
     ];
 
-    let executable_target_options = [
-        Arg::new(TARGET_ALL_EXECUTABLES_OPTION)
-            .long("--executables")
-            .visible_alias("--exes")
-            .help("Target all executables"),
-        Arg::new(TARGET_EXECUTABLES_OPTION)
-            .long("--executable")
-            .visible_alias("--exe")
-            .takes_value(true)
-            .value_name("NAME")
-            .help("Target only the given or primary executable"),
-    ];
+    let target_all_executables_option = Arg::new(TARGET_ALL_EXECUTABLES_OPTION)
+        .long("executables")
+        .visible_alias("exes")
+        .help("Target all executables");
+
+    let target_executable_option = Arg::new(TARGET_EXECUTABLES_OPTION)
+        .long("executable")
+        .visible_alias("exe")
+        .value_name("NAME")
+        .help("Target only the given or primary executable");
+
+    let target_executables_option = target_executable_option.clone().multiple_occurrences(true);
 
     let unstable_options = Arg::new(UNSTABLE_OPTION)
         .short('Z')
-        .takes_value(true)
         .value_name("OPTION")
         .multiple_occurrences(true)
         .help("Set an unstable option. See `-Z help` for details");
 
-    // @Beacon @Task use `try_get_matches`
+    // @Task use `try_get_matches` (no real block, just def an error type and smh exit with code 2 instead of 1 on error)
     let matches = clap::Command::new(env!("CARGO_PKG_NAME"))
         .version(super::VERSION)
         .about(env!("CARGO_PKG_DESCRIPTION"))
@@ -127,35 +123,36 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
             clap::Command::new(CHECK_SUBCOMMAND)
                 .visible_alias("c")
                 .about("Check the given or local package for errors")
-                .arg(&package_path_argument)
-                .arg(&engine_option)
-                .args(&library_target_options)
-                .args(&executable_target_options)
-                .arg(&unstable_options),
+                .args([&package_path_argument, &engine_option, &unstable_options])
+                .args(&target_libraries_options)
+                .args([&target_all_executables_option, &target_executables_option]),
             clap::Command::new(BUILD_SUBCOMMAND)
                 .visible_alias("b")
                 .about("Compile the given or local package")
-                .arg(&package_path_argument)
-                .arg(&engine_option)
-                .args(&library_target_options)
-                .args(&executable_target_options)
-                .arg(&unstable_options),
+                .args([&package_path_argument, &engine_option, &unstable_options])
+                .args(&target_libraries_options)
+                .args([&target_all_executables_option, &target_executables_option]),
             clap::Command::new(RUN_SUBCOMMAND)
                 .visible_alias("r")
                 .about("Run the given or local package")
-                .arg(&package_path_argument)
-                .arg(&engine_option)
-                .args(&executable_target_options)
-                .arg(&unstable_options),
+                .args([
+                    &package_path_argument,
+                    &engine_option,
+                    &unstable_options,
+                    &target_executable_option,
+                ]),
             clap::Command::new(DOCUMENT_SUBCOMMAND)
                 .visible_aliases(&["doc", "d"])
                 .about("Document the given or local package")
-                .arg(package_path_argument)
+                .args([
+                    &package_path_argument,
+                    &engine_option,
+                    &unstable_options,
+                    &target_all_executables_option,
+                    &target_executables_option,
+                ])
                 .args(&documentation_arguments)
-                .arg(&engine_option)
-                .args(library_target_options)
-                .args(executable_target_options)
-                .arg(&unstable_options),
+                .args(target_libraries_options),
             clap::Command::new(FILE_SUBCOMMAND)
                 .visible_alias("f")
                 .subcommand_required(true)
@@ -166,27 +163,23 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                         .visible_alias("c")
                         .about("Check the given source file for errors")
                         .args(&file_build_arguments)
-                        .arg(&engine_option)
-                        .arg(&unstable_options),
+                        .args([&engine_option, &unstable_options]),
                     clap::Command::new(BUILD_SUBCOMMAND)
                         .visible_alias("b")
                         .about("Compile the given source file")
                         .args(&file_build_arguments)
-                        .arg(&engine_option)
-                        .arg(&unstable_options),
+                        .args([&engine_option, &unstable_options]),
                     clap::Command::new(RUN_SUBCOMMAND)
                         .visible_alias("r")
                         .about("Run the given source file")
                         .args(&file_build_arguments)
-                        .arg(&engine_option)
-                        .arg(&unstable_options),
+                        .args([&engine_option, &unstable_options]),
                     clap::Command::new(DOCUMENT_SUBCOMMAND)
                         .visible_aliases(&["doc", "d"])
                         .about("Document the given source file")
                         .args(file_build_arguments)
-                        .arg(engine_option)
-                        .args(documentation_arguments)
-                        .arg(unstable_options),
+                        .args([engine_option, unstable_options])
+                        .args(documentation_arguments),
                 ]),
             clap::Command::new(EXPLAIN_SUBCOMMAND)
                 .about("Explain given error codes")
@@ -213,28 +206,31 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
 
     let command = match matches.subcommand().unwrap() {
         (command @ (BUILD_SUBCOMMAND | CHECK_SUBCOMMAND | RUN_SUBCOMMAND), matches) => {
+            let mode = match command {
+                BUILD_SUBCOMMAND => BuildMode::Build,
+                CHECK_SUBCOMMAND => BuildMode::Check,
+                RUN_SUBCOMMAND => BuildMode::Run,
+                _ => unreachable!(),
+            };
             Command::BuildPackage {
-                mode: match command {
-                    BUILD_SUBCOMMAND => BuildMode::Build,
-                    CHECK_SUBCOMMAND => BuildMode::Check,
-                    RUN_SUBCOMMAND => BuildMode::Run,
-                    _ => unreachable!(),
-                },
-                options: PackageBuildOptions::deserialize(matches, unstable::deserialize(matches)?),
+                options: PackageBuildOptions::deserialize(
+                    matches,
+                    unstable::deserialize(matches)?,
+                    &mode,
+                ),
+                mode,
             }
         }
         (DOCUMENT_SUBCOMMAND, matches) => {
             let (unstable_build_options, unstable_documentation_options) =
                 unstable::deserialize(matches).map(unstable::Or::split)?;
+            let mode = BuildMode::Document {
+                options: DocumentationOptions::deserialize(matches, unstable_documentation_options),
+            };
 
             Command::BuildPackage {
-                mode: BuildMode::Document {
-                    options: DocumentationOptions::deserialize(
-                        matches,
-                        unstable_documentation_options,
-                    ),
-                },
-                options: PackageBuildOptions::deserialize(matches, unstable_build_options),
+                options: PackageBuildOptions::deserialize(matches, unstable_build_options, &mode),
+                mode,
             }
         }
         (FILE_SUBCOMMAND, matches) => {
@@ -336,11 +332,15 @@ pub struct PackageBuildOptions {
 }
 
 impl PackageBuildOptions {
-    fn deserialize(matches: &ArgMatches, unstable_options: Vec<unstable::BuildOption>) -> Self {
+    fn deserialize(
+        matches: &ArgMatches,
+        unstable_options: Vec<unstable::BuildOption>,
+        mode: &BuildMode,
+    ) -> Self {
         Self {
             path: matches.value_of_os("PATH").map(Into::into),
             general: BuildOptions::deserialize(unstable_options),
-            targets: BuildTargets::deserialize(matches),
+            targets: BuildTargets::deserialize(matches, mode),
             engine: matches
                 .value_of("engine")
                 .map(|input| input.parse().unwrap())
@@ -352,9 +352,11 @@ impl PackageBuildOptions {
 pub struct BuildTargets(/* empty means any */ Vec<BuildTarget>);
 
 impl BuildTargets {
-    fn deserialize(matches: &ArgMatches) -> Self {
-        let all_libraries = matches.is_present(TARGET_ALL_LIBRARIES_OPTION);
-        let all_executables = matches.is_present(TARGET_ALL_EXECUTABLES_OPTION);
+    fn deserialize(matches: &ArgMatches, mode: &BuildMode) -> Self {
+        let should_run = matches!(mode, BuildMode::Run);
+
+        let all_libraries = !should_run && matches.is_present(TARGET_ALL_LIBRARIES_OPTION);
+        let all_executables = !should_run && matches.is_present(TARGET_ALL_EXECUTABLES_OPTION);
 
         if all_libraries && all_executables {
             return Self(Vec::new());
@@ -367,7 +369,7 @@ impl BuildTargets {
                 name: None,
                 type_: Some(ComponentType::Library),
             });
-        } else if let Some(libraries) = matches.values_of(TARGET_LIBRARIES_OPTION) {
+        } else if !should_run && let Some(libraries) = matches.values_of(TARGET_LIBRARIES_OPTION) {
             targets.extend(libraries.into_iter().map(|name| BuildTarget {
                 name: Some(name.to_owned()),
                 type_: Some(ComponentType::Library),
@@ -623,6 +625,7 @@ mod unstable {
         }
 
         println!("{message}");
+        // @Beacon @Task don't use this function!
         std::process::exit(0);
     }
 

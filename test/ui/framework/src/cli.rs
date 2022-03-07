@@ -1,10 +1,6 @@
 use clap::{Arg, Command};
 use std::{num::NonZeroUsize, path::Path, str::FromStr};
 
-// @Task get rid of this by using clap required_if or sth. similar
-const DEFAULT_NUMBER_TEST_THREADS_UNKNOWN_AVAILABLE_PARALLELISM: NonZeroUsize =
-    NonZeroUsize::new(4).unwrap();
-
 pub(crate) struct Application {
     pub(crate) compiler_build_mode: CompilerBuildMode,
     pub(crate) gilding: Gilding,
@@ -18,14 +14,32 @@ pub(crate) struct Application {
 impl Application {
     pub(crate) fn new() -> Self {
         let default_test_directory_path = default_test_folder_path();
-        let available_parallelism = std::thread::available_parallelism()
-            .ok()
-            .unwrap_or(DEFAULT_NUMBER_TEST_THREADS_UNKNOWN_AVAILABLE_PARALLELISM);
-        let available_parallelism = available_parallelism.to_string();
 
         const STRICT_FILTERS: &str = "strict-filters";
         const LOOSE_FILTERS: &str = "loose-filters";
         const NUMBER_TEST_THREADS: &str = "number-test-threads";
+
+        let available_parallelism =
+            std::thread::available_parallelism().map(|number| number.to_string());
+        let available_parallelism = available_parallelism.as_deref();
+
+        let number_test_threads = {
+            let argument = Arg::new(NUMBER_TEST_THREADS)
+                .short('T')
+                .long("test-threads")
+                .value_name("NUMBER")
+                .validator(|input| {
+                    NonZeroUsize::from_str(input)
+                        .map(drop)
+                        .map_err(|error| error.to_string())
+                })
+                .help("Set the number of OS threads to use during test execution");
+
+            match available_parallelism {
+                Ok(available_parallelism) => argument.default_value(available_parallelism),
+                Err(_) => argument.required(true),
+            }
+        };
 
         let matches = Command::new(env!("CARGO_PKG_NAME"))
             .version(env!("CARGO_PKG_VERSION"))
@@ -43,7 +57,6 @@ impl Application {
                 Arg::new(STRICT_FILTERS)
                     .long("filter-strictly")
                     .short('F')
-                    .takes_value(true)
                     .value_name("PATH")
                     .multiple_occurrences(true)
                     .help(
@@ -56,7 +69,6 @@ impl Application {
                 Arg::new(LOOSE_FILTERS)
                     .long("filter-loosely")
                     .short('f')
-                    .takes_value(true)
                     .value_name("PATH")
                     .multiple_occurrences(true)
                     .help(
@@ -65,24 +77,10 @@ impl Application {
                          those paths are relative to the test folder path and lack an extension",
                     ),
             )
-            .arg(
-                Arg::new(NUMBER_TEST_THREADS)
-                    .short('T')
-                    .long("test-threads")
-                    .takes_value(true)
-                    .value_name("NUMBER")
-                    .validator(|input| {
-                        NonZeroUsize::from_str(input)
-                            .map(drop)
-                            .map_err(|error| error.to_string())
-                    })
-                    .default_value(&available_parallelism)
-                    .help("Set the number of OS threads to use during test execution"),
-            )
+            .arg(number_test_threads)
             .arg(
                 Arg::new("test-folder-path")
                     .long("test-folder")
-                    .takes_value(true)
                     .value_name("PATH")
                     .default_value(&default_test_directory_path)
                     .help("Set the path to the folder containing the test files"),

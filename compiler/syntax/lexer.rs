@@ -29,7 +29,7 @@ mod test;
 /// The health of the tokens can be ignored if the tokens are fed into the parser
 /// immediately after lexing since the parser will handle invalid tokens.
 pub fn lex(file: SourceFileIndex, session: &BuildSession) -> Result<Outcome<Vec<Token>>> {
-    Lexer::new(&session.map()[file], session.reporter()).lex()
+    Lexer::new(&session.shared_map()[file], session.reporter()).lex()
 }
 
 pub(crate) fn lex_string(source: String) -> Result<Outcome<Vec<Token>>, ()> {
@@ -536,7 +536,7 @@ impl<'a> Lexer<'a> {
 }
 
 impl<'a> utility::lexer::Lexer<'a, TokenKind> for Lexer<'a> {
-    fn source_file(&self) -> &'a SourceFile {
+    fn file(&self) -> &'a SourceFile {
         self.file
     }
 

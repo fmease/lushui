@@ -18,7 +18,7 @@ colored = "2.0.0"
 string_cache = { version = "0.8.0", default-features = false }
 num-bigint = "0.4.0"
 num-traits = "0.2.11"
-smallvec = { version = "1.4.2", features = ["const_generics"] } 
+smallvec = { version = "1.4.2", features = ["const_generics"] }
 bitflags = "1.2.1"
 clap = "3.1.0"
 index_map = { path = "project/libraries/index_map" }
@@ -29,7 +29,7 @@ rustc-hash = "1.1.0"
 difference = "2.0.0"
 derivation = { path = "project/libraries/derivation" }
 html-escape = "0.2.9"
-minifier = "0.0.42"
+minifier = "0.0.43"
 urlencoding = "2.1.0"
 unicode-segmentation = "1.8.0"
 crossbeam = "0.8.1"

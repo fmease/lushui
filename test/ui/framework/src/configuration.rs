@@ -16,6 +16,7 @@ impl<'a> Configuration<'a> {
         // @Bug the prefix `;;; TEST` (no final space) leads to ParseError::MissingTag but
         // ideally, it should lead to ParseError::MissingTag. we need to apply trimming beforehand
         // (and restructure the code a bit)
+        // @Bug if someone mixes up "#" and ";;;", the error message is misleading
         let line = source
             .lines()
             .next()
@@ -78,7 +79,7 @@ impl fmt::Display for ParseError {
             Self::MissingConfiguration => write!(
                 f,
                 "The test does not have a configuration i.e. a comment at the start of the file \
-                 starting with the code `{MAGIC_TEXT}`."
+                 starting with the code `{MAGIC_TEXT}`"
             ),
             Self::MissingTag | Self::InvalidTag(_) => {
                 let tags = TestTag::elements()
@@ -91,13 +92,13 @@ impl fmt::Display for ParseError {
                         write!(
                             f,
                             "The test does not have a tag. Consider using one of the following tags \
-                             in the configuration: {tags}."
+                             in the configuration: {tags}"
                         )
                     }
                     Self::InvalidTag(tag) => {
                         write!(
                             f,
-                            "The test contains the invalid tag `{tag}`. Valid tags are {tags}.",
+                            "The test contains the invalid tag `{tag}`. Valid tags are {tags}",
                         )
                     }
                     _ => unreachable!(),

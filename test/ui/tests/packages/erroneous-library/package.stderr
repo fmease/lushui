@@ -1,0 +1,16 @@
+error[E032]: expected type `Type` but got type `topmost.Set`
+ --> ${DIRECTORY}/packages/erroneous-library/library.lushui:8:8
+  |
+8 | Clash: Type = Set.type U
+  |        ---- expected due to this
+  |
+ --> ${DIRECTORY}/packages/erroneous-library/library.lushui:8:15
+  |
+8 | Clash: Type = Set.type U
+  |               ^^^^^^^^^^ has the wrong type
+  |
+
+error: aborting due to previous error
+ note: the error E032 has a detailed explanation
+ help: run `lushui explain E032` to view it
+

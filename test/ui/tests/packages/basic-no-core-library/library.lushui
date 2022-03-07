@@ -1,0 +1,14 @@
+;;; TEST auxiliary packages/basic-no-core-library
+
+@public
+data T: Type of
+    t: U -> U -> T
+
+@public
+tt (u: U): T = T.t u u
+
+@public
+data U: Type of
+    u: U
+    uu: U -> U
+    uuu: U -> U -> U

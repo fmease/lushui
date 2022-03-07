@@ -10,7 +10,7 @@ fn first_next_offset_is_one() {
 }
 
 #[test]
-fn spacing_between_source_files() {
+fn spacing_between_files() {
     let mut map = SourceMap::default();
 
     let file0 = map.add(None, "abc".into());

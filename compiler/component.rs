@@ -2,7 +2,6 @@ use crate::{
     entity::Entity,
     hir::{Identifier, LocalDeclarationIndex},
     package::{Package, PackageIndex},
-    resolver::DuplicateDefinition,
     session::BuildSession,
     span::Spanned,
     syntax::Word,
@@ -22,14 +21,11 @@ pub struct Component {
     pub metadata: ComponentMetadata,
     /// Resolved dependencies.
     pub(crate) dependencies: HashMap<Word, ComponentIndex>,
-    /// The program entry (the _main_ function) if an executable.
+    /// The `main` function (_program entry_) for executable components.
     pub entry: Option<Identifier>,
     /// All bindings inside of the component.
     // The first element ha to be the root module.
     pub(crate) bindings: IndexMap<LocalDeclarationIndex, Entity>,
-    /// For error reporting in the resolver.
-    // @Beacon @Task get rid of this field!!
-    pub(crate) duplicate_definitions: HashMap<LocalDeclarationIndex, DuplicateDefinition>,
 }
 
 impl Component {
@@ -42,7 +38,6 @@ impl Component {
             dependencies,
             entry: default(),
             bindings: default(),
-            duplicate_definitions: default(),
         }
     }
 
@@ -216,7 +211,7 @@ impl index_map::Index for ComponentIndex {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Elements, FromStr, Str)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Elements, FromStr, Str)]
 #[format(dash_case)]
 pub enum ComponentType {
     Library,

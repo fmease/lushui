@@ -1,0 +1,14 @@
+;;; TEST auxiliary packages/transitive-dependencies
+
+@public use extern.core.nat.Nat as N
+use extern.core.nat.+
+
+@public
+data G: Type of
+    g: N -> G
+
+@public
+g1: G = G.g 1
+
+@public
+gam: N = 9'0002
