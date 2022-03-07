@@ -1,0 +1,8 @@
+# TEST fail metadata
+
+first: 23, first: "",
+
+inner: {
+    it: [],
+    it: 0'000,
+}

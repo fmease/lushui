@@ -1,6 +1,6 @@
-//! Parser tests.
+//! Positive behavior tests for the parser.
 //!
-//! Intended for testing edge cases. The majority of parsing tests should be golden UI tests.
+//! Intended for edge cases. The majority of parser tests should be UI tests.
 
 use super::{
     ast::{

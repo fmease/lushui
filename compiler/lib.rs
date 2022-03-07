@@ -82,7 +82,7 @@ mod entity;
 pub mod error;
 mod hir;
 mod item;
-mod metadata;
+pub mod metadata;
 pub mod package;
 pub mod resolver;
 pub mod session;

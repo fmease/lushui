@@ -48,6 +48,7 @@ use lushui::{
 use std::{
     default::default,
     io,
+    path::Path,
     process::ExitCode,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -154,6 +155,7 @@ fn execute_command(
                 create_package(&package_name, options, &reporter)
             }
         },
+        Metadata { path } => check_metadata_file(&path, map, &reporter),
     }
 }
 
@@ -495,6 +497,21 @@ fn create_package_manifest(
     }
 
     writeln!(sink, "],")
+}
+
+fn check_metadata_file(path: &Path, map: &Arc<RwLock<SourceMap>>, reporter: &Reporter) -> Result {
+    let file = map
+        .write()
+        .unwrap()
+        .load(path.to_owned())
+        .map_err(|error| {
+            Diagnostic::error()
+                .message("could not load the file")
+                .note(IOError(error, path).to_string())
+                .report(reporter)
+        })?;
+
+    lushui::metadata::parse(file, map, reporter).map(drop)
 }
 
 fn set_panic_hook() {

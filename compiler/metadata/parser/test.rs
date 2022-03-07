@@ -1,6 +1,6 @@
 //! Positive behavior tests for parsing the custom metadata format.
 //!
-//! Negative tests are yet to be written. In any case, they have to be UI tests.
+//! Negative behavior tests are UI tests and found in `/test/ui/tests/metadata/`.
 
 use std::{
     default::default,

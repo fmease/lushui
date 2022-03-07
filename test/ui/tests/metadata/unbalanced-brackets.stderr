@@ -1,0 +1,9 @@
+error: found end of input but expected `,`
+ --> ${DIRECTORY}/metadata/unbalanced-brackets.metadata:6:2
+  |
+6 |  
+  | >< 
+  |
+
+error: aborting due to previous error
+

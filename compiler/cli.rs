@@ -1,4 +1,5 @@
 use clap::{Arg, ArgMatches};
+use colored::Colorize;
 use derivation::{Elements, FromStr, Str};
 use lushui::{component::ComponentType, error::Result};
 use std::{cmp::max, path::PathBuf};
@@ -18,6 +19,9 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
     const EXPLAIN_SUBCOMMAND: &str = "explain";
     const INITIALIZE_SUBCOMMAND: &str = "initialize";
     const NEW_SUBCOMMAND: &str = "new";
+    const METADATA_SUBCOMMAND: &str = "metadata";
+
+    let metadata_subcommand_disclaimer = &*METADATA_SUBCOMMAND_DISCLAIMER.red().to_string();
 
     let package_path_argument = Arg::new("PATH").allow_invalid_utf8(true).help(
         "The path to a folder containing a package. Defaults to the local package \
@@ -201,6 +205,16 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                         .help("The name of the package"),
                 )
                 .args(package_creation_arguments),
+            clap::Command::new(METADATA_SUBCOMMAND)
+                .about("Check a metadata file for syntax errors")
+                .hide(true)
+                .after_help(metadata_subcommand_disclaimer)
+                .arg(
+                    Arg::new("PATH")
+                        .allow_invalid_utf8(true)
+                        .required(true)
+                        .help("The path to the metadata file"),
+                ),
         ])
         .get_matches();
 
@@ -274,11 +288,20 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
             },
             options: PackageCreationOptions::deserialize(matches),
         },
+        (METADATA_SUBCOMMAND, matches) => Command::Metadata {
+            path: matches.value_of_os("PATH").unwrap().into(),
+        },
         _ => unreachable!(),
     };
 
     Ok((command, GlobalOptions::deserialize(&matches)))
 }
+
+const METADATA_SUBCOMMAND_DISCLAIMER: &str = "\
+    This subcommand is not subject to any stability guarantees.\n\
+    It MAY BE CHANGED in its behavior or REMOVED ENTIRELY at any time and without further notice.\n\
+    If this subcommand is executed, the program behavior and\n\
+    especially the form of the program output MUST NOT BE RELIED UPON.";
 
 pub enum Command {
     BuildPackage {
@@ -293,6 +316,9 @@ pub enum Command {
     CreatePackage {
         mode: PackageCreationMode,
         options: PackageCreationOptions,
+    },
+    Metadata {
+        path: PathBuf,
     },
 }
 

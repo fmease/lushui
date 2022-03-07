@@ -1,0 +1,11 @@
+error: unterminated text literal
+ --> ${DIRECTORY}/metadata/unterminated-text.metadata:4:12
+  |
+4 |       where: "the long
+ ... ____________^
+6 | | }
+  | |_^ 
+  |
+
+error: aborting due to previous error
+

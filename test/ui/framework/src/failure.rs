@@ -51,6 +51,7 @@ pub(crate) enum FileType {
     Package,
     PackageManifest,
     Auxiliary,
+    MetadataSourceFile,
     Golden,
     Other,
 }
@@ -62,6 +63,7 @@ impl fmt::Display for FileType {
             Self::Package => "package",
             Self::PackageManifest => "package manifest",
             Self::Auxiliary => "auxiliary file",
+            Self::MetadataSourceFile => "metadata source file",
             Self::Golden => "golden file",
             Self::Other => "uncategorized",
         })

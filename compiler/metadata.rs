@@ -7,7 +7,6 @@
 //! * text escape sequences
 //! * negative numbers
 //! * keywords as keys (e.g. `false: false`)
-#![allow(clippy::implicit_hasher)] // false positive
 
 use crate::{
     diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
@@ -21,10 +20,10 @@ use std::{fmt, sync::RwLock};
 mod lexer;
 mod parser;
 
-pub(crate) type Value = Spanned<ValueKind>;
-pub(crate) type Record<K = String, V = Value> = HashMap<WeaklySpanned<K>, V>;
+pub type Value = Spanned<ValueKind>;
+pub type Record<K = String, V = Value> = HashMap<WeaklySpanned<K>, V>;
 
-pub(crate) fn parse(
+pub fn parse(
     file_index: SourceFileIndex,
     map: &RwLock<SourceMap>,
     reporter: &Reporter,
@@ -38,7 +37,7 @@ pub(crate) fn parse(
 #[derive(Debug, Discriminant)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[discriminant(type_: Type)]
-pub(crate) enum ValueKind {
+pub enum ValueKind {
     Boolean(bool),
     Integer(i64),
     Text(String),
@@ -165,7 +164,7 @@ impl fmt::Display for Type {
     }
 }
 
-pub(crate) struct TypeError {
+pub struct TypeError {
     pub(crate) expected: Type,
     pub(crate) actual: Type,
 }

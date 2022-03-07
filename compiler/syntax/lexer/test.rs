@@ -1,6 +1,6 @@
 //! (Mostly) positive behavior tests of the lexer.
 //!
-//! Negative behavior tests are UI tests to be found in `parsing/`.
+//! Negative behavior tests are UI tests and found in `/test/ui/tests/parsing/`.
 
 use super::{Provenance, Token, TokenKind::*, UnterminatedTextLiteral};
 use crate::{

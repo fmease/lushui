@@ -15,6 +15,8 @@ use std::sync::RwLock;
 #[cfg(test)]
 mod test;
 
+// @Task report additional "unbalanced bracket" error diagnostics
+
 pub(super) struct Parser<'a> {
     file: SourceFileIndex,
     tokens: &'a [Token],

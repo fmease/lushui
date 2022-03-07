@@ -1,0 +1,9 @@
+error: found identifier but expected value
+ --> ${DIRECTORY}/metadata/unexpected-key-in-list.metadata:3:8
+  |
+3 | list: [first: 0, second: 2]
+  |        ^^^^^ 
+  |
+
+error: aborting due to previous error
+

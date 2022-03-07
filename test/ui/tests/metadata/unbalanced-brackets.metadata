@@ -1,0 +1,6 @@
+# TEST fail metadata
+# @Task report additional "unbalanced bracket" errors
+
+foo: [{
+    bar: "text"
+

@@ -1,0 +1,9 @@
+error: found `,` but expected `:`
+ --> ${DIRECTORY}/metadata/keyless-record-of-text.metadata:4:15
+  |
+4 |     "    THIS",
+  |               ^ 
+  |
+
+error: aborting due to previous error
+

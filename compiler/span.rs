@@ -520,7 +520,7 @@ mod weakly_spanned {
     };
 
     #[derive(Clone, Copy)]
-    pub(crate) struct WeaklySpanned<T> {
+    pub struct WeaklySpanned<T> {
         pub(crate) value: T,
         pub(crate) span: Span,
     }

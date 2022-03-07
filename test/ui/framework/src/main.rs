@@ -3,7 +3,6 @@
     const_option,
     once_cell,
     let_else,
-    stdio_locked,
     process_exitcode_placeholder
 )]
 #![forbid(rust_2018_idioms, unused_must_use)]
@@ -273,33 +272,35 @@ fn handle_test_folder_entry(
         return;
     }
 
-    let type_ = if shortened_path.ends_with("package.metadata") {
-        TestType::Package
-    } else {
-        TestType::SourceFile
+    let type_ = match extension {
+        "lushui" => TestType::SourceFile,
+        // @Beacon @Task instead of deciding *here* if it's a Package or a MetadataSourceFile
+        //               and instead of judging by its file name, parse the test configuration
+        //               and discern the TestType by the TestTag:
+        //                   tag "metadata" => TestType::MetadataSourceFile
+        //                   tag _ => TestType::Package
+        "metadata" if shortened_path.ends_with("package.metadata") => TestType::Package,
+        "metadata" => TestType::MetadataSourceFile,
+        _ => {
+            let path = shortened_path.to_string_lossy().to_string();
+            print_file_status(&path, Status::Invalid, None);
+            failures.push(Failure::new(
+                File::new(path, FileType::Other),
+                FailureKind::invalid_file(
+                    "The file extension is not one of `metadata`, `lushui`, `stderr` or `stdout`",
+                ),
+            ));
+            statistics.invalid += 1;
+            return;
+        }
     };
-
-    // disallow unsupported files by going after their extension
-    if type_ == TestType::SourceFile && extension != "lushui" {
-        let path = shortened_path.to_string_lossy().to_string();
-        print_file_status(&path, Status::Invalid, None);
-        failures.push(Failure::new(
-            File::new(path, FileType::Other),
-            FailureKind::invalid_file(match extension {
-                "metadata" => {
-                    "The only `*.metadata` files permitted are package manifests (`package.metadata`)"
-                }
-                _ => "The file extension is not one of `lushui`, `stdout`, `stderr`",
-            }),
-        ));
-        statistics.invalid += 1;
-        return;
-    }
 
     // obtain a "legible path" (valid UTF-8) to be shown to the user
     let legible_path = {
         let legible_path: Cow<'_, _> = match type_ {
-            TestType::SourceFile => shortened_path.with_extension("").into(),
+            TestType::SourceFile | TestType::MetadataSourceFile => {
+                shortened_path.with_extension("").into()
+            }
             TestType::Package => shortened_path.parent().unwrap().into(),
         };
 
@@ -309,13 +310,7 @@ fn handle_test_folder_entry(
                 let path = shortened_path.to_string_lossy().to_string();
                 print_file_status(&path, Status::Invalid, None);
                 failures.push(Failure::new(
-                    File::new(
-                        path,
-                        match type_ {
-                            TestType::SourceFile => FileType::SourceFile,
-                            TestType::Package => FileType::PackageManifest,
-                        },
-                    ),
+                    File::new(path, type_.file_type_package_means_manifest()),
                     FailureKind::invalid_file("The file path contains invalid UTF-8"),
                 ));
                 statistics.invalid += 1;
@@ -339,7 +334,7 @@ fn handle_test_folder_entry(
     }
 
     let language = match type_ {
-        TestType::Package => Language::Metadata,
+        TestType::Package | TestType::MetadataSourceFile => Language::Metadata,
         TestType::SourceFile => Language::Lushui,
     };
 
@@ -351,10 +346,7 @@ fn handle_test_folder_entry(
             failures.push(Failure::new(
                 File::new(
                     legible_path.clone(),
-                    match type_ {
-                        TestType::SourceFile => FileType::SourceFile,
-                        TestType::Package => FileType::PackageManifest,
-                    },
+                    type_.file_type_package_means_manifest(),
                 ),
                 FailureKind::invalid_file(error.to_string()),
             ));
@@ -468,7 +460,7 @@ fn handle_test_folder_entry(
 
 pub(crate) fn print_file_status(path: &str, status: Status, duration: Option<Duration>) {
     let padding = terminal_width() * 4 / 5;
-    let mut stdout = std::io::stdout().into_locked();
+    let mut stdout = std::io::stdout().lock();
 
     write!(stdout, "  {:<padding$} {}", path, status).unwrap();
 
@@ -586,7 +578,7 @@ fn compile(path: &Path, arguments: &[&str], type_: TestType) -> std::process::Ou
     }
 
     match type_ {
-        TestType::SourceFile => {
+        TestType::SourceFile | TestType::MetadataSourceFile => {
             command.arg(path);
         }
         TestType::Package => {
@@ -602,13 +594,25 @@ fn compile(path: &Path, arguments: &[&str], type_: TestType) -> std::process::Ou
 enum TestType {
     SourceFile,
     Package,
+    MetadataSourceFile,
+}
+
+impl TestType {
+    pub(crate) fn file_type_package_means_manifest(self) -> FileType {
+        match self {
+            Self::SourceFile => FileType::SourceFile,
+            Self::Package => FileType::PackageManifest,
+            Self::MetadataSourceFile => FileType::MetadataSourceFile,
+        }
+    }
 }
 
 impl From<TestType> for FileType {
     fn from(type_: TestType) -> Self {
         match type_ {
-            TestType::SourceFile => FileType::SourceFile,
-            TestType::Package => FileType::Package,
+            TestType::SourceFile => Self::SourceFile,
+            TestType::Package => Self::Package,
+            TestType::MetadataSourceFile => Self::MetadataSourceFile,
         }
     }
 }
