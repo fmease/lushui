@@ -1,5 +1,5 @@
 error[E023]: module `am-i-a-record` is used as a value
- --> ${DIRECTORY}/name-resolution/modules-second-class.lushui:5:14
+ --> ${TEST_FOLDER}/name-resolution/modules-second-class.lushui:5:14
   |
 5 | r0: RECORD = am-i-a-record
   |              ^^^^^^^^^^^^^ 
@@ -7,7 +7,7 @@ error[E023]: module `am-i-a-record` is used as a value
  help: modules are not first-class citizens, consider utilizing records for such cases instead
 
 error[E023]: module `am-i-a-record-too` is used as a value
-  --> ${DIRECTORY}/name-resolution/modules-second-class.lushui:11:28
+  --> ${TEST_FOLDER}/name-resolution/modules-second-class.lushui:11:28
    |
 11 | r1: RECORD = am-i-a-record.am-i-a-record-too
    |                            ^^^^^^^^^^^^^^^^^ 
@@ -15,14 +15,14 @@ error[E023]: module `am-i-a-record-too` is used as a value
   help: modules are not first-class citizens, consider utilizing records for such cases instead
 
 error[E021]: binding `ANOTHER-RECORD` is not defined in this scope
-  --> ${DIRECTORY}/name-resolution/modules-second-class.lushui:15:5
+  --> ${TEST_FOLDER}/name-resolution/modules-second-class.lushui:15:5
    |
 15 | r2: ANOTHER-RECORD = am-i-a-record-too
    |     ^^^^^^^^^^^^^^ 
    |
 
 error[E023]: module `am-i-a-record-too` is used as a value
-  --> ${DIRECTORY}/name-resolution/modules-second-class.lushui:15:22
+  --> ${TEST_FOLDER}/name-resolution/modules-second-class.lushui:15:22
    |
 15 | r2: ANOTHER-RECORD = am-i-a-record-too
    |                      ^^^^^^^^^^^^^^^^^ 

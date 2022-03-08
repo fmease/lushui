@@ -1,5 +1,5 @@
 error[E010]: found `[` but expected word or `(`
- --> ${DIRECTORY}/parsing/invalid-attribute-body.lushui:3:2
+ --> ${TEST_FOLDER}/parsing/invalid-attribute-body.lushui:3:2
   |
 3 | @[attempt] to try something new
   |  ^ unexpected token

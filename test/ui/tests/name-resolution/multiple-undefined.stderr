@@ -1,75 +1,75 @@
 error[E021]: binding `on` is not defined in this scope
- --> ${DIRECTORY}/name-resolution/multiple-undefined.lushui:3:7
+ --> ${TEST_FOLDER}/name-resolution/multiple-undefined.lushui:3:7
   |
 3 | what: on earth = this bogus line
   |       ^^ 
   |
 
 error[E021]: binding `earth` is not defined in this scope
- --> ${DIRECTORY}/name-resolution/multiple-undefined.lushui:3:10
+ --> ${TEST_FOLDER}/name-resolution/multiple-undefined.lushui:3:10
   |
 3 | what: on earth = this bogus line
   |          ^^^^^ 
   |
 
 error[E021]: binding `this` is not defined in this scope
- --> ${DIRECTORY}/name-resolution/multiple-undefined.lushui:3:18
+ --> ${TEST_FOLDER}/name-resolution/multiple-undefined.lushui:3:18
   |
 3 | what: on earth = this bogus line
   |                  ^^^^ 
   |
 
 error[E021]: binding `bogus` is not defined in this scope
- --> ${DIRECTORY}/name-resolution/multiple-undefined.lushui:3:23
+ --> ${TEST_FOLDER}/name-resolution/multiple-undefined.lushui:3:23
   |
 3 | what: on earth = this bogus line
   |                       ^^^^^ 
   |
 
 error[E021]: binding `line` is not defined in this scope
- --> ${DIRECTORY}/name-resolution/multiple-undefined.lushui:3:29
+ --> ${TEST_FOLDER}/name-resolution/multiple-undefined.lushui:3:29
   |
 3 | what: on earth = this bogus line
   |                             ^^^^ 
   |
 
 error[E021]: binding `Non-Existent` is not defined in this scope
- --> ${DIRECTORY}/name-resolution/multiple-undefined.lushui:5:14
+ --> ${TEST_FOLDER}/name-resolution/multiple-undefined.lushui:5:14
   |
 5 | data Xoo (A: Non-Existent): Departed of
   |              ^^^^^^^^^^^^ 
   |
 
 error[E021]: binding `Departed` is not defined in this scope
- --> ${DIRECTORY}/name-resolution/multiple-undefined.lushui:5:29
+ --> ${TEST_FOLDER}/name-resolution/multiple-undefined.lushui:5:29
   |
 5 | data Xoo (A: Non-Existent): Departed of
   |                             ^^^^^^^^ 
   |
 
 error[E021]: binding `Slipped-Away` is not defined in this scope
- --> ${DIRECTORY}/name-resolution/multiple-undefined.lushui:6:10
+ --> ${TEST_FOLDER}/name-resolution/multiple-undefined.lushui:6:10
   |
 6 |     x00: Slipped-Away
   |          ^^^^^^^^^^^^ 
   |
 
 error[E021]: binding `Lost-All-Along` is not defined in this scope
- --> ${DIRECTORY}/name-resolution/multiple-undefined.lushui:7:10
+ --> ${TEST_FOLDER}/name-resolution/multiple-undefined.lushui:7:10
   |
 7 |     x11: Lost-All-Along
   |          ^^^^^^^^^^^^^^ 
   |
 
 error[E021]: binding `Void` is not defined in this scope
-  --> ${DIRECTORY}/name-resolution/multiple-undefined.lushui:10:21
+  --> ${TEST_FOLDER}/name-resolution/multiple-undefined.lushui:10:21
    |
 10 |     Nothing: Type = Void
    |                     ^^^^ 
    |
 
 error[E021]: binding `f` is not defined in this scope
-  --> ${DIRECTORY}/name-resolution/multiple-undefined.lushui:15:42
+  --> ${TEST_FOLDER}/name-resolution/multiple-undefined.lushui:15:42
    |
 15 | ex-nihilo (x: Thing) (y: Thing): Thing = f z Thing.thing
    |                                          ^ 
@@ -77,7 +77,7 @@ error[E021]: binding `f` is not defined in this scope
   help: a binding with a similar name exists in scope: `y`
 
 error[E021]: binding `z` is not defined in this scope
-  --> ${DIRECTORY}/name-resolution/multiple-undefined.lushui:15:44
+  --> ${TEST_FOLDER}/name-resolution/multiple-undefined.lushui:15:44
    |
 15 | ex-nihilo (x: Thing) (y: Thing): Thing = f z Thing.thing
    |                                            ^ 

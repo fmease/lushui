@@ -1,5 +1,5 @@
 error[E003]: invalid indentation consisting of 8 spaces
- --> ${DIRECTORY}/parsing/invalid-indentation-too-deep.lushui:4:1
+ --> ${TEST_FOLDER}/parsing/invalid-indentation-too-deep.lushui:4:1
   |
 4 |         x: X
   | ^^^^^^^^ 

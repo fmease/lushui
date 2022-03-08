@@ -1,5 +1,5 @@
 use clap::{Arg, Command};
-use std::{num::NonZeroUsize, path::Path, str::FromStr};
+use std::{num::NonZeroUsize, str::FromStr};
 
 pub(crate) struct Application {
     pub(crate) compiler_build_mode: CompilerBuildMode,
@@ -7,14 +7,11 @@ pub(crate) struct Application {
     pub(crate) strict_filters: Vec<String>,
     pub(crate) loose_filters: Vec<String>,
     pub(crate) number_test_threads: NonZeroUsize,
-    pub(crate) test_folder_path: String,
     pub(crate) inspecting: Inspecting,
 }
 
 impl Application {
     pub(crate) fn new() -> Self {
-        let default_test_directory_path = default_test_folder_path();
-
         const STRICT_FILTERS: &str = "strict-filters";
         const LOOSE_FILTERS: &str = "loose-filters";
         const NUMBER_TEST_THREADS: &str = "number-test-threads";
@@ -79,13 +76,6 @@ impl Application {
             )
             .arg(number_test_threads)
             .arg(
-                Arg::new("test-folder-path")
-                    .long("test-folder")
-                    .value_name("PATH")
-                    .default_value(&default_test_directory_path)
-                    .help("Set the path to the folder containing the test files"),
-            )
-            .arg(
                 Arg::new("inspect")
                     .long("inspect")
                     .short('I')
@@ -114,7 +104,6 @@ impl Application {
                 .value_of(NUMBER_TEST_THREADS)
                 .map(|input| input.parse().unwrap())
                 .unwrap(),
-            test_folder_path: matches.value_of("test-folder-path").unwrap().to_owned(),
             inspecting: if matches.is_present("inspect") {
                 Inspecting::Yes
             } else {
@@ -122,16 +111,6 @@ impl Application {
             },
         }
     }
-}
-
-fn default_test_folder_path() -> String {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../tests")
-        .canonicalize()
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .to_owned()
 }
 
 pub(crate) enum CompilerBuildMode {

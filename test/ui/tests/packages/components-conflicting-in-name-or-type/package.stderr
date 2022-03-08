@@ -1,44 +1,44 @@
 error: the library component `formatting` is defined multiple times
-  --> ${DIRECTORY}/packages/components-conflicting-in-name-or-type/package.metadata:9:16
+  --> ${TEST_FOLDER}/packages/components-conflicting-in-name-or-type/package.metadata:9:16
    |
  9 |         name: "formatting",
    |                ^^^^^^^^^^ conflicting component
    |
-  --> ${DIRECTORY}/packages/components-conflicting-in-name-or-type/package.metadata:23:16
+  --> ${TEST_FOLDER}/packages/components-conflicting-in-name-or-type/package.metadata:23:16
    |
 23 |         name: "formatting",
    |                ^^^^^^^^^^ conflicting component
    |
 
 error: the primary library component is defined multiple times
-  --> ${DIRECTORY}/packages/components-conflicting-in-name-or-type/package.metadata:16:16
+  --> ${TEST_FOLDER}/packages/components-conflicting-in-name-or-type/package.metadata:16:16
    |
 16 |         type: "library",
    |                ^^^^^^^ conflicting component
    |
-  --> ${DIRECTORY}/packages/components-conflicting-in-name-or-type/package.metadata:31:16
+  --> ${TEST_FOLDER}/packages/components-conflicting-in-name-or-type/package.metadata:31:16
    |
 31 |         type: "library",
    |                ^^^^^^^ conflicting component
    |
-  --> ${DIRECTORY}/packages/components-conflicting-in-name-or-type/package.metadata:36:16
+  --> ${TEST_FOLDER}/packages/components-conflicting-in-name-or-type/package.metadata:36:16
    |
 36 |         type: "library",
    |                ^^^^^^^ conflicting component
    |
 
 error: the primary executable component is defined multiple times
-  --> ${DIRECTORY}/packages/components-conflicting-in-name-or-type/package.metadata:20:42
+  --> ${TEST_FOLDER}/packages/components-conflicting-in-name-or-type/package.metadata:20:42
    |
 20 |     { path: "source/main.lushui", type: "executable" },
    |                                          ^^^^^^^^^^ conflicting component
    |
-  --> ${DIRECTORY}/packages/components-conflicting-in-name-or-type/package.metadata:28:14
+  --> ${TEST_FOLDER}/packages/components-conflicting-in-name-or-type/package.metadata:28:14
    |
 28 |     { type: "executable", path: "main.lushui" },
    |              ^^^^^^^^^^ conflicting component
    |
-  --> ${DIRECTORY}/packages/components-conflicting-in-name-or-type/package.metadata:43:16
+  --> ${TEST_FOLDER}/packages/components-conflicting-in-name-or-type/package.metadata:43:16
    |
 43 |         type: "executable",
    |                ^^^^^^^^^^ conflicting component

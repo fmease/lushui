@@ -1,10 +1,10 @@
 error[E031]: type mismatch
- --> ${DIRECTORY}/cannot-apply.lushui:3:21
+ --> ${TEST_FOLDER}/cannot-apply.lushui:3:21
   |
 3 | Abomination: Type = 0 1
   |                     ^ has wrong type
   |
- --> ${DIRECTORY}/cannot-apply.lushui:3:23
+ --> ${TEST_FOLDER}/cannot-apply.lushui:3:23
   |
 3 | Abomination: Type = 0 1
   |                       - applied to this

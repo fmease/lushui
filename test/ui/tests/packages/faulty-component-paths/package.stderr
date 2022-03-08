@@ -1,10 +1,10 @@
 error: could not load the library component `test` in package `test`
-  --> ${DIRECTORY}/packages/faulty-component-paths/package.metadata:10:16
+  --> ${TEST_FOLDER}/packages/faulty-component-paths/package.metadata:10:16
    |
 10 |         path: "nonexistent.lushui",
    |                ^^^^^^^^^^^^^^^^^^ 
    |
-  note: `${DIRECTORY}/packages/faulty-component-paths/nonexistent.lushui`: No such file or directory (os error 2)
+  note: `${TEST_FOLDER}/packages/faulty-component-paths/nonexistent.lushui`: No such file or directory (os error 2)
 
 error: aborting due to previous error
 

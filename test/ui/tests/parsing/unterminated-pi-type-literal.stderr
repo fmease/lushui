@@ -1,10 +1,10 @@
 error[E010]: found keyword `of` but expected `->`
- --> ${DIRECTORY}/parsing/unterminated-pi-type-literal.lushui:3:19
+ --> ${TEST_FOLDER}/parsing/unterminated-pi-type-literal.lushui:3:19
   |
 3 | data X (A: Type): (m: M) of
   |                   ------ start of a pi type literal
   |
- --> ${DIRECTORY}/parsing/unterminated-pi-type-literal.lushui:3:26
+ --> ${TEST_FOLDER}/parsing/unterminated-pi-type-literal.lushui:3:26
   |
 3 | data X (A: Type): (m: M) of
   |                          ^^ unexpected token

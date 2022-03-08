@@ -1,5 +1,5 @@
 error: unterminated text literal
- --> ${DIRECTORY}/metadata/unterminated-text.metadata:4:12
+ --> ${TEST_FOLDER}/metadata/unterminated-text.metadata:4:12
   |
 4 |       where: "the long
  ... ____________^

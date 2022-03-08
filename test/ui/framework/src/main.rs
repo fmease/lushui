@@ -100,11 +100,10 @@ fn try_main() -> Result<(), ()> {
     println!("{}", "=".repeat(terminal_width()));
     println!();
 
-    let test_folder_path: &'static _ = Box::leak(application.test_folder_path.into_boxed_str());
     // @Beacon @Question alternative to Arcs??? since we have a fixed amount of threads
     // currently, the Arc are deallocated "when joining" (just before but yeah)
     let test_folder_entries = Arc::new(Mutex::new(
-        walkdir::WalkDir::new(test_folder_path).into_iter(),
+        walkdir::WalkDir::new(test_folder_path()).into_iter(),
     ));
     let statistics: Arc<Mutex<TestSuiteStatistics>> = default();
     let failures: Arc<Mutex<Vec<_>>> = default();
@@ -148,7 +147,6 @@ fn try_main() -> Result<(), ()> {
                     for entry in entries.drain(..) {
                         handle_test_folder_entry(
                             &entry.unwrap(),
-                            test_folder_path,
                             filters,
                             application.gilding,
                             application.inspecting,
@@ -203,7 +201,6 @@ fn try_main() -> Result<(), ()> {
 
 fn handle_test_folder_entry(
     entry: &walkdir::DirEntry,
-    test_folder_path: &str,
     filters: Filters,
     gilding: Gilding,
     inspecting: Inspecting,
@@ -219,7 +216,7 @@ fn handle_test_folder_entry(
         return;
     }
 
-    let shortened_path = path.strip_prefix(test_folder_path).unwrap();
+    let shortened_path = path.strip_prefix(test_folder_path()).unwrap();
 
     // disallow symbolic links for now
     if entry.file_type().is_symlink() {
@@ -359,12 +356,7 @@ fn handle_test_folder_entry(
     // skip auxiliary files (after optional `--inspect` validation)
     if let TestTag::Auxiliary = configuration.tag {
         if inspecting == Inspecting::Yes {
-            let result = validate_auxiliary_file(
-                &configuration.arguments,
-                test_folder_path,
-                &legible_path,
-                failures,
-            );
+            let result = validate_auxiliary_file(&configuration.arguments, &legible_path, failures);
 
             if result.is_err() {
                 print_file_status(&legible_path, Status::Invalid, None);
@@ -409,7 +401,6 @@ fn handle_test_folder_entry(
     }
 
     let mut gilded = match check_against_golden_file(
-        test_folder_path,
         &entry.path().with_extension("stdout"),
         output.stdout,
         Stream::Stdout,
@@ -427,7 +418,6 @@ fn handle_test_folder_entry(
     };
 
     gilded |= match check_against_golden_file(
-        test_folder_path,
         &entry.path().with_extension("stderr"),
         output.stderr,
         Stream::Stderr,
@@ -498,7 +488,6 @@ impl fmt::Display for Status {
 
 fn validate_auxiliary_file(
     arguments: &[&str],
-    test_folder_path: &str,
     legible_path: &str,
     failures: &mut Vec<Failure>,
 ) -> Result<(), ()> {
@@ -516,7 +505,7 @@ fn validate_auxiliary_file(
     let mut invalid_users = Vec::new();
 
     for user in arguments {
-        let user_path = Path::new(test_folder_path).join(user);
+        let user_path = Path::new(test_folder_path()).join(user);
 
         // @Task check if !*.lushui are folders
         // @Task use try_exists
@@ -618,7 +607,6 @@ impl From<TestType> for FileType {
 }
 
 fn check_against_golden_file(
-    test_folder_path: &str,
     golden_file_path: &Path,
     actual: Vec<u8>,
     stream: Stream,
@@ -627,10 +615,7 @@ fn check_against_golden_file(
     let actual = String::from_utf8(actual).unwrap();
 
     let golden = if golden_file_path.exists() {
-        stream.preprocess_before_comparison(
-            fs::read_to_string(golden_file_path).unwrap(),
-            test_folder_path,
-        )
+        stream.preprocess_before_comparison(fs::read_to_string(golden_file_path).unwrap())
     } else {
         String::new()
     };
@@ -643,7 +628,7 @@ fn check_against_golden_file(
                 stream,
             })
         } else {
-            let actual = stream.preprocess_before_generating(actual, test_folder_path);
+            let actual = stream.preprocess_before_generating(actual);
             fs::write(golden_file_path, actual).unwrap();
             Ok(true)
         }
@@ -664,8 +649,6 @@ impl Filters {
     }
 }
 
-const GOLDEN_STDERR_VARIABLE_DIRECTORY: &str = "${DIRECTORY}";
-
 #[derive(Clone, Copy)]
 enum Stream {
     Stdout,
@@ -673,18 +656,36 @@ enum Stream {
 }
 
 impl Stream {
-    fn preprocess_before_comparison(self, stream: String, test_folder_path: &str) -> String {
+    const TEST_FOLDER_PATH_VARIABLE: &'static str = "${TEST_FOLDER}";
+    const DISTRIBUTED_LIBRARIES_PATH_VARIABLE: &'static str = "${DISTRIBUTED_LIBRARIES_FOLDER}";
+
+    fn preprocess_before_comparison(self, stream: String) -> String {
         match self {
             Self::Stdout => stream,
-            // @Task don't replace if preceeded by another `$` (and replace `$$` with `$` in a second step)
-            Self::Stderr => stream.replace(GOLDEN_STDERR_VARIABLE_DIRECTORY, test_folder_path),
+            // @Task replace this naive replacment method: implement
+            //       * escaping via `$$`
+            //       * simultaneous replacment
+            Self::Stderr => stream
+                .replace(Self::TEST_FOLDER_PATH_VARIABLE, test_folder_path())
+                .replace(
+                    Self::DISTRIBUTED_LIBRARIES_PATH_VARIABLE,
+                    distributed_libraries_path(),
+                ),
         }
     }
 
-    fn preprocess_before_generating(self, stream: String, test_folder_path: &str) -> String {
+    fn preprocess_before_generating(self, stream: String) -> String {
         match self {
             Self::Stdout => stream,
-            Self::Stderr => stream.replace(test_folder_path, GOLDEN_STDERR_VARIABLE_DIRECTORY),
+            // @Task replace this naive replacment method: implement
+            //       * escaping via `$$`
+            //       * simultaneous replacment
+            Self::Stderr => stream
+                .replace(test_folder_path(), Self::TEST_FOLDER_PATH_VARIABLE)
+                .replace(
+                    distributed_libraries_path(),
+                    Self::DISTRIBUTED_LIBRARIES_PATH_VARIABLE,
+                ),
         }
     }
 }
@@ -707,4 +708,32 @@ fn terminal_width() -> usize {
         SyncLazy::new(|| terminal_size::terminal_size().map_or(100, |size| size.0 .0 as _));
 
     *TERMINAL_WIDTH
+}
+
+fn test_folder_path() -> &'static str {
+    static TEST_FOLDER_PATH: SyncLazy<String> = SyncLazy::new(|| {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../tests")
+            .canonicalize()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_owned()
+    });
+
+    &*TEST_FOLDER_PATH
+}
+
+fn distributed_libraries_path() -> &'static str {
+    static TEST_FOLDER_PATH: SyncLazy<String> = SyncLazy::new(|| {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../libraries")
+            .canonicalize()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_owned()
+    });
+
+    &*TEST_FOLDER_PATH
 }

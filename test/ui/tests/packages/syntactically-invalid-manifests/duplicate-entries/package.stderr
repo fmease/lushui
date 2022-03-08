@@ -1,17 +1,17 @@
 error[E803]: the entry `hey` is defined multiple times
- --> ${DIRECTORY}/packages/syntactically-invalid-manifests/duplicate-entries/package.metadata:3:1
+ --> ${TEST_FOLDER}/packages/syntactically-invalid-manifests/duplicate-entries/package.metadata:3:1
   |
 3 | hey: "it's me",
   | --- previous definition
   |
- --> ${DIRECTORY}/packages/syntactically-invalid-manifests/duplicate-entries/package.metadata:4:1
+ --> ${TEST_FOLDER}/packages/syntactically-invalid-manifests/duplicate-entries/package.metadata:4:1
   |
 4 | hey: "it's me again",
   | ^^^ redefinition
   |
 
 error: found `,` but expected record key
- --> ${DIRECTORY}/packages/syntactically-invalid-manifests/duplicate-entries/package.metadata:6:9
+ --> ${TEST_FOLDER}/packages/syntactically-invalid-manifests/duplicate-entries/package.metadata:6:9
   |
 6 | more: { , "
   |         ^ 

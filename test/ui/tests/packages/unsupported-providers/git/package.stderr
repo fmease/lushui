@@ -1,5 +1,5 @@
 error: dependency provider `git` is not supported yet
-  --> ${DIRECTORY}/packages/unsupported-providers/git/package.metadata:12:37
+  --> ${TEST_FOLDER}/packages/unsupported-providers/git/package.metadata:12:37
    |
 12 |             something: { provider: "git" },
    |                                     ^^^ 

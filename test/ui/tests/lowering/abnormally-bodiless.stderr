@@ -1,5 +1,5 @@
 error[E012]: the declaration `blank` has no definition
- --> ${DIRECTORY}/lowering/abnormally-bodiless.lushui:3:19
+ --> ${TEST_FOLDER}/lowering/abnormally-bodiless.lushui:3:19
   |
 3 | blank: Declaration
   |                  >< 
@@ -7,7 +7,7 @@ error[E012]: the declaration `blank` has no definition
  help: provide a definition with `=`
 
 error[E015]: the declaration `Blank` does not have a type annotation
- --> ${DIRECTORY}/lowering/abnormally-bodiless.lushui:5:11
+ --> ${TEST_FOLDER}/lowering/abnormally-bodiless.lushui:5:11
   |
 5 | data Blank
   |          >< 
@@ -16,7 +16,7 @@ error[E015]: the declaration `Blank` does not have a type annotation
  help: provide a type annotation for the declaration with `: ?type`
 
 error[E012]: the declaration `Blank` has no definition
- --> ${DIRECTORY}/lowering/abnormally-bodiless.lushui:5:11
+ --> ${TEST_FOLDER}/lowering/abnormally-bodiless.lushui:5:11
   |
 5 | data Blank
   |          >< 

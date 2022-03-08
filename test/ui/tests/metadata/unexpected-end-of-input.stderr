@@ -1,5 +1,5 @@
 error: found end of input but expected value
- --> ${DIRECTORY}/metadata/unexpected-end-of-input.metadata:3:6
+ --> ${TEST_FOLDER}/metadata/unexpected-end-of-input.metadata:3:6
   |
 3 | key:
   |    >< 

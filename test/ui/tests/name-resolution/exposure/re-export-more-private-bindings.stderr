@@ -1,10 +1,10 @@
 error[E009]: re-export of the more private binding `topmost.Thing`
- --> ${DIRECTORY}/name-resolution/exposure/re-export-more-private-bindings.lushui:4:14
+ --> ${TEST_FOLDER}/name-resolution/exposure/re-export-more-private-bindings.lushui:4:14
   |
 4 | use Thing as Piece
   |              ^^^^^ re-exporting binding with greater exposure
   |
- --> ${DIRECTORY}/name-resolution/exposure/re-export-more-private-bindings.lushui:7:6
+ --> ${TEST_FOLDER}/name-resolution/exposure/re-export-more-private-bindings.lushui:7:6
   |
 7 | data Thing: Type of
   |      ----- re-exported binding with lower exposure
@@ -14,12 +14,12 @@ error[E009]: re-export of the more private binding `topmost.Thing`
              but it actually is unrestricted
 
 error[E009]: re-export of the more private binding `topmost.alpha.beta.Linchpin`
-  --> ${DIRECTORY}/name-resolution/exposure/re-export-more-private-bindings.lushui:12:14
+  --> ${TEST_FOLDER}/name-resolution/exposure/re-export-more-private-bindings.lushui:12:14
    |
 12 |         data Linchpin: Type of
    |              -------- re-exported binding with lower exposure
    |
-  --> ${DIRECTORY}/name-resolution/exposure/re-export-more-private-bindings.lushui:16:35
+  --> ${TEST_FOLDER}/name-resolution/exposure/re-export-more-private-bindings.lushui:16:35
    |
 16 |             use super.Linchpin as L
    |                                   ^ re-exporting binding with greater exposure
@@ -29,12 +29,12 @@ error[E009]: re-export of the more private binding `topmost.alpha.beta.Linchpin`
               but it actually is `topmost`
 
 error[E009]: re-export of the more private binding `topmost.alpha.beta.gamma.Mock`
-  --> ${DIRECTORY}/name-resolution/exposure/re-export-more-private-bindings.lushui:19:18
+  --> ${TEST_FOLDER}/name-resolution/exposure/re-export-more-private-bindings.lushui:19:18
    |
 19 |             data Mock: Type of
    |                  ---- re-exported binding with lower exposure
    |
-  --> ${DIRECTORY}/name-resolution/exposure/re-export-more-private-bindings.lushui:22:25
+  --> ${TEST_FOLDER}/name-resolution/exposure/re-export-more-private-bindings.lushui:22:25
    |
 22 |             use Mock as //>
    |                         ^^^ re-exporting binding with greater exposure

@@ -1,5 +1,5 @@
 error: found end of input but expected record key
- --> ${DIRECTORY}/packages/syntactically-invalid-manifests/unclosed-bracket/package.metadata:4:2
+ --> ${TEST_FOLDER}/packages/syntactically-invalid-manifests/unclosed-bracket/package.metadata:4:2
   |
 4 |  
   | >< 

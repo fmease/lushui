@@ -1,10 +1,10 @@
 error[E032]: type mismatch
-  --> ${DIRECTORY}/type-mismatch.lushui:15:4
+  --> ${TEST_FOLDER}/type-mismatch.lushui:15:4
    |
 15 | a: X = Type
    |    - expected due to this
    |
-  --> ${DIRECTORY}/type-mismatch.lushui:15:8
+  --> ${TEST_FOLDER}/type-mismatch.lushui:15:8
    |
 15 | a: X = Type
    |        ^^^^ has the wrong type
@@ -13,12 +13,12 @@ error[E032]: type mismatch
          but got type `Type`
 
 error[E032]: type mismatch
-  --> ${DIRECTORY}/type-mismatch.lushui:16:4
+  --> ${TEST_FOLDER}/type-mismatch.lushui:16:4
    |
 16 | b: Type = X.x
    |    ---- expected due to this
    |
-  --> ${DIRECTORY}/type-mismatch.lushui:16:11
+  --> ${TEST_FOLDER}/type-mismatch.lushui:16:11
    |
 16 | b: Type = X.x
    |           ^^^ has the wrong type
@@ -27,7 +27,7 @@ error[E032]: type mismatch
          but got type `topmost.X`
 
 error[E032]: type mismatch
-  --> ${DIRECTORY}/type-mismatch.lushui:20:4
+  --> ${TEST_FOLDER}/type-mismatch.lushui:20:4
    |
 20 | x: false = false
    |    ^^^^^ has the wrong type
@@ -36,12 +36,12 @@ error[E032]: type mismatch
          but got type `extern.core.bool.Bool`
 
 error[E032]: type mismatch
-  --> ${DIRECTORY}/type-mismatch.lushui:22:10
+  --> ${TEST_FOLDER}/type-mismatch.lushui:22:10
    |
 22 | take (b: Bool): Bool = true
    |          ---- expected due to this
    |
-  --> ${DIRECTORY}/type-mismatch.lushui:24:16
+  --> ${TEST_FOLDER}/type-mismatch.lushui:24:16
    |
 24 | t: Bool = take 44
    |                ^^ has the wrong type

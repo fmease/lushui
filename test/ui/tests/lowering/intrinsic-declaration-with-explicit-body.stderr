@@ -1,10 +1,10 @@
 error[E042]: the declaration `Void` marked as `intrinsic` has a body
- --> ${DIRECTORY}/lowering/intrinsic-declaration-with-explicit-body.lushui:3:1
+ --> ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:3:1
   |
 3 | @intrinsic
   | ---------- marks the declaration as being defined outside of the language
   |
- --> ${DIRECTORY}/lowering/intrinsic-declaration-with-explicit-body.lushui:4:17
+ --> ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:4:17
   |
 4 | data Void: Type of
   |                 ^^ the body specifying that the data type has no constructors and is therefore uninhabited
@@ -13,12 +13,12 @@ error[E042]: the declaration `Void` marked as `intrinsic` has a body
  help: remove either the body or the attribute
 
 error[E042]: the declaration `Unit` marked as `intrinsic` has a body
- --> ${DIRECTORY}/lowering/intrinsic-declaration-with-explicit-body.lushui:6:1
+ --> ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:6:1
   |
 6 | @intrinsic
   | ---------- marks the declaration as being defined outside of the language
   |
- --> ${DIRECTORY}/lowering/intrinsic-declaration-with-explicit-body.lushui:7:17
+ --> ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:7:17
   |
 7 | data Unit: Type of { unit: Unit }
   |                 ^^^^^^^^^^^^^^^ the body containing a set of constructors
@@ -27,12 +27,12 @@ error[E042]: the declaration `Unit` marked as `intrinsic` has a body
  help: remove either the body or the attribute
 
 error[E042]: the declaration `Bool` marked as `intrinsic` has a body
-  --> ${DIRECTORY}/lowering/intrinsic-declaration-with-explicit-body.lushui:11:1
+  --> ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:11:1
    |
 11 | @intrinsic
    | ---------- marks the declaration as being defined outside of the language
    |
-  --> ${DIRECTORY}/lowering/intrinsic-declaration-with-explicit-body.lushui:12:17
+  --> ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:12:17
    |
 12 |   data Bool: Type of
   ... _________________^
@@ -43,12 +43,12 @@ error[E042]: the declaration `Bool` marked as `intrinsic` has a body
   help: remove either the body or the attribute
 
 error[E042]: the declaration `thing` marked as `intrinsic` has a body
-  --> ${DIRECTORY}/lowering/intrinsic-declaration-with-explicit-body.lushui:16:1
+  --> ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:16:1
    |
 16 | @intrinsic thing = 0
    | ---------- marks the declaration as being defined outside of the language
    |
-  --> ${DIRECTORY}/lowering/intrinsic-declaration-with-explicit-body.lushui:16:18
+  --> ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:16:18
    |
 16 | @intrinsic thing = 0
    |                  ^^^ the body conflicting with the attribute
@@ -56,7 +56,7 @@ error[E042]: the declaration `thing` marked as `intrinsic` has a body
   help: remove either the body or the attribute
 
 error[E015]: the declaration `thing` does not have a type annotation
-  --> ${DIRECTORY}/lowering/intrinsic-declaration-with-explicit-body.lushui:16:17
+  --> ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:16:17
    |
 16 | @intrinsic thing = 0
    |                >< 

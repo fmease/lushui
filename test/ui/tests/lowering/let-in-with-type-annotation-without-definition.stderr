@@ -1,5 +1,5 @@
 error[E015]: the declaration `foo` does not have a type annotation
- --> ${DIRECTORY}/lowering/let-in-with-type-annotation-without-definition.lushui:3:4
+ --> ${TEST_FOLDER}/lowering/let-in-with-type-annotation-without-definition.lushui:3:4
   |
 3 | foo = let x: Int in 0
   |   >< 
@@ -8,7 +8,7 @@ error[E015]: the declaration `foo` does not have a type annotation
  help: provide a type annotation for the declaration with `: ?type`
 
 error[E012]: the let-binding `x` has no definition
- --> ${DIRECTORY}/lowering/let-in-with-type-annotation-without-definition.lushui:3:17
+ --> ${TEST_FOLDER}/lowering/let-in-with-type-annotation-without-definition.lushui:3:17
   |
 3 | foo = let x: Int in 0
   |                >< 

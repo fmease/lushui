@@ -1,5 +1,5 @@
 error[E010]: found `->` but expected expression
- --> ${DIRECTORY}/parsing/plain-pi-inside-sequence.lushui:3:19
+ --> ${TEST_FOLDER}/parsing/plain-pi-inside-sequence.lushui:3:19
   |
 3 | target = [Int Nat -> Nat]
   |                   ^^ unexpected token

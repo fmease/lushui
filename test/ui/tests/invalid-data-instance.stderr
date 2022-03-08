@@ -1,26 +1,26 @@
 error[E033]: `Type` is not an instance of `topmost.X`
- --> ${DIRECTORY}/invalid-data-instance.lushui:6:16
+ --> ${TEST_FOLDER}/invalid-data-instance.lushui:6:16
   |
 6 |     x0: Int -> Type
   |                ^^^^ 
   |
 
 error[E033]: `topmost.Y topmost.Int` is not an instance of `topmost.X`
- --> ${DIRECTORY}/invalid-data-instance.lushui:7:9
+ --> ${TEST_FOLDER}/invalid-data-instance.lushui:7:9
   |
 7 |     x1: Y Int
   |         ^^^^^ 
   |
 
 error[E033]: `topmost.Int` is not an instance of `topmost.X`
- --> ${DIRECTORY}/invalid-data-instance.lushui:8:9
+ --> ${TEST_FOLDER}/invalid-data-instance.lushui:8:9
   |
 8 |     x2: Int
   |         ^^^ 
   |
 
 error[E033]: `topmost.Int` is not an instance of `topmost.Y`
-  --> ${DIRECTORY}/invalid-data-instance.lushui:11:15
+  --> ${TEST_FOLDER}/invalid-data-instance.lushui:11:15
    |
 11 |     y: Int -> Int
    |               ^^^ 

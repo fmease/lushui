@@ -1,26 +1,26 @@
 error[E001]: unbalanced round bracket
- --> ${DIRECTORY}/parsing/unbalanced-brackets1.lushui:3:1
+ --> ${TEST_FOLDER}/parsing/unbalanced-brackets1.lushui:3:1
   |
 3 | )) it ]
   | ^ has no matching opening round bracket
   |
 
 error[E010]: found `)` but expected declaration
- --> ${DIRECTORY}/parsing/unbalanced-brackets1.lushui:3:1
+ --> ${TEST_FOLDER}/parsing/unbalanced-brackets1.lushui:3:1
   |
 3 | )) it ]
   | ^ unexpected token
   |
 
 error[E001]: unbalanced round bracket
- --> ${DIRECTORY}/parsing/unbalanced-brackets1.lushui:3:2
+ --> ${TEST_FOLDER}/parsing/unbalanced-brackets1.lushui:3:2
   |
 3 | )) it ]
   |  ^ has no matching opening round bracket
   |
 
 error[E001]: unbalanced square bracket
- --> ${DIRECTORY}/parsing/unbalanced-brackets1.lushui:3:7
+ --> ${TEST_FOLDER}/parsing/unbalanced-brackets1.lushui:3:7
   |
 3 | )) it ]
   |       ^ has no matching opening square bracket

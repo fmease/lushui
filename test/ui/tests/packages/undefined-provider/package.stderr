@@ -1,5 +1,5 @@
 error: `weird$` is not a valid dependency provider
-  --> ${DIRECTORY}/packages/undefined-provider/package.metadata:12:56
+  --> ${TEST_FOLDER}/packages/undefined-provider/package.metadata:12:56
    |
 12 |             something: { component: "else", provider: "weird$" },
    |                                                        ^^^^^^ 

@@ -1,5 +1,5 @@
 error[E021]: binding `I-Definitely-Do-Not-Exist` is not defined in this scope
- --> ${DIRECTORY}/unrecognized-intrinsic-function.lushui:6:28
+ --> ${TEST_FOLDER}/unrecognized-intrinsic-function.lushui:6:28
   |
 6 | i-definitely-do-not-exist: I-Definitely-Do-Not-Exist
   |                            ^^^^^^^^^^^^^^^^^^^^^^^^^ 

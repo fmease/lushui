@@ -1,10 +1,10 @@
 error[E032]: type mismatch
-  --> /home/fmease/programming/main_projects/lushui/libraries/core/source/library/tuple.lushui:13:41
+  --> ${DISTRIBUTED_LIBRARIES_FOLDER}/core/source/library/tuple.lushui:13:41
    |
 13 |     cons (A: Type) (L: List Type): A -> Tuple L -> Tuple (list.cons Type A L)
    |                                         ------- expected due to this
    |
-  --> ${DIRECTORY}/lengthy-type-mismatch.lushui:15:39
+  --> ${TEST_FOLDER}/lengthy-type-mismatch.lushui:15:39
    |
 15 |               (identity Unit Unit.unit) (Tuple.cons
   ... _______________________________________^

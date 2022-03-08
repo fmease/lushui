@@ -1,5 +1,5 @@
 error: found `,` but expected value
- --> ${DIRECTORY}/metadata/empty-list-with-comma.metadata:3:2
+ --> ${TEST_FOLDER}/metadata/empty-list-with-comma.metadata:3:2
   |
 3 | [,]
   |  ^ 

@@ -1,5 +1,5 @@
 error[E041]: the module header has to be the first declaration of the module
- --> ${DIRECTORY}/lowering/module-headers/not-the-first-declaration.lushui:6:1
+ --> ${TEST_FOLDER}/lowering/module-headers/not-the-first-declaration.lushui:6:1
   |
 6 | module
   | ^^^^^^ 

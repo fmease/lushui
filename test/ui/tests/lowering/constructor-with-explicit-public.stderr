@@ -1,10 +1,10 @@
 error[E013]: attribute `public` is ascribed to a constructor declaration
-  --> ${DIRECTORY}/lowering/constructor-with-explicit-public.lushui:14:5
+  --> ${TEST_FOLDER}/lowering/constructor-with-explicit-public.lushui:14:5
    |
 14 |     @public Unit: Unit -> Universe
    |     ^^^^^^^ misplaced attribute
    |
-  --> ${DIRECTORY}/lowering/constructor-with-explicit-public.lushui:14:13
+  --> ${TEST_FOLDER}/lowering/constructor-with-explicit-public.lushui:14:13
    |
 14 |     @public Unit: Unit -> Universe
    |             ---------------------- incompatible item
@@ -12,12 +12,12 @@ error[E013]: attribute `public` is ascribed to a constructor declaration
   note: attribute `public` can only be ascribed to declarations except constructors and module headers
 
 error[E013]: attribute `public` is ascribed to a constructor declaration
-  --> ${DIRECTORY}/lowering/constructor-with-explicit-public.lushui:15:5
+  --> ${TEST_FOLDER}/lowering/constructor-with-explicit-public.lushui:15:5
    |
 15 |     @(public self) Bool: Bool -> Universe = Universe.Bool
    |     ^^^^^^^^^^^^^^ misplaced attribute
    |
-  --> ${DIRECTORY}/lowering/constructor-with-explicit-public.lushui:15:20
+  --> ${TEST_FOLDER}/lowering/constructor-with-explicit-public.lushui:15:20
    |
 15 |     @(public self) Bool: Bool -> Universe = Universe.Bool
    |                    -------------------------------------- incompatible item
@@ -25,7 +25,7 @@ error[E013]: attribute `public` is ascribed to a constructor declaration
   note: attribute `public` can only be ascribed to declarations except constructors and module headers
 
 error[E020]: `Bool` is defined multiple times in this scope
-  --> ${DIRECTORY}/lowering/constructor-with-explicit-public.lushui:15:45
+  --> ${TEST_FOLDER}/lowering/constructor-with-explicit-public.lushui:15:45
    |
 15 |     @(public self) Bool: Bool -> Universe = Universe.Bool
    |                                             ^^^^^^^^^^^^^ conflicting definition

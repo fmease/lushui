@@ -1,10 +1,10 @@
 error[E006]: multiple `doc-attributes` attributes
- --> ${DIRECTORY}/lowering/module-headers/attributes-conflict-with-out-of-line-module-ones.lushui:6:1
+ --> ${TEST_FOLDER}/lowering/module-headers/attributes-conflict-with-out-of-line-module-ones.lushui:6:1
   |
 6 | @doc-attributes
   | ^^^^^^^^^^^^^^^ duplicate or conflicting attribute
   |
- --> ${DIRECTORY}/lowering/module-headers/attributes-conflict-with-out-of-line-module-ones.lushui:8:5
+ --> ${TEST_FOLDER}/lowering/module-headers/attributes-conflict-with-out-of-line-module-ones.lushui:8:5
   |
 8 |     @doc-attributes
   |     ^^^^^^^^^^^^^^^ duplicate or conflicting attribute

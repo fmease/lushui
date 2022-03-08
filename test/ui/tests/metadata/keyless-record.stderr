@@ -1,5 +1,5 @@
 error: found integer but expected record key
- --> ${DIRECTORY}/metadata/keyless-record.metadata:2:3
+ --> ${TEST_FOLDER}/metadata/keyless-record.metadata:2:3
   |
 2 | { 0, 0, 0, 1, 1, 0, 0, 1 }
   |   ^ 

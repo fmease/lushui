@@ -1,11 +1,11 @@
 error[E010]: found `:` but expected expression or `=`
- --> ${DIRECTORY}/parsing/plain-pi-as-argument.lushui:3:17
+ --> ${TEST_FOLDER}/parsing/plain-pi-as-argument.lushui:3:17
   |
 3 | main = function (A: Type) -> Type
   |                 --------- treated as a function argument,
   |                           not as the domain of a pi type literal
   |
- --> ${DIRECTORY}/parsing/plain-pi-as-argument.lushui:3:19
+ --> ${TEST_FOLDER}/parsing/plain-pi-as-argument.lushui:3:19
   |
 3 | main = function (A: Type) -> Type
   |                   ^ unexpected token

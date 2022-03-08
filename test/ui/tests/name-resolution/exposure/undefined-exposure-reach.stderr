@@ -1,26 +1,26 @@
 error[E021]: binding `who-am-i` is not defined in this scope
- --> ${DIRECTORY}/name-resolution/exposure/undefined-exposure-reach.lushui:4:10
+ --> ${TEST_FOLDER}/name-resolution/exposure/undefined-exposure-reach.lushui:4:10
   |
 4 | @(public who-am-i)
   |          ^^^^^^^^ 
   |
 
 error[E021]: binding `who-am-i` is not defined in module `topmost.namespaced`
- --> ${DIRECTORY}/name-resolution/exposure/undefined-exposure-reach.lushui:7:21
+ --> ${TEST_FOLDER}/name-resolution/exposure/undefined-exposure-reach.lushui:7:21
   |
 7 | @(public namespaced.who-am-i)
   |                     ^^^^^^^^ 
   |
 
 error[E021]: binding `void` is not defined in module `topmost.namespaced`
-  --> ${DIRECTORY}/name-resolution/exposure/undefined-exposure-reach.lushui:12:17
+  --> ${TEST_FOLDER}/name-resolution/exposure/undefined-exposure-reach.lushui:12:17
    |
 12 | @(public indir2.void)
    |                 ^^^^ 
    |
 
 error[E021]: binding `emptiness` is not defined in module `topmost.namespaced`
-  --> ${DIRECTORY}/name-resolution/exposure/undefined-exposure-reach.lushui:20:22
+  --> ${TEST_FOLDER}/name-resolution/exposure/undefined-exposure-reach.lushui:20:22
    |
 20 | @(public self.indir2.emptiness)
    |                      ^^^^^^^^^ 

@@ -1,5 +1,5 @@
 error: do blocks not supported yet
- --> ${DIRECTORY}/lowering/do-blocks-unsupported.lushui:4:5
+ --> ${TEST_FOLDER}/lowering/do-blocks-unsupported.lushui:4:5
   |
 4 |       do
  ... _____^
