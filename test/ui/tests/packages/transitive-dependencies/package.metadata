@@ -1,5 +1,4 @@
-# TEST ignore pass run
-# @Beacon @Bug type checker bugs!
+# TEST pass run
 
 name: "root",
 version: "0.0.0",

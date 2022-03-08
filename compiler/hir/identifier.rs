@@ -9,7 +9,7 @@ use crate::{
 use std::{default::default, fmt};
 
 /// A name-resolved identifier.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Eq)]
 pub struct Identifier {
     /// Source at the use-site/call-site or def-site if definition.
     pub(crate) source: ast::Identifier,
@@ -79,6 +79,12 @@ impl Identifier {
     }
 }
 
+impl PartialEq for Identifier {
+    fn eq(&self, other: &Self) -> bool {
+        self.index == other.index
+    }
+}
+
 impl Spanning for Identifier {
     fn span(&self) -> Span {
         self.source.span()
@@ -87,27 +93,17 @@ impl Spanning for Identifier {
 
 impl fmt::Display for Identifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.source)?;
-        // @Task somehow thead this through w/o too much verbosity!
-        // if crate::OPTIONS
-        //     .get()
-        //     .map_or(false, |options| options.show_indices)
-        // {
-        //     // @Note does not work well with punctuation..
-        //     write!(f, "#{:?}", self.index)?;
-        // }
-        Ok(())
+        write!(f, "{}", self.source)
     }
 }
 
 impl fmt::Debug for Identifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self)
+        write!(f, "{self}")
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
-#[allow(clippy::enum_variant_names)] // @Temporary false positive, see rust-clippy #8090, #8127
+#[derive(Clone, Copy, Eq)]
 pub(crate) enum Index {
     Declaration(DeclarationIndex),
     DeBruijn(DeBruijnIndex),
@@ -144,11 +140,21 @@ impl Index {
     }
 }
 
+impl PartialEq for Index {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Declaration(index0), Self::Declaration(index1)) => index0 == index1,
+            (Self::DeBruijn(index0), Self::DeBruijn(index1)) => index0 == index1,
+            _ => false,
+        }
+    }
+}
+
 impl fmt::Debug for Index {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Declaration(index) => write!(f, "{:?}", index),
-            Self::DeBruijn(index) => write!(f, "{:?}", index),
+            Self::Declaration(index) => write!(f, "{index:?}"),
+            Self::DeBruijn(index) => write!(f, "{index:?}"),
             Self::DeBruijnParameter => write!(f, "P"),
         }
     }

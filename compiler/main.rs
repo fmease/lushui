@@ -395,6 +395,7 @@ fn build_component(
                 )?;
             }
         }
+        // already done at this point
         BuildMode::Check => {}
     }
 

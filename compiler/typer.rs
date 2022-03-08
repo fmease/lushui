@@ -399,15 +399,19 @@ impl<'a> Typer<'a> {
             }
             TypeMismatch { expected, actual } => Err(Diagnostic::error()
                 .code(Code::E032)
-                .message(format!(
-                    "expected type `{}` but got type `{}`",
-                    expected.with((self.component, self.session)),
-                    actual.with((self.component, self.session))
-                ))
+                // @Task put back some more information into the message: use `_`s to shorten the type
+                .message("type mismatch")
                 .labeled_primary_span(&actual_value, "has the wrong type")
                 .if_present(expectation_cause, |this, cause| {
                     this.labeled_secondary_span(cause, "expected due to this")
                 })
+                .note(format!(
+                    "\
+expected type `{}`
+ but got type `{}`",
+                    expected.with((self.component, self.session)),
+                    actual.with((self.component, self.session))
+                ))
                 .report(self.session.reporter())),
         }
     }
@@ -561,13 +565,17 @@ impl<'a> Typer<'a> {
                             Unrecoverable(token) => token,
                             TypeMismatch { expected, actual } => Diagnostic::error()
                                 .code(Code::E032)
-                                .message(format!(
-                                    "expected type `{}` but got type `{}`",
+                                // @Task put back some more information into the message: use `_`s to shorten the type
+                                .message("type mismatch")
+                                .labeled_primary_span(&application.argument, "has the wrong type")
+                                .labeled_secondary_span(&expected, "expected due to this")
+                                .note(format!(
+                                    "\
+expected type `{}`
+ but got type `{}`",
                                     expected.with((self.component, self.session)),
                                     actual.with((self.component, self.session))
                                 ))
-                                .labeled_primary_span(&application.argument, "has the wrong type")
-                                .labeled_secondary_span(&expected, "expected due to this")
                                 .report(self.session.reporter()),
                             OutOfOrderBinding => unreachable!(),
                         })?;
@@ -587,12 +595,16 @@ impl<'a> Typer<'a> {
                 } else {
                     return Err(Diagnostic::error()
                         .code(Code::E031)
-                        .message(format!(
-                            "expected type `_ -> _` but got type `{}`",
-                            type_of_callee.with((self.component, self.session))
-                        ))
+                        // @Task put back some more information into the message: use `_`s to shorten the type
+                        .message("type mismatch")
                         .labeled_primary_span(&application.callee, "has wrong type")
                         .labeled_secondary_span(&application.argument, "applied to this")
+                        .note(format!(
+                            "\
+expected type `_ -> _`
+ but got type `{}`",
+                            type_of_callee.with((self.component, self.session))
+                        ))
                         .report(self.session.reporter())
                         .into());
                 }
@@ -647,13 +659,17 @@ impl<'a> Typer<'a> {
                     let handle_type_mismatch = |error, context, reporter| match error {
                         TypeMismatch { expected, actual } => Diagnostic::error()
                             .code(Code::E032)
-                            .message(format!(
-                                "expected type `{}` but got type `{}`",
+                            // @Task put back some more information into the message: use `_`s to shorten the type
+                            .message("type mismatch")
+                            .labeled_primary_span(&case.pattern, "has the wrong type")
+                            .labeled_secondary_span(&analysis.scrutinee, "expected due to this")
+                            .note(format!(
+                                "\
+expected type `{}`
+ but got type `{}`",
                                 expected.with(context),
                                 actual.with(context)
                             ))
-                            .labeled_primary_span(&case.pattern, "has the wrong type")
-                            .labeled_secondary_span(&analysis.scrutinee, "expected due to this")
                             .report(reporter)
                             .into(),
                         error => error,
@@ -722,14 +738,8 @@ impl<'a> Typer<'a> {
                                 // or can we defer this to an it_is_actual call??
                                 (Number(_) | Text(_), _argument) => todo!(),
                                 (Binding(binding), _argument) => {
-                                    let constructor_type =
+                                    let _constructor_type =
                                         self.interpreter().look_up_type(&binding.0, scope).unwrap();
-
-                                    dbg!(
-                                        &subject_type.with((self.component, self.session)),
-                                        application.callee.with((self.component, self.session)),
-                                        &constructor_type.with((self.component, self.session))
-                                    );
 
                                     todo!();
                                 }

@@ -1,31 +1,31 @@
 ;;; TEST auxiliary packages/transitive-dependencies
 
-use extern.core.(duple.Duple nat.(Nat ==))
+use extern.core.(duple.Duple nat.(Nat ==) bool.Bool)
 use extern.alpha.(bet g-one jamma)
 use extern.gamma.((G as The-G) g1 gam)
 
 v0: Duple Nat Nat = bet
 v1: The-G = g-one
-v2: Nat = == gam jamma
+v2: Bool = == gam jamma
 
-use extern.core.(tuple.(Tuple ) list.List)
+use extern.core.(tuple.Tuple list.List)
 
 main: Tuple
-    (List.cons (Duple Nat Nat)
-    (List.cons The-G
-    (List.cons Nat
-    List.empty Type)))
+    (List.cons Type (Duple Nat Nat)
+    (List.cons Type The-G
+    (List.cons Type Bool
+    (List.empty Type))))
     =
     Tuple.cons
         (Duple Nat Nat)
-        (List.cons (Duple Nat Nat) (List.cons The-G (List.cons Nat (List.empty Type))))
+        (List.cons Type The-G (List.cons Type Bool (List.empty Type)))
         v0
         (Tuple.cons
             The-G
-            (List.cons The-G (List.cons Nat (List.empty Type)))
+            (List.cons Type Bool (List.empty Type))
             v1
             (Tuple.cons
-                Nat
-                (List.cons Nat (List.empty Type))
+                Bool
+                (List.empty Type)
                 v2
                 Tuple.empty))

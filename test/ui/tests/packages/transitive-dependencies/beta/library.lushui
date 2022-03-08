@@ -7,7 +7,7 @@ use extern.gamma.(N G g1 gam)
 use extern.gamma.((N as Unsigned) (gam as gamma))
 
 @public
-bet: Tuple N N = Duple.duple N N gam (* gam 3)
+bet: Duple N N = Duple.duple N N gam (* gam 3)
 
 @public
 g-one: G = g1

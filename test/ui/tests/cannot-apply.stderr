@@ -1,4 +1,4 @@
-error[E031]: expected type `_ -> _` but got type `extern.core.nat.Nat`
+error[E031]: type mismatch
  --> ${DIRECTORY}/cannot-apply.lushui:3:21
   |
 3 | Abomination: Type = 0 1
@@ -9,6 +9,8 @@ error[E031]: expected type `_ -> _` but got type `extern.core.nat.Nat`
 3 | Abomination: Type = 0 1
   |                       - applied to this
   |
+ note: expected type `_ -> _`
+        but got type `extern.core.nat.Nat`
 
 error: aborting due to previous error
  note: the error E031 has a detailed explanation

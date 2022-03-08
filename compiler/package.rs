@@ -556,21 +556,14 @@ impl BuildQueue {
     ) -> Result<PathBuf> {
         let provider = match &declaration.provider {
             Some(provider) => provider.value,
-            // infer the provider from the other fields
+            // infer the provider from the entries
             None => {
                 if declaration.path.is_some() {
                     Provider::Filesystem
                 } else if declaration.version.is_some() {
                     Provider::Registry
                 } else {
-                    // @Question should we infer Package if no other fields + the current package
-                    // contains a sublibrary with the name?
-
-                    // @Task flesh out the message
-                    return Err(Diagnostic::error()
-                        .message("invalid dependency declaration")
-                        .primary_span(span)
-                        .report(&self.reporter));
+                    Provider::Package
                 }
             }
         };
@@ -595,7 +588,10 @@ impl BuildQueue {
                     .map_or(exonym, |name| &name.value);
                 Ok(distributed_packages_path().join(component.as_str()))
             }
-            Provider::Package | Provider::Git | Provider::Registry => Err(Diagnostic::error()
+            // @Beacon @Note don't return a path at that would signify a *package* path, not a component one,
+            //               more logic needs to be added!
+            Provider::Package => todo!(),
+            Provider::Git | Provider::Registry => Err(Diagnostic::error()
                 .message(format!(
                     "dependency provider `{provider}` is not supported yet"
                 ))

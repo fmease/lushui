@@ -129,7 +129,12 @@ impl<'a> Compiler<'a> {
                     self.chunks[index].instructions.push(Instruction::Return);
 
                     // @Task obsolete once we map any ComponentIndex to a chunk identifier
-                    if self.component.entry.as_ref() == Some(&function.binder) {
+                    if self
+                        .component
+                        .entry
+                        .as_ref()
+                        .map_or(false, |entry| entry == &function.binder)
+                    {
                         self.entry = Some(index);
                     }
                 }
@@ -271,12 +276,10 @@ pub fn compile_and_interpret_declaration(
 ) -> Result<(), Error> {
     let mut compiler = Compiler::new(component);
     compiler.compile_declaration(declaration)?;
-    // dbg!(&compiler.chunks);
     eprintln!("{}", compiler.print_chunks());
 
     let mut interpreter = ByteCodeInterpreter::new(&compiler);
     interpreter.execute()?;
-    dbg!(&interpreter.stack);
 
     Ok(())
 }

@@ -1928,7 +1928,6 @@ impl Component {
         root: String,
     ) -> String {
         let entity = &self[index];
-
         // @Task rewrite this recursive approach to an iterative one!
         if let Some(parent) = entity.parent {
             let mut parent_path = self.extern_path_with_root_to_string(parent, root);

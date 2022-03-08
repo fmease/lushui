@@ -1,0 +1,20 @@
+error[E032]: type mismatch
+  --> /home/fmease/programming/main_projects/lushui/libraries/core/source/library/tuple.lushui:13:41
+   |
+13 |     cons (A: Type) (L: List Type): A -> Tuple L -> Tuple (list.cons Type A L)
+   |                                         ------- expected due to this
+   |
+  --> ${DIRECTORY}/lengthy-type-mismatch.lushui:15:39
+   |
+15 |               (identity Unit Unit.unit) (Tuple.cons
+  ... _______________________________________^
+17 | |                     Tuple.empty))
+   | |________________________________^ has the wrong type
+   |
+  note: expected type `extern.core.tuple.Tuple (extern.core.list.List.cons Type Type (extern.core.list.List.empty Type))`
+         but got type `extern.core.tuple.Tuple (extern.core.list.List.cons Type extern.core.int.Int (extern.core.list.List.empty Type))`
+
+error: aborting due to previous error
+ note: the error E032 has a detailed explanation
+ help: run `lushui explain E032` to view it
+

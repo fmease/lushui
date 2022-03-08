@@ -305,6 +305,9 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    // @Beacon @Beacon @Bug *very* confusing indentation errors if the file contains tabs \t
+    // which do *not* result in an error in the lexer but "later" in the parser (which is never reached)
+    // @Task treat tabs differently when calculating indentation
     fn lex_indentation(&mut self) -> Result {
         let is_start_of_indented_section = self
             .tokens

@@ -955,6 +955,18 @@ impl ValueView {
     }
 }
 
+// @Note more like DebugWith
+impl DisplayWith for ValueView {
+    type Context<'a> = (&'a Component, &'a BuildSession);
+
+    fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Reducible(expression) => write!(f, "?(reducible {})", expression.with(context)),
+            Self::Neutral => write!(f, "?(neutral)"),
+        }
+    }
+}
+
 /// The scope of bindings inside of a function.
 pub(crate) enum FunctionScope<'a> {
     Module,

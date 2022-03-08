@@ -1,4 +1,4 @@
-error[E032]: expected type `topmost.X` but got type `Type`
+error[E032]: type mismatch
   --> ${DIRECTORY}/type-mismatch.lushui:15:4
    |
 15 | a: X = Type
@@ -9,8 +9,10 @@ error[E032]: expected type `topmost.X` but got type `Type`
 15 | a: X = Type
    |        ^^^^ has the wrong type
    |
+  note: expected type `topmost.X`
+         but got type `Type`
 
-error[E032]: expected type `Type` but got type `topmost.X`
+error[E032]: type mismatch
   --> ${DIRECTORY}/type-mismatch.lushui:16:4
    |
 16 | b: Type = X.x
@@ -21,15 +23,19 @@ error[E032]: expected type `Type` but got type `topmost.X`
 16 | b: Type = X.x
    |           ^^^ has the wrong type
    |
+  note: expected type `Type`
+         but got type `topmost.X`
 
-error[E032]: expected type `Type` but got type `extern.core.bool.Bool`
+error[E032]: type mismatch
   --> ${DIRECTORY}/type-mismatch.lushui:20:4
    |
 20 | x: false = false
    |    ^^^^^ has the wrong type
    |
+  note: expected type `Type`
+         but got type `extern.core.bool.Bool`
 
-error[E032]: expected type `extern.core.bool.Bool` but got type `extern.core.nat.Nat`
+error[E032]: type mismatch
   --> ${DIRECTORY}/type-mismatch.lushui:22:10
    |
 22 | take (b: Bool): Bool = true
@@ -40,6 +46,8 @@ error[E032]: expected type `extern.core.bool.Bool` but got type `extern.core.nat
 24 | t: Bool = take 44
    |                ^^ has the wrong type
    |
+  note: expected type `extern.core.bool.Bool`
+         but got type `extern.core.nat.Nat`
 
 error: aborting due to 4 previous errors
  note: the error E032 has a detailed explanation
