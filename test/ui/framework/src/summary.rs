@@ -1,7 +1,7 @@
 //! The summary of the entire test suite.
 #![allow(clippy::cast_precision_loss)]
 
-use crate::{cli::Gilding, terminal_width, Filters};
+use crate::{Filters, Gilding};
 use colored::Colorize;
 use std::{fmt, time::Duration};
 
@@ -14,12 +14,13 @@ pub(crate) struct TestSuiteSummary {
 
 impl fmt::Display for TestSuiteSummary {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{}", "=".repeat(terminal_width()))?;
-        writeln!(f)?;
-
         let status = if self.statistics.passed() {
             if self.gilding == Gilding::No {
-                "ALL TESTS PASSED!".green()
+                if self.statistics.total_amount() != 0 {
+                    "ALL TESTS PASSED!".green()
+                } else {
+                    "ALL TESTS WERE FILTERED OUT!".yellow()
+                }
             } else if self.statistics.gilded == 0 {
                 "ALL TESTS PASSED WITHOUT GILDING!".green()
             } else {
@@ -100,8 +101,7 @@ impl fmt::Display for TestSuiteSummary {
             }
         }
 
-        writeln!(f)?;
-        writeln!(f, "{}", "=".repeat(terminal_width()))
+        Ok(())
     }
 }
 
@@ -136,7 +136,7 @@ impl TestSuiteStatistics {
     }
 
     // @Note misleading name
-    fn total_amount(&self) -> usize {
+    pub(crate) fn total_amount(&self) -> usize {
         self.executed() + self.ignored
     }
 

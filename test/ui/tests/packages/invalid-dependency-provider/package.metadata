@@ -6,10 +6,9 @@ version: "99.99.999",
 components: [
     {
         type: "executable",
-        path: "main.lushui",
-
+        "path": "wherever",
         dependencies: {
-            something: { provider: "git" },
+            thing0: { component: "else", provider: "weird$" },
         },
-    }
+    },
 ],

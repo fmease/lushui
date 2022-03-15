@@ -1,11 +1,11 @@
-error: typed holes not supported yet
+error: typed holes are not supported yet
  --> ${TEST_FOLDER}/lowering/typed-holes-unsupported.lushui:3:10
   |
 3 | meaning: ?Hole = ?hole
   |          ^^^^^ 
   |
 
-error: typed holes not supported yet
+error: typed holes are not supported yet
  --> ${TEST_FOLDER}/lowering/typed-holes-unsupported.lushui:3:18
   |
 3 | meaning: ?Hole = ?hole

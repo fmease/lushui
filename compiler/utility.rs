@@ -2,7 +2,6 @@
 
 use colored::Colorize;
 use difference::{Changeset, Difference};
-use joinery::JoinableIterator;
 pub(crate) use num_bigint::{BigInt as Int, BigUint as Nat};
 pub(crate) use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::{ffi::OsStr, fmt, path::Path};
@@ -124,49 +123,33 @@ impl<T: DisplayWith> fmt::Debug for WithContext<'_, T> {
     }
 }
 
-pub trait UnorderedListingExt {
+pub trait ListingExt {
     fn list(self, conjunction: Conjunction) -> String;
 }
 
-impl<I> UnorderedListingExt for I
+impl<I> ListingExt for I
 where
     I: Iterator<Item: Clone + fmt::Display> + Clone,
 {
-    fn list(mut self, conjunction: Conjunction) -> String {
-        use std::iter::once;
+    fn list(self, conjunction: Conjunction) -> String {
+        let mut this = self.peekable();
+        let mut first = true;
+        let mut result = String::new();
 
-        let last = self.next().unwrap();
-
-        match self.next() {
-            Some(item) => {
-                let body = once(item).chain(self).join_with(", ");
-                format!("{body} {conjunction} {last}")
+        while let Some(item) = this.next() {
+            if !first {
+                if this.peek().is_some() {
+                    result += ", ";
+                } else {
+                    result += &format!(" {conjunction} ");
+                }
             }
-            None => last.to_string(),
+
+            result += &item.to_string();
+            first = false;
         }
-    }
-}
 
-pub(crate) trait OrderedListingExt {
-    fn list_in_order(self, conjunction: Conjunction) -> String;
-}
-
-impl<I> OrderedListingExt for I
-where
-    I: DoubleEndedIterator<Item: fmt::Display + Clone> + Clone,
-{
-    fn list_in_order(mut self, conjunction: Conjunction) -> String {
-        use std::iter::once;
-
-        let last = self.next_back().unwrap();
-
-        match self.next() {
-            Some(item) => {
-                let body = once(item).chain(self).join_with(", ");
-                format!("{body} {conjunction} {last}")
-            }
-            None => last.to_string(),
-        }
+        result
     }
 }
 
@@ -302,5 +285,43 @@ impl fmt::Display for IOError<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // @Question custom messages?
         write!(f, "`{}`: {}", self.1.to_string_lossy(), self.0)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn listing_no_elements() {
+        assert_eq!(std::iter::empty::<!>().list(Conjunction::And), "");
+    }
+
+    #[test]
+    fn listing_one_element() {
+        assert_eq!(std::iter::once(1).list(Conjunction::Or), "1");
+    }
+
+    #[test]
+    fn listing_two_elements() {
+        assert_eq!(
+            [false, true].into_iter().list(Conjunction::And),
+            "false and true"
+        );
+    }
+
+    #[test]
+    fn listing_three_elements() {
+        assert_eq!([1, 2, 3].into_iter().list(Conjunction::Or), "1, 2 or 3");
+    }
+
+    #[test]
+    fn listing_many_elements() {
+        assert_eq!(
+            ["a", "b", "c", "d", "e", "f", "g"]
+                .into_iter()
+                .list(Conjunction::And),
+            "a, b, c, d, e, f and g"
+        );
     }
 }

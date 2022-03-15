@@ -14,5 +14,5 @@ error[E010]: found line break but expected expression
 
 error: aborting due to 2 previous errors
  note: the errors E001 and E010 have a detailed explanation
- help: run `lushui explain <codes...>` to view a selection of them
+ help: run `lushui explain <CODES...>` to view a selection of them
 

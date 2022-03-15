@@ -1,10 +1,10 @@
-error: could not load the library component `test` in package `test`
-  --> ${TEST_FOLDER}/packages/faulty-component-paths/package.metadata:10:16
+error: could not load the executable component `test` in package `test`
+  --> ${TEST_FOLDER}/packages/faulty-component-paths/package.metadata:14:16
    |
-10 |         path: "nonexistent.lushui",
-   |                ^^^^^^^^^^^^^^^^^^ 
+14 |         path: "leading/astray",
+   |                ^^^^^^^^^^^^^^ 
    |
-  note: `${TEST_FOLDER}/packages/faulty-component-paths/nonexistent.lushui`: No such file or directory (os error 2)
+  note: `${TEST_FOLDER}/packages/faulty-component-paths/leading/astray`: No such file or directory (os error 2)
 
 error: aborting due to previous error
 

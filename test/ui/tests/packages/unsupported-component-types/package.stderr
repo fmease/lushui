@@ -1,0 +1,23 @@
+error: the component type `example` is not supported yet
+ --> ${TEST_FOLDER}/packages/unsupported-component-types/package.metadata:8:16
+  |
+8 |         type: "example",
+  |                ^^^^^^^ 
+  |
+
+error: the component type `test` is not supported yet
+  --> ${TEST_FOLDER}/packages/unsupported-component-types/package.metadata:12:16
+   |
+12 |         type: "test",
+   |                ^^^^ 
+   |
+
+error: the component type `benchmark` is not supported yet
+  --> ${TEST_FOLDER}/packages/unsupported-component-types/package.metadata:16:16
+   |
+16 |         type: "benchmark",
+   |                ^^^^^^^^^ 
+   |
+
+error: aborting due to 3 previous errors
+

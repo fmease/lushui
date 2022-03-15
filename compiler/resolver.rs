@@ -25,7 +25,7 @@ use crate::{
     },
     utility::{
         obtain, pluralize, AsAutoColoredChangeset, Conjunction, DisplayWith, HashMap, HashSet,
-        QuoteExt, SmallVec, UnorderedListingExt,
+        ListingExt, QuoteExt, SmallVec,
     },
 };
 use colored::Colorize;
@@ -857,7 +857,8 @@ impl<'a> Resolver<'a> {
                 )
             }
             UseIn => {
-                return Err(Diagnostic::unimplemented("use/in expression")
+                return Err(Diagnostic::error()
+                    .message("use/in-expressions are not supported yet")
                     .primary_span(&expression)
                     .report(self.session.reporter()));
             }
@@ -1129,7 +1130,8 @@ impl<'a> Resolver<'a> {
         // @Task make core's Vector, Tuple, etc. known and check the namespacing type
 
         // @Task
-        Err(Diagnostic::unimplemented("sequence literals")
+        Err(Diagnostic::error()
+            .message("sequence literals are not supported yet")
             .primary_span(&sequence.value.elements)
             .report(self.session.reporter()))
     }

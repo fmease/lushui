@@ -214,8 +214,11 @@ impl index_map::Index for ComponentIndex {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Elements, FromStr, Str)]
 #[format(dash_case)]
 pub enum ComponentType {
-    Library,
+    Benchmark,
+    Example,
     Executable,
+    Library,
+    Test,
 }
 
 impl fmt::Display for ComponentType {

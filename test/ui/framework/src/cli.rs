@@ -1,3 +1,4 @@
+use crate::{CompilerBuildMode, Gilding, Inspecting};
 use clap::{Arg, Command};
 use std::{num::NonZeroUsize, str::FromStr};
 
@@ -111,21 +112,4 @@ impl Application {
             },
         }
     }
-}
-
-pub(crate) enum CompilerBuildMode {
-    Debug,
-    Release,
-}
-
-#[derive(PartialEq, Eq, Clone, Copy)]
-pub(crate) enum Gilding {
-    Yes,
-    No,
-}
-
-#[derive(PartialEq, Eq, Clone, Copy)]
-pub(crate) enum Inspecting {
-    Yes,
-    No,
 }

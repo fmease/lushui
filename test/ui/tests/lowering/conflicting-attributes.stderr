@@ -1,4 +1,4 @@
-error: the attribute `unsafe` not supported yet
+error: the attribute `unsafe` is not supported yet
  --> ${TEST_FOLDER}/lowering/conflicting-attributes.lushui:3:1
   |
 3 | @unsafe @ignore
@@ -17,7 +17,7 @@ error[E006]: multiple `unsafe` attributes
   | ^^^^^^^ duplicate or conflicting attribute
   |
 
-error: the attribute `ignore` not supported yet
+error: the attribute `ignore` is not supported yet
  --> ${TEST_FOLDER}/lowering/conflicting-attributes.lushui:3:9
   |
 3 | @unsafe @ignore

@@ -1,4 +1,4 @@
-error: do blocks not supported yet
+error: do blocks are not supported yet
  --> ${TEST_FOLDER}/lowering/do-blocks-unsupported.lushui:4:5
   |
 4 |       do

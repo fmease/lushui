@@ -110,5 +110,5 @@ error[E021]: binding `undefined` is not defined in this scope
 
 error: aborting due to 11 previous errors
  note: the errors E007, E021 and E043 have a detailed explanation
- help: run `lushui explain <codes...>` to view a selection of them
+ help: run `lushui explain <CODES...>` to view a selection of them
 

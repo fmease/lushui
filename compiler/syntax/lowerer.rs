@@ -37,7 +37,7 @@ use crate::{
     error::{Health, OkIfUntaintedExt, PossiblyErroneous, Result, Stain},
     session::BuildSession,
     span::{Span, Spanned, Spanning},
-    utility::{Atom, Conjunction, IOError, OrderedListingExt, QuoteExt, SmallVec, Str},
+    utility::{Atom, Conjunction, IOError, ListingExt, QuoteExt, SmallVec, Str},
 };
 use smallvec::smallvec;
 use std::{default::default, fmt, iter::once};
@@ -559,7 +559,8 @@ impl<'a> Lowerer<'a> {
             }
             Application(application) => {
                 if let Some(binder) = &application.binder {
-                    Diagnostic::unimplemented("named arguments")
+                    Diagnostic::error()
+                        .message("named arguments are not supported yet")
                         .primary_span(binder)
                         .report(self.session.reporter());
                     self.health.taint();
@@ -593,7 +594,8 @@ impl<'a> Lowerer<'a> {
                 lowered_ast::Expression::new(attributes, expression.span, (*text).into())
             }
             TypedHole(_hole) => {
-                Diagnostic::unimplemented("typed holes")
+                Diagnostic::error()
+                    .message("typed holes are not supported yet")
                     .primary_span(expression.span)
                     .report(self.session.reporter());
                 self.health.taint();
@@ -602,7 +604,8 @@ impl<'a> Lowerer<'a> {
             // @Task avoid re-boxing!
             Path(path) => lowered_ast::Expression::new(attributes, expression.span, (*path).into()),
             Field(_field) => {
-                Diagnostic::unimplemented("record fields")
+                Diagnostic::error()
+                    .message("record fields are not supported yet")
                     .primary_span(expression.span)
                     .report(self.session.reporter());
                 self.health.taint();
@@ -726,7 +729,8 @@ impl<'a> Lowerer<'a> {
                 )
             }
             UseIn(_use_in) => {
-                Diagnostic::unimplemented("use/in expressions")
+                Diagnostic::error()
+                    .message("use/in-expressions are not supported yet")
                     .primary_span(expression.span)
                     .report(self.session.reporter());
                 self.health.taint();
@@ -751,7 +755,8 @@ impl<'a> Lowerer<'a> {
                 )
             }
             DoBlock(_block) => {
-                Diagnostic::unimplemented("do blocks")
+                Diagnostic::error()
+                    .message("do blocks are not supported yet")
                     .primary_span(expression.span)
                     .report(self.session.reporter());
                 self.health.taint();
@@ -798,7 +803,8 @@ impl<'a> Lowerer<'a> {
             Binder(binder) => lowered_ast::Pattern::new(attributes, pattern.span, (*binder).into()),
             Application(application) => {
                 if let Some(binder) = &application.binder {
-                    Diagnostic::unimplemented("named arguments")
+                    Diagnostic::error()
+                        .message("named arguments are not supported yet")
                         .primary_span(binder)
                         .report(self.session.reporter());
                     self.health.taint();
@@ -940,7 +946,7 @@ impl<'a> Lowerer<'a> {
                 let listing = attributes
                     .iter()
                     .map(|attribute| attribute.value.name().to_str().quote())
-                    .list_in_order(Conjunction::And);
+                    .list(Conjunction::And);
 
                 return Err(Diagnostic::error()
                     .code(Code::E014)
@@ -976,7 +982,11 @@ impl<'a> Lowerer<'a> {
 
         for attribute in attributes.filter(Predicate(|attribute| !attribute.is_fully_implemented()))
         {
-            Diagnostic::unimplemented(format!("the attribute `{}`", attribute.value.name()))
+            Diagnostic::error()
+                .message(format!(
+                    "the attribute `{}` is not supported yet",
+                    attribute.value.name()
+                ))
                 .primary_span(attribute)
                 .report(self.session.reporter());
             self.health.taint();
@@ -1196,7 +1206,8 @@ impl lowered_ast::AttributeKind {
                 DocReservedIdentifiers => Self::DocReservedIdentifiers,
                 Intrinsic => Self::Intrinsic,
                 If => {
-                    Diagnostic::unimplemented("attribute `if`")
+                    Diagnostic::error()
+                        .message("the attribute `if` is not supported yet")
                         .primary_span(attribute)
                         .report(session.reporter());
                     return Err(AttributeParsingError::Unrecoverable);
@@ -1244,7 +1255,8 @@ impl lowered_ast::AttributeKind {
                 Test => Self::Test,
                 Unsafe => Self::Unsafe,
                 Unstable => {
-                    Diagnostic::unimplemented("attribute `unstable`")
+                    Diagnostic::error()
+                        .message("the attribute `unstable` is not supported yet")
                         .primary_span(attribute)
                         .report(session.reporter());
 

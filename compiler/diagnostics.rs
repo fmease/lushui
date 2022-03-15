@@ -85,11 +85,6 @@ impl Diagnostic {
         Self::new(Severity::Debug)
     }
 
-    /// Create a diagnostic for an unimplemented language feature.
-    pub(crate) fn unimplemented(message: impl Into<Str>) -> Self {
-        Self::error().message(format!("{} not supported yet", message.into()))
-    }
-
     /// Add an (error) code to the diagnostic.
     pub fn code(mut self, code: Code) -> Self {
         self.0.code = Some(code);

@@ -1,8 +1,8 @@
 = The Lushui Programming Language
-:toc:
+:toc: left
 :nofooter:
 
-露水 lùshui :: dew; ephemeral, transient, of short duration
+露水 lùshui :: *dew*; ephemeral, transient, of short duration
 
 The reference compiler of the https://lushui.ml/[Lushui programming language].
 Its code is hosted on https://github.com/fmease/lushui.git[GitHub]

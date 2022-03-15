@@ -1,4 +1,4 @@
-use crate::utilites::HelperAttribute;
+use crate::utility::HelperAttribute;
 use syn::{
     parse::{Nothing, Parse, ParseStream},
     token::Paren,

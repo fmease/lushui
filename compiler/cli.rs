@@ -573,7 +573,7 @@ mod unstable {
     use lushui::{
         diagnostics::{reporter::StderrReporter, Diagnostic},
         error::Result,
-        utility::{pluralize, Conjunction, QuoteExt, UnorderedListingExt},
+        utility::{pluralize, Conjunction, ListingExt, QuoteExt},
     };
     use std::{
         iter::{once, Chain, Map},

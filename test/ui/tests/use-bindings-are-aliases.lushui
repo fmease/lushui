@@ -24,5 +24,14 @@ s3: List Alias =
         (List.cons Alias ((id1 Alias.source) 0)
             (List.empty Source))
 
+
+module nonlinear of
+    x: Deriv = Orig.orig
+
+    use Orig as Deriv
+
+    data Orig: Type of
+        orig: Orig
+
 ;;; [Description]
 ;;; Use-bindings should be interchangeable with their target without the program changing in meaning.

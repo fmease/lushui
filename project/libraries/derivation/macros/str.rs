@@ -1,6 +1,6 @@
 use crate::{
     format::FormatAttribute,
-    utilites::{HelperAttribute, TokenStream1, TokenStream2},
+    utility::{HelperAttribute, TokenStream1, TokenStream2},
 };
 use proc_macro2::Span;
 use quote::quote;

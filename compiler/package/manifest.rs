@@ -6,7 +6,7 @@ use crate::{
     metadata::{self, convert, key_content_span, Record, RecordWalker, Value},
     span::{SourceFileIndex, SourceMap, Span, Spanned, WeaklySpanned},
     syntax::Word,
-    utility::{try_all, Conjunction, HashMap, QuoteExt, SmallVec, UnorderedListingExt},
+    utility::{try_all, Conjunction, HashMap, ListingExt, QuoteExt, SmallVec},
 };
 use derivation::{Elements, FromStr, Str};
 use smallvec::smallvec;
@@ -257,7 +257,7 @@ fn parse_dependencies(
                             .message(format!("`{name}` is not a valid dependency provider"))
                             .primary_span(span)
                             .note(format!(
-                                "valid providers are {}",
+                                "valid dependency providers are {}",
                                 Provider::elements()
                                     .map(QuoteExt::quote)
                                     .list(Conjunction::And)

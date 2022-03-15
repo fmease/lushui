@@ -8,7 +8,7 @@
 use super::{Diagnostic, Severity};
 use crate::{
     span::SourceMap,
-    utility::{pluralize, Conjunction, OrderedListingExt},
+    utility::{pluralize, Conjunction, ListingExt},
 };
 use std::{
     collections::BTreeSet,
@@ -141,21 +141,22 @@ impl BufferedStderrReporter {
                     format!("aborting due to {} previous errors", errors.len()),
                 ))
                 // @Note this not actually implemented yet
-                // @Tasl only do this for any `code` where `code.explain().is_some()`
+                // @Task only do this for any `code` where `code.explain().is_some()`
                 .if_(!codes.is_empty(), |this| {
                     this.note(format!(
                         "the {errors} {codes} {have} a detailed explanation",
                         errors = pluralize!(codes.len(), "error"),
-                        codes = codes.iter().list_in_order(Conjunction::And),
+                        codes = codes.iter().list(Conjunction::And),
                         have = pluralize!(codes.len(), "has", "have"),
                     ))
+                    // @Task don't use the CLI syntax in the lib, only in the bin (sep. of concerns)
                     .help(pluralize!(
                         codes.len(),
                         format!(
                             "run `lushui explain {}` to view it",
                             codes.iter().next().unwrap(),
                         ),
-                        "run `lushui explain <codes...>` to view a selection of them"
+                        "run `lushui explain <CODES...>` to view a selection of them"
                     ))
                 })
                 .format_for_terminal(Some(&self.map()));

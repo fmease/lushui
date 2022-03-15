@@ -34,5 +34,5 @@ error[E020]: `Bool` is defined multiple times in this scope
 
 error: aborting due to 3 previous errors
  note: the errors E013 and E020 have a detailed explanation
- help: run `lushui explain <codes...>` to view a selection of them
+ help: run `lushui explain <CODES...>` to view a selection of them
 

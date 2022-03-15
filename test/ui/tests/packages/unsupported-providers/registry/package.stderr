@@ -1,9 +1,0 @@
-error: dependency provider `registry` is not supported yet
-  --> ${TEST_FOLDER}/packages/unsupported-providers/registry/package.metadata:12:37
-   |
-12 |             something: { provider: "registry" },
-   |                                     ^^^^^^^^ 
-   |
-
-error: aborting due to previous error
-

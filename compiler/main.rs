@@ -107,7 +107,26 @@ fn execute_command(
     match command {
         BuildPackage { mode, options } => {
             let (components, session) = match &options.path {
-                Some(path) => resolve_package(path, map, reporter)?,
+                Some(path) => {
+                    // intentionally not `!path.is_dir()` to exclude broken symlinks
+                    if path.is_file() {
+                        // give a more useful diagnostic than the generic "could not load" one
+
+                        return Err(Diagnostic::error()
+                            .message(format!(
+                                "the path `{}` does not refer to a folder",
+                                path.to_string_lossy()
+                            ))
+                            .help(
+                                "consider running `lushui file <SUBCOMMAND> <PATH> [OPTIONS]` \
+                                 (with `file` preceeding the subcommand)\n\
+                                 instead to operate on single source files",
+                            )
+                            .report(&reporter));
+                    }
+
+                    resolve_package(path, map, reporter)?
+                }
                 None => {
                     let current_folder_path = match std::env::current_dir() {
                         Ok(path) => path,
@@ -138,6 +157,23 @@ fn execute_command(
             build_components(components, &mode, &options.general, global_options, session)
         }
         BuildFile { mode, options } => {
+            // intentionally not `!path.is_file()` to exclude broken symlinks
+            if options.path.is_dir() {
+                // give a more useful diagnostic than the generic "could not load" one
+
+                return Err(Diagnostic::error()
+                    .message(format!(
+                        "the path `{}` does not refer to a file",
+                        options.path.to_string_lossy()
+                    ))
+                    .help(
+                        "consider running `lushui <SUBCOMMAND> <PATH> [OPTIONS]` \
+                         (without `file` preceeding the subcommand)\n\
+                         instead to operate on packages",
+                    )
+                    .report(&reporter));
+            }
+
             let (components, session) = resolve_file(
                 &options.path,
                 options.component_type.unwrap_or(ComponentType::Executable),
@@ -148,7 +184,9 @@ fn execute_command(
 
             build_components(components, &mode, &options.general, global_options, session)
         }
-        Explain => todo!(),
+        Explain => Err(Diagnostic::error()
+            .message("subcommand `explain` is not implemented yet")
+            .report(&reporter)),
         CreatePackage { mode, options } => match mode {
             cli::PackageCreationMode::Initialize => todo!(),
             cli::PackageCreationMode::New { package_name } => {
@@ -292,7 +330,7 @@ fn build_component(
 
     restriction_point! { Parser }
 
-    // @Task get rid of this! move into session!
+    // @Task get rid of this! move into session / component of target package!
     let lowering_options = lowerer::Options {
         internal_features_enabled: options.internals || component.is_core_library(session),
         keep_documentation_comments: matches!(mode, BuildMode::Document { .. }),

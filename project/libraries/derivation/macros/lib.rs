@@ -1,13 +1,13 @@
 #![feature(result_into_ok_or_err, let_else)]
 
-use utilites::{SerializeExt, TokenStream1};
+use utility::{SerializeExt, TokenStream1};
 
 mod discriminant;
 mod elements;
 mod format;
 mod from_str;
 mod str;
-mod utilites;
+mod utility;
 
 // @Beacon @Task create DashStr, DashFromStr which implies #[format(dash_case)]
 

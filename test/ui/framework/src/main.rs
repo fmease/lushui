@@ -22,7 +22,6 @@
     clippy::semicolon_if_nothing_returned, // @Temporary false positives with let/else, still
 )]
 
-use cli::{CompilerBuildMode, Gilding, Inspecting};
 use colored::Colorize;
 use configuration::{Configuration, Language, TestTag};
 use failure::{Failure, FailureKind, File, FileType};
@@ -189,8 +188,18 @@ fn try_main() -> Result<(), ()> {
         filters,
     };
 
-    println!();
+    if summary.statistics.total_amount() != 0 {
+        // no additional separator necessary if no tests were run
+
+        println!();
+        println!("{}", "=".repeat(terminal_width()));
+        println!();
+    }
+
     println!("{summary}");
+
+    println!("{}", "=".repeat(terminal_width()));
+    println!();
 
     if !summary.statistics.passed() {
         return Err(());
@@ -662,9 +671,9 @@ impl Stream {
     fn preprocess_before_comparison(self, stream: String) -> String {
         match self {
             Self::Stdout => stream,
-            // @Task replace this naive replacment method: implement
+            // @Task replace this naive replacement method: implement
             //       * escaping via `$$`
-            //       * simultaneous replacment
+            //       * simultaneous replacement
             Self::Stderr => stream
                 .replace(Self::TEST_FOLDER_PATH_VARIABLE, test_folder_path())
                 .replace(
@@ -677,9 +686,9 @@ impl Stream {
     fn preprocess_before_generating(self, stream: String) -> String {
         match self {
             Self::Stdout => stream,
-            // @Task replace this naive replacment method: implement
+            // @Task replace this naive replacement method: implement
             //       * escaping via `$$`
-            //       * simultaneous replacment
+            //       * simultaneous replacement
             Self::Stderr => stream
                 .replace(test_folder_path(), Self::TEST_FOLDER_PATH_VARIABLE)
                 .replace(
@@ -721,7 +730,7 @@ fn test_folder_path() -> &'static str {
             .to_owned()
     });
 
-    &*TEST_FOLDER_PATH
+    &TEST_FOLDER_PATH
 }
 
 fn distributed_libraries_path() -> &'static str {
@@ -735,5 +744,22 @@ fn distributed_libraries_path() -> &'static str {
             .to_owned()
     });
 
-    &*TEST_FOLDER_PATH
+    &TEST_FOLDER_PATH
+}
+
+enum CompilerBuildMode {
+    Debug,
+    Release,
+}
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+enum Gilding {
+    Yes,
+    No,
+}
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+enum Inspecting {
+    Yes,
+    No,
 }

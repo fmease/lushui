@@ -9,7 +9,8 @@ components: [
         path: "library.lushui",
 
         dependencies: {
-            something: { component: "else", provider: "weird$" },
+            thing0: { provider: "git" },
+            thing1: { provider: "registry" },
         },
-    }
+    },
 ],

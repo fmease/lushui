@@ -16,13 +16,13 @@ impl Word {
 
     #[allow(clippy::result_unit_err)]
     pub fn parse(name: String) -> Result<Self, ()> {
-        let Outcome!(mut tokens, health) = lexer::lex_string(name)?;
+        let Outcome!(tokens, health) = lexer::lex_string(name)?;
 
         if health.is_tainted() {
             return Err(());
         }
 
-        let mut tokens = tokens.drain(..).map(|token| token.value);
+        let mut tokens = tokens.into_iter().map(|token| token.value);
 
         obtain!(
             (tokens.next().ok_or(())?, tokens.next().ok_or(())?),

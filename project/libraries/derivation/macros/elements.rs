@@ -1,4 +1,4 @@
-use crate::utilites::{TokenStream1, TokenStream2};
+use crate::utility::{TokenStream1, TokenStream2};
 use quote::quote;
 use syn::{Error, Fields};
 

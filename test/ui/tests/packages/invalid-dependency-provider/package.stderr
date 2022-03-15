@@ -1,0 +1,10 @@
+error: `weird$` is not a valid dependency provider
+  --> ${TEST_FOLDER}/packages/invalid-dependency-provider/package.metadata:11:53
+   |
+11 |             thing0: { component: "else", provider: "weird$" },
+   |                                                     ^^^^^^ 
+   |
+  note: valid dependency providers are `package`, `filesystem`, `distribution`, `git` and `registry`
+
+error: aborting due to previous error
+

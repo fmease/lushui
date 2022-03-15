@@ -38,47 +38,47 @@ pub fn find_package(path: &Path) -> Option<&Path> {
 
 /// Resolve all components and package dependencies of a package given the path to its folder without building anything.
 pub fn resolve_package(
-    package_path: &Path,
+    path: &Path,
     map: &Arc<RwLock<SourceMap>>,
     reporter: Reporter,
 ) -> Result<(Components, BuildSession)> {
-    let package_path = match package_path.canonicalize() {
+    let path = match path.canonicalize() {
         Ok(path) => path,
         Err(error) => {
             // @Task better message e.g. mention manifest
             return Err(Diagnostic::error()
                 .message("could not load the package")
-                .note(IOError(error, package_path).to_string())
+                .note(IOError(error, path).to_string())
                 .report(&reporter));
         }
     };
 
     let mut queue = BuildQueue::new(map, reporter);
-    queue.resolve_package(&package_path)?;
+    queue.resolve_package(&path)?;
     Ok(queue.finalize())
 }
 
 /// Resolve the components and dependencies of a file given its path without building anything.
 pub fn resolve_file(
-    file_path: &Path,
+    path: &Path,
     component_type: ComponentType,
     no_core: bool,
     map: &Arc<RwLock<SourceMap>>,
     reporter: Reporter,
 ) -> Result<(Components, BuildSession)> {
-    let file_path = match file_path.canonicalize() {
+    let path = match path.canonicalize() {
         Ok(path) => path,
         Err(error) => {
             // @Task better message
             return Err(Diagnostic::error()
                 .message("could not load the file")
-                .note(IOError(error, file_path).to_string())
+                .note(IOError(error, path).to_string())
                 .report(&reporter));
         }
     };
 
     let mut queue = BuildQueue::new(map, reporter);
-    queue.resolve_file(file_path, component_type, no_core)?;
+    queue.resolve_file(path, component_type, no_core)?;
     Ok(queue.finalize())
 }
 
@@ -223,6 +223,16 @@ impl BuildQueue {
                     continue;
                 };
 
+                let type_ = key.type_.value;
+
+                if !matches!(type_, ComponentType::Library | ComponentType::Executable) {
+                    Diagnostic::error()
+                        .message(format!("the component type `{type_}` is not supported yet"))
+                        .primary_span(key.type_)
+                        .report(&self.reporter);
+                    health.taint();
+                }
+
                 let component = self.components.insert_with(|index| {
                     Component::new(
                         ComponentMetadata::new(
@@ -232,7 +242,7 @@ impl BuildQueue {
                             component
                                 .path
                                 .map(|relative_path| package_path.join(relative_path)),
-                            key.type_.value,
+                            type_,
                         ),
                         dependencies,
                     )
@@ -288,7 +298,7 @@ impl BuildQueue {
             let core_package = self.packages.insert(core_package);
 
             let core_package_name = core_package_name();
-            let (library_key, Spanned!(library, _)) =
+            let (_, Spanned!(library, _)) =
                 self.resolve_primary_library(core_manifest.components.as_ref())?;
 
             self[core_package]
@@ -311,7 +321,7 @@ impl BuildQueue {
                             .path
                             .as_ref()
                             .map(|relative_path| core_package_path().join(relative_path)),
-                        library_key.type_.value,
+                        ComponentType::Library,
                     ),
                     transitive_dependencies,
                 )
@@ -532,7 +542,7 @@ impl BuildQueue {
                             .path
                             .as_ref()
                             .map(|relative_path| dependency_path.join(relative_path)),
-                        library_key.type_.value,
+                        ComponentType::Library,
                     ),
                     transitive_dependencies,
                 )
@@ -593,7 +603,7 @@ impl BuildQueue {
             Provider::Package => todo!(),
             Provider::Git | Provider::Registry => Err(Diagnostic::error()
                 .message(format!(
-                    "dependency provider `{provider}` is not supported yet"
+                    "the dependency provider `{provider}` is not supported yet",
                 ))
                 // @Task better label! say how it was inferred!!
                 .if_(declaration.provider.is_none(), |this| {
@@ -612,7 +622,11 @@ impl BuildQueue {
         components: Option<&'m Spanned<manifest::Components>>,
     ) -> Result<(&'m ComponentKey, &'m Spanned<ComponentManifest>)> {
         components
-            .and_then(|components| components.value.iter().find(|(key, _)| key.name.is_none()))
+            .and_then(|components| {
+                components.value.iter().find(|(key, _)| {
+                    key.name.is_none() && key.type_.value == ComponentType::Library
+                })
+            })
             .ok_or_else(|| {
                 // @Temporary diagnostic
                 Diagnostic::error()

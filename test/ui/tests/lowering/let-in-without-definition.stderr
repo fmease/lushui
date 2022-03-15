@@ -17,5 +17,5 @@ error[E012]: the let-binding `x` has no definition
 
 error: aborting due to 2 previous errors
  note: the errors E012 and E015 have a detailed explanation
- help: run `lushui explain <codes...>` to view a selection of them
+ help: run `lushui explain <CODES...>` to view a selection of them
 

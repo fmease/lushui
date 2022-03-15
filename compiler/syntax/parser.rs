@@ -43,7 +43,7 @@ use crate::{
     error::Result,
     session::BuildSession,
     span::{SourceFileIndex, Span, Spanned, Spanning},
-    utility::{Conjunction, OrderedListingExt, SmallVec},
+    utility::{Conjunction, ListingExt, SmallVec},
 };
 use std::{any::TypeId, default::default};
 
@@ -2016,7 +2016,7 @@ impl fmt::Display for Expected {
             Parameter => write!(f, "parameter"),
             AttributeArgument => write!(f, "attribute argument"),
             Delimiter(delimiter) => write!(f, "{}", delimiter),
-            OneOf(expected) => write!(f, "{}", expected.iter().list_in_order(Conjunction::Or)),
+            OneOf(expected) => write!(f, "{}", expected.iter().list(Conjunction::Or)),
         }
     }
 }

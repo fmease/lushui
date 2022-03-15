@@ -1,0 +1,15 @@
+# TEST fail check
+
+name: "what",
+version: "99.99.991",
+
+components: [
+    {
+        type: "examples",
+        path: "examples/first.lushui",
+    },
+    {
+        type: "tes t#",
+        path: "tests/first.lushui",
+    },
+]
