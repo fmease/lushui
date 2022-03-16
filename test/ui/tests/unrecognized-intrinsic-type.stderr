@@ -11,6 +11,4 @@ error[E061]: `I-Definitely-Do-Not-Exist` is not an intrinsic type
   |
 
 error: aborting due to previous error
- note: the error E061 has a detailed explanation
- help: run `lushui explain E061` to view it
 

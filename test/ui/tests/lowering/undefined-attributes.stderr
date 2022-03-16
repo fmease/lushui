@@ -20,6 +20,4 @@ error[E011]: the attribute `elaborated` is not defined
   |
 
 error: aborting due to 3 previous errors
- note: the error E011 has a detailed explanation
- help: run `lushui explain E011` to view it
 

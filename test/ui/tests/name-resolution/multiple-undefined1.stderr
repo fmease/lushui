@@ -49,6 +49,4 @@ error[E029]: binding `topmost.alpha.beta` is private
    |
 
 error: aborting due to 7 previous errors
- note: the errors E021 and E029 have a detailed explanation
- help: run `lushui explain <CODES...>` to view a selection of them
 

@@ -39,6 +39,4 @@ error[E016]: could not load the module `chi2`
  note: `${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders/stopper/chi0/chi1/chi2.lushui`: No such file or directory (os error 2)
 
 error: aborting due to 5 previous errors
- note: the error E016 has a detailed explanation
- help: run `lushui explain E016` to view it
 

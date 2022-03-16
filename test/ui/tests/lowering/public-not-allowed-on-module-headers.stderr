@@ -12,6 +12,4 @@ error[E013]: attribute `public` is ascribed to a module header declaration
  note: attribute `public` can only be ascribed to declarations except constructors and module headers
 
 error: aborting due to previous error
- note: the error E013 has a detailed explanation
- help: run `lushui explain E013` to view it
 

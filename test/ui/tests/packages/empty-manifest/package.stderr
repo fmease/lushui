@@ -17,6 +17,4 @@ error[E802]: the record does not contain the entry `version`
   |
 
 error: aborting due to 2 previous errors
- note: the error E802 has a detailed explanation
- help: run `lushui explain E802` to view it
 

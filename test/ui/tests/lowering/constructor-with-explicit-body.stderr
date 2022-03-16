@@ -24,6 +24,4 @@ error[E020]: `attachment` is defined multiple times in this scope
  note: the body of the constructor is implied but it also has a body introduced by `=`
 
 error: aborting due to 3 previous errors
- note: the errors E015 and E020 have a detailed explanation
- help: run `lushui explain <CODES...>` to view a selection of them
 

@@ -44,6 +44,4 @@ error[E009]: re-export of the more private binding `topmost.alpha.beta.gamma.Moc
               but it actually is `topmost.alpha`
 
 error: aborting due to 3 previous errors
- note: the error E009 has a detailed explanation
- help: run `lushui explain E009` to view it
 

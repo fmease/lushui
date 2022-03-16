@@ -27,6 +27,4 @@ error[E017]: binding `shared-spades` is not a namespace
             `shared-spaces` (shared-spadces)
 
 error: aborting due to 2 previous errors
- note: the error E017 has a detailed explanation
- help: run `lushui explain E017` to view it
 

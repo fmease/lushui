@@ -65,6 +65,4 @@ error[E015]: the declaration `thing` does not have a type annotation
   help: provide a type annotation for the declaration with `: ?type`
 
 error: aborting due to 5 previous errors
- note: the errors E015 and E042 have a detailed explanation
- help: run `lushui explain <CODES...>` to view a selection of them
 

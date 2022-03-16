@@ -28,6 +28,4 @@ error[E024]: the declarations `topmost.fake-my-dude.beta2`, `topmost.fake-my-dud
    |
 
 error: aborting due to 2 previous errors
- note: the error E024 has a detailed explanation
- help: run `lushui explain E024` to view it
 

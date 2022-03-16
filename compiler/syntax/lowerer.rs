@@ -1065,8 +1065,7 @@ pub struct Options {
 struct DeclarationContext {
     /// The path of inline module declarations leading to a declaration.
     ///
-    /// The path starts either at the root module declaration (excluding it) or
-    /// at the closest out-of-line module (including it).
+    /// The path starts either at the root module declaration or at the closest out-of-line module.
     inline_modules: Vec<String>,
 }
 

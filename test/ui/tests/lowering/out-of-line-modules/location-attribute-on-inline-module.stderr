@@ -12,6 +12,4 @@ error[E013]: attribute `location` is ascribed to an inline module declaration
  note: attribute `location` can only be ascribed to out-of-line module declarations
 
 error: aborting due to previous error
- note: the error E013 has a detailed explanation
- help: run `lushui explain E013` to view it
 

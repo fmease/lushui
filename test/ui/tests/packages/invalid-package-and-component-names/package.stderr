@@ -48,6 +48,4 @@ error[E036]: the component name `data` is not a valid word
    |
 
 error: aborting due to 7 previous errors
- note: the error E036 has a detailed explanation
- help: run `lushui explain E036` to view it
 

@@ -34,6 +34,4 @@ error[E029]: binding `topmost.outer.south` is private
    |
 
 error: aborting due to 5 previous errors
- note: the error E029 has a detailed explanation
- help: run `lushui explain E029` to view it
 

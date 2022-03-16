@@ -1,4 +1,4 @@
-error[E001]: unbalanced round bracket
+error[E044]: unbalanced round bracket
  --> ${TEST_FOLDER}/parsing/unexpected-line-break.lushui:3:9
   |
 3 | data X: (
@@ -13,6 +13,4 @@ error[E010]: found line break but expected expression
   |
 
 error: aborting due to 2 previous errors
- note: the errors E001 and E010 have a detailed explanation
- help: run `lushui explain <CODES...>` to view a selection of them
 

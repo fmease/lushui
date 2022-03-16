@@ -24,8 +24,9 @@ use std::{
 const BUILD_FOLDER_NAME: &str = "build";
 
 pub struct BuildSession {
-    /// The components which have already been built.
+    /// The components which have already been built in this session.
     components: HashMap<ComponentIndex, Component>,
+    /// The packages whose components have not necessarily been built yet in this session.
     packages: IndexMap<PackageIndex, Package>,
     goal_component: ComponentIndex,
     goal_package: PackageIndex,
@@ -38,7 +39,7 @@ pub struct BuildSession {
 }
 
 impl BuildSession {
-    /// Create a new build session with intrinsic functions registered.
+    /// Create a new build session with all intrinsic functions defined.
     pub(crate) fn new(
         packages: IndexMap<PackageIndex, Package>,
         goal_component: ComponentIndex,
@@ -86,7 +87,7 @@ impl BuildSession {
         self.goal_component
     }
 
-    /// The path to the folder containing the build artifacts and the documentation.
+    /// The path to the folder containing the build artifacts.
     pub(crate) fn build_folder(&self) -> PathBuf {
         // @Beacon @Beacon @Bug does not work with single-file packages!
         self[self.goal_package].path.join(BUILD_FOLDER_NAME)
@@ -129,7 +130,7 @@ impl BuildSession {
             .into_expression())
     }
 
-    pub(crate) fn register_known_binding(
+    pub(crate) fn define_known_binding(
         &mut self,
         binder: &Identifier,
         namespace: Option<&str>,
@@ -176,11 +177,7 @@ impl BuildSession {
     }
 
     // @Beacon @Task support paths!
-    pub(crate) fn register_intrinsic_type(
-        &mut self,
-        binder: Identifier,
-        attribute: Span,
-    ) -> Result {
+    pub(crate) fn define_intrinsic_type(&mut self, binder: Identifier, attribute: Span) -> Result {
         let Ok(intrinsic) = binder.as_str().parse::<IntrinsicType>() else {
             return Err(Diagnostic::unrecognized_intrinsic_binding(binder.as_str(), IntrinsicKind::Type)
                 .primary_span(&binder)
@@ -204,7 +201,7 @@ impl BuildSession {
         Ok(())
     }
 
-    pub(crate) fn register_intrinsic_function(
+    pub(crate) fn define_intrinsic_function(
         &mut self,
         binder: Identifier,
         type_: Expression,
@@ -496,6 +493,7 @@ impl fmt::Display for IntrinsicKind {
     }
 }
 
+// @Task replace this HashMap business with a match and interpret at call-site!
 fn intrinsic_functions() -> HashMap<IntrinsicFunction, IntrinsicFunctionValue> {
     use IntrinsicFunction::*;
 

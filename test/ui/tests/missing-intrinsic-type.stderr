@@ -13,6 +13,4 @@ error[E060]: the intrinsic type `Nat` is not defined
   |
 
 error: aborting due to 2 previous errors
- note: the error E060 has a detailed explanation
- help: run `lushui explain E060` to view it
 

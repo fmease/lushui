@@ -27,6 +27,4 @@ error[E037]: exposure can only be restricted to ancestor modules
    |
 
 error: aborting due to 4 previous errors
- note: the error E037 has a detailed explanation
- help: run `lushui explain E037` to view it
 

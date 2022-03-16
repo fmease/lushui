@@ -132,7 +132,11 @@ impl BufferedStderrReporter {
         if !errors.is_empty() {
             self.reported_any_errors.store(true, Ordering::SeqCst);
 
-            let codes: BTreeSet<_> = errors.iter().filter_map(|error| error.0.code).collect();
+            let explained_codes: BTreeSet<_> = errors
+                .iter()
+                .filter_map(|error| error.0.code)
+                .filter(|code| code.explanation().is_some())
+                .collect();
 
             let summary = Diagnostic::error()
                 .message(pluralize!(
@@ -140,21 +144,19 @@ impl BufferedStderrReporter {
                     "aborting due to previous error",
                     format!("aborting due to {} previous errors", errors.len()),
                 ))
-                // @Note this not actually implemented yet
-                // @Task only do this for any `code` where `code.explain().is_some()`
-                .if_(!codes.is_empty(), |this| {
+                .if_(!explained_codes.is_empty(), |this| {
                     this.note(format!(
                         "the {errors} {codes} {have} a detailed explanation",
-                        errors = pluralize!(codes.len(), "error"),
-                        codes = codes.iter().list(Conjunction::And),
-                        have = pluralize!(codes.len(), "has", "have"),
+                        errors = pluralize!(explained_codes.len(), "error"),
+                        codes = explained_codes.iter().list(Conjunction::And),
+                        have = pluralize!(explained_codes.len(), "has", "have"),
                     ))
                     // @Task don't use the CLI syntax in the lib, only in the bin (sep. of concerns)
                     .help(pluralize!(
-                        codes.len(),
+                        explained_codes.len(),
                         format!(
                             "run `lushui explain {}` to view it",
-                            codes.iter().next().unwrap(),
+                            explained_codes.first().unwrap()
                         ),
                         "run `lushui explain <CODES...>` to view a selection of them"
                     ))

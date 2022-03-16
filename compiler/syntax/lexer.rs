@@ -142,7 +142,7 @@ impl<'a> Lexer<'a> {
             for bracket in &self.brackets.0 {
                 self.health.taint();
                 Diagnostic::error()
-                    .code(Code::E001)
+                    .code(Code::E044)
                     .message(format!("unbalanced {} bracket", bracket.value))
                     .labeled_primary_span(
                         bracket,
@@ -272,7 +272,7 @@ impl<'a> Lexer<'a> {
             if self.local_span == previous {
                 self.local_span = LocalSpan::with_length(dash, 1);
                 return Err(Diagnostic::error()
-                    .code(Code::E002)
+                    .code(Code::E045)
                     .message("trailing dash on identifier")
                     .primary_span(self.span())
                     .report(self.reporter));
@@ -341,7 +341,7 @@ impl<'a> Lexer<'a> {
                 // @Task push that to the error buffer instead (making this non-fatal)
                 // and treat Spaces(1) as Spaces(4), Spaces(6) as Spaces(8) etc.
                 return Err(Diagnostic::error()
-                    .code(Code::E003)
+                    .code(Code::E046)
                     .message(format!(
                         "invalid indentation consisting of {} spaces",
                         difference.0
@@ -694,7 +694,7 @@ impl Brackets {
                     // @Beacon @Bug we are not smart enough here yet, the error messages are too confusing
                     // or even incorrect!
                     Err(Diagnostic::error()
-                        .code(Code::E001)
+                        .code(Code::E044)
                         .message(format!("unbalanced {closing_bracket} bracket"))
                         .labeled_primary_span(
                             closing_bracket,
@@ -705,7 +705,7 @@ impl Brackets {
             // @Beacon @Bug we are not smart enough here yet, the error messages are too confusing
             // or even incorrect!
             None => Err(Diagnostic::error()
-                .code(Code::E001)
+                .code(Code::E044)
                 .message(format!("unbalanced {closing_bracket} bracket"))
                 .labeled_primary_span(
                     closing_bracket,

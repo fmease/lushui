@@ -11,6 +11,4 @@ error[E040]: the intrinsic type `Text` is defined multiple times
   |
 
 error: aborting due to previous error
- note: the error E040 has a detailed explanation
- help: run `lushui explain E040` to view it
 

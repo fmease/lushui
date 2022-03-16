@@ -18,6 +18,4 @@ error: found `,` but expected record key
   |
 
 error: aborting due to 2 previous errors
- note: the error E803 has a detailed explanation
- help: run `lushui explain E803` to view it
 

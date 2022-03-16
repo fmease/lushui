@@ -24,6 +24,4 @@ error[E012]: the declaration `Blank` has no definition
  help: provide a definition with `of`
 
 error: aborting due to 3 previous errors
- note: the errors E012 and E015 have a detailed explanation
- help: run `lushui explain <CODES...>` to view a selection of them
 

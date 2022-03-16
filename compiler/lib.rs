@@ -48,7 +48,8 @@
     iter_intersperse,
     type_changing_struct_update,
     slice_take,
-    const_trait_impl
+    const_trait_impl,
+    map_first_last
 )]
 #![deny(rust_2018_idioms, unused_must_use)]
 #![allow(incomplete_features)] // adt_const_params

@@ -369,7 +369,7 @@ impl<'a> Typer<'a> {
                 let index = binder.local_declaration_index(self.component).unwrap();
                 debug_assert!(self.component[index].is_untyped());
 
-                self.component[index].kind = self.session.register_intrinsic_function(
+                self.component[index].kind = self.session.define_intrinsic_function(
                     binder,
                     type_,
                     registration

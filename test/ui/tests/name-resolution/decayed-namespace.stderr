@@ -12,6 +12,4 @@ error[E017]: binding `Decayed-Alpha` is not a namespace
   help: use `::` to reference a field of a record
 
 error: aborting due to previous error
- note: the error E017 has a detailed explanation
- help: run `lushui explain E017` to view it
 

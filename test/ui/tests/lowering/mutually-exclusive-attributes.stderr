@@ -11,6 +11,4 @@ error[E014]: attributes `intrinsic` and `known` are mutually exclusive
   |
 
 error: aborting due to previous error
- note: the error E014 has a detailed explanation
- help: run `lushui explain E014` to view it
 

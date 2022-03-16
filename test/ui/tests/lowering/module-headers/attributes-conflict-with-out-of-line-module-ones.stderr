@@ -11,6 +11,4 @@ error[E006]: multiple `doc-attributes` attributes
   |
 
 error: aborting due to previous error
- note: the error E006 has a detailed explanation
- help: run `lushui explain E006` to view it
 

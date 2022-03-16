@@ -1,4 +1,4 @@
-error[E001]: unbalanced round bracket
+error[E044]: unbalanced round bracket
  --> ${TEST_FOLDER}/parsing/unbalanced-brackets1.lushui:3:1
   |
 3 | )) it ]
@@ -12,14 +12,14 @@ error[E010]: found `)` but expected declaration
   | ^ unexpected token
   |
 
-error[E001]: unbalanced round bracket
+error[E044]: unbalanced round bracket
  --> ${TEST_FOLDER}/parsing/unbalanced-brackets1.lushui:3:2
   |
 3 | )) it ]
   |  ^ has no matching opening round bracket
   |
 
-error[E001]: unbalanced square bracket
+error[E044]: unbalanced square bracket
  --> ${TEST_FOLDER}/parsing/unbalanced-brackets1.lushui:3:7
   |
 3 | )) it ]
@@ -27,6 +27,4 @@ error[E001]: unbalanced square bracket
   |
 
 error: aborting due to 4 previous errors
- note: the errors E001 and E010 have a detailed explanation
- help: run `lushui explain <CODES...>` to view a selection of them
 

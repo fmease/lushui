@@ -13,8 +13,8 @@ use crate::{
 use index_map::IndexMap;
 pub use manifest::FILE_NAME as MANIFEST_FILE_NAME;
 use manifest::{
-    ComponentKey, ComponentManifest, DependencyDeclaration, PackageManifest, PackageProfile,
-    Provider, Version,
+    ComponentKey, ComponentManifest, DependencyDeclaration, DependencyProvider, PackageManifest,
+    PackageProfile, Version,
 };
 use std::{
     default::default,
@@ -82,11 +82,7 @@ pub fn resolve_file(
     Ok(queue.finalize())
 }
 
-/// A collection of components and some metadata.
-///
-/// More concretely, it consists of zero or more executable components
-/// and of zero or one library component but of always at least one component.
-/// The most important metadatum is the list of dependencies (external components).
+/// A collection of [components](Component) and some metadata.
 #[derive(Debug)]
 pub struct Package {
     /// The name of the package.
@@ -569,17 +565,17 @@ impl BuildQueue {
             // infer the provider from the entries
             None => {
                 if declaration.path.is_some() {
-                    Provider::Filesystem
+                    DependencyProvider::Filesystem
                 } else if declaration.version.is_some() {
-                    Provider::Registry
+                    DependencyProvider::Registry
                 } else {
-                    Provider::Package
+                    DependencyProvider::Package
                 }
             }
         };
 
         match provider {
-            Provider::Filesystem => match &declaration.path {
+            DependencyProvider::Filesystem => match &declaration.path {
                 Some(path) => Ok(package_path.join(&path.value)),
                 // @Task improve message
                 None => Err(Diagnostic::error()
@@ -591,7 +587,7 @@ impl BuildQueue {
                     })
                     .report(&self.reporter)),
             },
-            Provider::Distribution => {
+            DependencyProvider::Distribution => {
                 let component = declaration
                     .component
                     .as_ref()
@@ -600,8 +596,8 @@ impl BuildQueue {
             }
             // @Beacon @Note don't return a path at that would signify a *package* path, not a component one,
             //               more logic needs to be added!
-            Provider::Package => todo!(),
-            Provider::Git | Provider::Registry => Err(Diagnostic::error()
+            DependencyProvider::Package => todo!(),
+            DependencyProvider::Git | DependencyProvider::Registry => Err(Diagnostic::error()
                 .message(format!(
                     "the dependency provider `{provider}` is not supported yet",
                 ))

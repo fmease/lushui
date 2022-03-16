@@ -8,6 +8,4 @@ error[E050]: the component `missing-program-entry` does not contain a `main` fun
   |
 
 error: aborting due to previous error
- note: the error E050 has a detailed explanation
- help: run `lushui explain E050` to view it
 

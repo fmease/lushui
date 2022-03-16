@@ -129,7 +129,7 @@ fn terminal_format_primary_secondary_highlights() {
     map.add(None, "2ndry\nPRIM\n2ndry\n".into());
 
     let diagnostic = Diagnostic::error()
-        .code(Code::E000)
+        .code(Code::E001)
         .message("important")
         .primary_span(span(7, 11))
         .secondary_span(span(1, 4))
@@ -139,7 +139,7 @@ fn terminal_format_primary_secondary_highlights() {
         &diagnostic,
         Some(&map),
         "\
-error[E000]: important
+error[E001]: important
  --> :1:1
   |
 1 | 2ndry
@@ -389,7 +389,7 @@ error: multi-line labels
 #[test]
 fn terminal_format_subdiagnostics_no_highlights() {
     let diagnostic = Diagnostic::error()
-        .code(Code::E000)
+        .code(Code::E004)
         .message("summary")
         .note("clarification")
         .note("other clarification")
@@ -400,7 +400,7 @@ fn terminal_format_subdiagnostics_no_highlights() {
         &diagnostic,
         None,
         "\
-error[E000]: summary
+error[E004]: summary
  note: clarification
  note: other clarification
  help: hint

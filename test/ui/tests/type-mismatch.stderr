@@ -50,6 +50,4 @@ error[E032]: type mismatch
          but got type `extern.core.nat.Nat`
 
 error: aborting due to 4 previous errors
- note: the error E032 has a detailed explanation
- help: run `lushui explain E032` to view it
 

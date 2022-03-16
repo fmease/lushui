@@ -15,6 +15,4 @@ error[E041]: the module header has to be the first declaration of the module
  note: however, the current module already has a module header
 
 error: aborting due to 2 previous errors
- note: the error E041 has a detailed explanation
- help: run `lushui explain E041` to view it
 

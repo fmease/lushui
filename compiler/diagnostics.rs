@@ -593,17 +593,15 @@ impl Role {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[forbid(missing_docs)]
 pub enum Code {
-    // @Task reserve some more codes
-    /// _Permanently unassigned_.
-    #[cfg(test)]
+    /// _Permanently unassigned_ (used for tests).
     E000,
-    /// Unbalanced (round) brackets.
+    /// _Permanently unassigned_ (used for tests).
     E001,
-    /// Trailing dash on identifier.
+    /// _Permanently unassigned_ (used for tests).
     E002,
-    /// Invalid indentation.
+    /// _Permanently unassigned_ (used for tests).
     E003,
-    /// Unterminated text literal.
+    /// _Permanently unassigned_ (used for tests).
     E004,
     /// Unreadable number literal.
     E005,
@@ -683,6 +681,14 @@ pub enum Code {
     E042,
     /// Attempt to construct a type with a literal that does not supported it.
     E043,
+    /// Unbalanced bracket.
+    E044,
+    /// Trailing dash on identifier.
+    E045,
+    /// Invalid indentation.
+    E046,
+    /// Unterminated text literal.
+    E047,
     /// Missing program entry.
     E050,
     /// Missing intrinsic binding.
@@ -704,11 +710,12 @@ pub enum Code {
 }
 
 impl Code {
-    /// Provide detailled explanations and code examples per code.
-    // @Task
-    #[allow(dead_code, clippy::unused_self)]
-    pub(crate) const fn explanation(self) -> &'static str {
-        todo!()
+    pub(crate) const fn explanation(self) -> Option<&'static str> {
+        #[allow(clippy::match_single_binding)]
+        match self {
+            // @Task
+            _ => None,
+        }
     }
 }
 

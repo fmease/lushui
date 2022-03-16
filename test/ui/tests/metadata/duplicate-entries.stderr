@@ -23,6 +23,4 @@ error[E803]: the entry `it` is defined multiple times
   |
 
 error: aborting due to 2 previous errors
- note: the error E803 has a detailed explanation
- help: run `lushui explain E803` to view it
 

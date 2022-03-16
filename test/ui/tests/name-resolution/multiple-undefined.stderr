@@ -85,6 +85,4 @@ error[E021]: binding `z` is not defined in this scope
   help: a binding with a similar name exists in scope: `y`
 
 error: aborting due to 12 previous errors
- note: the error E021 has a detailed explanation
- help: run `lushui explain E021` to view it
 

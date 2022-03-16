@@ -15,6 +15,4 @@ error[E026]: path `topmost` not allowed in this position
  help: consider moving this path to a separate use-declaration
 
 error: aborting due to 2 previous errors
- note: the error E026 has a detailed explanation
- help: run `lushui explain E026` to view it
 

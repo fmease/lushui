@@ -12,19 +12,18 @@ use unicode_width::UnicodeWidthStr;
 #[cfg(test)]
 mod test;
 
-/// A mapping from an index (offset) to [`SourceFile`]s.
+/// A mapping from [index](SourceFileIndex) to [source file](SourceFile).
 ///
-/// Most prominently, the offset is used to define [`Span`]s.
+/// Most prominently, the index – an offset and obtained by adding a source file to this map –
+/// is the key component to define [`Span`] (via [`ByteIndex`]).
 ///
-/// The [`SourceFile`]s are laid out next to each other and padded on their left (at their start)
-/// by one byte (in the sense of `Span::length(PADDING) == 1`) to reserve space for _end of input_
-/// pseudo tokens (e.g. [`EndOfInput`](crate::syntax::token::TokenKind::EndOfInput))
-/// and the _end of input_ virtual location.
+/// The source files are laid out next to each other and padded on their left (at their start)
+/// by one byte (in the sense of `Span::length(_) == 1`) to reserve space for _end of input_
+/// pseudo tokens (e.g. [`EndOfInput`][eoi]) and the _end of input_ virtual location.  
+/// Additionally, this frees up the byte index `0` and allows the [default `Span`](Span::default)
+/// – starting at this unmapped index and empty – to be interpreted as an _unknown location_.
 ///
-/// Additionally, this frees up the [`ByteIndex`] `0` and allows the [default `Span`](Span::default)
-/// starting at that index and being empty to be interpreted as an _unknown location_.
-///
-/// Visualization:
+/// # Visualization
 ///
 /// ```text
 /// | |  f0  | |  f1  | ...
@@ -36,6 +35,8 @@ mod test;
 ///  | source file f0            f0.span()
 ///  padding, unknown location   Span::default()
 /// ```
+///
+/// [eoi]: crate::syntax::token::TokenKind::EndOfInput
 #[derive(Default)]
 pub struct SourceMap {
     files: IndexMap<SourceFileIndex, SourceFile>,
@@ -289,7 +290,9 @@ pub(crate) struct Line<'a> {
     pub(crate) highlight_start_column: usize,
 }
 
-/// A file, its content and its [`Span`].
+/// A source file.
+///
+/// Obtained by and contained within a [source map](SourceMap).
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct SourceFile {
     path: Option<PathBuf>,

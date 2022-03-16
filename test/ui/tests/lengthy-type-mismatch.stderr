@@ -15,6 +15,4 @@ error[E032]: type mismatch
          but got type `extern.core.tuple.Tuple (extern.core.list.List.cons Type extern.core.int.Int (extern.core.list.List.empty Type))`
 
 error: aborting due to previous error
- note: the error E032 has a detailed explanation
- help: run `lushui explain E032` to view it
 

@@ -7,6 +7,4 @@ error[E016]: could not load the module `meaningless`
  note: `${TEST_FOLDER}/lowering/out-of-line-modules/expansion-of-the-void-until-eternity.lushui`: No such file or directory (os error 2)
 
 error: aborting due to previous error
- note: the error E016 has a detailed explanation
- help: run `lushui explain E016` to view it
 

@@ -197,13 +197,13 @@ impl<'a> ResolverMut<'a> {
                 let known = declaration.attributes.span(AttributeName::Known);
                 if let Some(known) = known {
                     self.session
-                        .register_known_binding(&binder, None, known)
+                        .define_known_binding(&binder, None, known)
                         .stain(&mut self.health);
                 }
 
                 if let Some(intrinsic) = declaration.attributes.span(AttributeName::Intrinsic) {
                     self.session
-                        .register_intrinsic_type(binder.clone(), intrinsic)
+                        .define_intrinsic_type(binder.clone(), intrinsic)
                         .stain(&mut self.health);
                 }
 
@@ -259,7 +259,7 @@ impl<'a> ResolverMut<'a> {
 
                 if let Some(known) = known {
                     self.session
-                        .register_known_binding(
+                        .define_known_binding(
                             &binder,
                             Some(self.component[namespace].source.as_str()),
                             known,
@@ -1883,9 +1883,13 @@ impl Component {
     /// If the binding is defined in this component, it will always start with the path hanger `topmost`,
     /// otherwise it will start with `extern` followed by the respective name of the external component.
     ///
-    /// # Examples
+    /// # Example Output
     ///
-    /// `topmost`, `topmost.alpha`, `topmost.gamma.<?//`, `extern.core`, `extern.core.nat.Nat`.
+    /// * `topmost`
+    /// * `topmost.alpha`
+    /// * `topmost.gamma.<?//`
+    /// * `extern.core`
+    /// * `extern.core.nat.Nat`
     ///
     /// [1]: crate::syntax::ast::Path
     pub(crate) fn path_to_string(&self, index: DeclarationIndex, session: &BuildSession) -> String {
@@ -1915,9 +1919,10 @@ impl Component {
     /// Rephrased, it returns a path that could be used in any dependent components (reverse dependencies)
     /// to refer to the binding ignoring exposure as long as one would prepend the path hanger `extern`.
     ///
-    /// # Examples
+    /// # Example Output
     ///
-    /// `core.nat.Nat`, `json.parse`.
+    /// * `core.nat.Nat` (`core` referring to a component)
+    /// * `json.parse` (`json` referring to a component)
     ///
     /// [1]: crate::syntax::ast::Path
     pub(crate) fn extern_path_to_string(&self, index: LocalDeclarationIndex) -> String {
@@ -2168,10 +2173,15 @@ impl<'a> FunctionScope<'a> {
     /// If it's not local, this method will return
     /// [the path relative to the root of the current component][2].
     ///
-    /// # Examples
+    /// # Example Output
     ///
-    /// `x`, `alpha`, `topmost`, `topmost.alpha`, `topmost.gamma.<?//`, `extern.core`,
-    /// `extern.core.nat.Nat`.
+    /// * `x`
+    /// * `alpha`
+    /// * `topmost`
+    /// * `topmost.alpha`
+    /// * `topmost.gamma.<?//`
+    /// * `extern.core`
+    /// * `extern.core.nat.Nat`
     ///
     /// [1]: crate::syntax::ast::Path
     /// [2]: Component::path_to_string

@@ -1,4 +1,4 @@
-error[E004]: unterminated text literal
+error[E047]: unterminated text literal
  --> ${TEST_FOLDER}/parsing/unterminated-text-literal.lushui:3:15
   |
 3 |   value: Text = "open end
@@ -8,6 +8,4 @@ error[E004]: unterminated text literal
   |
 
 error: aborting due to previous error
- note: the error E004 has a detailed explanation
- help: run `lushui explain E004` to view it
 

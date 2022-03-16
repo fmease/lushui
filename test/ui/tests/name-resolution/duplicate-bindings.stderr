@@ -59,6 +59,4 @@ error[E020]: `zero` is defined multiple times in this scope
    |
 
 error: aborting due to 5 previous errors
- note: the error E020 has a detailed explanation
- help: run `lushui explain E020` to view it
 

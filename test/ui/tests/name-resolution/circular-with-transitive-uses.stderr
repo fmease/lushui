@@ -37,6 +37,4 @@ error[E024]: the declaration `topmost.cycle` is circular
    |
 
 error: aborting due to 4 previous errors
- note: the error E024 has a detailed explanation
- help: run `lushui explain E024` to view it
 

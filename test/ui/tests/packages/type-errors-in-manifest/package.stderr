@@ -48,6 +48,4 @@ error[E800]: expected type `text` but got type `boolean`
   |
 
 error: aborting due to 7 previous errors
- note: the errors E800 and E802 have a detailed explanation
- help: run `lushui explain <CODES...>` to view a selection of them
 

@@ -48,7 +48,7 @@ impl Token {
         match self.value {
             TextLiteral(Ok(content)) => Some(Ok(content)),
             TextLiteral(Err(_)) => Some(Err(Diagnostic::error()
-                .code(Code::E004)
+                .code(Code::E047)
                 .message("unterminated text literal")
                 .primary_span(self.span))),
             _ => None,

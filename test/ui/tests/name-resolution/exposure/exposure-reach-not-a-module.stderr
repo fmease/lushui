@@ -13,6 +13,4 @@ error[E022]: binding `imposter` is not a module
    |
 
 error: aborting due to 2 previous errors
- note: the error E022 has a detailed explanation
- help: run `lushui explain E022` to view it
 

@@ -246,7 +246,7 @@ fn parse_dependencies(
             .take_optional::<String>("provider")
             .and_then_map(|name| {
                 let Spanned!(name, span) = trim_quotes(name);
-                Provider::from_str(&name)
+                DependencyProvider::from_str(&name)
                     .map(|name| Spanned::new(span, name))
                     .map_err(|_| {
                         // @Task code
@@ -258,7 +258,7 @@ fn parse_dependencies(
                             .primary_span(span)
                             .note(format!(
                                 "valid dependency providers are {}",
-                                Provider::elements()
+                                DependencyProvider::elements()
                                     .map(QuoteExt::quote)
                                     .list(Conjunction::And)
                             ))
@@ -328,7 +328,7 @@ pub(super) struct DependencyDeclaration {
     pub(super) component: Option<Spanned<Word>>,
     #[allow(dead_code)] // @Temporary
     pub(super) package: Option<Spanned<Word>>,
-    pub(super) provider: Option<Spanned<Provider>>,
+    pub(super) provider: Option<Spanned<DependencyProvider>>,
     #[allow(dead_code)]
     pub(super) version: Option<Spanned<VersionRequirement>>,
     pub(super) path: Option<Spanned<PathBuf>>,
@@ -336,7 +336,7 @@ pub(super) struct DependencyDeclaration {
 
 #[derive(Clone, Copy, Debug, Elements, FromStr, Str)]
 #[format(dash_case)]
-pub(super) enum Provider {
+pub(super) enum DependencyProvider {
     Package,
     Filesystem,
     Distribution,
@@ -344,7 +344,7 @@ pub(super) enum Provider {
     Registry,
 }
 
-impl fmt::Display for Provider {
+impl fmt::Display for DependencyProvider {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.name())
     }

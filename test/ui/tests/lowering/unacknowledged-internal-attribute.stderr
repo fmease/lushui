@@ -20,6 +20,4 @@ error[E038]: the attribute `intrinsic` is an internal feature
    |
 
 error: aborting due to 3 previous errors
- note: the error E038 has a detailed explanation
- help: run `lushui explain E038` to view it
 

@@ -6,6 +6,4 @@ error[E010]: found illegal character U+95F4 `间` but expected parameter, termin
   |
 
 error: aborting due to previous error
- note: the error E010 has a detailed explanation
- help: run `lushui explain E010` to view it
 

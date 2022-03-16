@@ -1,4 +1,4 @@
-error[E003]: invalid indentation consisting of 2 spaces
+error[E046]: invalid indentation consisting of 2 spaces
  --> ${TEST_FOLDER}/parsing/invalid-indentation-misaligned.lushui:4:1
   |
 4 |   data V
@@ -7,6 +7,4 @@ error[E003]: invalid indentation consisting of 2 spaces
  note: indentation needs to be a multiple of 4
 
 error: aborting due to previous error
- note: the error E003 has a detailed explanation
- help: run `lushui explain E003` to view it
 
