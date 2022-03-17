@@ -1,5 +1,4 @@
 ;;; TEST fail check
-;;; @Task also report the undefined `Who-Am-I` if feasible
 
 @(public who-am-i)
 Foo: Who-Am-I = Type

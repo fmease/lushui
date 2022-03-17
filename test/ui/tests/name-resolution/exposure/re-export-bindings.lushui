@@ -6,10 +6,10 @@ data Identity: Type of
 @public use Point as *
 @public data Point: Type of
 
-use topmost as krate ;;; @Bug needs to be above `Center`
+use topmost as component ;;; @Bug needs to be above `Center`
 
 @(public topmost) use Center as C
-@(public krate) data Center: Type of
+@(public component) data Center: Type of
 
 module namespace of
     T: Type = Type

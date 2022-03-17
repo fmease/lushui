@@ -1,4 +1,4 @@
-;;; TEST ignore pass check -Z lower-only -Z dump-lowered-ast
+;;; TEST pass check -Z lower-only -Z emit-lowered-ast --no-core
 
 use foocoo.()
 

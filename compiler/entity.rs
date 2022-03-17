@@ -76,7 +76,7 @@ impl Entity {
     }
 
     pub(crate) const fn is_error(&self) -> bool {
-        matches!(self.kind, EntityKind::Error)
+        matches!(self.kind, Error)
     }
 
     pub(crate) const fn is_namespace(&self) -> bool {
@@ -187,10 +187,11 @@ pub(crate) enum EntityKind {
         namespace: Namespace,
     },
     UntypedConstructor,
-    /// The `reference is never a `Use` itself.
-    /// Nested aliases were already collapsed by [`crate::resolver::Resolver::collapse_use_chain`].
+    /// The `target` is never a `Use` itself.
+    ///
+    /// Nested aliases were already collapsed by `Resolver::collapse_use_chain`.
     Use {
-        reference: DeclarationIndex,
+        target: DeclarationIndex,
     },
     UnresolvedUse,
 
@@ -245,7 +246,7 @@ impl EntityKind {
 
     /// The developer-facing name of the entity kind.
     // @Task derive this with `#[derive(DiscriminantStr)] #[format(space_case)]` (sth like that)
-    const fn precise_name(&self) -> &'static str {
+    pub(crate) const fn precise_name(&self) -> &'static str {
         match self {
             UntypedFunction => "untyped function",
             Module { .. } => "module",
@@ -276,7 +277,7 @@ impl DisplayWith for EntityKind {
 
         match self {
             Module { namespace } | UntypedDataType { namespace } => write!(f, "{namespace:?}"),
-            Use { reference } => write!(f, "{reference:?}"),
+            Use { target } => write!(f, "{target:?}"),
             Function { type_, expression } => {
                 match expression {
                     Some(expression) => write!(f, "{}", expression.with(context)),

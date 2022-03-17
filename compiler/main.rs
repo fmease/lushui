@@ -375,7 +375,7 @@ fn build_component(
         return Err(Diagnostic::error()
             .code(Code::E050)
             .message(format!(
-                "the component `{}` does not contain a `{PROGRAM_ENTRY_IDENTIFIER}` function in the root module",
+                "the component `{}` does not contain a `{PROGRAM_ENTRY_IDENTIFIER}` function its root module",
                 component.name(),
             ))
             .primary_span(&session.shared_map()[file])

@@ -49,18 +49,18 @@ pub const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
 /// # Panics
 ///
 /// If the declaration passed is not a module, this function will panic as it
-/// requires a component root which is defined through the root module.
+/// requires a root module which is defined through the root module.
 // @Task improve docs: mention that it not only looks things up but also defines bindings
 // and that `resolve` should only be called once per Component (bc it would fail anyways the 2nd
 // time (to re-define root (I think)))
 pub fn resolve_declarations(
-    component_root: lowered_ast::Declaration,
+    root_module: lowered_ast::Declaration,
     component: &mut Component,
     session: &mut BuildSession,
 ) -> Result<hir::Declaration> {
     let mut resolver = ResolverMut::new(component, session);
 
-    if let Err(error) = resolver.start_resolve_declaration(&component_root, None, default()) {
+    if let Err(error) = resolver.start_resolve_declaration(&root_module, None, default()) {
         for (binder, naming_conflicts) in mem::take(&mut resolver.naming_conflicts) {
             Diagnostic::error()
                 .code(Code::E020)
@@ -75,12 +75,14 @@ pub fn resolve_declarations(
         return Err(error.token());
     }
 
+    // @Beacon @Note these two passes should probably not run after one another but
+    // intertwined since use bindings depend on exposure
+    // unless we the new "partially resolved exposure" logic fixes everything.
+    // Would probably fix the ordering bug in test name-resolution/exposure/re-export-bindings
     resolver.resolve_use_bindings();
+    resolver.resolve_exposure_reaches();
 
-    // @Task @Beacon don't return early here
-    resolver.resolve_exposure_reaches()?;
-
-    let declaration = resolver.finish_resolve_declaration(component_root, None, default());
+    let declaration = resolver.finish_resolve_declaration(root_module, None, default());
 
     Result::ok_if_untainted(declaration, resolver.health)
 }
@@ -154,15 +156,17 @@ impl<'a> ResolverMut<'a> {
 
         let exposure = match declaration.attributes.get::<{ AttributeName::Public }>() {
             Some(public) => match &public.reach {
-                Some(reach) => RestrictedExposure::Unresolved {
-                    reach: reach.clone(),
-                }
+                Some(reach) => ExposureReach::PartiallyResolved(PartiallyResolvedPath {
+                    // unwrap: root always has Exposure::Unrestricted, it won't reach this branch
+                    namespace: module.unwrap(),
+                    path: reach.clone(),
+                })
                 .into(),
                 None => Exposure::Unrestricted,
             },
             None => match module {
                 // a lack of `@public` means private i.e. restricted to `self` i.e. `@(public self)`
-                Some(module) => RestrictedExposure::Resolved { reach: module }.into(),
+                Some(module) => ExposureReach::Resolved(module).into(),
                 None => Exposure::Unrestricted,
             },
         };
@@ -243,7 +247,7 @@ impl<'a> ResolverMut<'a> {
                 let exposure = match transparency.unwrap() {
                     Transparency::Transparent => self.component[namespace].exposure.clone(),
                     // as if a @(public super) was attached to the constructor
-                    Transparency::Abstract => RestrictedExposure::Resolved { reach: module }.into(),
+                    Transparency::Abstract => ExposureReach::Resolved(module).into(),
                 };
 
                 let index = self.define(
@@ -308,9 +312,11 @@ impl<'a> ResolverMut<'a> {
                     let previous = self.partially_resolved_use_bindings.insert(
                         index,
                         PartiallyResolvedUseBinding {
-                            reference: use_.target.clone(),
-                            module,
-                            inquirer: None,
+                            binder: index,
+                            target: PartiallyResolvedPath {
+                                namespace: module,
+                                path: use_.target.clone(),
+                            },
                         },
                     );
 
@@ -568,25 +574,27 @@ impl<'a> ResolverMut<'a> {
 
             for (&index, item) in &self.partially_resolved_use_bindings {
                 match self.as_ref().resolve_path::<target::Any>(
-                    &item.reference,
-                    item.module.global(self.component),
+                    &item.target.path,
+                    item.target.namespace.global(self.component),
                 ) {
-                    Ok(reference) => {
-                        self.component.bindings[index].kind = EntityKind::Use { reference };
+                    Ok(target) => {
+                        self.component.bindings[index].kind = EntityKind::Use { target };
                     }
                     Err(error @ (UnresolvedBinding { .. } | Unrecoverable(_))) => {
                         self.component.bindings[index].mark_as_error();
                         self.as_ref().report_resolution_error(error);
                         self.health.taint();
                     }
-                    Err(UnresolvedUseBinding { inquirer }) => {
+                    Err(UnresolvedUseBinding {
+                        binder,
+                        extra: _extra,
+                    }) => {
                         partially_resolved_use_bindings.insert(
                             index,
                             PartiallyResolvedUseBinding {
-                                reference: item.reference.clone(),
-                                module: item.module,
-                                // @Beacon @Bug unwrap not verified
-                                inquirer: Some(inquirer.local(self.component).unwrap()),
+                                // @Question unwrap() correct?
+                                binder: binder.local(self.component).unwrap(),
+                                target: item.target.clone(),
                             },
                         );
                     }
@@ -657,20 +665,20 @@ impl<'a> ResolverMut<'a> {
                 worklist: &mut Vec<LocalDeclarationIndex>,
                 visited: &mut HashMap<LocalDeclarationIndex, Status>,
             ) -> Option<Cycle> {
-                let target = bindings[worklist.last().unwrap()].inquirer.unwrap();
+                let reference = bindings[worklist.last().unwrap()].binder;
 
-                let cycle = match visited.get(&target) {
+                let cycle = match visited.get(&reference) {
                     Some(Status::InProgress) => Some(
                         worklist
                             .iter()
                             .copied()
-                            .skip_while(|&vertex| vertex != target)
+                            .skip_while(|&index| index != reference)
                             .collect(),
                     ),
                     Some(Status::Finished) => None,
                     None => {
-                        worklist.push(target);
-                        visited.insert(target, Status::InProgress);
+                        worklist.push(reference);
+                        visited.insert(reference, Status::InProgress);
                         find_cycle(bindings, worklist, visited)
                     }
                 };
@@ -683,9 +691,7 @@ impl<'a> ResolverMut<'a> {
         }
     }
 
-    fn resolve_exposure_reaches(&mut self) -> Result {
-        let mut health = Health::Untainted;
-
+    fn resolve_exposure_reaches(&mut self) {
         for (index, entity) in self.component.bindings.iter() {
             if let Exposure::Restricted(exposure) = &entity.exposure {
                 // unwrap: root always has Exposure::Unrestricted, it won't reach this branch
@@ -696,32 +702,32 @@ impl<'a> ResolverMut<'a> {
                     .resolve_restricted_exposure(exposure, definition_site_namespace)
                     .is_err()
                 {
-                    health.taint();
+                    self.health.taint();
                     continue;
                 };
             }
 
             if let EntityKind::Use {
-                reference: reference_index,
+                target: target_index,
             } = entity.kind
             {
-                let reference = self.as_ref().look_up(reference_index);
+                let target = self.as_ref().look_up(target_index);
 
-                if entity.exposure.compare(&reference.exposure, self.component)
+                if entity.exposure.compare(&target.exposure, self.component)
                     == Some(Ordering::Greater)
                 {
                     Diagnostic::error()
                         .code(Code::E009)
                         .message(format!(
                             "re-export of the more private binding `{}`",
-                            self.component.path_to_string(reference_index, self.session)
+                            self.component.path_to_string(target_index, self.session)
                         ))
                         .labeled_primary_span(
                             &entity.source,
                             "re-exporting binding with greater exposure",
                         )
                         .labeled_secondary_span(
-                            &reference.source,
+                            &target.source,
                             "re-exported binding with lower exposure",
                         )
                         .note(format!(
@@ -731,16 +737,14 @@ expected the exposure of `{}`
       but it actually is {}",
                             self.component
                                 .path_to_string(index.global(self.component), self.session),
-                            reference.exposure.with((self.component, self.session)),
+                            target.exposure.with((self.component, self.session)),
                             entity.exposure.with((self.component, self.session)),
                         ))
                         .report(self.session.reporter());
-                    health.taint();
+                    self.health.taint();
                 }
             }
         }
-
-        health.into()
     }
 }
 
@@ -754,7 +758,6 @@ impl<'a> Resolver<'a> {
         Self { component, session }
     }
 
-    // @Task @Beacon use Rc::try_unwrap more instead of clone
     // @Task use the Stain::stain instead of moving the try operator below resolve calls
     fn resolve_expression(
         &self,
@@ -1189,7 +1192,6 @@ impl<'a> Resolver<'a> {
         )
     }
 
-    // @Temporary
     fn resolve_path_unchecked_exposure<Target: ResolutionTarget>(
         &self,
         path: &ast::Path,
@@ -1386,7 +1388,7 @@ impl<'a> Resolver<'a> {
                 .report(self.session.reporter());
         }
 
-        self.collapse_use_chain(index)
+        self.collapse_use_chain(index, identifier.span())
     }
 
     // @Task verify that the exposure is checked even in the case of use-declarations
@@ -1433,38 +1435,40 @@ impl<'a> Resolver<'a> {
     fn collapse_use_chain(
         &self,
         index: DeclarationIndex,
+        extra: Span,
     ) -> Result<DeclarationIndex, ResolutionError> {
         use EntityKind::*;
 
         match self.look_up(index).kind {
-            Use { reference } => Ok(reference),
-            UnresolvedUse => Err(ResolutionError::UnresolvedUseBinding { inquirer: index }),
+            Use { target } => Ok(target),
+            UnresolvedUse => Err(ResolutionError::UnresolvedUseBinding {
+                binder: index,
+                extra,
+            }),
             _ => Ok(index),
         }
     }
 
     fn resolve_restricted_exposure(
         &self,
-        exposure: &Mutex<RestrictedExposure>,
+        exposure: &Mutex<ExposureReach>,
         definition_site_namespace: DeclarationIndex,
     ) -> Result<DeclarationIndex> {
         let exposure_ = exposure.lock().unwrap();
 
         Ok(match &*exposure_ {
-            RestrictedExposure::Unresolved {
-                reach: unresolved_reach,
-            } => {
-                // Here we indeed resolve the exposure reach without validating *its*
-                // exposure reach. This is not a problem however since in all cases where
-                // it actually is private, it cannot be an ancestor module as those are
-                // always accessible to their descendants, and therefore we are going to
-                // throw an error.
-                // It's not possible to use `resolve_path` as that can lead to infinite
-                // loops with out of order use-bindings.
+            ExposureReach::PartiallyResolved(PartiallyResolvedPath { namespace, path }) => {
+                // @Task Use `resolve_path` once we can detect cyclic exposure (would close #67 #68)
+                //       and remove `CheckExposure`.
+                // @Task Try to obtain and store a partially resolved path on resolution failure.
+                //       I think this is the way to achieve the first task.
+                // @Note This could maybe also allow us to report more details (more highlights)
+                //       for cyclic exposure reaches. Improving output for test
+                //       name-resolution/exposure/indirect-cycle
                 let reach = self
                     .resolve_path_unchecked_exposure::<target::Module>(
-                        unresolved_reach,
-                        definition_site_namespace,
+                        path,
+                        namespace.global(self.component),
                     )
                     .map_err(|error| self.report_resolution_error(error))?;
 
@@ -1476,19 +1480,18 @@ impl<'a> Resolver<'a> {
                     return Err(Diagnostic::error()
                         .code(Code::E037)
                         .message("exposure can only be restricted to ancestor modules")
-                        .primary_span(unresolved_reach)
+                        .primary_span(path)
                         .report(self.session.reporter()));
                 }
 
                 drop(exposure_);
-                *exposure.lock().unwrap() = RestrictedExposure::Resolved {
-                    // @Beacon @Bug unwrap not verified
-                    reach: reach.local(self.component).unwrap(),
-                };
+                *exposure.lock().unwrap() =
+                    // @Question unwrap() correct?
+                    ExposureReach::Resolved(reach.local(self.component).unwrap());
 
                 reach
             }
-            &RestrictedExposure::Resolved { reach } => reach.global(self.component),
+            &ExposureReach::Resolved(reach) => reach.global(self.component),
         })
     }
 
@@ -1527,7 +1530,7 @@ impl<'a> Resolver<'a> {
             .find(|&index| &self.component[index].source == identifier)
             .unwrap();
         let index = self
-            .collapse_use_chain(index.global(self.component))
+            .collapse_use_chain(index.global(self.component), identifier.span())
             .unwrap_or_else(|_| unreachable!());
 
         Target::output(index, identifier)
@@ -1722,7 +1725,18 @@ impl<'a> Resolver<'a> {
                     )
                     .report(self.session.reporter())
             }
-            ResolutionError::UnresolvedUseBinding { .. } => unreachable!(),
+            // @Beacon @Beacon @Beacon @Bug we cannot just assume this is circular exposure reach,
+            // this method is a general resolution error formatter!!!!
+            ResolutionError::UnresolvedUseBinding { binder, extra } => {
+                // @Beacon @Task
+                Diagnostic::error()
+                    .message(format!(
+                        "exposure reach `{}` is circular",
+                        self.component.path_to_string(binder, self.session)
+                    ))
+                    .primary_span(extra)
+                    .report(self.session.reporter())
+            }
         }
     }
 
@@ -1809,29 +1823,21 @@ impl PathResolutionContext {
     }
 }
 
+/// A use-binding whose target is not fully resolved.
 struct PartiallyResolvedUseBinding {
-    reference: Path,
-    module: LocalDeclarationIndex,
-    // @Beacon @Question local or global??
-    inquirer: Option<LocalDeclarationIndex>,
+    binder: LocalDeclarationIndex,
+    target: PartiallyResolvedPath,
 }
 
 impl fmt::Debug for PartiallyResolvedUseBinding {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}.{}", self.module, self.reference)?;
-
-        if let Some(inquirer) = self.inquirer {
-            write!(f, " (inquired by {inquirer:?})")?;
-        }
-
-        Ok(())
+        write!(f, "(use {:?} as {:?})", self.target, self.binder)
     }
 }
 
 /// If an identifier is used unqualified or qualified.
 ///
 /// Exclusively used for error reporting.
-#[derive(Debug)] // @Temporary
 #[derive(Clone, Copy)]
 enum IdentifierUsage {
     Qualified,
@@ -1983,12 +1989,8 @@ impl Component {
         definition_site_namespace: DeclarationIndex,
         reach: DeclarationIndex,
     ) -> bool {
-        let access_from_same_namespace_or_below =
-            self.some_ancestor_equals(namespace, definition_site_namespace);
-
-        let access_from_above_in_reach = || self.some_ancestor_equals(namespace, reach);
-
-        access_from_same_namespace_or_below || access_from_above_in_reach()
+        self.some_ancestor_equals(namespace, definition_site_namespace) // access from same namespace or below
+            || self.some_ancestor_equals(namespace, reach) // access from above in reach
     }
 }
 
@@ -1996,7 +1998,7 @@ impl Component {
 pub(crate) enum Exposure {
     Unrestricted,
     // @Task find a way to get rid of interior mutability here
-    Restricted(Arc<Mutex<RestrictedExposure>>),
+    Restricted(Arc<Mutex<ExposureReach>>),
 }
 
 impl Exposure {
@@ -2007,10 +2009,11 @@ impl Exposure {
             (Unrestricted, Unrestricted) => Some(Ordering::Equal),
             (Unrestricted, Restricted(_)) => Some(Ordering::Greater),
             (Restricted(_), Unrestricted) => Some(Ordering::Less),
-            (Restricted(this), Restricted(other)) => this
-                .lock()
-                .unwrap()
-                .compare(&other.lock().unwrap(), component),
+            (Restricted(this), Restricted(other)) => {
+                let this = this.lock().unwrap();
+                let other = other.lock().unwrap();
+                this.compare(&other, component)
+            }
         }
     }
 }
@@ -2019,10 +2022,7 @@ impl fmt::Debug for Exposure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Unrestricted => write!(f, "*"),
-            Self::Restricted(reach) => match &*reach.lock().unwrap() {
-                RestrictedExposure::Unresolved { reach } => write!(f, "{reach}"),
-                RestrictedExposure::Resolved { reach } => write!(f, "{reach:?}"),
-            },
+            Self::Restricted(reach) => write!(f, "{:?}", reach.lock().unwrap()),
         }
     }
 }
@@ -2041,33 +2041,28 @@ impl DisplayWith for Exposure {
 impl PartialEq for Exposure {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Restricted(l0), Self::Restricted(r0)) => {
-                *l0.lock().unwrap() == *r0.lock().unwrap()
+            (Self::Unrestricted, Self::Unrestricted) => true,
+            (Self::Restricted(this), Self::Restricted(other)) => {
+                *this.lock().unwrap() == *other.lock().unwrap()
             }
-            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+            _ => false,
         }
     }
 }
 
 impl Eq for Exposure {}
 
+/// How far up binding exposure _reaches_ in the tree of namespaces given by a path.
 #[derive(Clone, PartialEq, Eq)]
-pub(crate) enum RestrictedExposure {
-    // @Beacon @Question does it yield an advantage if we make this more fine-grained
-    // with the concept of partially resolved restricted exposure reaches
-    // i.e. RestrictedExposureReach::PartiallyResolved {
-    //     namespace: LocalDeclarationIndex, path: Path }
-    // it might help us detect and handle circular expsure reaches better
-    Unresolved { reach: Path },
-    Resolved { reach: LocalDeclarationIndex },
+pub(crate) enum ExposureReach {
+    Resolved(LocalDeclarationIndex),
+    PartiallyResolved(PartiallyResolvedPath),
 }
 
-impl RestrictedExposure {
+impl ExposureReach {
     fn compare(&self, other: &Self, component: &Component) -> Option<Ordering> {
-        use RestrictedExposure::*;
-
         Some(match (self, other) {
-            (&Resolved { reach: this }, &Resolved { reach: other }) => {
+            (&ExposureReach::Resolved(this), &ExposureReach::Resolved(other)) => {
                 let this = this.global(component);
                 let other = other.global(component);
 
@@ -2081,12 +2076,22 @@ impl RestrictedExposure {
                     return None;
                 }
             }
+            // @Question can we be smarter here? do we need to be smarter here?
             _ => return None,
         })
     }
 }
 
-impl DisplayWith for RestrictedExposure {
+impl fmt::Debug for ExposureReach {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::PartiallyResolved(reach) => write!(f, "{reach:?}"),
+            Self::Resolved(reach) => write!(f, "{reach:?}"),
+        }
+    }
+}
+
+impl DisplayWith for ExposureReach {
     type Context<'a> = (&'a Component, &'a BuildSession);
 
     fn format(
@@ -2095,17 +2100,32 @@ impl DisplayWith for RestrictedExposure {
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
         match self {
-            Self::Unresolved { reach } => write!(f, "{}", reach),
-            &Self::Resolved { reach } => {
+            Self::Resolved(reach) => {
                 write!(f, "{}", scope.path_to_string(reach.global(scope), session))
             }
+            // should not be reachable
+            Self::PartiallyResolved(reach) => write!(f, "{reach:?}"),
         }
     }
 }
 
-impl From<RestrictedExposure> for Exposure {
-    fn from(exposure: RestrictedExposure) -> Self {
+impl From<ExposureReach> for Exposure {
+    fn from(exposure: ExposureReach) -> Self {
         Self::Restricted(Arc::new(Mutex::new(exposure)))
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct PartiallyResolvedPath {
+    /// The resolved part.
+    namespace: LocalDeclarationIndex,
+    /// The unresolved part.
+    path: Path,
+}
+
+impl fmt::Debug for PartiallyResolvedPath {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}.{}", self.namespace, self.path)
     }
 }
 
@@ -2372,7 +2392,7 @@ mod target {
             entity: &Entity,
         ) -> Result<(), Diagnostic> {
             // @Task print absolute path!
-            if !entity.is_module() {
+            if !(entity.is_module() || entity.is_error()) {
                 return Err(Diagnostic::error()
                     .code(Code::E022)
                     .message(format!("binding `{identifier}` is not a module"))
@@ -2393,11 +2413,10 @@ enum ResolutionError {
         usage: IdentifierUsage,
     },
     UnresolvedUseBinding {
-        inquirer: DeclarationIndex,
+        binder: DeclarationIndex,
+        extra: Span,
     },
 }
-
-impl ResolutionError {}
 
 impl From<ErrorReported> for ResolutionError {
     fn from(token: ErrorReported) -> Self {

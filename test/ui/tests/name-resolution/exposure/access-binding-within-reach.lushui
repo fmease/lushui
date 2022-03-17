@@ -3,7 +3,7 @@
 module inner of
     use innermore.innermost as m
 
-    @(public super.krate)
+    @(public super.component)
     use topmost.offside as remote
 
     @(public topmost)
@@ -21,7 +21,7 @@ module inner of
     Z: Type = m.X
 
 use inner.innermore as n
-use self as krate
+use self as component
 
 module offside of
     @(public topmost.inner.remote) data Ping: Type of

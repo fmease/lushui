@@ -1,0 +1,9 @@
+error: exposure reach `topmost.component` is circular
+ --> ${TEST_FOLDER}/name-resolution/exposure/indirect-cycle.lushui:4:10
+  |
+4 | @(public component) data Center: Type of
+  |          ^^^^^^^^^
+  |
+
+error: aborting due to previous error
+
