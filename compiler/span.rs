@@ -10,7 +10,7 @@ pub(crate) use spanning::{PossiblySpanning, Spanning};
 use std::ops::{Add, Range, Sub};
 pub(crate) use weakly_spanned::WeaklySpanned;
 
-mod source_map;
+pub(crate) mod source_map;
 
 mod generic {
     use std::{

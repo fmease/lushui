@@ -2,7 +2,7 @@ error: found end of input but expected `,`
  --> ${TEST_FOLDER}/metadata/unbalanced-brackets.metadata:6:2
   |
 6 |  
-  | >< 
+  | ><
   |
 
 error: aborting due to previous error

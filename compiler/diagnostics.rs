@@ -7,34 +7,20 @@
 //! * display style: rich (current system) <-> short
 //! * a rust script (in /misc) that finds the lowest [Code] that can be used
 //!   as well as any unused error codes (searching src/)
-//! * unindenting long lines of highlighted source code (i.e. mapping initial whitespace to
-//!   a single one) rustc replaces large amount of spaces with colored ellipses `...`
-//! * warning API/manager which can understand lushui's allows/denies/… directives
-//!
-//! # Issues
-//!
-//! * diagnostics with primary and secondary spans are not *that* readable because of
-//!   all those lengthy paths. That didn't use to be the case, maybe we should some
-//!   rules when the paths can be omitted
-//! * cannot handle overly long lines of highlighted code (does not look tidy anymore)
 
 use crate::{
-    span::{SourceMap, Span, Spanning},
+    span::{Span, Spanning},
     utility::Str,
 };
-use colored::{Color, Colorize};
+use derivation::Str;
+use reporter::ErrorReported;
 pub use reporter::Reporter;
 use std::{
-    borrow::Cow,
     collections::BTreeSet,
     fmt::{self, Debug},
-    iter::once,
-    path::Path,
 };
-use unicode_width::UnicodeWidthStr;
 
-use self::reporter::ErrorReported;
-
+mod format;
 pub mod reporter;
 #[cfg(test)]
 mod test;
@@ -230,255 +216,7 @@ impl Diagnostic {
     pub fn report(self, reporter: &Reporter) -> ErrorReported {
         reporter.report(self)
     }
-
-    /// Format the diagnostic for the use in a terminal.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the diagnostic refers to code snippets by [Span] but no source
-    /// map is provided.
-    // @Task if the span equals the span of the entire file, don't output its content
-    // @Task add back the alorithm which reduces the amount of paths printed
-    // @Beacon @Task special case trailing line break in subdiagnostics
-    // @Beacon @Bug tabs \t mess up the alignment! (in text literals, in metadata files)
-    // since `"\t".width() == 0`! solution: replace tabs with N spaces in the place where
-    // we measure the width() and in the rendered string!
-    fn format_for_terminal(&self, map: Option<&SourceMap>) -> String {
-        let mut message = String::new();
-
-        // header
-        {
-            let severity = self.0.severity.to_string();
-            let code = &self
-                .0
-                .code
-                .map(|code| format!("[{code}]").color(self.0.severity.color()))
-                .unwrap_or_default();
-
-            message += &format!("{severity}{code}");
-        }
-
-        // text message
-        if let Some(message_text) = &self.0.message {
-            let message_text = message_text.bold();
-            message += &format!(": {message_text}");
-        }
-
-        let padding;
-
-        if !self.0.highlights.is_empty() {
-            let map = map.unwrap();
-
-            let all_lines = self
-                .0
-                .highlights
-                .iter()
-                .map(|highlight| map.lines(highlight.span))
-                .collect::<Vec<_>>();
-
-            let mut padding_width = 0;
-
-            padding = {
-                let mut largest_line_number = all_lines
-                    .iter()
-                    .flat_map(|span| {
-                        once(span.first_line.number)
-                            .chain(span.last_line.as_ref().map(|line| line.number))
-                    })
-                    .max()
-                    .unwrap();
-
-                while largest_line_number > 0 {
-                    largest_line_number /= 10;
-                    padding_width += 1;
-                }
-
-                " ".repeat(padding_width)
-            };
-
-            let bar = "|".color(FRAME_COLOR).bold();
-
-            for (highlight, lines) in self.0.highlights.iter().zip(all_lines) {
-                // path, line number and column
-                {
-                    let arrow = "-->".color(FRAME_COLOR).bold();
-                    message += &format!("\n{padding}{arrow} ");
-
-                    let file = lines.path.map(Path::to_string_lossy).unwrap_or_default();
-                    let line = lines.first_line.number;
-                    let column = lines.first_line.highlight_start_column;
-                    // unbelieveably wasteful memory-wise but inevitable due to the API of `colored`
-                    message += &format!("{file}:{line}:{column}")
-                        .color(FRAME_COLOR)
-                        .to_string();
-                }
-
-                let role_color = highlight.role.color(self.0.severity.color());
-
-                let label = match &highlight.label {
-                    Some(label) => label,
-                    None => &Cow::Borrowed(""),
-                };
-
-                match &lines.last_line {
-                    // the snippet spans a single line
-                    None => {
-                        let line_number = lines.first_line.number;
-                        let snippet = lines.first_line.content;
-                        let highlight_padding_width = lines.first_line.highlight_padding_width;
-                        let zero_length_highlight = lines.first_line.highlight_width == 0;
-
-                        let snippet_padding =
-                            match zero_length_highlight && highlight_padding_width == 0 {
-                                true => " ",
-                                false => "",
-                            };
-
-                        message += &format!(
-                            "\n\
-                            {padding} {bar}\n\
-                            {line_number:>padding_width$} {bar} {snippet_padding}{snippet}\n"
-                        );
-
-                        let underline_padding = " ".repeat(match zero_length_highlight {
-                            true => highlight_padding_width.saturating_sub(1),
-                            false => highlight_padding_width,
-                        });
-                        let underline = if !zero_length_highlight {
-                            highlight
-                                .role
-                                .symbol()
-                                .repeat(lines.first_line.highlight_width)
-                        } else {
-                            "><".to_owned()
-                        };
-                        let underline = underline.color(role_color).bold();
-
-                        // the underline and the label
-                        {
-                            let mut label_lines = label.split('\n');
-
-                            {
-                                let label_line = label_lines.next().unwrap().color(role_color);
-
-                                message += &format!(
-                                    "{padding} {bar} {underline_padding}{underline} {label_line}"
-                                );
-                            }
-
-                            let spacing = " ".repeat(
-                                lines.first_line.highlight_padding_width
-                                    + if zero_length_highlight {
-                                        1
-                                    } else {
-                                        lines.first_line.highlight_width
-                                    },
-                            );
-
-                            for label_line in label_lines {
-                                let label_line = label_line.color(role_color);
-
-                                message += &format!("\n{padding} {bar} {spacing} {label_line}");
-                            }
-                        }
-                    }
-                    // the snippet spans multiple lines
-                    Some(final_line) => {
-                        let ellipsis_or_bar = if final_line.number - lines.first_line.number > 1 {
-                            "...".into()
-                        } else {
-                            format!(" {bar} ")
-                        };
-
-                        // the upper arm
-                        {
-                            let line_number = lines.first_line.number;
-                            let snippet = lines.first_line.content;
-                            let horizontal_arm = "_"
-                                .repeat(lines.first_line.highlight_padding_width + 1)
-                                .color(role_color)
-                                .bold();
-                            // the hand is currently not dependent on the Unicode width of the first character
-                            let hand = highlight.role.symbol().color(role_color).bold();
-
-                            message += &format!(
-                                "\n\
-                                {padding} {bar}\n\
-                                {line_number:>padding_width$} {bar}   {snippet}\n\
-                                {padding}{ellipsis_or_bar} {horizontal_arm}{hand}\n"
-                            );
-                        }
-                        // the connector and the lower arm
-                        {
-                            let line_number = final_line.number;
-                            let snippet = &final_line.content;
-                            // the arm is currently not dependent on the Unicode width of the last character
-                            let horizontal_arm = "_"
-                                .repeat(final_line.highlight_width)
-                                .color(role_color)
-                                .bold();
-                            let vertical_arm = "|".color(role_color).bold();
-                            // the hand is currently not dependent on the Unicode width of the 1st character
-                            let hand = highlight.role.symbol().color(role_color).bold();
-
-                            message += &format!(
-                                "{line_number:>padding_width$} {bar} {vertical_arm} {snippet}\n"
-                            );
-
-                            // the lower arm and the label
-                            {
-                                let mut label_lines = label.split('\n');
-
-                                {
-                                    let label_line = label_lines.next().unwrap().color(role_color);
-
-                                    message += &format!(
-                                    "{padding} {bar} {vertical_arm}{horizontal_arm}{hand} {label_line}"
-                                );
-                                }
-
-                                let spacing = " ".repeat(1 + final_line.highlight_width + 1);
-
-                                for label_line in label_lines {
-                                    let label_line = label_line.color(role_color);
-
-                                    message += &format!("\n{padding} {bar} {spacing} {label_line}");
-                                }
-                            }
-                        }
-                    }
-                }
-
-                message += &format!("\n{padding} {bar}");
-            }
-        } else {
-            padding = " ".into();
-        }
-
-        for subdiagnostic in &self.0.subdiagnostics {
-            message += &format!("\n{padding}{}: ", subdiagnostic.severity);
-
-            let mut message_lines = subdiagnostic.message.split('\n');
-
-            if let Some(message_line) = message_lines.next() {
-                message += message_line;
-            }
-
-            for message_line in message_lines {
-                let severity_spacing = " ".repeat(subdiagnostic.severity.name().width() + 1);
-                message += &format!("\n{padding}{severity_spacing} {message_line}",);
-            }
-        }
-
-        message
-    }
 }
-
-const FRAME_COLOR: Color = Color::BrightBlue;
-const ERROR_COLOR: Color = Color::BrightRed;
-const WARNING_COLOR: Color = Color::BrightYellow;
-const HELP_COLOR: Color = Color::BrightCyan;
-const DEBUG_COLOR: Color = Color::BrightMagenta;
 
 /// Part of a [complex error message](Diagnostic) providing extra text messages.
 #[derive(PartialEq, Eq, Clone, PartialOrd, Ord)]
@@ -498,62 +236,14 @@ enum Severity {
     Debug,
 }
 
-impl Severity {
-    const fn name(self) -> &'static str {
-        match self {
-            Self::Bug => "internal compiler error",
-            Self::Error => "error",
-            Self::Warning => "warning",
-            Self::Debug => "internal debugging message",
-        }
-    }
-
-    const fn color(self) -> Color {
-        match self {
-            Self::Bug | Self::Error => ERROR_COLOR,
-            Self::Warning => WARNING_COLOR,
-            Self::Debug => DEBUG_COLOR,
-        }
-    }
-}
-
-impl fmt::Display for Severity {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.name().color(self.color()).bold())
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, PartialOrd, Ord, Str)]
+#[format(dash_case)]
 enum Subseverity {
     /// Auxiliary note.
     Note,
     /// Steps to solve an issue.
     Help,
     Debug,
-}
-
-impl Subseverity {
-    // @Task derive this
-    const fn name(self) -> &'static str {
-        match self {
-            Self::Note => "note",
-            Self::Help => "help",
-            Self::Debug => "debug",
-        }
-    }
-
-    const fn color(self) -> Color {
-        match self {
-            Self::Note | Self::Help => HELP_COLOR,
-            Self::Debug => DEBUG_COLOR,
-        }
-    }
-}
-
-impl fmt::Display for Subseverity {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.name().color(self.color()).bold())
-    }
 }
 
 /// A highlighted code snippet.
@@ -571,22 +261,6 @@ enum Role {
     Primary,
     /// Auxilary note of the diagnostic.
     Secondary,
-}
-
-impl Role {
-    const fn color(self, primary: Color) -> Color {
-        match self {
-            Self::Primary => primary,
-            Self::Secondary => HELP_COLOR,
-        }
-    }
-
-    const fn symbol(self) -> &'static str {
-        match self {
-            Self::Primary => "^",
-            Self::Secondary => "-",
-        }
-    }
 }
 
 /// A numeric code identifying a diagnostic.

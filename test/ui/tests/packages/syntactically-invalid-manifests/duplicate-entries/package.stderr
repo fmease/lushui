@@ -14,7 +14,7 @@ error: found `,` but expected record key
  --> ${TEST_FOLDER}/packages/syntactically-invalid-manifests/duplicate-entries/package.metadata:6:9
   |
 6 | more: { , "
-  |         ^ 
+  |         ^
   |
 
 error: aborting due to 2 previous errors

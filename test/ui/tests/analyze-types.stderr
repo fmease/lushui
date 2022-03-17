@@ -4,7 +4,7 @@ error[E035]: attempt to analyze a type
 6 |       case A of
  ... _____^
 9 | |         \else => false
-  | |______________________^ 
+  | |______________________^
   |
  note: forbidden to uphold parametricity and type erasure
 

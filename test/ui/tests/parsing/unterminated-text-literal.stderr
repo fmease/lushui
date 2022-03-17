@@ -4,7 +4,7 @@ error[E047]: unterminated text literal
 3 |   value: Text = "open end
  ... _______________^
 6 | |     field: Res -> Field
-  | |_______________________^ 
+  | |_______________________^
   |
 
 error: aborting due to previous error

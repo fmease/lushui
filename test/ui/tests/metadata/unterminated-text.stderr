@@ -4,7 +4,7 @@ error: unterminated text literal
 4 |       where: "the long
  ... ____________^
 6 | | }
-  | |_^ 
+  | |_^
   |
 
 error: aborting due to previous error

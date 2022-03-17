@@ -27,6 +27,7 @@ fn teminal_format_no_highlights() {
 
     assert_format(&diagnostic, None, "error[E000]: summary");
 }
+
 #[test]
 fn terminal_format_single_line_primary_highlight() {
     let mut map = SourceMap::default();
@@ -44,7 +45,7 @@ error: message
  --> :2:2
   |
 2 | beta
-  |  ^^^ 
+  |  ^^^
   |",
     );
 }
@@ -66,7 +67,7 @@ error
 1 |   alpha
   |  _^
 2 | | beta
-  | |__^ 
+  | |__^
   |",
     );
 }
@@ -91,7 +92,7 @@ error[E000]: explanation
 2 |   beta
  ... ___^
 4 | | delta
-  | |_____^ 
+  | |_____^
   |",
     );
 }
@@ -118,7 +119,7 @@ warning: this is a sentence
    --> :121:4
     |
 121 | 这是一个句子
-    |   ^^^^^^ 
+    |   ^^^^^^
     |",
     );
 }
@@ -143,17 +144,17 @@ error[E001]: important
  --> :1:1
   |
 1 | 2ndry
-  | --- 
+  | ---
   |
  --> :2:1
   |
 2 | PRIM
-  | ^^^^ 
+  | ^^^^
   |
  --> :3:4
   |
 3 | 2ndry
-  |    -- 
+  |    --
   |",
     );
 }
@@ -176,12 +177,12 @@ internal compiler error: placeholder
   --> :2:2
    |
  2 | primary
-   |  ^^^^ 
+   |  ^^^^
    |
   --> :12:1
    |
 12 | secondary
-   | --------- 
+   | ---------
    |",
     );
 }
@@ -204,12 +205,12 @@ internal debugging message
  --> ONE:2:2
   |
 2 | bc
-  |  ^ 
+  |  ^
   |
  --> TWO:1:1
   |
 1 | zyx
-  | -- 
+  | --
   |",
     );
 }
@@ -232,12 +233,12 @@ error: tag
  --> identity:1:1
   |
 1 | sequence
-  | ^^^^^ 
+  | ^^^^^
   |
  --> identity:1:5
   |
 1 | sequence
-  |     ---- 
+  |     ----
   |",
     );
 }
@@ -330,7 +331,7 @@ error: multi-line labels
   |  _____-
 6 | | zeta
   | |_- message
-  |     
+  |
   |     bottom
   |",
     );
@@ -380,7 +381,7 @@ error: multi-line labels
   |  _____-
 6 | | zeta
   | |_- message
-  |     
+  |
   |     bottom
   |",
     );
@@ -427,7 +428,7 @@ warning: it
  --> :1:5
   |
 1 | ****  ****
-  |     ^^ 
+  |     ^^
   |
  help: helpful
  help: less helpful",
@@ -453,7 +454,7 @@ warning: it
   --> :10:5
    |
 10 | ****  ****
-   |     ^^ 
+   |     ^^
    |
   help: helpful
   help: less helpful",
@@ -461,7 +462,6 @@ warning: it
 }
 
 #[test]
-// @Task get rid of final line break + whitespace in the output
 fn terminal_format_multi_line_subdiagnostics() {
     let mut map = SourceMap::default();
     map.add(None, "****  ****".into());
@@ -481,7 +481,7 @@ warning: it
  --> :1:5
   |
 1 | ****  ****
-  |     ^^ 
+  |     ^^
   |
  help: helpful
        tip
@@ -489,8 +489,7 @@ warning: it
  debug: alpha
         beta
  help: less helpful
-       tip
-       ",
+       tip",
     )
 }
 
@@ -509,17 +508,17 @@ error
  --> :1:1
   |
 1 | gamma
-  | ^ 
+  | ^
   |
  --> :1:3
   |
 1 | gamma
-  |   ^ 
+  |   ^
   |
  --> :1:5
   |
 1 | gamma
-  |     ^ 
+  |     ^
   |",
     );
 }
@@ -539,7 +538,7 @@ internal debugging message: nil
  --> :1:3
   |
 1 | sample
-  |  >< 
+  |  ><
   |",
     );
 }
@@ -559,7 +558,7 @@ internal debugging message: nil
  --> :1:1
   |
 1 |  sample
-  | >< 
+  | ><
   |",
     );
 }
@@ -650,7 +649,7 @@ warning: weird corner case
  --> :1:1
   |
 1 | This is a sentence.
-  | ^^^^^^^^^^^^^^^^^^^ 
+  | ^^^^^^^^^^^^^^^^^^^
   |",
     );
 }
@@ -674,7 +673,7 @@ internal compiler error
  --> :1:1
   |
 1 | EVERYTHING
-  | ^^^^^^^^^^ 
+  | ^^^^^^^^^^
   |",
     );
 }
@@ -696,7 +695,7 @@ error: this file has to contain something reasonable
  --> empty.txt:1:1
   |
 1 |  
-  | >< 
+  | ><
   |",
     );
 }
@@ -721,7 +720,7 @@ internal compiler error
 1 |   alpha
   |  _^
 2 | | beta
-  | |____^ 
+  | |____^
   |",
     );
 }
@@ -744,7 +743,7 @@ internal compiler error
  --> :1:1
   |
 1 | alpha
-  | ^^^^^ 
+  | ^^^^^
   |",
     );
 }

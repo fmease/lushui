@@ -13,7 +13,7 @@ use std::fmt::{self, Debug, Formatter, Result};
 
 use super::{Explicitness, Identifier};
 
-mod color {
+mod color_palette {
     use colored::Color;
 
     pub(super) const NAME: Color = Color::BrightCyan;
@@ -52,7 +52,7 @@ mod indentation {
 }
 
 mod format_struct {
-    use super::{color, Format, Formatter, Indentation, Result};
+    use super::{color_palette, Format, Formatter, Indentation, Result};
     use colored::Colorize;
 
     pub(super) struct FormatStruct<'f, 'v> {
@@ -77,7 +77,7 @@ mod format_struct {
         pub(super) fn name(mut self, name: &str) -> Self {
             self.result = self
                 .result
-                .and_then(|_| write!(self.formatter, "{}", name.color(color::NAME).bold()));
+                .and_then(|_| write!(self.formatter, "{}", name.color(color_palette::NAME).bold()));
 
             self
         }
@@ -101,7 +101,7 @@ mod format_struct {
                     write!(self.formatter, "{}", self.indentation)?;
                 }
 
-                write!(self.formatter, "{}: ", name.color(color::FIELD))?;
+                write!(self.formatter, "{}: ", name.color(color_palette::FIELD))?;
                 field.format(self.formatter, self.indentation)
             });
 
@@ -125,13 +125,13 @@ fn format_text_literal(content: &str, f: &mut Formatter<'_>) -> Result {
     let length = content.len();
 
     let content = if length <= MAXIMUM_LENGTH {
-        content.color(color::VERBATIM).to_string()
+        content.color(color_palette::VERBATIM).to_string()
     } else {
         let length_left = MAXIMUM_LENGTH / 2;
         let length_right = length - MAXIMUM_LENGTH / 2;
 
         let left = &content[..length_left];
-        let ellipsis = "....".black().on_color(color::ELLIPSIS);
+        let ellipsis = "....".black().on_color(color_palette::ELLIPSIS);
         let right = &content[length_right..];
 
         format!("{left}{ellipsis}{right}")
@@ -140,8 +140,8 @@ fn format_text_literal(content: &str, f: &mut Formatter<'_>) -> Result {
     // `str::replace` would not work here since it breaks the fragile `ColoredString`s
     let content = content
         .split('\n')
-        .map(|segment| segment.color(color::VERBATIM))
-        .join_with("\u{21b5}".black().on_color(color::ELLIPSIS));
+        .map(|segment| segment.color(color_palette::VERBATIM))
+        .join_with("\u{21b5}".black().on_color(color_palette::ELLIPSIS));
 
     write!(f, "{}", content)
 }
@@ -155,7 +155,7 @@ impl<T: Format> Format for Option<T> {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         match self {
             Some(value) => value.format(f, indentation),
-            None => write!(f, "{}", "none".color(color::SPECIAL_SYMBOL)),
+            None => write!(f, "{}", "none".color(color_palette::SPECIAL_SYMBOL)),
         }
     }
 }
@@ -163,7 +163,7 @@ impl<T: Format> Format for Option<T> {
 impl<T: Format> Format for [T] {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         if self.is_empty() {
-            return write!(f, "{}", "empty".color(color::SPECIAL_SYMBOL));
+            return write!(f, "{}", "empty".color(color_palette::SPECIAL_SYMBOL));
         }
 
         let mut struct_ = FormatStruct::new(f, indentation);
@@ -191,7 +191,7 @@ impl<T: Format, const N: usize> Format for SmallVec<T, N> {
 impl Format for Span {
     fn format(&self, f: &mut Formatter<'_>, _: Indentation) -> Result {
         // @Beacon @Task don't use `colored` here, too many wasted allocations!!
-        write!(f, "{}", format!("{self:?}").color(color::SPAN))
+        write!(f, "{}", format!("{self:?}").color(color_palette::SPAN))
     }
 }
 
@@ -211,7 +211,11 @@ impl<I: Format> Format for super::Item<I> {
 
         if !self.attributes.is_empty() {
             let indentation = indentation.increased();
-            write!(f, "\n{indentation}{}:", "attributes".color(color::FIELD))?;
+            write!(
+                f,
+                "\n{indentation}{}:",
+                "attributes".color(color_palette::FIELD)
+            )?;
             self.attributes.format(f, indentation)?;
         }
 
@@ -299,7 +303,11 @@ impl Format for SourceFileIndex {
         FormatStruct::new(f, indentation)
             .name("Source-File-Index")
             .finish()?;
-        write!(f, " {}", self.value().to_string().color(color::VERBATIM))
+        write!(
+            f,
+            " {}",
+            self.value().to_string().color(color_palette::VERBATIM)
+        )
     }
 }
 
@@ -358,7 +366,7 @@ impl Format for super::ExpressionKind {
             Self::CaseAnalysis(analysis) => analysis.format(f, indentation),
             Self::DoBlock(do_) => do_.format(f, indentation),
             Self::SequenceLiteral(sequence) => sequence.format(f, indentation),
-            Self::Error => write!(f, "{}", "invalid".color(color::INVALID)),
+            Self::Error => write!(f, "{}", "invalid".color(color_palette::INVALID)),
         }
     }
 }
@@ -411,7 +419,7 @@ impl Format for super::NumberLiteral {
             .field(
                 "literal",
                 // @Task also print span of literal
-                &AdHoc(|f, _| write!(f, "{}", self.literal.value.color(color::INVALID))),
+                &AdHoc(|f, _| write!(f, "{}", self.literal.value.color(color_palette::INVALID))),
             )
             .finish()
     }
@@ -642,7 +650,7 @@ impl Format for Identifier {
         FormatStruct::new(f, indentation)
             .name("Identifier")
             .finish()?;
-        write!(f, " {}", self.as_str().color(color::VERBATIM))
+        write!(f, " {}", self.as_str().color(color_palette::VERBATIM))
     }
 }
 
@@ -666,7 +674,7 @@ impl Format for Explicitness {
                 Self::Implicit => "implicit",
                 Self::Explicit => "explicit",
             }
-            .color(color::SPECIAL_SYMBOL)
+            .color(color_palette::SPECIAL_SYMBOL)
         )
     }
 }
@@ -701,7 +709,7 @@ impl Format for super::AttributeArgumentKind {
                 FormatStruct::new(f, indentation)
                     .name("Number-Literal")
                     .finish()?;
-                write!(f, " {}", number.color(color::VERBATIM))
+                write!(f, " {}", number.color(color_palette::VERBATIM))
             }
             Self::TextLiteral(text) => {
                 FormatStruct::new(f, indentation)

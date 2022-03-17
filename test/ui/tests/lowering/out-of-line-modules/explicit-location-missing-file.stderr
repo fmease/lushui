@@ -2,7 +2,7 @@ error[E016]: could not load the module `meaningless`
  --> ${TEST_FOLDER}/lowering/out-of-line-modules/explicit-location-missing-file.lushui:4:1
   |
 4 | module meaningless
-  | ^^^^^^^^^^^^^^^^^^ 
+  | ^^^^^^^^^^^^^^^^^^
   |
  note: `${TEST_FOLDER}/lowering/out-of-line-modules/expansion-of-the-void-until-eternity.lushui`: No such file or directory (os error 2)
 

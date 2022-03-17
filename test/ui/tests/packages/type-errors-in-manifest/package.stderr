@@ -23,21 +23,21 @@ error[E802]: the record does not contain the entry `path`
  --> ${TEST_FOLDER}/packages/type-errors-in-manifest/package.metadata:5:23
   |
 5 | components: [ "core", {}, { type: false, } ],
-  |                       ^^ 
+  |                       ^^
   |
 
 error[E802]: the record does not contain the entry `type`
  --> ${TEST_FOLDER}/packages/type-errors-in-manifest/package.metadata:5:23
   |
 5 | components: [ "core", {}, { type: false, } ],
-  |                       ^^ 
+  |                       ^^
   |
 
 error[E802]: the record does not contain the entry `path`
  --> ${TEST_FOLDER}/packages/type-errors-in-manifest/package.metadata:5:27
   |
 5 | components: [ "core", {}, { type: false, } ],
-  |                           ^^^^^^^^^^^^^^^^ 
+  |                           ^^^^^^^^^^^^^^^^
   |
 
 error[E800]: expected type `text` but got type `boolean`

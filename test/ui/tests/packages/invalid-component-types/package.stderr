@@ -2,7 +2,7 @@ error: `examples` is not a valid component type
  --> ${TEST_FOLDER}/packages/invalid-component-types/package.metadata:8:16
   |
 8 |         type: "examples",
-  |                ^^^^^^^^ 
+  |                ^^^^^^^^
   |
  note: valid component types are `benchmark`, `example`, `executable`, `library` and `test`
 
@@ -10,7 +10,7 @@ error: `tes t#` is not a valid component type
   --> ${TEST_FOLDER}/packages/invalid-component-types/package.metadata:12:16
    |
 12 |         type: "tes t#",
-   |                ^^^^^^ 
+   |                ^^^^^^
    |
   note: valid component types are `benchmark`, `example`, `executable`, `library` and `test`
 

@@ -4,7 +4,7 @@ error: do blocks are not supported yet
 4 |       do
  ... _____^
 8 | |         pure (goal beta)
-  | |________________________^ 
+  | |________________________^
   |
 
 error: aborting due to previous error

@@ -4,7 +4,7 @@ error: use/in-expressions are not supported yet
 4 |       use qualified.thing as matter in
   |  _____^
 5 | |     this-location
-  | |_________________^ 
+  | |_________________^
   |
 
 error: aborting due to previous error

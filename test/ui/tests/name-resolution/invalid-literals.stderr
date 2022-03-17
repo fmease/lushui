@@ -38,7 +38,7 @@ error[E007]: number literal `-1` does not fit type `Nat`
   --> ${TEST_FOLDER}/name-resolution/invalid-literals.lushui:10:29
    |
 10 | negative-default-nat: Nat = -1
-   |                             ^^ 
+   |                             ^^
    |
   note: values of this type must fit integer interval [0, infinity)
 
@@ -46,7 +46,7 @@ error[E007]: number literal `-1702` does not fit type `Nat`
   --> ${TEST_FOLDER}/name-resolution/invalid-literals.lushui:11:25
    |
 11 | negative-nat: Nat = Nat.-1'702
-   |                         ^^^^^^ 
+   |                         ^^^^^^
    |
   note: values of this type must fit integer interval [0, infinity)
 
@@ -54,7 +54,7 @@ error[E007]: number literal `1000000000000` does not fit type `Int32`
   --> ${TEST_FOLDER}/name-resolution/invalid-literals.lushui:13:30
    |
 13 | out-of-bounds: Int32 = Int32.1'000'000'000'000
-   |                              ^^^^^^^^^^^^^^^^^ 
+   |                              ^^^^^^^^^^^^^^^^^
    |
   note: values of this type must fit integer interval [-2^31, 2^31-1]
 
@@ -98,14 +98,14 @@ error[E021]: binding `param` is not defined in this scope
   --> ${TEST_FOLDER}/name-resolution/invalid-literals.lushui:21:40
    |
 21 | param-pass-lit (param: Int32): Int32 = param.""
-   |                                        ^^^^^ 
+   |                                        ^^^^^
    |
 
 error[E021]: binding `undefined` is not defined in this scope
   --> ${TEST_FOLDER}/name-resolution/invalid-literals.lushui:23:15
    |
 23 | undef: Void = undefined."SCARY"
-   |               ^^^^^^^^^ 
+   |               ^^^^^^^^^
    |
 
 error: aborting due to 11 previous errors

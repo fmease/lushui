@@ -2,29 +2,29 @@ error[E024]: the declarations `topmost.fake-my-dude.alpha0` and `topmost.alpha1`
  --> ${TEST_FOLDER}/name-resolution/circular-uses.lushui:3:35
   |
 3 | use fake-my-dude.alpha0.((self as alpha1))
-  |                                   ^^^^^^ 
+  |                                   ^^^^^^
   |
  --> ${TEST_FOLDER}/name-resolution/circular-uses.lushui:9:25
   |
 9 |     use super.alpha1 as alpha0
-  |                         ^^^^^^ 
+  |                         ^^^^^^
   |
 
 error[E024]: the declarations `topmost.fake-my-dude.beta2`, `topmost.fake-my-dude.beta0` and `topmost.fake-my-dude.beta1` are circular
   --> ${TEST_FOLDER}/name-resolution/circular-uses.lushui:6:18
    |
  6 |     use beta0 as beta1
-   |                  ^^^^^ 
+   |                  ^^^^^
    |
   --> ${TEST_FOLDER}/name-resolution/circular-uses.lushui:11:18
    |
 11 |     use beta1 as beta2
-   |                  ^^^^^ 
+   |                  ^^^^^
    |
   --> ${TEST_FOLDER}/name-resolution/circular-uses.lushui:13:23
    |
 13 |     use self.beta2 as beta0
-   |                       ^^^^^ 
+   |                       ^^^^^
    |
 
 error: aborting due to 2 previous errors

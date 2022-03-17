@@ -2,35 +2,35 @@ error[E029]: binding `topmost.outer.south` is private
  --> ${TEST_FOLDER}/name-resolution/exposure/access-private-bindings.lushui:5:13
   |
 5 | use outer.((south.Structure as S) (north.Structure as N))
-  |             ^^^^^ 
+  |             ^^^^^
   |
 
 error[E029]: binding `topmost.outer.north.Structure` is private
  --> ${TEST_FOLDER}/name-resolution/exposure/access-private-bindings.lushui:5:42
   |
 5 | use outer.((south.Structure as S) (north.Structure as N))
-  |                                          ^^^^^^^^^ 
+  |                                          ^^^^^^^^^
   |
 
 error[E029]: binding `topmost.outer.south` is private
  --> ${TEST_FOLDER}/name-resolution/exposure/access-private-bindings.lushui:6:11
   |
 6 | use outer.south
-  |           ^^^^^ 
+  |           ^^^^^
   |
 
 error[E029]: binding `topmost.outer.north.Structure` is private
   --> ${TEST_FOLDER}/name-resolution/exposure/access-private-bindings.lushui:10:22
    |
 10 |     It: Type = north.Structure
-   |                      ^^^^^^^^^ 
+   |                      ^^^^^^^^^
    |
 
 error[E029]: binding `topmost.outer.south` is private
   --> ${TEST_FOLDER}/name-resolution/exposure/access-private-bindings.lushui:21:22
    |
 21 | Struct: Type = outer.south
-   |                      ^^^^^ 
+   |                      ^^^^^
    |
 
 error: aborting due to 5 previous errors

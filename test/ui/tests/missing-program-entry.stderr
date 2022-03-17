@@ -4,7 +4,7 @@ error[E050]: the component `missing-program-entry` does not contain a `main` fun
 1 |   ;;; TEST fail check --component-type=executable
   |  _^
 2 | | 
-  | |^ 
+  | |^
   |
 
 error: aborting due to previous error

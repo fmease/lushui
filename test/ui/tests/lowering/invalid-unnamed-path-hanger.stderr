@@ -2,7 +2,7 @@ error[E025]: path `super` is not bound to an identifier
  --> ${TEST_FOLDER}/lowering/invalid-unnamed-path-hanger.lushui:3:5
   |
 3 | use super
-  |     ^^^^^ 
+  |     ^^^^^
   |
  note: a use-declaration has to introduce at least one new binder
  help: bind the path to a name with `as`
@@ -11,7 +11,7 @@ error[E025]: path `topmost` is not bound to an identifier
  --> ${TEST_FOLDER}/lowering/invalid-unnamed-path-hanger.lushui:4:5
   |
 4 | use topmost
-  |     ^^^^^^^ 
+  |     ^^^^^^^
   |
  note: a use-declaration has to introduce at least one new binder
  help: bind the path to a name with `as`
@@ -20,7 +20,7 @@ error[E025]: path `self` is not bound to an identifier
  --> ${TEST_FOLDER}/lowering/invalid-unnamed-path-hanger.lushui:6:5
   |
 6 | use self
-  |     ^^^^ 
+  |     ^^^^
   |
  note: a use-declaration has to introduce at least one new binder
  help: bind the path to a name with `as`
@@ -29,7 +29,7 @@ error[E025]: path `self` is not bound to an identifier
  --> ${TEST_FOLDER}/lowering/invalid-unnamed-path-hanger.lushui:8:20
   |
 8 | use topmost.(space self space)
-  |                    ^^^^ 
+  |                    ^^^^
   |
  note: a use-declaration has to introduce at least one new binder
  help: bind the path to a name with `as`
@@ -38,7 +38,7 @@ error[E026]: path `super` not allowed in this position
   --> ${TEST_FOLDER}/lowering/invalid-unnamed-path-hanger.lushui:10:31
    |
 10 | use topmost.(self.(self.thing super))
-   |                               ^^^^^ 
+   |                               ^^^^^
    |
   help: consider moving this path to a separate use-declaration
 

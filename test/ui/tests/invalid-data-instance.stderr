@@ -2,28 +2,28 @@ error[E033]: `Type` is not an instance of `topmost.X`
  --> ${TEST_FOLDER}/invalid-data-instance.lushui:6:16
   |
 6 |     x0: Int -> Type
-  |                ^^^^ 
+  |                ^^^^
   |
 
 error[E033]: `topmost.Y topmost.Int` is not an instance of `topmost.X`
  --> ${TEST_FOLDER}/invalid-data-instance.lushui:7:9
   |
 7 |     x1: Y Int
-  |         ^^^^^ 
+  |         ^^^^^
   |
 
 error[E033]: `topmost.Int` is not an instance of `topmost.X`
  --> ${TEST_FOLDER}/invalid-data-instance.lushui:8:9
   |
 8 |     x2: Int
-  |         ^^^ 
+  |         ^^^
   |
 
 error[E033]: `topmost.Int` is not an instance of `topmost.Y`
   --> ${TEST_FOLDER}/invalid-data-instance.lushui:11:15
    |
 11 |     y: Int -> Int
-   |               ^^^ 
+   |               ^^^
    |
 
 error: aborting due to 4 previous errors

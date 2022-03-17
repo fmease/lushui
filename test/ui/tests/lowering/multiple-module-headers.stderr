@@ -2,7 +2,7 @@ error[E041]: the module header has to be the first declaration of the module
  --> ${TEST_FOLDER}/lowering/multiple-module-headers.lushui:5:1
   |
 5 | module
-  | ^^^^^^ 
+  | ^^^^^^
   |
  note: however, the current module already has a module header
 
@@ -10,7 +10,7 @@ error[E041]: the module header has to be the first declaration of the module
  --> ${TEST_FOLDER}/lowering/multiple-module-headers.lushui:9:1
   |
 9 | module
-  | ^^^^^^ 
+  | ^^^^^^
   |
  note: however, the current module already has a module header
 

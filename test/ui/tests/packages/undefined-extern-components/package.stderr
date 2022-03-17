@@ -2,14 +2,14 @@ error: the component `core` is not defined
  --> ${TEST_FOLDER}/packages/undefined-extern-components/library.lushui:3:12
   |
 3 | use extern.core.nat.Nat
-  |            ^^^^ 
+  |            ^^^^
   |
 
 error: the component `whatever` is not defined
  --> ${TEST_FOLDER}/packages/undefined-extern-components/library.lushui:4:12
   |
 4 | use extern.whatever
-  |            ^^^^^^^^ 
+  |            ^^^^^^^^
   |
 
 error: aborting due to 2 previous errors
