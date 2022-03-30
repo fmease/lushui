@@ -148,6 +148,7 @@ fn try_main() -> Result<(), ()> {
                             &entry.unwrap(),
                             filters,
                             application.gilding,
+                            application.timeout,
                             application.inspecting,
                             &mut statistics,
                             &mut failures,
@@ -212,6 +213,7 @@ fn handle_test_folder_entry(
     entry: &walkdir::DirEntry,
     filters: Filters,
     gilding: Gilding,
+    timeout: Option<Duration>,
     inspecting: Inspecting,
     statistics: &mut TestSuiteStatistics,
     failures: &mut Vec<Failure>,
@@ -383,30 +385,39 @@ fn handle_test_folder_entry(
     }
 
     let time = Instant::now();
-    let output = compile(path, &configuration.arguments, type_);
+    let output = compile(path, &configuration.arguments, type_, timeout);
     let duration = time.elapsed();
 
     let mut failed = false;
 
-    match (configuration.tag, output.status.success()) {
-        (TestTag::Pass, true) | (TestTag::Fail, false) => {}
-        (TestTag::Pass, false) => {
-            failures.push(Failure::new(
-                File::new(legible_path.clone(), type_.into()),
-                FailureKind::UnexpectedFail {
-                    code: output.status.code(),
-                },
-            ));
-            failed = true;
+    // @Task simplify and DRY this logic!
+    if let Some(124) = output.status.code() {
+        failures.push(Failure::new(
+            File::new(legible_path.clone(), type_.into()),
+            FailureKind::Timeout,
+        ));
+        failed = true;
+    } else {
+        match (configuration.tag, output.status.success()) {
+            (TestTag::Pass, true) | (TestTag::Fail, false) => {}
+            (TestTag::Pass, false) => {
+                failures.push(Failure::new(
+                    File::new(legible_path.clone(), type_.into()),
+                    FailureKind::UnexpectedFail {
+                        code: output.status.code(),
+                    },
+                ));
+                failed = true;
+            }
+            (TestTag::Fail, true) => {
+                failures.push(Failure::new(
+                    File::new(legible_path.clone(), type_.into()),
+                    FailureKind::UnexpectedPass,
+                ));
+                failed = true;
+            }
+            (TestTag::Ignore | TestTag::Auxiliary, _) => unreachable!(),
         }
-        (TestTag::Fail, true) => {
-            failures.push(Failure::new(
-                File::new(legible_path.clone(), type_.into()),
-                FailureKind::UnexpectedPass,
-            ));
-            failed = true;
-        }
-        (TestTag::Ignore | TestTag::Auxiliary, _) => unreachable!(),
     }
 
     let mut gilded = match check_against_golden_file(
@@ -545,10 +556,25 @@ fn validate_auxiliary_file(
     Ok(())
 }
 
-fn compile(path: &Path, arguments: &[&str], type_: TestType) -> std::process::Output {
+fn compile(
+    path: &Path,
+    arguments: &[&str],
+    type_: TestType,
+    timeout: Option<Duration>,
+) -> std::process::Output {
     // @Beacon @Question how can we filter out rustc's warnings from stderr?
 
-    let mut command = Command::new("cargo");
+    let mut command = Command::new(if timeout.is_some() {
+        "timeout"
+    } else {
+        "cargo"
+    });
+
+    if let Some(timeout) = timeout {
+        command.arg(timeout.as_secs().to_string());
+        command.arg("cargo");
+    }
+
     command
         .args(["run", "--quiet"])
         .arg("--manifest-path")

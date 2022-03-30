@@ -1,12 +1,13 @@
 use crate::{CompilerBuildMode, Gilding, Inspecting};
 use clap::{Arg, Command};
-use std::{num::NonZeroUsize, str::FromStr};
+use std::{num::NonZeroUsize, str::FromStr, time::Duration};
 
 pub(crate) struct Application {
     pub(crate) compiler_build_mode: CompilerBuildMode,
     pub(crate) gilding: Gilding,
     pub(crate) strict_filters: Vec<String>,
     pub(crate) loose_filters: Vec<String>,
+    pub(crate) timeout: Option<Duration>,
     pub(crate) number_test_threads: NonZeroUsize,
     pub(crate) inspecting: Inspecting,
 }
@@ -75,6 +76,14 @@ impl Application {
                          those paths are relative to the test folder path and lack an extension",
                     ),
             )
+            .arg(
+                Arg::new("timeout")
+                    .long("timeout")
+                    .short('t')
+                    .value_name("DURATION")
+                    .validator(|duration| duration.parse::<u64>())
+                    .help("Impose a timeout in seconds to every single test"),
+            )
             .arg(number_test_threads)
             .arg(
                 Arg::new("inspect")
@@ -101,6 +110,9 @@ impl Application {
             loose_filters: matches
                 .values_of(LOOSE_FILTERS)
                 .map_or(Vec::new(), |value| value.map(ToString::to_string).collect()),
+            timeout: matches
+                .value_of("timeout")
+                .map(|duration| Duration::from_secs(duration.parse().unwrap())),
             number_test_threads: matches
                 .value_of(NUMBER_TEST_THREADS)
                 .map(|input| input.parse().unwrap())

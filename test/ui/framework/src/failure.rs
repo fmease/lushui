@@ -84,6 +84,7 @@ pub(crate) enum FailureKind {
     InvalidFile {
         reason: Str,
     },
+    Timeout,
 }
 
 impl FailureKind {
@@ -148,6 +149,13 @@ impl fmt::Display for FailureKind {
                         "For being in the test folder, the file has an incorrect form:\n{reason}."
                     )
                     .red()
+                )?;
+            }
+            Self::Timeout => {
+                write!(
+                    f,
+                    "{}",
+                    "The test timed out: It ran longer than the specified timeout.".red()
                 )?;
             }
         }
