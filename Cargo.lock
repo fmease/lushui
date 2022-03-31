@@ -250,7 +250,6 @@ dependencies = [
  "num-traits",
  "rustc-hash",
  "smallvec",
- "staticvec",
  "string_cache",
  "strsim",
  "unicode-segmentation",
@@ -427,11 +426,6 @@ name = "smallvec"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2dd574626839106c320a323308629dcb1acfc96e32a8cba364ddc61ac23ee83"
-
-[[package]]
-name = "staticvec"
-version = "0.11.4"
-source = "git+https://github.com/slightlyoutofphase/staticvec#df7eed03b302ef4f0e75a9af37ade9a1cadc4f37"
 
 [[package]]
 name = "string_cache"

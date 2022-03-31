@@ -1,7 +1,7 @@
 use crate::{terminal_width, Stream};
 use colored::Colorize;
 use difference::{Changeset, Difference};
-use std::{borrow::Cow, fmt};
+use std::{borrow::Cow, fmt, process::ExitStatus};
 use unicode_width::UnicodeWidthStr;
 
 type Str = std::borrow::Cow<'static, str>;
@@ -72,10 +72,7 @@ impl fmt::Display for FileType {
 
 pub(crate) enum FailureKind {
     UnexpectedPass,
-    // @Task make this UnexpectedFail(ExitStatus) once stable
-    UnexpectedFail {
-        code: Option<i32>,
-    },
+    UnexpectedFail(ExitStatus),
     GoldenFileMismatch {
         golden: String,
         actual: String,
@@ -106,13 +103,13 @@ impl fmt::Display for FailureKind {
                         .red()
                 )?;
             }
-            Self::UnexpectedFail { code } => {
+            Self::UnexpectedFail(status) => {
                 write!(
                     f,
                     "{}",
                     format!(
                         "Expected the compiler to exit successfully but it actually failed with {}.",
-                        match code {
+                        match status.code() {
                             Some(code) => format!("the non-zero exit code `{code}`").into(),
                             None => Cow::from("a non-zero exit code"),
                         },

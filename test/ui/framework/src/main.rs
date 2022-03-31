@@ -1,10 +1,4 @@
-#![feature(
-    default_free_fn,
-    const_option,
-    once_cell,
-    let_else,
-    process_exitcode_placeholder
-)]
+#![feature(default_free_fn, const_option, once_cell, let_else)]
 #![forbid(rust_2018_idioms, unused_must_use)]
 #![warn(clippy::pedantic)]
 #![allow(
@@ -403,9 +397,7 @@ fn handle_test_folder_entry(
             (TestTag::Pass, false) => {
                 failures.push(Failure::new(
                     File::new(legible_path.clone(), type_.into()),
-                    FailureKind::UnexpectedFail {
-                        code: output.status.code(),
-                    },
+                    FailureKind::UnexpectedFail(output.status),
                 ));
                 failed = true;
             }

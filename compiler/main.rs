@@ -5,7 +5,6 @@
     default_free_fn,
     let_else,
     associated_type_bounds,
-    process_exitcode_placeholder,
     let_chains
 )]
 #![forbid(rust_2018_idioms, unused_must_use)]

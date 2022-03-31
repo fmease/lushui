@@ -10,7 +10,6 @@ use crate::{
 };
 use index_map::{Index as _, IndexMap};
 use instruction::{Chunk, ChunkIndex, Instruction};
-use staticvec::StaticVec;
 use std::{default::default, fmt};
 
 mod instruction; // @Note naming swap out with name&concept bytecode
@@ -285,8 +284,8 @@ pub fn compile_and_interpret_declaration(
 }
 
 // @Question what should the relation be *actually* like?
-const FRAME_SIZE: usize = 64;
-const STACK_SIZE: usize = FRAME_SIZE * u8::MAX as usize;
+//const FRAME_SIZE: usize = 64;
+//const STACK_SIZE: usize = FRAME_SIZE * u8::MAX as usize;
 
 struct CallFrame {
     chunk: ChunkIndex,
@@ -297,8 +296,10 @@ struct CallFrame {
 // @Task read bytecode not Compiler
 struct ByteCodeInterpreter<'a> {
     c: &'a Compiler<'a>,
-    stack: StaticVec<Value, STACK_SIZE>,
-    frames: StaticVec<CallFrame, FRAME_SIZE>,
+    //stack: StaticVec<Value, STACK_SIZE>,
+    stack: Vec<Value>,
+    //frames: StaticVec<CallFrame, FRAME_SIZE>,
+    frames: Vec<CallFrame>,
 }
 
 impl<'a> ByteCodeInterpreter<'a> {
