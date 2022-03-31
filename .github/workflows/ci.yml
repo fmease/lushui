@@ -63,7 +63,7 @@ jobs:
     - name: Run unit tests (via the rust testing framework)
       run: cargo test
     - name: Run UI tests (via the golden UI testing framework)
-      run: ./test/ui/run --release
+      run: ./test/ui/run --release --timeout=20
 
   test-on-windows:
     name: Run tests on Windows
