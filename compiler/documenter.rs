@@ -153,6 +153,8 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             let mut search_index = String::from("window.searchIndex=[");
 
             for search_item in &self.search_items {
+                use std::fmt::Write;
+
                 match search_item {
                     &SearchItem::Declaration(index) => {
                         // @Beacon @Task don't use the to_string variant, so we don't need to split() JS (which would be
@@ -161,10 +163,12 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                             .component
                             .extern_path_to_string(index.local(self.component).unwrap());
 
-                        search_index += &format!(
+                        write!(
+                            search_index,
                             "[{path:?},{:?}],",
                             format::declaration_url_fragment(index, self.component, self.session)
-                        );
+                        )
+                        .unwrap();
                     }
                     SearchItem::ReservedIdentifier(name) => {
                         let kind =
@@ -176,16 +180,20 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                                 "punctuation"
                             };
 
-                        search_index += &format!(
+                        write!(
+                            search_index,
                             "[{name:?},{:?}],",
                             format!("reserved.html#{kind}.{}", urlencoding::encode(name))
-                        );
+                        )
+                        .unwrap();
                     }
                     SearchItem::Attribute(binder) => {
-                        search_index += &format!(
+                        write!(
+                            search_index,
                             "[{binder:?},{:?}],",
                             format!("attributes.html#attribute.{}", urlencoding::encode(binder))
-                        );
+                        )
+                        .unwrap();
                     }
                 }
             }
@@ -497,7 +505,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                     }
                     PageContentType::Attributes => heading.add_child("Attributes"),
                     PageContentType::ReservedIdentifiers => {
-                        heading.add_child("Reserved Identifiers")
+                        heading.add_child("Reserved Identifiers");
                     }
                 }
 
@@ -690,7 +698,7 @@ fn render_declaration_attribute(attribute: &Attribute, parent: &mut Element<'_>,
 
         // @Task incorporate message contain within the attribute etc
         Deprecated(_) => {
-            parent.add_child(Element::new("div").class("deprecated").child("deprecated"))
+            parent.add_child(Element::new("div").class("deprecated").child("deprecated"));
         }
         // @Task incorporate message contain within the attribute etc
         Unstable(_) => parent.add_child(

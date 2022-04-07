@@ -1,6 +1,5 @@
 #![feature(
     backtrace,
-    derive_default_enum,
     decl_macro,
     default_free_fn,
     let_else,
@@ -22,7 +21,6 @@
     clippy::if_not_else,
     clippy::similar_names,
     clippy::blocks_in_if_conditions, // too many false positives with rustfmt's output
-    clippy::semicolon_if_nothing_returned, // @Temporary false positives with let/else, still
 )]
 
 use cli::{BuildMode, Command, PassRestriction};
@@ -30,7 +28,7 @@ use colored::Colorize;
 use lushui::{
     component::{Component, ComponentMetadata, ComponentType, Components},
     diagnostics::{
-        reporter::{BufferedStderrReporter, ErrorReported, StderrReporter},
+        reporter::{BufferedStderrReporter, ErasedReportedError, StderrReporter},
         Code, Diagnostic, Reporter,
     },
     documenter,
@@ -79,17 +77,17 @@ fn try_main() -> Result<()> {
 
     let reported_any_errors = reported_any_errors.load(Ordering::SeqCst);
 
-    if let Err(token) = result {
+    if let Err(error) = result {
         assert!(
             reported_any_errors,
             "an error occurred but nothing was reported"
         );
-        return Err(token);
+        return Err(error);
     }
 
     // @Task get rid of this once everyone complies
     if reported_any_errors {
-        return Err(ErrorReported::new_unchecked());
+        return Err(ErasedReportedError::new_unchecked());
     }
 
     Ok(())
@@ -257,10 +255,12 @@ fn build_component(
         // @Task print version
         println!(
             "   {label} {} ({path})",
+            // @Task re-introduce some logic to not the component type unless really necessary
+            //       (the is_ambiguous... is currently never set in BuildQueue::finalize)
             if component.in_goal_package(session)
-                && component.metadata.is_ambiguously_named_within_package
+            /*&& component.metadata.is_ambiguously_named_within_package*/
             {
-                format!("{} ({})", component.name(), component.type_())
+                format!("{} [{}]", component.name(), component.type_())
             } else {
                 component.name().to_string()
             }
@@ -446,7 +446,6 @@ const SOURCE_FOLDER_NAME: &str = "source";
 const LIBRARY_FILE_STEM: &str = "library";
 const EXECUTABLE_FILE_STEM: &str = "main";
 
-// @Task generalize the name to a path!
 fn create_package(name: &str, options: cli::PackageCreationOptions, reporter: &Reporter) -> Result {
     use std::fs;
 
@@ -585,8 +584,9 @@ fn set_panic_hook() {
 
         Diagnostic::bug()
             .message(message)
-            .if_present(information.location(), |this, location| {
-                this.note(format!("at `{location}`"))
+            .with(|error| match information.location() {
+                Some(location) => error.note(format!("at `{location}`")),
+                None => error,
             })
             .note(std::thread::current().name().map_or_else(
                 || "in an unnamed thread".into(),
@@ -594,13 +594,11 @@ fn set_panic_hook() {
             ))
             .note("the compiler unexpectedly panicked. this is a bug. we would appreciate a bug report")
             .note(format!("lushui {VERSION}"))
-            .if_(backtrace.is_none(), |this| {
-                this.help(
+            .with(|error| match backtrace {
+                Some(backtrace) => error.note(format!("with the following backtrace:\n{backtrace}")),
+                None => error.help(
                     "rerun with the environment variable `LUSHUI_BACKTRACE=1` to display a backtrace",
-                )
-            })
-            .if_present(backtrace, |this, backtrace| {
-                this.note(format!("with the following backtrace:\n{backtrace}"))
+                ),
             })
             .report(&StderrReporter::new(None).into());
     }));

@@ -7,6 +7,7 @@ pub(crate) use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::{ffi::OsStr, fmt, path::Path};
 pub(crate) use string_cache::DefaultAtom as Atom;
 
+pub(crate) mod cycle;
 pub(crate) mod lexer;
 
 pub(crate) type Str = std::borrow::Cow<'static, str>;
@@ -141,7 +142,8 @@ where
                 if this.peek().is_some() {
                     result += ", ";
                 } else {
-                    result += &format!(" {conjunction} ");
+                    use std::fmt::Write;
+                    write!(result, " {conjunction} ").unwrap();
                 }
             }
 

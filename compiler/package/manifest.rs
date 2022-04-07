@@ -1,7 +1,7 @@
 use super::BuildQueue;
 use crate::{
     component::ComponentType,
-    diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
+    diagnostics::{reporter::ErasedReportedError, Code, Diagnostic, Reporter},
     error::{AndThenMapExt, Health, OkIfUntaintedExt, Result},
     metadata::{self, convert, Record, RecordWalker, Value, WithTextContentSpanExt},
     span::{SourceFileIndex, SourceMap, Span, Spanned, WeaklySpanned},
@@ -48,7 +48,7 @@ impl PackageManifest {
 
         try_all! {
             name, version, description, components;
-            return Err(ErrorReported::new_unchecked())
+            return Err(ErasedReportedError::new_unchecked())
         };
 
         Ok(PackageManifest {
@@ -199,7 +199,7 @@ fn parse_components(
 fn parse_component_type(
     Spanned!(type_, span): Spanned<String>,
     reporter: &Reporter,
-) -> Result<Spanned<ComponentType>, ErrorReported> {
+) -> Result<Spanned<ComponentType>, ErasedReportedError> {
     ComponentType::from_str(&type_)
         .map(|type_| Spanned::new(span, type_))
         .map_err(|_| {
@@ -342,7 +342,7 @@ pub(super) struct DependencyDeclaration {
     pub(super) path: Option<Spanned<PathBuf>>,
 }
 
-#[derive(Clone, Copy, Debug, Elements, FromStr, Str)]
+#[derive(Clone, Copy, Debug, Elements, FromStr, Str, PartialEq, Eq)]
 #[format(dash_case)]
 pub(super) enum DependencyProvider {
     Package,

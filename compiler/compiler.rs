@@ -46,17 +46,20 @@ impl<'a> Compiler<'a> {
 
     // @Temporary nicer debugging
     fn print_chunks(&self) -> String {
+        use std::fmt::Write;
         let mut result = String::new();
 
         for (index, chunk) in self.chunks.iter() {
-            result += &format!("{:04} {}:\n", index.value(), chunk.name);
+            writeln!(result, "{:04} {}:", index.value(), chunk.name).unwrap();
 
             for (index, instruction) in chunk.instructions.iter().enumerate() {
-                result += &format!(
-                    "    {:04} {}\n",
+                writeln!(
+                    result,
+                    "    {:04} {}",
                     index,
                     instruction.print_with_constant_table(&self.constants)
-                );
+                )
+                .unwrap();
             }
 
             result.push('\n');

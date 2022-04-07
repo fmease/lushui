@@ -1,0 +1,5 @@
+;;; TEST auxiliary packages/direct-dependencies
+
+@public
+data Token: Type of
+    token: Token

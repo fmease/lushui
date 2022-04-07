@@ -9,11 +9,11 @@ components: [
         path: "examples/first.lushui",
     },
     {
-        type: test,
+        type: test-suite,
         path: "tests/first.lushui",
     },
     {
-        type: "benchmark",
+        type: "benchmark-suite",
         path: "benchmarks/first.lushui",
     },
 ]

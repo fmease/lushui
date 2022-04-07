@@ -129,7 +129,7 @@ impl<'scope> Asciidoctor<'scope> {
                     &should_watch,
                     component,
                     session,
-                )
+                );
             }
         });
 

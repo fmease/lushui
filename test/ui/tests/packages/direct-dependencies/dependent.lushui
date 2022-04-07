@@ -1,0 +1,5 @@
+;;; TEST auxiliary packages/direct-dependencies
+
+use extern.dependency.Token
+
+t: Token = Token.token

@@ -4,7 +4,7 @@ error: `examples` is not a valid component type
 8 |         type: examples,
   |               ^^^^^^^^
   |
- note: valid component types are `benchmark`, `example`, `executable`, `library` and `test`
+ note: valid component types are `benchmark-suite`, `example`, `executable`, `library` and `test-suite`
 
 error: `tes t#` is not a valid component type
   --> ${TEST_FOLDER}/packages/invalid-component-types/package.metadata:12:16
@@ -12,7 +12,7 @@ error: `tes t#` is not a valid component type
 12 |         type: "tes t#",
    |                ^^^^^^
    |
-  note: valid component types are `benchmark`, `example`, `executable`, `library` and `test`
+  note: valid component types are `benchmark-suite`, `example`, `executable`, `library` and `test-suite`
 
 error: aborting due to 2 previous errors
 

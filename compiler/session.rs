@@ -15,7 +15,7 @@ use num_traits::{CheckedDiv, CheckedSub};
 use std::{
     default::default,
     fmt,
-    ops::{Index, IndexMut},
+    ops::Index,
     path::PathBuf,
     str::FromStr,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
@@ -26,7 +26,7 @@ const BUILD_FOLDER_NAME: &str = "build";
 pub struct BuildSession {
     /// The components which have already been built in this session.
     components: HashMap<ComponentIndex, Component>,
-    /// The packages whose components have not necessarily been built yet in this session.
+    /// The packages whose components have not necessarily been built yet in this session but are about to.
     packages: IndexMap<PackageIndex, Package>,
     goal_component: ComponentIndex,
     goal_package: PackageIndex,
@@ -156,7 +156,7 @@ impl BuildSession {
                     "the known binding `{}` is defined multiple times",
                     binding.path()
                 ))
-                .labeled_primary_span(binder, "conflicting definition")
+                .labeled_primary_span(binder, "redefinition")
                 .labeled_secondary_span(previous, "previous definition")
                 .report(self.reporter()));
         }
@@ -191,7 +191,7 @@ impl BuildSession {
                 .message(format!(
                     "the intrinsic type `{intrinsic}` is defined multiple times",
                 ))
-                .labeled_primary_span(&binder, "conflicting definition")
+                .labeled_primary_span(&binder, "redefinition")
                 .labeled_secondary_span(previous as &_, "previous definition")
                 .report(self.reporter()));
         }
@@ -236,8 +236,11 @@ impl BuildSession {
 
         Err(
             Diagnostic::missing_intrinsic_binding(intrinsic, IntrinsicKind::Type)
-                .if_present(expression, |diagnostic, span| {
-                    diagnostic.labeled_primary_span(span, "the type of this expression")
+                .with(|error| match expression {
+                    Some(expression) => {
+                        error.labeled_primary_span(expression, "the type of this expression")
+                    }
+                    None => error,
                 })
                 .report(self.reporter()),
         )
@@ -281,12 +284,6 @@ impl Index<PackageIndex> for BuildSession {
 
     fn index(&self, index: PackageIndex) -> &Self::Output {
         &self.packages[index]
-    }
-}
-
-impl IndexMut<PackageIndex> for BuildSession {
-    fn index_mut(&mut self, index: PackageIndex) -> &mut Self::Output {
-        &mut self.packages[index]
     }
 }
 

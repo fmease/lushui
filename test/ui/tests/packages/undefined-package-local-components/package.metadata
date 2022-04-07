@@ -1,0 +1,17 @@
+# TEST fail check
+
+name: lost-in-the-local-forest,
+version: "7171717.0.0",
+
+components: [
+    {
+        type: library,
+        path: "source/library.lushui",
+
+        dependencies: {
+            who: {},
+            wait-who: {},
+            no-wait-who: { component: i-mean-who },
+        },
+    },
+],

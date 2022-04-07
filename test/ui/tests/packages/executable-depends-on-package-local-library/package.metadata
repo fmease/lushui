@@ -1,4 +1,4 @@
-# TEST ignore pass check packages/executable-depends-on-package-local-library
+# TEST pass check
 
 name: container,
 version: "0.0.0",

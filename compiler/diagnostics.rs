@@ -13,7 +13,7 @@ use crate::{
     utility::Str,
 };
 use derivation::Str;
-use reporter::ErrorReported;
+use reporter::ErasedReportedError;
 pub use reporter::Reporter;
 use std::{
     collections::BTreeSet,
@@ -196,24 +196,12 @@ impl Diagnostic {
         self.subdiagnostic(Subseverity::Debug, message.into())
     }
 
-    /// Add to the diagnostic depending on a boolean condition.
-    pub fn if_(self, condition: bool, builder: impl FnOnce(Self) -> Self) -> Self {
-        match condition {
-            true => builder(self),
-            false => self,
-        }
-    }
-
-    /// Add to the diagnostic if the given resource exists.
-    pub fn if_present<T>(self, value: Option<T>, builder: impl FnOnce(Self, T) -> Self) -> Self {
-        match value {
-            Some(value) => builder(self, value),
-            None => self,
-        }
+    pub fn with(self, builder: impl FnOnce(Self) -> Self) -> Self {
+        builder(self)
     }
 
     /// Report the diagnostic.
-    pub fn report(self, reporter: &Reporter) -> ErrorReported {
+    pub fn report(self, reporter: &Reporter) -> ErasedReportedError {
         reporter.report(self)
     }
 }

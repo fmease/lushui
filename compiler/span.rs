@@ -357,7 +357,7 @@ mod spanning {
         fn span(&self) -> Span;
     }
 
-    impl<S: Spanning> Spanning for &'_ S {
+    impl<S: Spanning> Spanning for &S {
         fn span(&self) -> Span {
             (**self).span()
         }
@@ -411,22 +411,22 @@ mod spanning {
     }
 
     // @Task smh (specialization?) abstract over those two impls
-    // with impl<S: PossiblySpanning> PossiblySpanning for &'_ S
-    // this currently (obviously) conflicts with impl<S: Spanning> Spanning for &'_ S
+    // with impl<S: PossiblySpanning> PossiblySpanning for &S
+    // this currently (obviously) conflicts with impl<S: Spanning> Spanning for &S
 
-    // impl<S: PossiblySpanning> PossiblySpanning for &'_ S {
+    // impl<S: PossiblySpanning> PossiblySpanning for &S {
     //     fn possible_span(&self) -> Option<Span> {
     //         (**self).possible_span()
     //     }
     // }
 
-    impl<S: PossiblySpanning> PossiblySpanning for &'_ Option<S> {
+    impl<S: PossiblySpanning> PossiblySpanning for &Option<S> {
         fn possible_span(&self) -> Option<Span> {
             (**self).possible_span()
         }
     }
 
-    impl<S: Spanning> PossiblySpanning for &'_ Vec<S> {
+    impl<S: Spanning> PossiblySpanning for &Vec<S> {
         fn possible_span(&self) -> Option<Span> {
             (**self).possible_span()
         }
@@ -481,6 +481,23 @@ mod spanned {
                 value: self.value,
                 span: self.span,
             }
+        }
+    }
+
+    impl<T> Spanned<&T> {
+        #[allow(dead_code)]
+        pub(crate) fn copied(self) -> Spanned<T>
+        where
+            T: Copy,
+        {
+            self.map(|value| *value)
+        }
+
+        pub(crate) fn cloned(self) -> Spanned<T>
+        where
+            T: Clone,
+        {
+            self.map(Clone::clone)
         }
     }
 

@@ -1,0 +1,17 @@
+# TEST fail check
+# @Beacon @Task list all offending components / packages, not just the first one
+
+name: a,
+version: "0.0.0",
+
+components: [
+    {
+        type: library,
+        path: "source/library.lushui",
+
+        dependencies: {
+            core: { provider: distribution },
+            b: { path: "../b" },
+        },
+    },
+],

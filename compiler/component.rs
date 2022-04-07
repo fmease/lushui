@@ -162,12 +162,11 @@ pub struct ComponentMetadata {
     pub(crate) package: PackageIndex,
     pub(crate) path: Spanned<PathBuf>,
     pub(crate) type_: ComponentType,
-    // /// Unresolved dependencies.
-    // pub(crate) dependencies: Option<Spanned<Map<Word, Spanned<DependencyDeclaration>>>>,
     /// Indicates if the name of the library or executable component coincides with
     /// the name of the executable[^1] or library component, respectively.
     ///
     /// [^1]: We haven't implemented multiple executable components per package yet.
+    // @Beacon @Note this is no longer up to date with the concept of secondary libraries etc.
     pub is_ambiguously_named_within_package: bool,
 }
 
@@ -214,11 +213,11 @@ impl index_map::Index for ComponentIndex {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Elements, FromStr, Str)]
 #[format(dash_case)]
 pub enum ComponentType {
-    Benchmark,
+    BenchmarkSuite,
     Example,
     Executable,
     Library,
-    Test,
+    TestSuite,
 }
 
 impl fmt::Display for ComponentType {

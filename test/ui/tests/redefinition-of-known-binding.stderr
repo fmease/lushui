@@ -7,7 +7,7 @@ error[E039]: the known binding `Unit` is defined multiple times
   --> ${TEST_FOLDER}/redefinition-of-known-binding.lushui:10:10
    |
 10 |     data Unit: Type of
-   |          ^^^^ conflicting definition
+   |          ^^^^ redefinition
    |
 
 error[E039]: the known binding `Unit.unit` is defined multiple times
@@ -19,7 +19,7 @@ error[E039]: the known binding `Unit.unit` is defined multiple times
   --> ${TEST_FOLDER}/redefinition-of-known-binding.lushui:11:9
    |
 11 |         unit: Unit
-   |         ^^^^ conflicting definition
+   |         ^^^^ redefinition
    |
 
 error: aborting due to 2 previous errors

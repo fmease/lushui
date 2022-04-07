@@ -39,7 +39,7 @@ use super::{
     Word,
 };
 use crate::{
-    diagnostics::{reporter::ErrorReported, Code, Diagnostic},
+    diagnostics::{reporter::ErasedReportedError, Code, Diagnostic},
     error::Result,
     session::BuildSession,
     span::{SourceFileIndex, Span, Spanned, Spanning},
@@ -166,7 +166,7 @@ impl<'a> Parser<'a> {
 
             // @Note I am not really happy with this: if we are not "looking ahead", we won't actually
             // emit an error @Task smh change the error type to reflect the semantics
-            Err(ErrorReported::new_unchecked())
+            Err(ErasedReportedError::new_unchecked())
         }
 
         error(self, diagnostic).map(|okay| okay)
@@ -1122,12 +1122,16 @@ impl<'a> Parser<'a> {
                 return self.error(|| {
                     Expected::Expression
                         .but_actual_is(self.current_token())
-                        // @Beacon @Note this is a prime example for a situation where we can
-                        // make a parsing error non-fatal: we can just skip the `->` and keep
-                        // parsing w/o introducing too many (any?) useless/confusing consequential
-                        // errors!
-                        .if_(self.current_token().name() == ThinArrowRight, |this| {
-                            this.help(BRACKET_POTENTIAL_PI_TYPE_LITERAL)
+                        .with(|error| {
+                            // @Beacon @Note this is a prime example for a situation where we can
+                            // make a parsing error non-fatal: we can just skip the `->` and keep
+                            // parsing w/o introducing too many (any?) useless/confusing consequential
+                            // errors!
+                            if self.current_token().name() == ThinArrowRight {
+                                error.help(BRACKET_POTENTIAL_PI_TYPE_LITERAL)
+                            } else {
+                                error
+                            }
                         })
                 });
             }
@@ -1146,7 +1150,7 @@ impl<'a> Parser<'a> {
                     member,
                 }
                 .into(),
-            )
+            );
         }
 
         if let Some(attributes) = attributes {

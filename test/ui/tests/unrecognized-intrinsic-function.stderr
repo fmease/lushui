@@ -1,10 +1,14 @@
-error[E021]: binding `I-Definitely-Do-Not-Exist` is not defined in this scope
- --> ${TEST_FOLDER}/unrecognized-intrinsic-function.lushui:6:28
-  |
-6 | i-definitely-do-not-exist: I-Definitely-Do-Not-Exist
-  |                            ^^^^^^^^^^^^^^^^^^^^^^^^^
-  |
- help: a binding with a similar name exists in scope: `i-definitely-do-not-exist` (Ii-Ddefinitely-Ddo-Nnot-Eexist)
+error[E061]: `i-definitely-do-not-exist` is not an intrinsic function
+  --> ${TEST_FOLDER}/unrecognized-intrinsic-function.lushui:9:1
+   |
+ 9 | @intrinsic
+   | ----------
+   |
+  --> ${TEST_FOLDER}/unrecognized-intrinsic-function.lushui:10:1
+   |
+10 | i-definitely-do-not-exist: I-Do-Exist
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
 
 error: aborting due to previous error
 

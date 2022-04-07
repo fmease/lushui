@@ -75,15 +75,9 @@ impl TerminalFormat<'_> {
             let bar = "|".color(color_palette::FRAME).bold();
 
             match &lines.last_line {
-                None => self.format_single_line_highlight(&highlight, &lines, &bar, padding, f),
-                Some(final_line) => self.format_multi_line_highlight(
-                    &highlight,
-                    &lines,
-                    &final_line,
-                    &bar,
-                    padding,
-                    f,
-                ),
+                None => self.format_single_line_highlight(highlight, &lines, &bar, padding, f),
+                Some(final_line) => self
+                    .format_multi_line_highlight(highlight, &lines, final_line, &bar, padding, f),
             }?;
 
             writeln!(f)?;

@@ -1,0 +1,16 @@
+# TEST auxiliary packages/circular-components-three-packages
+
+name: b,
+version: "0.0.0",
+
+components: [
+    {
+        type: library,
+        path: "source/library.lushui",
+
+        dependencies: {
+            core: { provider: distribution },
+            c: { path: "../c" },
+        },
+    },
+],

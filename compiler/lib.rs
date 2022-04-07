@@ -39,11 +39,11 @@
     stmt_expr_attributes,
     associated_type_bounds,
     label_break_value,
-    derive_default_enum,
     generic_associated_types,
     try_trait_v2,
     adt_const_params,
     let_else,
+    let_chains,
     min_specialization,
     iter_intersperse,
     type_changing_struct_update,
@@ -67,12 +67,9 @@
     clippy::single_match_else,
     clippy::if_not_else,
     clippy::blocks_in_if_conditions, // too many false positives with rustfmt's output
-    clippy::similar_names, // too many false positives (#6479)
-    clippy::semicolon_if_nothing_returned, // @Temporary false positives with let/else, still
-    clippy::same_functions_in_if_condition, // @Temporary false positives with const generics (#8139)
+    clippy::trait_duplication_in_bounds, // @Temporary false positives (#8757)
     clippy::needless_pass_by_value, // @Temporary
     clippy::missing_panics_doc, // @Temporary
-    clippy::needless_borrow // @Temporary false positives (#8408 I believe)
 )]
 
 pub mod compiler;

@@ -306,7 +306,7 @@ fn hide_internal_commands() -> bool {
 
 const METADATA_SUBCOMMAND_DISCLAIMER: &str = "\
     This subcommand is not subject to any stability guarantees.\n\
-    It MAY BE CHANGED in its behavior or REMOVED ENTIRELY at any time and without further notice.\n\
+    It may be CHANGED in its behavior or REMOVED ENTIRELY at any time and without further notice.\n\
     If this subcommand is executed, the program behavior and\n\
     especially the form of the program output MUST NOT BE RELIED UPON.";
 
@@ -406,7 +406,7 @@ impl BuildTargets {
             targets.extend(libraries.into_iter().map(|name| BuildTarget {
                 name: Some(name.to_owned()),
                 type_: Some(ComponentType::Library),
-            }))
+            }));
         }
 
         if all_executables {
@@ -418,7 +418,7 @@ impl BuildTargets {
             targets.extend(executables.into_iter().map(|name| BuildTarget {
                 name: Some(name.to_owned()),
                 type_: Some(ComponentType::Executable),
-            }))
+            }));
         }
 
         Self(targets)
@@ -583,6 +583,7 @@ mod unstable {
         utility::{pluralize, Conjunction, ListingExt, QuoteExt},
     };
     use std::{
+        fmt::Write,
         iter::{once, Chain, Map},
         str::FromStr,
     };
@@ -646,28 +647,28 @@ mod unstable {
         elements.sort_by_key(|&(syntax, _)| syntax);
 
         for (syntax, help) in elements {
-            message += &format!(
-                "    {} {:<padding$}     {help}\n",
+            writeln!(
+                message,
+                "    {} {:<padding$}     {help}",
                 "-Z".green(),
                 syntax.green(),
-            );
+            )
+            .unwrap();
         }
 
-        for &line in DISCLAIMER {
-            message += &format!("\n    {}", line.red());
-        }
+        writeln!(message).unwrap();
+
+        write!(message, "{}", "\
+            These options are not subject to any stability guarantees.\n\
+            They may be CHANGED in their behavior or REMOVED ENTIRELY at any time and without further notice.\n\
+            If this program is executed with any of these options specified,\n\
+            its behavior and especially the form of its output MUST NOT BE RELIED UPON.\
+        ".red()).unwrap();
 
         println!("{message}");
         // @Beacon @Task don't use this function!
         std::process::exit(0);
     }
-
-    const DISCLAIMER: &[&str] = &[
-        "These options are not subject to any stability guarantees.",
-        "They MAY BE CHANGED in their behavior or REMOVED ENTIRELY at any time and without further notice.",
-        "If this program is executed with any of these options specified,",
-        "its behavior and especially the form of its output MUST NOT BE RELIED UPON.",
-    ];
 
     #[derive(Clone, Copy, Elements, Str, FromStr)]
     #[format(dash_case)]
