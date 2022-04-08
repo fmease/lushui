@@ -1,4 +1,4 @@
-;;; TEST pass check -Z parse-only
+;;; TEST pass check -Z parse-only --no-core
 
 M: (case N of
     Q => Q)

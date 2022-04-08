@@ -752,7 +752,7 @@ expected type `{}`
                                             binder.0
                                         ))
                                         .primary_span(&binder.0)
-                                        .help("consider refering to a concrete binding")
+                                        .help("consider referring to a concrete binding")
                                         .report(self.session.reporter())
                                         .into());
                                 }

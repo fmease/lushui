@@ -10,7 +10,7 @@ module use-path-trees of
     use foo.A as F0
     use foo.A as F1
     use foo.B as F2
-    use crate.foo.alpha.gamma.delta.zeta.foo as foo
-    use crate.foo.alpha.gamma.delta.zeta.bar as bar
-    use crate.foo.alpha.xoo.moo.doo as XXX
+    use topmost.foo.alpha.gamma.delta.zeta.foo as foo
+    use topmost.foo.alpha.gamma.delta.zeta.bar as bar
+    use topmost.foo.alpha.xoo.moo.doo as XXX
 

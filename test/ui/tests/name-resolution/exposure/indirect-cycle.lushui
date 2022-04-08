@@ -1,0 +1,5 @@
+;;; TEST fail check
+
+@(public topmost) use Center as C
+@(public component) data Center: Type of
+use topmost as component
