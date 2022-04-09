@@ -1,10 +1,18 @@
 error: could not load the dependency `who`
   --> ${TEST_FOLDER}/packages/faulty-package-path/package.metadata:10:39
    |
-10 |         dependencies: { who: { path: "nowhere" } },
+10 |         dependencies: { who: { path: "nowhere" }, really-who: { path: void } },
    |                                       ^^^^^^^
    |
   note: `${TEST_FOLDER}/packages/faulty-package-path/nowhere/package.metadata`: No such file or directory (os error 2)
 
-error: aborting due to previous error
+error: could not load the dependency `really-who`
+  --> ${TEST_FOLDER}/packages/faulty-package-path/package.metadata:10:71
+   |
+10 |         dependencies: { who: { path: "nowhere" }, really-who: { path: void } },
+   |                                                                       ^^^^
+   |
+  note: `${TEST_FOLDER}/packages/faulty-package-path/void/package.metadata`: No such file or directory (os error 2)
+
+error: aborting due to 2 previous errors
 

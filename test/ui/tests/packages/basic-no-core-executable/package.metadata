@@ -1,11 +1,11 @@
 # TEST pass run -Z internals
 
-name: "exe",
+name: exe,
 version: "2.0.0",
 
 components: [
     {
-        type: "executable",
+        type: executable,
         path: "main.lushui",
     }
 ],

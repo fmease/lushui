@@ -1,5 +1,5 @@
 # TEST fail check
 
-name: "foo",
+name: foo,
 version: "2.0.0",
-components: [{ type: "library", path: "library.lushui" }],
+components: [{ type: library, path: "library.lushui" }],

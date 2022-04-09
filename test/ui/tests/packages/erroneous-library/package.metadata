@@ -1,11 +1,11 @@
 # TEST fail check
 
-name: "born-to-fail",
+name: born-to-fail,
 version: "6666.0.0",
 
 components: [
     {
-        type: "library",
+        type: library,
         path: "library.lushui",
     }
 ],

@@ -291,6 +291,9 @@ fn build_component(
 
     let path = component.path();
 
+    // @Task don't unconditionally halt execution on failure here but continue (with tainted health)
+    // and mark the component as "erroneous" (not yet implemented) so we can print more errors.
+    // "Erroneous" components should not lead to further errors in the name resolver etc.
     let file = session.map().load(path.value.to_owned()).map_err(|error| {
         // @Task improve message, add label
         Diagnostic::error()
@@ -495,7 +498,18 @@ fn create_package_manifest(
     options: cli::PackageCreationOptions,
     mut sink: impl io::Write,
 ) -> io::Result<()> {
-    writeln!(sink, r#"name: "{name}","#)?;
+    {
+        write!(sink, "name: ")?;
+
+        if name.as_str() == "false" || name.as_str() == "true" {
+            write!(sink, r#""{name}""#)?;
+        } else {
+            write!(sink, "{name}")?;
+        }
+
+        writeln!(sink, ",")?;
+    }
+
     writeln!(sink, r#"version: "0.0.0","#)?;
     writeln!(sink)?;
 
@@ -503,33 +517,35 @@ fn create_package_manifest(
 
     if options.library {
         writeln!(sink, "    {{")?;
-        writeln!(sink, r#"        type: "library","#)?;
+        writeln!(sink, "        type: library,")?;
         writeln!(
             sink,
             r#"        path: "{SOURCE_FOLDER_NAME}/{LIBRARY_FILE_STEM}.lushui","#
         )?;
         writeln!(sink)?;
         writeln!(sink, "        dependencies: {{")?;
-        writeln!(sink, r#"            core: {{ provider: "distribution" }},"#)?;
+        if !options.no_core {
+            writeln!(sink, "            core: {{ provider: distribution }},")?;
+        }
         writeln!(sink, "        }},")?;
         writeln!(sink, "    }},")?;
     }
 
     if options.executable {
         writeln!(sink, "    {{")?;
-        writeln!(sink, r#"        type: "executable","#)?;
+        writeln!(sink, "        type: executable,")?;
         writeln!(
             sink,
             r#"        path: "{SOURCE_FOLDER_NAME}/{EXECUTABLE_FILE_STEM}.lushui","#
         )?;
         writeln!(sink)?;
         writeln!(sink, "        dependencies: {{")?;
-
         if options.library {
             writeln!(sink, "            {name}: {{}},")?;
         }
-
-        writeln!(sink, r#"            core: {{ provider: "distribution" }},"#)?;
+        if !options.no_core {
+            writeln!(sink, "            core: {{ provider: distribution }},")?;
+        }
         writeln!(sink, "        }},")?;
         writeln!(sink, "    }},")?;
     }

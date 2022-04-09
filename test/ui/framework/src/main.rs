@@ -235,8 +235,10 @@ fn handle_test_folder_entry(
         return;
     }
 
-    // ignore gitignores which come with (generated) packages
-    if shortened_path.ends_with(".gitignore") {
+    // ignore
+    // * `.gitignore` files which come with (generated) packages
+    // * README files which allow testers to add notes to folders of tests
+    if shortened_path.ends_with(".gitignore") || shortened_path.ends_with("README.txt") {
         return;
     }
 

@@ -1,11 +1,11 @@
 # TEST fail check
 
-name: "what",
+name: what,
 version: "99.99.991",
 
 components: [
     {
-        type: "examples",
+        type: examples,
         path: "examples/first.lushui",
     },
     {

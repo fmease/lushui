@@ -2,6 +2,6 @@
 # @Bug we used to have two highlights before the rewrite, now we only have one
 # @Task the dependency "record key" of "both" (ideally all) circular components should be shown
 
-name: "left",
+name: left,
 version: "0.0.0",
-components: [ { type: "library", path: "content.lushui", dependencies: { right: { path: "right" } } } ],
+components: [ { type: library, path: "content.lushui", dependencies: { right: { path: right } } } ],

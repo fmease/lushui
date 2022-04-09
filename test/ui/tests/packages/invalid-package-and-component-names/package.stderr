@@ -36,8 +36,15 @@ error[E036]: the package name `-e` is not a valid word
 error[E036]: the component name `` is not a valid word
   --> ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.metadata:14:14
    |
-14 |             "": { provider: "distribution" },
+14 |             "": { component: module, provider: distribution },
    |             ><
+   |
+
+error[E036]: the component name `module` is not a valid word
+  --> ${TEST_FOLDER}/packages/invalid-package-and-component-names/package.metadata:14:30
+   |
+14 |             "": { component: module, provider: distribution },
+   |                              ^^^^^^
    |
 
 error[E036]: the component name `data` is not a valid word
@@ -47,5 +54,5 @@ error[E036]: the component name `data` is not a valid word
    |             ^^^^
    |
 
-error: aborting due to 7 previous errors
+error: aborting due to 8 previous errors
 

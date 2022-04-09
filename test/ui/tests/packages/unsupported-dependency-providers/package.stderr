@@ -6,10 +6,10 @@ error: the dependency provider `git` is not supported yet
    |
 
 error: the dependency provider `registry` is not supported yet
-  --> ${TEST_FOLDER}/packages/unsupported-dependency-providers/package.metadata:13:34
+  --> ${TEST_FOLDER}/packages/unsupported-dependency-providers/package.metadata:13:33
    |
-13 |             thing1: { provider: "registry" },
-   |                                  ^^^^^^^^
+13 |             thing1: { provider: registry },
+   |                                 ^^^^^^^^
    |
 
 error: aborting due to 2 previous errors

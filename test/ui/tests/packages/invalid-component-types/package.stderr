@@ -1,8 +1,8 @@
 error: `examples` is not a valid component type
- --> ${TEST_FOLDER}/packages/invalid-component-types/package.metadata:8:16
+ --> ${TEST_FOLDER}/packages/invalid-component-types/package.metadata:8:15
   |
-8 |         type: "examples",
-  |                ^^^^^^^^
+8 |         type: examples,
+  |               ^^^^^^^^
   |
  note: valid component types are `benchmark`, `example`, `executable`, `library` and `test`
 

@@ -3,7 +3,7 @@ use crate::{
     component::ComponentType,
     diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
     error::{AndThenMapExt, Health, OkIfUntaintedExt, Result},
-    metadata::{self, convert, key_content_span, Record, RecordWalker, Value},
+    metadata::{self, convert, Record, RecordWalker, Value, WithTextContentSpanExt},
     span::{SourceFileIndex, SourceMap, Span, Spanned, WeaklySpanned},
     syntax::Word,
     utility::{try_all, Conjunction, HashMap, ListingExt, QuoteExt, SmallVec},
@@ -27,7 +27,7 @@ impl PackageManifest {
 
         let name = manifest
             .take("name")
-            .map(trim_quotes)
+            .map(|name| name.with_text_content_span(&queue.shared_map()))
             .and_then(|name| parse_name(name, NameKind::Package, &queue.reporter));
 
         let version = manifest.take("version");
@@ -110,18 +110,24 @@ fn parse_components(
         };
         let mut component = RecordWalker::new(component, reporter);
 
-        let name = component
-            .take_optional("name")
-            .and_then_map(|name| parse_name(trim_quotes(name), NameKind::Component, reporter));
+        let name = component.take_optional("name").and_then_map(|name| {
+            parse_name(
+                name.with_text_content_span(map),
+                NameKind::Component,
+                reporter,
+            )
+        });
 
         let public = component.take_optional("public");
 
         let type_ = component
             .take::<String>("type")
-            .map(trim_quotes)
+            .map(|type_| type_.with_text_content_span(map))
             .and_then(|type_| parse_component_type(type_, reporter));
 
-        let path = component.take::<String>("path").map(trim_quotes);
+        let path = component
+            .take::<String>("path")
+            .map(|path| path.with_text_content_span(map));
 
         let dependencies = component
             .take_optional("dependencies")
@@ -223,9 +229,7 @@ fn parse_dependencies(
     let mut dependencies = HashMap::default();
 
     for (component_exonym, declaration) in untyped_dependencies {
-        let component_exonym = component_exonym
-            .strong()
-            .map_span(|span| key_content_span(span, map));
+        let component_exonym = component_exonym.strong().with_text_content_span(map);
         let exonym = parse_name(component_exonym, NameKind::Component, reporter).map(Spanned::weak);
 
         let Ok(declaration) = convert(declaration, reporter) else {
@@ -234,18 +238,26 @@ fn parse_dependencies(
         };
         let mut declaration = RecordWalker::new(declaration, reporter);
 
-        let component_endonym = declaration
-            .take_optional("component")
-            .and_then_map(|name| parse_name(trim_quotes(name), NameKind::Component, reporter));
+        let component_endonym = declaration.take_optional("component").and_then_map(|name| {
+            parse_name(
+                name.with_text_content_span(map),
+                NameKind::Component,
+                reporter,
+            )
+        });
 
-        let package = declaration
-            .take_optional("package")
-            .and_then_map(|name| parse_name(trim_quotes(name), NameKind::Package, reporter));
+        let package = declaration.take_optional("package").and_then_map(|name| {
+            parse_name(
+                name.with_text_content_span(map),
+                NameKind::Package,
+                reporter,
+            )
+        });
 
         let provider = declaration
             .take_optional::<String>("provider")
             .and_then_map(|name| {
-                let Spanned!(name, span) = trim_quotes(name);
+                let Spanned!(name, span) = name.with_text_content_span(map);
                 DependencyProvider::from_str(&name)
                     .map(|name| Spanned::new(span, name))
                     .map_err(|_| {
@@ -285,17 +297,13 @@ fn parse_dependencies(
                     package,
                     provider,
                     version: version.map(|version| version.map(VersionRequirement)),
-                    path: path.map(|path| trim_quotes(path.map(Into::into))),
+                    path: path.map(|path| path.map(Into::into).with_text_content_span(map)),
                 },
             ),
         );
     }
 
     Result::ok_if_untainted(Spanned::new(span, dependencies), health)
-}
-
-fn trim_quotes<T>(value: Spanned<T>) -> Spanned<T> {
-    value.map_span(|span| span.trim(1))
 }
 
 pub(super) struct PackageProfile {

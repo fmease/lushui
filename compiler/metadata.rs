@@ -6,7 +6,6 @@
 //! * multi-line text with indentation awareness
 //! * text escape sequences
 //! * negative numbers
-//! * keywords as keys (e.g. `false: false`)
 
 use crate::{
     diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
@@ -169,19 +168,34 @@ pub struct TypeError {
     pub(crate) actual: Type,
 }
 
-/// The span of the key excluding quotes if there are any.
-pub(crate) fn key_content_span(key: impl Spanning, map: &SourceMap) -> Span {
-    fn key_content_span(span: Span, map: &SourceMap) -> Span {
-        let is_quoted = map.snippet(span).starts_with('"');
+pub(crate) trait TextContentSpanExt {
+    fn text_content_span(&self, map: &SourceMap) -> Span;
+}
 
-        if is_quoted {
-            span.trim(1)
-        } else {
-            span
+impl<T: Spanning> TextContentSpanExt for T {
+    fn text_content_span(&self, map: &SourceMap) -> Span {
+        fn text_content_span(span: Span, map: &SourceMap) -> Span {
+            let is_quoted = map.snippet(span).starts_with('"');
+
+            if is_quoted {
+                span.trim(1)
+            } else {
+                span
+            }
         }
-    }
 
-    key_content_span(key.span(), map)
+        text_content_span(self.span(), map)
+    }
+}
+
+pub(crate) trait WithTextContentSpanExt {
+    fn with_text_content_span(self, map: &SourceMap) -> Self;
+}
+
+impl<T> WithTextContentSpanExt for Spanned<T> {
+    fn with_text_content_span(self, map: &SourceMap) -> Self {
+        self.map_span(|span| span.text_content_span(map))
+    }
 }
 
 pub(crate) fn convert<T: TryFrom<ValueKind, Error = TypeError>>(

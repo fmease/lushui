@@ -1,6 +1,6 @@
 # TEST fail check
 
-name: "future",
+name: future,
 version: "99.99.999",
 
 components: [
@@ -9,7 +9,7 @@ components: [
         path: "examples/first.lushui",
     },
     {
-        type: "test",
+        type: test,
         path: "tests/first.lushui",
     },
     {

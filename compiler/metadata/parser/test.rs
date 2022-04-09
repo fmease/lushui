@@ -134,16 +134,27 @@ fn multi_line_text() {
 }
 
 #[test]
+fn identifier() {
+    assert_eq(parse("raw"), Value::new(span(1, 4), "raw".into()));
+}
+
+#[test]
+fn dashed_identifier() {
+    assert_eq(parse("split-up"), Value::new(span(1, 9), "split-up".into()));
+}
+
+#[test]
 fn array() {
     assert_eq(
-        parse(r#"[[], "it",23'000  ,{  }]"#),
+        parse(r#"[[], "it",23'000, spacer ,{  }]"#),
         Value::new(
-            span(1, 25),
+            span(1, 32),
             [
                 Value::new(span(2, 4), [].into()),
                 Value::new(span(6, 10), "it".into()),
                 Value::new(span(11, 17), 23_000.into()),
-                Value::new(span(20, 24), Record::default().into()),
+                Value::new(span(19, 25), "spacer".into()),
+                Value::new(span(27, 31), Record::default().into()),
             ]
             .into(),
         ),
@@ -208,12 +219,13 @@ fn top_level_bracketless_record() {
             r#"alpha: 234,
 # parenthesis
  beta :false ,
+left:right,
 "gam ma"
 : {"":[]}
 "#,
         ),
         Value::new(
-            span(1, 61),
+            span(1, 73),
             Record::from_iter([
                 (
                     WeaklySpanned::new(span(1, 6), "alpha".into()),
@@ -224,12 +236,16 @@ fn top_level_bracketless_record() {
                     Value::new(span(34, 39), false.into()),
                 ),
                 (
-                    WeaklySpanned::new(span(42, 50), "gam ma".into()),
+                    WeaklySpanned::new(span(42, 46), "left".into()),
+                    Value::new(span(47, 52), "right".into()),
+                ),
+                (
+                    WeaklySpanned::new(span(54, 62), "gam ma".into()),
                     Value::new(
-                        span(53, 60),
+                        span(65, 72),
                         Record::from_iter([(
-                            WeaklySpanned::new(span(54, 56), "".into()),
-                            Value::new(span(57, 59), [].into()),
+                            WeaklySpanned::new(span(66, 68), "".into()),
+                            Value::new(span(69, 71), [].into()),
                         )])
                         .into(),
                     ),
@@ -261,6 +277,36 @@ k-eys: \"\",
                     Value::new(span(20, 22), "".into()),
                 ),
             ])
+            .into(),
+        ),
+    );
+}
+
+#[test]
+fn keyword_record_key() {
+    assert_eq(
+        parse("{ true : 0 }"),
+        Value::new(
+            span(1, 13),
+            Record::from_iter([(
+                WeaklySpanned::new(span(3, 7), "true".into()),
+                Value::new(span(10, 11), 0.into()),
+            )])
+            .into(),
+        ),
+    );
+}
+
+#[test]
+fn top_level_keyword_record_key() {
+    assert_eq(
+        parse("false:true"),
+        Value::new(
+            span(1, 11),
+            Record::from_iter([(
+                WeaklySpanned::new(span(1, 6), "false".into()),
+                Value::new(span(7, 11), true.into()),
+            )])
             .into(),
         ),
     );

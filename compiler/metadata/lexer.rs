@@ -64,8 +64,8 @@ impl fmt::Display for TokenKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = self.name();
 
-        match *self {
-            Self::Illegal(character) => {
+        match self {
+            &Self::Illegal(character) => {
                 write!(f, "{} U+{:04X} `{}`", name, character as u32, character)
             }
             _ => write!(f, "{name}"),

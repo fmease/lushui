@@ -1,14 +1,14 @@
 # TEST pass run
 
-name: "root",
+name: root,
 version: "0.0.0",
 
 components: [
     {
-        type: "executable",
+        type: executable,
         path: "main.lushui",
         dependencies: {
-            core: { provider: "distribution" },
+            core: { provider: distribution },
             alpha: { path: "alpha" },
             gamma: { path: "gamma" },
         }

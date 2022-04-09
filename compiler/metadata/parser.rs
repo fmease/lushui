@@ -85,14 +85,17 @@ impl<'a> Parser<'a> {
             true => self.parse_top_level_record_entries(),
             false => self.parse_value(),
         }?;
+        // @Task mention `:` if previous token was a record key
         self.consume(EndOfInput)?;
 
         Result::ok_if_untainted(value, self.health)
     }
 
     fn has_top_level_record_entries(&self) -> bool {
-        matches!(self.current_token().name(), Identifier | Text)
-            && self.succeeding_token().name() == Colon
+        matches!(
+            self.current_token().name(),
+            Identifier | False | True | Text
+        ) && self.succeeding_token().name() == Colon
             || self.current_token().name() == EndOfInput
     }
 
@@ -122,6 +125,7 @@ impl<'a> Parser<'a> {
     ///     | "false"
     ///     | "true"
     ///     | #Text
+    ///     | #Identifier
     ///     | #Number
     ///     | Array
     ///     | Record
@@ -131,11 +135,11 @@ impl<'a> Parser<'a> {
         match self.current_token().name() {
             False => {
                 self.advance();
-                Ok(Value::new(span, ValueKind::Boolean(false)))
+                Ok(Value::new(span, false.into()))
             }
             True => {
                 self.advance();
-                Ok(Value::new(span, ValueKind::Boolean(true)))
+                Ok(Value::new(span, true.into()))
             }
             Text => {
                 // @Task avoid cloning!
@@ -146,8 +150,13 @@ impl<'a> Parser<'a> {
                     .unwrap()
                     .reported(self.reporter)?;
                 self.advance();
-
-                Ok(Value::new(span, ValueKind::Text(content)))
+                Ok(Value::new(span, content.into()))
+            }
+            Identifier => {
+                // @Task avoid cloning!
+                let content = self.current_token().clone().into_identifier().unwrap();
+                self.advance();
+                Ok(Value::new(span, content.into()))
             }
             Integer => {
                 let value = self.current_token().clone().into_integer().unwrap();
@@ -168,7 +177,7 @@ impl<'a> Parser<'a> {
                         return Err(diagnostic.report(self.reporter));
                     }
                 };
-                Ok(Value::new(span, ValueKind::Integer(value)))
+                Ok(Value::new(span, value.into()))
             }
             OpeningSquareBracket => {
                 self.advance();
@@ -209,7 +218,7 @@ impl<'a> Parser<'a> {
         span.merging(self.current_token());
         self.advance();
 
-        Ok(Value::new(span, ValueKind::List(elements)))
+        Ok(Value::new(span, elements.into()))
     }
 
     /// Finish parsing a record.
@@ -229,7 +238,7 @@ impl<'a> Parser<'a> {
         span.merging(self.current_token());
         self.advance();
 
-        Ok(Value::new(span, ValueKind::Record(record)))
+        Ok(Value::new(span, record.into()))
     }
 
     fn parse_record_entries(&mut self, delimiter: TokenName) -> Result<Record> {
@@ -242,7 +251,7 @@ impl<'a> Parser<'a> {
                 // @Task make *all* duplicate entries *primary* highlights
                 Diagnostic::error()
                     .code(Code::E803)
-                    .message(format!("the entry `{}` is defined multiple times", key))
+                    .message(format!("the entry `{key}` is defined multiple times"))
                     .labeled_primary_span(key.span, "redefinition")
                     .labeled_secondary_span(previous_key.span, "previous definition")
                     .report(self.reporter);
@@ -279,7 +288,8 @@ impl<'a> Parser<'a> {
     /// # Grammar
     ///
     /// ```ebnf
-    /// Record-Key ::= #Identifier | #Text
+    /// Record-Key ::= #Identifier | Keyword | #Text
+    /// Keyword ::= "false" | "true"
     /// ```
     fn parse_record_key(&mut self) -> Result<WeaklySpanned<String>> {
         let span = self.current_token().span;
@@ -301,13 +311,18 @@ impl<'a> Parser<'a> {
                 self.advance();
                 key
             }
-            _ => {
+            False => {
+                self.advance();
+                "false".into()
+            }
+            True => {
+                self.advance();
+                "true".into()
+            }
+            token => {
                 // @Task
                 return Err(Diagnostic::error()
-                    .message(format!(
-                        "found {} but expected record key",
-                        self.current_token().name()
-                    ))
+                    .message(format!("found {token} but expected record key"))
                     .primary_span(span)
                     .report(self.reporter));
             }

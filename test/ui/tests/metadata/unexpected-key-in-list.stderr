@@ -1,8 +1,8 @@
-error: found identifier but expected value
- --> ${TEST_FOLDER}/metadata/unexpected-key-in-list.metadata:3:8
+error: found `:` but expected `,`
+ --> ${TEST_FOLDER}/metadata/unexpected-key-in-list.metadata:3:13
   |
 3 | list: [first: 0, second: 2]
-  |        ^^^^^
+  |             ^
   |
 
 error: aborting due to previous error

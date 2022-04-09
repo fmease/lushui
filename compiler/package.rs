@@ -4,7 +4,7 @@ use crate::{
     component::{Component, ComponentIndex, ComponentMetadata, ComponentType, Components},
     diagnostics::{Code, Diagnostic, Reporter},
     error::{Health, OkIfUntaintedExt, Result},
-    metadata::{key_content_span, Record},
+    metadata::Record,
     session::BuildSession,
     span::{SourceMap, Spanned},
     syntax::Word,
@@ -418,24 +418,19 @@ impl BuildQueue {
                                     // @Task don't use the package's name but the (library) component's one!
                                     dependency.name
                                 ))
-                                .primary_span(key_content_span(
-                                    dependency_exonym,
-                                    &self.shared_map(),
-                                ))
+                                .primary_span(dependency_exonym)
                                 // @Beacon @Beacon @Beacon @Task
                                 // .primary_span(
                                 //     // @Beacon @Bug probably does not work if exonym != endonym (but that can be fixed easily!)
-                                //     key_content_span(
-                                //         dependency
-                                //             .dependency_manifest
-                                //             .as_ref()
-                                //             .unwrap()
-                                //             .value
-                                //             .keys()
-                                //             .find(|key| key.value == self[package_index].name)
-                                //             .unwrap(),
-                                //         &self.map(),
-                                //     ),
+                                //     dependency
+                                //         .dependency_manifest
+                                //         .as_ref()
+                                //         .unwrap()
+                                //         .value
+                                //         .keys()
+                                //         .find(|key| key.value == self[package_index].name)
+                                //         .unwrap()
+                                //         .text_content_span(&self.shared_map())
                                 // )
                                 .report(&self.reporter));
                         }
@@ -447,9 +442,12 @@ impl BuildQueue {
             let dependency_manifest_file = self.map().load(dependency_manifest_path.clone());
             let dependency_manifest_file = match dependency_manifest_file {
                 Ok(file) => file,
-                // generally this may only happen with filesystem dependencies since "downloaded" dependencies
-                // will be stored in controlled locations
                 Err(error) => {
+                    // The dependency provider is most likely filesystem or distribution.
+                    // If the dependency provider is of the kind that downloads remote resources
+                    // and stores them locally, this probably means the local resources were
+                    // tampered with or a bug occurred.
+
                     // @Task provide more context for transitive dependencies of the goal component
                     // @Question code?
                     // @Task provide more information when provider==distribution
@@ -460,8 +458,7 @@ impl BuildQueue {
                         .note(IOError(error, &dependency_manifest_path).to_string());
                     let diagnostic = match &dependency_declaration.value.path {
                         Some(path) => diagnostic.primary_span(path.span),
-                        None => diagnostic
-                            .primary_span(key_content_span(dependency_exonym, &self.shared_map())),
+                        None => diagnostic.primary_span(dependency_exonym),
                     };
                     diagnostic.report(&self.reporter);
                     health.taint();

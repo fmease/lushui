@@ -1,16 +1,16 @@
 # TEST pass check
 
-name: "it",
+name: it,
 version: "6.7.8",
 
 components: [
     {
-        type: "library",
+        type: library,
         path: "usage-site.lushui",
 
         dependencies: {
-            kore: { component: "core", provider: "distribution" },
-            ours: { component: "theirs", path: "theirs" },
+            kore: { component: core, provider: distribution },
+            ours: { component: theirs, path: "theirs" },
         }
     }
 ],

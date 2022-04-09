@@ -1,0 +1,17 @@
+# TEST fail check
+
+name: shenanigans,
+version: "1.1.1",
+
+components: [
+    {
+        type: library,
+        path: "somewhere",
+
+        dependencies: {
+            kore: { provider: distribution },
+            core: { component: kore, provider: distribution },
+            who: { component: "dis", provider: distribution },
+        }
+    }
+],

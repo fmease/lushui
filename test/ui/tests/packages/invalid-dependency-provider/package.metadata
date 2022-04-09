@@ -1,14 +1,15 @@
 # TEST fail check
 
-name: "future",
+name: future,
 version: "99.99.999",
 
 components: [
     {
-        type: "executable",
+        type: executable,
         "path": "wherever",
         dependencies: {
-            thing0: { component: "else", provider: "weird$" },
+            thing0: { component: else, provider: "weird$" },
+            thing1: { provider: unknown },
         },
     },
 ],

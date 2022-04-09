@@ -9,6 +9,9 @@
             "include": "#key"
         },
         {
+            "include": "#constant"
+        },
+        {
             "include": "#text"
         },
         {
@@ -16,9 +19,6 @@
         },
         {
             "include": "#number"
-        },
-        {
-            "include": "#constant"
         }
     ],
     "repository": {
@@ -33,28 +33,28 @@
         "punctuation": {
             "patterns": [
                 {
-                    "match": "\\[",
-                    "name": "punctuation.brackets.square.lushui-metadata"
+                    "name": "punctuation.brackets.square.lushui-metadata",
+                    "match": "\\["
                 },
                 {
-                    "match": "\\]",
-                    "name": "punctuation.brackets.square.lushui-metadata"
+                    "name": "punctuation.brackets.square.lushui-metadata",
+                    "match": "\\]"
                 },
                 {
-                    "match": "\\{",
-                    "name": "punctuation.brackets.curly.lushui-metadata"
+                    "name": "punctuation.brackets.curly.lushui-metadata",
+                    "match": "\\{"
                 },
                 {
-                    "match": "\\}",
-                    "name": "punctuation.brackets.curly.lushui-metadata"
+                    "name": "punctuation.brackets.curly.lushui-metadata",
+                    "match": "\\}"
                 },
                 {
-                    "match": ",",
-                    "name": "punctuation.comma.lushui-metadata"
+                    "name": "punctuation.comma.lushui-metadata",
+                    "match": ","
                 },
                 {
-                    "match": ":",
-                    "name": "punctuation.colon.lushui-metadata"
+                    "name": "punctuation.colon.lushui-metadata",
+                    "match": ":"
                 }
             ]
         },
@@ -69,6 +69,10 @@
                             "include": "#escape_sequence"
                         }
                     ]
+                },
+                {
+                    "name": "string.unquoted.lushui-metadata",
+                    "match": "\\b((?:[a-zA-Z_]\\w*)(?:-[a-zA-Z_]\\w*)*)\\b"
                 }
             ]
         },
@@ -79,28 +83,28 @@
         "constant": {
             "patterns": [
                 {
-                    "match": "\\b(false|true|nan|infinity)\\b",
-                    "name": "constant.language.lushui-metadata"
+                    "name": "constant.language.lushui-metadata",
+                    "match": "\\b(false|true)\\b"
                 }
             ]
         },
         "number": {
             "patterns": [
                 {
-                    "match": "(-|\\b)[0-9]([0-9]|'[0-9])*\\b",
-                    "name": "constant.numeric.integer.decimal.lushui-metadata"
+                    "name": "constant.numeric.integer.decimal.lushui-metadata",
+                    "match": "(-|\\b)[0-9]([0-9]|'[0-9])*\\b"
                 }
             ]
         },
         "key": {
             "patterns": [
                 {
-                    "match": "\\b((?:[a-zA-Z_]\\w*)(?:-[a-zA-Z_]\\w*)*)(?=\\s*:)",
-                    "name": "keyword.key.lushui-metadata"
+                    "name": "keyword.key.lushui-metadata",
+                    "match": "\\b((?:[a-zA-Z_]\\w*)(?:-[a-zA-Z_]\\w*)*)(?=\\s*:)"
                 },
                 {
-                    "match": "\"([^\"])*?\"(?=\\s*:)",
-                    "name": "keyword.key.lushui-metadata"
+                    "name": "keyword.key.lushui-metadata",
+                    "match": "\"([^\"])*?\"(?=\\s*:)"
                 }
             ]
         }

@@ -1,11 +1,11 @@
 # TEST pass check
 
-name: "basic-no-core",
+name: basic-no-core,
 version: "11.0.11",
 
 components: [
     {
-        type: "library",
+        type: library,
         path: "library.lushui",
     },
 ],

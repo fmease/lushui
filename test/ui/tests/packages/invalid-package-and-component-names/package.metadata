@@ -6,12 +6,12 @@ version: "0.0.0",
 components: [
     {
         name: "of",
-        type: "executable",
+        type: executable,
         path: "",
 
         dependencies: {
             "0//": { component: "hey there", package: "-e" },
-            "": { provider: "distribution" },
+            "": { component: module, provider: distribution },
             data: {},
         },
     },

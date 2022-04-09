@@ -4,6 +4,9 @@ use derivation::{Elements, FromStr, Str};
 use lushui::{component::ComponentType, error::Result};
 use std::{cmp::max, path::PathBuf};
 
+/// Unstable environment variable to control if internal commands are shown.
+const LUSHUI_DEVELOPER_ENV_VAR: &str = "LUSHUI_DEVELOPER";
+
 const TARGET_ALL_LIBRARIES_OPTION: &str = "target-all-libraries";
 const TARGET_LIBRARIES_OPTION: &str = "target-libraries";
 const TARGET_ALL_EXECUTABLES_OPTION: &str = "target-all-executables";
@@ -207,7 +210,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                 .args(package_creation_arguments),
             clap::Command::new(METADATA_SUBCOMMAND)
                 .about("Check a metadata file for syntax errors")
-                .hide(true)
+                .hide(hide_internal_commands())
                 .after_help(metadata_subcommand_disclaimer)
                 .arg(
                     Arg::new("PATH")
@@ -295,6 +298,10 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
     };
 
     Ok((command, GlobalOptions::deserialize(&matches)))
+}
+
+fn hide_internal_commands() -> bool {
+    std::env::var_os(LUSHUI_DEVELOPER_ENV_VAR).map_or(true, |variable| variable == "0")
 }
 
 const METADATA_SUBCOMMAND_DISCLAIMER: &str = "\

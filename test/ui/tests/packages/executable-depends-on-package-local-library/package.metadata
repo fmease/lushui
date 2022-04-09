@@ -1,24 +1,24 @@
 # TEST ignore pass check packages/executable-depends-on-package-local-library
 
-name: "container",
+name: container,
 version: "0.0.0",
 
 components: [
     {
-        type: "library",
+        type: library,
         path: "library.lushui",
 
         dependencies: {
-            core: { provider: "distribution" },
+            core: { provider: distribution },
         },
     },
     {
-        type: "executable",
+        type: executable,
         path: "main.lushui",
 
         dependencies: {
             container: {},
-            core: { provider: "distribution" },
+            core: { provider: distribution },
         },
     },
 ],
