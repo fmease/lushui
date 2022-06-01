@@ -141,7 +141,7 @@ impl DisplayWith for Component {
 
         writeln!(f, "  bindings:")?;
 
-        for (index, entity) in self.bindings.iter() {
+        for (index, entity) in &self.bindings {
             writeln!(
                 f,
                 "    {}: {}",

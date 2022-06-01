@@ -49,7 +49,7 @@ impl<'a> Compiler<'a> {
         use std::fmt::Write;
         let mut result = String::new();
 
-        for (index, chunk) in self.chunks.iter() {
+        for (index, chunk) in &self.chunks {
             writeln!(result, "{:04} {}:", index.value(), chunk.name).unwrap();
 
             for (index, instruction) in chunk.instructions.iter().enumerate() {

@@ -1,13 +1,12 @@
+#![feature(type_alias_impl_trait)]
 #![deny(rust_2018_idioms, unused_must_use)]
+#![deny(clippy::pedantic)]
 
-pub use derive::Index;
 use std::{
     fmt,
     hash::{Hash, Hasher},
     marker::PhantomData,
 };
-
-// @Task impl IntoIterator, Extend, docs
 
 pub struct IndexMap<I, T> {
     values: Vec<T>,
@@ -15,29 +14,34 @@ pub struct IndexMap<I, T> {
 }
 
 impl<I, T> IndexMap<I, T> {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn from_vec(values: Vec<T>) -> Self {
+    #[must_use]
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self::from_vec(Vec::with_capacity(capacity))
+    }
+
+    fn from_vec(values: Vec<T>) -> Self {
         Self {
             values,
             _marker: PhantomData,
         }
     }
 
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self::from_vec(Vec::with_capacity(capacity))
-    }
-
+    #[must_use]
     pub fn len(&self) -> usize {
         self.values.len()
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.values.is_empty()
     }
 
+    #[must_use]
     pub fn last(&self) -> Option<&T> {
         self.values.last()
     }
@@ -62,16 +66,19 @@ impl<I, T> IndexMap<I, T> {
         self.values.into_iter()
     }
 
+    #[must_use]
     pub fn into_vec(self) -> Vec<T> {
         self.values
     }
 }
 
 impl<I: Index, T> IndexMap<I, T> {
+    #[must_use]
     pub fn next_index(&self) -> I {
         I::new(self.values.len())
     }
 
+    #[must_use]
     pub fn last_index(&self) -> Option<I> {
         Some(I::new(self.values.len().checked_sub(1)?))
     }
@@ -96,16 +103,12 @@ impl<I: Index, T> IndexMap<I, T> {
         self.values.get_mut(index.value())
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (I, &T)> {
+    pub fn iter(&self) -> Iter<'_, I, T> {
         self.values.iter().enumerate().map(map_entry)
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = (I, &mut T)> {
+    pub fn iter_mut(&mut self) -> IterMut<'_, I, T> {
         self.values.iter_mut().enumerate().map(map_entry)
-    }
-
-    pub fn into_iter(self) -> impl Iterator<Item = (I, T)> {
-        self.values.into_iter().enumerate().map(map_entry)
     }
 
     pub fn indices(&self) -> impl Iterator<Item = I> {
@@ -170,13 +173,46 @@ impl<I: Index, T> std::ops::IndexMut<I> for IndexMap<I, T> {
 
 impl<I: Index + fmt::Debug, T: fmt::Debug> fmt::Debug for IndexMap<I, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_map().entries(self.iter()).finish()
+        f.debug_map().entries(self).finish()
+    }
+}
+
+impl<I: Index, T> IntoIterator for IndexMap<I, T> {
+    type Item = (I, T);
+    type IntoIter = IntoIter<I, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.values.into_iter().enumerate().map(map_entry)
+    }
+}
+
+impl<'a, I: Index, T> IntoIterator for &'a IndexMap<I, T> {
+    type Item = (I, &'a T);
+    type IntoIter = Iter<'a, I, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a, I: Index, T> IntoIterator for &'a mut IndexMap<I, T> {
+    type Item = (I, &'a mut T);
+    type IntoIter = IterMut<'a, I, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
     }
 }
 
 fn map_entry<I: Index, T>((index, value): (usize, T)) -> (I, T) {
     (I::new(index), value)
 }
+
+pub type IntoIter<I: Index, T> = impl Iterator<Item = (I, T)>;
+pub type Iter<'a, I: Index, T: 'a> = impl Iterator<Item = (I, &'a T)>;
+pub type IterMut<'a, I: Index, T: 'a> = impl Iterator<Item = (I, &'a mut T)>;
+
+pub use derive::Index;
 
 pub trait Index {
     fn new(index: usize) -> Self;

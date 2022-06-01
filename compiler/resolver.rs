@@ -648,7 +648,7 @@ impl<'a> ResolverMut<'a> {
     }
 
     fn resolve_exposure_reaches(&mut self) {
-        for (index, entity) in self.component.bindings.iter() {
+        for (index, entity) in &self.component.bindings {
             if let Exposure::Restricted(exposure) = &entity.exposure {
                 // unwrap: root always has Exposure::Unrestricted, it won't reach this branch
                 let definition_site_namespace = entity.parent.unwrap().global(self.component);
