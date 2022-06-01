@@ -33,7 +33,7 @@ use super::{
     },
 };
 use crate::{
-    diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
+    diagnostics::{reporter::ErasedReportedError, Code, Diagnostic, Reporter},
     error::{Health, OkIfUntaintedExt, PossiblyErroneous, Result, Stain},
     session::BuildSession,
     span::{Span, Spanned, Spanning},
@@ -379,9 +379,14 @@ impl<'a> Lowerer<'a> {
                         .code(Code::E041)
                         .message("the module header has to be the first declaration of the module")
                         .primary_span(&declaration)
-                        .if_(has_header, |this| {
-                            // @Task make this a note with a span/highlight!
-                            this.note("however, the current module already has a module header")
+                        .with(|error| {
+                            if has_header {
+                                // @Task make this a note with a span/highlight!
+                                error
+                                    .note("however, the current module already has a module header")
+                            } else {
+                                error
+                            }
                         })
                         .report(self.session.reporter());
                     self.health.taint();
@@ -1128,12 +1133,13 @@ impl lowered_ast::AttributeKind {
         ) -> Result<&'a ast::AttributeArgument, AttributeParsingError> {
             let argument = arguments.first().ok_or_else(|| {
                 // @Task add more information about the arity and the argument types
-                Diagnostic::error()
-                    .code(Code::E019)
-                    .message("too few attribute arguments provided")
-                    .primary_span(span)
-                    .report(reporter);
-                AttributeParsingError::Unrecoverable
+                AttributeParsingError::Erased(
+                    Diagnostic::error()
+                        .code(Code::E019)
+                        .message("too few attribute arguments provided")
+                        .primary_span(span)
+                        .report(reporter),
+                )
             })?;
             *arguments = &arguments[1..];
             Ok(argument)
@@ -1205,11 +1211,12 @@ impl lowered_ast::AttributeKind {
                 DocReservedIdentifiers => Self::DocReservedIdentifiers,
                 Intrinsic => Self::Intrinsic,
                 If => {
-                    Diagnostic::error()
-                        .message("the attribute `if` is not supported yet")
-                        .primary_span(attribute)
-                        .report(session.reporter());
-                    return Err(AttributeParsingError::Unrecoverable);
+                    return Err(AttributeParsingError::Erased(
+                        Diagnostic::error()
+                            .message("the attribute `if` is not supported yet")
+                            .primary_span(attribute)
+                            .report(session.reporter()),
+                    ));
                 }
                 Ignore => Self::Ignore,
                 Include => Self::Include,
@@ -1236,15 +1243,16 @@ impl lowered_ast::AttributeKind {
                         .number_literal(Some("depth"), session.reporter())?
                         .parse::<u32>()
                         .map_err(|_| {
-                            Diagnostic::error()
-                                .code(Code::E008)
-                                .message(format!(
-                                    "attribute argument does not fit integer interval {}",
-                                    NAT32_INTERVAL_REPRESENTATION
-                                ))
-                                .primary_span(depth)
-                                .report(session.reporter());
-                            AttributeParsingError::Unrecoverable
+                            AttributeParsingError::Erased(
+                                Diagnostic::error()
+                                    .code(Code::E008)
+                                    .message(format!(
+                                        "attribute argument does not fit integer interval {}",
+                                        NAT32_INTERVAL_REPRESENTATION
+                                    ))
+                                    .primary_span(depth)
+                                    .report(session.reporter()),
+                            )
                         })?;
 
                     Self::RecursionLimit { depth }
@@ -1254,12 +1262,12 @@ impl lowered_ast::AttributeKind {
                 Test => Self::Test,
                 Unsafe => Self::Unsafe,
                 Unstable => {
-                    Diagnostic::error()
-                        .message("the attribute `unstable` is not supported yet")
-                        .primary_span(attribute)
-                        .report(session.reporter());
-
-                    return Err(AttributeParsingError::Unrecoverable);
+                    return Err(AttributeParsingError::Erased(
+                        Diagnostic::error()
+                            .message("the attribute `unstable` is not supported yet")
+                            .primary_span(attribute)
+                            .report(session.reporter()),
+                    ));
                 }
             })
         })();
@@ -1281,25 +1289,21 @@ impl lowered_ast::AttributeKind {
         }
 
         result
-            .map_err(|error| {
-                if let AttributeParsingError::UndefinedAttribute(binder) = error {
-                    Diagnostic::error()
-                        .code(Code::E011)
-                        .message(format!("the attribute `{binder}` is not defined"))
-                        .primary_span(&binder)
-                        .report(session.reporter())
-                } else {
-                    // @Task avoid this unchecked call by smh getting the token from above
-                    // E019 was reported above
-                    ErrorReported::new_unchecked()
-                }
+            .map_err(|error| match error {
+                AttributeParsingError::UndefinedAttribute(binder) => Diagnostic::error()
+                    .code(Code::E011)
+                    .message(format!("the attribute `{binder}` is not defined"))
+                    .primary_span(&binder)
+                    .report(session.reporter()),
+                AttributeParsingError::Erased(error) => error,
             })
             .and_then(|attributes| Result::ok_if_untainted(attributes, health))
     }
 }
 
 enum AttributeParsingError {
-    Unrecoverable,
+    /// Some opaque error that was already reported.
+    Erased(ErasedReportedError),
     UndefinedAttribute(ast::Identifier),
 }
 
@@ -1319,25 +1323,23 @@ impl ast::AttributeArgument {
                 name,
                 |argument| match &argument.value {
                     NumberLiteral(literal) => Ok(literal),
-                    kind => {
+                    kind => Err(AttributeParsingError::Erased(
                         Diagnostic::invalid_attribute_argument_type(
                             Spanned::new(argument.span, kind.name()),
                             "number literal",
                         )
-                        .report(reporter);
-                        Err(AttributeParsingError::Unrecoverable)
-                    }
+                        .report(reporter),
+                    )),
                 },
                 reporter,
             ),
-            kind => {
+            kind => Err(AttributeParsingError::Erased(
                 Diagnostic::invalid_attribute_argument_type(
                     Spanned::new(self.span, kind.name()),
                     "positional or named number literal",
                 )
-                .report(reporter);
-                Err(AttributeParsingError::Unrecoverable)
-            }
+                .report(reporter),
+            )),
         }
     }
 
@@ -1354,25 +1356,23 @@ impl ast::AttributeArgument {
                 name,
                 |argument| match &argument.value {
                     TextLiteral(literal) => Ok(literal),
-                    kind => {
+                    kind => Err(AttributeParsingError::Erased(
                         Diagnostic::invalid_attribute_argument_type(
                             Spanned::new(argument.span, kind.name()),
                             "text literal",
                         )
-                        .report(reporter);
-                        Err(AttributeParsingError::Unrecoverable)
-                    }
+                        .report(reporter),
+                    )),
                 },
                 reporter,
             ),
-            kind => {
+            kind => Err(AttributeParsingError::Erased(
                 Diagnostic::invalid_attribute_argument_type(
                     Spanned::new(self.span, kind.name()),
                     "positional or named text literal",
                 )
-                .report(reporter);
-                Err(AttributeParsingError::Unrecoverable)
-            }
+                .report(reporter),
+            )),
         }
     }
 
@@ -1390,26 +1390,24 @@ impl ast::AttributeArgument {
                     name,
                     |argument| match &argument.value {
                         Path(literal) => Ok(literal),
-                        kind => {
+                        kind => Err(AttributeParsingError::Erased(
                             Diagnostic::invalid_attribute_argument_type(
                                 Spanned::new(argument.span, kind.name()),
                                 "path",
                             )
-                            .report(reporter);
-                            Err(AttributeParsingError::Unrecoverable)
-                        }
+                            .report(reporter),
+                        )),
                     },
                     reporter,
                 )
                 .map(|path| &**path),
-            kind => {
+            kind => Err(AttributeParsingError::Erased(
                 Diagnostic::invalid_attribute_argument_type(
                     Spanned::new(self.span, kind.name()),
                     "positional or named path",
                 )
-                .report(reporter);
-                Err(AttributeParsingError::Unrecoverable)
-            }
+                .report(reporter),
+            )),
         }
     }
 }
@@ -1426,17 +1424,19 @@ impl ast::NamedAttributeArgument {
                 if self.binder.as_str() == name {
                     handle(&self.value)
                 } else {
-                    Diagnostic::unexpected_named_attribute_argument(&self.binder, name)
-                        .report(reporter);
-                    Err(AttributeParsingError::Unrecoverable)
+                    Err(AttributeParsingError::Erased(
+                        Diagnostic::unexpected_named_attribute_argument(&self.binder, name)
+                            .report(reporter),
+                    ))
                 }
             }
             None => {
                 // @Beacon @Beacon @Task span
-                Diagnostic::error()
-                    .message("unexpected named attribute argument")
-                    .report(reporter);
-                Err(AttributeParsingError::Unrecoverable)
+                Err(AttributeParsingError::Erased(
+                    Diagnostic::error()
+                        .message("unexpected named attribute argument")
+                        .report(reporter),
+                ))
             }
         }
     }
@@ -1444,12 +1444,13 @@ impl ast::NamedAttributeArgument {
 
 impl lowered_ast::attributes::Lint {
     fn parse(binder: Path, reporter: &Reporter) -> Result<Self, AttributeParsingError> {
-        Diagnostic::error()
-            .code(Code::E018)
-            .message(format!("the lint `{}` is not defined", binder))
-            .primary_span(binder.span())
-            .report(reporter);
-        Err(AttributeParsingError::Unrecoverable)
+        Err(AttributeParsingError::Erased(
+            Diagnostic::error()
+                .code(Code::E018)
+                .message(format!("the lint `{}` is not defined", binder))
+                .primary_span(binder.span())
+                .report(reporter),
+        ))
     }
 }
 

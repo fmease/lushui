@@ -1,4 +1,4 @@
-# TEST auxiliary packages/circular-components-two-packages
+# TEST auxiliary packages/circular-components-from-distinct-packages
 
 name: right,
 version: "0.0.0",

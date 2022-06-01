@@ -13,7 +13,6 @@
     clippy::single_match_else,
     clippy::if_not_else,
     clippy::blocks_in_if_conditions, // too many false positives with rustfmt's output
-    clippy::semicolon_if_nothing_returned, // @Temporary false positives with let/else, still
 )]
 
 use colored::Colorize;

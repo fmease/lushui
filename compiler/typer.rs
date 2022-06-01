@@ -5,7 +5,7 @@
 
 use crate::{
     component::Component,
-    diagnostics::{reporter::ErrorReported, Code, Diagnostic},
+    diagnostics::{reporter::ErasedReportedError, Code, Diagnostic},
     entity::EntityKind,
     error::{Health, Result, Stain},
     hir::{self, Declaration, Expression, Identifier},
@@ -392,7 +392,7 @@ impl<'a> Typer<'a> {
         out_of_order_handler: impl FnOnce(&mut Self) -> Result,
     ) -> Result {
         match error {
-            Unrecoverable(token) => Err(token),
+            Erased(error) => Err(error),
             OutOfOrderBinding => {
                 self.out_of_order_bindings.push(registration);
                 out_of_order_handler(self)
@@ -402,8 +402,9 @@ impl<'a> Typer<'a> {
                 // @Task put back some more information into the message: use `_`s to shorten the type
                 .message("type mismatch")
                 .labeled_primary_span(&actual_value, "has the wrong type")
-                .if_present(expectation_cause, |this, cause| {
-                    this.labeled_secondary_span(cause, "expected due to this")
+                .with(|error| match expectation_cause {
+                    Some(cause) => error.labeled_secondary_span(cause, "expected due to this"),
+                    None => error,
                 })
                 .note(format!(
                     "\
@@ -562,7 +563,7 @@ expected type `{}`
                         // @Bug this error handling might *steal* the error from other handlers further
                         // down the call chain
                         .map_err(|error| match error {
-                            Unrecoverable(token) => token,
+                            Erased(error) => error,
                             TypeMismatch { expected, actual } => Diagnostic::error()
                                 .code(Code::E032)
                                 // @Task put back some more information into the message: use `_`s to shorten the type
@@ -934,7 +935,8 @@ impl Diagnostic {
 // @Note maybe we should redesign this as a trait (object) looking at those
 // methods mirroring the variants
 pub(crate) enum Error {
-    Unrecoverable(ErrorReported),
+    /// Some opaque error that was already reported.
+    Erased(ErasedReportedError),
     OutOfOrderBinding,
     TypeMismatch {
         expected: Expression,
@@ -944,8 +946,8 @@ pub(crate) enum Error {
 
 use Error::*;
 
-impl From<ErrorReported> for Error {
-    fn from(token: ErrorReported) -> Self {
-        Self::Unrecoverable(token)
+impl From<ErasedReportedError> for Error {
+    fn from(error: ErasedReportedError) -> Self {
+        Self::Erased(error)
     }
 }

@@ -8,7 +8,7 @@
 //! * negative numbers
 
 use crate::{
-    diagnostics::{reporter::ErrorReported, Code, Diagnostic, Reporter},
+    diagnostics::{reporter::ErasedReportedError, Code, Diagnostic, Reporter},
     error::Result,
     span::{SourceFileIndex, SourceMap, Span, Spanned, Spanning, WeaklySpanned},
     utility::{obtain, HashMap},
@@ -264,7 +264,7 @@ impl<'r> RecordWalker<'r> {
                     .report(self.reporter);
             }
 
-            return Err(ErrorReported::new_unchecked());
+            return Err(ErasedReportedError::new_unchecked());
         }
 
         Ok(self.record.span)

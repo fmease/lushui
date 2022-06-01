@@ -3,7 +3,7 @@
 use super::token::{Provenance, Token, TokenKind, UnterminatedTextLiteral};
 use crate::{
     diagnostics::{
-        reporter::{ErrorReported, SilentReporter},
+        reporter::{ErasedReportedError, SilentReporter},
         Code, Diagnostic, Reporter,
     },
     error::{Health, Outcome, Result},
@@ -503,7 +503,7 @@ impl<'a> Lexer<'a> {
             // @Task don't return early here, just taint the health and
             // return an InvalidNumberLiteral token
             // @Task don't use unchecked here, smh get the token from above
-            return Err(ErrorReported::new_unchecked());
+            return Err(ErasedReportedError::new_unchecked());
         }
 
         self.add(NumberLiteral(number.into()));

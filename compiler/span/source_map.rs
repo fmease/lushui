@@ -44,12 +44,13 @@ pub struct SourceMap {
 
 impl SourceMap {
     fn next_offset(&self) -> ByteIndex {
-        // + 1 for the padding
+        const PADDING: u32 = 1;
+
         self.files
             .last()
             .map(|file| file.span().end)
             .unwrap_or_default()
-            + 1
+            + PADDING
     }
 
     /// Open a file given its path and add it as a [`SourceFile`] to the map.

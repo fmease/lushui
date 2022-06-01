@@ -1,2 +1,16 @@
-# TEST ignore pass check
-# @Task
+# TEST pass check
+
+name: dependent,
+version: "0.0.1",
+
+components: [
+    {
+        type: library,
+        path: "dependent.lushui",
+        dependencies: {
+            dependency: { path: "dependency/" },
+        },
+    },
+],
+
+# @Task description

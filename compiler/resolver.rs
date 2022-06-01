@@ -11,7 +11,7 @@
 
 use crate::{
     component::Component,
-    diagnostics::{reporter::ErrorReported, Code, Diagnostic},
+    diagnostics::{reporter::ErasedReportedError, Code, Diagnostic},
     entity::{Entity, EntityKind},
     error::{Health, OkIfUntaintedExt, PossiblyErroneous, ReportedExt, Result, Stain},
     hir::{self, DeBruijnIndex, DeclarationIndex, Identifier, Index, LocalDeclarationIndex},
@@ -24,8 +24,8 @@ use crate::{
         Word,
     },
     utility::{
-        obtain, pluralize, AsAutoColoredChangeset, Conjunction, DisplayWith, HashMap, HashSet,
-        ListingExt, QuoteExt, SmallVec,
+        cycle::find_cycles, obtain, pluralize, AsAutoColoredChangeset, Conjunction, DisplayWith,
+        HashMap, ListingExt, QuoteExt, SmallVec,
     },
 };
 use colored::Colorize;
@@ -33,7 +33,7 @@ use joinery::JoinableIterator;
 use smallvec::smallvec;
 use std::{
     cmp::Ordering,
-    collections::{hash_map::Entry, VecDeque},
+    collections::VecDeque,
     default::default,
     fmt, mem,
     sync::{Arc, Mutex},
@@ -72,7 +72,7 @@ pub fn resolve_declarations(
                 .report(resolver.session.reporter());
         }
 
-        return Err(error.token());
+        return Err(error.into_inner());
     }
 
     // @Beacon @Note these two passes should probably not run after one another but
@@ -230,14 +230,14 @@ impl<'a> ResolverMut<'a> {
                                 known,
                             },
                         )
-                        .map_err(DefinitionError::token)
+                        .map_err(DefinitionError::into_inner)
                         .stain(health);
                     }
                 }
 
                 // @Beacon @Beacon @Beacon @Task get rid of unchecked call
                 return Result::from(*health)
-                    .map_err(|_| DefinitionError::Unrecoverable(ErrorReported::new_unchecked()));
+                    .map_err(|_| DefinitionError::Erased(ErasedReportedError::new_unchecked()));
             }
             Constructor(constructor) => {
                 // there is always a root module
@@ -288,13 +288,13 @@ impl<'a> ResolverMut<'a> {
 
                 for declaration in &submodule.declarations {
                     self.start_resolve_declaration(declaration, Some(index), Context::default())
-                        .map_err(DefinitionError::token)
+                        .map_err(DefinitionError::into_inner)
                         .stain(health);
                 }
 
                 // @Beacon @Beacon @Beacon @Task get rid of unchecked call
                 return Result::from(*health)
-                    .map_err(|_| DefinitionError::Unrecoverable(ErrorReported::new_unchecked()));
+                    .map_err(|_| DefinitionError::Erased(ErasedReportedError::new_unchecked()));
             }
             Use(use_) => {
                 // there is always a root module
@@ -355,7 +355,7 @@ impl<'a> ResolverMut<'a> {
                     .push(binder.span());
 
                 return Err(DefinitionError::ConflictingDefinition(
-                    ErrorReported::new_unchecked(),
+                    ErasedReportedError::new_unchecked(),
                 ));
             }
         }
@@ -580,7 +580,7 @@ impl<'a> ResolverMut<'a> {
                     Ok(target) => {
                         self.component.bindings[index].kind = EntityKind::Use { target };
                     }
-                    Err(error @ (UnresolvedBinding { .. } | Unrecoverable(_))) => {
+                    Err(error @ (UnresolvedBinding { .. } | Erased(_))) => {
                         self.component.bindings[index].mark_as_error();
                         self.as_ref().report_resolution_error(error);
                         self.health.taint();
@@ -592,7 +592,8 @@ impl<'a> ResolverMut<'a> {
                         partially_resolved_use_bindings.insert(
                             index,
                             PartiallyResolvedUseBinding {
-                                // @Question unwrap() correct?
+                                // unwrap: The binder should always be local since external components
+                                //         always contain resolved bindings.
                                 binder: binder.local(self.component).unwrap(),
                                 target: item.target.clone(),
                             },
@@ -607,7 +608,12 @@ impl<'a> ResolverMut<'a> {
                     self.component[index].mark_as_error();
                 }
 
-                for cycle in find_cycles(partially_resolved_use_bindings) {
+                for cycle in find_cycles(
+                    &partially_resolved_use_bindings
+                        .into_iter()
+                        .map(|(index, binding)| (index, binding.binder))
+                        .collect(),
+                ) {
                     let paths = cycle
                         .iter()
                         .map(|&index| {
@@ -618,14 +624,14 @@ impl<'a> ResolverMut<'a> {
                         .list(Conjunction::And);
                     Diagnostic::error()
                         .code(Code::E024)
-                        .message(pluralize!(
-                            cycle.len(),
-                            format!("the declaration {paths} is circular"),
-                            format!("the declarations {paths} are circular"),
+                        .message(format!(
+                            "the {} {paths} {} circular",
+                            pluralize!(cycle.len(), "declaration"),
+                            pluralize!(cycle.len(), "is", "are"),
                         ))
                         .primary_spans(
                             cycle
-                                .iter()
+                                .into_iter()
                                 .map(|&index| self.component[index].source.span()),
                         )
                         .report(self.session.reporter());
@@ -639,56 +645,6 @@ impl<'a> ResolverMut<'a> {
         }
 
         self.partially_resolved_use_bindings.clear();
-
-        type UseBindings = HashMap<LocalDeclarationIndex, PartiallyResolvedUseBinding>;
-        type Cycle = HashSet<LocalDeclarationIndex>;
-
-        fn find_cycles(bindings: UseBindings) -> Vec<Cycle> {
-            let mut cycles = Vec::new();
-            let mut visited = HashMap::default();
-
-            enum Status {
-                InProgress,
-                Finished,
-            }
-
-            for &index in bindings.keys() {
-                if let Entry::Vacant(entry) = visited.entry(index) {
-                    let mut worklist = vec![index];
-                    entry.insert(Status::InProgress);
-                    cycles.extend(find_cycle(&bindings, &mut worklist, &mut visited));
-                }
-            }
-
-            fn find_cycle(
-                bindings: &UseBindings,
-                worklist: &mut Vec<LocalDeclarationIndex>,
-                visited: &mut HashMap<LocalDeclarationIndex, Status>,
-            ) -> Option<Cycle> {
-                let reference = bindings[worklist.last().unwrap()].binder;
-
-                let cycle = match visited.get(&reference) {
-                    Some(Status::InProgress) => Some(
-                        worklist
-                            .iter()
-                            .copied()
-                            .skip_while(|&index| index != reference)
-                            .collect(),
-                    ),
-                    Some(Status::Finished) => None,
-                    None => {
-                        worklist.push(reference);
-                        visited.insert(reference, Status::InProgress);
-                        find_cycle(bindings, worklist, visited)
-                    }
-                };
-                visited.insert(worklist.pop().unwrap(), Status::Finished);
-
-                cycle
-            }
-
-            cycles
-        }
     }
 
     fn resolve_exposure_reaches(&mut self) {
@@ -1670,7 +1626,7 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    fn report_resolution_error(&self, error: ResolutionError) -> ErrorReported {
+    fn report_resolution_error(&self, error: ResolutionError) -> ErasedReportedError {
         self.report_resolution_error_searching_lookalikes(error, |identifier, namespace| {
             self.find_similarly_named_declaration(identifier, |_| true, namespace)
         })
@@ -1680,9 +1636,9 @@ impl<'a> Resolver<'a> {
         &self,
         error: ResolutionError,
         lookalike_finder: impl FnOnce(&str, DeclarationIndex) -> Option<&'s str>,
-    ) -> ErrorReported {
+    ) -> ErasedReportedError {
         match error {
-            ResolutionError::Unrecoverable(token) => token,
+            ResolutionError::Erased(error) => error,
             ResolutionError::UnresolvedBinding {
                 identifier,
                 namespace,
@@ -1711,16 +1667,16 @@ impl<'a> Resolver<'a> {
                     .code(Code::E021)
                     .message(message)
                     .primary_span(&identifier)
-                    .if_present(
-                        lookalike_finder(identifier.as_str(), namespace),
-                        |this, lookalike| {
-                            this.help(format!(
+                    .with(
+                        |error| match lookalike_finder(identifier.as_str(), namespace) {
+                            Some(lookalike) => error.help(format!(
                                 "a binding with a similar name exists in scope: {}",
                                 Lookalike {
                                     actual: identifier.as_str(),
                                     lookalike,
                                 },
-                            ))
+                            )),
+                            None => error,
                         },
                     )
                     .report(self.session.reporter())
@@ -1775,18 +1731,24 @@ impl<'a> Resolver<'a> {
                 binder.span().end().merge(subbinder),
                 "denotes a reference to a binding inside of a namespace",
             )
-            .if_present(
-                similarly_named_namespace,
-                |this, lookalike| {
-                    this
-                        .help(format!(
-                            "a namespace with a similar name exists in scope containing the binding:\n    {}",
-                            Lookalike { actual: binder.as_str(), lookalike },
-                        ))
+            .with(|error| match similarly_named_namespace {
+                Some(lookalike) => error.help(format!(
+                "a namespace with a similar name exists in scope containing the binding:\n    {}",
+                Lookalike {
+                    actual: binder.as_str(),
+                    lookalike
+                },
+            )),
+                None => error,
+            })
+            .with(|error| {
+                if show_very_general_help {
+                    // no type information here yet to check if the non-namespace is indeed a record
+                    error.help("use `::` to reference a field of a record")
+                } else {
+                    error
                 }
-            )
-            // no type information here yet to check if the non-namespace is indeed a record
-            .if_(show_very_general_help, |this| this.help("use `::` to reference a field of a record"))
+            })
     }
 }
 
@@ -2270,25 +2232,27 @@ impl Diagnostic {
 }
 
 pub enum DefinitionError {
-    Unrecoverable(ErrorReported),
+    /// Some opaque error that was already reported.
+    Erased(ErasedReportedError),
     /// Definitions conflicting in name were found.
     ///
     /// Details about this error are **not stored here** but in the [`ResolverMut`]
     /// to allow grouping.
-    ConflictingDefinition(ErrorReported),
+    ConflictingDefinition(ErasedReportedError),
 }
 
 impl DefinitionError {
-    fn token(self) -> ErrorReported {
+    // cannot be a From impl since apparently rustc would be unable to infer it
+    fn into_inner(self) -> ErasedReportedError {
         match self {
-            Self::Unrecoverable(token) | Self::ConflictingDefinition(token) => token,
+            Self::Erased(error) | Self::ConflictingDefinition(error) => error,
         }
     }
 }
 
-impl From<ErrorReported> for DefinitionError {
-    fn from(token: ErrorReported) -> Self {
-        Self::Unrecoverable(token)
+impl From<ErasedReportedError> for DefinitionError {
+    fn from(error: ErasedReportedError) -> Self {
+        Self::Erased(error)
     }
 }
 
@@ -2406,7 +2370,8 @@ mod target {
 
 /// A possibly recoverable error that cab emerge during resolution.
 enum ResolutionError {
-    Unrecoverable(ErrorReported),
+    /// Some opaque error that was already reported.
+    Erased(ErasedReportedError),
     UnresolvedBinding {
         identifier: ast::Identifier,
         namespace: DeclarationIndex,
@@ -2418,8 +2383,8 @@ enum ResolutionError {
     },
 }
 
-impl From<ErrorReported> for ResolutionError {
-    fn from(token: ErrorReported) -> Self {
-        Self::Unrecoverable(token)
+impl From<ErasedReportedError> for ResolutionError {
+    fn from(error: ErasedReportedError) -> Self {
+        Self::Erased(error)
     }
 }

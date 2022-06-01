@@ -1,0 +1,65 @@
+# TEST fail check
+
+name: loops,
+version: "0.0.0",
+
+components: [
+    # cycle 0
+    {
+        type: library,
+        path: "source/library.lushui",
+        dependencies: { loops: {} },
+    },
+
+    # cycle 1
+    {
+        type: library,
+        name: cycle1component0,
+        path: "source/cycle1component0.lushui",
+        dependencies: { cycle1component1: {} },
+    },
+    {
+        type: library,
+        name: cycle1component1,
+        path: "source/cycle1component1.lushui",
+        dependencies: { cycle1component2: {} },
+    },
+    {
+        type: library,
+        name: cycle1component2,
+        path: "source/cycle1component2.lushui",
+        dependencies: { cycle1component0: {} },
+    },
+
+    # cycle 2
+    {
+        type: library,
+        name: cycle2component0,
+        path: "source/cycle2component0.lushui",
+        dependencies: {
+            cycle2component1: {},
+            cycle2component2: {},
+            unrelated: {},
+        },
+    },
+    {
+        type: library,
+        name: cycle2component1,
+        path: "source/cycle2component1.lushui",
+        dependencies: { cycle2component0: {}, unrelated: {} },
+    },
+    {
+        type: library,
+        name: cycle2component2,
+        path: "source/cycle2component2.lushui",
+        dependencies: { cycle2component0: {} },
+    },
+    { type: library, name: unrelated, path: "unrelated.lushui" }, # not quite a part
+
+    # cycle 3
+    { type: library, name: snake0, path: "s0", dependencies: { snake1: {} } },
+    { type: library, name: snake1, path: "s1", dependencies: { snake0: {} } },
+    { type: library, name: outsider, path: "o", dependencies: { snake0: {} } }, # not quite a part
+],
+
+# @Task add description esp. for cycle 3 (w/ outsider) + bout 'unrelated'
