@@ -441,17 +441,17 @@ mod spanned {
 
     #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
     pub struct Spanned<T> {
-        pub value: T,
+        pub bare: T,
         pub span: Span,
     }
 
     impl<T> Spanned<T> {
-        pub const fn new(span: Span, value: T) -> Self {
-            Self { value, span }
+        pub const fn new(span: Span, bare: T) -> Self {
+            Self { bare, span }
         }
 
         pub fn map<U>(self, mapper: impl FnOnce(T) -> U) -> Spanned<U> {
-            Spanned::new(self.span, mapper(self.value))
+            Spanned::new(self.span, mapper(self.bare))
         }
 
         #[must_use]
@@ -461,24 +461,24 @@ mod spanned {
         }
 
         pub const fn as_ref(&self) -> Spanned<&T> {
-            Spanned::new(self.span, &self.value)
+            Spanned::new(self.span, &self.bare)
         }
 
         pub fn as_mut(&mut self) -> Spanned<&mut T> {
-            Spanned::new(self.span, &mut self.value)
+            Spanned::new(self.span, &mut self.bare)
         }
 
         pub fn as_deref(&self) -> Spanned<&T::Target>
         where
             T: Deref,
         {
-            Spanned::new(self.span, &self.value)
+            Spanned::new(self.span, &self.bare)
         }
 
         #[allow(dead_code)]
         pub(crate) fn weak(self) -> WeaklySpanned<T> {
             WeaklySpanned {
-                value: self.value,
+                bare: self.bare,
                 span: self.span,
             }
         }
@@ -509,20 +509,20 @@ mod spanned {
 
     impl<T: fmt::Debug> fmt::Debug for Spanned<T> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{:?} {:?}", self.value, self.span)
+            write!(f, "{:?} {:?}", self.bare, self.span)
         }
     }
 
     impl<T: fmt::Display> fmt::Display for Spanned<T> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            self.value.fmt(f)
+            self.bare.fmt(f)
         }
     }
 
-    pub(crate) macro Spanned($value:pat, $span:pat) {
+    pub(crate) macro Spanned($span:pat, $bare:pat $(,)?) {
         Spanned {
-            value: $value,
             span: $span,
+            bare: $bare,
         }
     }
 }
@@ -538,26 +538,26 @@ mod weakly_spanned {
 
     #[derive(Clone, Copy)]
     pub struct WeaklySpanned<T> {
-        pub(crate) value: T,
+        pub(crate) bare: T,
         pub(crate) span: Span,
     }
 
     impl<T> WeaklySpanned<T> {
-        pub(crate) fn new(span: Span, value: T) -> Self {
-            Self { value, span }
+        pub(crate) fn new(span: Span, bare: T) -> Self {
+            Self { bare, span }
         }
 
         #[allow(dead_code)]
         pub(crate) fn map_span(self, mapper: impl FnOnce(Span) -> Span) -> Self {
             Self {
-                value: self.value,
+                bare: self.bare,
                 span: mapper(self.span),
             }
         }
 
         #[allow(dead_code)]
         pub(crate) fn as_ref(&self) -> WeaklySpanned<&T> {
-            WeaklySpanned::new(self.span, &self.value)
+            WeaklySpanned::new(self.span, &self.bare)
         }
 
         #[allow(dead_code)]
@@ -565,13 +565,13 @@ mod weakly_spanned {
         where
             T: Deref,
         {
-            WeaklySpanned::new(self.span, &self.value)
+            WeaklySpanned::new(self.span, &self.bare)
         }
 
         #[allow(dead_code)]
         pub(crate) fn strong(self) -> Spanned<T> {
             Spanned {
-                value: self.value,
+                bare: self.bare,
                 span: self.span,
             }
         }
@@ -585,7 +585,7 @@ mod weakly_spanned {
 
     impl<T: PartialEq> PartialEq for WeaklySpanned<T> {
         fn eq(&self, other: &Self) -> bool {
-            self.value == other.value
+            self.bare == other.bare
         }
     }
 
@@ -593,43 +593,43 @@ mod weakly_spanned {
 
     impl<T: PartialOrd> PartialOrd for WeaklySpanned<T> {
         fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-            self.value.partial_cmp(&other.value)
+            self.bare.partial_cmp(&other.bare)
         }
     }
 
     impl<T: Ord> Ord for WeaklySpanned<T> {
         fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-            self.value.cmp(&other.value)
+            self.bare.cmp(&other.bare)
         }
     }
 
     impl<T: Hash> Hash for WeaklySpanned<T> {
         fn hash<H: Hasher>(&self, state: &mut H) {
-            self.value.hash(state);
+            self.bare.hash(state);
         }
     }
 
     impl<T> Borrow<T> for WeaklySpanned<T> {
         default fn borrow(&self) -> &T {
-            &self.value
+            &self.bare
         }
     }
 
     impl Borrow<str> for WeaklySpanned<String> {
         fn borrow(&self) -> &str {
-            &self.value
+            &self.bare
         }
     }
 
     impl<T: fmt::Debug> fmt::Debug for WeaklySpanned<T> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{:?} {:?}", self.value, self.span)
+            write!(f, "{:?} {:?}", self.bare, self.span)
         }
     }
 
     impl<T: fmt::Display> fmt::Display for WeaklySpanned<T> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            self.value.fmt(f)
+            self.bare.fmt(f)
         }
     }
 }

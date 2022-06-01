@@ -515,7 +515,7 @@ impl Path {
     // @Task make this Option<Self> and move diagnostic construction into lowerer
     pub(crate) fn join(mut self, other: Self) -> Result<Self, Diagnostic> {
         if let Some(hanger) = other.hanger {
-            if !matches!(hanger.value, HangerKind::Self_) {
+            if !matches!(hanger.bare, HangerKind::Self_) {
                 return Err(Diagnostic::error()
                     .code(Code::E026)
                     .message(format!("path `{}` not allowed in this position", hanger))
@@ -529,7 +529,7 @@ impl Path {
 
     pub(crate) fn bare_hanger(&self, hanger: HangerKind) -> Option<Hanger> {
         self.hanger
-            .filter(|some_hanger| some_hanger.value == hanger && self.segments.is_empty())
+            .filter(|some_hanger| some_hanger.bare == hanger && self.segments.is_empty())
     }
 
     /// The path head if it is an identifier.
@@ -593,7 +593,7 @@ impl TryFrom<Token> for Hanger {
     type Error = ();
 
     fn try_from(token: Token) -> Result<Self, Self::Error> {
-        Ok(Hanger::new(token.span, token.value.try_into()?))
+        Ok(Hanger::new(token.span, token.bare.try_into()?))
     }
 }
 
@@ -642,11 +642,11 @@ impl Identifier {
     }
 
     pub(crate) fn as_atom(&self) -> &Atom {
-        &self.0.value
+        &self.0.bare
     }
 
     pub(crate) fn into_atom(self) -> Atom {
-        self.0.value
+        self.0.bare
     }
 
     pub(crate) fn as_str(&self) -> &str {

@@ -5,7 +5,7 @@ error[E022]: binding `Void` is not a module
   |          ^^^^
   |
 
-error[E021]: binding `xxx` is not defined in this scope
+error[E021]: the binding `xxx` is not defined in this scope
  --> ${TEST_FOLDER}/name-resolution/exposure/reach-not-a-module.lushui:8:18
   |
 8 | imposter: Hunk = xxx ;;; Hunk.hunk

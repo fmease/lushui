@@ -143,10 +143,10 @@ impl<'a> Lexer<'a> {
                 self.health.taint();
                 Diagnostic::error()
                     .code(Code::E044)
-                    .message(format!("unbalanced {} bracket", bracket.value))
+                    .message(format!("unbalanced {} bracket", bracket.bare))
                     .labeled_primary_span(
                         bracket,
-                        format!("has no matching closing {} bracket", bracket.value),
+                        format!("has no matching closing {} bracket", bracket.bare),
                     )
                     .report(self.reporter);
             }
@@ -688,7 +688,7 @@ impl Brackets {
     fn close(&mut self, closing_bracket: Spanned<Bracket>) -> Result<(), Diagnostic> {
         match self.0.pop() {
             Some(opening_bracket) => {
-                if opening_bracket.value == closing_bracket.value {
+                if opening_bracket.bare == closing_bracket.bare {
                     Ok(())
                 } else {
                     // @Beacon @Bug we are not smart enough here yet, the error messages are too confusing

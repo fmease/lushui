@@ -160,7 +160,7 @@ impl<'a> Lowerer<'a> {
                         once(self.lower_expression(declaration_type_annotation.clone()));
 
                     for parameter in function.parameters.iter().rev() {
-                        let parameter_type_annotation = match &parameter.value.type_annotation {
+                        let parameter_type_annotation = match &parameter.bare.type_annotation {
                             Some(type_annotation) => type_annotation.clone(),
                             None => {
                                 Diagnostic::missing_mandatory_type_annotation(
@@ -180,10 +180,10 @@ impl<'a> Lowerer<'a> {
                             default(),
                             default(),
                             lowered_ast::Lambda {
-                                parameter: parameter.value.binder.clone(),
+                                parameter: parameter.bare.binder.clone(),
                                 parameter_type_annotation: Some(parameter_type_annotation.clone()),
-                                explicitness: parameter.value.explicitness,
-                                laziness: parameter.value.laziness,
+                                explicitness: parameter.bare.explicitness,
+                                laziness: parameter.bare.laziness,
                                 body_type_annotation: type_annotation.next(),
                                 body,
                             }
@@ -448,7 +448,7 @@ impl<'a> Lowerer<'a> {
                     }
 
             for binding in bindings {
-                match binding.value {
+                match binding.bare {
                     Single { target, binder } => {
                         let combined_target = try_!(path.clone().join(target.clone()));
 
@@ -502,7 +502,7 @@ impl<'a> Lowerer<'a> {
         }
 
         'discriminate: {
-            match use_.bindings.value {
+            match use_.bindings.bare {
                 Single { target, binder } => {
                     let binder = binder.or_else(|| target.last_identifier().cloned());
                     let Some(binder) = binder else {
@@ -626,7 +626,7 @@ impl<'a> Lowerer<'a> {
 
                 for parameter in lambda.parameters.iter().rev() {
                     let parameter_type_annotation = parameter
-                        .value
+                        .bare
                         .type_annotation
                         .clone()
                         .map(|type_annotation| self.lower_expression(type_annotation));
@@ -635,10 +635,10 @@ impl<'a> Lowerer<'a> {
                         default(),
                         default(),
                         lowered_ast::Lambda {
-                            parameter: parameter.value.binder.clone(),
+                            parameter: parameter.bare.binder.clone(),
                             parameter_type_annotation,
-                            explicitness: parameter.value.explicitness,
-                            laziness: parameter.value.laziness,
+                            explicitness: parameter.bare.explicitness,
+                            laziness: parameter.bare.laziness,
                             body_type_annotation: type_annotation.next(),
                             body: expression,
                         }
@@ -683,7 +683,7 @@ impl<'a> Lowerer<'a> {
 
                 for parameter in let_in.parameters.iter().rev() {
                     let parameter_type_annotation = parameter
-                        .value
+                        .bare
                         .type_annotation
                         .clone()
                         .map(|expression| self.lower_expression(expression));
@@ -692,10 +692,10 @@ impl<'a> Lowerer<'a> {
                         default(),
                         default(),
                         lowered_ast::Lambda {
-                            parameter: parameter.value.binder.clone(),
+                            parameter: parameter.bare.binder.clone(),
                             parameter_type_annotation,
-                            explicitness: parameter.value.explicitness,
-                            laziness: parameter.value.laziness,
+                            explicitness: parameter.bare.explicitness,
+                            laziness: parameter.bare.laziness,
                             body_type_annotation: type_annotation.next(),
                             body: expression,
                         }
@@ -866,7 +866,7 @@ impl<'a> Lowerer<'a> {
 
             // search for non-conforming attributes
             {
-                let expected_targets = attribute.value.targets();
+                let expected_targets = attribute.bare.targets();
 
                 if !expected_targets.contains(actual_targets) {
                     // @Question wording: "cannot be ascribed to"?
@@ -874,14 +874,14 @@ impl<'a> Lowerer<'a> {
                         .code(Code::E013)
                         .message(format!(
                             "attribute `{}` is ascribed to {}",
-                            attribute.value.name(),
+                            attribute.bare.name(),
                             target.name()
                         ))
                         .labeled_primary_span(&attribute, "misplaced attribute")
                         .labeled_secondary_span(target, "incompatible item")
                         .note(format!(
                             "attribute `{}` can only be ascribed to {}",
-                            attribute.value.name(),
+                            attribute.bare.name(),
                             expected_targets.description(),
                         ))
                         .report(self.session.reporter());
@@ -907,13 +907,13 @@ impl<'a> Lowerer<'a> {
 
         // search for conflicting or duplicate attributes
         for attribute in &conforming_attributes.0 {
-            if attribute.value.can_be_applied_multiple_times() {
+            if attribute.bare.can_be_applied_multiple_times() {
                 attributes.0.push(attribute.clone());
                 continue;
             }
 
             let is_homonymous =
-                Predicate(|some_attribute| some_attribute.name() == attribute.value.name());
+                Predicate(|some_attribute| some_attribute.name() == attribute.bare.name());
 
             let homonymous_attributes: Vec<_> =
                 conforming_attributes.filter(is_homonymous).collect();
@@ -925,7 +925,7 @@ impl<'a> Lowerer<'a> {
             if let [first, _second, ..] = &*homonymous_attributes {
                 Diagnostic::error()
                     .code(Code::E006)
-                    .message(format!("multiple `{}` attributes", first.value.name()))
+                    .message(format!("multiple `{}` attributes", first.bare.name()))
                     .labeled_primary_spans(
                         homonymous_attributes,
                         "duplicate or conflicting attribute",
@@ -950,7 +950,7 @@ impl<'a> Lowerer<'a> {
             if attributes.len() > 1 {
                 let listing = attributes
                     .iter()
-                    .map(|attribute| attribute.value.name().to_str().quote())
+                    .map(|attribute| attribute.bare.name().to_str().quote())
                     .list(Conjunction::And);
 
                 return Err(Diagnostic::error()
@@ -990,7 +990,7 @@ impl<'a> Lowerer<'a> {
             Diagnostic::error()
                 .message(format!(
                     "the attribute `{}` is not supported yet",
-                    attribute.value.name()
+                    attribute.bare.name()
                 ))
                 .primary_span(attribute)
                 .report(self.session.reporter());
@@ -1004,7 +1004,7 @@ impl<'a> Lowerer<'a> {
                     .code(Code::E038)
                     .message(format!(
                         "the attribute `{}` is an internal feature",
-                        attribute.value.name()
+                        attribute.bare.name()
                     ))
                     .primary_span(attribute)
                     .report(self.session.reporter());
@@ -1024,7 +1024,7 @@ impl<'a> Lowerer<'a> {
         let mut expression = self.lower_expression(type_annotation);
 
         for parameter in parameters.into_iter().rev() {
-            let parameter_type_annotation = match parameter.value.type_annotation {
+            let parameter_type_annotation = match parameter.bare.type_annotation {
                 Some(type_annotation) => type_annotation,
                 None => {
                     Diagnostic::missing_mandatory_type_annotation(
@@ -1043,9 +1043,9 @@ impl<'a> Lowerer<'a> {
                 default(),
                 default(),
                 lowered_ast::PiType {
-                    explicitness: parameter.value.explicitness,
-                    laziness: parameter.value.laziness,
-                    parameter: Some(parameter.value.binder),
+                    explicitness: parameter.bare.explicitness,
+                    laziness: parameter.bare.laziness,
+                    parameter: Some(parameter.bare.binder),
                     domain: parameter_type_annotation.clone(),
                     codomain: expression,
                 }
@@ -1102,7 +1102,7 @@ impl lowered_ast::AttributeKind {
         options: &Options,
         session: &BuildSession,
     ) -> Result<Self> {
-        let ast::AttributeKind::Regular { binder, arguments } = &attribute.value else {
+        let ast::AttributeKind::Regular { binder, arguments } = &attribute.bare else {
             return Ok(Self::Doc {
                 content: if options.keep_documentation_comments {
                     session.shared_map().snippet(attribute.span)
@@ -1317,11 +1317,11 @@ impl ast::AttributeArgument {
     ) -> Result<&Atom, AttributeParsingError> {
         use ast::AttributeArgumentKind::*;
 
-        match &self.value {
+        match &self.bare {
             NumberLiteral(literal) => Ok(literal),
             Named(named) => named.handle(
                 name,
-                |argument| match &argument.value {
+                |argument| match &argument.bare {
                     NumberLiteral(literal) => Ok(literal),
                     kind => Err(AttributeParsingError::Erased(
                         Diagnostic::invalid_attribute_argument_type(
@@ -1350,11 +1350,11 @@ impl ast::AttributeArgument {
     ) -> Result<&Atom, AttributeParsingError> {
         use ast::AttributeArgumentKind::*;
 
-        match &self.value {
+        match &self.bare {
             TextLiteral(literal) => Ok(literal),
             Named(named) => named.handle(
                 name,
-                |argument| match &argument.value {
+                |argument| match &argument.bare {
                     TextLiteral(literal) => Ok(literal),
                     kind => Err(AttributeParsingError::Erased(
                         Diagnostic::invalid_attribute_argument_type(
@@ -1383,12 +1383,12 @@ impl ast::AttributeArgument {
     ) -> Result<&Path, AttributeParsingError> {
         use ast::AttributeArgumentKind::*;
 
-        match &self.value {
+        match &self.bare {
             Path(literal) => Ok(literal),
             Named(named) => named
                 .handle(
                     name,
-                    |argument| match &argument.value {
+                    |argument| match &argument.bare {
                         Path(literal) => Ok(literal),
                         kind => Err(AttributeParsingError::Erased(
                             Diagnostic::invalid_attribute_argument_type(
@@ -1497,7 +1497,7 @@ impl Diagnostic {
         let suggestion: Str = match target {
             Parameter(parameter) => format!(
                 "`{}({}: ?type)`",
-                parameter.value.explicitness, parameter.value.binder
+                parameter.bare.explicitness, parameter.bare.binder
             )
             .into(),
             Declaration(_) => "`: ?type`".into(),
@@ -1543,7 +1543,7 @@ impl fmt::Display for AnnotationTarget<'_> {
         write!(f, "{} ", self.name())?;
 
         match self {
-            Self::Parameter(parameter) => write!(f, "`{}`", parameter.value.binder),
+            Self::Parameter(parameter) => write!(f, "`{}`", parameter.bare.binder),
             Self::Declaration(binder) => write!(f, "`{binder}`"),
         }
     }

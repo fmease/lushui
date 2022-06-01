@@ -236,7 +236,7 @@ fn format_pi_type_literal_or_lower(
             }
 
             write!(f, "[")?;
-            let mut elements = sequence.elements.value.iter();
+            let mut elements = sequence.elements.bare.iter();
             if let Some(element) = elements.next() {
                 format_lower_expression(element, f)?;
             }
@@ -312,7 +312,7 @@ impl fmt::Display for super::Pattern {
                 }
 
                 write!(f, "[")?;
-                let mut elements = sequence.elements.value.iter();
+                let mut elements = sequence.elements.bare.iter();
                 if let Some(element) = elements.next() {
                     write!(f, "({element})")?;
                 }

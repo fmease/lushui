@@ -105,12 +105,12 @@ pub struct Package {
 impl Package {
     fn from_manifest(profile: PackageProfile, path: PathBuf) -> Self {
         Package {
-            name: profile.name.value,
+            name: profile.name.bare,
             path,
-            version: profile.version.value,
+            version: profile.version.bare,
             description: profile
                 .description
-                .map(|description| description.value)
+                .map(|description| description.bare)
                 .unwrap_or_default(),
             components: HashMap::default(),
         }
@@ -199,7 +199,7 @@ impl BuildQueue {
         // I *think*, only those that are relevant: this is driven by the CLI: Esp. if the users passes
         // certain flag (cf. --exe, --lib etc. flags passed to cargo build)
         // @Note but maybe we should still check for correctness of irrelevant components, check what cargo does!
-        if let Some(Spanned!(component_worklist, _)) = manifest.components {
+        if let Some(Spanned!(_, component_worklist)) = manifest.components {
             let mut component_worklist: HashMap<_, _> = component_worklist
                 .into_iter()
                 .map(|(key, component)| {
@@ -210,7 +210,7 @@ impl BuildQueue {
                     let name = key
                         .name
                         .as_ref()
-                        .map_or_else(|| self[package].name.clone(), |name| name.value.clone());
+                        .map_or_else(|| self[package].name.clone(), |name| name.bare.clone());
 
                     ((name, key.type_), (component, None))
                 })
@@ -219,7 +219,7 @@ impl BuildQueue {
             self[package]
                 .components
                 .extend(component_worklist.iter().map(|((name, type_), _)| {
-                    ((name.clone(), type_.value), PossiblyUnresolved::Unresolved)
+                    ((name.clone(), type_.bare), PossiblyUnresolved::Unresolved)
                 }));
 
             while !component_worklist.is_empty() {
@@ -232,7 +232,7 @@ impl BuildQueue {
                         &name,
                         package,
                         package_path,
-                        component.value.dependencies.as_ref(),
+                        component.bare.dependencies.as_ref(),
                     ) {
                         Ok(dependencies) => dependencies,
                         Err(UnresolvedLocalComponent(dependency_name)) => {
@@ -248,7 +248,7 @@ impl BuildQueue {
                     };
 
                     if !matches!(
-                        type_.value,
+                        type_.bare,
                         ComponentType::Library | ComponentType::Executable
                     ) {
                         // @Task use health.taint(...) "2.0" instead
@@ -269,11 +269,11 @@ impl BuildQueue {
                                 index,
                                 package,
                                 component
-                                    .value
+                                    .bare
                                     .path
                                     .as_ref()
                                     .map(|relative_path| package_path.join(relative_path)),
-                                type_.value,
+                                type_.bare,
                             ),
                             dependencies,
                         )
@@ -281,7 +281,7 @@ impl BuildQueue {
 
                     self[package]
                         .components
-                        .insert((name, type_.value), PossiblyUnresolved::Resolved(component));
+                        .insert((name, type_.bare), PossiblyUnresolved::Resolved(component));
                 }
 
                 // resolution stalled; therefore there are cyclic components
@@ -300,7 +300,7 @@ impl BuildQueue {
                                 (dependent, dependency.as_ref().unwrap().as_ref())
                             })
                             .collect::<HashMap<&Word, Spanned<&Word>>>(),
-                        |name| &name.value,
+                        |name| &name.bare,
                     ) {
                         let components = cycle.iter().map(QuoteExt::quote).list(Conjunction::And);
 
@@ -364,7 +364,7 @@ impl BuildQueue {
             let core_package = self.packages.insert(core_package);
 
             let core_package_name = core_package_name();
-            let (_, Spanned!(library, _)) =
+            let (_, Spanned!(_, library)) =
                 self.resolve_primary_library(core_manifest.components.as_ref())?;
 
             self[core_package].components.insert(
@@ -446,7 +446,7 @@ impl BuildQueue {
         // @Task use Health once its API allows this
         let mut health = None::<ErasedReportedError> /* Untainted */;
 
-        for (dependency_exonym, dependency_declaration) in &dependencies.value {
+        for (dependency_exonym, dependency_declaration) in &dependencies.bare {
             match self.resolve_dependency(
                 dependent_component_name,
                 dependent_package_index,
@@ -455,7 +455,7 @@ impl BuildQueue {
                 dependency_declaration,
             ) {
                 Ok(dependency) => {
-                    resolved_dependencies.insert(dependency_exonym.value.clone(), dependency);
+                    resolved_dependencies.insert(dependency_exonym.bare.clone(), dependency);
                 }
                 Err(DependencyResolutionError::ErasedNonFatal(error)) => {
                     // @Task use health.taint() once it can accept ErasedReportedErrors
@@ -482,14 +482,14 @@ impl BuildQueue {
     ) -> Result<ComponentIndex, DependencyResolutionError> {
         let dependency = match self.resolve_dependency_declaration(
             declaration,
-            &component_exonym.value,
+            &component_exonym.bare,
             dependent_package_path,
         ) {
             Ok(dependency) => dependency,
             Err(error) => return Err(error.into()),
         };
 
-        if let Some(version) = &declaration.value.version {
+        if let Some(version) = &declaration.bare.version {
             // @Task message, @Task test
             return Err(Diagnostic::error()
                 .message("[version requirement field not supported yet]")
@@ -499,7 +499,7 @@ impl BuildQueue {
         }
 
         let component_endonym = declaration
-            .value
+            .bare
             .component
             .as_ref()
             .map_or(component_exonym.as_ref().strong(), Spanned::as_ref);
@@ -511,7 +511,7 @@ impl BuildQueue {
 
                 return match package
                     .components
-                    .get(&(component_endonym.value.clone(), ComponentType::Library))
+                    .get(&(component_endonym.bare.clone(), ComponentType::Library))
                 {
                     Some(&PossiblyUnresolved::Resolved(index)) => Ok(index),
                     Some(PossiblyUnresolved::Unresolved) => {
@@ -545,7 +545,7 @@ impl BuildQueue {
                     .components
                     .iter()
                     .find(|((name, type_), _)| {
-                        name == component_endonym.value && *type_ == ComponentType::Library
+                        name == component_endonym.bare && *type_ == ComponentType::Library
                     })
                     .map(|(_, &library)| library);
 
@@ -605,7 +605,7 @@ impl BuildQueue {
                         "could not load the dependency `{component_exonym}`",
                     ))
                     .note(IOError(error, &manifest_path).to_string())
-                    .primary_span(match &declaration.value.path {
+                    .primary_span(match &declaration.bare.path {
                         Some(path) => path.span,
                         None => component_exonym.span,
                     })
@@ -616,8 +616,8 @@ impl BuildQueue {
 
         let manifest = PackageManifest::parse(manifest_file, self)?;
 
-        if let Some(package_name) = &declaration.value.package
-        && package_name.value != manifest.profile.name.value
+        if let Some(package_name) = &declaration.bare.package
+        && package_name.bare != manifest.profile.name.bare
         {
             // @Task message, @Task test
             return Err(
@@ -636,8 +636,8 @@ impl BuildQueue {
         let package = self.packages.insert(package);
 
         // @Task handle component privacy
-        let Some((library_key, Spanned!(library, _))) = manifest.components.as_ref().and_then(|components| {
-            components.value.iter().find_map(|(key, library)| {
+        let Some((library_key, Spanned!(_, library))) = manifest.components.as_ref().and_then(|components| {
+            components.bare.iter().find_map(|(key, library)| {
                 // @Beacon #primary_components_default_to_package_name
                 // @Beacon @Beacon @Beacon @Bug don't default to the package_name !!!!!
                 // `ext: { path: "..." }` should NOT expand to
@@ -645,10 +645,10 @@ impl BuildQueue {
                 let name = key
                     .name
                     .as_ref()
-                    .map_or_else(|| package_name.clone(), |name| name.value.clone());
-                let type_ = key.type_.value;
+                    .map_or_else(|| package_name.clone(), |name| name.bare.clone());
+                let type_ = key.type_.bare;
 
-                (name == *component_endonym.value && type_ == ComponentType::Library)
+                (name == *component_endonym.bare && type_ == ComponentType::Library)
                     .then(|| ((name, type_), library))
             })
         }) else {
@@ -697,7 +697,7 @@ impl BuildQueue {
 
     fn resolve_dependency_declaration(
         &self,
-        Spanned!(declaration, span): &Spanned<DependencyDeclaration>,
+        Spanned!(span, declaration): &Spanned<DependencyDeclaration>,
         exonym: &Word,
         package_path: &Path,
     ) -> Result<Dependency> {
@@ -705,7 +705,7 @@ impl BuildQueue {
         // being the discrimant ("parse, don't validate") and return it
 
         let provider = match declaration.provider {
-            Some(provider) => provider.value,
+            Some(provider) => provider.bare,
             // infer the provider from the entries
             None => {
                 if declaration.path.is_some() {
@@ -734,7 +734,7 @@ impl BuildQueue {
 
         match provider {
             DependencyProvider::Filesystem => match &declaration.path {
-                Some(path) => Ok(Dependency::ForeignPackage(package_path.join(&path.value))),
+                Some(path) => Ok(Dependency::ForeignPackage(package_path.join(&path.bare))),
                 // @Task improve message
                 None => Err(Diagnostic::error()
                     .message("dependency declaration does not have entry `path`")
@@ -752,7 +752,7 @@ impl BuildQueue {
                 let component = declaration
                     .component
                     .as_ref()
-                    .map_or(exonym, |name| &name.value);
+                    .map_or(exonym, |name| &name.bare);
                 let path = distributed_packages_path().join(component.as_str());
                 Ok(Dependency::ForeignPackage(path))
             }
@@ -779,9 +779,10 @@ impl BuildQueue {
     ) -> Result<(&'m ComponentKey, &'m Spanned<ComponentManifest>)> {
         components
             .and_then(|components| {
-                components.value.iter().find(|(key, _)| {
-                    key.name.is_none() && key.type_.value == ComponentType::Library
-                })
+                components
+                    .bare
+                    .iter()
+                    .find(|(key, _)| key.name.is_none() && key.type_.bare == ComponentType::Library)
             })
             .ok_or_else(|| {
                 // @Temporary diagnostic

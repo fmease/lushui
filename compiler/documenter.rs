@@ -673,10 +673,10 @@ fn render_declaration_attribute(attribute: &Attribute, parent: &mut Element<'_>,
     use AttributeKind::*;
 
     #[allow(clippy::match_same_arms)]
-    match &attribute.value {
+    match &attribute.bare {
         // plain style
         Abstract | Static | If { .. } | Intrinsic | Moving => {
-            let name = attribute.value.name().to_str();
+            let name = attribute.bare.name().to_str();
 
             parent.add_child(
                 Element::new("div").class("attribute").child(

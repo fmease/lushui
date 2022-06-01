@@ -844,7 +844,7 @@ impl<'a> Resolver<'a> {
             SequenceLiteral(sequence) => {
                 let mut elements = Vec::new();
 
-                for element in sequence.elements.value {
+                for element in sequence.elements.bare {
                     // @Task use Stain::stain to not return early!
                     elements.push(self.resolve_expression(element, scope)?);
                 }
@@ -925,7 +925,7 @@ impl<'a> Resolver<'a> {
             SequenceLiteral(sequence) => {
                 let mut elements = Vec::new();
 
-                for element in sequence.elements.value {
+                for element in sequence.elements.bare {
                     // @Task use Stain::stain to not return early!
                     let (element, mut element_binders) = self.resolve_pattern(element, scope)?;
                     binders.append(&mut element_binders);
@@ -976,7 +976,7 @@ impl<'a> Resolver<'a> {
             Some(type_) => self
                 .session
                 .intrinsic_types()
-                .find(|(_, identifier)| identifier.declaration_index().unwrap() == type_.value)
+                .find(|(_, identifier)| identifier.declaration_index().unwrap() == type_.bare)
                 .and_then(
                     |(intrinsic, _)| obtain!(intrinsic, IntrinsicType::Numeric(type_) => type_),
                 )
@@ -985,7 +985,7 @@ impl<'a> Resolver<'a> {
                         .code(Code::E043)
                         .message(format!(
                             "the number literal is not a valid constructor for type `{}`",
-                            self.look_up(type_.value).source
+                            self.look_up(type_.bare).source
                         ))
                         .labeled_primary_span(literal, "number literal may not construct that type")
                         .labeled_secondary_span(type_, "the data type")
@@ -995,7 +995,7 @@ impl<'a> Resolver<'a> {
             None => IntrinsicNumericType::Nat,
         };
 
-        let Ok(resolved_number) = hir::Number::parse(&literal.value, type_) else {
+        let Ok(resolved_number) = hir::Number::parse(&literal.bare, type_) else {
             return Err(Diagnostic::error()
                 .code(Code::E007)
                 .message(format!(
@@ -1036,7 +1036,7 @@ impl<'a> Resolver<'a> {
             Some(type_) => self
                 .session
                 .intrinsic_types()
-                .find(|(_, identifier)| identifier.declaration_index().unwrap() == type_.value)
+                .find(|(_, identifier)| identifier.declaration_index().unwrap() == type_.bare)
                 .map(|(intrinsic, _)| intrinsic)
                 // @Task add other textual types
                 .filter(|&intrinsic| intrinsic == IntrinsicType::Text)
@@ -1045,7 +1045,7 @@ impl<'a> Resolver<'a> {
                         .code(Code::E043)
                         .message(format!(
                             "the text literal is not a valid constructor for type `{}`",
-                            self.look_up(type_.value).source
+                            self.look_up(type_.bare).source
                         ))
                         .labeled_primary_span(
                             &text.value.literal,
@@ -1062,7 +1062,7 @@ impl<'a> Resolver<'a> {
             text.attributes,
             text.span,
             // @Beacon @Task avoid Atom::to_string
-            hir::Text::Text(text.value.literal.value.to_string()).into(),
+            hir::Text::Text(text.value.literal.bare.to_string()).into(),
         ))
     }
 
@@ -1175,7 +1175,7 @@ impl<'a> Resolver<'a> {
         if let Some(hanger) = &path.hanger {
             use ast::HangerKind::*;
 
-            let namespace = match hanger.value {
+            let namespace = match hanger.bare {
                 Extern => {
                     let Some(component) = path.segments.first() else {
                         // @Task improve the error message, code
@@ -1198,7 +1198,7 @@ impl<'a> Resolver<'a> {
                             .report(self.session.reporter())
                     })?;
 
-                    let Some(component) = self.component.dependencies.get(&component.value).copied() else {
+                    let Some(component) = self.component.dependencies.get(&component.bare).copied() else {
                         // @Task If it's not a single-file package, suggest adding to `dependencies` section in
                         // the package manifest
                         // @Task suggest similarly named dependencies!
@@ -1644,7 +1644,7 @@ impl<'a> Resolver<'a> {
                 namespace,
                 usage,
             } => {
-                let mut message = format!("binding `{identifier}` is not defined in ");
+                let mut message = format!("the binding `{identifier}` is not defined in ");
 
                 match usage {
                     IdentifierUsage::Unqualified => message += "this scope",

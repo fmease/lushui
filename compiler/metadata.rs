@@ -205,7 +205,7 @@ pub(crate) fn convert<T: TryFrom<ValueKind, Error = TypeError>>(
     Ok(Spanned::new(
         value.span,
         value
-            .value
+            .bare
             .try_into()
             .map_err(|TypeError { expected, actual }| {
                 Diagnostic::error()
@@ -233,7 +233,7 @@ impl<'r> RecordWalker<'r> {
     where
         T: TryFrom<ValueKind, Error = TypeError>,
     {
-        match self.record.value.remove(key) {
+        match self.record.bare.remove(key) {
             Some(value) => convert(value, self.reporter),
             None => Err(Diagnostic::error()
                 .code(Code::E802)
@@ -247,15 +247,15 @@ impl<'r> RecordWalker<'r> {
     where
         T: TryFrom<ValueKind, Error = TypeError>,
     {
-        match self.record.value.remove(key) {
+        match self.record.bare.remove(key) {
             Some(value) => convert(value, self.reporter).map(Some),
             None => Ok(None),
         }
     }
 
     pub(crate) fn exhaust(self) -> Result<Span> {
-        if !self.record.value.is_empty() {
-            for key in self.record.value.into_keys() {
+        if !self.record.bare.is_empty() {
+            for key in self.record.bare.into_keys() {
                 // @Question should we use the "unknown" terminology?
                 Diagnostic::error()
                     .code(Code::E801)

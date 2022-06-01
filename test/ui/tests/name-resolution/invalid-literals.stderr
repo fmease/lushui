@@ -94,14 +94,14 @@ error: binding `thing` is not a data type
    |                        - literal requires a data type as its namespace
    |
 
-error[E021]: binding `param` is not defined in this scope
+error[E021]: the binding `param` is not defined in this scope
   --> ${TEST_FOLDER}/name-resolution/invalid-literals.lushui:21:40
    |
 21 | param-pass-lit (param: Int32): Int32 = param.""
    |                                        ^^^^^
    |
 
-error[E021]: binding `undefined` is not defined in this scope
+error[E021]: the binding `undefined` is not defined in this scope
   --> ${TEST_FOLDER}/name-resolution/invalid-literals.lushui:23:15
    |
 23 | undef: Void = undefined."SCARY"

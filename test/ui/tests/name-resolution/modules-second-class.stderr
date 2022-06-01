@@ -14,7 +14,7 @@ error[E023]: module `am-i-a-record-too` is used as a value
    |
   help: modules are not first-class citizens, consider utilizing records for such cases instead
 
-error[E021]: binding `ANOTHER-RECORD` is not defined in this scope
+error[E021]: the binding `ANOTHER-RECORD` is not defined in this scope
   --> ${TEST_FOLDER}/name-resolution/modules-second-class.lushui:15:5
    |
 15 | r2: ANOTHER-RECORD = am-i-a-record-too

@@ -971,7 +971,7 @@ impl<'a> Parser<'a> {
                 Attributes::new(),
                 span,
                 ast::PiTypeLiteral {
-                    domain: domain.value,
+                    domain: domain.bare,
                     codomain,
                 }
                 .into(),
@@ -979,8 +979,8 @@ impl<'a> Parser<'a> {
         }
         // the case where we don't actually have a pi type literal but merely
         // an application or lower
-        else if domain.value.binder.is_none() {
-            Ok(domain.value.expression)
+        else if domain.bare.binder.is_none() {
+            Ok(domain.bare.expression)
         } else {
             self.error(|| {
                 Expected::Token(ThinArrowRight)
@@ -1728,7 +1728,7 @@ impl<'a> Parser<'a> {
             })
         {
             if let Some(token) = &illegal_pi {
-                let explicitness = match argument.value.explicitness {
+                let explicitness = match argument.bare.explicitness {
                     Implicit => "an implicit",
                     Explicit => "a",
                 };
@@ -1749,9 +1749,9 @@ impl<'a> Parser<'a> {
                 span,
                 ast::Application {
                     callee,
-                    explicitness: argument.value.explicitness,
-                    binder: argument.value.binder,
-                    argument: argument.value.value,
+                    explicitness: argument.bare.explicitness,
+                    binder: argument.bare.binder,
+                    argument: argument.bare.value,
                 }
                 .into(),
             );

@@ -1,4 +1,4 @@
-error[E021]: binding `tree-sinner` is not defined in this scope
+error[E021]: the binding `tree-sinner` is not defined in this scope
  --> ${TEST_FOLDER}/name-resolution/undefined-but-having-lookalikes.lushui:7:10
   |
 7 | a: Nat = tree-sinner
@@ -6,28 +6,28 @@ error[E021]: binding `tree-sinner` is not defined in this scope
   |
  help: a binding with a similar name exists in scope: `tree-sitter` (tree-sinntter)
 
-error[E021]: binding `Pathway` is not defined in this scope
+error[E021]: the binding `Pathway` is not defined in this scope
   --> ${TEST_FOLDER}/name-resolution/undefined-but-having-lookalikes.lushui:11:11
    |
 11 | P: Type = Pathway
    |           ^^^^^^^
    |
 
-error[E021]: binding `kore` is not defined in the root module
+error[E021]: the binding `kore` is not defined in the root module
   --> ${TEST_FOLDER}/name-resolution/undefined-but-having-lookalikes.lushui:14:14
    |
 14 |     a: super.kore.nat.Nat = tree-sinner ;;; @Bug "core" should be suggested for "kore"
    |              ^^^^
    |
 
-error[E021]: binding `tree-sinner` is not defined in this scope
+error[E021]: the binding `tree-sinner` is not defined in this scope
   --> ${TEST_FOLDER}/name-resolution/undefined-but-having-lookalikes.lushui:14:29
    |
 14 |     a: super.kore.nat.Nat = tree-sinner ;;; @Bug "core" should be suggested for "kore"
    |                             ^^^^^^^^^^^
    |
 
-error[E021]: binding `bet` is not defined in this scope
+error[E021]: the binding `bet` is not defined in this scope
   --> ${TEST_FOLDER}/name-resolution/undefined-but-having-lookalikes.lushui:18:57
    |
 18 | func (A: Type) (alpha: A) (beta: A) (gamma-blocker: A): bet =
@@ -35,14 +35,14 @@ error[E021]: binding `bet` is not defined in this scope
    |
   help: a binding with a similar name exists in scope: `beta`
 
-error[E021]: binding `identiti` is not defined in module `extern.core`
+error[E021]: the binding `identiti` is not defined in module `extern.core`
   --> ${TEST_FOLDER}/name-resolution/undefined-but-having-lookalikes.lushui:21:10
    |
 21 |     core.identiti gamha_blocker
    |          ^^^^^^^^
    |
 
-error[E021]: binding `gamha_blocker` is not defined in this scope
+error[E021]: the binding `gamha_blocker` is not defined in this scope
   --> ${TEST_FOLDER}/name-resolution/undefined-but-having-lookalikes.lushui:21:19
    |
 21 |     core.identiti gamha_blocker
@@ -50,7 +50,7 @@ error[E021]: binding `gamha_blocker` is not defined in this scope
    |
   help: a binding with a similar name exists in scope: `gamma-blocker` (gamhma_-blocker)
 
-error[E021]: binding `Alppa` is not defined in this scope
+error[E021]: the binding `Alppa` is not defined in this scope
   --> ${TEST_FOLDER}/name-resolution/undefined-but-having-lookalikes.lushui:25:9
    |
 25 |         Alppa \omega 0 => onega ;;; @Bug fatal
@@ -58,7 +58,7 @@ error[E021]: binding `Alppa` is not defined in this scope
    |
   help: a binding with a similar name exists in scope: `Alpha` (Alppha)
 
-error[E021]: binding `onega` is not defined in this scope
+error[E021]: the binding `onega` is not defined in this scope
   --> ${TEST_FOLDER}/name-resolution/undefined-but-having-lookalikes.lushui:29:21
    |
 29 |         \omega 0 => onega

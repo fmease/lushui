@@ -16,15 +16,15 @@ pub(super) type Token = Spanned<TokenKind>;
 
 impl Token {
     pub(crate) const fn name(&self) -> TokenName {
-        self.value.name()
+        self.bare.name()
     }
 
     pub(super) fn into_identifier(self) -> Option<String> {
-        obtain!(self.value, Identifier(identifier) => identifier)
+        obtain!(self.bare, Identifier(identifier) => identifier)
     }
 
     pub(super) fn into_text(self) -> Option<Result<String, Diagnostic>> {
-        match self.value {
+        match self.bare {
             Text(text) => Some(match text {
                 Ok(content) => Ok(content),
                 // @Task code
@@ -38,7 +38,7 @@ impl Token {
 
     // @Task turn this into a diagnostic here
     pub(super) fn into_integer(self) -> Option<Result<i64, IntLexingError>> {
-        obtain!(self.value, Integer(integer) => integer)
+        obtain!(self.bare, Integer(integer) => integer)
     }
 }
 

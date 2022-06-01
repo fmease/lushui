@@ -350,13 +350,13 @@ impl Attributes {
     pub(crate) fn contains<Q: Query>(&self, query: Q) -> bool {
         self.0
             .iter()
-            .any(move |attribute| query.matches(&attribute.value))
+            .any(move |attribute| query.matches(&attribute.bare))
     }
 
     pub(crate) fn filter<Q: Query>(&self, query: Q) -> impl Iterator<Item = &Attribute> {
         self.0
             .iter()
-            .filter(move |attribute| query.matches(&attribute.value))
+            .filter(move |attribute| query.matches(&attribute.bare))
     }
 
     pub(crate) fn get<const NAME: AttributeName>(&self) -> Option<&DataQueryOutput<NAME>>
@@ -365,7 +365,7 @@ impl Attributes {
     {
         self.0
             .iter()
-            .find_map(move |attribute| NameQuery::<NAME>::obtain(&attribute.value))
+            .find_map(move |attribute| NameQuery::<NAME>::obtain(&attribute.bare))
     }
 
     pub(crate) fn select<const NAME: AttributeName>(
@@ -376,13 +376,13 @@ impl Attributes {
     {
         self.0
             .iter()
-            .filter_map(move |attribute| NameQuery::<NAME>::obtain(&attribute.value))
+            .filter_map(move |attribute| NameQuery::<NAME>::obtain(&attribute.bare))
     }
 
     pub(crate) fn span<Q: Query>(&self, query: Q) -> Option<Span> {
         self.0
             .iter()
-            .find(move |attribute| query.matches(&attribute.value))
+            .find(move |attribute| query.matches(&attribute.bare))
             .map(Attribute::span)
     }
 }

@@ -38,7 +38,7 @@ impl PackageManifest {
             .and_then_map(|components| {
                 parse_components(
                     components,
-                    name.as_ref().ok().map(|name| &name.value),
+                    name.as_ref().ok().map(|name| &name.bare),
                     &queue.shared_map(),
                     &queue.reporter,
                 )
@@ -63,7 +63,7 @@ impl PackageManifest {
 }
 
 fn parse_name(
-    Spanned { value: name, span }: Spanned<String>,
+    Spanned { bare: name, span }: Spanned<String>,
     kind: NameKind,
     reporter: &Reporter,
 ) -> Result<Spanned<Word>> {
@@ -94,7 +94,7 @@ impl fmt::Display for NameKind {
 }
 
 fn parse_components(
-    Spanned!(untyped_components, span): Spanned<Vec<Value>>,
+    Spanned!(span, untyped_components): Spanned<Vec<Value>>,
     package: Option<&Word>,
     map: &SourceMap,
     reporter: &Reporter,
@@ -143,7 +143,7 @@ fn parse_components(
 
         let key = ComponentKey {
             name: name
-                .filter(|name| package.map_or(true, |package| &name.value != package))
+                .filter(|name| package.map_or(true, |package| &name.bare != package))
                 .map(Spanned::weak),
             type_: type_.weak(),
         };
@@ -197,7 +197,7 @@ fn parse_components(
 }
 
 fn parse_component_type(
-    Spanned!(type_, span): Spanned<String>,
+    Spanned!(span, type_): Spanned<String>,
     reporter: &Reporter,
 ) -> Result<Spanned<ComponentType>, ErasedReportedError> {
     ComponentType::from_str(&type_)
@@ -221,7 +221,7 @@ fn parse_component_type(
 }
 
 fn parse_dependencies(
-    Spanned!(untyped_dependencies, span): Spanned<Record>,
+    Spanned!(span, untyped_dependencies): Spanned<Record>,
     map: &SourceMap,
     reporter: &Reporter,
 ) -> Result<Spanned<HashMap<WeaklySpanned<Word>, Spanned<DependencyDeclaration>>>> {
@@ -257,7 +257,7 @@ fn parse_dependencies(
         let provider = declaration
             .take_optional::<String>("provider")
             .and_then_map(|name| {
-                let Spanned!(name, span) = name.with_text_content_span(map);
+                let Spanned!(span, name) = name.with_text_content_span(map);
                 DependencyProvider::from_str(&name)
                     .map(|name| Spanned::new(span, name))
                     .map_err(|_| {

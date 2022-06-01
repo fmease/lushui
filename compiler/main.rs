@@ -294,7 +294,7 @@ fn build_component(
     // @Task don't unconditionally halt execution on failure here but continue (with tainted health)
     // and mark the component as "erroneous" (not yet implemented) so we can print more errors.
     // "Erroneous" components should not lead to further errors in the name resolver etc.
-    let file = session.map().load(path.value.to_owned()).map_err(|error| {
+    let file = session.map().load(path.bare.to_owned()).map_err(|error| {
         // @Task improve message, add label
         Diagnostic::error()
             .message(format!(
@@ -304,7 +304,7 @@ fn build_component(
                 component.package(session).name,
             ))
             .primary_span(path)
-            .note(IOError(error, path.value).to_string())
+            .note(IOError(error, path.bare).to_string())
             .report(session.reporter())
     })?;
 

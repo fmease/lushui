@@ -13,14 +13,14 @@ pub type Token = Spanned<TokenKind>;
 
 impl Token {
     pub(crate) const fn name(&self) -> TokenName {
-        self.value.name()
+        self.bare.name()
     }
 
     #[allow(dead_code)]
     pub(crate) const fn provenance(&self) -> Provenance {
         use TokenKind::*;
 
-        match self.value {
+        match self.bare {
             Semicolon(provenance)
             | OpeningCurlyBracket(provenance)
             | ClosingCurlyBracket(provenance) => provenance,
@@ -29,23 +29,23 @@ impl Token {
     }
 
     pub(crate) fn is_line_break(&self) -> bool {
-        matches!(self.value, TokenKind::Semicolon(Provenance::Lexer))
+        matches!(self.bare, TokenKind::Semicolon(Provenance::Lexer))
     }
 
     pub(crate) fn into_identifier(self) -> Option<Atom> {
         use TokenKind::*;
 
-        obtain!(self.value, Word(atom) | Punctuation(atom) => atom)
+        obtain!(self.bare, Word(atom) | Punctuation(atom) => atom)
     }
 
     pub(crate) fn into_number_literal(self) -> Option<Atom> {
-        obtain!(self.value, TokenKind::NumberLiteral(number) => number)
+        obtain!(self.bare, TokenKind::NumberLiteral(number) => number)
     }
 
     pub(crate) fn into_text_literal(self) -> Option<Result<Atom, Diagnostic>> {
         use TokenKind::*;
 
-        match self.value {
+        match self.bare {
             TextLiteral(Ok(content)) => Some(Ok(content)),
             TextLiteral(Err(_)) => Some(Err(Diagnostic::error()
                 .code(Code::E047)

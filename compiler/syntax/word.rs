@@ -22,7 +22,7 @@ impl Word {
             return Err(());
         }
 
-        let mut tokens = tokens.into_iter().map(|token| token.value);
+        let mut tokens = tokens.into_iter().map(|token| token.bare);
 
         obtain!(
             (tokens.next().ok_or(())?, tokens.next().ok_or(())?),
@@ -51,7 +51,7 @@ impl fmt::Display for Word {
 
 impl From<Spanned<Word>> for Identifier {
     fn from(name: Spanned<Word>) -> Self {
-        Self::new_unchecked(name.value.0, name.span)
+        Self::new_unchecked(name.bare.0, name.span)
     }
 }
 

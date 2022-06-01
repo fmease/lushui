@@ -199,7 +199,7 @@ impl<K: Format> Format for Spanned<K> {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         self.span.format(f, indentation)?;
         write!(f, " ")?;
-        self.value.format(f, indentation)
+        self.bare.format(f, indentation)
     }
 }
 
@@ -419,7 +419,7 @@ impl Format for super::NumberLiteral {
             .field(
                 "literal",
                 // @Task also print span of literal
-                &AdHoc(|f, _| write!(f, "{}", self.literal.value.color(color_palette::INVALID))),
+                &AdHoc(|f, _| write!(f, "{}", self.literal.bare.color(color_palette::INVALID))),
             )
             .finish()
     }
@@ -442,7 +442,7 @@ impl Format for super::TextLiteral {
             .field(
                 "literal",
                 // @Task also print span of literal
-                &AdHoc(|f, _| format_text_literal(&self.literal.value, f)),
+                &AdHoc(|f, _| format_text_literal(&self.literal.bare, f)),
             )
             .finish()
     }
