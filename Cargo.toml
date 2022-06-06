@@ -33,4 +33,4 @@ minifier = "0.0.43"
 urlencoding = "2.1.0"
 unicode-segmentation = "1.9.0"
 crossbeam = "0.8.1"
-
+open = "2.1.3"

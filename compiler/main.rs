@@ -412,8 +412,6 @@ fn build_component(
         BuildMode::Document {
             options: documentation_options,
         } => {
-            // @Task implement `--open`ing
-
             // @Bug leads to broken links, the documenter has to handle this itself
             if documentation_options.no_dependencies && !component.is_goal(session) {
                 return Ok(());
@@ -426,13 +424,22 @@ fn build_component(
 
             time! {
                 #![name = "Documentation Generation"]
-                documenter::document(
+                let index_page_path = documenter::document(
                     &component_root,
                     documenter_options,
                     component_metadata,
                     component,
                     session,
                 )?;
+            }
+
+            if documentation_options.open {
+                if let Err(error) = open::that(&index_page_path) {
+                    return Err(Diagnostic::error()
+                        .message("could not open the documentation")
+                        .note(IOError(error, &index_page_path).to_string())
+                        .report(session.reporter()));
+                }
             }
         }
         // already done at this point

@@ -39,23 +39,26 @@ const SEARCH_INDEX_FILE_NAME: &str = "search-index.min.js";
 // @Task make this an unstable option instead
 const DEVELOPING: bool = true;
 
+/// Document the given component.
+///
+/// Returns the path to the index page (of the component).
 pub fn document(
     declaration: &hir::Declaration,
     options: Options,
     components: &[ComponentMetadata],
     component: &Component,
     session: &BuildSession,
-) -> Result<()> {
+) -> Result<PathBuf> {
     crossbeam::scope(|scope| {
         let mut documenter =
             Documenter::new(options, components, component, session, scope).unwrap();
 
         documenter.document_declaration(declaration)?;
         documenter.collect_search_items(declaration);
-        documenter.write().unwrap();
+        let index_page_path = documenter.persist().unwrap();
         documenter.text_processor.destruct().unwrap();
 
-        Ok(())
+        Ok(index_page_path)
     })
     .unwrap()
 }
@@ -99,7 +102,10 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         })
     }
 
-    fn write(&self) -> Result<(), std::io::Error> {
+    /// Persist the generated documentation to disk.
+    ///
+    /// Returns the path to the index page (of the component).
+    fn persist(&self) -> Result<PathBuf, std::io::Error> {
         // @Task handle the case where two+ components (goal and/or (transitive) deps)
         // have the same name and are being documented
 
@@ -202,7 +208,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             search_index
         })?;
 
-        Ok(())
+        Ok(component_path.join("index.html"))
     }
 
     // @Task merge this with `document_declaration` (once we move out `generate_module_page` out of it!)

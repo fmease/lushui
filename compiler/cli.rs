@@ -62,6 +62,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
     let documentation_arguments = [
         Arg::new("open")
             .long("open")
+            .short('o')
             .help("Open the documentation in a browser"),
         Arg::new("no-dependencies")
             .long("no-deps")
@@ -111,7 +112,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
         .short('Z')
         .value_name("OPTION")
         .multiple_occurrences(true)
-        .help("Set an unstable option. See `-Z help` for details");
+        .help("Set an unstable option. See ‘-Z help’ for details");
 
     // @Task use `try_get_matches` (no real block, just def an error type and smh exit with code 2 instead of 1 on error)
     let matches = clap::Command::new(env!("CARGO_PKG_NAME"))
