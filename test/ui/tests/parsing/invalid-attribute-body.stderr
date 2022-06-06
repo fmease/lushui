@@ -1,10 +1,10 @@
-error[E010]: found `[` but expected word or `(`
+error[E010]: found ‘[’ but expected word or ‘(’
  --> ${TEST_FOLDER}/parsing/invalid-attribute-body.lushui:3:2
   |
 3 | @[attempt] to try something new
   |  ^ unexpected token
   |
- note: `@` introduces attributes
+ note: ‘@’ introduces attributes
 
 error: aborting due to previous error
 

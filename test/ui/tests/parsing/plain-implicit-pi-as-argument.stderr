@@ -1,4 +1,4 @@
-error[E010]: found `:` but expected expression or `=`
+error[E010]: found ‘:’ but expected expression or ‘=’
  --> ${TEST_FOLDER}/parsing/plain-implicit-pi-as-argument.lushui:3:17
   |
 3 | main = function '(A: Type) -> Type

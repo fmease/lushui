@@ -159,10 +159,10 @@ impl BufferedStderrReporter {
                             .help(pluralize!(
                                 explained_codes.len(),
                                 format!(
-                                    "run `lushui explain {}` to view it",
+                                    "run ‘lushui explain {}’ to view it",
                                     explained_codes.first().unwrap()
                                 ),
-                                "run `lushui explain <CODES...>` to view a selection of them"
+                                "run ‘lushui explain <CODES...>’ to view a selection of them"
                             ))
                     } else {
                         error

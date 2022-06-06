@@ -272,12 +272,12 @@ impl<'a> Lowerer<'a> {
             Diagnostic::error()
                 .code(Code::E020)
                 .message(format!(
-                    "`{}` is defined multiple times in this scope",
+                    "‘{}’ is defined multiple times in this scope",
                     constructor.binder
                 ))
                 .labeled_primary_span(&body, "conflicting definition")
                 .note(
-                    "the body of the constructor is implied but it also has a body introduced by `=`",
+                    "the body of the constructor is implied but it also has a body introduced by ‘= ?value’",
                 ).report(self.session.reporter());
             self.health.taint();
         }
@@ -331,7 +331,7 @@ impl<'a> Lowerer<'a> {
                         // @Note awkward API!
                         Diagnostic::error()
                             .code(Code::E016)
-                            .message(format!("could not load the module `{}`", module.binder))
+                            .message(format!("could not load the module ‘{}’", module.binder))
                             .primary_span(span)
                             .note(IOError(error, &path).to_string())
                             .report(self.session.reporter());
@@ -657,7 +657,7 @@ impl<'a> Lowerer<'a> {
                         None => {
                             Diagnostic::error()
                                 .code(Code::E012)
-                                .message(format!("the let-binding `{}` has no definition", binder))
+                                .message(format!("the let-binding ‘{}’ has no definition", binder))
                                 .primary_span(
                                     let_in
                                         .binder
@@ -666,7 +666,7 @@ impl<'a> Lowerer<'a> {
                                         .fit_end(&let_in.type_annotation)
                                         .end(),
                                 )
-                                .help("provide a definition with `=`")
+                                .help("provide a definition with ‘= ?value’")
                                 .report(self.session.reporter());
                             self.health.taint();
                             PossiblyErroneous::error()
@@ -873,14 +873,14 @@ impl<'a> Lowerer<'a> {
                     Diagnostic::error()
                         .code(Code::E013)
                         .message(format!(
-                            "attribute `{}` is ascribed to {}",
+                            "attribute ‘{}’ is ascribed to {}",
                             attribute.bare.name(),
                             target.name()
                         ))
                         .labeled_primary_span(&attribute, "misplaced attribute")
                         .labeled_secondary_span(target, "incompatible item")
                         .note(format!(
-                            "attribute `{}` can only be ascribed to {}",
+                            "attribute ‘{}’ can only be ascribed to {}",
                             attribute.bare.name(),
                             expected_targets.description(),
                         ))
@@ -925,7 +925,7 @@ impl<'a> Lowerer<'a> {
             if let [first, _second, ..] = &*homonymous_attributes {
                 Diagnostic::error()
                     .code(Code::E006)
-                    .message(format!("multiple `{}` attributes", first.bare.name()))
+                    .message(format!("multiple ‘{}’ attributes", first.bare.name()))
                     .labeled_primary_spans(
                         homonymous_attributes,
                         "duplicate or conflicting attribute",
@@ -989,7 +989,7 @@ impl<'a> Lowerer<'a> {
         {
             Diagnostic::error()
                 .message(format!(
-                    "the attribute `{}` is not supported yet",
+                    "the attribute ‘{}’ is not supported yet",
                     attribute.bare.name()
                 ))
                 .primary_span(attribute)
@@ -1003,7 +1003,7 @@ impl<'a> Lowerer<'a> {
                 Diagnostic::error()
                     .code(Code::E038)
                     .message(format!(
-                        "the attribute `{}` is an internal feature",
+                        "the attribute ‘{}’ is an internal feature",
                         attribute.bare.name()
                     ))
                     .primary_span(attribute)
@@ -1213,7 +1213,7 @@ impl lowered_ast::AttributeKind {
                 If => {
                     return Err(AttributeParsingError::Erased(
                         Diagnostic::error()
-                            .message("the attribute `if` is not supported yet")
+                            .message("the attribute ‘if’ is not supported yet")
                             .primary_span(attribute)
                             .report(session.reporter()),
                     ));
@@ -1264,7 +1264,7 @@ impl lowered_ast::AttributeKind {
                 Unstable => {
                     return Err(AttributeParsingError::Erased(
                         Diagnostic::error()
-                            .message("the attribute `unstable` is not supported yet")
+                            .message("the attribute ‘unstable’ is not supported yet")
                             .primary_span(attribute)
                             .report(session.reporter()),
                     ));
@@ -1292,7 +1292,7 @@ impl lowered_ast::AttributeKind {
             .map_err(|error| match error {
                 AttributeParsingError::UndefinedAttribute(binder) => Diagnostic::error()
                     .code(Code::E011)
-                    .message(format!("the attribute `{binder}` is not defined"))
+                    .message(format!("the attribute ‘{binder}’ is not defined"))
                     .primary_span(&binder)
                     .report(session.reporter()),
                 AttributeParsingError::Erased(error) => error,
@@ -1447,7 +1447,7 @@ impl lowered_ast::attributes::Lint {
         Err(AttributeParsingError::Erased(
             Diagnostic::error()
                 .code(Code::E018)
-                .message(format!("the lint `{}` is not defined", binder))
+                .message(format!("the lint ‘{}’ is not defined", binder))
                 .primary_span(binder.span())
                 .report(reporter),
         ))
@@ -1458,10 +1458,10 @@ impl Diagnostic {
     fn invalid_unnamed_path_hanger(hanger: ast::Hanger) -> Self {
         Self::error()
             .code(Code::E025)
-            .message(format!("path `{hanger}` is not bound to an identifier"))
+            .message(format!("path ‘{hanger}’ is not bound to an identifier"))
             .primary_span(&hanger)
             .note("a use-declaration has to introduce at least one new binder")
-            .help("bind the path to a name with `as`")
+            .help("bind the path to a name with ‘as’")
     }
 
     // @Temporary signature
@@ -1472,7 +1472,7 @@ impl Diagnostic {
         Self::error()
             .code(Code::E028)
             .message(format!(
-                "found named argument `{actual}` but expected `{expected}`"
+                "found named argument ‘{actual}’ but expected ‘{expected}’"
             ))
             .primary_span(actual)
     }
@@ -1494,13 +1494,15 @@ impl Diagnostic {
     ) -> Self {
         use AnnotationTarget::*;
 
+        // @Task change `?type` to `?Type` (to respect Lushui's naming convention) once
+        // we successfully parse `?Type` (currently only words are allowed as tags)
         let suggestion: Str = match target {
             Parameter(parameter) => format!(
-                "`{}({}: ?type)`",
+                "‘{}({}: ?type)’",
                 parameter.bare.explicitness, parameter.bare.binder
             )
             .into(),
-            Declaration(_) => "`: ?type`".into(),
+            Declaration(_) => "‘: ?type’".into(),
         };
 
         Self::error()
@@ -1543,8 +1545,8 @@ impl fmt::Display for AnnotationTarget<'_> {
         write!(f, "{} ", self.name())?;
 
         match self {
-            Self::Parameter(parameter) => write!(f, "`{}`", parameter.bare.binder),
-            Self::Declaration(binder) => write!(f, "`{binder}`"),
+            Self::Parameter(parameter) => write!(f, "‘{}’", parameter.bare.binder),
+            Self::Declaration(binder) => write!(f, "‘{binder}’"),
         }
     }
 }

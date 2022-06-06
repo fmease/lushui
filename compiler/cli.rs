@@ -49,7 +49,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
             .long("no-core")
             .short('0')
             // @Task rephrase this not using the word "remove"
-            .help("Remove the dependency to the standard library `core`"),
+            .help("Remove the dependency to the standard library ‘core’"),
         Arg::new("component-type")
             .long("component-type")
             .short('t')
@@ -71,7 +71,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
     let package_creation_arguments = [
         Arg::new("no-core")
             .long("no-core")
-            .help("Do not make the new package dependent on the standard library `core`"),
+            .help("Do not make the new package dependent on the standard library ‘core’"),
         Arg::new("executable")
             .long("executable")
             .visible_alias("exe")
@@ -728,7 +728,7 @@ mod unstable {
         fn help(self) -> &'static str {
             match self {
                 Self::AsciiDoc => "Interpret documentation comments as AsciiDoc when generating documentation",
-                Self::LoremIpsum(_) => "Replace the documentation of every declaration with `amount` paragraphs of Lorem Ipsum",
+                Self::LoremIpsum(_) => "Replace the documentation of every declaration with ‘amount’ paragraphs of Lorem Ipsum",
             }
         }
     }

@@ -1,42 +1,42 @@
-error[E016]: could not load the module `alpha1`
+error[E016]: could not load the module ‘alpha1’
  --> ${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders.lushui:3:20
   |
 3 | module alpha0 of { module alpha1 }
   |                    ^^^^^^^^^^^^^
   |
- note: `${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders/alpha0/alpha1.lushui`: No such file or directory (os error 2)
+ note: ‘${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders/alpha0/alpha1.lushui’: No such file or directory (os error 2)
 
-error[E016]: could not load the module `beta2`
+error[E016]: could not load the module ‘beta2’
  --> ${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders.lushui:5:37
   |
 5 | module beta0 of { module beta1 of { module beta2 } }
   |                                     ^^^^^^^^^^^^
   |
- note: `${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders/beta0/beta1/beta2.lushui`: No such file or directory (os error 2)
+ note: ‘${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders/beta0/beta1/beta2.lushui’: No such file or directory (os error 2)
 
-error[E016]: could not load the module `omega0`
+error[E016]: could not load the module ‘omega0’
  --> ${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders/stopper.lushui:3:1
   |
 3 | module omega0
   | ^^^^^^^^^^^^^
   |
- note: `${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders/stopper/omega0.lushui`: No such file or directory (os error 2)
+ note: ‘${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders/stopper/omega0.lushui’: No such file or directory (os error 2)
 
-error[E016]: could not load the module `psi1`
+error[E016]: could not load the module ‘psi1’
  --> ${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders/stopper.lushui:5:18
   |
 5 | module psi0 of { module psi1 }
   |                  ^^^^^^^^^^^
   |
- note: `${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders/stopper/psi0/psi1.lushui`: No such file or directory (os error 2)
+ note: ‘${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders/stopper/psi0/psi1.lushui’: No such file or directory (os error 2)
 
-error[E016]: could not load the module `chi2`
+error[E016]: could not load the module ‘chi2’
  --> ${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders/stopper.lushui:7:35
   |
 7 | module chi0 of { module chi1 of { module chi2 } }
   |                                   ^^^^^^^^^^^
   |
- note: `${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders/stopper/chi0/chi1/chi2.lushui`: No such file or directory (os error 2)
+ note: ‘${TEST_FOLDER}/lowering/out-of-line-modules/inside-inline-module-missing-subfolders/stopper/chi0/chi1/chi2.lushui’: No such file or directory (os error 2)
 
 error: aborting due to 5 previous errors
 

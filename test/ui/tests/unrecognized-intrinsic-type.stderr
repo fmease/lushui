@@ -1,4 +1,4 @@
-error[E061]: `I-Definitely-Do-Not-Exist` is not an intrinsic type
+error[E061]: ‘I-Definitely-Do-Not-Exist’ is not an intrinsic type
  --> ${TEST_FOLDER}/unrecognized-intrinsic-type.lushui:5:1
   |
 5 | @intrinsic

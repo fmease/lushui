@@ -1,4 +1,4 @@
-error: the library component `formatting` is defined multiple times
+error: the library component ‘formatting’ is defined multiple times
   --> ${TEST_FOLDER}/packages/components-conflicting-in-name-or-type/package.metadata:9:15
    |
  9 |         name: formatting,

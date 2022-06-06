@@ -1,10 +1,10 @@
-error: could not load the executable component `epsilon` in package `test`
+error: could not load the executable component ‘epsilon’ in package ‘test’
   --> ${TEST_FOLDER}/packages/faulty-component-paths/two/package.metadata:10:16
    |
 10 |         path: "",
    |               ><
    |
-  note: `${TEST_FOLDER}/packages/faulty-component-paths/two/`: Is a directory (os error 21)
+  note: ‘${TEST_FOLDER}/packages/faulty-component-paths/two/’: Is a directory (os error 21)
 
 error: aborting due to previous error
 

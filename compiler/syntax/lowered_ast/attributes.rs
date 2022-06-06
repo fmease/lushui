@@ -143,7 +143,7 @@ the body containing a set of constructors
             (Some((body_span, body_label)), Some(intrinsic)) => Err(Diagnostic::error()
                 .code(Code::E042)
                 .message(format!(
-                    "the declaration `{binder}` marked as `intrinsic` has a body",
+                    "the declaration ‘{binder}’ marked as ‘intrinsic’ has a body",
                 ))
                 .labeled_primary_span(body_span, body_label)
                 .labeled_secondary_span(
@@ -154,9 +154,9 @@ the body containing a set of constructors
                 .report(session.reporter())),
             (None, None) => Err(Diagnostic::error()
                 .code(Code::E012)
-                .message(format!("the declaration `{binder}` has no definition"))
+                .message(format!("the declaration ‘{binder}’ has no definition"))
                 .primary_span(missing_definition_location)
-                .help(format!("provide a definition with `{definition_marker}`"))
+                .help(format!("provide a definition with ‘{definition_marker}’"))
                 .report(session.reporter())),
             _ => Ok(()),
         }

@@ -1,4 +1,4 @@
-error[E013]: attribute `public` is ascribed to a constructor declaration
+error[E013]: attribute ‘public’ is ascribed to a constructor declaration
   --> ${TEST_FOLDER}/lowering/constructor-with-explicit-public.lushui:14:5
    |
 14 |     @public Unit: Unit -> Universe
@@ -9,9 +9,9 @@ error[E013]: attribute `public` is ascribed to a constructor declaration
 14 |     @public Unit: Unit -> Universe
    |             ---------------------- incompatible item
    |
-  note: attribute `public` can only be ascribed to declarations except constructors and module headers
+  note: attribute ‘public’ can only be ascribed to declarations except constructors and module headers
 
-error[E013]: attribute `public` is ascribed to a constructor declaration
+error[E013]: attribute ‘public’ is ascribed to a constructor declaration
   --> ${TEST_FOLDER}/lowering/constructor-with-explicit-public.lushui:15:5
    |
 15 |     @(public self) Bool: Bool -> Universe = Universe.Bool
@@ -22,15 +22,15 @@ error[E013]: attribute `public` is ascribed to a constructor declaration
 15 |     @(public self) Bool: Bool -> Universe = Universe.Bool
    |                    -------------------------------------- incompatible item
    |
-  note: attribute `public` can only be ascribed to declarations except constructors and module headers
+  note: attribute ‘public’ can only be ascribed to declarations except constructors and module headers
 
-error[E020]: `Bool` is defined multiple times in this scope
+error[E020]: ‘Bool’ is defined multiple times in this scope
   --> ${TEST_FOLDER}/lowering/constructor-with-explicit-public.lushui:15:45
    |
 15 |     @(public self) Bool: Bool -> Universe = Universe.Bool
    |                                             ^^^^^^^^^^^^^ conflicting definition
    |
-  note: the body of the constructor is implied but it also has a body introduced by `=`
+  note: the body of the constructor is implied but it also has a body introduced by ‘= ?value’
 
 error: aborting due to 3 previous errors
 

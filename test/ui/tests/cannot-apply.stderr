@@ -9,8 +9,8 @@ error[E031]: type mismatch
 3 | Abomination: Type = 0 1
   |                       - applied to this
   |
- note: expected type `_ -> _`
-        but got type `extern.core.nat.Nat`
+ note: expected type ‘_ -> _’
+        but got type ‘extern.core.nat.Nat’
 
 error: aborting due to previous error
 

@@ -31,7 +31,7 @@ fn assert_eq_with_health(
         Ok(Outcome!(actual, health)) => {
             if health != expected_health {
                 panic!(
-                    "expected the tokens `{actual:?}` to be \
+                    "expected the tokens ‘{actual:?}’ to be \
                      {expected_health} but they are {health}",
                 );
             }
@@ -43,7 +43,7 @@ fn assert_eq_with_health(
                 );
             }
         }
-        _ => panic!("expected the tokens `{expected:?}` but an error was (silently) reported"),
+        _ => panic!("expected the tokens ‘{expected:?}’ but an error was (silently) reported"),
     }
 }
 

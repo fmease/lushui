@@ -1,46 +1,46 @@
-error[E800]: expected type `text` but got type `integer`
+error[E800]: expected type ‘text’ but got type ‘integer’
  --> ${TEST_FOLDER}/packages/type-errors-in-manifest/package.metadata:3:7
   |
 3 | name: 0, version: [ 2, "0", "0" ],
   |       ^ has the wrong type
   |
 
-error[E800]: expected type `text` but got type `list`
+error[E800]: expected type ‘text’ but got type ‘list’
  --> ${TEST_FOLDER}/packages/type-errors-in-manifest/package.metadata:3:19
   |
 3 | name: 0, version: [ 2, "0", "0" ],
   |                   ^^^^^^^^^^^^^^^ has the wrong type
   |
 
-error[E800]: expected type `record` but got type `text`
+error[E800]: expected type ‘record’ but got type ‘text’
  --> ${TEST_FOLDER}/packages/type-errors-in-manifest/package.metadata:5:15
   |
 5 | components: [ "core", {}, { type: false, } ],
   |               ^^^^^^ has the wrong type
   |
 
-error[E802]: the record does not contain the entry `path`
+error[E802]: the record does not contain the entry ‘path’
  --> ${TEST_FOLDER}/packages/type-errors-in-manifest/package.metadata:5:23
   |
 5 | components: [ "core", {}, { type: false, } ],
   |                       ^^
   |
 
-error[E802]: the record does not contain the entry `type`
+error[E802]: the record does not contain the entry ‘type’
  --> ${TEST_FOLDER}/packages/type-errors-in-manifest/package.metadata:5:23
   |
 5 | components: [ "core", {}, { type: false, } ],
   |                       ^^
   |
 
-error[E802]: the record does not contain the entry `path`
+error[E802]: the record does not contain the entry ‘path’
  --> ${TEST_FOLDER}/packages/type-errors-in-manifest/package.metadata:5:27
   |
 5 | components: [ "core", {}, { type: false, } ],
   |                           ^^^^^^^^^^^^^^^^
   |
 
-error[E800]: expected type `text` but got type `boolean`
+error[E800]: expected type ‘text’ but got type ‘boolean’
  --> ${TEST_FOLDER}/packages/type-errors-in-manifest/package.metadata:5:35
   |
 5 | components: [ "core", {}, { type: false, } ],

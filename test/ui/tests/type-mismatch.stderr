@@ -9,8 +9,8 @@ error[E032]: type mismatch
 15 | a: X = Type
    |        ^^^^ has the wrong type
    |
-  note: expected type `topmost.X`
-         but got type `Type`
+  note: expected type ‘topmost.X’
+         but got type ‘Type’
 
 error[E032]: type mismatch
   --> ${TEST_FOLDER}/type-mismatch.lushui:16:4
@@ -23,8 +23,8 @@ error[E032]: type mismatch
 16 | b: Type = X.x
    |           ^^^ has the wrong type
    |
-  note: expected type `Type`
-         but got type `topmost.X`
+  note: expected type ‘Type’
+         but got type ‘topmost.X’
 
 error[E032]: type mismatch
   --> ${TEST_FOLDER}/type-mismatch.lushui:20:4
@@ -32,8 +32,8 @@ error[E032]: type mismatch
 20 | x: false = false
    |    ^^^^^ has the wrong type
    |
-  note: expected type `Type`
-         but got type `extern.core.bool.Bool`
+  note: expected type ‘Type’
+         but got type ‘extern.core.bool.Bool’
 
 error[E032]: type mismatch
   --> ${TEST_FOLDER}/type-mismatch.lushui:22:10
@@ -46,8 +46,8 @@ error[E032]: type mismatch
 24 | t: Bool = take 44
    |                ^^ has the wrong type
    |
-  note: expected type `extern.core.bool.Bool`
-         but got type `extern.core.nat.Nat`
+  note: expected type ‘extern.core.bool.Bool’
+         but got type ‘extern.core.nat.Nat’
 
 error: aborting due to 4 previous errors
 

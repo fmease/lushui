@@ -1,4 +1,4 @@
-error[E006]: multiple `doc-attributes` attributes
+error[E006]: multiple ‘doc-attributes’ attributes
  --> ${TEST_FOLDER}/lowering/module-headers/attributes-conflict-with-out-of-line-module-ones.lushui:6:1
   |
 6 | @doc-attributes

@@ -1,4 +1,4 @@
-error[E013]: attribute `location` is ascribed to an inline module declaration
+error[E013]: attribute ‘location’ is ascribed to an inline module declaration
  --> ${TEST_FOLDER}/lowering/out-of-line-modules/location-attribute-on-inline-module.lushui:3:1
   |
 3 | @(location "somewhere-not-inline")
@@ -9,7 +9,7 @@ error[E013]: attribute `location` is ascribed to an inline module declaration
 4 | module inline of
   | ---------------- incompatible item
   |
- note: attribute `location` can only be ascribed to out-of-line module declarations
+ note: attribute ‘location’ can only be ascribed to out-of-line module declarations
 
 error: aborting due to previous error
 

@@ -1,4 +1,4 @@
-error[E013]: attribute `intrinsic` is ascribed to a use-declaration
+error[E013]: attribute ‘intrinsic’ is ascribed to a use-declaration
  --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:5:1
   |
 5 | @intrinsic
@@ -9,9 +9,9 @@ error[E013]: attribute `intrinsic` is ascribed to a use-declaration
 7 | use self.()
   | ----------- incompatible item
   |
- note: attribute `intrinsic` can only be ascribed to function or data declarations
+ note: attribute ‘intrinsic’ can only be ascribed to function or data declarations
 
-error[E013]: attribute `intrinsic` is ascribed to a use-declaration
+error[E013]: attribute ‘intrinsic’ is ascribed to a use-declaration
  --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:6:1
   |
 6 | @intrinsic
@@ -22,9 +22,9 @@ error[E013]: attribute `intrinsic` is ascribed to a use-declaration
 7 | use self.()
   | ----------- incompatible item
   |
- note: attribute `intrinsic` can only be ascribed to function or data declarations
+ note: attribute ‘intrinsic’ can only be ascribed to function or data declarations
 
-error[E013]: attribute `intrinsic` is ascribed to a use-declaration
+error[E013]: attribute ‘intrinsic’ is ascribed to a use-declaration
   --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:9:1
    |
  9 | @intrinsic @abstract @(location "/")
@@ -35,9 +35,9 @@ error[E013]: attribute `intrinsic` is ascribed to a use-declaration
 10 | use something.substantial.(root0 root1)
    | --------------------------------------- incompatible item
    |
-  note: attribute `intrinsic` can only be ascribed to function or data declarations
+  note: attribute ‘intrinsic’ can only be ascribed to function or data declarations
 
-error[E013]: attribute `abstract` is ascribed to a use-declaration
+error[E013]: attribute ‘abstract’ is ascribed to a use-declaration
   --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:9:12
    |
  9 | @intrinsic @abstract @(location "/")
@@ -48,9 +48,9 @@ error[E013]: attribute `abstract` is ascribed to a use-declaration
 10 | use something.substantial.(root0 root1)
    | --------------------------------------- incompatible item
    |
-  note: attribute `abstract` can only be ascribed to data declarations
+  note: attribute ‘abstract’ can only be ascribed to data declarations
 
-error[E013]: attribute `location` is ascribed to a use-declaration
+error[E013]: attribute ‘location’ is ascribed to a use-declaration
   --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:9:22
    |
  9 | @intrinsic @abstract @(location "/")
@@ -61,9 +61,9 @@ error[E013]: attribute `location` is ascribed to a use-declaration
 10 | use something.substantial.(root0 root1)
    | --------------------------------------- incompatible item
    |
-  note: attribute `location` can only be ascribed to out-of-line module declarations
+  note: attribute ‘location’ can only be ascribed to out-of-line module declarations
 
-error[E013]: attribute `include` is ascribed to a function declaration
+error[E013]: attribute ‘include’ is ascribed to a function declaration
   --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:12:1
    |
 12 | @include
@@ -76,9 +76,9 @@ error[E013]: attribute `include` is ascribed to a function declaration
 14 | |     @intrinsic make-binding @(public super) resource
    | |____________________________________________________- incompatible item
    |
-  note: attribute `include` can only be ascribed to text literals
+  note: attribute ‘include’ can only be ascribed to text literals
 
-error[E013]: attribute `intrinsic` is ascribed to a path expression
+error[E013]: attribute ‘intrinsic’ is ascribed to a path expression
   --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:14:5
    |
 14 |     @intrinsic make-binding @(public super) resource
@@ -89,9 +89,9 @@ error[E013]: attribute `intrinsic` is ascribed to a path expression
 14 |     @intrinsic make-binding @(public super) resource
    |                ------------ incompatible item
    |
-  note: attribute `intrinsic` can only be ascribed to function or data declarations
+  note: attribute ‘intrinsic’ can only be ascribed to function or data declarations
 
-error[E013]: attribute `public` is ascribed to a path expression
+error[E013]: attribute ‘public’ is ascribed to a path expression
   --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:14:29
    |
 14 |     @intrinsic make-binding @(public super) resource
@@ -102,9 +102,9 @@ error[E013]: attribute `public` is ascribed to a path expression
 14 |     @intrinsic make-binding @(public super) resource
    |                                             -------- incompatible item
    |
-  note: attribute `public` can only be ascribed to declarations except constructors and module headers
+  note: attribute ‘public’ can only be ascribed to declarations except constructors and module headers
 
-error[E013]: attribute `public` is ascribed to a constructor declaration
+error[E013]: attribute ‘public’ is ascribed to a constructor declaration
   --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:17:5
    |
 17 |     @public manifest
@@ -115,18 +115,18 @@ error[E013]: attribute `public` is ascribed to a constructor declaration
 17 |     @public manifest
    |             -------- incompatible item
    |
-  note: attribute `public` can only be ascribed to declarations except constructors and module headers
+  note: attribute ‘public’ can only be ascribed to declarations except constructors and module headers
 
-error[E015]: the declaration `manifest` does not have a type annotation
+error[E015]: the declaration ‘manifest’ does not have a type annotation
   --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:17:21
    |
 17 |     @public manifest
    |                    ><
    |
   note: type annotations are mandatory on declarations
-  help: provide a type annotation for the declaration with `: ?type`
+  help: provide a type annotation for the declaration with ‘: ?type’
 
-error[E013]: attribute `static` is ascribed to a path pattern
+error[E013]: attribute ‘static’ is ascribed to a path pattern
   --> ${TEST_FOLDER}/lowering/misplaced-attributes.lushui:21:9
    |
 21 |         @static box => it
@@ -137,7 +137,7 @@ error[E013]: attribute `static` is ascribed to a path pattern
 21 |         @static box => it
    |                 --- incompatible item
    |
-  note: attribute `static` can only be ascribed to expressions
+  note: attribute ‘static’ can only be ascribed to expressions
 
 error: aborting due to 11 previous errors
 

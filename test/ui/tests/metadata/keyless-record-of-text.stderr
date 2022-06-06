@@ -1,4 +1,4 @@
-error: found `,` but expected `:`
+error: found ‘,’ but expected ‘:’
  --> ${TEST_FOLDER}/metadata/keyless-record-of-text.metadata:4:15
   |
 4 |     "    THIS",

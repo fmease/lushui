@@ -203,13 +203,12 @@ pub trait QuoteExt {
 
 impl<D: fmt::Display> QuoteExt for D {
     fn quote(self) -> String {
-        // @Task optimize
-        format!("`{self}`")
+        format!("‘{self}’")
     }
 }
 
 pub(crate) macro quoted($code:expr) {
-    concat!("`", $code, "`")
+    concat!("‘", $code, "’")
 }
 
 pub(crate) trait AsDebug: fmt::Display + Sized {
@@ -286,7 +285,7 @@ pub struct IOError<'a>(pub std::io::Error, pub &'a Path);
 impl fmt::Display for IOError<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // @Question custom messages?
-        write!(f, "`{}`: {}", self.1.to_string_lossy(), self.0)
+        write!(f, "‘{}’: {}", self.1.to_string_lossy(), self.0)
     }
 }
 

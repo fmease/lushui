@@ -1,4 +1,4 @@
-error[E061]: `i-definitely-do-not-exist` is not an intrinsic function
+error[E061]: ‘i-definitely-do-not-exist’ is not an intrinsic function
   --> ${TEST_FOLDER}/unrecognized-intrinsic-function.lushui:9:1
    |
  9 | @intrinsic

@@ -1,10 +1,10 @@
-error[E016]: could not load the module `nowhere-to-be-found`
+error[E016]: could not load the module ‘nowhere-to-be-found’
  --> ${TEST_FOLDER}/lowering/out-of-line-modules/missing-subfolder.lushui:4:1
   |
 4 | module nowhere-to-be-found
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^
   |
- note: `${TEST_FOLDER}/lowering/out-of-line-modules/missing-subfolder/nowhere-to-be-found.lushui`: No such file or directory (os error 2)
+ note: ‘${TEST_FOLDER}/lowering/out-of-line-modules/missing-subfolder/nowhere-to-be-found.lushui’: No such file or directory (os error 2)
 
 error: aborting due to previous error
 

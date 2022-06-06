@@ -1,4 +1,4 @@
-error: the components `right` and `left` are circular
+error: the components ‘right’ and ‘left’ are circular
  --> ${TEST_FOLDER}/packages/circular-components-from-distinct-packages/right/package.metadata:5:72
   |
 5 | components: [ { type: library, path: "content.lushui", dependencies: { left: { path: ".." } } } ],

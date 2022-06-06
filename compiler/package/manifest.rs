@@ -73,7 +73,7 @@ fn parse_name(
             // @Task DRY, @Question is the common code justified? package v component
             Diagnostic::error()
                 .code(Code::E036)
-                .message(format!("the {kind} name `{name}` is not a valid word"))
+                .message(format!("the {kind} name ‘{name}’ is not a valid word"))
                 .primary_span(span)
                 .report(reporter)
         })
@@ -183,7 +183,7 @@ fn parse_components(
                 .message(format!(
                     "the {} is defined multiple times",
                     match name {
-                        Some(name) => format!("{type_} component `{name}`"),
+                        Some(name) => format!("{type_} component ‘{name}’"),
                         None => format!("primary {type_} component"),
                     }
                 ))
@@ -207,7 +207,7 @@ fn parse_component_type(
             //       if the invalid type is_similar to a valid one, give a more
             //       fine-tuned suggestion
             Diagnostic::error()
-                .message(format!("`{type_}` is not a valid component type"))
+                .message(format!("‘{type_}’ is not a valid component type"))
                 .primary_span(span)
                 .note(format!(
                     "valid component types are {}",
@@ -266,7 +266,7 @@ fn parse_dependencies(
                         //       if the invalid provider is_similar to a valid one, give a more
                         //       fine-tuned suggestion
                         Diagnostic::error()
-                            .message(format!("`{name}` is not a valid dependency provider"))
+                            .message(format!("‘{name}’ is not a valid dependency provider"))
                             .primary_span(span)
                             .note(format!(
                                 "valid dependency providers are {}",

@@ -1,4 +1,4 @@
-error[E062]: the known binding `Bool.false` is not defined
+error[E062]: the known binding ‘Bool.false’ is not defined
 
 error: aborting due to previous error
 

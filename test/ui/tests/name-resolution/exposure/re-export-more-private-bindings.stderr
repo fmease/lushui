@@ -1,4 +1,4 @@
-error[E009]: re-export of the more private binding `topmost.Thing`
+error[E009]: re-export of the more private binding ‘topmost.Thing’
  --> ${TEST_FOLDER}/name-resolution/exposure/re-export-more-private-bindings.lushui:4:14
   |
 4 | use Thing as Piece
@@ -9,11 +9,11 @@ error[E009]: re-export of the more private binding `topmost.Thing`
 7 | data Thing: Type of
   |      ----- re-exported binding with lower exposure
   |
- note: expected the exposure of `topmost.Piece`
-                  to be at most `topmost`
+ note: expected the exposure of ‘topmost.Piece’
+                  to be at most ‘topmost’
              but it actually is unrestricted
 
-error[E009]: re-export of the more private binding `topmost.alpha.beta.Linchpin`
+error[E009]: re-export of the more private binding ‘topmost.alpha.beta.Linchpin’
   --> ${TEST_FOLDER}/name-resolution/exposure/re-export-more-private-bindings.lushui:12:14
    |
 12 |         data Linchpin: Type of
@@ -24,11 +24,11 @@ error[E009]: re-export of the more private binding `topmost.alpha.beta.Linchpin`
 16 |             use super.Linchpin as L
    |                                   ^ re-exporting binding with greater exposure
    |
-  note: expected the exposure of `topmost.alpha.beta.gamma.L`
-                   to be at most `topmost.alpha.beta`
-              but it actually is `topmost`
+  note: expected the exposure of ‘topmost.alpha.beta.gamma.L’
+                   to be at most ‘topmost.alpha.beta’
+              but it actually is ‘topmost’
 
-error[E009]: re-export of the more private binding `topmost.alpha.beta.gamma.Mock`
+error[E009]: re-export of the more private binding ‘topmost.alpha.beta.gamma.Mock’
   --> ${TEST_FOLDER}/name-resolution/exposure/re-export-more-private-bindings.lushui:19:18
    |
 19 |             data Mock: Type of
@@ -39,9 +39,9 @@ error[E009]: re-export of the more private binding `topmost.alpha.beta.gamma.Moc
 22 |             use Mock as //>
    |                         ^^^ re-exporting binding with greater exposure
    |
-  note: expected the exposure of `topmost.alpha.beta.gamma.//>`
-                   to be at most `topmost.alpha.beta`
-              but it actually is `topmost.alpha`
+  note: expected the exposure of ‘topmost.alpha.beta.gamma.//>’
+                   to be at most ‘topmost.alpha.beta’
+              but it actually is ‘topmost.alpha’
 
 error: aborting due to 3 previous errors
 

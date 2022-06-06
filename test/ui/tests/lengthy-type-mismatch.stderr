@@ -11,8 +11,8 @@ error[E032]: type mismatch
 17 | |                     Tuple.empty))
    | |________________________________^ has the wrong type
    |
-  note: expected type `extern.core.tuple.Tuple (extern.core.list.List.cons Type Type (extern.core.list.List.empty Type))`
-         but got type `extern.core.tuple.Tuple (extern.core.list.List.cons Type extern.core.int.Int (extern.core.list.List.empty Type))`
+  note: expected type ‘extern.core.tuple.Tuple (extern.core.list.List.cons Type Type (extern.core.list.List.empty Type))’
+         but got type ‘extern.core.tuple.Tuple (extern.core.list.List.cons Type extern.core.int.Int (extern.core.list.List.empty Type))’
 
 error: aborting due to previous error
 

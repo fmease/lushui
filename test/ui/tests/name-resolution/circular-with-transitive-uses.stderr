@@ -1,4 +1,4 @@
-error[E024]: the declarations `topmost.thing` and `topmost.indirect.thing` are circular
+error[E024]: the declarations ‘topmost.thing’ and ‘topmost.indirect.thing’ are circular
  --> ${TEST_FOLDER}/name-resolution/circular-with-transitive-uses.lushui:3:14
   |
 3 | use indirect.thing
@@ -10,14 +10,14 @@ error[E024]: the declarations `topmost.thing` and `topmost.indirect.thing` are c
   |                                        ^^^^^
   |
 
-error[E024]: the declaration `topmost.alpha` is circular
+error[E024]: the declaration ‘topmost.alpha’ is circular
  --> ${TEST_FOLDER}/name-resolution/circular-with-transitive-uses.lushui:6:11
   |
 6 | use alpha.alpha
   |           ^^^^^
   |
 
-error[E024]: the declarations `topmost.bridge` and `topmost.omega` are circular
+error[E024]: the declarations ‘topmost.bridge’ and ‘topmost.omega’ are circular
  --> ${TEST_FOLDER}/name-resolution/circular-with-transitive-uses.lushui:8:20
   |
 8 | use omega.omega as bridge
@@ -29,7 +29,7 @@ error[E024]: the declarations `topmost.bridge` and `topmost.omega` are circular
   |               ^^^^^
   |
 
-error[E024]: the declaration `topmost.cycle` is circular
+error[E024]: the declaration ‘topmost.cycle’ is circular
   --> ${TEST_FOLDER}/name-resolution/circular-with-transitive-uses.lushui:11:5
    |
 11 | use cycle

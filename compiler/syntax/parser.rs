@@ -84,7 +84,7 @@ pub fn parse_root_module_file(
             Diagnostic::error()
                 .code(Code::E036)
                 .message(format!(
-                    "the name of the root module `{name}` is not a valid word"
+                    "the name of the root module ‘{name}’ is not a valid word"
                 ))
                 .report(session.reporter())
         })?,
@@ -405,7 +405,7 @@ impl<'a> Parser<'a> {
                 return self.error(|| {
                     expected_one_of![Word, OpeningRoundBracket]
                         .but_actual_is(self.current_token())
-                        .note("`@` introduces attributes")
+                        .note("‘@’ introduces attributes")
                 });
             }
         }
@@ -2049,7 +2049,7 @@ impl fmt::Display for Delimiter {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::TypeAnnotationPrefix => write!(f, "type annotation"),
-            Self::DefinitionPrefix => write!(f, "definition with `=`"),
+            Self::DefinitionPrefix => write!(f, "definition with ‘=’"),
             // @Question or spell it out? `;`, line break, `}`, dedentation, end of input?
             Self::Terminator => write!(f, "terminator"),
             Self::Token(token) => write!(f, "{}", token),

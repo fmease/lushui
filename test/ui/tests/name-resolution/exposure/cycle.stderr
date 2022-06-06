@@ -1,4 +1,4 @@
-error: exposure reach `topmost.Beta` is circular
+error: exposure reach ‘topmost.Beta’ is circular
  --> ${TEST_FOLDER}/name-resolution/exposure/cycle.lushui:4:10
   |
 4 | @(public Beta) Alpha: Type = Type

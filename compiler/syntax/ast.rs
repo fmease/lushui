@@ -518,7 +518,7 @@ impl Path {
             if !matches!(hanger.bare, HangerKind::Self_) {
                 return Err(Diagnostic::error()
                     .code(Code::E026)
-                    .message(format!("path `{}` not allowed in this position", hanger))
+                    .message(format!("path ‘{}’ not allowed in this position", hanger))
                     .primary_span(&hanger)
                     .help("consider moving this path to a separate use-declaration"));
             }

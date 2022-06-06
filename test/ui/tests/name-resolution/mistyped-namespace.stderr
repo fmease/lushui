@@ -1,4 +1,4 @@
-error[E017]: binding `true-treasures-of-life` is not a namespace
+error[E017]: binding ‘true-treasures-of-life’ is not a namespace
  --> ${TEST_FOLDER}/name-resolution/mistyped-namespace.lushui:7:5
   |
 7 | use true-treasures-of-life.Friendship
@@ -12,7 +12,7 @@ error[E017]: binding `true-treasures-of-life` is not a namespace
  help: a namespace with a similar name exists in scope containing the binding:
            `the-true-treasures-of-life`
 
-error[E017]: binding `shared-spades` is not a namespace
+error[E017]: binding ‘shared-spades’ is not a namespace
   --> ${TEST_FOLDER}/name-resolution/mistyped-namespace.lushui:23:5
    |
 23 | use shared-spades.One

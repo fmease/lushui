@@ -1,18 +1,18 @@
-error[E038]: the attribute `known` is an internal feature
+error[E038]: the attribute ‘known’ is an internal feature
  --> ${TEST_FOLDER}/lowering/unacknowledged-internal-attribute.lushui:3:1
   |
 3 | @known
   | ^^^^^^
   |
 
-error[E038]: the attribute `known` is an internal feature
+error[E038]: the attribute ‘known’ is an internal feature
  --> ${TEST_FOLDER}/lowering/unacknowledged-internal-attribute.lushui:7:9
   |
 7 | @public @known
   |         ^^^^^^
   |
 
-error[E038]: the attribute `intrinsic` is an internal feature
+error[E038]: the attribute ‘intrinsic’ is an internal feature
   --> ${TEST_FOLDER}/lowering/unacknowledged-internal-attribute.lushui:12:1
    |
 12 | @intrinsic

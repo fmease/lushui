@@ -99,7 +99,7 @@ impl fmt::Display for FailureKind {
                 write!(
                     f,
                     "{}",
-                    "Expected the compiler to fail but it actually exited successfully i.e. with exit code `0`."
+                    "Expected the compiler to fail but it actually exited successfully i.e. with exit code ‘0’."
                         .red()
                 )?;
             }
@@ -110,7 +110,7 @@ impl fmt::Display for FailureKind {
                     format!(
                         "Expected the compiler to exit successfully but it actually failed with {}.",
                         match status.code() {
-                            Some(code) => format!("the non-zero exit code `{code}`").into(),
+                            Some(code) => format!("the non-zero exit code ‘{code}’").into(),
                             None => Cow::from("a non-zero exit code"),
                         },
                     )

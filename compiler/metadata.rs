@@ -211,7 +211,7 @@ pub(crate) fn convert<T: TryFrom<ValueKind, Error = TypeError>>(
                 Diagnostic::error()
                     .code(Code::E800)
                     .message(format!(
-                        "expected type `{expected}` but got type `{actual}`",
+                        "expected type ‘{expected}’ but got type ‘{actual}’",
                     ))
                     .labeled_primary_span(value.span, "has the wrong type")
                     .report(reporter)
@@ -237,7 +237,7 @@ impl<'r> RecordWalker<'r> {
             Some(value) => convert(value, self.reporter),
             None => Err(Diagnostic::error()
                 .code(Code::E802)
-                .message(format!("the record does not contain the entry `{key}`"))
+                .message(format!("the record does not contain the entry ‘{key}’"))
                 .primary_span(&self.record)
                 .report(self.reporter)),
         }
@@ -259,7 +259,7 @@ impl<'r> RecordWalker<'r> {
                 // @Question should we use the "unknown" terminology?
                 Diagnostic::error()
                     .code(Code::E801)
-                    .message(format!("the record contains the unknown entry `{key}`"))
+                    .message(format!("the record contains the unknown entry ‘{key}’"))
                     .primary_span(key)
                     .report(self.reporter);
             }

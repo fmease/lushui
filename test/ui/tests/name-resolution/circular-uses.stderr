@@ -1,4 +1,4 @@
-error[E024]: the declarations `topmost.fake-my-dude.alpha0` and `topmost.alpha1` are circular
+error[E024]: the declarations ‘topmost.fake-my-dude.alpha0’ and ‘topmost.alpha1’ are circular
  --> ${TEST_FOLDER}/name-resolution/circular-uses.lushui:3:35
   |
 3 | use fake-my-dude.alpha0.((self as alpha1))
@@ -10,7 +10,7 @@ error[E024]: the declarations `topmost.fake-my-dude.alpha0` and `topmost.alpha1`
   |                         ^^^^^^
   |
 
-error[E024]: the declarations `topmost.fake-my-dude.beta2`, `topmost.fake-my-dude.beta0` and `topmost.fake-my-dude.beta1` are circular
+error[E024]: the declarations ‘topmost.fake-my-dude.beta2’, ‘topmost.fake-my-dude.beta0’ and ‘topmost.fake-my-dude.beta1’ are circular
   --> ${TEST_FOLDER}/name-resolution/circular-uses.lushui:6:18
    |
  6 |     use beta0 as beta1

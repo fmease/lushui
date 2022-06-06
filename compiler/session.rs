@@ -140,7 +140,7 @@ impl BuildSession {
             return Err(Diagnostic::error()
                 .code(Code::E063)
                 .message(format!(
-                    "`{}{binder}` is not a known binding",
+                    "‘{}{binder}’ is not a known binding",
                     namespace.map(|namespace| format!(".{namespace}"))
                         .unwrap_or_default()
                 ))
@@ -153,7 +153,7 @@ impl BuildSession {
             return Err(Diagnostic::error()
                 .code(Code::E039)
                 .message(format!(
-                    "the known binding `{}` is defined multiple times",
+                    "the known binding ‘{}’ is defined multiple times",
                     binding.path()
                 ))
                 .labeled_primary_span(binder, "redefinition")
@@ -189,7 +189,7 @@ impl BuildSession {
             return Err(Diagnostic::error()
                 .code(Code::E040)
                 .message(format!(
-                    "the intrinsic type `{intrinsic}` is defined multiple times",
+                    "the intrinsic type ‘{intrinsic}’ is defined multiple times",
                 ))
                 .labeled_primary_span(&binder, "redefinition")
                 .labeled_secondary_span(previous as &_, "previous definition")
@@ -273,7 +273,7 @@ impl Index<ComponentIndex> for BuildSession {
     fn index(&self, index: ComponentIndex) -> &Self::Output {
         self.components.get(&index).unwrap_or_else(|| {
             panic!(
-                "attempt to look up unbuilt or unknown component `{index:?}` in the build session"
+                "attempt to look up unbuilt or unknown component ‘{index:?}’ in the build session"
             )
         })
     }
@@ -290,7 +290,7 @@ impl Index<PackageIndex> for BuildSession {
 impl Diagnostic {
     fn missing_known_binding(binding: KnownBinding) -> Self {
         Self::error().code(Code::E062).message(format!(
-            "the known binding `{}` is not defined",
+            "the known binding ‘{}’ is not defined",
             binding.path()
         ))
     }
@@ -303,13 +303,13 @@ impl Diagnostic {
     fn unrecognized_intrinsic_binding(name: &str, kind: IntrinsicKind) -> Self {
         Self::error()
             .code(Code::E061)
-            .message(format!("`{name}` is not an intrinsic {kind}"))
+            .message(format!("‘{name}’ is not an intrinsic {kind}"))
     }
 
     fn missing_intrinsic_binding(intrinsic: IntrinsicType, kind: IntrinsicKind) -> Self {
         Self::error()
             .code(Code::E060)
-            .message(format!("the intrinsic {kind} `{intrinsic}` is not defined"))
+            .message(format!("the intrinsic {kind} ‘{intrinsic}’ is not defined"))
     }
 }
 

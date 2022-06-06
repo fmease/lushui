@@ -1,27 +1,27 @@
-error[E015]: the declaration `container` does not have a type annotation
+error[E015]: the declaration ‘container’ does not have a type annotation
  --> ${TEST_FOLDER}/lowering/constructor-with-explicit-body.lushui:4:14
   |
 4 |     container = attachment
   |             ><
   |
  note: type annotations are mandatory on declarations
- help: provide a type annotation for the declaration with `: ?type`
+ help: provide a type annotation for the declaration with ‘: ?type’
 
-error[E020]: `container` is defined multiple times in this scope
+error[E020]: ‘container’ is defined multiple times in this scope
  --> ${TEST_FOLDER}/lowering/constructor-with-explicit-body.lushui:4:17
   |
 4 |     container = attachment
   |                 ^^^^^^^^^^ conflicting definition
   |
- note: the body of the constructor is implied but it also has a body introduced by `=`
+ note: the body of the constructor is implied but it also has a body introduced by ‘= ?value’
 
-error[E020]: `attachment` is defined multiple times in this scope
+error[E020]: ‘attachment’ is defined multiple times in this scope
  --> ${TEST_FOLDER}/lowering/constructor-with-explicit-body.lushui:5:29
   |
 5 |     attachment: Container = container
   |                             ^^^^^^^^^ conflicting definition
   |
- note: the body of the constructor is implied but it also has a body introduced by `=`
+ note: the body of the constructor is implied but it also has a body introduced by ‘= ?value’
 
 error: aborting due to 3 previous errors
 

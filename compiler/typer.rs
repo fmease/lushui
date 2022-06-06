@@ -408,8 +408,8 @@ impl<'a> Typer<'a> {
                 })
                 .note(format!(
                     "\
-expected type `{}`
- but got type `{}`",
+expected type ‘{}’
+ but got type ‘{}’",
                     expected.with((self.component, self.session)),
                     actual.with((self.component, self.session))
                 ))
@@ -572,8 +572,8 @@ expected type `{}`
                                 .labeled_secondary_span(&expected, "expected due to this")
                                 .note(format!(
                                     "\
-expected type `{}`
- but got type `{}`",
+expected type ‘{}’
+ but got type ‘{}’",
                                     expected.with((self.component, self.session)),
                                     actual.with((self.component, self.session))
                                 ))
@@ -602,8 +602,8 @@ expected type `{}`
                         .labeled_secondary_span(&application.argument, "applied to this")
                         .note(format!(
                             "\
-expected type `_ -> _`
- but got type `{}`",
+expected type ‘_ -> _’
+ but got type ‘{}’",
                             type_of_callee.with((self.component, self.session))
                         ))
                         .report(self.session.reporter())
@@ -666,8 +666,8 @@ expected type `_ -> _`
                             .labeled_secondary_span(&analysis.scrutinee, "expected due to this")
                             .note(format!(
                                 "\
-expected type `{}`
- but got type `{}`",
+expected type ‘{}’
+ but got type ‘{}’",
                                 expected.with(context),
                                 actual.with(context)
                             ))
@@ -749,7 +749,7 @@ expected type `{}`
                                     return Err(Diagnostic::error()
                                         .code(Code::E034)
                                         .message(format!(
-                                            "binder `{}` used in callee position inside pattern",
+                                            "binder ‘{}’ used in callee position inside pattern",
                                             binder.0
                                         ))
                                         .primary_span(&binder.0)
@@ -892,7 +892,7 @@ expected type `{}`
             Err(Diagnostic::error()
                 .code(Code::E033)
                 .message(format!(
-                    "`{}` is not an instance of `{}`",
+                    "‘{}’ is not an instance of ‘{}’",
                     result_type.with((self.component, self.session)),
                     type_.with((self.component, self.session))
                 ))

@@ -1,11 +1,11 @@
-error: the library component `loops` is circular
+error: the library component ‘loops’ is circular
   --> ${TEST_FOLDER}/packages/circular-components-in-same-package/package.metadata:11:25
    |
 11 |         dependencies: { loops: {} },
    |                         ^^^^^
    |
 
-error: the library components `cycle1component2`, `cycle1component0` and `cycle1component1` are circular
+error: the library components ‘cycle1component2’, ‘cycle1component0’ and ‘cycle1component1’ are circular
   --> ${TEST_FOLDER}/packages/circular-components-in-same-package/package.metadata:19:25
    |
 19 |         dependencies: { cycle1component1: {} },
@@ -22,7 +22,7 @@ error: the library components `cycle1component2`, `cycle1component0` and `cycle1
    |                         ^^^^^^^^^^^^^^^^
    |
 
-error: the library components `cycle2component1` and `cycle2component0` are circular
+error: the library components ‘cycle2component1’ and ‘cycle2component0’ are circular
   --> ${TEST_FOLDER}/packages/circular-components-in-same-package/package.metadata:40:13
    |
 40 |             cycle2component1: {},
@@ -34,7 +34,7 @@ error: the library components `cycle2component1` and `cycle2component0` are circ
    |                         ^^^^^^^^^^^^^^^^
    |
 
-error: the library components `snake0` and `snake1` are circular
+error: the library components ‘snake0’ and ‘snake1’ are circular
   --> ${TEST_FOLDER}/packages/circular-components-in-same-package/package.metadata:60:64
    |
 60 |     { type: library, name: snake0, path: "s0", dependencies: { snake1: {} } },

@@ -1,4 +1,4 @@
-error[E017]: binding `Decayed-Alpha` is not a namespace
+error[E017]: binding ‘Decayed-Alpha’ is not a namespace
   --> ${TEST_FOLDER}/name-resolution/decayed-namespace.lushui:12:12
    |
 12 | y: Alpha = Decayed-Alpha.alpha
@@ -9,7 +9,7 @@ error[E017]: binding `Decayed-Alpha` is not a namespace
 12 | y: Alpha = Decayed-Alpha.alpha
    |                         ------ denotes a reference to a binding inside of a namespace
    |
-  help: use `::` to reference a field of a record
+  help: use ‘::’ to reference a field of a record
 
 error: aborting due to previous error
 

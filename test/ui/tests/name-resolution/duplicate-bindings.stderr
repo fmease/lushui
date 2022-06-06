@@ -1,4 +1,4 @@
-error[E020]: `Alpha` is defined multiple times in this scope
+error[E020]: ‘Alpha’ is defined multiple times in this scope
  --> ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:5:6
   |
 5 | data Alpha: Type of
@@ -10,7 +10,7 @@ error[E020]: `Alpha` is defined multiple times in this scope
   | ^^^^^ conflicting definition
   |
 
-error[E020]: `beta` is defined multiple times in this scope
+error[E020]: ‘beta’ is defined multiple times in this scope
   --> ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:10:1
    |
 10 | beta: Nat = 1000
@@ -22,7 +22,7 @@ error[E020]: `beta` is defined multiple times in this scope
    | ^^^^ conflicting definition
    |
 
-error[E020]: `pod` is defined multiple times in this scope
+error[E020]: ‘pod’ is defined multiple times in this scope
   --> ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:12:8
    |
 12 | module pod of
@@ -34,7 +34,7 @@ error[E020]: `pod` is defined multiple times in this scope
    | ^^^ conflicting definition
    |
 
-error[E020]: `Nat` is defined multiple times in this scope
+error[E020]: ‘Nat’ is defined multiple times in this scope
   --> ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:13:15
    |
 13 |     use super.Nat
@@ -46,7 +46,7 @@ error[E020]: `Nat` is defined multiple times in this scope
    |          ^^^ conflicting definition
    |
 
-error[E020]: `zero` is defined multiple times in this scope
+error[E020]: ‘zero’ is defined multiple times in this scope
   --> ${TEST_FOLDER}/name-resolution/duplicate-bindings.lushui:26:1
    |
 26 | zero: Nat = 0

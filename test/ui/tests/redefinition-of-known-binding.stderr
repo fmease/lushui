@@ -1,4 +1,4 @@
-error[E039]: the known binding `Unit` is defined multiple times
+error[E039]: the known binding ‘Unit’ is defined multiple times
   --> ${TEST_FOLDER}/redefinition-of-known-binding.lushui:4:6
    |
  4 | data Unit: Type of
@@ -10,7 +10,7 @@ error[E039]: the known binding `Unit` is defined multiple times
    |          ^^^^ redefinition
    |
 
-error[E039]: the known binding `Unit.unit` is defined multiple times
+error[E039]: the known binding ‘Unit.unit’ is defined multiple times
   --> ${TEST_FOLDER}/redefinition-of-known-binding.lushui:5:5
    |
  5 |     unit: Unit

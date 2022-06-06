@@ -255,7 +255,7 @@ impl BuildQueue {
                         health = Some(
                             Diagnostic::error()
                                 .message(format!(
-                                    "the component type `{type_}` is not supported yet"
+                                    "the component type ‘{type_}’ is not supported yet"
                                 ))
                                 .primary_span(type_)
                                 .report(&self.reporter),
@@ -353,7 +353,7 @@ impl BuildQueue {
                 Err(error) => {
                     return Err(Diagnostic::error()
                         // @Question code?
-                        .message("could not load the package `core`")
+                        .message("could not load the package ‘core’")
                         .note(IOError(error, &core_manifest_path).to_string())
                         .report(&self.reporter));
                 }
@@ -569,7 +569,7 @@ impl BuildQueue {
                         Err(DependencyResolutionError::ErasedFatal(
                             Diagnostic::error()
                                 .message(format!(
-                                    "the components `{dependent_component_name}` and `{component_endonym}` are circular",
+                                    "the components ‘{dependent_component_name}’ and ‘{component_endonym}’ are circular",
                                 ))
                                 // @Task add the span of "the" counterpart component
                                 .primary_span(component_exonym)
@@ -602,7 +602,7 @@ impl BuildQueue {
                 // @Question use endonym here instead? or use both?
                 return Err(Diagnostic::error()
                     .message(format!(
-                        "could not load the dependency `{component_exonym}`",
+                        "could not load the dependency ‘{component_exonym}’",
                     ))
                     .note(IOError(error, &manifest_path).to_string())
                     .primary_span(match &declaration.bare.path {
@@ -737,7 +737,7 @@ impl BuildQueue {
                 Some(path) => Ok(Dependency::ForeignPackage(package_path.join(&path.bare))),
                 // @Task improve message
                 None => Err(Diagnostic::error()
-                    .message("dependency declaration does not have entry `path`")
+                    .message("dependency declaration does not have entry ‘path’")
                     .primary_span(span)
                     .with(|error| match declaration.provider.as_ref() {
                         // currently always present in this branch
@@ -759,13 +759,13 @@ impl BuildQueue {
             DependencyProvider::Package => Ok(Dependency::LocalComponent),
             DependencyProvider::Git | DependencyProvider::Registry => Err(Diagnostic::error()
                 .message(format!(
-                    "the dependency provider `{provider}` is not supported yet",
+                    "the dependency provider ‘{provider}’ is not supported yet",
                 ))
                 // @Task better label! say how it was inferred!!
                 .with(|error| match declaration.provider {
                     Some(provider) => error.primary_span(provider),
                     None => {
-                        error.labeled_primary_span(span, format!("implies provider `{provider}`"))
+                        error.labeled_primary_span(span, format!("implies provider ‘{provider}’"))
                     }
                 })
                 .report(&self.reporter)),
@@ -860,7 +860,7 @@ impl From<ErasedReportedError> for DependencyResolutionError {
 fn parse_component_name_from_file_path(path: &Path, reporter: &Reporter) -> Result<Word> {
     if !crate::utility::has_file_extension(path, crate::FILE_EXTENSION) {
         Diagnostic::warning()
-            .message("the source file does not have the file extension `lushui`")
+            .message("the source file does not have the file extension ‘lushui’")
             .report(reporter);
     }
 
@@ -875,7 +875,7 @@ fn parse_component_name_from_file_path(path: &Path, reporter: &Reporter) -> Resu
         //     "component and package name"?
         Diagnostic::error()
             .code(Code::E036)
-            .message(format!("the component name `{name}` is not a valid word"))
+            .message(format!("the component name ‘{name}’ is not a valid word"))
             .report(reporter)
     })
 }
@@ -939,7 +939,7 @@ impl Diagnostic {
         //       be used as a dependency to another component
         Self::error()
             .message(format!(
-                "the library component `{name}` is not defined in package `{package}`"
+                "the library component ‘{name}’ is not defined in package ‘{package}’"
             ))
             .primary_span(name)
     }

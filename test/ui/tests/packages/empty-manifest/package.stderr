@@ -1,4 +1,4 @@
-error[E802]: the record does not contain the entry `name`
+error[E802]: the record does not contain the entry ‘name’
  --> ${TEST_FOLDER}/packages/empty-manifest/package.metadata:1:1
   |
 1 |   # TEST fail check
@@ -7,7 +7,7 @@ error[E802]: the record does not contain the entry `name`
   | |^
   |
 
-error[E802]: the record does not contain the entry `version`
+error[E802]: the record does not contain the entry ‘version’
  --> ${TEST_FOLDER}/packages/empty-manifest/package.metadata:1:1
   |
 1 |   # TEST fail check

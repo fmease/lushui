@@ -1,4 +1,4 @@
-error[E050]: the component `missing-program-entry` does not contain a `main` function its root module
+error[E050]: the component ‘missing-program-entry’ does not contain a ‘main’ function its root module
  --> ${TEST_FOLDER}/missing-program-entry.lushui:1:1
   |
 1 |   ;;; TEST fail check --component-type=executable

@@ -1,4 +1,4 @@
-error[E803]: the entry `first` is defined multiple times
+error[E803]: the entry ‘first’ is defined multiple times
  --> ${TEST_FOLDER}/metadata/duplicate-entries.metadata:3:1
   |
 3 | first: 23, first: "",
@@ -10,7 +10,7 @@ error[E803]: the entry `first` is defined multiple times
   |            ^^^^^ redefinition
   |
 
-error[E803]: the entry `it` is defined multiple times
+error[E803]: the entry ‘it’ is defined multiple times
  --> ${TEST_FOLDER}/metadata/duplicate-entries.metadata:6:5
   |
 6 |     it: [],

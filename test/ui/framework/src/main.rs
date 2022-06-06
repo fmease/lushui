@@ -290,7 +290,7 @@ fn handle_test_folder_entry(
             failures.push(Failure::new(
                 File::new(path, FileType::Other),
                 FailureKind::invalid_file(
-                    "The file extension is not one of `metadata`, `lushui`, `stderr` or `stdout`",
+                    "The file extension is not one of ‘metadata’, ‘lushui’, ‘stderr’ or ‘stdout’",
                 ),
             ));
             statistics.invalid += 1;
@@ -537,7 +537,7 @@ fn validate_auxiliary_file(
                 if user_count == 1 { "user" } else { "users" },
                 invalid_users
                     .into_iter()
-                    .map(|user| format!("`{user}`"))
+                    .map(|user| format!("‘{user}’"))
                     .join_with(", "),
                 if user_count == 1 { "does" } else { "do" },
             )),

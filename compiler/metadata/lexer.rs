@@ -66,7 +66,7 @@ impl fmt::Display for TokenKind {
 
         match self {
             &Self::Illegal(character) => {
-                write!(f, "{} U+{:04X} `{}`", name, character as u32, character)
+                write!(f, "{} U+{:04X} ‘{}’", name, character as u32, character)
             }
             _ => write!(f, "{name}"),
         }
@@ -84,8 +84,8 @@ impl fmt::Display for TokenName {
             ClosingSquareBracket => quoted!("]"),
             OpeningCurlyBracket => quoted!("{"),
             ClosingCurlyBracket => quoted!("}"),
-            False => "keyword `false`",
-            True => "keyword `true`",
+            False => "keyword ‘false’",
+            True => "keyword ‘true’",
             Identifier => "identifier",
             Text => "text",
             Integer => "integer",

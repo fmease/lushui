@@ -65,7 +65,7 @@ pub fn resolve_declarations(
             Diagnostic::error()
                 .code(Code::E020)
                 .message(format!(
-                    "`{}` is defined multiple times in this scope",
+                    "‘{}’ is defined multiple times in this scope",
                     resolver.component[binder].source,
                 ))
                 .labeled_primary_spans(naming_conflicts, "conflicting definition")
@@ -675,7 +675,7 @@ impl<'a> ResolverMut<'a> {
                     Diagnostic::error()
                         .code(Code::E009)
                         .message(format!(
-                            "re-export of the more private binding `{}`",
+                            "re-export of the more private binding ‘{}’",
                             self.component.path_to_string(target_index, self.session)
                         ))
                         .labeled_primary_span(
@@ -688,7 +688,7 @@ impl<'a> ResolverMut<'a> {
                         )
                         .note(format!(
                             "\
-expected the exposure of `{}`
+expected the exposure of ‘{}’
            to be at most {}
       but it actually is {}",
                             self.component
@@ -984,7 +984,7 @@ impl<'a> Resolver<'a> {
                     Diagnostic::error()
                         .code(Code::E043)
                         .message(format!(
-                            "the number literal is not a valid constructor for type `{}`",
+                            "the number literal is not a valid constructor for type ‘{}’",
                             self.look_up(type_.bare).source
                         ))
                         .labeled_primary_span(literal, "number literal may not construct that type")
@@ -999,7 +999,7 @@ impl<'a> Resolver<'a> {
             return Err(Diagnostic::error()
                 .code(Code::E007)
                 .message(format!(
-                    "number literal `{literal}` does not fit type `{type_}`",
+                    "number literal ‘{literal}’ does not fit type ‘{type_}’",
                 ))
                 .primary_span(literal)
                 .note(format!(
@@ -1044,7 +1044,7 @@ impl<'a> Resolver<'a> {
                     Diagnostic::error()
                         .code(Code::E043)
                         .message(format!(
-                            "the text literal is not a valid constructor for type `{}`",
+                            "the text literal is not a valid constructor for type ‘{}’",
                             self.look_up(type_.bare).source
                         ))
                         .labeled_primary_span(
@@ -1110,7 +1110,7 @@ impl<'a> Resolver<'a> {
             if !entity.is_data_type() {
                 // @Task code
                 return Err(Diagnostic::error()
-                    .message(format!("binding `{path}` is not a data type"))
+                    .message(format!("binding ‘{path}’ is not a data type"))
                     // @Task future-proof a/an
                     .labeled_primary_span(path, format!("a {}", entity.kind.name()))
                     .labeled_secondary_span(
@@ -1180,9 +1180,9 @@ impl<'a> Resolver<'a> {
                     let Some(component) = path.segments.first() else {
                         // @Task improve the error message, code
                         return Err(Diagnostic::error()
-                            .message("path `extern` is used in isolation")
+                            .message("path ‘extern’ is used in isolation")
                             .primary_span(hanger)
-                            .note("the path segment `extern` is only to be used indirectly to refer to specific component")
+                            .note("the path segment ‘extern’ is only to be used indirectly to refer to specific component")
                             .report(self.session.reporter()).into());
                     };
 
@@ -1192,7 +1192,7 @@ impl<'a> Resolver<'a> {
                         Diagnostic::error()
                             .code(Code::E036)
                             .message(format!(
-                                "the component name `{component}` is not a valid word"
+                                "the component name ‘{component}’ is not a valid word"
                             ))
                             .primary_span(component)
                             .report(self.session.reporter())
@@ -1208,7 +1208,7 @@ impl<'a> Resolver<'a> {
                         // @Task check if it is a sublibrary that was not explicitly added and suggest doing so
                         // @Task better phrasing
                         return Err(Diagnostic::error()
-                            .message(format!("the component `{component}` is not defined"))
+                            .message(format!("the component ‘{component}’ is not defined"))
                             .primary_span(component)
                             .report(self.session.reporter()).into());
                     };
@@ -1329,7 +1329,7 @@ impl<'a> Resolver<'a> {
             .get::<{ AttributeName::Deprecated }>()
         {
             let mut message = format!(
-                "use of deprecated binding `{}`",
+                "use of deprecated binding ‘{}’",
                 self.component.path_to_string(index, self.session),
             );
 
@@ -1373,7 +1373,7 @@ impl<'a> Resolver<'a> {
                 return Err(Diagnostic::error()
                     .code(Code::E029)
                     .message(format!(
-                        "binding `{}` is private",
+                        "binding ‘{}’ is private",
                         self.component.path_to_string(index, self.session)
                     ))
                     .primary_span(identifier)
@@ -1644,7 +1644,7 @@ impl<'a> Resolver<'a> {
                 namespace,
                 usage,
             } => {
-                let mut message = format!("the binding `{identifier}` is not defined in ");
+                let mut message = format!("the binding ‘{identifier}’ is not defined in ");
 
                 match usage {
                     IdentifierUsage::Unqualified => message += "this scope",
@@ -1687,7 +1687,7 @@ impl<'a> Resolver<'a> {
                 // @Beacon @Task
                 Diagnostic::error()
                     .message(format!(
-                        "exposure reach `{}` is circular",
+                        "exposure reach ‘{}’ is circular",
                         self.component.path_to_string(binder, self.session)
                     ))
                     .primary_span(extra)
@@ -1723,7 +1723,7 @@ impl<'a> Resolver<'a> {
 
         Diagnostic::error()
             .code(Code::E017)
-            .message(format!("binding `{binder}` is not a namespace"))
+            .message(format!("binding ‘{binder}’ is not a namespace"))
             .labeled_primary_span(binder, format!("not a namespace but a {}", kind.name()))
             .labeled_secondary_span(
                 // the subbinder together with the leading dot
@@ -1744,7 +1744,7 @@ impl<'a> Resolver<'a> {
             .with(|error| {
                 if show_very_general_help {
                     // no type information here yet to check if the non-namespace is indeed a record
-                    error.help("use `::` to reference a field of a record")
+                    error.help("use ‘::’ to reference a field of a record")
                 } else {
                     error
                 }
@@ -1995,7 +1995,7 @@ impl DisplayWith for Exposure {
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Unrestricted => write!(f, "unrestricted"),
-            Self::Restricted(reach) => write!(f, "`{}`", reach.lock().unwrap().with(context)),
+            Self::Restricted(reach) => write!(f, "‘{}’", reach.lock().unwrap().with(context)),
         }
     }
 }
@@ -2225,7 +2225,7 @@ impl Diagnostic {
         // @Task improve this diagnostic!
         Self::error()
             .code(Code::E023)
-            .message(format!("module `{module}` is used as a value"))
+            .message(format!("module ‘{module}’ is used as a value"))
             .primary_span(module)
             .help("modules are not first-class citizens, consider utilizing records for such cases instead")
     }
@@ -2359,7 +2359,7 @@ mod target {
             if !(entity.is_module() || entity.is_error()) {
                 return Err(Diagnostic::error()
                     .code(Code::E022)
-                    .message(format!("binding `{identifier}` is not a module"))
+                    .message(format!("binding ‘{identifier}’ is not a module"))
                     .primary_span(identifier));
             }
 

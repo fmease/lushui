@@ -1,4 +1,4 @@
-error: found `,` but expected end of input
+error: found ‘,’ but expected end of input
  --> ${TEST_FOLDER}/metadata/top-level-record-trailing-comma.metadata:5:2
   |
 5 | },

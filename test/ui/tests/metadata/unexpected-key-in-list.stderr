@@ -1,4 +1,4 @@
-error: found `:` but expected `,`
+error: found ‘:’ but expected ‘,’
  --> ${TEST_FOLDER}/metadata/unexpected-key-in-list.metadata:3:13
   |
 3 | list: [first: 0, second: 2]

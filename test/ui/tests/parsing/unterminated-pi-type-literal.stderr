@@ -1,4 +1,4 @@
-error[E010]: found keyword `of` but expected `->`
+error[E010]: found keyword ‘of’ but expected ‘->’
  --> ${TEST_FOLDER}/parsing/unterminated-pi-type-literal.lushui:3:19
   |
 3 | data X (A: Type): (m: M) of

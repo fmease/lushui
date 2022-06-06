@@ -33,7 +33,7 @@ fn assert_eq(actual: Result<Value>, expected: Value) {
                 );
             }
         }
-        _ => panic!("expected the value `{expected:?}` but an error was (silently) reported"),
+        _ => panic!("expected the value ‘{expected:?}’ but an error was (silently) reported"),
     }
 }
 

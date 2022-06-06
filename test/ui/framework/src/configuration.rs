@@ -79,11 +79,11 @@ impl fmt::Display for ParseError {
             Self::MissingConfiguration => write!(
                 f,
                 "The test does not have a configuration i.e. a comment at the start of the file \
-                 starting with the code `{MAGIC_TEXT}`"
+                 starting with the code ‘{MAGIC_TEXT}’"
             ),
             Self::MissingTag | Self::InvalidTag(_) => {
                 let tags = TestTag::elements()
-                    .map(|tag| format!("`{tag}`"))
+                    .map(|tag| format!("‘{tag}’"))
                     .join_with(", ");
 
                 #[allow(clippy::match_wildcard_for_single_variants)]
@@ -98,7 +98,7 @@ impl fmt::Display for ParseError {
                     Self::InvalidTag(tag) => {
                         write!(
                             f,
-                            "The test contains the invalid tag `{tag}`. Valid tags are {tags}",
+                            "The test contains the invalid tag ‘{tag}’. Valid tags are {tags}",
                         )
                     }
                     _ => unreachable!(),

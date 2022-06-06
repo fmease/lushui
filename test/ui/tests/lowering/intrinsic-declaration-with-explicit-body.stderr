@@ -1,4 +1,4 @@
-error[E042]: the declaration `Void` marked as `intrinsic` has a body
+error[E042]: the declaration ‘Void’ marked as ‘intrinsic’ has a body
  --> ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:3:1
   |
 3 | @intrinsic
@@ -12,7 +12,7 @@ error[E042]: the declaration `Void` marked as `intrinsic` has a body
   |
  help: remove either the body or the attribute
 
-error[E042]: the declaration `Unit` marked as `intrinsic` has a body
+error[E042]: the declaration ‘Unit’ marked as ‘intrinsic’ has a body
  --> ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:6:1
   |
 6 | @intrinsic
@@ -26,7 +26,7 @@ error[E042]: the declaration `Unit` marked as `intrinsic` has a body
   |
  help: remove either the body or the attribute
 
-error[E042]: the declaration `Bool` marked as `intrinsic` has a body
+error[E042]: the declaration ‘Bool’ marked as ‘intrinsic’ has a body
   --> ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:11:1
    |
 11 | @intrinsic
@@ -42,7 +42,7 @@ error[E042]: the declaration `Bool` marked as `intrinsic` has a body
    |
   help: remove either the body or the attribute
 
-error[E042]: the declaration `thing` marked as `intrinsic` has a body
+error[E042]: the declaration ‘thing’ marked as ‘intrinsic’ has a body
   --> ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:16:1
    |
 16 | @intrinsic thing = 0
@@ -55,14 +55,14 @@ error[E042]: the declaration `thing` marked as `intrinsic` has a body
    |
   help: remove either the body or the attribute
 
-error[E015]: the declaration `thing` does not have a type annotation
+error[E015]: the declaration ‘thing’ does not have a type annotation
   --> ${TEST_FOLDER}/lowering/intrinsic-declaration-with-explicit-body.lushui:16:17
    |
 16 | @intrinsic thing = 0
    |                ><
    |
   note: type annotations are mandatory on declarations
-  help: provide a type annotation for the declaration with `: ?type`
+  help: provide a type annotation for the declaration with ‘: ?type’
 
 error: aborting due to 5 previous errors
 

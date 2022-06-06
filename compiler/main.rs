@@ -111,12 +111,12 @@ fn execute_command(
 
                         return Err(Diagnostic::error()
                             .message(format!(
-                                "the path `{}` does not refer to a folder",
+                                "the path ‘{}’ does not refer to a folder",
                                 path.to_string_lossy()
                             ))
                             .help(
-                                "consider running `lushui file <SUBCOMMAND> <PATH> [OPTIONS]` \
-                                 (with `file` preceeding the subcommand)\n\
+                                "consider running ‘lushui file <SUBCOMMAND> <PATH> [OPTIONS]’ \
+                                 (with ‘file’ preceeding the subcommand)\n\
                                  instead to operate on single source files",
                             )
                             .report(&reporter));
@@ -143,7 +143,7 @@ fn execute_command(
                                 "neither the current folder nor any of its parents is a package",
                             )
                             .note(format!(
-                                "none of the folders contain a package manifest file named `{MANIFEST_FILE_NAME}`",
+                                "none of the folders contain a package manifest file named ‘{MANIFEST_FILE_NAME}’",
                             ))
                             .report(&reporter));
                     };
@@ -160,12 +160,12 @@ fn execute_command(
 
                 return Err(Diagnostic::error()
                     .message(format!(
-                        "the path `{}` does not refer to a file",
+                        "the path ‘{}’ does not refer to a file",
                         options.path.to_string_lossy()
                     ))
                     .help(
-                        "consider running `lushui <SUBCOMMAND> <PATH> [OPTIONS]` \
-                         (without `file` preceeding the subcommand)\n\
+                        "consider running ‘lushui <SUBCOMMAND> <PATH> [OPTIONS]’ \
+                         (without ‘file’ preceeding the subcommand)\n\
                          instead to operate on packages",
                     )
                     .report(&reporter));
@@ -182,7 +182,7 @@ fn execute_command(
             build_components(components, &mode, &options.general, global_options, session)
         }
         Explain => Err(Diagnostic::error()
-            .message("subcommand `explain` is not implemented yet")
+            .message("subcommand ‘explain’ is not implemented yet")
             .report(&reporter)),
         CreatePackage { mode, options } => match mode {
             cli::PackageCreationMode::Initialize => todo!(),
@@ -298,7 +298,7 @@ fn build_component(
         // @Task improve message, add label
         Diagnostic::error()
             .message(format!(
-                "could not load the {} component `{}` in package `{}`",
+                "could not load the {} component ‘{}’ in package ‘{}’",
                 component.type_(),
                 component.name(),
                 component.package(session).name,
@@ -378,7 +378,7 @@ fn build_component(
         return Err(Diagnostic::error()
             .code(Code::E050)
             .message(format!(
-                "the component `{}` does not contain a `{PROGRAM_ENTRY_IDENTIFIER}` function its root module",
+                "the component ‘{}’ does not contain a ‘{PROGRAM_ENTRY_IDENTIFIER}’ function its root module",
                 component.name(),
             ))
             .primary_span(&session.shared_map()[file])
@@ -392,7 +392,7 @@ fn build_component(
                     // @Question code?
                     return Err(Diagnostic::error()
                         .message(format!(
-                            "the package `{}` does not contain any executable to run",
+                            "the package ‘{}’ does not contain any executable to run",
                             component.package(session).name,
                         ))
                         .report(session.reporter()));
@@ -453,7 +453,7 @@ fn create_package(name: &str, options: cli::PackageCreationOptions, reporter: &R
         // @Task DRY @Question is the common code justified?
         Diagnostic::error()
             .code(Code::E036)
-            .message(format!("the package name `{name}` is not a valid word"))
+            .message(format!("the package name ‘{name}’ is not a valid word"))
             .report(reporter)
     })?;
 
@@ -585,19 +585,19 @@ fn set_panic_hook() {
         Diagnostic::bug()
             .message(message)
             .with(|error| match information.location() {
-                Some(location) => error.note(format!("at `{location}`")),
+                Some(location) => error.note(format!("at ‘{location}’")),
                 None => error,
             })
             .note(std::thread::current().name().map_or_else(
                 || "in an unnamed thread".into(),
-                |name| format!("in thread `{name}`"),
+                |name| format!("in thread ‘{name}’"),
             ))
             .note("the compiler unexpectedly panicked. this is a bug. we would appreciate a bug report")
             .note(format!("lushui {VERSION}"))
             .with(|error| match backtrace {
                 Some(backtrace) => error.note(format!("with the following backtrace:\n{backtrace}")),
                 None => error.help(
-                    "rerun with the environment variable `LUSHUI_BACKTRACE=1` to display a backtrace",
+                    "rerun with the environment variable ‘LUSHUI_BACKTRACE=1’ to display a backtrace",
                 ),
             })
             .report(&StderrReporter::new(None).into());

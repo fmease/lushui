@@ -251,7 +251,7 @@ impl<'a> Parser<'a> {
                 // @Task make *all* duplicate entries *primary* highlights
                 Diagnostic::error()
                     .code(Code::E803)
-                    .message(format!("the entry `{key}` is defined multiple times"))
+                    .message(format!("the entry ‘{key}’ is defined multiple times"))
                     .labeled_primary_span(key.span, "redefinition")
                     .labeled_secondary_span(previous_key.span, "previous definition")
                     .report(self.reporter);

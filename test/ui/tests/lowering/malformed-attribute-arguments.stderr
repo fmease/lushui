@@ -1,4 +1,4 @@
-error[E018]: the lint `never-gonna-be-implied` is not defined
+error[E018]: the lint ‘never-gonna-be-implied’ is not defined
  --> ${TEST_FOLDER}/lowering/malformed-attribute-arguments.lushui:4:9
   |
 4 | @(allow never-gonna-be-implied)
@@ -26,7 +26,7 @@ error[E019]: too few attribute arguments provided
   | ^^^^^
   |
 
-error[E028]: found named argument `reech` but expected `reach`
+error[E028]: found named argument ‘reech’ but expected ‘reach’
   --> ${TEST_FOLDER}/lowering/malformed-attribute-arguments.lushui:12:11
    |
 12 | @(public (reech path) "hello")

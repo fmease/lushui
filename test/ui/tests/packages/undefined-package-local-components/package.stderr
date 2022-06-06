@@ -1,18 +1,18 @@
-error: the library component `who` is not defined in package `lost-in-the-local-forest`
+error: the library component ‘who’ is not defined in package ‘lost-in-the-local-forest’
   --> ${TEST_FOLDER}/packages/undefined-package-local-components/package.metadata:12:13
    |
 12 |             who: {},
    |             ^^^
    |
 
-error: the library component `wait-who` is not defined in package `lost-in-the-local-forest`
+error: the library component ‘wait-who’ is not defined in package ‘lost-in-the-local-forest’
   --> ${TEST_FOLDER}/packages/undefined-package-local-components/package.metadata:13:13
    |
 13 |             wait-who: {},
    |             ^^^^^^^^
    |
 
-error: the library component `i-mean-who` is not defined in package `lost-in-the-local-forest`
+error: the library component ‘i-mean-who’ is not defined in package ‘lost-in-the-local-forest’
   --> ${TEST_FOLDER}/packages/undefined-package-local-components/package.metadata:14:39
    |
 14 |             no-wait-who: { component: i-mean-who },

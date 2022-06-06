@@ -1,4 +1,4 @@
-error[E013]: attribute `public` is ascribed to a module header declaration
+error[E013]: attribute ‘public’ is ascribed to a module header declaration
  --> ${TEST_FOLDER}/lowering/public-not-allowed-on-module-headers.lushui:3:1
   |
 3 | @(public self)
@@ -9,7 +9,7 @@ error[E013]: attribute `public` is ascribed to a module header declaration
 4 | module
   | ------ incompatible item
   |
- note: attribute `public` can only be ascribed to declarations except constructors and module headers
+ note: attribute ‘public’ can only be ascribed to declarations except constructors and module headers
 
 error: aborting due to previous error
 

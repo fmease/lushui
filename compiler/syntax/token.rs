@@ -143,7 +143,7 @@ impl fmt::Display for TokenKind {
         match *self {
             Self::Semicolon(Provenance::Lexer) => write!(f, "line break"),
             Self::Illegal(character) => {
-                write!(f, "{} U+{:04X} `{}`", name, character as u32, character)
+                write!(f, "{} U+{:04X} ‘{}’", name, character as u32, character)
             }
             _ => write!(f, "{name}"),
         }

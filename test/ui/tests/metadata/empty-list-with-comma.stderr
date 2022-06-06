@@ -1,4 +1,4 @@
-error: found `,` but expected value
+error: found ‘,’ but expected value
  --> ${TEST_FOLDER}/metadata/empty-list-with-comma.metadata:3:2
   |
 3 | [,]
