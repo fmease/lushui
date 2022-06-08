@@ -10,11 +10,13 @@ and mirrored on https://gitlab.com/fmease/lushui.git[GitLab].
 
 == Stability
 
-This project is under heavy development and not recommended for use outside of experiments.
+This project is under heavy development and
+it is not recommended for use outside of experimental non-production software.
 The language, the compiler API and its CLI have no stability guarantees whatsoever.
 Anything may change in a new version without notice.
-The majority of the language has not been implemented yet in the compiler and
-the latter contains quite a lot of bugs and the test suites are not big enough yet.
+The majority of the language has not been implemented yet in the compiler,
+the latter contains quite a lot of bugs and
+the test suites are not big enough yet.
 
 == Installation
 
@@ -40,8 +42,9 @@ To show the help text on Linux, execute:
 [subs=-replacements]
 On Windows, use `cargo +nightly run -- -h`.
 
-Currently, the shell script `./lushui` also rebuilds the compiler if necessary (no status info shown though during building)
-and runs it afterwards.
+Currently, the shell script `./lushui` also rebuilds the compiler if necessary
+(no status info shown though during building) and
+runs it afterwards.
 
 == Tests
 
@@ -56,19 +59,21 @@ If you want to restrict yourself to UI tests, execute `./test/ui/run`.
 
 == Tooling
 
-No IDE is available yet. However basic syntax highlighting is available for Visual Studio Code as an extension.
+No IDE is available yet.
+However basic syntax highlighting is available for Visual Studio Code as an extension.
 To install it, copy or symlink the folder `./project/vscode/fmease.lushui-syntax-0.0.1/` to `~/.vscode/extensions/` (Linux).
 For package metadata files, we provide a VS Code extension, too, separately at `./project/vscode/fmease.lushui-metadata-syntax-0.0.1`.
 
 == Generated API Documentation
 
-As hinted in the help text (`./lushui -h`), you use `lushui doc` (and variations) to generate (HTML) documentation.
-To view it, just pass `--open` to `./lushui doc`.
+As hinted in the help text (`./lushui -h`), you use `./lushui doc` (and variations) to generate (HTML) documentation.
+To view it, just pass `--open`.
 
 By default, documentation comments are treated as plain text.
 However, the goal is to make AsciiDoc the standard markup language.
 Today, this is only opt-in via the _unstable_ option `-Z asciidoc` which requires https://asciidoctor.org/[Asciidoctor]
-to be installed and available as `asciidoctor` (a custom installation path is not supported at the moment).
+to be installed and
+available as `asciidoctor` (a custom installation path is not supported at the moment).
 
 == License
 

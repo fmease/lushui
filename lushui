@@ -1,3 +1,11 @@
 #!/usr/bin/env sh
 
-cargo +nightly run --quiet --manifest-path="$( dirname $(realpath $0) )/Cargo.toml" -- "$@"
+FOLDER="$( dirname $( realpath $0 ) )"
+
+cargo \
+    +nightly \
+    run \
+    --quiet \
+    --manifest-path="$FOLDER/Cargo.toml" \
+    -- \
+    "$@"

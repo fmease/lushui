@@ -412,7 +412,7 @@ fn build_component(
         BuildMode::Document {
             options: documentation_options,
         } => {
-            // @Bug leads to broken links, the documenter has to handle this itself
+            // @Bug leads to broken links, @Task the documenter has to handle this itself
             if documentation_options.no_dependencies && !component.is_goal(session) {
                 return Ok(());
             }
@@ -435,9 +435,15 @@ fn build_component(
 
             if documentation_options.open {
                 if let Err(error) = open::that(&index_page_path) {
+                    // Not sure if this should be a user error or an internal compiler error.
+                    // There is no way of knowing the cause of the I/O error.
+                    // Is it more likely that the user misconfigured their browser setup or
+                    // that the index page is erroneously missing or in some other way faulty?
+                    // I have no idea.
                     return Err(Diagnostic::error()
-                        .message("could not open the documentation")
-                        .note(IOError(error, &index_page_path).to_string())
+                        .message("could not open the generated documentation")
+                        // @Task don't use io::Error::to_string directly but custom printing code (cf. `IOError`)
+                        .note(error.to_string())
                         .report(session.reporter()));
                 }
             }
@@ -599,6 +605,7 @@ fn set_panic_hook() {
                 || "in an unnamed thread".into(),
                 |name| format!("in thread ‘{name}’"),
             ))
+            // @Task the last two sentences should be shown for all `Diagnostic::bug()`s
             .note("the compiler unexpectedly panicked. this is a bug. we would appreciate a bug report")
             .note(format!("lushui {VERSION}"))
             .with(|error| match backtrace {
