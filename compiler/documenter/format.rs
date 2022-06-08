@@ -1,5 +1,3 @@
-use joinery::JoinableIterator;
-
 use super::{
     declaration_id,
     node::{Attributable, Element},
@@ -10,6 +8,8 @@ use crate::{
     session::BuildSession,
     utility::DisplayWith,
 };
+use joinery::JoinableIterator;
+use std::iter::once;
 
 pub(super) fn format_expression(
     expression: &hir::Expression,
@@ -239,13 +239,18 @@ impl<'a> Formatter<'a> {
     }
 
     fn module_url_fragment(&self, index: DeclarationIndex) -> String {
+        let component = self.component(index);
+
         format!(
             "{}{}/index.html",
             self.url_prefix,
-            self.component(index)
-                .extern_path_segments(index.local_unchecked())
-                .into_iter()
-                .map(urlencoding::encode)
+            once(component.folder_id().into())
+                .chain(
+                    component
+                        .local_path_segments(index.local_unchecked())
+                        .into_iter()
+                        .map(urlencoding::encode)
+                )
                 .join_with("/")
         )
     }

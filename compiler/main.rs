@@ -256,10 +256,7 @@ fn build_component(
         println!(
             "   {label} {} ({path})",
             // @Task re-introduce some logic to not the component type unless really necessary
-            //       (the is_ambiguous... is currently never set in BuildQueue::finalize)
-            if component.in_goal_package(session)
-            /*&& component.metadata.is_ambiguously_named_within_package*/
-            {
+            if component.in_goal_package(session) {
                 format!("{} [{}]", component.name(), component.type_())
             } else {
                 component.name().to_string()

@@ -89,8 +89,8 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
             .visible_alias("libs")
             .help("Target all libraries"),
         Arg::new(TARGET_LIBRARIES_OPTION)
-            .long("library")
-            .visible_alias("lib")
+            .long(ComponentType::Library.name())
+            .visible_alias(ComponentType::Library.short_name())
             .value_name("NAME")
             .help("Target only the given or primary library"),
     ];
@@ -101,8 +101,8 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
         .help("Target all executables");
 
     let target_executable_option = Arg::new(TARGET_EXECUTABLES_OPTION)
-        .long("executable")
-        .visible_alias("exe")
+        .long(ComponentType::Executable.name())
+        .visible_alias(ComponentType::Executable.short_name())
         .value_name("NAME")
         .help("Target only the given or primary executable");
 

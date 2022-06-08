@@ -7,7 +7,7 @@
 // and obviously, only show the list once. Don't show empty sections (obviously)
 
 use crate::{
-    component::{Component, ComponentMetadata, ComponentType},
+    component::{Component, ComponentMetadata},
     error::Result,
     hir::{self, LocalDeclarationIndex},
     session::BuildSession,
@@ -147,7 +147,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             fs::write(&page.path, &page.content)?;
         }
 
-        let component_path = self.path.join(self.component.name().as_str());
+        let component_path = self.path.join(self.component.folder_id());
 
         if !component_path.exists() {
             fs::create_dir(&component_path)?;
@@ -165,9 +165,10 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                     &SearchItem::Declaration(index) => {
                         // @Beacon @Task don't use the to_string variant, so we don't need to split() JS (which would be
                         // incorrect on top of that!)
-                        let path = self
-                            .component
-                            .extern_path_to_string(index.local(self.component).unwrap());
+                        let path = self.component.extern_path_with_root_to_string(
+                            index.local(self.component).unwrap(),
+                            self.component.name().to_string(),
+                        );
 
                         write!(
                             search_index,
@@ -392,7 +393,8 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             .binder
             .local_declaration_index(self.component)
             .unwrap();
-        let path_segments = self.component.extern_path_segments(index);
+        let mut path_segments = self.component.local_path_segments(index);
+        path_segments.push_front(self.component.name().as_str());
         let page_depth = match content_type {
             PageContentType::Module => path_segments.len(),
             PageContentType::Attributes | PageContentType::ReservedIdentifiers => 0,
@@ -444,23 +446,12 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                 let anchor = Element::new("a")
                     .attribute(
                         "href",
-                        format!(
-                            "{url_prefix}{}{}/index.html",
-                            component.name,
-                            // @Note this does not scale to multiple executables per package
-                            if component.type_ == ComponentType::Executable
-                                && component.is_ambiguously_named_within_package
-                            {
-                                ".exec"
-                            } else {
-                                ""
-                            }
-                        ),
+                        format!("{url_prefix}{}/index.html", component.folder_id()),
                     )
                     .child(
-                        if component.package == self.session.goal_package()
-                            && component.is_ambiguously_named_within_package
-                        {
+                        // If it's not a target component, it has to be a library.
+                        // In such case, omit this information for legibility.
+                        if component.package == self.session.goal_package() {
                             Node::from(format!("{} ({})", component.name, component.type_))
                         } else {
                             Node::from(component.name.as_str())
@@ -552,17 +543,9 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         let path = match content_type {
             PageContentType::Module => {
                 let mut path = self.path.clone();
-                let mut path_segments = path_segments.into_iter();
 
-                if self.component.is_executable()
-                    && self.component.metadata.is_ambiguously_named_within_package
-                {
-                    path_segments.next();
-                    // @Note does not scale to multiple binaries per package
-                    path.push(format!("{}.exec", self.component.name()));
-                }
-
-                for segment in path_segments {
+                path.push(self.component.folder_id());
+                for segment in path_segments.into_iter().skip(1) {
                     path.push(segment);
                 }
 
@@ -588,12 +571,15 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                     .attribute("name", "viewport")
                     .attribute("content", "width=device-width, initial-scale=1.0"),
             )
-            .child(Element::new("title").child(match content_type {
-                // @Task respect self.component.is_ambiguously_named_within_package
-                PageContentType::Module => self.component.extern_path_to_string(index),
-                PageContentType::Attributes => "Attributes".into(),
-                PageContentType::ReservedIdentifiers => "Reserved Identifiers".into(),
-            }))
+            .child(
+                Element::new("title").child(match content_type {
+                    PageContentType::Module => self
+                        .component
+                        .extern_path_with_root_to_string(index, self.component.folder_id()),
+                    PageContentType::Attributes => "Attributes".into(),
+                    PageContentType::ReservedIdentifiers => "Reserved Identifiers".into(),
+                }),
+            )
             .child(
                 VoidElement::new("meta")
                     .attribute("name", "generator")
@@ -772,6 +758,18 @@ struct Page {
 
 fn declaration_id(binder: &str) -> String {
     format!("decl.{}", urlencoding::encode(binder))
+}
+
+impl Component {
+    fn folder_id(&self) -> String {
+        self.metadata.folder_id()
+    }
+}
+
+impl ComponentMetadata {
+    fn folder_id(&self) -> String {
+        format!("{}:{}", self.type_.short_name(), self.name)
+    }
 }
 
 static LOREM_IPSUM: &str = "\

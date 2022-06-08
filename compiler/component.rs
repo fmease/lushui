@@ -162,12 +162,6 @@ pub struct ComponentMetadata {
     pub(crate) package: PackageIndex,
     pub(crate) path: Spanned<PathBuf>,
     pub(crate) type_: ComponentType,
-    /// Indicates if the name of the library or executable component coincides with
-    /// the name of the executable[^1] or library component, respectively.
-    ///
-    /// [^1]: We haven't implemented multiple executable components per package yet.
-    // @Beacon @Note this is no longer up to date with the concept of secondary libraries etc.
-    pub is_ambiguously_named_within_package: bool,
 }
 
 impl ComponentMetadata {
@@ -184,7 +178,6 @@ impl ComponentMetadata {
             package,
             path,
             type_,
-            is_ambiguously_named_within_package: false,
         }
     }
 }
@@ -218,6 +211,18 @@ pub enum ComponentType {
     Executable,
     Library,
     TestSuite,
+}
+
+impl ComponentType {
+    pub const fn short_name(self) -> &'static str {
+        match self {
+            Self::BenchmarkSuite => "bench",
+            Self::Example => "example",
+            Self::Executable => "exe",
+            Self::Library => "lib",
+            Self::TestSuite => "test",
+        }
+    }
 }
 
 impl fmt::Display for ComponentType {

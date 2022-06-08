@@ -793,36 +793,12 @@ impl BuildQueue {
     }
 
     fn finalize(/*mut*/ self) -> (Components, BuildSession) {
-        // @Beacon @Beacon @Beacon @Bug no longer correct!
+        // @Bug no longer correct!
+        // @Task introduce proper concept of target components replacing the
+        // current concept of a goal component
         let goal_component = self.components.last().unwrap();
         let goal_component_index = goal_component.index();
-        // let _goal_package = &self.packages[goal_component.metadata.package];
         let goal_package_index = goal_component.metadata.package;
-        // let _is_homonymous = |&component: &ComponentIndex| {
-        //     goal_component.name() == self.components[component].name()
-        // };
-
-        // @Beacon @Beacon @Beacon @Task
-        // let library_lookalike = goal_package
-        //     .library
-        //     .filter(|_| goal_component.is_executable())
-        //     .filter(is_homonymous);
-        // // @Note this is not extensible to multiple executable components
-        // let executable_lookalike = goal_package
-        //     .executables
-        //     .get(0)
-        //     .copied()
-        //     .filter(|_| goal_component.is_library())
-        //     .filter(is_homonymous);
-
-        // if let Some(lookalike) = library_lookalike.or(executable_lookalike) {
-        //     self.components[goal_component_index]
-        //         .metadata
-        //         .is_ambiguously_named_within_package = true;
-        //     self.components[lookalike]
-        //         .metadata
-        //         .is_ambiguously_named_within_package = true;
-        // }
 
         let session = BuildSession::new(
             self.packages,

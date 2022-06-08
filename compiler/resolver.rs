@@ -1893,11 +1893,8 @@ impl Component {
     /// * `json.parse` (`json` referring to a component)
     ///
     /// [1]: crate::syntax::ast::Path
-    pub(crate) fn extern_path_to_string(&self, index: LocalDeclarationIndex) -> String {
-        self.extern_path_with_root_to_string(index, self.name().to_string())
-    }
-
-    fn extern_path_with_root_to_string(
+    // @Task update docs
+    pub(crate) fn extern_path_with_root_to_string(
         &self,
         index: LocalDeclarationIndex,
         root: String,
@@ -1926,19 +1923,13 @@ impl Component {
         }
     }
 
-    /// The segments of the [extern path](Self::extern_path_to_string) to the given binding.
-    pub(crate) fn extern_path_segments(&self, mut index: LocalDeclarationIndex) -> VecDeque<&str> {
+    // @Task add documentation
+    pub(crate) fn local_path_segments(&self, mut index: LocalDeclarationIndex) -> VecDeque<&str> {
         let mut segments = VecDeque::new();
 
-        loop {
-            let entity = &self[index];
-            segments.push_front(entity.source.as_str());
-
-            if let Some(parent) = entity.parent {
-                index = parent;
-            } else {
-                break;
-            }
+        while let Some(parent) = self[index].parent {
+            segments.push_front(self[index].source.as_str());
+            index = parent;
         }
 
         segments
