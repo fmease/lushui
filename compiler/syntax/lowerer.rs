@@ -323,7 +323,8 @@ impl<'a> Lowerer<'a> {
 
                 path.set_extension(crate::FILE_EXTENSION);
 
-                let file = match self.session.map().load(path.clone()) {
+                let file = self.session.map().load(path.clone());
+                let file = match file {
                     Ok(file) => file,
                     Err(error) => {
                         // @Task instead of a note saying the error, print a help message
