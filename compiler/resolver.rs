@@ -11,7 +11,7 @@
 
 use crate::{
     component::Component,
-    diagnostics::{reporter::ErasedReportedError, Code, Diagnostic},
+    diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, LintCode},
     entity::{Entity, EntityKind},
     error::{Health, OkIfUntaintedExt, PossiblyErroneous, ReportedExt, Result, Stain},
     hir::{self, DeBruijnIndex, DeclarationIndex, Identifier, Index, LocalDeclarationIndex},
@@ -63,7 +63,7 @@ pub fn resolve_declarations(
     if let Err(error) = resolver.start_resolve_declaration(&root_module, None, default()) {
         for (binder, naming_conflicts) in mem::take(&mut resolver.naming_conflicts) {
             Diagnostic::error()
-                .code(Code::E020)
+                .code(ErrorCode::E020)
                 .message(format!(
                     "‘{}’ is defined multiple times in this scope",
                     resolver.component[binder].source,
@@ -354,6 +354,8 @@ impl<'a> ResolverMut<'a> {
                     .or_insert_with(|| smallvec![previous.span()])
                     .push(binder.span());
 
+                // @Beacon @Beacon @Bug that's not how new_unchecked
+                // is supposed to be used! get rid of the ERE here! it's a lie!
                 return Err(DefinitionError::ConflictingDefinition(
                     ErasedReportedError::new_unchecked(),
                 ));
@@ -623,7 +625,7 @@ impl<'a> ResolverMut<'a> {
                         })
                         .list(Conjunction::And);
                     Diagnostic::error()
-                        .code(Code::E024)
+                        .code(ErrorCode::E024)
                         .message(format!(
                             "the {} {paths} {} circular",
                             pluralize!(cycle.len(), "declaration"),
@@ -673,7 +675,7 @@ impl<'a> ResolverMut<'a> {
                     == Some(Ordering::Greater)
                 {
                     Diagnostic::error()
-                        .code(Code::E009)
+                        .code(ErrorCode::E009)
                         .message(format!(
                             "re-export of the more private binding ‘{}’",
                             self.component.path_to_string(target_index, self.session)
@@ -982,7 +984,7 @@ impl<'a> Resolver<'a> {
                 )
                 .ok_or_else(|| {
                     Diagnostic::error()
-                        .code(Code::E043)
+                        .code(ErrorCode::E043)
                         .message(format!(
                             "the number literal is not a valid constructor for type ‘{}’",
                             self.look_up(type_.bare).source
@@ -997,7 +999,7 @@ impl<'a> Resolver<'a> {
 
         let Ok(resolved_number) = hir::Number::parse(&literal.bare, type_) else {
             return Err(Diagnostic::error()
-                .code(Code::E007)
+                .code(ErrorCode::E007)
                 .message(format!(
                     "number literal ‘{literal}’ does not fit type ‘{type_}’",
                 ))
@@ -1042,7 +1044,7 @@ impl<'a> Resolver<'a> {
                 .filter(|&intrinsic| intrinsic == IntrinsicType::Text)
                 .ok_or_else(|| {
                     Diagnostic::error()
-                        .code(Code::E043)
+                        .code(ErrorCode::E043)
                         .message(format!(
                             "the text literal is not a valid constructor for type ‘{}’",
                             self.look_up(type_.bare).source
@@ -1190,7 +1192,7 @@ impl<'a> Resolver<'a> {
                     let component: Spanned<Word> = component.clone().try_into().map_err(|_| {
                         // @Task DRY @Question is the common code justified?
                         Diagnostic::error()
-                            .code(Code::E036)
+                            .code(ErrorCode::E036)
                             .message(format!(
                                 "the component name ‘{component}’ is not a valid word"
                             ))
@@ -1291,7 +1293,7 @@ impl<'a> Resolver<'a> {
     ) -> Result<LocalDeclarationIndex> {
         self.component[module].parent.ok_or_else(|| {
             Diagnostic::error()
-                .code(Code::E021) // @Question use a dedicated code?
+                .code(ErrorCode::E021) // @Question use a dedicated code?
                 .message("the root module does not have a parent module")
                 .primary_span(hanger)
                 .report(self.session.reporter())
@@ -1339,6 +1341,7 @@ impl<'a> Resolver<'a> {
             }
 
             Diagnostic::warning()
+                .code(LintCode::Deprecated)
                 .message(message)
                 .primary_span(identifier)
                 .report(self.session.reporter());
@@ -1371,7 +1374,7 @@ impl<'a> Resolver<'a> {
                 reach,
             ) {
                 return Err(Diagnostic::error()
-                    .code(Code::E029)
+                    .code(ErrorCode::E029)
                     .message(format!(
                         "binding ‘{}’ is private",
                         self.component.path_to_string(index, self.session)
@@ -1434,7 +1437,7 @@ impl<'a> Resolver<'a> {
 
                 if !reach_is_ancestor {
                     return Err(Diagnostic::error()
-                        .code(Code::E037)
+                        .code(ErrorCode::E037)
                         .message("exposure can only be restricted to ancestor modules")
                         .primary_span(path)
                         .report(self.session.reporter()));
@@ -1664,7 +1667,7 @@ impl<'a> Resolver<'a> {
                 }
 
                 Diagnostic::error()
-                    .code(Code::E021)
+                    .code(ErrorCode::E021)
                     .message(message)
                     .primary_span(&identifier)
                     .with(
@@ -1722,7 +1725,7 @@ impl<'a> Resolver<'a> {
         let show_very_general_help = similarly_named_namespace.is_none();
 
         Diagnostic::error()
-            .code(Code::E017)
+            .code(ErrorCode::E017)
             .message(format!("binding ‘{binder}’ is not a namespace"))
             .labeled_primary_span(binder, format!("not a namespace but a {}", kind.name()))
             .labeled_secondary_span(
@@ -2215,7 +2218,7 @@ impl Diagnostic {
         // segment
         // @Task improve this diagnostic!
         Self::error()
-            .code(Code::E023)
+            .code(ErrorCode::E023)
             .message(format!("module ‘{module}’ is used as a value"))
             .primary_span(module)
             .help("modules are not first-class citizens, consider utilizing records for such cases instead")
@@ -2349,7 +2352,7 @@ mod target {
             // @Task print absolute path!
             if !(entity.is_module() || entity.is_error()) {
                 return Err(Diagnostic::error()
-                    .code(Code::E022)
+                    .code(ErrorCode::E022)
                     .message(format!("binding ‘{identifier}’ is not a module"))
                     .primary_span(identifier));
             }

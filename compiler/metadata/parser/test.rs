@@ -9,7 +9,7 @@ use std::{
 
 use super::{Record, Value};
 use crate::{
-    diagnostics::reporter::StderrReporter,
+    diagnostics::Reporter,
     error::Result,
     span::{span, SourceMap, WeaklySpanned},
     utility::difference,
@@ -18,7 +18,7 @@ use crate::{
 fn parse(source: &str) -> Result<Value> {
     let map: Arc<RwLock<SourceMap>> = default();
     let file = map.write().unwrap().add(None, source.to_owned());
-    let reporter = StderrReporter::new(Some(map.clone())).into();
+    let reporter = Reporter::stderr().with_map(map.clone());
     super::super::parse(file, &map, &reporter)
 }
 

@@ -4,7 +4,8 @@
     default_free_fn,
     let_else,
     associated_type_bounds,
-    let_chains
+    let_chains,
+    type_alias_impl_trait
 )]
 #![forbid(rust_2018_idioms, unused_must_use)]
 #![warn(clippy::pedantic)]
@@ -27,10 +28,7 @@ use cli::{BuildMode, Command, PassRestriction};
 use colored::Colorize;
 use lushui::{
     component::{Component, ComponentMetadata, ComponentType, Components},
-    diagnostics::{
-        reporter::{BufferedStderrReporter, ErasedReportedError, StderrReporter},
-        Code, Diagnostic, Reporter,
-    },
+    diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter},
     documenter,
     error::Result,
     package::{find_package, resolve_file, resolve_package, MANIFEST_FILE_NAME},
@@ -70,8 +68,12 @@ fn try_main() -> Result<()> {
     let (command, options) = cli::arguments()?;
 
     let map: Arc<RwLock<SourceMap>> = default();
+    // @Bug creating a buffered-stderr-reporter up here is not great at all
+    // for BuildMode::Serve! there, we do not want to use it! (we want to
+    // use the LSP to communicate server errors)
+    // @Task smh break this code / construction up / modularize it
     let reported_any_errors: Arc<AtomicBool> = default();
-    let reporter = BufferedStderrReporter::new(map.clone(), reported_any_errors.clone()).into();
+    let reporter = Reporter::buffered_stderr(reported_any_errors.clone()).with_map(map.clone());
 
     let result = execute_command(command, &options, &map, reporter);
 
@@ -108,7 +110,6 @@ fn execute_command(
                     // intentionally not `!path.is_dir()` to exclude broken symlinks
                     if path.is_file() {
                         // give a more useful diagnostic than the generic "could not load" one
-
                         return Err(Diagnostic::error()
                             .message(format!(
                                 "the path ‘{}’ does not refer to a folder",
@@ -157,7 +158,6 @@ fn execute_command(
             // intentionally not `!path.is_file()` to exclude broken symlinks
             if options.path.is_dir() {
                 // give a more useful diagnostic than the generic "could not load" one
-
                 return Err(Diagnostic::error()
                     .message(format!(
                         "the path ‘{}’ does not refer to a file",
@@ -173,6 +173,7 @@ fn execute_command(
 
             let (components, session) = resolve_file(
                 &options.path,
+                None,
                 options.component_type.unwrap_or(ComponentType::Executable),
                 options.no_core,
                 map,
@@ -181,11 +182,21 @@ fn execute_command(
 
             build_components(components, &mode, &options.general, global_options, session)
         }
+        Serve => {
+            tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(lushui::server::serve(map.clone(), reporter));
+            Ok(())
+        }
         Explain => Err(Diagnostic::error()
-            .message("subcommand ‘explain’ is not implemented yet")
+            .message("the subcommand ‘explain’ is not implemented yet")
             .report(&reporter)),
         CreatePackage { mode, options } => match mode {
-            cli::PackageCreationMode::Initialize => todo!(),
+            cli::PackageCreationMode::Initialize => Err(Diagnostic::error()
+                .message("the subcommand ‘initialize’ is not implemented yet")
+                .report(&reporter)),
             cli::PackageCreationMode::New { package_name } => {
                 create_package(&package_name, options, &reporter)
             }
@@ -373,7 +384,7 @@ fn build_component(
     // @Task move out of main.rs
     if component.is_executable() && component.entry.is_none() {
         return Err(Diagnostic::error()
-            .code(Code::E050)
+            .code(ErrorCode::E050)
             .message(format!(
                 "the component ‘{}’ does not contain a ‘{PROGRAM_ENTRY_IDENTIFIER}’ function its root module",
                 component.name(),
@@ -462,7 +473,7 @@ fn create_package(name: &str, options: cli::PackageCreationOptions, reporter: &R
     let name = Word::parse(name.to_owned()).map_err(|_| {
         // @Task DRY @Question is the common code justified?
         Diagnostic::error()
-            .code(Code::E036)
+            .code(ErrorCode::E036)
             .message(format!("the package name ‘{name}’ is not a valid word"))
             .report(reporter)
     })?;
@@ -611,6 +622,6 @@ fn set_panic_hook() {
                     "rerun with the environment variable ‘LUSHUI_BACKTRACE=1’ to display a backtrace",
                 ),
             })
-            .report(&StderrReporter::new(None).into());
+            .report(&Reporter::stderr());
     }));
 }

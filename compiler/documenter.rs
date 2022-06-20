@@ -22,7 +22,7 @@ use crate::{
 use crossbeam::thread::Scope;
 use joinery::JoinableIterator;
 use node::{Attributable, Document, Element, Node, VoidElement};
-use std::{default::default, fs, path::PathBuf};
+use std::{default::default, fs, io::BufWriter, path::PathBuf};
 use text_processor::TextProcessor;
 
 mod fonts;
@@ -114,7 +114,9 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             // @Task instead of `DEVELOPING`, compare hash (maybe)?
             if DEVELOPING || !path.exists() {
                 static STYLE_SHEET: &str = include_str!("documenter/static/css/style.css");
-                fs::write(path, minifier::css::minify(STYLE_SHEET).unwrap())?;
+                minifier::css::minify(STYLE_SHEET)
+                    .unwrap()
+                    .write(BufWriter::new(fs::File::create(path)?))?;
             }
         }
 
@@ -122,7 +124,9 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             let path = self.path.join("fonts.min.css");
             if !path.exists() {
                 static STYLE_SHEET: &str = include_str!("documenter/static/css/fonts.css");
-                fs::write(path, minifier::css::minify(STYLE_SHEET).unwrap())?;
+                minifier::css::minify(STYLE_SHEET)
+                    .unwrap()
+                    .write(BufWriter::new(fs::File::create(path)?))?;
             }
         }
 
@@ -131,7 +135,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             // @Task instead of `DEVELOPING`, compare hash (maybe)?
             if DEVELOPING || !path.exists() {
                 static SCRIPT: &str = include_str!("documenter/static/js/script.js");
-                fs::write(path, minifier::js::minify(SCRIPT))?;
+                minifier::js::minify(SCRIPT).write(BufWriter::new(fs::File::create(path)?))?;
             }
         }
 
@@ -572,13 +576,15 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                     .attribute("content", "width=device-width, initial-scale=1.0"),
             )
             .child(
-                Element::new("title").child(match content_type {
-                    PageContentType::Module => self
-                        .component
-                        .extern_path_with_root_to_string(index, self.component.folder_id()),
-                    PageContentType::Attributes => "Attributes".into(),
-                    PageContentType::ReservedIdentifiers => "Reserved Identifiers".into(),
-                }),
+                Element::new("title").child(
+                    match content_type {
+                        PageContentType::Module => self
+                            .component
+                            .extern_path_with_root_to_string(index, self.component.folder_id()),
+                        PageContentType::Attributes => "Attributes".into(),
+                        PageContentType::ReservedIdentifiers => "Reserved Identifiers".into(),
+                    },
+                ),
             )
             .child(
                 VoidElement::new("meta")

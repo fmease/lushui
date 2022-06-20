@@ -1,7 +1,7 @@
 use super::BuildQueue;
 use crate::{
     component::ComponentType,
-    diagnostics::{reporter::ErasedReportedError, Code, Diagnostic, Reporter},
+    diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter},
     error::{AndThenMapExt, Health, OkIfUntaintedExt, Result},
     metadata::{self, convert, Record, RecordWalker, Value, WithTextContentSpanExt},
     span::{SourceFileIndex, SourceMap, Span, Spanned, WeaklySpanned},
@@ -72,7 +72,7 @@ fn parse_name(
         .map_err(|_| {
             // @Task DRY, @Question is the common code justified? package v component
             Diagnostic::error()
-                .code(Code::E036)
+                .code(ErrorCode::E036)
                 .message(format!("the {kind} name ‘{name}’ is not a valid word"))
                 .primary_span(span)
                 .report(reporter)

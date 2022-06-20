@@ -1,13 +1,13 @@
-use super::{Code, Diagnostic};
 use crate::{
+    diagnostics::{Diagnostic, ErrorCode, LintCode, UnboxedUntaggedDiagnostic},
     span::{span, SourceMap},
     utility::difference,
 };
 
 #[track_caller]
-fn assert_format(diagnostic: &Diagnostic, map: Option<&SourceMap>, expected: &str) {
+fn assert_format(diagnostic: &UnboxedUntaggedDiagnostic, map: Option<&SourceMap>, expected: &str) {
     colored::control::set_override(false);
-    let actual = diagnostic.format_for_terminal(map);
+    let actual = super::format(&diagnostic, map);
     // colored::control::unset_override(); // conflicts with parallel test execution
 
     if actual != expected {
@@ -15,21 +15,21 @@ fn assert_format(diagnostic: &Diagnostic, map: Option<&SourceMap>, expected: &st
         // @Task replace colored with something more flexible
 
         panic!(
-            "the terminal format differs:\n{}",
+            "the output differs:\n{}",
             difference(expected, &actual, "\n"),
         );
     }
 }
 
 #[test]
-fn teminal_format_no_highlights() {
-    let diagnostic = Diagnostic::error().code(Code::E000).message("summary");
+fn format_no_highlights() {
+    let diagnostic = Diagnostic::error().code(ErrorCode::E000).message("summary");
 
     assert_format(&diagnostic, None, "error[E000]: summary");
 }
 
 #[test]
-fn terminal_format_single_line_primary_highlight() {
+fn format_single_line_primary_highlight() {
     let mut map = SourceMap::default();
     map.add(None, "alpha\nbeta\ngamma\n".into());
 
@@ -51,7 +51,7 @@ error: message
 }
 
 #[test]
-fn terminal_format_two_line_primary_highlight() {
+fn format_two_line_primary_highlight() {
     let mut map = SourceMap::default();
     map.add(None, "alpha\nbeta\n".into());
 
@@ -73,12 +73,12 @@ error
 }
 
 #[test]
-fn terminal_format_multi_line_primary_highlight() {
+fn format_multi_line_primary_highlight() {
     let mut map = SourceMap::default();
     map.add(None, "alpha\nbeta\ngamma\ndelta\nepsilon".into());
 
     let diagnostic = Diagnostic::error()
-        .code(Code::E000)
+        .code(ErrorCode::E000)
         .message("explanation")
         .primary_span(span(9, 23));
 
@@ -98,7 +98,7 @@ error[E000]: explanation
 }
 
 #[test]
-fn terminal_format_triple_digit_line_number() {
+fn format_triple_digit_line_number() {
     let mut map = SourceMap::default();
     map.add(None, {
         let mut content = "\n".repeat(120);
@@ -110,13 +110,12 @@ fn terminal_format_triple_digit_line_number() {
         .message("this is a sentence")
         .primary_span(span(124, 133));
 
-    // @Bug ":4" should be ":2" (#chars, not #bytes)
     assert_format(
         &diagnostic,
         Some(&map),
         "\
 warning: this is a sentence
-   --> :121:4
+   --> :121:2
     |
 121 | 这是一个句子
     |   ^^^^^^
@@ -125,12 +124,12 @@ warning: this is a sentence
 }
 
 #[test]
-fn terminal_format_primary_secondary_highlights() {
+fn format_primary_secondary_highlights() {
     let mut map = SourceMap::default();
     map.add(None, "2ndry\nPRIM\n2ndry\n".into());
 
     let diagnostic = Diagnostic::error()
-        .code(Code::E001)
+        .code(ErrorCode::E001)
         .message("important")
         .primary_span(span(7, 11))
         .secondary_span(span(1, 4))
@@ -160,7 +159,7 @@ error[E001]: important
 }
 
 #[test]
-fn terminal_format_primary_secondary_highlight_differing_line_number_widths() {
+fn format_primary_secondary_highlight_differing_line_number_widths() {
     let mut map = SourceMap::default();
     map.add(None, "\nprimary\n\n\n\n\n\n\n\n\n\nsecondary\n".into());
 
@@ -188,7 +187,7 @@ internal compiler error: placeholder
 }
 
 #[test]
-fn terminal_format_highlights_in_different_files() {
+fn format_highlights_in_different_files() {
     let mut map = SourceMap::default();
     map.add(Some("ONE".into()), "a\nbc\ndef\n".into());
     map.add(Some("TWO".into()), "zyx".into());
@@ -216,7 +215,7 @@ internal debugging message
 }
 
 #[test]
-fn terminal_format_highlights_same_line() {
+fn format_highlights_same_line() {
     let mut map = SourceMap::default();
     map.add(Some("identity".into()), "sequence\n".into());
 
@@ -244,7 +243,7 @@ error: tag
 }
 
 #[test]
-fn terminal_format_labeled_highlights() {
+fn format_labeled_highlights() {
     let mut map = SourceMap::default();
     map.add(None, "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta".into());
 
@@ -288,7 +287,7 @@ error: labels
 }
 
 #[test]
-fn terminal_format_multi_line_labeled_highlights() {
+fn format_multi_line_labeled_highlights() {
     let mut map = SourceMap::default();
     map.add(None, "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta\n".into());
 
@@ -338,7 +337,7 @@ error: multi-line labels
 }
 
 #[test]
-fn terminal_format_multi_line_labeled_highlights_no_trailing_line_break() {
+fn format_multi_line_labeled_highlights_no_trailing_line_break() {
     let mut map = SourceMap::default();
     map.add(None, "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta".into());
 
@@ -388,14 +387,13 @@ error: multi-line labels
 }
 
 #[test]
-fn terminal_format_subdiagnostics_no_highlights() {
+fn format_subdiagnostics_no_highlights() {
     let diagnostic = Diagnostic::error()
-        .code(Code::E004)
+        .code(ErrorCode::E004)
         .message("summary")
         .note("clarification")
         .note("other clarification")
-        .help("hint")
-        .subdebug("mark");
+        .help("hint");
 
     assert_format(
         &diagnostic,
@@ -404,13 +402,12 @@ fn terminal_format_subdiagnostics_no_highlights() {
 error[E004]: summary
  note: clarification
  note: other clarification
- help: hint
- debug: mark",
+ help: hint",
     );
 }
 
 #[test]
-fn terminal_format_subdiagnostics() {
+fn format_subdiagnostics() {
     let mut map = SourceMap::default();
     map.add(None, "****  ****".into());
 
@@ -436,7 +433,7 @@ warning: it
 }
 
 #[test]
-fn terminal_format_subdiagnostics_two_digit_line_numbers() {
+fn format_subdiagnostics_two_digit_line_numbers() {
     let mut map = SourceMap::default();
     map.add(None, "****  ****\n".repeat(10));
 
@@ -462,7 +459,7 @@ warning: it
 }
 
 #[test]
-fn terminal_format_multi_line_subdiagnostics() {
+fn format_multi_line_subdiagnostics() {
     let mut map = SourceMap::default();
     map.add(None, "****  ****".into());
 
@@ -470,7 +467,6 @@ fn terminal_format_multi_line_subdiagnostics() {
         .message("it")
         .primary_span(span(5, 7))
         .help("helpful\ntip\nhopefully")
-        .subdebug("alpha\nbeta")
         .help("less helpful\ntip\n");
 
     assert_format(
@@ -486,15 +482,13 @@ warning: it
  help: helpful
        tip
        hopefully
- debug: alpha
-        beta
  help: less helpful
        tip",
     )
 }
 
 #[test]
-fn terminal_format_multiple_primary_highlights() {
+fn format_multiple_primary_highlights() {
     let mut map = SourceMap::default();
     map.add(None, "gamma\n".into());
 
@@ -524,7 +518,7 @@ error
 }
 
 #[test]
-fn terminal_format_zero_length_highlight() {
+fn format_zero_length_highlight() {
     let mut map = SourceMap::default();
     map.add(None, "sample\n".into());
 
@@ -544,7 +538,7 @@ internal debugging message: nil
 }
 
 #[test]
-fn terminal_format_zero_length_highlight_start_of_line() {
+fn format_zero_length_highlight_start_of_line() {
     let mut map = SourceMap::default();
     map.add(None, "sample\n".into());
 
@@ -564,7 +558,7 @@ internal debugging message: nil
 }
 
 #[test]
-fn terminal_format_highlight_line_break() {
+fn format_highlight_line_break() {
     let mut map = SourceMap::default();
     map.add(
         None,
@@ -587,7 +581,7 @@ error
 }
 
 #[test]
-fn terminal_format_highlight_end_of_input() {
+fn format_highlight_end_of_input() {
     let mut map = SourceMap::default();
     map.add(None, "This is a sentence.".into());
 
@@ -609,7 +603,7 @@ error
 /// The trailing line break should not move the highlighted end of input
 /// to a new line. It should look as if there was no trailing line break.
 #[test]
-fn terminal_format_highlight_end_of_input_with_trailing_line_break() {
+fn format_highlight_end_of_input_with_trailing_line_break() {
     let mut map = SourceMap::default();
     map.add(None, "This is a sentence.\n".into());
 
@@ -633,7 +627,7 @@ error
 /// trailing line break. Optimally, a highlight should not contain
 /// a trailing line break.
 #[test]
-fn terminal_format_highlight_containing_final_line_break() {
+fn format_highlight_containing_final_line_break() {
     let mut map = SourceMap::default();
     map.add(None, "This is a sentence.\n".into());
 
@@ -659,7 +653,7 @@ warning: weird corner case
 /// Preferably, highlights should not contain the trailing end of input.
 /// We might want to change this to panic.
 #[test]
-fn terminal_format_highlight_containing_final_end_of_input() {
+fn format_highlight_containing_final_end_of_input() {
     let mut map = SourceMap::default();
     map.add(None, "EVERYTHING\n".into());
 
@@ -679,7 +673,7 @@ internal compiler error
 }
 
 #[test]
-fn terminal_format_highlight_in_empty_file() {
+fn format_highlight_in_empty_file() {
     let mut map = SourceMap::default();
     map.add(Some("empty.txt".into()), String::new());
 
@@ -700,10 +694,24 @@ error: this file has to contain something reasonable
     );
 }
 
+#[test]
+fn format_warning_with_lint_code() {
+    let diagnostic = Diagnostic::warning()
+        .code(LintCode::PermanentlyUnassignedOne)
+        .message("no man's land");
+
+    assert_format(
+        &diagnostic,
+        None,
+        "\
+warning[permanently-unassigned-one]: no man's land",
+    );
+}
+
 // @Task Fix this!
 #[test]
 #[ignore = "weird corner case"]
-fn terminal_format_two_line_break_highlight_containing_first() {
+fn format_two_line_break_highlight_containing_first() {
     let mut map = SourceMap::default();
     map.add(None, "alpha\nbeta\n\ngamma".into());
 
@@ -728,7 +736,7 @@ internal compiler error
 // @Task Fix this!
 #[test]
 #[ignore = "weird corner case"]
-fn terminal_format_two_line_breaks_highlight_containing_second() {
+fn format_two_line_breaks_highlight_containing_second() {
     let mut map = SourceMap::default();
     map.add(None, "alpha\n\n".into());
 

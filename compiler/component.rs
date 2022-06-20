@@ -21,10 +21,14 @@ pub struct Component {
     pub metadata: ComponentMetadata,
     /// Resolved dependencies.
     pub(crate) dependencies: HashMap<Word, ComponentIndex>,
+    // @Task don't make this a field! decouple the concept of "library vs executable" from components
+    //       instead, at the very least, make this a method that looks for a top-level `main`.
+    //       by nature "after the fact", i.e. after name resolution happens.
+    //       I feel like us registering the program entry during name resolution breaks layers of abstraction
     /// The `main` function (_program entry_) for executable components.
     pub entry: Option<Identifier>,
     /// All bindings inside of the component.
-    // The first element ha to be the root module.
+    // The first element has to be the root module.
     pub(crate) bindings: IndexMap<LocalDeclarationIndex, Entity>,
 }
 
@@ -53,6 +57,7 @@ impl Component {
                 ComponentIndex(0),
                 PackageIndex::new_unchecked(0),
                 Spanned::new(default(), PathBuf::new()),
+                None,
                 ComponentType::Library,
             ),
             HashMap::default(),
@@ -104,6 +109,10 @@ impl Component {
         self.index() == session.goal_component()
     }
 
+    // @Task replace this with a method on BuildSession that looks through a `Package`s list of components!
+    // @Note I want to get rid of the backreference `package` in `Component`s
+    // @Update however, it's not as easy, since a `Component` needs to be fully built to be able to
+    //         occur inside of a `Package` since a `ComponentIndex` has to be created
     pub fn in_goal_package(&self, session: &BuildSession) -> bool {
         self.metadata.package == session.goal_package()
     }
@@ -156,11 +165,30 @@ impl DisplayWith for Component {
 
 /// Metadata of a [`Component`].
 #[derive(Clone)]
+// @Note I don't like this name!
 pub struct ComponentMetadata {
     pub(crate) name: Word,
     pub(crate) index: ComponentIndex,
+    // @Beacon @Beacon @Task not all components need to have a corresp. package!!!!
+    //                       make this field optional! even better if we could get rid of it entirely!
+    //                       we are kind of breaking layers of abstraction here: components vs packages!
+    //                       @Update
+    //                       It's not as easy, since a `Package` needs a list of `ComponentIndex`es
+    //                       but they aren't created until the components in question are fully built
+    //                       however, in many cases, we want to get the package of the current component
+    //                       (which ofc hasn't been built yet)
+    //                       One solution (maybe): identifiy components in Packages via an
+    //                       enum { Unbuilt { name: Word, "type", path: PathButh }, Built(ComponentIndex) }
+    //                       ooorrr, store `ComponentMetadata` in variant Unbuilt and make
+    //                       @Beacon ComponentMetadata.index an Option<ComponentIndex> / PossiblyUnresolved<ComponentIndex>
     pub(crate) package: PackageIndex,
     pub(crate) path: Spanned<PathBuf>,
+    // @Task document this! @Note this is used by the lang-server which gets the document content by the client
+    //       and which should not open the file at the given path to avoid TOC-TOU bugs / data races
+    // @Beacon @Question should this be put on `Component` instead???
+    pub(crate) content: Option<String>,
+    // @Note I am not pumped about the current component type including such high-level types like "benchmark-suite"
+    //       I feel like we are breaking layers of abstraction here, too. can we get rid of this field??
     pub(crate) type_: ComponentType,
 }
 
@@ -170,6 +198,7 @@ impl ComponentMetadata {
         index: ComponentIndex,
         package: PackageIndex,
         path: Spanned<PathBuf>,
+        content: Option<String>,
         type_: ComponentType,
     ) -> Self {
         Self {
@@ -177,6 +206,7 @@ impl ComponentMetadata {
             index,
             package,
             path,
+            content,
             type_,
         }
     }

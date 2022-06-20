@@ -5,7 +5,7 @@
 
 use crate::{
     component::Component,
-    diagnostics::{reporter::ErasedReportedError, Code, Diagnostic},
+    diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode},
     entity::EntityKind,
     error::{Health, Result, Stain},
     hir::{self, Declaration, Expression, Identifier},
@@ -398,7 +398,7 @@ impl<'a> Typer<'a> {
                 out_of_order_handler(self)
             }
             TypeMismatch { expected, actual } => Err(Diagnostic::error()
-                .code(Code::E032)
+                .code(ErrorCode::E032)
                 // @Task put back some more information into the message: use `_`s to shorten the type
                 .message("type mismatch")
                 .labeled_primary_span(&actual_value, "has the wrong type")
@@ -565,7 +565,7 @@ expected type ‘{}’
                         .map_err(|error| match error {
                             Erased(error) => error,
                             TypeMismatch { expected, actual } => Diagnostic::error()
-                                .code(Code::E032)
+                                .code(ErrorCode::E032)
                                 // @Task put back some more information into the message: use `_`s to shorten the type
                                 .message("type mismatch")
                                 .labeled_primary_span(&application.argument, "has the wrong type")
@@ -595,7 +595,7 @@ expected type ‘{}’
                     }
                 } else {
                     return Err(Diagnostic::error()
-                        .code(Code::E031)
+                        .code(ErrorCode::E031)
                         // @Task put back some more information into the message: use `_`s to shorten the type
                         .message("type mismatch")
                         .labeled_primary_span(&application.callee, "has wrong type")
@@ -636,7 +636,7 @@ expected type ‘_ -> _’
                     Application(_application) => todo!("polymorphic types in patterns"),
                     _ if self.is_a_type(subject_type.clone(), scope)? => {
                         return Err(Diagnostic::error()
-                            .code(Code::E035)
+                            .code(ErrorCode::E035)
                             .message("attempt to analyze a type")
                             .primary_span(expression.span)
                             .note("forbidden to uphold parametricity and type erasure")
@@ -659,7 +659,7 @@ expected type ‘_ -> _’
                     // @Question make more elegant w/ the new error handling system?
                     let handle_type_mismatch = |error, context, reporter| match error {
                         TypeMismatch { expected, actual } => Diagnostic::error()
-                            .code(Code::E032)
+                            .code(ErrorCode::E032)
                             // @Task put back some more information into the message: use `_`s to shorten the type
                             .message("type mismatch")
                             .labeled_primary_span(&case.pattern, "has the wrong type")
@@ -747,7 +747,7 @@ expected type ‘{}’
                                 // @Task make error less fatal (keep processing next cases (match arms))
                                 (Binder(binder), _) => {
                                     return Err(Diagnostic::error()
-                                        .code(Code::E034)
+                                        .code(ErrorCode::E034)
                                         .message(format!(
                                             "binder ‘{}’ used in callee position inside pattern",
                                             binder.0
@@ -890,7 +890,7 @@ expected type ‘{}’
             Ok(())
         } else {
             Err(Diagnostic::error()
-                .code(Code::E033)
+                .code(ErrorCode::E033)
                 .message(format!(
                     "‘{}’ is not an instance of ‘{}’",
                     result_type.with((self.component, self.session)),
@@ -927,7 +927,7 @@ impl Diagnostic {
     fn missing_annotation() -> Self {
         // @Task add span
         Self::error()
-            .code(Code::E030)
+            .code(ErrorCode::E030)
             .message("currently lambda literal parameters and patterns must be type-annotated")
     }
 }

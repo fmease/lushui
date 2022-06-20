@@ -6,7 +6,7 @@ use super::{
     Record, Value, ValueKind,
 };
 use crate::{
-    diagnostics::{Code, Diagnostic, Reporter},
+    diagnostics::{Diagnostic, ErrorCode, Reporter},
     error::{Health, OkIfUntaintedExt, ReportedExt, Result},
     span::{SourceFileIndex, SourceMap, Span, Spanning, WeaklySpanned},
 };
@@ -250,7 +250,7 @@ impl<'a> Parser<'a> {
             if let Some(previous_key) = record.keys().find(|&some_key| some_key == &key) {
                 // @Task make *all* duplicate entries *primary* highlights
                 Diagnostic::error()
-                    .code(Code::E803)
+                    .code(ErrorCode::E803)
                     .message(format!("the entry ‘{key}’ is defined multiple times"))
                     .labeled_primary_span(key.span, "redefinition")
                     .labeled_secondary_span(previous_key.span, "previous definition")

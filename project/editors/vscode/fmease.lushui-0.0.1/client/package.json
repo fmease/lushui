@@ -1,0 +1,15 @@
+{
+    "name": "lushui-lsp-client",
+    "description": "A Lushui LSP client",
+    "version": "0.0.1",
+    "author": "fmease",
+    "engines": {
+        "vscode": "^1.63.0"
+    },
+    "dependencies": {
+        "vscode-languageclient": "^8.0.1"
+    },
+    "devDependencies": {
+        "@types/vscode": "^1.63.0"
+    }
+}

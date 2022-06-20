@@ -83,6 +83,7 @@ mod item;
 pub mod metadata;
 pub mod package;
 pub mod resolver;
+pub mod server;
 pub mod session;
 pub mod span;
 pub mod syntax;
