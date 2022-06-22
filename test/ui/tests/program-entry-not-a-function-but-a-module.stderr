@@ -1,4 +1,4 @@
-error[E050]: the component ‘program-entry-not-a-function-but-a-module’ does not contain a ‘main’ function its root module
+error[E050]: the component ‘program-entry-not-a-function-but-a-module’ does not contain a ‘main’ function in its root module
  --> ${TEST_FOLDER}/program-entry-not-a-function-but-a-module.lushui:1:1
   |
 1 |   ;;; TEST fail check --component-type=executable

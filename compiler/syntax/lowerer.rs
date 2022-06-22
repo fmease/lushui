@@ -33,6 +33,7 @@ use super::{
     },
 };
 use crate::{
+    component::Component,
     diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter},
     error::{Health, OkIfUntaintedExt, PossiblyErroneous, Result, Stain},
     session::BuildSession,
@@ -46,9 +47,10 @@ use std::{default::default, fmt, iter::once};
 pub fn lower_file(
     declaration: ast::Declaration,
     options: Options,
+    component: &Component,
     session: &BuildSession,
 ) -> Result<lowered_ast::Declaration> {
-    let mut lowerer = Lowerer::new(options, session);
+    let mut lowerer = Lowerer::new(options, component, session);
     let mut declaration = lowerer.lower_declaration(declaration);
     let root = declaration.pop().unwrap();
     Result::ok_if_untainted(root, lowerer.health)
@@ -57,14 +59,16 @@ pub fn lower_file(
 /// The state of the lowering pass.
 struct Lowerer<'a> {
     options: Options,
+    component: &'a Component,
     session: &'a BuildSession,
     health: Health,
 }
 
 impl<'a> Lowerer<'a> {
-    fn new(options: Options, session: &'a BuildSession) -> Self {
+    fn new(options: Options, component: &'a Component, session: &'a BuildSession) -> Self {
         Self {
             options,
+            component,
             session,
             health: Health::Untainted,
         }
@@ -323,7 +327,10 @@ impl<'a> Lowerer<'a> {
 
                 path.set_extension(crate::FILE_EXTENSION);
 
-                let file = self.session.map().load(path.clone());
+                let file = self
+                    .session
+                    .map()
+                    .load(path.clone(), Some(self.component.index()));
                 let file = match file {
                     Ok(file) => file,
                     Err(error) => {

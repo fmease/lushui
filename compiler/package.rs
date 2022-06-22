@@ -63,7 +63,7 @@ pub fn resolve_package(
 /// Resolve the components and dependencies of a file given its path without building anything.
 pub fn resolve_file(
     path: &Path,
-    content: Option<String>,
+    content: Option<Arc<String>>,
     component_type: ComponentType,
     no_core: bool,
     map: &Arc<RwLock<SourceMap>>,
@@ -160,7 +160,7 @@ impl BuildQueue {
 impl BuildQueue {
     fn resolve_package(&mut self, package_path: &Path) -> Result {
         let manifest_path = package_path.join(manifest::FILE_NAME);
-        let manifest_file = self.map().load(manifest_path.clone());
+        let manifest_file = self.map().load(manifest_path.clone(), None);
         let manifest_file = match manifest_file {
             Ok(file) => file,
             Err(error) => {
@@ -315,7 +315,7 @@ impl BuildQueue {
     fn resolve_file(
         &mut self,
         file_path: PathBuf,
-        content: Option<String>,
+        content: Option<Arc<String>>,
         type_: ComponentType,
         no_core: bool,
     ) -> Result {
@@ -329,7 +329,7 @@ impl BuildQueue {
 
             let core_package_path = core_package_path();
             let core_manifest_path = core_package_path.join(manifest::FILE_NAME);
-            let core_manifest_file = self.map().load(core_manifest_path.clone());
+            let core_manifest_file = self.map().load(core_manifest_path.clone(), None);
             let core_manifest_file = match core_manifest_file {
                 Ok(file) => file,
                 Err(error) => {
@@ -565,7 +565,7 @@ impl BuildQueue {
         }
 
         let manifest_path = package_path.join(manifest::FILE_NAME);
-        let manifest_file = self.map().load(manifest_path.clone());
+        let manifest_file = self.map().load(manifest_path.clone(), None);
         let manifest_file = match manifest_file {
             Ok(file) => file,
             Err(error) => {

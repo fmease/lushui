@@ -9,7 +9,7 @@ use crate::{
 use colored::Colorize;
 use derivation::{Elements, FromStr, Str};
 use index_map::IndexMap;
-use std::{default::default, fmt, path::PathBuf};
+use std::{default::default, fmt, path::PathBuf, sync::Arc};
 
 pub type Components = IndexMap<ComponentIndex, Component>;
 
@@ -24,7 +24,7 @@ pub struct Component {
     // @Task document this! @Note this is used by the lang-server which gets the document content by the client
     //       and which should not open the file at the given path to avoid TOC-TOU bugs / data races
     // @Beacon @Question should this be put on `Component` instead???
-    pub(crate) content: Option<String>,
+    pub(crate) content: Option<Arc<String>>,
     // @Note I am not pumped about the current component type including such high-level types like "benchmark-suite"
     //       I feel like we are breaking layers of abstraction here, too. can we get rid of this field??
     type_: ComponentType,
@@ -40,7 +40,7 @@ impl Component {
         name: Word,
         index: ComponentIndex,
         path: Spanned<PathBuf>,
-        content: Option<String>,
+        content: Option<Arc<String>>,
         type_: ComponentType,
         dependencies: HashMap<Word, ComponentIndex>,
     ) -> Self {

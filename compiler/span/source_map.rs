@@ -1,3 +1,5 @@
+use crate::component::ComponentIndex;
+
 use super::{ByteIndex, LocalByteIndex, LocalSpan, Span, Spanning};
 use index_map::IndexMap;
 use std::{
@@ -6,6 +8,7 @@ use std::{
     io,
     ops::Range,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 use unicode_width::UnicodeWidthStr;
 
@@ -54,15 +57,33 @@ impl SourceMap {
     }
 
     /// Open a file given its path and add it as a [`SourceFile`] to the map.
-    pub fn load(&mut self, path: PathBuf) -> Result<SourceFileIndex, io::Error> {
+    pub fn load(
+        &mut self,
+        path: PathBuf,
+        component: Option<ComponentIndex>,
+    ) -> Result<SourceFileIndex, io::Error> {
         let source = std::fs::read_to_string(&path)?;
-        Ok(self.add(Some(path), source))
+        Ok(self.add(Some(path), Arc::new(source), component))
     }
 
     /// Add text to the map creating a [`SourceFile`] in the process.
-    pub(crate) fn add(&mut self, path: Option<PathBuf>, source: String) -> SourceFileIndex {
+    pub(crate) fn add(
+        &mut self,
+        path: Option<PathBuf>,
+        source: Arc<String>,
+        component: Option<ComponentIndex>,
+    ) -> SourceFileIndex {
         self.files
-            .insert(SourceFile::new(path, source, self.next_offset()))
+            .insert(SourceFile::new(path, source, self.next_offset(), component))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn add_str(
+        &mut self,
+        path: Option<PathBuf>,
+        source: &'static str,
+    ) -> SourceFileIndex {
+        self.add(path, Arc::new(source.to_owned()), None)
     }
 
     pub(crate) fn file(&self, span: Span) -> &SourceFile {
@@ -73,6 +94,11 @@ impl SourceMap {
             .values()
             .find(|file| file.span().contains(span.start))
             .unwrap()
+    }
+
+    // @Beacon @Beacon @Beacon @Temporary
+    pub(crate) fn file_by_path(&self, path: &Path) -> Option<&SourceFile> {
+        self.files.values().find(|file| file.path() == Some(path))
     }
 
     /// Resolve a span to the string content it points to.
@@ -303,24 +329,37 @@ pub(crate) struct Highlight {
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct SourceFile {
     path: Option<PathBuf>,
-    content: String,
+    /// The component the source file belongs to, if any.
+    // @Beacon @Beacon @Beacon @Task make this a plain String again!
+    content: Arc<String>,
     span: Span,
+    component: Option<ComponentIndex>,
 }
 
 impl SourceFile {
     /// Create a new source file.
     ///
     /// The [byte index](ByteIndex) `start` locates the file in a [source map](SourceMap).
-    pub(crate) fn new(path: Option<PathBuf>, content: String, start: ByteIndex) -> Self {
+    fn new(
+        path: Option<PathBuf>,
+        content: Arc<String>,
+        start: ByteIndex,
+        component: Option<ComponentIndex>,
+    ) -> Self {
         Self {
             span: Span::with_length(start, content.len().try_into().unwrap()),
             path,
+            component,
             content,
         }
     }
 
     pub(crate) fn path(&self) -> Option<&Path> {
         self.path.as_deref()
+    }
+
+    pub(crate) fn component(&self) -> Option<ComponentIndex> {
+        self.component
     }
 
     pub(crate) fn content(&self) -> &str {

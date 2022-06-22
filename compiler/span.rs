@@ -10,18 +10,41 @@ pub(crate) use spanning::{PossiblySpanning, Spanning};
 use std::ops::{Add, Range, Sub};
 pub(crate) use weakly_spanned::WeaklySpanned;
 
+pub(crate) mod lsp;
 pub(crate) mod source_map;
 
 mod generic {
     use std::{
+        cmp::Ordering,
         fmt,
         num::TryFromIntError,
-        ops::{Add, Sub},
+        ops::{Add, AddAssign, Sub},
     };
 
     /// An locality-abstract byte index.
     #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Default)]
     pub(crate) struct ByteIndex<const L: Locality>(pub(super) u32);
+
+    impl<const L: Locality> ByteIndex<L> {
+        /// Relates the index to the given span.
+        ///
+        /// If the index is to the left of the span (i.e. smaller), it is considered [less].
+        /// If it is to the right (i.e. greater), it is considered [greater].
+        /// Otherwise, it has to be contained within the span and [equal] is returned.
+        ///
+        /// [less]: Ordering::Less
+        /// [greater]: Ordering::Greater
+        /// [equal]: Ordering::Equal
+        pub(crate) fn relate(self, span: Span<L>) -> Ordering {
+            if self < span.start {
+                Ordering::Less
+            } else if span.end <= self {
+                Ordering::Greater
+            } else {
+                Ordering::Equal
+            }
+        }
+    }
 
     impl<const L: Locality> ByteIndex<L> {
         pub(crate) const fn new(index: u32) -> Self {
@@ -34,6 +57,12 @@ mod generic {
 
         fn add(self, offset: u32) -> Self::Output {
             Self(self.0 + offset)
+        }
+    }
+
+    impl<const L: Locality> AddAssign<u32> for ByteIndex<L> {
+        fn add_assign(&mut self, offset: u32) {
+            self.0 += offset;
         }
     }
 

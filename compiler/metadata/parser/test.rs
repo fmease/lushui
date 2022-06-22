@@ -17,7 +17,10 @@ use crate::{
 
 fn parse(source: &str) -> Result<Value> {
     let map: Arc<RwLock<SourceMap>> = default();
-    let file = map.write().unwrap().add(None, source.to_owned());
+    let file = map
+        .write()
+        .unwrap()
+        .add(None, Arc::new(source.to_owned()), None);
     let reporter = Reporter::stderr().with_map(map.clone());
     super::super::parse(file, &map, &reporter)
 }

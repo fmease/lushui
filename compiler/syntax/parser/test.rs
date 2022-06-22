@@ -19,23 +19,23 @@ use crate::{
 };
 use index_map::Index as _;
 use smallvec::smallvec;
-use std::default::default;
+use std::{default::default, sync::Arc};
 
 fn parse_expression(source: &str) -> Result<Expression> {
     let session = BuildSession::test();
-    let file = session.map().add(None, source.to_owned());
+    let file = session.map().add(None, Arc::new(source.to_owned()), None);
     Parser::new(&lex(file, &session)?.value, file, &session).parse_expression()
 }
 
 fn parse_pattern(source: &str) -> Result<Pattern> {
     let session = BuildSession::test();
-    let file = session.map().add(None, source.to_owned());
+    let file = session.map().add(None, Arc::new(source.to_owned()), None);
     Parser::new(&lex(file, &session)?.value, file, &session).parse_pattern()
 }
 
 fn parse_declaration(source: &str) -> Result<Declaration> {
     let session = BuildSession::test();
-    let file = session.map().add(None, source.to_owned());
+    let file = session.map().add(None, Arc::new(source.to_owned()), None);
     parse_module_file(file, test_module_name(), &session)
 }
 

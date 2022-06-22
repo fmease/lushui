@@ -187,7 +187,7 @@ fn execute_command(
                 .enable_all()
                 .build()
                 .unwrap()
-                .block_on(lushui::server::serve(map.clone(), reporter));
+                .block_on(lushui::server::serve(map.clone()));
             Ok(())
         }
         Explain => Err(Diagnostic::error()
@@ -296,25 +296,28 @@ fn build_component(
     // @Task don't unconditionally halt execution on failure here but continue (with tainted health)
     // and mark the component as "erroneous" (not yet implemented) so we can print more errors.
     // "Erroneous" components should not lead to further errors in the name resolver etc.
-    let file = session.map().load(path.bare.to_owned()).map_err(|error| {
-        use std::fmt::Write;
+    let file = session
+        .map()
+        .load(path.bare.to_owned(), Some(component.index()))
+        .map_err(|error| {
+            use std::fmt::Write;
 
-        let mut message = format!(
-            "could not load the {} component ‘{}’",
-            component.type_(),
-            component.name(),
-        );
-        if let Some(package) = session.package_of(component.index()) {
-            write!(message, " in package ‘{}’", session[package].name).unwrap();
-        }
+            let mut message = format!(
+                "could not load the {} component ‘{}’",
+                component.type_(),
+                component.name(),
+            );
+            if let Some(package) = session.package_of(component.index()) {
+                write!(message, " in package ‘{}’", session[package].name).unwrap();
+            }
 
-        // @Task improve message, add label
-        Diagnostic::error()
-            .message(message)
-            .primary_span(path)
-            .note(IOError(error, path.bare).to_string())
-            .report(session.reporter())
-    })?;
+            // @Task improve message, add label
+            Diagnostic::error()
+                .message(message)
+                .primary_span(path)
+                .note(IOError(error, path.bare).to_string())
+                .report(session.reporter())
+        })?;
 
     time! {
         #![name = "Lexing"]
@@ -348,7 +351,8 @@ fn build_component(
 
     time! {
         #![name = "Lowering"]
-        let component_root = lowerer::lower_file(component_root, lowering_options, session)?;
+        let component_root =
+            lowerer::lower_file(component_root, lowering_options, component, session)?;
     }
 
     if component.is_goal(session) && options.emit_lowered_ast {
@@ -382,11 +386,11 @@ fn build_component(
     }
 
     // @Task move out of main.rs
-    if component.is_executable() && component.program_entry(session).is_none() {
+    if component.is_executable() && component.look_up_program_entry(session).is_none() {
         return Err(Diagnostic::error()
             .code(ErrorCode::E050)
             .message(format!(
-                "the component ‘{}’ does not contain a ‘{}’ function its root module",
+                "the component ‘{}’ does not contain a ‘{}’ function in its root module",
                 component.name(),
                 Component::PROGRAM_ENTRY_IDENTIFIER,
             ))
@@ -587,7 +591,7 @@ fn check_metadata_file(path: &Path, map: &Arc<RwLock<SourceMap>>, reporter: &Rep
     let file = map
         .write()
         .unwrap()
-        .load(path.to_owned())
+        .load(path.to_owned(), None)
         .map_err(|error| {
             Diagnostic::error()
                 .message("could not load the file")

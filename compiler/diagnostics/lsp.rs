@@ -1,9 +1,8 @@
 use super::{Code, Highlight, LintCode, Role, Severity, UnboxedUntaggedDiagnostic};
-use crate::span::{SourceMap, Span};
+use crate::span::SourceMap;
 use std::{collections::BTreeSet, default::default};
 use tower_lsp::lsp_types::{
-    self, DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location,
-    NumberOrString, Position, Range, Url,
+    self, DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, NumberOrString, Range,
 };
 
 const DIAGNOSTIC_SOURCE: &str = "source";
@@ -42,10 +41,10 @@ fn convert_highlights(
     for highlight in highlights {
         if highlight.role == Role::Primary && range.is_none() {
             // @Beacon @Bug we are ignoring the file assoc w/ the span!!!
-            range = Some(highlight.span.into_location(map).range);
+            range = Some(highlight.span.to_location(map).range);
         } else {
             related_information.push(DiagnosticRelatedInformation {
-                location: highlight.span.into_location(map),
+                location: highlight.span.to_location(map),
                 // @Task explain " "-hack
                 message: highlight.label.unwrap_or_else(|| " ".into()).into(),
             });
@@ -53,33 +52,6 @@ fn convert_highlights(
     }
 
     (range.unwrap_or_default(), related_information)
-}
-
-impl Span {
-    fn into_location(self, map: &SourceMap) -> Location {
-        let lines = map.lines_with_highlight(self);
-
-        Location {
-            // @Beacon @Task handle anonymous SourceFiles smh!!!
-            uri: Url::from_file_path(lines.path.unwrap()).unwrap(),
-            range: Range {
-                start: Position {
-                    line: lines.first.number - 1,
-                    character: lines.first.highlight.start - 1,
-                },
-                end: match lines.last {
-                    Some(line) => Position {
-                        line: line.number - 1,
-                        character: line.highlight.end - 1,
-                    },
-                    None => Position {
-                        line: lines.first.number - 1,
-                        character: lines.first.highlight.end - 1,
-                    },
-                },
-            },
-        }
-    }
 }
 
 impl From<Severity> for DiagnosticSeverity {

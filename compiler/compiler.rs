@@ -146,7 +146,7 @@ impl<'a> Compiler<'a> {
                     // @Task obsolete once we map any ComponentIndex to a chunk identifier
                     if self
                         .component
-                        .program_entry(self.session)
+                        .look_up_program_entry(self.session)
                         .as_ref()
                         .map_or(false, |entry| entry == &function.binder)
                     {

@@ -15,6 +15,7 @@ use std::{
     iter::Peekable,
     ops::{Sub, SubAssign},
     str::CharIndices,
+    sync::Arc,
 };
 use TokenKind::*;
 
@@ -31,7 +32,7 @@ pub fn lex(file: SourceFileIndex, session: &BuildSession) -> Result<Outcome<Vec<
 
 pub(crate) fn lex_string(source: String) -> Result<Outcome<Vec<Token>>, ()> {
     let mut map = SourceMap::default();
-    let file = map.add(None, source);
+    let file = map.add(None, Arc::new(source), None);
     Lexer::new(&map[file], &Reporter::silent())
         .lex()
         .map_err(drop)

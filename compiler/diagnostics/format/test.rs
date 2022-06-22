@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::{
     diagnostics::{Diagnostic, ErrorCode, LintCode, UnboxedUntaggedDiagnostic},
     span::{span, SourceMap},
@@ -31,7 +33,7 @@ fn format_no_highlights() {
 #[test]
 fn format_single_line_primary_highlight() {
     let mut map = SourceMap::default();
-    map.add(None, "alpha\nbeta\ngamma\n".into());
+    map.add_str(None, "alpha\nbeta\ngamma\n");
 
     let diagnostic = Diagnostic::error()
         .message("message")
@@ -53,7 +55,7 @@ error: message
 #[test]
 fn format_two_line_primary_highlight() {
     let mut map = SourceMap::default();
-    map.add(None, "alpha\nbeta\n".into());
+    map.add_str(None, "alpha\nbeta\n");
 
     let diagnostic = Diagnostic::error().primary_span(span(1, 9));
 
@@ -75,7 +77,7 @@ error
 #[test]
 fn format_multi_line_primary_highlight() {
     let mut map = SourceMap::default();
-    map.add(None, "alpha\nbeta\ngamma\ndelta\nepsilon".into());
+    map.add_str(None, "alpha\nbeta\ngamma\ndelta\nepsilon");
 
     let diagnostic = Diagnostic::error()
         .code(ErrorCode::E000)
@@ -100,11 +102,15 @@ error[E000]: explanation
 #[test]
 fn format_triple_digit_line_number() {
     let mut map = SourceMap::default();
-    map.add(None, {
-        let mut content = "\n".repeat(120);
-        content += "这是一个句子";
-        content
-    });
+    map.add(
+        None,
+        {
+            let mut content = "\n".repeat(120);
+            content += "这是一个句子";
+            Arc::new(content)
+        },
+        None,
+    );
 
     let diagnostic = Diagnostic::warning()
         .message("this is a sentence")
@@ -126,7 +132,7 @@ warning: this is a sentence
 #[test]
 fn format_primary_secondary_highlights() {
     let mut map = SourceMap::default();
-    map.add(None, "2ndry\nPRIM\n2ndry\n".into());
+    map.add_str(None, "2ndry\nPRIM\n2ndry\n");
 
     let diagnostic = Diagnostic::error()
         .code(ErrorCode::E001)
@@ -161,7 +167,7 @@ error[E001]: important
 #[test]
 fn format_primary_secondary_highlight_differing_line_number_widths() {
     let mut map = SourceMap::default();
-    map.add(None, "\nprimary\n\n\n\n\n\n\n\n\n\nsecondary\n".into());
+    map.add_str(None, "\nprimary\n\n\n\n\n\n\n\n\n\nsecondary\n");
 
     let diagnostic = Diagnostic::bug()
         .message("placeholder")
@@ -189,8 +195,8 @@ internal compiler error: placeholder
 #[test]
 fn format_highlights_in_different_files() {
     let mut map = SourceMap::default();
-    map.add(Some("ONE".into()), "a\nbc\ndef\n".into());
-    map.add(Some("TWO".into()), "zyx".into());
+    map.add_str(Some("ONE".into()), "a\nbc\ndef\n");
+    map.add_str(Some("TWO".into()), "zyx");
 
     let diagnostic = Diagnostic::debug()
         .primary_span(span(4, 5))
@@ -217,7 +223,7 @@ internal debugging message
 #[test]
 fn format_highlights_same_line() {
     let mut map = SourceMap::default();
-    map.add(Some("identity".into()), "sequence\n".into());
+    map.add_str(Some("identity".into()), "sequence\n");
 
     let diagnostic = Diagnostic::error()
         .message("tag")
@@ -245,7 +251,7 @@ error: tag
 #[test]
 fn format_labeled_highlights() {
     let mut map = SourceMap::default();
-    map.add(None, "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta".into());
+    map.add_str(None, "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta");
 
     let diagnostic = Diagnostic::error()
         .message("labels")
@@ -289,7 +295,7 @@ error: labels
 #[test]
 fn format_multi_line_labeled_highlights() {
     let mut map = SourceMap::default();
-    map.add(None, "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta\n".into());
+    map.add_str(None, "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta\n");
 
     let diagnostic = Diagnostic::error()
         .message("multi-line labels")
@@ -339,7 +345,7 @@ error: multi-line labels
 #[test]
 fn format_multi_line_labeled_highlights_no_trailing_line_break() {
     let mut map = SourceMap::default();
-    map.add(None, "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta".into());
+    map.add_str(None, "alpha\nbeta\ngamma\ndelta\nepsilon\nzeta");
 
     let diagnostic = Diagnostic::error()
         .message("multi-line labels")
@@ -409,7 +415,7 @@ error[E004]: summary
 #[test]
 fn format_subdiagnostics() {
     let mut map = SourceMap::default();
-    map.add(None, "****  ****".into());
+    map.add_str(None, "****  ****");
 
     let diagnostic = Diagnostic::warning()
         .message("it")
@@ -435,7 +441,7 @@ warning: it
 #[test]
 fn format_subdiagnostics_two_digit_line_numbers() {
     let mut map = SourceMap::default();
-    map.add(None, "****  ****\n".repeat(10));
+    map.add(None, Arc::new("****  ****\n".repeat(10)), None);
 
     let diagnostic = Diagnostic::warning()
         .message("it")
@@ -461,7 +467,7 @@ warning: it
 #[test]
 fn format_multi_line_subdiagnostics() {
     let mut map = SourceMap::default();
-    map.add(None, "****  ****".into());
+    map.add_str(None, "****  ****");
 
     let diagnostic = Diagnostic::warning()
         .message("it")
@@ -490,7 +496,7 @@ warning: it
 #[test]
 fn format_multiple_primary_highlights() {
     let mut map = SourceMap::default();
-    map.add(None, "gamma\n".into());
+    map.add_str(None, "gamma\n");
 
     let diagnostic = Diagnostic::error().primary_spans([span(1, 2), span(3, 4), span(5, 6)]);
 
@@ -520,7 +526,7 @@ error
 #[test]
 fn format_zero_length_highlight() {
     let mut map = SourceMap::default();
-    map.add(None, "sample\n".into());
+    map.add_str(None, "sample\n");
 
     let diagnostic = Diagnostic::debug().message("nil").primary_span(span(3, 3));
 
@@ -540,7 +546,7 @@ internal debugging message: nil
 #[test]
 fn format_zero_length_highlight_start_of_line() {
     let mut map = SourceMap::default();
-    map.add(None, "sample\n".into());
+    map.add_str(None, "sample\n");
 
     let diagnostic = Diagnostic::debug().message("nil").primary_span(span(1, 1));
 
@@ -560,10 +566,7 @@ internal debugging message: nil
 #[test]
 fn format_highlight_line_break() {
     let mut map = SourceMap::default();
-    map.add(
-        None,
-        "This is a sentence.\nThis is a follow-up sentence.\n".into(),
-    );
+    map.add_str(None, "This is a sentence.\nThis is a follow-up sentence.\n");
 
     let diagnostic = Diagnostic::error().labeled_primary_span(span(20, 20), "EOL");
 
@@ -583,7 +586,7 @@ error
 #[test]
 fn format_highlight_end_of_input() {
     let mut map = SourceMap::default();
-    map.add(None, "This is a sentence.".into());
+    map.add_str(None, "This is a sentence.");
 
     let diagnostic = Diagnostic::error().labeled_primary_span(span(20, 20), "EOI");
 
@@ -605,7 +608,7 @@ error
 #[test]
 fn format_highlight_end_of_input_with_trailing_line_break() {
     let mut map = SourceMap::default();
-    map.add(None, "This is a sentence.\n".into());
+    map.add_str(None, "This is a sentence.\n");
 
     let diagnostic = Diagnostic::error().labeled_primary_span(span(21, 21), "EOI");
 
@@ -629,7 +632,7 @@ error
 #[test]
 fn format_highlight_containing_final_line_break() {
     let mut map = SourceMap::default();
-    map.add(None, "This is a sentence.\n".into());
+    map.add_str(None, "This is a sentence.\n");
 
     let diagnostic = Diagnostic::warning()
         .message("weird corner case")
@@ -655,7 +658,7 @@ warning: weird corner case
 #[test]
 fn format_highlight_containing_final_end_of_input() {
     let mut map = SourceMap::default();
-    map.add(None, "EVERYTHING\n".into());
+    map.add_str(None, "EVERYTHING\n");
 
     let diagnostic = Diagnostic::bug().primary_span(span(1, 13));
 
@@ -675,7 +678,7 @@ internal compiler error
 #[test]
 fn format_highlight_in_empty_file() {
     let mut map = SourceMap::default();
-    map.add(Some("empty.txt".into()), String::new());
+    map.add_str(Some("empty.txt".into()), "");
 
     let diagnostic = Diagnostic::error()
         .message("this file has to contain something reasonable")
@@ -713,7 +716,7 @@ warning[permanently-unassigned-one]: no man's land",
 #[ignore = "weird corner case"]
 fn format_two_line_break_highlight_containing_first() {
     let mut map = SourceMap::default();
-    map.add(None, "alpha\nbeta\n\ngamma".into());
+    map.add_str(None, "alpha\nbeta\n\ngamma");
 
     let diagnostic = Diagnostic::bug().primary_span(span(1, 12));
 
@@ -738,7 +741,7 @@ internal compiler error
 #[ignore = "weird corner case"]
 fn format_two_line_breaks_highlight_containing_second() {
     let mut map = SourceMap::default();
-    map.add(None, "alpha\n\n".into());
+    map.add_str(None, "alpha\n\n");
 
     let diagnostic = Diagnostic::bug().primary_span(span(1, 8));
 

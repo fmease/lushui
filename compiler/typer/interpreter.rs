@@ -31,7 +31,7 @@ pub fn evaluate_main_function(component: &Component, session: &BuildSession) -> 
     Interpreter::new(component, session).evaluate_expression(
         Interpreter::new(component, session)
             .component
-            .program_entry(session)
+            .look_up_program_entry(session)
             .unwrap()
             .into_expression(),
         Context::new(&FunctionScope::Module),

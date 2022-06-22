@@ -1749,7 +1749,7 @@ impl<'a> Resolver<'a> {
 impl Component {
     pub const PROGRAM_ENTRY_IDENTIFIER: &'static str = "main";
 
-    pub fn program_entry(&self, session: &BuildSession) -> Option<Identifier> {
+    pub fn look_up_program_entry(&self, session: &BuildSession) -> Option<Identifier> {
         let resolver = Resolver::new(self, session);
 
         let identifier =

@@ -275,7 +275,10 @@ impl<'a> Request<'a> {
     ) -> Result<String> {
         Ok(match self {
             Request::DeclarationUrl(path) => {
-                let file = session.map().add(None, path.to_owned());
+                let file =
+                    session
+                        .map()
+                        .add(None, Arc::new(path.to_owned()), Some(component.index()));
                 let path = parse_path(file, session)?;
                 let index = resolve_path(&path, component.root(), component, session)?;
                 let url_suffix = declaration_url_fragment(index, component, session);
