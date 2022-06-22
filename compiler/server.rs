@@ -5,7 +5,7 @@ use crate::{
     diagnostics::{reporter::Buffer, Diagnostic, ErrorCode, Reporter},
     error::Result,
     package::resolve_file,
-    resolver::{self, PROGRAM_ENTRY_IDENTIFIER},
+    resolver,
     session::BuildSession,
     span::SourceMap,
     syntax::{lexer, lowerer, parser},
@@ -156,7 +156,7 @@ fn build_components(components: Components, mut session: BuildSession) -> Result
 }
 
 fn build_component(component: &mut Component, session: &mut BuildSession) -> Result {
-    let content = component.metadata.content.take();
+    let content = component.content.take();
     let path = component.path();
 
     // @Beacon @Task this shouldm't need to be that ugly!!!
@@ -164,14 +164,21 @@ fn build_component(component: &mut Component, session: &mut BuildSession) -> Res
         Some(content) => session.map().add(Some(path.bare.to_owned()), content),
         None => {
             session.map().load(path.bare.to_owned()).map_err(|error| {
+                use std::fmt::Write;
+
+                let mut message = format!(
+                    "could not load the {} component ‘{}’",
+                    component.type_(),
+                    component.name()
+                );
+
+                if let Some(package) = session.package_of(component.index()) {
+                    write!(message, " in package ‘{}’", session[package].name).unwrap();
+                }
+
                 // @Bug this is duplication with main.rs!!
                 Diagnostic::error()
-                    .message(format!(
-                        "could not load the {} component ‘{}’ in package ‘{}’",
-                        component.type_(),
-                        component.name(),
-                        component.package(session).name,
-                    ))
+                    .message(message)
                     .primary_span(path)
                     .note(IOError(error, path.bare).to_string())
                     .report(session.reporter())
@@ -197,12 +204,13 @@ fn build_component(component: &mut Component, session: &mut BuildSession) -> Res
     typer::check(&component_root, component, session)?;
 
     // @Bug this is duplication with main.rs!!
-    if component.is_executable() && component.entry.is_none() {
+    if component.is_executable() && component.program_entry(session).is_none() {
         return Err(Diagnostic::error()
             .code(ErrorCode::E050)
             .message(format!(
-                "the component ‘{}’ does not contain a ‘{PROGRAM_ENTRY_IDENTIFIER}’ function its root module",
+                "the component ‘{}’ does not contain a ‘{}’ function its root module",
                 component.name(),
+                Component::PROGRAM_ENTRY_IDENTIFIER,
             ))
             .primary_span(&session.shared_map()[file])
             .report(session.reporter()));

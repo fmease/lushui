@@ -27,12 +27,12 @@
 use cli::{BuildMode, Command, PassRestriction};
 use colored::Colorize;
 use lushui::{
-    component::{Component, ComponentMetadata, ComponentType, Components},
+    component::{Component, ComponentOutline, ComponentType, Components},
     diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter},
     documenter,
     error::Result,
     package::{find_package, resolve_file, resolve_package, MANIFEST_FILE_NAME},
-    resolver::{self, PROGRAM_ENTRY_IDENTIFIER},
+    resolver,
     session::BuildSession,
     span::SourceMap,
     syntax::{lexer, lowerer, parser, Word},
@@ -223,15 +223,12 @@ fn build_components(
     //
     // only used in the documenter
     // @Task smh get rid of this (move this into session?)
-    let component_metadata: Vec<_> = components
-        .values()
-        .map(|component| component.metadata.clone())
-        .collect();
+    let component_outline: Vec<_> = components.values().map(Component::outline).collect();
 
     for mut component in components.into_values() {
         build_component(
             &mut component,
-            &component_metadata,
+            &component_outline,
             mode,
             options,
             global_options,
@@ -245,7 +242,7 @@ fn build_components(
 
 fn build_component(
     component: &mut Component,
-    component_metadata: &[ComponentMetadata],
+    component_outlines: &[ComponentOutline],
     mode: &cli::BuildMode,
     options: &cli::BuildOptions,
     global_options: &cli::GlobalOptions,
@@ -261,13 +258,10 @@ fn build_component(
             BuildMode::Document { .. } => "Documenting",
         };
         let label = label.green().bold();
-        // @Beacon @Task don't use package path but component path
-        let path = &component.package(session).path.to_string_lossy();
-        // @Task print version
+        let path = &component.path().bare.to_string_lossy();
         println!(
             "   {label} {} ({path})",
-            // @Task re-introduce some logic to not the component type unless really necessary
-            if component.in_goal_package(session) {
+            if session.in_goal_package(component.index()) {
                 format!("{} [{}]", component.name(), component.type_())
             } else {
                 component.name().to_string()
@@ -303,14 +297,20 @@ fn build_component(
     // and mark the component as "erroneous" (not yet implemented) so we can print more errors.
     // "Erroneous" components should not lead to further errors in the name resolver etc.
     let file = session.map().load(path.bare.to_owned()).map_err(|error| {
+        use std::fmt::Write;
+
+        let mut message = format!(
+            "could not load the {} component ‘{}’",
+            component.type_(),
+            component.name(),
+        );
+        if let Some(package) = session.package_of(component.index()) {
+            write!(message, " in package ‘{}’", session[package].name).unwrap();
+        }
+
         // @Task improve message, add label
         Diagnostic::error()
-            .message(format!(
-                "could not load the {} component ‘{}’ in package ‘{}’",
-                component.type_(),
-                component.name(),
-                component.package(session).name,
-            ))
+            .message(message)
             .primary_span(path)
             .note(IOError(error, path.bare).to_string())
             .report(session.reporter())
@@ -382,12 +382,13 @@ fn build_component(
     }
 
     // @Task move out of main.rs
-    if component.is_executable() && component.entry.is_none() {
+    if component.is_executable() && component.program_entry(session).is_none() {
         return Err(Diagnostic::error()
             .code(ErrorCode::E050)
             .message(format!(
-                "the component ‘{}’ does not contain a ‘{PROGRAM_ENTRY_IDENTIFIER}’ function its root module",
+                "the component ‘{}’ does not contain a ‘{}’ function its root module",
                 component.name(),
+                Component::PROGRAM_ENTRY_IDENTIFIER,
             ))
             .primary_span(&session.shared_map()[file])
             .report(session.reporter()));
@@ -398,11 +399,16 @@ fn build_component(
             if component.is_goal(session) {
                 if !component.is_executable() {
                     // @Question code?
+                    // @Note I don't like this code here at all, it's hacky and not principled!
+                    // @Question why should the message differ??
                     return Err(Diagnostic::error()
-                        .message(format!(
-                            "the package ‘{}’ does not contain any executable to run",
-                            component.package(session).name,
-                        ))
+                        .message(match session.package_of(component.index()) {
+                            Some(package) => format!(
+                                "the package ‘{}’ does not contain any executable to run",
+                                session[package].name,
+                            ),
+                            None => "the component is not an executable".into(),
+                        })
                         .report(session.reporter()));
                 }
 
@@ -414,8 +420,12 @@ fn build_component(
         BuildMode::Build => {
             // @Temporary not just builds, also runs ^^
 
-            lushui::compiler::compile_and_interpret_declaration(&component_root, component)
-                .unwrap_or_else(|_| panic!());
+            lushui::compiler::compile_and_interpret_declaration(
+                &component_root,
+                component,
+                session,
+            )
+            .unwrap_or_else(|_| panic!());
         }
         BuildMode::Document {
             options: documentation_options,
@@ -435,7 +445,7 @@ fn build_component(
                 let index_page_path = documenter::document(
                     &component_root,
                     documenter_options,
-                    component_metadata,
+                    component_outlines,
                     component,
                     session,
                 )?;

@@ -5,6 +5,7 @@
 use crate::{
     component::Component,
     hir::{self, Declaration, DeclarationIndex, Expression, Number},
+    session::BuildSession,
     syntax::lowered_ast::attributes::AttributeName,
     utility::HashMap,
 };
@@ -15,10 +16,20 @@ use std::{default::default, fmt};
 mod instruction; // @Note naming swap out with name&concept bytecode
 pub(crate) mod interpreter; // @Task move stuff from here to there
 
-#[derive(PartialEq, Eq)]
-enum LambdaParent {
-    Lambda,
-    Declaration,
+// @Temporary
+pub fn compile_and_interpret_declaration(
+    declaration: &Declaration,
+    component: &Component,
+    session: &BuildSession,
+) -> Result<(), Error> {
+    let mut compiler = Compiler::new(component, session);
+    compiler.compile_declaration(declaration)?;
+    eprintln!("{}", compiler.print_chunks());
+
+    let mut interpreter = ByteCodeInterpreter::new(&compiler);
+    interpreter.execute()?;
+
+    Ok(())
 }
 
 struct Compiler<'a> {
@@ -30,10 +41,11 @@ struct Compiler<'a> {
     entry: Option<ChunkIndex>,
     declaration_mapping: HashMap<DeclarationIndex, ChunkIndex>,
     component: &'a Component,
+    session: &'a BuildSession,
 }
 
 impl<'a> Compiler<'a> {
-    fn new(component: &'a Component) -> Self {
+    fn new(component: &'a Component, session: &'a BuildSession) -> Self {
         Self {
             chunks: IndexMap::new(),
             constants: Vec::new(),
@@ -41,6 +53,7 @@ impl<'a> Compiler<'a> {
             entry: None,
             declaration_mapping: default(),
             component,
+            session,
         }
     }
 
@@ -133,7 +146,7 @@ impl<'a> Compiler<'a> {
                     // @Task obsolete once we map any ComponentIndex to a chunk identifier
                     if self
                         .component
-                        .entry
+                        .program_entry(self.session)
                         .as_ref()
                         .map_or(false, |entry| entry == &function.binder)
                     {
@@ -251,6 +264,12 @@ impl fmt::Debug for Value {
     }
 }
 
+#[derive(PartialEq, Eq)]
+enum LambdaParent {
+    Lambda,
+    Declaration,
+}
+
 // @Temporary
 pub enum Error {
     Compiletime(CompilationError),
@@ -270,21 +289,6 @@ impl From<CompilationError> for Error {
 }
 
 pub enum CompilationError {}
-
-// @Temporary
-pub fn compile_and_interpret_declaration(
-    declaration: &Declaration,
-    component: &Component,
-) -> Result<(), Error> {
-    let mut compiler = Compiler::new(component);
-    compiler.compile_declaration(declaration)?;
-    eprintln!("{}", compiler.print_chunks());
-
-    let mut interpreter = ByteCodeInterpreter::new(&compiler);
-    interpreter.execute()?;
-
-    Ok(())
-}
 
 // @Question what should the relation be *actually* like?
 //const FRAME_SIZE: usize = 64;

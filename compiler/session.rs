@@ -28,8 +28,9 @@ pub struct BuildSession {
     components: HashMap<ComponentIndex, Component>,
     /// The packages whose components have not necessarily been built yet in this session but are about to.
     packages: IndexMap<PackageIndex, Package>,
+    /// The corresponding package of the components.
+    component_packages: HashMap<ComponentIndex, PackageIndex>,
     goal_component: ComponentIndex,
-    goal_package: PackageIndex,
     // @Task Identifier -> DeclarationIndex
     known_bindings: HashMap<KnownBinding, Identifier>,
     intrinsic_types: HashMap<IntrinsicType, Identifier>,
@@ -42,16 +43,16 @@ impl BuildSession {
     /// Create a new build session with all intrinsic functions defined.
     pub(crate) fn new(
         packages: IndexMap<PackageIndex, Package>,
+        component_packages: HashMap<ComponentIndex, PackageIndex>,
         goal_component: ComponentIndex,
-        goal_package: PackageIndex,
         map: &Arc<RwLock<SourceMap>>,
         reporter: Reporter,
     ) -> Self {
         Self {
             components: default(),
             packages,
+            component_packages,
             goal_component,
-            goal_package,
             known_bindings: default(),
             intrinsic_types: default(),
             intrinsic_functions: intrinsic_functions(),
@@ -67,8 +68,8 @@ impl BuildSession {
         Self {
             components: default(),
             packages: default(),
+            component_packages: default(),
             goal_component: ComponentIndex(0),
-            goal_package: PackageIndex::new_unchecked(0),
             known_bindings: default(),
             intrinsic_types: default(),
             intrinsic_functions: default(),
@@ -77,18 +78,30 @@ impl BuildSession {
         }
     }
 
-    pub fn goal_package(&self) -> PackageIndex {
-        self.goal_package
+    pub fn goal_package(&self) -> Option<PackageIndex> {
+        self.package_of(self.goal_component)
     }
 
     pub fn goal_component(&self) -> ComponentIndex {
         self.goal_component
     }
 
+    pub fn package_of(&self, component: ComponentIndex) -> Option<PackageIndex> {
+        self.component_packages.get(&component).copied()
+    }
+
+    pub fn in_goal_package(&self, component: ComponentIndex) -> bool {
+        self.package_of(component)
+            .map_or(false, |package| self.goal_package() == Some(package))
+    }
+
     /// The path to the folder containing the build artifacts.
     pub(crate) fn build_folder(&self) -> PathBuf {
-        // @Beacon @Beacon @Bug does not work with single-file packages!
-        self[self.goal_package].path.join(BUILD_FOLDER_NAME)
+        match self.goal_package() {
+            Some(package) => self[package].path.join(BUILD_FOLDER_NAME),
+            // @Question how should the folder be called?
+            None => todo!(),
+        }
     }
 
     pub fn add(&mut self, component: Component) {

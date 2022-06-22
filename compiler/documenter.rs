@@ -7,7 +7,7 @@
 // and obviously, only show the list once. Don't show empty sections (obviously)
 
 use crate::{
-    component::{Component, ComponentMetadata},
+    component::{Component, ComponentOutline},
     error::Result,
     hir::{self, LocalDeclarationIndex},
     session::BuildSession,
@@ -45,7 +45,7 @@ const DEVELOPING: bool = true;
 pub fn document(
     declaration: &hir::Declaration,
     options: Options,
-    components: &[ComponentMetadata],
+    components: &[ComponentOutline],
     component: &Component,
     session: &BuildSession,
 ) -> Result<PathBuf> {
@@ -65,7 +65,7 @@ pub fn document(
 
 struct Documenter<'a, 'scope> {
     options: Options,
-    components: &'a [ComponentMetadata],
+    components: &'a [ComponentOutline],
     component: &'a Component,
     session: &'a BuildSession,
     text_processor: TextProcessor<'scope>,
@@ -77,7 +77,7 @@ struct Documenter<'a, 'scope> {
 impl<'a, 'scope> Documenter<'a, 'scope> {
     fn new(
         options: Options,
-        components: &'a [ComponentMetadata],
+        components: &'a [ComponentOutline],
         component: &'a Component,
         session: &'a BuildSession,
         scope: &'scope Scope<'a>,
@@ -455,7 +455,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                     .child(
                         // If it's not a target component, it has to be a library.
                         // In such case, omit this information for legibility.
-                        if component.package == self.session.goal_package() {
+                        if self.session.in_goal_package(component.index) {
                             Node::from(format!("{} ({})", component.name, component.type_))
                         } else {
                             Node::from(component.name.as_str())
@@ -568,7 +568,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         url_prefix: &str,
         content_type: PageContentType,
     ) -> Element<'_> {
-        let mut head = Element::new("head")
+        Element::new("head")
             .child(VoidElement::new("meta").attribute("charset", "utf-8"))
             .child(
                 VoidElement::new("meta")
@@ -615,17 +615,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                         ),
                     )
                     .boolean_attribute("defer"),
-            );
-        let description = &self.component.package(self.session).description;
-        if !description.is_empty() {
-            head.add_child(
-                VoidElement::new("meta")
-                    .attribute("name", "description")
-                    .attribute("content", description),
-            );
-        }
-
-        head
+            )
     }
 }
 
@@ -766,17 +756,21 @@ fn declaration_id(binder: &str) -> String {
     format!("decl.{}", urlencoding::encode(binder))
 }
 
+// @Task <avoid duplication>
+
 impl Component {
     fn folder_id(&self) -> String {
-        self.metadata.folder_id()
+        format!("{}:{}", self.type_().short_name(), self.name())
     }
 }
 
-impl ComponentMetadata {
+impl ComponentOutline {
     fn folder_id(&self) -> String {
         format!("{}:{}", self.type_.short_name(), self.name)
     }
 }
+
+// @Task </avoid duplication>
 
 static LOREM_IPSUM: &str = "\
     Lorem ipsum dolor sit amet, consectetur adipiscing elit, \

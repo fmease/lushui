@@ -40,8 +40,6 @@ use std::{
 };
 use unicode_width::UnicodeWidthStr;
 
-pub const PROGRAM_ENTRY_IDENTIFIER: &str = "main";
-
 /// Resolve the names of a declaration.
 ///
 /// It performs four passes to resolve all possible out of order declarations.
@@ -415,13 +413,6 @@ impl<'a> ResolverMut<'a> {
                         .resolve_expression(expression, &FunctionScope::Module(module))
                         .stain(&mut self.health)
                 });
-
-                if module == self.component.local_root()
-                    && self.component.is_executable()
-                    && function.binder.as_str() == PROGRAM_ENTRY_IDENTIFIER
-                {
-                    self.component.entry = Some(binder.clone());
-                }
 
                 hir::Declaration::new(
                     declaration.attributes,
@@ -1201,7 +1192,7 @@ impl<'a> Resolver<'a> {
                     })?;
 
                     let Some(component) = self.component.dependencies.get(&component.bare).copied() else {
-                        // @Task If it's not a single-file package, suggest adding to `dependencies` section in
+                        // @Task If it's not a single source file, suggest adding to `dependencies` section in
                         // the package manifest
                         // @Task suggest similarly named dependencies!
                         // @Task check if it's a transitive dependency
@@ -1252,12 +1243,12 @@ impl<'a> Resolver<'a> {
             };
         }
 
-        let index = self.resolve_path_segment(&path.segments[0], namespace, context)?;
+        let index = self.resolve_identifier(&path.segments[0], namespace, context)?;
         let entity = self.look_up(index);
 
         match &*path.segments {
             [identifier] => {
-                Target::handle_final_identifier(identifier, entity)
+                Target::validate_identifier(identifier, entity)
                     .reported(self.session.reporter())?;
                 Ok(Target::output(index, identifier))
             }
@@ -1300,7 +1291,7 @@ impl<'a> Resolver<'a> {
         })
     }
 
-    fn resolve_path_segment(
+    fn resolve_identifier(
         &self,
         identifier: &ast::Identifier,
         namespace: DeclarationIndex,
@@ -1752,6 +1743,32 @@ impl<'a> Resolver<'a> {
                     error
                 }
             })
+    }
+}
+
+impl Component {
+    pub const PROGRAM_ENTRY_IDENTIFIER: &'static str = "main";
+
+    pub fn program_entry(&self, session: &BuildSession) -> Option<Identifier> {
+        let resolver = Resolver::new(self, session);
+
+        let identifier =
+            ast::Identifier::new_unchecked(Self::PROGRAM_ENTRY_IDENTIFIER.into(), default());
+        let context = PathResolutionContext {
+            origin_namespace: self.root(),
+            usage: IdentifierUsage::Unqualified,
+            check_exposure: CheckExposure::No,
+        };
+        let index = resolver
+            .resolve_identifier(&identifier, self.root(), context)
+            .ok()?;
+        let entity = &resolver.look_up(index);
+
+        if !entity.is_function() {
+            return None;
+        }
+
+        Some(Identifier::new(index, entity.source.clone()))
     }
 }
 
@@ -2267,10 +2284,8 @@ trait ResolutionTarget {
         index: DeclarationIndex,
     ) -> Result<Self::Output, Diagnostic>;
 
-    fn handle_final_identifier(
-        identifier: &ast::Identifier,
-        entity: &Entity,
-    ) -> Result<(), Diagnostic>;
+    fn validate_identifier(identifier: &ast::Identifier, entity: &Entity)
+        -> Result<(), Diagnostic>;
 }
 
 mod target {
@@ -2293,7 +2308,7 @@ mod target {
             Ok(index)
         }
 
-        fn handle_final_identifier(_: &ast::Identifier, _: &Entity) -> Result<(), Diagnostic> {
+        fn validate_identifier(_: &ast::Identifier, _: &Entity) -> Result<(), Diagnostic> {
             Ok(())
         }
     }
@@ -2315,7 +2330,7 @@ mod target {
             Err(Diagnostic::module_used_as_a_value(hanger.as_ref()))
         }
 
-        fn handle_final_identifier(
+        fn validate_identifier(
             identifier: &ast::Identifier,
             entity: &Entity,
         ) -> Result<(), Diagnostic> {
@@ -2345,7 +2360,7 @@ mod target {
             Ok(index)
         }
 
-        fn handle_final_identifier(
+        fn validate_identifier(
             identifier: &ast::Identifier,
             entity: &Entity,
         ) -> Result<(), Diagnostic> {

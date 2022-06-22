@@ -326,6 +326,8 @@ pub(super) struct ComponentKey {
 pub(super) struct ComponentManifest {
     #[allow(dead_code)] // @Temporary
     pub(super) public: Option<Spanned<bool>>,
+    // @Note this path is relative to the package
+    // @Task encode this information in the type system, either manually or via a library
     pub(super) path: Spanned<PathBuf>,
     pub(super) dependencies:
         Option<Spanned<HashMap<WeaklySpanned<Word>, Spanned<DependencyDeclaration>>>>,

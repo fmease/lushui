@@ -1,7 +1,6 @@
 use crate::{
     entity::Entity,
-    hir::{Identifier, LocalDeclarationIndex},
-    package::{Package, PackageIndex},
+    hir::LocalDeclarationIndex,
     session::BuildSession,
     span::Spanned,
     syntax::Word,
@@ -18,15 +17,19 @@ pub type Components = IndexMap<ComponentIndex, Component>;
 ///
 /// [^1]: And integration and system tests, benchmarks and other things in the future.
 pub struct Component {
-    pub metadata: ComponentMetadata,
+    name: Word,
+    index: ComponentIndex,
+    // @Beacon @Task make this a Spanned<AbsolutePathBuf>,
+    path: Spanned<PathBuf>,
+    // @Task document this! @Note this is used by the lang-server which gets the document content by the client
+    //       and which should not open the file at the given path to avoid TOC-TOU bugs / data races
+    // @Beacon @Question should this be put on `Component` instead???
+    pub(crate) content: Option<String>,
+    // @Note I am not pumped about the current component type including such high-level types like "benchmark-suite"
+    //       I feel like we are breaking layers of abstraction here, too. can we get rid of this field??
+    type_: ComponentType,
     /// Resolved dependencies.
     pub(crate) dependencies: HashMap<Word, ComponentIndex>,
-    // @Task don't make this a field! decouple the concept of "library vs executable" from components
-    //       instead, at the very least, make this a method that looks for a top-level `main`.
-    //       by nature "after the fact", i.e. after name resolution happens.
-    //       I feel like us registering the program entry during name resolution breaks layers of abstraction
-    /// The `main` function (_program entry_) for executable components.
-    pub entry: Option<Identifier>,
     /// All bindings inside of the component.
     // The first element has to be the root module.
     pub(crate) bindings: IndexMap<LocalDeclarationIndex, Entity>,
@@ -34,13 +37,20 @@ pub struct Component {
 
 impl Component {
     pub(crate) fn new(
-        metadata: ComponentMetadata,
+        name: Word,
+        index: ComponentIndex,
+        path: Spanned<PathBuf>,
+        content: Option<String>,
+        type_: ComponentType,
         dependencies: HashMap<Word, ComponentIndex>,
     ) -> Self {
         Self {
-            metadata,
+            name,
+            index,
+            path,
+            content,
+            type_,
             dependencies,
-            entry: default(),
             bindings: default(),
         }
     }
@@ -52,14 +62,11 @@ impl Component {
         let name = Word::parse("test".into()).ok().unwrap();
 
         let mut component = Self::new(
-            ComponentMetadata::new(
-                name.clone(),
-                ComponentIndex(0),
-                PackageIndex::new_unchecked(0),
-                Spanned::new(default(), PathBuf::new()),
-                None,
-                ComponentType::Library,
-            ),
+            name.clone(),
+            ComponentIndex(0),
+            Spanned::new(default(), PathBuf::new()),
+            None,
+            ComponentType::Library,
             HashMap::default(),
         );
         component.bindings.insert(Entity {
@@ -73,19 +80,19 @@ impl Component {
     }
 
     pub fn name(&self) -> &Word {
-        &self.metadata.name
+        &self.name
     }
 
-    pub(crate) fn index(&self) -> ComponentIndex {
-        self.metadata.index
+    pub fn index(&self) -> ComponentIndex {
+        self.index
     }
 
     pub fn path(&self) -> Spanned<&std::path::Path> {
-        self.metadata.path.as_deref()
+        self.path.as_deref()
     }
 
     pub fn type_(&self) -> ComponentType {
-        self.metadata.type_
+        self.type_
     }
 
     pub fn is_library(&self) -> bool {
@@ -96,25 +103,23 @@ impl Component {
         self.type_() == ComponentType::Executable
     }
 
-    pub fn package<'s>(&self, session: &'s BuildSession) -> &'s Package {
-        &session[self.metadata.package]
-    }
-
     /// Test if this component is the standard library `core`.
     pub fn is_core_library(&self, session: &BuildSession) -> bool {
-        self.package(session).is_core() && self.is_library()
+        session.package_of(self.index).map_or(false, |package| {
+            session[package].is_core() && self.is_library()
+        })
     }
 
     pub fn is_goal(&self, session: &BuildSession) -> bool {
         self.index() == session.goal_component()
     }
 
-    // @Task replace this with a method on BuildSession that looks through a `Package`s list of components!
-    // @Note I want to get rid of the backreference `package` in `Component`s
-    // @Update however, it's not as easy, since a `Component` needs to be fully built to be able to
-    //         occur inside of a `Package` since a `ComponentIndex` has to be created
-    pub fn in_goal_package(&self, session: &BuildSession) -> bool {
-        self.metadata.package == session.goal_package()
+    pub fn outline(&self) -> ComponentOutline {
+        ComponentOutline {
+            name: self.name.clone(),
+            index: self.index,
+            type_: self.type_,
+        }
     }
 }
 
@@ -139,14 +144,7 @@ impl DisplayWith for Component {
     type Context<'a> = &'a BuildSession;
 
     fn format(&self, session: &BuildSession, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(
-            f,
-            "{} {} ({:?}) {:?}",
-            self.type_(),
-            self.name(),
-            self.index(),
-            self.metadata.package
-        )?;
+        writeln!(f, "{} {} ({:?})", self.type_(), self.name(), self.index())?;
 
         writeln!(f, "  bindings:")?;
 
@@ -163,53 +161,13 @@ impl DisplayWith for Component {
     }
 }
 
-/// Metadata of a [`Component`].
+// @Beacon @Task remove this type. it is only used by the documenter and that only because
+// Component cannot really be used for some reason. investigate
 #[derive(Clone)]
-// @Note I don't like this name!
-pub struct ComponentMetadata {
+pub struct ComponentOutline {
     pub(crate) name: Word,
     pub(crate) index: ComponentIndex,
-    // @Beacon @Beacon @Task not all components need to have a corresp. package!!!!
-    //                       make this field optional! even better if we could get rid of it entirely!
-    //                       we are kind of breaking layers of abstraction here: components vs packages!
-    //                       @Update
-    //                       It's not as easy, since a `Package` needs a list of `ComponentIndex`es
-    //                       but they aren't created until the components in question are fully built
-    //                       however, in many cases, we want to get the package of the current component
-    //                       (which ofc hasn't been built yet)
-    //                       One solution (maybe): identifiy components in Packages via an
-    //                       enum { Unbuilt { name: Word, "type", path: PathButh }, Built(ComponentIndex) }
-    //                       ooorrr, store `ComponentMetadata` in variant Unbuilt and make
-    //                       @Beacon ComponentMetadata.index an Option<ComponentIndex> / PossiblyUnresolved<ComponentIndex>
-    pub(crate) package: PackageIndex,
-    pub(crate) path: Spanned<PathBuf>,
-    // @Task document this! @Note this is used by the lang-server which gets the document content by the client
-    //       and which should not open the file at the given path to avoid TOC-TOU bugs / data races
-    // @Beacon @Question should this be put on `Component` instead???
-    pub(crate) content: Option<String>,
-    // @Note I am not pumped about the current component type including such high-level types like "benchmark-suite"
-    //       I feel like we are breaking layers of abstraction here, too. can we get rid of this field??
     pub(crate) type_: ComponentType,
-}
-
-impl ComponentMetadata {
-    pub(crate) fn new(
-        name: Word,
-        index: ComponentIndex,
-        package: PackageIndex,
-        path: Spanned<PathBuf>,
-        content: Option<String>,
-        type_: ComponentType,
-    ) -> Self {
-        Self {
-            name,
-            index,
-            package,
-            path,
-            content,
-            type_,
-        }
-    }
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Hash)]

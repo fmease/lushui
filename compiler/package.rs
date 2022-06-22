@@ -1,7 +1,7 @@
 //! The package and component resolver.
 
 use crate::{
-    component::{Component, ComponentIndex, ComponentMetadata, ComponentType, Components},
+    component::{Component, ComponentIndex, ComponentType, Components},
     diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter},
     error::Result,
     metadata::Record,
@@ -15,8 +15,8 @@ use crate::{
 use index_map::IndexMap;
 pub use manifest::FILE_NAME as MANIFEST_FILE_NAME;
 use manifest::{
-    ComponentKey, ComponentManifest, DependencyDeclaration, DependencyProvider, PackageManifest,
-    PackageProfile, Version,
+    ComponentManifest, DependencyDeclaration, DependencyProvider, PackageManifest, PackageProfile,
+    Version,
 };
 use std::{
     default::default,
@@ -89,18 +89,13 @@ pub fn resolve_file(
 #[derive(Debug)]
 pub struct Package {
     pub name: Word,
-    /// The file or folder path of the package.
-    ///
-    /// For single-file packages, this points to a file.
-    /// For normal packages, it points to the package folder
-    /// which contains the package manifest.
-    // @Beacon @Task make this of type PackagePath,
-    // enum PackageLocation { NormalPackage(PathBuf), SingleFilePackage(PathBuf) }
+    // @Beacon @Task make this an “AbsolutePathBuf”
     pub path: PathBuf,
     #[allow(dead_code)]
     version: Version,
-    pub(crate) description: String,
-    components: HashMap<(Word, ComponentType), PossiblyUnresolved<ComponentIndex>>,
+    #[allow(dead_code)]
+    description: String,
+    components: HashMap<ComponentKey, PossiblyUnresolvedComponent>,
 }
 
 impl Package {
@@ -117,42 +112,22 @@ impl Package {
         }
     }
 
-    // @Note this just doesn't feel right! source files as "single-file packages"
-    // @Task remove the concept of "single-file packages" (the name is ambiguous, too!)
-    // @Note since the package system revamp, components (Component) store their dependencies
-    //       on their on, not "their" package
-    // @Beacon @Beacon @Beacon @Task get rid of this!
-    fn file(name: Word, path: PathBuf) -> Self {
-        Self {
-            name,
-            path,
-            version: Version("0.0.0".to_owned()),
-            description: String::new(),
-            components: HashMap::default(),
-        }
-    }
-
     /// Test if this package is the standard library `core`.
     pub(crate) fn is_core(&self) -> bool {
         self.path == core_package_path()
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-enum PossiblyUnresolved<T> {
+type ComponentKey = (Word, ComponentType);
+
+#[derive(Debug)]
+enum PossiblyUnresolvedComponent {
     Unresolved,
-    Resolved(T),
+    Resolved(ComponentIndex),
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, index_map::Index)]
 pub struct PackageIndex(usize);
-
-impl PackageIndex {
-    #[cfg(test)]
-    pub(crate) const fn new_unchecked(index: usize) -> Self {
-        Self(index)
-    }
-}
 
 impl fmt::Debug for PackageIndex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -164,6 +139,8 @@ struct BuildQueue {
     /// The components which have not been built yet.
     components: Components,
     packages: IndexMap<PackageIndex, Package>,
+    /// The corresponding package of the components.
+    component_packages: HashMap<ComponentIndex, PackageIndex>,
     map: Arc<RwLock<SourceMap>>,
     reporter: Reporter,
 }
@@ -173,6 +150,7 @@ impl BuildQueue {
         Self {
             components: default(),
             packages: default(),
+            component_packages: default(),
             map: map.clone(),
             reporter,
         }
@@ -205,8 +183,9 @@ impl BuildQueue {
         // I *think*, only those that are relevant: this is driven by the CLI: Esp. if the users passes
         // certain flag (cf. --exe, --lib etc. flags passed to cargo build)
         // @Note but maybe we should still check for correctness of irrelevant components, check what cargo does!
-        if let Some(Spanned!(_, component_worklist)) = manifest.components {
+        if let Some(component_worklist) = manifest.components {
             let mut component_worklist: HashMap<_, _> = component_worklist
+                .bare
                 .into_iter()
                 .map(|(key, component)| {
                     // @Beacon #primary_components_default_to_package_name
@@ -225,7 +204,10 @@ impl BuildQueue {
             self[package]
                 .components
                 .extend(component_worklist.iter().map(|((name, type_), _)| {
-                    ((name.clone(), type_.bare), PossiblyUnresolved::Unresolved)
+                    (
+                        (name.clone(), type_.bare),
+                        PossiblyUnresolvedComponent::Unresolved,
+                    )
                 }));
 
             while !component_worklist.is_empty() {
@@ -270,25 +252,20 @@ impl BuildQueue {
 
                     let component = self.components.insert_with(|index| {
                         Component::new(
-                            ComponentMetadata::new(
-                                name.clone(),
-                                index,
-                                package,
-                                component
-                                    .bare
-                                    .path
-                                    .as_ref()
-                                    .map(|relative_path| package_path.join(relative_path)),
-                                None,
-                                type_.bare,
-                            ),
+                            name.clone(),
+                            index,
+                            component
+                                .bare
+                                .path
+                                .as_ref()
+                                .map(|relative_path| package_path.join(relative_path)),
+                            None,
+                            type_.bare,
                             dependencies,
                         )
                     });
 
-                    self[package]
-                        .components
-                        .insert((name, type_.bare), PossiblyUnresolved::Resolved(component));
+                    self.register_package_component(package, (name, type_.bare), component);
                 }
 
                 // resolution stalled; therefore there are cyclic components
@@ -342,19 +319,7 @@ impl BuildQueue {
         type_: ComponentType,
         no_core: bool,
     ) -> Result {
-        // @Beacon @Beacon @Beacon @Task do not create a *package* for a single component!
-        // decouple components further from packages (Component etc needs to be tweaked first obv)
-
-        // package *and* component name
         let name = parse_component_name_from_file_path(&file_path, &self.reporter)?;
-
-        let package = Package::file(name.clone(), file_path.clone());
-        let package = self.packages.insert(package);
-
-        self[package]
-            .components
-            .insert((name.clone(), type_), PossiblyUnresolved::Unresolved);
-
         let mut dependencies = HashMap::default();
 
         if !no_core {
@@ -362,7 +327,8 @@ impl BuildQueue {
             // in fact, all the logic was copied over from there and manually adjusted
             // @Task abstract over this
 
-            let core_manifest_path = core_package_path().join(manifest::FILE_NAME);
+            let core_package_path = core_package_path();
+            let core_manifest_path = core_package_path.join(manifest::FILE_NAME);
             let core_manifest_file = self.map().load(core_manifest_path.clone());
             let core_manifest_file = match core_manifest_file {
                 Ok(file) => file,
@@ -376,23 +342,29 @@ impl BuildQueue {
             };
 
             let core_manifest = PackageManifest::parse(core_manifest_file, self)?;
-            let core_package = Package::from_manifest(core_manifest.profile, core_package_path());
+            let core_package =
+                Package::from_manifest(core_manifest.profile, core_package_path.clone());
             let core_package = self.packages.insert(core_package);
 
             let core_package_name = core_package_name();
             let (_, Spanned!(_, library)) =
                 self.resolve_primary_library(core_manifest.components.as_ref())?;
 
+            let core_library_component_path = library
+                .path
+                .as_ref()
+                .map(|relative_path| core_package_path.join(relative_path));
+
             self[core_package].components.insert(
                 (core_package_name.clone(), ComponentType::Library),
-                PossiblyUnresolved::Unresolved,
+                PossiblyUnresolvedComponent::Unresolved,
             );
 
             let transitive_dependencies = self
                 .resolve_dependencies(
                     &core_package_name,
                     core_package,
-                    &core_package_path(),
+                    &core_package_path,
                     library.dependencies.as_ref(),
                 )
                 .map_err(|error| {
@@ -405,46 +377,34 @@ impl BuildQueue {
 
             let library = self.components.insert_with(|index| {
                 Component::new(
-                    ComponentMetadata::new(
-                        core_package_name.clone(),
-                        index,
-                        core_package,
-                        library
-                            .path
-                            .as_ref()
-                            .map(|relative_path| core_package_path().join(relative_path)),
-                        None,
-                        ComponentType::Library,
-                    ),
+                    core_package_name.clone(),
+                    index,
+                    core_library_component_path,
+                    None,
+                    ComponentType::Library,
                     transitive_dependencies,
                 )
             });
 
-            self[core_package].components.insert(
+            self.register_package_component(
+                core_package,
                 (core_package_name.clone(), ComponentType::Library),
-                PossiblyUnresolved::Resolved(library),
+                library,
             );
 
             dependencies.insert(core_package_name, library);
         }
 
-        let component = self.components.insert_with(|index| {
+        self.components.insert_with(|index| {
             Component::new(
-                ComponentMetadata::new(
-                    name.clone(),
-                    index,
-                    package,
-                    Spanned::new(default(), file_path),
-                    content,
-                    type_,
-                ),
+                name.clone(),
+                index,
+                Spanned::new(default(), file_path),
+                content,
+                type_,
                 dependencies,
             )
         });
-
-        self[package]
-            .components
-            .insert((name, type_), PossiblyUnresolved::Resolved(component));
 
         Ok(())
     }
@@ -531,8 +491,8 @@ impl BuildQueue {
                     .components
                     .get(&(component_endonym.bare.clone(), ComponentType::Library))
                 {
-                    Some(&PossiblyUnresolved::Resolved(index)) => Ok(index),
-                    Some(PossiblyUnresolved::Unresolved) => {
+                    Some(&PossiblyUnresolvedComponent::Resolved(index)) => Ok(index),
+                    Some(PossiblyUnresolvedComponent::Unresolved) => {
                         Err(DependencyResolutionError::UnresolvedLocalComponent(
                             component_endonym.cloned(),
                         ))
@@ -565,7 +525,7 @@ impl BuildQueue {
                     .find(|((name, type_), _)| {
                         name == component_endonym.bare && *type_ == ComponentType::Library
                     })
-                    .map(|(_, &library)| library);
+                    .map(|(_, library)| library);
 
                 // @Beacon @Task add a diag note for size-one cycles of the form `{ path: "." }` (etc) and
                 //               recommend the dep-provider `package` (…)
@@ -573,12 +533,12 @@ impl BuildQueue {
                 // @Beacon @Beacon @Note this probably won't scale to our new order-independent component resolver (maybe)
                 // if so, consider not throwing a cycle error (here / unconditionally)
                 return match library {
-                    Some(PossiblyUnresolved::Resolved(library)) => Ok(library),
+                    Some(&PossiblyUnresolvedComponent::Resolved(library)) => Ok(library),
                     // @Beacon @Beacon @Beacon @Task instead of reporting an error here, return a "custom"
                     //                               DepRepError::UnresolvedComponent here (add a param/flag to differentiate
                     //                               it from the case above) and @Task smh accumulate "inquirer"s so we can
                     //                               find_cycles later on for scalable diagnostics (> 3 packages that are cyclic)
-                    Some(PossiblyUnresolved::Unresolved) => {
+                    Some(PossiblyUnresolvedComponent::Unresolved) => {
                         // @Note the message does not scale to more complex cycles (e.g. a cycle of three components)
                         // @Task provide more context for transitive dependencies of the goal component
                         // @Task code
@@ -677,10 +637,15 @@ impl BuildQueue {
             );
         };
 
+        let library_component_path = library
+            .path
+            .as_ref()
+            .map(|relative_path| package_path.join(relative_path));
+
         // @Question should we prefill all components here too?
         self[package]
             .components
-            .insert(library_key.clone(), PossiblyUnresolved::Unresolved);
+            .insert(library_key.clone(), PossiblyUnresolvedComponent::Unresolved);
 
         // transitive dependencies from the perspective of the dependent package
         let dependencies = self.resolve_dependencies(
@@ -692,26 +657,30 @@ impl BuildQueue {
 
         let library = self.components.insert_with(|index| {
             Component::new(
-                ComponentMetadata::new(
-                    library_key.0.clone(),
-                    index,
-                    package,
-                    library
-                        .path
-                        .as_ref()
-                        .map(|relative_path| package_path.join(relative_path)),
-                    None,
-                    library_key.1,
-                ),
+                library_key.0.clone(),
+                index,
+                library_component_path,
+                None,
+                library_key.1,
                 dependencies,
             )
         });
 
-        self[package]
-            .components
-            .insert(library_key, PossiblyUnresolved::Resolved(library));
+        self.register_package_component(package, library_key, library);
 
         Ok(library)
+    }
+
+    fn register_package_component(
+        &mut self,
+        package: PackageIndex,
+        key: ComponentKey,
+        component: ComponentIndex,
+    ) {
+        self[package]
+            .components
+            .insert(key, PossiblyUnresolvedComponent::Resolved(component));
+        self.component_packages.insert(component, package);
     }
 
     fn resolve_dependency_declaration(
@@ -795,7 +764,7 @@ impl BuildQueue {
     fn resolve_primary_library<'m>(
         &self,
         components: Option<&'m Spanned<manifest::Components>>,
-    ) -> Result<(&'m ComponentKey, &'m Spanned<ComponentManifest>)> {
+    ) -> Result<(&'m manifest::ComponentKey, &'m Spanned<ComponentManifest>)> {
         components
             .and_then(|components| {
                 components
@@ -811,18 +780,17 @@ impl BuildQueue {
             })
     }
 
-    fn finalize(/*mut*/ self) -> (Components, BuildSession) {
+    fn finalize(self) -> (Components, BuildSession) {
         // @Bug no longer correct!
         // @Task introduce proper concept of target components replacing the
         // current concept of a goal component
         let goal_component = self.components.last().unwrap();
         let goal_component_index = goal_component.index();
-        let goal_package_index = goal_component.metadata.package;
 
         let session = BuildSession::new(
             self.packages,
+            self.component_packages,
             goal_component_index,
-            goal_package_index,
             &self.map,
             self.reporter,
         );

@@ -2,7 +2,7 @@
 
 NOTE: Add general information about golden testing and this test suite.
 
-The test suite contains both single-file packages and normal packages.
+The test suite contains both single source files and packages.
 
 NOTE: Add section on how to write a new test, how test configurations look etc.
 
