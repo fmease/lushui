@@ -25,11 +25,10 @@ use std::{
     ffi::OsStr,
     fmt, fs,
     io::Write,
-    lazy::SyncLazy,
     mem,
     path::{Path, PathBuf},
     process::{Command, ExitCode, Stdio},
-    sync::{Arc, Mutex},
+    sync::{Arc, LazyLock, Mutex},
     time::{Duration, Instant},
 };
 use summary::{TestSuiteStatistics, TestSuiteSummary};
@@ -732,14 +731,14 @@ fn compiler_manifest_path() -> PathBuf {
 }
 
 fn terminal_width() -> usize {
-    static TERMINAL_WIDTH: SyncLazy<usize> =
-        SyncLazy::new(|| terminal_size::terminal_size().map_or(100, |size| size.0 .0 as _));
+    static TERMINAL_WIDTH: LazyLock<usize> =
+        LazyLock::new(|| terminal_size::terminal_size().map_or(100, |size| size.0 .0 as _));
 
     *TERMINAL_WIDTH
 }
 
 fn test_folder_path() -> &'static str {
-    static TEST_FOLDER_PATH: SyncLazy<String> = SyncLazy::new(|| {
+    static TEST_FOLDER_PATH: LazyLock<String> = LazyLock::new(|| {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../tests")
             .canonicalize()
@@ -753,7 +752,7 @@ fn test_folder_path() -> &'static str {
 }
 
 fn distributed_libraries_path() -> &'static str {
-    static TEST_FOLDER_PATH: SyncLazy<String> = SyncLazy::new(|| {
+    static TEST_FOLDER_PATH: LazyLock<String> = LazyLock::new(|| {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../../libraries")
             .canonicalize()

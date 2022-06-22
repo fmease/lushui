@@ -7,7 +7,7 @@ use super::{
     token::{Token, TokenKind},
 };
 use crate::{
-    diagnostics::{Code, Diagnostic},
+    diagnostics::{Diagnostic, ErrorCode},
     error::PossiblyErroneous,
     span::{PossiblySpanning, SourceFileIndex, Span, Spanned, Spanning},
     utility::{obtain, Atom, SmallVec},
@@ -517,7 +517,7 @@ impl Path {
         if let Some(hanger) = other.hanger {
             if !matches!(hanger.bare, HangerKind::Self_) {
                 return Err(Diagnostic::error()
-                    .code(Code::E026)
+                    .code(ErrorCode::E026)
                     .message(format!("path ‘{}’ not allowed in this position", hanger))
                     .primary_span(&hanger)
                     .help("consider moving this path to a separate use-declaration"));

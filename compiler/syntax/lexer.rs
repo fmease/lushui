@@ -2,10 +2,7 @@
 
 use super::token::{Provenance, Token, TokenKind, UnterminatedTextLiteral};
 use crate::{
-    diagnostics::{
-        reporter::{ErasedReportedError, SilentReporter},
-        Code, Diagnostic, Reporter,
-    },
+    diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter},
     error::{Health, Outcome, Result},
     session::BuildSession,
     span::{LocalSpan, SourceFile, SourceFileIndex, SourceMap, Spanned},
@@ -35,7 +32,7 @@ pub fn lex(file: SourceFileIndex, session: &BuildSession) -> Result<Outcome<Vec<
 pub(crate) fn lex_string(source: String) -> Result<Outcome<Vec<Token>>, ()> {
     let mut map = SourceMap::default();
     let file = map.add(None, source);
-    Lexer::new(&map[file], &SilentReporter.into())
+    Lexer::new(&map[file], &Reporter::silent())
         .lex()
         .map_err(drop)
 }
@@ -142,7 +139,7 @@ impl<'a> Lexer<'a> {
             for bracket in &self.brackets.0 {
                 self.health.taint();
                 Diagnostic::error()
-                    .code(Code::E044)
+                    .code(ErrorCode::E044)
                     .message(format!("unbalanced {} bracket", bracket.bare))
                     .labeled_primary_span(
                         bracket,
@@ -272,7 +269,7 @@ impl<'a> Lexer<'a> {
             if self.local_span == previous {
                 self.local_span = LocalSpan::with_length(dash, 1);
                 return Err(Diagnostic::error()
-                    .code(Code::E045)
+                    .code(ErrorCode::E045)
                     .message("trailing dash on identifier")
                     .primary_span(self.span())
                     .report(self.reporter));
@@ -341,7 +338,7 @@ impl<'a> Lexer<'a> {
                 // @Task push that to the error buffer instead (making this non-fatal)
                 // and treat Spaces(1) as Spaces(4), Spaces(6) as Spaces(8) etc.
                 return Err(Diagnostic::error()
-                    .code(Code::E046)
+                    .code(ErrorCode::E046)
                     .message(format!(
                         "invalid indentation consisting of {} spaces",
                         difference.0
@@ -486,7 +483,7 @@ impl<'a> Lexer<'a> {
         if consecutive_separators || trailing_separator {
             if consecutive_separators {
                 Diagnostic::error()
-                    .code(Code::E005)
+                    .code(ErrorCode::E005)
                     .message("consecutive primes in number literal")
                     .primary_span(self.span())
                     .report(self.reporter);
@@ -494,7 +491,7 @@ impl<'a> Lexer<'a> {
 
             if trailing_separator {
                 Diagnostic::error()
-                    .code(Code::E005)
+                    .code(ErrorCode::E005)
                     .message("trailing prime in number literal")
                     .primary_span(self.span())
                     .report(self.reporter);
@@ -694,7 +691,7 @@ impl Brackets {
                     // @Beacon @Bug we are not smart enough here yet, the error messages are too confusing
                     // or even incorrect!
                     Err(Diagnostic::error()
-                        .code(Code::E044)
+                        .code(ErrorCode::E044)
                         .message(format!("unbalanced {closing_bracket} bracket"))
                         .labeled_primary_span(
                             closing_bracket,
@@ -705,7 +702,7 @@ impl Brackets {
             // @Beacon @Bug we are not smart enough here yet, the error messages are too confusing
             // or even incorrect!
             None => Err(Diagnostic::error()
-                .code(Code::E044)
+                .code(ErrorCode::E044)
                 .message(format!("unbalanced {closing_bracket} bracket"))
                 .labeled_primary_span(
                     closing_bracket,

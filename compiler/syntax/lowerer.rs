@@ -33,7 +33,7 @@ use super::{
     },
 };
 use crate::{
-    diagnostics::{reporter::ErasedReportedError, Code, Diagnostic, Reporter},
+    diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter},
     error::{Health, OkIfUntaintedExt, PossiblyErroneous, Result, Stain},
     session::BuildSession,
     span::{Span, Spanned, Spanning},
@@ -270,7 +270,7 @@ impl<'a> Lowerer<'a> {
             // @Task improve the labels etc, don't say "conflicting definition"
             // it's technically true, but we can do so much better!
             Diagnostic::error()
-                .code(Code::E020)
+                .code(ErrorCode::E020)
                 .message(format!(
                     "‘{}’ is defined multiple times in this scope",
                     constructor.binder
@@ -331,7 +331,7 @@ impl<'a> Lowerer<'a> {
                         // saying to create the missing file or change the access rights etc.
                         // @Note awkward API!
                         Diagnostic::error()
-                            .code(Code::E016)
+                            .code(ErrorCode::E016)
                             .message(format!("could not load the module ‘{}’", module.binder))
                             .primary_span(span)
                             .note(IOError(error, &path).to_string())
@@ -377,7 +377,7 @@ impl<'a> Lowerer<'a> {
                     attributes = self.check_attribute_synergy(attributes);
                 } else {
                     Diagnostic::error()
-                        .code(Code::E041)
+                        .code(ErrorCode::E041)
                         .message("the module header has to be the first declaration of the module")
                         .primary_span(&declaration)
                         .with(|error| {
@@ -657,7 +657,7 @@ impl<'a> Lowerer<'a> {
                         Some(expression) => expression,
                         None => {
                             Diagnostic::error()
-                                .code(Code::E012)
+                                .code(ErrorCode::E012)
                                 .message(format!("the let-binding ‘{}’ has no definition", binder))
                                 .primary_span(
                                     let_in
@@ -872,7 +872,7 @@ impl<'a> Lowerer<'a> {
                 if !expected_targets.contains(actual_targets) {
                     // @Question wording: "cannot be ascribed to"?
                     Diagnostic::error()
-                        .code(Code::E013)
+                        .code(ErrorCode::E013)
                         .message(format!(
                             "attribute ‘{}’ is ascribed to {}",
                             attribute.bare.name(),
@@ -925,7 +925,7 @@ impl<'a> Lowerer<'a> {
 
             if let [first, _second, ..] = &*homonymous_attributes {
                 Diagnostic::error()
-                    .code(Code::E006)
+                    .code(ErrorCode::E006)
                     .message(format!("multiple ‘{}’ attributes", first.bare.name()))
                     .labeled_primary_spans(
                         homonymous_attributes,
@@ -955,7 +955,7 @@ impl<'a> Lowerer<'a> {
                     .list(Conjunction::And);
 
                 return Err(Diagnostic::error()
-                    .code(Code::E014)
+                    .code(ErrorCode::E014)
                     .message(format!("attributes {listing} are mutually exclusive"))
                     .labeled_primary_spans(attributes, "conflicting attribute")
                     .report(reporter));
@@ -1002,7 +1002,7 @@ impl<'a> Lowerer<'a> {
         if !self.options.internal_features_enabled {
             for attribute in attributes.filter(Predicate(AttributeKind::is_internal)) {
                 Diagnostic::error()
-                    .code(Code::E038)
+                    .code(ErrorCode::E038)
                     .message(format!(
                         "the attribute ‘{}’ is an internal feature",
                         attribute.bare.name()
@@ -1136,7 +1136,7 @@ impl lowered_ast::AttributeKind {
                 // @Task add more information about the arity and the argument types
                 AttributeParsingError::Erased(
                     Diagnostic::error()
-                        .code(Code::E019)
+                        .code(ErrorCode::E019)
                         .message("too few attribute arguments provided")
                         .primary_span(span)
                         .report(reporter),
@@ -1246,7 +1246,7 @@ impl lowered_ast::AttributeKind {
                         .map_err(|_| {
                             AttributeParsingError::Erased(
                                 Diagnostic::error()
-                                    .code(Code::E008)
+                                    .code(ErrorCode::E008)
                                     .message(format!(
                                         "attribute argument does not fit integer interval {}",
                                         NAT32_INTERVAL_REPRESENTATION
@@ -1281,7 +1281,7 @@ impl lowered_ast::AttributeKind {
             // no argument was parsed either
             if let Some(argument) = arguments.first() {
                 Diagnostic::error()
-                    .code(Code::E019)
+                    .code(ErrorCode::E019)
                     .message("too many attribute arguments provided")
                     .primary_span(argument.span.merge(arguments.last()))
                     .report(session.reporter());
@@ -1292,7 +1292,7 @@ impl lowered_ast::AttributeKind {
         result
             .map_err(|error| match error {
                 AttributeParsingError::UndefinedAttribute(binder) => Diagnostic::error()
-                    .code(Code::E011)
+                    .code(ErrorCode::E011)
                     .message(format!("the attribute ‘{binder}’ is not defined"))
                     .primary_span(&binder)
                     .report(session.reporter()),
@@ -1447,7 +1447,7 @@ impl lowered_ast::attributes::Lint {
     fn parse(binder: Path, reporter: &Reporter) -> Result<Self, AttributeParsingError> {
         Err(AttributeParsingError::Erased(
             Diagnostic::error()
-                .code(Code::E018)
+                .code(ErrorCode::E018)
                 .message(format!("the lint ‘{}’ is not defined", binder))
                 .primary_span(binder.span())
                 .report(reporter),
@@ -1458,7 +1458,7 @@ impl lowered_ast::attributes::Lint {
 impl Diagnostic {
     fn invalid_unnamed_path_hanger(hanger: ast::Hanger) -> Self {
         Self::error()
-            .code(Code::E025)
+            .code(ErrorCode::E025)
             .message(format!("path ‘{hanger}’ is not bound to an identifier"))
             .primary_span(&hanger)
             .note("a use-declaration has to introduce at least one new binder")
@@ -1471,7 +1471,7 @@ impl Diagnostic {
         expected: &'static str,
     ) -> Self {
         Self::error()
-            .code(Code::E028)
+            .code(ErrorCode::E028)
             .message(format!(
                 "found named argument ‘{actual}’ but expected ‘{expected}’"
             ))
@@ -1484,7 +1484,7 @@ impl Diagnostic {
         expected: &'static str,
     ) -> Self {
         Self::error()
-            .code(Code::E027)
+            .code(ErrorCode::E027)
             .message(format!("found {actual} but expected {expected}"))
             .primary_span(actual)
     }
@@ -1507,7 +1507,7 @@ impl Diagnostic {
         };
 
         Self::error()
-            .code(Code::E015)
+            .code(ErrorCode::E015)
             .message(format!("the {target} does not have a type annotation"))
             .primary_span(spanning)
             .note(format!(

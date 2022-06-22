@@ -1,195 +1,233 @@
 //! The diagnostic reporter.
 
-// @Task support formatting as JSON, maybe also as HTML
-// @Task support formatting diagnostics in a short form
-// @Note we probably need to restructure the enum to
-// a struct containing configuration options
-
-use super::{Diagnostic, Severity};
+use super::{Diagnostic, ErrorCode, Severity, UntaggedDiagnostic};
 use crate::{
     span::SourceMap,
     utility::{pluralize, Conjunction, ListingExt},
 };
+use report::{Report, ReportOutput};
 use std::{
     collections::BTreeSet,
     default::default,
+    mem,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex, RwLock, RwLockReadGuard,
     },
 };
 
-/// The diagnostic reporter.
-pub struct Reporter(ReporterKind);
+/// A diagnostic reporter.
+pub struct Reporter {
+    kind: ReporterKind,
+    map: Option<Arc<RwLock<SourceMap>>>,
+}
 
 impl Reporter {
-    // @Task only return ErasedReportedError for error diagnostics! (@Bug)
-    // @Task only return ErasedReportedError for non-silent reporters (@Bug)
-    pub(super) fn report(&self, diagnostic: Diagnostic) -> ErasedReportedError {
-        match &self.0 {
-            ReporterKind::Silent => {}
-            ReporterKind::Stderr(reporter) => reporter.report(diagnostic),
-            ReporterKind::BufferedStderr(reporter) => reporter.report_or_buffer(diagnostic),
-        }
+    fn new(kind: ReporterKind) -> Self {
+        Self { kind, map: None }
+    }
 
-        ErasedReportedError(())
+    pub fn silent() -> Self {
+        Self::new(ReporterKind::Silent)
+    }
+
+    pub(crate) fn buffer(diagnostics: Arc<Mutex<BTreeSet<UntaggedDiagnostic>>>) -> Self {
+        Self::new(ReporterKind::Buffer(diagnostics))
+    }
+
+    pub fn stderr() -> Self {
+        Self::new(ReporterKind::Stderr)
+    }
+
+    // @Task wrap the Arc<AtomicBool> so it cannot be modified from outside this module
+    pub fn buffered_stderr(reported_any_errors: Arc<AtomicBool>) -> Self {
+        Self::new(ReporterKind::BufferedStderr(StderrBuffer {
+            errors: default(),
+            warnings: default(),
+            reported_any_errors,
+        }))
+    }
+
+    #[must_use]
+    pub fn with_map(mut self, map: Arc<RwLock<SourceMap>>) -> Self {
+        self.map = Some(map);
+        self
+    }
+
+    fn map(&self) -> Option<RwLockReadGuard<'_, SourceMap>> {
+        self.map.as_ref().map(|map| map.read().unwrap())
+    }
+
+    // @Task only return ErasedReportedError for non-silent reporters (@Bug)
+    pub(super) fn report<const S: Severity>(&self, diagnostic: Diagnostic<S>) -> ReportOutput<S>
+    where
+        Diagnostic<S>: Report,
+    {
+        self.report_untagged(diagnostic.0);
+        Diagnostic::<S>::OUTPUT
+    }
+
+    fn report_untagged(&self, diagnostic: UntaggedDiagnostic) {
+        match &self.kind {
+            ReporterKind::Silent => {}
+            ReporterKind::Buffer(diagnostics) => {
+                diagnostics.lock().unwrap().insert(diagnostic);
+            }
+            ReporterKind::Stderr => stderr_print(&diagnostic.format(self.map().as_deref())),
+            ReporterKind::BufferedStderr(buffer) => match diagnostic.severity {
+                Severity::Bug | Severity::Error => {
+                    buffer.errors.lock().unwrap().insert(diagnostic);
+                }
+                Severity::Warning => {
+                    buffer.warnings.lock().unwrap().insert(diagnostic);
+                }
+                Severity::Debug => {
+                    stderr_print(&diagnostic.format(self.map().as_deref()));
+                }
+            },
+        }
+    }
+}
+
+impl Drop for Reporter {
+    fn drop(&mut self) {
+        if let ReporterKind::BufferedStderr(buffer) = &self.kind {
+            buffer.report(self.map().as_deref());
+        }
     }
 }
 
 enum ReporterKind {
     Silent,
-    Stderr(StderrReporter),
-    BufferedStderr(BufferedStderrReporter),
+    Buffer(Buffer),
+    Stderr,
+    BufferedStderr(StderrBuffer),
 }
 
-pub struct SilentReporter;
+pub(crate) type Buffer = Arc<Mutex<BTreeSet<UntaggedDiagnostic>>>;
 
-impl From<SilentReporter> for Reporter {
-    fn from(_: SilentReporter) -> Self {
-        Self(ReporterKind::Silent)
-    }
-}
-
-pub struct StderrReporter {
-    map: Option<Arc<RwLock<SourceMap>>>,
-}
-
-impl StderrReporter {
-    pub fn new(map: Option<Arc<RwLock<SourceMap>>>) -> Self {
-        Self { map }
-    }
-
-    fn report(&self, diagnostic: Diagnostic) {
-        let map = self.map.as_ref().map(|map| map.read().unwrap());
-        print_to_stderr(&diagnostic.format_for_terminal(map.as_deref()));
-    }
-}
-
-impl From<StderrReporter> for Reporter {
-    fn from(reporter: StderrReporter) -> Self {
-        Self(ReporterKind::Stderr(reporter))
-    }
-}
-
-pub struct BufferedStderrReporter {
-    errors: Mutex<BTreeSet<Diagnostic>>,
+struct StderrBuffer {
+    errors: Mutex<BTreeSet<UntaggedDiagnostic>>,
+    warnings: Mutex<BTreeSet<UntaggedDiagnostic>>,
     reported_any_errors: Arc<AtomicBool>,
-    warnings: Mutex<BTreeSet<Diagnostic>>,
-    map: Arc<RwLock<SourceMap>>,
 }
 
-impl BufferedStderrReporter {
-    pub fn new(map: Arc<RwLock<SourceMap>>, reported_any_errors: Arc<AtomicBool>) -> Self {
-        Self {
-            errors: default(),
-            reported_any_errors,
-            warnings: default(),
-            map,
-        }
-    }
-
-    fn map(&self) -> RwLockReadGuard<'_, SourceMap> {
-        self.map.read().unwrap()
-    }
-
-    fn report_or_buffer(&self, diagnostic: Diagnostic) {
-        match diagnostic.0.severity {
-            Severity::Bug | Severity::Error => {
-                self.errors.lock().unwrap().insert(diagnostic);
-            }
-            Severity::Warning => {
-                self.warnings.lock().unwrap().insert(diagnostic);
-            }
-            Severity::Debug => {
-                print_to_stderr(&diagnostic.format_for_terminal(Some(&self.map())));
-            }
-        };
-    }
-
-    fn report_buffered_diagnostics(&self) {
-        let warnings = std::mem::take(&mut *self.warnings.lock().unwrap());
+impl StderrBuffer {
+    fn report(&self, map: Option<&SourceMap>) {
+        let warnings = mem::take(&mut *self.warnings.lock().unwrap());
 
         for warning in &warnings {
-            print_to_stderr(&warning.format_for_terminal(Some(&self.map())));
+            stderr_print(&warning.format(map));
         }
 
         if !warnings.is_empty() {
-            let summary = Diagnostic::warning()
-                .message(format!(
-                    "emitted {} {}",
-                    warnings.len(),
-                    pluralize!(warnings.len(), "warning")
-                ))
-                .format_for_terminal(Some(&self.map()));
-
-            print_to_stderr(&summary);
+            Self::report_warning_summary(warnings, map);
         }
 
-        let errors = std::mem::take(&mut *self.errors.lock().unwrap());
+        let errors = mem::take(&mut *self.errors.lock().unwrap());
 
         for error in &errors {
-            print_to_stderr(&error.format_for_terminal(Some(&self.map())));
+            stderr_print(&error.format(map));
         }
 
         if !errors.is_empty() {
             self.reported_any_errors.store(true, Ordering::SeqCst);
-
-            let explained_codes: BTreeSet<_> = errors
-                .iter()
-                .filter_map(|error| error.0.code)
-                .filter(|code| code.explanation().is_some())
-                .collect();
-
-            let summary = Diagnostic::error()
-                .message(pluralize!(
-                    errors.len(),
-                    "aborting due to previous error",
-                    format!("aborting due to {} previous errors", errors.len()),
-                ))
-                .with(|error| {
-                    if !explained_codes.is_empty() {
-                        error
-                            .note(format!(
-                                "the {errors} {codes} {have} a detailed explanation",
-                                errors = pluralize!(explained_codes.len(), "error"),
-                                codes = explained_codes.iter().list(Conjunction::And),
-                                have = pluralize!(explained_codes.len(), "has", "have"),
-                            ))
-                            // @Task don't use the CLI syntax in the lib, only in the bin (sep. of concerns)
-                            .help(pluralize!(
-                                explained_codes.len(),
-                                format!(
-                                    "run ‘lushui explain {}’ to view it",
-                                    explained_codes.first().unwrap()
-                                ),
-                                "run ‘lushui explain <CODES...>’ to view a selection of them"
-                            ))
-                    } else {
-                        error
-                    }
-                })
-                .format_for_terminal(Some(&self.map()));
-
-            print_to_stderr(&summary);
+            Self::report_error_summary(errors, map);
         }
     }
-}
 
-impl Drop for BufferedStderrReporter {
-    fn drop(&mut self) {
-        self.report_buffered_diagnostics();
+    fn report_error_summary(errors: BTreeSet<UntaggedDiagnostic>, map: Option<&SourceMap>) {
+        let explained_codes: BTreeSet<_> = errors
+            .iter()
+            .filter_map(|error| error.code)
+            .filter(|&code| ErrorCode::try_from(code).unwrap().explanation().is_some())
+            .collect();
+
+        let summary = Diagnostic::error()
+            .message(pluralize!(
+                errors.len(),
+                "aborting due to previous error",
+                format!("aborting due to {} previous errors", errors.len()),
+            ))
+            .with(|error| {
+                if !explained_codes.is_empty() {
+                    error
+                        .note(format!(
+                            "the {errors} {codes} {have} a detailed explanation",
+                            errors = pluralize!(explained_codes.len(), "error"),
+                            codes = explained_codes.iter().list(Conjunction::And),
+                            have = pluralize!(explained_codes.len(), "has", "have"),
+                        ))
+                        // @Task don't use the CLI syntax in the lib, only in the bin (sep. of concerns)
+                        .help(pluralize!(
+                            explained_codes.len(),
+                            format!(
+                                "run ‘lushui explain {}’ to view it",
+                                explained_codes.first().unwrap()
+                            ),
+                            "run ‘lushui explain <CODES...>’ to view a selection of them"
+                        ))
+                } else {
+                    error
+                }
+            })
+            .format(map);
+
+        stderr_print(&summary);
+    }
+
+    fn report_warning_summary(warnings: BTreeSet<UntaggedDiagnostic>, map: Option<&SourceMap>) {
+        let summary = Diagnostic::warning()
+            .message(format!(
+                "emitted {} {}",
+                warnings.len(),
+                pluralize!(warnings.len(), "warning")
+            ))
+            .format(map);
+
+        stderr_print(&summary);
     }
 }
 
-impl From<BufferedStderrReporter> for Reporter {
-    fn from(reporter: BufferedStderrReporter) -> Self {
-        Self(ReporterKind::BufferedStderr(reporter))
-    }
-}
-
-fn print_to_stderr(message: &impl std::fmt::Display) {
+fn stderr_print(message: &impl std::fmt::Display) {
     eprintln!("{message}");
     eprintln!();
+}
+
+pub(super) mod report {
+    use super::{Diagnostic, ErasedReportedError, Severity};
+
+    pub type ReportOutput<const S: Severity> = <Diagnostic<S> as Report>::Output;
+
+    pub trait Report {
+        type Output;
+
+        const OUTPUT: Self::Output;
+    }
+
+    impl Report for Diagnostic<{ Severity::Bug }> {
+        type Output = ErasedReportedError;
+
+        const OUTPUT: Self::Output = ErasedReportedError(());
+    }
+
+    impl Report for Diagnostic<{ Severity::Error }> {
+        type Output = ErasedReportedError;
+
+        const OUTPUT: Self::Output = ErasedReportedError(());
+    }
+
+    impl Report for Diagnostic<{ Severity::Warning }> {
+        type Output = ();
+
+        const OUTPUT: Self::Output = ();
+    }
+
+    impl Report for Diagnostic<{ Severity::Debug }> {
+        type Output = ();
+
+        const OUTPUT: Self::Output = ();
+    }
 }
 
 /// A witness to / token for a [reported](Diagnostic::report) error.
@@ -218,8 +256,7 @@ fn print_to_stderr(message: &impl std::fmt::Display) {
 /// The code base has not been fully adapted to this design yet. Therefore there are still quite a
 /// few soundness holes: Values of this type can be obtained
 ///
-/// * from a [`SilentReporter`]
-/// * by reporting non-error diagnostics (warnings and internal debug messages)
+/// * from a silent reporter
 #[derive(Clone, Copy, Debug)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct ErasedReportedError(());

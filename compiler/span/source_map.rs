@@ -84,10 +84,7 @@ impl SourceMap {
         &file[span]
     }
 
-    /// Resolve a span to various information useful for highlighting.
-    // @Task update docs
-    // @Task better name
-    pub(crate) fn lines(&self, span: Span) -> Lines<'_> {
+    pub(crate) fn lines_with_highlight(&self, span: Span) -> LinesWithHighlight<'_> {
         let file = self.file(span);
         let span = span.local(file);
 
@@ -106,7 +103,7 @@ impl SourceMap {
                 if first_line.is_some() {
                     // the first line of the highlight has been found
                     // prepare for finding the final line (which might coincide with the first)
-                    current_line.highlight = Some(Highlight {
+                    current_line.highlight = Some(InterimHighlight {
                         start: index,
                         end: None,
                     });
@@ -114,7 +111,7 @@ impl SourceMap {
             }
 
             if index == span.start {
-                current_line.highlight = Some(Highlight {
+                current_line.highlight = Some(InterimHighlight {
                     start: index,
                     end: None,
                 });
@@ -160,7 +157,7 @@ impl SourceMap {
             }
 
             if index == span.start {
-                current_line.highlight = Some(Highlight {
+                current_line.highlight = Some(InterimHighlight {
                     start: index,
                     end: None,
                 });
@@ -195,10 +192,11 @@ impl SourceMap {
         }
 
         struct InterimLine {
+            /// One-indexed line number.
             number: u32,
             start: Option<LocalByteIndex>,
             end: Option<LocalByteIndex>,
-            highlight: Option<Highlight>,
+            highlight: Option<InterimHighlight>,
         }
 
         impl InterimLine {
@@ -215,41 +213,44 @@ impl SourceMap {
                 std::mem::replace(self, Self::new(line_number))
             }
 
-            fn resolve(self, file: &SourceFile) -> Option<Line<'_>> {
-                let start = self.start?;
+            fn resolve(self, file: &SourceFile) -> Option<LineWithHighlight<'_>> {
+                let line_start = self.start?;
+                let line_end = self.end?;
                 let highlight = self.highlight?;
+                let highlight_start = highlight.start;
+                let highlight_end = highlight.end?;
 
-                let end = self.end?;
+                let highlight_prefix = &file[LocalSpan::new(line_start, highlight_start)];
+                let highlight = &file[LocalSpan::new(highlight_start, highlight_end)];
 
-                Some(Line {
+                // @Beacon @Task avoid calling `.chars().count()` if possible for
+                // performance reasons and try to derive this information from
+                // `InterimLine` (or enrich that data structure if it doesn't contain it)
+                let start = highlight_prefix.chars().count() + 1;
+                let end = start + highlight.chars().count();
+
+                Some(LineWithHighlight {
                     number: self.number,
-                    content: &file[LocalSpan::new(start, end)],
-                    highlight_width: file[LocalSpan::new(highlight.start, highlight.end?)].width(),
-                    highlight_padding_width: match start <= highlight.start {
-                        true => file[LocalSpan::new(start, highlight.start)].width(),
-                        false => 0,
-                    },
-                    // @Beacon @Beacon @Beacon @Bug this uses #bytes but it should use #chars
-                    // @Question or should it use graphemes??
-                    // highlight_start_column: usize::from(highlight.start + 1 - start),
-                    // @Temporary
-                    highlight_start_column: match start <= highlight.start {
-                        true => (highlight.start - start + 1).into(),
-                        false => 0,
+                    content: &file[LocalSpan::new(line_start, line_end)],
+                    highlight: Highlight {
+                        start: start.try_into().unwrap(),
+                        end: end.try_into().unwrap(),
+                        width: highlight.width(),
+                        prefix_width: highlight_prefix.width(),
                     },
                 })
             }
         }
 
-        struct Highlight {
+        struct InterimHighlight {
             start: LocalByteIndex,
             end: Option<LocalByteIndex>,
         }
 
-        Lines {
+        LinesWithHighlight {
             path: file.path.as_deref(),
-            first_line: first_line.unwrap().resolve(file).unwrap(),
-            last_line: last_line.map(|line| line.resolve(file).unwrap()),
+            first: first_line.unwrap().resolve(file).unwrap(),
+            last: last_line.map(|line| line.resolve(file).unwrap()),
         }
     }
 }
@@ -267,28 +268,33 @@ pub struct SourceFileIndex(usize);
 
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
-pub(crate) struct Lines<'a> {
+pub(crate) struct LinesWithHighlight<'a> {
     pub(crate) path: Option<&'a Path>,
-    pub(crate) first_line: Line<'a>,
+    pub(crate) first: LineWithHighlight<'a>,
     /// This is `None` if the last is the first line.
-    pub(crate) last_line: Option<Line<'a>>,
+    pub(crate) last: Option<LineWithHighlight<'a>>,
 }
 
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
-pub(crate) struct Line<'a> {
+pub(crate) struct LineWithHighlight<'a> {
+    /// One-indexed line number.
     pub(crate) number: u32,
     /// The content of the entire line that contains the to-be-highlighted snippet.
     ///
     /// It may contain the whole snippet or only the starting or the ending part of it
     /// if the snippet spans multiple lines.
     pub(crate) content: &'a str,
-    /// The Unicode width of the to-be-highlighted snippet.
-    pub(crate) highlight_width: usize,
-    // @Beacon @Beacon @Beacon @Task docs
-    pub(crate) highlight_padding_width: usize,
-    // @Beacon @Beacon @Beacon @Bug this uses #bytes but it should use #chars
-    pub(crate) highlight_start_column: usize,
+    pub(crate) highlight: Highlight,
+}
+
+#[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
+pub(crate) struct Highlight {
+    pub(crate) start: u32,
+    pub(crate) end: u32,
+    pub(crate) width: usize,
+    pub(crate) prefix_width: usize,
 }
 
 /// A source file.

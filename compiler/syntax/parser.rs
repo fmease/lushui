@@ -39,7 +39,7 @@ use super::{
     Word,
 };
 use crate::{
-    diagnostics::{reporter::ErasedReportedError, Code, Diagnostic},
+    diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode},
     error::Result,
     session::BuildSession,
     span::{SourceFileIndex, Span, Spanned, Spanning},
@@ -82,7 +82,7 @@ pub fn parse_root_module_file(
             // @Beacon @Task add component+packagename(+path?) and other details/explanations
             // @Question is the common code justified?
             Diagnostic::error()
-                .code(Code::E036)
+                .code(ErrorCode::E036)
                 .message(format!(
                     "the name of the root module ‘{name}’ is not a valid word"
                 ))
@@ -1986,7 +1986,7 @@ fn delimiters_with_expected(
 impl Expected {
     fn but_actual_is(self, actual: &Token) -> Diagnostic {
         Diagnostic::error()
-            .code(Code::E010)
+            .code(ErrorCode::E010)
             .message(format!("found {actual} but expected {self}"))
             .labeled_primary_span(actual, "unexpected token")
     }

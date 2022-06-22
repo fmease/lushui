@@ -8,7 +8,7 @@
 //! * negative numbers
 
 use crate::{
-    diagnostics::{reporter::ErasedReportedError, Code, Diagnostic, Reporter},
+    diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter},
     error::Result,
     span::{SourceFileIndex, SourceMap, Span, Spanned, Spanning, WeaklySpanned},
     utility::{obtain, HashMap},
@@ -209,7 +209,7 @@ pub(crate) fn convert<T: TryFrom<ValueKind, Error = TypeError>>(
             .try_into()
             .map_err(|TypeError { expected, actual }| {
                 Diagnostic::error()
-                    .code(Code::E800)
+                    .code(ErrorCode::E800)
                     .message(format!(
                         "expected type ‘{expected}’ but got type ‘{actual}’",
                     ))
@@ -236,7 +236,7 @@ impl<'r> RecordWalker<'r> {
         match self.record.bare.remove(key) {
             Some(value) => convert(value, self.reporter),
             None => Err(Diagnostic::error()
-                .code(Code::E802)
+                .code(ErrorCode::E802)
                 .message(format!("the record does not contain the entry ‘{key}’"))
                 .primary_span(&self.record)
                 .report(self.reporter)),
@@ -258,7 +258,7 @@ impl<'r> RecordWalker<'r> {
             for key in self.record.bare.into_keys() {
                 // @Question should we use the "unknown" terminology?
                 Diagnostic::error()
-                    .code(Code::E801)
+                    .code(ErrorCode::E801)
                     .message(format!("the record contains the unknown entry ‘{key}’"))
                     .primary_span(key)
                     .report(self.reporter);

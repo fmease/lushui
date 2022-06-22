@@ -2,7 +2,7 @@
 
 use crate::{
     component::{Component, ComponentIndex, ComponentMetadata, ComponentType, Components},
-    diagnostics::{reporter::ErasedReportedError, Code, Diagnostic, Reporter},
+    diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter},
     error::Result,
     metadata::Record,
     session::BuildSession,
@@ -63,6 +63,7 @@ pub fn resolve_package(
 /// Resolve the components and dependencies of a file given its path without building anything.
 pub fn resolve_file(
     path: &Path,
+    content: Option<String>,
     component_type: ComponentType,
     no_core: bool,
     map: &Arc<RwLock<SourceMap>>,
@@ -80,7 +81,7 @@ pub fn resolve_file(
     };
 
     let mut queue = BuildQueue::new(map, reporter);
-    queue.resolve_file(path, component_type, no_core)?;
+    queue.resolve_file(path, content, component_type, no_core)?;
     Ok(queue.finalize())
 }
 
@@ -116,6 +117,11 @@ impl Package {
         }
     }
 
+    // @Note this just doesn't feel right! source files as "single-file packages"
+    // @Task remove the concept of "single-file packages" (the name is ambiguous, too!)
+    // @Note since the package system revamp, components (Component) store their dependencies
+    //       on their on, not "their" package
+    // @Beacon @Beacon @Beacon @Task get rid of this!
     fn file(name: Word, path: PathBuf) -> Self {
         Self {
             name,
@@ -273,6 +279,7 @@ impl BuildQueue {
                                     .path
                                     .as_ref()
                                     .map(|relative_path| package_path.join(relative_path)),
+                                None,
                                 type_.bare,
                             ),
                             dependencies,
@@ -328,7 +335,16 @@ impl BuildQueue {
         }
     }
 
-    fn resolve_file(&mut self, file_path: PathBuf, type_: ComponentType, no_core: bool) -> Result {
+    fn resolve_file(
+        &mut self,
+        file_path: PathBuf,
+        content: Option<String>,
+        type_: ComponentType,
+        no_core: bool,
+    ) -> Result {
+        // @Beacon @Beacon @Beacon @Task do not create a *package* for a single component!
+        // decouple components further from packages (Component etc needs to be tweaked first obv)
+
         // package *and* component name
         let name = parse_component_name_from_file_path(&file_path, &self.reporter)?;
 
@@ -397,6 +413,7 @@ impl BuildQueue {
                             .path
                             .as_ref()
                             .map(|relative_path| core_package_path().join(relative_path)),
+                        None,
                         ComponentType::Library,
                     ),
                     transitive_dependencies,
@@ -418,6 +435,7 @@ impl BuildQueue {
                     index,
                     package,
                     Spanned::new(default(), file_path),
+                    content,
                     type_,
                 ),
                 dependencies,
@@ -682,6 +700,7 @@ impl BuildQueue {
                         .path
                         .as_ref()
                         .map(|relative_path| package_path.join(relative_path)),
+                    None,
                     library_key.1,
                 ),
                 dependencies,
@@ -850,7 +869,7 @@ fn parse_component_name_from_file_path(path: &Path, reporter: &Reporter) -> Resu
         // @Question isn't this function used in such a way that it's
         //     "component and package name"?
         Diagnostic::error()
-            .code(Code::E036)
+            .code(ErrorCode::E036)
             .message(format!("the component name ‘{name}’ is not a valid word"))
             .report(reporter)
     })

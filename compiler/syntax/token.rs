@@ -1,7 +1,7 @@
 //! The tokens emitted by the lexer.
 
 use crate::{
-    diagnostics::{Code, Diagnostic},
+    diagnostics::{Diagnostic, ErrorCode},
     span::Spanned,
     utility::{obtain, quoted, Atom},
 };
@@ -48,7 +48,7 @@ impl Token {
         match self.bare {
             TextLiteral(Ok(content)) => Some(Ok(content)),
             TextLiteral(Err(_)) => Some(Err(Diagnostic::error()
-                .code(Code::E047)
+                .code(ErrorCode::E047)
                 .message("unterminated text literal")
                 .primary_span(self.span))),
             _ => None,

@@ -1,6 +1,6 @@
 use crate::{
     component::{Component, ComponentIndex},
-    diagnostics::{Code, Diagnostic, Reporter},
+    diagnostics::{Diagnostic, ErrorCode, Reporter},
     entity::{Entity, EntityKind},
     error::Result,
     hir::{self, DeclarationIndex, Expression, ExpressionKind, Identifier},
@@ -62,8 +62,6 @@ impl BuildSession {
 
     #[cfg(test)]
     pub(crate) fn test() -> Self {
-        use crate::diagnostics::reporter::StderrReporter;
-
         let map: Arc<RwLock<SourceMap>> = default();
 
         Self {
@@ -75,7 +73,7 @@ impl BuildSession {
             intrinsic_types: default(),
             intrinsic_functions: default(),
             map: map.clone(),
-            reporter: StderrReporter::new(Some(map)).into(),
+            reporter: Reporter::stderr().with_map(map),
         }
     }
 
@@ -138,7 +136,7 @@ impl BuildSession {
     ) -> Result {
         let Some(binding) = KnownBinding::parse(namespace, binder.as_str()) else {
             return Err(Diagnostic::error()
-                .code(Code::E063)
+                .code(ErrorCode::E063)
                 .message(format!(
                     "‘{}{binder}’ is not a known binding",
                     namespace.map(|namespace| format!(".{namespace}"))
@@ -151,7 +149,7 @@ impl BuildSession {
 
         if let Some(previous) = self.known_bindings.get(&binding) {
             return Err(Diagnostic::error()
-                .code(Code::E039)
+                .code(ErrorCode::E039)
                 .message(format!(
                     "the known binding ‘{}’ is defined multiple times",
                     binding.path()
@@ -187,7 +185,7 @@ impl BuildSession {
 
         if let Some(previous) = self.intrinsic_type(intrinsic) {
             return Err(Diagnostic::error()
-                .code(Code::E040)
+                .code(ErrorCode::E040)
                 .message(format!(
                     "the intrinsic type ‘{intrinsic}’ is defined multiple times",
                 ))
@@ -289,7 +287,7 @@ impl Index<PackageIndex> for BuildSession {
 
 impl Diagnostic {
     fn missing_known_binding(binding: KnownBinding) -> Self {
-        Self::error().code(Code::E062).message(format!(
+        Self::error().code(ErrorCode::E062).message(format!(
             "the known binding ‘{}’ is not defined",
             binding.path()
         ))
@@ -302,13 +300,13 @@ impl Diagnostic {
 
     fn unrecognized_intrinsic_binding(name: &str, kind: IntrinsicKind) -> Self {
         Self::error()
-            .code(Code::E061)
+            .code(ErrorCode::E061)
             .message(format!("‘{name}’ is not an intrinsic {kind}"))
     }
 
     fn missing_intrinsic_binding(intrinsic: IntrinsicType, kind: IntrinsicKind) -> Self {
         Self::error()
-            .code(Code::E060)
+            .code(ErrorCode::E060)
             .message(format!("the intrinsic {kind} ‘{intrinsic}’ is not defined"))
     }
 }

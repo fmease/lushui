@@ -59,10 +59,27 @@ If you want to restrict yourself to UI tests, execute `./test/ui/run`.
 
 == Tooling
 
-No IDE is available yet.
-However basic syntax highlighting is available for Visual Studio Code as an extension.
-To install it, copy or symlink the folder `./project/vscode/fmease.lushui-syntax-0.0.1/` to `~/.vscode/extensions/` (Linux).
-For package metadata files, we provide a VS Code extension, too, separately at `./project/vscode/fmease.lushui-metadata-syntax-0.0.1`.
+=== Visual Studio Code
+
+Basic language support (syntax highlighting and a rudimentary language server) is available as an extension.
+For package metadata files, we currently provide a separate extension.
+It's planned to be integrated into the main extension at some point.
+
+==== Installation (Linux)
+
+To build the language server, change into `./project/editors/vscode/fmease.lushui-0.0.1/` and type:
+
+[source,sh]
+----
+npm install
+npm run compile
+----
+
+Then, copy or symlink the folder to `~/.vscode/extensions/`.
+The compiler currently needs to be added to the `$PATH` as `lushui` for the language server to work.
+
+For Lushui Metadata support, copy or symlink the folder `./project/editor/vscode/fmease.lushui-metadata-syntax-0.0.1`
+to `~/.vscode/extensions/`.
 
 == Generated API Documentation
 

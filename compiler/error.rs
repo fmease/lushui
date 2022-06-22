@@ -1,11 +1,10 @@
 //! Different error handling mechanisms.
 
-use std::fmt;
-
 use crate::{
     diagnostics::{reporter::ErasedReportedError, Diagnostic, Reporter},
     utility::SmallVec,
 };
+use std::fmt;
 
 pub type Result<T = (), E = ErasedReportedError> = std::result::Result<T, E>;
 

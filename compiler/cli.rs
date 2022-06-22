@@ -7,32 +7,16 @@ use std::{cmp::max, path::PathBuf};
 /// Unstable environment variable to control if internal commands are shown.
 const LUSHUI_DEVELOPER_ENV_VAR: &str = "LUSHUI_DEVELOPER";
 
-const TARGET_ALL_LIBRARIES_OPTION: &str = "target-all-libraries";
-const TARGET_LIBRARIES_OPTION: &str = "target-libraries";
-const TARGET_ALL_EXECUTABLES_OPTION: &str = "target-all-executables";
-const TARGET_EXECUTABLES_OPTION: &str = "target-executables";
-const UNSTABLE_OPTION: &str = "unstable-option";
-
 pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
-    const CHECK_SUBCOMMAND: &str = "check";
-    const BUILD_SUBCOMMAND: &str = "build";
-    const RUN_SUBCOMMAND: &str = "run";
-    const DOCUMENT_SUBCOMMAND: &str = "document";
-    const FILE_SUBCOMMAND: &str = "file";
-    const EXPLAIN_SUBCOMMAND: &str = "explain";
-    const INITIALIZE_SUBCOMMAND: &str = "initialize";
-    const NEW_SUBCOMMAND: &str = "new";
-    const METADATA_SUBCOMMAND: &str = "metadata";
-
     let metadata_subcommand_disclaimer = &*METADATA_SUBCOMMAND_DISCLAIMER.red().to_string();
 
-    let package_path_argument = Arg::new("PATH").allow_invalid_utf8(true).help(
+    let package_path_argument = Arg::new(argument::PATH).allow_invalid_utf8(true).help(
         "The path to a folder containing a package. Defaults to the local package \
          i.e. the first package whose manifest is found starting the search in the current folder \
          then looking through each parent folder.",
     );
 
-    let engine_option = Arg::new("engine")
+    let engine_option = Arg::new(option::ENGINE)
         .long("engine")
         .takes_value(true)
         .value_name("ENGINE")
@@ -41,16 +25,16 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
         .help("Set the engine");
 
     let file_build_arguments = [
-        Arg::new("PATH")
+        Arg::new(argument::PATH)
             .allow_invalid_utf8(true)
             .required(true)
             .help("The path to a source file"),
-        Arg::new("no-core")
+        Arg::new(option::NO_CORE)
             .long("no-core")
             .short('0')
             // @Task rephrase this not using the word "remove"
             .help("Remove the dependency to the standard library ‘core’"),
-        Arg::new("component-type")
+        Arg::new(option::COMPONENT_TYPE)
             .long("component-type")
             .short('t')
             .value_name("TYPE")
@@ -60,55 +44,55 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
     ];
 
     let documentation_arguments = [
-        Arg::new("open")
+        Arg::new(option::OPEN)
             .long("open")
             .short('o')
             .help("Open the documentation in a browser"),
-        Arg::new("no-dependencies")
+        Arg::new(option::NO_DEPENDENCIES)
             .long("no-deps")
             .help("Prevent the dependencies from being documented"),
     ];
 
     let package_creation_arguments = [
-        Arg::new("no-core")
+        Arg::new(option::NO_CORE)
             .long("no-core")
             .help("Do not make the new package dependent on the standard library ‘core’"),
-        Arg::new("executable")
+        Arg::new(option::EXECUTABLE)
             .long("executable")
             .visible_alias("exe")
             .help("Create an executable component in the new package"),
-        Arg::new("library")
+        Arg::new(option::LIBRARY)
             .long("library")
             .visible_alias("lib")
             .help("Create a library component in the new package"),
     ];
 
     let target_libraries_options = [
-        Arg::new(TARGET_ALL_LIBRARIES_OPTION)
+        Arg::new(option::TARGET_ALL_LIBRARIES)
             .long("libraries")
             .visible_alias("libs")
             .help("Target all libraries"),
-        Arg::new(TARGET_LIBRARIES_OPTION)
+        Arg::new(option::TARGET_LIBRARIES)
             .long(ComponentType::Library.name())
             .visible_alias(ComponentType::Library.short_name())
-            .value_name("NAME")
+            .value_name(argument::NAME)
             .help("Target only the given or primary library"),
     ];
 
-    let target_all_executables_option = Arg::new(TARGET_ALL_EXECUTABLES_OPTION)
+    let target_all_executables_option = Arg::new(option::TARGET_ALL_EXECUTABLES)
         .long("executables")
         .visible_alias("exes")
         .help("Target all executables");
 
-    let target_executable_option = Arg::new(TARGET_EXECUTABLES_OPTION)
+    let target_executable_option = Arg::new(option::TARGET_EXECUTABLES)
         .long(ComponentType::Executable.name())
         .visible_alias(ComponentType::Executable.short_name())
-        .value_name("NAME")
+        .value_name(argument::NAME)
         .help("Target only the given or primary executable");
 
     let target_executables_option = target_executable_option.clone().multiple_occurrences(true);
 
-    let unstable_options = Arg::new(UNSTABLE_OPTION)
+    let unstable_options = Arg::new(option::UNSTABLE_OPTION)
         .short('Z')
         .value_name("OPTION")
         .multiple_occurrences(true)
@@ -121,26 +105,26 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
         .subcommand_required(true)
         .arg_required_else_help(true)
         .arg(
-            Arg::new("quiet")
+            Arg::new(option::QUIET)
                 .long("quiet")
                 .short('q')
                 .global(true)
                 .help("Suppress status output from being printed to stdout"),
         )
         .subcommands([
-            clap::Command::new(CHECK_SUBCOMMAND)
+            clap::Command::new(subcommand::CHECK)
                 .visible_alias("c")
                 .about("Check the given or local package for errors")
                 .args([&package_path_argument, &engine_option, &unstable_options])
                 .args(&target_libraries_options)
                 .args([&target_all_executables_option, &target_executables_option]),
-            clap::Command::new(BUILD_SUBCOMMAND)
+            clap::Command::new(subcommand::BUILD)
                 .visible_alias("b")
                 .about("Compile the given or local package")
                 .args([&package_path_argument, &engine_option, &unstable_options])
                 .args(&target_libraries_options)
                 .args([&target_all_executables_option, &target_executables_option]),
-            clap::Command::new(RUN_SUBCOMMAND)
+            clap::Command::new(subcommand::RUN)
                 .visible_alias("r")
                 .about("Run the given or local package")
                 .args([
@@ -149,7 +133,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                     &unstable_options,
                     &target_executable_option,
                 ]),
-            clap::Command::new(DOCUMENT_SUBCOMMAND)
+            clap::Command::new(subcommand::DOCUMENT)
                 .visible_aliases(&["doc", "d"])
                 .about("Document the given or local package")
                 .args([
@@ -161,60 +145,61 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                 ])
                 .args(&documentation_arguments)
                 .args(target_libraries_options),
-            clap::Command::new(FILE_SUBCOMMAND)
+            clap::Command::new(subcommand::FILE)
                 .visible_alias("f")
                 .subcommand_required(true)
                 .arg_required_else_help(true)
                 .about("Commands for handling single source files")
                 .subcommands([
-                    clap::Command::new(CHECK_SUBCOMMAND)
+                    clap::Command::new(subcommand::CHECK)
                         .visible_alias("c")
                         .about("Check the given source file for errors")
                         .args(&file_build_arguments)
                         .args([&engine_option, &unstable_options]),
-                    clap::Command::new(BUILD_SUBCOMMAND)
+                    clap::Command::new(subcommand::BUILD)
                         .visible_alias("b")
                         .about("Compile the given source file")
                         .args(&file_build_arguments)
                         .args([&engine_option, &unstable_options]),
-                    clap::Command::new(RUN_SUBCOMMAND)
+                    clap::Command::new(subcommand::RUN)
                         .visible_alias("r")
                         .about("Run the given source file")
                         .args(&file_build_arguments)
                         .args([&engine_option, &unstable_options]),
-                    clap::Command::new(DOCUMENT_SUBCOMMAND)
+                    clap::Command::new(subcommand::DOCUMENT)
                         .visible_aliases(&["doc", "d"])
                         .about("Document the given source file")
                         .args(file_build_arguments)
                         .args([engine_option, unstable_options])
                         .args(documentation_arguments),
                 ]),
-            clap::Command::new(EXPLAIN_SUBCOMMAND)
+            clap::Command::new(subcommand::SERVE).about("Launch an LSP server"),
+            clap::Command::new(subcommand::EXPLAIN)
                 .about("Explain given error codes")
                 .arg(
-                    Arg::new("CODES")
+                    Arg::new(argument::CODES)
                         .multiple_occurrences(true)
                         .required(true)
                         .help("The error codes that need explanation"),
                 ),
-            clap::Command::new(INITIALIZE_SUBCOMMAND)
+            clap::Command::new(subcommand::INITIALIZE)
                 .visible_alias("init")
                 .about("Create a new package in the current folder")
                 .args(&package_creation_arguments),
-            clap::Command::new(NEW_SUBCOMMAND)
+            clap::Command::new(subcommand::NEW)
                 .about("Create a new package")
                 .arg(
-                    Arg::new("NAME")
+                    Arg::new(argument::NAME)
                         .required(true)
                         .help("The name of the package"),
                 )
                 .args(package_creation_arguments),
-            clap::Command::new(METADATA_SUBCOMMAND)
+            clap::Command::new(subcommand::METADATA)
                 .about("Check a metadata file for syntax errors")
                 .hide(hide_internal_commands())
                 .after_help(metadata_subcommand_disclaimer)
                 .arg(
-                    Arg::new("PATH")
+                    Arg::new(argument::PATH)
                         .allow_invalid_utf8(true)
                         .required(true)
                         .help("The path to the metadata file"),
@@ -223,11 +208,11 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
         .get_matches();
 
     let command = match matches.subcommand().unwrap() {
-        (command @ (BUILD_SUBCOMMAND | CHECK_SUBCOMMAND | RUN_SUBCOMMAND), matches) => {
+        (command @ (subcommand::BUILD | subcommand::CHECK | subcommand::RUN), matches) => {
             let mode = match command {
-                BUILD_SUBCOMMAND => BuildMode::Build,
-                CHECK_SUBCOMMAND => BuildMode::Check,
-                RUN_SUBCOMMAND => BuildMode::Run,
+                subcommand::BUILD => BuildMode::Build,
+                subcommand::CHECK => BuildMode::Check,
+                subcommand::RUN => BuildMode::Run,
                 _ => unreachable!(),
             };
             Command::BuildPackage {
@@ -239,7 +224,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                 mode,
             }
         }
-        (DOCUMENT_SUBCOMMAND, matches) => {
+        (subcommand::DOCUMENT, matches) => {
             let (unstable_build_options, unstable_documentation_options) =
                 unstable::deserialize(matches).map(unstable::Or::split)?;
             let mode = BuildMode::Document {
@@ -251,14 +236,14 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                 mode,
             }
         }
-        (FILE_SUBCOMMAND, matches) => {
+        (subcommand::FILE, matches) => {
             let (command, matches) = matches.subcommand().unwrap();
 
             let (unstable_build_options, unstable_documentation_options) =
                 unstable::deserialize(matches).map(unstable::Or::split)?;
 
             match command {
-                DOCUMENT_SUBCOMMAND => Command::BuildFile {
+                subcommand::DOCUMENT => Command::BuildFile {
                     mode: BuildMode::Document {
                         options: DocumentationOptions::deserialize(
                             matches,
@@ -269,9 +254,9 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                 },
                 command => Command::BuildFile {
                     mode: match command {
-                        CHECK_SUBCOMMAND => BuildMode::Check,
-                        BUILD_SUBCOMMAND => BuildMode::Build,
-                        RUN_SUBCOMMAND => BuildMode::Run,
+                        subcommand::CHECK => BuildMode::Check,
+                        subcommand::BUILD => BuildMode::Build,
+                        subcommand::RUN => BuildMode::Run,
                         _ => unreachable!(),
                     },
                     options: FileBuildOptions::deserialize(
@@ -281,24 +266,60 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                 },
             }
         }
-        (EXPLAIN_SUBCOMMAND, _matches) => Command::Explain,
-        (command @ (INITIALIZE_SUBCOMMAND | NEW_SUBCOMMAND), matches) => Command::CreatePackage {
+        (subcommand::SERVE, _matches) => Command::Serve,
+        (subcommand::EXPLAIN, _matches) => Command::Explain,
+        (command @ (subcommand::INITIALIZE | subcommand::NEW), matches) => Command::CreatePackage {
             mode: match command {
-                INITIALIZE_SUBCOMMAND => PackageCreationMode::Initialize,
-                NEW_SUBCOMMAND => PackageCreationMode::New {
-                    package_name: matches.value_of("NAME").unwrap().into(),
+                subcommand::INITIALIZE => PackageCreationMode::Initialize,
+                subcommand::NEW => PackageCreationMode::New {
+                    package_name: matches.value_of(argument::NAME).unwrap().into(),
                 },
                 _ => unreachable!(),
             },
             options: PackageCreationOptions::deserialize(matches),
         },
-        (METADATA_SUBCOMMAND, matches) => Command::Metadata {
-            path: matches.value_of_os("PATH").unwrap().into(),
+        (subcommand::METADATA, matches) => Command::Metadata {
+            path: matches.value_of_os(argument::PATH).unwrap().into(),
         },
         _ => unreachable!(),
     };
 
     Ok((command, GlobalOptions::deserialize(&matches)))
+}
+
+mod subcommand {
+    pub(super) const BUILD: &str = "build";
+    pub(super) const CHECK: &str = "check";
+    pub(super) const DOCUMENT: &str = "document";
+    pub(super) const EXPLAIN: &str = "explain";
+    pub(super) const FILE: &str = "file";
+    pub(super) const INITIALIZE: &str = "initialize";
+    pub(super) const METADATA: &str = "metadata";
+    pub(super) const NEW: &str = "new";
+    pub(super) const RUN: &str = "run";
+    pub(super) const SERVE: &str = "serve";
+}
+
+mod argument {
+    pub(super) const CODES: &str = "CODES";
+    pub(super) const NAME: &str = "NAME";
+    pub(super) const PATH: &str = "PATH";
+}
+
+mod option {
+    pub(super) const COMPONENT_TYPE: &str = "component_type";
+    pub(super) const ENGINE: &str = "engine";
+    pub(super) const EXECUTABLE: &str = "executable";
+    pub(super) const LIBRARY: &str = "library";
+    pub(super) const NO_CORE: &str = "no_core";
+    pub(super) const NO_DEPENDENCIES: &str = "no_dependencies";
+    pub(super) const OPEN: &str = "open";
+    pub(super) const QUIET: &str = "quiet";
+    pub(super) const TARGET_ALL_EXECUTABLES: &str = "target-all-executables";
+    pub(super) const TARGET_ALL_LIBRARIES: &str = "target-all-libraries";
+    pub(super) const TARGET_EXECUTABLES: &str = "target-executables";
+    pub(super) const TARGET_LIBRARIES: &str = "target-libraries";
+    pub(super) const UNSTABLE_OPTION: &str = "unstable-option";
 }
 
 fn hide_internal_commands() -> bool {
@@ -320,6 +341,7 @@ pub enum Command {
         mode: BuildMode,
         options: FileBuildOptions,
     },
+    Serve,
     Explain,
     CreatePackage {
         mode: PackageCreationMode,
@@ -338,7 +360,7 @@ pub struct GlobalOptions {
 impl GlobalOptions {
     fn deserialize(matches: &ArgMatches) -> GlobalOptions {
         Self {
-            quiet: matches.is_present("quiet"),
+            quiet: matches.is_present(option::QUIET),
         }
     }
 }
@@ -372,11 +394,11 @@ impl PackageBuildOptions {
         mode: &BuildMode,
     ) -> Self {
         Self {
-            path: matches.value_of_os("PATH").map(Into::into),
+            path: matches.value_of_os(argument::PATH).map(Into::into),
             general: BuildOptions::deserialize(unstable_options),
             targets: BuildTargets::deserialize(matches, mode),
             engine: matches
-                .value_of("engine")
+                .value_of(option::ENGINE)
                 .map(|input| input.parse().unwrap())
                 .unwrap_or_default(),
         }
@@ -389,8 +411,8 @@ impl BuildTargets {
     fn deserialize(matches: &ArgMatches, mode: &BuildMode) -> Self {
         let should_run = matches!(mode, BuildMode::Run);
 
-        let all_libraries = !should_run && matches.is_present(TARGET_ALL_LIBRARIES_OPTION);
-        let all_executables = !should_run && matches.is_present(TARGET_ALL_EXECUTABLES_OPTION);
+        let all_libraries = !should_run && matches.is_present(option::TARGET_ALL_LIBRARIES);
+        let all_executables = !should_run && matches.is_present(option::TARGET_ALL_EXECUTABLES);
 
         if all_libraries && all_executables {
             return Self(Vec::new());
@@ -403,7 +425,7 @@ impl BuildTargets {
                 name: None,
                 type_: Some(ComponentType::Library),
             });
-        } else if !should_run && let Some(libraries) = matches.values_of(TARGET_LIBRARIES_OPTION) {
+        } else if !should_run && let Some(libraries) = matches.values_of(option::TARGET_LIBRARIES) {
             targets.extend(libraries.into_iter().map(|name| BuildTarget {
                 name: Some(name.to_owned()),
                 type_: Some(ComponentType::Library),
@@ -415,7 +437,7 @@ impl BuildTargets {
                 name: None,
                 type_: Some(ComponentType::Executable),
             });
-        } else if let Some(executables) = matches.values_of(TARGET_EXECUTABLES_OPTION) {
+        } else if let Some(executables) = matches.values_of(option::TARGET_EXECUTABLES) {
             targets.extend(executables.into_iter().map(|name| BuildTarget {
                 name: Some(name.to_owned()),
                 type_: Some(ComponentType::Executable),
@@ -444,14 +466,14 @@ pub struct FileBuildOptions {
 impl FileBuildOptions {
     fn deserialize(matches: &ArgMatches, unstable_options: Vec<unstable::BuildOption>) -> Self {
         Self {
-            path: matches.value_of_os("PATH").unwrap().into(),
+            path: matches.value_of_os(argument::PATH).unwrap().into(),
             general: BuildOptions::deserialize(unstable_options),
-            no_core: matches.is_present("no-core"),
+            no_core: matches.is_present(option::NO_CORE),
             component_type: matches
-                .value_of("component-type")
+                .value_of(option::COMPONENT_TYPE)
                 .map(|input| input.parse().unwrap()),
             engine: matches
-                .value_of("engine")
+                .value_of(option::ENGINE)
                 .map(|input| input.parse().unwrap())
                 .unwrap_or_default(),
         }
@@ -529,13 +551,13 @@ pub struct PackageCreationOptions {
 
 impl PackageCreationOptions {
     fn deserialize(matches: &ArgMatches) -> Self {
-        let library = matches.is_present("library");
+        let library = matches.is_present(option::LIBRARY);
 
         Self {
-            no_core: matches.is_present("no-core"),
+            no_core: matches.is_present(option::NO_CORE),
             library,
             // implicitly set when no explicit component type specified
-            executable: matches.is_present("executable") || !library,
+            executable: matches.is_present(option::EXECUTABLE) || !library,
         }
     }
 }
@@ -555,8 +577,8 @@ impl DocumentationOptions {
         unstable_options: Vec<unstable::DocumentationOption>,
     ) -> Self {
         let mut options = Self {
-            open: matches.is_present("open"),
-            no_dependencies: matches.is_present("no-dependencies"),
+            open: matches.is_present(option::OPEN),
+            no_dependencies: matches.is_present(option::NO_DEPENDENCIES),
             asciidoc: false,
             lorem_ipsum: None,
         };
@@ -579,23 +601,20 @@ mod unstable {
     use colored::Colorize;
     use derivation::{Elements, FromStr, Str};
     use lushui::{
-        diagnostics::{reporter::StderrReporter, Diagnostic},
+        diagnostics::{Diagnostic, Reporter},
         error::Result,
         utility::{pluralize, Conjunction, ListingExt, QuoteExt},
     };
-    use std::{
-        fmt::Write,
-        iter::{once, Chain, Map},
-        str::FromStr,
-    };
+    use std::{fmt::Write, iter::once, str::FromStr};
 
     const HELP_OPTION: &str = "help";
+    const SEPARATOR: &str = "=";
 
     pub(super) fn deserialize<O: UnstableOption>(matches: &ArgMatches) -> Result<Vec<O>> {
         let mut options = Vec::new();
         let mut invalid_options = Vec::new();
 
-        if let Some(unparsed_options) = matches.values_of(super::UNSTABLE_OPTION) {
+        if let Some(unparsed_options) = matches.values_of(super::option::UNSTABLE_OPTION) {
             for option in unparsed_options {
                 if option == HELP_OPTION {
                     help::<O>();
@@ -619,7 +638,7 @@ mod unstable {
                         .map(QuoteExt::quote)
                         .list(Conjunction::And)
                 ))
-                .report(&StderrReporter::new(None).into()))
+                .report(&Reporter::stderr()))
         } else {
             Ok(options)
         }
@@ -719,10 +738,11 @@ mod unstable {
     }
 
     impl UnstableOption for DocumentationOption {
+        // @Task derive this smh
         fn syntax(self) -> &'static str {
             match self {
                 Self::AsciiDoc => "asciidoc",
-                Self::LoremIpsum(_) => "lorem-ipsum=[<amount=1>]",
+                Self::LoremIpsum(_) => "lorem-ipsum=<AMOUNT=1>",
             }
         }
 
@@ -738,19 +758,29 @@ mod unstable {
         type Err = ParsingError;
 
         fn from_str(source: &str) -> Result<Self, Self::Err> {
-            Ok(match source {
+            let mut parts = source.splitn(2, SEPARATOR);
+            let key = parts.next().ok_or(ParsingError::InvalidSyntax)?;
+            let value = parts.next();
+
+            // @Task derive the key mapping logic smh
+            let option = match key {
                 "asciidoc" => Self::AsciiDoc,
-                "lorem-ipsum" => Self::LoremIpsum(Some(1)),
-                _ => match source
-                    .split_once('=')
-                    .ok_or(ParsingError::UndefinedOption)?
-                {
-                    ("lorem-ipsum", amount) => Self::LoremIpsum(Some(
-                        amount.parse().map_err(|_| ParsingError::InvalidSyntax)?,
-                    )),
-                    _ => return Err(ParsingError::UndefinedOption),
-                },
-            })
+                "lorem-ipsum" => {
+                    return Ok(Self::LoremIpsum(
+                        value
+                            .map(str::parse)
+                            .transpose()
+                            .map_err(|_| ParsingError::InvalidSyntax)?,
+                    ))
+                }
+                _ => return Err(ParsingError::UndefinedOption),
+            };
+
+            if value.is_some() {
+                return Err(ParsingError::InvalidSyntax);
+            }
+
+            Ok(option)
         }
     }
 
@@ -793,12 +823,12 @@ mod unstable {
     }
 
     impl<A: Elements, B: Elements> Elements for Or<A, B> {
-        type Iter = Chain<Map<A::Iter, fn(A) -> Self>, Map<B::Iter, fn(B) -> Self>>;
+        type Iter = impl Iterator<Item = Self>;
 
         fn elements() -> Self::Iter {
             A::elements()
-                .map(Self::Left as _)
-                .chain(B::elements().map(Self::Right as _))
+                .map(Self::Left)
+                .chain(B::elements().map(Self::Right))
         }
     }
 

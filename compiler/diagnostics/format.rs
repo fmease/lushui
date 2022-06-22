@@ -9,35 +9,33 @@
 //! * unindenting long lines of highlighted source code (i.e. mapping initial whitespace to
 //!   a single one) rustc replaces large amount of spaces with colored ellipses `...`
 
-use super::{Diagnostic, Highlight, Role, Severity, Subdiagnostic, Subseverity, UnboxedDiagnostic};
+use super::{Highlight, Role, Severity, Subdiagnostic, Subseverity, UnboxedUntaggedDiagnostic};
 use crate::span::{
-    source_map::{Line, Lines},
+    source_map::{LineWithHighlight, LinesWithHighlight},
     SourceMap,
 };
 use colored::{Color, ColoredString, Colorize};
 use std::{fmt, iter::once, path::Path};
 use unicode_width::UnicodeWidthStr;
 
-impl Diagnostic {
-    /// Format the diagnostic for the use in a terminal.
-    pub(super) fn format_for_terminal(&self, map: Option<&SourceMap>) -> String {
-        // @Task add back the alorithm which reduces the amount of paths printed
-        // @Beacon @Task special case trailing line break in subdiagnostics
-        // @Beacon @Bug tabs \t mess up the alignment! (in text literals, in metadata files)
-        // since `"\t".width() == 0`! solution: replace tabs with N spaces in the place where
-        // we measure the width() and in the rendered string!
+#[cfg(test)]
+mod test;
 
-        #[rustfmt::skip]
-        TerminalFormat { diagnostic: &self.0, map }.to_string()
-    }
+// @Task add back the alorithm which reduces the amount of paths printed
+// @Beacon @Task special case trailing line break in subdiagnostics
+// @Beacon @Bug tabs \t mess up the alignment! (in text literals, in metadata files)
+// since `"\t".width() == 0`! solution: replace tabs with N spaces in the place where
+// we measure the width() and in the rendered string!
+pub(super) fn format(diagnostic: &UnboxedUntaggedDiagnostic, map: Option<&SourceMap>) -> String {
+    Formatter { diagnostic, map }.to_string()
 }
 
-struct TerminalFormat<'a> {
-    diagnostic: &'a UnboxedDiagnostic,
+struct Formatter<'a> {
+    diagnostic: &'a UnboxedUntaggedDiagnostic,
     map: Option<&'a SourceMap>,
 }
 
-impl TerminalFormat<'_> {
+impl<'a> Formatter<'a> {
     fn format_header(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.diagnostic.severity)?;
 
@@ -64,7 +62,7 @@ impl TerminalFormat<'_> {
 
         let rows_of_lines_of_highlights = highlights
             .iter()
-            .map(|highlight| map.lines(highlight.span))
+            .map(|highlight| map.lines_with_highlight(highlight.span))
             .collect::<Vec<_>>();
 
         *padding = " ".repeat(calculate_padding(&rows_of_lines_of_highlights));
@@ -74,7 +72,7 @@ impl TerminalFormat<'_> {
 
             let bar = "|".color(color_palette::FRAME).bold();
 
-            match &lines.last_line {
+            match &lines.last {
                 None => self.format_single_line_highlight(highlight, &lines, &bar, padding, f),
                 Some(final_line) => self
                     .format_multi_line_highlight(highlight, &lines, final_line, &bar, padding, f),
@@ -90,19 +88,19 @@ impl TerminalFormat<'_> {
     fn format_single_line_highlight(
         &self,
         highlight: &Highlight,
-        lines: &Lines<'_>,
+        lines: &LinesWithHighlight<'_>,
         bar: &ColoredString,
         padding: &str,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
-        let line_number = lines.first_line.number;
-        let snippet = lines.first_line.content;
-        let highlight_padding_width = lines.first_line.highlight_padding_width;
-        let zero_length_highlight = lines.first_line.highlight_width == 0;
+        let line_number = lines.first.number;
+        let snippet = lines.first.content;
+        let highlight_prefix_width = lines.first.highlight.prefix_width;
+        let zero_length_highlight = lines.first.highlight.width == 0;
         let role_color = highlight.role.color(self.diagnostic.severity.color());
         let mut lines_of_label = highlight.label.iter().flat_map(|label| label.split('\n'));
 
-        let snippet_padding = match zero_length_highlight && highlight_padding_width == 0 {
+        let snippet_padding = match zero_length_highlight && highlight_prefix_width == 0 {
             true => " ",
             false => "",
         };
@@ -116,14 +114,11 @@ impl TerminalFormat<'_> {
         )?;
 
         let underline_padding = " ".repeat(match zero_length_highlight {
-            true => highlight_padding_width.saturating_sub(1),
-            false => highlight_padding_width,
+            true => highlight_prefix_width.saturating_sub(1),
+            false => highlight_prefix_width,
         });
         let underline = if !zero_length_highlight {
-            highlight
-                .role
-                .symbol()
-                .repeat(lines.first_line.highlight_width)
+            highlight.role.symbol().repeat(lines.first.highlight.width)
         } else {
             "><".to_owned()
         };
@@ -138,11 +133,11 @@ impl TerminalFormat<'_> {
             }
 
             let spacing = " ".repeat(
-                lines.first_line.highlight_padding_width
+                lines.first.highlight.prefix_width
                     + if zero_length_highlight {
                         1
                     } else {
-                        lines.first_line.highlight_width
+                        lines.first.highlight.width
                     },
             );
 
@@ -162,26 +157,26 @@ impl TerminalFormat<'_> {
     fn format_multi_line_highlight(
         &self,
         highlight: &Highlight,
-        lines: &Lines<'_>,
-        final_line: &Line<'_>,
+        lines: &LinesWithHighlight<'_>,
+        final_line: &LineWithHighlight<'_>,
         bar: &ColoredString,
         padding: &str,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
         let role_color = highlight.role.color(self.diagnostic.severity.color());
         let mut lines_of_label = highlight.label.iter().flat_map(|label| label.split('\n'));
+        // the hand is currently not dependent on the Unicode width of the first character
+        let hand = highlight.role.symbol().color(role_color).bold();
 
         // the upper arm
         {
-            let line_number = lines.first_line.number;
-            let snippet = lines.first_line.content;
+            let line_number = lines.first.number;
+            let snippet = lines.first.content;
             let horizontal_arm = "_"
-                .repeat(lines.first_line.highlight_padding_width + 1)
+                .repeat(lines.first.highlight.prefix_width + 1)
                 .color(role_color)
                 .bold();
-            // the hand is currently not dependent on the Unicode width of the first character
-            let hand = highlight.role.symbol().color(role_color).bold();
-            let ellipsis_or_bar = if final_line.number - lines.first_line.number > 1 {
+            let ellipsis_or_bar = if final_line.number - lines.first.number > 1 {
                 "...".into()
             } else {
                 format!(" {bar} ")
@@ -203,12 +198,10 @@ impl TerminalFormat<'_> {
             let snippet = &final_line.content;
             // the arm is currently not dependent on the Unicode width of the last character
             let horizontal_arm = "_"
-                .repeat(final_line.highlight_width)
+                .repeat(final_line.highlight.width)
                 .color(role_color)
                 .bold();
             let vertical_arm = "|".color(role_color).bold();
-            // the hand is currently not dependent on the Unicode width of the 1st character
-            let hand = highlight.role.symbol().color(role_color).bold();
 
             writeln!(
                 f,
@@ -226,7 +219,7 @@ impl TerminalFormat<'_> {
                     }
                 }
 
-                let spacing = " ".repeat(1 + final_line.highlight_width + 1);
+                let spacing = " ".repeat(1 + final_line.highlight.width + 1);
 
                 for line_of_label in lines_of_label {
                     writeln!(f)?;
@@ -243,7 +236,7 @@ impl TerminalFormat<'_> {
     }
 }
 
-impl fmt::Display for TerminalFormat<'_> {
+impl fmt::Display for Formatter<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.format_header(f)?;
 
@@ -261,13 +254,17 @@ impl fmt::Display for TerminalFormat<'_> {
     }
 }
 
-fn format_path(lines: &Lines<'_>, padding: &str, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+fn format_path(
+    lines: &LinesWithHighlight<'_>,
+    padding: &str,
+    f: &mut fmt::Formatter<'_>,
+) -> fmt::Result {
     writeln!(f)?;
     write!(f, "{padding}{} ", "-->".color(color_palette::FRAME).bold())?;
 
     let path = lines.path.map(Path::to_string_lossy).unwrap_or_default();
-    let line = lines.first_line.number;
-    let column = lines.first_line.highlight_start_column;
+    let line = lines.first.number;
+    let column = lines.first.highlight.start;
     // unbelieveably wasteful memory-wise but inevitable due to the API of `colored`
     write!(
         f,
@@ -302,14 +299,12 @@ fn format_subdiagnostic(
     Ok(())
 }
 
-fn calculate_padding(rows_of_lines: &[Lines<'_>]) -> usize {
+fn calculate_padding(rows_of_lines: &[LinesWithHighlight<'_>]) -> usize {
     let mut padding = 0;
 
     let mut largest_line_number = rows_of_lines
         .iter()
-        .flat_map(|span| {
-            once(span.first_line.number).chain(span.last_line.as_ref().map(|line| line.number))
-        })
+        .flat_map(|span| once(span.first.number).chain(span.last.as_ref().map(|line| line.number)))
         .max()
         .unwrap();
 
@@ -322,20 +317,20 @@ fn calculate_padding(rows_of_lines: &[Lines<'_>]) -> usize {
 }
 
 impl Severity {
-    const fn color(self) -> Color {
-        match self {
-            Self::Bug | Self::Error => color_palette::ERROR,
-            Self::Warning => color_palette::WARNING,
-            Self::Debug => color_palette::DEBUG,
-        }
-    }
-
     const fn name(self) -> &'static str {
         match self {
             Self::Bug => "internal compiler error",
             Self::Error => "error",
             Self::Warning => "warning",
             Self::Debug => "internal debugging message",
+        }
+    }
+
+    pub(super) const fn color(self) -> Color {
+        match self {
+            Self::Bug | Self::Error => color_palette::ERROR,
+            Self::Warning => color_palette::WARNING,
+            Self::Debug => color_palette::DEBUG,
         }
     }
 }
@@ -347,17 +342,12 @@ impl fmt::Display for Severity {
 }
 
 impl Subseverity {
-    const fn color(self) -> Color {
-        match self {
-            Self::Note | Self::Help => color_palette::HELP,
-            Self::Debug => color_palette::DEBUG,
-        }
-    }
+    const COLOR: Color = color_palette::HELP;
 }
 
 impl fmt::Display for Subseverity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.name().color(self.color()).bold())
+        write!(f, "{}", self.name().color(Self::COLOR).bold())
     }
 }
 

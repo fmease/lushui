@@ -1,5 +1,5 @@
 use crate::{
-    diagnostics::{Code, Diagnostic},
+    diagnostics::{Diagnostic, ErrorCode},
     error::{PossiblyErroneous, Result},
     session::BuildSession,
     span::{Span, Spanned, Spanning},
@@ -141,7 +141,7 @@ the body containing a set of constructors
 
         match (body, attributes.span(AttributeName::Intrinsic)) {
             (Some((body_span, body_label)), Some(intrinsic)) => Err(Diagnostic::error()
-                .code(Code::E042)
+                .code(ErrorCode::E042)
                 .message(format!(
                     "the declaration ‘{binder}’ marked as ‘intrinsic’ has a body",
                 ))
@@ -153,7 +153,7 @@ the body containing a set of constructors
                 .help("remove either the body or the attribute")
                 .report(session.reporter())),
             (None, None) => Err(Diagnostic::error()
-                .code(Code::E012)
+                .code(ErrorCode::E012)
                 .message(format!("the declaration ‘{binder}’ has no definition"))
                 .primary_span(missing_definition_location)
                 .help(format!("provide a definition with ‘{definition_marker}’"))
