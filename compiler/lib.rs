@@ -5,21 +5,22 @@
 //!
 //! # Passes
 //!
-//! For both tree-walk interpreter and the byte-code interpreter,
-//! the front-end consists of the three passes/stages lexing, parsing and lowering
-//! defined in [`syntax::lexer`], [`syntax::parser`] and [`syntax::lowerer`] respectively.
-//! They also share a middle-end
-//! immediately after the front-end being made up of name resolution and type checking in
-//! [resolver] and [typer] respectively. After that, the passes differ.
-//! The TWI runs the interpreter which is also being used for type checking in both passes,
-//! namely [`typer::interpreter`]. On the other hand, BCI first compiles in [compiler] and
-//! finally runs the program with [`compiler::interpreter`] (meta: that last part is not true
-//! yet as that engine is WIP).
+//! The front-end consists of the three passes
 //!
-//! | Engine | Passes and Outputs |
+//! 1. [lexing][syntax::lexer]
+//! 2. [parsing][syntax::parser]
+//! 3. [lowering][syntax::lowerer]
+//!
+//! The middle-end is made up of
+//!
+//! 1. [name resolution][resolver]
+//! 2. [type checking][typer]
+//!
+//! Regarding the back-end: The tree-walk interpreter runs [`typer::interpreter`].
+//!
+//! | Backend | Passes and Outputs |
 //! |--------|--------------------|
-//! | tree-walk interpreter | [**lexing**][0]: [tokens][1] → [**parsing**][2]: [AST][3] → [**lowering**][4]: [lowered AST][5] <br> → [**name resolution**][6]: [HIR][7] → [**type checking**][8]: [HIR][7] <br> → [**interpreting**](typer::interpreter): [HIR][7] |
-//! | byte-code interpreter | [**lexing**][0]: [tokens][1] → [**parsing**][2]: [AST][3] → [**lowering**][4]: [lowered AST][5] <br> → [**name resolution**][6]: [HIR][7] → [**type checking**][8]: [HIR][7] <br> → [**compiling**](compiler): ? → [**interpreting**](compiler::interpreter): ? |
+//! | (tree-walk) interpreter | [**lexing**][0]: [tokens][1] → [**parsing**][2]: [AST][3] → [**lowering**][4]: [lowered AST][5] <br> → [**name resolution**][6]: [HIR][7] → [**type checking**][8]: [HIR][7] <br> → [**interpreting**](typer::interpreter): [HIR][7] |
 //!
 //! [0]: syntax::lexer
 //! [1]: syntax::token
@@ -72,7 +73,6 @@
     clippy::missing_panics_doc, // @Temporary
 )]
 
-pub mod compiler;
 pub mod component;
 pub mod diagnostics;
 pub mod documenter;

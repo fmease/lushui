@@ -16,13 +16,13 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
          then looking through each parent folder.",
     );
 
-    let engine_option = Arg::new(option::ENGINE)
-        .long("engine")
+    let backend_option = Arg::new(option::BACKEND)
+        .long("backend")
         .takes_value(true)
-        .value_name("ENGINE")
+        .value_name("BACKEND")
         // @Task get rid of closure once fn name takes self by value
-        .possible_values(Engine::elements().map(|element| element.name()))
-        .help("Set the engine");
+        .possible_values(Backend::elements().map(|element| element.name()))
+        .help("Set the backend");
 
     let file_build_arguments = [
         Arg::new(argument::PATH)
@@ -115,13 +115,13 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
             clap::Command::new(subcommand::CHECK)
                 .visible_alias("c")
                 .about("Check the given or local package for errors")
-                .args([&package_path_argument, &engine_option, &unstable_options])
+                .args([&package_path_argument, &backend_option, &unstable_options])
                 .args(&target_libraries_options)
                 .args([&target_all_executables_option, &target_executables_option]),
             clap::Command::new(subcommand::BUILD)
                 .visible_alias("b")
                 .about("Compile the given or local package")
-                .args([&package_path_argument, &engine_option, &unstable_options])
+                .args([&package_path_argument, &backend_option, &unstable_options])
                 .args(&target_libraries_options)
                 .args([&target_all_executables_option, &target_executables_option]),
             clap::Command::new(subcommand::RUN)
@@ -129,7 +129,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                 .about("Run the given or local package")
                 .args([
                     &package_path_argument,
-                    &engine_option,
+                    &backend_option,
                     &unstable_options,
                     &target_executable_option,
                 ]),
@@ -138,7 +138,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                 .about("Document the given or local package")
                 .args([
                     &package_path_argument,
-                    &engine_option,
+                    &backend_option,
                     &unstable_options,
                     &target_all_executables_option,
                     &target_executables_option,
@@ -155,22 +155,22 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                         .visible_alias("c")
                         .about("Check the given source file for errors")
                         .args(&file_build_arguments)
-                        .args([&engine_option, &unstable_options]),
+                        .args([&backend_option, &unstable_options]),
                     clap::Command::new(subcommand::BUILD)
                         .visible_alias("b")
                         .about("Compile the given source file")
                         .args(&file_build_arguments)
-                        .args([&engine_option, &unstable_options]),
+                        .args([&backend_option, &unstable_options]),
                     clap::Command::new(subcommand::RUN)
                         .visible_alias("r")
                         .about("Run the given source file")
                         .args(&file_build_arguments)
-                        .args([&engine_option, &unstable_options]),
+                        .args([&backend_option, &unstable_options]),
                     clap::Command::new(subcommand::DOCUMENT)
                         .visible_aliases(&["doc", "d"])
                         .about("Document the given source file")
                         .args(file_build_arguments)
-                        .args([engine_option, unstable_options])
+                        .args([backend_option, unstable_options])
                         .args(documentation_arguments),
                 ]),
             clap::Command::new(subcommand::SERVE).about("Launch an LSP server"),
@@ -308,7 +308,7 @@ mod argument {
 
 mod option {
     pub(super) const COMPONENT_TYPE: &str = "component_type";
-    pub(super) const ENGINE: &str = "engine";
+    pub(super) const BACKEND: &str = "backend";
     pub(super) const EXECUTABLE: &str = "executable";
     pub(super) const LIBRARY: &str = "library";
     pub(super) const NO_CORE: &str = "no_core";
@@ -367,10 +367,9 @@ impl GlobalOptions {
 
 #[derive(Default, FromStr, Str, Elements)]
 #[format(dash_case)]
-pub enum Engine {
+pub enum Backend {
     #[default]
-    TreeWalkInterpreter,
-    ByteCodeInterpreter,
+    Interpreter,
 }
 
 pub enum BuildMode {
@@ -384,7 +383,7 @@ pub struct PackageBuildOptions {
     pub general: BuildOptions,
     pub path: Option<PathBuf>,
     pub targets: BuildTargets,
-    pub engine: Engine,
+    pub backend: Backend,
 }
 
 impl PackageBuildOptions {
@@ -397,8 +396,8 @@ impl PackageBuildOptions {
             path: matches.value_of_os(argument::PATH).map(Into::into),
             general: BuildOptions::deserialize(unstable_options),
             targets: BuildTargets::deserialize(matches, mode),
-            engine: matches
-                .value_of(option::ENGINE)
+            backend: matches
+                .value_of(option::BACKEND)
                 .map(|input| input.parse().unwrap())
                 .unwrap_or_default(),
         }
@@ -460,7 +459,7 @@ pub struct FileBuildOptions {
     pub general: BuildOptions,
     pub no_core: bool,
     pub component_type: Option<ComponentType>,
-    pub engine: Engine,
+    pub backend: Backend,
 }
 
 impl FileBuildOptions {
@@ -472,8 +471,8 @@ impl FileBuildOptions {
             component_type: matches
                 .value_of(option::COMPONENT_TYPE)
                 .map(|input| input.parse().unwrap()),
-            engine: matches
-                .value_of(option::ENGINE)
+            backend: matches
+                .value_of(option::BACKEND)
                 .map(|input| input.parse().unwrap())
                 .unwrap_or_default(),
         }

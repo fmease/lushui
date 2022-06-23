@@ -421,16 +421,7 @@ fn build_component(
                 println!("{}", result.with((component, session)));
             }
         }
-        BuildMode::Build => {
-            // @Temporary not just builds, also runs ^^
-
-            lushui::compiler::compile_and_interpret_declaration(
-                &component_root,
-                component,
-                session,
-            )
-            .unwrap_or_else(|_| panic!());
-        }
+        BuildMode::Build => todo!(),
         BuildMode::Document {
             options: documentation_options,
         } => {

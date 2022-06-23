@@ -1,7 +1,5 @@
 //! The tree-walk interpreter necessary for type-checking.
 //!
-//! For reference, here is the bytecode interpreter: [`crate::compiler::interpreter`].
-//!
 //! # Issues
 //!
 //! * too many bugs
