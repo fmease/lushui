@@ -30,6 +30,7 @@ pub(crate) fn derive(input: TokenStream1) -> Result<TokenStream2, Error> {
             type Err = ();
 
             // @Task make `__source` hygienic smh
+            #[allow(unreachable_code)] // if `Self` is uninhabited and thus the `match` is empty
             fn from_str(__source: &::core::primitive::str) -> ::core::result::Result<Self, Self::Err> {
                 ::core::result::Result::Ok(match __source {
                     #( #mapping ),*

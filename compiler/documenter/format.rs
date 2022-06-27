@@ -309,6 +309,7 @@ impl<'a> Formatter<'a> {
         }
     }
 
+    // @Task dedup with code generator, name resolver, interpreter
     fn look_up(&self, index: DeclarationIndex) -> &crate::entity::Entity {
         match index.local(self.component) {
             Some(index) => &self.component[index],

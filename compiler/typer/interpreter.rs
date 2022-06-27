@@ -741,6 +741,7 @@ impl<'a> Interpreter<'a> {
         })
     }
 
+    // @Task dedup with documenter, code generator, name resolver
     fn look_up(&self, index: DeclarationIndex) -> &Entity {
         match index.local(self.component) {
             Some(index) => &self.component[index],

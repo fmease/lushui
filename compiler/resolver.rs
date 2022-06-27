@@ -1120,6 +1120,7 @@ impl<'a> Resolver<'a> {
         Ok(binding)
     }
 
+    // @Task dedup with documenter, code generator, interpreter
     fn look_up(&self, index: DeclarationIndex) -> &'a Entity {
         match index.local(self.component) {
             Some(index) => &self.component[index],

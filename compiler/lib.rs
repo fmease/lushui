@@ -1,37 +1,25 @@
-//! The reference compiler of lushui.
-//!
-//! It's not a compiler yet, still a bug-ridden feature-incomplete tree-walk interpreter
-//! with type-checking.
+//! The reference compiler of Lushui.
 //!
 //! # Passes
 //!
 //! The front-end consists of the three passes
 //!
-//! 1. [lexing][syntax::lexer]
-//! 2. [parsing][syntax::parser]
-//! 3. [lowering][syntax::lowerer]
+//! 1. [lexing][syntax::lexer] (output: [tokens](syntax::token))
+//! 2. [parsing][syntax::parser] (output: [AST](syntax::ast))
+//! 3. [lowering][syntax::lowerer] (output: [lowered AST](syntax::lowered_ast))
 //!
 //! The middle-end is made up of
 //!
-//! 1. [name resolution][resolver]
+//! 1. [name resolution][resolver] (output: [HIR](hir))
 //! 2. [type checking][typer]
 //!
-//! Regarding the back-end: The tree-walk interpreter runs [`typer::interpreter`].
+//! The back-end is one of
 //!
-//! | Backend | Passes and Outputs |
-//! |--------|--------------------|
-//! | (tree-walk) interpreter | [**lexing**][0]: [tokens][1] → [**parsing**][2]: [AST][3] → [**lowering**][4]: [lowered AST][5] <br> → [**name resolution**][6]: [HIR][7] → [**type checking**][8]: [HIR][7] <br> → [**interpreting**](typer::interpreter): [HIR][7] |
-//!
-//! [0]: syntax::lexer
-//! [1]: syntax::token
-//! [2]: syntax::parser
-//! [3]: syntax::ast
-//! [4]: syntax::lowerer
-//! [5]: syntax::lowered_ast
-//! [6]: resolver
-//! [7]: hir
-//! [8]: typer
-
+//! * [(tree-walk) interpreting](typer::interpreter) (from the middle-end)
+#![cfg_attr(
+    feature = "llvm",
+    doc = " * [LLVM-IR code generation, compilation and linking](backend) (output: LLVM-IR)"
+)]
 #![feature(
     decl_macro,
     never_type,
@@ -73,6 +61,8 @@
     clippy::missing_panics_doc, // @Temporary
 )]
 
+#[cfg(feature = "llvm")]
+pub mod backend;
 pub mod component;
 pub mod diagnostics;
 pub mod documenter;

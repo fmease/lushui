@@ -7,5 +7,6 @@ cargo \
     run \
     --quiet \
     --manifest-path="$FOLDER/Cargo.toml" \
+    --features llvm \
     -- \
     "$@"
