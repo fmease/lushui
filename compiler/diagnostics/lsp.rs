@@ -2,38 +2,46 @@ use super::{Code, Highlight, LintCode, Role, Severity, UnboxedUntaggedDiagnostic
 use crate::span::SourceMap;
 use std::{collections::BTreeSet, default::default};
 use tower_lsp::lsp_types::{
-    self, DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, NumberOrString, Range,
+    self, DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, MessageType,
+    NumberOrString, OneOf, Range,
 };
 
 const DIAGNOSTIC_SOURCE: &str = "source";
 
+pub(crate) type LspMessage = (MessageType, String);
+
 impl UnboxedUntaggedDiagnostic {
-    pub(crate) fn into_lsp_diagnostic(self, map: &SourceMap) -> lsp_types::Diagnostic {
-        let (range, related_information) = convert_highlights(self.highlights, map);
+    pub(crate) fn into_lsp_type(self, map: &SourceMap) -> OneOf<lsp_types::Diagnostic, LspMessage> {
+        // @Task explain the " "-hack
+        let message = self.message.unwrap_or_else(|| " ".into()).into();
 
-        let tags = self.code.and_then(|code| {
-            (code == Code::Lint(LintCode::Deprecated)).then(|| vec![DiagnosticTag::DEPRECATED])
-        });
+        match convert_highlights(self.highlights, map) {
+            Some((range, related_information)) => {
+                let tags = self.code.and_then(|code| {
+                    (code == Code::Lint(LintCode::Deprecated))
+                        .then(|| vec![DiagnosticTag::DEPRECATED])
+                });
 
-        lsp_types::Diagnostic {
-            range,
-            severity: Some(self.severity.into()),
-            code: self.code.map(Into::into),
-            source: Some(DIAGNOSTIC_SOURCE.into()),
-            // @Task explain the " "-hack
-            message: self.message.unwrap_or_else(|| " ".into()).into(),
-            related_information: Some(related_information),
-            tags,
-            ..default()
+                OneOf::Left(lsp_types::Diagnostic {
+                    range,
+                    severity: Some(self.severity.into()),
+                    code: self.code.map(Into::into),
+                    source: Some(DIAGNOSTIC_SOURCE.into()),
+                    message,
+                    related_information: Some(related_information),
+                    tags,
+                    ..default()
+                })
+            }
+            None => OneOf::Right((self.severity.into(), message)),
         }
     }
 }
 
-// @Beacon @Task document what happens in the case where we don't have any highlights
 fn convert_highlights(
     highlights: BTreeSet<Highlight>,
     map: &SourceMap,
-) -> (Range, Vec<DiagnosticRelatedInformation>) {
+) -> Option<(Range, Vec<DiagnosticRelatedInformation>)> {
     let mut range = None;
     let mut related_information = Vec::new();
 
@@ -51,7 +59,7 @@ fn convert_highlights(
         }
     }
 
-    (range.unwrap_or_default(), related_information)
+    Some((range?, related_information))
 }
 
 impl From<Severity> for DiagnosticSeverity {
@@ -60,6 +68,16 @@ impl From<Severity> for DiagnosticSeverity {
             Severity::Bug | Severity::Error => Self::ERROR,
             Severity::Warning => Self::WARNING,
             Severity::Debug => Self::INFORMATION,
+        }
+    }
+}
+
+impl From<Severity> for MessageType {
+    fn from(severity: Severity) -> Self {
+        match severity {
+            Severity::Bug | Severity::Error => Self::ERROR,
+            Severity::Warning => Self::WARNING,
+            Severity::Debug => Self::INFO,
         }
     }
 }

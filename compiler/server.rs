@@ -2,7 +2,7 @@
 
 use crate::{
     component::{Component, ComponentIndex, ComponentType, Components},
-    diagnostics::{reporter::Buffer, Diagnostic, ErrorCode, Reporter},
+    diagnostics::{reporter::Buffer, Diagnostic, ErrorCode, Reporter, UntaggedDiagnostic},
     error::Result,
     hir,
     package::resolve_file,
@@ -14,6 +14,7 @@ use crate::{
     utility::{HashMap, IOError},
 };
 use std::{
+    collections::BTreeSet,
     default::default,
     mem,
     path::Path,
@@ -95,14 +96,23 @@ impl Server {
         );
 
         let diagnostics = mem::take(&mut *diagnostics.lock().unwrap());
-        let diagnostics = diagnostics
-            .into_iter()
-            .map(|diagnostic| diagnostic.into_lsp_diagnostic(&self.map.read().unwrap()))
-            .collect();
+        self.report(diagnostics, uri, version).await;
+    }
+
+    async fn report(&self, diagnostics: BTreeSet<UntaggedDiagnostic>, uri: Url, version: i32) {
+        let mut lsp_diagnostics = Vec::new();
+
+        for diagnostic in diagnostics {
+            let diagnostic = diagnostic.into_lsp_type(&self.map.read().unwrap());
+            match diagnostic {
+                OneOf::Left(diagnostic) => lsp_diagnostics.push(diagnostic),
+                OneOf::Right((type_, message)) => self.client.show_message(type_, message).await,
+            }
+        }
 
         // @Bug incorrect URI + version in general!
         self.client
-            .publish_diagnostics(uri, diagnostics, Some(version))
+            .publish_diagnostics(uri, lsp_diagnostics, Some(version))
             .await;
     }
 }

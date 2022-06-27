@@ -235,15 +235,6 @@ pub(crate) mod internal {
         pub(super) message: Option<Str>,
         pub(super) severity: Severity,
     }
-
-    use std::fmt;
-
-    // @Beacon @Beacon @Beacon @Temporary
-    impl fmt::Display for UnboxedUntaggedDiagnostic {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{:?}", self.message)
-        }
-    }
 }
 
 impl UnboxedUntaggedDiagnostic {

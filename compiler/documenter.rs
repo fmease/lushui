@@ -576,15 +576,13 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                     .attribute("content", "width=device-width, initial-scale=1.0"),
             )
             .child(
-                Element::new("title").child(
-                    match content_type {
-                        PageContentType::Module => self
-                            .component
-                            .extern_path_with_root_to_string(index, self.component.folder_id()),
-                        PageContentType::Attributes => "Attributes".into(),
-                        PageContentType::ReservedIdentifiers => "Reserved Identifiers".into(),
-                    },
-                ),
+                Element::new("title").child(match content_type {
+                    PageContentType::Module => self
+                        .component
+                        .extern_path_with_root_to_string(index, self.component.folder_id()),
+                    PageContentType::Attributes => "Attributes".into(),
+                    PageContentType::ReservedIdentifiers => "Reserved Identifiers".into(),
+                }),
             )
             .child(
                 VoidElement::new("meta")
