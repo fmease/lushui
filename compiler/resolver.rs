@@ -94,7 +94,7 @@ pub(crate) fn resolve_path(
     session: &BuildSession,
 ) -> Result<DeclarationIndex> {
     Resolver::new(component, session)
-        .resolve_path::<target::Any>(path, namespace)
+        .resolve_path::<target::Any>(path, PathResolutionContext::new(namespace))
         .map_err(|error| Resolver::new(component, session).report_resolution_error(error))
 }
 
@@ -566,9 +566,11 @@ impl<'a> ResolverMut<'a> {
             let mut partially_resolved_use_bindings = HashMap::default();
 
             for (&index, item) in &self.partially_resolved_use_bindings {
+                let namespace = item.target.namespace.global(self.component);
+
                 match self.as_ref().resolve_path::<target::Any>(
                     &item.target.path,
-                    item.target.namespace.global(self.component),
+                    PathResolutionContext::new(namespace),
                 ) {
                     Ok(target) => {
                         self.component.bindings[index].kind = EntityKind::Use { target };
@@ -1094,8 +1096,9 @@ impl<'a> Resolver<'a> {
         literal: Span,
         scope: &FunctionScope<'_>,
     ) -> Result<DeclarationIndex> {
+        let namespace = scope.module().global(self.component);
         let binding = self
-            .resolve_path::<target::Any>(path, scope.module().global(self.component))
+            .resolve_path::<target::Any>(path, PathResolutionContext::new(namespace))
             .map_err(|error| self.report_resolution_error(error))?;
 
         {
@@ -1125,44 +1128,10 @@ impl<'a> Resolver<'a> {
     }
 
     /// Resolve a syntactic path given a namespace.
+    // @Task memoize by (path, namespace)
     fn resolve_path<Target: ResolutionTarget>(
         &self,
         path: &ast::Path,
-        namespace: DeclarationIndex,
-    ) -> Result<Target::Output, ResolutionError> {
-        self.resolve_path_with_origin::<Target>(
-            path,
-            namespace,
-            PathResolutionContext {
-                origin_namespace: namespace,
-                usage: IdentifierUsage::Unqualified,
-                check_exposure: CheckExposure::Yes,
-            },
-        )
-    }
-
-    fn resolve_path_unchecked_exposure<Target: ResolutionTarget>(
-        &self,
-        path: &ast::Path,
-        namespace: DeclarationIndex,
-    ) -> Result<Target::Output, ResolutionError> {
-        self.resolve_path_with_origin::<Target>(
-            path,
-            namespace,
-            PathResolutionContext {
-                origin_namespace: namespace,
-                usage: IdentifierUsage::Unqualified,
-                check_exposure: CheckExposure::No,
-            },
-        )
-    }
-
-    /// Resolve a syntactic path given a namespace with an explicit origin.
-    // @Task memoize by (path, namespace)
-    fn resolve_path_with_origin<Target: ResolutionTarget>(
-        &self,
-        path: &ast::Path,
-        namespace: DeclarationIndex,
         context: PathResolutionContext,
     ) -> Result<Target::Output, ResolutionError> {
         if let Some(hanger) = &path.hanger {
@@ -1211,23 +1180,20 @@ impl<'a> Resolver<'a> {
 
                     return match &*path.segments {
                         [identifier] => Ok(Target::output(root, identifier)),
-                        [_, identifiers @ ..] => self.resolve_path_with_origin::<Target>(
+                        [_, identifiers @ ..] => self.resolve_path::<Target>(
                             &ast::Path::with_segments(identifiers.to_owned().into()),
-                            root,
-                            PathResolutionContext {
-                                usage: IdentifierUsage::Qualified,
-                                check_exposure: CheckExposure::Yes,
-                                ..context
-                            },
+                            PathResolutionContext::new(root)
+                                .origin_namespace(context.origin_namespace)
+                                .qualified_identifier(),
                         ),
                         [] => unreachable!(),
                     };
                 }
                 Topmost => self.component.root(),
                 Super => self
-                    .resolve_super(hanger, namespace.local(self.component).unwrap())?
+                    .resolve_super(hanger, context.namespace.local(self.component).unwrap())?
                     .global(self.component),
-                Self_ => namespace,
+                Self_ => context.namespace,
             };
 
             return if path.segments.is_empty() {
@@ -1235,15 +1201,14 @@ impl<'a> Resolver<'a> {
                     .reported(self.session.reporter())
                     .map_err(Into::into)
             } else {
-                self.resolve_path_with_origin::<Target>(
+                self.resolve_path::<Target>(
                     &ast::Path::with_segments(path.segments.clone()),
-                    namespace,
-                    context.qualified_identifier(),
+                    context.namespace(namespace).qualified_identifier(),
                 )
             };
         }
 
-        let index = self.resolve_identifier(&path.segments[0], namespace, context)?;
+        let index = self.resolve_identifier(&path.segments[0], context)?;
         let entity = self.look_up(index);
 
         match &*path.segments {
@@ -1254,11 +1219,10 @@ impl<'a> Resolver<'a> {
             }
             [identifier, identifiers @ ..] => {
                 if entity.is_namespace() {
-                    self.resolve_path_with_origin::<Target>(
+                    self.resolve_path::<Target>(
                         // @Task define & use a PathView instead!
                         &ast::Path::with_segments(identifiers.to_owned().into()),
-                        index,
-                        context.qualified_identifier(),
+                        context.namespace(index).qualified_identifier(),
                     )
                 } else if entity.is_error() {
                     // @Task add rationale why `last`
@@ -1267,7 +1231,7 @@ impl<'a> Resolver<'a> {
                     let diagnostic = self.attempt_to_access_subbinder_of_non_namespace(
                         identifier,
                         &entity.kind,
-                        namespace,
+                        context.namespace,
                         identifiers.first().unwrap(),
                     );
                     Err(diagnostic.report(self.session.reporter()).into())
@@ -1294,11 +1258,10 @@ impl<'a> Resolver<'a> {
     fn resolve_identifier(
         &self,
         identifier: &ast::Identifier,
-        namespace: DeclarationIndex,
         context: PathResolutionContext,
     ) -> Result<DeclarationIndex, ResolutionError> {
         let index = self
-            .look_up(namespace)
+            .look_up(context.namespace)
             .namespace()
             .unwrap()
             .binders
@@ -1307,16 +1270,17 @@ impl<'a> Resolver<'a> {
             .find(|&index| &self.look_up(index).source == identifier)
             .ok_or_else(|| ResolutionError::UnresolvedBinding {
                 identifier: identifier.clone(),
-                namespace,
+                namespace: context.namespace,
                 usage: context.usage,
             })?;
 
         // @Temporary hack until we can manage cyclic exposure reaches!
-        if matches!(context.check_exposure, CheckExposure::Yes) {
+        if context.validate_exposure {
             self.handle_exposure(index, identifier, context.origin_namespace)?;
         }
 
-        if let Some(deprecated) = self
+        if !context.allow_deprecated
+        && let Some(deprecated) = self
             .look_up(index)
             .attributes
             .get::<{ AttributeName::Deprecated }>()
@@ -1416,9 +1380,10 @@ impl<'a> Resolver<'a> {
                 //       for cyclic exposure reaches. Improving output for test
                 //       name-resolution/exposure/indirect-cycle
                 let reach = self
-                    .resolve_path_unchecked_exposure::<target::Module>(
+                    .resolve_path::<target::Module>(
                         path,
-                        namespace.global(self.component),
+                        PathResolutionContext::new(namespace.global(self.component))
+                            .ignore_exposure(),
                     )
                     .map_err(|error| self.report_resolution_error(error))?;
 
@@ -1546,12 +1511,15 @@ impl<'a> Resolver<'a> {
                 Module(_) => unreachable!(),
             }
         } else {
-            self.resolve_path::<target::Value>(query, scope.module().global(self.component))
-                .map_err(|error| {
-                    self.report_resolution_error_searching_lookalikes(error, |identifier, _| {
-                        self.find_similarly_named(origin, identifier)
-                    })
+            self.resolve_path::<target::Value>(
+                query,
+                PathResolutionContext::new(scope.module().global(self.component)),
+            )
+            .map_err(|error| {
+                self.report_resolution_error_searching_lookalikes(error, |identifier, _| {
+                    self.find_similarly_named(origin, identifier)
                 })
+            })
         }
     }
 
@@ -1754,13 +1722,13 @@ impl Component {
 
         let identifier =
             ast::Identifier::new_unchecked(Self::PROGRAM_ENTRY_IDENTIFIER.into(), default());
-        let context = PathResolutionContext {
-            origin_namespace: self.root(),
-            usage: IdentifierUsage::Unqualified,
-            check_exposure: CheckExposure::No,
-        };
         let index = resolver
-            .resolve_identifier(&identifier, self.root(), context)
+            .resolve_identifier(
+                &identifier,
+                PathResolutionContext::new(self.root())
+                    .ignore_exposure()
+                    .allow_deprecated(),
+            )
             .ok()?;
         let entity = &resolver.look_up(index);
 
@@ -1791,12 +1759,49 @@ enum Transparency {
 
 #[derive(Clone, Copy)]
 struct PathResolutionContext {
+    namespace: DeclarationIndex,
     origin_namespace: DeclarationIndex,
     usage: IdentifierUsage,
-    check_exposure: CheckExposure,
+    validate_exposure: bool,
+    allow_deprecated: bool,
 }
 
 impl PathResolutionContext {
+    fn new(namespace: DeclarationIndex) -> Self {
+        Self {
+            namespace,
+            origin_namespace: namespace,
+            usage: IdentifierUsage::Unqualified,
+            validate_exposure: true,
+            allow_deprecated: false,
+        }
+    }
+
+    fn namespace(self, namespace: DeclarationIndex) -> Self {
+        Self { namespace, ..self }
+    }
+
+    fn origin_namespace(self, origin_namespace: DeclarationIndex) -> Self {
+        Self {
+            origin_namespace,
+            ..self
+        }
+    }
+
+    fn ignore_exposure(self) -> Self {
+        Self {
+            validate_exposure: false,
+            ..self
+        }
+    }
+
+    fn allow_deprecated(self) -> Self {
+        Self {
+            allow_deprecated: true,
+            ..self
+        }
+    }
+
     fn qualified_identifier(self) -> Self {
         Self {
             usage: IdentifierUsage::Qualified,
@@ -1824,13 +1829,6 @@ impl fmt::Debug for PartiallyResolvedUseBinding {
 enum IdentifierUsage {
     Qualified,
     Unqualified,
-}
-
-// @Temporary
-#[derive(Clone, Copy)]
-enum CheckExposure {
-    Yes,
-    No,
 }
 
 impl Component {
