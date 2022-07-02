@@ -726,7 +726,7 @@ fn documentation(attributes: &Attributes) -> Option<String> {
     (!content.is_empty()).then(|| content)
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct Options {
     pub asciidoc: bool,
     pub lorem_ipsum: Option<usize>,

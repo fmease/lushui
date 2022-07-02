@@ -63,7 +63,7 @@ impl Identifier {
     }
 
     pub(crate) fn declaration_index(&self) -> Option<DeclarationIndex> {
-        self.index.declaration_index()
+        self.index.declaration()
     }
 
     pub(crate) fn local_declaration_index(
@@ -75,7 +75,7 @@ impl Identifier {
 
     #[allow(dead_code)]
     pub(crate) fn de_bruijn_index(&self) -> Option<DeBruijnIndex> {
-        self.index.de_bruijn_index()
+        self.index.de_bruijn()
     }
 }
 
@@ -125,14 +125,14 @@ impl Index {
         }
     }
 
-    pub(crate) fn declaration_index(self) -> Option<DeclarationIndex> {
+    pub(crate) fn declaration(self) -> Option<DeclarationIndex> {
         match self {
             Self::Declaration(index) => Some(index),
             _ => None,
         }
     }
 
-    pub(crate) fn de_bruijn_index(self) -> Option<DeBruijnIndex> {
+    pub(crate) fn de_bruijn(self) -> Option<DeBruijnIndex> {
         match self {
             Self::DeBruijn(index) => Some(index),
             _ => None,

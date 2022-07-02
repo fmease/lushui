@@ -1,8 +1,8 @@
 use clap::{Arg, ArgMatches};
 use colored::Colorize;
 use derivation::{Elements, FromStr, Str};
-use lushui::{component::ComponentType, error::Result};
-use std::{cmp::max, path::PathBuf};
+use lushui::{component::ComponentType, documenter, error::Result};
+use std::{cmp::max, default::default, path::PathBuf};
 
 /// Unstable environment variable to control if internal commands are shown.
 const LUSHUI_DEVELOPER_ENV_VAR: &str = "LUSHUI_DEVELOPER";
@@ -115,7 +115,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
             clap::Command::new(subcommand::CHECK)
                 .visible_alias("c")
                 .about("Check the given or local package for errors")
-                .args([&package_path_argument, &backend_option, &unstable_options])
+                .args([&package_path_argument, &unstable_options])
                 .args(&target_libraries_options)
                 .args([&target_all_executables_option, &target_executables_option]),
             clap::Command::new(subcommand::BUILD)
@@ -138,7 +138,6 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                 .about("Document the given or local package")
                 .args([
                     &package_path_argument,
-                    &backend_option,
                     &unstable_options,
                     &target_all_executables_option,
                     &target_executables_option,
@@ -155,7 +154,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                         .visible_alias("c")
                         .about("Check the given source file for errors")
                         .args(&file_build_arguments)
-                        .args([&backend_option, &unstable_options]),
+                        .arg(&unstable_options),
                     clap::Command::new(subcommand::BUILD)
                         .visible_alias("b")
                         .about("Compile the given source file")
@@ -170,7 +169,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                         .visible_aliases(&["doc", "d"])
                         .about("Document the given source file")
                         .args(file_build_arguments)
-                        .args([backend_option, unstable_options])
+                        .arg(unstable_options)
                         .args(documentation_arguments),
                 ]),
             clap::Command::new(subcommand::SERVE).about("Launch an LSP server"),
@@ -208,29 +207,44 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
         .get_matches();
 
     let command = match matches.subcommand().unwrap() {
-        (command @ (subcommand::BUILD | subcommand::CHECK | subcommand::RUN), matches) => {
-            let mode = match command {
-                subcommand::BUILD => BuildMode::Build,
-                subcommand::CHECK => BuildMode::Check,
-                subcommand::RUN => BuildMode::Run,
+        (
+            command @ (subcommand::BUILD
+            | subcommand::CHECK
+            | subcommand::RUN
+            | subcommand::DOCUMENT),
+            matches,
+        ) => {
+            let (mode, unstable_build_options) = match command {
+                subcommand::BUILD | subcommand::RUN => {
+                    let (unstable_build_options, unstable_compilation_options) =
+                        unstable::deserialize(matches).map(unstable::Or::split)?;
+                    let options =
+                        CompilationOptions::deserialize(matches, unstable_compilation_options);
+
+                    let mode = match command {
+                        subcommand::BUILD => BuildMode::Build { options },
+                        subcommand::RUN => BuildMode::Run { options },
+                        _ => unreachable!(),
+                    };
+
+                    (mode, unstable_build_options)
+                }
+                subcommand::CHECK => (BuildMode::Check, unstable::deserialize(matches)?),
+                subcommand::DOCUMENT => {
+                    let (unstable_build_options, unstable_documentation_options) =
+                        unstable::deserialize(matches).map(unstable::Or::split)?;
+
+                    let mode = BuildMode::Document {
+                        options: DocumentationOptions::deserialize(
+                            matches,
+                            unstable_documentation_options,
+                        ),
+                    };
+
+                    (mode, unstable_build_options)
+                }
                 _ => unreachable!(),
             };
-            Command::BuildPackage {
-                options: PackageBuildOptions::deserialize(
-                    matches,
-                    unstable::deserialize(matches)?,
-                    &mode,
-                ),
-                mode,
-            }
-        }
-        (subcommand::DOCUMENT, matches) => {
-            let (unstable_build_options, unstable_documentation_options) =
-                unstable::deserialize(matches).map(unstable::Or::split)?;
-            let mode = BuildMode::Document {
-                options: DocumentationOptions::deserialize(matches, unstable_documentation_options),
-            };
-
             Command::BuildPackage {
                 options: PackageBuildOptions::deserialize(matches, unstable_build_options, &mode),
                 mode,
@@ -239,31 +253,41 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
         (subcommand::FILE, matches) => {
             let (command, matches) = matches.subcommand().unwrap();
 
-            let (unstable_build_options, unstable_documentation_options) =
-                unstable::deserialize(matches).map(unstable::Or::split)?;
+            let (mode, unstable_build_options) = match command {
+                subcommand::CHECK => (BuildMode::Check, unstable::deserialize(matches)?),
+                subcommand::BUILD | subcommand::RUN => {
+                    let (unstable_build_options, unstable_compilation_options) =
+                        unstable::deserialize(matches).map(unstable::Or::split)?;
+                    let options =
+                        CompilationOptions::deserialize(matches, unstable_compilation_options);
 
-            match command {
-                subcommand::DOCUMENT => Command::BuildFile {
-                    mode: BuildMode::Document {
+                    let mode = match command {
+                        subcommand::BUILD => BuildMode::Build { options },
+                        subcommand::RUN => BuildMode::Run { options },
+                        _ => unreachable!(),
+                    };
+
+                    (mode, unstable_build_options)
+                }
+                subcommand::DOCUMENT => {
+                    let (unstable_build_options, unstable_documentation_options) =
+                        unstable::deserialize(matches).map(unstable::Or::split)?;
+
+                    let mode = BuildMode::Document {
                         options: DocumentationOptions::deserialize(
                             matches,
                             unstable_documentation_options,
                         ),
-                    },
-                    options: FileBuildOptions::deserialize(matches, unstable_build_options),
-                },
-                command => Command::BuildFile {
-                    mode: match command {
-                        subcommand::CHECK => BuildMode::Check,
-                        subcommand::BUILD => BuildMode::Build,
-                        subcommand::RUN => BuildMode::Run,
-                        _ => unreachable!(),
-                    },
-                    options: FileBuildOptions::deserialize(
-                        matches,
-                        unstable::deserialize(matches)?,
-                    ),
-                },
+                    };
+
+                    (mode, unstable_build_options)
+                }
+                _ => unreachable!(),
+            };
+
+            Command::BuildFile {
+                mode,
+                options: FileBuildOptions::deserialize(matches, unstable_build_options),
             }
         }
         (subcommand::SERVE, _matches) => Command::Serve,
@@ -365,17 +389,10 @@ impl GlobalOptions {
     }
 }
 
-#[derive(Default, FromStr, Str, Elements)]
-#[format(dash_case)]
-pub enum Backend {
-    #[default]
-    Interpreter,
-}
-
 pub enum BuildMode {
     Check,
-    Build,
-    Run,
+    Build { options: CompilationOptions },
+    Run { options: CompilationOptions },
     Document { options: DocumentationOptions },
 }
 
@@ -383,7 +400,6 @@ pub struct PackageBuildOptions {
     pub general: BuildOptions,
     pub path: Option<PathBuf>,
     pub targets: BuildTargets,
-    pub backend: Backend,
 }
 
 impl PackageBuildOptions {
@@ -396,10 +412,6 @@ impl PackageBuildOptions {
             path: matches.value_of_os(argument::PATH).map(Into::into),
             general: BuildOptions::deserialize(unstable_options),
             targets: BuildTargets::deserialize(matches, mode),
-            backend: matches
-                .value_of(option::BACKEND)
-                .map(|input| input.parse().unwrap())
-                .unwrap_or_default(),
         }
     }
 }
@@ -408,7 +420,7 @@ pub struct BuildTargets(/* empty means any */ Vec<BuildTarget>);
 
 impl BuildTargets {
     fn deserialize(matches: &ArgMatches, mode: &BuildMode) -> Self {
-        let should_run = matches!(mode, BuildMode::Run);
+        let should_run = matches!(mode, BuildMode::Run { .. });
 
         let all_libraries = !should_run && matches.is_present(option::TARGET_ALL_LIBRARIES);
         let all_executables = !should_run && matches.is_present(option::TARGET_ALL_EXECUTABLES);
@@ -459,7 +471,6 @@ pub struct FileBuildOptions {
     pub general: BuildOptions,
     pub no_core: bool,
     pub component_type: Option<ComponentType>,
-    pub backend: Backend,
 }
 
 impl FileBuildOptions {
@@ -471,10 +482,6 @@ impl FileBuildOptions {
             component_type: matches
                 .value_of(option::COMPONENT_TYPE)
                 .map(|input| input.parse().unwrap()),
-            backend: matches
-                .value_of(option::BACKEND)
-                .map(|input| input.parse().unwrap())
-                .unwrap_or_default(),
         }
     }
 }
@@ -528,6 +535,52 @@ impl BuildOptions {
     }
 }
 
+#[derive(Default)]
+pub struct CompilationOptions {
+    pub backend: Backend,
+    #[cfg(feature = "llvm")]
+    pub general: lushui::backend::Options,
+}
+
+impl CompilationOptions {
+    fn deserialize(
+        matches: &ArgMatches,
+        unstable_options: Vec<unstable::CompilationOption>,
+    ) -> Self {
+        #[allow(unused_mut, clippy::needless_update)]
+        let mut options = Self {
+            backend: matches
+                .value_of(option::BACKEND)
+                .map(|input| input.parse().unwrap())
+                .unwrap_or_default(),
+            ..default()
+        };
+
+        for unstable_option in unstable_options {
+            #[allow(unused_imports)]
+            use unstable::CompilationOption::*;
+
+            match unstable_option {
+                #[cfg(feature = "llvm")]
+                EmitLlvmIr => options.general.emit_llvm_ir = true,
+                #[cfg(feature = "llvm")]
+                VerifyLlvmIr => options.general.verify_llvm_ir = true,
+            }
+        }
+
+        options
+    }
+}
+
+#[derive(Default, FromStr, Str, Elements)]
+#[format(dash_case)]
+pub enum Backend {
+    #[default]
+    Interpreter,
+    #[cfg(feature = "llvm")]
+    Llvm,
+}
+
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum PassRestriction {
     Resolver,
@@ -561,13 +614,11 @@ impl PackageCreationOptions {
     }
 }
 
+#[derive(Default)]
 pub struct DocumentationOptions {
     pub open: bool,
     pub no_dependencies: bool,
-    // unstable
-    pub asciidoc: bool,
-    // unstable
-    pub lorem_ipsum: Option<usize>,
+    pub general: documenter::Options,
 }
 
 impl DocumentationOptions {
@@ -578,16 +629,15 @@ impl DocumentationOptions {
         let mut options = Self {
             open: matches.is_present(option::OPEN),
             no_dependencies: matches.is_present(option::NO_DEPENDENCIES),
-            asciidoc: false,
-            lorem_ipsum: None,
+            ..default()
         };
 
         for unstable_option in unstable_options {
             use unstable::DocumentationOption::*;
 
             match unstable_option {
-                AsciiDoc => options.asciidoc = true,
-                LoremIpsum(amount) => options.lorem_ipsum = amount,
+                AsciiDoc => options.general.asciidoc = true,
+                LoremIpsum(amount) => options.general.lorem_ipsum = amount,
             }
         }
 
@@ -726,6 +776,34 @@ mod unstable {
                 Self::ParseOnly => "Halt the execution after parsing the current component",
                 Self::ResolveOnly => "Halt the execution after resolving the names of the current component",
                 Self::Timing => "Print the time of each pass through the current component",
+            }
+        }
+    }
+
+    #[derive(Clone, Copy, Elements, Str, FromStr)]
+    #[format(dash_case)]
+    #[str(syntax)]
+    pub(super) enum CompilationOption {
+        #[cfg(feature = "llvm")]
+        EmitLlvmIr,
+        #[cfg(feature = "llvm")]
+        VerifyLlvmIr,
+        // @Task
+        // #[cfg(feature = "llvm")]
+        // Linker(Option<String>),
+    }
+
+    impl UnstableOption for CompilationOption {
+        fn syntax(self) -> &'static str {
+            CompilationOption::syntax(&self)
+        }
+
+        fn help(self) -> &'static str {
+            match self {
+                #[cfg(feature = "llvm")]
+                Self::EmitLlvmIr => "Emit the generated LLVM-IR",
+                #[cfg(feature = "llvm")]
+                Self::VerifyLlvmIr => "Verify the generated LLVM-IR",
             }
         }
     }

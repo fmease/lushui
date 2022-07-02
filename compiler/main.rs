@@ -51,6 +51,8 @@ use std::{
     },
 };
 
+use crate::cli::Backend;
+
 mod cli;
 
 const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " (", env!("GIT_DATA"), ")");
@@ -253,7 +255,7 @@ fn build_component(
     if !global_options.quiet {
         let label = match mode {
             BuildMode::Check => "Checking",
-            BuildMode::Build | BuildMode::Run => "Building",
+            BuildMode::Build { .. } | BuildMode::Run { .. } => "Building",
             // @Bug this should not be printed for non-goal components and --no-deps
             BuildMode::Document { .. } => "Documenting",
         };
@@ -277,13 +279,13 @@ fn build_component(
         }
     }
 
-    macro time(#![name = $name:literal] $( $block:tt )+) {
+    macro time(#![doc = $name:literal] $( $block:tt )+) {
         let time = std::time::Instant::now();
         $( $block )+
         let duration = time.elapsed();
 
         if options.timing {
-            println!("  {:<30}{duration:?}", $name);
+            println!("  {:<30}{duration:?}", $name.trim_start());
         }
     }
 
@@ -320,7 +322,8 @@ fn build_component(
         })?;
 
     time! {
-        #![name = "Lexing"]
+        //! Lexing
+
         let tokens = lexer::lex(file, session)?.value;
     };
 
@@ -333,7 +336,8 @@ fn build_component(
     restriction_point! { Lexer }
 
     time! {
-        #![name = "Parsing"]
+        //! Parsing
+
         let component_root = parser::parse_root_module_file(&tokens, file, session)?;
     }
 
@@ -350,7 +354,8 @@ fn build_component(
     };
 
     time! {
-        #![name = "Lowering"]
+        //! Lowering
+
         let component_root =
             lowerer::lower_file(component_root, lowering_options, component, session)?;
     }
@@ -362,7 +367,8 @@ fn build_component(
     restriction_point! { Lowerer }
 
     time! {
-        #![name = "Name Resolution"]
+        //! Name Resolution
+
         let component_root =
             resolver::resolve_declarations(component_root, component, session)?;
     }
@@ -377,7 +383,8 @@ fn build_component(
     restriction_point! { Resolver }
 
     time! {
-        #![name = "Type Checking and Inference"]
+        //! Type Checking and Inference
+
         typer::check(&component_root, component, session)?;
     }
 
@@ -386,6 +393,7 @@ fn build_component(
     }
 
     // @Task move out of main.rs
+    // @Update @Task move into respective backends: LLVM and interpreter!
     if component.is_executable() && component.look_up_program_entry(session).is_none() {
         return Err(Diagnostic::error()
             .code(ErrorCode::E050)
@@ -399,7 +407,7 @@ fn build_component(
     }
 
     match &mode {
-        BuildMode::Run => {
+        BuildMode::Run { options } => {
             if component.is_goal(session) {
                 if !component.is_executable() {
                     // @Question code?
@@ -416,37 +424,54 @@ fn build_component(
                         .report(session.reporter()));
                 }
 
-                let result = typer::interpreter::evaluate_main_function(component, session)?;
-
-                println!("{}", result.with((component, session)));
+                match options.backend {
+                    Backend::Interpreter => {
+                        let result =
+                            typer::interpreter::evaluate_main_function(component, session)?;
+                        println!("{}", result.with((component, session)));
+                    }
+                    #[cfg(feature = "llvm")]
+                    Backend::Llvm => {
+                        // @Task spawn Command where the path is session.build_folder() + ...
+                        return Err(Diagnostic::error().message(
+                            "running executables built with the LLVM backend is not yet supported",
+                        )
+                        .report(session.reporter()));
+                    }
+                }
             }
         }
-        BuildMode::Build => todo!(),
-        BuildMode::Document {
-            options: documentation_options,
-        } => {
+        BuildMode::Build { options } => match options.backend {
+            Backend::Interpreter => {
+                // @Task smh print this earlier than the status info (“Building”)
+                return Err(Diagnostic::error()
+                    .message("the tree-walk interpreter does not support compilation")
+                    .report(session.reporter()));
+            }
+            #[cfg(feature = "llvm")]
+            Backend::Llvm => {
+                lushui::backend::compile(options.general, &component_root, component, session)?;
+            }
+        },
+        BuildMode::Document { options } => {
             // @Bug leads to broken links, @Task the documenter has to handle this itself
-            if documentation_options.no_dependencies && !component.is_goal(session) {
+            if options.no_dependencies && !component.is_goal(session) {
                 return Ok(());
             }
 
-            let documenter_options = documenter::Options {
-                asciidoc: documentation_options.asciidoc,
-                lorem_ipsum: documentation_options.lorem_ipsum,
-            };
-
             time! {
-                #![name = "Documentation Generation"]
+                //! Documentation Generation
+
                 let index_page_path = documenter::document(
                     &component_root,
-                    documenter_options,
+                    options.general,
                     component_outlines,
                     component,
                     session,
                 )?;
             }
 
-            if documentation_options.open {
+            if options.open {
                 if let Err(error) = open::that(&index_page_path) {
                     // Not sure if this should be a user error or an internal compiler error.
                     // There is no way of knowing the cause of the I/O error.

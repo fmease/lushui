@@ -38,10 +38,18 @@ pub(crate) fn derive(input: TokenStream1) -> Result<TokenStream2, Error> {
 
     let (impl_generics, type_generics, where_clause) = input.generics.split_for_impl();
 
+    let scrutinee = if mapping.is_empty() {
+        // `Self` is an uninhabited type and to be able to generate an exhaustive
+        // match expression, we need to dereference the receiver.
+        quote! { *self }
+    } else {
+        quote! { self }
+    };
+
     Ok(quote! {
         impl #impl_generics #type_ #type_generics #where_clause {
             #visibility const fn #method(&self) -> &'static ::core::primitive::str {
-                match self {#( #mapping ),* }
+                match #scrutinee { #( #mapping ),* }
             }
         }
     })
