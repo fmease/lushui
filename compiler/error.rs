@@ -11,25 +11,25 @@ pub type Result<T = (), E = ErasedReportedError> = std::result::Result<T, E>;
 #[derive(Debug)]
 #[must_use]
 pub struct Outcome<T> {
-    pub value: T,
+    pub bare: T,
     pub health: Health,
 }
 
 impl<T> Outcome<T> {
-    pub const fn new(value: T, health: Health) -> Self {
-        Self { value, health }
+    pub const fn new(bare: T, health: Health) -> Self {
+        Self { bare, health }
     }
 
-    pub const fn untainted(value: T) -> Self {
-        Self::new(value, Health::Untainted)
+    pub const fn untainted(bare: T) -> Self {
+        Self::new(bare, Health::Untainted)
     }
 
-    pub const fn tainted(value: T) -> Self {
-        Self::new(value, Health::Tainted)
+    pub const fn tainted(bare: T) -> Self {
+        Self::new(bare, Health::Tainted)
     }
 
     pub fn map<U>(self, mapper: impl FnOnce(T) -> U) -> Outcome<U> {
-        Outcome::new(mapper(self.value), self.health)
+        Outcome::new(mapper(self.bare), self.health)
     }
 }
 
@@ -40,7 +40,7 @@ pub(crate) trait Stain<T> {
 impl<T> Stain<T> for Outcome<T> {
     fn stain(self, health: &mut Health) -> T {
         *health = health.and(self.health);
-        self.value
+        self.bare
     }
 }
 
@@ -70,9 +70,9 @@ impl<T> OkIfUntaintedExt<T> for Result<T> {
     }
 }
 
-pub macro Outcome($value:pat, $health:pat) {
+pub macro Outcome($bare:pat, $health:pat) {
     Outcome {
-        value: $value,
+        bare: $bare,
         health: $health,
     }
 }
@@ -98,7 +98,7 @@ impl<T: PossiblyErroneous> From<Result<T>> for Outcome<T> {
 impl<T> From<Outcome<T>> for Result<T> {
     fn from(outcome: Outcome<T>) -> Self {
         match outcome.health {
-            Health::Untainted => Ok(outcome.value),
+            Health::Untainted => Ok(outcome.bare),
             // @Beacon @Beacon @Beacon @Task don't use this unchecked call, use the ErasedReportedError inside of Tainted (once available)
             Health::Tainted => Err(ErasedReportedError::new_unchecked()),
         }

@@ -314,7 +314,7 @@ fn build_component(
         }
     };
 
-    let tokens = lexer::lex(file, session)?.value;
+    let tokens = lexer::lex(file, session)?.bare;
 
     let component_root = parser::parse_root_module_file(&tokens, file, session)?;
 
@@ -358,7 +358,7 @@ impl hir::Declaration {
             return None;
         }
 
-        match &self.value {
+        match &self.bare {
             Function(function) => {
                 if function.type_annotation.span.contains(byte_index) {
                     function.type_annotation.find_binding(byte_index)
@@ -417,7 +417,7 @@ impl hir::Expression {
             return None;
         }
 
-        match &self.value {
+        match &self.bare {
             PiType(pi) => {
                 if pi.domain.span.contains(byte_index) {
                     pi.domain.find_binding(byte_index)

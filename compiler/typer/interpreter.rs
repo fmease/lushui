@@ -56,7 +56,7 @@ impl<'a> Interpreter<'a> {
         use hir::ExpressionKind::*;
 
         #[allow(clippy::match_same_arms)] // @Temporary
-        match (&expression.value, substitution) {
+        match (&expression.bare, substitution) {
             (Binding(binding), Shift(amount)) => hir::Expression::new(
                 expression.attributes,
                 expression.span,
@@ -300,7 +300,7 @@ impl<'a> Interpreter<'a> {
         use hir::ExpressionKind::*;
 
         // @Bug we currently don't support zero-arity intrinsic functions
-        Ok(match expression.clone().value {
+        Ok(match expression.clone().bare {
             Binding(binding) => {
                 match self.look_up_value(&binding.0) {
                     // @Question is this normalization necessary? I mean, yes, we got a new scope,
@@ -316,7 +316,7 @@ impl<'a> Interpreter<'a> {
             Application(application) => {
                 let callee = self.evaluate_expression(application.callee.clone(), context)?;
                 let argument = application.argument.clone();
-                match callee.value {
+                match callee.bare {
                     Lambda(lambda) => {
                         // @Bug because we don't reduce to weak-head normal form anywhere,
                         // diverging expressions are still going to diverge even if "lazy"/
@@ -502,7 +502,7 @@ impl<'a> Interpreter<'a> {
                 // everything else should be impossible because of type checking but I might be wrong.
                 // possible counter examples: unevaluated case analysis expression
                 // @Note @Beacon think about having a variable `matches: bool` (whatever) to avoid repetition
-                match scrutinee.value {
+                match scrutinee.bare {
                     Binding(scrutinee) => {
                         // @Temporary hack (bc we do not follow any principled implementation right now):
                         // a case analysis is indirectly neutral if the subject is a neutral binding
@@ -521,7 +521,7 @@ impl<'a> Interpreter<'a> {
                         for case in &analysis.cases {
                             use hir::PatternKind::*;
 
-                            match &case.pattern.value {
+                            match &case.pattern.bare {
                                 Binding(binding) => {
                                     if binding.0 == scrutinee.0 {
                                         // @Task @Beacon extend with parameters when evaluating
@@ -545,7 +545,7 @@ impl<'a> Interpreter<'a> {
                         for case in &analysis.cases {
                             use hir::PatternKind::*;
 
-                            match &case.pattern.value {
+                            match &case.pattern.bare {
                                 Number(literal1) => {
                                     if &literal0 == literal1 {
                                         return self
@@ -655,7 +655,7 @@ impl<'a> Interpreter<'a> {
     ) -> Result<bool> {
         use hir::ExpressionKind::*;
 
-        Ok(match (&expression0.value, &expression1.value) {
+        Ok(match (&expression0.bare, &expression1.bare) {
             (Binding(binding0), Binding(binding1)) => binding0.0 == binding1.0,
             (Application(application0), Application(application1)) => {
                 self.equals(&application0.callee, &application1.callee, scope)?

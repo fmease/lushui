@@ -22,7 +22,7 @@ pub type Declaration = Item<DeclarationKind>;
 
 impl Declaration {
     pub(crate) fn constructor(&self) -> Option<&Constructor> {
-        obtain!(&self.value, DeclarationKind::Constructor(constructor) => constructor)
+        obtain!(&self.bare, DeclarationKind::Constructor(constructor) => constructor)
     }
 }
 

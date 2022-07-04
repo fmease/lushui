@@ -24,13 +24,13 @@ use std::{default::default, sync::Arc};
 fn parse_expression(source: &str) -> Result<Expression> {
     let session = BuildSession::test();
     let file = session.map().add(None, Arc::new(source.to_owned()), None);
-    Parser::new(&lex(file, &session)?.value, file, &session).parse_expression()
+    Parser::new(&lex(file, &session)?.bare, file, &session).parse_expression()
 }
 
 fn parse_pattern(source: &str) -> Result<Pattern> {
     let session = BuildSession::test();
     let file = session.map().add(None, Arc::new(source.to_owned()), None);
-    Parser::new(&lex(file, &session)?.value, file, &session).parse_pattern()
+    Parser::new(&lex(file, &session)?.bare, file, &session).parse_pattern()
 }
 
 fn parse_declaration(source: &str) -> Result<Declaration> {

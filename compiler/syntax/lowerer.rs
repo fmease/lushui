@@ -90,7 +90,7 @@ impl<'a> Lowerer<'a> {
 
         let attributes = self.lower_attributes(&declaration.attributes, &declaration);
 
-        match declaration.value {
+        match declaration.bare {
             Function(function) => smallvec![lowered_ast::Declaration::new(
                 attributes,
                 declaration.span,
@@ -356,7 +356,7 @@ impl<'a> Lowerer<'a> {
                 // at this point in time, they are still on the module header if at all
                 assert!(declaration.attributes.is_empty());
 
-                let module: ast::Module = declaration.value.try_into().unwrap();
+                let module: ast::Module = declaration.bare.try_into().unwrap();
                 module.declarations.unwrap()
             }
         };
@@ -373,7 +373,7 @@ impl<'a> Lowerer<'a> {
         let mut has_header = false;
 
         for (index, declaration) in declarations.into_iter().enumerate() {
-            if matches!(declaration.value, ast::DeclarationKind::ModuleHeader) {
+            if matches!(declaration.bare, ast::DeclarationKind::ModuleHeader) {
                 if index == 0 {
                     // @Bug this sequence may lead to some unnecessary diagnostics being emitted
                     // since the "synergy check" (which filters duplicate attribute) is run too late
@@ -552,7 +552,7 @@ impl<'a> Lowerer<'a> {
 
         let attributes = self.lower_attributes(&expression.attributes, &expression);
 
-        let expression = match expression.value {
+        let expression = match expression.bare {
             PiTypeLiteral(pi) => {
                 let domain = self.lower_expression(pi.domain.expression);
                 let codomain = self.lower_expression(pi.codomain);
@@ -801,7 +801,7 @@ impl<'a> Lowerer<'a> {
 
         let attributes = self.lower_attributes(&pattern.attributes, &pattern);
 
-        match pattern.value {
+        match pattern.bare {
             // @Task avoid re-boxing!
             NumberLiteral(literal) => {
                 lowered_ast::Pattern::new(attributes, pattern.span, (*literal).into())

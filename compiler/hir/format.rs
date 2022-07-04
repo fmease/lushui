@@ -32,7 +32,7 @@ impl Declaration {
         use crate::syntax::lexer::INDENTATION;
         let context = (component, session);
 
-        match &self.value {
+        match &self.bare {
             Function(function) => {
                 write!(
                     f,
@@ -139,7 +139,7 @@ fn format_pi_type_literal_or_lower(
     // See also `crate::syntax::parser::test::application_lambda_literal_argument_{lax,strict}_grouping` and the
     // comment at the grammar definition of `Pi-Type-Literal-Or-Lower` (in `/misc/grammar/lushui.grammar`)
     // for further details.
-    match &expression.value {
+    match &expression.bare {
         PiType(pi) => {
             write!(f, "{}", pi.explicitness)?;
 
@@ -216,7 +216,7 @@ fn format_application_or_lower(
 ) -> fmt::Result {
     use super::ExpressionKind::*;
 
-    match &expression.value {
+    match &expression.bare {
         Application(application) => {
             format_application_or_lower(&application.callee, component, session, f)?;
             write!(f, " {}", application.explicitness)?;
@@ -249,7 +249,7 @@ fn format_lower_expression(
         write!(f, "{} ", attribute)?;
     }
 
-    match &expression.value {
+    match &expression.bare {
         Type => write!(f, "Type"),
         Number(literal) => write!(f, "{literal}"),
         Text(literal) => write!(f, "{literal}"),
@@ -291,7 +291,7 @@ impl DisplayWith for Pattern {
     ) -> fmt::Result {
         use super::PatternKind::*;
 
-        match &self.value {
+        match &self.bare {
             Number(number) => write!(f, "{number}"),
             Text(text) => write!(f, "{text}"),
             Binding(binding) => write!(

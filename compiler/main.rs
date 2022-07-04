@@ -324,7 +324,7 @@ fn build_component(
     time! {
         //! Lexing
 
-        let tokens = lexer::lex(file, session)?.value;
+        let tokens = lexer::lex(file, session)?.bare;
     };
 
     if component.is_goal(session) && options.emit_tokens {

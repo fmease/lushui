@@ -567,7 +567,7 @@ impl Type {
                 .map_or(false, |intrinsic| &binding.0 == intrinsic)
         };
 
-        Some(match &expression.value {
+        Some(match &expression.bare {
             // @Note this lookup looks incredibly inefficient
             ExpressionKind::Binding(binding) => condition! {
                 known(binding, Unit) => Self::Unit,
@@ -581,7 +581,7 @@ impl Type {
                 intrinsic(binding, Text) => Self::Text,
                 else => return None,
             },
-            ExpressionKind::Application(application) => match &application.callee.value {
+            ExpressionKind::Application(application) => match &application.callee.bare {
                 ExpressionKind::Binding(binding) if known(binding, Option) => Self::Option(
                     Box::new(Self::from_expression(&application.argument, session)?),
                 ),
@@ -651,7 +651,7 @@ impl Value {
                 .map_or(false, |known| &binding.0 == known)
         };
 
-        Some(match &expression.value {
+        Some(match &expression.bare {
             Text(text) => {
                 use hir::Text::*;
 
@@ -679,12 +679,12 @@ impl Value {
                 else => return None,
             },
 
-            Application(application0) => match &application0.callee.value {
+            Application(application0) => match &application0.callee.bare {
                 Binding(binding) if known(binding, OptionNone) => Value::Option {
                     value: None,
                     type_: self::Type::from_expression(&application0.argument, session)?,
                 },
-                Application(application1) => match &application1.callee.value {
+                Application(application1) => match &application1.callee.bare {
                     Binding(binding) if known(binding, OptionSome) => Value::Option {
                         value: Some(Box::new(Self::from_expression(
                             &application0.argument,

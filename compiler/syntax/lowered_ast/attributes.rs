@@ -29,7 +29,7 @@ impl Target for ast::Declaration {
     fn name(&self) -> &'static str {
         use ast::DeclarationKind::*;
 
-        match &self.value {
+        match &self.bare {
             Function(_) => "a function declaration",
             Data(_) => "a data declaration",
             Constructor(_) => "a constructor declaration",
@@ -51,7 +51,7 @@ impl Target for ast::Declaration {
     fn as_targets(&self) -> Targets {
         use ast::DeclarationKind::*;
 
-        match &self.value {
+        match &self.bare {
             Function(_) => Targets::FUNCTION_DECLARATION,
             Data(_) => Targets::DATA_DECLARATION,
             Constructor(_) => Targets::CONSTRUCTOR_DECLARATION,
@@ -71,7 +71,7 @@ impl Target for ast::Declaration {
     fn check_attributes(&self, attributes: &Attributes, session: &BuildSession) -> Result {
         use ast::DeclarationKind::*;
 
-        let (binder, missing_definition_location, definition_marker, body) = match &self.value {
+        let (binder, missing_definition_location, definition_marker, body) = match &self.bare {
             Function(function) => {
                 let missing_definition_location = function
                     .binder
@@ -167,7 +167,7 @@ impl Target for ast::Expression {
     fn name(&self) -> &'static str {
         use ast::ExpressionKind::*;
 
-        match self.value {
+        match self.bare {
             PiTypeLiteral(_) => "a pi type literal",
             Application(_) => "an application",
             TypeLiteral => "a type literal",
@@ -189,7 +189,7 @@ impl Target for ast::Expression {
     fn as_targets(&self) -> Targets {
         use ast::ExpressionKind::*;
 
-        match self.value {
+        match self.bare {
             PiTypeLiteral(_) => Targets::PI_TYPE_LITERAL_EXPRESSION,
             Application(_) => Targets::APPLICATION_EXPRESSION,
             TypeLiteral => Targets::TYPE_LITERAL_EXPRESSION,
@@ -213,7 +213,7 @@ impl Target for ast::Pattern {
     fn name(&self) -> &'static str {
         use ast::PatternKind::*;
 
-        match self.value {
+        match self.bare {
             NumberLiteral(_) => "a number literal pattern",
             TextLiteral(_) => "a text literal pattern",
             SequenceLiteral(_) => "a sequence literal pattern",
@@ -226,7 +226,7 @@ impl Target for ast::Pattern {
     fn as_targets(&self) -> Targets {
         use ast::PatternKind::*;
 
-        match self.value {
+        match self.bare {
             NumberLiteral(_) => Targets::NUMBER_LITERAL_PATTERN,
             TextLiteral(_) => Targets::TEXT_LITERAL_PATTERN,
             SequenceLiteral(_) => Targets::SEQUENCE_LITERAL_PATTERN,

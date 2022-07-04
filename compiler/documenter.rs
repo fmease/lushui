@@ -219,7 +219,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
     // @Task merge this with `document_declaration` (once we move out `generate_module_page` out of it!)
     // to avoid traversing the component graph too often
     fn collect_search_items(&mut self, declaration: &hir::Declaration) {
-        match &declaration.value {
+        match &declaration.bare {
             hir::DeclarationKind::Function(function) => {
                 self.search_items.push(SearchItem::Declaration(
                     function.binder.declaration_index().unwrap(),
@@ -275,7 +275,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
     }
 
     fn document_declaration(&mut self, declaration: &hir::Declaration) -> Result<()> {
-        if let hir::DeclarationKind::Module(module) = &declaration.value {
+        if let hir::DeclarationKind::Module(module) = &declaration.bare {
             // @Task defer generation, only collect into structured data to be able to
             // generate the pages in parallel later on!
             self.render_module_page(module, &declaration.attributes);
@@ -296,7 +296,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
         let mut subsections = subsections::Subsections::default();
 
         for declaration in &module.declarations {
-            match &declaration.value {
+            match &declaration.bare {
                 hir::DeclarationKind::Function(function) => {
                     subsections.functions.0.push(subsections::Function {
                         attributes: &declaration.attributes,

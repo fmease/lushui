@@ -62,7 +62,7 @@ impl<'a> Formatter<'a> {
     fn format_pi_type_literal_or_lower(&mut self, expression: &hir::Expression) {
         use hir::ExpressionKind::*;
 
-        match &expression.value {
+        match &expression.bare {
             PiType(pi) => {
                 self.write(&pi.explicitness.to_string());
 
@@ -143,7 +143,7 @@ impl<'a> Formatter<'a> {
     fn format_application_or_lower(&mut self, expression: &hir::Expression) {
         use hir::ExpressionKind::*;
 
-        match &expression.value {
+        match &expression.bare {
             Application(application) => {
                 self.format_application_or_lower(&application.callee);
                 self.write(" ");
@@ -170,7 +170,7 @@ impl<'a> Formatter<'a> {
             self.write(" ");
         }
 
-        match &expression.value {
+        match &expression.bare {
             Type => {
                 Element::new("a")
                     .attribute(
@@ -218,7 +218,7 @@ impl<'a> Formatter<'a> {
     fn format_pattern(&mut self, pattern: &hir::Pattern) {
         use hir::PatternKind::*;
 
-        match &pattern.value {
+        match &pattern.bare {
             Number(number) => self.write(&number.to_string()),
             Text(text) => self.write(&text.to_string()),
             Binding(binding) => self.format_binder(&binding.0),

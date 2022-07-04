@@ -56,7 +56,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
         use hir::DeclarationKind::*;
 
         #[allow(clippy::match_same_arms)] // @Temporary
-        match &declaration.value {
+        match &declaration.bare {
             Function(function) => {
                 let index = function.binder.index.declaration().unwrap();
 
@@ -108,7 +108,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
         use hir::ExpressionKind::*;
 
         #[allow(clippy::match_same_arms)] // @Temporary
-        match &expression.value {
+        match &expression.bare {
             PiType(_) | Type => {
                 self.builder.build_return(None);
             }

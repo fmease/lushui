@@ -29,7 +29,7 @@ pub fn parse(
 ) -> Result<Value> {
     let tokens = lexer::Lexer::new(&map.read().unwrap()[file_index])
         .lex()
-        .value;
+        .bare;
     parser::Parser::new(file_index, &tokens, map, reporter).parse()
 }
 

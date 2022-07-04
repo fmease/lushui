@@ -169,7 +169,7 @@ impl<'a> ResolverMut<'a> {
             },
         };
 
-        match &declaration.value {
+        match &declaration.bare {
             Function(function) => {
                 let module = module.unwrap();
 
@@ -395,7 +395,7 @@ impl<'a> ResolverMut<'a> {
     ) -> hir::Declaration {
         use lowered_ast::DeclarationKind::*;
 
-        match declaration.value {
+        match declaration.bare {
             Function(function) => {
                 let module = module.unwrap();
 
@@ -717,7 +717,7 @@ impl<'a> Resolver<'a> {
     ) -> Result<hir::Expression> {
         use lowered_ast::ExpressionKind::*;
 
-        let expression = match expression.value {
+        let expression = match expression.bare {
             PiType(pi) => {
                 let domain = self.resolve_expression(pi.domain.clone(), scope);
                 let codomain = match pi.parameter.clone() {
@@ -873,7 +873,7 @@ impl<'a> Resolver<'a> {
         // @Task replace this hideous binders.append logic
         let mut binders: Vec<ast::Identifier> = Vec::new();
 
-        let pattern = match pattern.value.clone() {
+        let pattern = match pattern.bare.clone() {
             NumberLiteral(number) => self.resolve_number_literal(
                 hir::Item::new(pattern.attributes, pattern.span, *number),
                 scope,
@@ -954,18 +954,18 @@ impl<'a> Resolver<'a> {
         T: From<hir::Number>,
     {
         let type_ = number
-            .value
+            .bare
             .path
             .as_ref()
             .map(|path| {
                 Ok(Spanned::new(
                     path.span(),
-                    self.resolve_path_of_literal(path, number.value.literal.span, scope)?,
+                    self.resolve_path_of_literal(path, number.bare.literal.span, scope)?,
                 ))
             })
             .transpose()?;
 
-        let literal = &number.value.literal;
+        let literal = &number.bare.literal;
 
         let type_ = match type_ {
             Some(type_) => self
@@ -1016,13 +1016,13 @@ impl<'a> Resolver<'a> {
         T: From<hir::Text>,
     {
         let type_ = text
-            .value
+            .bare
             .path
             .as_ref()
             .map(|path| {
                 Ok(Spanned::new(
                     path.span(),
-                    self.resolve_path_of_literal(path, text.value.literal.span, scope)?,
+                    self.resolve_path_of_literal(path, text.bare.literal.span, scope)?,
                 ))
             })
             .transpose()?;
@@ -1043,7 +1043,7 @@ impl<'a> Resolver<'a> {
                             self.look_up(type_.bare).source
                         ))
                         .labeled_primary_span(
-                            &text.value.literal,
+                            &text.bare.literal,
                             "text literal may not construct that type",
                         )
                         .labeled_secondary_span(type_, "the data type")
@@ -1057,7 +1057,7 @@ impl<'a> Resolver<'a> {
             text.attributes,
             text.span,
             // @Beacon @Task avoid Atom::to_string
-            hir::Text::Text(text.value.literal.bare.to_string()).into(),
+            hir::Text::Text(text.bare.literal.bare.to_string()).into(),
         ))
     }
 
@@ -1070,13 +1070,13 @@ impl<'a> Resolver<'a> {
         T: From<hir::SomeSequence>,
     {
         let _type = sequence
-            .value
+            .bare
             .path
             .as_ref()
             .map(|path| {
                 Ok(Spanned::new(
                     path.span(),
-                    self.resolve_path_of_literal(path, sequence.value.elements.span, scope)?,
+                    self.resolve_path_of_literal(path, sequence.bare.elements.span, scope)?,
                 ))
             })
             .transpose()?;
@@ -1086,7 +1086,7 @@ impl<'a> Resolver<'a> {
         // @Task
         Err(Diagnostic::error()
             .message("sequence literals are not supported yet")
-            .primary_span(&sequence.value.elements)
+            .primary_span(&sequence.bare.elements)
             .report(self.session.reporter()))
     }
 

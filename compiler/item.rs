@@ -11,15 +11,15 @@ use crate::{
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Item<T, Attributes> {
-    pub value: T,
+    pub bare: T,
     pub span: Span,
     pub attributes: Attributes,
 }
 
 impl<T, Attributes> Item<T, Attributes> {
-    pub(crate) const fn new(attributes: Attributes, span: Span, value: T) -> Self {
+    pub(crate) const fn new(attributes: Attributes, span: Span, bare: T) -> Self {
         Self {
-            value,
+            bare,
             span,
             attributes,
         }
@@ -27,7 +27,7 @@ impl<T, Attributes> Item<T, Attributes> {
 
     pub(crate) fn map<U>(self, mapper: impl FnOnce(T) -> U) -> Item<U, Attributes> {
         Item {
-            value: mapper(self.value),
+            bare: mapper(self.bare),
             ..self
         }
     }
@@ -42,7 +42,7 @@ impl<T, Attribute> Spanning for Item<T, Attribute> {
 impl<T: PossiblyErroneous, Attributes: Default> PossiblyErroneous for Item<T, Attributes> {
     fn error() -> Self {
         Self {
-            value: T::error(),
+            bare: T::error(),
             span: default(),
             attributes: default(),
         }

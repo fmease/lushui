@@ -27,7 +27,7 @@ impl super::Declaration {
 
         write!(f, "{}", " ".repeat(depth * INDENTATION.0))?;
 
-        match &self.value {
+        match &self.bare {
             Function(function) => {
                 write!(
                     f,
@@ -127,7 +127,7 @@ fn format_pi_type_literal_or_lower(
 ) -> fmt::Result {
     use super::ExpressionKind::*;
 
-    match &expression.value {
+    match &expression.bare {
         PiType(pi) => {
             write!(f, "{}", pi.explicitness)?;
 
@@ -256,7 +256,7 @@ fn format_application_or_lower(
 ) -> fmt::Result {
     use super::ExpressionKind::*;
 
-    match &expression.value {
+    match &expression.bare {
         Application(application) => {
             format_application_or_lower(&application.callee, f)?;
             write!(f, " {}", application.explicitness)?;
@@ -277,7 +277,7 @@ fn format_lower_expression(
         write!(f, "{} ", attribute.to_string().color(ATTRIBUTE_COLOR))?;
     }
 
-    match &expression.value {
+    match &expression.bare {
         TypeLiteral => write!(f, "{Type}", Type = "Type".blue()),
         NumberLiteral(number) => write!(f, "{number}"),
         TextLiteral(text) => write!(f, "{text}"),
@@ -292,7 +292,7 @@ impl fmt::Display for super::Pattern {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use super::PatternKind::*;
 
-        match &self.value {
+        match &self.bare {
             NumberLiteral(number) => write!(f, "{number}"),
             TextLiteral(text) => write!(f, "{text}"),
             Path(path) => write!(f, "{path}"),

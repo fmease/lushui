@@ -20,9 +20,9 @@ pub(crate) fn parse_module_file(
     binder: ast::Identifier,
     session: &BuildSession,
 ) -> Result<ast::Declaration> {
-    parser::parse_module_file(&lexer::lex(file, session)?.value, file, binder, session)
+    parser::parse_module_file(&lexer::lex(file, session)?.bare, file, binder, session)
 }
 
 pub(crate) fn parse_path(file: SourceFileIndex, session: &BuildSession) -> Result<ast::Path> {
-    parser::parse_path(&lexer::lex(file, session)?.value, file, session)
+    parser::parse_path(&lexer::lex(file, session)?.bare, file, session)
 }
