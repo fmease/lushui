@@ -26,7 +26,7 @@ pub fn compile(
     }
 
     let context = inkwell::context::Context::create();
-    let module = generator::compile(component_root, &context, component, session);
+    let module = generator::compile(component_root, &context, options, component, session);
 
     if options.emit_llvm_ir {
         // @Question shouldn't we print to stdout??

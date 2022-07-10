@@ -33,6 +33,7 @@ pub struct BuildSession {
     goal_component: ComponentIndex,
     // @Task Identifier -> DeclarationIndex
     known_bindings: HashMap<KnownBinding, Identifier>,
+    // @Task make this a DoubleHashMap
     intrinsic_types: HashMap<IntrinsicType, Identifier>,
     intrinsic_functions: HashMap<IntrinsicFunction, IntrinsicFunctionValue>,
     map: Arc<RwLock<SourceMap>>,
