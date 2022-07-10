@@ -41,6 +41,7 @@ use lushui::{
     FILE_EXTENSION,
 };
 use std::{
+    borrow::Cow,
     default::default,
     io,
     path::Path,
@@ -64,7 +65,7 @@ fn main() -> ExitCode {
     }
 }
 
-fn try_main() -> Result<()> {
+fn try_main() -> Result {
     set_panic_hook();
 
     let (command, options) = cli::arguments()?;
@@ -425,7 +426,7 @@ fn build_component(
                 }
 
                 match options.backend {
-                    Backend::Interpreter => {
+                    Backend::Hiri => {
                         let result =
                             typer::interpreter::evaluate_main_function(component, session)?;
                         println!("{}", result.with((component, session)));
@@ -442,10 +443,10 @@ fn build_component(
             }
         }
         BuildMode::Build { options } => match options.backend {
-            Backend::Interpreter => {
+            Backend::Hiri => {
                 // @Task smh print this earlier than the status info (“Building”)
                 return Err(Diagnostic::error()
-                    .message("the tree-walk interpreter does not support compilation")
+                    .message("HIRI does not support compilation")
                     .report(session.reporter()));
             }
             #[cfg(feature = "llvm")]
@@ -625,7 +626,7 @@ fn set_panic_hook() {
         let message = payload
             .downcast_ref::<&str>()
             .copied()
-            .or_else(|| payload.downcast_ref::<String>().map(|payload| &payload[..]))
+            .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
             .unwrap_or("unknown cause")
             .to_owned();
 
@@ -640,8 +641,8 @@ fn set_panic_hook() {
                 None => error,
             })
             .note(std::thread::current().name().map_or_else(
-                || "in an unnamed thread".into(),
-                |name| format!("in thread ‘{name}’"),
+                || Cow::from("in an unnamed thread"),
+                |name| format!("in thread ‘{name}’").into(),
             ))
             // @Task the last two sentences should be shown for all `Diagnostic::bug()`s
             .note("the compiler unexpectedly panicked. this is a bug. we would appreciate a bug report")

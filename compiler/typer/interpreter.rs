@@ -1,4 +1,6 @@
-//! The tree-walk interpreter necessary for type-checking.
+//! The HIRI – [HIR](crate::hir) interpreter.
+//!
+//! A tree-walk interpreter. Used during type-checking.
 //!
 //! # Issues
 //!

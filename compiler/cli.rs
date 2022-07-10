@@ -18,6 +18,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
 
     let backend_option = Arg::new(option::BACKEND)
         .long("backend")
+        .short('b')
         .takes_value(true)
         .value_name("BACKEND")
         // @Task get rid of closure once fn name takes self by value
@@ -575,8 +576,10 @@ impl CompilationOptions {
 #[derive(Default, FromStr, Str, Elements)]
 #[format(dash_case)]
 pub enum Backend {
+    /// HIRI – The HIR interpreter.
     #[default]
-    Interpreter,
+    Hiri,
+    /// LLVM – The LLVM bitcode generator.
     #[cfg(feature = "llvm")]
     Llvm,
 }

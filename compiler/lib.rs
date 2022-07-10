@@ -15,7 +15,7 @@
 //!
 //! The back-end is one of
 //!
-//! * [(tree-walk) interpreting](typer::interpreter) (from the middle-end)
+//! * [HIR interpretation](typer::interpreter) (from the middle-end)
 #![cfg_attr(
     feature = "llvm",
     doc = " * [LLVM-IR code generation, compilation and linking](backend) (output: LLVM-IR)"
