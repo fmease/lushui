@@ -14,7 +14,7 @@ use inkwell::{
     context::Context,
     module::{Linkage, Module},
     targets::TargetMachine,
-    types::IntType,
+    types::{FunctionType, IntType},
     values::{BasicValueEnum, FunctionValue, GlobalValue, IntValue, UnnamedAddress},
 };
 use std::{cell::RefCell, default::default};
@@ -83,15 +83,16 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                     Some(expression) => {
                         use ExpressionClassification::*;
 
-                        let mut classification = expression.classify();
-                        if is_program_entry && let Constant = classification {
-                            classification = Thunk;
-                        }
+                        let classification = if is_program_entry {
+                            Thunk
+                        } else {
+                            expression.classify()
+                        };
 
                         match classification {
                             Constant => {
                                 let constant = self.module.add_global(
-                                    self.type_(&function.type_annotation),
+                                    self.translate_type(&function.type_annotation),
                                     None,
                                     self.name(index).as_ref(),
                                 );
@@ -113,8 +114,9 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                                     self.name(index)
                                 };
 
-                                let type_ =
-                                    self.type_(&function.type_annotation).fn_type(&[], false);
+                                let type_ = self
+                                    .translate_type(&function.type_annotation)
+                                    .fn_type(&[], false);
 
                                 let thunk = self.module.add_function(
                                     name.as_ref(),
@@ -134,8 +136,23 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                                     .borrow_mut()
                                     .insert(index, Definition::Thunk(thunk));
                             }
-                            // @Beacon @Beacon @Beacon @Task
-                            Function(_) => todo!(),
+                            Function(_) => {
+                                // @Beacon @Task handle functions of arbitrary "arity" here!
+
+                                let function_value = self.module.add_function(
+                                    self.name(index).as_ref(),
+                                    self.translate_unary_function_type(&function.type_annotation),
+                                    Some(Linkage::Internal),
+                                );
+
+                                function_value
+                                    .as_global_value()
+                                    .set_unnamed_address(UnnamedAddress::Global);
+
+                                self.bindings
+                                    .borrow_mut()
+                                    .insert(index, Definition::UnaryFunction(function_value));
+                            }
                         }
                     }
                     None => todo!(),
@@ -164,11 +181,31 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
             Function(function) => {
                 let index = function.binder.index.declaration().unwrap();
 
-                if let Definition::Thunk(thunk) = self.bindings.borrow()[&index] {
-                    let start_block = self.context.append_basic_block(thunk, "start");
-                    self.builder.position_at_end(start_block);
+                match self.bindings.borrow()[&index] {
+                    Definition::Constant(_) => {}
+                    Definition::Thunk(thunk) => {
+                        let start_block = self.context.append_basic_block(thunk, "start");
+                        self.builder.position_at_end(start_block);
 
-                    self.compile_expression_into_basic_block(function.expression.as_ref().unwrap());
+                        self.compile_expression_into_basic_block(
+                            function.expression.as_ref().unwrap(),
+                        );
+                    }
+                    Definition::UnaryFunction(unary_function) => {
+                        // @Beacon @Bug incorrect!!!
+
+                        let start_block = self.context.append_basic_block(unary_function, "start");
+                        self.builder.position_at_end(start_block);
+
+                        // @Beacon @Beacon @Beacon @Task
+
+                        // let x = function.get_nth_param(0)?.into_int_value();
+
+                        self.compile_expression_into_basic_block(
+                            // @Task unwrap one layer of "\" (hackily)
+                            function.expression.as_ref().unwrap(),
+                        );
+                    }
                 }
             }
             // @Temporary skipping for now
@@ -245,6 +282,13 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                                 .try_as_basic_value()
                                 .left()
                                 .unwrap(),
+                            // @Beacon @Beacon @Beacon @Task
+                            Definition::UnaryFunction(function) => self
+                                .builder
+                                .build_call(function, &[todo!()], "")
+                                .try_as_basic_value()
+                                .left()
+                                .unwrap(),
                         };
 
                         self.builder.build_return(Some(&value));
@@ -281,15 +325,14 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
     }
 
     // @Note currently only handles numeric types
-    fn type_(&self, type_: &hir::Expression) -> IntType<'ctx> {
+    fn translate_type(&self, type_: &hir::Expression) -> IntType<'ctx> {
         use hir::ExpressionKind::*;
 
         match &type_.bare {
             PiType(_) => todo!(),
             Application(_) => todo!(),
             Type => todo!(),
-            Number(_) => todo!(),
-            Text(_) => todo!(),
+            Number(_) | Text(_) => unreachable!(),
             Binding(binding) => {
                 use hir::Index::*;
 
@@ -319,6 +362,32 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
                     DeBruijnParameter => todo!(),
                 }
             }
+            Lambda(_) => todo!(),
+            UseIn => todo!(),
+            CaseAnalysis(_) => todo!(),
+            Substitution(_) => todo!(),
+            IntrinsicApplication(_) => todo!(),
+            Projection(_) => todo!(),
+            IO(_) => todo!(),
+            Error => todo!(),
+        }
+    }
+
+    fn translate_unary_function_type(&self, type_: &hir::Expression) -> FunctionType<'ctx> {
+        use hir::ExpressionKind::*;
+
+        match &type_.bare {
+            PiType(pi) => {
+                let domain = self.translate_type(&pi.domain);
+                // @Task pass along the parameter!
+                let codomain = self.translate_type(&pi.codomain);
+
+                codomain.fn_type(&[domain.into()], false)
+            }
+            Application(_) => todo!(),
+            Type => todo!(),
+            Number(_) | Text(_) => unreachable!(),
+            Binding(_) => todo!(),
             Lambda(_) => todo!(),
             UseIn => todo!(),
             CaseAnalysis(_) => todo!(),
@@ -374,6 +443,7 @@ impl hir::Expression {
 enum Definition<'ctx> {
     Constant(GlobalValue<'ctx>),
     Thunk(FunctionValue<'ctx>),
+    UnaryFunction(FunctionValue<'ctx>),
 }
 
 enum ExpressionClassification<'a> {
