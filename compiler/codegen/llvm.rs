@@ -1,11 +1,14 @@
-//! The LLVM-IR code generator.
+//! The LLVM-IR generator.
 #![allow(clippy::match_same_arms)] // @Temporary
 
 use super::Options;
 use crate::{
     component::Component,
+    diagnostics::Diagnostic,
     entity::Entity,
-    hir::{self, DeclarationIndex},
+    error::Result,
+    hir,
+    hir::DeclarationIndex,
     session::BuildSession,
     utility::{HashMap, Str},
 };
@@ -17,9 +20,47 @@ use inkwell::{
     types::IntType,
     values::{BasicValueEnum, FunctionValue, GlobalValue, IntValue, UnnamedAddress},
 };
-use std::{cell::RefCell, default::default};
+use std::{
+    cell::RefCell,
+    default::default,
+    io::Write,
+    path::PathBuf,
+    process::{Command, Stdio},
+};
 
-pub(super) fn compile<'ctx>(
+const PROGRAM_ENTRY_NAME: &str = "main";
+
+pub fn compile_and_link(
+    options: Options,
+    component_root: &hir::Declaration,
+    component: &Component,
+    session: &BuildSession,
+) -> Result<()> {
+    if !component.is_goal(session) {
+        return Err(Diagnostic::error()
+            .message("extern components cannot be built yet with the LLVM backend")
+            .report(session.reporter()));
+    }
+
+    let context = inkwell::context::Context::create();
+    let module = compile(component_root, &context, options, component, session);
+
+    if options.emit_llvm_ir {
+        // @Question shouldn't we print to stdout??
+        module.print_to_stderr();
+    }
+
+    if options.verify_llvm_ir && let Err(message) = module.verify() {
+        return Err(Diagnostic::bug()
+            .message("the generated LLVM-IR is invalid")
+            .note(message.to_string())
+            .report(session.reporter()));
+    }
+
+    link(module, component, session)
+}
+
+fn compile<'ctx>(
     component_root: &hir::Declaration,
     context: &'ctx Context,
     options: Options,
@@ -32,8 +73,45 @@ pub(super) fn compile<'ctx>(
     generator.module
 }
 
-const PROGRAM_ENTRY_NAME: &str = "main";
+// @Task support linkers other than clang
+//       (e.g. "`cc`", `gcc` (requires the use of `llc`))
+fn link(
+    module: inkwell::module::Module<'_>,
+    component: &Component,
+    session: &BuildSession,
+) -> Result {
+    let buffer = module.write_bitcode_to_memory();
 
+    // @Task error handling!
+    let mut compiler = Command::new("clang")
+        .args(["-x", "ir", "-", "-o"])
+        .arg(match session.goal_package() {
+            // @Task ensure that the build folder exists
+            Some(package) => session.build_folder().join(session[package].name.as_str()),
+            None => PathBuf::from(component.name().as_str()),
+        })
+        .stdin(Stdio::piped())
+        // @Task smh store stderr for reporting later
+        .spawn()
+        .unwrap();
+
+    compiler
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(buffer.as_slice())
+        .unwrap();
+
+    let status = compiler.wait().unwrap();
+
+    if !status.success() {
+        return Err(Diagnostic::error()
+            .message("failed to link object files")
+            .report(session.reporter()));
+    }
+
+    Ok(())
+}
 struct Generator<'a, 'ctx> {
     context: &'ctx Context,
     builder: Builder<'ctx>,

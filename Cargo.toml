@@ -39,6 +39,11 @@ tower-lsp = "0.17.0"
 unicode-segmentation = "1.9.0"
 unicode-width = "0.1.9"
 urlencoding = "2.1.0"
+cranelift = "0.85.1"
+cranelift-object = "0.85.1"
+cranelift-module = "0.85.1"
+cranelift-native = "0.85.1"
+target-lexicon = "0.12.4"
 
 [dependencies.inkwell]
 git = "https://github.com/TheDan64/inkwell"

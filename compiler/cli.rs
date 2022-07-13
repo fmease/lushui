@@ -1,7 +1,9 @@
 use clap::{Arg, ArgMatches};
 use colored::Colorize;
 use derivation::{Elements, FromStr, Str};
-use lushui::{component::ComponentType, documenter, error::Result};
+use lushui::{
+    codegen::Options as CodegenOptions, component::ComponentType, documenter, error::Result,
+};
 use std::{cmp::max, default::default, path::PathBuf};
 
 /// Unstable environment variable to control if internal commands are shown.
@@ -488,7 +490,6 @@ impl FileBuildOptions {
 }
 
 #[derive(Default)]
-#[allow(clippy::struct_excessive_bools)] // not a state machine
 pub struct BuildOptions {
     pub internals: bool,
     pub emit_tokens: bool,
@@ -539,8 +540,7 @@ impl BuildOptions {
 #[derive(Default)]
 pub struct CompilationOptions {
     pub backend: Backend,
-    #[cfg(feature = "llvm")]
-    pub general: lushui::backend::Options,
+    pub general: CodegenOptions,
 }
 
 impl CompilationOptions {
@@ -562,12 +562,18 @@ impl CompilationOptions {
             use unstable::CompilationOption::*;
 
             match unstable_option {
+                EmitClif => options.general.emit_clif = true,
                 #[cfg(feature = "llvm")]
                 EmitLlvmIr => options.general.emit_llvm_ir = true,
+                VerifyClif => options.general.verify_clif = true,
                 #[cfg(feature = "llvm")]
                 VerifyLlvmIr => options.general.verify_llvm_ir = true,
             }
         }
+
+        // @Beacon @Beacon @Beacon @Task disallow conflicting options
+        // * backend == Llvm && (emit_clif || verify_clif)
+        // * backend == Cranelift && (emit_llvm_ir || verify_llvm_ir)
 
         options
     }
@@ -579,7 +585,9 @@ pub enum Backend {
     /// HIRI – The HIR interpreter.
     #[default]
     Hiri,
-    /// LLVM – The LLVM bitcode generator.
+    /// Cranelift – The CLIF generator.
+    Cranelift,
+    /// LLVM – The LLVM-IR generator.
     #[cfg(feature = "llvm")]
     Llvm,
 }
@@ -787,8 +795,10 @@ mod unstable {
     #[format(dash_case)]
     #[str(syntax)]
     pub(super) enum CompilationOption {
+        EmitClif,
         #[cfg(feature = "llvm")]
         EmitLlvmIr,
+        VerifyClif,
         #[cfg(feature = "llvm")]
         VerifyLlvmIr,
         // @Task
@@ -803,8 +813,10 @@ mod unstable {
 
         fn help(self) -> &'static str {
             match self {
+                Self::EmitClif => "Emit the generated CLIF",
                 #[cfg(feature = "llvm")]
                 Self::EmitLlvmIr => "Emit the generated LLVM-IR",
+                Self::VerifyClif => "Verify the generated CLIF",
                 #[cfg(feature = "llvm")]
                 Self::VerifyLlvmIr => "Verify the generated LLVM-IR",
             }

@@ -16,9 +16,10 @@
 //! The back-end is one of
 //!
 //! * [HIR interpretation](typer::interpreter) (from the middle-end)
+//! * [CLIF generation, compilation and linking](codegen::cranelift) (output: CLIF)
 #![cfg_attr(
     feature = "llvm",
-    doc = " * [LLVM-IR code generation, compilation and linking](backend) (output: LLVM-IR)"
+    doc = " * [LLVM-IR generation, compilation and linking](codegen::llvm) (output: LLVM-IR)"
 )]
 #![feature(
     decl_macro,
@@ -56,13 +57,13 @@
     clippy::single_match_else,
     clippy::if_not_else,
     clippy::blocks_in_if_conditions, // too many false positives with rustfmt's output
+    clippy::struct_excessive_bools, // too many false postives with CLI flag structs
     clippy::trait_duplication_in_bounds, // @Temporary false positives (#8757)
     clippy::needless_pass_by_value, // @Temporary
     clippy::missing_panics_doc, // @Temporary
 )]
 
-#[cfg(feature = "llvm")]
-pub mod backend;
+pub mod codegen;
 pub mod component;
 pub mod diagnostics;
 pub mod documenter;

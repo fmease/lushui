@@ -22,11 +22,13 @@
     clippy::if_not_else,
     clippy::similar_names,
     clippy::blocks_in_if_conditions, // too many false positives with rustfmt's output
+    clippy::struct_excessive_bools, // too many false postives with CLI flag structs
 )]
 
 use cli::{BuildMode, Command, PassRestriction};
 use colored::Colorize;
 use lushui::{
+    codegen,
     component::{Component, ComponentOutline, ComponentType, Components},
     diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter},
     documenter,
@@ -431,6 +433,13 @@ fn build_component(
                             typer::interpreter::evaluate_main_function(component, session)?;
                         println!("{}", result.with((component, session)));
                     }
+                    Backend::Cranelift => {
+                        // @Task spawn Command where the path is session.build_folder() + ...
+                        return Err(Diagnostic::error().message(
+                            "running executables built with the Cranelift backend is not yet supported",
+                        )
+                        .report(session.reporter()));
+                    }
                     #[cfg(feature = "llvm")]
                     Backend::Llvm => {
                         // @Task spawn Command where the path is session.build_folder() + ...
@@ -449,9 +458,20 @@ fn build_component(
                     .message("HIRI does not support compilation")
                     .report(session.reporter()));
             }
+            Backend::Cranelift => codegen::cranelift::compile_and_link(
+                options.general,
+                &component_root,
+                component,
+                session,
+            )?,
             #[cfg(feature = "llvm")]
             Backend::Llvm => {
-                lushui::backend::compile(options.general, &component_root, component, session)?;
+                codegen::llvm::compile_and_link(
+                    options.general,
+                    &component_root,
+                    component,
+                    session,
+                )?;
             }
         },
         BuildMode::Document { options } => {
