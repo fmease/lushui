@@ -24,7 +24,7 @@ mod utility;
 /// ```no_run
 /// #[derive(Discriminant)]
 /// #[discriminant(name: TokenName)]
-/// pub(crate) enum TokenKind {
+/// pub(crate) enum Token {
 ///     Comment,
 ///     Identifier { source: String, raw: bool },
 ///     NumberLiteral(i32),

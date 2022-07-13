@@ -18,7 +18,7 @@ use crate::{
     session::{BuildSession, IntrinsicNumericType, IntrinsicType},
     span::{Span, Spanned, Spanning},
     syntax::{
-        ast::{self, HangerKind, Path},
+        ast::{self, BareHanger, Path},
         lexer::is_punctuation,
         lowered_ast::{self, AttributeName, Attributes},
         Word,
@@ -150,7 +150,7 @@ impl<'a> ResolverMut<'a> {
         module: Option<LocalDeclarationIndex>,
         context: Context,
     ) -> Result<(), DefinitionError> {
-        use lowered_ast::DeclarationKind::*;
+        use lowered_ast::BareDeclaration::*;
 
         let exposure = match declaration.attributes.get::<{ AttributeName::Public }>() {
             Some(public) => match &public.reach {
@@ -393,7 +393,7 @@ impl<'a> ResolverMut<'a> {
         module: Option<LocalDeclarationIndex>,
         context: Context,
     ) -> hir::Declaration {
-        use lowered_ast::DeclarationKind::*;
+        use lowered_ast::BareDeclaration::*;
 
         match declaration.bare {
             Function(function) => {
@@ -715,7 +715,7 @@ impl<'a> Resolver<'a> {
         expression: lowered_ast::Expression,
         scope: &FunctionScope<'_>,
     ) -> Result<hir::Expression> {
-        use lowered_ast::ExpressionKind::*;
+        use lowered_ast::BareExpression::*;
 
         let expression = match expression.bare {
             PiType(pi) => {
@@ -762,7 +762,7 @@ impl<'a> Resolver<'a> {
             TypeLiteral => hir::Expression::new(
                 expression.attributes,
                 expression.span,
-                hir::ExpressionKind::Type,
+                hir::BareExpression::Type,
             ),
             NumberLiteral(number) => self.resolve_number_literal(
                 hir::Item::new(expression.attributes, expression.span, *number),
@@ -868,7 +868,7 @@ impl<'a> Resolver<'a> {
         pattern: lowered_ast::Pattern,
         scope: &FunctionScope<'_>,
     ) -> Result<(hir::Pattern, Vec<ast::Identifier>)> {
-        use lowered_ast::PatternKind::*;
+        use lowered_ast::BarePattern::*;
 
         // @Task replace this hideous binders.append logic
         let mut binders: Vec<ast::Identifier> = Vec::new();
@@ -1136,7 +1136,7 @@ impl<'a> Resolver<'a> {
         context: PathResolutionContext,
     ) -> Result<Target::Output, ResolutionError> {
         if let Some(hanger) = &path.hanger {
-            use ast::HangerKind::*;
+            use ast::BareHanger::*;
 
             let namespace = match hanger.bare {
                 Extern => {
@@ -1880,7 +1880,7 @@ impl Component {
     ///
     /// [1]: crate::syntax::ast::Path
     pub(crate) fn path_to_string(&self, index: DeclarationIndex, session: &BuildSession) -> String {
-        self.path_with_root_to_string(index, HangerKind::Topmost.name().to_owned(), session)
+        self.path_with_root_to_string(index, BareHanger::Topmost.name().to_owned(), session)
     }
 
     fn path_with_root_to_string(
@@ -1893,7 +1893,7 @@ impl Component {
             Some(index) => self.extern_path_with_root_to_string(index, root),
             None => {
                 let component = &session[index.component()];
-                let root = format!("{}.{}", HangerKind::Extern.name(), component.name());
+                let root = format!("{}.{}", BareHanger::Extern.name(), component.name());
 
                 component.path_with_root_to_string(index, root, session)
             }

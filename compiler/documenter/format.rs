@@ -60,7 +60,7 @@ impl<'a> Formatter<'a> {
     }
 
     fn format_pi_type_literal_or_lower(&mut self, expression: &hir::Expression) {
-        use hir::ExpressionKind::*;
+        use hir::BareExpression::*;
 
         match &expression.bare {
             PiType(pi) => {
@@ -141,7 +141,7 @@ impl<'a> Formatter<'a> {
 
     // @Task write named arguments
     fn format_application_or_lower(&mut self, expression: &hir::Expression) {
-        use hir::ExpressionKind::*;
+        use hir::BareExpression::*;
 
         match &expression.bare {
             Application(application) => {
@@ -163,7 +163,7 @@ impl<'a> Formatter<'a> {
     }
 
     fn format_lower_expression(&mut self, expression: &hir::Expression) {
-        use hir::ExpressionKind::*;
+        use hir::BareExpression::*;
 
         for attribute in &expression.attributes.0 {
             self.write(&attribute.to_string());
@@ -216,7 +216,7 @@ impl<'a> Formatter<'a> {
 
     // @Task @Beacon update bracket business
     fn format_pattern(&mut self, pattern: &hir::Pattern) {
-        use hir::PatternKind::*;
+        use hir::BarePattern::*;
 
         match &pattern.bare {
             Number(number) => self.write(&number.to_string()),

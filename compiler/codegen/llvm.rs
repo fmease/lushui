@@ -146,7 +146,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
 
     /// Start compiling the given declaration.
     fn start_compile_declaration(&self, declaration: &hir::Declaration) {
-        use hir::DeclarationKind::*;
+        use hir::BareDeclaration::*;
 
         match &declaration.bare {
             Function(function) => {
@@ -236,7 +236,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
 
     /// Finish compiling the given declaration.
     fn finish_compile_declaration(&self, declaration: &hir::Declaration) {
-        use hir::DeclarationKind::*;
+        use hir::BareDeclaration::*;
 
         match &declaration.bare {
             Function(function) => {
@@ -273,7 +273,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
     }
 
     fn compile_constant_expression(&self, expression: &hir::Expression) -> BasicValueEnum<'ctx> {
-        use hir::ExpressionKind::*;
+        use hir::BareExpression::*;
 
         match &expression.bare {
             // @Task return a unit struct value
@@ -296,7 +296,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
     }
 
     fn compile_expression_into_basic_block(&self, expression: &hir::Expression) {
-        use hir::ExpressionKind::*;
+        use hir::BareExpression::*;
 
         match &expression.bare {
             PiType(_) | Type => {
@@ -360,7 +360,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
 
     // @Note currently only handles numeric types
     fn type_(&self, type_: &hir::Expression) -> IntType<'ctx> {
-        use hir::ExpressionKind::*;
+        use hir::BareExpression::*;
 
         match &type_.bare {
             PiType(_) => todo!(),
@@ -426,7 +426,7 @@ impl<'a, 'ctx> Generator<'a, 'ctx> {
 
 impl hir::Expression {
     fn classify(&self) -> ExpressionClassification<'_> {
-        use hir::ExpressionKind::*;
+        use hir::BareExpression::*;
         use ExpressionClassification::*;
 
         match &self.bare {

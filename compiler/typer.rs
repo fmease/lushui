@@ -13,7 +13,7 @@ use crate::{
     syntax::{ast::Explicitness, lowered_ast::AttributeName},
     utility::{pluralize, DisplayWith, QuoteExt},
 };
-use interpreter::{BindingRegistration, BindingRegistrationKind, FunctionScope, Interpreter};
+use interpreter::{BareBindingRegistration, BindingRegistration, FunctionScope, Interpreter};
 use joinery::JoinableIterator;
 use std::default::default;
 
@@ -69,19 +69,19 @@ impl<'a> Typer<'a> {
         declaration: &Declaration,
         mut context: Context,
     ) -> Result {
-        use hir::DeclarationKind::*;
+        use hir::BareDeclaration::*;
 
         match &declaration.bare {
             Function(function) => {
                 self.evaluate_registration(BindingRegistration {
                     attributes: declaration.attributes.clone(),
-                    kind: if declaration.attributes.contains(AttributeName::Intrinsic) {
-                        BindingRegistrationKind::IntrinsicFunction {
+                    bare: if declaration.attributes.contains(AttributeName::Intrinsic) {
+                        BareBindingRegistration::IntrinsicFunction {
                             binder: function.binder.clone(),
                             type_: function.type_annotation.clone(),
                         }
                     } else {
-                        BindingRegistrationKind::Function {
+                        BareBindingRegistration::Function {
                             binder: function.binder.clone(),
                             type_: function.type_annotation.clone(),
                             value: Some(function.expression.clone().unwrap()),
@@ -93,7 +93,7 @@ impl<'a> Typer<'a> {
                 // @Question don't return early??
                 self.evaluate_registration(BindingRegistration {
                     attributes: declaration.attributes.clone(),
-                    kind: BindingRegistrationKind::Data {
+                    bare: BareBindingRegistration::Data {
                         binder: type_.binder.clone(),
                         type_: type_.type_annotation.clone(),
                     },
@@ -120,7 +120,7 @@ impl<'a> Typer<'a> {
 
                 self.evaluate_registration(BindingRegistration {
                     attributes: declaration.attributes.clone(),
-                    kind: BindingRegistrationKind::Constructor {
+                    bare: BareBindingRegistration::Constructor {
                         binder: constructor.binder.clone(),
                         type_: constructor.type_annotation.clone(),
                         owner_data_type,
@@ -150,9 +150,9 @@ impl<'a> Typer<'a> {
     // it is DRY even though we use an ugly macro..how sad is that??
     // we need to design the error handling here, it's super difficult, fragile, …
     fn evaluate_registration(&mut self, registration: BindingRegistration) -> Result {
-        use BindingRegistrationKind::*;
+        use BareBindingRegistration::*;
 
-        match registration.clone().kind {
+        match registration.clone().bare {
             Function {
                 binder,
                 type_,
@@ -190,7 +190,7 @@ impl<'a> Typer<'a> {
                                 |typer| {
                                     typer.carry_out_registration(BindingRegistration {
                                         attributes,
-                                        kind: Function {
+                                        bare: Function {
                                             binder,
                                             type_,
                                             value: None,
@@ -216,7 +216,7 @@ impl<'a> Typer<'a> {
 
                 self.carry_out_registration(BindingRegistration {
                     attributes: registration.attributes,
-                    kind: Function {
+                    bare: Function {
                         binder,
                         type_: inferred_type,
                         value: Some(value),
@@ -241,12 +241,12 @@ impl<'a> Typer<'a> {
 
                 self.assert_constructor_is_instance_of_type(
                     type_.clone(),
-                    Expression::new(default(), default(), hir::ExpressionKind::Type),
+                    Expression::new(default(), default(), hir::BareExpression::Type),
                 )?;
 
                 self.carry_out_registration(BindingRegistration {
                     attributes: registration.attributes,
-                    kind: Data { binder, type_ },
+                    bare: Data { binder, type_ },
                 })?;
             }
             Constructor {
@@ -276,7 +276,7 @@ impl<'a> Typer<'a> {
 
                 self.carry_out_registration(BindingRegistration {
                     attributes: registration.attributes,
-                    kind: Constructor {
+                    bare: Constructor {
                         binder,
                         type_,
                         owner_data_type: data,
@@ -301,7 +301,7 @@ impl<'a> Typer<'a> {
 
                 self.carry_out_registration(BindingRegistration {
                     attributes: registration.attributes,
-                    kind: IntrinsicFunction { binder, type_ },
+                    bare: IntrinsicFunction { binder, type_ },
                 })?;
             }
         }
@@ -311,9 +311,9 @@ impl<'a> Typer<'a> {
 
     // @Bug does not understand non-local binders
     pub(crate) fn carry_out_registration(&mut self, registration: BindingRegistration) -> Result {
-        use BindingRegistrationKind::*;
+        use BareBindingRegistration::*;
 
-        match registration.kind {
+        match registration.bare {
             Function {
                 binder,
                 type_,
@@ -464,7 +464,7 @@ expected type ‘{}’
         expression: Expression,
         scope: &FunctionScope<'_>,
     ) -> Result<Expression, Error> {
-        use hir::ExpressionKind::*;
+        use hir::BareExpression::*;
         use interpreter::Substitution::*;
 
         Ok(match expression.bare {
@@ -472,7 +472,7 @@ expected type ‘{}’
                 .interpreter()
                 .look_up_type(&binding.0, scope)
                 .ok_or(OutOfOrderBinding)?,
-            Type => Expression::new(default(), default(), hir::ExpressionKind::Type),
+            Type => Expression::new(default(), default(), hir::BareExpression::Type),
             Number(number) => self
                 .session
                 .look_up_intrinsic_type(number.type_().into(), Some(expression.span))?,
@@ -494,7 +494,7 @@ expected type ‘{}’
                     self.it_is_a_type(literal.codomain.clone(), scope)?;
                 }
 
-                Expression::new(default(), default(), hir::ExpressionKind::Type)
+                Expression::new(default(), default(), hir::BareExpression::Type)
             }
             Lambda(lambda) => {
                 let parameter_type: Expression =
@@ -652,7 +652,7 @@ expected type ‘_ -> _’
                 let mut type_of_previous_body = None::<Expression>;
 
                 for case in &analysis.cases {
-                    use hir::PatternKind::*;
+                    use hir::BarePattern::*;
 
                     let mut binder_types = Vec::new();
 
@@ -795,7 +795,7 @@ expected type ‘{}’
     fn it_is_a_type(&self, expression: Expression, scope: &FunctionScope<'_>) -> Result<(), Error> {
         let type_ = self.infer_type_of_expression(expression, scope)?;
         self.it_is_actual(
-            Expression::new(default(), default(), hir::ExpressionKind::Type),
+            Expression::new(default(), default(), hir::BareExpression::Type),
             type_,
             scope,
         )
@@ -804,7 +804,7 @@ expected type ‘{}’
     fn is_a_type(&self, expression: Expression, scope: &FunctionScope<'_>) -> Result<bool, Error> {
         let type_ = self.infer_type_of_expression(expression, scope)?;
         self.is_actual(
-            Expression::new(default(), default(), hir::ExpressionKind::Type),
+            Expression::new(default(), default(), hir::BareExpression::Type),
             type_,
             scope,
         )
@@ -850,7 +850,7 @@ expected type ‘{}’
     // gets R in A -> B -> C -> R plus an environment b.c. R could depend on outer stuff
     // @Note this function assumes that the expression has already been normalized!
     fn result_type(&self, expression: Expression, scope: &FunctionScope<'_>) -> Expression {
-        use hir::ExpressionKind::*;
+        use hir::BareExpression::*;
 
         match expression.bare {
             PiType(literal) => {
@@ -911,7 +911,7 @@ impl Expression {
     fn callee(mut self) -> Expression {
         loop {
             self = match self.bare {
-                hir::ExpressionKind::Application(application) => application.callee.clone(),
+                hir::BareExpression::Application(application) => application.callee.clone(),
                 _ => return self,
             }
         }

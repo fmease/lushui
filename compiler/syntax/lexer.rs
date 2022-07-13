@@ -1,6 +1,6 @@
 //! The lexical analyzer (lexer).
 
-use super::token::{Provenance, Token, TokenKind, UnterminatedTextLiteral};
+use super::token::{BareToken, Provenance, Token, UnterminatedTextLiteral};
 use crate::{
     diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter},
     error::{Health, Outcome, Result},
@@ -17,7 +17,7 @@ use std::{
     str::CharIndices,
     sync::Arc,
 };
-use TokenKind::*;
+use BareToken::*;
 
 #[cfg(test)]
 mod test;
@@ -536,7 +536,7 @@ impl<'a> Lexer<'a> {
     }
 }
 
-impl<'a> utility::lexer::Lexer<'a, TokenKind> for Lexer<'a> {
+impl<'a> utility::lexer::Lexer<'a, BareToken> for Lexer<'a> {
     fn file(&self) -> &'a SourceFile {
         self.file
     }
@@ -648,7 +648,7 @@ enum Bracket {
 }
 
 impl Bracket {
-    const fn opening(self) -> TokenKind {
+    const fn opening(self) -> BareToken {
         match self {
             Self::Round => OpeningRoundBracket,
             Self::Square => OpeningSquareBracket,
@@ -656,7 +656,7 @@ impl Bracket {
         }
     }
 
-    const fn closing(self) -> TokenKind {
+    const fn closing(self) -> BareToken {
         match self {
             Self::Round => ClosingRoundBracket,
             Self::Square => ClosingSquareBracket,
@@ -738,7 +738,7 @@ pub(crate) const fn is_number_literal_middle(character: char) -> bool {
     character.is_ascii_digit() || character == NUMERIC_SEPARATOR
 }
 
-fn parse_keyword(source: &str) -> Option<TokenKind> {
+fn parse_keyword(source: &str) -> Option<BareToken> {
     Some(match source {
         "_" => Underscore,
         "as" => As,
@@ -760,7 +760,7 @@ fn parse_keyword(source: &str) -> Option<TokenKind> {
     })
 }
 
-fn parse_reserved_punctuation(source: &str) -> Option<TokenKind> {
+fn parse_reserved_punctuation(source: &str) -> Option<BareToken> {
     Some(match source {
         "." => Dot,
         ":" => Colon,

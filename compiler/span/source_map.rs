@@ -39,7 +39,7 @@ mod test;
 ///  padding, unknown location   Span::default()
 /// ```
 ///
-/// [eoi]: crate::syntax::token::TokenKind::EndOfInput
+/// [eoi]: crate::syntax::token::BareToken::EndOfInput
 #[derive(Default)]
 pub struct SourceMap {
     files: IndexMap<SourceFileIndex, SourceFile>,

@@ -14,7 +14,7 @@ use crate::{
     syntax::{
         ast,
         lowered_ast::{
-            attributes::Query as _, Attribute, AttributeKind, AttributeName, Attributes,
+            attributes::Query as _, Attribute, AttributeName, Attributes, BareAttribute,
         },
     },
     utility::condition,
@@ -220,12 +220,12 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
     // to avoid traversing the component graph too often
     fn collect_search_items(&mut self, declaration: &hir::Declaration) {
         match &declaration.bare {
-            hir::DeclarationKind::Function(function) => {
+            hir::BareDeclaration::Function(function) => {
                 self.search_items.push(SearchItem::Declaration(
                     function.binder.declaration_index().unwrap(),
                 ));
             }
-            hir::DeclarationKind::Data(type_) => {
+            hir::BareDeclaration::Data(type_) => {
                 if let Some(name) = declaration
                     .attributes
                     .get::<{ AttributeName::DocReservedIdentifier }>()
@@ -250,12 +250,12 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                     }
                 }
             }
-            hir::DeclarationKind::Constructor(constructor) => {
+            hir::BareDeclaration::Constructor(constructor) => {
                 self.search_items.push(SearchItem::Declaration(
                     constructor.binder.declaration_index().unwrap(),
                 ));
             }
-            hir::DeclarationKind::Module(module) => {
+            hir::BareDeclaration::Module(module) => {
                 if !declaration.attributes.contains(
                     AttributeName::DocAttributes.or(AttributeName::DocReservedIdentifiers),
                 ) {
@@ -275,7 +275,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
     }
 
     fn document_declaration(&mut self, declaration: &hir::Declaration) -> Result<()> {
-        if let hir::DeclarationKind::Module(module) = &declaration.bare {
+        if let hir::BareDeclaration::Module(module) = &declaration.bare {
             // @Task defer generation, only collect into structured data to be able to
             // generate the pages in parallel later on!
             self.render_module_page(module, &declaration.attributes);
@@ -297,7 +297,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
 
         for declaration in &module.declarations {
             match &declaration.bare {
-                hir::DeclarationKind::Function(function) => {
+                hir::BareDeclaration::Function(function) => {
                     subsections.functions.0.push(subsections::Function {
                         attributes: &declaration.attributes,
                         binder: function.binder.as_str(),
@@ -309,7 +309,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                         ),
                     });
                 }
-                hir::DeclarationKind::Data(type_) => {
+                hir::BareDeclaration::Data(type_) => {
                     if let Some(name) = declaration
                         .attributes
                         .get::<{ AttributeName::DocReservedIdentifier }>()
@@ -365,7 +365,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                         });
                     }
                 }
-                hir::DeclarationKind::Module(module) => {
+                hir::BareDeclaration::Module(module) => {
                     if declaration.attributes.contains(
                         AttributeName::DocAttributes.or(AttributeName::DocReservedIdentifiers),
                     ) {
@@ -656,7 +656,7 @@ fn render_declaration_attributes(
 }
 
 fn render_declaration_attribute(attribute: &Attribute, parent: &mut Element<'_>, url_prefix: &str) {
-    use AttributeKind::*;
+    use BareAttribute::*;
 
     #[allow(clippy::match_same_arms)]
     match &attribute.bare {

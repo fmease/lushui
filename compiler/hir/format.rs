@@ -28,7 +28,7 @@ impl Declaration {
         depth: usize,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
-        use super::DeclarationKind::*;
+        use super::BareDeclaration::*;
         use crate::syntax::lexer::INDENTATION;
         let context = (component, session);
 
@@ -114,7 +114,7 @@ fn format_pi_type_literal_or_lower(
     session: &BuildSession,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
-    use super::ExpressionKind::*;
+    use super::BareExpression::*;
     let context = (component, session);
 
     // In here, we format `Lambda`, `UseIn` and `CaseAnalysis` as a pi-type-literal-or-lower instead of
@@ -214,7 +214,7 @@ fn format_application_or_lower(
     session: &BuildSession,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
-    use super::ExpressionKind::*;
+    use super::BareExpression::*;
 
     match &expression.bare {
         Application(application) => {
@@ -242,7 +242,7 @@ fn format_lower_expression(
     session: &BuildSession,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
-    use super::ExpressionKind::*;
+    use super::BareExpression::*;
     let context = (component, session);
 
     for attribute in &expression.attributes.0 {
@@ -289,7 +289,7 @@ impl DisplayWith for Pattern {
         context @ (component, session): Self::Context<'_>,
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
-        use super::PatternKind::*;
+        use super::BarePattern::*;
 
         match &self.bare {
             Number(number) => write!(f, "{number}"),
@@ -345,7 +345,7 @@ mod test {
         span::Span,
         syntax::{
             ast::{self, Explicitness::*},
-            lowered_ast::{Attribute, AttributeKind, Attributes},
+            lowered_ast::{Attribute, Attributes, BareAttribute},
         },
         utility::{difference, DisplayWith},
     };
@@ -390,12 +390,12 @@ mod test {
     }
 
     fn type_() -> Expression {
-        Expression::new(default(), default(), hir::ExpressionKind::Type)
+        Expression::new(default(), default(), hir::BareExpression::Type)
     }
 
     impl Attribute {
-        fn stripped(kind: AttributeKind) -> Self {
-            Self::new(default(), kind)
+        fn stripped(attribute: BareAttribute) -> Self {
+            Self::new(default(), attribute)
         }
     }
 
@@ -1108,8 +1108,8 @@ mod test {
                             callee: Identifier::parameter("==").into_expression(),
                             argument: Expression::new(
                                 Attributes(vec![
-                                    Attribute::stripped(AttributeKind::Static),
-                                    Attribute::stripped(AttributeKind::Unsafe),
+                                    Attribute::stripped(BareAttribute::Static),
+                                    Attribute::stripped(BareAttribute::Unsafe),
                                 ]),
                                 Span::default(),
                                 Number::Nat(3u8.into()).into(),
@@ -1119,7 +1119,7 @@ mod test {
                         .into(),
                     ),
                     argument: Expression::new(
-                        Attributes(vec![Attribute::stripped(AttributeKind::Static)]),
+                        Attributes(vec![Attribute::stripped(BareAttribute::Static)]),
                         default(),
                         hir::Application {
                             callee: Identifier::parameter("increment").into_expression(),

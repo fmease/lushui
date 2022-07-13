@@ -469,17 +469,17 @@ mod spanned {
     use std::{fmt, hash::Hash, ops::Deref};
 
     #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-    pub struct Spanned<T> {
-        pub bare: T,
+    pub struct Spanned<Bare> {
+        pub bare: Bare,
         pub span: Span,
     }
 
-    impl<T> Spanned<T> {
-        pub const fn new(span: Span, bare: T) -> Self {
+    impl<Bare> Spanned<Bare> {
+        pub const fn new(span: Span, bare: Bare) -> Self {
             Self { bare, span }
         }
 
-        pub fn map<U>(self, mapper: impl FnOnce(T) -> U) -> Spanned<U> {
+        pub fn map<U>(self, mapper: impl FnOnce(Bare) -> U) -> Spanned<U> {
             Spanned::new(self.span, mapper(self.bare))
         }
 
@@ -489,23 +489,23 @@ mod spanned {
             self
         }
 
-        pub const fn as_ref(&self) -> Spanned<&T> {
+        pub const fn as_ref(&self) -> Spanned<&Bare> {
             Spanned::new(self.span, &self.bare)
         }
 
-        pub fn as_mut(&mut self) -> Spanned<&mut T> {
+        pub fn as_mut(&mut self) -> Spanned<&mut Bare> {
             Spanned::new(self.span, &mut self.bare)
         }
 
-        pub fn as_deref(&self) -> Spanned<&T::Target>
+        pub fn as_deref(&self) -> Spanned<&Bare::Target>
         where
-            T: Deref,
+            Bare: Deref,
         {
             Spanned::new(self.span, &self.bare)
         }
 
         #[allow(dead_code)]
-        pub(crate) fn weak(self) -> WeaklySpanned<T> {
+        pub(crate) fn weak(self) -> WeaklySpanned<Bare> {
             WeaklySpanned {
                 bare: self.bare,
                 span: self.span,
@@ -513,36 +513,36 @@ mod spanned {
         }
     }
 
-    impl<T> Spanned<&T> {
+    impl<Bare> Spanned<&Bare> {
         #[allow(dead_code)]
-        pub(crate) fn copied(self) -> Spanned<T>
+        pub(crate) fn copied(self) -> Spanned<Bare>
         where
-            T: Copy,
+            Bare: Copy,
         {
             self.map(|value| *value)
         }
 
-        pub(crate) fn cloned(self) -> Spanned<T>
+        pub(crate) fn cloned(self) -> Spanned<Bare>
         where
-            T: Clone,
+            Bare: Clone,
         {
             self.map(Clone::clone)
         }
     }
 
-    impl<T> Spanning for Spanned<T> {
+    impl<Bare> Spanning for Spanned<Bare> {
         fn span(&self) -> Span {
             self.span
         }
     }
 
-    impl<T: fmt::Debug> fmt::Debug for Spanned<T> {
+    impl<Bare: fmt::Debug> fmt::Debug for Spanned<Bare> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "{:?} {:?}", self.bare, self.span)
         }
     }
 
-    impl<T: fmt::Display> fmt::Display for Spanned<T> {
+    impl<Bare: fmt::Display> fmt::Display for Spanned<Bare> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             self.bare.fmt(f)
         }
@@ -566,13 +566,13 @@ mod weakly_spanned {
     };
 
     #[derive(Clone, Copy)]
-    pub struct WeaklySpanned<T> {
-        pub(crate) bare: T,
+    pub struct WeaklySpanned<Bare> {
+        pub(crate) bare: Bare,
         pub(crate) span: Span,
     }
 
-    impl<T> WeaklySpanned<T> {
-        pub(crate) fn new(span: Span, bare: T) -> Self {
+    impl<Bare> WeaklySpanned<Bare> {
+        pub(crate) fn new(span: Span, bare: Bare) -> Self {
             Self { bare, span }
         }
 
@@ -585,20 +585,20 @@ mod weakly_spanned {
         }
 
         #[allow(dead_code)]
-        pub(crate) fn as_ref(&self) -> WeaklySpanned<&T> {
+        pub(crate) fn as_ref(&self) -> WeaklySpanned<&Bare> {
             WeaklySpanned::new(self.span, &self.bare)
         }
 
         #[allow(dead_code)]
-        pub(crate) fn as_deref(&self) -> WeaklySpanned<&T::Target>
+        pub(crate) fn as_deref(&self) -> WeaklySpanned<&Bare::Target>
         where
-            T: Deref,
+            Bare: Deref,
         {
             WeaklySpanned::new(self.span, &self.bare)
         }
 
         #[allow(dead_code)]
-        pub(crate) fn strong(self) -> Spanned<T> {
+        pub(crate) fn strong(self) -> Spanned<Bare> {
             Spanned {
                 bare: self.bare,
                 span: self.span,
@@ -606,40 +606,40 @@ mod weakly_spanned {
         }
     }
 
-    impl<T> Spanning for WeaklySpanned<T> {
+    impl<Bare> Spanning for WeaklySpanned<Bare> {
         fn span(&self) -> Span {
             self.span
         }
     }
 
-    impl<T: PartialEq> PartialEq for WeaklySpanned<T> {
+    impl<Bare: PartialEq> PartialEq for WeaklySpanned<Bare> {
         fn eq(&self, other: &Self) -> bool {
             self.bare == other.bare
         }
     }
 
-    impl<T: Eq> Eq for WeaklySpanned<T> {}
+    impl<Bare: Eq> Eq for WeaklySpanned<Bare> {}
 
-    impl<T: PartialOrd> PartialOrd for WeaklySpanned<T> {
+    impl<Bare: PartialOrd> PartialOrd for WeaklySpanned<Bare> {
         fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
             self.bare.partial_cmp(&other.bare)
         }
     }
 
-    impl<T: Ord> Ord for WeaklySpanned<T> {
+    impl<Bare: Ord> Ord for WeaklySpanned<Bare> {
         fn cmp(&self, other: &Self) -> std::cmp::Ordering {
             self.bare.cmp(&other.bare)
         }
     }
 
-    impl<T: Hash> Hash for WeaklySpanned<T> {
+    impl<Bare: Hash> Hash for WeaklySpanned<Bare> {
         fn hash<H: Hasher>(&self, state: &mut H) {
             self.bare.hash(state);
         }
     }
 
-    impl<T> Borrow<T> for WeaklySpanned<T> {
-        default fn borrow(&self) -> &T {
+    impl<Bare> Borrow<Bare> for WeaklySpanned<Bare> {
+        default fn borrow(&self) -> &Bare {
             &self.bare
         }
     }
@@ -650,13 +650,13 @@ mod weakly_spanned {
         }
     }
 
-    impl<T: fmt::Debug> fmt::Debug for WeaklySpanned<T> {
+    impl<Bare: fmt::Debug> fmt::Debug for WeaklySpanned<Bare> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "{:?} {:?}", self.bare, self.span)
         }
     }
 
-    impl<T: fmt::Display> fmt::Display for WeaklySpanned<T> {
+    impl<Bare: fmt::Display> fmt::Display for WeaklySpanned<Bare> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             self.bare.fmt(f)
         }

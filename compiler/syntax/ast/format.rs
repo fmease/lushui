@@ -229,7 +229,7 @@ impl<I: Format> Debug for super::Item<I> {
     }
 }
 
-impl Format for super::DeclarationKind {
+impl Format for super::BareDeclaration {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         match self {
             Self::Function(function) => function.format(f, indentation),
@@ -245,7 +245,7 @@ impl Format for super::DeclarationKind {
     }
 }
 
-impl Debug for super::DeclarationKind {
+impl Debug for super::BareDeclaration {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         self.format(f, Indentation::default())
     }
@@ -329,7 +329,7 @@ impl Format for super::Use {
     }
 }
 
-impl Format for super::UsePathTreeKind {
+impl Format for super::BareUsePathTree {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         let struct_ = FormatStruct::new(f, indentation);
 
@@ -347,7 +347,7 @@ impl Format for super::UsePathTreeKind {
     }
 }
 
-impl Format for super::ExpressionKind {
+impl Format for super::BareExpression {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         match self {
             Self::PiTypeLiteral(pi) => pi.format(f, indentation),
@@ -371,7 +371,7 @@ impl Format for super::ExpressionKind {
     }
 }
 
-impl Debug for super::ExpressionKind {
+impl Debug for super::BareExpression {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         self.format(f, Indentation::default())
     }
@@ -486,7 +486,7 @@ impl Format for super::Field {
     }
 }
 
-impl Format for super::HangerKind {
+impl Format for super::BareHanger {
     fn format(&self, f: &mut Formatter<'_>, _: Indentation) -> Result {
         write!(f, "{}", self.to_string().color(Color::BrightYellow))
     }
@@ -564,7 +564,7 @@ impl<T: Format> Format for super::SequenceLiteral<T> {
     }
 }
 
-impl Format for super::ParameterKind {
+impl Format for super::BareParameter {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         FormatStruct::new(f, indentation)
             .name("Parameter")
@@ -590,7 +590,7 @@ impl fmt::Display for super::Path {
     }
 }
 
-impl fmt::Display for super::HangerKind {
+impl fmt::Display for super::BareHanger {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.name())
     }
@@ -630,7 +630,7 @@ impl Format for super::BindStatement {
     }
 }
 
-impl Format for super::PatternKind {
+impl Format for super::BarePattern {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         match self {
             Self::NumberLiteral(number) => number.format(f, indentation),
@@ -688,7 +688,7 @@ impl fmt::Display for Explicitness {
     }
 }
 
-impl Format for super::AttributeKind {
+impl Format for super::BareAttribute {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         let struct_ = FormatStruct::new(f, indentation);
         match self {
@@ -702,7 +702,7 @@ impl Format for super::AttributeKind {
     }
 }
 
-impl Format for super::AttributeArgumentKind {
+impl Format for super::BareAttributeArgument {
     fn format(&self, f: &mut Formatter<'_>, indentation: Indentation) -> Result {
         match self {
             Self::NumberLiteral(number) => {

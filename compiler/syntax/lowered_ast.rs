@@ -5,16 +5,16 @@ use crate::{
     error::PossiblyErroneous,
     span::{SourceFileIndex, Span},
 };
-pub(crate) use attributes::{Attribute, AttributeKind, AttributeName, Attributes};
+pub(crate) use attributes::{Attribute, AttributeName, Attributes, BareAttribute};
 
 pub(crate) mod attributes;
 mod format;
 
-pub(crate) type Item<Kind> = crate::item::Item<Kind, attributes::Attributes>;
+pub(crate) type Item<Bare> = crate::item::Item<Bare, attributes::Attributes>;
 
-pub type Declaration = Item<DeclarationKind>;
+pub type Declaration = Item<BareDeclaration>;
 
-pub enum DeclarationKind {
+pub enum BareDeclaration {
     Function(Box<Function>),
     Data(Box<Data>),
     Constructor(Box<Constructor>),
@@ -23,7 +23,7 @@ pub enum DeclarationKind {
     Error,
 }
 
-impl PossiblyErroneous for DeclarationKind {
+impl PossiblyErroneous for BareDeclaration {
     fn error() -> Self {
         Self::Error
     }
@@ -35,7 +35,7 @@ pub struct Function {
     pub expression: Option<Expression>,
 }
 
-impl From<Function> for DeclarationKind {
+impl From<Function> for BareDeclaration {
     fn from(function: Function) -> Self {
         Self::Function(Box::new(function))
     }
@@ -47,7 +47,7 @@ pub struct Data {
     pub constructors: Option<Vec<Declaration>>,
 }
 
-impl From<Data> for DeclarationKind {
+impl From<Data> for BareDeclaration {
     fn from(type_: Data) -> Self {
         Self::Data(Box::new(type_))
     }
@@ -58,7 +58,7 @@ pub struct Constructor {
     pub type_annotation: Expression,
 }
 
-impl From<Constructor> for DeclarationKind {
+impl From<Constructor> for BareDeclaration {
     fn from(constructor: Constructor) -> Self {
         Self::Constructor(Box::new(constructor))
     }
@@ -70,7 +70,7 @@ pub struct Module {
     pub declarations: Vec<Declaration>,
 }
 
-impl From<Module> for DeclarationKind {
+impl From<Module> for BareDeclaration {
     fn from(module: Module) -> Self {
         Self::Module(Box::new(module))
     }
@@ -81,16 +81,16 @@ pub struct Use {
     pub target: Path,
 }
 
-impl From<Use> for DeclarationKind {
+impl From<Use> for BareDeclaration {
     fn from(use_: Use) -> Self {
         Self::Use(Box::new(use_))
     }
 }
 
-pub type Expression = Item<ExpressionKind>;
+pub type Expression = Item<BareExpression>;
 
 #[derive(Clone)]
-pub enum ExpressionKind {
+pub enum BareExpression {
     TypeLiteral,
     Path(Box<Path>),
     NumberLiteral(Box<NumberLiteral>),
@@ -104,37 +104,37 @@ pub enum ExpressionKind {
     Error,
 }
 
-impl PossiblyErroneous for ExpressionKind {
+impl PossiblyErroneous for BareExpression {
     fn error() -> Self {
         Self::Error
     }
 }
 
-impl From<Path> for ExpressionKind {
+impl From<Path> for BareExpression {
     fn from(path: Path) -> Self {
         Self::Path(Box::new(path))
     }
 }
 
-impl From<NumberLiteral> for ExpressionKind {
+impl From<NumberLiteral> for BareExpression {
     fn from(number: NumberLiteral) -> Self {
         Self::NumberLiteral(Box::new(number))
     }
 }
 
-impl From<TextLiteral> for ExpressionKind {
+impl From<TextLiteral> for BareExpression {
     fn from(text: TextLiteral) -> Self {
         Self::TextLiteral(Box::new(text))
     }
 }
 
-impl From<Application<Expression>> for ExpressionKind {
+impl From<Application<Expression>> for BareExpression {
     fn from(application: Application<Expression>) -> Self {
         Self::Application(Box::new(application))
     }
 }
 
-impl From<SequenceLiteral<Expression>> for ExpressionKind {
+impl From<SequenceLiteral<Expression>> for BareExpression {
     fn from(sequence: SequenceLiteral<Expression>) -> Self {
         Self::SequenceLiteral(Box::new(sequence))
     }
@@ -149,7 +149,7 @@ pub struct PiType {
     pub codomain: Expression,
 }
 
-impl From<PiType> for ExpressionKind {
+impl From<PiType> for BareExpression {
     fn from(pi: PiType) -> Self {
         Self::PiType(Box::new(pi))
     }
@@ -165,7 +165,7 @@ pub struct Lambda {
     pub body: Expression,
 }
 
-impl From<Lambda> for ExpressionKind {
+impl From<Lambda> for BareExpression {
     fn from(lambda: Lambda) -> Self {
         Self::Lambda(Box::new(lambda))
     }
@@ -177,7 +177,7 @@ pub struct CaseAnalysis {
     pub cases: Vec<Case>,
 }
 
-impl From<CaseAnalysis> for ExpressionKind {
+impl From<CaseAnalysis> for BareExpression {
     fn from(analysis: CaseAnalysis) -> Self {
         Self::CaseAnalysis(Box::new(analysis))
     }
@@ -189,10 +189,10 @@ pub struct Case {
     pub body: Expression,
 }
 
-pub type Pattern = Item<PatternKind>;
+pub type Pattern = Item<BarePattern>;
 
 #[derive(Clone)]
-pub enum PatternKind {
+pub enum BarePattern {
     NumberLiteral(Box<NumberLiteral>),
     TextLiteral(Box<TextLiteral>),
     Path(Box<Path>),
@@ -202,43 +202,43 @@ pub enum PatternKind {
     Error,
 }
 
-impl PossiblyErroneous for PatternKind {
+impl PossiblyErroneous for BarePattern {
     fn error() -> Self {
         Self::Error
     }
 }
 
-impl From<NumberLiteral> for PatternKind {
+impl From<NumberLiteral> for BarePattern {
     fn from(number: NumberLiteral) -> Self {
         Self::NumberLiteral(Box::new(number))
     }
 }
 
-impl From<TextLiteral> for PatternKind {
+impl From<TextLiteral> for BarePattern {
     fn from(text: TextLiteral) -> Self {
         Self::TextLiteral(Box::new(text))
     }
 }
 
-impl From<Path> for PatternKind {
+impl From<Path> for BarePattern {
     fn from(path: Path) -> Self {
         Self::Path(Box::new(path))
     }
 }
 
-impl From<Identifier> for PatternKind {
+impl From<Identifier> for BarePattern {
     fn from(identifier: Identifier) -> Self {
         Self::Binder(Box::new(identifier))
     }
 }
 
-impl From<Application<Pattern>> for PatternKind {
+impl From<Application<Pattern>> for BarePattern {
     fn from(application: Application<Pattern>) -> Self {
         Self::Application(Box::new(application))
     }
 }
 
-impl From<SequenceLiteral<Pattern>> for PatternKind {
+impl From<SequenceLiteral<Pattern>> for BarePattern {
     fn from(sequence: SequenceLiteral<Pattern>) -> Self {
         Self::SequenceLiteral(Box::new(sequence))
     }

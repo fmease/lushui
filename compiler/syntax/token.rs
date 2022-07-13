@@ -9,7 +9,7 @@ use derivation::Discriminant;
 use std::fmt;
 use TokenName::*;
 
-pub type Token = Spanned<TokenKind>;
+pub type Token = Spanned<BareToken>;
 
 impl Token {
     pub(crate) const fn name(&self) -> TokenName {
@@ -18,7 +18,7 @@ impl Token {
 
     #[allow(dead_code)]
     pub(crate) const fn provenance(&self) -> Provenance {
-        use TokenKind::*;
+        use BareToken::*;
 
         match self.bare {
             Semicolon(provenance)
@@ -29,21 +29,21 @@ impl Token {
     }
 
     pub(crate) fn is_line_break(&self) -> bool {
-        matches!(self.bare, TokenKind::Semicolon(Provenance::Lexer))
+        matches!(self.bare, BareToken::Semicolon(Provenance::Lexer))
     }
 
     pub(crate) fn into_identifier(self) -> Option<Atom> {
-        use TokenKind::*;
+        use BareToken::*;
 
         obtain!(self.bare, Word(atom) | Punctuation(atom) => atom)
     }
 
     pub(crate) fn into_number_literal(self) -> Option<Atom> {
-        obtain!(self.bare, TokenKind::NumberLiteral(number) => number)
+        obtain!(self.bare, BareToken::NumberLiteral(number) => number)
     }
 
     pub(crate) fn into_text_literal(self) -> Option<Result<Atom, Diagnostic>> {
-        use TokenKind::*;
+        use BareToken::*;
 
         match self.bare {
             TextLiteral(Ok(content)) => Some(Ok(content)),
@@ -58,7 +58,7 @@ impl Token {
 
 #[derive(Clone, PartialEq, Eq, Discriminant, Debug)]
 #[discriminant(name: TokenName)]
-pub enum TokenKind {
+pub enum BareToken {
     Comment,
     DocumentationComment,
     Word(Atom),        // @Beacon @Beacon @Beacon @Task create newtype Word
@@ -136,7 +136,7 @@ pub enum TokenKind {
     Illegal(char),
 }
 
-impl fmt::Display for TokenKind {
+impl fmt::Display for BareToken {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = self.name();
 

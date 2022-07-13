@@ -25,11 +25,11 @@
 // @Task ungate named arguments but validate them in the resolver (and/or typer)
 
 use super::{
-    ast::{self, Explicit, HangerKind, Parameter, Path},
+    ast::{self, BareHanger, Explicit, Parameter, Path},
     lowered_ast::{
         self,
         attributes::{Predicate, Public, Query, Target},
-        AttributeKind, AttributeName, Attributes,
+        AttributeName, Attributes, BareAttribute,
     },
 };
 use crate::{
@@ -86,7 +86,7 @@ impl<'a> Lowerer<'a> {
         declaration: ast::Declaration,
         context: &DeclarationContext,
     ) -> SmallVec<lowered_ast::Declaration, 1> {
-        use ast::DeclarationKind::*;
+        use ast::BareDeclaration::*;
 
         let attributes = self.lower_attributes(&declaration.attributes, &declaration);
 
@@ -373,7 +373,7 @@ impl<'a> Lowerer<'a> {
         let mut has_header = false;
 
         for (index, declaration) in declarations.into_iter().enumerate() {
-            if matches!(declaration.bare, ast::DeclarationKind::ModuleHeader) {
+            if matches!(declaration.bare, ast::BareDeclaration::ModuleHeader) {
                 if index == 0 {
                     // @Bug this sequence may lead to some unnecessary diagnostics being emitted
                     // since the "synergy check" (which filters duplicate attribute) is run too late
@@ -428,7 +428,7 @@ impl<'a> Lowerer<'a> {
     ) -> SmallVec<lowered_ast::Declaration, 1> {
         // @Task verify that the resulting spans are correct
 
-        use ast::{UsePathTree, UsePathTreeKind::*};
+        use ast::{BareUsePathTree::*, UsePathTree};
 
         let mut declarations = SmallVec::new();
 
@@ -465,7 +465,7 @@ impl<'a> Lowerer<'a> {
                         // the parent path
                         let binder = binder
                             .or_else(|| {
-                                if target.bare_hanger(HangerKind::Self_).is_some() {
+                                if target.bare_hanger(BareHanger::Self_).is_some() {
                                     &path
                                 } else {
                                     &target
@@ -548,7 +548,7 @@ impl<'a> Lowerer<'a> {
 
     /// Lower an expression.
     fn lower_expression(&mut self, expression: ast::Expression) -> lowered_ast::Expression {
-        use ast::ExpressionKind::*;
+        use ast::BareExpression::*;
 
         let attributes = self.lower_attributes(&expression.attributes, &expression);
 
@@ -596,7 +596,7 @@ impl<'a> Lowerer<'a> {
             TypeLiteral => lowered_ast::Expression::new(
                 attributes,
                 expression.span,
-                lowered_ast::ExpressionKind::TypeLiteral,
+                lowered_ast::BareExpression::TypeLiteral,
             ),
             // @Task avoid re-boxing!
             NumberLiteral(number) => {
@@ -797,7 +797,7 @@ impl<'a> Lowerer<'a> {
 
     /// Lower a pattern.
     fn lower_pattern(&mut self, pattern: ast::Pattern) -> lowered_ast::Pattern {
-        use ast::PatternKind::*;
+        use ast::BarePattern::*;
 
         let attributes = self.lower_attributes(&pattern.attributes, &pattern);
 
@@ -1007,7 +1007,7 @@ impl<'a> Lowerer<'a> {
 
         // @Task replace this concept with a feature system
         if !self.options.internal_features_enabled {
-            for attribute in attributes.filter(Predicate(AttributeKind::is_internal)) {
+            for attribute in attributes.filter(Predicate(BareAttribute::is_internal)) {
                 Diagnostic::error()
                     .code(ErrorCode::E038)
                     .message(format!(
@@ -1097,12 +1097,12 @@ impl lowered_ast::Attribute {
     ) -> Result<Self> {
         Ok(Self::new(
             attribute.span,
-            AttributeKind::parse(attribute, options, session)?,
+            BareAttribute::parse(attribute, options, session)?,
         ))
     }
 }
 
-impl lowered_ast::AttributeKind {
+impl lowered_ast::BareAttribute {
     // @Task allow unordered named attributes e.g. `@(unstable (reason "x") (feature thing))`
     pub(crate) fn parse(
         // @Task take by value and create parsing helpers on ast::Attribute and ast::Attributes
@@ -1110,7 +1110,7 @@ impl lowered_ast::AttributeKind {
         options: &Options,
         session: &BuildSession,
     ) -> Result<Self> {
-        let ast::AttributeKind::Regular { binder, arguments } = &attribute.bare else {
+        let ast::BareAttribute::Regular { binder, arguments } = &attribute.bare else {
             return Ok(Self::Doc {
                 content: if options.keep_documentation_comments {
                     session.shared_map().snippet(attribute.span)
@@ -1323,7 +1323,7 @@ impl ast::AttributeArgument {
         name: Option<&'static str>,
         reporter: &Reporter,
     ) -> Result<&Atom, AttributeParsingError> {
-        use ast::AttributeArgumentKind::*;
+        use ast::BareAttributeArgument::*;
 
         match &self.bare {
             NumberLiteral(literal) => Ok(literal),
@@ -1331,9 +1331,9 @@ impl ast::AttributeArgument {
                 name,
                 |argument| match &argument.bare {
                     NumberLiteral(literal) => Ok(literal),
-                    kind => Err(AttributeParsingError::Erased(
+                    bare => Err(AttributeParsingError::Erased(
                         Diagnostic::invalid_attribute_argument_type(
-                            Spanned::new(argument.span, kind.name()),
+                            Spanned::new(argument.span, bare.name()),
                             "number literal",
                         )
                         .report(reporter),
@@ -1341,9 +1341,9 @@ impl ast::AttributeArgument {
                 },
                 reporter,
             ),
-            kind => Err(AttributeParsingError::Erased(
+            bare => Err(AttributeParsingError::Erased(
                 Diagnostic::invalid_attribute_argument_type(
-                    Spanned::new(self.span, kind.name()),
+                    Spanned::new(self.span, bare.name()),
                     "positional or named number literal",
                 )
                 .report(reporter),
@@ -1356,7 +1356,7 @@ impl ast::AttributeArgument {
         name: Option<&'static str>,
         reporter: &Reporter,
     ) -> Result<&Atom, AttributeParsingError> {
-        use ast::AttributeArgumentKind::*;
+        use ast::BareAttributeArgument::*;
 
         match &self.bare {
             TextLiteral(literal) => Ok(literal),
@@ -1364,9 +1364,9 @@ impl ast::AttributeArgument {
                 name,
                 |argument| match &argument.bare {
                     TextLiteral(literal) => Ok(literal),
-                    kind => Err(AttributeParsingError::Erased(
+                    bare => Err(AttributeParsingError::Erased(
                         Diagnostic::invalid_attribute_argument_type(
-                            Spanned::new(argument.span, kind.name()),
+                            Spanned::new(argument.span, bare.name()),
                             "text literal",
                         )
                         .report(reporter),
@@ -1374,9 +1374,9 @@ impl ast::AttributeArgument {
                 },
                 reporter,
             ),
-            kind => Err(AttributeParsingError::Erased(
+            bare => Err(AttributeParsingError::Erased(
                 Diagnostic::invalid_attribute_argument_type(
-                    Spanned::new(self.span, kind.name()),
+                    Spanned::new(self.span, bare.name()),
                     "positional or named text literal",
                 )
                 .report(reporter),
@@ -1389,7 +1389,7 @@ impl ast::AttributeArgument {
         name: Option<&'static str>,
         reporter: &Reporter,
     ) -> Result<&Path, AttributeParsingError> {
-        use ast::AttributeArgumentKind::*;
+        use ast::BareAttributeArgument::*;
 
         match &self.bare {
             Path(literal) => Ok(literal),
@@ -1398,9 +1398,9 @@ impl ast::AttributeArgument {
                     name,
                     |argument| match &argument.bare {
                         Path(literal) => Ok(literal),
-                        kind => Err(AttributeParsingError::Erased(
+                        bare => Err(AttributeParsingError::Erased(
                             Diagnostic::invalid_attribute_argument_type(
-                                Spanned::new(argument.span, kind.name()),
+                                Spanned::new(argument.span, bare.name()),
                                 "path",
                             )
                             .report(reporter),
@@ -1409,9 +1409,9 @@ impl ast::AttributeArgument {
                     reporter,
                 )
                 .map(|path| &**path),
-            kind => Err(AttributeParsingError::Erased(
+            bare => Err(AttributeParsingError::Erased(
                 Diagnostic::invalid_attribute_argument_type(
-                    Spanned::new(self.span, kind.name()),
+                    Spanned::new(self.span, bare.name()),
                     "positional or named path",
                 )
                 .report(reporter),

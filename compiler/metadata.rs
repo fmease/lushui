@@ -19,7 +19,7 @@ use std::{fmt, sync::RwLock};
 mod lexer;
 mod parser;
 
-pub type Value = Spanned<ValueKind>;
+pub type Value = Spanned<BareValue>;
 pub type Record<K = String, V = Value> = HashMap<WeaklySpanned<K>, V>;
 
 pub fn parse(
@@ -36,7 +36,7 @@ pub fn parse(
 #[derive(Debug, Discriminant)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 #[discriminant(type_: Type)]
-pub enum ValueKind {
+pub enum BareValue {
     Boolean(bool),
     Integer(i64),
     Text(String),
@@ -44,107 +44,107 @@ pub enum ValueKind {
     Record(Record),
 }
 
-impl From<bool> for ValueKind {
+impl From<bool> for BareValue {
     fn from(bool: bool) -> Self {
         Self::Boolean(bool)
     }
 }
 
-impl TryFrom<ValueKind> for bool {
+impl TryFrom<BareValue> for bool {
     type Error = TypeError;
 
-    fn try_from(value: ValueKind) -> Result<Self, Self::Error> {
+    fn try_from(value: BareValue) -> Result<Self, Self::Error> {
         let type_ = value.type_();
 
-        obtain!(value, ValueKind::Boolean(value) => value).ok_or(TypeError {
+        obtain!(value, BareValue::Boolean(value) => value).ok_or(TypeError {
             expected: Type::Boolean,
             actual: type_,
         })
     }
 }
 
-impl From<i64> for ValueKind {
+impl From<i64> for BareValue {
     fn from(integer: i64) -> Self {
         Self::Integer(integer)
     }
 }
 
-impl TryFrom<ValueKind> for i64 {
+impl TryFrom<BareValue> for i64 {
     type Error = TypeError;
 
-    fn try_from(value: ValueKind) -> Result<Self, Self::Error> {
+    fn try_from(value: BareValue) -> Result<Self, Self::Error> {
         let type_ = value.type_();
 
-        obtain!(value, ValueKind::Integer(value) => value).ok_or(TypeError {
+        obtain!(value, BareValue::Integer(value) => value).ok_or(TypeError {
             expected: Type::Integer,
             actual: type_,
         })
     }
 }
 
-impl From<String> for ValueKind {
+impl From<String> for BareValue {
     fn from(text: String) -> Self {
         Self::Text(text)
     }
 }
 
-impl From<&str> for ValueKind {
+impl From<&str> for BareValue {
     fn from(text: &str) -> Self {
         Self::Text(text.into())
     }
 }
 
-impl TryFrom<ValueKind> for String {
+impl TryFrom<BareValue> for String {
     type Error = TypeError;
 
-    fn try_from(value: ValueKind) -> Result<Self, Self::Error> {
+    fn try_from(value: BareValue) -> Result<Self, Self::Error> {
         let type_ = value.type_();
 
-        obtain!(value, ValueKind::Text(value) => value).ok_or(TypeError {
+        obtain!(value, BareValue::Text(value) => value).ok_or(TypeError {
             expected: Type::Text,
             actual: type_,
         })
     }
 }
 
-impl From<Vec<Value>> for ValueKind {
+impl From<Vec<Value>> for BareValue {
     fn from(array: Vec<Value>) -> Self {
         Self::List(array)
     }
 }
 
-impl<const N: usize> From<[Value; N]> for ValueKind {
+impl<const N: usize> From<[Value; N]> for BareValue {
     fn from(array: [Value; N]) -> Self {
         Self::List(array.into())
     }
 }
 
-impl TryFrom<ValueKind> for Vec<Value> {
+impl TryFrom<BareValue> for Vec<Value> {
     type Error = TypeError;
 
-    fn try_from(value: ValueKind) -> Result<Self, Self::Error> {
+    fn try_from(value: BareValue) -> Result<Self, Self::Error> {
         let type_ = value.type_();
 
-        obtain!(value, ValueKind::List(value) => value).ok_or(TypeError {
+        obtain!(value, BareValue::List(value) => value).ok_or(TypeError {
             expected: Type::List,
             actual: type_,
         })
     }
 }
 
-impl From<Record> for ValueKind {
+impl From<Record> for BareValue {
     fn from(record: Record) -> Self {
         Self::Record(record)
     }
 }
 
-impl TryFrom<ValueKind> for Record {
+impl TryFrom<BareValue> for Record {
     type Error = TypeError;
 
-    fn try_from(value: ValueKind) -> Result<Self, Self::Error> {
+    fn try_from(value: BareValue) -> Result<Self, Self::Error> {
         let type_ = value.type_();
 
-        obtain!(value, ValueKind::Record(value) => value).ok_or(TypeError {
+        obtain!(value, BareValue::Record(value) => value).ok_or(TypeError {
             expected: Type::Record,
             actual: type_,
         })
@@ -198,7 +198,7 @@ impl<T> WithTextContentSpanExt for Spanned<T> {
     }
 }
 
-pub(crate) fn convert<T: TryFrom<ValueKind, Error = TypeError>>(
+pub(crate) fn convert<T: TryFrom<BareValue, Error = TypeError>>(
     value: Value,
     reporter: &Reporter,
 ) -> Result<Spanned<T>> {
@@ -231,7 +231,7 @@ impl<'r> RecordWalker<'r> {
 
     pub(crate) fn take<T>(&mut self, key: &str) -> Result<Spanned<T>>
     where
-        T: TryFrom<ValueKind, Error = TypeError>,
+        T: TryFrom<BareValue, Error = TypeError>,
     {
         match self.record.bare.remove(key) {
             Some(value) => convert(value, self.reporter),
@@ -245,7 +245,7 @@ impl<'r> RecordWalker<'r> {
 
     pub(crate) fn take_optional<T>(&mut self, key: &str) -> Result<Option<Spanned<T>>>
     where
-        T: TryFrom<ValueKind, Error = TypeError>,
+        T: TryFrom<BareValue, Error = TypeError>,
     {
         match self.record.bare.remove(key) {
             Some(value) => convert(value, self.reporter).map(Some),

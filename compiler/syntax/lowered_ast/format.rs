@@ -13,7 +13,7 @@ const ATTRIBUTE_COLOR: Color = Color::BrightWhite;
 // @Task reduce amount of (String) allocations
 impl super::Declaration {
     fn format_with_depth(&self, depth: usize, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use super::DeclarationKind::*;
+        use super::BareDeclaration::*;
 
         for attribute in &self.attributes.0 {
             // @Task get rid of extra alloc
@@ -125,7 +125,7 @@ fn format_pi_type_literal_or_lower(
     expression: &super::Expression,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
-    use super::ExpressionKind::*;
+    use super::BareExpression::*;
 
     match &expression.bare {
         PiType(pi) => {
@@ -254,7 +254,7 @@ fn format_application_or_lower(
     expression: &super::Expression,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
-    use super::ExpressionKind::*;
+    use super::BareExpression::*;
 
     match &expression.bare {
         Application(application) => {
@@ -270,7 +270,7 @@ fn format_lower_expression(
     expression: &super::Expression,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
-    use super::ExpressionKind::*;
+    use super::BareExpression::*;
 
     for attribute in &expression.attributes.0 {
         // @Task get rid of wasted alloc
@@ -290,7 +290,7 @@ fn format_lower_expression(
 // @Task update bracket business
 impl fmt::Display for super::Pattern {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use super::PatternKind::*;
+        use super::BarePattern::*;
 
         match &self.bare {
             NumberLiteral(number) => write!(f, "{number}"),

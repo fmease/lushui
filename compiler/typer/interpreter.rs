@@ -55,7 +55,7 @@ impl<'a> Interpreter<'a> {
         substitution: Substitution,
     ) -> Expression {
         use self::Substitution::*;
-        use hir::ExpressionKind::*;
+        use hir::BareExpression::*;
 
         #[allow(clippy::match_same_arms)] // @Temporary
         match (&expression.bare, substitution) {
@@ -299,7 +299,7 @@ impl<'a> Interpreter<'a> {
         context: Context<'_>,
     ) -> Result<Expression> {
         use self::Substitution::*;
-        use hir::ExpressionKind::*;
+        use hir::BareExpression::*;
 
         // @Bug we currently don't support zero-arity intrinsic functions
         Ok(match expression.clone().bare {
@@ -521,7 +521,7 @@ impl<'a> Interpreter<'a> {
                         }
 
                         for case in &analysis.cases {
-                            use hir::PatternKind::*;
+                            use hir::BarePattern::*;
 
                             match &case.pattern.bare {
                                 Binding(binding) => {
@@ -545,7 +545,7 @@ impl<'a> Interpreter<'a> {
                     Application(_application) => todo!(),
                     Number(literal0) => {
                         for case in &analysis.cases {
-                            use hir::PatternKind::*;
+                            use hir::BarePattern::*;
 
                             match &case.pattern.bare {
                                 Number(literal1) => {
@@ -655,7 +655,7 @@ impl<'a> Interpreter<'a> {
         expression1: &Expression,
         scope: &FunctionScope<'_>,
     ) -> Result<bool> {
-        use hir::ExpressionKind::*;
+        use hir::BareExpression::*;
 
         Ok(match (&expression0.bare, &expression1.bare) {
             (Binding(binding0), Binding(binding1)) => binding0.0 == binding1.0,
@@ -870,11 +870,11 @@ impl<'a> Context<'a> {
 #[derive(Clone)] // @Question expensive attributes clone?
 pub(crate) struct BindingRegistration {
     pub(crate) attributes: Attributes,
-    pub(crate) kind: BindingRegistrationKind,
+    pub(crate) bare: BareBindingRegistration,
 }
 
 #[derive(Clone)]
-pub(crate) enum BindingRegistrationKind {
+pub(crate) enum BareBindingRegistration {
     Function {
         binder: Identifier,
         type_: Expression,
@@ -900,9 +900,9 @@ impl DisplayWith for BindingRegistration {
     type Context<'a> = (&'a Component, &'a BuildSession);
 
     fn format(&self, context: Self::Context<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use BindingRegistrationKind::*;
+        use BareBindingRegistration::*;
 
-        match &self.kind {
+        match &self.bare {
             Function {
                 binder,
                 type_,

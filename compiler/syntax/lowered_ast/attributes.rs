@@ -27,7 +27,7 @@ pub(crate) trait Target: Spanning {
 
 impl Target for ast::Declaration {
     fn name(&self) -> &'static str {
-        use ast::DeclarationKind::*;
+        use ast::BareDeclaration::*;
 
         match &self.bare {
             Function(_) => "a function declaration",
@@ -49,7 +49,7 @@ impl Target for ast::Declaration {
     }
 
     fn as_targets(&self) -> Targets {
-        use ast::DeclarationKind::*;
+        use ast::BareDeclaration::*;
 
         match &self.bare {
             Function(_) => Targets::FUNCTION_DECLARATION,
@@ -69,7 +69,7 @@ impl Target for ast::Declaration {
     }
 
     fn check_attributes(&self, attributes: &Attributes, session: &BuildSession) -> Result {
-        use ast::DeclarationKind::*;
+        use ast::BareDeclaration::*;
 
         let (binder, missing_definition_location, definition_marker, body) = match &self.bare {
             Function(function) => {
@@ -165,7 +165,7 @@ the body containing a set of constructors
 
 impl Target for ast::Expression {
     fn name(&self) -> &'static str {
-        use ast::ExpressionKind::*;
+        use ast::BareExpression::*;
 
         match self.bare {
             PiTypeLiteral(_) => "a pi type literal",
@@ -187,7 +187,7 @@ impl Target for ast::Expression {
     }
 
     fn as_targets(&self) -> Targets {
-        use ast::ExpressionKind::*;
+        use ast::BareExpression::*;
 
         match self.bare {
             PiTypeLiteral(_) => Targets::PI_TYPE_LITERAL_EXPRESSION,
@@ -211,7 +211,7 @@ impl Target for ast::Expression {
 
 impl Target for ast::Pattern {
     fn name(&self) -> &'static str {
-        use ast::PatternKind::*;
+        use ast::BarePattern::*;
 
         match self.bare {
             NumberLiteral(_) => "a number literal pattern",
@@ -224,7 +224,7 @@ impl Target for ast::Pattern {
     }
 
     fn as_targets(&self) -> Targets {
-        use ast::PatternKind::*;
+        use ast::BarePattern::*;
 
         match self.bare {
             NumberLiteral(_) => Targets::NUMBER_LITERAL_PATTERN,
@@ -393,11 +393,11 @@ impl PossiblyErroneous for Attributes {
     }
 }
 
-pub(crate) type Attribute = Spanned<AttributeKind>;
+pub(crate) type Attribute = Spanned<BareAttribute>;
 
 #[derive(Clone, PartialEq, Eq, Hash, Discriminant)]
 #[discriminant(name: AttributeName)]
-pub(crate) enum AttributeKind {
+pub(crate) enum BareAttribute {
     /// Hide the constructors of a (public) data type.
     Abstract,
     /// Allow a [lint](Lint).
@@ -554,9 +554,9 @@ pub(crate) enum AttributeKind {
     },
 }
 
-impl AttributeKind {
+impl BareAttribute {
     pub(crate) fn targets(&self) -> Targets {
-        use AttributeKind::*;
+        use BareAttribute::*;
 
         // when updating, update `AttributeTargets::description` accordingly
         match self {
@@ -631,7 +631,7 @@ impl AttributeKind {
     }
 }
 
-impl fmt::Display for AttributeKind {
+impl fmt::Display for BareAttribute {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "@")?;
 
@@ -789,7 +789,7 @@ impl fmt::Display for AttributeName {
 }
 
 pub(crate) trait Query: Copy {
-    fn matches(self, attribute: &AttributeKind) -> bool;
+    fn matches(self, attribute: &BareAttribute) -> bool;
 
     fn or<Q: Query>(self, other: Q) -> Or<Self, Q> {
         Or {
@@ -800,7 +800,7 @@ pub(crate) trait Query: Copy {
 }
 
 impl Query for AttributeName {
-    fn matches(self, attribute: &AttributeKind) -> bool {
+    fn matches(self, attribute: &BareAttribute) -> bool {
         attribute.name() == self
     }
 }
@@ -812,24 +812,24 @@ pub(crate) struct Or<L: Query, R: Query> {
 }
 
 impl<L: Query, R: Query> Query for Or<L, R> {
-    fn matches(self, attribute: &AttributeKind) -> bool {
+    fn matches(self, attribute: &BareAttribute) -> bool {
         self.left.matches(attribute) || self.right.matches(attribute)
     }
 }
 
-impl<F: Fn(&AttributeKind) -> bool + Copy> Query for Predicate<F> {
-    fn matches(self, attribute: &AttributeKind) -> bool {
+impl<F: Fn(&BareAttribute) -> bool + Copy> Query for Predicate<F> {
+    fn matches(self, attribute: &BareAttribute) -> bool {
         self.0(attribute)
     }
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct Predicate<F: Fn(&AttributeKind) -> bool>(pub(crate) F);
+pub(crate) struct Predicate<F: Fn(&BareAttribute) -> bool>(pub(crate) F);
 
 pub(crate) trait DataQuery: Copy {
     type Output: ?Sized;
 
-    fn obtain(attribute: &AttributeKind) -> Option<&Self::Output>;
+    fn obtain(attribute: &BareAttribute) -> Option<&Self::Output>;
 }
 
 #[derive(Clone, Copy)]
@@ -843,7 +843,7 @@ macro data_queries($( $name:ident: $Output:ty = $pat:pat => $expr:expr ),+ $(,)?
         impl DataQuery for NameQuery<{ AttributeName::$name }> {
             type Output = $Output;
 
-            fn obtain(attribute: &AttributeKind) -> Option<&Self::Output> {
+            fn obtain(attribute: &BareAttribute) -> Option<&Self::Output> {
                 obtain!(attribute, $pat => $expr)
             }
         }
@@ -851,12 +851,12 @@ macro data_queries($( $name:ident: $Output:ty = $pat:pat => $expr:expr ),+ $(,)?
 }
 
 data_queries! {
-    Deprecated: Deprecated = AttributeKind::Deprecated(deprecated) => deprecated,
-    Doc: str = AttributeKind::Doc { content } => content,
-    DocAttribute: str = AttributeKind::DocAttribute { name } => name,
-    DocReservedIdentifier: str = AttributeKind::DocReservedIdentifier { name } => name,
-    Location: str = AttributeKind::Location { path } => path,
-    Public: Public = AttributeKind::Public(reach) => reach,
+    Deprecated: Deprecated = BareAttribute::Deprecated(deprecated) => deprecated,
+    Doc: str = BareAttribute::Doc { content } => content,
+    DocAttribute: str = BareAttribute::DocAttribute { name } => name,
+    DocReservedIdentifier: str = BareAttribute::DocReservedIdentifier { name } => name,
+    Location: str = BareAttribute::Location { path } => path,
+    Public: Public = BareAttribute::Public(reach) => reach,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]

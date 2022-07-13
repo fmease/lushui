@@ -3,7 +3,7 @@ use super::{
         Token,
         TokenName::{self, *},
     },
-    Record, Value, ValueKind,
+    BareValue, Record, Value,
 };
 use crate::{
     diagnostics::{Diagnostic, ErrorCode, Reporter},
@@ -111,7 +111,7 @@ impl<'a> Parser<'a> {
 
         Ok(Value::new(
             self.map.read().unwrap()[self.file].span(),
-            ValueKind::Record(record),
+            BareValue::Record(record),
         ))
     }
 

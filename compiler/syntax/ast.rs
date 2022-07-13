@@ -4,7 +4,7 @@
 
 use super::{
     lexer::is_punctuation,
-    token::{Token, TokenKind},
+    token::{BareToken, Token},
 };
 use crate::{
     diagnostics::{Diagnostic, ErrorCode},
@@ -18,13 +18,13 @@ use std::{fmt, hash::Hash};
 
 mod format;
 
-pub(crate) type Item<Kind> = crate::item::Item<Kind, Attributes>;
+pub(crate) type Item<Bare> = crate::item::Item<Bare, Attributes>;
 
-pub type Declaration = Item<DeclarationKind>;
+pub type Declaration = Item<BareDeclaration>;
 
 /// The syntax node of a declaration.
 #[cfg_attr(test, derive(PartialEq, Eq))]
-pub enum DeclarationKind {
+pub enum BareDeclaration {
     Function(Box<Function>),
     Data(Box<Data>),
     Constructor(Box<Constructor>),
@@ -34,17 +34,17 @@ pub enum DeclarationKind {
     Use(Box<Use>),
 }
 
-impl TryFrom<DeclarationKind> for Module {
+impl TryFrom<BareDeclaration> for Module {
     type Error = ();
 
-    fn try_from(declaration: DeclarationKind) -> Result<Self, Self::Error> {
-        obtain!(declaration, DeclarationKind::Module(module) => *module).ok_or(())
+    fn try_from(declaration: BareDeclaration) -> Result<Self, Self::Error> {
+        obtain!(declaration, BareDeclaration::Module(module) => *module).ok_or(())
     }
 }
 
 /// The syntax node of a value declaration or a let statement.
 ///
-/// See [`DeclarationKind::Function`] and [`Statement::Let`].
+/// See [`BareDeclaration::Function`] and [`Statement::Let`].
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Function {
@@ -54,7 +54,7 @@ pub struct Function {
     pub body: Option<Expression>,
 }
 
-impl From<Function> for DeclarationKind {
+impl From<Function> for BareDeclaration {
     fn from(function: Function) -> Self {
         Self::Function(Box::new(function))
     }
@@ -69,7 +69,7 @@ pub struct Data {
     pub constructors: Option<Vec<Declaration>>,
 }
 
-impl From<Data> for DeclarationKind {
+impl From<Data> for BareDeclaration {
     fn from(type_: Data) -> Self {
         Self::Data(Box::new(type_))
     }
@@ -86,7 +86,7 @@ pub struct Constructor {
     pub body: Option<Expression>,
 }
 
-impl From<Constructor> for DeclarationKind {
+impl From<Constructor> for BareDeclaration {
     fn from(constructor: Constructor) -> Self {
         Self::Constructor(Box::new(constructor))
     }
@@ -100,7 +100,7 @@ pub struct Module {
     pub declarations: Option<Vec<Declaration>>,
 }
 
-impl From<Module> for DeclarationKind {
+impl From<Module> for BareDeclaration {
     fn from(module: Module) -> Self {
         Self::Module(Box::new(module))
     }
@@ -114,24 +114,24 @@ pub struct Group {
 
 /// The syntax node of a use-declaration or statement.
 ///
-/// See [`DeclarationKind::Use`] and [`Statement::Use`].
+/// See [`BareDeclaration::Use`] and [`Statement::Use`].
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct Use {
     pub bindings: UsePathTree,
 }
 
-impl From<Use> for DeclarationKind {
+impl From<Use> for BareDeclaration {
     fn from(use_: Use) -> Self {
         Self::Use(Box::new(use_))
     }
 }
 
-pub type UsePathTree = Spanned<UsePathTreeKind>;
+pub type UsePathTree = Spanned<BareUsePathTree>;
 
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
-pub enum UsePathTreeKind {
+pub enum BareUsePathTree {
     Single {
         target: Path,
         binder: Option<Identifier>,
@@ -143,11 +143,11 @@ pub enum UsePathTreeKind {
 }
 
 pub type Attributes = Vec<Attribute>;
-pub type Attribute = Spanned<AttributeKind>;
+pub type Attribute = Spanned<BareAttribute>;
 
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
-pub enum AttributeKind {
+pub enum BareAttribute {
     Regular {
         binder: Identifier,
         arguments: SmallVec<AttributeArgument, 1>,
@@ -157,18 +157,18 @@ pub enum AttributeKind {
 
 // @Beacon @Task smh incorporate HashMap/BTreeMap<WeaklySpanned<Identifier>, Argument>
 // to enable out of order named parameters
-pub type AttributeArgument = Spanned<AttributeArgumentKind>;
+pub type AttributeArgument = Spanned<BareAttributeArgument>;
 
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
-pub enum AttributeArgumentKind {
+pub enum BareAttributeArgument {
     NumberLiteral(Atom),
     TextLiteral(Atom),
     Path(Box<Path>),
     Named(Box<NamedAttributeArgument>),
 }
 
-impl AttributeArgumentKind {
+impl BareAttributeArgument {
     pub(crate) const fn name(&self) -> &'static str {
         match self {
             Self::NumberLiteral(_) => "number literal",
@@ -186,12 +186,12 @@ pub struct NamedAttributeArgument {
     pub value: AttributeArgument,
 }
 
-pub type Expression = Item<ExpressionKind>;
+pub type Expression = Item<BareExpression>;
 
 /// The syntax node of an expression.
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
-pub enum ExpressionKind {
+pub enum BareExpression {
     PiTypeLiteral(Box<PiTypeLiteral>),
     Application(Box<Application<Expression>>),
     Field(Box<Field>),
@@ -209,7 +209,7 @@ pub enum ExpressionKind {
     Error,
 }
 
-impl PossiblyErroneous for ExpressionKind {
+impl PossiblyErroneous for BareExpression {
     fn error() -> Self {
         Self::Error
     }
@@ -223,7 +223,7 @@ pub struct PiTypeLiteral {
     pub codomain: Expression,
 }
 
-impl From<PiTypeLiteral> for ExpressionKind {
+impl From<PiTypeLiteral> for BareExpression {
     fn from(pi: PiTypeLiteral) -> Self {
         Self::PiTypeLiteral(Box::new(pi))
     }
@@ -239,7 +239,7 @@ pub struct Domain {
     pub expression: Expression,
 }
 
-impl From<Application<Expression>> for ExpressionKind {
+impl From<Application<Expression>> for BareExpression {
     fn from(application: Application<Expression>) -> Self {
         Self::Application(Box::new(application))
     }
@@ -252,25 +252,25 @@ pub struct Field {
     pub member: Identifier,
 }
 
-impl From<Field> for ExpressionKind {
+impl From<Field> for BareExpression {
     fn from(field: Field) -> Self {
         Self::Field(Box::new(field))
     }
 }
 
-impl From<Path> for ExpressionKind {
+impl From<Path> for BareExpression {
     fn from(path: Path) -> Self {
         Self::Path(Box::new(path))
     }
 }
 
-impl From<NumberLiteral> for ExpressionKind {
+impl From<NumberLiteral> for BareExpression {
     fn from(number: NumberLiteral) -> Self {
         Self::NumberLiteral(Box::new(number))
     }
 }
 
-impl From<TextLiteral> for ExpressionKind {
+impl From<TextLiteral> for BareExpression {
     fn from(text: TextLiteral) -> Self {
         Self::TextLiteral(Box::new(text))
     }
@@ -283,7 +283,7 @@ pub struct TypedHole {
     pub tag: Identifier,
 }
 
-impl From<TypedHole> for ExpressionKind {
+impl From<TypedHole> for BareExpression {
     fn from(hole: TypedHole) -> Self {
         Self::TypedHole(Box::new(hole))
     }
@@ -300,7 +300,7 @@ pub struct LetIn {
     pub scope: Expression,
 }
 
-impl From<LetIn> for ExpressionKind {
+impl From<LetIn> for BareExpression {
     fn from(let_in: LetIn) -> Self {
         Self::LetIn(Box::new(let_in))
     }
@@ -314,7 +314,7 @@ pub struct UseIn {
     pub scope: Expression,
 }
 
-impl From<UseIn> for ExpressionKind {
+impl From<UseIn> for BareExpression {
     fn from(use_in: UseIn) -> Self {
         Self::UseIn(Box::new(use_in))
     }
@@ -329,7 +329,7 @@ pub struct LambdaLiteral {
     pub body: Expression,
 }
 
-impl From<LambdaLiteral> for ExpressionKind {
+impl From<LambdaLiteral> for BareExpression {
     fn from(lambda: LambdaLiteral) -> Self {
         Self::LambdaLiteral(Box::new(lambda))
     }
@@ -342,7 +342,7 @@ pub struct CaseAnalysis {
     pub cases: Vec<Case>,
 }
 
-impl From<CaseAnalysis> for ExpressionKind {
+impl From<CaseAnalysis> for BareExpression {
     fn from(analysis: CaseAnalysis) -> Self {
         Self::CaseAnalysis(Box::new(analysis))
     }
@@ -361,7 +361,7 @@ pub struct DoBlock {
     pub statements: Vec<Statement>,
 }
 
-impl From<DoBlock> for ExpressionKind {
+impl From<DoBlock> for BareExpression {
     fn from(do_: DoBlock) -> Self {
         Self::DoBlock(Box::new(do_))
     }
@@ -381,7 +381,7 @@ pub enum Statement {
     Expression(Expression),
 }
 
-// @Note has a lot of overlap with [StatementKind::Let] (and a bit with [ExpressionKind::LetIn])
+// @Note has a lot of overlap with [BareStatement::Let] (and a bit with [BareExpression::LetIn])
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub struct LetStatement {
@@ -399,29 +399,29 @@ pub struct BindStatement {
     pub expression: Expression,
 }
 
-impl From<SequenceLiteral<Expression>> for ExpressionKind {
+impl From<SequenceLiteral<Expression>> for BareExpression {
     fn from(sequence: SequenceLiteral<Expression>) -> Self {
         Self::SequenceLiteral(Box::new(sequence))
     }
 }
 
 pub type Parameters = Vec<Parameter>;
-pub type Parameter = Spanned<ParameterKind>;
+pub type Parameter = Spanned<BareParameter>;
 
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
-pub struct ParameterKind {
+pub struct BareParameter {
     pub explicitness: Explicitness,
     pub laziness: Option<Span>,
     pub binder: Identifier,
     pub type_annotation: Option<Expression>,
 }
 
-pub type Pattern = Item<PatternKind>;
+pub type Pattern = Item<BarePattern>;
 
 #[derive(Clone)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
-pub enum PatternKind {
+pub enum BarePattern {
     NumberLiteral(Box<NumberLiteral>),
     TextLiteral(Box<TextLiteral>),
     SequenceLiteral(Box<SequenceLiteral<Pattern>>),
@@ -430,37 +430,37 @@ pub enum PatternKind {
     Application(Box<Application<Pattern>>),
 }
 
-impl From<NumberLiteral> for PatternKind {
+impl From<NumberLiteral> for BarePattern {
     fn from(number: NumberLiteral) -> Self {
         Self::NumberLiteral(Box::new(number))
     }
 }
 
-impl From<TextLiteral> for PatternKind {
+impl From<TextLiteral> for BarePattern {
     fn from(text: TextLiteral) -> Self {
         Self::TextLiteral(Box::new(text))
     }
 }
 
-impl From<SequenceLiteral<Pattern>> for PatternKind {
+impl From<SequenceLiteral<Pattern>> for BarePattern {
     fn from(sequence: SequenceLiteral<Pattern>) -> Self {
         Self::SequenceLiteral(Box::new(sequence))
     }
 }
 
-impl From<Path> for PatternKind {
+impl From<Path> for BarePattern {
     fn from(path: Path) -> Self {
         Self::Path(Box::new(path))
     }
 }
 
-impl From<Identifier> for PatternKind {
+impl From<Identifier> for BarePattern {
     fn from(binder: Identifier) -> Self {
         Self::Binder(Box::new(binder))
     }
 }
 
-impl From<Application<Pattern>> for PatternKind {
+impl From<Application<Pattern>> for BarePattern {
     fn from(application: Application<Pattern>) -> Self {
         Self::Application(Box::new(application))
     }
@@ -515,7 +515,7 @@ impl Path {
     // @Task make this Option<Self> and move diagnostic construction into lowerer
     pub(crate) fn join(mut self, other: Self) -> Result<Self, Diagnostic> {
         if let Some(hanger) = other.hanger {
-            if !matches!(hanger.bare, HangerKind::Self_) {
+            if !matches!(hanger.bare, BareHanger::Self_) {
                 return Err(Diagnostic::error()
                     .code(ErrorCode::E026)
                     .message(format!("path ‘{}’ not allowed in this position", hanger))
@@ -527,7 +527,7 @@ impl Path {
         Ok(self)
     }
 
-    pub(crate) fn bare_hanger(&self, hanger: HangerKind) -> Option<Hanger> {
+    pub(crate) fn bare_hanger(&self, hanger: BareHanger) -> Option<Hanger> {
         self.hanger
             .filter(|some_hanger| some_hanger.bare == hanger && self.segments.is_empty())
     }
@@ -587,7 +587,7 @@ impl Spanning for Path {
     }
 }
 
-pub(crate) type Hanger = Spanned<HangerKind>;
+pub(crate) type Hanger = Spanned<BareHanger>;
 
 impl TryFrom<Token> for Hanger {
     type Error = ();
@@ -599,14 +599,14 @@ impl TryFrom<Token> for Hanger {
 
 /// The non-identifier head of a path.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum HangerKind {
+pub(crate) enum BareHanger {
     Extern,
     Topmost,
     Super,
     Self_,
 }
 
-impl HangerKind {
+impl BareHanger {
     pub(crate) const fn name(self) -> &'static str {
         match self {
             Self::Extern => "extern",
@@ -617,15 +617,15 @@ impl HangerKind {
     }
 }
 
-impl TryFrom<TokenKind> for HangerKind {
+impl TryFrom<BareToken> for BareHanger {
     type Error = ();
 
-    fn try_from(kind: TokenKind) -> Result<Self, Self::Error> {
-        Ok(match kind {
-            TokenKind::Extern => Self::Extern,
-            TokenKind::Topmost => Self::Topmost,
-            TokenKind::Super => Self::Super,
-            TokenKind::Self_ => Self::Self_,
+    fn try_from(token: BareToken) -> Result<Self, Self::Error> {
+        Ok(match token {
+            BareToken::Extern => Self::Extern,
+            BareToken::Topmost => Self::Topmost,
+            BareToken::Super => Self::Super,
+            BareToken::Self_ => Self::Self_,
             _ => return Err(()),
         })
     }

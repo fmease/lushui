@@ -10,9 +10,9 @@ use crate::{
 };
 use derivation::Discriminant;
 use std::{fmt, iter::Peekable, str::CharIndices};
-use TokenKind::*;
+use BareToken::*;
 
-pub(super) type Token = Spanned<TokenKind>;
+pub(super) type Token = Spanned<BareToken>;
 
 impl Token {
     pub(crate) const fn name(&self) -> TokenName {
@@ -44,7 +44,7 @@ impl Token {
 
 #[derive(Clone, Debug, Discriminant)]
 #[discriminant(name: TokenName)]
-pub(super) enum TokenKind {
+pub(super) enum BareToken {
     Comma,
     Colon,
     OpeningSquareBracket,
@@ -60,7 +60,7 @@ pub(super) enum TokenKind {
     Illegal(char),
 }
 
-impl fmt::Display for TokenKind {
+impl fmt::Display for BareToken {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = self.name();
 
@@ -278,7 +278,7 @@ impl<'a> Lexer<'a> {
     }
 }
 
-impl<'a> crate::utility::lexer::Lexer<'a, TokenKind> for Lexer<'a> {
+impl<'a> crate::utility::lexer::Lexer<'a, BareToken> for Lexer<'a> {
     fn file(&self) -> &'a SourceFile {
         self.file
     }

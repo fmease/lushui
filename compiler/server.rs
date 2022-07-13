@@ -351,7 +351,7 @@ fn build_component(
 #[allow(clippy::match_same_arms)] // @Temporary
 impl hir::Declaration {
     fn find_binding(&self, byte_index: ByteIndex) -> Option<&hir::Identifier> {
-        use hir::DeclarationKind::*;
+        use hir::BareDeclaration::*;
 
         // @Question do we need this check?
         if !self.span.contains(byte_index) {
@@ -410,7 +410,7 @@ impl hir::Expression {
     // @Task don't use contains but a function that returns an Ordering!! so we can
     // know if we should jump to the next thingy
     fn find_binding(&self, byte_index: ByteIndex) -> Option<&hir::Identifier> {
-        use hir::ExpressionKind::*;
+        use hir::BareExpression::*;
 
         // @Question do we need this check?
         if !self.span.contains(byte_index) {

@@ -1,4 +1,4 @@
-use super::{ast::Identifier, lexer, token::TokenKind};
+use super::{ast::Identifier, lexer, token::BareToken};
 use crate::{
     error::Outcome,
     span::{Spanned, Spanning},
@@ -26,7 +26,7 @@ impl Word {
 
         obtain!(
             (tokens.next().ok_or(())?, tokens.next().ok_or(())?),
-            (TokenKind::Word(atom), TokenKind::EndOfInput) => atom
+            (BareToken::Word(atom), BareToken::EndOfInput) => atom
         )
         .map(Self)
         .ok_or(())

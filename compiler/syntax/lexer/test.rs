@@ -2,7 +2,7 @@
 //!
 //! Negative behavior tests are UI tests and found in `/test/ui/tests/parsing/`.
 
-use super::{Provenance, Token, TokenKind::*, UnterminatedTextLiteral};
+use super::{BareToken::*, Provenance, Token, UnterminatedTextLiteral};
 use crate::{
     error::{Health, Outcome, Result},
     span::span,

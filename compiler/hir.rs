@@ -18,15 +18,15 @@ pub(crate) use identifier::{
 mod format;
 pub(crate) mod identifier;
 
-pub type Declaration = Item<DeclarationKind>;
+pub type Declaration = Item<BareDeclaration>;
 
 impl Declaration {
     pub(crate) fn constructor(&self) -> Option<&Constructor> {
-        obtain!(&self.bare, DeclarationKind::Constructor(constructor) => constructor)
+        obtain!(&self.bare, BareDeclaration::Constructor(constructor) => constructor)
     }
 }
 
-pub enum DeclarationKind {
+pub enum BareDeclaration {
     Function(Box<Function>),
     Data(Box<Data>),
     Constructor(Box<Constructor>),
@@ -35,7 +35,7 @@ pub enum DeclarationKind {
     Error,
 }
 
-impl PossiblyErroneous for DeclarationKind {
+impl PossiblyErroneous for BareDeclaration {
     fn error() -> Self {
         Self::Error
     }
@@ -47,7 +47,7 @@ pub struct Function {
     pub expression: Option<Expression>,
 }
 
-impl From<Function> for DeclarationKind {
+impl From<Function> for BareDeclaration {
     fn from(function: Function) -> Self {
         Self::Function(Box::new(function))
     }
@@ -59,7 +59,7 @@ pub struct Data {
     pub constructors: Option<Vec<Declaration>>,
 }
 
-impl From<Data> for DeclarationKind {
+impl From<Data> for BareDeclaration {
     fn from(type_: Data) -> Self {
         Self::Data(Box::new(type_))
     }
@@ -70,7 +70,7 @@ pub struct Constructor {
     pub type_annotation: Expression,
 }
 
-impl From<Constructor> for DeclarationKind {
+impl From<Constructor> for BareDeclaration {
     fn from(constructor: Constructor) -> Self {
         Self::Constructor(Box::new(constructor))
     }
@@ -82,7 +82,7 @@ pub struct Module {
     pub declarations: Vec<Declaration>,
 }
 
-impl From<Module> for DeclarationKind {
+impl From<Module> for BareDeclaration {
     fn from(module: Module) -> Self {
         Self::Module(Box::new(module))
     }
@@ -93,16 +93,16 @@ pub struct Use {
     pub target: Identifier,
 }
 
-impl From<Use> for DeclarationKind {
+impl From<Use> for BareDeclaration {
     fn from(use_: Use) -> Self {
         Self::Use(Box::new(use_))
     }
 }
 
-pub type Expression = Item<ExpressionKind>;
+pub type Expression = Item<BareExpression>;
 
 #[derive(Clone)]
-pub enum ExpressionKind {
+pub enum BareExpression {
     PiType(Box<PiType>),
     Application(Box<Application<Expression>>),
     Type,
@@ -119,7 +119,7 @@ pub enum ExpressionKind {
     Error,
 }
 
-impl PossiblyErroneous for ExpressionKind {
+impl PossiblyErroneous for BareExpression {
     fn error() -> Self {
         Self::Error
     }
@@ -134,37 +134,37 @@ pub struct PiType {
     pub codomain: Expression,
 }
 
-impl From<PiType> for ExpressionKind {
+impl From<PiType> for BareExpression {
     fn from(pi: PiType) -> Self {
         Self::PiType(Box::new(pi))
     }
 }
 
-impl From<Application<Expression>> for ExpressionKind {
+impl From<Application<Expression>> for BareExpression {
     fn from(application: Application<Expression>) -> Self {
         Self::Application(Box::new(application))
     }
 }
 
-impl From<Number> for ExpressionKind {
+impl From<Number> for BareExpression {
     fn from(number: Number) -> Self {
         Self::Number(Box::new(number))
     }
 }
 
-impl From<Text> for ExpressionKind {
+impl From<Text> for BareExpression {
     fn from(text: Text) -> Self {
         Self::Text(Box::new(text))
     }
 }
 
-impl From<SomeSequence> for ExpressionKind {
+impl From<SomeSequence> for BareExpression {
     fn from(sequence: SomeSequence) -> Self {
         match sequence {}
     }
 }
 
-impl From<Binding> for ExpressionKind {
+impl From<Binding> for BareExpression {
     fn from(binding: Binding) -> Self {
         Self::Binding(Box::new(binding))
     }
@@ -180,7 +180,7 @@ pub struct Lambda {
     pub body: Expression,
 }
 
-impl From<Lambda> for ExpressionKind {
+impl From<Lambda> for BareExpression {
     fn from(lambda: Lambda) -> Self {
         Self::Lambda(Box::new(lambda))
     }
@@ -192,7 +192,7 @@ pub struct CaseAnalysis {
     pub cases: Vec<Case>,
 }
 
-impl From<CaseAnalysis> for ExpressionKind {
+impl From<CaseAnalysis> for BareExpression {
     fn from(analysis: CaseAnalysis) -> Self {
         Self::CaseAnalysis(Box::new(analysis))
     }
@@ -204,7 +204,7 @@ pub struct Substitution {
     pub expression: Expression,
 }
 
-impl From<Substitution> for ExpressionKind {
+impl From<Substitution> for BareExpression {
     fn from(substitution: Substitution) -> Self {
         Self::Substitution(Box::new(substitution))
     }
@@ -216,7 +216,7 @@ pub struct IntrinsicApplication {
     pub arguments: Vec<Expression>,
 }
 
-impl From<IntrinsicApplication> for ExpressionKind {
+impl From<IntrinsicApplication> for BareExpression {
     fn from(application: IntrinsicApplication) -> Self {
         Self::IntrinsicApplication(Box::new(application))
     }
@@ -234,7 +234,7 @@ pub struct IO {
     // @Task continuation: Option<Expression>
 }
 
-impl From<IO> for ExpressionKind {
+impl From<IO> for BareExpression {
     fn from(io: IO) -> Self {
         Self::IO(Box::new(io))
     }
@@ -246,11 +246,11 @@ pub struct Case {
     pub body: Expression,
 }
 
-pub type Pattern = Item<PatternKind>;
+pub type Pattern = Item<BarePattern>;
 
 #[derive(Clone)]
 #[allow(clippy::box_collection)]
-pub enum PatternKind {
+pub enum BarePattern {
     Number(Box<Number>),
     Text(Box<Text>),
     Binding(Box<Binding>),
@@ -259,31 +259,31 @@ pub enum PatternKind {
     Error,
 }
 
-impl PossiblyErroneous for PatternKind {
+impl PossiblyErroneous for BarePattern {
     fn error() -> Self {
         Self::Error
     }
 }
 
-impl From<Number> for PatternKind {
+impl From<Number> for BarePattern {
     fn from(number: Number) -> Self {
         Self::Number(Box::new(number))
     }
 }
 
-impl From<Text> for PatternKind {
+impl From<Text> for BarePattern {
     fn from(text: Text) -> Self {
         Self::Text(Box::new(text))
     }
 }
 
-impl From<SomeSequence> for PatternKind {
+impl From<SomeSequence> for BarePattern {
     fn from(sequence: SomeSequence) -> Self {
         match sequence {}
     }
 }
 
-impl From<Binding> for PatternKind {
+impl From<Binding> for BarePattern {
     fn from(binding: Binding) -> Self {
         Self::Binding(Box::new(binding))
     }
@@ -292,13 +292,13 @@ impl From<Binding> for PatternKind {
 #[derive(Clone)]
 pub struct Binder(pub Identifier);
 
-impl From<Binder> for PatternKind {
+impl From<Binder> for BarePattern {
     fn from(binder: Binder) -> Self {
         Self::Binder(Box::new(binder))
     }
 }
 
-impl From<Application<Pattern>> for PatternKind {
+impl From<Application<Pattern>> for BarePattern {
     fn from(application: Application<Pattern>) -> Self {
         Self::Application(Box::new(application))
     }

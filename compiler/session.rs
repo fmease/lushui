@@ -3,7 +3,7 @@ use crate::{
     diagnostics::{Diagnostic, ErrorCode, Reporter},
     entity::{Entity, EntityKind},
     error::Result,
-    hir::{self, DeclarationIndex, Expression, ExpressionKind, Identifier},
+    hir::{self, BareExpression, DeclarationIndex, Expression, Identifier},
     package::{Package, PackageIndex},
     span::{SourceMap, Span},
     syntax::ast::Explicitness,
@@ -570,7 +570,7 @@ impl Type {
 
         Some(match &expression.bare {
             // @Note this lookup looks incredibly inefficient
-            ExpressionKind::Binding(binding) => condition! {
+            BareExpression::Binding(binding) => condition! {
                 known(binding, Unit) => Self::Unit,
                 known(binding, Bool) => Self::Bool,
                 intrinsic(binding, Nat.into()) => Self::Nat,
@@ -582,8 +582,8 @@ impl Type {
                 intrinsic(binding, Text) => Self::Text,
                 else => return None,
             },
-            ExpressionKind::Application(application) => match &application.callee.bare {
-                ExpressionKind::Binding(binding) if known(binding, Option) => Self::Option(
+            BareExpression::Application(application) => match &application.callee.bare {
+                BareExpression::Binding(binding) if known(binding, Option) => Self::Option(
                     Box::new(Self::from_expression(&application.argument, session)?),
                 ),
                 _ => return None,
@@ -643,7 +643,7 @@ pub(crate) enum Value {
 
 impl Value {
     pub(crate) fn from_expression(expression: &Expression, session: &BuildSession) -> Option<Self> {
-        use ExpressionKind::*;
+        use BareExpression::*;
         use KnownBinding::*;
 
         let known = |binding: &hir::Binding, known: KnownBinding| {

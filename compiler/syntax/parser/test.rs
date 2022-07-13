@@ -4,10 +4,10 @@
 
 use super::{
     ast::{
-        self, Attribute, AttributeKind, Attributes, Case, Declaration, Domain,
+        self, Attribute, Attributes, BareAttribute, BareParameter, BareUsePathTree, Case,
+        Declaration, Domain,
         Explicitness::{Explicit, Implicit},
-        Expression, Format, Identifier, Item, Parameter, ParameterKind, Parameters, Path, Pattern,
-        UsePathTree, UsePathTreeKind,
+        Expression, Format, Identifier, Item, Parameter, Parameters, Path, Pattern, UsePathTree,
     },
     Parser, Result,
 };
@@ -118,7 +118,7 @@ fn application_lambda_literal_argument_lax_grouping() {
                             ast::LambdaLiteral {
                                 parameters: vec![Parameter::new(
                                     span(8, 12),
-                                    ParameterKind {
+                                    BareParameter {
                                         explicitness: Explicit,
                                         laziness: None,
                                         binder: identifier("this", span(8, 12)),
@@ -165,7 +165,7 @@ fn application_lambda_literal_argument_strict_grouping() {
                             ast::LambdaLiteral {
                                 parameters: vec![Parameter::new(
                                     span(8, 12),
-                                    ParameterKind {
+                                    BareParameter {
                                         explicitness: Explicit,
                                         laziness: None,
                                         binder: identifier("this", span(8, 12)),
@@ -284,7 +284,7 @@ fn pi_type_literal_application_implicit_argument_domain() {
                 codomain: Expression::new(
                     Attributes::new(),
                     span(11, 15),
-                    ast::ExpressionKind::TypeLiteral,
+                    ast::BareExpression::TypeLiteral,
                 ),
             }
             .into(),
@@ -319,7 +319,7 @@ fn pi_type_literal_application_implicit_named_argument_domain() {
                 codomain: Expression::new(
                     Attributes::new(),
                     span(17, 21),
-                    ast::ExpressionKind::TypeLiteral,
+                    ast::BareExpression::TypeLiteral,
                 ),
             }
             .into(),
@@ -350,7 +350,7 @@ fn application_pi_type_literal_implicit_domain() {
                         codomain: Expression::new(
                             Attributes::new(),
                             span(23, 27),
-                            ast::ExpressionKind::TypeLiteral,
+                            ast::BareExpression::TypeLiteral,
                         ),
                     }
                     .into(),
@@ -423,7 +423,7 @@ fn field_with_attribute() {
         Ok(Expression::new(
             vec![Attribute::new(
                 span(1, 9),
-                AttributeKind::Regular {
+                BareAttribute::Regular {
                     binder: identifier("overall", span(2, 9)),
                     arguments: default(),
                 },
@@ -450,7 +450,7 @@ fn base_with_attribute_and_field() {
                 base: Expression::new(
                     vec![Attribute::new(
                         span(2, 15),
-                        AttributeKind::Regular {
+                        BareAttribute::Regular {
                             binder: identifier("specifically", span(3, 15)),
                             arguments: default(),
                         },
@@ -507,28 +507,28 @@ fn outer_and_inner_attributes() {
             vec![
                 Attribute::new(
                     span(16, 22),
-                    AttributeKind::Regular {
+                    BareAttribute::Regular {
                         binder: identifier("inner", span(17, 22)),
                         arguments: default(),
                     },
                 ),
                 Attribute::new(
                     span(1, 7),
-                    AttributeKind::Regular {
+                    BareAttribute::Regular {
                         binder: identifier("outer", span(2, 7)),
                         arguments: default(),
                     },
                 ),
                 Attribute::new(
                     span(8, 14),
-                    AttributeKind::Regular {
+                    BareAttribute::Regular {
                         binder: identifier("outer", span(9, 14)),
                         arguments: default(),
                     },
                 ),
             ],
             span(15, 28),
-            ast::ExpressionKind::TypeLiteral,
+            ast::BareExpression::TypeLiteral,
         )),
     );
 }
@@ -648,7 +648,7 @@ fn use_as_plain() {
                     ast::Use {
                         bindings: UsePathTree::new(
                             span(5, 24),
-                            UsePathTreeKind::Single {
+                            BareUsePathTree::Single {
                                 target: Path {
                                     hanger: None,
                                     segments: smallvec![
@@ -685,11 +685,11 @@ fn use_as_double_brackets() {
                     ast::Use {
                         bindings: UsePathTree::new(
                             span(5, 28),
-                            UsePathTreeKind::Multiple {
+                            BareUsePathTree::Multiple {
                                 path: identifier("alpha".into(), span(5, 10)).into(),
                                 bindings: vec![UsePathTree::new(
                                     span(12, 27),
-                                    UsePathTreeKind::Single {
+                                    BareUsePathTree::Single {
                                         target: identifier("beta".into(), span(13, 17)).into(),
                                         binder: Some(identifier("gamma".into(), span(21, 26))),
                                     },
@@ -866,7 +866,7 @@ fn pattern_with_attributes() {
         Ok(Pattern::new(
             vec![Attribute::new(
                 span(1, 4),
-                AttributeKind::Regular {
+                BareAttribute::Regular {
                     binder: identifier("it".into(), span(2, 4)),
                     arguments: SmallVec::new(),
                 },
@@ -883,7 +883,7 @@ fn pattern_with_attributes() {
                 argument: Pattern::new(
                     vec![Attribute::new(
                         span(10, 13),
-                        AttributeKind::Regular {
+                        BareAttribute::Regular {
                             binder: identifier("IT".into(), span(11, 13)),
                             arguments: SmallVec::new(),
                         },

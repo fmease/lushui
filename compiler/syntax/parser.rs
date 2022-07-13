@@ -26,11 +26,11 @@
 #[allow(clippy::wildcard_imports)]
 use super::{
     ast::{
-        self, Attribute, AttributeArgument, AttributeArgumentKind, AttributeKind, Attributes,
-        BindStatement, Declaration, Domain,
+        self, Attribute, AttributeArgument, Attributes, BareAttribute, BareAttributeArgument,
+        BareParameter, BareUsePathTree, BindStatement, Declaration, Domain,
         Explicitness::{self, Explicit, Implicit},
-        Expression, Identifier, LetStatement, Parameter, ParameterKind, Parameters, Path, Pattern,
-        SpannedExplicitness, Statement, UsePathTree, UsePathTreeKind,
+        Expression, Identifier, LetStatement, Parameter, Parameters, Path, Pattern,
+        SpannedExplicitness, Statement, UsePathTree,
     },
     token::{
         Token,
@@ -360,7 +360,7 @@ impl<'a> Parser<'a> {
                     if skip_line_breaks == SkipLineBreaks::Yes {
                         while self.has_consumed(Semicolon) {}
                     }
-                    Attribute::new(span, AttributeKind::Documentation)
+                    Attribute::new(span, BareAttribute::Documentation)
                 }
                 _ => break,
             });
@@ -412,7 +412,7 @@ impl<'a> Parser<'a> {
 
         Ok(Attribute::new(
             span,
-            AttributeKind::Regular { binder, arguments },
+            BareAttribute::Regular { binder, arguments },
         ))
     }
 
@@ -429,7 +429,7 @@ impl<'a> Parser<'a> {
             name if name.is_path_head() => {
                 let path = self.parse_path()?;
 
-                AttributeArgument::new(path.span(), AttributeArgumentKind::Path(Box::new(path)))
+                AttributeArgument::new(path.span(), BareAttributeArgument::Path(Box::new(path)))
             }
             NumberLiteral => {
                 let token = self.current_token().clone();
@@ -437,7 +437,7 @@ impl<'a> Parser<'a> {
 
                 AttributeArgument::new(
                     token.span,
-                    AttributeArgumentKind::NumberLiteral(token.into_number_literal().unwrap()),
+                    BareAttributeArgument::NumberLiteral(token.into_number_literal().unwrap()),
                 )
             }
             TextLiteral => {
@@ -446,7 +446,7 @@ impl<'a> Parser<'a> {
 
                 AttributeArgument::new(
                     token.span,
-                    AttributeArgumentKind::TextLiteral(
+                    BareAttributeArgument::TextLiteral(
                         token
                             .into_text_literal()
                             .unwrap()
@@ -463,7 +463,7 @@ impl<'a> Parser<'a> {
 
                 AttributeArgument::new(
                     span,
-                    AttributeArgumentKind::Named(Box::new(ast::NamedAttributeArgument {
+                    BareAttributeArgument::Named(Box::new(ast::NamedAttributeArgument {
                         binder,
                         value,
                     })),
@@ -620,7 +620,7 @@ impl<'a> Parser<'a> {
                 return Ok(Declaration::new(
                     attributes,
                     span,
-                    ast::DeclarationKind::ModuleHeader,
+                    ast::BareDeclaration::ModuleHeader,
                 ));
             }
             _ => {}
@@ -787,7 +787,7 @@ impl<'a> Parser<'a> {
 
                             bindings.push(UsePathTree::new(
                                 span,
-                                UsePathTreeKind::Single {
+                                BareUsePathTree::Single {
                                     target,
                                     binder: Some(binder),
                                 },
@@ -814,7 +814,7 @@ impl<'a> Parser<'a> {
 
                     return Ok(UsePathTree::new(
                         path.span().merge(span),
-                        UsePathTreeKind::Multiple { path, bindings },
+                        BareUsePathTree::Multiple { path, bindings },
                     ));
                 }
                 _ => {
@@ -842,7 +842,7 @@ impl<'a> Parser<'a> {
 
         Ok(UsePathTree::new(
             path.span().merge(&binder),
-            UsePathTreeKind::Single {
+            BareUsePathTree::Single {
                 target: path,
                 binder,
             },
@@ -1041,7 +1041,7 @@ impl<'a> Parser<'a> {
             Type => {
                 self.advance();
 
-                Expression::new(default(), span, ast::ExpressionKind::TypeLiteral)
+                Expression::new(default(), span, ast::BareExpression::TypeLiteral)
             }
             NumberLiteral => {
                 let token = self.current_token().clone();
@@ -1480,7 +1480,7 @@ impl<'a> Parser<'a> {
 
                 Ok(Parameter::new(
                     span,
-                    ParameterKind {
+                    BareParameter {
                         explicitness: explicitness.into(),
                         laziness: None,
                         binder,
@@ -1502,7 +1502,7 @@ impl<'a> Parser<'a> {
 
                 Ok(Parameter::new(
                     span,
-                    ParameterKind {
+                    BareParameter {
                         explicitness: explicitness.into(),
                         laziness,
                         binder,
@@ -1703,7 +1703,7 @@ impl<'a> Parser<'a> {
 
                     let binder = this.consume_word()?;
 
-                    if TypeId::of::<T>() == TypeId::of::<ast::ExpressionKind>()
+                    if TypeId::of::<T>() == TypeId::of::<ast::BareExpression>()
                         && this.current_token().name() == Colon
                     {
                         illegal_pi = Some(this.current_token().clone());
@@ -1923,7 +1923,7 @@ trait Parse: Sized {
     fn parse_lower(parser: &mut Parser<'_>) -> Result<ast::Item<Self>>;
 }
 
-impl Parse for ast::ExpressionKind {
+impl Parse for ast::BareExpression {
     fn parse(parser: &mut Parser<'_>) -> Result<Expression> {
         parser.parse_expression()
     }
@@ -1932,7 +1932,7 @@ impl Parse for ast::ExpressionKind {
     }
 }
 
-impl Parse for ast::PatternKind {
+impl Parse for ast::BarePattern {
     fn parse(parser: &mut Parser<'_>) -> Result<Pattern> {
         parser.parse_pattern()
     }
