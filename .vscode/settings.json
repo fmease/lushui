@@ -3,5 +3,5 @@
         "cranelift",
         "llvm",
         "lsp"
-    ]
+    ],
 }

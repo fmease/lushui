@@ -1,12 +1,49 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
+#
+# Build and run the Lushui compiler.
+#
+# By default, optional compiler feature are not built.
+# All program arguments are passed to the compiler
+# except for the first one if it starts with a ‘+’.
+# In such case, the argument denotes a comma-separated
+# list of compiler features.
+# If the argument equals the literal ‘all’, all available
+# compiler features are enabled.
+# 
+# Examples (actual features and arguments might be outdated):
+#
+#     lushui -h
+#     lushui check ./project
+#     lushui +all serve
+#     lushui +llvm,cranelift file build this.lushui
+#
+# This script is meant to be used by Lushui developers and
+# thus to speed up the edit, compile & run cycle, features are
+# opt-in making the default build of the compiler much faster.
+# It is left to the developer to decide whether they need to
+# enable certain features to successfully work on a specific
+# area in the compiler.
 
 FOLDER="$( dirname $( realpath $0 ) )"
+
+HAS_FEATURE_FLAGS="^\\+([a-zA-Z0-9,-]+)\$"
+if [[ "$1" =~ $HAS_FEATURE_FLAGS ]]; then
+    FEATURES="${BASH_REMATCH[1]}"
+
+    if [[ "$FEATURES" == all ]]; then
+        FEATURE_OPTION=--all-features
+    else
+        FEATURE_OPTION="--features=$FEATURES"
+    fi
+
+    shift
+fi
 
 cargo \
     +nightly \
     run \
     --quiet \
     --manifest-path="$FOLDER/Cargo.toml" \
-    --features llvm \
+    $FEATURE_OPTION \
     -- \
     "$@"

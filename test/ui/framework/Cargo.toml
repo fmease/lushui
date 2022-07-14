@@ -1,16 +1,18 @@
+[workspace]
+
 [package]
 name = "golden-ui-testing-framework"
 version = "0.1.0"
-description = "Golden UI testing framework for the Lushui reference compiler"
+description = "The golden UI testing framework for the compiler"
 edition = "2021"
 publish = false
 
 [dependencies]
-colored = "2.0.0"
-difference = "2.0.0"
-walkdir = "2.3.2"
 clap = "3.1.0"
-unicode-width = "0.1.7"
-terminal_size = "0.1.17"
+colored = "2.0.0"
+derivation = { path = "../../../project/library/derivation" }
+difference = "2.0.0"
 joinery = "2.1.0"
-derivation = { path = "../../../project/libraries/derivation" }
+terminal_size = "0.1.17"
+unicode-width = "0.1.7"
+walkdir = "2.3.2"

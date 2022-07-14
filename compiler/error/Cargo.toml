@@ -1,0 +1,10 @@
+[package]
+name = "error"
+version = "0.0.0"
+description = "Error handling mechanisms"
+edition = "2021"
+publish = false
+
+[dependencies]
+diagnostics = { path = "../diagnostics" }
+utilities = { path = "../utilities" }

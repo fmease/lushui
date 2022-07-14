@@ -738,9 +738,9 @@ fn terminal_width() -> usize {
 }
 
 fn test_folder_path() -> &'static str {
-    static TEST_FOLDER_PATH: LazyLock<String> = LazyLock::new(|| {
+    static PATH: LazyLock<String> = LazyLock::new(|| {
         Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../tests")
+            .join("../test")
             .canonicalize()
             .unwrap()
             .to_str()
@@ -748,13 +748,13 @@ fn test_folder_path() -> &'static str {
             .to_owned()
     });
 
-    &TEST_FOLDER_PATH
+    &PATH
 }
 
 fn distributed_libraries_path() -> &'static str {
-    static TEST_FOLDER_PATH: LazyLock<String> = LazyLock::new(|| {
+    static PATH: LazyLock<String> = LazyLock::new(|| {
         Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../libraries")
+            .join("../../../library")
             .canonicalize()
             .unwrap()
             .to_str()
@@ -762,7 +762,7 @@ fn distributed_libraries_path() -> &'static str {
             .to_owned()
     });
 
-    &TEST_FOLDER_PATH
+    &PATH
 }
 
 enum CompilerBuildMode {

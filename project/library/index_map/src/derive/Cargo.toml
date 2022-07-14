@@ -1,0 +1,13 @@
+[package]
+name = "index_map_derive"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+proc-macro = true
+path = "proc_macro.rs"
+
+[dependencies]
+quote = "1.0.9"
+syn = { version = "1.0.75", features = ["full"] }

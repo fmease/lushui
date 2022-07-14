@@ -1,0 +1,18 @@
+[package]
+name = "ast"
+version = "0.0.0"
+description = "The Lushui abstract syntax tree (AST)"
+edition = "2021"
+publish = false
+
+[dependencies]
+colored = "2.0.0"
+diagnostics = { path = "../diagnostics" }
+error = { path = "../error" }
+index_map = { path = "../../project/library/index_map" }
+item = { path = "../item" }
+joinery = "2.1.0"
+smallvec = { version = "1.8.0", features = ["const_generics"] }
+span = { path = "../span" }
+token = { path = "../token" }
+utilities = { path = "../utilities" }

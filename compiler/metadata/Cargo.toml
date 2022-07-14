@@ -1,0 +1,13 @@
+[package]
+name = "metadata"
+version = "0.0.0"
+description = "Deserialization support for the Metadata configuration language"
+edition = "2021"
+publish = false
+
+[dependencies]
+derivation = { path = "../../project/library/derivation" }
+diagnostics = { path = "../diagnostics" }
+error = { path = "../error" }
+span = { path = "../span" }
+utilities = { path = "../utilities" }

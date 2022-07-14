@@ -1,0 +1,23 @@
+[package]
+name = "documenter"
+version = "0.0.0"
+description = "The documentation generator"
+edition = "2021"
+publish = false
+
+[dependencies]
+ast = { path = "../ast" }
+crossbeam = "0.8.1"
+error = { path = "../error" }
+hir = { path = "../hir" }
+hir_format = { path = "../hir_format" }
+html-escape = "0.2.9"
+joinery = "2.1.0"
+lowered_ast = { path = "../lowered_ast" }
+minifier = "0.2.1"
+resolver = { path = "../resolver" }
+session = { path = "../session" }
+syntax = { path = "../syntax" }
+unicode-segmentation = "1.9.0"
+urlencoding = "2.1.0"
+utilities = { path = "../utilities" }

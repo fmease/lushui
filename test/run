@@ -8,6 +8,7 @@ cargo \
     test \
     --quiet \
     --manifest-path="$FOLDER/../Cargo.toml" \
+    --workspace \
     -- \
     --format pretty
 

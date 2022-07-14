@@ -1,0 +1,19 @@
+[package]
+name = "hir_format"
+version = "0.0.0"
+description = "Formatting procedures for HIR data types"
+edition = "2021"
+publish = false
+
+[dependencies]
+ast = { path = "../ast" }
+colored = "2.0.0"
+hir = { path = "../hir" }
+joinery = "2.1.0"
+session = { path = "../session" }
+token = { path = "../token" }
+
+[dev-dependencies]
+lowered_ast = { path = "../lowered_ast" }
+span = { path = "../span" }
+utilities = { path = "../utilities" }
