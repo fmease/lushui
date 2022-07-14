@@ -1,0 +1,20 @@
+[package]
+name = "lushui_parser"
+version = "0.0.0"
+description = "The syntactic analyzer (parser) of Lushui"
+edition = "2021"
+publish = false
+
+[dependencies]
+lushui_lexer = { path = "../lexer" }
+lushui_ast = { path = "../ast" }
+lushui_token = { path = "../token" }
+lushui_error = { path = "../error" }
+lushui_span = { path = "../span" }
+lushui_utilities = { path = "../utilities" }
+# @Task get rid of this dep!
+lushui_session = { path = "../session" }
+lushui_diagnostics = { path = "../diagnostics" }
+index_map = { path = "../../project/libraries/index_map" }
+smallvec = { version = "1.8.0", features = ["const_generics"] }
+colored = "2.0.0"

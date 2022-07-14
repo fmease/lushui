@@ -1,0 +1,13 @@
+[package]
+name = "lushui_diagnostics"
+version = "0.0.0"
+# @Task description
+edition = "2021"
+publish = false
+
+[dependencies]
+colored = "2.0.0"
+derivation = { path = "../../project/libraries/derivation" }
+lushui_span = { path = "../span" }
+lushui_utilities = { path = "../utilities" }
+unicode-width = "0.1.9"

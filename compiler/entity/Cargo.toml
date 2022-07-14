@@ -1,0 +1,15 @@
+[package]
+name = "lushui_entity"
+version = "0.0.0"
+# @Task description
+edition = "2021"
+publish = false
+
+[dependencies]
+colored = "2.0.0"
+joinery = "2.1.0"
+lushui_utilities = { path = "../utilities" }
+lushui_ast = { path = "../ast" }
+lushui_lowered_ast = { path = "../lowered_ast" }
+lushui_error = { path = "../error" }
+lushui_hir = { path = "../hir" }

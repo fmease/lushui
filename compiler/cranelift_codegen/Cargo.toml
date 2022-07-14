@@ -1,0 +1,17 @@
+[package]
+name = "lushui_cranelift_codegen"
+version = "0.0.0"
+# @Task description
+edition = "2021"
+publish = false
+
+[dependencies]
+cranelift = "0.85.1"
+cranelift-module = "0.85.1"
+cranelift-native = "0.85.1"
+cranelift-object = "0.85.1"
+lushui_diagnostics = { path = "../diagnostics" }
+lushui_error = { path = "../error" }
+lushui_hir = { path = "../hir" }
+lushui_session = { path = "../session" }
+target-lexicon = "0.12.4"

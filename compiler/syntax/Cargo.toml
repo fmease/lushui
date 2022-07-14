@@ -1,0 +1,14 @@
+[package]
+name = "lushui_syntax"
+version = "0.0.0"
+# @Task description
+edition = "2021"
+publish = false
+
+[dependencies]
+lushui_error = { path = "../error" }
+lushui_session = { path = "../session" }
+lushui_span = { path = "../span" }
+lushui_lexer = { path = "../lexer" }
+lushui_parser = { path = "../parser" }
+lushui_ast = { path = "../ast" }

@@ -1,5 +1,7 @@
 {
     "rust-analyzer.cargo.features": [
-        "llvm"
-    ]
+        "cranelift",
+        "llvm",
+        "lsp"
+    ],
 }

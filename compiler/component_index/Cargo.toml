@@ -1,0 +1,14 @@
+# @Note this crate only exists to break a cycle between
+# lushui_span and lushui_component
+# @Task smh avoid this (the best situation would get rid of SourceMap's
+# dependency on ComponentIndex)
+
+[package]
+name = "lushui_component_index"
+version = "0.0.0"
+# @Task description
+edition = "2021"
+publish = false
+
+[dependencies]
+index_map = { path = "../../project/libraries/index_map" }

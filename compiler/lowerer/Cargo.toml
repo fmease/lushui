@@ -1,0 +1,17 @@
+[package]
+name = "lushui_lowerer"
+version = "0.0.0"
+# @Task description
+edition = "2021"
+publish = false
+
+[dependencies]
+lushui_ast = { path = "../ast" }
+lushui_diagnostics = { path = "../diagnostics" }
+lushui_error = { path = "../error" }
+lushui_lowered_ast = { path = "../lowered_ast" }
+lushui_session = { path = "../session" }
+lushui_span = { path = "../span" }
+lushui_syntax = { path = "../syntax" }
+lushui_utilities = { path = "../utilities" }
+smallvec = { version = "1.8.0", features = ["const_generics"] }

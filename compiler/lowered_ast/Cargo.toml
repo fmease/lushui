@@ -1,0 +1,17 @@
+[package]
+name = "lushui_lowered_ast"
+version = "0.0.0"
+description = "The lowered abstract syntax tree (AST) for Lushui source code"
+edition = "2021"
+publish = false
+
+[dependencies]
+bitflags = "1.3.2"
+colored = "2.0.0"
+derivation = { path = "../../project/libraries/derivation" }
+lushui_ast = { path = "../ast" }
+lushui_diagnostics = { path = "../diagnostics" }
+lushui_error = { path = "../error" }
+lushui_item = { path = "../item" }
+lushui_span = { path = "../span" }
+lushui_utilities = { path = "../utilities" }

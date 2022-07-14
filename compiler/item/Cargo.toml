@@ -1,0 +1,12 @@
+# @Beacon @Beacon @Beacon @Question should we put merge this crate into lushui_span???
+
+[package]
+name = "lushui_item"
+version = "0.0.0"
+# @Task description
+edition = "2021"
+publish = false
+
+[dependencies]
+lushui_error = { path = "../error" }
+lushui_span = { path = "../span" }

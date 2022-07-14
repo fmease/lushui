@@ -1,0 +1,23 @@
+[package]
+name = "lushui_server"
+version = "0.0.0"
+description = "An LSP server for the Lushui Programming Language"
+edition = "2021"
+publish = false
+
+[dependencies]
+lushui_component_index = { path = "../component_index" }
+lushui_diagnostics = { path = "../diagnostics" }
+lushui_error = { path = "../error" }
+lushui_hir = { path = "../hir" }
+lushui_lexer = { path = "../lexer" }
+lushui_lowerer = { path = "../lowerer" }
+lushui_package = { path = "../package" }
+lushui_parser = { path = "../parser" }
+lushui_resolver = { path = "../resolver" }
+lushui_session = { path = "../session" }
+lushui_span = { path = "../span" }
+lushui_typer = { path = "../typer" }
+lushui_utilities = { path = "../utilities" }
+tokio = { version = "1.19.2", features = ["io-std", "rt-multi-thread"] }
+tower-lsp = "0.17.0"

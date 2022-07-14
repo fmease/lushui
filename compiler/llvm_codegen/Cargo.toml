@@ -1,0 +1,20 @@
+[package]
+name = "lushui_llvm_codegen"
+version = "0.0.0"
+# @Task description
+edition = "2021"
+publish = false
+
+[dependencies]
+lushui_diagnostics = { path = "../diagnostics" }
+lushui_entity = { path = "../entity" }
+lushui_error = { path = "../error" }
+lushui_hir = { path = "../hir" }
+lushui_session = { path = "../session" }
+lushui_utilities = { path = "../utilities" }
+lushui_resolver = { path = "../resolver" }
+
+[dependencies.inkwell]
+git = "https://github.com/TheDan64/inkwell"
+rev = "25b9fc5"
+features = ["llvm13-0"]

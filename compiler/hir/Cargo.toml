@@ -1,0 +1,18 @@
+[package]
+name = "lushui_hir"
+version = "0.0.0"
+description = "The high-level intermediate representation (HIR) of Lushui"
+edition = "2021"
+publish = false
+
+[dependencies]
+index_map = { path = "../../project/libraries/index_map" }
+joinery = "2.1.0"
+lushui_component_index = { path = "../component_index" }
+lushui_error = { path = "../error" }
+lushui_span = { path = "../span" }
+lushui_utilities = { path = "../utilities" }
+lushui_ast = { path = "../ast" }
+lushui_lowered_ast = { path = "../lowered_ast" }
+derivation = { path = "../../project/libraries/derivation" }
+num-traits = "0.2.14"

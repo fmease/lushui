@@ -1,0 +1,9 @@
+[package]
+name = "lushui_lexer_utilities"
+version = "0.0.0"
+# @Task description
+edition = "2021"
+publish = false
+
+[dependencies]
+lushui_span = { path = "../span" }

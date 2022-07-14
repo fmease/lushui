@@ -1,0 +1,9 @@
+[package]
+name = "lushui_main"
+version = "0.0.0"
+# @Task description
+edition = "2021"
+publish = false
+
+[dependencies]
+lushui_driver = { path = "../driver" }
