@@ -10,6 +10,7 @@ pub(crate) use spanning::{PossiblySpanning, Spanning};
 use std::ops::{Add, Range, Sub};
 pub(crate) use weakly_spanned::WeaklySpanned;
 
+#[cfg(feature = "lsp")]
 pub(crate) mod lsp;
 pub(crate) mod source_map;
 
@@ -35,6 +36,7 @@ mod generic {
         /// [less]: Ordering::Less
         /// [greater]: Ordering::Greater
         /// [equal]: Ordering::Equal
+        #[cfg_attr(not(feature = "lsp"), allow(dead_code))]
         pub(crate) fn relate(self, span: Span<L>) -> Ordering {
             if self < span.start {
                 Ordering::Less

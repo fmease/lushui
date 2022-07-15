@@ -28,7 +28,6 @@
 use cli::{BuildMode, Command, PassRestriction};
 use colored::Colorize;
 use lushui::{
-    codegen,
     component::{Component, ComponentOutline, ComponentType, Components},
     diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter},
     documenter,
@@ -187,6 +186,7 @@ fn execute_command(
 
             build_components(components, &mode, &options.general, global_options, session)
         }
+        #[cfg(feature = "lsp")]
         Serve => {
             tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
@@ -433,6 +433,7 @@ fn build_component(
                             typer::interpreter::evaluate_main_function(component, session)?;
                         println!("{}", result.with((component, session)));
                     }
+                    #[cfg(feature = "cranelift")]
                     Backend::Cranelift => {
                         // @Task spawn Command where the path is session.build_folder() + ...
                         return Err(Diagnostic::error().message(
@@ -458,7 +459,8 @@ fn build_component(
                     .message("HIRI does not support compilation")
                     .report(session.reporter()));
             }
-            Backend::Cranelift => codegen::cranelift::compile_and_link(
+            #[cfg(feature = "cranelift")]
+            Backend::Cranelift => lushui::codegen::cranelift::compile_and_link(
                 options.general,
                 &component_root,
                 component,
@@ -466,7 +468,7 @@ fn build_component(
             )?,
             #[cfg(feature = "llvm")]
             Backend::Llvm => {
-                codegen::llvm::compile_and_link(
+                lushui::codegen::llvm::compile_and_link(
                     options.general,
                     &component_root,
                     component,

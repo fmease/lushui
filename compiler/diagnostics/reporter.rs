@@ -31,6 +31,7 @@ impl Reporter {
         Self::new(ReporterKind::Silent)
     }
 
+    #[cfg_attr(not(feature = "lsp"), allow(dead_code))]
     pub(crate) fn buffer(diagnostics: Arc<Mutex<BTreeSet<UntaggedDiagnostic>>>) -> Self {
         Self::new(ReporterKind::Buffer(diagnostics))
     }

@@ -97,6 +97,7 @@ impl SourceMap {
     }
 
     // @Beacon @Beacon @Beacon @Temporary
+    #[cfg_attr(not(feature = "lsp"), allow(dead_code))]
     pub(crate) fn file_by_path(&self, path: &Path) -> Option<&SourceFile> {
         self.files.values().find(|file| file.path() == Some(path))
     }
@@ -318,6 +319,7 @@ pub(crate) struct LineWithHighlight<'a> {
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub(crate) struct Highlight {
     pub(crate) start: u32,
+    #[cfg_attr(not(feature = "lsp"), allow(dead_code))]
     pub(crate) end: u32,
     pub(crate) width: usize,
     pub(crate) prefix_width: usize,
@@ -333,6 +335,7 @@ pub struct SourceFile {
     // @Beacon @Beacon @Beacon @Task make this a plain String again!
     content: Arc<String>,
     span: Span,
+    #[cfg_attr(not(feature = "lsp"), allow(dead_code))]
     component: Option<ComponentIndex>,
 }
 
@@ -358,6 +361,7 @@ impl SourceFile {
         self.path.as_deref()
     }
 
+    #[cfg_attr(not(feature = "lsp"), allow(dead_code))]
     pub(crate) fn component(&self) -> Option<ComponentIndex> {
         self.component
     }

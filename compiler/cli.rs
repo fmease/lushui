@@ -175,6 +175,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                         .arg(unstable_options)
                         .args(documentation_arguments),
                 ]),
+            #[cfg(feature = "lsp")]
             clap::Command::new(subcommand::SERVE).about("Launch an LSP server"),
             clap::Command::new(subcommand::EXPLAIN)
                 .about("Explain given error codes")
@@ -293,6 +294,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                 options: FileBuildOptions::deserialize(matches, unstable_build_options),
             }
         }
+        #[cfg(feature = "lsp")]
         (subcommand::SERVE, _matches) => Command::Serve,
         (subcommand::EXPLAIN, _matches) => Command::Explain,
         (command @ (subcommand::INITIALIZE | subcommand::NEW), matches) => Command::CreatePackage {
@@ -324,6 +326,7 @@ mod subcommand {
     pub(super) const METADATA: &str = "metadata";
     pub(super) const NEW: &str = "new";
     pub(super) const RUN: &str = "run";
+    #[cfg(feature = "lsp")]
     pub(super) const SERVE: &str = "serve";
 }
 
@@ -368,6 +371,7 @@ pub enum Command {
         mode: BuildMode,
         options: FileBuildOptions,
     },
+    #[cfg(feature = "lsp")]
     Serve,
     Explain,
     CreatePackage {
@@ -562,9 +566,11 @@ impl CompilationOptions {
             use unstable::CompilationOption::*;
 
             match unstable_option {
+                #[cfg(feature = "cranelift")]
                 EmitClif => options.general.emit_clif = true,
                 #[cfg(feature = "llvm")]
                 EmitLlvmIr => options.general.emit_llvm_ir = true,
+                #[cfg(feature = "cranelift")]
                 VerifyClif => options.general.verify_clif = true,
                 #[cfg(feature = "llvm")]
                 VerifyLlvmIr => options.general.verify_llvm_ir = true,
@@ -586,6 +592,7 @@ pub enum Backend {
     #[default]
     Hiri,
     /// Cranelift – The CLIF generator.
+    #[cfg(feature = "cranelift")]
     Cranelift,
     /// LLVM – The LLVM-IR generator.
     #[cfg(feature = "llvm")]
@@ -795,9 +802,11 @@ mod unstable {
     #[format(dash_case)]
     #[str(syntax)]
     pub(super) enum CompilationOption {
+        #[cfg(feature = "cranelift")]
         EmitClif,
         #[cfg(feature = "llvm")]
         EmitLlvmIr,
+        #[cfg(feature = "cranelift")]
         VerifyClif,
         #[cfg(feature = "llvm")]
         VerifyLlvmIr,
@@ -813,9 +822,11 @@ mod unstable {
 
         fn help(self) -> &'static str {
             match self {
+                #[cfg(feature = "cranelift")]
                 Self::EmitClif => "Emit the generated CLIF",
                 #[cfg(feature = "llvm")]
                 Self::EmitLlvmIr => "Emit the generated LLVM-IR",
+                #[cfg(feature = "cranelift")]
                 Self::VerifyClif => "Verify the generated CLIF",
                 #[cfg(feature = "llvm")]
                 Self::VerifyLlvmIr => "Verify the generated LLVM-IR",

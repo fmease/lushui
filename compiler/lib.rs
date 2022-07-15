@@ -16,7 +16,10 @@
 //! The back-end is one of
 //!
 //! * [HIR interpretation](typer::interpreter) (from the middle-end)
-//! * [CLIF generation, compilation and linking](codegen::cranelift) (output: CLIF)
+#![cfg_attr(
+    feature = "cranelift",
+    doc = " * [CLIF generation, compilation and linking](codegen::cranelift) (output: CLIF)"
+)]
 #![cfg_attr(
     feature = "llvm",
     doc = " * [LLVM-IR generation, compilation and linking](codegen::llvm) (output: LLVM-IR)"
@@ -74,6 +77,7 @@ mod item;
 pub mod metadata;
 pub mod package;
 pub mod resolver;
+#[cfg(feature = "lsp")]
 pub mod server;
 pub mod session;
 pub mod span;

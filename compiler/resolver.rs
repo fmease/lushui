@@ -205,7 +205,7 @@ impl<'a> ResolverMut<'a> {
 
                 if let Some(intrinsic) = declaration.attributes.span(AttributeName::Intrinsic) {
                     self.session
-                        .define_intrinsic_type(binder.clone(), intrinsic)
+                        .define_intrinsic_type(binder, intrinsic)
                         .stain(&mut self.health);
                 }
 

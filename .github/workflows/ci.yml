@@ -27,7 +27,7 @@ jobs:
     - uses: Swatinem/rust-cache@v1
     - name: Build in release mode
       # @Task build with LLVM
-      run: cargo build --release
+      run: cargo build --release --features cranelift,lsp
 
   build-on-windows:
     name: Build on Windows
@@ -46,7 +46,7 @@ jobs:
     - uses: Swatinem/rust-cache@v1
     - name: Build in release mode
       # @Task build with LLVM
-      run: cargo build --release
+      run: cargo build --release --features cranelift,lsp
 
   test-on-linux:
     name: Run tests on Linux (Ubuntu)
@@ -64,7 +64,7 @@ jobs:
     - name: Run unit tests (via the rust testing framework)
       run: cargo test
     - name: Run UI tests (via the golden UI testing framework)
-      # @Task build with LLVM
+      # @Task build with LLVM and Cranelift
       run: ./test/ui/run --release --timeout=20
 
   test-on-windows:
@@ -86,7 +86,7 @@ jobs:
     - name: Run unit tests (via the rust testing framework)
       run: cargo test
     - name: Run UI tests (via the golden UI testing framework)
-      # @Task build with LLVM
+      # @Task build with LLVM and Cranelift
       run: ./tests/ui/run --release --timeout=20
 
   build-documentation:
@@ -104,7 +104,7 @@ jobs:
       - uses: Swatinem/rust-cache@v1
       - name: Build documentation with rustdoc excluding dependencies
         # @Task build with LLVM
-        run: cargo doc --no-deps
+        run: cargo doc --no-deps --features cranelift,lsp
 
   clippy:
     name: Run Clippy (on Linux)
@@ -122,7 +122,7 @@ jobs:
     - uses: Swatinem/rust-cache@v1
     - name: Run Clippy
       # @Task build with LLVM
-      run: cargo clippy
+      run: cargo clippy --features cranelift,lsp
 
   formatting:
     name: Check Code Formatting

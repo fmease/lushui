@@ -24,6 +24,7 @@ pub struct Component {
     // @Task document this! @Note this is used by the lang-server which gets the document content by the client
     //       and which should not open the file at the given path to avoid TOC-TOU bugs / data races
     // @Beacon @Question should this be put on `Component` instead???
+    #[cfg_attr(not(feature = "lsp"), allow(dead_code))]
     pub(crate) content: Option<Arc<String>>,
     // @Note I am not pumped about the current component type including such high-level types like "benchmark-suite"
     //       I feel like we are breaking layers of abstraction here, too. can we get rid of this field??

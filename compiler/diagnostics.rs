@@ -23,6 +23,7 @@ use std::{
 
 mod code;
 mod format;
+#[cfg(feature = "lsp")]
 mod lsp;
 pub mod reporter;
 
