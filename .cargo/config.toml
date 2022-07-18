@@ -29,6 +29,7 @@ rustflags = [
 # Used by the GitHub CI workflow.
 # This profile is necessary since the workflow cannot simply set the environment variables
 # RUSTFLAGS and RUSTDOCFLAGS itself without overwriting the meticulously chosen flags set above!
+# With profiles, those flags are inherited from / appended to the parent.
 [profile.ci]
 inherits = "release"
 rustflags = ["-Dwarnings"]

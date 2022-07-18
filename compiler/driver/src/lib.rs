@@ -4,7 +4,6 @@
     default_free_fn,
     let_else,
     associated_type_bounds,
-    let_chains,
     type_alias_impl_trait
 )]
 

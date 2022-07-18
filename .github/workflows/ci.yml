@@ -12,18 +12,22 @@ on:
 # config file whose registered Rust flags are *appended* to the parent profile's ones.
 env:
   CARGO_TERM_COLOR: always
+  RUSTUP_TOOLCHAIN: nightly
+
+# @Task add back dependency caching once we've figured out how to do it properly
+#       (before: always cache misses)
 
 jobs:
   build-on-linux:
-    name: Build on Linux (Ubuntu)
+    name: Build on (Ubuntu) Linux
 
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
-    - uses: dtolnay/rust-toolchain@master
-      with:
-        toolchain: nightly
+    - name: Check out the repository
+      uses: actions/checkout@v3
+    - name: Install Rust
+      run: rustup update --no-self-update nightly
     - name: Build in release mode
       # @Task build with LLVM
       run: cargo build --profile ci --features cranelift,lsp
@@ -37,29 +41,30 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - uses: actions/checkout@v3
-    - uses: dtolnay/rust-toolchain@master
-      with:
-        toolchain: nightly
+    - name: Check out the repository
+      uses: actions/checkout@v3
+    - name: Install Rust
+      run: rustup update --no-self-update nightly
     - name: Build in release mode
       # @Task build with LLVM
       run: cargo build --profile ci --features cranelift,lsp
 
   test-on-linux:
-    name: Run tests on Linux (Ubuntu)
+    name: Run tests on (Ubuntu) Linux
 
     needs: build-on-linux
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
-    - uses: dtolnay/rust-toolchain@master
-      with:
-        toolchain: nightly
-    - name: Run unit tests (via the rust testing framework)
-      run: cargo test
-    - name: Run UI tests (via the golden UI testing framework)
-      # @Task build with LLVM and Cranelift
+    - name: Check out the repository
+      uses: actions/checkout@v3
+    - name: Install Rust
+      run: rustup update --no-self-update nightly
+    - name: Run unit tests
+      # @Task test with LLVM
+      run: cargo test --workspace --exclude llvm_codegen --features cranelift,lsp
+    - name: Run UI tests
+      # @Task test with LLVM and Cranelift
       run: ./test/ui/run --release --timeout=20
 
   test-on-windows:
@@ -72,29 +77,30 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - uses: actions/checkout@v3
-    - uses: dtolnay/rust-toolchain@master
-      with:
-        toolchain: nightly
-    - name: Run unit tests (via the rust testing framework)
-      run: cargo test
-    - name: Run UI tests (via the golden UI testing framework)
+    - name: Check out the repository
+      uses: actions/checkout@v3
+    - name: Install Rust
+      run: rustup update --no-self-update nightly
+    - name: Run unit tests
+      # @Task test with LLVM
+      run: cargo test --workspace --exclude llvm_codegen --features cranelift,lsp
+    - name: Run UI tests
       # @Task build with LLVM and Cranelift
       run: ./tests/ui/run --release --timeout=20
 
   build-documentation:
-    name: Build Documentation (on Linux)
+    name: Build documentation (on Linux)
 
     needs: build-on-linux
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: nightly
-      - name: Build documentation with rustdoc excluding dependencies
-        # @Task build with LLVM
+      - name: Check out the repository
+        uses: actions/checkout@v3
+      - name: Install Rust
+        run: rustup update --no-self-update nightly
+      - name: Build documentation with rustdoc
+        # @Task document with LLVM
         run: cargo doc --profile ci --no-deps --features cranelift,lsp
 
   clippy:
@@ -104,25 +110,27 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
-    - uses: dtolnay/rust-toolchain@master
-      with:
-        toolchain: nightly
-        components: clippy
+    - name: Check out the repository
+      uses: actions/checkout@v3
+    - name: Install Rust
+      run: |
+        rustup update --no-self-update nightly
+        rustup component add clippy
     - name: Run Clippy
-      # @Task build with LLVM
+      # @Task check with LLVM
       run: cargo clippy --profile ci --features cranelift,lsp
 
   formatting:
-    name: Check Code Formatting
+    name: Check code formatting
 
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
-    - uses: dtolnay/rust-toolchain@master
-      with:
-        toolchain: nightly
-        components: rustfmt
-    - name: Run rustfmt in check mode
-      run: cargo fmt --check
+    - name: Check out the repository
+      uses: actions/checkout@v3
+    - name: Install Rust
+      run: |
+        rustup update --no-self-update nightly
+        rustup component add rustfmt
+    - name: Check code formatting
+      run: cargo fmt --all --check

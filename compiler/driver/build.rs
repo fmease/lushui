@@ -1,4 +1,4 @@
-#![feature(generic_arg_infer, let_chains)]
+#![feature(generic_arg_infer)]
 
 use std::process::Command;
 

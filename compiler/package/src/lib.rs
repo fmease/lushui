@@ -1,5 +1,5 @@
 //! The package and component resolver.
-#![feature(default_free_fn, let_chains, let_else, try_trait_v2)]
+#![feature(default_free_fn, let_else, try_trait_v2)]
 
 use diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
 use error::Result;

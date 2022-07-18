@@ -2,8 +2,8 @@
 #
 # Build and run the Lushui compiler.
 #
-# By default, optional compiler feature are not built.
-# All program arguments are passed to the compiler
+# By default, optional compiler features are not built.
+# All program arguments of this script are passed to the compiler
 # except for the first one if it starts with a ‘+’.
 # In such case, the argument denotes a comma-separated
 # list of compiler features.

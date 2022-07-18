@@ -1,5 +1,5 @@
 //! The LLVM-IR generator.
-#![feature(default_free_fn, let_chains)]
+#![feature(default_free_fn)]
 #![allow(clippy::match_same_arms)] // @Temporary
 
 use diagnostics::Diagnostic;
