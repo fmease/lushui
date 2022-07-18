@@ -1,0 +1,16 @@
+[package]
+name = "cranelift_codegen"
+version = "0.0.0"
+description = "The Cranelift backend generating CLIF"
+edition = "2021"
+publish = false
+
+[dependencies]
+cranelift = "0.85.1"
+cranelift-module = "0.85.1"
+cranelift-native = "0.85.1"
+cranelift-object = "0.85.1"
+diagnostics = { path = "../diagnostics" }
+error = { path = "../error" }
+hir = { path = "../hir" }
+session = { path = "../session" }

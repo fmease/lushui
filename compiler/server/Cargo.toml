@@ -1,0 +1,22 @@
+[package]
+name = "server"
+version = "0.0.0"
+description = "The LSP-based language server"
+edition = "2021"
+publish = false
+
+[dependencies]
+diagnostics = { path = "../diagnostics" }
+error = { path = "../error" }
+hir = { path = "../hir" }
+lowerer = { path = "../lowerer" }
+package = { path = "../package" }
+parser = { path = "../parser" }
+resolver = { path = "../resolver" }
+session = { path = "../session" }
+span = { path = "../span" }
+syntax = { path = "../syntax" }
+tokio = { version = "1.19.2", features = ["io-std", "rt-multi-thread"] }
+tower-lsp = "0.17.0"
+typer = { path = "../typer" }
+utilities = { path = "../utilities" }

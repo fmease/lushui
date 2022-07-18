@@ -8,6 +8,9 @@ The reference compiler of the https://lushui.ml/[Lushui programming language].
 Its code is hosted on https://github.com/fmease/lushui.git[GitHub]
 and mirrored on https://gitlab.com/fmease/lushui.git[GitLab].
 
+// @Task somewhere mention Cargo feature flags and workspace-related things
+//       like using `--workspace` for `cargo test` etc, how to use `cargo doc`
+
 == Stability
 
 This project is under heavy development and

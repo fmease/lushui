@@ -1,0 +1,23 @@
+[package]
+name = "resolver"
+version = "0.0.0"
+description = "The name resolver"
+edition = "2021"
+publish = false
+
+[dependencies]
+ast = { path = "../ast" }
+colored = "2.0.0"
+diagnostics = { path = "../diagnostics" }
+difference = "2.0.0"
+error = { path = "../error" }
+hir = { path = "../hir" }
+hir_format = { path = "../hir_format" }
+lowered_ast = { path = "../lowered_ast" }
+session = { path = "../session" }
+smallvec = { version = "1.8.0", features = ["const_generics"] }
+span = { path = "../span" }
+strsim = "0.10.0"
+token = { path = "../token" }
+unicode-width = "0.1.9"
+utilities = { path = "../utilities" }

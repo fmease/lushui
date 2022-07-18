@@ -1,0 +1,42 @@
+[package]
+name = "driver"
+version = "0.0.0"
+description = "The entry point of the compiler"
+edition = "2021"
+publish = false
+
+[features]
+llvm = ["dep:llvm_codegen"]
+cranelift = ["dep:cranelift_codegen"]
+lsp = ["dep:server", "dep:tokio"]
+
+[dependencies]
+ast = { path = "../ast" }
+clap = "3.1.5"
+colored = "2.0.0"
+cranelift_codegen = { path = "../cranelift_codegen", optional = true }
+derivation = { path = "../../project/library/derivation" }
+diagnostics = { path = "../diagnostics" }
+documenter = { path = "../documenter" }
+error = { path = "../error" }
+hir_format = { path = "../hir_format" }
+lexer = { path = "../lexer" }
+llvm_codegen = { path = "../llvm_codegen", optional = true }
+lowered_ast = { path = "../lowered_ast" }
+lowerer = { path = "../lowerer" }
+metadata = { path = "../metadata" }
+open = "3.0.1"
+package = { path = "../package" }
+resolver = { path = "../resolver" }
+server = { path = "../server", optional = true }
+session = { path = "../session" }
+span = { path = "../span" }
+syntax = { path = "../syntax" }
+token = { path = "../token" }
+typer = { path = "../typer" }
+utilities = { path = "../utilities" }
+
+[dependencies.tokio]
+version = "1.19.2"
+features = ["io-std", "rt-multi-thread"]
+optional = true

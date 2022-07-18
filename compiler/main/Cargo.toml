@@ -1,0 +1,14 @@
+[package]
+name = "main"
+version = "0.0.0"
+description = "The actual entry point of the compiler invoking the driver"
+edition = "2021"
+publish = false
+
+[features]
+cranelift = ["driver/cranelift"]
+llvm = ["driver/llvm"]
+lsp = ["driver/lsp"]
+
+[dependencies]
+driver = { path = "../driver" }

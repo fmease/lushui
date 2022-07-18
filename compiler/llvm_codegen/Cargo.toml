@@ -1,0 +1,20 @@
+[package]
+name = "llvm_codegen"
+version = "0.0.0"
+description = "The LLVM backend generating LLVM-IR"
+edition = "2021"
+publish = false
+
+[dependencies]
+diagnostics = { path = "../diagnostics" }
+error = { path = "../error" }
+hir = { path = "../hir" }
+hir_format = { path = "../hir_format" }
+resolver = { path = "../resolver" }
+session = { path = "../session" }
+utilities = { path = "../utilities" }
+
+[dependencies.inkwell]
+git = "https://github.com/TheDan64/inkwell"
+rev = "25b9fc5"
+features = ["llvm13-0"]

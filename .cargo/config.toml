@@ -1,0 +1,35 @@
+cargo-features = ["profile-rustflags"]
+
+[build]
+# workaround for cargo#5034
+rustflags = [
+    "-Drust_2018_idioms",
+    "-Dunused_must_use",
+    "-Dclippy::pedantic",
+    "-Aclippy::blocks_in_if_conditions",     # too many false positives with rustfmt's style
+    "-Aclippy::empty_enum",                  # for type-level programming
+    "-Aclippy::enum_glob_use",               # alternative is too verbose
+    "-Aclippy::if_not_else",                 # too opinionated, sometimes the negative case is the more common one
+    "-Aclippy::items_after_statements",      # too opinionated
+    "-Aclippy::match_bool",                  # too opinionated
+    "-Aclippy::missing_errors_doc",          # not a priority right now
+    "-Aclippy::missing_panics_doc",          # @Temporary, a churn to fix, not a priority right now
+    "-Aclippy::module_name_repetitions",     # false positives, too opinionated
+    "-Aclippy::must_use_candidate",          # @Temporary, a churn to fix, not a priority right now
+    "-Aclippy::needless_pass_by_value",      # @Temporary, a churn to fix, not a priority right now
+    "-Aclippy::result_unit_err",             # ‘Result<_, ()>’ has its uses, in some cases an alt. to ‘Option<_>’
+    "-Aclippy::return_self_not_must_use",    # @Temporary, a churn to fix, not a priority right now
+    "-Aclippy::similar_names",               # too strict
+    "-Aclippy::single_match_else",           # too opinionated, match exprs look better in many cases
+    "-Aclippy::struct_excessive_bools",      # too many false postives with CLI flag structs
+    "-Aclippy::too_many_lines",              # too opinionated
+    "-Aclippy::trait_duplication_in_bounds", # @Temporary false positives: rust-clippy#8757
+]
+
+# Used by the GitHub CI workflow.
+# This profile is necessary since the workflow cannot simply set the environment variables
+# RUSTFLAGS and RUSTDOCFLAGS itself without overwriting the meticulously chosen flags set above!
+[profile.ci]
+inherits = "release"
+rustflags = ["-Dwarnings"]
+rustdocflags = ["-Dwarnings"]
