@@ -3,9 +3,9 @@
 name: basic-no-core,
 version: "11.0.11",
 
-components: [
-    {
+components: {
+    basic-no-core: {
         type: library,
         path: "library.lushui",
     },
-],
+},

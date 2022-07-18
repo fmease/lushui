@@ -3,12 +3,12 @@
 name: "gamma",
 version: "3.0.0",
 
-components: [
-    {
+components: {
+    gamma: {
         type: "library",
         path: "library.lushui",
         dependencies: {
             core: { provider: "distribution" },
         }
     },
-],
+},

@@ -3,8 +3,8 @@
 name: it,
 version: "6.7.8",
 
-components: [
-    {
+components: {
+    it: {
         type: library,
         path: "usage-site.lushui",
 
@@ -13,4 +13,4 @@ components: [
             ours: { component: theirs, path: "theirs" },
         }
     }
-],
+},

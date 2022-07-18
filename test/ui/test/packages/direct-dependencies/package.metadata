@@ -3,14 +3,14 @@
 name: dependent,
 version: "0.0.1",
 
-components: [
-    {
+components: {
+    dependent: {
         type: library,
         path: "dependent.lushui",
         dependencies: {
             dependency: { path: "dependency/" },
         },
     },
-],
+},
 
 # @Task description

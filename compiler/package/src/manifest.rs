@@ -3,13 +3,13 @@ use derivation::{Elements, FromStr, Str};
 use diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
 use error::{AndThenMapExt, Health, OkIfUntaintedExt, Result};
 use lexer::WordExt;
-use metadata::{convert, Record, RecordWalker, Value, WithTextContentSpanExt};
+use metadata::{convert, Record, RecordWalker, WithTextContentSpanExt};
 use session::{ComponentType, Version};
-use smallvec::smallvec;
-use span::{SourceFileIndex, SourceMap, Span, Spanned, WeaklySpanned};
-use std::{default::default, fmt, path::PathBuf, str::FromStr};
+
+use span::{SourceFileIndex, SourceMap, Spanned, WeaklySpanned};
+use std::{fmt, path::PathBuf, str::FromStr};
 use token::Word;
-use utilities::{try_all, Conjunction, HashMap, ListingExt, QuoteExt, SmallVec};
+use utilities::{try_all, Conjunction, HashMap, ListingExt, QuoteExt};
 
 pub const FILE_NAME: &str = "package.metadata";
 
@@ -35,12 +35,7 @@ impl PackageManifest {
         let components = manifest
             .take_optional("components")
             .and_then_map(|components| {
-                parse_components(
-                    components,
-                    name.as_ref().ok().map(|name| &name.bare),
-                    &queue.shared_map(),
-                    &queue.reporter,
-                )
+                parse_components(components, &queue.shared_map(), &queue.reporter)
             });
 
         manifest.exhaust()?;
@@ -93,29 +88,21 @@ impl fmt::Display for NameKind {
 }
 
 fn parse_components(
-    Spanned!(span, untyped_components): Spanned<Vec<Value>>,
-    package: Option<&Word>,
+    untyped_components: Spanned<metadata::Record>,
     map: &SourceMap,
     reporter: &Reporter,
 ) -> Result<Spanned<Components>> {
-    let mut components: HashMap<ComponentKey, Spanned<ComponentManifest>> = default();
-    let mut conflicts: HashMap<ComponentKey, SmallVec<Span, 2>> = default();
+    let mut components = Components::default();
     let mut health = Health::Untainted;
 
-    for untyped_component in untyped_components {
+    for (name, untyped_component) in untyped_components.bare {
         let Ok(component) = convert(untyped_component, reporter) else {
             health.taint();
             continue;
         };
         let mut component = RecordWalker::new(component, reporter);
 
-        let name = component.take_optional("name").and_then_map(|name| {
-            parse_name(
-                name.with_text_content_span(map),
-                NameKind::Component,
-                reporter,
-            )
-        });
+        let name = parse_name(name.strong(), NameKind::Component, reporter).map(Spanned::weak);
 
         let public = component.take_optional("public");
 
@@ -140,59 +127,21 @@ fn parse_components(
             continue
         };
 
-        let key = ComponentKey {
-            name: name
-                .filter(|name| package.map_or(true, |package| &name.bare != package))
-                .map(Spanned::weak),
-            type_: type_.weak(),
-        };
-
-        if let Some((previous, _)) = components.get_key_value(&key) {
-            // Use the span of the name or alternatively the type instead of the whole
-            // component manifest since in most cases it will lead to more readable / useful highlights.
-            // Highlighting a multi-line component manifest would just yield two lines of curly brackets.
-            let span_from_key = |key: &ComponentKey| {
-                key.name
-                    .as_ref()
-                    .map_or_else(|| key.type_.span, |name| name.span)
-            };
-            let span = span_from_key(&key);
-            conflicts
-                .entry(key)
-                .or_insert_with(|| smallvec![span_from_key(previous)])
-                .push(span);
-        } else {
-            components.insert(
-                key,
-                Spanned::new(
-                    span,
-                    ComponentManifest {
-                        public,
-                        path: path.map(Into::into),
-                        dependencies,
-                    },
-                ),
-            );
-        }
+        components.insert(
+            name,
+            Spanned::new(
+                span,
+                ComponentManifest {
+                    type_,
+                    public,
+                    path: path.map(Into::into),
+                    dependencies,
+                },
+            ),
+        );
     }
 
-    if !conflicts.is_empty() {
-        for (ComponentKey { name, type_ }, spans) in conflicts {
-            Diagnostic::error()
-                .message(format!(
-                    "the {} is defined multiple times",
-                    match name {
-                        Some(name) => format!("{type_} component ‘{name}’"),
-                        None => format!("primary {type_} component"),
-                    }
-                ))
-                .labeled_primary_spans(spans, "conflicting component")
-                .report(reporter);
-        }
-        health.taint();
-    }
-
-    Result::ok_if_untainted(Spanned::new(span, components), health)
+    Result::ok_if_untainted(Spanned::new(untyped_components.span, components), health)
 }
 
 fn parse_component_type(
@@ -220,14 +169,14 @@ fn parse_component_type(
 }
 
 fn parse_dependencies(
-    Spanned!(span, untyped_dependencies): Spanned<Record>,
+    untyped_dependencies: Spanned<Record>,
     map: &SourceMap,
     reporter: &Reporter,
 ) -> Result<Spanned<HashMap<WeaklySpanned<Word>, Spanned<DependencyDeclaration>>>> {
     let mut health = Health::Untainted;
     let mut dependencies = HashMap::default();
 
-    for (component_exonym, declaration) in untyped_dependencies {
+    for (component_exonym, declaration) in untyped_dependencies.bare {
         let component_exonym = component_exonym.strong().with_text_content_span(map);
         let exonym = parse_name(component_exonym, NameKind::Component, reporter).map(Spanned::weak);
 
@@ -302,7 +251,10 @@ fn parse_dependencies(
         );
     }
 
-    Result::ok_if_untainted(Spanned::new(span, dependencies), health)
+    Result::ok_if_untainted(
+        Spanned::new(untyped_dependencies.span, dependencies),
+        health,
+    )
 }
 
 pub(super) struct PackageProfile {
@@ -311,18 +263,10 @@ pub(super) struct PackageProfile {
     pub(super) description: Option<Spanned<String>>,
 }
 
-pub(super) type Components = HashMap<ComponentKey, Spanned<ComponentManifest>>;
-
-#[derive(PartialEq, Eq, Hash, Debug)]
-pub(super) struct ComponentKey {
-    /// The name of the component.
-    ///
-    /// Never directly equal to the package name. Instead, it is `None`.
-    pub(super) name: Option<WeaklySpanned<Word>>,
-    pub(super) type_: WeaklySpanned<ComponentType>,
-}
+pub(super) type Components = HashMap<WeaklySpanned<Word>, Spanned<ComponentManifest>>;
 
 pub(super) struct ComponentManifest {
+    pub(super) type_: Spanned<ComponentType>,
     #[allow(dead_code)] // @Temporary
     pub(super) public: Option<Spanned<bool>>,
     // @Note this path is relative to the package

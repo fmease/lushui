@@ -1,10 +1,9 @@
-cargo-features = ["profile-rustflags"]
-
 [build]
-# workaround for cargo#5034
 rustflags = [
     "-Drust_2018_idioms",
     "-Dunused_must_use",
+    "-Dunused_crate_dependencies",
+    "-Dclippy::all",
     "-Dclippy::pedantic",
     "-Aclippy::blocks_in_if_conditions",     # too many false positives with rustfmt's style
     "-Aclippy::empty_enum",                  # for type-level programming
@@ -24,7 +23,7 @@ rustflags = [
     "-Aclippy::struct_excessive_bools",      # too many false postives with CLI flag structs
     "-Aclippy::too_many_lines",              # too opinionated
     "-Aclippy::trait_duplication_in_bounds", # @Temporary false positives: rust-clippy#8757
-]
+] # workaround for cargo#5034
 
 # Used by the GitHub CI workflow.
 # This profile is necessary since the workflow cannot simply set the environment variables
@@ -33,4 +32,5 @@ rustflags = [
 [profile.ci]
 inherits = "release"
 rustflags = ["-Dwarnings"]
-rustdocflags = ["-Dwarnings"]
+# unsupported: cargo#10271
+#rustdocflags = ["-Dwarnings", "--check", "-Zunstable-options"]

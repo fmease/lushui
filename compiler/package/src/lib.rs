@@ -6,12 +6,10 @@ use error::Result;
 use index_map::IndexMap;
 use lexer::WordExt;
 pub use manifest::FILE_NAME as MANIFEST_FILE_NAME;
-use manifest::{
-    ComponentManifest, DependencyDeclaration, DependencyProvider, PackageManifest, PackageProfile,
-};
+use manifest::{DependencyDeclaration, DependencyProvider, PackageManifest, PackageProfile};
 use metadata::Record;
 use session::{
-    BuildSession, Component, ComponentKey, ComponentType, Components, Package, PackageIndex,
+    BuildSession, Component, ComponentType, Components, Package, PackageIndex,
     PossiblyUnresolvedComponent::*,
 };
 use span::{SourceMap, Spanned, WeaklySpanned};
@@ -23,7 +21,7 @@ use std::{
 };
 use token::Word;
 use utilities::{
-    cycle::find_cycles_by_key, pluralize, ComponentIndex, Conjunction, HashMap, IOError,
+    cycle::find_cycles_by_key, pluralize, ComponentIndex, Conjunction, FormatWithPathExt, HashMap,
     ListingExt, QuoteExt, FILE_EXTENSION,
 };
 
@@ -51,7 +49,7 @@ pub fn resolve_package(
             // @Task better message e.g. mention manifest
             return Err(Diagnostic::error()
                 .message("could not load the package")
-                .note(IOError(error, path).to_string())
+                .note(error.format(Some(path)))
                 .report(&reporter));
         }
     };
@@ -76,7 +74,7 @@ pub fn resolve_file(
             // @Task better message
             return Err(Diagnostic::error()
                 .message("could not load the file")
-                .note(IOError(error, path).to_string())
+                .note(error.format(Some(path)))
                 .report(&reporter));
         }
     };
@@ -137,7 +135,7 @@ impl BuildQueue {
                 return Err(Diagnostic::error()
                     // @Question code?
                     .message("could not load the package")
-                    .note(IOError(error, &manifest_path).to_string())
+                    .note(error.format(Some(&manifest_path)))
                     .report(&self.reporter));
             }
         };
@@ -157,42 +155,30 @@ impl BuildQueue {
             let mut component_worklist: HashMap<_, _> = component_worklist
                 .bare
                 .into_iter()
-                .map(|(key, component)| {
-                    // @Beacon #primary_components_default_to_package_name
-                    // @Beacon @Bug don't default to the package_name !!!!!
-                    // `ext: { path: "..." }` should NOT expand to
-                    // `ext: { path: "...", component: ext }` the comp should just stay None / the dependenc_
-                    let name = key
-                        .name
-                        .as_ref()
-                        .map_or_else(|| self[package].name.clone(), |name| name.bare.clone());
-
-                    ((name, key.type_), (component, None))
-                })
+                .map(|(name, component)| (name, (component, None)))
                 .collect();
 
             self[package].components.extend(
                 component_worklist
                     .iter()
-                    .map(|((name, type_), _)| ((name.clone(), type_.bare), Unresolved)),
+                    .map(|(name, _)| (name.bare.clone(), Unresolved)),
             );
 
             while !component_worklist.is_empty() {
                 let amount_unresolved_components = component_worklist.len();
                 let mut unresolved_components = HashMap::default();
 
-                for ((name, type_), (component, _)) in component_worklist {
+                for (name, (component, _)) in component_worklist {
                     use DependencyResolutionError::*;
                     let dependencies = match self.resolve_dependencies(
-                        &name,
+                        &name.bare,
                         package,
                         package_path,
                         component.bare.dependencies.as_ref(),
                     ) {
                         Ok(dependencies) => dependencies,
                         Err(UnresolvedLocalComponent(dependency_name)) => {
-                            unresolved_components
-                                .insert((name, type_), (component, Some(dependency_name)));
+                            unresolved_components.insert(name, (component, Some(dependency_name)));
                             continue;
                         }
                         Err(ErasedFatal(error) | ErasedNonFatal(error)) => {
@@ -202,15 +188,16 @@ impl BuildQueue {
                         }
                     };
 
-                    if !matches!(
-                        type_.bare,
-                        ComponentType::Library | ComponentType::Executable
-                    ) {
+                    let type_ = component.bare.type_;
+
+                    if type_.bare != ComponentType::Library
+                        && type_.bare != ComponentType::Executable
+                    {
                         // @Task use health.taint(...) "2.0" instead
                         health = Some(
                             Diagnostic::error()
                                 .message(format!(
-                                    "the component type ‘{type_}’ is not supported yet"
+                                    "the component type ‘{type_}’ is not supported yet",
                                 ))
                                 .primary_span(type_)
                                 .report(&self.reporter),
@@ -219,7 +206,7 @@ impl BuildQueue {
 
                     let component = self.components.insert_with(|index| {
                         Component::new(
-                            name.clone(),
+                            name.bare.clone(),
                             index,
                             component
                                 .bare
@@ -232,7 +219,7 @@ impl BuildQueue {
                         )
                     });
 
-                    self.register_package_component(package, (name, type_.bare), component);
+                    self.register_package_component(package, name.bare, component);
                 }
 
                 // resolution stalled; therefore there are cyclic components
@@ -246,9 +233,8 @@ impl BuildQueue {
                     for cycle in find_cycles_by_key(
                         &unresolved_components
                             .iter()
-                            // @Question is dropping the component type here unsound? @Task craft an example
-                            .map(|((dependent, _), (_, dependency))| {
-                                (dependent, dependency.as_ref().unwrap().as_ref())
+                            .map(|(dependent, (_, dependency))| {
+                                (&dependent.bare, dependency.as_ref().unwrap().as_ref())
                             })
                             .collect::<HashMap<&Word, Spanned<&Word>>>(),
                         |name| &name.bare,
@@ -293,6 +279,8 @@ impl BuildQueue {
             // @Note this currently duplicates a lot of stuff from Self::resolve_dependencies
             // in fact, all the logic was copied over from there and manually adjusted
             // @Task abstract over this
+            // @Update @Task don't touch packages here at all! just go straight to the
+            //               component (and assume that it doesn't have any deps)
 
             let core_package_path = session::core_package_path();
             let core_manifest_path = core_package_path.join(manifest::FILE_NAME);
@@ -303,7 +291,7 @@ impl BuildQueue {
                     return Err(Diagnostic::error()
                         // @Question code?
                         .message("could not load the package ‘core’")
-                        .note(IOError(error, &core_manifest_path).to_string())
+                        .note(error.format(Some(&core_manifest_path)))
                         .report(&self.reporter));
                 }
             };
@@ -314,18 +302,25 @@ impl BuildQueue {
             let core_package = self.packages.insert(core_package);
 
             let core_package_name = session::core_package_name();
-            let (_, Spanned!(_, library)) =
-                self.resolve_primary_library(core_manifest.components.as_ref())?;
+            // @Task handle errors properly here!
+            let library = core_manifest
+                .components
+                .as_ref()
+                .unwrap()
+                .bare
+                .get(&core_package_name)
+                .unwrap()
+                .as_ref();
+            let library = library.bare;
 
             let core_library_component_path = library
                 .path
                 .as_ref()
                 .map(|relative_path| core_package_path.join(relative_path));
 
-            self[core_package].components.insert(
-                (core_package_name.clone(), ComponentType::Library),
-                Unresolved,
-            );
+            self[core_package]
+                .components
+                .insert(core_package_name.clone(), Unresolved);
 
             let transitive_dependencies = self
                 .resolve_dependencies(
@@ -353,11 +348,7 @@ impl BuildQueue {
                 )
             });
 
-            self.register_package_component(
-                core_package,
-                (core_package_name.clone(), ComponentType::Library),
-                library,
-            );
+            self.register_package_component(core_package, core_package_name.clone(), library);
 
             dependencies.insert(core_package_name, library);
         }
@@ -454,20 +445,17 @@ impl BuildQueue {
             Dependency::LocalComponent => {
                 let package = &self[dependent_package];
 
-                return match package
-                    .components
-                    .get(&(component_endonym.bare.clone(), ComponentType::Library))
-                {
-                    Some(&Resolved(index)) => Ok(index),
+                return match package.components.get(component_endonym.bare) {
+                    // @Task don't use a guard: it muddies/worsens the error cause. instead, report a more specific error
+                    Some(&Resolved(component)) if self[component].is_library() => Ok(component),
                     Some(Unresolved) => Err(DependencyResolutionError::UnresolvedLocalComponent(
                         component_endonym.cloned(),
                     )),
-                    None => Err(undefined_library_component_error(
-                        component_endonym,
-                        &package.name,
-                    )
-                    .report(&self.reporter)
-                    .into()),
+                    _ => Err(
+                        undefined_library_component_error(component_endonym, &package.name)
+                            .report(&self.reporter)
+                            .into(),
+                    ),
                 };
             }
         };
@@ -483,22 +471,15 @@ impl BuildQueue {
                 .values()
                 .find(|package| package.path == package_path)
             {
-                // @Question handle component privacy here?
-                let library = package
-                    .components
-                    .iter()
-                    .find(|((name, type_), _)| {
-                        name == component_endonym.bare && *type_ == ComponentType::Library
-                    })
-                    .map(|(_, library)| library);
-
                 // @Beacon @Task add a diag note for size-one cycles of the form `{ path: "." }` (etc) and
                 //               recommend the dep-provider `package` (…)
 
                 // @Beacon @Note this probably won't scale to our new order-independent component resolver (maybe)
                 // if so, consider not throwing a cycle error (here / unconditionally)
-                return match library {
-                    Some(&Resolved(library)) => Ok(library),
+                // @Beacon @Task handle component privacy here
+                return match package.components.get(component_endonym.bare) {
+                    // @Task don't use a guard: it muddies/worsens the error cause. instead, report a more specific error
+                    Some(&Resolved(component)) if self[component].is_library() => Ok(component),
                     // @Beacon @Task instead of reporting an error here, return a "custom"
                     //               DepRepError::UnresolvedComponent here (add a param/flag to differentiate
                     //               it from the case above) and @Task smh accumulate "inquirer"s so we can
@@ -519,12 +500,11 @@ impl BuildQueue {
                                 .report(&self.reporter),
                         ))
                     }
-                    None => Err(undefined_library_component_error(
-                        component_endonym,
-                        &package.name,
-                    )
-                    .report(&self.reporter)
-                    .into()),
+                    _ => Err(
+                        undefined_library_component_error(component_endonym, &package.name)
+                            .report(&self.reporter)
+                            .into(),
+                    ),
                 };
             }
         }
@@ -547,7 +527,7 @@ impl BuildQueue {
                     .message(format!(
                         "could not load the dependency ‘{component_exonym}’",
                     ))
-                    .note(IOError(error, &manifest_path).to_string())
+                    .note(error.format(Some(&manifest_path)))
                     .primary_span(match &declaration.bare.path {
                         Some(path) => path.span,
                         None => component_exonym.span,
@@ -578,22 +558,10 @@ impl BuildQueue {
         let package_name = package.name.clone();
         let package = self.packages.insert(package);
 
-        // @Task handle component privacy
-        let Some((library_key, Spanned!(_, library))) = manifest.components.as_ref().and_then(|components| {
-            components.bare.iter().find_map(|(key, library)| {
-                // @Beacon #primary_components_default_to_package_name
-                // @Beacon @Bug don't default to the package_name !!!!!
-                // `ext: { path: "..." }` should NOT expand to
-                // `ext: { path: "...", component: ext }` the comp should just stay None / the dependency
-                let name = key
-                    .name
-                    .as_ref()
-                    .map_or_else(|| package_name.clone(), |name| name.bare.clone());
-                let type_ = key.type_.bare;
-
-                (name == *component_endonym.bare && type_ == ComponentType::Library)
-                    .then(|| ((name, type_), library))
-            })
+        let Some(library) = manifest.components.as_ref().and_then(|components| {
+            // @Task handle component privacy
+            components.bare.get(&component_endonym.cloned().weak())
+                .filter(|component| component.bare.type_.bare == ComponentType::Library)
         }) else {
             return Err(
                 undefined_library_component_error(component_endonym, &package_name)
@@ -602,36 +570,33 @@ impl BuildQueue {
             );
         };
 
+        let library = &library.bare;
+        let name = component_endonym.bare;
+
         let library_component_path = library
             .path
             .as_ref()
             .map(|relative_path| package_path.join(relative_path));
 
         // @Question should we prefill all components here too?
-        self[package]
-            .components
-            .insert(library_key.clone(), Unresolved);
+        self[package].components.insert(name.clone(), Unresolved);
 
         // transitive dependencies from the perspective of the dependent package
-        let dependencies = self.resolve_dependencies(
-            &library_key.0,
-            package,
-            &package_path,
-            library.dependencies.as_ref(),
-        )?;
+        let dependencies =
+            self.resolve_dependencies(name, package, &package_path, library.dependencies.as_ref())?;
 
         let library = self.components.insert_with(|index| {
             Component::new(
-                library_key.0.clone(),
+                name.clone(),
                 index,
                 library_component_path,
                 None,
-                library_key.1,
+                library.type_.bare,
                 dependencies,
             )
         });
 
-        self.register_package_component(package, library_key, library);
+        self.register_package_component(package, name.clone(), library);
 
         Ok(library)
     }
@@ -639,10 +604,10 @@ impl BuildQueue {
     fn register_package_component(
         &mut self,
         package: PackageIndex,
-        key: ComponentKey,
+        name: Word,
         component: ComponentIndex,
     ) {
-        self[package].components.insert(key, Resolved(component));
+        self[package].components.insert(name, Resolved(component));
         self.component_packages.insert(component, package);
     }
 
@@ -721,26 +686,6 @@ impl BuildQueue {
                 })
                 .report(&self.reporter)),
         }
-    }
-
-    // @Task remove / replace
-    fn resolve_primary_library<'m>(
-        &self,
-        components: Option<&'m Spanned<manifest::Components>>,
-    ) -> Result<(&'m manifest::ComponentKey, &'m Spanned<ComponentManifest>)> {
-        components
-            .and_then(|components| {
-                components
-                    .bare
-                    .iter()
-                    .find(|(key, _)| key.name.is_none() && key.type_.bare == ComponentType::Library)
-            })
-            .ok_or_else(|| {
-                // @Temporary diagnostic
-                Diagnostic::error()
-                    .message("no <primary> library found in package <name>")
-                    .report(&self.reporter)
-            })
     }
 
     fn finalize(self) -> (Components, BuildSession) {

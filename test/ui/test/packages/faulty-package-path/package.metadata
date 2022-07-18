@@ -3,10 +3,10 @@
 name: thingy,
 version: "0.0.0",
 
-components: [
-    {
+components: {
+    thingy: {
         type: library,
         path: "content.lushui",
         dependencies: { who: { path: "nowhere" }, really-who: { path: void } },
     }
-],
+},

@@ -3,17 +3,17 @@
 name: future,
 version: "99.99.999",
 
-components: [
-    {
+components: {
+    yi: {
         type: "example",
         path: "examples/first.lushui",
     },
-    {
+    er: {
         type: test-suite,
         path: "tests/first.lushui",
     },
-    {
+    san: {
         type: "benchmark-suite",
         path: "benchmarks/first.lushui",
     },
-]
+},

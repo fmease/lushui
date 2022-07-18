@@ -3,12 +3,12 @@
 name: basic,
 version: "1.0.0",
 
-components: [
-    {
+components: {
+    main: {
         type: executable,
         path: "main.lushui",
         dependencies: {
             core: { provider: distribution },
         },
     },
-],
+},

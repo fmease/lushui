@@ -1,9 +1,9 @@
 # TEST auxiliary packages/dependency-exonym-differs-from-endonym
 
 name: theirs, version: "0.0.0",
-components: [
-    {
+components: {
+    theirs: {
         type: library, path: "library.lushui",
         dependencies: { core: { provider: distribution } },
     }
-],
+},

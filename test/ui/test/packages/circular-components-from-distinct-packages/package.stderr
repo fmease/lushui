@@ -1,8 +1,8 @@
 error: the components ‘right’ and ‘left’ are circular
- --> ${TEST_FOLDER}/packages/circular-components-from-distinct-packages/right/package.metadata:5:72
+ --> ${TEST_FOLDER}/packages/circular-components-from-distinct-packages/right/package.metadata:9:25
   |
-5 | components: [ { type: library, path: "content.lushui", dependencies: { left: { path: ".." } } } ],
-  |                                                                        ^^^^
+9 |         dependencies: { left: { path: ".." } }
+  |                         ^^^^
   |
 
 error: aborting due to previous error

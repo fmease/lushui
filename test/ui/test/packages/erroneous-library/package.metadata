@@ -3,12 +3,12 @@
 name: born-to-fail,
 version: "6666.0.0",
 
-components: [
-    {
+components: {
+    born-to-fail: {
         type: library,
         path: "library.lushui",
     }
-],
+},
 
 # [Description]
 # This test checks if any errors inside of a component i.e. language-related errors like type errors,

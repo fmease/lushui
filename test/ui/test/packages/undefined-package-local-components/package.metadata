@@ -3,8 +3,8 @@
 name: lost-in-the-local-forest,
 version: "7171717.0.0",
 
-components: [
-    {
+components: {
+    lost-in-the-local-forest: {
         type: library,
         path: "source/library.lushui",
 
@@ -14,4 +14,4 @@ components: [
             no-wait-who: { component: i-mean-who },
         },
     },
-],
+},

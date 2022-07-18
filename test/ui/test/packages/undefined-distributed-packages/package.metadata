@@ -3,8 +3,8 @@
 name: shenanigans,
 version: "1.1.1",
 
-components: [
-    {
+components: {
+    shenanigans: {
         type: library,
         path: "somewhere",
 
@@ -14,4 +14,4 @@ components: [
             who: { component: "dis", provider: distribution },
         }
     }
-],
+},

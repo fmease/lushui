@@ -43,7 +43,9 @@ use session::{BuildSession, Component};
 use smallvec::smallvec;
 use span::{Span, Spanned, Spanning};
 use std::{default::default, fmt, iter::once};
-use utilities::{Atom, Conjunction, IOError, ListingExt, QuoteExt, SmallVec, Str, FILE_EXTENSION};
+use utilities::{
+    Atom, Conjunction, FormatWithPathExt, ListingExt, QuoteExt, SmallVec, Str, FILE_EXTENSION,
+};
 
 /// Lower a file.
 pub fn lower_file(
@@ -343,7 +345,7 @@ impl<'a> Lowerer<'a> {
                             .code(ErrorCode::E016)
                             .message(format!("could not load the module ‘{}’", module.binder))
                             .primary_span(span)
-                            .note(IOError(error, &path).to_string())
+                            .note(error.format(Some(&path)))
                             .report(self.session.reporter());
                         self.health.taint();
                         return PossiblyErroneous::error();

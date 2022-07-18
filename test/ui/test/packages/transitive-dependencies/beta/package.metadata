@@ -3,8 +3,8 @@
 name: "beta",
 version: "2.0.0",
 
-components: [
-    {
+components: {
+    beta: {
         type: "library",
         path: "library.lushui",
         dependencies: {
@@ -12,4 +12,4 @@ components: [
             gamma: { path: "../gamma" },
         }
     },
-],
+},

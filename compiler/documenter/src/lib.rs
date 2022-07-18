@@ -145,7 +145,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             fs::write(&page.path, &page.content)?;
         }
 
-        let component_path = self.path.join(self.component.folder_id());
+        let component_path = self.path.join(self.component.name().as_str());
 
         if !component_path.exists() {
             fs::create_dir(&component_path)?;
@@ -442,19 +442,8 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
 
             for component in components {
                 let anchor = Element::new("a")
-                    .attribute(
-                        "href",
-                        format!("{url_prefix}{}/index.html", component.folder_id()),
-                    )
-                    .child(
-                        // If it's not a target component, it has to be a library.
-                        // In such case, omit this information for legibility.
-                        if self.session.in_goal_package(component.index) {
-                            Node::from(format!("{} ({})", component.name, component.type_))
-                        } else {
-                            Node::from(component.name.as_str())
-                        },
-                    );
+                    .attribute("href", format!("{url_prefix}{}/index.html", component.name))
+                    .child(Node::from(component.name.as_str()));
 
                 list.add_child(Element::new("li").child(anchor));
             }
@@ -542,7 +531,7 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
             PageContentType::Module => {
                 let mut path = self.path.clone();
 
-                path.push(self.component.folder_id());
+                path.push(self.component.name().as_str());
                 for segment in path_segments.into_iter().skip(1) {
                     path.push(segment);
                 }
@@ -569,15 +558,16 @@ impl<'a, 'scope> Documenter<'a, 'scope> {
                     .attribute("name", "viewport")
                     .attribute("content", "width=device-width, initial-scale=1.0"),
             )
-            .child(
-                Element::new("title").child(match content_type {
-                    PageContentType::Module => self
-                        .component
-                        .local_index_with_root_to_extern_path(index, self.component.folder_id()),
-                    PageContentType::Attributes => "Attributes".into(),
-                    PageContentType::ReservedIdentifiers => "Reserved Identifiers".into(),
-                }),
-            )
+            .child(Element::new("title").child(match content_type {
+                PageContentType::Module => {
+                    self.component.local_index_with_root_to_extern_path(
+                        index,
+                        self.component.name().to_string(),
+                    )
+                }
+                PageContentType::Attributes => "Attributes".into(),
+                PageContentType::ReservedIdentifiers => "Reserved Identifiers".into(),
+            }))
             .child(
                 VoidElement::new("meta")
                     .attribute("name", "generator")
@@ -717,7 +707,7 @@ fn documentation(attributes: &Attributes) -> Option<String> {
         .join_with('\n')
         .to_string();
 
-    (!content.is_empty()).then(|| content)
+    (!content.is_empty()).then_some(content)
 }
 
 #[derive(Default, Clone, Copy)]
@@ -747,26 +737,6 @@ struct Page {
 fn declaration_id(binder: &str) -> String {
     format!("decl.{}", urlencoding::encode(binder))
 }
-
-trait FolderId {
-    fn folder_id(&self) -> String;
-}
-
-// @Task <avoid duplication>
-
-impl FolderId for Component {
-    fn folder_id(&self) -> String {
-        format!("{}:{}", self.type_().short_name(), self.name())
-    }
-}
-
-impl FolderId for ComponentOutline {
-    fn folder_id(&self) -> String {
-        format!("{}:{}", self.type_.short_name(), self.name)
-    }
-}
-
-// @Task </avoid duplication>
 
 static LOREM_IPSUM: &str = "\
     Lorem ipsum dolor sit amet, consectetur adipiscing elit, \

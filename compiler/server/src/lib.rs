@@ -26,7 +26,7 @@ use tower_lsp::{
     },
     Client,
 };
-use utilities::{ComponentIndex, HashMap, IOError};
+use utilities::{ComponentIndex, FormatWithPathExt, HashMap};
 
 mod diagnostics;
 mod span;
@@ -308,7 +308,7 @@ fn build_component(
                     Diagnostic::error()
                         .message(message)
                         .primary_span(path)
-                        .note(IOError(error, path.bare).to_string())
+                        .note(error.format(Some(path.bare)))
                         .report(session.reporter())
                 })?
         }

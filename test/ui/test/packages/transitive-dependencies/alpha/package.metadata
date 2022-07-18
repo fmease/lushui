@@ -3,12 +3,12 @@
 name: "alpha",
 version: "1.0.0",
 
-components: [
-    {
+components: {
+    alpha: {
         type: "library",
         path: "library.lushui",
         dependencies: {
             beta: { path: "../beta" },
         }
     },
-],
+},

@@ -622,7 +622,6 @@ impl Component {
         ComponentOutline {
             name: self.name.clone(),
             index: self.index,
-            type_: self.type_,
         }
     }
 
@@ -697,7 +696,6 @@ impl LocalDeclarationIndexExt for LocalDeclarationIndex {
 pub struct ComponentOutline {
     pub name: Word,
     pub index: ComponentIndex,
-    pub type_: ComponentType,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Elements, FromStr, Str)]
@@ -736,7 +734,7 @@ pub struct Package {
     pub path: PathBuf,
     pub version: Version,
     pub description: String,
-    pub components: HashMap<ComponentKey, PossiblyUnresolvedComponent>,
+    pub components: HashMap<Word, PossiblyUnresolvedComponent>,
 }
 
 impl Package {
@@ -772,8 +770,6 @@ pub const CORE_PACKAGE_NAME: &str = "core";
 pub fn core_package_name() -> Word {
     Word::new_unchecked("core".into())
 }
-
-pub type ComponentKey = (Word, ComponentType);
 
 #[derive(Debug)]
 pub struct Version(pub String);
