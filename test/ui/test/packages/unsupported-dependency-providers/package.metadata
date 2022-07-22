@@ -3,8 +3,8 @@
 name: future,
 version: "99.99.999",
 
-components: [
-    {
+components: {
+    future: {
         type: library,
         path: "library.lushui",
 
@@ -13,4 +13,4 @@ components: [
             thing1: { provider: registry },
         },
     },
-],
+},

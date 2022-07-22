@@ -13,7 +13,6 @@ index_map = { path = "../../project/library/index_map" }
 lexer = { path = "../lexer" }
 metadata = { path = "../metadata" }
 session = { path = "../session" }
-smallvec = { version = "1.8.0", features = ["const_generics"] }
 span = { path = "../span" }
 token = { path = "../token" }
 utilities = { path = "../utilities" }

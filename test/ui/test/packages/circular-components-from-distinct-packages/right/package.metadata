@@ -2,4 +2,10 @@
 
 name: right,
 version: "0.0.0",
-components: [ { type: library, path: "content.lushui", dependencies: { left: { path: ".." } } } ],
+components: {
+    right: {
+        type: library,
+        path: "content.lushui",
+        dependencies: { left: { path: ".." } }
+    },
+},

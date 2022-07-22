@@ -1,4 +1,4 @@
-//! The HIRI – [HIR](crate::hir) interpreter.
+//! The HIRI – [HIR](hir) interpreter.
 //!
 //! A tree-walk interpreter. Used during type-checking.
 //!

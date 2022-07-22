@@ -2008,8 +2008,8 @@ pub enum DefinitionError {
     Erased(ErasedReportedError),
     /// Definitions conflicting in name were found.
     ///
-    /// Details about this error are **not stored here** but in the [`ResolverMut`]
-    /// to allow grouping.
+    /// Details about this error are **not stored here** but in the
+    /// resolver state to allow grouping.
     ConflictingDefinition(ErasedReportedError),
 }
 

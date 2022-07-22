@@ -3,8 +3,8 @@
 name: future,
 version: "99.99.999",
 
-components: [
-    {
+components: {
+    main: {
         type: executable,
         "path": "wherever",
         dependencies: {
@@ -12,4 +12,4 @@ components: [
             thing1: { provider: unknown },
         },
     },
-],
+},

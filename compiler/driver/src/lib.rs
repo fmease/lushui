@@ -13,7 +13,6 @@ use colored::Colorize;
 use diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
 use error::Result;
 use hir_format::Display as _;
-use lexer::WordExt;
 use lowered_ast::Display as _;
 use package::{find_package, resolve_file, resolve_package, MANIFEST_FILE_NAME};
 use resolver::ProgramEntryExt;
@@ -22,17 +21,16 @@ use span::SourceMap;
 use std::{
     borrow::Cow,
     default::default,
-    io,
     path::Path,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, RwLock,
     },
 };
-use token::Word;
-use utilities::{displayed, IOError, FILE_EXTENSION};
+use utilities::{displayed, FormatWithPathExt};
 
 mod cli;
+mod create;
 
 pub fn main() -> Result {
     set_panic_hook();
@@ -102,10 +100,9 @@ fn execute_command(
                         Ok(path) => path,
                         Err(error) => {
                             // @Task improve message
-                            // @Task more principled io::Error handling please
                             return Err(Diagnostic::error()
                                 .message("could not read the current folder")
-                                .note(error.to_string())
+                                .note(error.format(None))
                                 .report(&reporter));
                         }
                     };
@@ -171,7 +168,7 @@ fn execute_command(
                 .message("the subcommand ‘initialize’ is not implemented yet")
                 .report(&reporter)),
             cli::PackageCreationMode::New { package_name } => {
-                create_package(&package_name, options, &reporter)
+                create::create_package(&package_name, &options, &reporter)
             }
         },
         Metadata { path } => check_metadata_file(&path, map, &reporter),
@@ -235,7 +232,7 @@ fn build_component(
         println!(
             "   {label} {} ({path})",
             if session.in_goal_package(component.index()) {
-                format!("{} [{}]", component.name(), component.type_())
+                format!("{}", component.name())
             } else {
                 component.name().to_string()
             }
@@ -288,7 +285,7 @@ fn build_component(
             Diagnostic::error()
                 .message(message)
                 .primary_span(path)
-                .note(IOError(error, path.bare).to_string())
+                .note(error.format(Some(path.bare)))
                 .report(session.reporter())
         })?;
 
@@ -480,8 +477,7 @@ fn build_component(
                     // I have no idea.
                     return Err(Diagnostic::error()
                         .message("could not open the generated documentation")
-                        // @Task don't use io::Error::to_string directly but custom printing code (cf. `IOError`)
-                        .note(error.to_string())
+                        .note(error.format(None))
                         .report(session.reporter()));
                 }
             }
@@ -493,116 +489,6 @@ fn build_component(
     Ok(())
 }
 
-const SOURCE_FOLDER_NAME: &str = "source";
-const LIBRARY_FILE_STEM: &str = "library";
-const EXECUTABLE_FILE_STEM: &str = "main";
-
-fn create_package(name: &str, options: cli::PackageCreationOptions, reporter: &Reporter) -> Result {
-    use std::fs;
-
-    let name = Word::parse(name.to_owned()).map_err(|_| {
-        // @Task DRY @Question is the common code justified?
-        Diagnostic::error()
-            .code(ErrorCode::E036)
-            .message(format!("the package name ‘{name}’ is not a valid word"))
-            .report(reporter)
-    })?;
-
-    // @Task handle errors properly
-    let current_path = std::env::current_dir().unwrap();
-    let package_path = current_path.join(name.as_str());
-    fs::create_dir(&package_path).unwrap();
-    let source_folder_path = package_path.join(SOURCE_FOLDER_NAME);
-    fs::create_dir(&source_folder_path).unwrap();
-    {
-        let package_manifest =
-            io::BufWriter::new(fs::File::create(package_path.join(MANIFEST_FILE_NAME)).unwrap());
-
-        create_package_manifest(&name, options, package_manifest).unwrap();
-    }
-    fs::write(package_path.join(".gitignore"), "build/\n").unwrap();
-
-    if options.library {
-        let path = source_folder_path
-            .join(LIBRARY_FILE_STEM)
-            .with_extension(FILE_EXTENSION);
-
-        fs::File::create(path).unwrap();
-    }
-
-    if options.executable {
-        let path = source_folder_path
-            .join(EXECUTABLE_FILE_STEM)
-            .with_extension(FILE_EXTENSION);
-
-        let content = "main: extern.core.text.Text =\n    \"Hello there!\"";
-
-        fs::write(path, content).unwrap();
-    }
-
-    Ok(())
-}
-
-fn create_package_manifest(
-    name: &Word,
-    options: cli::PackageCreationOptions,
-    mut sink: impl io::Write,
-) -> io::Result<()> {
-    {
-        write!(sink, "name: ")?;
-
-        if name.as_str() == "false" || name.as_str() == "true" {
-            write!(sink, r#""{name}""#)?;
-        } else {
-            write!(sink, "{name}")?;
-        }
-
-        writeln!(sink, ",")?;
-    }
-
-    writeln!(sink, r#"version: "0.0.0","#)?;
-    writeln!(sink)?;
-
-    writeln!(sink, "components: [")?;
-
-    if options.library {
-        writeln!(sink, "    {{")?;
-        writeln!(sink, "        type: library,")?;
-        writeln!(
-            sink,
-            r#"        path: "{SOURCE_FOLDER_NAME}/{LIBRARY_FILE_STEM}.lushui","#
-        )?;
-        writeln!(sink)?;
-        writeln!(sink, "        dependencies: {{")?;
-        if !options.no_core {
-            writeln!(sink, "            core: {{ provider: distribution }},")?;
-        }
-        writeln!(sink, "        }},")?;
-        writeln!(sink, "    }},")?;
-    }
-
-    if options.executable {
-        writeln!(sink, "    {{")?;
-        writeln!(sink, "        type: executable,")?;
-        writeln!(
-            sink,
-            r#"        path: "{SOURCE_FOLDER_NAME}/{EXECUTABLE_FILE_STEM}.lushui","#
-        )?;
-        writeln!(sink)?;
-        writeln!(sink, "        dependencies: {{")?;
-        if options.library {
-            writeln!(sink, "            {name}: {{}},")?;
-        }
-        if !options.no_core {
-            writeln!(sink, "            core: {{ provider: distribution }},")?;
-        }
-        writeln!(sink, "        }},")?;
-        writeln!(sink, "    }},")?;
-    }
-
-    writeln!(sink, "],")
-}
-
 fn check_metadata_file(path: &Path, map: &Arc<RwLock<SourceMap>>, reporter: &Reporter) -> Result {
     let file = map
         .write()
@@ -611,7 +497,7 @@ fn check_metadata_file(path: &Path, map: &Arc<RwLock<SourceMap>>, reporter: &Rep
         .map_err(|error| {
             Diagnostic::error()
                 .message("could not load the file")
-                .note(IOError(error, path).to_string())
+                .note(error.format(Some(path)))
                 .report(reporter)
         })?;
 

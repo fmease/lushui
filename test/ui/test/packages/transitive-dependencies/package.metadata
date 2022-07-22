@@ -3,8 +3,8 @@
 name: root,
 version: "0.0.0",
 
-components: [
-    {
+components: {
+    main: {
         type: executable,
         path: "main.lushui",
         dependencies: {
@@ -13,7 +13,7 @@ components: [
             gamma: { path: "gamma" },
         }
     },
-],
+},
 
 # [Description]
 # Test whether long dependency chains work and if references to the same package are deduplicated

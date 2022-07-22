@@ -2,9 +2,9 @@ name: core,
 version: "0.0.0",
 description: "The Lushui standard library",
 
-components: [
-    {
+components: {
+    core: {
         type: library,
         path: "source/library.lushui",
     },
-],
+},

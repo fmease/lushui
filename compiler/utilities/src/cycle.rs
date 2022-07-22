@@ -53,7 +53,7 @@ where
                 .map(|some_node| &graph[some_node])
                 .collect();
 
-            (!cycle.is_empty()).then(|| cycle)
+            (!cycle.is_empty()).then_some(cycle)
         }
         Some(Status::Finished) => None,
         None => {
@@ -108,7 +108,7 @@ where
                 .skip_while(|&some_node| some_node != node)
                 .collect();
 
-            (!cycle.is_empty()).then(|| cycle)
+            (!cycle.is_empty()).then_some(cycle)
         }
         Some(Status::Finished) => None,
         None => {

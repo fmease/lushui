@@ -3,9 +3,9 @@
 name: test,
 version: "0.0.0",
 
-components: [
-    {
+components: {
+    test: {
         type: library,
         path: "nonexistent.lushui",
     },
-],
+},

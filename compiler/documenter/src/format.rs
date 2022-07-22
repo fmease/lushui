@@ -1,7 +1,6 @@
 use super::{
     declaration_id,
     node::{Attributable, Element},
-    FolderId,
 };
 use hir::DeclarationIndex;
 use hir_format::{ComponentExt, Display};
@@ -246,7 +245,7 @@ impl<'a> Formatter<'a> {
         format!(
             "{}{}/index.html",
             self.url_prefix,
-            once(component.folder_id().into())
+            once(component.name().as_str().into())
                 .chain(
                     component
                         .local_index_to_path_segments(index.local_unchecked())

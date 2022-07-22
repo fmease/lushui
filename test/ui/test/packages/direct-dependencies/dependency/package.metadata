@@ -3,9 +3,9 @@
 name: dependency,
 version: "1.0.0",
 
-components: [
-    {
+components: {
+    dependency: {
         type: library,
         path: "dependency.lushui",
     },
-],
+},

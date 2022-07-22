@@ -3,8 +3,8 @@
 name: b,
 version: "0.0.0",
 
-components: [
-    {
+components: {
+    b: {
         type: library,
         path: "source/library.lushui",
 
@@ -13,4 +13,4 @@ components: [
             c: { path: "../c" },
         },
     },
-],
+},

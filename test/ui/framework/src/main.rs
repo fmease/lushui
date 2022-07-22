@@ -1,4 +1,6 @@
 #![feature(default_free_fn, const_option, once_cell, let_else)]
+// @Task use lint list in /.cargo/config.toml (by making this pkg part of the
+//       overarching workspace)
 #![forbid(rust_2018_idioms, unused_must_use)]
 #![warn(clippy::pedantic)]
 #![allow(
@@ -69,13 +71,9 @@ fn try_main() -> Result<(), ()> {
     // save those warnings so we can remove it as the prefix of the following tests
     // but also add a note that some stuff was written to stderr (but status is ok)
     let status = Command::new("cargo")
-        .arg("build")
-        .arg("--manifest-path")
+        .args(["+nightly", "build", "--manifest-path"])
         .arg(compiler_manifest_path())
-        .args(match application.compiler_build_mode {
-            CompilerBuildMode::Debug => &[],
-            CompilerBuildMode::Release => &["--release"][..],
-        })
+        .args(application.compiler_build_mode.to_flags())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -142,6 +140,7 @@ fn try_main() -> Result<(), ()> {
                             application.gilding,
                             application.timeout,
                             application.inspecting,
+                            application.compiler_build_mode,
                             &mut statistics,
                             &mut failures,
                         );
@@ -207,6 +206,7 @@ fn handle_test_folder_entry(
     gilding: Gilding,
     timeout: Option<Duration>,
     inspecting: Inspecting,
+    mode: CompilerBuildMode,
     statistics: &mut TestSuiteStatistics,
     failures: &mut Vec<Failure>,
 ) {
@@ -379,7 +379,7 @@ fn handle_test_folder_entry(
     }
 
     let time = Instant::now();
-    let output = compile(path, &configuration.arguments, type_, timeout);
+    let output = compile(path, &configuration.arguments, type_, timeout, mode);
     let duration = time.elapsed();
 
     let mut failed = false;
@@ -553,6 +553,7 @@ fn compile(
     arguments: &[&str],
     type_: TestType,
     timeout: Option<Duration>,
+    mode: CompilerBuildMode,
 ) -> std::process::Output {
     // @Beacon @Question how can we filter out rustc's warnings from stderr?
 
@@ -568,11 +569,10 @@ fn compile(
     }
 
     command
-        .args(["run", "--quiet"])
-        .arg("--manifest-path")
+        .args(["+nightly", "run", "--quiet", "--manifest-path"])
         .arg(compiler_manifest_path())
-        .arg("--")
-        .arg("--quiet");
+        .args(mode.to_flags())
+        .args(["--", "--quiet"]);
 
     if type_ == TestType::SourceFile {
         command.arg("file");
@@ -765,9 +765,19 @@ fn distributed_libraries_path() -> &'static str {
     &PATH
 }
 
+#[derive(Clone, Copy)]
 enum CompilerBuildMode {
     Debug,
     Release,
+}
+
+impl CompilerBuildMode {
+    fn to_flags(self) -> &'static [&'static str] {
+        match self {
+            Self::Debug => &[],
+            Self::Release => &["--release"][..],
+        }
+    }
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]

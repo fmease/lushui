@@ -1,5 +1,11 @@
 //! Utility functionality and definitions.
-#![feature(associated_type_bounds, decl_macro, never_type_fallback, never_type)]
+#![feature(
+    associated_type_bounds,
+    decl_macro,
+    never_type_fallback,
+    never_type,
+    anonymous_lifetime_in_impl_trait
+)]
 
 use colored::Colorize;
 use difference::{Changeset, Difference};
@@ -81,12 +87,12 @@ pub fn difference(original: &str, edit: &str, split: &str) -> String {
                 }
             }
             Difference::Add(lines) => {
-                for line in lines.lines().chain(lines.is_empty().then(|| "")) {
+                for line in lines.lines().chain(lines.is_empty().then_some("")) {
                     writeln!(buffer, "{} {}", "+".black().on_green(), line.green()).unwrap();
                 }
             }
             Difference::Rem(lines) => {
-                for line in lines.lines().chain(lines.is_empty().then(|| "")) {
+                for line in lines.lines().chain(lines.is_empty().then_some("")) {
                     writeln!(buffer, "{} {}", "-".black().on_red(), line.red()).unwrap();
                 }
             }
@@ -220,14 +226,26 @@ impl AsAutoColoredChangeset for Changeset {
     }
 }
 
-pub struct IOError<'a>(pub std::io::Error, pub &'a Path);
+pub trait FormatWithPathExt {
+    fn format(self, path: Option<&Path>) -> String;
+}
 
-impl fmt::Display for IOError<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // @Question custom messages?
-        write!(f, "‘{}’: {}", self.1.to_string_lossy(), self.0)
+impl FormatWithPathExt for std::io::Error {
+    fn format(self, path: Option<&Path>) -> String {
+        displayed(|f| {
+            // @Task significantly improve the output
+
+            if let Some(path) = path {
+                write!(f, "‘{}’: ", path.to_string_lossy())?;
+            }
+
+            write!(f, "{self}")
+        })
+        .to_string()
     }
 }
+
+// @Task rename to debug / display
 
 pub fn debugged<'f>(
     formatter: impl FnOnce(&mut fmt::Formatter<'_>) -> fmt::Result + 'f,

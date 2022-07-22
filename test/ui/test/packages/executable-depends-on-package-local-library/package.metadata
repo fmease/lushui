@@ -3,8 +3,8 @@
 name: container,
 version: "0.0.0",
 
-components: [
-    {
+components: {
+    container: {
         type: library,
         path: "library.lushui",
 
@@ -12,7 +12,7 @@ components: [
             core: { provider: distribution },
         },
     },
-    {
+    main: {
         type: executable,
         path: "main.lushui",
 
@@ -21,4 +21,4 @@ components: [
             core: { provider: distribution },
         },
     },
-],
+},

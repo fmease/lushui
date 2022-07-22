@@ -7,9 +7,9 @@ on:
   schedule:
     [cron: "0 0 1 * *"]
 
-# Do not set ‘RUSTFLAGS’ or ‘RUSTDOCFLAGS’ anywhere in here! It would overwrite the flags set
-# in ‘.cargo/config.toml’! Instead, make use of the Cargo profile ‘ci’ defined in the mentioned
-# config file whose registered Rust flags are *appended* to the parent profile's ones.
+# Ideally, do not set ‘RUSTFLAGS’ or ‘RUSTDOCFLAGS’ anywhere in here! It would overwrite the flags
+# set in ‘.cargo/config.toml’! Instead, make use of the Cargo profile ‘ci’ defined in the
+# aforementioned config file whose registered Rust flags are *appended* to the parent profile's ones.
 env:
   CARGO_TERM_COLOR: always
   RUSTUP_TOOLCHAIN: nightly
@@ -99,9 +99,23 @@ jobs:
         uses: actions/checkout@v3
       - name: Install Rust
         run: rustup update --no-self-update nightly
-      - name: Build documentation with rustdoc
+      - name: Check the rustdoc documentation
         # @Task document with LLVM
-        run: cargo doc --profile ci --no-deps --features cranelift,lsp
+        # @Bug There is an output filename collision between
+        # `cranelift_codegen` (in package `cranelift_codegen v0.0.0`) and
+        # `cranelift-codegen` (in package `cranelift-codegen v0.85.1`).
+        # Writing it down like this, it's pretty obvious. What a shame.
+        # We need to rename *our* package :(
+        run: cargo doc --profile ci --features cranelift,lsp
+        env:
+          # Unfortunately, we *do* need to resort to an ostracized env var here
+          # since ‘rustdocflags’ (or an equivalent) is not supported in
+          # Cargo profiles (yet, maybe): cargo#10271.
+          # This is currently semi-acceptable since none of the (lint-related)
+          # Rust flags set in the config file (for all profiles) are
+          # rustdoc-specific and lint violations should thus have already
+          # been caught by the ‘build-on-linux’ CI job.
+          RUSTDOCFLAGS: -Dwarnings --check -Zunstable-options
 
   clippy:
     name: Run Clippy (on Linux)

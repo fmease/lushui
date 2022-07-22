@@ -3,9 +3,8 @@
 name: "???",
 version: "0.0.0",
 
-components: [
-    {
-        name: "of",
+components: {
+    "of": {
         type: executable,
         path: "",
 
@@ -15,4 +14,5 @@ components: [
             data: {},
         },
     },
-],
+    # @Task add unquoted invalid name
+},

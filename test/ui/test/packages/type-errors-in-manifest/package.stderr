@@ -13,38 +13,38 @@ error[E800]: expected type ‘text’ but got type ‘list’
   |
 
 error[E800]: expected type ‘record’ but got type ‘text’
- --> ${TEST_FOLDER}/packages/type-errors-in-manifest/package.metadata:5:15
+ --> ${TEST_FOLDER}/packages/type-errors-in-manifest/package.metadata:6:11
   |
-5 | components: [ "core", {}, { type: false, } ],
-  |               ^^^^^^ has the wrong type
+6 |     ichi: "core",
+  |           ^^^^^^ has the wrong type
   |
 
 error[E802]: the record does not contain the entry ‘path’
- --> ${TEST_FOLDER}/packages/type-errors-in-manifest/package.metadata:5:23
+ --> ${TEST_FOLDER}/packages/type-errors-in-manifest/package.metadata:7:9
   |
-5 | components: [ "core", {}, { type: false, } ],
-  |                       ^^
+7 |     ni: {},
+  |         ^^
   |
 
 error[E802]: the record does not contain the entry ‘type’
- --> ${TEST_FOLDER}/packages/type-errors-in-manifest/package.metadata:5:23
+ --> ${TEST_FOLDER}/packages/type-errors-in-manifest/package.metadata:7:9
   |
-5 | components: [ "core", {}, { type: false, } ],
-  |                       ^^
+7 |     ni: {},
+  |         ^^
   |
 
 error[E802]: the record does not contain the entry ‘path’
- --> ${TEST_FOLDER}/packages/type-errors-in-manifest/package.metadata:5:27
+ --> ${TEST_FOLDER}/packages/type-errors-in-manifest/package.metadata:8:10
   |
-5 | components: [ "core", {}, { type: false, } ],
-  |                           ^^^^^^^^^^^^^^^^
+8 |     san: { type: false, },
+  |          ^^^^^^^^^^^^^^^^
   |
 
 error[E800]: expected type ‘text’ but got type ‘boolean’
- --> ${TEST_FOLDER}/packages/type-errors-in-manifest/package.metadata:5:35
+ --> ${TEST_FOLDER}/packages/type-errors-in-manifest/package.metadata:8:18
   |
-5 | components: [ "core", {}, { type: false, } ],
-  |                                   ^^^^^ has the wrong type
+8 |     san: { type: false, },
+  |                  ^^^^^ has the wrong type
   |
 
 error: aborting due to 7 previous errors

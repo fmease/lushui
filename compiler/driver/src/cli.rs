@@ -1,3 +1,4 @@
+use crate::create::PackageCreationOptions;
 use clap::{Arg, ArgMatches};
 use colored::Colorize;
 use derivation::{Elements, FromStr, Str};
@@ -214,6 +215,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                 .about("Create a new package in the current folder")
                 .args(&package_creation_arguments),
             clap::Command::new(subcommand::NEW)
+                // @Task elaborate, smh. mention that creates a folder in the current one
                 .about("Create a new package")
                 .arg(
                     Arg::new(argument::NAME)
@@ -642,13 +644,6 @@ pub(crate) enum PassRestriction {
 pub(crate) enum PackageCreationMode {
     Initialize,
     New { package_name: String },
-}
-
-#[derive(Clone, Copy)]
-pub(crate) struct PackageCreationOptions {
-    pub(crate) no_core: bool,
-    pub(crate) library: bool,
-    pub(crate) executable: bool,
 }
 
 impl PackageCreationOptions {

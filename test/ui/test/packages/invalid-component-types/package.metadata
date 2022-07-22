@@ -3,13 +3,13 @@
 name: what,
 version: "99.99.991",
 
-components: [
-    {
+components: {
+    alpha: {
         type: examples,
         path: "examples/first.lushui",
     },
-    {
+    beta: {
         type: "tes t#",
         path: "tests/first.lushui",
     },
-]
+},
