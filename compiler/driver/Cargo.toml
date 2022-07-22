@@ -6,22 +6,22 @@ edition = "2021"
 publish = false
 
 [features]
-llvm = ["dep:llvm_codegen"]
-cranelift = ["dep:cranelift_codegen"]
+llvm = ["dep:codegen_llvm"]
+cranelift = ["dep:codegen_cranelift"]
 lsp = ["dep:server", "dep:tokio"]
 
 [dependencies]
 ast = { path = "../ast" }
 clap = "3.1.5"
+codegen_cranelift = { path = "../codegen_cranelift", optional = true }
+codegen_llvm = { path = "../codegen_llvm", optional = true }
 colored = "2.0.0"
-cranelift_codegen = { path = "../cranelift_codegen", optional = true }
 derivation = { path = "../../project/library/derivation" }
 diagnostics = { path = "../diagnostics" }
 documenter = { path = "../documenter" }
 error = { path = "../error" }
 hir_format = { path = "../hir_format" }
 lexer = { path = "../lexer" }
-llvm_codegen = { path = "../llvm_codegen", optional = true }
 lowered_ast = { path = "../lowered_ast" }
 lowerer = { path = "../lowerer" }
 metadata = { path = "../metadata" }

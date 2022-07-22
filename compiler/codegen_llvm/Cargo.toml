@@ -1,5 +1,5 @@
 [package]
-name = "llvm_codegen"
+name = "codegen_llvm"
 version = "0.0.0"
 description = "The LLVM backend generating LLVM-IR"
 edition = "2021"

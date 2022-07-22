@@ -139,6 +139,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "codegen_cranelift"
+version = "0.0.0"
+dependencies = [
+ "cranelift",
+ "cranelift-module",
+ "cranelift-native",
+ "cranelift-object",
+ "diagnostics",
+ "error",
+ "hir",
+ "session",
+]
+
+[[package]]
+name = "codegen_llvm"
+version = "0.0.0"
+dependencies = [
+ "diagnostics",
+ "error",
+ "hir",
+ "hir_format",
+ "inkwell",
+ "resolver",
+ "session",
+ "utilities",
+]
+
+[[package]]
 name = "colored"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -257,20 +285,6 @@ dependencies = [
  "log",
  "object",
  "target-lexicon",
-]
-
-[[package]]
-name = "cranelift_codegen"
-version = "0.0.0"
-dependencies = [
- "cranelift",
- "cranelift-module",
- "cranelift-native",
- "cranelift-object",
- "diagnostics",
- "error",
- "hir",
- "session",
 ]
 
 [[package]]
@@ -424,15 +438,15 @@ version = "0.0.0"
 dependencies = [
  "ast",
  "clap",
+ "codegen_cranelift",
+ "codegen_llvm",
  "colored",
- "cranelift_codegen",
  "derivation",
  "diagnostics",
  "documenter",
  "error",
  "hir_format",
  "lexer",
- "llvm_codegen",
  "lowered_ast",
  "lowerer",
  "metadata",
@@ -758,20 +772,6 @@ dependencies = [
  "libc",
  "regex",
  "semver",
-]
-
-[[package]]
-name = "llvm_codegen"
-version = "0.0.0"
-dependencies = [
- "diagnostics",
- "error",
- "hir",
- "hir_format",
- "inkwell",
- "resolver",
- "session",
- "utilities",
 ]
 
 [[package]]

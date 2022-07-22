@@ -428,8 +428,8 @@ fn build_component(
                     .report(session.reporter()));
             }
             #[cfg(feature = "cranelift")]
-            Backend::Cranelift => cranelift_codegen::compile_and_link(
-                cranelift_codegen::Options {
+            Backend::Cranelift => codegen_cranelift::compile_and_link(
+                codegen_cranelift::Options {
                     emit_clif: options.emit_clif,
                     verify_clif: options.verify_clif,
                 },
@@ -439,8 +439,8 @@ fn build_component(
             )?,
             #[cfg(feature = "llvm")]
             Backend::Llvm => {
-                llvm_codegen::compile_and_link(
-                    llvm_codegen::Options {
+                codegen_llvm::compile_and_link(
+                    codegen_llvm::Options {
                         emit_llvm_ir: options.emit_llvm_ir,
                         verify_llvm_ir: options.verify_llvm_ir,
                     },
