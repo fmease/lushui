@@ -1,8 +1,7 @@
 //! Package creation.
 
-use diagnostics::{Diagnostic, ErrorCode, Reporter};
+use diagnostics::{Diagnostic, Reporter};
 use error::Result;
-use lexer::WordExt;
 use package::MANIFEST_FILE_NAME;
 use std::{fs, io, path::PathBuf};
 use token::Word;
@@ -13,61 +12,56 @@ const LIBRARY_FILE_STEM: &str = "library";
 const EXECUTABLE_FILE_STEM: &str = "main";
 
 pub(crate) fn create_package(
-    name: &str,
+    name: Word,
     options: &PackageCreationOptions,
     reporter: &Reporter,
 ) -> Result {
-    let name = Word::parse(name.to_owned()).map_err(|_| {
-        // @Task DRY @Question is the common code justified?
-        Diagnostic::error()
-            .code(ErrorCode::E036)
-            .message(format!("the package name ‘{name}’ is not a valid word"))
-            .report(reporter)
-    })?;
-
-    || -> Result<(), Error> {
-        let current_path = std::env::current_dir()?;
-
-        let package_path = current_path.join(name.as_str());
-        fs::create_dir(&package_path).with_path(package_path.clone())?;
-
-        let source_folder_path = package_path.join(SOURCE_FOLDER_NAME);
-        fs::create_dir(&source_folder_path).with_path(source_folder_path.clone())?;
-
-        {
-            let path = package_path.join(MANIFEST_FILE_NAME);
-            let package_manifest = io::BufWriter::new(fs::File::create(&path).with_path(path)?);
-            create_package_manifest(&name, options, package_manifest)?;
-        }
-
-        {
-            let path = package_path.join(".gitignore");
-            fs::write(&path, "build/\n").with_path(path)?;
-        }
-
-        if options.library {
-            let path = source_folder_path
-                .join(LIBRARY_FILE_STEM)
-                .with_extension(FILE_EXTENSION);
-            fs::File::create(&path).with_path(path)?;
-        }
-
-        if options.executable {
-            let path = source_folder_path
-                .join(EXECUTABLE_FILE_STEM)
-                .with_extension(FILE_EXTENSION);
-            let content = "main: extern.core.text.Text =\n    \"Hello there!\"";
-            fs::write(&path, content).with_path(path)?;
-        }
-
-        Ok(())
-    }()
-    .map_err(|error| {
-        Diagnostic::error()
+    if let Err(error) = create(name.clone(), options) {
+        return Err(Diagnostic::error()
             .message(format!("could not create package ‘{name}’"))
             .note(error.inner.format(error.path.as_deref()))
-            .report(reporter)
-    })
+            .report(reporter));
+    }
+
+    Ok(())
+}
+
+fn create(name: Word, options: &PackageCreationOptions) -> Result<(), Error> {
+    let current_path = std::env::current_dir()?;
+
+    let package_path = current_path.join(name.as_str());
+    fs::create_dir(&package_path).with_path(package_path.clone())?;
+
+    let source_folder_path = package_path.join(SOURCE_FOLDER_NAME);
+    fs::create_dir(&source_folder_path).with_path(source_folder_path.clone())?;
+
+    {
+        let path = package_path.join(MANIFEST_FILE_NAME);
+        let package_manifest = io::BufWriter::new(fs::File::create(&path).with_path(path)?);
+        create_package_manifest(&name, options, package_manifest)?;
+    }
+
+    {
+        let path = package_path.join(".gitignore");
+        fs::write(&path, "build/\n").with_path(path)?;
+    }
+
+    if options.library {
+        let path = source_folder_path
+            .join(LIBRARY_FILE_STEM)
+            .with_extension(FILE_EXTENSION);
+        fs::File::create(&path).with_path(path)?;
+    }
+
+    if options.executable {
+        let path = source_folder_path
+            .join(EXECUTABLE_FILE_STEM)
+            .with_extension(FILE_EXTENSION);
+        let content = "main: extern.core.text.Text =\n    \"Hello there!\"";
+        fs::write(&path, content).with_path(path)?;
+    }
+
+    Ok(())
 }
 
 pub(crate) struct PackageCreationOptions {

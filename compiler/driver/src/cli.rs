@@ -1,15 +1,16 @@
-#![allow(deprecated)] // @Temporary
-
 use crate::create::PackageCreationOptions;
-use clap::{Arg, ArgMatches};
+use clap::{
+    builder::{TypedValueParser, ValueParser},
+    Arg, ArgAction, ArgMatches, PossibleValue,
+};
 use colored::Colorize;
 use derivation::{Elements, FromStr, Str};
 use error::Result;
+use lexer::WordExt;
+use package::ComponentFilter;
 use session::ComponentType;
-use std::{cmp::max, default::default, path::PathBuf};
-
-/// Unstable environment variable to control if internal commands are shown.
-const LUSHUI_DEVELOPER_ENV_VAR: &str = "LUSHUI_DEVELOPER";
+use std::{cmp::max, default::default, ffi::OsStr, path::PathBuf};
+use token::Word;
 
 pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
     let short_version = format!(
@@ -37,38 +38,37 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
 
     let metadata_subcommand_disclaimer = &*METADATA_SUBCOMMAND_DISCLAIMER.red().to_string();
 
-    let package_path_argument = Arg::new(argument::PATH).allow_invalid_utf8(true).help(
+    let path_argument = Arg::new(argument::PATH).value_parser(ValueParser::path_buf());
+
+    let package_path_argument = path_argument.clone().help(
         "The path to a folder containing a package. Defaults to the local package \
          i.e. the first package whose manifest is found starting the search in the current folder \
-         then looking through each parent folder.",
+         then looking through each parent folder",
     );
 
     let backend_option = Arg::new(option::BACKEND)
         .long("backend")
         .short('b')
-        .takes_value(true)
         .value_name("BACKEND")
-        // @Task get rid of closure once fn name takes self by value
-        .possible_values(Backend::elements().map(|element| element.name()))
+        .value_parser(BackendParser)
         .help("Set the backend");
 
+    let component_type_option = Arg::new(option::COMPONENT_TYPE)
+        .long("component-type")
+        .short('t')
+        .value_name("TYPE")
+        .value_parser(ComponentTypeParser);
+
     let file_build_arguments = [
-        Arg::new(argument::PATH)
-            .allow_invalid_utf8(true)
+        path_argument
+            .clone()
             .required(true)
             .help("The path to a source file"),
         Arg::new(option::NO_CORE)
             .long("no-core")
             .short('0')
-            // @Task rephrase this not using the word "remove"
-            .help("Remove the dependency to the standard library ‘core’"),
-        Arg::new(option::COMPONENT_TYPE)
-            .long("component-type")
-            .short('t')
-            .value_name("TYPE")
-            // @Task write the closure as a function binding once StaticStr derives self by value
-            .possible_values(ComponentType::elements().map(|type_| type_.name()))
-            .help("Set the component type"),
+            .help("Drop the default dependency on the standard library ‘core’"),
+        component_type_option.clone().help("Set the component type"),
     ];
 
     let documentation_arguments = [
@@ -84,7 +84,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
     let package_creation_arguments = [
         Arg::new(option::NO_CORE)
             .long("no-core")
-            .help("Do not make the new package dependent on the standard library ‘core’"),
+            .help("Drop the default dependency on the standard library ‘core’"),
         Arg::new(option::EXECUTABLE)
             .long("executable")
             .visible_alias("exe")
@@ -95,35 +95,23 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
             .help("Create a library component in the new package"),
     ];
 
-    let target_libraries_options = [
-        Arg::new(option::TARGET_ALL_LIBRARIES)
-            .long("libraries")
-            .visible_alias("libs")
-            .help("Target all libraries"),
-        Arg::new(option::TARGET_LIBRARIES)
-            .long(ComponentType::Library.name())
-            .visible_alias(ComponentType::Library.short_name())
+    let filter_options = [
+        Arg::new(option::COMPONENT)
+            .long("component")
+            .short('c')
             .value_name(argument::NAME)
-            .help("Target only the given or primary library"),
+            .action(ArgAction::Append)
+            .value_parser(WordParser)
+            .help("Target only the given component"),
+        component_type_option
+            .action(ArgAction::Append)
+            .help("Target only components of the given type"),
     ];
-
-    let target_all_executables_option = Arg::new(option::TARGET_ALL_EXECUTABLES)
-        .long("executables")
-        .visible_alias("exes")
-        .help("Target all executables");
-
-    let target_executable_option = Arg::new(option::TARGET_EXECUTABLES)
-        .long(ComponentType::Executable.name())
-        .visible_alias(ComponentType::Executable.short_name())
-        .value_name(argument::NAME)
-        .help("Target only the given or primary executable");
-
-    let target_executables_option = target_executable_option.clone().multiple_occurrences(true);
 
     let unstable_options = Arg::new(option::UNSTABLE_OPTION)
         .short('Z')
         .value_name("OPTION")
-        .multiple_occurrences(true)
+        .action(ArgAction::Append)
         .help("Set an unstable option. See ‘-Z help’ for details");
 
     // @Task use `try_get_matches` (no real block, just def an error type and smh exit with code 2 instead of 1 on error)
@@ -134,46 +122,41 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
         .about("The reference compiler of the Lushui programming language")
         .subcommand_required(true)
         .arg_required_else_help(true)
-        .arg(
+        .args([
             Arg::new(option::QUIET)
                 .long("quiet")
                 .short('q')
                 .global(true)
                 .help("Suppress status output from being printed to stdout"),
-        )
+            Arg::new(option::COLOR)
+                .long("color")
+                .global(true)
+                .value_name("WHEN")
+                .value_parser(ColorModeParser)
+                .help("Control when to use color"),
+        ])
         .subcommands([
             clap::Command::new(subcommand::CHECK)
                 .visible_alias("c")
                 .about("Check the given or local package for errors")
                 .args([&package_path_argument, &unstable_options])
-                .args(&target_libraries_options)
-                .args([&target_all_executables_option, &target_executables_option]),
+                .args(&filter_options),
             clap::Command::new(subcommand::BUILD)
                 .visible_alias("b")
                 .about("Compile the given or local package")
                 .args([&package_path_argument, &backend_option, &unstable_options])
-                .args(&target_libraries_options)
-                .args([&target_all_executables_option, &target_executables_option]),
+                .args(&filter_options),
             clap::Command::new(subcommand::RUN)
                 .visible_alias("r")
                 .about("Run the given or local package")
-                .args([
-                    &package_path_argument,
-                    &backend_option,
-                    &unstable_options,
-                    &target_executable_option,
-                ]),
+                .args([&package_path_argument, &backend_option, &unstable_options])
+                .args(&filter_options),
             clap::Command::new(subcommand::DOCUMENT)
                 .visible_aliases(&["doc", "d"])
                 .about("Document the given or local package")
-                .args([
-                    &package_path_argument,
-                    &unstable_options,
-                    &target_all_executables_option,
-                    &target_executables_option,
-                ])
-                .args(&documentation_arguments)
-                .args(target_libraries_options),
+                .args([&package_path_argument, &unstable_options])
+                .args(&filter_options)
+                .args(&documentation_arguments),
             clap::Command::new(subcommand::FILE)
                 .visible_alias("f")
                 .subcommand_required(true)
@@ -208,7 +191,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                 .about("Explain given error codes")
                 .arg(
                     Arg::new(argument::CODES)
-                        .multiple_occurrences(true)
+                        .action(ArgAction::Append)
                         .required(true)
                         .help("The error codes that need explanation"),
                 ),
@@ -217,8 +200,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                 .about("Create a new package in the current folder")
                 .args(&package_creation_arguments),
             clap::Command::new(subcommand::NEW)
-                // @Task elaborate, smh. mention that creates a folder in the current one
-                .about("Create a new package")
+                .about("Create a new package in a new folder")
                 .arg(
                     Arg::new(argument::NAME)
                         .required(true)
@@ -227,11 +209,10 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                 .args(package_creation_arguments),
             clap::Command::new(subcommand::METADATA)
                 .about("Check a metadata file for syntax errors")
-                .hide(hide_internal_commands())
+                .hide(true)
                 .after_help(metadata_subcommand_disclaimer)
                 .arg(
-                    Arg::new(argument::PATH)
-                        .allow_invalid_utf8(true)
+                    path_argument
                         .required(true)
                         .help("The path to the metadata file"),
                 ),
@@ -278,8 +259,8 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                 _ => unreachable!(),
             };
             Command::BuildPackage {
-                options: PackageBuildOptions::deserialize(matches, unstable_build_options, &mode),
                 mode,
+                options: PackageBuildOptions::deserialize(matches, unstable_build_options),
             }
         }
         (subcommand::FILE, matches) => {
@@ -329,14 +310,14 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
             mode: match command {
                 subcommand::INITIALIZE => PackageCreationMode::Initialize,
                 subcommand::NEW => PackageCreationMode::New {
-                    package_name: matches.value_of(argument::NAME).unwrap().into(),
+                    package_name: matches.get_one(argument::NAME).cloned().unwrap(),
                 },
                 _ => unreachable!(),
             },
             options: PackageCreationOptions::deserialize(matches),
         },
         (subcommand::METADATA, matches) => Command::Metadata {
-            path: matches.value_of_os(argument::PATH).unwrap().into(),
+            path: matches.get_one(argument::PATH).cloned().unwrap(),
         },
         _ => unreachable!(),
     };
@@ -365,23 +346,17 @@ mod argument {
 }
 
 mod option {
-    pub(super) const COMPONENT_TYPE: &str = "component_type";
     pub(super) const BACKEND: &str = "backend";
+    pub(super) const COLOR: &str = "color";
+    pub(super) const COMPONENT_TYPE: &str = "component_type";
+    pub(super) const COMPONENT: &str = "component";
     pub(super) const EXECUTABLE: &str = "executable";
     pub(super) const LIBRARY: &str = "library";
     pub(super) const NO_CORE: &str = "no_core";
     pub(super) const NO_DEPENDENCIES: &str = "no_dependencies";
     pub(super) const OPEN: &str = "open";
     pub(super) const QUIET: &str = "quiet";
-    pub(super) const TARGET_ALL_EXECUTABLES: &str = "target-all-executables";
-    pub(super) const TARGET_ALL_LIBRARIES: &str = "target-all-libraries";
-    pub(super) const TARGET_EXECUTABLES: &str = "target-executables";
-    pub(super) const TARGET_LIBRARIES: &str = "target-libraries";
     pub(super) const UNSTABLE_OPTION: &str = "unstable-option";
-}
-
-fn hide_internal_commands() -> bool {
-    std::env::var_os(LUSHUI_DEVELOPER_ENV_VAR).map_or(true, |variable| variable == "0")
 }
 
 const METADATA_SUBCOMMAND_DISCLAIMER: &str = "\
@@ -411,16 +386,57 @@ pub(crate) enum Command {
     },
 }
 
-// @Task add --color=always|never|auto
 pub(crate) struct GlobalOptions {
     pub(crate) quiet: bool,
+    pub(crate) color: ColorMode,
 }
 
 impl GlobalOptions {
     fn deserialize(matches: &ArgMatches) -> GlobalOptions {
         Self {
-            quiet: matches.is_present(option::QUIET),
+            quiet: matches.contains_id(option::QUIET),
+            color: matches.get_one(option::COLOR).copied().unwrap_or_default(),
         }
+    }
+}
+
+#[derive(Default, Clone, Copy, FromStr, Str, Elements)]
+#[format(dash_case)]
+pub(crate) enum ColorMode {
+    Always,
+    Never,
+    #[default]
+    Auto,
+}
+
+#[derive(Clone)]
+struct ColorModeParser;
+
+impl TypedValueParser for ColorModeParser {
+    type Value = ColorMode;
+
+    fn parse_ref(
+        &self,
+        _: &clap::Command<'_>,
+        _: Option<&Arg<'_>>,
+        source: &std::ffi::OsStr,
+    ) -> Result<Self::Value, clap::Error> {
+        let source = parse_utf8(source)?;
+
+        source.parse().map_err(|_| {
+            // @Task smh. avoid using `Error::raw` and smh. pass along the context.
+            //       https://github.com/clap-rs/clap/discussions/4029
+            clap::Error::raw(
+                clap::ErrorKind::InvalidValue,
+                format!("‘{source}’ is not a valid color mode\n"),
+            )
+        })
+    }
+
+    fn possible_values(&self) -> Option<Box<dyn Iterator<Item = PossibleValue<'static>> + '_>> {
+        Some(Box::new(
+            ColorMode::elements().map(|mode| PossibleValue::new(mode.name())),
+        ))
     }
 }
 
@@ -434,72 +450,37 @@ pub(crate) enum BuildMode {
 pub(crate) struct PackageBuildOptions {
     pub(crate) general: BuildOptions,
     pub(crate) path: Option<PathBuf>,
-    #[allow(dead_code)]
-    pub(crate) targets: BuildTargets,
+    pub(crate) filter: ComponentFilter,
 }
 
 impl PackageBuildOptions {
-    fn deserialize(
-        matches: &ArgMatches,
-        unstable_options: Vec<unstable::BuildOption>,
-        mode: &BuildMode,
-    ) -> Self {
+    fn deserialize(matches: &ArgMatches, unstable_options: Vec<unstable::BuildOption>) -> Self {
         Self {
-            path: matches.value_of_os(argument::PATH).map(Into::into),
+            path: matches.get_one(argument::PATH).cloned(),
             general: BuildOptions::deserialize(unstable_options),
-            targets: BuildTargets::deserialize(matches, mode),
+            filter: ComponentFilter::deserialize(matches),
         }
     }
 }
 
-pub(crate) struct BuildTargets(/* empty means any */ Vec<BuildTarget>);
-
-impl BuildTargets {
-    fn deserialize(matches: &ArgMatches, mode: &BuildMode) -> Self {
-        let should_run = matches!(mode, BuildMode::Run { .. });
-
-        let all_libraries = !should_run && matches.is_present(option::TARGET_ALL_LIBRARIES);
-        let all_executables = !should_run && matches.is_present(option::TARGET_ALL_EXECUTABLES);
-
-        if all_libraries && all_executables {
-            return Self(Vec::new());
-        }
-
-        let mut targets = Vec::new();
-
-        if all_libraries {
-            targets.push(BuildTarget {
-                name: None,
-                type_: Some(ComponentType::Library),
-            });
-        } else if !should_run && let Some(libraries) = matches.values_of(option::TARGET_LIBRARIES) {
-            targets.extend(libraries.into_iter().map(|name| BuildTarget {
-                name: Some(name.to_owned()),
-                type_: Some(ComponentType::Library),
-            }));
-        }
-
-        if all_executables {
-            targets.push(BuildTarget {
-                name: None,
-                type_: Some(ComponentType::Executable),
-            });
-        } else if let Some(executables) = matches.values_of(option::TARGET_EXECUTABLES) {
-            targets.extend(executables.into_iter().map(|name| BuildTarget {
-                name: Some(name.to_owned()),
-                type_: Some(ComponentType::Executable),
-            }));
-        }
-
-        Self(targets)
-    }
+trait DeserializeExt {
+    fn deserialize(matches: &ArgMatches) -> Self;
 }
 
-#[allow(dead_code)] // @Temporary
-pub(crate) struct BuildTarget {
-    // @Task parse it already, make it a Word
-    name: Option<String>,
-    type_: Option<ComponentType>,
+impl DeserializeExt for ComponentFilter {
+    fn deserialize(matches: &ArgMatches) -> Self {
+        let mut filter = Self::default();
+
+        if let Some(components) = matches.get_many(option::COMPONENT) {
+            filter.names.extend(components.into_iter().cloned());
+        }
+
+        if let Some(types) = matches.get_many::<ComponentType>(option::COMPONENT_TYPE) {
+            filter.types.extend(types.into_iter().copied());
+        }
+
+        filter
+    }
 }
 
 pub(crate) struct FileBuildOptions {
@@ -512,12 +493,10 @@ pub(crate) struct FileBuildOptions {
 impl FileBuildOptions {
     fn deserialize(matches: &ArgMatches, unstable_options: Vec<unstable::BuildOption>) -> Self {
         Self {
-            path: matches.value_of_os(argument::PATH).unwrap().into(),
+            path: matches.get_one(argument::PATH).cloned().unwrap(),
             general: BuildOptions::deserialize(unstable_options),
-            no_core: matches.is_present(option::NO_CORE),
-            component_type: matches
-                .value_of(option::COMPONENT_TYPE)
-                .map(|input| input.parse().unwrap()),
+            no_core: matches.contains_id(option::NO_CORE),
+            component_type: matches.get_one(option::COMPONENT_TYPE).copied(),
         }
     }
 }
@@ -590,9 +569,10 @@ impl CompilationOptions {
     ) -> Self {
         #[allow(unused_mut, clippy::needless_update)]
         let mut options = Self {
+            // @Task instead of unwrap_or_default use clap's way sth sth default_value
             backend: matches
-                .value_of(option::BACKEND)
-                .map(|input| input.parse().unwrap())
+                .get_one(option::BACKEND)
+                .copied()
                 .unwrap_or_default(),
             ..default()
         };
@@ -621,7 +601,7 @@ impl CompilationOptions {
     }
 }
 
-#[derive(Default, FromStr, Str, Elements)]
+#[derive(Default, FromStr, Str, Elements, Clone, Copy)]
 #[format(dash_case)]
 pub(crate) enum Backend {
     /// HIRI – The HIR interpreter.
@@ -645,18 +625,18 @@ pub(crate) enum PassRestriction {
 
 pub(crate) enum PackageCreationMode {
     Initialize,
-    New { package_name: String },
+    New { package_name: Word },
 }
 
 impl PackageCreationOptions {
     fn deserialize(matches: &ArgMatches) -> Self {
-        let library = matches.is_present(option::LIBRARY);
+        let library = matches.contains_id(option::LIBRARY);
 
         Self {
-            no_core: matches.is_present(option::NO_CORE),
+            no_core: matches.contains_id(option::NO_CORE),
             library,
             // implicitly set when no explicit component type specified
-            executable: matches.is_present(option::EXECUTABLE) || !library,
+            executable: matches.contains_id(option::EXECUTABLE) || !library,
         }
     }
 }
@@ -674,8 +654,8 @@ impl DocumentationOptions {
         unstable_options: Vec<unstable::DocumentationOption>,
     ) -> Self {
         let mut options = Self {
-            open: matches.is_present(option::OPEN),
-            no_dependencies: matches.is_present(option::NO_DEPENDENCIES),
+            open: matches.contains_id(option::OPEN),
+            no_dependencies: matches.contains_id(option::NO_DEPENDENCIES),
             ..default()
         };
 
@@ -689,6 +669,94 @@ impl DocumentationOptions {
         }
 
         options
+    }
+}
+
+#[derive(Clone)]
+struct WordParser;
+
+impl TypedValueParser for WordParser {
+    type Value = Word;
+
+    fn parse_ref(
+        &self,
+        _: &clap::Command<'_>,
+        _: Option<&Arg<'_>>,
+        source: &OsStr,
+    ) -> Result<Self::Value, clap::Error> {
+        let source = parse_utf8(source)?;
+
+        Word::parse(source.to_owned()).map_err(|_| {
+            // @Task smh. avoid using `Error::raw` and smh. pass along the context.
+            //       https://github.com/clap-rs/clap/discussions/4029
+            clap::Error::raw(
+                clap::ErrorKind::InvalidValue,
+                format!("‘{source}’ is not a valid word\n"),
+            )
+        })
+    }
+}
+
+#[derive(Clone, Copy)]
+struct ComponentTypeParser;
+
+impl TypedValueParser for ComponentTypeParser {
+    type Value = ComponentType;
+
+    fn parse_ref(
+        &self,
+        _: &clap::Command<'_>,
+        _: Option<&Arg<'_>>,
+        source: &OsStr,
+    ) -> Result<Self::Value, clap::Error> {
+        let source = parse_utf8(source)?;
+
+        // @Task smh. also support the shorthands (e.g. `exe`, `lib`)
+        source.parse().map_err(|_| {
+            // @Task smh. avoid using `Error::raw` and smh. pass along the context.
+            //       https://github.com/clap-rs/clap/discussions/4029
+            clap::Error::raw(
+                clap::ErrorKind::InvalidValue,
+                format!("‘{source}’ is not a valid component type\n"),
+            )
+        })
+    }
+
+    fn possible_values(&self) -> Option<Box<dyn Iterator<Item = PossibleValue<'static>> + '_>> {
+        Some(Box::new(
+            ComponentType::elements().map(|type_| PossibleValue::new(type_.name())),
+        ))
+    }
+}
+
+#[derive(Clone, Copy)]
+struct BackendParser;
+
+impl TypedValueParser for BackendParser {
+    type Value = Backend;
+
+    fn parse_ref(
+        &self,
+        _: &clap::Command<'_>,
+        _: Option<&Arg<'_>>,
+        source: &OsStr,
+    ) -> Result<Self::Value, clap::Error> {
+        let source = parse_utf8(source)?;
+
+        source.parse().map_err(|_| {
+            // @Task smh. avoid using `Error::raw` and smh. pass along the context.
+            //       https://github.com/clap-rs/clap/discussions/4029
+            clap::Error::raw(
+                clap::ErrorKind::InvalidValue,
+                format!("‘{source}’ is not a valid backend\n"),
+            )
+        })
+    }
+
+    fn possible_values(&self) -> Option<Box<dyn Iterator<Item = PossibleValue<'static>> + '_>> {
+        Some(Box::new(
+            Backend::elements().map(|backend| PossibleValue::new(backend.name())),
+        ))
     }
 }
 
@@ -708,7 +776,7 @@ mod unstable {
         let mut options = Vec::new();
         let mut invalid_options = Vec::new();
 
-        if let Some(unparsed_options) = matches.values_of(super::option::UNSTABLE_OPTION) {
+        if let Some(unparsed_options) = matches.get_many::<String>(super::option::UNSTABLE_OPTION) {
             for option in unparsed_options {
                 if option == HELP_OPTION {
                     help::<O>();
@@ -837,8 +905,6 @@ mod unstable {
         VerifyClif,
         #[cfg(feature = "llvm")]
         VerifyLlvmIr,
-        // @Task
-        // Linker(Option<String>),
     }
 
     impl UnstableOption for CompilationOption {
@@ -989,4 +1055,15 @@ mod unstable {
             Self::UndefinedOption
         }
     }
+}
+
+fn parse_utf8(source: &OsStr) -> Result<&str, clap::Error> {
+    source.to_str().ok_or_else(|| {
+        // @Task smh. avoid using `Error::raw` and smh. pass along the context.
+        //       https://github.com/clap-rs/clap/discussions/4029
+        clap::Error::raw(
+            clap::ErrorKind::InvalidUtf8,
+            format!("‘{}’ is not valid UTF-8\n", source.to_string_lossy()),
+        )
+    })
 }

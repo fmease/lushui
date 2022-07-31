@@ -12,7 +12,7 @@ lsp = ["dep:server", "dep:tokio"]
 
 [dependencies]
 ast = { path = "../ast" }
-clap = "3.1.5"
+clap = { version = "3.2.16", features = ["deprecated"] }
 codegen_cranelift = { path = "../codegen_cranelift", optional = true }
 codegen_llvm = { path = "../codegen_llvm", optional = true }
 colored = "2.0.0"

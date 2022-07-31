@@ -40,6 +40,7 @@ pub fn find_package(path: &Path) -> Option<&Path> {
 /// Resolve all components and package dependencies of a package given the path to its folder without building anything.
 pub fn resolve_package(
     path: &Path,
+    filter: ComponentFilter,
     map: &Arc<RwLock<SourceMap>>,
     reporter: Reporter,
 ) -> Result<(Components, BuildSession)> {
@@ -55,7 +56,7 @@ pub fn resolve_package(
     };
 
     let mut queue = BuildQueue::new(map, reporter);
-    queue.resolve_package(&path)?;
+    queue.resolve_package(&path, filter)?;
     Ok(queue.finalize())
 }
 
@@ -126,7 +127,7 @@ impl BuildQueue {
 }
 
 impl BuildQueue {
-    fn resolve_package(&mut self, package_path: &Path) -> Result {
+    fn resolve_package(&mut self, package_path: &Path, filter: ComponentFilter) -> Result {
         let manifest_path = package_path.join(manifest::FILE_NAME);
         let manifest_file = self.map().load(manifest_path.clone(), None);
         let manifest_file = match manifest_file {
@@ -147,10 +148,17 @@ impl BuildQueue {
         // @Task use Health "2.0" instead
         let mut health = None::<ErasedReportedError> /* Untainted */;
 
-        // @Beacon @Task we don't to unconditionally loop through all those components,
-        // I *think*, only those that are relevant: this is driven by the CLI: Esp. if the users passes
-        // certain flag (cf. --exe, --lib etc. flags passed to cargo build)
-        // @Note but maybe we should still check for correctness of irrelevant components, check what cargo does!
+        // @Temporary
+        if !filter.is_empty() {
+            return Err(Diagnostic::error()
+                .message("component filters are not supported yet")
+                .report(&self.reporter));
+        }
+
+        // @Task apply the ComponentFilter here!
+        // @Note it's not that simple. we also need to check (local) components
+        //       that are (local component) dependencies of the
+        //       filtered / included components.
         if let Some(component_worklist) = manifest.components {
             let mut component_worklist: HashMap<_, _> = component_worklist
                 .bare
@@ -230,13 +238,13 @@ impl BuildQueue {
                     // the same name but with a differing type, add a note that only library components are being looked
                     // at during dependency resolution (clarifying that one cannot depend on non-library components)
 
-                    for cycle in find_cycles_by_key(
+                    for cycle in find_cycles_by_key::<&Word, Spanned<&Word>>(
                         &unresolved_components
                             .iter()
                             .map(|(dependent, (_, dependency))| {
                                 (&dependent.bare, dependency.as_ref().unwrap().as_ref())
                             })
-                            .collect::<HashMap<&Word, Spanned<&Word>>>(),
+                            .collect(),
                         |name| &name.bare,
                     ) {
                         let components = cycle.iter().map(QuoteExt::quote).list(Conjunction::And);
@@ -712,6 +720,18 @@ impl BuildQueue {
 
     fn map(&self) -> RwLockWriteGuard<'_, SourceMap> {
         self.map.write().unwrap()
+    }
+}
+
+#[derive(Default)]
+pub struct ComponentFilter {
+    pub names: Vec<Word>,
+    pub types: Vec<ComponentType>,
+}
+
+impl ComponentFilter {
+    fn is_empty(&self) -> bool {
+        self.names.is_empty() && self.types.is_empty()
     }
 }
 
