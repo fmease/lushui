@@ -1,4 +1,4 @@
-;;; TEST fail check --no-core -Z internals
+;;; TEST compiler-args --no-core -Z internals
 
 @intrinsic
 data Text: Type

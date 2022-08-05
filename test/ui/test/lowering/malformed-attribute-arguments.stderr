@@ -1,49 +1,49 @@
 error[E018]: the lint ‘never-gonna-be-implied’ is not defined
- --> ${TEST_FOLDER}/lowering/malformed-attribute-arguments.lushui:4:9
+ --> ${TEST_FOLDER}/lowering/malformed-attribute-arguments.lushui:3:9
   |
-4 | @(allow never-gonna-be-implied)
+3 | @(allow never-gonna-be-implied)
   |         ^^^^^^^^^^^^^^^^^^^^^^
   |
 
 error[E027]: found text literal but expected positional or named path
- --> ${TEST_FOLDER}/lowering/malformed-attribute-arguments.lushui:7:9
+ --> ${TEST_FOLDER}/lowering/malformed-attribute-arguments.lushui:6:9
   |
-7 | @(allow "my lint")
+6 | @(allow "my lint")
   |         ^^^^^^^^^
   |
 
 error[E027]: found text literal but expected path
- --> ${TEST_FOLDER}/lowering/malformed-attribute-arguments.lushui:8:16
+ --> ${TEST_FOLDER}/lowering/malformed-attribute-arguments.lushui:7:16
   |
-8 | @(forbid (lint "my other one"))
+7 | @(forbid (lint "my other one"))
   |                ^^^^^^^^^^^^^^
   |
 
 error[E019]: too few attribute arguments provided
- --> ${TEST_FOLDER}/lowering/malformed-attribute-arguments.lushui:9:1
+ --> ${TEST_FOLDER}/lowering/malformed-attribute-arguments.lushui:8:1
   |
-9 | @deny
+8 | @deny
   | ^^^^^
   |
 
 error[E028]: found named argument ‘reech’ but expected ‘reach’
-  --> ${TEST_FOLDER}/lowering/malformed-attribute-arguments.lushui:12:11
+  --> ${TEST_FOLDER}/lowering/malformed-attribute-arguments.lushui:11:11
    |
-12 | @(public (reech path) "hello")
+11 | @(public (reech path) "hello")
    |           ^^^^^
+   |
+
+error[E019]: too many attribute arguments provided
+  --> ${TEST_FOLDER}/lowering/malformed-attribute-arguments.lushui:11:23
+   |
+11 | @(public (reech path) "hello")
+   |                       ^^^^^^^
    |
 
 error[E019]: too many attribute arguments provided
   --> ${TEST_FOLDER}/lowering/malformed-attribute-arguments.lushui:12:23
    |
-12 | @(public (reech path) "hello")
-   |                       ^^^^^^^
-   |
-
-error[E019]: too many attribute arguments provided
-  --> ${TEST_FOLDER}/lowering/malformed-attribute-arguments.lushui:13:23
-   |
-13 | base: Base = @(static 0) "X"
+12 | base: Base = @(static 0) "X"
    |                       ^
    |
 

@@ -1,4 +1,3 @@
-# TEST fail metadata
 # @Task report additional "unbalanced bracket" errors
 
 foo: [{

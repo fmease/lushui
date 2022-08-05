@@ -1,5 +1,3 @@
-;;; TEST fail check
-
 @(public who-am-i)
 Foo: Who-Am-I = Type
 

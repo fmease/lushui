@@ -1,4 +1,4 @@
-;;; TEST fail check --no-core
+;;; TEST compiler-args --no-core
 
 ;; famous recording
 module nowhere-to-be-found

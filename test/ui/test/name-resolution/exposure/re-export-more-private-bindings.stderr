@@ -1,12 +1,12 @@
 error[E009]: re-export of the more private binding ‘topmost.Thing’
- --> ${TEST_FOLDER}/name-resolution/exposure/re-export-more-private-bindings.lushui:4:14
+ --> ${TEST_FOLDER}/name-resolution/exposure/re-export-more-private-bindings.lushui:2:14
   |
-4 | use Thing as Piece
+2 | use Thing as Piece
   |              ^^^^^ re-exporting binding with greater exposure
   |
- --> ${TEST_FOLDER}/name-resolution/exposure/re-export-more-private-bindings.lushui:7:6
+ --> ${TEST_FOLDER}/name-resolution/exposure/re-export-more-private-bindings.lushui:5:6
   |
-7 | data Thing: Type of
+5 | data Thing: Type of
   |      ----- re-exported binding with lower exposure
   |
  note: expected the exposure of ‘topmost.Piece’
@@ -14,14 +14,14 @@ error[E009]: re-export of the more private binding ‘topmost.Thing’
              but it actually is unrestricted
 
 error[E009]: re-export of the more private binding ‘topmost.alpha.beta.Linchpin’
-  --> ${TEST_FOLDER}/name-resolution/exposure/re-export-more-private-bindings.lushui:12:14
+  --> ${TEST_FOLDER}/name-resolution/exposure/re-export-more-private-bindings.lushui:10:14
    |
-12 |         data Linchpin: Type of
+10 |         data Linchpin: Type of
    |              -------- re-exported binding with lower exposure
    |
-  --> ${TEST_FOLDER}/name-resolution/exposure/re-export-more-private-bindings.lushui:16:35
+  --> ${TEST_FOLDER}/name-resolution/exposure/re-export-more-private-bindings.lushui:14:35
    |
-16 |             use super.Linchpin as L
+14 |             use super.Linchpin as L
    |                                   ^ re-exporting binding with greater exposure
    |
   note: expected the exposure of ‘topmost.alpha.beta.gamma.L’
@@ -29,14 +29,14 @@ error[E009]: re-export of the more private binding ‘topmost.alpha.beta.Linchpi
               but it actually is ‘topmost’
 
 error[E009]: re-export of the more private binding ‘topmost.alpha.beta.gamma.Mock’
-  --> ${TEST_FOLDER}/name-resolution/exposure/re-export-more-private-bindings.lushui:19:18
+  --> ${TEST_FOLDER}/name-resolution/exposure/re-export-more-private-bindings.lushui:17:18
    |
-19 |             data Mock: Type of
+17 |             data Mock: Type of
    |                  ---- re-exported binding with lower exposure
    |
-  --> ${TEST_FOLDER}/name-resolution/exposure/re-export-more-private-bindings.lushui:22:25
+  --> ${TEST_FOLDER}/name-resolution/exposure/re-export-more-private-bindings.lushui:20:25
    |
-22 |             use Mock as //>
+20 |             use Mock as //>
    |                         ^^^ re-exporting binding with greater exposure
    |
   note: expected the exposure of ‘topmost.alpha.beta.gamma.//>’

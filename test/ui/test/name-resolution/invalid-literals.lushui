@@ -1,4 +1,4 @@
-;;; TEST fail check -Z internals --no-core
+;;; TEST compiler-args -Z internals --no-core
 
 numv: Nat = Void.234
 

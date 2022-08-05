@@ -1,7 +1,7 @@
 error: found identifier but expected end of input
- --> ${TEST_FOLDER}/metadata/unexpected-identifier-at-top-level.metadata:3:6
+ --> ${TEST_FOLDER}/metadata/unexpected-identifier-at-top-level.metadata:1:6
   |
-3 | this is not good
+1 | this is not good
   |      ^^
   |
 

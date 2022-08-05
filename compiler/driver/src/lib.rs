@@ -1,5 +1,4 @@
 #![feature(
-    backtrace,
     decl_macro,
     default_free_fn,
     let_else,

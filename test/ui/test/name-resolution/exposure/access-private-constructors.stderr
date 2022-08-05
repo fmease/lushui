@@ -1,42 +1,42 @@
 error[E029]: binding ‘topmost.separation.Private’ is private
-  --> ${TEST_FOLDER}/name-resolution/exposure/access-private-constructors.lushui:25:16
+  --> ${TEST_FOLDER}/name-resolution/exposure/access-private-constructors.lushui:23:16
    |
-25 | use separation.Private.private as p0
+23 | use separation.Private.private as p0
    |                ^^^^^^^
    |
 
 error[E029]: binding ‘topmost.separation.Private-Abstract’ is private
-  --> ${TEST_FOLDER}/name-resolution/exposure/access-private-constructors.lushui:26:16
+  --> ${TEST_FOLDER}/name-resolution/exposure/access-private-constructors.lushui:24:16
    |
-26 | use separation.Private-Abstract.private as p1
+24 | use separation.Private-Abstract.private as p1
    |                ^^^^^^^^^^^^^^^^
    |
 
 error[E029]: binding ‘topmost.separation.Public-Abstract.private’ is private
-  --> ${TEST_FOLDER}/name-resolution/exposure/access-private-constructors.lushui:27:32
+  --> ${TEST_FOLDER}/name-resolution/exposure/access-private-constructors.lushui:25:32
    |
-27 | use separation.Public-Abstract.private as p2
+25 | use separation.Public-Abstract.private as p2
    |                                ^^^^^^^
    |
 
 error[E029]: binding ‘topmost.separation.Public-Abstract.private’ is private
-  --> ${TEST_FOLDER}/name-resolution/exposure/access-private-constructors.lushui:29:61
+  --> ${TEST_FOLDER}/name-resolution/exposure/access-private-constructors.lushui:27:61
    |
-29 | p3: separation.Public-Abstract = separation.Public-Abstract.private
+27 | p3: separation.Public-Abstract = separation.Public-Abstract.private
    |                                                             ^^^^^^^
    |
 
 error[E029]: binding ‘topmost.separation.further-separation.Hidden’ is private
-  --> ${TEST_FOLDER}/name-resolution/exposure/access-private-constructors.lushui:31:37
+  --> ${TEST_FOLDER}/name-resolution/exposure/access-private-constructors.lushui:29:37
    |
-31 | use separation.further-separation.((Hidden.hidden as h) (Abstract.hidden as ho))
+29 | use separation.further-separation.((Hidden.hidden as h) (Abstract.hidden as ho))
    |                                     ^^^^^^
    |
 
 error[E029]: binding ‘topmost.separation.further-separation.Abstract.hidden’ is private
-  --> ${TEST_FOLDER}/name-resolution/exposure/access-private-constructors.lushui:31:67
+  --> ${TEST_FOLDER}/name-resolution/exposure/access-private-constructors.lushui:29:67
    |
-31 | use separation.further-separation.((Hidden.hidden as h) (Abstract.hidden as ho))
+29 | use separation.further-separation.((Hidden.hidden as h) (Abstract.hidden as ho))
    |                                                                   ^^^^^^
    |
 

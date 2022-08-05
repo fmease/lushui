@@ -1,4 +1,4 @@
-;;; TEST fail check -Z internals
+;;; TEST compiler-args -Z internals
 
 @known
 data I-Am-Definitely-Unknown: Type of

@@ -1,5 +1,3 @@
-;;; TEST fail check
-
 target = [Int Nat -> Nat]
 
 ;;; [Description]

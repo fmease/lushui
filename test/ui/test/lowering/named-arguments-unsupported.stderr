@@ -1,21 +1,21 @@
 error: named arguments are not supported yet
- --> ${TEST_FOLDER}/lowering/named-arguments-unsupported.lushui:3:21
+ --> ${TEST_FOLDER}/lowering/named-arguments-unsupported.lushui:1:21
   |
-3 | receiver: Receiver (A = Type) = engender (material = X)
+1 | receiver: Receiver (A = Type) = engender (material = X)
   |                     ^
   |
 
 error: named arguments are not supported yet
- --> ${TEST_FOLDER}/lowering/named-arguments-unsupported.lushui:3:43
+ --> ${TEST_FOLDER}/lowering/named-arguments-unsupported.lushui:1:43
   |
-3 | receiver: Receiver (A = Type) = engender (material = X)
+1 | receiver: Receiver (A = Type) = engender (material = X)
   |                                           ^^^^^^^^
   |
 
 error: named arguments are not supported yet
- --> ${TEST_FOLDER}/lowering/named-arguments-unsupported.lushui:7:14
+ --> ${TEST_FOLDER}/lowering/named-arguments-unsupported.lushui:5:14
   |
-7 |         Tag (named = thing) => void
+5 |         Tag (named = thing) => void
   |              ^^^^^
   |
 

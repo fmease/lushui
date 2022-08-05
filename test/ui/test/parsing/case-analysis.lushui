@@ -1,4 +1,5 @@
-;;; TEST pass check -Z parse-only --no-core
+;;; TEST pass check
+;;; TEST compiler-args -Z parse-only --no-core
 ;;; @Task expand test (include attributes etc)
 ;;; @Task make this more about parsing patterns
 

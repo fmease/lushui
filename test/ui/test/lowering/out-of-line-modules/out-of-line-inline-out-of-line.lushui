@@ -1,4 +1,5 @@
-;;; TEST pass check --no-core
+;;; TEST pass check
+;;; TEST compiler-args --no-core
 
 module indirection
 

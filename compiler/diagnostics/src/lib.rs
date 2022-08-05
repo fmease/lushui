@@ -18,11 +18,7 @@ pub use code::{Code, ErrorCode, LintCode};
 use derivation::Str;
 pub use reporter::Reporter;
 use span::{SourceMap, Span, Spanning};
-use std::{
-    collections::BTreeSet,
-    fmt::Debug,
-    ops::{Deref, DerefMut},
-};
+use std::{collections::BTreeSet, fmt::Debug, ops::Deref};
 use utilities::Str;
 
 mod code;
@@ -32,17 +28,15 @@ pub mod reporter;
 /// A complex diagnostic message, optionally with source locations.
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 #[must_use]
-pub struct Diagnostic<const S: Severity = { Severity::Error }>(UntaggedDiagnostic);
+pub struct Diagnostic<const S: Severity = { Severity::Error }> {
+    untagged: UntaggedDiagnostic,
+}
 
 impl<const S: Severity> Diagnostic<S> {
     fn new() -> Self {
-        Self(Box::new(UnboxedUntaggedDiagnostic {
-            severity: S,
-            code: None,
-            message: None,
-            highlights: BTreeSet::new(),
-            subdiagnostics: Vec::new(),
-        }))
+        Self {
+            untagged: Box::new(UnboxedUntaggedDiagnostic::new(S)),
+        }
     }
 
     /// Add a text message describing the issue.
@@ -58,12 +52,12 @@ impl<const S: Severity> Diagnostic<S> {
     /// * The message should be able to stand on its own without the additional
     ///   information provided by labels and subdiagnostics
     pub fn message(mut self, message: impl Into<Str>) -> Self {
-        self.message = Some(message.into());
+        self.untagged.message = Some(message.into());
         self
     }
 
     fn span(mut self, spanning: impl Spanning, label: Option<Str>, role: Role) -> Self {
-        self.highlights.insert(Highlight {
+        self.untagged.highlights.insert(Highlight {
             span: spanning.span(),
             label: label.map(Into::into),
             role,
@@ -95,11 +89,12 @@ impl<const S: Severity> Diagnostic<S> {
     where
         I: Iterator<Item: Spanning>,
     {
-        self.highlights.extend(spannings.map(|spanning| Highlight {
+        let spannings = spannings.map(|spanning| Highlight {
             span: spanning.span(),
             label: label.clone(),
             role,
-        }));
+        });
+        self.untagged.highlights.extend(spannings);
         self
     }
 
@@ -120,7 +115,8 @@ impl<const S: Severity> Diagnostic<S> {
     }
 
     fn subdiagnostic(mut self, severity: Subseverity, message: Str) -> Self {
-        self.subdiagnostics
+        self.untagged
+            .subdiagnostics
             .push(Subdiagnostic { severity, message });
         self
     }
@@ -175,7 +171,7 @@ impl Diagnostic<{ Severity::Error }> {
     }
 
     pub fn code(mut self, code: ErrorCode) -> Self {
-        self.code = Some(Code::Error(code));
+        self.untagged.code = Some(Code::Error(code));
         self
     }
 }
@@ -187,7 +183,7 @@ impl Diagnostic<{ Severity::Warning }> {
     }
 
     pub fn code(mut self, code: LintCode) -> Self {
-        self.code = Some(Code::Lint(code));
+        self.untagged.code = Some(Code::Lint(code));
         self
     }
 }
@@ -203,13 +199,7 @@ impl<const S: Severity> Deref for Diagnostic<S> {
     type Target = UnboxedUntaggedDiagnostic;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<const S: Severity> DerefMut for Diagnostic<S> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+        &self.untagged
     }
 }
 
@@ -229,8 +219,17 @@ pub struct UnboxedUntaggedDiagnostic {
 }
 
 impl UnboxedUntaggedDiagnostic {
-    // @Question worth the method?
-    fn format(&self, map: Option<&SourceMap>) -> String {
+    fn new(severity: Severity) -> Self {
+        Self {
+            severity,
+            code: None,
+            message: None,
+            highlights: BTreeSet::new(),
+            subdiagnostics: Vec::new(),
+        }
+    }
+
+    pub fn format(&self, map: Option<&SourceMap>) -> String {
         format::format(self, map)
     }
 }

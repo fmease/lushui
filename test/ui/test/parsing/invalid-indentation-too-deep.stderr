@@ -1,7 +1,7 @@
 error[E046]: invalid indentation consisting of 8 spaces
- --> ${TEST_FOLDER}/parsing/invalid-indentation-too-deep.lushui:4:1
+ --> ${TEST_FOLDER}/parsing/invalid-indentation-too-deep.lushui:2:1
   |
-4 |         x: X
+2 |         x: X
   | ^^^^^^^^
   |
  note: indentation is greater than 4 and therefore too deep

@@ -1,14 +1,14 @@
 error[E044]: unbalanced round bracket
- --> ${TEST_FOLDER}/parsing/unexpected-line-break.lushui:3:9
+ --> ${TEST_FOLDER}/parsing/unexpected-line-break.lushui:1:9
   |
-3 | data X: (
+1 | data X: (
   |         ^ has no matching closing round bracket
   |
 
 error[E010]: found line break but expected expression
- --> ${TEST_FOLDER}/parsing/unexpected-line-break.lushui:3:10
+ --> ${TEST_FOLDER}/parsing/unexpected-line-break.lushui:1:10
   |
-3 | data X: (
+1 | data X: (
   |         >< unexpected token
   |
 

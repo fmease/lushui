@@ -1,5 +1,3 @@
-;;; TEST fail check
-
 use indirect.thing
 module indirect of { @public use super.thing }
 

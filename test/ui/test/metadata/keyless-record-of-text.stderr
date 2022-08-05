@@ -1,7 +1,7 @@
 error: found ‘,’ but expected ‘:’
- --> ${TEST_FOLDER}/metadata/keyless-record-of-text.metadata:4:15
+ --> ${TEST_FOLDER}/metadata/keyless-record-of-text.metadata:2:15
   |
-4 |     "    THIS",
+2 |     "    THIS",
   |               ^
   |
 

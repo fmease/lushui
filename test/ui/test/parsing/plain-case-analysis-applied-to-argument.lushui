@@ -1,3 +1,4 @@
-;;; TEST pass check -Z parse-only --no-core
+;;; TEST pass check
+;;; TEST compiler-args -Z parse-only --no-core
 
 it = case 1 of {} argument

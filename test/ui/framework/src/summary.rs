@@ -1,7 +1,7 @@
 //! The summary of the entire test suite.
 #![allow(clippy::cast_precision_loss)]
 
-use crate::{Filters, Gilding};
+use crate::Gilding;
 use colored::Colorize;
 use std::{fmt, time::Duration};
 
@@ -9,7 +9,6 @@ pub(crate) struct TestSuiteSummary {
     pub(crate) statistics: TestSuiteStatistics,
     pub(crate) gilding: Gilding,
     pub(crate) duration: Duration,
-    pub(crate) filters: Filters,
 }
 
 impl fmt::Display for TestSuiteSummary {
@@ -38,7 +37,7 @@ impl fmt::Display for TestSuiteSummary {
                     message.push(' ');
                 }
 
-                message += "SOME INVALID FILES FOUND!";
+                message += "SOME INVALID TESTS FOUND!";
             }
 
             message.red()
@@ -54,7 +53,7 @@ impl fmt::Display for TestSuiteSummary {
             } else {
                 "passed without gilding".green()
             },
-            ratio = self.statistics.ratio_passed_vs_executed(),
+            ratio = self.statistics.ratio_passed_vs_included(),
         )?;
 
         if self.gilding == Gilding::Yes {
@@ -89,18 +88,6 @@ impl fmt::Display for TestSuiteSummary {
             duration = format!("{:.2?}", self.duration).bright_black(),
         )?;
 
-        if !self.filters.is_empty() {
-            writeln!(f, "    filtered by:")?;
-
-            for filter in self.filters.strict {
-                writeln!(f, "       {filter} (strictly)")?;
-            }
-
-            for filter in self.filters.loose {
-                writeln!(f, "       {filter} (loosely)")?;
-            }
-        }
-
         Ok(())
     }
 }
@@ -122,14 +109,15 @@ impl TestSuiteStatistics {
         self.failed == 0 && self.invalid == 0
     }
 
-    fn executed(&self) -> usize {
-        self.passed + self.gilded + self.failed
+    // @Note horrid name
+    fn included(&self) -> usize {
+        self.passed + self.gilded + self.failed + self.invalid
     }
 
-    fn ratio_passed_vs_executed(&self) -> f32 {
-        let ratio = match self.executed() {
+    fn ratio_passed_vs_included(&self) -> f32 {
+        let ratio = match self.included() {
             0 => 1.0,
-            executed_tests => self.passed as f32 / executed_tests as f32,
+            included => self.passed as f32 / included as f32,
         };
 
         ratio * 100.0
@@ -137,7 +125,7 @@ impl TestSuiteStatistics {
 
     // @Note misleading name
     pub(crate) fn total_amount(&self) -> usize {
-        self.executed() + self.ignored
+        self.included() + self.ignored
     }
 
     // @Note horrid name

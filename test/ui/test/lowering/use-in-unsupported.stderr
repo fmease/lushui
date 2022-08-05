@@ -1,9 +1,9 @@
 error: use/in-expressions are not supported yet
- --> ${TEST_FOLDER}/lowering/use-in-unsupported.lushui:4:5
+ --> ${TEST_FOLDER}/lowering/use-in-unsupported.lushui:2:5
   |
-4 |       use qualified.thing as matter in
+2 |       use qualified.thing as matter in
   |  _____^
-5 | |     this-location
+3 | |     this-location
   | |_________________^
   |
 

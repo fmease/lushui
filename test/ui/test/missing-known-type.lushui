@@ -1,5 +1,6 @@
-;;; TEST fail run --no-core -Z internals
-;;; @Note unfortunately, this is a runtime error right now
+;;; TEST fail run
+;;; TEST compiler-args --no-core -Z internals
+;;; @Bug unfortunately, this is a runtime error right now
 
 @intrinsic
 data Nat: Type

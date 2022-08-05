@@ -1,7 +1,7 @@
 error: exposure reach ‘topmost.component’ is circular
- --> ${TEST_FOLDER}/name-resolution/exposure/indirect-cycle.lushui:4:10
+ --> ${TEST_FOLDER}/name-resolution/exposure/indirect-cycle.lushui:2:10
   |
-4 | @(public component) data Center: Type of
+2 | @(public component) data Center: Type of
   |          ^^^^^^^^^
   |
 

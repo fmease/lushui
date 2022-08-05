@@ -1,5 +1,5 @@
 cargo-features = ["profile-rustflags"]
 
 [workspace]
-members = ["compiler/*"]
+members = ["compiler/*", "test/ui/framework"]
 default-members = ["compiler/main"]

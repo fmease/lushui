@@ -1,5 +1,3 @@
-;;; TEST fail check
-
 @public
 use Thing as Piece
 

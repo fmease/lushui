@@ -1,5 +1,3 @@
-;;; TEST fail check
-
 main: IO Unit =
     use qualified.thing as matter in
     this-location

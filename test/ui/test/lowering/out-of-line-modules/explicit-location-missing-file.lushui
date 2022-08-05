@@ -1,4 +1,4 @@
-;;; TEST fail check --no-core
+;;; TEST compiler-args --no-core
 
 @(location "expansion-of-the-void-until-eternity")
 module meaningless

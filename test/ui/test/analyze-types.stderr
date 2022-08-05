@@ -1,9 +1,9 @@
 error[E035]: attempt to analyze a type
- --> ${TEST_FOLDER}/analyze-types.lushui:6:5
+ --> ${TEST_FOLDER}/analyze-types.lushui:4:5
   |
-6 |       case A of
+4 |       case A of
  ... _____^
-9 | |         \else => false
+7 | |         \else => false
   | |______________________^
   |
  note: forbidden to uphold parametricity and type erasure

@@ -1,4 +1,5 @@
-;;; TEST fail check -Z internals
+;;; TEST compiler-args -Z internals
+
 ;;; @Note it used to be the case that we could report unrecognized intrinsic types *and* functions together in one module
 ;;; but we moved the registration of intrinsic types from the typer to the resolver
 
