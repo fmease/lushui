@@ -1,2 +1,2 @@
-;;; TEST fail check --component-type=executable
+;;; TEST compiler-args --component-type=executable
 

@@ -1,5 +1,6 @@
-# TEST ignore fail check
-# @Task
+# TEST ignore
+#      fail check
+#      @Task
 
 # [Description]
 # A component cannot directly access its transitive dependencies via `extern` paths.

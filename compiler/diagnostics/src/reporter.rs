@@ -61,7 +61,7 @@ impl Reporter {
     where
         Diagnostic<S>: Report,
     {
-        self.report_untagged(diagnostic.0);
+        self.report_untagged(diagnostic.untagged);
         Diagnostic::<S>::OUTPUT
     }
 

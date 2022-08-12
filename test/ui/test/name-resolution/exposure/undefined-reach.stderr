@@ -1,35 +1,35 @@
 error[E021]: the binding ‘who-am-i’ is not defined in this scope
- --> ${TEST_FOLDER}/name-resolution/exposure/undefined-reach.lushui:3:10
+ --> ${TEST_FOLDER}/name-resolution/exposure/undefined-reach.lushui:1:10
   |
-3 | @(public who-am-i)
+1 | @(public who-am-i)
   |          ^^^^^^^^
   |
 
 error[E021]: the binding ‘Who-Am-I’ is not defined in this scope
- --> ${TEST_FOLDER}/name-resolution/exposure/undefined-reach.lushui:4:6
+ --> ${TEST_FOLDER}/name-resolution/exposure/undefined-reach.lushui:2:6
   |
-4 | Foo: Who-Am-I = Type
+2 | Foo: Who-Am-I = Type
   |      ^^^^^^^^
   |
 
 error[E021]: the binding ‘who-am-i’ is not defined in module `topmost.namespaced`
- --> ${TEST_FOLDER}/name-resolution/exposure/undefined-reach.lushui:6:21
+ --> ${TEST_FOLDER}/name-resolution/exposure/undefined-reach.lushui:4:21
   |
-6 | @(public namespaced.who-am-i)
+4 | @(public namespaced.who-am-i)
   |                     ^^^^^^^^
   |
 
 error[E021]: the binding ‘void’ is not defined in module `topmost.namespaced`
-  --> ${TEST_FOLDER}/name-resolution/exposure/undefined-reach.lushui:11:17
-   |
-11 | @(public indir2.void)
-   |                 ^^^^
-   |
+ --> ${TEST_FOLDER}/name-resolution/exposure/undefined-reach.lushui:9:17
+  |
+9 | @(public indir2.void)
+  |                 ^^^^
+  |
 
 error[E021]: the binding ‘emptiness’ is not defined in module `topmost.namespaced`
-  --> ${TEST_FOLDER}/name-resolution/exposure/undefined-reach.lushui:19:22
+  --> ${TEST_FOLDER}/name-resolution/exposure/undefined-reach.lushui:17:22
    |
-19 | @(public self.indir2.emptiness)
+17 | @(public self.indir2.emptiness)
    |                      ^^^^^^^^^
    |
 

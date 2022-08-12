@@ -1,12 +1,12 @@
 error[E031]: type mismatch
- --> ${TEST_FOLDER}/cannot-apply.lushui:3:21
+ --> ${TEST_FOLDER}/cannot-apply.lushui:1:21
   |
-3 | Abomination: Type = 0 1
+1 | Abomination: Type = 0 1
   |                     ^ has wrong type
   |
- --> ${TEST_FOLDER}/cannot-apply.lushui:3:23
+ --> ${TEST_FOLDER}/cannot-apply.lushui:1:23
   |
-3 | Abomination: Type = 0 1
+1 | Abomination: Type = 0 1
   |                       - applied to this
   |
  note: expected type ‘_ -> _’

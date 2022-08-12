@@ -1,4 +1,4 @@
-;;; TEST fail check -Z internals
+;;; TEST compiler-args -Z internals
 
 @intrinsic @known
 data Typ: const Type 12

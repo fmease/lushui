@@ -1,7 +1,7 @@
 error[E010]: found ‘->’ but expected expression
- --> ${TEST_FOLDER}/parsing/plain-pi-inside-sequence.lushui:3:19
+ --> ${TEST_FOLDER}/parsing/plain-pi-inside-sequence.lushui:1:19
   |
-3 | target = [Int Nat -> Nat]
+1 | target = [Int Nat -> Nat]
   |                   ^^ unexpected token
   |
  help: add round brackets around the potential pi type literal to disambiguate the expression

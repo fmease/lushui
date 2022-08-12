@@ -1,4 +1,5 @@
-;;; TEST pass check -Z lower-only -Z emit-lowered-ast --no-core
+;;; TEST pass check
+;;; TEST compiler-args -Z lower-only -Z emit-lowered-ast --no-core
 
 use foocoo.()
 

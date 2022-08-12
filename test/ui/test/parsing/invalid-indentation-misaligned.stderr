@@ -1,7 +1,7 @@
 error[E046]: invalid indentation consisting of 2 spaces
- --> ${TEST_FOLDER}/parsing/invalid-indentation-misaligned.lushui:4:1
+ --> ${TEST_FOLDER}/parsing/invalid-indentation-misaligned.lushui:2:1
   |
-4 |   data V
+2 |   data V
   | ^^
   |
  note: indentation needs to be a multiple of 4

@@ -4,11 +4,11 @@ error[E032]: type mismatch
 13 |     cons (A: Type) (L: List Type): A -> Tuple L -> Tuple (list.cons Type A L)
    |                                         ------- expected due to this
    |
-  --> ${TEST_FOLDER}/lengthy-type-mismatch.lushui:15:39
+  --> ${TEST_FOLDER}/lengthy-type-mismatch.lushui:13:39
    |
-15 |               (identity Unit Unit.unit) (Tuple.cons
+13 |               (identity Unit Unit.unit) (Tuple.cons
   ... _______________________________________^
-17 | |                     Tuple.empty))
+15 | |                     Tuple.empty))
    | |________________________________^ has the wrong type
    |
   note: expected type ‘extern.core.tuple.Tuple (extern.core.list.List.cons Type Type (extern.core.list.List.empty Type))’

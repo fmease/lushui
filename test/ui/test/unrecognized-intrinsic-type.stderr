@@ -1,12 +1,12 @@
 error[E061]: ‘I-Definitely-Do-Not-Exist’ is not an intrinsic type
- --> ${TEST_FOLDER}/unrecognized-intrinsic-type.lushui:5:1
+ --> ${TEST_FOLDER}/unrecognized-intrinsic-type.lushui:6:1
   |
-5 | @intrinsic
+6 | @intrinsic
   | ----------
   |
- --> ${TEST_FOLDER}/unrecognized-intrinsic-type.lushui:6:6
+ --> ${TEST_FOLDER}/unrecognized-intrinsic-type.lushui:7:6
   |
-6 | data I-Definitely-Do-Not-Exist: Type
+7 | data I-Definitely-Do-Not-Exist: Type
   |      ^^^^^^^^^^^^^^^^^^^^^^^^^
   |
 

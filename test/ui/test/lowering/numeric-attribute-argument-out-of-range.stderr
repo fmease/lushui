@@ -1,7 +1,7 @@
 error[E008]: attribute argument does not fit integer interval [0, 2^32-1]
- --> ${TEST_FOLDER}/lowering/numeric-attribute-argument-out-of-range.lushui:3:19
+ --> ${TEST_FOLDER}/lowering/numeric-attribute-argument-out-of-range.lushui:1:19
   |
-3 | @(recursion-limit 130'454'112'009'021)
+1 | @(recursion-limit 130'454'112'009'021)
   |                   ^^^^^^^^^^^^^^^^^^^
   |
 

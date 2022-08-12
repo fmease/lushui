@@ -1,4 +1,1 @@
-;;; TEST fail check
-;;; we need to use a bracket stack
-
 x: X ] X [

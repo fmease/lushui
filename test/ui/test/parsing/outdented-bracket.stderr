@@ -1,7 +1,7 @@
 error[E010]: found keyword ‘case’ but expected word
- --> ${TEST_FOLDER}/parsing/outdented-bracket.lushui:4:23
+ --> ${TEST_FOLDER}/parsing/outdented-bracket.lushui:3:23
   |
-4 | lengthy-space-filler (case 0 of
+3 | lengthy-space-filler (case 0 of
   |                       ^^^^ unexpected token
   |
 

@@ -1,30 +1,19 @@
-#![feature(default_free_fn, const_option, once_cell, let_else)]
-// @Task use lint list in /.cargo/config.toml (by making this pkg part of the
-//       overarching workspace)
-#![forbid(rust_2018_idioms, unused_must_use)]
-#![warn(clippy::pedantic)]
-#![allow(
-    clippy::items_after_statements,
-    clippy::enum_glob_use,
-    clippy::must_use_candidate,
-    clippy::missing_errors_doc,
-    clippy::too_many_lines,
-    clippy::module_name_repetitions,
-    clippy::match_bool,
-    clippy::empty_enum,
-    clippy::single_match_else,
-    clippy::if_not_else,
-    clippy::blocks_in_if_conditions, // too many false positives with rustfmt's output
+#![feature(
+    default_free_fn,
+    const_option,
+    once_cell,
+    let_else,
+    str_split_as_str,
+    drain_filter
 )]
 
 use colored::Colorize;
-use configuration::{Configuration, Language, TestTag};
-use failure::{Failure, FailureKind, File, FileType};
+use configuration::{Configuration, Mode, TestTag, Timeout};
+use failure::{FailedTest, Failure};
 use joinery::JoinableIterator;
 use std::{
-    borrow::Cow,
+    collections::BTreeSet,
     default::default,
-    ffi::OsStr,
     fmt, fs,
     io::Write,
     mem,
@@ -34,6 +23,7 @@ use std::{
     time::{Duration, Instant},
 };
 use summary::{TestSuiteStatistics, TestSuiteSummary};
+use utilities::pluralize;
 
 mod cli;
 mod configuration;
@@ -47,11 +37,17 @@ fn main() -> ExitCode {
     }
 }
 
-fn try_main() -> Result<(), ()> {
-    let application = cli::Application::new();
+// @Beacon @Bug Currently we are traversing the whole test folder and filtering out
+//              any tests that don't match the given list of paths.
+//              However, that means we are wasting a huge amount of time.
+//              This does not scale.
+// @Task        Instead, only pass the relevant paths to `walkdir` (smh.) (if possible)
 
-    if application.gilding == Gilding::Yes {
-        print!("Do you really want to gild all valid failing tests? [y/N] ");
+fn try_main() -> Result<(), ()> {
+    let arguments = cli::arguments()?;
+
+    if arguments.gilding == Gilding::Yes {
+        print!("Do you really want to gild all (valid) failing tests? [y/N] ");
         std::io::stdout().flush().unwrap();
 
         let mut answer = String::new();
@@ -65,42 +61,43 @@ fn try_main() -> Result<(), ()> {
         println!();
     }
 
-    println!("Building the compiler...");
+    println!("Building the compiler ...");
 
-    // @Task capture stderr (errors + warnings)
-    // save those warnings so we can remove it as the prefix of the following tests
-    // but also add a note that some stuff was written to stderr (but status is ok)
-    let status = Command::new("cargo")
-        .args(["+nightly", "build", "--manifest-path"])
-        .arg(compiler_manifest_path())
-        .args(application.compiler_build_mode.to_flags())
+    let output = Command::new("cargo")
+        .args(["+nightly", "--color=always", "build", "--manifest-path"])
+        .arg(path::compiler_manifest())
+        .args(match arguments.compiler_build_mode {
+            CompilerBuildMode::Debug => &[],
+            CompilerBuildMode::Release => &["--release"][..],
+        })
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
+        .output()
         .unwrap();
 
-    if !status.success() {
+    if !output.status.success() {
         eprintln!("{}", "The compiler failed to build.".red());
+
+        eprintln!();
+        eprintln!("{}", section_header("RUST-CARGO STDERR"));
+        eprintln!();
+
+        eprintln!("{}", String::from_utf8_lossy(&output.stderr));
+
         return Err(());
     }
 
     println!();
-    println!("{}", "=".repeat(terminal_width()));
+    println!("{}", section_separator());
     println!();
 
-    // @Beacon @Question alternative to Arcs??? since we have a fixed amount of threads
-    // currently, the Arc are deallocated "when joining" (just before but yeah)
+    // @Task find an alternative to the Arcs (we know how many threads we use)
     let test_folder_entries = Arc::new(Mutex::new(
-        walkdir::WalkDir::new(test_folder_path()).into_iter(),
+        walkdir::WalkDir::new(path::test_folder()).into_iter(),
     ));
     let statistics: Arc<Mutex<TestSuiteStatistics>> = default();
-    let failures: Arc<Mutex<Vec<_>>> = default();
-    let filters = Filters {
-        strict: application.strict_filters.leak(),
-        loose: application.loose_filters.leak(),
-    };
-    let number_test_threads = application.number_test_threads.into();
+    let failed_tests: Arc<Mutex<Vec<_>>> = default();
+    let number_test_threads = arguments.number_test_threads.into();
+    let arguments = arguments.into();
 
     let suite_time = Instant::now();
 
@@ -109,7 +106,7 @@ fn try_main() -> Result<(), ()> {
         .map(|_| {
             let shared_entries = test_folder_entries.clone();
             let shared_statistics = statistics.clone();
-            let shared_failures = failures.clone();
+            let shared_failures = failed_tests.clone();
 
             std::thread::spawn(move || {
                 let chunk_size = number_test_threads;
@@ -122,7 +119,8 @@ fn try_main() -> Result<(), ()> {
                         let mut shared_entries = shared_entries.lock().unwrap();
 
                         for _ in 0..chunk_size {
-                            match shared_entries.next() {
+                            let entry = shared_entries.next();
+                            match entry {
                                 Some(entry) => entries.push(entry),
                                 None => break,
                             }
@@ -136,11 +134,7 @@ fn try_main() -> Result<(), ()> {
                     for entry in entries.drain(..) {
                         handle_test_folder_entry(
                             &entry.unwrap(),
-                            filters,
-                            application.gilding,
-                            application.timeout,
-                            application.inspecting,
-                            application.compiler_build_mode,
+                            arguments,
                             &mut statistics,
                             &mut failures,
                         );
@@ -164,34 +158,73 @@ fn try_main() -> Result<(), ()> {
         .into_inner()
         .unwrap();
 
-    let failures = Arc::try_unwrap(failures)
+    let failed_tests = Arc::try_unwrap(failed_tests)
         .unwrap_or_else(|_| unreachable!())
         .into_inner()
         .unwrap();
 
-    for failure in failures {
-        println!("{failure}");
+    let mut stdout = std::io::stdout().lock();
+
+    for failed_test in &failed_tests {
+        writeln!(stdout, "{failed_test}").unwrap();
+    }
+
+    if !failed_tests.is_empty() {
+        let mut failed_tests = failed_tests;
+
+        let invalid_tests: BTreeSet<_> = failed_tests
+            .drain_filter(|test| matches!(test.failure, Failure::InvalidTest { .. }))
+            .map(|test| test.path)
+            .collect();
+
+        let failed_tests: BTreeSet<_> = failed_tests
+            .into_iter()
+            .map(|failure| failure.path)
+            .collect();
+
+        if !failed_tests.is_empty() {
+            writeln!(stdout).unwrap();
+            writeln!(stdout, "{}", section_header("FAILED TESTS")).unwrap();
+            writeln!(stdout).unwrap();
+
+            for failed_test in failed_tests {
+                let path = path::shorten(&failed_test);
+                let path = path.to_string_lossy();
+                writeln!(stdout, "  * {}", path).unwrap();
+            }
+        }
+
+        if !invalid_tests.is_empty() {
+            writeln!(stdout).unwrap();
+            writeln!(stdout, "{}", section_header("INVALID TESTS")).unwrap();
+            writeln!(stdout).unwrap();
+
+            for invalid_test in invalid_tests {
+                let path = path::shorten(&invalid_test);
+                let path = path.to_string_lossy();
+                writeln!(stdout, "  * {}", path).unwrap();
+            }
+        }
     }
 
     let summary = TestSuiteSummary {
         statistics,
-        gilding: application.gilding,
+        gilding: arguments.gilding,
         duration,
-        filters,
     };
 
-    if summary.statistics.total_amount() != 0 {
+    if summary.statistics.total_amount() == 0 {
         // no additional separator necessary if no tests were run
-
-        println!();
-        println!("{}", "=".repeat(terminal_width()));
-        println!();
+    } else {
+        writeln!(stdout).unwrap();
+        writeln!(stdout, "{}", section_separator()).unwrap();
+        writeln!(stdout).unwrap();
     }
 
-    println!("{summary}");
+    writeln!(stdout, "{summary}").unwrap();
 
-    println!("{}", "=".repeat(terminal_width()));
-    println!();
+    writeln!(stdout, "{}", section_separator()).unwrap();
+    writeln!(stdout).unwrap();
 
     if !summary.statistics.passed() {
         return Err(());
@@ -200,15 +233,32 @@ fn try_main() -> Result<(), ()> {
     Ok(())
 }
 
-fn handle_test_folder_entry(
-    entry: &walkdir::DirEntry,
-    filters: Filters,
+#[derive(Clone, Copy)]
+struct SharedArguments {
+    paths: &'static [PathBuf],
     gilding: Gilding,
     timeout: Option<Duration>,
+    compiler_build_mode: CompilerBuildMode,
     inspecting: Inspecting,
-    mode: CompilerBuildMode,
+}
+
+impl From<cli::Arguments> for SharedArguments {
+    fn from(arguments: cli::Arguments) -> Self {
+        Self {
+            paths: arguments.paths.leak(),
+            gilding: arguments.gilding,
+            timeout: arguments.timeout,
+            compiler_build_mode: arguments.compiler_build_mode,
+            inspecting: arguments.inspecting,
+        }
+    }
+}
+
+fn handle_test_folder_entry(
+    entry: &walkdir::DirEntry,
+    arguments: SharedArguments,
     statistics: &mut TestSuiteStatistics,
-    failures: &mut Vec<Failure>,
+    failures: &mut Vec<FailedTest>,
 ) {
     // @Task improve error handling situation (too verbose and repetitive)
 
@@ -219,15 +269,15 @@ fn handle_test_folder_entry(
         return;
     }
 
-    let shortened_path = path.strip_prefix(test_folder_path()).unwrap();
-
     // disallow symbolic links for now
     if entry.file_type().is_symlink() {
-        let path = shortened_path.to_string_lossy().to_string();
-        print_file_status(&path, Status::Invalid, None);
-        failures.push(Failure::new(
-            File::new(path, FileType::Other),
-            FailureKind::invalid_file("Symbolic links are not allowed"),
+        print_file_status(path, Status::Invalid, None);
+        failures.push(FailedTest::new(
+            path.to_owned(),
+            Failure::InvalidTest {
+                message: "symbolic links are not allowed".into(),
+                note: None,
+            },
         ));
         statistics.invalid += 1;
         return;
@@ -236,135 +286,82 @@ fn handle_test_folder_entry(
     // ignore
     // * `.gitignore` files which come with (generated) packages
     // * README files which allow testers to add notes to folders of tests
-    if shortened_path.ends_with(".gitignore") || shortened_path.ends_with("README.txt") {
+    if path.ends_with(".gitignore") || path.ends_with("README.txt") {
         return;
     }
-
-    // disallow files without an extension
-    let Some(extension) = shortened_path.extension().and_then(OsStr::to_str) else {
-            let path = shortened_path.to_string_lossy().to_string();
-            print_file_status(&path, Status::Invalid, None);
-            failures.push(Failure::new(
-                File::new(path, FileType::Other),
-                FailureKind::invalid_file("The file does not have an extension or it is not valid UTF-8"),
-            ));
-            statistics.invalid += 1;
-            return;
-        };
 
     // skip golden files (after optional `--inspect` validation)
     // since they are processed when encountering Lushui files and packages
-    if extension == "stdout" || extension == "stderr" {
-        #[allow(clippy::collapsible_if)]
-        if inspecting == Inspecting::Yes {
-            if !path.with_extension("lushui").exists() && !path.with_extension("metadata").exists()
-            {
-                let path = shortened_path.to_string_lossy().to_string();
-                print_file_status(&path, Status::Invalid, None);
-                failures.push(Failure::new(
-                    File::new(path, FileType::Golden),
-                    FailureKind::invalid_file(
-                        "The golden file does not have a corresponding test file",
-                    ),
-                ));
-                statistics.invalid += 1;
-            }
+    if let Some(extension) = path.extension()
+    && (extension == "stdout" || extension == "stderr")
+    {
+        if arguments.inspecting == Inspecting::Yes
+            && !path.with_extension("lushui").exists()
+            && !path.with_extension("metadata").exists()
+        {
+            print_file_status(path, Status::Invalid, None);
+            failures.push(FailedTest::new(
+                path.to_owned(),
+                Failure::InvalidTest {
+                    message: "the golden file does not have a corresponding test file".into(),
+                    note: None,
+                },
+            ));
+            statistics.invalid += 1;
         }
 
         return;
     }
 
-    let type_ = match extension {
-        "lushui" => TestType::SourceFile,
-        // @Beacon @Task instead of deciding *here* if it's a Package or a MetadataSourceFile
-        //               and instead of judging by its file name, parse the test configuration
-        //               and discern the TestType by the TestTag:
-        //                   tag "metadata" => TestType::MetadataSourceFile
-        //                   tag _ => TestType::Package
-        "metadata" if shortened_path.ends_with("package.metadata") => TestType::Package,
-        "metadata" => TestType::MetadataSourceFile,
-        _ => {
-            let path = shortened_path.to_string_lossy().to_string();
-            print_file_status(&path, Status::Invalid, None);
-            failures.push(Failure::new(
-                File::new(path, FileType::Other),
-                FailureKind::invalid_file(
-                    "The file extension is not one of ‘metadata’, ‘lushui’, ‘stderr’ or ‘stdout’",
+    let Ok(type_) = classify_test(path) else {
+        print_file_status(path, Status::Invalid, None);
+        failures.push(FailedTest::new(
+            path.to_owned(),
+            Failure::InvalidTest {
+                message: "the file extension is not supported".into(),
+                note: Some(
+                    "the file extension has to be one of \
+                    ‘metadata’, ‘lushui’, ‘stderr’ or ‘stdout’"
+                        .into(),
                 ),
-            ));
-            statistics.invalid += 1;
-            return;
-        }
+            },
+        ));
+        statistics.invalid += 1;
+        return;
     };
 
-    // obtain a "legible path" (valid UTF-8) to be shown to the user
-    let legible_path = {
-        let legible_path: Cow<'_, _> = match type_ {
-            TestType::SourceFile | TestType::MetadataSourceFile => {
-                shortened_path.with_extension("").into()
-            }
-            TestType::Package => shortened_path.parent().unwrap().into(),
-        };
-
-        match legible_path.to_str() {
-            Some(path) => path.to_owned(),
-            None => {
-                let path = shortened_path.to_string_lossy().to_string();
-                print_file_status(&path, Status::Invalid, None);
-                failures.push(Failure::new(
-                    File::new(path, type_.file_type_package_means_manifest()),
-                    FailureKind::invalid_file("The file path contains invalid UTF-8"),
-                ));
-                statistics.invalid += 1;
-                return;
-            }
-        }
-    };
-
-    // apply the supplied filters and skip the current file if they do
-    if !filters.is_empty() {
-        let is_included = filters
-            .loose
+    if !arguments.paths.is_empty()
+        && !arguments
+            .paths
             .iter()
-            .any(|filter| legible_path.contains(filter))
-            || filters.strict.iter().any(|filter| legible_path == *filter);
-
-        if !is_included {
-            statistics.skipped += 1;
-            return;
-        }
+            .any(|filter| path.starts_with(filter))
+    {
+        statistics.skipped += 1;
+        return;
     }
 
-    let language = match type_ {
-        TestType::Package | TestType::MetadataSourceFile => Language::Metadata,
-        TestType::SourceFile => Language::Lushui,
-    };
-
     // parse the test configuration
-    let test_file = fs::read_to_string(entry.path()).unwrap();
-    let configuration = match Configuration::parse(&test_file, language) {
+    let test_source = fs::read_to_string(entry.path()).unwrap();
+    let configuration = match Configuration::parse(&test_source, type_) {
         Ok(configuration) => configuration,
         Err(error) => {
-            failures.push(Failure::new(
-                File::new(
-                    legible_path.clone(),
-                    type_.file_type_package_means_manifest(),
-                ),
-                FailureKind::invalid_file(error.to_string()),
+            failures.push(FailedTest::new(
+                path.to_owned(),
+                Failure::InvalidConfiguration(error),
             ));
-            print_file_status(&legible_path, Status::Invalid, None);
+            print_file_status(path, Status::Invalid, None);
             statistics.invalid += 1;
             return;
         }
     };
 
     // skip auxiliary files (after optional `--inspect` validation)
-    if let TestTag::Auxiliary = configuration.tag {
-        if inspecting == Inspecting::Yes {
-            let result = validate_auxiliary_file(&configuration.arguments, &legible_path, failures);
+    if let TestTag::Auxiliary { users } = configuration.tag {
+        if arguments.inspecting == Inspecting::Yes {
+            let result = validate_auxiliary_file(&users, path, failures);
 
             if result.is_err() {
-                print_file_status(&legible_path, Status::Invalid, None);
+                print_file_status(path, Status::Invalid, None);
                 statistics.invalid += 1;
             }
         }
@@ -373,42 +370,48 @@ fn handle_test_folder_entry(
     }
 
     if let TestTag::Ignore = configuration.tag {
-        print_file_status(&legible_path, Status::Ignored, None);
+        print_file_status(path, Status::Ignored, None);
         statistics.ignored += 1;
         return;
     }
 
     let time = Instant::now();
-    let output = compile(path, &configuration.arguments, type_, timeout, mode);
+    let output = compile(
+        path,
+        &configuration,
+        type_,
+        arguments.timeout,
+        arguments.compiler_build_mode,
+    );
     let duration = time.elapsed();
 
     let mut failed = false;
 
-    // @Task simplify and DRY this logic!
-    if let Some(124) = output.status.code() {
-        failures.push(Failure::new(
-            File::new(legible_path.clone(), type_.into()),
-            FailureKind::Timeout,
+    const TIMEOUT_EXIT_STATUS: i32 = 124;
+
+    if let Some(TIMEOUT_EXIT_STATUS) = output.status.code() {
+        failures.push(FailedTest::new(
+            path.to_owned(),
+            Failure::Timeout {
+                global: arguments.timeout,
+                local: match configuration.timeout {
+                    Timeout::Inherited => None,
+                    Timeout::Overwritten(duration) => Some(duration.unwrap()),
+                },
+            },
         ));
         failed = true;
     } else {
         match (configuration.tag, output.status.success()) {
-            (TestTag::Pass, true) | (TestTag::Fail, false) => {}
-            (TestTag::Pass, false) => {
-                failures.push(Failure::new(
-                    File::new(legible_path.clone(), type_.into()),
-                    FailureKind::UnexpectedFail(output.status),
+            (TestTag::Pass { .. }, false) | (TestTag::Fail { .. }, true) => {
+                failures.push(FailedTest::new(
+                    path.to_owned(),
+                    Failure::UnexpectedExitStatus(output.status),
                 ));
                 failed = true;
             }
-            (TestTag::Fail, true) => {
-                failures.push(Failure::new(
-                    File::new(legible_path.clone(), type_.into()),
-                    FailureKind::UnexpectedPass,
-                ));
-                failed = true;
-            }
-            (TestTag::Ignore | TestTag::Auxiliary, _) => unreachable!(),
+            (TestTag::Pass { .. }, true) | (TestTag::Fail { .. }, false) => {}
+            (TestTag::Ignore | TestTag::Auxiliary { .. }, _) => unreachable!(),
         }
     }
 
@@ -416,14 +419,11 @@ fn handle_test_folder_entry(
         &entry.path().with_extension("stdout"),
         output.stdout,
         Stream::Stdout,
-        gilding,
+        arguments.gilding,
     ) {
         Ok(gilded) => gilded,
         Err(error) => {
-            failures.push(Failure::new(
-                File::new(legible_path.clone(), type_.into()),
-                error,
-            ));
+            failures.push(FailedTest::new(path.to_owned(), error));
             failed = true;
             false
         }
@@ -433,14 +433,11 @@ fn handle_test_folder_entry(
         &entry.path().with_extension("stderr"),
         output.stderr,
         Stream::Stderr,
-        gilding,
+        arguments.gilding,
     ) {
         Ok(gilded) => gilded,
         Err(error) => {
-            failures.push(Failure::new(
-                File::new(legible_path.clone(), type_.into()),
-                error,
-            ));
+            failures.push(FailedTest::new(path.to_owned(), error));
             failed = true;
             false
         }
@@ -457,14 +454,20 @@ fn handle_test_folder_entry(
         Status::Ok
     };
 
-    print_file_status(&legible_path, status, Some(duration));
+    print_file_status(path, status, Some(duration));
 }
 
-pub(crate) fn print_file_status(path: &str, status: Status, duration: Option<Duration>) {
+pub(crate) fn print_file_status(path: &Path, status: Status, duration: Option<Duration>) {
     let padding = terminal_width() * 4 / 5;
     let mut stdout = std::io::stdout().lock();
 
-    write!(stdout, "  {:<padding$} {}", path, status).unwrap();
+    write!(
+        stdout,
+        "  {:<padding$} {}",
+        path::shorten(path).to_string_lossy(),
+        status
+    )
+    .unwrap();
 
     if let Some(duration) = duration {
         write!(stdout, " {}", format!("{duration:.2?}").bright_black()).unwrap();
@@ -498,15 +501,57 @@ impl fmt::Display for Status {
     }
 }
 
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub(crate) enum TestType {
+    SourceFile,
+    Package,
+    MetadataSourceFile,
+}
+
+impl fmt::Display for TestType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::SourceFile => "source file",
+            Self::Package => "package",
+            Self::MetadataSourceFile => "metadata source file",
+        })
+    }
+}
+
+fn classify_test(path: &Path) -> Result<TestType, ()> {
+    let extension = path.extension().ok_or(())?;
+
+    const METADATA_TEST_SUITE_NAME: &str = "metadata";
+
+    if extension == "lushui" {
+        Ok(TestType::SourceFile)
+    } else if extension == "metadata" {
+        if path
+            .strip_prefix(path::test_folder())
+            .unwrap()
+            .starts_with(METADATA_TEST_SUITE_NAME)
+        {
+            Ok(TestType::MetadataSourceFile)
+        } else {
+            Ok(TestType::Package)
+        }
+    } else {
+        Err(())
+    }
+}
+
 fn validate_auxiliary_file(
-    arguments: &[&str],
-    legible_path: &str,
-    failures: &mut Vec<Failure>,
+    users: &[&str],
+    path: &Path,
+    failures: &mut Vec<FailedTest>,
 ) -> Result<(), ()> {
-    if arguments.is_empty() {
-        failures.push(Failure::new(
-            File::new(legible_path.to_owned(), FileType::Auxiliary),
-            FailureKind::invalid_file("The auxiliary file does not declare its users"),
+    if users.is_empty() {
+        failures.push(FailedTest::new(
+            path.to_owned(),
+            Failure::InvalidTest {
+                message: "the auxiliary file does not declare its users".into(),
+                note: None,
+            },
         ));
         return Err(());
     }
@@ -516,8 +561,8 @@ fn validate_auxiliary_file(
 
     let mut invalid_users = Vec::new();
 
-    for user in arguments {
-        let user_path = Path::new(test_folder_path()).join(user);
+    for user in users {
+        let user_path = Path::new(path::test_folder()).join(user);
 
         // @Task check if !*.lushui are folders
         // @Task use try_exists
@@ -529,17 +574,21 @@ fn validate_auxiliary_file(
     if !invalid_users.is_empty() {
         let user_count = invalid_users.len();
 
-        failures.push(Failure::new(
-            File::new(legible_path.to_owned(), FileType::Auxiliary),
-            FailureKind::invalid_file(format!(
-                "The alleged {} {} of the auxiliary file {} not exist",
-                if user_count == 1 { "user" } else { "users" },
-                invalid_users
-                    .into_iter()
-                    .map(|user| format!("‘{user}’"))
-                    .join_with(", "),
-                if user_count == 1 { "does" } else { "do" },
-            )),
+        failures.push(FailedTest::new(
+            path.to_owned(),
+            Failure::InvalidTest {
+                message: format!(
+                    "the alleged {} {} of the auxiliary file {} not exist",
+                    pluralize!(user_count, "user"),
+                    invalid_users
+                        .into_iter()
+                        .map(|user| format!("‘{user}’"))
+                        .join_with(", "),
+                    pluralize!(user_count, "does", "do"),
+                )
+                .into(),
+                note: None,
+            },
         ));
 
         return Err(());
@@ -550,48 +599,74 @@ fn validate_auxiliary_file(
 
 fn compile(
     path: &Path,
-    arguments: &[&str],
+    configuration: &Configuration<'_>,
     type_: TestType,
     timeout: Option<Duration>,
     mode: CompilerBuildMode,
 ) -> std::process::Output {
-    // @Beacon @Question how can we filter out rustc's warnings from stderr?
+    let compiler = path::compiler(mode);
+    let mut command;
 
-    let mut command = Command::new(if timeout.is_some() {
-        "timeout"
-    } else {
-        "cargo"
-    });
+    let timeout = match configuration.timeout {
+        Timeout::Inherited => timeout,
+        Timeout::Overwritten(timeout) => timeout,
+    };
 
-    if let Some(timeout) = timeout {
-        command.arg(timeout.as_secs().to_string());
-        command.arg("cargo");
+    match timeout {
+        Some(timeout) => {
+            let timeout = match timeout.as_secs() {
+                0 => "0.0001".to_string(),
+                timeout => timeout.to_string(),
+            };
+
+            command = Command::new("timeout");
+            command.arg(timeout);
+            command.arg(compiler);
+        }
+        None => {
+            command = Command::new(compiler);
+        }
     }
 
-    command
-        .args(["+nightly", "run", "--quiet", "--manifest-path"])
-        .arg(compiler_manifest_path())
-        .args(mode.to_flags())
-        .args(["--", "--quiet"]);
+    command.arg("--quiet");
 
     if type_ == TestType::SourceFile {
         command.arg("file");
     }
 
-    command.args(arguments);
+    let (TestTag::Pass { mode } | TestTag::Fail { mode }) = configuration.tag else {
+        unreachable!();
+    };
+
+    {
+        use TestType::*;
+
+        command.arg(match (type_, mode) {
+            (SourceFile | Package, Mode::Check) => "check",
+            (SourceFile | Package, Mode::Build) => "build",
+            (SourceFile | Package, Mode::Run) => "run",
+            (MetadataSourceFile, Mode::Check) => "metadata",
+            (MetadataSourceFile, _) => unreachable!(),
+        });
+    }
 
     // The default component type for source files is library. This is highly unpractical for the current majority of
     // our source file tests which check the correctness of the compiler in regards to language features and
     // which do not want to run anything. So let's overwrite it unless the test configuration wants to `run` the code
     // or manually supplied a component type. Keep in mind, this is only a simple heuristic.
+    // @Task find a more principled approach
     if type_ == TestType::SourceFile
-        && arguments.first().map_or(false, |&command| command != "run")
-        && arguments
+        && mode != Mode::Run
+        && configuration
+            .compiler_args
             .iter()
             .all(|argument| !argument.starts_with("--component-type"))
     {
         command.arg("--component-type=library");
     }
+
+    command.args(&configuration.compiler_args);
+    command.envs(&configuration.compiler_env_vars);
 
     match type_ {
         TestType::SourceFile | TestType::MetadataSourceFile => {
@@ -606,39 +681,12 @@ fn compile(
     command.output().unwrap()
 }
 
-#[derive(PartialEq, Eq, Clone, Copy)]
-enum TestType {
-    SourceFile,
-    Package,
-    MetadataSourceFile,
-}
-
-impl TestType {
-    pub(crate) fn file_type_package_means_manifest(self) -> FileType {
-        match self {
-            Self::SourceFile => FileType::SourceFile,
-            Self::Package => FileType::PackageManifest,
-            Self::MetadataSourceFile => FileType::MetadataSourceFile,
-        }
-    }
-}
-
-impl From<TestType> for FileType {
-    fn from(type_: TestType) -> Self {
-        match type_ {
-            TestType::SourceFile => Self::SourceFile,
-            TestType::Package => Self::Package,
-            TestType::MetadataSourceFile => Self::MetadataSourceFile,
-        }
-    }
-}
-
 fn check_against_golden_file(
     golden_file_path: &Path,
     actual: Vec<u8>,
     stream: Stream,
     gilding: Gilding,
-) -> Result<bool, FailureKind> {
+) -> Result<bool, Failure> {
     let actual = String::from_utf8(actual).unwrap();
 
     let golden = if golden_file_path.exists() {
@@ -649,7 +697,7 @@ fn check_against_golden_file(
 
     if actual != golden {
         if gilding == Gilding::No {
-            Err(FailureKind::GoldenFileMismatch {
+            Err(Failure::GoldenFileMismatch {
                 golden,
                 actual,
                 stream,
@@ -661,18 +709,6 @@ fn check_against_golden_file(
         }
     } else {
         Ok(false)
-    }
-}
-
-#[derive(Clone, Copy)]
-struct Filters {
-    strict: &'static [String],
-    loose: &'static [String],
-}
-
-impl Filters {
-    const fn is_empty(self) -> bool {
-        self.strict.is_empty() && self.loose.is_empty()
     }
 }
 
@@ -693,10 +729,10 @@ impl Stream {
             //       * escaping via `$$`
             //       * simultaneous replacement
             Self::Stderr => stream
-                .replace(Self::TEST_FOLDER_PATH_VARIABLE, test_folder_path())
+                .replace(Self::TEST_FOLDER_PATH_VARIABLE, path::test_folder())
                 .replace(
                     Self::DISTRIBUTED_LIBRARIES_PATH_VARIABLE,
-                    distributed_libraries_path(),
+                    path::distributed_libraries(),
                 ),
         }
     }
@@ -708,9 +744,9 @@ impl Stream {
             //       * escaping via `$$`
             //       * simultaneous replacement
             Self::Stderr => stream
-                .replace(test_folder_path(), Self::TEST_FOLDER_PATH_VARIABLE)
+                .replace(path::test_folder(), Self::TEST_FOLDER_PATH_VARIABLE)
                 .replace(
-                    distributed_libraries_path(),
+                    path::distributed_libraries(),
                     Self::DISTRIBUTED_LIBRARIES_PATH_VARIABLE,
                 ),
         }
@@ -726,58 +762,30 @@ impl fmt::Display for Stream {
     }
 }
 
-fn compiler_manifest_path() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../Cargo.toml")
+fn section_separator() -> String {
+    "=".repeat(terminal_width())
+}
+
+fn section_header(title: &str) -> String {
+    use unicode_width::UnicodeWidthStr;
+
+    let mut header = format!("==== {title} ");
+    let width = header.width();
+    header += &"=".repeat(terminal_width().saturating_sub(width));
+    header
 }
 
 fn terminal_width() -> usize {
-    static TERMINAL_WIDTH: LazyLock<usize> =
-        LazyLock::new(|| terminal_size::terminal_size().map_or(100, |size| size.0 .0 as _));
+    static WIDTH: LazyLock<usize> =
+        LazyLock::new(|| terminal_size::terminal_size().map_or(120, |(width, _)| width.0 as _));
 
-    *TERMINAL_WIDTH
-}
-
-fn test_folder_path() -> &'static str {
-    static PATH: LazyLock<String> = LazyLock::new(|| {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../test")
-            .canonicalize()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_owned()
-    });
-
-    &PATH
-}
-
-fn distributed_libraries_path() -> &'static str {
-    static PATH: LazyLock<String> = LazyLock::new(|| {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../library")
-            .canonicalize()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_owned()
-    });
-
-    &PATH
+    *WIDTH
 }
 
 #[derive(Clone, Copy)]
 enum CompilerBuildMode {
     Debug,
     Release,
-}
-
-impl CompilerBuildMode {
-    fn to_flags(self) -> &'static [&'static str] {
-        match self {
-            Self::Debug => &[],
-            Self::Release => &["--release"][..],
-        }
-    }
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -790,4 +798,80 @@ enum Gilding {
 enum Inspecting {
     Yes,
     No,
+}
+
+mod path {
+    use std::{
+        borrow::Cow,
+        env::consts::EXE_EXTENSION,
+        path::{Path, PathBuf},
+        sync::LazyLock,
+    };
+
+    use crate::CompilerBuildMode;
+
+    pub(crate) fn shorten(path: &Path) -> Cow<'_, Path> {
+        pathdiff::diff_paths(path, current_folder()).map_or(path.into(), Into::into)
+    }
+
+    pub(crate) fn current_folder() -> &'static Path {
+        static PATH: LazyLock<PathBuf> = LazyLock::new(|| std::env::current_dir().unwrap());
+
+        &PATH
+    }
+
+    pub(crate) fn compiler_manifest() -> &'static Path {
+        static PATH: LazyLock<PathBuf> =
+            LazyLock::new(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../Cargo.toml"));
+
+        &PATH
+    }
+
+    pub(crate) fn compiler(mode: CompilerBuildMode) -> &'static Path {
+        static DEBUG_PATH: LazyLock<PathBuf> = LazyLock::new(|| path("debug"));
+        static RELEASE_PATH: LazyLock<PathBuf> = LazyLock::new(|| path("release"));
+
+        fn path(mode: &str) -> PathBuf {
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../../target")
+                .join(mode)
+                .join("main")
+                .with_extension(EXE_EXTENSION)
+        }
+
+        match mode {
+            CompilerBuildMode::Debug => &DEBUG_PATH,
+            CompilerBuildMode::Release => &RELEASE_PATH,
+        }
+    }
+
+    // @Task return a Path if possible
+    pub(crate) fn test_folder() -> &'static str {
+        static PATH: LazyLock<String> = LazyLock::new(|| {
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../test")
+                .canonicalize()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_owned()
+        });
+
+        &PATH
+    }
+
+    // @Task return a Path if possible
+    pub(crate) fn distributed_libraries() -> &'static str {
+        static PATH: LazyLock<String> = LazyLock::new(|| {
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../../library")
+                .canonicalize()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_owned()
+        });
+
+        &PATH
+    }
 }

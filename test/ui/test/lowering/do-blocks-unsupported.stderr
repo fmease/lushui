@@ -1,9 +1,9 @@
 error: do blocks are not supported yet
- --> ${TEST_FOLDER}/lowering/do-blocks-unsupported.lushui:4:5
+ --> ${TEST_FOLDER}/lowering/do-blocks-unsupported.lushui:2:5
   |
-4 |       do
+2 |       do
  ... _____^
-8 | |         pure (goal beta)
+6 | |         pure (goal beta)
   | |________________________^
   |
 

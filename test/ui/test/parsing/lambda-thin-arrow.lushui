@@ -1,3 +1,1 @@
-;;; TEST fail check
-
 f: Nat -> Nat = \(x: Nat) -> * 2 x

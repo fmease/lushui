@@ -1,167 +1,144 @@
 use crate::{terminal_width, Stream};
 use colored::Colorize;
+use diagnostics::Diagnostic;
 use difference::{Changeset, Difference};
-use std::{borrow::Cow, fmt, process::ExitStatus};
-use unicode_width::UnicodeWidthStr;
+use std::{fmt, path::PathBuf, process::ExitStatus, time::Duration};
+use utilities::{pluralize, Str};
 
-type Str = std::borrow::Cow<'static, str>;
-
-pub(crate) struct Failure {
-    pub(crate) file: File,
-    pub(crate) kind: FailureKind,
+pub(crate) struct FailedTest {
+    pub(crate) path: PathBuf,
+    pub(crate) failure: Failure,
 }
 
-impl Failure {
-    pub(crate) fn new(file: File, kind: FailureKind) -> Self {
-        Self { file, kind }
+impl FailedTest {
+    pub(crate) fn new(path: PathBuf, kind: Failure) -> Self {
+        Self {
+            path,
+            failure: kind,
+        }
     }
 }
 
-impl fmt::Display for Failure {
+impl fmt::Display for FailedTest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let title = format!("==== {} ", self.file);
-        let bar = "=".repeat(terminal_width().saturating_sub(title.width()));
+        let path = crate::path::shorten(&self.path);
+        let path = path.to_string_lossy();
 
         writeln!(f)?;
-        writeln!(f, "{title}{bar}")?;
+        writeln!(f, "{}", crate::section_header(&path))?;
         writeln!(f)?;
-        write!(f, "{}", self.kind)
+        write!(f, "{}", self.failure)
     }
 }
 
-pub(crate) struct File {
-    pub(crate) path: String,
-    pub(crate) type_: FileType,
-}
-
-impl File {
-    pub(crate) fn new(path: String, type_: FileType) -> Self {
-        Self { path, type_ }
-    }
-}
-
-impl fmt::Display for File {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} ({})", self.path, self.type_)
-    }
-}
-
-pub(crate) enum FileType {
-    SourceFile,
-    Package,
-    PackageManifest,
-    Auxiliary,
-    MetadataSourceFile,
-    Golden,
-    Other,
-}
-
-impl fmt::Display for FileType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::SourceFile => "source file",
-            Self::Package => "package",
-            Self::PackageManifest => "package manifest",
-            Self::Auxiliary => "auxiliary file",
-            Self::MetadataSourceFile => "metadata source file",
-            Self::Golden => "golden file",
-            Self::Other => "uncategorized",
-        })
-    }
-}
-
-pub(crate) enum FailureKind {
-    UnexpectedPass,
-    UnexpectedFail(ExitStatus),
+// @Task smh. differentiate between unexpected-*{compiler,program}*-{pass,fail}
+pub(crate) enum Failure {
+    UnexpectedExitStatus(ExitStatus),
     GoldenFileMismatch {
         golden: String,
         actual: String,
         stream: Stream,
     },
-    InvalidFile {
-        reason: Str,
+    InvalidTest {
+        message: Str,
+        note: Option<Str>,
     },
-    Timeout,
+    Timeout {
+        global: Option<Duration>,
+        local: Option<Duration>,
+    },
+    InvalidConfiguration(crate::configuration::Error),
 }
 
-impl FailureKind {
-    pub(crate) fn invalid_file(reason: impl Into<Str>) -> Self {
-        Self::InvalidFile {
-            reason: reason.into(),
-        }
-    }
-}
-
-impl fmt::Display for FailureKind {
+impl fmt::Display for Failure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::UnexpectedPass => {
-                write!(
-                    f,
-                    "{}",
-                    "Expected the compiler to fail but it actually exited successfully i.e. with exit code ‘0’."
-                        .red()
-                )?;
-            }
-            Self::UnexpectedFail(status) => {
-                write!(
-                    f,
-                    "{}",
-                    format!(
-                        "Expected the compiler to exit successfully but it actually failed with {}.",
-                        match status.code() {
-                            Some(code) => format!("the non-zero exit code ‘{code}’").into(),
-                            None => Cow::from("a non-zero exit code"),
-                        },
-                    )
-                    .red()
-                )?;
+            Self::UnexpectedExitStatus(status) => {
+                // @Task if it's an unexpected pass and if no test tag was specified (smh. get that info),
+                //       mention that ‘fail check’ is implied if not specified otherwise
+
+                let code: Str = match status.code() {
+                    Some(code) => format!("code ‘{code}’").into(),
+                    None => "a code".into(),
+                };
+
+                let (adverb, verb, noun) = match status.success() {
+                    true => ("successfully", "‘fail’", "success"),
+                    false => ("unsuccessfully", "‘pass’ (succeed)", "failure"),
+                };
+
+                let diagnostic = Diagnostic::error()
+                    .message(format!("the compiler unexpectedly exited {adverb}"))
+                    .note(format!(
+                        "expected the compiler to {verb} but it exited with {code} indicating {noun}",
+                    ));
+
+                write!(f, "{}", diagnostic.format(None))
             }
             Self::GoldenFileMismatch {
                 golden,
                 actual,
                 stream,
             } => {
-                writeln!(
-                    f,
-                    "{}",
-                    format!(
-                        "The actual output of the compiler on {stream} differs from the expected golden one:"
-                    )
-                    .red()
-                )?;
-                writeln!(f)?;
+                let diagnostic = Diagnostic::error().message(format!(
+                    "the {stream} output of the compiler differs from the expected one"
+                ));
+
+                writeln!(f, "{}", diagnostic.format(None))?;
                 writeln!(f, "{}", "-".repeat(terminal_width()).bright_black())?;
 
                 let changes = Changeset::new(golden, actual, "\n");
                 write_differences_with_ledge(&changes.diffs, f)?;
 
-                write!(f, "{}", "-".repeat(terminal_width()).bright_black())?;
+                write!(f, "{}", "-".repeat(terminal_width()).bright_black())
             }
-            Self::InvalidFile { reason } => {
-                write!(
-                    f,
-                    "{}",
-                    format!(
-                        "For being in the test folder, the file has an incorrect form:\n{reason}."
-                    )
-                    .red()
-                )?;
+            Self::InvalidTest { message, note } => {
+                let diagnostic =
+                    Diagnostic::error()
+                        .message(message.clone())
+                        .with(|error| match note {
+                            Some(note) => error.note(note.clone()),
+                            None => error,
+                        });
+
+                write!(f, "{}", diagnostic.format(None))
             }
-            Self::Timeout => {
-                write!(
-                    f,
-                    "{}",
-                    "The test timed out: It ran longer than the specified timeout.".red()
-                )?;
+            Self::InvalidConfiguration(error) => {
+                // @Temporary
+                let diagnostic = Diagnostic::error().message(error.message.clone());
+
+                write!(f, "{}", diagnostic.format(None))
+            }
+            Self::Timeout { global, local } => {
+                let timeout = match local {
+                    None => global.unwrap(),
+                    Some(local) => *local,
+                }
+                .as_secs();
+
+                let issuer = match (local, global) {
+                    (Some(_), None) => "set in the test configuration",
+                    (Some(_), Some(_)) => {
+                        "set in the test configuration \
+                         overwriting the command-line option"
+                    }
+                    (None, _) => "set via the command-line option",
+                };
+
+                let diagnostic = Diagnostic::error()
+                    .message("the test ran longer than the specified timeout")
+                    .note(format!(
+                        "the timeout is {timeout} {} ({issuer})",
+                        pluralize!(timeout, "second"),
+                    ));
+
+                write!(f, "{}", diagnostic.format(None))
             }
         }
-
-        Ok(())
     }
 }
 
-// the provided Display implementation for Changesets is problematic when whitespace differs
+// @Task highlight changes within lines
 fn write_differences_with_ledge(
     differences: &[Difference],
     f: &mut fmt::Formatter<'_>,
@@ -174,12 +151,12 @@ fn write_differences_with_ledge(
                 }
             }
             Difference::Add(lines) => {
-                for line in lines.lines().chain(lines.is_empty().then(|| "")) {
+                for line in lines.lines().chain(lines.is_empty().then_some("")) {
                     writeln!(f, "{} {}", "+".black().on_green(), line.green())?;
                 }
             }
             Difference::Rem(lines) => {
-                for line in lines.lines().chain(lines.is_empty().then(|| "")) {
+                for line in lines.lines().chain(lines.is_empty().then_some("")) {
                     writeln!(f, "{} {}", "-".black().on_red(), line.red())?;
                 }
             }

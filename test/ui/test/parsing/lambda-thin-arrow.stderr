@@ -1,7 +1,7 @@
 error[E010]: found ‘->’ but expected parameter, type annotation or ‘=>’
- --> ${TEST_FOLDER}/parsing/lambda-thin-arrow.lushui:3:27
+ --> ${TEST_FOLDER}/parsing/lambda-thin-arrow.lushui:1:27
   |
-3 | f: Nat -> Nat = \(x: Nat) -> * 2 x
+1 | f: Nat -> Nat = \(x: Nat) -> * 2 x
   |                           ^^ unexpected token
   |
 

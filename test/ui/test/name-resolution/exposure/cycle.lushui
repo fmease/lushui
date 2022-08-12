@@ -1,4 +1,2 @@
-;;; TEST fail check
-
 use Alpha as Beta
 @(public Beta) Alpha: Type = Type

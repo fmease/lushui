@@ -1,5 +1,3 @@
-;;; TEST fail check
-
 @public
 data Unit: Type of
     unit: Unit

@@ -1,7 +1,7 @@
 error: found end of input but expected value
- --> ${TEST_FOLDER}/metadata/unexpected-end-of-input.metadata:3:6
+ --> ${TEST_FOLDER}/metadata/unexpected-end-of-input.metadata:1:6
   |
-3 | key:
+1 | key:
   |    ><
   |
 

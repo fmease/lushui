@@ -1,4 +1,3 @@
-;;; TEST fail check
 ;;; @Bug we are suggesting similiarly(&identically)named bindings on privacy fail
 
 use alpha.Nothing

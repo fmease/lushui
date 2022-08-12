@@ -1,3 +1,5 @@
+#![allow(deprecated)] // @Temporary
+
 use crate::create::PackageCreationOptions;
 use clap::{Arg, ArgMatches};
 use colored::Colorize;

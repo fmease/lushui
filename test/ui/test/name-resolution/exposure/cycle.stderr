@@ -1,14 +1,14 @@
 error: exposure reach ‘topmost.Beta’ is circular
- --> ${TEST_FOLDER}/name-resolution/exposure/cycle.lushui:4:10
+ --> ${TEST_FOLDER}/name-resolution/exposure/cycle.lushui:2:10
   |
-4 | @(public Beta) Alpha: Type = Type
+2 | @(public Beta) Alpha: Type = Type
   |          ^^^^
   |
 
 error[E037]: exposure can only be restricted to ancestor modules
- --> ${TEST_FOLDER}/name-resolution/exposure/cycle.lushui:4:10
+ --> ${TEST_FOLDER}/name-resolution/exposure/cycle.lushui:2:10
   |
-4 | @(public Beta) Alpha: Type = Type
+2 | @(public Beta) Alpha: Type = Type
   |          ^^^^
   |
 

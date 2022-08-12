@@ -1,127 +1,191 @@
 use crate::{CompilerBuildMode, Gilding, Inspecting};
-use clap::{Arg, Command};
-use std::{num::NonZeroUsize, str::FromStr, time::Duration};
+use clap::{
+    builder::{PathBufValueParser, TypedValueParser},
+    Arg, ArgAction, Command,
+};
+use diagnostics::{Diagnostic, Reporter};
+use std::{num::NonZeroUsize, path::PathBuf, time::Duration};
 
-pub(crate) struct Application {
+pub(crate) fn arguments() -> Result<Arguments, ()> {
+    let available_parallelism =
+        std::thread::available_parallelism().map(|number| number.to_string());
+    let available_parallelism = available_parallelism.as_deref();
+
+    let number_test_threads = {
+        let argument = Arg::new(option::NUMBER_TEST_THREADS)
+            .short('T')
+            .long("test-threads")
+            .value_name("NUMBER")
+            .value_parser(NonZeroUsizeParser)
+            .help("Set the number of OS threads to use during test execution");
+
+        match available_parallelism {
+            Ok(available_parallelism) => argument.default_value(available_parallelism),
+            Err(_) => argument.required(true),
+        }
+    };
+
+    let matches = Command::new(env!("CARGO_PKG_NAME"))
+        .version(env!("CARGO_PKG_VERSION"))
+        .about(env!("CARGO_PKG_DESCRIPTION"))
+        .arg(
+            Arg::new(option::RELEASE)
+                .long("release")
+                .short('r')
+                .help("Build the Lushui compiler in release mode, with optimizations"),
+        )
+        // @Task update help to reflect removal of filters
+        .arg(Arg::new(option::GILD).long("gild").short('g').help(
+            "Update golden files of all included failing tests to the current compiler output",
+        ))
+        .arg(
+            Arg::new(option::TIMEOUT)
+                .long("timeout")
+                .short('t')
+                .value_name("DURATION")
+                .value_parser(DurationParser)
+                .help("Impose a timeout in seconds to every single test"),
+        )
+        .arg(number_test_threads)
+        .arg(
+            Arg::new(option::INSPECT)
+                .long("inspect")
+                .short('I')
+                .help("Inspect the test suite for issues"),
+        )
+        .arg(
+            Arg::new(argument::PATHS)
+                .value_name("PATH")
+                .multiple_values(true)
+                .action(ArgAction::Append)
+                .value_parser(PathBufValueParser::new())
+                .help("@Task"),
+        )
+        .get_matches();
+
+    let mut paths = Vec::new();
+    let mut success = true;
+
+    for path in matches
+        .get_many::<PathBuf>(argument::PATHS)
+        .unwrap_or_default()
+    {
+        match path.canonicalize() {
+            Ok(path) => paths.push(path),
+            Err(error) => {
+                if success {
+                    success = false;
+                }
+
+                Diagnostic::error()
+                    .message("could not load the test file")
+                    .note(format!("‘{}’: {error}", path.to_string_lossy()))
+                    .report(&Reporter::stderr());
+            }
+        }
+    }
+
+    if !success {
+        return Err(());
+    }
+
+    Ok(Arguments {
+        compiler_build_mode: if matches.contains_id(option::RELEASE) {
+            CompilerBuildMode::Release
+        } else {
+            CompilerBuildMode::Debug
+        },
+        gilding: if matches.contains_id(option::GILD) {
+            Gilding::Yes
+        } else {
+            Gilding::No
+        },
+        paths,
+        timeout: matches.get_one(option::TIMEOUT).copied(),
+        number_test_threads: *matches.get_one(option::NUMBER_TEST_THREADS).unwrap(),
+        inspecting: if matches.contains_id(option::INSPECT) {
+            Inspecting::Yes
+        } else {
+            Inspecting::No
+        },
+    })
+}
+
+pub(crate) struct Arguments {
     pub(crate) compiler_build_mode: CompilerBuildMode,
     pub(crate) gilding: Gilding,
-    pub(crate) strict_filters: Vec<String>,
-    pub(crate) loose_filters: Vec<String>,
+    pub(crate) paths: Vec<PathBuf>,
     pub(crate) timeout: Option<Duration>,
     pub(crate) number_test_threads: NonZeroUsize,
     pub(crate) inspecting: Inspecting,
 }
 
-impl Application {
-    pub(crate) fn new() -> Self {
-        const STRICT_FILTERS: &str = "strict-filters";
-        const LOOSE_FILTERS: &str = "loose-filters";
-        const NUMBER_TEST_THREADS: &str = "number-test-threads";
+mod option {
+    pub(super) const GILD: &str = "gild";
+    pub(super) const INSPECT: &str = "inspect";
+    pub(super) const NUMBER_TEST_THREADS: &str = "number-test-threads";
+    pub(super) const RELEASE: &str = "release";
+    pub(super) const TIMEOUT: &str = "timeout";
+}
 
-        let available_parallelism =
-            std::thread::available_parallelism().map(|number| number.to_string());
-        let available_parallelism = available_parallelism.as_deref();
+mod argument {
+    pub(super) const PATHS: &str = "paths";
+}
 
-        let number_test_threads = {
-            let argument = Arg::new(NUMBER_TEST_THREADS)
-                .short('T')
-                .long("test-threads")
-                .value_name("NUMBER")
-                .validator(|input| {
-                    NonZeroUsize::from_str(input)
-                        .map(drop)
-                        .map_err(|error| error.to_string())
-                })
-                .help("Set the number of OS threads to use during test execution");
+#[derive(Clone)]
+struct NonZeroUsizeParser;
 
-            match available_parallelism {
-                Ok(available_parallelism) => argument.default_value(available_parallelism),
-                Err(_) => argument.required(true),
-            }
-        };
+impl TypedValueParser for NonZeroUsizeParser {
+    type Value = NonZeroUsize;
 
-        let matches = Command::new(env!("CARGO_PKG_NAME"))
-            .version(env!("CARGO_PKG_VERSION"))
-            .about(env!("CARGO_PKG_DESCRIPTION"))
-            .arg(
-                Arg::new("release")
-                    .long("release")
-                    .short('r')
-                    .help("Build the Lushui compiler in release mode, with optimizations"),
-            )
-            .arg(Arg::new("gild").long("gild").short('g').help(
-                "Update golden files of all included failing tests to the current compiler output",
-            ))
-            .arg(
-                Arg::new(STRICT_FILTERS)
-                    .long("filter-strictly")
-                    .short('F')
-                    .value_name("PATH")
-                    .multiple_occurrences(true)
-                    .help(
-                        "Exclude tests whose file path does not equal the given filter \
-                         (and which do not match any other filter); \
-                         those paths are relative to the test folder path and lack an extension",
-                    ),
-            )
-            .arg(
-                Arg::new(LOOSE_FILTERS)
-                    .long("filter-loosely")
-                    .short('f')
-                    .value_name("PATH")
-                    .multiple_occurrences(true)
-                    .help(
-                        "Exclude tests whose file path does not contain the given filter \
-                         (and which do not match any other filter); \
-                         those paths are relative to the test folder path and lack an extension",
-                    ),
-            )
-            .arg(
-                Arg::new("timeout")
-                    .long("timeout")
-                    .short('t')
-                    .value_name("DURATION")
-                    .validator(|duration| duration.parse::<u64>())
-                    .help("Impose a timeout in seconds to every single test"),
-            )
-            .arg(number_test_threads)
-            .arg(
-                Arg::new("inspect")
-                    .long("inspect")
-                    .short('I')
-                    .help("Inspect the test suite for issues"),
-            )
-            .get_matches();
+    fn parse_ref(
+        &self,
+        _: &clap::Command<'_>,
+        _: Option<&Arg<'_>>,
+        source: &std::ffi::OsStr,
+    ) -> Result<Self::Value, clap::Error> {
+        let source: &str = source.to_str().ok_or_else(|| {
+            // @Task replace question marks with argument name if available
+            clap::Error::raw(clap::ErrorKind::InvalidUtf8, "??? is not valid UTF-8")
+        })?;
 
-        Application {
-            compiler_build_mode: if matches.is_present("release") {
-                CompilerBuildMode::Release
-            } else {
-                CompilerBuildMode::Debug
-            },
-            gilding: if matches.is_present("gild") {
-                Gilding::Yes
-            } else {
-                Gilding::No
-            },
-            strict_filters: matches
-                .values_of(STRICT_FILTERS)
-                .map_or(Vec::new(), |value| value.map(ToString::to_string).collect()),
-            loose_filters: matches
-                .values_of(LOOSE_FILTERS)
-                .map_or(Vec::new(), |value| value.map(ToString::to_string).collect()),
-            timeout: matches
-                .value_of("timeout")
-                .map(|duration| Duration::from_secs(duration.parse().unwrap())),
-            number_test_threads: matches
-                .value_of(NUMBER_TEST_THREADS)
-                .map(|input| input.parse().unwrap())
-                .unwrap(),
-            inspecting: if matches.is_present("inspect") {
-                Inspecting::Yes
-            } else {
-                Inspecting::No
-            },
-        }
+        // @Task smh. pass along the context
+        source.parse().map_err(|_| {
+            // @Task replace question marks with argument name if available
+            clap::Error::raw(
+                clap::ErrorKind::InvalidValue,
+                "??? is not a valid non-zero usize",
+            )
+        })
+    }
+}
+
+#[derive(Clone)]
+struct DurationParser;
+
+impl TypedValueParser for DurationParser {
+    type Value = Duration;
+
+    fn parse_ref(
+        &self,
+        _: &clap::Command<'_>,
+        _: Option<&Arg<'_>>,
+        source: &std::ffi::OsStr,
+    ) -> Result<Self::Value, clap::Error> {
+        let source: &str = source.to_str().ok_or_else(|| {
+            // @Task replace question marks with argument name if available
+            clap::Error::raw(clap::ErrorKind::InvalidUtf8, "??? is not valid UTF-8")
+        })?;
+
+        // @Task smh. pass along the context
+        let seconds = source.parse().map_err(|_| {
+            // @Task replace question marks with argument name if available
+            clap::Error::raw(
+                clap::ErrorKind::InvalidValue,
+                "??? is not a valid number of seconds",
+            )
+        })?;
+
+        Ok(Duration::from_secs(seconds))
     }
 }

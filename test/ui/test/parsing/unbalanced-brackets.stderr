@@ -1,21 +1,21 @@
 error[E044]: unbalanced square bracket
- --> ${TEST_FOLDER}/parsing/unbalanced-brackets.lushui:4:6
+ --> ${TEST_FOLDER}/parsing/unbalanced-brackets.lushui:1:6
   |
-4 | x: X ] X [
+1 | x: X ] X [
   |      ^ has no matching opening square bracket
   |
 
 error[E010]: found ‘]’ but expected terminator
- --> ${TEST_FOLDER}/parsing/unbalanced-brackets.lushui:4:6
+ --> ${TEST_FOLDER}/parsing/unbalanced-brackets.lushui:1:6
   |
-4 | x: X ] X [
+1 | x: X ] X [
   |      ^ unexpected token
   |
 
 error[E044]: unbalanced square bracket
- --> ${TEST_FOLDER}/parsing/unbalanced-brackets.lushui:4:10
+ --> ${TEST_FOLDER}/parsing/unbalanced-brackets.lushui:1:10
   |
-4 | x: X ] X [
+1 | x: X ] X [
   |          ^ has no matching closing square bracket
   |
 

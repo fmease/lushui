@@ -1,5 +1,3 @@
-;;; TEST fail check
-
 main: IO Unit =
     do
         alpha <- make-alpha

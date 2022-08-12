@@ -1,5 +1,3 @@
-;;; TEST fail check
-
 use fake-my-dude.alpha0.((self as alpha1))
 
 module fake-my-dude of
