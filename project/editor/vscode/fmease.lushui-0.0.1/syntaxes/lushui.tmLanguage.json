@@ -29,11 +29,28 @@
             "patterns": [
                 {
                     "name": "comment.block.documentation.lushui",
-                    "match": ";;.*"
+                    "match": ";;[^;].*"
                 },
                 {
                     "name": "comment.line.triple-semicolon.lushui",
-                    "match": ";;;.*"
+                    "match": ";;;(?: (TEST)((?: @\\w+)+)?(?: ((?:pass|fail) (?:check|build|run)|auxiliary|ignore|(?:compiler|program)-(?:args|env-var)|timeout|substution|revisions))(.*))?.*",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.other.lushui-golden-test"
+                        },
+                        "2": {
+                            "name": "meta.attribute.lushui-golden-test meta.annotation.lushui-golden-test meta.decorator.lushui-golden-test variable.language.lushui-golden-test variable.annotation.lushui-golden-test variable.other.lushui-golden-test"
+                        },
+                        "3": {
+                            "name": "keyword.other.lushui-golden-test"
+                        },
+                        "4": {
+                            "name": "variable.other.lushui-golden-test"
+                        }
+                    },
+                    "__comment__": [
+                        "@Task Get rid of the golden test highlighting once it's implemented via semantic highlighting"
+                    ]
                 },
                 {
                     "name": "comment.line.shebang.lushui",
@@ -78,7 +95,6 @@
             ]
         },
         "punctuation": {
-            "__comment__": "@Bug consecutive `-` not highlighted",
             "patterns": [
                 {
                     "match": "\\(",
@@ -108,6 +124,9 @@
                     "match": "[';]",
                     "name": "punctuation.lushui"
                 }
+            ],
+            "__comment__": [
+                "@Bug consecutive `-` not highlighted"
             ]
         },
         "text-literal": {
@@ -150,19 +169,25 @@
                         }
                     }
                 }
+            ],
+            "__comment__": [
+                "@Task Remove the `entity.name.function` captures once semantic highlighting supports them"
             ]
         },
         "attribute": {
-            "__comment__": "make the second branch stricter: require the the first part inside the brackets to be a valid identifier",
             "patterns": [
                 {
                     "match": "(?<![\\.:+~=<>*^!?|/\\\\&#%$@])@\\s*(?:[a-zA-Z_]\\w*)(?:-[a-zA-Z_]\\w*)*\\b",
-                    "name": "meta.attribute.lushui punctuation.definition.variable"
+                    "name": "meta.attribute.lushui meta.annotation.lushui meta.decorator.lushui variable.language.lushui variable.annotation.lushui variable.other.lushui"
                 },
                 {
                     "match": "(?<![\\.:+~=<>*^!?|/\\\\&#%$@])@\\s*\\(.+?\\)",
-                    "name": "meta.attribute.lushui punctuation.definition.variable"
+                    "name": "meta.attribute.lushui meta.annotation.lushui meta.decorator.lushui variable.language.lushui variable.annotation.lushui variable.other.lushui"
                 }
+            ],
+            "__comment": [
+                "@Task Ideally merge those two rules",
+                "@Task Make the second rule (bracketed attributes) stricter by requiring the attribute name to be a valid identifier"
             ]
         }
     }
