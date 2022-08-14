@@ -7,7 +7,7 @@
 )]
 
 use ast::Debug;
-use cli::{Backend, BuildMode, Command, PassRestriction};
+use cli::{Backend, BuildMode, ColorMode, Command, PassRestriction};
 use colored::Colorize;
 use diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
 use error::Result;
@@ -35,6 +35,12 @@ pub fn main() -> Result {
     set_panic_hook();
 
     let (command, options) = cli::arguments()?;
+
+    match options.color {
+        ColorMode::Always => colored::control::set_override(true),
+        ColorMode::Never => colored::control::set_override(false),
+        ColorMode::Auto => {}
+    }
 
     let map: Arc<RwLock<SourceMap>> = default();
     // @Bug creating a buffered-stderr-reporter up here is not great at all
@@ -92,7 +98,7 @@ fn execute_command(
                             .report(&reporter));
                     }
 
-                    resolve_package(path, map, reporter)?
+                    resolve_package(path, options.filter, map, reporter)?
                 }
                 None => {
                     let current_folder_path = match std::env::current_dir() {
@@ -116,7 +122,7 @@ fn execute_command(
                             ))
                             .report(&reporter));
                     };
-                    resolve_package(path, map, reporter)?
+                    resolve_package(path, options.filter, map, reporter)?
                 }
             };
 
@@ -167,7 +173,7 @@ fn execute_command(
                 .message("the subcommand ‘initialize’ is not implemented yet")
                 .report(&reporter)),
             cli::PackageCreationMode::New { package_name } => {
-                create::create_package(&package_name, &options, &reporter)
+                create::create_package(package_name, &options, &reporter)
             }
         },
         Metadata { path } => check_metadata_file(&path, map, &reporter),

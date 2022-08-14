@@ -4,7 +4,7 @@ use clap::{
     Arg, ArgAction, Command,
 };
 use diagnostics::{Diagnostic, Reporter};
-use std::{num::NonZeroUsize, path::PathBuf, time::Duration};
+use std::{ffi::OsStr, num::NonZeroUsize, path::PathBuf, time::Duration};
 
 pub(crate) fn arguments() -> Result<Arguments, ()> {
     let available_parallelism =
@@ -34,9 +34,8 @@ pub(crate) fn arguments() -> Result<Arguments, ()> {
                 .short('r')
                 .help("Build the Lushui compiler in release mode, with optimizations"),
         )
-        // @Task update help to reflect removal of filters
         .arg(Arg::new(option::GILD).long("gild").short('g').help(
-            "Update golden files of all included failing tests to the current compiler output",
+            "Update the golden files of all included failing tests to the current compiler output",
         ))
         .arg(
             Arg::new(option::TIMEOUT)
@@ -59,7 +58,10 @@ pub(crate) fn arguments() -> Result<Arguments, ()> {
                 .multiple_values(true)
                 .action(ArgAction::Append)
                 .value_parser(PathBufValueParser::new())
-                .help("@Task"),
+                .help(
+                    "The paths to test files and folders inside of the test folder. \
+                     If provided, only the given tests are included",
+                ),
         )
         .get_matches();
 
@@ -142,19 +144,16 @@ impl TypedValueParser for NonZeroUsizeParser {
         &self,
         _: &clap::Command<'_>,
         _: Option<&Arg<'_>>,
-        source: &std::ffi::OsStr,
+        source: &OsStr,
     ) -> Result<Self::Value, clap::Error> {
-        let source: &str = source.to_str().ok_or_else(|| {
-            // @Task replace question marks with argument name if available
-            clap::Error::raw(clap::ErrorKind::InvalidUtf8, "??? is not valid UTF-8")
-        })?;
+        let source: &str = parse_utf8(source)?;
 
-        // @Task smh. pass along the context
         source.parse().map_err(|_| {
-            // @Task replace question marks with argument name if available
+            // @Task smh. avoid using `Error::raw` and smh. pass along the context.
+            //       https://github.com/clap-rs/clap/discussions/4029
             clap::Error::raw(
                 clap::ErrorKind::InvalidValue,
-                "??? is not a valid non-zero usize",
+                format!("‘{source}’ is not a valid non-zero usize\n"),
             )
         })
     }
@@ -170,22 +169,30 @@ impl TypedValueParser for DurationParser {
         &self,
         _: &clap::Command<'_>,
         _: Option<&Arg<'_>>,
-        source: &std::ffi::OsStr,
+        source: &OsStr,
     ) -> Result<Self::Value, clap::Error> {
-        let source: &str = source.to_str().ok_or_else(|| {
-            // @Task replace question marks with argument name if available
-            clap::Error::raw(clap::ErrorKind::InvalidUtf8, "??? is not valid UTF-8")
-        })?;
+        let source: &str = parse_utf8(source)?;
 
-        // @Task smh. pass along the context
         let seconds = source.parse().map_err(|_| {
-            // @Task replace question marks with argument name if available
+            // @Task smh. avoid using `Error::raw` and smh. pass along the context.
+            //       https://github.com/clap-rs/clap/discussions/4029
             clap::Error::raw(
                 clap::ErrorKind::InvalidValue,
-                "??? is not a valid number of seconds",
+                format!("‘{source}’ is not a valid number of seconds\n"),
             )
         })?;
 
         Ok(Duration::from_secs(seconds))
     }
+}
+
+fn parse_utf8(source: &OsStr) -> Result<&str, clap::Error> {
+    source.to_str().ok_or_else(|| {
+        // @Task smh. avoid using `Error::raw` and smh. pass along the context.
+        //       https://github.com/clap-rs/clap/discussions/4029
+        clap::Error::raw(
+            clap::ErrorKind::InvalidUtf8,
+            format!("‘{}’ is not valid UTF-8\n", source.to_string_lossy()),
+        )
+    })
 }
