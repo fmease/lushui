@@ -104,7 +104,6 @@ fn number() {
 }
 
 #[test]
-#[ignore = "unimplemented"]
 fn negative_number() {
     assert_eq(parse("-89210"), Value::new(span(1, 7), (-89_210).into()));
 }

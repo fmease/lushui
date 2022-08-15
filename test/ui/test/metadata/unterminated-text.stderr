@@ -1,4 +1,4 @@
-error: unterminated text literal
+error: unterminated text
  --> ${TEST_FOLDER}/metadata/unterminated-text.metadata:2:12
   |
 2 |       where: "the long
@@ -7,5 +7,12 @@ error: unterminated text literal
   | |_^
   |
 
-error: aborting due to previous error
+error: found end of input but expected ‘,’
+ --> ${TEST_FOLDER}/metadata/unterminated-text.metadata:4:3
+  |
+4 | }
+  | ><
+  |
+
+error: aborting due to 2 previous errors
 

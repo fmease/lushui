@@ -17,5 +17,12 @@ error: found ‘,’ but expected record key
   |         ^
   |
 
-error: aborting due to 2 previous errors
+error: unterminated text
+ --> ${TEST_FOLDER}/packages/syntactically-invalid-manifests/duplicate-entries/package.metadata:6:11
+  |
+6 | more: { , "
+  |           ^
+  |
+
+error: aborting due to 3 previous errors
 

@@ -1,23 +1,42 @@
-use super::{
+use crate::{
     lexer::{
-        Token, TokenExt,
+        self, Token, TokenExt,
         TokenName::{self, *},
     },
     BareValue, Record, Value,
 };
 use diagnostics::{Diagnostic, ErrorCode, Reporter};
-use error::{Health, OkIfUntaintedExt, ReportedExt, Result};
+use error::{Health, OkIfUntaintedExt, Result};
 use span::{SourceFileIndex, SourceMap, Span, Spanning, WeaklySpanned};
 use std::sync::RwLock;
 
 #[cfg(test)]
 mod test;
 
-// @Task report additional "unbalanced bracket" error diagnostics
-
-pub(super) struct Parser<'a> {
+pub fn parse(
+    tokens: lexer::Outcome,
     file: SourceFileIndex,
-    tokens: &'a [Token],
+    map: &RwLock<SourceMap>,
+    reporter: &Reporter,
+) -> Result<Value> {
+    let mut health = Ok(());
+
+    for error in tokens.errors {
+        let error = Diagnostic::from(error).report(reporter);
+
+        if health.is_ok() {
+            health = Err(error);
+        }
+    }
+
+    let result = Parser::new(tokens.tokens, file, map, reporter).parse();
+
+    health.and(result)
+}
+
+struct Parser<'a> {
+    tokens: Vec<Token>,
+    file: SourceFileIndex,
     index: usize,
     health: Health,
     map: &'a RwLock<SourceMap>,
@@ -25,9 +44,9 @@ pub(super) struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub(super) fn new(
+    fn new(
+        tokens: Vec<Token>,
         file: SourceFileIndex,
-        tokens: &'a [Token],
         map: &'a RwLock<SourceMap>,
         reporter: &'a Reporter,
     ) -> Self {
@@ -78,7 +97,7 @@ impl<'a> Parser<'a> {
     /// ```ebnf
     /// Document ::= (Top-Level-Record-Entries | Value) #End-Of-Input
     /// ```
-    pub(super) fn parse(&mut self) -> Result<Value> {
+    fn parse(&mut self) -> Result<Value> {
         let value = match self.has_top_level_record_entries() {
             true => self.parse_top_level_record_entries(),
             false => self.parse_value(),
@@ -141,12 +160,7 @@ impl<'a> Parser<'a> {
             }
             Text => {
                 // @Task avoid cloning!
-                let content = self
-                    .current_token()
-                    .clone()
-                    .into_text()
-                    .unwrap()
-                    .reported(self.reporter)?;
+                let content = self.current_token().clone().into_text().unwrap();
                 self.advance();
                 Ok(Value::new(span, content.into()))
             }
@@ -160,18 +174,6 @@ impl<'a> Parser<'a> {
                 let value = self.current_token().clone().into_integer().unwrap();
                 self.advance();
 
-                let value = match value {
-                    Ok(content) => content,
-                    Err(error) => {
-                        use super::lexer::IntLexingError::*;
-
-                        // @Beacon @Task
-                        let diagnostic = match error {
-                            SizeExceedance => Diagnostic::error().message("@Task"),
-                        };
-                        return Err(diagnostic.report(self.reporter));
-                    }
-                };
                 Ok(Value::new(span, value.into()))
             }
             OpeningSquareBracket => {
@@ -297,12 +299,7 @@ impl<'a> Parser<'a> {
             }
             Text => {
                 // @Task avoid cloning
-                let key = self
-                    .current_token()
-                    .clone()
-                    .into_text()
-                    .unwrap()
-                    .reported(self.reporter)?;
+                let key = self.current_token().clone().into_text().unwrap();
                 self.advance();
                 key
             }
@@ -315,7 +312,6 @@ impl<'a> Parser<'a> {
                 "true".into()
             }
             token => {
-                // @Task
                 return Err(Diagnostic::error()
                     .message(format!("found {token} but expected record key"))
                     .primary_span(span)

@@ -1,125 +1,47 @@
 use derivation::Discriminant;
 use diagnostics::Diagnostic;
-use error::{Health, Outcome};
 use span::{LocalByteIndex, LocalSpan, SourceFile, Span, Spanned};
-use std::{fmt, iter::Peekable, str::CharIndices};
+use std::{fmt, iter::Peekable, num::ParseIntError, str::CharIndices};
 use utilities::{obtain, quoted};
 use BareToken::*;
 
-pub type Token = Spanned<BareToken>;
-
-pub trait TokenExt {
-    fn name(&self) -> TokenName;
-    fn into_identifier(self) -> Option<String>;
-    fn into_text(self) -> Option<Result<String, Diagnostic>>;
-    fn into_integer(self) -> Option<Result<i64, IntLexingError>>;
+// @Task add "unbalanced bracket" errors
+pub fn lex(file: &SourceFile, options: &Options) -> Outcome {
+    Lexer::new(file, options).lex()
 }
 
-impl TokenExt for Token {
-    fn name(&self) -> TokenName {
-        self.bare.name()
-    }
-
-    fn into_identifier(self) -> Option<String> {
-        obtain!(self.bare, Identifier(identifier) => identifier)
-    }
-
-    fn into_text(self) -> Option<Result<String, Diagnostic>> {
-        match self.bare {
-            Text(text) => Some(match text {
-                Ok(content) => Ok(content),
-                // @Task code
-                Err(TextLexingError::Unterminated) => Err(Diagnostic::error()
-                    .message("unterminated text literal")
-                    .primary_span(self.span)),
-            }),
-            _ => None,
-        }
-    }
-
-    // @Task turn this into a diagnostic here
-    fn into_integer(self) -> Option<Result<i64, IntLexingError>> {
-        obtain!(self.bare, Integer(integer) => integer)
-    }
+#[derive(Default)]
+pub struct Options {
+    pub keep_comments: bool,
 }
 
-#[derive(Clone, Debug, Discriminant)]
-#[discriminant(name: TokenName)]
-pub enum BareToken {
-    Comma,
-    Colon,
-    OpeningSquareBracket,
-    ClosingSquareBracket,
-    OpeningCurlyBracket,
-    ClosingCurlyBracket,
-    False,
-    True,
-    Identifier(String),
-    Text(Result<String, TextLexingError>),
-    Integer(Result<i64, IntLexingError>),
-    EndOfInput,
-    Illegal(char),
+pub struct Outcome {
+    pub tokens: Vec<Token>,
+    pub errors: Vec<Error>,
 }
 
-impl fmt::Display for BareToken {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let name = self.name();
-
-        match self {
-            &Self::Illegal(character) => {
-                write!(f, "{} U+{:04X} ‘{}’", name, character as u32, character)
-            }
-            _ => write!(f, "{name}"),
-        }
-    }
-}
-
-impl fmt::Display for TokenName {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use TokenName::*;
-
-        f.write_str(match self {
-            Comma => quoted!(","),
-            Colon => quoted!(":"),
-            OpeningSquareBracket => quoted!("["),
-            ClosingSquareBracket => quoted!("]"),
-            OpeningCurlyBracket => quoted!("{"),
-            ClosingCurlyBracket => quoted!("}"),
-            False => "keyword ‘false’",
-            True => "keyword ‘true’",
-            Identifier => "identifier",
-            Text => "text",
-            Integer => "integer",
-            EndOfInput => "end of input",
-            Illegal => "illegal character",
-        })
-    }
-}
-
-pub(super) struct Lexer<'a> {
-    file: &'a SourceFile,
+struct Lexer<'a> {
     characters: Peekable<CharIndices<'a>>,
+    file: &'a SourceFile,
+    options: &'a Options,
     tokens: Vec<Token>,
+    errors: Vec<Error>,
     local_span: LocalSpan,
-    health: Health,
 }
 
 impl<'a> Lexer<'a> {
-    pub(super) fn new(file: &'a SourceFile) -> Self {
+    fn new(file: &'a SourceFile, options: &'a Options) -> Self {
         Self {
             characters: file.content().char_indices().peekable(),
             file,
+            options,
             tokens: Vec::new(),
+            errors: Vec::new(),
             local_span: LocalSpan::default(),
-            health: Health::Untainted,
         }
     }
 
-    /// Lex source code into an array of tokens.
-    ///
-    /// The health of the tokens can be ignored if the tokens are fed into the parser
-    /// immediately after lexing since the parser will handle invalid tokens.
-    pub(super) fn lex(mut self) -> Outcome<Vec<Token>> {
+    fn lex(mut self) -> Outcome {
         while let Some((index, character)) = self.peek_with_index() {
             self.local_span = LocalSpan::empty(index);
 
@@ -129,7 +51,7 @@ impl<'a> Lexer<'a> {
                 '"' => self.lex_text(),
                 character if is_identifier_segment_start(character) => self.lex_identifier(),
                 character if character.is_ascii_digit() => self.lex_number(),
-                '-' => todo!(),
+                '-' => self.lex_number(),
                 '[' => self.consume(OpeningSquareBracket),
                 ']' => self.consume(ClosingSquareBracket),
                 '{' => self.consume(OpeningCurlyBracket),
@@ -137,15 +59,21 @@ impl<'a> Lexer<'a> {
                 ',' => self.consume(Comma),
                 ':' => self.consume(Colon),
                 character => {
-                    self.consume(Illegal(character));
-                    self.health.taint();
+                    self.take();
+                    self.advance();
+                    let token = Spanned::new(self.span(), character);
+                    self.errors.push(Error::IllegalToken(token));
                 }
             }
         }
 
         self.local_span = self.file.local_span().end();
         self.add(EndOfInput);
-        Outcome::new(self.tokens, self.health)
+
+        Outcome {
+            tokens: self.tokens,
+            errors: self.errors,
+        }
     }
 
     fn lex_comment(&mut self) {
@@ -157,6 +85,14 @@ impl<'a> Lexer<'a> {
             if character == '\n' {
                 break;
             }
+
+            if self.options.keep_comments {
+                self.take();
+            }
+        }
+
+        if self.options.keep_comments {
+            self.add(Comment);
         }
     }
 
@@ -171,8 +107,9 @@ impl<'a> Lexer<'a> {
     }
 
     fn lex_text(&mut self) {
-        let mut is_terminated = false;
         self.advance();
+
+        let mut is_terminated = false;
 
         while let Some(character) = self.peek() {
             self.take();
@@ -184,18 +121,16 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        match is_terminated {
-            true => {
-                // @Note once we implement escaping, this won't cut it and we need to build our own string
-                let content = self.file[self.local_span.trim(1)].to_owned();
-
-                self.add(Text(Ok(content)));
-            }
-            false => {
-                self.health.taint();
-                self.add(Text(Err(TextLexingError::Unterminated)));
-            }
+        // @Note this naive trimming and indexing into the source file does not scale to
+        //       escape sequences (once we implement them)
+        let content_span = if is_terminated {
+            self.local_span.trim(1)
+        } else {
+            self.errors.push(Error::UnterminatedText(self.span()));
+            self.local_span.trim_start(1)
         };
+
+        self.add(Text(self.file[content_span].into()));
     }
 
     fn lex_identifier(&mut self) {
@@ -229,6 +164,8 @@ impl<'a> Lexer<'a> {
     }
 
     fn lex_number(&mut self) {
+        self.take();
+        self.advance();
         let mut number = self.source().to_owned();
 
         while let Some(character) = self.peek() {
@@ -245,11 +182,20 @@ impl<'a> Lexer<'a> {
 
         match number.parse() {
             Ok(number) => {
-                self.add(Integer(Ok(number)));
+                self.add(Integer(number));
             }
-            Err(_) => {
-                self.health.taint();
-                self.add(Integer(Err(IntLexingError::SizeExceedance)));
+            Err(error) => {
+                use std::num::IntErrorKind::*;
+
+                self.add(Integer(match error.kind() {
+                    PosOverflow => i64::MAX,
+                    NegOverflow => i64::MIN,
+                    _ => 0,
+                }));
+                self.errors.push(Error::NumberExceedsSizeLimit(Spanned::new(
+                    self.span(),
+                    error,
+                )));
             }
         };
     }
@@ -323,14 +269,117 @@ impl<'a> Lexer<'a> {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum TextLexingError {
-    Unterminated,
+pub type Token = Spanned<BareToken>;
+
+pub trait TokenExt {
+    fn name(&self) -> TokenName;
+    fn into_identifier(self) -> Option<String>;
+    fn into_text(self) -> Option<String>;
+    fn into_integer(self) -> Option<i64>;
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum IntLexingError {
-    SizeExceedance,
+impl TokenExt for Token {
+    fn name(&self) -> TokenName {
+        self.bare.name()
+    }
+
+    fn into_identifier(self) -> Option<String> {
+        obtain!(self.bare, Identifier(identifier) => identifier)
+    }
+
+    fn into_text(self) -> Option<String> {
+        obtain!(self.bare, Text(text) => text)
+    }
+
+    fn into_integer(self) -> Option<i64> {
+        obtain!(self.bare, Integer(integer) => integer)
+    }
+}
+
+#[derive(Clone, Debug, Discriminant)]
+#[discriminant(name: TokenName)]
+pub enum BareToken {
+    Comment,
+    Comma,
+    Colon,
+    OpeningSquareBracket,
+    ClosingSquareBracket,
+    OpeningCurlyBracket,
+    ClosingCurlyBracket,
+    False,
+    True,
+    Identifier(String),
+    Text(String),
+    Integer(i64),
+    EndOfInput,
+}
+
+impl fmt::Display for BareToken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name())
+    }
+}
+
+impl fmt::Display for TokenName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use TokenName::*;
+
+        f.write_str(match self {
+            Comment => "comment",
+            Comma => quoted!(","),
+            Colon => quoted!(":"),
+            OpeningSquareBracket => quoted!("["),
+            ClosingSquareBracket => quoted!("]"),
+            OpeningCurlyBracket => quoted!("{"),
+            ClosingCurlyBracket => quoted!("}"),
+            False => "keyword ‘false’",
+            True => "keyword ‘true’",
+            Identifier => "identifier",
+            Text => "text",
+            Integer => "integer",
+            EndOfInput => "end of input",
+        })
+    }
+}
+
+#[derive(Debug)]
+pub enum Error {
+    IllegalToken(Spanned<char>),
+    UnterminatedText(Span),
+    NumberExceedsSizeLimit(Spanned<ParseIntError>),
+}
+
+impl From<Error> for Diagnostic {
+    fn from(error: Error) -> Self {
+        match error {
+            Error::IllegalToken(token) => {
+                let message = format!(
+                    "found illegal character U+{:04X} ‘{token}’",
+                    token.bare as u32,
+                );
+
+                Diagnostic::error()
+                    .message(message)
+                    .labeled_primary_span(token, "unexpected token")
+            }
+            // @Task improve message, mention closing it with quotes
+            Error::UnterminatedText(span) => Diagnostic::error()
+                .message("unterminated text")
+                .primary_span(span),
+            Error::NumberExceedsSizeLimit(parse_error) => {
+                use std::num::IntErrorKind::*;
+
+                Diagnostic::error()
+                    .message("the number exceeds the size limit")
+                    .with(|error| match parse_error.bare.kind() {
+                        PosOverflow => error.note("numbers must not be larger than 2^63 - 1"),
+                        NegOverflow => error.note("numbers must not be smaller than -2^63"),
+                        _ => error,
+                    })
+                    .primary_span(parse_error)
+            }
+        }
+    }
 }
 
 const fn is_identifier_segment_start(character: char) -> bool {

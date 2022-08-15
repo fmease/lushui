@@ -21,15 +21,9 @@ mod parser;
 pub type Value = Spanned<BareValue>;
 pub type Record<K = String, V = Value> = HashMap<WeaklySpanned<K>, V>;
 
-pub fn parse(
-    file_index: SourceFileIndex,
-    map: &RwLock<SourceMap>,
-    reporter: &Reporter,
-) -> Result<Value> {
-    let tokens = lexer::Lexer::new(&map.read().unwrap()[file_index])
-        .lex()
-        .bare;
-    parser::Parser::new(file_index, &tokens, map, reporter).parse()
+pub fn parse(file: SourceFileIndex, map: &RwLock<SourceMap>, reporter: &Reporter) -> Result<Value> {
+    let tokens = lexer::lex(&map.read().unwrap()[file], &lexer::Options::default());
+    parser::parse(tokens, file, map, reporter)
 }
 
 #[derive(Debug, Discriminant)]

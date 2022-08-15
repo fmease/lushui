@@ -2122,6 +2122,7 @@ impl LexerErrorExt for lexer::Error {
                         !bracket.bare.orientation, bracket.bare.kind
                     ),
                 ),
+            // @Task improve message, mention closing it with quotes
             Self::UnterminatedTextLiteral(span) => Diagnostic::error()
                 .code(ErrorCode::E047)
                 .message("unterminated text literal")
