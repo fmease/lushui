@@ -15,7 +15,7 @@ use span::{SourceFileIndex, SourceMap, Span, Spanned, Spanning, WeaklySpanned};
 use std::{fmt, sync::RwLock};
 use utilities::{obtain, HashMap};
 
-mod lexer;
+pub mod lexer;
 mod parser;
 
 pub type Value = Spanned<BareValue>;

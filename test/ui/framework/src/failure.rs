@@ -1,8 +1,9 @@
-use crate::{terminal_width, Stream};
+use crate::{path::shorten, terminal_width, Stream};
 use colored::Colorize;
 use derivation::{Elements, FromStr, Str};
 use diagnostics::Diagnostic;
 use difference::{Changeset, Difference};
+use span::{SourceMap, Span};
 use std::{io::Write, path::PathBuf, process::ExitStatus, time::Duration};
 use utilities::{pluralize, Str};
 
@@ -19,40 +20,14 @@ impl FailedTest {
         }
     }
 
-    pub(crate) fn print(&self, diff_view: DiffView, sink: &mut dyn Write) -> std::io::Result<()> {
-        let path = crate::path::shorten(&self.path);
-        let path = path.to_string_lossy();
-
-        writeln!(sink)?;
-        writeln!(sink, "{}", crate::section_header(&path))?;
-        writeln!(sink)?;
-        self.failure.print(diff_view, sink)
-    }
-}
-
-// @Task smh. differentiate between unexpected-*{compiler,program}*-{pass,fail}
-pub(crate) enum Failure {
-    UnexpectedExitStatus(ExitStatus),
-    GoldenFileMismatch {
-        golden: String,
-        actual: String,
-        stream: Stream,
-    },
-    InvalidTest {
-        message: Str,
-        note: Option<Str>,
-    },
-    Timeout {
-        global: Option<Duration>,
-        local: Option<Duration>,
-    },
-    InvalidConfiguration(crate::configuration::Error),
-}
-
-impl Failure {
-    fn print(&self, diff_view: DiffView, sink: &mut dyn Write) -> Result<(), std::io::Error> {
-        match self {
-            Self::UnexpectedExitStatus(status) => {
+    pub(crate) fn print(
+        &self,
+        diff_view: DiffView,
+        map: &SourceMap,
+        sink: &mut dyn Write,
+    ) -> std::io::Result<()> {
+        match &self.failure {
+            Failure::UnexpectedExitStatus(status) => {
                 // @Task if it's an unexpected pass and if no test tag was specified (smh. get that info),
                 //       mention that ‘fail check’ is implied if not specified otherwise
 
@@ -66,7 +41,7 @@ impl Failure {
                     false => ("unsuccessfully", "‘pass’ (succeed)", "failure"),
                 };
 
-                let diagnostic = Diagnostic::error()
+                let diagnostic = Diagnostic::error().path(shorten(&self.path).into())
                     .message(format!("the compiler unexpectedly exited {adverb}"))
                     .note(format!(
                         "expected the compiler to {verb} but it exited with {code} indicating {noun}",
@@ -74,14 +49,16 @@ impl Failure {
 
                 write!(sink, "{}", diagnostic.format(None))
             }
-            Self::GoldenFileMismatch {
+            Failure::GoldenFileMismatch {
                 golden,
                 actual,
                 stream,
             } => {
-                let diagnostic = Diagnostic::error().message(format!(
-                    "the {stream} output of the compiler differs from the expected one"
-                ));
+                let diagnostic = Diagnostic::error()
+                    .path(shorten(&self.path).into())
+                    .message(format!(
+                        "the {stream} output of the compiler differs from the expected one"
+                    ));
 
                 writeln!(sink, "{}", diagnostic.format(None))?;
                 writeln!(sink, "{}", "-".repeat(terminal_width()).bright_black())?;
@@ -98,26 +75,36 @@ impl Failure {
                     }
                 }
 
-                writeln!(sink, "{}", "-".repeat(terminal_width()).bright_black())
+                write!(sink, "{}", "-".repeat(terminal_width()).bright_black())
             }
-            Self::InvalidTest { message, note } => {
-                let diagnostic =
-                    Diagnostic::error()
-                        .message(message.clone())
-                        .with(|error| match note {
-                            Some(note) => error.note(note.clone()),
-                            None => error,
-                        });
+            Failure::InvalidTest {
+                message,
+                note,
+                span,
+            } => {
+                let diagnostic = Diagnostic::error()
+                    .path(shorten(&self.path).into())
+                    .message(message.clone())
+                    .with(|error| match note {
+                        Some(note) => error.note(note.clone()),
+                        None => error,
+                    })
+                    .with(|error| match span {
+                        Some(span) => error.primary_span(span),
+                        None => error,
+                    });
 
                 write!(sink, "{}", diagnostic.format(None))
             }
-            Self::InvalidConfiguration(error) => {
+            Failure::InvalidConfiguration(error) => {
                 // @Temporary
-                let diagnostic = Diagnostic::error().message(error.message.clone());
+                let diagnostic = Diagnostic::error()
+                    .message(error.message.clone())
+                    .primary_span(error.span);
 
-                write!(sink, "{}", diagnostic.format(None))
+                write!(sink, "{}", diagnostic.format(Some(map)))
             }
-            Self::Timeout { global, local } => {
+            Failure::Timeout { global, local } => {
                 let timeout = match local {
                     None => global.unwrap(),
                     Some(local) => *local,
@@ -134,6 +121,7 @@ impl Failure {
                 };
 
                 let diagnostic = Diagnostic::error()
+                    .path(shorten(&self.path).into())
                     .message("the test ran longer than the specified timeout")
                     .note(format!(
                         "the timeout is {timeout} {} ({issuer})",
@@ -142,8 +130,31 @@ impl Failure {
 
                 write!(sink, "{}", diagnostic.format(None))
             }
-        }
+        }?;
+
+        writeln!(sink)
     }
+}
+
+// @Task smh. differentiate between unexpected-*{compiler,program}*-{pass,fail}
+pub(crate) enum Failure {
+    UnexpectedExitStatus(ExitStatus),
+    GoldenFileMismatch {
+        golden: String,
+        actual: String,
+        stream: Stream,
+    },
+    InvalidTest {
+        message: Str,
+        note: Option<Str>,
+        // @Temporary
+        span: Option<Span>,
+    },
+    Timeout {
+        global: Option<Duration>,
+        local: Option<Duration>,
+    },
+    InvalidConfiguration(crate::configuration::Error),
 }
 
 #[derive(Clone, Copy, FromStr, Str, Elements, Default)]

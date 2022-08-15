@@ -2,13 +2,18 @@
 
 use crate::TestType;
 use derivation::{FromStr, Str};
+use span::{SourceFile, SourceMap, Span, Spanned};
 use std::{collections::HashMap, default::default, str::FromStr, time::Duration};
+use token::BareToken;
 use utilities::{pluralize, Str};
 
 #[cfg(test)]
 mod tests;
 
 // @Task parse quotes in configurations to enable support for arguments containing whitespace
+
+// @Beacon @Bug `timeout ` fails with `‘’ is not a valid duration` when it should report a missing argument
+//        @Task trim stuff!
 
 const PREFIX: &str = " TEST ";
 
@@ -27,113 +32,121 @@ pub(crate) struct Configuration<'src> {
 }
 
 impl<'src> Configuration<'src> {
-    // @Task error spans
-    pub(crate) fn parse(source: &'src str, type_: TestType) -> Result<Self, Error> {
+    // @Task *precise* spans!
+    pub(crate) fn parse(
+        file: &'src SourceFile,
+        type_: TestType,
+        map: &'src SourceMap,
+    ) -> Result<Self, Error> {
         let mut configuration = Configuration::default();
 
         let mut tag = None;
         let mut timeout = None;
 
-        let comment = type_.language().comment();
+        for block in blocks(file, type_.language(), map) {
+            let parameter = parse_parameter(block, type_)?;
 
-        for line in source.lines() {
-            if let Some(line) = line.strip_prefix(comment)
-            && let Some(line) = line.strip_prefix(PREFIX)
-            {
-                use ParameterKind::*;
+            if !parameter.revisions.is_empty() {
+                return Err(Error::new("revisions are not supported yet", block.span));
+            }
 
-                let parameter = parse_parameter(line, type_)?;
+            use ParameterKind::*;
 
-                if !parameter.revisions.is_empty() {
-                    return Err(Error::new("revisions are not supported yet"));
+            match parameter.kind {
+                Pass { .. } | Fail { .. } | Auxiliary { .. } | Ignore => {
+                    if tag.is_some() {
+                        // @Task better message
+                        return Err(Error::new("a test tag is already set", block.span));
+                    }
+
+                    tag = Some(match parameter.kind {
+                        Pass { mode } => TestTag::Pass { mode },
+                        Fail { mode } => TestTag::Fail { mode },
+                        Auxiliary { users } => TestTag::Auxiliary { users },
+                        Ignore => TestTag::Ignore,
+                        _ => unreachable!(),
+                    });
                 }
-
-                match parameter.kind {
-                    Pass { .. } | Fail { .. } | Auxiliary { .. } | Ignore => {
-                        if tag.is_some() {
-                            // @Task better message
-                            return Err(Error::new("a test tag is already set"));
-                        }
-
-                        tag = Some(match parameter.kind {
-                            Pass { mode } => TestTag::Pass { mode },
-                            Fail { mode } => TestTag::Fail { mode },
-                            Auxiliary { users } => TestTag::Auxiliary { users },
-                            Ignore => TestTag::Ignore,
-                            _ => unreachable!(),
-                        });
-                    }
-                    CompilerArgs(arguments) => configuration.compiler_args.extend(arguments),
-                    CompilerEnvVar { name, value } => {
-                        if configuration.compiler_env_vars.contains_key(name) {
-                            // @Task better message
-                            return Err(Error::new(
-                                format!("the compiler environment variable ‘{name}’ is already set"),
-                            ));
-                        }
-
-                        configuration.compiler_env_vars.insert(name, value);
-                    }
-                    ProgramArgs(arguments) => {
-                        configuration.program_args.extend(arguments);
-
+                CompilerArgs(arguments) => configuration.compiler_args.extend(arguments),
+                CompilerEnvVar { name, value } => {
+                    if configuration.compiler_env_vars.contains_key(name) {
+                        // @Task better message
                         return Err(Error::new(
-                            "the test parameter ‘program-args’ is not supported yet",
+                            format!("the compiler environment variable ‘{name}’ is already set"),
+                            block.span,
                         ));
                     }
-                    ProgramEnvVar { name, value } => {
-                        if configuration.program_env_vars.contains_key(name) {
-                            // @Task better message
-                            return Err(Error::new(
-                                format!("the program environment variable ‘{name}’ is already set"),
-                            ));
-                        }
 
-                        configuration.program_env_vars.insert(name, value);
+                    configuration.compiler_env_vars.insert(name, value);
+                }
+                ProgramArgs(arguments) => {
+                    configuration.program_args.extend(arguments);
 
+                    return Err(Error::new(
+                        "the test parameter ‘program-args’ is not supported yet",
+                        block.span,
+                    ));
+                }
+                ProgramEnvVar { name, value } => {
+                    if configuration.program_env_vars.contains_key(name) {
+                        // @Task better message
                         return Err(Error::new(
-                            "the test parameter ‘program-env-var’ is not supported yet",
+                            format!("the program environment variable ‘{name}’ is already set",),
+                            block.span,
                         ));
                     }
-                    Timeout(timeout_) => {
-                        if timeout.is_some() {
-                            // @Task better message
-                            return Err(Error::new("a timeout is already set"));
-                        }
 
-                        timeout = Some(timeout_);
+                    configuration.program_env_vars.insert(name, value);
+
+                    return Err(Error::new(
+                        "the test parameter ‘program-env-var’ is not supported yet",
+                        block.span,
+                    ));
+                }
+                Timeout(timeout_) => {
+                    if timeout.is_some() {
+                        // @Task better message
+                        return Err(Error::new("a timeout is already set", block.span));
                     }
-                    Substitution { name, value } => {
-                        if configuration.substitutions.contains_key(name) {
-                            // @Task better message
-                            return Err(Error::new(format!("the substitution ‘{name}’ is already set")));
-                        }
 
-                        configuration.substitutions.insert(name, value);
-
+                    timeout = Some(timeout_);
+                }
+                Substitution { name, value } => {
+                    if configuration.substitutions.contains_key(name) {
+                        // @Task better message
                         return Err(Error::new(
-                            "the test parameter ‘substitution’ is not supported yet",
+                            format!("the substitution ‘{name}’ is already set"),
+                            block.span,
                         ));
                     }
-                    Revisions(revisions) => {
-                        if !configuration.revisions.is_empty() {
-                            // @Task better message
-                            return Err(Error::new("the revisions are already set"));
-                        }
 
-                        if !parameter.revisions.is_empty() {
-                            // @Task better msg
-                            return Err(Error::new(
-                                "the test parameter ‘revisions’ cannot itself depend on revisions",
-                            ));
-                        }
+                    configuration.substitutions.insert(name, value);
 
-                        configuration.revisions = revisions;
+                    return Err(Error::new(
+                        "the test parameter ‘substitution’ is not supported yet",
+                        block.span,
+                    ));
+                }
+                Revisions(revisions) => {
+                    if !configuration.revisions.is_empty() {
+                        // @Task better message
+                        return Err(Error::new("the revisions are already set", block.span));
+                    }
 
+                    if !parameter.revisions.is_empty() {
+                        // @Task better msg
                         return Err(Error::new(
-                            "the test parameter ‘revisions’ is not supported yet",
+                            "the test parameter ‘revisions’ cannot itself depend on revisions",
+                            block.span,
                         ));
                     }
+
+                    configuration.revisions = revisions;
+
+                    return Err(Error::new(
+                        "the test parameter ‘revisions’ is not supported yet",
+                        block.span,
+                    ));
                 }
             }
         }
@@ -149,41 +162,87 @@ impl<'src> Configuration<'src> {
     }
 }
 
+fn blocks<'a>(
+    file: &'a SourceFile,
+    language: Language,
+    map: &'a SourceMap,
+) -> impl Iterator<Item = Spanned<&str>> + '_ {
+    let comment = language.comment();
+
+    use metadata as _;
+
+    let block: Vec<_> = match language {
+        Language::Lushui => lexer::lex(
+            file,
+            &lexer::Options {
+                keep_comments: true,
+            },
+        )
+        .tokens
+        .into_iter()
+        .filter(|token| token.bare == BareToken::Comment)
+        .map(|token| token.span)
+        .collect(),
+
+        Language::Metadata => metadata::lexer::lex(
+            file,
+            &metadata::lexer::Options {
+                keep_comments: true,
+            },
+        )
+        .tokens
+        .into_iter()
+        .filter(|token| token.bare == metadata::lexer::BareToken::Comment)
+        .map(|token| token.span)
+        .collect(),
+    };
+
+    block.into_iter().filter_map(move |span| {
+        map.snippet(span)
+            .strip_prefix(comment)
+            .and_then(|block| block.strip_prefix(PREFIX))
+            .map(|block| Spanned::new(span, block))
+    })
+}
+
 // @Task only allow alphanumeric revs and parse `@foo@bar` as two revs
-// @Task error spans
-fn parse_parameter(mut source: &str, type_: TestType) -> Result<Parameter<'_>, Error> {
+// @Task *precise* spans!
+fn parse_parameter(mut source: Spanned<&str>, type_: TestType) -> Result<Parameter<'_>, Error> {
     let mut revisions = Vec::new();
 
-    while let Some(stripped) = source.strip_prefix('@') {
+    while let Some(stripped) = source.bare.strip_prefix('@') {
         let mut split = stripped.splitn(2, ' ');
 
         let Some(revision) = split.next().filter(|revision| !revision.is_empty()) else {
             // @Task better message
-            return Err(Error::new("invalid empty revision"));
+            return Err(Error::new("invalid empty revision", source.span));
         };
 
         revisions.push(revision);
-        source = split.as_str();
+        source.bare = split.as_str();
     }
 
-    let mut arguments = source.split(' ');
+    let mut arguments = source.bare.split(' ');
 
     let Some(parameter) = arguments.next().filter(|argument| !argument.is_empty()) else {
         // @Task better message
-        return Err(Error::new("expected a test parameter"));
+        return Err(Error::new("expected a test parameter", source.span));
     };
 
-    let missing_argument = |argument| Error::missing_argument(parameter, argument);
+    let missing_argument = |argument| Error::missing_argument(parameter, argument, source.span);
 
     let exhaust_arguments = |arguments: std::str::Split<'_, _>| {
         let count = arguments.count();
         if count != 0 {
             // @Task improve message
-            Err(Error::new(format!(
-                "{count} extraneous {} {} passed to ‘{parameter}’",
-                pluralize!(count, "argument"),
-                pluralize!(count, "is", "are")
-            )))
+            Err(Error::new(
+                format!(
+                    "{count} extraneous {} {} passed to ‘{parameter}’",
+                    pluralize!(count, "argument"),
+                    pluralize!(count, "is", "are")
+                ),
+                source.span,
+            ))
         } else {
             Ok(())
         }
@@ -192,7 +251,10 @@ fn parse_parameter(mut source: &str, type_: TestType) -> Result<Parameter<'_>, E
     let kind = match parameter {
         "pass" | "fail" => {
             let mode = parse_mode(
-                arguments.next().ok_or_else(|| missing_argument("mode"))?,
+                Spanned::new(
+                    source.span,
+                    arguments.next().ok_or_else(|| missing_argument("mode"))?,
+                ),
                 type_,
             )?;
 
@@ -222,11 +284,14 @@ fn parse_parameter(mut source: &str, type_: TestType) -> Result<Parameter<'_>, E
             let count = arguments.count();
             if count != 0 {
                 // @Task improve message
-                return Err(Error::new(format!(
-                    "{count} extraneous {} {} passed to ‘{parameter}’",
-                    pluralize!(count, "argument"),
-                    pluralize!(count, "is", "are")
-                )));
+                return Err(Error::new(
+                    format!(
+                        "{count} extraneous {} {} passed to ‘{parameter}’",
+                        pluralize!(count, "argument"),
+                        pluralize!(count, "is", "are")
+                    ),
+                    source.span,
+                ));
             }
 
             ParameterKind::CompilerEnvVar { name, value }
@@ -249,11 +314,9 @@ fn parse_parameter(mut source: &str, type_: TestType) -> Result<Parameter<'_>, E
 
             exhaust_arguments(arguments)?;
 
-            ParameterKind::Timeout(
-                timeout
-                    .parse()
-                    .map_err(|_| Error::new(format!("‘{timeout}’ is not a valid duration")))?,
-            )
+            ParameterKind::Timeout(timeout.parse().map_err(|_| {
+                Error::new(format!("‘{timeout}’ is not a valid duration"), source.span)
+            })?)
         }
         "substitution" => {
             let name = arguments.next().ok_or_else(|| missing_argument("name"))?;
@@ -273,31 +336,36 @@ fn parse_parameter(mut source: &str, type_: TestType) -> Result<Parameter<'_>, E
             //            ‘substitution’ (lacking an s),
             //            ‘revision’ (lacking an s),
 
-            return Err(Error::new(format!(
-                "‘{parameter}’ is not a valid test parameter"
-            )));
+            return Err(Error::new(
+                format!("‘{parameter}’ is not a valid test parameter"),
+                source.span,
+            ));
         }
     };
 
     Ok(Parameter { revisions, kind })
 }
 
-fn parse_mode(mode: &str, type_: TestType) -> Result<Mode, Error> {
+fn parse_mode(source: Spanned<&str>, type_: TestType) -> Result<Mode, Error> {
     use TestType::*;
 
-    let mode = mode
+    let mode = source
+        .bare
         .parse()
-        .map_err(|_| Error::new(format!("‘{mode}’ is not a valid test mode")))?;
+        .map_err(|_| Error::new(format!("‘{source}’ is not a valid test mode"), source.span))?;
 
     #[allow(clippy::match_same_arms)]
     match (type_, mode) {
         (SourceFile | Package, Mode::Check | Mode::Build | Mode::Run) => {}
         (MetadataSourceFile, Mode::Check) => {}
         (MetadataSourceFile, Mode::Build | Mode::Run) => {
-            return Err(Error::new(format!(
-                "the test mode ‘{}’ is not available for {type_} tests",
-                mode.name()
-            )))
+            return Err(Error::new(
+                format!(
+                    "the test mode ‘{}’ is not available for {type_} tests",
+                    mode.name()
+                ),
+                source.span,
+            ))
         }
     }
 
@@ -397,19 +465,21 @@ impl FromStr for Timeout {
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub(crate) struct Error {
     pub(crate) message: Str,
-    // span: Span, // @Task
+    pub(crate) span: Span,
 }
 
 impl Error {
-    fn new(message: impl Into<Str>) -> Self {
+    fn new(message: impl Into<Str>, span: Span) -> Self {
         Self {
             message: message.into(),
+            span,
         }
     }
 
-    fn missing_argument(parameter: &str, argument: &str) -> Self {
-        Self::new(format!(
-            "the test parameter ‘{parameter}’ is missing the argument ‘{argument}’"
-        ))
+    fn missing_argument(parameter: &str, argument: &str, span: Span) -> Self {
+        Self::new(
+            format!("the test parameter ‘{parameter}’ is missing the argument ‘{argument}’"),
+            span,
+        )
     }
 }

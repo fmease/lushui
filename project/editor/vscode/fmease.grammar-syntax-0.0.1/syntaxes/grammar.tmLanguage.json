@@ -76,7 +76,7 @@
         "named-terminal": {
             "patterns": [
                 {
-                    "name": "variable.other.constant.grammar",
+                    "name": "variable.other.constant.grammar keyword.other.grammar",
                     "match": "#(?:[a-zA-Z_]\\w*)(?:-[a-zA-Z_]\\w*)*\\b"
                 }
             ]

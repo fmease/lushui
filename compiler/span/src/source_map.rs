@@ -82,7 +82,7 @@ impl SourceMap {
         self.add(path, Arc::new(source.to_owned()), None)
     }
 
-    pub(crate) fn file(&self, span: Span) -> &SourceFile {
+    pub fn file(&self, span: Span) -> &SourceFile {
         debug_assert!(span != default());
 
         // @Task do binary search (by span)
