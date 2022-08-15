@@ -314,9 +314,8 @@ fn build_component(
         }
     };
 
-    let tokens = syntax::lex(file, session)?.bare;
-
-    let component_root = syntax::parse_root_module_file(&tokens, file, session)?;
+    let tokens = syntax::lex(file, session);
+    let component_root = syntax::parse_root_module_file(tokens, file, session)?;
 
     let component_root = lowerer::lower_file(
         component_root,

@@ -1,65 +1,45 @@
-//! (Mostly) positive behavior tests of the lexer.
-//!
-//! Negative behavior tests are UI tests and found in `/test/ui/tests/parsing/`.
+// @Task add tests for invalid indentation (esp. verifying the recovery logic)
 
-use super::{BareToken::*, Provenance, Token, UnterminatedTextLiteral};
-use error::{Health, Outcome, Result};
-use span::span;
-use std::default::default;
+use crate::{BareToken::*, Error, Outcome, Provenance, Token};
+use span::{span, Spanned};
 use utilities::difference;
 
-fn lex(source: &'static str) -> Result<Outcome<Vec<Token>>, ()> {
+fn lex(source: &'static str) -> Outcome {
     super::lex_string(source.to_owned())
 }
 
-fn assert_eq(actual: Result<Outcome<Vec<Token>>, ()>, expected: Vec<Token>) {
-    assert_eq_with_health(actual, expected, Health::Untainted)
-}
-
-fn assert_eq_tainted(actual: Result<Outcome<Vec<Token>>, ()>, expected: Vec<Token>) {
-    assert_eq_with_health(actual, expected, Health::Tainted)
-}
-
-fn assert_eq_with_health(
-    actual: Result<Outcome<Vec<Token>>, ()>,
-    expected: Vec<Token>,
-    expected_health: Health,
-) {
-    match actual {
-        Ok(Outcome!(actual, health)) => {
-            if health != expected_health {
-                panic!(
-                    "expected the tokens ‘{actual:?}’ to be \
-                     {expected_health} but they are {health}",
-                );
-            }
-
-            if actual != expected {
-                panic!(
-                    "the actual tokens outputted by the lexer do not match the expected ones:\n{}",
-                    difference(&format!("{expected:#?}"), &format!("{actual:#?}"), "\n"),
-                );
-            }
-        }
-        _ => panic!("expected the tokens ‘{expected:?}’ but an error was (silently) reported"),
+macro assert_lex_eq {
+    ($source:literal, $tokens:expr $(,)?) => {
+        assert_lex_eq!($source, $tokens, Vec::new())
+    },
+    ($source:literal, $tokens:expr, $errors:expr $(,)?) => {
+        assert_eq(lex($source), Outcome { tokens: $tokens, errors: $errors })
     }
 }
 
-#[allow(unused_imports)]
-use utilities::no_std_assert as assert_eq;
-#[allow(unused_imports)]
-use utilities::no_std_assert as assert_ne;
+#[track_caller]
+fn assert_eq(actual: Outcome, expected: Outcome) {
+    if actual != expected {
+        panic!(
+            "the output by the lexer does not match the expected one:\n{}",
+            difference(&format!("{:#?}", expected), &format!("{:#?}", actual), "\n"),
+        );
+    }
+}
 
 #[test]
 fn comments() {
-    assert_eq(
-        lex("
+    assert_lex_eq!(
+        "
 ;;; bland commentary ensues
 ;;; a filler line
 ;;; and an end
-"),
+",
         vec![
             Token::new(span(1, 2), Semicolon(Provenance::Lexer)),
+            Token::new(span(2, 29), Comment),
+            Token::new(span(30, 47), Comment),
+            Token::new(span(48, 62), Comment),
             Token::new(span(63, 63), EndOfInput),
         ],
     );
@@ -67,14 +47,15 @@ fn comments() {
 
 #[test]
 fn documentation_comments() {
-    assert_eq(
-        lex("\
+    assert_lex_eq!(
+        "\
 alpha;;;文本
 0401 ;; stray documentation comment
 ;; next one
-;;有意思的信"),
+;;有意思的信",
         vec![
             Token::new(span(1, 6), Word("alpha".into())),
+            Token::new(span(6, 15), Comment),
             Token::new(span(16, 20), NumberLiteral("0401".into())),
             Token::new(span(21, 51), DocumentationComment),
             Token::new(span(52, 63), DocumentationComment),
@@ -86,11 +67,11 @@ alpha;;;文本
 
 #[test]
 fn empty_documentation_comment_followed_by_non_empty_one() {
-    assert_eq(
-        lex("\
+    assert_lex_eq!(
+        "\
 ;;
 ;; non-empty
-"),
+",
         vec![
             Token::new(span(1, 3), DocumentationComment),
             Token::new(span(4, 16), DocumentationComment),
@@ -101,10 +82,10 @@ fn empty_documentation_comment_followed_by_non_empty_one() {
 
 #[test]
 fn shebang() {
-    assert_eq(
-        lex("\
+    assert_lex_eq!(
+        "\
 #!/usr/bin/lushui run
-it"),
+it",
         vec![
             Token::new(span(23, 25), Word("it".into())),
             Token::new(span(25, 25), EndOfInput),
@@ -114,9 +95,9 @@ it"),
 
 #[test]
 fn not_a_shebang_but_a_hashtag() {
-    assert_eq(
-        lex("\
-#hashtag"),
+    assert_lex_eq!(
+        "\
+#hashtag",
         vec![
             Token::new(span(1, 2), Punctuation("#".into())),
             Token::new(span(2, 9), Word("hashtag".into())),
@@ -127,9 +108,9 @@ fn not_a_shebang_but_a_hashtag() {
 
 #[test]
 fn not_a_shabang_but_a_hash() {
-    assert_eq(
-        lex("\
-#"),
+    assert_lex_eq!(
+        "\
+#",
         vec![
             Token::new(span(1, 2), Punctuation("#".into())),
             Token::new(span(2, 2), EndOfInput),
@@ -139,9 +120,9 @@ fn not_a_shabang_but_a_hash() {
 
 #[test]
 fn not_a_shebang_but_punctuation() {
-    assert_eq(
-        lex("\
-#?/WEIRD"),
+    assert_lex_eq!(
+        "\
+#?/WEIRD",
         vec![
             Token::new(span(1, 4), Punctuation("#?/".into())),
             Token::new(span(4, 9), Word("WEIRD".into())),
@@ -152,10 +133,10 @@ fn not_a_shebang_but_punctuation() {
 
 #[test]
 fn shebang_lookalike_not_first_line() {
-    assert_eq(
-        lex("
+    assert_lex_eq!(
+        "
 #!/usr/bin/lushui run
-"),
+",
         vec![
             Token::new(span(1, 2), Semicolon(Provenance::Lexer)),
             Token::new(span(2, 5), Punctuation("#!/".into())),
@@ -173,8 +154,8 @@ fn shebang_lookalike_not_first_line() {
 
 #[test]
 fn identifiers() {
-    assert_eq(
-        lex("alpha alpha0 _alpha al6ha_beta_"),
+    assert_lex_eq!(
+        "alpha alpha0 _alpha al6ha_beta_",
         vec![
             Token::new(span(1, 6), Word("alpha".into())),
             Token::new(span(7, 13), Word("alpha0".into())),
@@ -187,21 +168,40 @@ fn identifiers() {
 
 #[test]
 fn dashed_identifiers() {
-    assert_eq(
-        lex("ALPH4-G4MM4 alpha-gamma _-_"),
+    assert_lex_eq!(
+        "ALPH4-G4MM4 alpha-gamma _-_ alpha-0",
         vec![
             Token::new(span(1, 12), Word("ALPH4-G4MM4".into())),
             Token::new(span(13, 24), Word("alpha-gamma".into())),
             Token::new(span(25, 28), Word("_-_".into())),
-            Token::new(span(28, 28), EndOfInput),
+            Token::new(span(29, 36), Word("alpha-0".into())),
+            Token::new(span(36, 36), EndOfInput),
+        ],
+    );
+}
+
+#[test]
+fn weird_dashed_identifiers() {
+    assert_lex_eq!(
+        "alpha- alpha-: alpha--beta--- -no --no-no",
+        vec![
+            Token::new(span(1, 7), Word("alpha-".into())),
+            Token::new(span(8, 14), Word("alpha-".into())),
+            Token::new(span(14, 15), Colon),
+            Token::new(span(16, 30), Word("alpha--beta---".into())),
+            Token::new(span(31, 32), Punctuation("-".into())),
+            Token::new(span(32, 34), Word("no".into())),
+            Token::new(span(35, 37), Punctuation("--".into())),
+            Token::new(span(37, 42), Word("no-no".into())),
+            Token::new(span(42, 42), EndOfInput),
         ],
     );
 }
 
 #[test]
 fn keywords_and_lookalikes() {
-    assert_eq(
-        lex("self   Type Type_ Type-Type in _"),
+    assert_lex_eq!(
+        "self   Type Type_ Type-Type in _",
         vec![
             Token::new(span(1, 5), Self_),
             Token::new(span(8, 12), Type),
@@ -214,34 +214,10 @@ fn keywords_and_lookalikes() {
     );
 }
 
-// @Task make this a UI test
-#[test]
-fn do_not_lex_identifier_with_trailing_dash() {
-    assert!(lex("alpha-").is_err());
-}
-
-// @Task make this a UI test
-#[test]
-fn do_not_lex_identifier_with_trailing_dash_punctuation() {
-    assert!(lex("alpha-:").is_err());
-}
-
-// @Task make this a UI test
-#[test]
-fn do_not_lex_identifier_with_trailing_dash_number_literal() {
-    assert!(lex("alpha-0").is_err());
-}
-
-// @Task make this a UI test
-#[test]
-fn do_not_lex_identifier_with_consecutive_dashes() {
-    assert!(lex("alpha--gamma").is_err());
-}
-
 #[test]
 fn punctuation() {
-    assert_eq(
-        lex("+ +>alpha//$~%  #0 . .."),
+    assert_lex_eq!(
+        "+ +>alpha//$~%  #0 . ..",
         vec![
             Token::new(span(1, 2), Punctuation("+".into())),
             Token::new(span(3, 5), Punctuation("+>".into())),
@@ -258,8 +234,8 @@ fn punctuation() {
 
 #[test]
 fn identifier_with_trailing_dot() {
-    assert_eq(
-        lex("namespace."),
+    assert_lex_eq!(
+        "namespace.",
         vec![
             Token::new(span(1, 10), Word("namespace".into())),
             Token::new(span(10, 11), Dot),
@@ -270,8 +246,8 @@ fn identifier_with_trailing_dot() {
 
 #[test]
 fn identifier_dot_punctuation() {
-    assert_eq(
-        lex("namespace.+>!"),
+    assert_lex_eq!(
+        "namespace.+>!",
         vec![
             Token::new(span(1, 10), Word("namespace".into())),
             Token::new(span(10, 11), Dot),
@@ -283,8 +259,8 @@ fn identifier_dot_punctuation() {
 
 #[test]
 fn lex_identifier_dot_dotted_punctuation() {
-    assert_eq(
-        lex("namespace.$.?!."),
+    assert_lex_eq!(
+        "namespace.$.?!.",
         vec![
             Token::new(span(1, 10), Word("namespace".into())),
             Token::new(span(10, 11), Dot),
@@ -296,8 +272,8 @@ fn lex_identifier_dot_dotted_punctuation() {
 
 #[test]
 fn lex_identifier_and_dotted_punctuation_after_space() {
-    assert_eq(
-        lex("namespace .$.?!."),
+    assert_lex_eq!(
+        "namespace .$.?!.",
         vec![
             Token::new(span(1, 10), Word("namespace".into())),
             Token::new(span(11, 17), Punctuation(".$.?!.".into())),
@@ -308,8 +284,8 @@ fn lex_identifier_and_dotted_punctuation_after_space() {
 
 #[test]
 fn lex_keyword_dot_punctuation() {
-    assert_eq(
-        lex("data.#"),
+    assert_lex_eq!(
+        "data.#",
         vec![
             Token::new(span(1, 5), Data),
             Token::new(span(5, 6), Dot),
@@ -321,8 +297,8 @@ fn lex_keyword_dot_punctuation() {
 
 #[test]
 fn lex_number_literals() {
-    assert_eq(
-        lex("1001409409220293022239833211 01"),
+    assert_lex_eq!(
+        "1001409409220293022239833211 01",
         vec![
             Token::new(
                 span(1, 29),
@@ -336,54 +312,41 @@ fn lex_number_literals() {
 
 #[test]
 fn lex_number_literals_with_separators() {
-    assert_eq(
-        lex(r#"334 1'000what 3'2'2'1"" 500 10"" -23"#),
+    assert_lex_eq!(
+        r#"334 1'000what 3'2'2'1"" 500 10"" -23 3''100 10' 1'"#,
         vec![
             Token::new(span(1, 4), NumberLiteral("334".into())),
             Token::new(span(5, 10), NumberLiteral("1000".into())),
             Token::new(span(10, 14), Word("what".into())),
             Token::new(span(15, 22), NumberLiteral("3221".into())),
-            Token::new(span(22, 24), TextLiteral(Ok(default()))),
+            Token::new(span(22, 24), TextLiteral("".into())),
             Token::new(span(25, 28), NumberLiteral("500".into())),
             Token::new(span(29, 31), NumberLiteral("10".into())),
-            Token::new(span(31, 33), TextLiteral(Ok(default()))),
+            Token::new(span(31, 33), TextLiteral("".into())),
             Token::new(span(34, 37), NumberLiteral("-23".into())),
-            Token::new(span(37, 37), EndOfInput),
+            Token::new(span(38, 44), NumberLiteral("3100".into())),
+            Token::new(span(45, 48), NumberLiteral("10".into())),
+            Token::new(span(49, 51), NumberLiteral("1".into())),
+            Token::new(span(51, 51), EndOfInput),
         ],
     );
 }
 
-// @Task make this a UI test
-#[test]
-fn do_no_lex_number_literal_with_consecutive_separators() {
-    assert!(lex("3''100").is_err());
-}
-
-// @Task make this a UI test
-#[test]
-fn do_not_lex_number_literal_with_trailing_separator() {
-    assert!(lex("10' ").is_err());
-}
-
-// @Task make this a UI test
-#[test]
-fn do_not_lex_number_literal_with_trailing_separator_right_before_eoi() {
-    assert!(lex("10'").is_err());
-}
-
 #[test]
 fn lex_text_literal() {
-    assert_eq(
-        lex(r#""
+    assert_lex_eq!(
+        r#""
     al
-  pha""#),
+  pha""#,
         vec![
             Token::new(
                 span(1, 16),
-                TextLiteral(Ok("
+                TextLiteral(
+                    "
     al
   pha"
-                .into())),
+                    .into()
+                ),
             ),
             Token::new(span(16, 16), EndOfInput),
         ],
@@ -392,19 +355,20 @@ fn lex_text_literal() {
 
 #[test]
 fn lex_unterminated_text_literal() {
-    assert_eq(
-        lex(r#""text message"#),
+    assert_lex_eq!(
+        r#""text message"#,
         vec![
-            Token::new(span(1, 14), TextLiteral(Err(UnterminatedTextLiteral))),
-            Token::new(span(14, 14), EndOfInput),
+            Token::new(span(1, 14), TextLiteral("text message".into())),
+            Token::new(span(14, 14), EndOfInput)
         ],
+        vec![Error::UnterminatedTextLiteral(span(1, 14))],
     );
 }
 
 #[test]
 fn lex_single_quote() {
-    assert_eq(
-        lex("'"),
+    assert_lex_eq!(
+        "'",
         vec![
             Token::new(span(1, 2), Apostrophe),
             Token::new(span(2, 2), EndOfInput),
@@ -414,8 +378,8 @@ fn lex_single_quote() {
 
 #[test]
 fn lex_brackets() {
-    assert_eq(
-        lex("(( )( ))"),
+    assert_lex_eq!(
+        "(( )( ))",
         vec![
             Token::new(span(1, 2), OpeningRoundBracket),
             Token::new(span(2, 3), OpeningRoundBracket),
@@ -430,72 +394,72 @@ fn lex_brackets() {
 
 #[test]
 fn bare_non_ascii_is_illegal() {
-    assert_eq_tainted(
-        lex("函数"),
+    assert_lex_eq!(
+        "函数",
+        vec![Token::new(span(7, 7), EndOfInput),],
         vec![
-            Token::new(span(1, 4), Illegal('\u{51FD}')),
-            Token::new(span(4, 7), Illegal('\u{6570}')),
-            Token::new(span(7, 7), EndOfInput),
+            Error::IllegalToken(Spanned::new(span(1, 4), '\u{51FD}')),
+            Error::IllegalToken(Spanned::new(span(4, 7), '\u{6570}')),
         ],
     );
 }
 
 #[test]
 fn bare_non_ascii_are_illegal_but_non_fatal() {
-    assert_eq_tainted(
-        lex(" 函数 function"),
+    assert_lex_eq!(
+        " 函数 function",
         vec![
-            Token::new(span(2, 5), Illegal('函')),
-            Token::new(span(5, 8), Illegal('数')),
             Token::new(span(9, 17), Word("function".into())),
             Token::new(span(17, 17), EndOfInput),
         ],
+        vec![
+            Error::IllegalToken(Spanned::new(span(2, 5), '函')),
+            Error::IllegalToken(Spanned::new(span(5, 8), '数')),
+        ]
     );
 }
 
 #[test]
 fn backticks_are_illegal() {
-    assert_eq_tainted(
-        lex("`"),
-        vec![
-            Token::new(span(1, 2), Illegal('`')),
-            Token::new(span(2, 2), EndOfInput),
-        ],
+    assert_lex_eq!(
+        "`",
+        vec![Token::new(span(2, 2), EndOfInput),],
+        vec![Error::IllegalToken(Spanned::new(span(1, 2), '`')),]
     );
 }
 
 #[test]
 fn backticks_are_illegal_right_after_number_literal() {
-    assert_eq_tainted(
-        lex("1`"),
+    assert_lex_eq!(
+        "1`",
         vec![
             Token::new(span(1, 2), NumberLiteral("1".into())),
-            Token::new(span(2, 3), Illegal('`')),
             Token::new(span(3, 3), EndOfInput),
         ],
+        vec![Error::IllegalToken(Spanned::new(span(2, 3), '`')),]
     );
 }
 
 #[test]
 fn tabs_are_illegal() {
-    assert_eq_tainted(
-        lex("\t\t"),
+    assert_lex_eq!(
+        "\t\t",
+        vec![Token::new(span(3, 3), EndOfInput),],
         vec![
-            Token::new(span(1, 2), Illegal('\t')),
-            Token::new(span(2, 3), Illegal('\t')),
-            Token::new(span(3, 3), EndOfInput),
-        ],
+            Error::IllegalToken(Spanned::new(span(1, 2), '\t')),
+            Error::IllegalToken(Spanned::new(span(2, 3), '\t')),
+        ]
     );
 }
 
 #[test]
 fn line_breaks_are_terminators_at_the_toplevel() {
-    assert_eq(
-        lex("\
+    assert_lex_eq!(
+        "\
 alpha #?
 100 it
 
-\"moot\""),
+\"moot\"",
         vec![
             Token::new(span(1, 6), Word("alpha".into())),
             Token::new(span(7, 9), Punctuation("#?".into())),
@@ -503,7 +467,7 @@ alpha #?
             Token::new(span(10, 13), NumberLiteral("100".into())),
             Token::new(span(14, 16), Word("it".into())),
             Token::new(span(16, 18), Semicolon(Provenance::Lexer)),
-            Token::new(span(18, 24), TextLiteral(Ok("moot".into()))),
+            Token::new(span(18, 24), TextLiteral("moot".into())),
             Token::new(span(24, 24), EndOfInput),
         ],
     );
@@ -517,8 +481,8 @@ alpha #?
 /// indented section; not in this test).
 #[test]
 fn indentation_means_line_continuation() {
-    assert_eq(
-        lex("\
+    assert_lex_eq!(
+        "\
 start middle
     end
 \"anything
@@ -529,13 +493,13 @@ start middle
                 )
 
 $%&~~
-    .!^  \\/"),
+    .!^  \\/",
         vec![
             Token::new(span(1, 6), Word("start".into())),
             Token::new(span(7, 13), Word("middle".into())),
             Token::new(span(18, 21), Word("end".into())),
             Token::new(span(21, 22), Semicolon(Provenance::Lexer)),
-            Token::new(span(22, 43), TextLiteral(Ok("anything\n    really".into()))),
+            Token::new(span(22, 43), TextLiteral("anything\n    really".into())),
             Token::new(span(48, 55), NumberLiteral("3291238".into())),
             Token::new(span(64, 70), Module),
             Token::new(span(83, 84), OpeningRoundBracket),
@@ -551,8 +515,8 @@ $%&~~
 
 #[test]
 fn line_breaks_are_not_terminators_in_continued_sections() {
-    assert_eq(
-        lex("\
+    assert_lex_eq!(
+        "\
 -0
     off
     side
@@ -565,12 +529,12 @@ fn line_breaks_are_not_terminators_in_continued_sections() {
         lvl2
     lvl1
     1
-"),
+",
         vec![
             Token::new(span(1, 3), NumberLiteral("-0".into())),
             Token::new(span(8, 11), Word("off".into())),
             Token::new(span(16, 20), Word("side".into())),
-            Token::new(span(25, 27), TextLiteral(Ok(default()))),
+            Token::new(span(25, 27), TextLiteral("".into())),
             Token::new(span(27, 28), Semicolon(Provenance::Lexer)),
             Token::new(span(28, 31), Punctuation("@@@".into())),
             Token::new(span(32, 33), At),
@@ -588,8 +552,8 @@ fn line_breaks_are_not_terminators_in_continued_sections() {
 #[test]
 fn keyword_of_introduces_indented_sections() {
     // @Task test sth similar with no trailing line break at the end ("early" EOI)
-    assert_eq(
-        lex("\
+    assert_lex_eq!(
+        "\
 of
     something
     more
@@ -602,7 +566,7 @@ of
         CONTENT
     of
         >>!<<
-"),
+",
         vec![
             Token::new(span(1, 3), Of),
             Token::new(span(4, 8), OpeningCurlyBracket(Provenance::Lexer)),
@@ -640,12 +604,12 @@ of
 
 #[test]
 fn no_superfluous_virtual_semicolon_before_virtual_curly_bracket_with_continued_section() {
-    assert_eq(
-        lex("\
+    assert_lex_eq!(
+        "\
 of
     a
         b
-"),
+",
         vec![
             Token::new(span(1, 3), Of),
             Token::new(span(4, 8), OpeningCurlyBracket(Provenance::Lexer)),
@@ -659,21 +623,15 @@ of
 }
 
 #[test]
-#[ignore]
-fn keyword_do_introduces_indented_sections() {
-    todo!() // @Task
-}
-
-#[test]
 fn empty_indented_section_does_not_create_virtual_curly_brackets() {
-    assert_eq(
-        lex("\
+    assert_lex_eq!(
+        "\
 of
 do
 
 of
     do
-"),
+",
         vec![
             Token::new(span(1, 3), Of),
             Token::new(span(3, 4), Semicolon(Provenance::Lexer)),
@@ -695,18 +653,18 @@ of
 
 #[test]
 fn keyword_do_and_of_and_no_block_follows() {
-    assert_eq(
-        lex(r#"
+    assert_lex_eq!(
+        r#"
 do it
 of"it"
-"#),
+"#,
         vec![
             Token::new(span(1, 2), Semicolon(Provenance::Lexer)),
             Token::new(span(2, 4), Do),
             Token::new(span(5, 7), Word("it".into())),
             Token::new(span(7, 8), Semicolon(Provenance::Lexer)),
             Token::new(span(8, 10), Of),
-            Token::new(span(10, 14), TextLiteral(Ok("it".into()))),
+            Token::new(span(10, 14), TextLiteral("it".into())),
             Token::new(span(14, 15), Semicolon(Provenance::Lexer)),
             Token::new(span(15, 15), EndOfInput),
         ],
@@ -721,14 +679,14 @@ of"it"
 
 #[test]
 fn round_bracket_closes_indented_section() {
-    assert_eq(
-        lex("\
+    assert_lex_eq!(
+        "\
 (of
     fo)
 (of
     fo
     )
-"),
+",
         vec![
             Token::new(span(1, 2), OpeningRoundBracket),
             Token::new(span(2, 4), Of),
@@ -754,11 +712,11 @@ fn round_bracket_closes_indented_section() {
 
 #[test]
 fn square_bracket_closes_indented_section() {
-    assert_eq(
-        lex("\
+    assert_lex_eq!(
+        "\
 [of
     fo]
-#"),
+#",
         vec![
             Token::new(span(1, 2), OpeningSquareBracket),
             Token::new(span(2, 4), Of),
@@ -776,12 +734,12 @@ fn square_bracket_closes_indented_section() {
 
 #[test]
 fn pair_of_brackets_does_not_close_indented_section() {
-    assert_eq(
-        lex("\
+    assert_lex_eq!(
+        "\
 of
     (f [])
     inside
-"),
+",
         vec![
             Token::new(span(1, 3), Of),
             Token::new(span(4, 8), OpeningCurlyBracket(Provenance::Lexer)),
@@ -804,12 +762,12 @@ of
 /// the closing bracket.
 #[test]
 fn brackets_reset_indentation() {
-    assert_eq(
-        lex("\
+    assert_lex_eq!(
+        "\
 (of
     =>)
     = .
-"),
+",
         vec![
             Token::new(span(1, 2), OpeningRoundBracket),
             Token::new(span(2, 4), Of),

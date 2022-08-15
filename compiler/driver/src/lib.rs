@@ -297,11 +297,11 @@ fn build_component(
     time! {
         //! Lexing
 
-        let tokens = syntax::lex(file, session)?.bare;
+        let tokens = syntax::lex(file, session);
     };
 
     if component.is_goal(session) && options.emit_tokens {
-        for token in &tokens {
+        for token in &tokens.tokens {
             eprintln!("{token:?}");
         }
     }
@@ -311,7 +311,7 @@ fn build_component(
     time! {
         //! Parsing
 
-        let component_root = syntax::parse_root_module_file(&tokens, file, session)?;
+        let component_root = syntax::parse_root_module_file(tokens, file, session)?;
     }
 
     if component.is_goal(session) && options.emit_ast {

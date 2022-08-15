@@ -199,19 +199,12 @@ impl<'a> Lexer<'a> {
     }
 
     fn lex_identifier(&mut self) {
-        self.lex_identifier_segment();
+        self.lex_first_identifier_segment();
 
         while self.peek() == Some('-') {
-            let dash = self.index().unwrap();
             self.take();
             self.advance();
-            let previous = self.local_span;
             self.lex_identifier_segment();
-            if self.local_span == previous {
-                self.local_span = LocalSpan::with_length(dash, 1);
-                // @Task add illegal
-                todo!();
-            }
         }
 
         self.add(match self.source() {
@@ -221,7 +214,7 @@ impl<'a> Lexer<'a> {
         });
     }
 
-    fn lex_identifier_segment(&mut self) {
+    fn lex_first_identifier_segment(&mut self) {
         if let Some(character) = self.peek() {
             if is_identifier_segment_start(character) {
                 self.take();
@@ -231,11 +224,12 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    fn lex_identifier_segment(&mut self) {
+        self.take_while(is_identifier_segment_middle);
+    }
+
     fn lex_number(&mut self) {
         let mut number = self.source().to_owned();
-
-        let mut trailing_separator = false;
-        let mut consecutive_separators = false;
 
         while let Some(character) = self.peek() {
             if !is_number_literal_middle(character) {
@@ -246,35 +240,18 @@ impl<'a> Lexer<'a> {
 
             if character != NUMERIC_SEPARATOR {
                 number.push(character);
-            } else {
-                if let Some(NUMERIC_SEPARATOR) = self.peek() {
-                    consecutive_separators = true;
-                }
-                if self.peek().map_or(true, |character| {
-                    !character.is_ascii_digit() || character == NUMERIC_SEPARATOR
-                }) {
-                    trailing_separator = true;
-                }
             }
         }
 
-        if consecutive_separators {
-            self.health.taint();
-            self.add(Integer(Err(IntLexingError::ConsecutiveSeparators)));
-        } else if trailing_separator {
-            self.health.taint();
-            self.add(Integer(Err(IntLexingError::TrailingSeparators)));
-        } else {
-            match number.parse::<i64>() {
-                Ok(number) => {
-                    self.add(Integer(Ok(number)));
-                }
-                Err(_) => {
-                    self.health.taint();
-                    self.add(Integer(Err(IntLexingError::SizeExceedance)));
-                }
-            };
-        }
+        match number.parse() {
+            Ok(number) => {
+                self.add(Integer(Ok(number)));
+            }
+            Err(_) => {
+                self.health.taint();
+                self.add(Integer(Err(IntLexingError::SizeExceedance)));
+            }
+        };
     }
 
     fn span(&self) -> Span {
@@ -306,10 +283,6 @@ impl<'a> Lexer<'a> {
         self.characters
             .peek()
             .map(|&(index, character)| (index.try_into().unwrap(), character))
-    }
-
-    fn index(&mut self) -> Option<LocalByteIndex> {
-        self.peek_with_index().map(|(index, _)| index)
     }
 
     /// [Take](Self::take) the span of all succeeding tokens where the predicate holds and step.
@@ -357,8 +330,6 @@ pub enum TextLexingError {
 
 #[derive(Clone, Copy, Debug)]
 pub enum IntLexingError {
-    ConsecutiveSeparators,
-    TrailingSeparators,
     SizeExceedance,
 }
 

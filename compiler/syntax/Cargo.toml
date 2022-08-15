@@ -11,4 +11,3 @@ lexer = { path = "../lexer" }
 parser = { path = "../parser" }
 session = { path = "../session" }
 span = { path = "../span" }
-token = { path = "../token" }

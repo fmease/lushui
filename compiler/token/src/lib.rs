@@ -1,8 +1,7 @@
 //! The tokens emitted by the lexer.
-#![feature(decl_macro, stmt_expr_attributes)]
+#![feature(decl_macro, stmt_expr_attributes, int_roundings)]
 
-use derivation::Discriminant;
-use diagnostics::{Diagnostic, ErrorCode};
+use derivation::{Discriminant, Str};
 use span::Spanned;
 use std::{cmp::Ordering, fmt};
 use utilities::{obtain, quoted, Atom};
@@ -19,7 +18,7 @@ pub trait TokenExt {
     fn is_line_break(&self) -> bool;
     fn into_identifier(self) -> Option<Atom>;
     fn into_number_literal(self) -> Option<Atom>;
-    fn into_text_literal(self) -> Option<Result<Atom, Diagnostic>>;
+    fn into_text_literal(self) -> Option<Atom>;
 }
 
 impl TokenExt for Token {
@@ -45,24 +44,15 @@ impl TokenExt for Token {
     fn into_identifier(self) -> Option<Atom> {
         use BareToken::*;
 
-        obtain!(self.bare, Word(atom) | Punctuation(atom) => atom)
+        obtain!(self.bare, Word(identifier) | Punctuation(identifier) => identifier)
     }
 
     fn into_number_literal(self) -> Option<Atom> {
         obtain!(self.bare, BareToken::NumberLiteral(number) => number)
     }
 
-    fn into_text_literal(self) -> Option<Result<Atom, Diagnostic>> {
-        use BareToken::*;
-
-        match self.bare {
-            TextLiteral(Ok(content)) => Some(Ok(content)),
-            TextLiteral(Err(_)) => Some(Err(Diagnostic::error()
-                .code(ErrorCode::E047)
-                .message("unterminated text literal")
-                .primary_span(self.span))),
-            _ => None,
-        }
+    fn into_text_literal(self) -> Option<Atom> {
+        obtain!(self.bare, BareToken::TextLiteral(text) => text)
     }
 }
 
@@ -74,7 +64,7 @@ pub enum BareToken {
     Word(Atom),        // @Task use crate::Word
     Punctuation(Atom), // @Task create newtype Punctuation
     NumberLiteral(Atom),
-    TextLiteral(Result<Atom, UnterminatedTextLiteral>),
+    TextLiteral(Atom),
     /// For attributes.
     At,
     /// For lambda literals and pattern binders.
@@ -143,7 +133,6 @@ pub enum BareToken {
     /// The latter being use/in-expressions and statements.
     Use,
     EndOfInput,
-    Illegal(char),
 }
 
 impl fmt::Display for BareToken {
@@ -152,9 +141,6 @@ impl fmt::Display for BareToken {
 
         match *self {
             Self::Semicolon(Provenance::Lexer) => write!(f, "line break"),
-            Self::Illegal(character) => {
-                write!(f, "{} U+{:04X} ‘{}’", name, character as u32, character)
-            }
             _ => write!(f, "{name}"),
         }
     }
@@ -228,13 +214,9 @@ impl fmt::Display for TokenName {
             Type => keyword!(Type),
             Use => keyword!(use),
             EndOfInput => "end of input",
-            Illegal => "illegal character",
         })
     }
 }
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct UnterminatedTextLiteral;
 
 /// The provenance of a token output by the lexer.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -258,10 +240,82 @@ pub const fn is_punctuation(character: char) -> bool {
     )
 }
 
+#[derive(PartialEq, Eq, Debug)]
+pub struct Bracket {
+    pub kind: BracketKind,
+    pub orientation: BracketOrientation,
+}
+
+impl Bracket {
+    pub const fn new(kind: BracketKind, orientation: BracketOrientation) -> Self {
+        Self { kind, orientation }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Str, Debug)]
+#[format(dash_case)]
+pub enum BracketKind {
+    Round,
+    Square,
+    Curly,
+}
+
+impl BracketKind {
+    pub const fn opening(self) -> BareToken {
+        use BareToken::*;
+
+        match self {
+            Self::Round => OpeningRoundBracket,
+            Self::Square => OpeningSquareBracket,
+            Self::Curly => OpeningCurlyBracket(Provenance::Source),
+        }
+    }
+
+    pub const fn closing(self) -> BareToken {
+        use BareToken::*;
+
+        match self {
+            Self::Round => ClosingRoundBracket,
+            Self::Square => ClosingSquareBracket,
+            Self::Curly => ClosingCurlyBracket(Provenance::Source),
+        }
+    }
+}
+
+impl fmt::Display for BracketKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
+#[derive(Clone, Copy, Str, PartialEq, Eq, Debug)]
+#[format(dash_case)]
+pub enum BracketOrientation {
+    Opening,
+    Closing,
+}
+
+impl std::ops::Not for BracketOrientation {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        match self {
+            Self::Opening => Self::Closing,
+            Self::Closing => Self::Opening,
+        }
+    }
+}
+
+impl fmt::Display for BracketOrientation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
 /// The unit indentation in spaces.
 pub const INDENTATION: Spaces = Indentation::UNIT.to_spaces();
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Spaces(pub usize);
 
 impl Spaces {
@@ -291,13 +345,16 @@ impl<S: Into<Spaces>> std::ops::SubAssign<S> for Spaces {
     }
 }
 
+// @Note this whole type seems really over-engineered: it is only used in
+//       3 lines in the lexer. the actual logic is the TryFrom impl, smh.
+//       inline it into the lexer.
 #[derive(Clone, Copy)]
 pub struct Indentation(pub usize);
 
 impl Indentation {
-    const UNIT: Self = Self(1);
+    pub const UNIT: Self = Self(1);
 
-    const fn to_spaces(self) -> Spaces {
+    pub const fn to_spaces(self) -> Spaces {
         const INDENTATION_IN_SPACES: usize = 4;
 
         Spaces(self.0 * INDENTATION_IN_SPACES)
@@ -311,21 +368,25 @@ impl From<Indentation> for Spaces {
 }
 
 impl TryFrom<(Ordering, Spaces)> for Indentation {
-    type Error = IndentationError;
+    type Error = (Indentation, IndentationError);
 
     fn try_from((change, spaces): (Ordering, Spaces)) -> Result<Self, Self::Error> {
         if spaces.0 % INDENTATION.0 != 0 {
-            return Err(IndentationError::Misaligned);
+            return Err((
+                Indentation(spaces.0.div_ceil(INDENTATION.0)),
+                IndentationError::Misaligned,
+            ));
         }
 
         if change == Ordering::Greater && spaces.0 > INDENTATION.0 {
-            return Err(IndentationError::TooDeep);
+            return Err((Indentation::UNIT, IndentationError::TooDeep));
         }
 
         Ok(Indentation(spaces.0 / INDENTATION.0))
     }
 }
 
+#[derive(PartialEq, Eq, Debug)]
 pub enum IndentationError {
     Misaligned,
     TooDeep,

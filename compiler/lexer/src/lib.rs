@@ -1,13 +1,11 @@
 //! The lexical analyzer (lexer).
-#![feature(default_free_fn)]
+#![feature(default_free_fn, decl_macro)]
 
-use diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
-use error::{Health, Outcome, Result};
 use span::{LocalByteIndex, LocalSpan, SourceFile, SourceMap, Span, Spanned};
-use std::{cmp::Ordering, default::default, fmt, iter::Peekable, str::CharIndices, sync::Arc};
+use std::{cmp::Ordering, default::default, iter::Peekable, str::CharIndices, sync::Arc};
 use token::{
-    BareToken, Indentation, IndentationError, Provenance, Spaces, Token, TokenExt,
-    UnterminatedTextLiteral, Word, INDENTATION,
+    BareToken, Bracket, BracketKind, BracketOrientation, Indentation, IndentationError, Provenance,
+    Spaces, Token, TokenExt, Word,
 };
 use utilities::{self, obtain, GetFromEndExt};
 use BareToken::*;
@@ -15,16 +13,31 @@ use BareToken::*;
 #[cfg(test)]
 mod test;
 
-pub fn lex(file: &SourceFile, reporter: &Reporter) -> Result<Outcome<Vec<Token>>> {
-    Lexer::new(file, reporter).lex()
+pub fn lex(file: &SourceFile, options: &Options) -> Outcome {
+    Lexer::new(file, options).lex()
 }
 
-fn lex_string(source: String) -> Result<Outcome<Vec<Token>>, ()> {
+#[derive(PartialEq, Eq, Debug)]
+pub struct Outcome {
+    pub tokens: Vec<Token>,
+    pub errors: Vec<Error>,
+}
+
+#[derive(Default)]
+pub struct Options {
+    pub keep_comments: bool,
+}
+
+fn lex_string(source: String) -> Outcome {
     let mut map = SourceMap::default();
     let file = map.add(None, Arc::new(source), None);
-    Lexer::new(&map[file], &Reporter::silent())
-        .lex()
-        .map_err(drop)
+    Lexer::new(
+        &map[file],
+        &Options {
+            keep_comments: true,
+        },
+    )
+    .lex()
 }
 
 pub trait WordExt: Sized {
@@ -32,10 +45,12 @@ pub trait WordExt: Sized {
 }
 
 impl WordExt for Word {
+    // @Beacon @Bug this allows ids like `   foo-bar `
+    // (and `hey;;;wkwkwkwwkw`)! just write a custom lexer for this!
     fn parse(name: String) -> Result<Self, ()> {
-        let Outcome!(tokens, health) = lex_string(name)?;
+        let Outcome { tokens, errors } = lex_string(name);
 
-        if health.is_tainted() {
+        if !errors.is_empty() {
             return Err(());
         }
 
@@ -52,35 +67,33 @@ impl WordExt for Word {
 
 /// The state of the lexer.
 struct Lexer<'a> {
-    file: &'a SourceFile,
     characters: Peekable<CharIndices<'a>>,
+    file: &'a SourceFile,
+    options: &'a Options,
     tokens: Vec<Token>,
+    errors: Vec<Error>,
     local_span: LocalSpan,
     indentation: Spaces,
     sections: Sections,
     brackets: Brackets,
-    reporter: &'a Reporter,
-    health: Health,
 }
 
 impl<'a> Lexer<'a> {
-    fn new(file: &'a SourceFile, reporter: &'a Reporter) -> Self {
+    fn new(file: &'a SourceFile, options: &'a Options) -> Self {
         Self {
             characters: file.content().char_indices().peekable(),
             file,
+            options,
             tokens: Vec::new(),
+            errors: Vec::new(),
             local_span: LocalSpan::default(),
             indentation: Spaces(0),
             sections: Sections::default(),
             brackets: Brackets::default(),
-            reporter,
-            health: Health::Untainted,
         }
     }
 
-    // @Task return (Vec<Token>, Diagnostics)
-    // @Task improve diagnostics when encountering "indented sections" inside delimited ones
-    fn lex(mut self) -> Result<Outcome<Vec<Token>>> {
+    fn lex(mut self) -> Outcome {
         while let Some((index, character)) = self.peek_with_index() {
             self.local_span = LocalSpan::empty(index);
 
@@ -99,14 +112,14 @@ impl<'a> Lexer<'a> {
                         self.add(Semicolon(Provenance::Source));
                     }
                 }
-                character if is_identifier_segment_start(character) => self.lex_identifier()?,
-                '\n' if self.sections.current() != Section::Delimited => self.lex_indentation()?,
+                character if is_identifier_segment_start(character) => self.lex_identifier(),
+                '\n' if self.sections.current() != Section::Delimited => self.lex_indentation(),
                 '\n' => self.advance(),
-                '-' => self.lex_punctuation_or_number_literal()?,
+                '-' => self.lex_punctuation_or_number_literal(),
                 character if character.is_ascii_digit() => {
                     self.take();
                     self.advance();
-                    self.lex_number_literal()?;
+                    self.lex_number_literal();
                 }
                 character if token::is_punctuation(character) => {
                     self.take();
@@ -115,47 +128,41 @@ impl<'a> Lexer<'a> {
                     self.lex_punctuation();
                 }
                 '"' => self.lex_text_literal(),
-                '(' => self.add_opening_bracket(Bracket::Round),
-                '[' => self.add_opening_bracket(Bracket::Square),
+                '(' => self.add_opening_bracket(BracketKind::Round),
+                '[' => self.add_opening_bracket(BracketKind::Square),
                 '{' => {
                     self.sections.enter(Section::Delimited);
-                    self.add_opening_bracket(Bracket::Curly);
+                    self.add_opening_bracket(BracketKind::Curly);
                 }
                 ')' => {
-                    self.add_closing_bracket(Bracket::Round);
+                    self.add_closing_bracket(BracketKind::Round);
                 }
                 ']' => {
-                    self.add_closing_bracket(Bracket::Square);
+                    self.add_closing_bracket(BracketKind::Square);
                 }
                 '}' => {
                     // @Temporary unverified
                     if self.sections.current() == Section::Delimited {
                         self.sections.exit();
                     }
-                    self.add_closing_bracket(Bracket::Curly);
+                    self.add_closing_bracket(BracketKind::Curly);
                 }
                 '\'' => self.consume(Apostrophe),
                 character => {
-                    self.consume(Illegal(character));
-                    self.health.taint();
+                    self.take();
+                    self.advance();
+                    let token = Spanned::new(self.span(), character);
+                    self.errors.push(Error::IllegalToken(token));
                 }
             }
         }
 
         if !self.brackets.0.is_empty() {
             // @Task don't report all remaining brackets in the stack, only unclosed ones! See #113.
-            // @Bug we are not smart enough here yet, the error messages are too confusing / even incorrect!
-
             for bracket in &self.brackets.0 {
-                self.health.taint();
-                Diagnostic::error()
-                    .code(ErrorCode::E044)
-                    .message(format!("unbalanced {} bracket", bracket.bare))
-                    .labeled_primary_span(
-                        bracket,
-                        format!("has no matching closing {} bracket", bracket.bare),
-                    )
-                    .report(self.reporter);
+                self.errors.push(Error::UnbalancedBracket(
+                    bracket.map(|kind| Bracket::new(kind, BracketOrientation::Opening)),
+                ));
             }
         }
 
@@ -168,10 +175,13 @@ impl<'a> Lexer<'a> {
         }
         self.add(EndOfInput);
 
-        Ok(Outcome::new(self.tokens, self.health))
+        Outcome {
+            tokens: self.tokens,
+            errors: self.errors,
+        }
     }
 
-    fn add_opening_bracket(&mut self, bracket: Bracket) {
+    fn add_opening_bracket(&mut self, bracket: BracketKind) {
         self.take();
         self.add(bracket.opening());
 
@@ -179,7 +189,7 @@ impl<'a> Lexer<'a> {
         self.advance();
     }
 
-    fn add_closing_bracket(&mut self, bracket: Bracket) {
+    fn add_closing_bracket(&mut self, bracket: BracketKind) {
         self.take();
 
         if let (Section::Indented { brackets }, size) = self.sections.current_continued() {
@@ -195,8 +205,7 @@ impl<'a> Lexer<'a> {
         self.add(bracket.closing());
 
         if let Err(error) = self.brackets.close(Spanned::new(self.span(), bracket)) {
-            self.health.taint();
-            error.report(self.reporter);
+            self.errors.push(error);
         };
         self.advance();
     }
@@ -228,62 +237,50 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    // @Task merge consecutive documentation comments, smh
-    // @Task emit TokenKind::Comment if asked
     fn lex_comment(&mut self) {
         self.take();
         self.advance();
 
         let mut is_documentation = true;
-        let mut found_immediate_line_break = false;
 
         if let Some(character) = self.peek() {
             self.advance();
 
-            match character {
-                ';' => is_documentation = false,
-                '\n' => found_immediate_line_break = true,
-                _ => self.take(),
+            if character == ';' {
+                is_documentation = false;
             }
-        }
 
-        if !found_immediate_line_break {
-            while let Some(character) = self.peek() {
-                if character == '\n' {
+            if character != '\n' {
+                self.take();
+
+                while let Some(character) = self.peek() {
+                    if character == '\n' {
+                        self.advance();
+                        break;
+                    }
+
+                    if is_documentation || self.options.keep_comments {
+                        self.take();
+                    }
+
                     self.advance();
-                    break;
                 }
-
-                if is_documentation {
-                    self.take();
-                }
-
-                self.advance();
             }
         }
 
         if is_documentation {
             self.add(DocumentationComment);
+        } else if self.options.keep_comments {
+            self.add(Comment);
         }
     }
 
-    // @Task make trailing dashes part of punctuation (this removes the error condition)
-    fn lex_identifier(&mut self) -> Result {
-        self.lex_identifier_segment();
+    fn lex_identifier(&mut self) {
+        self.lex_first_identifier_segment();
         while self.peek() == Some('-') {
-            let dash = self.index().unwrap();
             self.take();
             self.advance();
-            let previous = self.local_span;
             self.lex_identifier_segment();
-            if self.local_span == previous {
-                self.local_span = LocalSpan::with_length(dash, 1);
-                return Err(Diagnostic::error()
-                    .code(ErrorCode::E045)
-                    .message("trailing dash on identifier")
-                    .primary_span(self.span())
-                    .report(self.reporter));
-            }
         }
 
         match parse_keyword(self.source()) {
@@ -298,11 +295,9 @@ impl<'a> Lexer<'a> {
             self.add(Dot);
             self.advance();
         }
-
-        Ok(())
     }
 
-    fn lex_identifier_segment(&mut self) {
+    fn lex_first_identifier_segment(&mut self) {
         if let Some(character) = self.peek() {
             if is_identifier_segment_start(character) {
                 self.take();
@@ -312,10 +307,14 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    fn lex_identifier_segment(&mut self) {
+        self.take_while(is_identifier_segment_middle);
+    }
+
     // @Beacon @Bug *very* confusing indentation errors if the file contains tabs \t
     // which do *not* result in an error in the lexer but "later" in the parser (which is never reached)
     // @Task treat tabs differently when calculating indentation
-    fn lex_indentation(&mut self) -> Result {
+    fn lex_indentation(&mut self) {
         let is_start_of_indented_section = self
             .tokens
             .last()
@@ -342,28 +341,16 @@ impl<'a> Lexer<'a> {
 
         let (change, difference) = spaces.difference(self.indentation);
 
-        let difference: Indentation = match (change, difference).try_into() {
+        let indentation: Indentation = match (change, difference).try_into() {
             Ok(difference) => difference,
-            Err(error) => {
-                // @Task push that to the error buffer instead (making this non-fatal)
-                // and treat Spaces(1) as Spaces(4), Spaces(6) as Spaces(8) etc.
-                return Err(Diagnostic::error()
-                    .code(ErrorCode::E046)
-                    .message(format!(
-                        "invalid indentation consisting of {} spaces",
-                        difference.0
-                    ))
-                    .primary_span(self.span())
-                    .note(match error {
-                        IndentationError::Misaligned => {
-                            format!("indentation needs to be a multiple of {}", INDENTATION.0)
-                        }
-                        IndentationError::TooDeep => format!(
-                            "indentation is greater than {} and therefore too deep",
-                            INDENTATION.0
-                        ),
-                    })
-                    .report(self.reporter));
+            Err((indentation, error)) => {
+                self.errors.push(Error::InvalidIndentation(
+                    Spanned::new(self.span(), difference),
+                    error,
+                ));
+                // @Task add some tests for this "recovered"/reconstructed indentation!
+                spaces = indentation.to_spaces();
+                indentation
             }
         };
 
@@ -371,8 +358,7 @@ impl<'a> Lexer<'a> {
 
         if is_start_of_indented_section {
             if change == Ordering::Greater {
-                // remove the line break again
-                self.tokens.pop();
+                self.tokens.pop(); // remove the line break again
                 self.add(OpeningCurlyBracket(Provenance::Lexer));
                 self.sections.enter(Section::Indented {
                     brackets: self.brackets.0.len(),
@@ -387,11 +373,10 @@ impl<'a> Lexer<'a> {
                 || change == Ordering::Less
                     && !self
                         .sections
-                        .get(difference.0)
+                        .get(indentation.0)
                         .line_breaks_are_terminators()
             {
-                // remove the line break again
-                self.tokens.pop();
+                self.tokens.pop(); // remove the line break again
             }
 
             if change == Ordering::Greater {
@@ -408,7 +393,7 @@ impl<'a> Lexer<'a> {
                 self.tokens.pop();
             }
 
-            for _ in 0..difference.0 {
+            for _ in 0..indentation.0 {
                 let section = self.sections.exit();
 
                 // @Beacon @Task handle the case where `!section.brackets.is_empty()`
@@ -420,8 +405,6 @@ impl<'a> Lexer<'a> {
         }
 
         self.indentation = spaces;
-
-        Ok(())
     }
 
     fn line_is_empty(&mut self) -> bool {
@@ -435,16 +418,14 @@ impl<'a> Lexer<'a> {
         // }
     }
 
-    fn lex_punctuation_or_number_literal(&mut self) -> Result {
+    fn lex_punctuation_or_number_literal(&mut self) {
         self.take();
         self.advance();
 
         match self.peek() {
-            Some(character) if character.is_ascii_digit() => self.lex_number_literal()?,
+            Some(character) if character.is_ascii_digit() => self.lex_number_literal(),
             _ => self.lex_punctuation(),
         }
-
-        Ok(())
     }
 
     fn lex_punctuation(&mut self) {
@@ -458,12 +439,8 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    // @Task move validation logic out of the lexer
-    fn lex_number_literal(&mut self) -> Result {
+    fn lex_number_literal(&mut self) {
         let mut number = self.source().to_owned();
-
-        let mut trailing_separator = false;
-        let mut consecutive_separators = false;
 
         while let Some(character) = self.peek() {
             if !is_number_literal_middle(character) {
@@ -474,52 +451,13 @@ impl<'a> Lexer<'a> {
 
             if character != NUMERIC_SEPARATOR {
                 number.push(character);
-            } else {
-                if let Some(NUMERIC_SEPARATOR) = self.peek() {
-                    consecutive_separators = true;
-                }
-                if self
-                    .peek()
-                    .map_or(true, |character| !is_number_literal_middle(character))
-                {
-                    trailing_separator = true;
-                }
             }
-        }
-
-        // @Task emit an invalid identifier token if an identifier immedially follows
-        // a number literal (maybe)
-
-        if consecutive_separators || trailing_separator {
-            if consecutive_separators {
-                Diagnostic::error()
-                    .code(ErrorCode::E005)
-                    .message("consecutive primes in number literal")
-                    .primary_span(self.span())
-                    .report(self.reporter);
-            }
-
-            if trailing_separator {
-                Diagnostic::error()
-                    .code(ErrorCode::E005)
-                    .message("trailing prime in number literal")
-                    .primary_span(self.span())
-                    .report(self.reporter);
-            }
-
-            // @Task don't return early here, just taint the health and
-            // return an InvalidNumberLiteral token
-            // @Task don't use unchecked here, smh get the token from above
-            return Err(ErasedReportedError::new_unchecked());
         }
 
         self.add(NumberLiteral(number.into()));
-
-        Ok(())
     }
 
-    // @Task escape sequences @Update do them in the parser (or at least mark them as invalid
-    // and do the error reporting in the parser)
+    // @Task escape sequences
     fn lex_text_literal(&mut self) {
         self.take();
         self.advance();
@@ -536,12 +474,17 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        // @Note once we implement escaping, this won't cut it and we need to build our own string
-        let content_span = self.local_span.trim(1);
-        self.add(TextLiteral(match is_terminated {
-            true => Ok(self.file[content_span].into()),
-            false => Err(UnterminatedTextLiteral),
-        }));
+        // @Note this naive trimming and indexing into the source file does not scale to
+        //       escape sequences (once we implement them)
+        let content_span = if is_terminated {
+            self.local_span.trim(1)
+        } else {
+            self.errors
+                .push(Error::UnterminatedTextLiteral(self.span()));
+            self.local_span.trim_start(1)
+        };
+
+        self.add(TextLiteral(self.file[content_span].into()));
     }
 
     fn span(&self) -> Span {
@@ -699,75 +642,30 @@ impl Sections {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Bracket {
-    Round,
-    Square,
-    Curly,
-}
-
-impl Bracket {
-    const fn opening(self) -> BareToken {
-        match self {
-            Self::Round => OpeningRoundBracket,
-            Self::Square => OpeningSquareBracket,
-            Self::Curly => OpeningCurlyBracket(Provenance::Source),
-        }
-    }
-
-    const fn closing(self) -> BareToken {
-        match self {
-            Self::Round => ClosingRoundBracket,
-            Self::Square => ClosingSquareBracket,
-            Self::Curly => ClosingCurlyBracket(Provenance::Source),
-        }
-    }
-}
-
-impl fmt::Display for Bracket {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Round => "round",
-            Self::Square => "square",
-            Self::Curly => "curly",
-        })
-    }
-}
-
 #[derive(Default)]
-struct Brackets(Stack<Spanned<Bracket>>);
+struct Brackets(Stack<Spanned<BracketKind>>);
 
 impl Brackets {
-    fn open(&mut self, opening_bracket: Spanned<Bracket>) {
-        self.0.push(opening_bracket);
+    fn open(&mut self, bracket: Spanned<BracketKind>) {
+        self.0.push(bracket);
     }
 
-    fn close(&mut self, closing_bracket: Spanned<Bracket>) -> Result<(), Diagnostic> {
+    fn close(&mut self, bracket: Spanned<BracketKind>) -> Result<(), Error> {
         match self.0.pop() {
             Some(opening_bracket) => {
-                if opening_bracket.bare == closing_bracket.bare {
+                if opening_bracket.bare == bracket.bare {
                     Ok(())
                 } else {
-                    // @Beacon @Bug we are not smart enough here yet, the error messages are too confusing
-                    // or even incorrect!
-                    Err(Diagnostic::error()
-                        .code(ErrorCode::E044)
-                        .message(format!("unbalanced {closing_bracket} bracket"))
-                        .labeled_primary_span(
-                            closing_bracket,
-                            format!("has no matching opening {closing_bracket} bracket"),
-                        ))
+                    Err(Error::UnbalancedBracket(bracket.map(|kind| {
+                        Bracket::new(kind, BracketOrientation::Closing)
+                    })))
                 }
             }
-            // @Beacon @Bug we are not smart enough here yet, the error messages are too confusing
-            // or even incorrect!
-            None => Err(Diagnostic::error()
-                .code(ErrorCode::E044)
-                .message(format!("unbalanced {closing_bracket} bracket"))
-                .labeled_primary_span(
-                    closing_bracket,
-                    format!("has no matching opening {closing_bracket} bracket"),
-                )),
+            None => {
+                Err(Error::UnbalancedBracket(bracket.map(|kind| {
+                    Bracket::new(kind, BracketOrientation::Closing)
+                })))
+            }
         }
     }
 }
@@ -824,4 +722,12 @@ fn parse_reserved_punctuation(source: &str) -> Option<BareToken> {
         "::" => DoubleColon,
         _ => return None,
     })
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub enum Error {
+    InvalidIndentation(Spanned<Spaces>, IndentationError),
+    IllegalToken(Spanned<char>),
+    UnbalancedBracket(Spanned<Bracket>),
+    UnterminatedTextLiteral(Span),
 }
