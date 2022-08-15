@@ -6,6 +6,5 @@ publish = false
 
 [dependencies]
 derivation = { path = "../../project/library/derivation" }
-diagnostics = { path = "../diagnostics" }
 span = { path = "../span" }
 utilities = { path = "../utilities" }

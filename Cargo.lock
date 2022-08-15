@@ -779,8 +779,6 @@ checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 name = "lexer"
 version = "0.0.0"
 dependencies = [
- "diagnostics",
- "error",
  "span",
  "token",
  "utilities",
@@ -1412,7 +1410,6 @@ dependencies = [
  "parser",
  "session",
  "span",
- "token",
 ]
 
 [[package]]
@@ -1466,7 +1463,6 @@ name = "token"
 version = "0.0.0"
 dependencies = [
  "derivation",
- "diagnostics",
  "span",
  "utilities",
 ]

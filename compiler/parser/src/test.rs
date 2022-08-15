@@ -2,7 +2,7 @@
 //!
 //! Intended for edge cases. The majority of parser tests should be UI tests.
 
-use super::Parser;
+use super::parse;
 use ast::{
     Attribute, Attributes, BareAttribute, BareParameter, BareUsePathTree, Case, Debug, Declaration,
     Domain,
@@ -27,7 +27,13 @@ fn parse_expression(source: &str) -> Result<Expression> {
     let map = Arc::new(RwLock::new(map));
     let reporter = Reporter::stderr().with_map(map.clone());
     let map = map.read().unwrap();
-    Parser::new(&lex(&map[file], &reporter)?.bare, file, &map, &reporter).parse_expression()
+    parse(
+        lex(&map[file], &default()),
+        |parser| parser.parse_expression(),
+        file,
+        &map,
+        &reporter,
+    )
 }
 
 fn parse_pattern(source: &str) -> Result<Pattern> {
@@ -36,7 +42,13 @@ fn parse_pattern(source: &str) -> Result<Pattern> {
     let map = Arc::new(RwLock::new(map));
     let reporter = Reporter::stderr().with_map(map.clone());
     let map = map.read().unwrap();
-    Parser::new(&lex(&map[file], &reporter)?.bare, file, &map, &reporter).parse_pattern()
+    parse(
+        lex(&map[file], &default()),
+        |parser| parser.parse_pattern(),
+        file,
+        &map,
+        &reporter,
+    )
 }
 
 fn parse_declaration(source: &str) -> Result<Declaration> {
@@ -45,8 +57,13 @@ fn parse_declaration(source: &str) -> Result<Declaration> {
     let map = Arc::new(RwLock::new(map));
     let reporter = Reporter::stderr().with_map(map.clone());
     let map = map.read().unwrap();
-    Parser::new(&lex(&map[file], &reporter)?.bare, file, &map, &reporter)
-        .parse_top_level(test_module_name())
+    parse(
+        lex(&map[file], &default()),
+        |parser| parser.parse_top_level(test_module_name()),
+        file,
+        &map,
+        &reporter,
+    )
 }
 
 /// The name of the module returned by [parse_declaration].

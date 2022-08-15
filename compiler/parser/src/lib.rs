@@ -36,11 +36,10 @@ use error::Result;
 use lexer::WordExt;
 use span::{SourceFileIndex, SourceMap, Span, Spanned, Spanning};
 use std::{any::TypeId, default::default};
-#[allow(clippy::wildcard_imports)]
 use token::{
-    Token, TokenExt,
+    IndentationError, Token, TokenExt,
     TokenName::{self, *},
-    Word,
+    Word, INDENTATION,
 };
 use utilities::{Conjunction, ListingExt, SmallVec};
 
@@ -58,66 +57,85 @@ const BRACKET_POTENTIAL_PI_TYPE_LITERAL: &str =
 
 /// Parse the file of a root module / component root.
 pub fn parse_root_module_file(
-    tokens: &[Token],
+    tokens: lexer::Outcome,
     file: SourceFileIndex,
     map: &SourceMap,
     reporter: &Reporter,
 ) -> Result<Declaration> {
-    // @Beacon @Task don't unwrap to_str here but handle the error correctly
-    // (create another parsing function on ComponentName)
+    // @Task don't use unwrap(), handle errors properly
     let name = map[file]
         .path()
         .unwrap()
         .file_stem()
         .unwrap()
         .to_str()
-        .unwrap()
-        .to_owned();
+        .unwrap();
 
-    let binder = Spanned::new(
-        default(),
-        Word::parse(name.clone()).map_err(|_| {
-            // @Beacon @Task add component+packagename(+path?) and other details/explanations
-            // @Question is the common code justified?
-            Diagnostic::error()
-                .code(ErrorCode::E036)
-                .message(format!(
-                    "the name of the root module ‘{name}’ is not a valid word"
-                ))
-                .report(reporter)
-        })?,
-    )
-    .into();
+    let binder = Word::parse(name.to_owned()).map_err(|_| {
+        Diagnostic::error()
+            .code(ErrorCode::E036)
+            .message(format!(
+                "the name of the root module ‘{name}’ is not a valid word"
+            ))
+            .report(reporter)
+    })?;
+    let binder = Spanned::new(default(), binder).into();
 
     parse_module_file(tokens, file, binder, map, reporter)
 }
 
 /// Parse the file of a root module or an out-of-line module.
 pub fn parse_module_file(
-    tokens: &[Token],
+    tokens: lexer::Outcome,
     file: SourceFileIndex,
     binder: Identifier,
     map: &SourceMap,
     reporter: &Reporter,
 ) -> Result<Declaration> {
-    Parser::new(tokens, file, map, reporter).parse_top_level(binder)
+    parse(
+        tokens,
+        |parser| parser.parse_top_level(binder),
+        file,
+        map,
+        reporter,
+    )
 }
 
 pub fn parse_path(
-    tokens: &[Token],
+    tokens: lexer::Outcome,
     file: SourceFileIndex,
     map: &SourceMap,
     reporter: &Reporter,
 ) -> Result<Path> {
-    Parser::new(tokens, file, map, reporter).parse_path()
+    #[allow(clippy::redundant_closure_for_method_calls)] // false positive, #9335
+    parse(tokens, |parser| parser.parse_path(), file, map, reporter)
+}
+
+fn parse<T>(
+    tokens: lexer::Outcome,
+    parser: impl FnOnce(&mut Parser<'_>) -> Result<T>,
+    file: SourceFileIndex,
+    map: &SourceMap,
+    reporter: &Reporter,
+) -> Result<T> {
+    let mut health = Ok(());
+
+    for error in tokens.errors {
+        let error = error.into_diagnostic().report(reporter);
+
+        if health.is_ok() {
+            health = Err(error);
+        }
+    }
+
+    let result = parser(&mut Parser::new(tokens.tokens, file, map, reporter));
+
+    health.and(result)
 }
 
 /// The state of the parser.
-// @Beacon @Task create stripped down version of the Parser
-// that does not have `map` and `file` (naming?) and move all parsing methods that don't
-// need those files to it
 struct Parser<'a> {
-    tokens: &'a [Token],
+    tokens: Vec<Token>,
     file: SourceFileIndex,
     look_ahead: u16,
     index: usize,
@@ -127,7 +145,7 @@ struct Parser<'a> {
 
 impl<'a> Parser<'a> {
     fn new(
-        tokens: &'a [Token],
+        tokens: Vec<Token>,
         file: SourceFileIndex,
         map: &'a SourceMap,
         reporter: &'a Reporter,
@@ -453,12 +471,7 @@ impl<'a> Parser<'a> {
 
                 AttributeArgument::new(
                     token.span,
-                    BareAttributeArgument::TextLiteral(
-                        token
-                            .into_text_literal()
-                            .unwrap()
-                            .or_else(|error| self.error(|| error))?,
-                    ),
+                    BareAttributeArgument::TextLiteral(token.into_text_literal().unwrap()),
                 )
             }
             OpeningRoundBracket => {
@@ -1073,13 +1086,7 @@ impl<'a> Parser<'a> {
                     token.span,
                     ast::TextLiteral {
                         path: None,
-                        literal: Spanned::new(
-                            token.span,
-                            token
-                                .into_text_literal()
-                                .unwrap()
-                                .or_else(|error| self.error(|| error))?,
-                        ),
+                        literal: Spanned::new(token.span, token.into_text_literal().unwrap()),
                     }
                     .into(),
                 )
@@ -1583,13 +1590,7 @@ impl<'a> Parser<'a> {
                     token.span,
                     ast::TextLiteral {
                         path: None,
-                        literal: Spanned::new(
-                            token.span,
-                            token
-                                .into_text_literal()
-                                .unwrap()
-                                .or_else(|error| self.error(|| error))?,
-                        ),
+                        literal: Spanned::new(token.span, token.into_text_literal().unwrap()),
                     }
                     .into(),
                 )
@@ -1742,13 +1743,18 @@ impl<'a> Parser<'a> {
                     Explicit => "a",
                 };
 
-                self.error(|| expected_one_of![Expected::Expression, Equals]
-                    .but_actual_is(token)
-                    .labeled_secondary_span(
-                        &argument,
-                        format!("treated as {explicitness} function argument,\nnot as the domain of a pi type literal"),
-                    )
-                    .help(BRACKET_POTENTIAL_PI_TYPE_LITERAL))?;
+                self.error(|| {
+                    expected_one_of![Expected::Expression, Equals]
+                        .but_actual_is(token)
+                        .labeled_secondary_span(
+                            &argument,
+                            format!(
+                                "treated as {explicitness} function argument,\n\
+                                 not as the domain of a pi type literal"
+                            ),
+                        )
+                        .help(BRACKET_POTENTIAL_PI_TYPE_LITERAL)
+                })?;
             }
 
             let span = callee.span().merge(&argument);
@@ -1821,13 +1827,7 @@ impl<'a> Parser<'a> {
                         path.span().merge(&token),
                         ast::TextLiteral {
                             path: Some(path),
-                            literal: Spanned::new(
-                                token.span,
-                                token
-                                    .into_text_literal()
-                                    .unwrap()
-                                    .or_else(|error| self.error(|| error))?,
-                            ),
+                            literal: Spanned::new(token.span, token.into_text_literal().unwrap()),
                         }
                         .into(),
                     ));
@@ -2076,4 +2076,56 @@ impl From<TokenName> for Delimiter {
 enum SkipLineBreaks {
     Yes,
     No,
+}
+
+trait LexerErrorExt {
+    fn into_diagnostic(self) -> Diagnostic;
+}
+
+impl LexerErrorExt for lexer::Error {
+    fn into_diagnostic(self) -> Diagnostic {
+        match self {
+            Self::InvalidIndentation(difference, error) => Diagnostic::error()
+                .code(ErrorCode::E046)
+                .message(format!(
+                    "invalid indentation consisting of {} spaces",
+                    difference.bare.0
+                ))
+                .primary_span(difference)
+                .note(match error {
+                    IndentationError::Misaligned => {
+                        format!("indentation needs to be a multiple of {}", INDENTATION.0)
+                    }
+                    IndentationError::TooDeep => format!(
+                        "indentation is greater than {} and therefore too deep",
+                        INDENTATION.0
+                    ),
+                }),
+            // @Task error code
+            Self::IllegalToken(token) => {
+                let message = format!(
+                    "found illegal character U+{:04X} ‘{token}’",
+                    token.bare as u32,
+                );
+
+                Diagnostic::error()
+                    .message(message)
+                    .labeled_primary_span(token, "unexpected token")
+            }
+            Self::UnbalancedBracket(bracket) => Diagnostic::error()
+                .code(ErrorCode::E044)
+                .message(format!("unbalanced {} bracket", bracket.bare.kind))
+                .labeled_primary_span(
+                    &bracket,
+                    format!(
+                        "has no matching {} {} bracket",
+                        !bracket.bare.orientation, bracket.bare.kind
+                    ),
+                ),
+            Self::UnterminatedTextLiteral(span) => Diagnostic::error()
+                .code(ErrorCode::E047)
+                .message("unterminated text literal")
+                .primary_span(span),
+        }
+    }
 }

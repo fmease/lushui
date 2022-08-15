@@ -1,16 +1,17 @@
 //! The front-end concerned with lexing, parsing and lowering.
+#![feature(default_free_fn)]
 
-use error::{Outcome, Result};
+use error::Result;
 use session::BuildSession;
 use span::SourceFileIndex;
-use token::Token;
+use std::default::default;
 
 /// Lex source code into an array of tokens
 ///
 /// The health of the tokens can be ignored if the tokens are fed into the parser
 /// immediately after lexing since the parser will handle invalid tokens.
-pub fn lex(file: SourceFileIndex, session: &BuildSession) -> Result<Outcome<Vec<Token>>> {
-    lexer::lex(&session.shared_map()[file], session.reporter())
+pub fn lex(file: SourceFileIndex, session: &BuildSession) -> lexer::Outcome {
+    lexer::lex(&session.shared_map()[file], &default())
 }
 
 /// Lex and parse the file of a root module or an out-of-line module.
@@ -22,7 +23,7 @@ pub fn parse_module_file(
     session: &BuildSession,
 ) -> Result<ast::Declaration> {
     parser::parse_module_file(
-        &lex(file, session)?.bare,
+        lex(file, session),
         file,
         binder,
         &session.shared_map(),
@@ -32,7 +33,7 @@ pub fn parse_module_file(
 
 /// Parse the file of a root module / component root.
 pub fn parse_root_module_file(
-    tokens: &[Token],
+    tokens: lexer::Outcome,
     file: SourceFileIndex,
     session: &BuildSession,
 ) -> Result<ast::Declaration> {
@@ -41,7 +42,7 @@ pub fn parse_root_module_file(
 
 pub fn parse_path(file: SourceFileIndex, session: &BuildSession) -> Result<ast::Path> {
     parser::parse_path(
-        &lex(file, session)?.bare,
+        lex(file, session),
         file,
         &session.shared_map(),
         session.reporter(),

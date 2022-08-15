@@ -166,10 +166,7 @@ impl<'a> Parser<'a> {
                         use super::lexer::IntLexingError::*;
 
                         // @Beacon @Task
-                        #[allow(clippy::match_same_arms)]
                         let diagnostic = match error {
-                            ConsecutiveSeparators => Diagnostic::error().message("@Task"),
-                            TrailingSeparators => Diagnostic::error().message("@Task"),
                             SizeExceedance => Diagnostic::error().message("@Task"),
                         };
                         return Err(diagnostic.report(self.reporter));
