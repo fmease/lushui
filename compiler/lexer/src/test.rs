@@ -87,6 +87,7 @@ fn shebang() {
 #!/usr/bin/lushui run
 it",
         vec![
+            Token::new(span(1, 23), Shebang),
             Token::new(span(23, 25), Word("it".into())),
             Token::new(span(25, 25), EndOfInput),
         ],

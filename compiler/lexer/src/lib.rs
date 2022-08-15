@@ -25,6 +25,7 @@ pub struct Outcome {
 
 #[derive(Default)]
 pub struct Options {
+    /// Reify comments and shebangs as tokens.
     pub keep_comments: bool,
 }
 
@@ -45,8 +46,9 @@ pub trait WordExt: Sized {
 }
 
 impl WordExt for Word {
-    // @Beacon @Bug this allows ids like `   foo-bar `
-    // (and `hey;;;wkwkwkwwkw`)! just write a custom lexer for this!
+    // @Bug this allows words like `   foo-bar ` (leading & trailing ws)
+    // @Note and not long before it used to allow `hey;;;wkwkwkwwkw`!
+    // @Task just write a custom lexer for this!
     fn parse(name: String) -> Result<Self, ()> {
         let Outcome { tokens, errors } = lex_string(name);
 
@@ -58,7 +60,7 @@ impl WordExt for Word {
 
         obtain!(
             (tokens.next().ok_or(())?, tokens.next().ok_or(())?),
-            (BareToken::Word(atom), BareToken::EndOfInput) => atom
+            (BareToken::Word(word), BareToken::EndOfInput) => word
         )
         .map(Self::new_unchecked)
         .ok_or(())
@@ -216,11 +218,18 @@ impl<'a> Lexer<'a> {
 
         if let Some('!') = self.peek() {
             while let Some(character) = self.peek() {
+                if self.options.keep_comments {
+                    self.take();
+                }
                 self.advance();
 
                 if character == '\n' {
                     break;
                 }
+            }
+
+            if self.options.keep_comments {
+                self.add(Shebang);
             }
         } else {
             self.lex_punctuation();

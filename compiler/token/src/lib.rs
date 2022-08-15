@@ -59,6 +59,7 @@ impl TokenExt for Token {
 #[derive(Clone, PartialEq, Eq, Discriminant, Debug)]
 #[discriminant(name: TokenName)]
 pub enum BareToken {
+    Shebang,
     Comment,
     DocumentationComment,
     Word(Atom),        // @Task use crate::Word
@@ -173,6 +174,7 @@ impl fmt::Display for TokenName {
         }
 
         f.write_str(match self {
+            Shebang => "shebang",
             Comment => "comment",
             DocumentationComment => "documentation comment",
             Word => "word",

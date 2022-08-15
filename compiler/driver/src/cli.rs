@@ -204,6 +204,7 @@ pub(crate) fn arguments() -> Result<(Command, GlobalOptions)> {
                 .arg(
                     Arg::new(argument::NAME)
                         .required(true)
+                        .value_parser(WordParser)
                         .help("The name of the package"),
                 )
                 .args(package_creation_arguments),
