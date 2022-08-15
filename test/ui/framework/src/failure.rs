@@ -1,8 +1,9 @@
 use crate::{terminal_width, Stream};
 use colored::Colorize;
+use derivation::{Elements, FromStr, Str};
 use diagnostics::Diagnostic;
 use difference::{Changeset, Difference};
-use std::{fmt, path::PathBuf, process::ExitStatus, time::Duration};
+use std::{io::Write, path::PathBuf, process::ExitStatus, time::Duration};
 use utilities::{pluralize, Str};
 
 pub(crate) struct FailedTest {
@@ -17,17 +18,15 @@ impl FailedTest {
             failure: kind,
         }
     }
-}
 
-impl fmt::Display for FailedTest {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    pub(crate) fn print(&self, diff_view: DiffView, sink: &mut dyn Write) -> std::io::Result<()> {
         let path = crate::path::shorten(&self.path);
         let path = path.to_string_lossy();
 
-        writeln!(f)?;
-        writeln!(f, "{}", crate::section_header(&path))?;
-        writeln!(f)?;
-        write!(f, "{}", self.failure)
+        writeln!(sink)?;
+        writeln!(sink, "{}", crate::section_header(&path))?;
+        writeln!(sink)?;
+        self.failure.print(diff_view, sink)
     }
 }
 
@@ -50,8 +49,8 @@ pub(crate) enum Failure {
     InvalidConfiguration(crate::configuration::Error),
 }
 
-impl fmt::Display for Failure {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Failure {
+    fn print(&self, diff_view: DiffView, sink: &mut dyn Write) -> Result<(), std::io::Error> {
         match self {
             Self::UnexpectedExitStatus(status) => {
                 // @Task if it's an unexpected pass and if no test tag was specified (smh. get that info),
@@ -73,7 +72,7 @@ impl fmt::Display for Failure {
                         "expected the compiler to {verb} but it exited with {code} indicating {noun}",
                     ));
 
-                write!(f, "{}", diagnostic.format(None))
+                write!(sink, "{}", diagnostic.format(None))
             }
             Self::GoldenFileMismatch {
                 golden,
@@ -84,13 +83,22 @@ impl fmt::Display for Failure {
                     "the {stream} output of the compiler differs from the expected one"
                 ));
 
-                writeln!(f, "{}", diagnostic.format(None))?;
-                writeln!(f, "{}", "-".repeat(terminal_width()).bright_black())?;
+                writeln!(sink, "{}", diagnostic.format(None))?;
+                writeln!(sink, "{}", "-".repeat(terminal_width()).bright_black())?;
 
-                let changes = Changeset::new(golden, actual, "\n");
-                write_differences_with_ledge(&changes.diffs, f)?;
+                match diff_view {
+                    DiffView::Unified => {
+                        let changes = Changeset::new(golden, actual, "\n");
+                        write_differences_with_ledge(&changes.diffs, sink)?;
+                    }
+                    DiffView::Split => {
+                        write!(sink, "{}", golden.yellow())?;
+                        writeln!(sink, "{}", "-".repeat(terminal_width()).bright_black())?;
+                        write!(sink, "{actual}")?;
+                    }
+                }
 
-                write!(f, "{}", "-".repeat(terminal_width()).bright_black())
+                writeln!(sink, "{}", "-".repeat(terminal_width()).bright_black())
             }
             Self::InvalidTest { message, note } => {
                 let diagnostic =
@@ -101,13 +109,13 @@ impl fmt::Display for Failure {
                             None => error,
                         });
 
-                write!(f, "{}", diagnostic.format(None))
+                write!(sink, "{}", diagnostic.format(None))
             }
             Self::InvalidConfiguration(error) => {
                 // @Temporary
                 let diagnostic = Diagnostic::error().message(error.message.clone());
 
-                write!(f, "{}", diagnostic.format(None))
+                write!(sink, "{}", diagnostic.format(None))
             }
             Self::Timeout { global, local } => {
                 let timeout = match local {
@@ -132,32 +140,40 @@ impl fmt::Display for Failure {
                         pluralize!(timeout, "second"),
                     ));
 
-                write!(f, "{}", diagnostic.format(None))
+                write!(sink, "{}", diagnostic.format(None))
             }
         }
     }
 }
 
+#[derive(Clone, Copy, FromStr, Str, Elements, Default)]
+#[format(dash_case)]
+pub(crate) enum DiffView {
+    #[default]
+    Unified,
+    Split,
+}
+
 // @Task highlight changes within lines
 fn write_differences_with_ledge(
     differences: &[Difference],
-    f: &mut fmt::Formatter<'_>,
-) -> fmt::Result {
+    sink: &mut dyn Write,
+) -> std::io::Result<()> {
     for difference in differences {
         match difference {
             Difference::Same(lines) => {
                 for line in lines.lines() {
-                    writeln!(f, "{} {line}", " ".on_bright_white())?;
+                    writeln!(sink, "{} {line}", " ".on_bright_white())?;
                 }
             }
             Difference::Add(lines) => {
                 for line in lines.lines().chain(lines.is_empty().then_some("")) {
-                    writeln!(f, "{} {}", "+".black().on_green(), line.green())?;
+                    writeln!(sink, "{} {}", "+".black().on_green(), line.green())?;
                 }
             }
             Difference::Rem(lines) => {
                 for line in lines.lines().chain(lines.is_empty().then_some("")) {
-                    writeln!(f, "{} {}", "-".black().on_red(), line.red())?;
+                    writeln!(sink, "{} {}", "-".black().on_red(), line.red())?;
                 }
             }
         }

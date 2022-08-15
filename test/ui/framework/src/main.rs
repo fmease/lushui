@@ -97,6 +97,7 @@ fn try_main() -> Result<(), ()> {
     let statistics: Arc<Mutex<TestSuiteStatistics>> = default();
     let failed_tests: Arc<Mutex<Vec<_>>> = default();
     let number_test_threads = arguments.number_test_threads.into();
+    let diff_view = arguments.diff_view;
     let arguments = arguments.into();
 
     let suite_time = Instant::now();
@@ -166,7 +167,7 @@ fn try_main() -> Result<(), ()> {
     let mut stdout = std::io::stdout().lock();
 
     for failed_test in &failed_tests {
-        writeln!(stdout, "{failed_test}").unwrap();
+        failed_test.print(diff_view, &mut stdout).unwrap();
     }
 
     if !failed_tests.is_empty() {

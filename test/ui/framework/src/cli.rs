@@ -1,8 +1,9 @@
-use crate::{CompilerBuildMode, Gilding, Inspecting};
+use crate::{failure::DiffView, CompilerBuildMode, Gilding, Inspecting};
 use clap::{
     builder::{PathBufValueParser, TypedValueParser},
     Arg, ArgAction, Command,
 };
+use derivation::Elements;
 use diagnostics::{Diagnostic, Reporter};
 use std::{ffi::OsStr, num::NonZeroUsize, path::PathBuf, time::Duration};
 
@@ -51,6 +52,13 @@ pub(crate) fn arguments() -> Result<Arguments, ()> {
                 .long("inspect")
                 .short('I')
                 .help("Inspect the test suite for issues"),
+        )
+        .arg(
+            Arg::new(option::DIFF_VIEW)
+                .long("diff-view")
+                .value_name("FORMAT")
+                .value_parser(DiffViewParser)
+                .help("Set the format of diff views"),
         )
         .arg(
             Arg::new(argument::PATHS)
@@ -105,6 +113,10 @@ pub(crate) fn arguments() -> Result<Arguments, ()> {
         paths,
         timeout: matches.get_one(option::TIMEOUT).copied(),
         number_test_threads: *matches.get_one(option::NUMBER_TEST_THREADS).unwrap(),
+        diff_view: matches
+            .get_one(option::DIFF_VIEW)
+            .copied()
+            .unwrap_or_default(),
         inspecting: if matches.contains_id(option::INSPECT) {
             Inspecting::Yes
         } else {
@@ -119,10 +131,12 @@ pub(crate) struct Arguments {
     pub(crate) paths: Vec<PathBuf>,
     pub(crate) timeout: Option<Duration>,
     pub(crate) number_test_threads: NonZeroUsize,
+    pub(crate) diff_view: DiffView,
     pub(crate) inspecting: Inspecting,
 }
 
 mod option {
+    pub(super) const DIFF_VIEW: &str = "diff-view";
     pub(super) const GILD: &str = "gild";
     pub(super) const INSPECT: &str = "inspect";
     pub(super) const NUMBER_TEST_THREADS: &str = "number-test-threads";
@@ -183,6 +197,39 @@ impl TypedValueParser for DurationParser {
         })?;
 
         Ok(Duration::from_secs(seconds))
+    }
+}
+
+#[derive(Clone)]
+struct DiffViewParser;
+
+impl TypedValueParser for DiffViewParser {
+    type Value = DiffView;
+
+    fn parse_ref(
+        &self,
+        _: &clap::Command<'_>,
+        _: Option<&Arg<'_>>,
+        source: &OsStr,
+    ) -> Result<Self::Value, clap::Error> {
+        let source: &str = parse_utf8(source)?;
+
+        source.parse().map_err(|_| {
+            // @Task smh. avoid using `Error::raw` and smh. pass along the context.
+            //       https://github.com/clap-rs/clap/discussions/4029
+            clap::Error::raw(
+                clap::ErrorKind::InvalidValue,
+                format!("‘{source}’ is not a valid diff-view format\n"),
+            )
+        })
+    }
+
+    fn possible_values(
+        &self,
+    ) -> Option<Box<dyn Iterator<Item = clap::PossibleValue<'static>> + '_>> {
+        Some(Box::new(
+            DiffView::elements().map(|format| clap::PossibleValue::new(format.name())),
+        ))
     }
 }
 
