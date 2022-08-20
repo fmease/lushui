@@ -2,16 +2,18 @@
 #![feature(default_free_fn, decl_macro)]
 
 use span::{LocalByteIndex, LocalSpan, SourceFile, SourceMap, Span, Spanned};
-use std::{cmp::Ordering, default::default, iter::Peekable, str::CharIndices, sync::Arc};
+use std::{cmp::Ordering, default::default, iter::Peekable, mem, str::CharIndices, sync::Arc};
 use token::{
     BareToken, Bracket, BracketKind, BracketOrientation, Indentation, IndentationError, Provenance,
-    Spaces, Token, TokenExt, Word,
+    Spaces, Token, TokenExt,
 };
-use utilities::{self, obtain, GetFromEndExt};
+use utilities::{self, GetFromEndExt};
 use BareToken::*;
 
 #[cfg(test)]
 mod test;
+// @Task move this out of this crate
+pub mod word;
 
 pub fn lex(file: &SourceFile, options: &Options) -> Outcome {
     Lexer::new(file, options).lex()
@@ -27,44 +29,6 @@ pub struct Outcome {
 pub struct Options {
     /// Reify comments and shebangs as tokens.
     pub keep_comments: bool,
-}
-
-fn lex_string(source: String) -> Outcome {
-    let mut map = SourceMap::default();
-    let file = map.add(None, Arc::new(source), None);
-    Lexer::new(
-        &map[file],
-        &Options {
-            keep_comments: true,
-        },
-    )
-    .lex()
-}
-
-pub trait WordExt: Sized {
-    fn parse(name: String) -> Result<Self, ()>;
-}
-
-impl WordExt for Word {
-    // @Bug this allows words like `   foo-bar ` (leading & trailing ws)
-    // @Note and not long before it used to allow `hey;;;wkwkwkwwkw`!
-    // @Task just write a custom lexer for this!
-    fn parse(name: String) -> Result<Self, ()> {
-        let Outcome { tokens, errors } = lex_string(name);
-
-        if !errors.is_empty() {
-            return Err(());
-        }
-
-        let mut tokens = tokens.into_iter().map(|token| token.bare);
-
-        obtain!(
-            (tokens.next().ok_or(())?, tokens.next().ok_or(())?),
-            (BareToken::Word(word), BareToken::EndOfInput) => word
-        )
-        .map(Self::new_unchecked)
-        .ok_or(())
-    }
 }
 
 /// The state of the lexer.
@@ -153,18 +117,17 @@ impl<'a> Lexer<'a> {
                 character => {
                     self.take();
                     self.advance();
-                    let token = Spanned::new(self.span(), character);
-                    self.errors.push(Error::IllegalToken(token));
+                    self.error(BareError::IllegalToken(character));
                 }
             }
         }
 
-        if !self.brackets.0.is_empty() {
+        if !self.brackets.stack.is_empty() {
             // @Task don't report all remaining brackets in the stack, only unclosed ones! See #113.
-            for bracket in &self.brackets.0 {
-                self.errors.push(Error::UnbalancedBracket(
-                    bracket.map(|kind| Bracket::new(kind, BracketOrientation::Opening)),
-                ));
+            for bracket in &self.brackets.stack {
+                self.errors.push(bracket.map(|bracket| {
+                    BareError::UnbalancedBracket(Bracket::new(bracket, BracketOrientation::Opening))
+                }));
             }
         }
 
@@ -195,7 +158,7 @@ impl<'a> Lexer<'a> {
         self.take();
 
         if let (Section::Indented { brackets }, size) = self.sections.current_continued() {
-            if self.brackets.0.len() <= brackets {
+            if self.brackets.stack.len() <= brackets {
                 self.add(ClosingCurlyBracket(Provenance::Lexer));
                 // @Question can this panic??
                 let dedentation = self.sections.0.len() - size;
@@ -299,8 +262,11 @@ impl<'a> Lexer<'a> {
             }
         };
 
-        if let Some((index, '.')) = self.peek_with_index() {
-            self.local_span = LocalSpan::with_length(index, 1);
+        const DOT: char = '.';
+        if let Some((index, DOT)) = self.peek_with_index() {
+            #[allow(clippy::cast_possible_truncation)] // always within 1..=4
+            const LENGTH: u32 = DOT.len_utf8() as _;
+            self.local_span = LocalSpan::with_length(index, LENGTH);
             self.add(Dot);
             self.advance();
         }
@@ -333,7 +299,7 @@ impl<'a> Lexer<'a> {
         self.take();
         self.advance();
         self.take_while(|character| character == '\n');
-        // might be removed again in certain conditions later on
+        // might be removed again under certain conditions later on
         self.add(Semicolon(Provenance::Lexer));
 
         self.local_span = self
@@ -353,10 +319,7 @@ impl<'a> Lexer<'a> {
         let indentation: Indentation = match (change, difference).try_into() {
             Ok(difference) => difference,
             Err((indentation, error)) => {
-                self.errors.push(Error::InvalidIndentation(
-                    Spanned::new(self.span(), difference),
-                    error,
-                ));
+                self.error(BareError::InvalidIndentation(difference, error));
                 // @Task add some tests for this "recovered"/reconstructed indentation!
                 spaces = indentation.to_spaces();
                 indentation
@@ -370,7 +333,7 @@ impl<'a> Lexer<'a> {
                 self.tokens.pop(); // remove the line break again
                 self.add(OpeningCurlyBracket(Provenance::Lexer));
                 self.sections.enter(Section::Indented {
-                    brackets: self.brackets.0.len(),
+                    brackets: self.brackets.stack.len(),
                 });
             }
         } else {
@@ -473,11 +436,12 @@ impl<'a> Lexer<'a> {
 
         let mut is_terminated = false;
 
+        const QUOTE: char = '"';
         while let Some(character) = self.peek() {
             self.take();
             self.advance();
 
-            if character == '"' {
+            if character == QUOTE {
                 is_terminated = true;
                 break;
             }
@@ -485,12 +449,13 @@ impl<'a> Lexer<'a> {
 
         // @Note this naive trimming and indexing into the source file does not scale to
         //       escape sequences (once we implement them)
+        #[allow(clippy::cast_possible_truncation)] // always within 1..=4
+        const TRIM_LENGTH: u32 = QUOTE.len_utf8() as _;
         let content_span = if is_terminated {
-            self.local_span.trim(1)
+            self.local_span.trim(TRIM_LENGTH)
         } else {
-            self.errors
-                .push(Error::UnterminatedTextLiteral(self.span()));
-            self.local_span.trim_start(1)
+            self.error(BareError::UnterminatedTextLiteral);
+            self.local_span.trim_start(TRIM_LENGTH)
         };
 
         self.add(TextLiteral(self.file[content_span].into()));
@@ -562,11 +527,27 @@ impl<'a> Lexer<'a> {
         self.tokens.push(constructor(span));
     }
 
+    fn error(&mut self, error: BareError) {
+        self.errors.push(Error::new(self.span(), error));
+    }
+
     fn consume(&mut self, token: BareToken) {
         self.take();
         self.advance();
         self.add(token);
     }
+}
+
+fn lex_string(source: String) -> Outcome {
+    let mut map = SourceMap::default();
+    let file = map.add(None, Arc::new(source), None);
+    Lexer::new(
+        &map[file],
+        &Options {
+            keep_comments: true,
+        },
+    )
+    .lex()
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -647,34 +628,26 @@ impl Sections {
     }
 
     fn exit_all(&mut self) -> impl Iterator<Item = Section> {
-        std::mem::take(&mut self.0).into_iter().rev()
+        mem::take(&mut self.0).into_iter().rev()
     }
 }
 
 #[derive(Default)]
-struct Brackets(Stack<Spanned<BracketKind>>);
+struct Brackets {
+    stack: Stack<Spanned<BracketKind>>,
+}
 
 impl Brackets {
     fn open(&mut self, bracket: Spanned<BracketKind>) {
-        self.0.push(bracket);
+        self.stack.push(bracket);
     }
 
     fn close(&mut self, bracket: Spanned<BracketKind>) -> Result<(), Error> {
-        match self.0.pop() {
-            Some(opening_bracket) => {
-                if opening_bracket.bare == bracket.bare {
-                    Ok(())
-                } else {
-                    Err(Error::UnbalancedBracket(bracket.map(|kind| {
-                        Bracket::new(kind, BracketOrientation::Closing)
-                    })))
-                }
-            }
-            None => {
-                Err(Error::UnbalancedBracket(bracket.map(|kind| {
-                    Bracket::new(kind, BracketOrientation::Closing)
-                })))
-            }
+        match self.stack.pop() {
+            Some(opening_bracket) if opening_bracket.bare == bracket.bare => Ok(()),
+            _ => Err(bracket.map(|bracket| {
+                BareError::UnbalancedBracket(Bracket::new(bracket, BracketOrientation::Closing))
+            })),
         }
     }
 }
@@ -733,10 +706,12 @@ fn parse_reserved_punctuation(source: &str) -> Option<BareToken> {
     })
 }
 
+pub type Error = Spanned<BareError>;
+
 #[derive(PartialEq, Eq, Debug)]
-pub enum Error {
-    InvalidIndentation(Spanned<Spaces>, IndentationError),
-    IllegalToken(Spanned<char>),
-    UnbalancedBracket(Spanned<Bracket>),
-    UnterminatedTextLiteral(Span),
+pub enum BareError {
+    InvalidIndentation(Spaces, IndentationError),
+    IllegalToken(char),
+    UnbalancedBracket(Bracket),
+    UnterminatedTextLiteral,
 }

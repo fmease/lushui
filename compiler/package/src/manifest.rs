@@ -2,7 +2,7 @@ use super::BuildQueue;
 use derivation::{Elements, FromStr, Str};
 use diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
 use error::{AndThenMapExt, Health, OkIfUntaintedExt, Result};
-use lexer::WordExt;
+use lexer::word::WordExt;
 use metadata::{convert, Record, RecordWalker, WithTextContentSpanExt};
 use session::{ComponentType, Version};
 

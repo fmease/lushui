@@ -6,7 +6,7 @@ use clap::{
 use colored::Colorize;
 use derivation::{Elements, FromStr, Str};
 use error::Result;
-use lexer::WordExt;
+use lexer::word::WordExt;
 use package::ComponentFilter;
 use session::ComponentType;
 use std::{cmp::max, default::default, ffi::OsStr, path::PathBuf};

@@ -4,7 +4,7 @@
 use diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
 use error::Result;
 use index_map::IndexMap;
-use lexer::WordExt;
+use lexer::word::WordExt;
 pub use manifest::FILE_NAME as MANIFEST_FILE_NAME;
 use manifest::{DependencyDeclaration, DependencyProvider, PackageManifest, PackageProfile};
 use metadata::Record;

@@ -9,7 +9,7 @@ use hir::{
     LocalDeclarationIndex,
 };
 use index_map::IndexMap;
-use lexer::WordExt;
+use lexer::word::WordExt;
 use span::Spanned;
 use span::{SourceMap, Span};
 use std::fmt;

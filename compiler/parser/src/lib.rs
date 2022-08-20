@@ -33,7 +33,7 @@ use ast::{
 };
 use diagnostics::{reporter::ErasedReportedError, Diagnostic, ErrorCode, Reporter};
 use error::Result;
-use lexer::WordExt;
+use lexer::word::WordExt;
 use span::{SourceFileIndex, SourceMap, Span, Spanned, Spanning};
 use std::{any::TypeId, default::default};
 use token::{
@@ -2084,14 +2084,16 @@ trait LexerErrorExt {
 
 impl LexerErrorExt for lexer::Error {
     fn into_diagnostic(self) -> Diagnostic {
-        match self {
-            Self::InvalidIndentation(difference, error) => Diagnostic::error()
+        use lexer::BareError::*;
+
+        match self.bare {
+            InvalidIndentation(difference, error) => Diagnostic::error()
                 .code(ErrorCode::E046)
                 .message(format!(
                     "invalid indentation consisting of {} spaces",
-                    difference.bare.0
+                    difference.0
                 ))
-                .primary_span(difference)
+                .primary_span(self.span)
                 .note(match error {
                     IndentationError::Misaligned => {
                         format!("indentation needs to be a multiple of {}", INDENTATION.0)
@@ -2101,32 +2103,29 @@ impl LexerErrorExt for lexer::Error {
                         INDENTATION.0
                     ),
                 }),
-            // @Task error code
-            Self::IllegalToken(token) => {
-                let message = format!(
-                    "found illegal character U+{:04X} ‘{token}’",
-                    token.bare as u32,
-                );
+            IllegalToken(token) => {
+                let message = format!("found illegal character U+{:04X} ‘{token}’", token as u32,);
 
+                // @Task code
                 Diagnostic::error()
                     .message(message)
-                    .labeled_primary_span(token, "unexpected token")
+                    .labeled_primary_span(self.span, "unexpected token")
             }
-            Self::UnbalancedBracket(bracket) => Diagnostic::error()
+            UnbalancedBracket(bracket) => Diagnostic::error()
                 .code(ErrorCode::E044)
-                .message(format!("unbalanced {} bracket", bracket.bare.kind))
+                .message(format!("unbalanced {} bracket", bracket.kind))
                 .labeled_primary_span(
-                    &bracket,
+                    self.span,
                     format!(
                         "has no matching {} {} bracket",
-                        !bracket.bare.orientation, bracket.bare.kind
+                        !bracket.orientation, bracket.kind
                     ),
                 ),
             // @Task improve message, mention closing it with quotes
-            Self::UnterminatedTextLiteral(span) => Diagnostic::error()
+            UnterminatedTextLiteral => Diagnostic::error()
                 .code(ErrorCode::E047)
                 .message("unterminated text literal")
-                .primary_span(span),
+                .primary_span(self.span),
         }
     }
 }
