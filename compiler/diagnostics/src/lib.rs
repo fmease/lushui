@@ -10,7 +10,8 @@
     associated_type_bounds,
     adt_const_params,
     default_free_fn,
-    map_first_last
+    map_first_last,
+    let_else
 )]
 #![allow(incomplete_features)] // adt_const_params
 
@@ -18,7 +19,7 @@ pub use code::{Code, ErrorCode, LintCode};
 use derivation::Str;
 pub use reporter::Reporter;
 use span::{SourceMap, Span, Spanning};
-use std::{collections::BTreeSet, fmt::Debug, ops::Deref};
+use std::{collections::BTreeSet, fmt::Debug, ops::Deref, path::PathBuf};
 use utilities::Str;
 
 mod code;
@@ -43,14 +44,15 @@ impl<const S: Severity> Diagnostic<S> {
     ///
     /// # Strict Guidelines
     ///
-    /// * No line breaks
-    /// * Do not start the message with an upper case letter
-    /// * Single sentence only without a final period or exclamation mark
-    /// * When quoting code, surround it with backticks
-    /// * Try not to quote complex expressions (the error messages for
-    ///   type mismatches disobey this rule right now, this needs to change)
+    /// * The message should not contain any line breaks (beware when embedding source code snippets!)
+    /// * The message should not start with an upper case letter
+    /// * The message should not end in a punctuation mark (like a period)
+    /// * Surround source code snippets with (directional) single quotation marks,
+    ///   i.e. `‘` (U+2018) to the left and `’` (U+2019) to the right
+    /// * Try not to embed source code snippets that tend to be rather large
+    ///   (this definitely applies to e.g. arbitrary *expressions* but less so to arbitrary *identifiers*)
     /// * The message should be able to stand on its own without the additional
-    ///   information provided by labels and subdiagnostics
+    ///   information provided by labels and subdiagnostics. Exceptions are possible
     pub fn message(mut self, message: impl Into<Str>) -> Self {
         self.untagged.message = Some(message.into());
         self
@@ -144,6 +146,11 @@ impl<const S: Severity> Diagnostic<S> {
         self.subdiagnostic(Subseverity::Help, message.into())
     }
 
+    pub fn path(mut self, path: PathBuf) -> Self {
+        self.untagged.path = Some(path);
+        self
+    }
+
     pub fn with(self, builder: impl FnOnce(Self) -> Self) -> Self {
         builder(self)
     }
@@ -207,6 +214,8 @@ pub type UntaggedDiagnostic = Box<UnboxedUntaggedDiagnostic>;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub struct UnboxedUntaggedDiagnostic {
+    pub path: Option<PathBuf>,
+    // @Task update comment
     // Highlights come first since they should have the highest priority when ordering.
     // This places diagnostics close to “source order” (with buffered reporters):
     // Diagnostics for locations higher up in the file come first or “above” (in the
@@ -221,11 +230,12 @@ pub struct UnboxedUntaggedDiagnostic {
 impl UnboxedUntaggedDiagnostic {
     fn new(severity: Severity) -> Self {
         Self {
-            severity,
-            code: None,
-            message: None,
+            path: None,
             highlights: BTreeSet::new(),
             subdiagnostics: Vec::new(),
+            code: None,
+            severity,
+            message: None,
         }
     }
 

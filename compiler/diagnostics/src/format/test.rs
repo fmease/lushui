@@ -708,6 +708,46 @@ warning[permanently-unassigned-one]: no man's land",
     );
 }
 
+#[test]
+fn format_path_no_highlights() {
+    let diagnostic = Diagnostic::error()
+        .message("there is something wrong with this file")
+        .path("path/to/file.ext".into());
+
+    assert_format(
+        &diagnostic,
+        None,
+        "\
+error: there is something wrong with this file
+ --> path/to/file.ext",
+    );
+}
+
+#[test]
+fn format_path_together_with_highlights() {
+    let mut map = SourceMap::default();
+    map.add_str(Some("root.cfg".into()), "allow_plain_text = false\n");
+
+    let diagnostic = Diagnostic::error()
+        .message("that file is not acceptable")
+        .path("problematic.txt".into())
+        .labeled_primary_span(span(20, 25), "because you set this");
+
+    assert_format(
+        &diagnostic,
+        Some(&map),
+        "\
+error: that file is not acceptable
+ --> problematic.txt
+  |
+ --> root.cfg:1:20
+  |
+1 | allow_plain_text = false
+  |                    ^^^^^ because you set this
+  |",
+    );
+}
+
 // @Task Fix this!
 #[test]
 #[ignore = "weird corner case"]

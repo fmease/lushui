@@ -45,32 +45,56 @@ impl<'a> Formatter<'a> {
             .map(|code| format!("[{code}]").color(self.diagnostic.severity.color()))
             .unwrap_or_default();
 
-        write!(f, "{code}")
-    }
+        write!(f, "{code}")?;
 
-    fn format_highlights(&self, padding: &mut String, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let highlights = &self.diagnostic.highlights;
-
-        if highlights.is_empty() {
-            *padding = " ".into();
-            return Ok(());
+        if let Some(message) = &self.diagnostic.message {
+            write!(f, ": {}", message.bold())?;
         }
 
-        let map = self
-            .map
-            .expect("missing source map for a diagnostic with highlights");
+        Ok(())
+    }
 
-        let rows_of_lines_of_highlights = highlights
-            .iter()
-            .map(|highlight| map.lines_with_highlight(highlight.span))
-            .collect::<Vec<_>>();
+    fn format_path_and_highlights(
+        &self,
+        padding: &mut String,
+        f: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
+        let highlights = &self.diagnostic.highlights;
 
-        *padding = " ".repeat(calculate_padding(&rows_of_lines_of_highlights));
+        let rows_of_lines = if highlights.is_empty() {
+            *padding = " ".into();
+            None
+        } else {
+            let map = self
+                .map
+                .expect("missing source map for a diagnostic with highlights");
 
-        for (highlight, lines) in highlights.iter().zip(rows_of_lines_of_highlights) {
-            format_path(&lines, padding, f)?;
+            let rows_of_lines = highlights
+                .iter()
+                .map(|highlight| map.lines_with_highlight(highlight.span))
+                .collect::<Vec<_>>();
 
-            let bar = "|".color(color_palette::FRAME).bold();
+            *padding = " ".repeat(calculate_padding(&rows_of_lines));
+            Some(rows_of_lines)
+        };
+
+        let bar = "|".color(color_palette::FRAME).bold();
+
+        if let Some(path) = &self.diagnostic.path {
+            format_path(path, padding, f)?;
+
+            if !highlights.is_empty() {
+                writeln!(f)?;
+                write!(f, "{padding} {bar}")?;
+            }
+        }
+
+        let Some(rows_of_lines) = rows_of_lines else {
+            return Ok(());
+        };
+
+        for (highlight, lines) in highlights.iter().zip(rows_of_lines) {
+            format_location(&lines, padding, f)?;
 
             match &lines.last {
                 None => self.format_single_line_highlight(highlight, &lines, &bar, padding, f),
@@ -240,13 +264,8 @@ impl fmt::Display for Formatter<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.format_header(f)?;
 
-        // text message
-        if let Some(message) = &self.diagnostic.message {
-            write!(f, ": {}", message.bold())?;
-        }
-
         let mut padding = String::new();
-        self.format_highlights(&mut padding, f)?;
+        self.format_path_and_highlights(&mut padding, f)?;
         for subdiagnostic in &self.diagnostic.subdiagnostics {
             format_subdiagnostic(subdiagnostic, &padding, f)?;
         }
@@ -254,22 +273,31 @@ impl fmt::Display for Formatter<'_> {
     }
 }
 
-fn format_path(
+fn format_location(
     lines: &LinesWithHighlight<'_>,
     padding: &str,
     f: &mut fmt::Formatter<'_>,
 ) -> fmt::Result {
-    writeln!(f)?;
-    write!(f, "{padding}{} ", "-->".color(color_palette::FRAME).bold())?;
-
     let path = lines.path.map(Path::to_string_lossy).unwrap_or_default();
     let line = lines.first.number;
     let column = lines.first.highlight.start;
-    // unbelieveably wasteful memory-wise but inevitable due to the API of `colored`
+
+    writeln!(f)?;
     write!(
         f,
-        "{}",
-        format!("{path}:{line}:{column}").color(color_palette::FRAME)
+        "{padding}{}",
+        format!("--> {path}:{line}:{column}").color(color_palette::FRAME)
+    )
+}
+
+fn format_path(path: &Path, padding: &str, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    let path = path.to_string_lossy();
+
+    writeln!(f)?;
+    write!(
+        f,
+        "{padding}{}",
+        format!("--> {path}").color(color_palette::FRAME)
     )
 }
 
